@@ -260,10 +260,12 @@ export class Coordinator {
     }
     async tick(now = new Date()) {
         const c = this.state;
+        // Retention is safe while paused and keeps idle projects from slowing every save and snapshot.
+        if (pruneCompletedReads(c.requests ??= []))
+            this.store.save();
         if (!c.enabled || this.store.state.paused)
             return;
         reconcileReadRetries(this.store, now);
-        pruneCompletedReads(c.requests ??= []);
         reconcileNoticeConfirmations(this.store);
         reconcileContinuations(this.store);
         captureTime(this.store);
