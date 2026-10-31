@@ -5,6 +5,10 @@ import { PrerequisitesSchema } from '../delivery/pipeline/dependencies';
 import type { Store } from '../store/store';
 import type { ReadRetry } from '../../src/shared';
 export const IntakeResult = z.object({ outcome: z.enum(['ready', 'owned', 'blocked', 'held']), ownershipChecked: z.boolean(), owner: z.string(), summary: z.string(), evidence: z.array(z.string()).min(1), prerequisites: PrerequisitesSchema, existingWork: z.object({ projectId: z.string(), kind: z.enum(['pr', 'native-session', 'native-run', 'maintenance']), id: z.string(), evidence: z.string() }).strict().nullable() }).strict();
+/** A read-only worker cut off by the model's output limit produced no effects; re-running the read is safe. */
+export function incompleteReadOutput(text: string) {
+    return /codex exited 1: Incomplete response returned, reason: max_output_tokens/i.test(text);
+}
 export function temporaryReadFailure(text: string) {
     return !/(?:hold|backlog|prerequisite|permission|denied|forbidden|unauthorized|oauth|token|ownership|active owner|uncertain|mutation|must be reconciled|external effects)/i.test(text) && /(?:timed? out|timeout|ECONNRESET|ECONNREFUSED|EAI_AGAIN|connection (?:reset|closed|failed)|error connecting|HTTP 50[234]|rate.limit|(?:Error: )?codex exited 1: Selected model is at capacity\. Please try a different model\.)/i.test(text);
 }
@@ -13,7 +17,7 @@ export function planReadRetry(item: {
     detail: string;
     retry?: ReadRetry;
 }, now: Date) {
-    if (!['blocked', 'interrupted'].includes(item.status) || !temporaryReadFailure(item.detail))
+    if (!['blocked', 'interrupted'].includes(item.status) || !temporaryReadFailure(item.detail) && !incompleteReadOutput(item.detail))
         return false;
     const r = item.retry ??= { attempts: 0, nextAt: '', history: [], exhausted: false };
     if (r.exhausted)
