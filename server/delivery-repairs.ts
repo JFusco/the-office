@@ -4,9 +4,12 @@ import { command } from './process';
 import { resolve } from 'node:path';
 import type { DeliveryRepairCycle, StageResult, TicketJob, Ticket, Stage, WorkApproach } from '../src/shared';
 import type { Store } from './store';
+import { namedRepairIds } from './delivery/findings/repair-scope';
 
 /** Models describe defects; the harness restricts which stages, identities and effects can repair. */
-export function repairFindingIds(result: StageResult): string[] | null {
+/** `named`: hands-off projects repair the findings the reviewer names (see namedRepairIds). */
+export function repairFindingIds(result: StageResult, named = false): string[] | null {
+    if (named) return namedRepairIds(result);
     const resolution = result.resolution;
     if (!resolution || resolution.kind !== 'source-repair' || !['failed', 'blocked'].includes(result.outcome) || result.prerequisites?.length || result.receipts.some(r => r.uncertain || !r.verified)) return null;
     const ids = result.findings.filter(f => f.status !== 'verified').map(f => f.id);
@@ -32,8 +35,8 @@ export function enqueueRepairDiagnosis(store: Store, job: Pick<TicketJob, 'id' |
     cycle.diagnosisRequestId = id;
     store.state.messages.push({ id, requestId: id, from: 'pm', to: 'it', ticket: job.key, actionId: '', body: `Bounded delivery repair window exhausted for ${job.key}, original delivery ${job.id}, exact head ${job.head}. Inspect retained stage evidence and provider health; report a concrete operational cause and supported next action to Morgan. Do not implement ticket code, reset budgets, change scope, replay effects or dispatch delivery. Findings: ${JSON.stringify(cycle.pendingFindingIds)}. Repair history: ${JSON.stringify(cycle.findingAttempts)}.`, status: 'queued', createdAt: store.clock.now().toISOString(), sessionId: '', recheck: false, error: '', recipients: [], receipts: [] });
 }
-export function githubRepairEligible(job: TicketJob, result: StageResult) {
-    const ids = repairFindingIds(result);
+export function githubRepairEligible(job: TicketJob, result: StageResult, named = false) {
+    const ids = repairFindingIds(result, named);
     if (!ids || !['implement', 'scope-repair', 'review', 'validate', 'update-base', 'lead-pr'].includes(job.stage) || job.mergeAttempt || job.mergeIntentId || job.mergeApprovalRequired || result.prId !== job.pr || !/^[a-f0-9]{40}$/i.test(result.commit)) return null;
     if (job.head && job.head !== result.commit && !(job.stage === 'update-base' && job.repairCycle?.phase === 'repair') || !result.worktree || !result.branch || job.worktree && job.worktree !== result.worktree || job.branch && job.branch !== result.branch) return null;
     return ids;
@@ -49,8 +52,8 @@ export function approachFingerprint(approach: WorkApproach | undefined | null) {
     return JSON.stringify(approach ? { plan: approach.plan, review: approach.review, validation: approach.validation, checks: approach.checks } : null);
 }
 /** One changed, independently assessed approach may extend the window; no counters are reset. */
-export function revisedRepair(cycle: DeliveryRepairCycle, result: StageResult): DeliveryRepairCycle | null {
-    const ids = repairFindingIds(result);
+export function revisedRepair(cycle: DeliveryRepairCycle, result: StageResult, named = false): DeliveryRepairCycle | null {
+    const ids = repairFindingIds(result, named);
     if (cycle.phase !== 'diagnosis' || cycle.approachRevision || !result.approach || result.commit !== cycle.sourceHead || !ids || cycle.pendingFindingIds.some(id => !result.findings.some(f => f.id === id)) || approachFingerprint(result.approach) === cycle.exhaustedApproach) return null;
     return reserveRepair({ ...cycle, approachRevision: 1 }, ids, cycle.sourceStage, cycle.sourceHead);
 }
@@ -69,8 +72,8 @@ export async function verifyRepairCandidate(project: { repo: string; repository:
 }
 
 /** Read-only reviewers return analysis; the harness owns its durable diagnostic artifact. */
-export function retainRepairEvidence(result: StageResult, stage: string, root: string, worktree: string) {
-    if (!repairFindingIds(result)) return false;
+export function retainRepairEvidence(result: StageResult, stage: string, root: string, worktree: string, named = false) {
+    if (!repairFindingIds(result, named)) return false;
     const inputs = result.resolution!.evidenceIds.map(id => result.evidence.find(e => e.id === id)!);
     if (inputs.every(e => containedFile(e.path, root))) return true;
     if (!['review', 'lead-pr', 'repair-diagnosis', 'code-review'].includes(stage) || !worktree || inputs.some(e => !containedFile(e.path, root) && !containedFile(e.path, worktree))) return false;

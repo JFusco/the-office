@@ -601,11 +601,11 @@ Save no source changes. Prior job/evidence: ${JSON.stringify(job)}.`, schema, { 
     }
     async queueSourceRepair(job: TicketJob, result: StageResult, root: string) {
         const held=await outsideAmendmentFindingIds(this,job,result.commit,result),repairView=amendmentRepairView(result,held);
-        const ids = githubRepairEligible(job, repairView);
+        const named = handsOff(this.store), ids = githubRepairEligible(job, repairView, named);
         const publishedAccepted = !!job.pr && job.implementationContinuation?.phase === 'acceptance';
         const nativeAdoptionPending = !!(job.implementationContinuation || job.discoveryRecovery || job.implementationRecovery) && !publishedAccepted;
         if (!ids || nativeAdoptionPending || HOLDS[job.key] || this.jobs.find(current => current.id === job.id) !== job || job.status !== 'working' || this.store.state.paused || job.steps.some(step => hasUncertainEffects(step.stage, step.result))) return false;
-        if (!retainRepairEvidence(repairView, job.stage, root, result.worktree)) return false;
+        if (!retainRepairEvidence(repairView, job.stage, root, result.worktree, named)) return false;
         if (job.repairCycle?.pendingFindingIds.some(id => !result.findings.some(f => f.id === id))) return false;
         if (result.worktree === this.store.project.repo || result.paidRuns !== 0) return false;
         let publishedHead: string | undefined;
@@ -842,7 +842,7 @@ Save no source changes. Prior job/evidence: ${JSON.stringify(job)}.`, schema, { 
                 job.steps.push({ ...nativeProof, stage: 'repair-diagnosis', result });
                 if (deliveryInputSha256(this.store, job.key) !== inputSha256 || hasUncertainEffects('review', result) || result.worktree !== job.worktree || result.branch !== job.branch || !retainRepairEvidence(result, 'repair-diagnosis', root, job.worktree))
                     throw new Error('Revised approach identity, human input or diagnostic evidence is unverified');
-                const revised = revisedRepair(job.repairCycle, amendmentRepairView(result,heldFindings));
+                const revised = revisedRepair(job.repairCycle, amendmentRepairView(result,heldFindings), handsOff(this.store));
                 if (!revised || revised.phase !== 'repair') throw new Error(result.blocker || 'No permitted changed technical approach was established; Morgan retains the concrete restriction and original repair evidence');
                 job.repairCycle = revised; job.stage = 'update-base'; job.status = 'queued';
                 job.detail = 'Sam established one changed technical approach. Alex continues the same candidate within the extended bounded window; original counters are retained.';
