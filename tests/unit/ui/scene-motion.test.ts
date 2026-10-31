@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { OfficeSnapshot, WorkTime } from '../../../src/shared';
-import { avatarHome, ctoPacingPath, handoffPath, sampleTrip, sceneHandoff, sceneNow, tripDuration } from '../../../src/scene-motion';
+import { avatarHome, ctoPacingPath, handoffPath, sampleTrip, sceneHandoff, sceneNow, tripDuration } from '../../../src/scene/scene-motion';
 
 const at = (seconds: number) => new Date(Date.UTC(2026, 9, 29, 20) + seconds * 1000).toISOString();
 const work = (id: string, role: WorkTime['role'], start: number, end: number, patch: Partial<WorkTime> = {}): WorkTime => ({

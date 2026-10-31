@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest';
-import {mailboxWork,shortSummary,actionSummary,readinessWait} from '../../../src/work-summary';
+import {mailboxWork,shortSummary,actionSummary,readinessWait} from '../../../src/work/work-summary';
 import {initialSnapshot} from '../../../server/store/store';
 import {syncOutbox} from '../../../server/conversations/outbox';
 import {coordination} from '../../../server/scheduling/coordination';

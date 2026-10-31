@@ -1,4 +1,4 @@
-import { observedDuration } from '../../src/timing';
+import { observedDuration } from '../../src/timing/timing';
 import type { AzureBuild, AzurePR, OfficeSnapshot } from '../../src/shared';
 import { sanitize } from '../office/security';
 export function buildTiming(raw:any,observedAt:string):Partial<AzureBuild> {

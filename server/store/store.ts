@@ -6,7 +6,7 @@ import { sanitize, sanitizeObject } from '../office/security';
 import { projectOutbox } from '../conversations/outbox';
 import { DEVELOPER_MODEL, DEVELOPER_EFFORT } from '../workers/claude';
 import { ROLE_NAMES, workKey, type Agent, type EffectIntent, type OfficeEvent, type OfficeSnapshot, type Role, type Stage, type StageResult, type Ticket, type WorkClaim, type WorkRef, type WorkTime } from '../../src/shared';
-import { durationLabel } from '../../src/timing';
+import { durationLabel } from '../../src/timing/timing';
 import { projectById, projectData } from '../office/projects';
 import type { OfficeProject } from '../../src/shared';
 import { type Clock, systemClock } from '../office/clock';

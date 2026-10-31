@@ -14,7 +14,7 @@ import { Conversations } from '../../../server/conversations/conversations';
 import { officeCapacity, projectById } from '../../../server/office/projects';
 import { Scheduler } from '../../../server/scheduling/scheduler';
 import { Agents } from '../../../server/workers/agents';
-import { timeReport } from '../../../src/timing';
+import { timeReport } from '../../../src/timing/timing';
 import type { StageResult, Ticket } from '../../../src/shared';
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })); });

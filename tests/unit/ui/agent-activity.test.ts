@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest';
-import {displayAgentTask} from '../../../src/agent-activity';
+import {displayAgentTask} from '../../../src/scene/agent-activity';
 test('closeout tool progress keeps the delivery phase visible for already closed issues',()=>{
  const agent={id:'pm',activity:'working',ticket:'GH-263',task:'GH-263 · Inspecting the pull request'} as any;
  const snapshot={workLog:[{role:'pm',status:'running',stage:'github-closeout',ticket:'GH-263'}]} as any;

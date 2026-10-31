@@ -7,7 +7,7 @@ import { Effects } from '../../store/effects';
 import { z } from 'zod';
 import { GITHUB_ISSUE_SKILL } from '../../github/github-context';
 import { ProjectProgress } from '../board/project-progress';
-import { shortSummary } from '../../../src/work-summary';
+import { shortSummary } from '../../../src/work/work-summary';
 import type { AssignedIssue } from '../../../src/shared';
 import { queueMergeNotice } from '../../conversations/notifications';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';

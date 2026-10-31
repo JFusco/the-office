@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest';
-import {recommendedReply} from '../../../src/recommended-reply';
+import {recommendedReply} from '../../../src/conversations/recommended-reply';
 import {initialSnapshot} from '../../../server/store/store';
 import {coordination} from '../../../server/scheduling/coordination';
 test('recommendations preserve Backlog deferral and do not imply approval',()=>{

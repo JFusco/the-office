@@ -1,7 +1,7 @@
 import { amendmentInstruction, AMENDMENT_REVIEW_PROOF } from '../recovery/source-amendment/source-amendment';
 import { DISCOVERY_GUIDANCE } from './prompts/discovery';
 import { deliveryResearchContext, deliveryHumanInputs } from '../../github/github-context';
-import { shortSummary } from '../../../src/work-summary';
+import { shortSummary } from '../../../src/work/work-summary';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 import { APPROACH_GUIDANCE, reviewInstructions } from './approach';

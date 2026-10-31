@@ -23,7 +23,9 @@ Server domains (entry points `server/index.ts`, `server/dev.ts`, `server/cli.ts`
 
 ```text
 server/
-  office/          service identity: config, projects, security, clock, health, revision
+  office/          service identity: config, projects, security, clock, health, revision,
+                   service lock and timers
+    http/          API routes, office commands, static UI, responses
   store/           persistence: store, schema, migrations, effects, evidence artifacts, recovery
   scheduling/      dispatch: scheduler, scheduled work, coordinator (poll, tick, pump), requests
   workers/         model workers: runtime, process, Claude/Codex adapters, profiles, lanes
@@ -48,8 +50,22 @@ server/
   conversations/   team conversations, outbox, notifications, Slack
   time/            time accounting and publication
   operations/      harness operation retention
-  it/              IT specialist
+  it/              IT specialist: per-project check context, recovery attempts, delivery
+                   recoveries, recovery ledger, reports
 tests/unit/        mirrors server/ (plus ui/ for src/ logic)
+```
+
+UI domains (`src/main.tsx`, `src/shared.ts`, `src/style.css`, `tokens/`, `ui/`, `contracts/` stay put):
+
+```text
+src/
+  office/          app shell, live snapshot hook, inspector, settings
+  scene/           3D office scene, avatar motion, agent activity
+  timing/          live clocks and time book
+  work/            delivery queues, summaries, approvals, GitHub panel
+  leadership/      CTO review and goals
+  conversations/   team conversation panel
+  health/          service health and IT agent
 ```
 
 ## Harness and agent boundaries

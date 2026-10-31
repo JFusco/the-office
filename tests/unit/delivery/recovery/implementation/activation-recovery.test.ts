@@ -19,7 +19,7 @@ import {withAssignment,currentAssignment} from '../../../../../server/workers/as
 import {workerProfile} from '../../../../../server/workers/worker-profiles';
 import {assertStrictOutputSchema} from '../../../../../server/workers/structured-output';
 import {z} from 'zod';
-import {deliveryRepairProjection} from '../../../../../src/delivery-repair-projection';
+import {deliveryRepairProjection} from '../../../../../src/work/delivery-repair-projection';
 import {GitHubDelivery} from '../../../../../server/delivery/pipeline/github-delivery';
 import * as activationRecovery from '../../../../../server/delivery/recovery/implementation/activation-recovery';
 const roots:string[]=[],stores:Store[]=[];

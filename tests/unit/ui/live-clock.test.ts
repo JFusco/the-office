@@ -11,7 +11,7 @@ beforeEach(()=>{
 });
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals();});
 async function clock(){
- const {useLiveClock}=await import('../../../src/live-clock');useLiveClock();
+ const {useLiveClock}=await import('../../../src/timing/live-clock');useLiveClock();
  const [subscribe,getSnapshot]=vi.mocked(useSyncExternalStore).mock.calls.at(-1)!;
  return {subscribe,getSnapshot};
 }

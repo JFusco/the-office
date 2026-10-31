@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { pmQueueItems } from '../../../src/pm-queue';
+import { pmQueueItems } from '../../../src/work/pm-queue';
 const review = (key: string, status: string, extra = {}) => ({ project: 'brain', projectName: 'Brain', review: { id: key, key, status, summary: `Title ${key}`, queuedAt: '2026-10-28T12:00Z', ...extra } });
 const job = (key: string, status: string, extra = {}) => ({ project: 'brain', projectName: 'Brain', job: { id: key, key, status, stage: 'lead-pr', requestedAt: '2026-10-28T12:00Z', detail: 'Saved result', ...extra } });
 const state = (pmQueue: any[], teamQueue: any[] = []) => ({ pmQueue, teamQueue, tickets: [], projects: [] } as any);

@@ -1,5 +1,5 @@
-import { deferredPickup } from '../../src/pickup-state';
-import { shortSummary } from '../../src/work-summary';
+import { deferredPickup } from '../../src/work/pickup-state';
+import { shortSummary } from '../../src/work/work-summary';
 import { PICKUP_CHAT } from '../delivery/intake/pickup';
 import { assertStrictOutputSchema, completedOutput } from './structured-output';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
@@ -14,7 +14,7 @@ import { ReplySchema } from '../conversations/conversations';
 import { SlackResultSchema, SlackVerificationSchema } from '../conversations/slack';
 import { claudeArguments, ClaudeStream, DEVELOPER_MODEL, DEVELOPER_EFFORT } from './claude';
 import type { Role, Stage, Ticket, TeamMessage, SlackDelivery, StageResult } from '../../src/shared';
-import { timeReport } from '../../src/timing';
+import { timeReport } from '../../src/timing/timing';
 import { ApproachSchema, APPROACH_GUIDANCE, reviewInstructions } from '../delivery/pipeline/approach';
 import { contextPacket, PROJECTS, type OfficeCapacity } from '../office/projects';
 import { githubFollowupPrompt, canFileGithubIssue, GITHUB_ISSUE_SKILL } from '../github/github-context';

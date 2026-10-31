@@ -2,7 +2,7 @@ import { handsOff } from '../delivery/harness/scope';
 import { admit } from '../delivery/intake/admission';
 import { enqueueRequest } from './requests';
 import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey, observePrerequisites } from '../delivery/pipeline/dependencies';
-import { shortSummary } from '../../src/work-summary';
+import { shortSummary } from '../../src/work/work-summary';
 import { HOLDS } from '../office/config';
 import { MergeNotifications } from '../conversations/notifications';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
