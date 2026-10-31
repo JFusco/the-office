@@ -1,4 +1,5 @@
 import {prepareMaintenanceReadback,maintenanceCoverageSchema,maintenanceCoveragePassed,MAINTENANCE_NATIVE_GUIDANCE} from './maintenance-readback';
+import { supersedablePriorRuns, unverifiedPriorRunNote } from './unverified-prior-runs';
 import { z } from 'zod';
 import { resolve } from 'node:path';
 import { mkdirSync, writeFileSync, realpathSync } from 'node:fs';
@@ -86,12 +87,13 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
         const existing = state.runs.find(r => r.status === 'queued' || r.status === 'working');
         if (existing)
             return existing;
-        if (state.runs.some(r => r.status === 'interrupted' || r.status === 'blocked'))
+        const supersedes = supersedablePriorRuns(this.store, state.runs, scheduled);
+        if (!supersedes)
             throw new Error('Prior CMS maintenance needs read-back reconciliation in the outbox; it will not be replayed.');
         if (scheduled && state.lastDaily === easternDate(now) && !weeklyDue(state.lastWeekly, now))
             return state.runs.at(-1)!;
         maintenancePolicies(this.store);
-        const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly: weeklyDue(state.lastWeekly, now), stage: 'follow-up', error: '', steps: [] };
+        const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly: weeklyDue(state.lastWeekly, now), stage: 'follow-up', error: '', steps: [], ...(supersedes.length ? { supersedes } : {}) };
         state.runs.push(run);
         this.store.emit('maintenance-queued', `CMS maintenance queued${run.weekly ? ' with the weekly vendor review' : ''}.`, 'pm');
         return run;
@@ -142,7 +144,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     state.ledger = result.ledger;
                 throw new StageYield('Stage persisted; waiting for the next scheduler claim');
             };
-            await step('pm', 'follow-up', `Read all open PRs/issues and previously watched closed/merged items. Compare exact heads, reviews/checks and issues with the retained ledger. Apply ONLY the existing Dependabot merge rule after verifying bot identity, dependency-only exact diff, current head and mergeability; use matching-head merge and conventional subject. Non-Dependabot PRs remain read-only. Verify post-merge Quality/Release, tag, GitHub release, npm version/provenance as applicable, without retrying side effects. Retain missing verification as blockers in the ledger, not invented acceptance. Never edit source code or non-Dependabot PRs. No pipeline reruns/dispatches, manual version/tag/publish or issue closure. Return candidates=[].
+            await step('pm', 'follow-up', `${unverifiedPriorRunNote(run)}Read all open PRs/issues and previously watched closed/merged items. Compare exact heads, reviews/checks and issues with the retained ledger. Apply ONLY the existing Dependabot merge rule after verifying bot identity, dependency-only exact diff, current head and mergeability; use matching-head merge and conventional subject. Non-Dependabot PRs remain read-only. Verify post-merge Quality/Release, tag, GitHub release, npm version/provenance as applicable, without retrying side effects. Retain missing verification as blockers in the ledger, not invented acceptance. Never edit source code or non-Dependabot PRs. No pipeline reruns/dispatches, manual version/tag/publish or issue closure. Return candidates=[].
 GITHUB PROJECT COORDINATION (Joe authorized 2026-10-28): Use ONLY ${this.store.project.githubProject?.url} and issues in ${this.store.project.repository}. Read current board Status options/cards, relevant issue bodies/comments, actual work evidence and current PR heads/checks. Update existing cards when evidence supports Backlog (unassessed/future/deferred or waiting on prerequisites), Ready (actionable unblocked scope), In progress (work actually started), In review (actual proposal awaiting applicable review/checks), or Done (verified acceptance after maintainer merge or documented completed no-impact disposition). Use actual lane names; report a blocker rather than inventing a lane. Preserve human holds and version prerequisites; SDK prereleases never prove a stable contract. A queued run, hash change, passing local check or open PR alone cannot establish completion. For each substantive change leave one focused issue comment with evidence, blocker if any and next step; read existing comments first to avoid repetition and read back both saved lane and comment. Record every attempted board/comment write in receipts; uncertain effects block and must not be replayed. This stage alone permits these board updates/comments; non-Dependabot PRs remain read-only, and no issue closure, source edits, profile/lock acceptance, merge or release is authorized by a board move. Report unchanged cards without heartbeat comments.`);
             if (run.weekly) {
                 const triage = await step('pm', 'vendor-review', 'READ ONLY. Review the latest completed weekly full Vendor documentation freshness Actions run and accumulated daily observations since the last completed review. Inspect uploaded index/full JSON, summary and logs (stream/download in memory when filesystem is read-only). Compare source IDs/fingerprints to source lock and prior dispositions; verify exact official locators and affected profiles. Return one candidate summary per EVIDENCED surface needing a proposal, including source IDs, fingerprints, exact claims and verification requirements. issue may be 0 before creation, worktree/branch/head empty. No issue/PR/source writes, merge or acceptance. No new evidence is a valid unchanged outcome. Missing scan evidence is blocked.', true);
