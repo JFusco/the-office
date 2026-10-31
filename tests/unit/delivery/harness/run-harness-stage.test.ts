@@ -47,3 +47,15 @@ test('an unreviewed draft stays draft and still proceeds to read-only Lead asses
     expect(result?.summary).toContain('left as draft');
     expect(f.state.prs[0].draft).toBe(true);
 });
+test('a team-reviewed head goes from preparation straight to the guarded merge, without a second Lead review', async () => {
+    const f = fakeGitHub(), job = f.candidate({ stage: 'prepare-pr', status: 'queued', pr: 200, approach: { plan: 'none', review: 'focused', validation: 'developer-checks', checks: ['pnpm run verify:ci'], reason: 'Synthetic' } });
+    f.store.state.coordination!.merges = { enabled: true, authorizedAt: '2026-10-28T00:00:00Z' };
+    f.state.prs.push({ number: 200, html_url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200', state: 'open', draft: false, body: 'Closes #5', head: { sha: HEAD, ref: job.branch }, base: { ref: 'main', sha: BASE, repo: { full_name: 'JFusco/cms-field-vocabulary' } } });
+    job.steps.push({ stage: 'review', result: { outcome: 'passed', summary: 'Reviewed', commit: HEAD, blocker: '', evidence: [], findings: [], receipts: [], previewUrl: '', worktree: job.worktree, branch: job.branch, prId: 200, qaRunDir: '', paidRuns: 0 } });
+    let modelCalls = 0;
+    f.engine.agents.run = async () => { modelCalls++; throw new Error('No model expected'); };
+    await f.delivery.step(job);
+    expect(job.detail).not.toMatch(/Error/);
+    expect(job).toMatchObject({ stage: 'merge', status: 'queued' });
+    expect(modelCalls).toBe(0);
+});

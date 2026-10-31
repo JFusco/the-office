@@ -1,4 +1,5 @@
 import {completedExecution} from '../../workers/worker-completion';
+import { teamReviewedHead, mergeAuthorized } from '../readiness/team-review';
 import { assertScopeRepairResumeFindings } from '../recovery/scope-repair/scope-repair-resume';
 import { handoffSavedPrerequisites, savedPrerequisiteFindingsResolved, savedPrerequisiteJobEligible } from '../recovery/implementation/saved-prerequisite-handoff';
 import { routeReadyPostConflictPublication } from '../recovery/preparation/post-conflict-preparation';
@@ -213,6 +214,13 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             const observed = this.store.state.github.prs.find(pr => pr.number === job.pr);
             if (observed)
                 Object.assign(observed, { state: p.state, base: p.base.ref, head: p.head.sha, mergedAt: p.merged_at || '', draft: p.draft });
+        }
+        if (teamReviewedHead(this.store, job) && !p.draft && mergeAuthorized(this.store, job)) {
+            job.stage = 'merge';
+            job.status = 'queued';
+            job.detail = 'PR prepared. The team already reviewed and verified this exact head, so the guarded merge runs without a second readiness review.';
+            this.store.emit('pr-prepared', `${job.key}: PR prepared; team-reviewed head goes to the guarded merge.`, 'lead', job.key);
+            return;
         }
         job.stage = 'lead-pr';
         job.status = 'queued';
