@@ -1,7 +1,7 @@
-import { HOLDS } from '../../config';
-import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../../dependencies';
-import type { GitHubDelivery } from '../../github-delivery';
-import type { Store } from '../../store';
+import { HOLDS } from '../../office/config';
+import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../pipeline/dependencies';
+import type { GitHubDelivery } from '../pipeline/github-delivery';
+import type { Store } from '../../store/store';
 import type { AssignedIssue, AssignmentReview, Coordination, PickupPolicy, Prerequisite } from '../../../src/shared';
 
 export interface IntakeContext { store: Store; state: Coordination; pickup: PickupPolicy; dependencyStores: () => DependencyStores }

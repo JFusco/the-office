@@ -1,7 +1,7 @@
-import { HOLDS } from '../../config';
-import { dependencyEligibility, type DependencyStores } from '../../dependencies';
-import { hasUncertainEffects } from '../../github-delivery';
-import type { Store } from '../../store';
+import { HOLDS } from '../../office/config';
+import { dependencyEligibility, type DependencyStores } from '../pipeline/dependencies';
+import { hasUncertainEffects } from '../pipeline/github-delivery';
+import type { Store } from '../../store/store';
 import type { AssignedIssue, TicketJob } from '../../../src/shared';
 
 /** A parked card moved back to the pickup lane resumes the same job at its retained stage. */

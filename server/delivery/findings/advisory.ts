@@ -1,5 +1,5 @@
 import { handsOff } from '../harness/scope';
-import type { Store } from '../../store';
+import type { Store } from '../../store/store';
 import type { Finding } from '../../../src/shared';
 
 /**

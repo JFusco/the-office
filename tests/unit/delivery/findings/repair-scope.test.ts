@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { namedRepairIds } from '../../../../server/delivery/findings/repair-scope';
-import { repairFindingIds } from '../../../../server/delivery-repairs';
+import { repairFindingIds } from '../../../../server/delivery/repairs/delivery-repairs';
 import type { StageResult } from '../../../../src/shared';
 
 const head = 'a'.repeat(40);

@@ -1,5 +1,5 @@
-import { HOLDS } from '../../config';
-import type { Store } from '../../store';
+import { HOLDS } from '../../office/config';
+import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
 /** Checked before a harness stage starts and again immediately before every external write. */

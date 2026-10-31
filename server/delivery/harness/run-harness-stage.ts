@@ -2,7 +2,7 @@ import { harnessDelivers } from './scope';
 import { harnessDraft } from '../publication/draft-stage';
 import { harnessPrepare } from '../publication/prepare-stage';
 import { harnessCloseout } from '../closeout/closeout';
-import type { GitHubDelivery } from '../../github-delivery';
+import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
 /** Returns a harness StageResult for model-free stages, or null when a model worker should run. */

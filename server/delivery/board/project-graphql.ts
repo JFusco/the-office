@@ -1,5 +1,5 @@
-import { command } from '../../process';
-import type { Store } from '../../store';
+import { command } from '../../workers/process';
+import type { Store } from '../../store/store';
 
 export type Execute = typeof command;
 

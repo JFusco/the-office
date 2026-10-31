@@ -1,7 +1,7 @@
 import { moveLane } from '../board/move-lane';
 import { assertMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
-import type { GitHubDelivery } from '../../github-delivery';
+import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
 /** Human decisions and external waits (e.g. an upstream release) both belong on the board, not in a hidden blocker. */

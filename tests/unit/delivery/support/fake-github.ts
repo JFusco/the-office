@@ -1,11 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { Store } from '../../../../server/store';
-import { Engine } from '../../../../server/engine';
-import { GitHubDelivery } from '../../../../server/github-delivery';
-import { projectById } from '../../../../server/projects';
-import { coordination } from '../../../../server/coordination';
+import { Store } from '../../../../server/store/store';
+import { Engine } from '../../../../server/scheduling/engine';
+import { GitHubDelivery } from '../../../../server/delivery/pipeline/github-delivery';
+import { projectById } from '../../../../server/office/projects';
+import { coordination } from '../../../../server/scheduling/coordination';
 import type { TicketJob } from '../../../../src/shared';
 
 export const REPOSITORY = 'JFusco/cms-field-vocabulary';

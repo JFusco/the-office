@@ -2,7 +2,7 @@ import { moveLane } from '../board/move-lane';
 import { assertMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { harnessStageResult, receipt } from '../harness/stage-result';
-import type { GitHubDelivery } from '../../github-delivery';
+import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
 const PASSING = ['success', 'skipped', 'neutral'];

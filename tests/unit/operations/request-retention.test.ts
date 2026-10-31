@@ -22,10 +22,10 @@ test('a paused project still prunes completed reads on tick', async () => {
     const { mkdtempSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const { resolve } = await import('node:path');
-    const { Store } = await import('../../../server/store');
-    const { Engine } = await import('../../../server/engine');
-    const { Coordinator } = await import('../../../server/coordination');
-    const { projectById } = await import('../../../server/projects');
+    const { Store } = await import('../../../server/store/store');
+    const { Engine } = await import('../../../server/scheduling/engine');
+    const { Coordinator } = await import('../../../server/scheduling/coordination');
+    const { projectById } = await import('../../../server/office/projects');
     const root = mkdtempSync(resolve(tmpdir(), 'office-retention-'));
     const store = new Store(':memory:', projectById('brain'), root);
     try {

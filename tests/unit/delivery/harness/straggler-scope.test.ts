@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from 'vitest';
 import { z } from 'zod';
 import { tmpdir } from 'node:os';
-import { Agents } from '../../../../server/agents';
-import { Store } from '../../../../server/store';
-import { command } from '../../../../server/process';
-import { projectById } from '../../../../server/projects';
+import { Agents } from '../../../../server/workers/agents';
+import { Store } from '../../../../server/store/store';
+import { command } from '../../../../server/workers/process';
+import { projectById } from '../../../../server/office/projects';
 
 const stores: Store[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); });

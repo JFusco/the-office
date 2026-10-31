@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
-import { HOLDS } from '../../../../server/config';
+import { HOLDS } from '../../../../server/office/config';
 import type { StageResult } from '../../../../src/shared';
 afterEach(cleanupFakes);
 

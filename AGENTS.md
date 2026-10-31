@@ -19,23 +19,38 @@
   not `utils.ts` or `helpers.ts`. Never create layer folders such as `utils/`,
   `services/`, `helpers/` or `types/`.
 
-Example (ticket delivery domain):
+Server domains (entry points `server/index.ts`, `server/dev.ts`, `server/cli.ts` stay at the root):
 
 ```text
-server/delivery/
-  harness/       scope.ts, guards.ts, effect.ts, stage-result.ts
-  intake/        admission.ts, pr-inventory.ts
-  candidate/     create-candidate.ts
-  publication/   pr-body.ts, publish-pr.ts, ready-pr.ts
-  board/         project-graphql.ts, move-lane.ts
-  findings/      advisory.ts
-  parking/       park.ts, resume.ts
-  closeout/      closeout.ts
-tests/unit/delivery/   mirrors the tree above, one test file per module
+server/
+  office/          service identity: config, projects, security, clock, health, revision
+  store/           persistence: store, schema, migrations, effects, evidence artifacts, recovery
+  scheduling/      dispatch: scheduler, scheduled work, coordinator (poll, tick, pump), requests
+  workers/         model workers: runtime, process, Claude/Codex adapters, profiles, lanes
+  delivery/        GitHub ticket delivery
+    pipeline/      GitHubDelivery, stage prompts, task assembly, result acceptance, PR observation
+    harness/       hands-off scope, write guards, effects wrapper, harness stages
+    intake/        deterministic admission, PR discovery, pickup policy
+    candidate/     worktree creation
+    publication/   PR body, publish, promote, draft/prepare stages
+    board/         project board lanes
+    readiness/     merge readiness, checks, merge approval
+    repairs/       repair budgets and dispatch, conflict repair
+    findings/      advisory findings, repair scope
+    parking/       Block-lane decisions and resume
+    closeout/      harness closeout
+    recovery/      reconciliation of legacy records (closeout, implementation, preparation,
+                   scope repair, source amendment, validation)
+  cec/             Jira/Azure (CEC) pipeline: workflow, mailbox, pilot delivery, stage runner
+  github/          GitHub provider adapters
+  maintenance/     project maintenance and Brain native runs
+  leadership/      CTO daily review and goals
+  conversations/   team conversations, outbox, notifications, Slack
+  time/            time accounting and publication
+  operations/      harness operation retention
+  it/              IT specialist
+tests/unit/        mirrors server/ (plus ui/ for src/ logic)
 ```
-
-Other domains follow the same rule, for example `server/maintenance/`,
-`server/leadership/` (CTO and goals), `server/time/` and `server/workers/`.
 
 ## Harness and agent boundaries
 

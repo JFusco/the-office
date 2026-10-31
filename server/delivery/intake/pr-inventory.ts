@@ -1,4 +1,4 @@
-import type { GitHubDelivery } from '../../github-delivery';
+import type { GitHubDelivery } from '../pipeline/github-delivery';
 
 /** Complete live open-PR inventory; a stale cache is never proof that no PR exists. */
 export async function openPullInventory(delivery: GitHubDelivery): Promise<any[]> {

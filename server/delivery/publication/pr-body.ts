@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { command } from '../../process';
+import type { command } from '../../workers/process';
 import type { TicketJob } from '../../../src/shared';
 
 type Execute = typeof command;

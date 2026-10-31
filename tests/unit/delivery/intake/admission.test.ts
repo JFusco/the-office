@@ -2,8 +2,8 @@ import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
 afterEach(cleanupFakes);
 import { admit, admitReadyCards } from '../../../../server/delivery/intake/admission';
-import { coordination } from '../../../../server/coordination';
-import { HOLDS } from '../../../../server/config';
+import { coordination } from '../../../../server/scheduling/coordination';
+import { HOLDS } from '../../../../server/office/config';
 
 function context(f: ReturnType<typeof fakeGitHub>) {
     f.store.state.coordination ??= coordination();

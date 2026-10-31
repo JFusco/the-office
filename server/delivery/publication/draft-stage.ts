@@ -2,7 +2,7 @@ import { moveLane } from '../board/move-lane';
 import { harnessStageResult, receipt } from '../harness/stage-result';
 import { assertMayMutate } from '../harness/guards';
 import { publishCandidate } from './publish-pr';
-import type { GitHubDelivery } from '../../github-delivery';
+import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
 /** Model-free `draft`: publish the verified candidate and move its cards to In review. */
