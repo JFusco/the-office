@@ -1,4 +1,7 @@
 import { completeNativeCheckpoint } from './brain-checkpoint';
+import { handsOff } from './delivery/harness/scope';
+import { admit, admitReadyCards } from './delivery/intake/admission';
+import { resumeParked } from './delivery/parking/resume';
 import { reconcileContinuations, validateNativeContinuation } from './continuations';
 import { enqueueRequest } from './requests';
 import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey, observePrerequisites, type DependencyStores } from './dependencies';
@@ -187,6 +190,9 @@ export class Coordinator {
                     Object.assign(ticket, { summary: issue.summary, assignee: issue.assignee, updated: issue.updated, ...(this.store.project.provider === 'azure' ? { status: issue.status, statusId: issue.statusId } : {}) });
                 else
                     this.store.state.tickets.push({ ...issue, boardMember: false, stage: 'mailbox', activity: 'waiting', blocker: '', runId: '', attempt: 0, commit: '', branch: '', worktree: '', previewUrl: '', prId: 0, results: {}, findings: [], evidence: [], pilot: false, observedAt: now.toISOString() });
+                // Hands-off projects admit work deterministically after PR discovery below.
+                if (handsOff(this.store))
+                    continue;
                 if (latest?.status === 'blocked' && latest.workRequested === 'automatic' && !eligible && !this.state.jobs?.some(j => j.key === issue.key && j.status !== 'cancelled')) {
                     latest.status = 'held';
                     latest.workRequested = undefined;
@@ -231,6 +237,10 @@ export class Coordinator {
             if (this.store.project.provider === 'github') {
                 const delivery = new GitHubDelivery(this.store, this.engine, this.execute);
                 await delivery.discover(assigned);
+                if (handsOff(this.store)) {
+                    resumeParked(this.store, this.state.jobs!, assigned, this.pickup, this.dependencyStores(), now);
+                    admitReadyCards(this, delivery, assigned, now);
+                }
                 await delivery.refreshDependencies();
                 await delivery.observe();
             }
@@ -518,7 +528,7 @@ export class Coordinator {
             this.store.save();
             try {
                 // Reassignment or closure while queued must not dispatch stale work.
-                const current = (await this.readAssignments()).find(i => i.key === review.key);
+                const assignments = await this.readAssignments(), current = assignments.find(i => i.key === review.key);
                 if (!current) {
                     review.status = 'cancelled';
                     review.detail = 'No longer assigned to Joe or no longer open.';
@@ -537,6 +547,13 @@ export class Coordinator {
                     review.status = 'owned';
                     review.owner = own.runId;
                     review.detail = 'Existing Office delivery owns this ticket; no second assignment started.';
+                    return;
+                }
+                if (handsOff(this.store)) {
+                    const delivery = new GitHubDelivery(this.store, this.engine, this.execute);
+                    await delivery.discover(assignments);
+                    const outcome = admit(this, delivery, { key: review.key, workRequested: review.workRequested, prerequisites: review.prerequisiteError ? [] : review.prerequisites || [] }, new Date());
+                    Object.assign(review, review.prerequisiteError ? { status: 'held', detail: review.prerequisiteError, owner: '' } : outcome);
                     return;
                 }
                 if (this.sessionBridge)

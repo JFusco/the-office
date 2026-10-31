@@ -124,13 +124,14 @@ export function reviewInstructions(mode: WorkApproach['review'] = 'full') {
         return 'QUICK REVIEW: Inspect the exact changed code, acceptance criteria, adjacent callers and selected check evidence in this assigned session. Report concrete defects. Do not start nested models or a full implementation-review chain. Escalate to full with a reason if inspection warrants it.';
     return 'FULL IMPLEMENTATION REVIEW: Independently audit the exact implementation against requirements and repository rules, including affected callers, integration boundaries, error and recovery paths, security/data integrity and regression evidence. Trace consequential behavior beyond the edited lines. Report concrete findings with evidence; unresolved findings block publication. Use this assigned Lead session without nested model processes or automatic Claude delegation.';
 }
-export function recordJobApproach(job: TicketJob, approach: WorkApproach, role: Role, workerFailure = false) {
+/** `advisoryFindings`: hands-off projects let a passed outcome decide; open findings on it are not a veto. */
+export function recordJobApproach(job: TicketJob, approach: WorkApproach, role: Role, workerFailure = false, advisoryFindings = false) {
     const next = ApproachSchema.parse(approach), prior = job.approach;
     // A first focused review with independent checks is a choice, not a downgrade
     // from an invented full review. Skipping review/checks still retains guards.
     const reducing = prior ? ['none', 'focused', 'full'].indexOf(next.review) < ['none', 'focused', 'full'].indexOf(prior.review) || ['developer-checks', 'independent-checks', 'browser'].indexOf(next.validation) < ['developer-checks', 'independent-checks', 'browser'].indexOf(prior.validation) : next.review === 'none' || next.validation === 'developer-checks';
     const latest = [...new Map(job.steps.map(s => [s.stage, s.result])).values()];
-    if (reducing && (workerFailure || latest.some(r => ['failed', 'blocked'].includes(r.outcome) || r.findings.some(f => f.status !== 'verified')) || job.steps.some(s => s.result.receipts.some(r => r.uncertain || !r.verified))))
+    if (reducing && (workerFailure || latest.some(r => ['failed', 'blocked'].includes(r.outcome) || !advisoryFindings && r.findings.some(f => f.status !== 'verified')) || job.steps.some(s => s.result.receipts.some(r => r.uncertain || !r.verified))))
         throw new Error('Reconcile failed work, findings and uncertain effects before reducing review or verification');
     job.approach = next;
     job.decisions ??= [];
@@ -156,8 +157,8 @@ export function nextJobStage(job: TicketJob): TicketJob['stage'] {
 }
 // Joe explicitly authorized moving on after conflict repair without repeating
 // source review. Keep exact-head checks and every later provider/merge gate.
-export function acceptConflictRepair(job: TicketJob, result: StageResult) {
-    if (job.repairReason !== 'conflicts' || result.outcome !== 'passed' || result.commit !== job.head || !result.evidence.some(e => e.kind === 'checks' && e.commit === job.head) || result.receipts.some(r => r.uncertain || !r.verified) || result.findings.some(f => f.status === 'open' && f.id !== 'draft-blocks-merge'))
+export function acceptConflictRepair(job: TicketJob, result: StageResult, advisoryFindings = false) {
+    if (job.repairReason !== 'conflicts' || result.outcome !== 'passed' || result.commit !== job.head || !result.evidence.some(e => e.kind === 'checks' && e.commit === job.head) || result.receipts.some(r => r.uncertain || !r.verified) || !advisoryFindings && result.findings.some(f => f.status === 'open' && f.id !== 'draft-blocks-merge'))
         throw new Error('A verified conflict repair with current-head checks is required');
     const reason = 'Joe requested no repeated source review after conflict repair. Retain prior review history and the repair’s passing exact-head developer checks; publication, readiness and merge gates still apply.';
     const approach: WorkApproach = { plan: 'none', review: 'none', validation: 'developer-checks', checks: job.approach?.checks || ['Required repository checks on the repaired head'], reason };

@@ -24,10 +24,15 @@ function fixture(projectId = 'brain') {
  const store = new Store(':memory:', projectById(projectId), root); stores.push(store); store.state.coordination = coordination(); store.state.paused = false;
  const engine = new Engine(store); let actualHead = a, dirty = '', branch = 'issue-999';
  const calls: string[] = [];
- const execute = async (bin: string, args: string[]) => { calls.push(`${bin} ${args.join(' ')}`);
+ const execute = async (bin: string, args: string[], options?: any) => { calls.push(`${bin} ${args.join(' ')}`);
   if (bin === 'git') { if (args[0] === 'remote') return `https://github.com/${store.project.repository}.git`; if (args[0] === 'rev-parse') return actualHead; if (args[0] === 'branch') return branch; if (args[0] === 'status') return dirty; if (args[0] === 'merge-base') return ''; }
   if (bin === 'gh' && args[1].endsWith('/issues/999')) return JSON.stringify({ number: 999, html_url: `https://github.com/${store.project.repository}/issues/999`, body: 'Complete acceptance body', updated_at: 'v1', state: 'open', assignees: [{ login: 'JFusco' }] });
   if (bin === 'gh' && args[1].endsWith('/commits/main')) return JSON.stringify({ sha: a });
+  // Hands-off projects move repair-start cards in the harness; the card is already In progress here, so no write occurs.
+  if (bin === 'gh' && args[1] === 'graphql' && options?.input) { const { query } = JSON.parse(options.input);
+   if (query.includes('fields(first')) return JSON.stringify({ data: { user: { projectV2: { id: 'p', fields: { nodes: [{ id: 'status', name: 'Status', options: [{ id: 'progress', name: 'In progress' }] }], pageInfo: { hasNextPage: false } } } } } });
+   if (query.includes('items(first')) return JSON.stringify({ data: { node: { items: { nodes: [{ id: 'card', content: { __typename: 'Issue', number: 999, repository: { nameWithOwner: store.project.repository } } }], pageInfo: { hasNextPage: false } } } } });
+   return JSON.stringify({ data: { node: { id: 'card', fieldValues: { nodes: [{ field: { id: 'status' }, optionId: 'progress' }], pageInfo: { hasNextPage: false } } } } }); }
   throw new Error(`Unexpected test operation ${bin} ${args.join(' ')}`);
  };
  const delivery = new GitHubDelivery(store, engine, execute as any); delivery.enqueue('GH-999'); const job = delivery.jobs[0];

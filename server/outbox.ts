@@ -77,7 +77,9 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         if (j.mergeApprovalRequired)
             item(`merge-approval:${j.id}`, `Approve PR #${j.pr} merge`, `${j.key}: Sam’s review passed for ${j.head}. Approve this specific head to queue the merge; the Office will recheck live GitHub requirements first.`, 'pm', j.key, j.prUrl);
     for (const j of state.coordination?.jobs || [])
-        if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt)
+        if (j.status === 'blocked' && j.parked?.published && j.detail.startsWith('Decision needed'))
+            item(`ticket-job:${j.id}`, `${j.key} needs a decision on the board`, `${j.parked.reason}\nMove the card back to Ready to resume ${j.parked.stage}.`, 'pm', j.key, j.prUrl);
+        else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt)
             item(`ticket-job:${j.id}`, `Read back ${j.key} delivery`, j.detail, 'pm', j.key, j.prUrl);
     for (const j of state.coordination?.jobs || [])
         if (readinessNeedsFollowup(j) && !j.retry?.nextAt) {

@@ -184,6 +184,8 @@ export interface TicketJob {
         at: string;
     };
     boardUpdates?: BoardUpdate[];
+    /** A model returned a genuine human decision; the card sits in Block until Joe moves it back to Ready. */
+    parked?: { stage: string; reason: string; at: string; published: boolean };
     approach?: WorkApproach;
     decisions?: ApproachDecision[];
     skippedStages?: Record<string, string>;

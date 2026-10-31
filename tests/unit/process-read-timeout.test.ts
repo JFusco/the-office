@@ -45,3 +45,22 @@ test('cancellation stays active during descendant cleanup and does not release c
     await new Promise(resolve=>setTimeout(resolve,100));expect(settled).toBe(false);
     await expect(run).rejects.toThrow('Worker paused');expect(()=>process.kill(-leader,0)).toThrow();
 },10000);
+test('an opted-in zero-exit writer stops persistent helpers and returns its output', async () => {
+    let leader=0,cleaned=0;
+    const output=await command(process.execPath,['-e',helperProgram(0)],{terminateStragglers:true,onSpawn:pid=>{leader=pid;},onStragglersTerminated:group=>{cleaned=group;}});
+    expect(Number(output.trim())).toBeGreaterThan(0);
+    expect(cleaned).toBe(leader);
+    expect(()=>process.kill(-leader,0)).toThrow();
+},10000);
+test('straggler opt-in never converts a nonzero exit, timeout or cancellation into success', async () => {
+    await expect(command(process.execPath,['-e',helperProgram(0,1)],{terminateStragglers:true})).rejects.toThrow('surviving subprocesses');
+    await expect(command(process.execPath,['-e','setInterval(()=>{},1000)'],{terminateStragglers:true,timeout:30})).rejects.toThrow('must be reconciled');
+    const controller=new AbortController();let leader=0,settled=false;let ready!:()=>void;
+    const observed=new Promise<void>(resolve=>{ready=resolve;});
+    const child="process.on('SIGTERM',()=>{});console.log('ready');setInterval(()=>{},1000)";
+    const parent=`const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:['ignore','pipe','ignore']});child.unref();child.stdout.once('data',()=>{console.log(child.pid);process.exit(0);});`;
+    const run=command(process.execPath,['-e',parent],{terminateStragglers:true,signal:controller.signal,onSpawn:pid=>{leader=pid;},onLine:()=>ready()});
+    void run.then(()=>{settled=true;},()=>{settled=true;});await observed;controller.abort();
+    await new Promise(resolve=>setTimeout(resolve,100));expect(settled).toBe(false);
+    await expect(run).rejects.toThrow('Worker paused');expect(()=>process.kill(-leader,0)).toThrow();
+},15000);

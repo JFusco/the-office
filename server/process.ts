@@ -40,6 +40,9 @@ export async function command(program: string, args: string[], options: {
     onSpawn?: (pid: number) => void;
     onLine?: (line: string) => void;
     signal?: AbortSignal;
+    /** Opt-in: after a clean zero exit, stop leftover helpers instead of treating them as an uncertain write. */
+    terminateStragglers?: boolean;
+    onStragglersTerminated?: (processGroup: number) => void;
 } = {}) {
     if (options.signal?.aborted)
         throw new CommandFailure('Worker cancelled before dispatch', 'cancelled', false);
@@ -80,9 +83,14 @@ export async function command(program: string, args: string[], options: {
             const grace = performance.now() + 1000;
             while (alive() && !failure && performance.now() < grace)
                 await new Promise(done => setTimeout(done, 25));
+            let stragglersTerminated = false;
             if (alive()) {
                 if (!failure && options.readOnly)
                     terminate(); // Readers may clean up helpers without changing their exit disposition.
+                else if (!failure && code === 0 && options.terminateStragglers) {
+                    terminate(); // The leader finished cleanly; leftover helpers are not an unverified write.
+                    stragglersTerminated = true;
+                }
                 else if (!failure)
                     stop(new CommandFailure('Worker exited with surviving subprocesses; effects require reconciliation', 'uncertain-effect', true));
                 else terminate();
@@ -93,6 +101,8 @@ export async function command(program: string, args: string[], options: {
                 await new Promise(done => setTimeout(done, 50));
             clearTimeout(killTimer);
             options.signal?.removeEventListener('abort', abort);
+            if (stragglersTerminated && !failure && child.pid)
+                try { options.onStragglersTerminated?.(child.pid); } catch { }
             if (failure)
                 reject(failure);
             else if (code === 0)
