@@ -1,4 +1,5 @@
 import { deferredPickup } from '../../src/pickup-state';
+import { checkpointSuperseded, maintenanceSuperseded } from '../maintenance/superseded';
 import { readinessNeedsFollowup, readinessWait } from '../../src/work-summary';
 import { HOLDS } from '../office/config';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
@@ -37,7 +38,8 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
             item(`time:${t.id}`, `Reconcile ${t.key} hours`, t.detail, 'pm', t.key, t.url);
     for (const c of state.coordination?.checkpoints || [])
         if (['blocked', 'interrupted'].includes(c.status) && (c.repairResume?.needsFollowup || !state.maintenance?.runs.some(r => r.id === c.runId && (r.blockerFollowup || r.readbackRetry && !r.readbackRetry.exhausted && ['blocked', 'interrupted'].includes(r.status)))))
-            item(`checkpoint:${c.id}`, 'Daily checkpoint needs follow-up', c.detail, 'pm');
+            if (!checkpointSuperseded(state, c))
+                item(`checkpoint:${c.id}`, 'Daily checkpoint needs follow-up', c.detail, 'pm');
     for (const run of state.maintenance?.runs || [])
         if (run.blockerFollowup && ['blocked', 'interrupted'].includes(run.blockerFollowup.status))
             item(`maintenance-blocker:${run.id}`, 'Read back the source repair handoff', run.blockerFollowup.detail, 'pm');
@@ -55,7 +57,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
     if (state.github?.status === 'blocked' && state.github.error && !teamOwnsIT('project-progress'))
         item('github', 'Restore the GitHub connection', state.github.error, 'pm');
     for (const run of state.maintenance?.runs || [])
-        if (['blocked', 'interrupted'].includes(run.status) && (!run.readbackRetry || run.readbackRetry.exhausted))
+        if (['blocked', 'interrupted'].includes(run.status) && (!run.readbackRetry || run.readbackRetry.exhausted) && !maintenanceSuperseded(state, run))
             item(`maintenance:${run.id}`, `Read back ${state.project?.name || 'project'} maintenance`, `${run.stage}: ${run.error}`, 'pm');
     for (const t of state.tickets) {
         if (t.activity === 'blocked' && t.blocker)
