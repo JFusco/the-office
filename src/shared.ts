@@ -423,6 +423,8 @@ export interface MaintenanceResult {
     }[];
 }
 export interface MaintenanceRun {
+    /** Earlier blocked/interrupted runs this scheduled run proceeded past (their history is retained). */
+    supersedes?: string[];
     originalIssue?: string;
     nativeRunId?: string;
     checkpointId?: string;
