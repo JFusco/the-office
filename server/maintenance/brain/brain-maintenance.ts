@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { GitHubMaintenance, easternDate } from '../maintenance';
 import { maintenancePolicies } from '../../github/github-context';
 import { command } from '../../workers/process';
+import { supersedablePriorRuns, unverifiedPriorRunNote } from '../unverified-prior-runs';
 import type { MaintenanceRun, MaintenanceResult } from '../../../src/shared';
 export const BrainResult = z.object({ outcome: z.enum(['completed', 'skipped', 'blocked']), runId: z.string(), reason: z.string(), summary: z.string(), ledger: z.string(), receipts: z.array(z.object({ id: z.string(), action: z.string(), target: z.string(), verified: z.boolean(), uncertain: z.boolean(), detail: z.string() }).strict()) }).strict();
 // Brain's own nightly runner remains the publication authority. The Office
 // supplies durable dispatch, shared capacity, project chat and read-back.
 export class BrainMaintenance extends GitHubMaintenance {
     async readStatus() { return parseBrainStatus(JSON.parse(await command('node', ['scripts/nightly.mjs', 'status'], { cwd: this.store.project.repo, readOnly: true, timeout: 60000 }))); }
-    request(_scheduled = false, now = new Date()) {
+    request(scheduled = false, now = new Date()) {
         if (this.store.state.paused)
             throw new Error('This project is paused');
         maintenancePolicies(this.store);
@@ -17,10 +18,15 @@ export class BrainMaintenance extends GitHubMaintenance {
         const existing = state.runs.find(r => ['queued', 'working'].includes(r.status));
         if (existing)
             return existing;
-        if (state.runs.some(r => ['blocked', 'interrupted'].includes(r.status)))
+        // A scheduled hands-off run supersedes an unverified one; Brain's native gate still owns dates, attempts and duplicates.
+        const supersedes = supersedablePriorRuns(this.store, state.runs, scheduled);
+        if (!supersedes)
             throw new Error('Prior Brain maintenance needs read-back reconciliation in the outbox');
-        const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly: false, stage: 'brain-maintenance', error: '', steps: [] };
+        const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly: false, stage: 'brain-maintenance', error: '', steps: [], ...(supersedes.length ? { supersedes } : {}) };
         state.runs.push(run);
+        // The new run re-observes everything, so the superseded runs' automatic read-back must not later re-queue their checkpoints.
+        for (const prior of state.runs.filter(r => supersedes.includes(r.id)))
+            prior.readbackRetry = { ...(prior.readbackRetry ?? { attempts: 0, history: [] }), nextAt: '', exhausted: true, history: [...(prior.readbackRetry?.history ?? []), { at: now.toISOString(), detail: `Superseded by scheduled run ${run.id}; automatic read-back stopped.` }] };
         this.store.emit('maintenance-queued', 'Brain maintenance queued for the shared office desks.', 'pm');
         return run;
     }
@@ -32,7 +38,7 @@ export class BrainMaintenance extends GitHubMaintenance {
         run.startedAt = new Date().toISOString();
         this.store.save();
         try {
-            const result = await this.agents.run('pm', `Brain maintenance through the Office.
+            const result = await this.agents.run('pm', `${unverifiedPriorRunNote(run)}Brain maintenance through the Office.
 Joe requested Brain's existing scheduled task hand work to this office on 2026-10-27. Execute the retained Brain workflow below, with the current repository instructions authoritative. You are the coordinator for this Brain assignment. Delegate the required fresh independent content review using available native agent delegation; missing capability blocks changed knowledge publication. Other planning/review choices cannot remove Brain's required content review or publication gates. Do not use the CMS vendor workflow or its Dependabot exception.
 IDENTITY OVERRIDE: Replace the old hard-coded --author-id 01a1421a-14c9-7162-8e37-074a60b11a41 in the retained policy with YOUR ACTUAL current agent/thread ID, and retain that identity throughout claim, review and publication. Do not impersonate the original author. Invoke the scheduled-agent claim even for a manual Office button: no forced rerun is authorized. Brain's gate owns dates, backoff, retry limits and interrupted-run reconciliation.
 PRIMARY OWNERSHIP: Read the current complete Office session inventory and inspect exact candidates before changing the primary checkout. A loaded session identity alone does not prove a competing writer. Approval-review/Guardian sessions can belong to this very assignment: use authoritative thread status and parent/reviewed-session evidence to prove that relationship, never infer it from the title alone. A completed approval review of YOUR current session is not an independent checkout owner. Preserve genuine active, unrelated or unverified owners; never interrupt them. Keep open issue/PR branches intact in isolated worktrees and use clean current primary main for nightly coordination. An open PR alone does not prohibit maintenance on a separate clean main checkout.

@@ -2,7 +2,7 @@ import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
 /** Projects whose delivery runs on deterministic harness operations instead of model-performed mechanics. */
-export const HANDS_OFF_PROJECTS: ReadonlySet<string> = new Set(['cms-field-vocabulary']);
+export const HANDS_OFF_PROJECTS: ReadonlySet<string> = new Set(['cms-field-vocabulary', 'brain']);
 
 export function handsOff(store: Pick<Store, 'project'>): boolean {
     return HANDS_OFF_PROJECTS.has(store.project.id);

@@ -18,6 +18,6 @@ test('an advisory open finding on a passed Lead review does not block a hands-of
     await expect(resumeReviewedMerge(f.delivery, job, pr)).rejects.toThrow('One accepted actual Lead execution required');
 });
 test('other projects keep the strict open-finding gate', async () => {
-    const { f, job, pr } = reviewedMerge('brain');
+    const { f, job, pr } = reviewedMerge('cec');
     await expect(resumeReviewedMerge(f.delivery, job, pr)).rejects.toThrow('Saved merge review context changed');
 });

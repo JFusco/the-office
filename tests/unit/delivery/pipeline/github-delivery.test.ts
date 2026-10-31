@@ -1,4 +1,5 @@
 import {workerProfile} from '../../../../server/workers/worker-profiles';
+import {pinLegacyRoute} from '../../../fixtures/legacy-route';
 import {digest} from '../../../../server/store/readback-evidence';
 import * as processHelpers from '../../../../server/workers/process';
 import {enqueueRequest,executeRequest} from '../../../../server/scheduling/requests';
@@ -19,6 +20,7 @@ const roots: string[] = [], stores: Store[] = [];
 afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })); });
 const head = 'a'.repeat(40), url = 'https://github.com/JFusco/brain/issues/999';
 function setup() {
+    pinLegacyRoute(); // The Brain fixture exercises the legacy model-mechanics route.
     const root = mkdtempSync(resolve(tmpdir(), 'office-github-delivery-'));
     roots.push(root);
     const store = new Store(':memory:', projectById('brain'), root);

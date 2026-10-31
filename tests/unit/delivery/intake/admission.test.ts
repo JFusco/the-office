@@ -50,3 +50,12 @@ test('manual start is admitted outside the lane; automatic outside the lane is h
     expect(c.state.jobs![0].automaticStatus).toBeUndefined();
     expect(admit(c, f.delivery, { key: 'GH-5', workRequested: 'automatic', prerequisites: [] }, new Date())).toMatchObject({ status: 'owned', owner: c.state.jobs![0].id });
 });
+test('a blocked legacy-recovery job keeps owning its issue when the card returns to Ready', () => {
+    const f = fakeGitHub(), c = context(f);
+    c.state.jobs!.push({ ...f.candidate({ stage: 'scope-repair', status: 'blocked' }), key: 'GH-5', scopeRepairResumes: [{} as any] });
+    const before = c.state.jobs!.length;
+    admitReadyCards(c, f.delivery, assigned(), new Date());
+    admitReadyCards(c, f.delivery, assigned(), new Date());
+    expect(c.state.jobs).toHaveLength(before);
+    expect(c.state.jobs!.find(j => j.key === 'GH-5')).toMatchObject({ stage: 'scope-repair', status: 'blocked' });
+});
