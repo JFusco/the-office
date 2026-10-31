@@ -25,7 +25,9 @@ export function reserveRepair(prior: DeliveryRepairCycle | undefined, ids: strin
     if (!exhausted) for (const id of ids) findingAttempts[id] = (findingAttempts[id] || 0) + 1;
     return { ...prior, owner: 'developer', findingAttempts, attempts: exhausted ? prior?.attempts || 0 : attempts, pendingFindingIds: ids, sourceStage: stage, sourceHead: head, phase: exhausted ? 'diagnosis' : 'repair' };
 }
-export function repairDispositions(cycle: DeliveryRepairCycle, result: StageResult, independent = false) {
+/** `advisory`: hands-off projects only require a recorded disposition; the stage outcome decides. */
+export function repairDispositions(cycle: DeliveryRepairCycle, result: StageResult, independent = false, advisory = false) {
+    if (advisory) return cycle.pendingFindingIds.every(id => result.findings.some(f => f.id === id));
     return cycle.pendingFindingIds.every(id => result.findings.some(f => f.id === id && (independent ? f.status === 'verified' : f.status !== 'open')));
 }
 export function enqueueRepairDiagnosis(store: Store, job: Pick<TicketJob, 'id' | 'key' | 'head' | 'steps' | 'repairCycle'>) {

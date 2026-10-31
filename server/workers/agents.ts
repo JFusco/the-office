@@ -1,4 +1,7 @@
 import { REPAIR_DIAGNOSIS } from '../delivery/repairs/delivery-repairs';
+import { handsOff } from '../delivery/harness/scope';
+import { RESOLUTION_GUIDANCE, HANDS_OFF_RESOLUTION_GUIDANCE } from '../delivery/harness/resolution-guidance';
+export { RESOLUTION_GUIDANCE };
 import { slackSendPrompt, slackVerifyPrompt } from '../conversations/prompts/slack';
 import { itChatPrompt, ctoChatPrompt, cecChatPrompt } from '../conversations/prompts/conversations';
 import { cecIntakePrompt, cecReadbackPrompt, cecTransitionPrompt, cecReconcilePrompt } from '../cec/prompts/cec-reads';
@@ -34,13 +37,12 @@ export const ResolutionSchema = z.object({ kind: z.enum(['source-repair', 'confl
 export const FreshResultSchema = LegacyResultSchema.extend({ resolution: ResolutionSchema.nullable() }).strict();
 // Historical provider bytes remain historical: parsing never inserts a resolution field.
 export const ResultSchema = z.union([FreshResultSchema, LegacyResultSchema]);
-const RESOLUTION_GUIDANCE = `RESOLUTION CLASSIFICATION: Return resolution=null on success or when you cannot establish a precise classification. For a recoverable scoped source/check/review defect, return kind=source-repair with EVERY unresolved finding ID and saved diagnostic evidence IDs. For a published lead-pr assessment whose EVERY open finding is only integration conflict with the target branch, use kind=conflict-repair with every open finding ID and saved diagnostic evidence IDs. Any unrelated source defect, permission, service, uncertain effect, hold or acceptance question forbids conflict-repair; mixed technical findings remain source-repair. This proposes a repair; the harness owns dispatch and budgets. Actual permission denials, unavailable services, unresolved scope/acceptance decisions, explicit human holds and uncertain writes must use their corresponding kind; never label them source-repair. Preserve original findings and receipts. A failed read is evidence, never an uncertain mutation. Do not repeatedly ask Joe for ordinary code repairs already within this ticket's scope.`;
 const IntakeSchema = z.object({ tickets: z.array(z.object({ key: z.string(), summary: z.string(), type: z.string(), status: z.string(), statusId: z.string(), assignee: z.string(), subtask: z.boolean(), boardMember: z.boolean(), url: z.string(), updated: z.string() }).strict()), summary: z.string(), complete: z.boolean(), blocker: z.string() }).strict();
 const ReadbackSchema = z.object({ key: z.string(), assignee: z.string(), subtask: z.boolean(), boardMember: z.boolean(), status: z.string(), statusId: z.string(), updated: z.string(), existingPrId: z.number().int(), existingOwner: z.string(), blocker: z.string() }).strict();
 export class Agents extends WorkerRuntime {
     override async run<T>(role: Role, task: string, schema: z.ZodType<T>, opts: Parameters<WorkerRuntime['run']>[3] = {}): Promise<T> {
         // Native workers receive one strict object schema; legacy parsing is only for saved results.
-        return super.run(role, Object.is(schema, ResultSchema) ? `${task}\n${RESOLUTION_GUIDANCE}` : task,
+        return super.run(role, Object.is(schema, ResultSchema) ? `${task}\n${handsOff(this.store) ? HANDS_OFF_RESOLUTION_GUIDANCE : RESOLUTION_GUIDANCE}` : task,
             Object.is(schema, ResultSchema) ? FreshResultSchema as unknown as z.ZodType<T> : schema, opts);
     }
     ctoContext: () => unknown = () => ({ projects: [{ project: this.store.project, goals: this.store.state.goals, notes: this.store.state.projectNotes }] });

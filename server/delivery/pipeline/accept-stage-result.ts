@@ -238,7 +238,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         throw new Error('Discovery continuation requires independent disposition of each original finding');
     if (!recoveredFindingsResolved(job, job.stage, result)||!savedPrerequisiteFindingsResolved(job,job.stage,result))
         throw new Error('Recovered implementation findings require explicit independent disposition');
-    if (job.repairCycle && job.repairCycle.phase !== 'diagnosis' && ['update-base', 'review', 'validate'].includes(job.stage) && !repairDispositions(job.repairCycle, result, job.stage === 'validate'))
+    if (job.repairCycle && job.repairCycle.phase !== 'diagnosis' && ['update-base', 'review', 'validate'].includes(job.stage) && !repairDispositions(job.repairCycle, result, job.stage === 'validate', handsOff(this.store)))
         throw new Error('Repair must retain every original finding and its explicit current-head disposition');
     if(result.outcome==='passed')assertScopeRepairResumeFindings(this.store,job,job.stage,result,heldFindings);
     const openBlocks = (f: StageResult['findings'][number]) => f.status === 'open' && !heldFindings.has(f.id) && !(['update-base', 'draft'].includes(job.stage) && f.id === 'draft-blocks-merge');
