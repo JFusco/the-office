@@ -1,6 +1,7 @@
 import { correlatedBuild } from '../cec/azure';
 import { CEC } from '../office/config';
 import { command } from '../workers/process';
+import { reconcileAndResumeParked } from '../cec/parking/resume-parked';
 import type { Engine } from './engine';
 
 export async function observe(this: Engine) {
@@ -11,6 +12,7 @@ export async function observe(this: Engine) {
     await this.azure.poll();
     if (this.store.state.paused || this.busy)
         return;
+    await observeParked(this);
     for (const t of this.store.state.tickets) {
         if (!t.pilot)
             continue;
@@ -37,5 +39,20 @@ export async function observe(this: Engine) {
                 catch { /* Missing ancestry proof leaves the waiting state intact. */ }
             }
         }
+    }
+}
+
+const parkedReadError = new WeakMap<object, string>();
+/** Parked Jira tickets: read-back of unconfirmed parking writes and resume once moved back. Failures retry next minute. */
+async function observeParked(engine: Engine) {
+    try {
+        await reconcileAndResumeParked(engine.store, engine.jira.execute, key => engine.requestDelivery(key, 'resume-ticket'));
+        parkedReadError.delete(engine.store);
+    }
+    catch (error) {
+        const detail = `Parked Jira tickets could not be checked: ${String(error)}`;
+        if (parkedReadError.get(engine.store) !== detail)
+            engine.store.emit('jira-parked-poll-failed', detail, 'pm');
+        parkedReadError.set(engine.store, detail);
     }
 }

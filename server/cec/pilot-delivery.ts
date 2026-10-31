@@ -144,6 +144,8 @@ export async function resume(this: Engine, key: string, background = true) {
     const t = this.store.ticket(key);
     if (!t.pilot)
         throw new Error('Ticket has not been selected for a pilot');
+    if (t.parked?.published && !t.parked.resumeRequestedAt)
+        throw new Error(`Parked in Jira Blocked for a decision; move it back to ${t.parked.fromStatus} to resume`);
     if (this.store.state.paused || this.busy)
         throw new Error('Office is paused or pipeline is occupied');
     this.busy = true;
@@ -172,5 +174,8 @@ export async function resume(this: Engine, key: string, background = true) {
     }
     t.activity = 'waiting';
     t.blocker = '';
+    if (t.parked?.resumeRequestedAt)
+        t.resolvedDecision = { marker: t.parked.marker, reason: t.parked.reason, status: t.parked.fromStatus, at: t.parked.resumeRequestedAt };
+    delete t.parked;
     this.store.emit('ticket-resumed', 'Ticket resumed after live reconciliation', 'pm', key); // Reconciliation releases capacity; the scheduler claims the next stage.
 }
