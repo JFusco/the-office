@@ -26,6 +26,6 @@ test('developer-checks needs only the review; stale heads, failures, legacy jobs
     job.sourceAmendment = {} as any;
     expect(teamReviewedHead(f.store, job)).toBeNull();
     delete job.sourceAmendment;
-    (f.store.project as any).id = 'brain';
+    (f.store.project as any).id = 'cec';
     expect(teamReviewedHead(f.store, job)).toBeNull();
 });

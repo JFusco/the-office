@@ -17,11 +17,13 @@ function agents(project: string) {
     const execute: typeof command = (_program, _args, options = {}) => command(process.execPath, ['-e', fakeCodex], { ...options, cwd: tmpdir(), input: '' });
     return { store, agents: new Agents(store, execute) };
 }
-test('only hands-off CMS model writers treat leftover helpers after a clean exit as cleanup', async () => {
-    const cms = agents('cms-field-vocabulary');
-    expect(await cms.agents.run('pm', 'Synthetic writer; no real work', schema, { stage: 'proposal' })).toEqual({ ok: true });
-    expect(cms.store.state.workLog!.at(-1)).toMatchObject({ status: 'completed', executionStatus: 'completed' });
-    for (const project of ['brain', 'cec']) {
+test('hands-off model writers treat leftover helpers after a clean exit as cleanup', async () => {
+    for (const project of ['cms-field-vocabulary', 'brain']) {
+        const handsOff = agents(project);
+        expect(await handsOff.agents.run('pm', 'Synthetic writer; no real work', schema, { stage: 'proposal' })).toEqual({ ok: true });
+        expect(handsOff.store.state.workLog!.at(-1)).toMatchObject({ status: 'completed', executionStatus: 'completed' });
+    }
+    for (const project of ['cec']) {
         const other = agents(project);
         await expect(other.agents.run('pm', 'Synthetic writer; no real work', schema, { stage: 'proposal' })).rejects.toThrow('surviving subprocesses');
         expect(other.store.state.workLog!.at(-1)?.executionStatus).toBeUndefined();

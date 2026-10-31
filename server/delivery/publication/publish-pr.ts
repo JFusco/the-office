@@ -24,6 +24,9 @@ async function remoteHead(execute: Execute, candidate: Candidate): Promise<strin
     return line ? line.split(/\s+/)[0] : '';
 }
 
+/** Repository pre-push hooks run full verification (Brain runs lint, format, architecture and its test suite). */
+const PUSH_TIMEOUT_MS = 15 * 60 * 1000;
+
 async function pushOnce(store: Store, execute: Execute, jobs: TicketJob[], job: TicketJob, candidate: Candidate): Promise<void> {
     const { head, branch, worktree } = candidate;
     const atHead = async () => await remoteHead(execute, candidate) === head ? { head } : null;
@@ -32,7 +35,7 @@ async function pushOnce(store: Store, execute: Execute, jobs: TicketJob[], job: 
         guard: () => assertCandidate(store, jobs, job, candidate),
         dispatch: async () => {
             // Ordinary push of the recorded candidate; never forced.
-            await execute('git', ['push', 'origin', `${head}:refs/heads/${branch}`], { cwd: worktree, timeout: 180000 });
+            await execute('git', ['push', 'origin', `${head}:refs/heads/${branch}`], { cwd: worktree, timeout: PUSH_TIMEOUT_MS });
             return retryRead(atHead);
         },
         readBack: atHead,

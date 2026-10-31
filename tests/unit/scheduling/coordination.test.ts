@@ -1,4 +1,5 @@
 import { initializeLanes } from '../../fixtures/scheduler';
+import { pinLegacyRoute } from '../../fixtures/legacy-route';
 import { GitHubDelivery } from '../../../server/delivery/pipeline/github-delivery';
 import { MergeNotifications } from '../../../server/conversations/notifications';
 import { Offices } from '../../../server/scheduling/offices';
@@ -14,6 +15,8 @@ import type { AssignedIssue, StageResult } from '../../../src/shared';
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })); });
 function setup(project = 'brain', capacity = officeCapacity(), execute?: any) {
+    // The Brain fixture exercises the model-intake (legacy) route; hands-off intake has its own tests.
+    if (project === 'brain') pinLegacyRoute();
     const root = mkdtempSync(resolve(tmpdir(), 'office-coordination-'));
     roots.push(root);
     const store = new Store(':memory:', projectById(project), root);

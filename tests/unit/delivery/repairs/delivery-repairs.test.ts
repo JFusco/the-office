@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { pinLegacyRoute } from '../../../fixtures/legacy-route';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -20,6 +21,7 @@ beforeEach(() => { vi.spyOn(ProjectProgress.prototype, 'reconcile').mockResolved
 afterEach(() => { vi.restoreAllMocks(); for (const s of stores.splice(0)) s.close(); for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
 const a = 'a'.repeat(40), b = 'b'.repeat(40);
 function fixture(projectId = 'brain') {
+    if (projectId === 'brain') pinLegacyRoute(); // The Brain fixture exercises the legacy repair route.
  const root = mkdtempSync(resolve(tmpdir(), 'office-repair-loop-')); roots.push(root);
  const store = new Store(':memory:', projectById(projectId), root); stores.push(store); store.state.coordination = coordination(); store.state.paused = false;
  const engine = new Engine(store); let actualHead = a, dirty = '', branch = 'issue-999';
