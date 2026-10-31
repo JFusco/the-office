@@ -40,7 +40,8 @@ export async function tick(this: Coordinator, now = new Date()) {
     if (!c.listener.nextCheckAt || now.getTime() >= Date.parse(c.listener.nextCheckAt))
         enqueueRequest(this.store, 'poll');
     const stores = this.dependencyStores();
-    const dependencies = [...c.listener.reviews.flatMap(r => r.prerequisites || []), ...(c.jobs || []).flatMap(j => j.prerequisites || [])];
+    // Only live work needs dependency observation; finished, cancelled or superseded records never become eligible again.
+    const dependencies = [...c.listener.reviews.filter(r => ['queued', 'working', 'held', 'blocked'].includes(r.status)).flatMap(r => r.prerequisites || []), ...(c.jobs || []).filter(j => !['completed', 'cancelled'].includes(j.status)).flatMap(j => j.prerequisites || [])];
     if (dependencies.length)
         enqueueRequest(this.store, 'observe-dependencies');
     for (const review of c.listener.reviews.filter(r => ['held', 'blocked'].includes(r.status) && r.prerequisites?.length && !r.prerequisiteError)) {
