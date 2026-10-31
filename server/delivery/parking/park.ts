@@ -4,7 +4,8 @@ import { harnessEffect } from '../harness/effect';
 import type { GitHubDelivery } from '../../github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
-const DECISION_KINDS = new Set(['human-hold', 'scope', 'permission']);
+/** Human decisions and external waits (e.g. an upstream release) both belong on the board, not in a hidden blocker. */
+const DECISION_KINDS = new Set(['human-hold', 'scope', 'permission', 'provider-wait']);
 
 /** Only a structured blocked outcome that names a human decision parks; findings on a passed result never do. */
 export function needsDecision(result: StageResult): boolean {

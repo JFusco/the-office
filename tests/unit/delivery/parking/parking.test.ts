@@ -9,6 +9,7 @@ const blocked = (kind: string): StageResult => ({ outcome: 'blocked', summary: '
 test('only a structured human, scope or permission decision parks', () => {
     expect(needsDecision(blocked('human-hold'))).toBe(true);
     expect(needsDecision(blocked('scope'))).toBe(true);
+    expect(needsDecision(blocked('provider-wait'))).toBe(true);
     expect(needsDecision(blocked('source-repair'))).toBe(false);
     expect(needsDecision({ ...blocked('human-hold'), outcome: 'passed' })).toBe(false);
 });
