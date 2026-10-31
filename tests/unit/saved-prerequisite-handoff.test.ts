@@ -13,6 +13,7 @@ import {withAmendmentOwnership} from '../../server/source-amendment';
 import {workerProfile} from '../../server/worker-profiles';
 import * as processTools from '../../server/process';
 import * as handoffs from '../../server/saved-prerequisite-handoff';
+import * as harnessScope from '../../server/delivery/harness/scope';
 import * as implementationRecovery from '../../server/implementation-recovery';
 import {digest} from '../../server/readback-evidence';
 import {scheduledWork} from '../../server/scheduled-work';
@@ -215,7 +216,8 @@ test.each(['native','artifact','prerequisite','worktree','proof','provider'])('p
  await f.delivery.step(f.job);expect(f.job).toMatchObject({stage:'review',status:'blocked'});expect(f.run).toHaveBeenCalledTimes(1);
 });
 
+// Legacy route: a model-created candidate. Hands-off CMS jobs without recovery records get a harness-created worktree instead.
 test('ordinary unpublished implementation can retain its newly created candidate while native assignment stays bound to original repository cwd',async()=>{
- const f=fixture('implement');await f.normal();expect(f.job).toMatchObject({head,stage:'review',status:'queued',worktree:resolve(f.root,'candidate'),branch:'codex/fixture-100',savedPrerequisiteHandoff:{stage:'implement',fromHead:''}});
+ vi.spyOn(harnessScope,'harnessDelivers').mockReturnValue(false);const f=fixture('implement');await f.normal();expect(f.job).toMatchObject({head,stage:'review',status:'queued',worktree:resolve(f.root,'candidate'),branch:'codex/fixture-100',savedPrerequisiteHandoff:{stage:'implement',fromHead:''}});
  expect(f.run).toHaveBeenCalledTimes(1);expect(f.job.steps[0].result.findings[0].status).toBe('open');
 });

@@ -13,15 +13,17 @@ import { Coordinator, checkpointWindow, dueAt } from '../../server/coordination'
 import type { AssignedIssue, StageResult } from '../../src/shared';
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })); });
-function setup(project = 'brain', capacity = officeCapacity()) {
+function setup(project = 'brain', capacity = officeCapacity(), execute?: any) {
     const root = mkdtempSync(resolve(tmpdir(), 'office-coordination-'));
     roots.push(root);
     const store = new Store(':memory:', projectById(project), root);
     stores.push(store);
-    const engine = new Engine(store, capacity), c = new Coordinator(store, engine);
+    const engine = new Engine(store, capacity), c = new Coordinator(store, engine, execute);
     c.activate(new Date('2026-10-28T12:00:00Z'));
     return { store, engine, c };
 }
+/** Synthetic GitHub for hands-off intake: no open PRs; anything else is unexpected. */
+const noOpenPRs = async (bin: string, args: string[]) => { if (bin === 'gh' && args[1]?.includes('/pulls?state=open')) return '[[]]'; throw new Error(`Unexpected synthetic command ${bin} ${args.join(' ')}`); };
 const issue = (key = 'GH-255'): AssignedIssue => ({ key, summary: 'Synthetic assignment', url: 'https://example.invalid/issue', assignee: 'JFusco', status: 'open', pickupStatus: 'Ready', statusId: '', updated: '', type: 'Issue', subtask: false });
 test('checkpoint windows use Eastern wall time, DST and CEC weekdays; activation never replays an earlier run', () => {
     expect(dueAt('2026-10-28', 17)).toBe('2026-10-28T21:00:00.000Z');
@@ -87,23 +89,28 @@ test('PM reviews are FIFO, project-scoped, read-only and block uncertain ownersh
     expect(calls).toEqual(['GH-255', 'GH-256']);
 });
 test('another project waits while the PM lane is occupied; same issue numbers never collide', async () => {
-    const capacity = officeCapacity(), a = setup('brain', capacity), b = setup('cms-field-vocabulary', capacity);
+    const capacity = officeCapacity(), a = setup('brain', capacity), b = setup('cms-field-vocabulary', capacity, noOpenPRs);
     a.c.readAssignments = b.c.readAssignments = async () => [issue('GH-91')];
     await a.c.poll();
     await b.c.poll();
+    // Hands-off intake is deterministic: CMS admits GH-91 without a PM worker.
+    expect(b.c.state.listener.reviews.at(-1)).toMatchObject({ key: 'GH-91', status: 'ready' });
+    expect(b.c.state.jobs).toMatchObject([{ key: 'GH-91', stage: 'implement', status: 'queued' }]);
     let release!: () => void;
     const held = new Promise<void>(r => release = r), calls: string[] = [];
     a.engine.agents.run = async () => { calls.push('brain'); await held; return { outcome: 'owned', ownershipChecked: true, owner: 'another-session', summary: 'Existing owner', evidence: ['Synthetic session read'] } as any; };
-    b.engine.agents.run = async () => { calls.push('cms'); return { outcome: 'ready', ownershipChecked: true, owner: '', summary: 'Clear', evidence: ['Synthetic only'] } as any; };
-    const running = a.c.pump();
-    await b.c.pump();
-    expect(calls).toEqual(['brain']);
-    release();
-    await running;
-    await b.c.pump();
-    expect(calls).toEqual(['brain', 'cms']);
-    expect(a.c.state.listener.reviews[0].owner).toBe('another-session');
-    expect(b.c.state.listener.reviews[0].status).toBe('ready');
+    b.engine.agents.run = async () => { calls.push('cms-intake-worker'); throw new Error('CMS intake must not launch a worker'); };
+    const step = vi.spyOn(GitHubDelivery.prototype, 'step').mockImplementation(async job => { calls.push(`cms-${job.stage}`); job.status = 'blocked'; });
+    try {
+        const running = a.c.pump();
+        await b.c.pump();
+        expect(calls).toEqual(['brain']);
+        release();
+        await running;
+        await b.c.pump();
+        expect(calls).toEqual(['brain', 'cms-implement']);
+        expect(a.c.state.listener.reviews[0].owner).toBe('another-session');
+    } finally { step.mockRestore(); }
 });
 test('an interrupted PM review is never silently replayed', async () => {
     const { c, store } = setup();
@@ -281,10 +288,13 @@ test('waiting for merge Actions releases the desks for the next project ticket',
     a.c.state.jobs = [{ key: 'GH-1', status: 'watching', stage: 'merge', requestedAt: '2026-10-28T12:00Z', mergeCommit: 'a'.repeat(40), steps: [] }] as any;
     b.c.readAssignments = async () => [issue('GH-999')];
     await b.c.poll();
-    let reviews = 0;
-    b.engine.agents.run = async () => { reviews++; return { outcome: 'blocked', ownershipChecked: false, owner: '', summary: 'Synthetic blocker', evidence: ['Synthetic only'] } as any; };
-    await offices.pump();
-    expect(reviews).toBe(1);
+    let dispatched = 0;
+    const step = vi.spyOn(GitHubDelivery.prototype, 'step').mockImplementation(async job => { dispatched++; job.status = 'blocked'; });
+    try {
+        await offices.pump();
+    } finally { step.mockRestore(); }
+    // Brain's watched merge does not hold the delivery lane; CMS implementation is dispatched.
+    expect(dispatched).toBe(1);
     expect(a.c.state.jobs![0].status).toBe('watching');
 });
 test('only a matching completed conversation retry can resolve an old failure', () => {
