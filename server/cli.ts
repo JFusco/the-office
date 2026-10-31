@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream';
 import { readFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { PORT } from './config';
+import { PORT } from './office/config';
 const [cmd,...rawArgs]=process.argv.slice(2);const projectIndex=rawArgs.indexOf('--project');const project=projectIndex>=0?rawArgs[projectIndex+1]:'cec';if(!project)throw new Error('--project requires a project ID');const args=rawArgs.filter((_,i)=>i!==projectIndex&&i!==projectIndex+1||projectIndex<0);const key=args.find(arg=>!arg.startsWith('--'));
 const scoped=(path:string)=>`${path}${path.includes('?')?'&':'?'}project=${encodeURIComponent(project)}`;
 const commands:Record<string,string>={intake:'check-mail',pause:'pause',resume:'resume',pilot:'start-pilot',continue:'resume-ticket',azure:'refresh-azure',activate:'activate-nightly',maintenance:'maintenance',checkpoints:'activate-checkpoints',review:'review-assignment'};

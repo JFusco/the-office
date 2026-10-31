@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
-import { Coordinator } from '../../../../server/coordination';
+import { Coordinator } from '../../../../server/scheduling/coordination';
 afterEach(cleanupFakes);
 
 const ready = { key: 'GH-5', summary: 'Restore', url: 'https://github.com/JFusco/cms-field-vocabulary/issues/5', assignee: 'JFusco', status: 'open', statusId: '', updated: '', type: 'GitHub issue', subtask: false, pickupStatus: 'Ready' };

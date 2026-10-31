@@ -1,8 +1,8 @@
 import { assertMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { retryRead } from '../harness/read-retry';
-import type { command } from '../../process';
-import type { Store } from '../../store';
+import type { command } from '../../workers/process';
+import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
 type Execute = typeof command;

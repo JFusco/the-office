@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { publishCandidate } from '../../../../server/delivery/publication/publish-pr';
 import { promoteReady } from '../../../../server/delivery/publication/ready-pr';
 import { officePRContent } from '../../../../server/delivery/publication/pr-body';
-import { HOLDS } from '../../../../server/config';
+import { HOLDS } from '../../../../server/office/config';
 
 test('first publication pushes once and opens one linked draft PR from the developer content', async () => {
     const f = fakeGitHub(), job = f.candidate(), root = f.artifactRoot(job);

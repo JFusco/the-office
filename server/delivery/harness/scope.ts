@@ -1,4 +1,4 @@
-import type { Store } from '../../store';
+import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
 /** Projects whose delivery runs on deterministic harness operations instead of model-performed mechanics. */

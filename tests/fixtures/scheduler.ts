@@ -1,9 +1,9 @@
-import { systemClock } from '../../server/clock';
-import { Scheduler } from '../../server/scheduler';
-import { officeCapacity } from '../../server/projects';
-import type { Offices } from '../../server/offices';
-import type { Engine } from '../../server/engine';
-import type { GitHubMaintenance } from '../../server/maintenance';
+import { systemClock } from '../../server/office/clock';
+import { Scheduler } from '../../server/scheduling/scheduler';
+import { officeCapacity } from '../../server/office/projects';
+import type { Offices } from '../../server/scheduling/offices';
+import type { Engine } from '../../server/scheduling/engine';
+import type { GitHubMaintenance } from '../../server/maintenance/maintenance';
 export function initializeLanes(office: Offices) { office.operationsCapacity = officeCapacity(); office.operationsScheduler = new Scheduler(office.operationsCapacity, systemClock, 'operations'); office.ctoCapacity = officeCapacity(); office.itCapacity = officeCapacity(); office.scheduler = new Scheduler(office.capacity); office.ctoScheduler = new Scheduler(office.ctoCapacity, systemClock, 'cto'); office.itScheduler = new Scheduler(office.itCapacity, systemClock, 'it'); office.control = { summaries: () => [] } as any; office.dailyCTO = { pending: () => undefined } as any; office.serviceInstanceId = crypto.randomUUID(); office.snapshotSequence = 0; }
 export async function drainStages(engine: Engine, key: string) {
     engine.jira.qaComment = async (ticket, stage, attempt, result) => { result.receipts.push({ id: attempt, action: 'jira-comment', target: ticket.key, verified: true, uncertain: false, detail: `Synthetic harness ${stage} comment fixture` }); };

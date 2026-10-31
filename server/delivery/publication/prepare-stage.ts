@@ -1,6 +1,6 @@
 import { harnessStageResult, receipt } from '../harness/stage-result';
 import { promoteReady } from './ready-pr';
-import type { GitHubDelivery } from '../../github-delivery';
+import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
 /**

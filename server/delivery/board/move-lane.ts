@@ -1,6 +1,6 @@
-import { ProjectProgress } from '../../project-progress';
+import { ProjectProgress } from './project-progress';
 import { cardStatus, projectCards, setCardStatus, statusField, type Execute, type StatusField } from './project-graphql';
-import type { Store } from '../../store';
+import type { Store } from '../../store/store';
 import type { BoardUpdate, TicketJob } from '../../../src/shared';
 
 export type Lane = 'In progress' | 'In review' | 'Done' | 'Block';

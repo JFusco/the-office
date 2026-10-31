@@ -1,5 +1,5 @@
-import { Effects } from '../../effects';
-import type { Store } from '../../store';
+import { Effects } from '../../store/effects';
+import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
 export interface HarnessEffect<R> {
