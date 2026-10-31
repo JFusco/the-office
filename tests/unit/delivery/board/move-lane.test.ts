@@ -46,3 +46,15 @@ test('a human Block lane is never moved by the harness, and the guard runs befor
     expect(f.state.cards[0].status).toBe('progress');
     expect(f.state.calls.some(c => c.includes('graphql') && c.includes('mutation'))).toBe(false);
 });
+test('a PR card auto-added in Backlog or without status moves with its issue; an issue card in Backlog does not', async () => {
+    const f = fakeGitHub(), job = f.candidate({ pr: 200 });
+    f.state.cards[0].status = 'progress';
+    f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'backlog' });
+    expect(await moveLane(f.store, f.execute as any, job, 'In review', () => {})).toBe('In review');
+    expect(f.state.cards.map(c => c.status)).toEqual(['review', 'review']);
+    f.state.cards[1].status = '';
+    f.state.cards[0].status = 'progress';
+    expect(await moveLane(f.store, f.execute as any, job, 'In review', () => {})).toBe('In review');
+    f.state.cards[0].status = 'backlog';
+    await expect(moveLane(f.store, f.execute as any, job, 'In progress', () => {})).rejects.toThrow('human lane');
+});
