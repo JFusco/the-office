@@ -1,4 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
+import {sameProviderInstant} from './provider-instant';
 import {completedExecution} from '../../workers/worker-completion';
 import {continuationWorkerProof,assertContinuationWorker} from '../recovery/implementation/continuation-evidence';
 import {digest} from '../../store/readback-evidence';
@@ -46,14 +47,14 @@ export async function selectCurrentChecks(delivery:GitHubDelivery,job:TicketJob,
    requireThat(Number.isInteger(inventory?.total_count)&&inventory.total_count>=0&&inventory.total_count<=100&&Array.isArray(inventory.workflow_runs)&&inventory.total_count===inventory.workflow_runs.length&&new Set(inventory.workflow_runs.map((x:any)=>x.id)).size===inventory.workflow_runs.length,'Complete bounded workflow-run inventory required');
    const relevant=inventory.workflow_runs.filter((x:any)=>isDeepStrictEqual(runIdentity(x,repo,head,pr),sample.identity));
    requireThat(relevant.length&&family.every(b=>relevant.some((x:any)=>x.id===b.run.id&&x.run_attempt>=b.run.run_attempt)),'Original workflow runs missing from current inventory');
-   for(const b of family){const same=relevant.find((x:any)=>x.id===b.run.id&&x.run_attempt===b.run.run_attempt);if(same)requireThat(isDeepStrictEqual([same.status,same.conclusion,same.created_at,same.check_suite_id],[b.run.status,b.run.conclusion,b.run.created_at,b.run.check_suite_id]),'Historical workflow inventory changed during selection');}
+   for(const b of family){const same=relevant.find((x:any)=>x.id===b.run.id&&x.run_attempt===b.run.run_attempt);if(same)requireThat(isDeepStrictEqual([same.status,same.conclusion,same.check_suite_id],[b.run.status,b.run.conclusion,b.run.check_suite_id])&&sameProviderInstant(same.created_at,b.run.created_at),'Historical workflow inventory changed during selection');}
    relevant.sort((a:any,b:any)=>b.run_number-a.run_number||b.run_attempt-a.run_attempt);
    const latest=relevant[0];requireThat(relevant.every((x:any)=>x.id===latest.id||x.run_number!==latest.run_number),'Ambiguous workflow run ordering');
    const current=family.filter(b=>b.run.id===latest.id&&b.run.run_attempt===latest.run_attempt);
    if(!current.length&&pending(latest)&&raw.check_runs.filter((c:any)=>!family.some(b=>b.check.id===c.id)).every((c:any)=>pass(c)||pending(c))&&(!statuses||['success','pending'].includes(statuses.state)&&statuses.statuses.every((s:any)=>['success','pending'].includes(s.state))))throw new CurrentChecksWait('Newer workflow execution is queued; waiting for its matching check/job coverage');
    requireThat(current.length===1,'Newer workflow execution has missing or ambiguous matching check/job coverage');
    const chosen=current[0];
-   requireThat(chosen.run.status===latest.status&&chosen.run.conclusion===latest.conclusion&&chosen.run.created_at===latest.created_at,'Workflow inventory changed during selection');
+   requireThat(chosen.run.status===latest.status&&chosen.run.conclusion===latest.conclusion&&sameProviderInstant(chosen.run.created_at,latest.created_at),'Workflow inventory changed during selection');
    for(const b of family){
     if(b===chosen)continue;
     const newer=b.run.id===latest.id?latest.run_attempt>b.run.run_attempt:latest.run_number>b.run.run_number;
