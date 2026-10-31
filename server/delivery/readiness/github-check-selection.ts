@@ -1,4 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
+import {findingsBlock} from '../findings/advisory';
 import {sameProviderInstant} from './provider-instant';
 import {completedExecution} from '../../workers/worker-completion';
 import {continuationWorkerProof,assertContinuationWorker} from '../recovery/implementation/continuation-evidence';
@@ -95,7 +96,7 @@ export async function resumeReviewedMerge(delivery:GitHubDelivery,job:TicketJob,
  const {store}=delivery,project=digest(delivery.store.project),canonical=()=>delivery.jobs.filter(j=>j.id===job.id).length===1&&delivery.jobs.find(j=>j.id===job.id)===job&&!store.activeClaims().some(c=>c.work.projectId===store.project.id&&c.work.kind==='delivery'&&c.work.id===job.id)&&!store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)),context=job.reviewContext,review=job.steps.filter(s=>s.stage==='lead-pr').at(-1),work=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='github-lead-pr').at(-1);
  const enabled=()=>store.state.coordination?.merges?.enabled||job.mergeAuthorization?.head===job.head;
  if(!canonical()||job.stage!=='merge'||!['blocked','interrupted','watching'].includes(job.status)||!context||job.mergeAttempt||job.mergeApprovalRequired||store.state.paused||store.state.draining||HOLDS[job.key]||!enabled()||job.mergeAuthorization&&job.mergeAuthorization.head!==job.head)return false;
- requireThat(review?.result.outcome==='passed'&&!review.result.findings.some(f=>f.status==='open')&&review.result.commit===job.head&&context.step===job.steps.indexOf(review)&&context.head===job.head&&context.head===p.head.sha&&context.target===store.project.target&&context.baseSha===p.base.sha&&context.prUpdatedAt===p.updated_at&&p.state==='open'&&!p.draft&&p.mergeable===true,'Saved merge review context changed');
+ requireThat(review?.result.outcome==='passed'&&!findingsBlock(store,review.result.findings,f=>f.status==='open')&&review.result.commit===job.head&&context.step===job.steps.indexOf(review)&&context.head===job.head&&context.head===p.head.sha&&context.target===store.project.target&&context.baseSha===p.base.sha&&context.prUpdatedAt===p.updated_at&&p.state==='open'&&!p.draft&&p.mergeable===true,'Saved merge review context changed');
  requireThat(job.reviewInputSha256===deliveryInputSha256(store,job.key)||!job.reviewInputSha256&&!deliveryHumanInputs(store,job.key).length,'Human merge review inputs changed');
  requireThat(work?.status==='completed'&&work.role==='lead'&&completedExecution(store,work),'One accepted actual Lead execution required');
  const original=continuationWorkerProof(store,job,work,true,job.worktree||store.project.repo),saved=original.result;
