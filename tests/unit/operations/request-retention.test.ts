@@ -18,3 +18,22 @@ test('keeps only the most recent completed read operations and every other reque
     expect(requests.filter(r => r.action === 'refresh')).toHaveLength(3);
     expect(pruneCompletedReads(requests, 25)).toBe(0);
 });
+test('a paused project still prunes completed reads on tick', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { resolve } = await import('node:path');
+    const { Store } = await import('../../../server/store');
+    const { Engine } = await import('../../../server/engine');
+    const { Coordinator } = await import('../../../server/coordination');
+    const { projectById } = await import('../../../server/projects');
+    const root = mkdtempSync(resolve(tmpdir(), 'office-retention-'));
+    const store = new Store(':memory:', projectById('brain'), root);
+    try {
+        const c = new Coordinator(store, new Engine(store));
+        c.activate(new Date('2026-10-31T00:00:00Z'));
+        store.state.paused = true;
+        c.state.requests = Array.from({ length: 40 }, (_, n) => request('refresh', 'completed', n));
+        await c.tick(new Date('2026-10-31T00:01:00Z'));
+        expect(c.state.requests.length).toBe(25);
+    } finally { store.close(); rmSync(root, { recursive: true, force: true }); }
+});
