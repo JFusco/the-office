@@ -1,4 +1,4 @@
-import {githubStageLabels} from '../../src/agent-activity';
+import {githubStageLabels} from '../../src/scene/agent-activity';
 import { STAGE_LABELS, type Role, type Stage } from '../../src/shared';
 
 const labels:Record<string,string>={

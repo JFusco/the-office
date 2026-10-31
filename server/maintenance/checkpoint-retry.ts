@@ -15,7 +15,7 @@ export async function resumeRepairedMaintenance(this: Coordinator, now = new Dat
             continue;
         const resume = checkpoint.repairResume ??= { issue: followup.issue, nextCheckAt: '', needsFollowup: false };
         try {
-            const gate = await (this.engine.maintenance as import('../maintenance/brain/brain-maintenance').BrainMaintenance).readStatus();
+            const gate = await (this.engine.maintenance as import('./brain/brain-maintenance').BrainMaintenance).readStatus();
             if (typeof gate.attempts !== 'number' || gate.attempts < 0 || !Object.hasOwn(gate, 'active') || !Object.hasOwn(gate, 'completed'))
                 throw new Error('Native Brain gate returned incomplete status');
             const continuation = this.state.continuations?.find(item => item.checkpointId === checkpoint.id);
@@ -66,7 +66,7 @@ export async function readBackCheckpoint(this: Coordinator, id: string) {
     if (!checkpoint || !original || this.store.project.id !== 'brain' || this.store.state.paused)
         throw new Error('A native Brain checkpoint and original run are required');
     if (checkpoint.status === 'completed' && original.steps.some(step => step.stage === 'checkpoint-native-readback')) return;
-    const gate = await (this.engine.maintenance as import('../maintenance/brain/brain-maintenance').BrainMaintenance).readStatus();
+    const gate = await (this.engine.maintenance as import('./brain/brain-maintenance').BrainMaintenance).readStatus();
     if (!completeNativeCheckpoint(this.store, checkpoint, original, gate))
         throw new Error('Existing native completion does not resolve this checkpoint; no maintenance retry dispatched');
 }
@@ -80,7 +80,7 @@ export async function retryCheckpoint(this: Coordinator, id: string, nativeReadb
     const original = this.store.state.maintenance?.runs.find(r => r.id === checkpoint.runId);
     if (!original || original.status !== 'reconciled')
         throw new Error('Read back the original maintenance effects before retrying its checkpoint');
-    const gate = await (this.engine.maintenance as import('../maintenance/brain/brain-maintenance').BrainMaintenance).readStatus();
+    const gate = await (this.engine.maintenance as import('./brain/brain-maintenance').BrainMaintenance).readStatus();
     if (nativeReadback && completeNativeCheckpoint(this.store, checkpoint, original, gate))
         return;
     if (gate.active || gate.completed || gate.attempts >= 3)

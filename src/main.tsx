@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
+import App from './office/App';
 import './style.css';
 // The browser chrome color comes from the same token file as every other color.
 const themeColor=getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim();

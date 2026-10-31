@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest';
-import { liveTiming, liveBuildTiming, workerTimerContinuity, type WorkerTimerContinuity } from '../../../src/live-timing';
-import { SnapshotAcceptance } from '../../../src/snapshot-order';
-import { durationLabel } from '../../../src/timing';
+import { liveTiming, liveBuildTiming, workerTimerContinuity, type WorkerTimerContinuity } from '../../../src/timing/live-timing';
+import { SnapshotAcceptance } from '../../../src/office/snapshot-order';
+import { durationLabel } from '../../../src/timing/timing';
 import { initialSnapshot } from '../../../server/store/store';
 const at = '2026-10-29T14:00:00Z';
 function snapshot() { return { ...initialSnapshot(), serviceInstanceId: 'instance', snapshotSequence: 1, serverTime: at, workLog: [{ id: 'work', status: 'running', lastHeartbeatAt: '2026-10-29T13:59:46Z', elapsedMs: 59000 }] } as any; }
@@ -153,9 +153,9 @@ test('the actual timing hook commits only layout effects and resets on an unseen
     const ref = { current: undefined as WorkerTimerContinuity | undefined };
     vi.resetModules();
     vi.doMock('react', () => ({ useRef: () => ref, useLayoutEffect: (effect: () => void) => effects.push(effect) }));
-    vi.doMock('../../../src/live-clock', () => ({ useLiveClock: () => now }));
+    vi.doMock('../../../src/timing/live-clock', () => ({ useLiveClock: () => now }));
     try {
-        const { useLiveTiming } = await import('../../../src/useLiveTiming');
+        const { useLiveTiming } = await import('../../../src/timing/useLiveTiming');
         const render = (state: ReturnType<typeof timingFrame>, commit = true) => { effects = []; const result = useLiveTiming(state); if (commit) effects.forEach(effect => effect()); return result; };
         expect(render(timingFrame()).workLog![0].elapsedMs).toBe(96500);
         const abandoned = timingFrame(); abandoned.workLog[0].elapsedMs = 999999;
@@ -164,7 +164,7 @@ test('the actual timing hook commits only layout effects and resets on an unseen
         const reconnected = timingFrame(6400, 6600, 3); reconnected.liveAnchor.connectionEpoch = 2;
         expect(render(reconnected).workLog![0].elapsedMs).toBe(96400);
         now = 7500; expect(render(reconnected).workLog![0].elapsedMs).toBe(97300);
-    } finally { vi.doUnmock('react'); vi.doUnmock('../../../src/live-clock'); vi.resetModules(); }
+    } finally { vi.doUnmock('react'); vi.doUnmock('../../../src/timing/live-clock'); vi.resetModules(); }
 });
 test('actual useOffice exposes its existing generation across batched reconnect, hidden and clock-gap events', async () => {
     const slots: any[] = [], effects: Array<() => void | (() => void)> = [];
@@ -183,7 +183,7 @@ test('actual useOffice exposes its existing generation across batched reconnect,
     vi.stubGlobal('fetch', async (url: string) => ({ ok: true, json: async () => url === '/api/projects' ? { projects: [{ id: 'cec', name: 'CEC' }] } : timingFrame(6400, 0, ++sequence) }));
     const cleanups: Array<() => void> = [];
     try {
-        const { useOffice } = await import('../../../src/useOffice');
+        const { useOffice } = await import('../../../src/office/useOffice');
         const render = () => { cursor = 0; effects.length = 0; return useOffice(); };
         const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
         render(); effects.forEach(effect => { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); }); await settle();

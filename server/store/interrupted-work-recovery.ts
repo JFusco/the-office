@@ -1,6 +1,6 @@
 import { projectOutbox } from '../conversations/outbox';
 import { ROLE_NAMES, workKey, type EffectIntent } from '../../src/shared';
-import { durationLabel } from '../../src/timing';
+import { durationLabel } from '../../src/timing/timing';
 import type { Store } from './store';
 
 export function recover(this: Store): void  {

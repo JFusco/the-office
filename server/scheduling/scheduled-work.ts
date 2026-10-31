@@ -1,4 +1,4 @@
-import { deliveryRepairProjection } from '../../src/delivery-repair-projection';
+import { deliveryRepairProjection } from '../../src/work/delivery-repair-projection';
 import {closeoutRequestResolved,verifiedCloseoutCleanupRequest} from '../delivery/recovery/closeout/closeout-recovery-evidence';
 import {scopeRepairRequestResolved} from '../delivery/recovery/scope-repair/scope-repair-readback';
 import {preparationRequestResolved} from '../delivery/recovery/preparation/preparation-readback';
@@ -8,7 +8,7 @@ import type { Engine } from './engine';
 import type { Conversations } from '../conversations/conversations';
 import type { Coordinator } from './coordination';
 import { conversationResolved } from '../conversations/outbox';
-import { deferredPickup } from '../../src/pickup-state';
+import { deferredPickup } from '../../src/work/pickup-state';
 import { ROLE_NAMES, workKey, type WorkKind, type WorkEligibility } from '../../src/shared';
 import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../delivery/pipeline/dependencies';
 import { executeRequest, deterministicActions } from './requests';

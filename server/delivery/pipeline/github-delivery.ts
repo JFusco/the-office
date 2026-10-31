@@ -19,7 +19,7 @@ import * as readiness from '../readiness/github-readiness';
 import * as closeout from '../recovery/closeout/github-closeout';
 import { deliveryHumanInputs, deliveryInputSha256 } from '../../github/github-context';
 import { ProjectProgress } from '../board/project-progress';
-import { shortSummary } from '../../../src/work-summary';
+import { shortSummary } from '../../../src/work/work-summary';
 import type { AssignedIssue } from '../../../src/shared';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';

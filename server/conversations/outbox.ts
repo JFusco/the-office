@@ -1,6 +1,6 @@
-import { deferredPickup } from '../../src/pickup-state';
+import { deferredPickup } from '../../src/work/pickup-state';
 import { checkpointSuperseded, maintenanceSuperseded } from '../maintenance/superseded';
-import { readinessNeedsFollowup, readinessWait } from '../../src/work-summary';
+import { readinessNeedsFollowup, readinessWait } from '../../src/work/work-summary';
 import { HOLDS } from '../office/config';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
 export function conversationResolved(state: OfficeSnapshot, message: TeamMessage): boolean {

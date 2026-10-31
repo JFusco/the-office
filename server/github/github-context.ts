@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Store } from '../store/store';
 import type { Role, TeamMessage } from '../../src/shared';
-import { timeReport } from '../../src/timing';
+import { timeReport } from '../../src/timing/timing';
 export const GITHUB_ISSUE_SKILL = resolve(homedir(), '.agents/skills/github-issue-creator/SKILL.md');
 export function canFileGithubIssue(role: Role, message: TeamMessage, brief: string) {
     return role === 'pm' && message.from === 'human' && !brief && !message.actionId && /^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:create|file|open)\s+(?:(?:a|an|one|new|github)\s+){0,3}issue\b/i.test(message.body.trim());

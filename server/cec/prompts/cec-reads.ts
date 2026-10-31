@@ -2,7 +2,7 @@ import type { Store } from '../../store/store';
 import type { Role, Ticket, TeamMessage, SlackDelivery } from '../../../src/shared';
 import { CEC, DATA, SKILLS } from '../../office/config';
 import { PICKUP_CHAT } from '../../delivery/intake/pickup';
-import { timeReport } from '../../../src/timing';
+import { timeReport } from '../../../src/timing/timing';
 export function cecIntakePrompt(store: Store) {
     return `Check the CEC mailbox (READ ONLY).
 Use the Jira connection guidance in ${SKILLS.jira}/SKILL.md and references/twg.md. Prefer authenticated TWG native Jira reads with discovered current contracts; use a capable authenticated MCP connection only when necessary. Do not run setup/login or mutate anything during intake. Site ${CEC.site}, cloudId ${CEC.cloudId}, board ${CEC.board}.

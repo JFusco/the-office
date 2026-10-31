@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { projectRows } from '../../../src/ProjectWork';
+import { projectRows } from '../../../src/work/ProjectWork';
 import { initialSnapshot } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 test('GitHub project lanes, issue lifecycle, linked PRs and Office delivery remain distinct', () => {

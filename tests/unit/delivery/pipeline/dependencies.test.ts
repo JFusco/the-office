@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'vitest';
 import { Store } from '../../../../server/store/store';
 import { coordination } from '../../../../server/scheduling/coordination';
 import { validatePrerequisites, dependencyEligibility } from '../../../../server/delivery/pipeline/dependencies';
-import { prerequisiteKeys } from '../../../../src/pm-queue';
+import { prerequisiteKeys } from '../../../../src/work/pm-queue';
 import type { Prerequisite } from '../../../../src/shared';
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));
