@@ -29,7 +29,9 @@ export async function moveLane(store: Store, execute: Execute, job: TicketJob, l
         const update: BoardUpdate = { stage: job.stage, head: job.head, project: field.projectId, item: card.id, field: field.fieldId, option: option.id, target: option.name, at: new Date().toISOString(), status: 'verified', detail: `${option.name} already verified.` };
         if (current === option.id) { (job.boardUpdates ??= []).push(update); continue; }
         const currentName = field.options.find(o => o.id === current)?.name?.trim().toLowerCase() || '';
-        if (!MOVABLE.has(currentName))
+        // Project automation adds new PR cards in its default lane; that is not a human decision.
+        const prDefault = card.kind === 'PullRequest' && (!currentName || currentName === 'backlog');
+        if (!MOVABLE.has(currentName) && !prDefault)
             throw new Error(`${card.kind} card is in "${currentName || 'no status'}", a human lane; the harness will not move it to ${option.name}`);
         guard();
         update.status = 'pending';
