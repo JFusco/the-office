@@ -1,0 +1,60 @@
+/*
+  Spacing, layout and breakpoint tokens.
+  Spacing uses a 4px base (`p-6` = 24px, `p-1.5` = 6px for compact 2px steps).
+  Rhythm: panel padding 24px (6), card padding 16px (4), section gap 24px (6), control gap 8px (2).
+  Named values below are deliberate shell and scene dimensions, not general spacing.
+*/
+@theme {
+  --spacing: 4px;
+
+  /* Shell */
+  --spacing-app-min: 600px;
+  --spacing-app-min-compact: 550px;
+  --spacing-topbar: 86px;
+  --spacing-topbar-compact: 70px;
+  --spacing-dock: 92px;
+  --spacing-dock-compact: 83px;
+
+  /* Drawer (inspector) */
+  --spacing-drawer: 390px;
+  --spacing-drawer-tablet: 355px;
+  --spacing-drawer-wide: 430px;
+  --spacing-drawer-head: 58px;
+
+  /* Floating panels and overlays */
+  --spacing-popover: 315px;
+  --spacing-popover-compact: 330px;
+  --spacing-toast: 650px;
+  --spacing-toast-offset: 110px;
+  --spacing-toast-offset-compact: 100px;
+  --spacing-updates: 350px;
+  --spacing-updates-compact: 260px;
+  --spacing-updates-height: 280px;
+  --spacing-updates-height-compact: 190px;
+  --spacing-floors: 182px;
+  --spacing-floors-compact: 137px;
+  --spacing-office-log: 325px;
+  --spacing-office-log-tablet: 250px;
+  --spacing-office-log-compact: 260px;
+
+  /* Scene labels (Drei HTML overlays) */
+  --spacing-bubble: 190px;
+  --spacing-agent-label: 200px;
+
+  /* Scrollable regions */
+  --spacing-history: 52vh;
+  --spacing-history-compact: 40vh;
+  --spacing-notes: 20vh;
+  --spacing-notes-compact: 12vh;
+
+  /*
+    Breakpoints match the original max-width/min-width media queries.
+    Tailwind `max-*` variants are exclusive (`width < value`), so the inclusive
+    `max-width: 700px`, `760px` and `1000px` queries use 701/761/1001px.
+  */
+  --breakpoint-*: initial;
+  --breakpoint-compact: 701px;
+  --breakpoint-dock: 761px;
+  --breakpoint-tablet: 1001px;
+  --breakpoint-wide: 1600px;
+}

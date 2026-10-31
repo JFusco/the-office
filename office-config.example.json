@@ -1,0 +1,30 @@
+{
+  "cec": {
+    "site": "https://example.atlassian.net",
+    "cloudId": "configure-locally",
+    "board": 0,
+    "account": "configure-locally",
+    "repo": "/absolute/path/to/azure-repository",
+    "organization": "https://dev.azure.com/example",
+    "project": "example",
+    "repository": "example",
+    "repositoryId": "configure-locally",
+    "target": "staging"
+  },
+  "projects": [
+    {
+      "id": "example",
+      "name": "Example GitHub project",
+      "provider": "github",
+      "repo": "/absolute/path/to/repository",
+      "repository": "owner/repository",
+      "target": "main",
+      "githubProject": {
+        "owner": "owner",
+        "number": 1,
+        "url": "https://github.com/users/owner/projects/1"
+      }
+    }
+  ],
+  "holds": {}
+}

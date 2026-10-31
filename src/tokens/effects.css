@@ -1,0 +1,103 @@
+/*
+  Effects: radius, shadows, blur and motion.
+  Shadow colors come from `--shadow-tint-*` in colors.css; this file contains no literal colors.
+*/
+@theme {
+  --radius-*: initial;
+  --radius-1: 1px;
+  --radius-3: 3px;
+  --radius-4: 4px;
+  --radius-5: 5px;
+  --radius-6: 6px;
+  --radius-7: 7px;
+  --radius-8: 8px;
+  --radius-9: 9px;
+  --radius-10: 10px;
+  --radius-11: 11px;
+  --radius-12: 12px;
+  --radius-13: 13px;
+  --radius-14: 14px;
+  --radius-15: 15px;
+  --radius-20: 20px;
+
+  --shadow-*: initial;
+  --shadow-button: 0 3px 6px var(--shadow-tint-button);
+  --shadow-float: 0 8px 25px var(--shadow-tint-float);
+  --shadow-popover: 0 14px 40px var(--shadow-tint-popover);
+  --shadow-toast: 0 9px 30px var(--shadow-tint-toast);
+  --shadow-banner: 0 5px 25px var(--shadow-tint-banner);
+  --shadow-drawer: -16px 0 60px var(--shadow-tint-drawer);
+  --shadow-envelope: 0 3px 9px var(--shadow-tint-envelope);
+  --shadow-room-label: 0 5px 12px var(--shadow-tint-room-label);
+  --shadow-mail-label: 0 5px 14px var(--shadow-tint-mail-label);
+  --shadow-agent-label: 0 3px 10px var(--shadow-tint-agent-label);
+  --shadow-bubble: 0 5px 12px var(--shadow-tint-bubble);
+  --shadow-packet: 0 3px 10px var(--shadow-tint-packet);
+  --shadow-life-label: 0 3px 12px var(--shadow-tint-life-label);
+  --shadow-arrival: 0 10px 35px var(--shadow-tint-arrival);
+  --shadow-door: 0 0 30px var(--shadow-tint-door);
+
+  --inset-shadow-*: initial;
+  --inset-shadow-avatar: inset 0 -8px 0 var(--shadow-tint-avatar);
+  --inset-shadow-portrait: inset 0 -13px 0 var(--shadow-tint-portrait);
+
+  --blur-*: initial;
+  --blur-loading: 3px;
+  --blur-panel: 12px;
+  --blur-bar: 16px;
+  --blur-dock: 18px;
+  --blur-drawer: 25px;
+
+  /* Shared interaction timing: every hover/focus transition uses these defaults. */
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-fade: ease;
+
+  --animate-*: initial;
+  --animate-spin: spin 1.4s linear infinite;
+  --animate-activity-pulse: activity-pulse 1.4s ease-in-out infinite;
+  --animate-activity-appear: activity-appear 0.18s ease-out;
+  --animate-bubble-enter: bubble-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes activity-pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @keyframes activity-appear {
+    from {
+      opacity: 0.4;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes bubble-enter {
+    from {
+      opacity: 0;
+      translate: 0 -7px;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+}
+
+/*
+  Reduced motion follows the operating-system preference and the Office
+  "Reduced motion" setting (`data-motion="reduced"` on <html>).
+*/
+@custom-variant reduce-motion {
+  @media (prefers-reduced-motion: reduce) {
+    @slot;
+  }
+  &:where([data-motion='reduced'], [data-motion='reduced'] *) {
+    @slot;
+  }
+}

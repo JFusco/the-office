@@ -1,0 +1,6 @@
+onlyBuiltDependencies:
+  - esbuild
+minimumReleaseAgeExclude:
+  - framer-motion@14.7.1
+  - motion-dom@14.7.1
+  - motion@14.7.1

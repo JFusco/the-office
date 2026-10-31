@@ -1,0 +1,23 @@
+import { afterEach, expect, test } from 'vitest';
+import { Store } from '../../server/store';
+import { coordination } from '../../server/coordination';
+import { validatePrerequisites, dependencyEligibility } from '../../server/dependencies';
+import { prerequisiteKeys } from '../../src/pm-queue';
+import type { Prerequisite } from '../../src/shared';
+const stores: Store[] = [];
+afterEach(() => stores.splice(0).forEach(store => store.close()));
+test('structured dependencies validate existence, conditions, self-reference and cycles', () => {
+    const store = new Store(':memory:');
+    stores.push(store);
+    store.state.coordination = coordination();
+    const projects = new Map([['cec', store]]);
+    const prerequisite: Prerequisite = { target: { projectId: 'cec', kind: 'delivery', id: 'a' }, condition: 'job-completed', evidence: 'Persisted job', observedAt: new Date().toISOString() };
+    expect(validatePrerequisites([prerequisite], { projectId: 'cec', kind: 'delivery', id: 'b' }, projects)).toContain('does not exist');
+    store.state.coordination.jobs = [{ id: 'a', key: 'CEC-1', status: 'queued', prerequisites: [{ ...prerequisite, target: { projectId: 'cec', kind: 'delivery', id: 'b' } }] }, { id: 'b', key: 'CEC-2', status: 'queued' }] as any;
+    expect(validatePrerequisites([prerequisite], { projectId: 'cec', kind: 'delivery', id: 'a' }, projects)).toContain('itself');
+    expect(validatePrerequisites([prerequisite], { projectId: 'cec', kind: 'delivery', id: 'b' }, projects)).toContain('cycle');
+    expect(dependencyEligibility([prerequisite], projects, new Date())?.state).toBe('waiting');
+    store.state.coordination.jobs![0].status = 'completed';
+    expect(dependencyEligibility([prerequisite], projects, new Date())).toBeNull();
+});
+test('prose and URLs alone cannot create a dependency or release a hold', () => { expect(prerequisiteKeys({ key: 'GH-254', status: 'held', workRequested: 'automatic', detail: 'Keep held until GH-255 completes, see https://github.com/JFusco/brain/issues/255' } as any)).toEqual([]); });

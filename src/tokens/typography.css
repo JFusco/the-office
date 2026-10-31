@@ -1,0 +1,72 @@
+/*
+  Typography tokens. Families, weights and sizes reproduce the pre-Tailwind design exactly.
+  Sizes are named by their pixel value so the existing type scale stays explicit;
+  letter-spacing and leading are named by role.
+*/
+@theme {
+  --font-*: initial;
+  --font-sans: 'DM Sans', sans-serif;
+  --font-display: Manrope, sans-serif;
+  --font-mono: monospace;
+
+  --font-weight-*: initial;
+  --font-weight-regular: 400;
+  --font-weight-book: 450;
+  --font-weight-medium: 500;
+  --font-weight-emphasis: 550;
+  --font-weight-semibold: 600;
+  --font-weight-heading: 650;
+  --font-weight-bold: 700;
+  --font-weight-black: 800;
+
+  --text-*: initial;
+  --text-root: 14px;
+  --text-5: 5px;
+  --text-6: 6px;
+  --text-6\.5: 6.5px;
+  --text-7: 7px;
+  --text-8: 8px;
+  --text-9: 9px;
+  --text-10: 10px;
+  --text-11: 11px;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-14: 14px;
+  --text-15: 15px;
+  --text-17: 17px;
+  --text-21: 21px;
+  --text-23: 23px;
+  --text-26: 26px;
+  --text-27: 27px;
+  --text-29: 29px;
+  --text-34: 34px;
+  --text-35: 35px;
+  --text-39: 39px;
+  --text-40: 40px;
+
+  --tracking-*: initial;
+  --tracking-display: -1.8px;
+  --tracking-brand: -1.6px;
+  --tracking-heading: -1.5px;
+  --tracking-fine: 0.35px;
+  --tracking-snug: 0.5px;
+  --tracking-cozy: 0.7px;
+  --tracking-mild: 0.8px;
+  --tracking-label: 1px;
+  --tracking-caps-sm: 1.2px;
+  --tracking-caps: 1.3px;
+  --tracking-caps-md: 1.4px;
+  --tracking-caps-lg: 1.5px;
+  --tracking-eyebrow: 1.65px;
+  --tracking-caps-xl: 1.8px;
+
+  --leading-*: initial;
+  --leading-display: 1.1;
+  --leading-heading: 1.27;
+  --leading-snug: 1.3;
+  --leading-compact: 1.4;
+  --leading-bubble: 1.45;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.6;
+  --leading-body: 1.65;
+}

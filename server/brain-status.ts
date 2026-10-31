@@ -1,0 +1,4 @@
+import { z } from 'zod';
+const identity = z.object({ id: z.string().uuid(), authorId: z.string().uuid(), slotDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), phase: z.string().min(1) }).passthrough();
+export const BrainStatusSchema = z.object({ slotDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), attempts: z.number().int().min(0), retryAfter: z.string().datetime().nullable(), active: identity.nullable(), completed: identity.extend({ phase: z.literal('completed'), completedAt: z.string().datetime(), reportSha256: z.string().optional(), outcome: z.string().optional(), prs: z.array(z.object({ number: z.number().int(), headSha: z.string(), mergeCommit: z.string() }).passthrough()).optional() }).passthrough().nullable() }).passthrough();
+export const parseBrainStatus = (raw: unknown) => BrainStatusSchema.parse(raw);
