@@ -4,6 +4,8 @@ import { recordApproach, reroute, missingApproachStage, stageNeeded } from '../d
 import { correlatedBuild } from './azure';
 import { DATA } from '../office/config';
 import { advance, resultGate, qaEvidenceGap, publicationEvidenceGap } from './workflow';
+import { parkDecision } from './parking/park-ticket';
+import { parksInJira } from './parking/parks-in-jira';
 import { STAGE_ROLE, STAGE_LABELS, type Stage, type StageResult } from '../../src/shared';
 import type { Engine } from '../scheduling/engine';
 
@@ -139,6 +141,14 @@ export async function run(this: Engine, key: string) {
             }
             const artifactRoot = resolve(DATA, 'runs', t.runId);
             const gap = resultGate(t, stage, result, artifactRoot);
+            if (gap && parksInJira(result)) {
+                t.results[stage] = result;
+                t.evidence.push(...result.evidence);
+                if (result.findings.length)
+                    t.findings = result.findings;
+                await parkDecision(this.store, this.jira.execute, t, stage, attemptId, result);
+                break;
+            }
             if (gap) {
                 t.results[stage] = result;
                 t.evidence.push(...result.evidence);

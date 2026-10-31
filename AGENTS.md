@@ -43,7 +43,8 @@ server/
     closeout/      harness closeout
     recovery/      reconciliation of legacy records (closeout, implementation, preparation,
                    scope repair, source amendment, validation)
-  cec/             Jira/Azure (CEC) pipeline: workflow, mailbox, pilot delivery, stage runner
+  cec/             Jira/Azure (CEC) pipeline: workflow, mailbox, pilot delivery, stage runner,
+                   Jira Blocked parking
   github/          GitHub provider adapters
   maintenance/     project maintenance and Brain native runs
   leadership/      CTO daily review and goals

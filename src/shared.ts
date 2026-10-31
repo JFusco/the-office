@@ -572,6 +572,10 @@ export interface Ticket {
     decisions?: ApproachDecision[];
     skippedStages?: Partial<Record<Stage, string>>;
     approachReturnStage?: Stage;
+    /** Set when the harness parked the ticket in Jira Blocked for a human decision; moving it back to fromStatus resumes it. */
+    parked?: { stage: Stage; reason: string; at: string; fromStatus: string; marker: string; published: boolean; resumeRequestedAt?: string; commentAttempt?: number };
+    /** The last parked decision Joe resolved by moving the ticket back; stage workers treat its comment as answered. */
+    resolvedDecision?: { marker: string; reason: string; status: string; at: string };
 }
 export interface OfficeEvent {
     id: number;
