@@ -2,6 +2,7 @@ import { completeNativeCheckpoint } from './brain-checkpoint';
 import { handsOff } from './delivery/harness/scope';
 import { admit, admitReadyCards } from './delivery/intake/admission';
 import { resumeParked } from './delivery/parking/resume';
+import { pruneCompletedReads } from './operations/request-retention';
 import { reconcileContinuations, validateNativeContinuation } from './continuations';
 import { enqueueRequest } from './requests';
 import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey, observePrerequisites, type DependencyStores } from './dependencies';
@@ -262,6 +263,7 @@ export class Coordinator {
         if (!c.enabled || this.store.state.paused)
             return;
         reconcileReadRetries(this.store, now);
+        pruneCompletedReads(c.requests ??= []);
         reconcileNoticeConfirmations(this.store);
         reconcileContinuations(this.store);
         captureTime(this.store);
