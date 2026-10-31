@@ -100,7 +100,7 @@ test('weekly review is due at Monday 3 PM Eastern, catches missed Mondays, and h
     expect(weeklyDue('2026-10-26', new Date('2026-11-02T20:00:00Z'))).toBe(true);
     expect(weeklyDue('2026-10-26', new Date('2026-11-04T20:00:00Z'))).toBe(true);
 });
-test('combined maintenance is durable and idempotent while queued; interruption blocks replay', () => {
+test('combined maintenance is durable and idempotent while queued; interruption blocks manual replay and a scheduled hands-off run supersedes it', () => {
     const store = setup(), engine = new Engine(store), maintenance = engine.maintenance;
     const run = maintenance.request(true);
     expect(maintenance.request(true).id).toBe(run.id);
@@ -109,8 +109,9 @@ test('combined maintenance is durable and idempotent while queued; interruption 
     store.save();
     store.recover();
     expect(String(run.status)).toBe('interrupted');
-    expect(() => maintenance.request(true)).toThrow('reconciliation');
+    expect(() => maintenance.request()).toThrow('reconciliation');
     expect(projectOutbox(store.state).some(o => o.id === `maintenance:${run.id}` && o.status === 'open')).toBe(true);
+    expect(maintenance.request(true).supersedes).toEqual([run.id]);
 });
 test('an uncertain maintenance effect stops later roles and is not automatically replayed', async () => {
     const store = setup(), engine = new Engine(store), calls: string[] = [];
