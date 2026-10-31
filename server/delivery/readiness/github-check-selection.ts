@@ -1,4 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
+import {teamReviewedHead} from './team-review';
 import {findingsBlock} from '../findings/advisory';
 import {sameProviderInstant} from './provider-instant';
 import {completedExecution} from '../../workers/worker-completion';
@@ -95,6 +96,14 @@ export async function currentMergeChecks(delivery:GitHubDelivery,job:TicketJob,p
 export async function resumeReviewedMerge(delivery:GitHubDelivery,job:TicketJob,p:any){
  const {store}=delivery,project=digest(delivery.store.project),canonical=()=>delivery.jobs.filter(j=>j.id===job.id).length===1&&delivery.jobs.find(j=>j.id===job.id)===job&&!store.activeClaims().some(c=>c.work.projectId===store.project.id&&c.work.kind==='delivery'&&c.work.id===job.id)&&!store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)),context=job.reviewContext,review=job.steps.filter(s=>s.stage==='lead-pr').at(-1),work=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='github-lead-pr').at(-1);
  const enabled=()=>store.state.coordination?.merges?.enabled||job.mergeAuthorization?.head===job.head;
+ if(!context&&teamReviewedHead(store,job)){
+  // Team-reviewed hands-off job: no Lead review to re-validate; requeue once current checks pass on the unchanged head.
+  if(!canonical()||job.stage!=='merge'||!['blocked','interrupted','watching'].includes(job.status)||job.mergeAttempt||job.mergeApprovalRequired||store.state.paused||store.state.draining||HOLDS[job.key]||!enabled())return false;
+  requireThat(p.state==='open'&&!p.draft&&p.mergeable===true&&p.head.sha===job.head,'Team-reviewed PR is not ready to merge');
+  const intent=store.getEffect(job.mergeIntentId||`merge:${job.id}:${job.head}`);requireThat(!intent||['prepared','rejected'].includes(intent.status)&&!intent.dispatchedAt,'Prior merge intent needs read-back');
+  const selection=await currentMergeChecks(delivery,job,p);
+  job.status='queued';job.detail='Current checks passed on the team-reviewed head. The scheduler rechecks every merge gate before the write.';store.save();return selection;
+ }
  if(!canonical()||job.stage!=='merge'||!['blocked','interrupted','watching'].includes(job.status)||!context||job.mergeAttempt||job.mergeApprovalRequired||store.state.paused||store.state.draining||HOLDS[job.key]||!enabled()||job.mergeAuthorization&&job.mergeAuthorization.head!==job.head)return false;
  requireThat(review?.result.outcome==='passed'&&!findingsBlock(store,review.result.findings,f=>f.status==='open')&&review.result.commit===job.head&&context.step===job.steps.indexOf(review)&&context.head===job.head&&context.head===p.head.sha&&context.target===store.project.target&&context.baseSha===p.base.sha&&context.prUpdatedAt===p.updated_at&&p.state==='open'&&!p.draft&&p.mergeable===true,'Saved merge review context changed');
  requireThat(job.reviewInputSha256===deliveryInputSha256(store,job.key)||!job.reviewInputSha256&&!deliveryHumanInputs(store,job.key).length,'Human merge review inputs changed');

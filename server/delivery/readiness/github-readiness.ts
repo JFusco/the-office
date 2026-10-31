@@ -1,4 +1,5 @@
 import {currentMergeChecks} from './github-check-selection';
+import { teamReviewedHead } from './team-review';
 import {conflictOnlyAssessment} from '../repairs/conflict-repair';
 import {outsideAmendmentFindingIds} from '../recovery/source-amendment/source-amendment-held';
 import { requireSourceAmendmentAcceptance } from '../recovery/source-amendment/source-amendment';
@@ -59,7 +60,9 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
     const priorIntent = this.store.getEffect<{ sha: string }>(job.mergeIntentId || `merge:${job.id}:${job.head}`);
     if (job.mergeAttempt || priorIntent && ['dispatching', 'uncertain', 'verified'].includes(priorIntent.status))
         throw new Error('Prior merge attempt needs read-back; it will not be repeated');
-    const p = await this.verifyPR(job, true), review = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
+    const p = await this.verifyPR(job, true), lead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
+    // A Lead review of an older head never counts; the team's exact-head review does for hands-off jobs.
+    const review = lead?.commit === job.head ? lead : teamReviewedHead(this.store, job) ?? lead;
     const heldFindings=review ? await outsideAmendmentFindingIds(this,job,review.commit,review) : new Set<string>();
     if (p.merged_at) {
         job.mergeCommit = p.merge_commit_sha;
