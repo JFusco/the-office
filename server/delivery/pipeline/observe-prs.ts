@@ -1,6 +1,6 @@
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
-import { refreshConflicted } from '../repairs/refresh-conflicted';
+import { refreshConflicted, refreshEligible } from '../repairs/refresh-conflicted';
 import { deliveryInputSha256 } from '../../github/github-context';
 import { queueMergeNotice } from '../../conversations/notifications';
 import type { GitHubDelivery } from './github-delivery';
@@ -80,7 +80,7 @@ export async function observe(this: GitHubDelivery) {
                 throw new Error('PR status pagination is incomplete');
             const conflict = job.steps.filter(step => step.stage === 'lead-pr').at(-1)?.result;
             let conflictRepairError = '';
-            if (p.mergeable === false && conflict && conflict.commit === p.head.sha && conflictOnlyAssessment(conflict)) {
+            if (p.mergeable === false && !refreshEligible(this.store, job, p) && conflict && conflict.commit === p.head.sha && conflictOnlyAssessment(conflict)) {
                 try {
                     await this.queueConflictRepair(job.key);
                     continue;
