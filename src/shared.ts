@@ -215,6 +215,8 @@ export interface TicketJob {
     pr: number;
     prUrl: string;
     existingPR?: boolean;
+    /** Removal of the Office-created worktree and branches after closeout or Backlog retirement. */
+    candidateCleanup?: { status: 'pending' | 'done' | 'skipped'; detail: string; at: string };
     dependsOnPR?: number;
     updatedAt?: string;
     automaticStatus?: string;

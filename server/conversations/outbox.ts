@@ -84,6 +84,9 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt)
             item(`ticket-job:${j.id}`, `Read back ${j.key} delivery`, j.detail, 'pm', j.key, j.prUrl);
     for (const j of state.coordination?.jobs || [])
+        if (j.candidateCleanup?.status === 'pending')
+            item(`candidate-cleanup:${j.id}`, `Clean up ${j.key} worktree and branches`, `${j.candidateCleanup.detail}\nThe Office retries on each poll and never removes uncommitted work or a branch with an open PR. A refusal recorded as uncertain is only read back, never resent.`, 'pm', j.key, j.prUrl);
+    for (const j of state.coordination?.jobs || [])
         if (readinessNeedsFollowup(j) && !j.retry?.nextAt) {
             const wait = readinessWait(j);
             item(`ticket-job:${j.id}`, `${j.key} needs team follow-up`, `${wait.summary}\n${wait.next}`, 'pm', j.key, j.prUrl);

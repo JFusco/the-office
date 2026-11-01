@@ -1,4 +1,6 @@
 import { moveLane } from '../board/move-lane';
+import { removeCandidate } from '../candidate/remove-candidate';
+import { recordCandidateCleanup } from '../candidate/cleanup-status';
 import { assertMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { harnessStageResult, receipt } from '../harness/stage-result';
@@ -52,9 +54,12 @@ export async function harnessCloseout(delivery: GitHubDelivery, job: TicketJob, 
     if (!comment)
         throw new Error('Closeout comment could not be read back');
     const lane = await moveLane(store, execute, job, 'Done', guard);
+    // The merge is delivered; the candidate goes so the repository stays a clean slate. Cleanup
+    // never holds a delivered closeout: a pending removal is reported and retried by the poll.
+    recordCandidateCleanup(store, job, await removeCandidate(store, execute, job, guard, head).catch(error => error instanceof Error ? error : new Error(String(error))));
     return harnessStageResult(job, root, {
         stage: 'closeout', commit: job.mergeCommit, summary: `PR #${job.pr} merged and verified; issue closed, closeout comment posted, card ${lane || 'Done'}.`,
         receipts: [receipt('issue-close', 'Verify issue closure', issueUrl, 'Issue closed state read back'), receipt('issue-comment', 'Create focused issue closeout comment', comment.url, 'Marker comment read back'), receipt('board-status', 'Verify existing board card status', store.project.githubProject?.url || '', `${lane || 'Done'} read back`)],
-        evidence: { pr: p.html_url, mergeCommit: job.mergeCommit, actions, comment, lane },
+        evidence: { pr: p.html_url, mergeCommit: job.mergeCommit, actions, comment, lane, candidateCleanup: job.candidateCleanup },
     });
 }
