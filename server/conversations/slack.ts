@@ -4,6 +4,7 @@ import { slackMessageUrl, type SlackDelivery } from '../../src/shared';
 import type { Store } from '../store/store';
 import type { Agents } from '../workers/agents';
 import { sanitize } from '../office/security';
+import { CommandFailure } from '../workers/process';
 export const SlackRequestSchema = z.object({ targetType: z.enum(['person', 'channel']), targetId: z.string().regex(/^[UCG][A-Z0-9]+$/), targetName: z.string().min(1), workspaceId: z.string().regex(/^T[A-Z0-9]+$/), text: z.string().min(1).max(5000) }).strict();
 export const SlackResultSchema = z.object({ channelId: z.string(), messageTs: z.string(), permalink: z.string(), detail: z.string() }).strict();
 export const SlackVerificationSchema = z.object({ found: z.boolean(), channelId: z.string(), messageTs: z.string(), permalink: z.string(), targetId: z.string(), workspaceId: z.string(), text: z.string(), detail: z.string() }).strict();
@@ -52,9 +53,22 @@ export class SlackMessages {
             await this.verify(delivery);
         }
         catch (e) {
-            delivery.status = 'uncertain';
             delivery.error = sanitize(String(e));
             delivery.sessionId ||= this.store.state.agents.find(a => a.id === 'pm')?.sessionId || '';
+            // A send that ended uncertain (for example, helpers outlived the sender)
+            // gets one independent read-back. It is never resent.
+            // A pause or shutdown cancels the send; it does not start a new worker.
+            if (delivery.status === 'sending' && !this.store.state.paused && !(e instanceof CommandFailure && e.category === 'cancelled')) {
+                Object.assign(delivery, { status: 'verifying', updatedAt: new Date().toISOString() });
+                this.store.emit('slack-verifying', 'Morgan is checking Slack for the uncertain send.', 'pm', human.ticket);
+                try {
+                    return await this.verify(delivery);
+                }
+                catch (readback) {
+                    delivery.error = sanitize(`${String(e)} Automatic read-back: ${String(readback)}`); // The send error stays first for the outbox.
+                }
+            }
+            delivery.status = 'uncertain';
             delivery.updatedAt = new Date().toISOString();
             this.store.emit('slack-uncertain', `Slack delivery needs read-back: ${delivery.error}`, 'pm', human.ticket);
             throw new Error('Slack delivery could not be confirmed. It will not be resent. Ask Morgan to read back this delivery from your outbox.');
