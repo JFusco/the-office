@@ -88,6 +88,10 @@ export function fakeGitHub(issueNumber = 5) {
             if (path.includes('/pulls?state=open')) return JSON.stringify([state.prs.filter(pr => pr.state === 'open')]);
             if (path.includes('/pulls/')) return JSON.stringify(state.prs.find(pr => path.endsWith(`/pulls/${pr.number}`)));
             if (path.includes('actions/runs')) return JSON.stringify({ total_count: state.runs.length, workflow_runs: state.runs });
+            if (path.endsWith('/branches/main')) return JSON.stringify({ name: 'main', protected: false });
+            if (path.includes('/rulesets')) return JSON.stringify([[]]);
+            if (path.includes('/check-runs')) return JSON.stringify({ total_count: 0, check_runs: [] });
+            if (/\/commits\/[a-f0-9]{40}\/status$/.test(path)) return JSON.stringify({ state: 'pending', total_count: 0, statuses: [] });
             if (path.endsWith('/commits/main')) return JSON.stringify({ sha: BASE });
         }
         throw new Error(`Unexpected synthetic command: ${line}`);

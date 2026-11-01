@@ -11,12 +11,16 @@ export interface CandidateRemoval { worktree: boolean; local: boolean; remote: b
 /** Only a candidate the Office created for this issue is removable: never an adopted PR branch or another checkout. */
 function notOwned(store: Store, job: TicketJob): string {
     const repo = store.project.repo, worktrees = resolve(dirname(repo), `${basename(repo)}-worktrees`) + sep;
-    if (job.existingPR)
-        return 'it is an adopted existing PR branch';
+    // Discovery marks every PR-linked job existingPR, including the Office's own; only candidate creation records a base.
+    if (!job.candidateBase)
+        return 'the Office did not create this candidate';
     if (!job.branch.startsWith(`codex/${job.key.replace(/^GH-/, '')}-`))
         return `branch ${job.branch || '(none)'} is not this issue's Office branch`;
     if (job.worktree && !resolve(job.worktree).startsWith(worktrees))
         return `worktree ${job.worktree} is outside ${worktrees}`;
+    // Discovery can swap in another PR's branch; the created pair is `codex/<name>` in `<repo>-worktrees/<name>`.
+    if (!job.worktree || basename(job.worktree) !== job.branch.slice('codex/'.length))
+        return `branch ${job.branch} is not the branch created with worktree ${job.worktree || '(none)'}`;
     return '';
 }
 
