@@ -28,6 +28,7 @@ export async function codexSessions(socketPath=join(homedir(),'.codex/app-server
    const readThread=async(threadId:string)=>{
     const {thread:t}=await call('thread/read',{threadId,includeTurns:false});
     if(!t?.id||!t.cwd||!['active','idle','notLoaded','systemError'].includes(t.status?.type))throw new Error('Codex live status is unavailable');
+    if(guardianReview(t.threadSource,t.source))return;
     sessions.push({id:t.id,provider:'codex',cwd:t.cwd,title:String(t.name||'Codex session').split('\n')[0].slice(0,160),branch:t.gitInfo?.branch||'',status:t.status.type==='active'?t.status.activeFlags?.length?'waiting':'active':t.status.type==='idle'?'idle':'loaded',source:'Codex shared app-server'});
    };
    for(let offset=0;offset<page.data.length;offset+=8)await Promise.all(page.data.slice(offset,offset+8).map(readThread));
@@ -49,12 +50,24 @@ export function openRollouts(raw:string){
  for(const line of raw.split('\n')){if(line[0]==='p')pid=Number(line.slice(1));if(line[0]==='n'&&line.includes('/.codex/sessions/')&&line.endsWith('.jsonl'))found.push({pid,path:line.slice(1)});}
  return found;
 }
+// A Guardian approval reviewer only judges another session's approval request;
+// it never owns a checkout, and the session it reviews is inventoried itself.
+// Older Codex builds mark it only in `source` ({"subagent":{"other":"guardian"}}).
+export function guardianReview(threadSource:unknown,source:unknown){
+ if(threadSource==='guardian_review')return true;
+ try{const s=typeof source==='string'?JSON.parse(source):source;return s?.subagent?.other==='guardian';}catch{return false;}
+}
+export function loadedCodexSession(t:any):LiveSession|null{
+ if(!t)throw new Error('A live Codex session has no metadata');
+ if(guardianReview(t.thread_source,t.source))return null;
+ return {id:t.id,provider:'codex',cwd:t.cwd,title:String(t.name||t.title||'Codex session').split('\n')[0].slice(0,160),branch:t.git_branch||'',status:'loaded',source:'Live Codex process; turn activity not exposed'};
+}
 async function desktopSessions(execute:typeof command){
  // Read open-file identities and metadata only, never transcript contents. A
  // loaded descriptor establishes a live session, not an active turn.
  const raw=await execute('lsof',['-nP','-c','codex','-Fpn'],{timeout:10000});
  const files=openRollouts(raw),db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
- try{return files.map(({path})=>{const t=db.prepare('SELECT id,cwd,name,title,git_branch FROM threads WHERE rollout_path=?').get(path) as any;if(!t)throw new Error('A live Codex session has no metadata');return {id:t.id,provider:'codex' as const,cwd:t.cwd,title:String(t.name||t.title||'Codex session').split('\n')[0].slice(0,160),branch:t.git_branch||'',status:'loaded' as const,source:'Live Codex process; turn activity not exposed'};});}finally{db.close();}
+ try{return files.map(({path})=>loadedCodexSession(db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source FROM threads WHERE rollout_path=?').get(path))).filter((s):s is LiveSession=>!!s);}finally{db.close();}
 }
 export class SessionBridge {
  current:SessionInventory={observedAt:'',expiresAt:'',sessions:[],sources:[],complete:false};polling?:Promise<SessionInventory>;

@@ -4,13 +4,13 @@ import {WebSocketServer} from 'ws';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {codexSessions,claudeSessions,openRollouts,SessionBridge} from '../../../server/workers/session-bridge';
+import {codexSessions,claudeSessions,guardianReview,loadedCodexSession,openRollouts,SessionBridge} from '../../../server/workers/session-bridge';
 const cleanup:(()=>void)[]=[];afterEach(()=>cleanup.splice(0).forEach(f=>f()));
 test('native bridge reads loaded live metadata only and follows pagination without resuming or loading turns',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'office-session-'));const server=createServer(),wss=new WebSocketServer({server});cleanup.push(()=>{wss.clients.forEach(c=>c.terminate());wss.close();server.close();rmSync(dir,{recursive:true,force:true});});const socket=join(dir,'test.sock');await new Promise<void>(resolve=>server.listen(socket,resolve));const methods:string[]=[];
  wss.on('connection',ws=>ws.on('message',raw=>{const m=JSON.parse(raw.toString());methods.push(m.method);if(m.id==null)return;let result:any={};
-  if(m.method==='thread/loaded/list')result=m.params.cursor?{data:['2'],nextCursor:null}:{data:['1'],nextCursor:'next'};
-  if(m.method==='thread/read'){expect(m.params.includeTurns).toBe(false);result={thread:{id:m.params.threadId,cwd:'/test/brain',name:'Task\nprivate body excluded',gitInfo:{branch:'issue-255'},status:{type:m.params.threadId==='1'?'active':'idle',activeFlags:[]}}};}
+  if(m.method==='thread/loaded/list')result=m.params.cursor?{data:['2','g'],nextCursor:null}:{data:['1'],nextCursor:'next'};
+  if(m.method==='thread/read'){expect(m.params.includeTurns).toBe(false);result={thread:{id:m.params.threadId,cwd:'/test/brain',name:'Task\nprivate body excluded',gitInfo:{branch:'issue-255'},status:{type:m.params.threadId==='1'?'active':'idle',activeFlags:[]},...(m.params.threadId==='g'?{threadSource:'guardian_review'}:{})}};}
   ws.send(JSON.stringify({id:m.id,result}));
  }));
  const sessions=await codexSessions(socket);expect(sessions.map(s=>s.status)).toEqual(['active','idle']);expect(sessions[0].title).toBe('Task');expect(methods.every(m=>['initialize','initialized','thread/loaded/list','thread/read'].includes(m))).toBe(true);
@@ -20,6 +20,13 @@ test('Claude includes live interactive and background identities but excludes co
 });
 test('descriptor metadata means loaded, not active; unrelated and historical paths are ignored',()=>{
  expect(openRollouts('p5\nn/tmp/unrelated.jsonl\nn/Users/test/.codex/sessions/2026/rollout.jsonl')).toEqual([{pid:5,path:'/Users/test/.codex/sessions/2026/rollout.jsonl'}]);
+});
+test('loaded Guardian approval reviewers are not checkout identities; other loaded sessions and missing metadata keep failing closed',()=>{
+ expect(loadedCodexSession({id:'g',cwd:'/brain',title:'Guardian review',thread_source:'guardian_review'})).toBeNull();
+ expect(loadedCodexSession({id:'old',cwd:'/brain',title:'Guardian review',thread_source:'subagent',source:'{"subagent":{"other":"guardian"}}'})).toBeNull();
+ expect(guardianReview(undefined,{subagent:{other:'guardian'}})).toBe(true);expect(guardianReview('user','not json')).toBe(false);expect(guardianReview(null,'exec')).toBe(false);
+ expect(loadedCodexSession({id:'u',cwd:'/brain',name:'Database guidance\nbody',git_branch:'codex/261',thread_source:'user'})).toMatchObject({id:'u',title:'Database guidance',branch:'codex/261',status:'loaded'});
+ expect(()=>loadedCodexSession(undefined)).toThrow();
 });
 test('missing provider visibility fails closed, excludes the current worker and maps outside worktrees by Git identity',async()=>{
  const store:any={project:{id:'brain',repo:'/brain'},state:{workLog:[{status:'running',sessionId:'self',id:'s',provider:'codex',requestId:'review',ticket:'GH-255',task:'Investigating'}]}};
