@@ -1,6 +1,7 @@
 import { handsOff } from '../delivery/harness/scope';
 import { admitReadyCards } from '../delivery/intake/admission';
 import { resumeParked } from '../delivery/parking/resume';
+import { retireBacklogged } from '../delivery/parking/retire-backlogged';
 import { CEC } from '../office/config';
 import { noticeState, queueMergeNotice } from '../conversations/notifications';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
@@ -94,6 +95,7 @@ export async function poll(this: Coordinator, now = new Date()) {
             await delivery.discover(assigned);
             if (handsOff(this.store)) {
                 resumeParked(this.store, this.state.jobs!, assigned, this.pickup, this.dependencyStores(), now);
+                retireBacklogged(this.store, this.state.jobs!, assigned);
                 admitReadyCards(this, delivery, assigned, now);
             }
             await delivery.refreshDependencies();
