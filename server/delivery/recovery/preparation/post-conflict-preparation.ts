@@ -1,3 +1,4 @@
+import {harnessDelivers} from '../../harness/scope';
 import {retainedConflictChain,verifyConflictChainGit} from '../../repairs/conflict-chain';
 import {initialDraftConflictAnchor,verifyInitialDraftConflictDelta} from './published-draft-conflict';
 import {resolve,relative,isAbsolute,sep} from 'node:path';
@@ -169,6 +170,8 @@ export async function reconcileCompletedConflictDraft(delivery:GitHubDelivery,ke
 export async function routeReadyPostConflictPublication(delivery:GitHubDelivery,job:TicketJob,published:StageResult){
  if(job.stage!=='draft'||published.outcome!=='passed'||published.commit!==job.head||published.prId!==job.pr)return false;
  if(job.repairReason!=='conflicts')return false;
+ // A hands-off conflict refresh has no conflict-readback chain; Sam's current-head review follows preparation.
+ if(harnessDelivers(delivery.store,job))return false;
  const pr=await delivery.verifyPR(job,true);
  if(pr.draft){await verifyInitialDraftConflictPreparation(delivery,job,true);return false;}
  if(pr.state!=='open'||pr.merged_at||pr.head.sha!==job.head||pr.head.ref!==job.branch||pr.base.ref!==delivery.store.project.target)throw Error('Ready conflict publication identity changed');

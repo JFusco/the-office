@@ -19,9 +19,10 @@ test('removes the job-owned worktree, local branch and remote branch once, with 
     expect(await removeCandidate(f.store, f.execute as any, job, guard)).toEqual({ worktree: false, local: false, remote: false });
     expect(f.state.calls.filter(c => c.startsWith('git push origin :refs/heads/'))).toHaveLength(1);
 });
-test('an adopted PR branch, another issue\'s branch or a worktree outside the worktrees folder is skipped untouched', async () => {
+test('a candidate the Office did not create, another issue\'s branch or a worktree outside the worktrees folder is skipped untouched', async () => {
     const cases: [string, (x: ReturnType<typeof owned>) => void][] = [
-        ['adopted existing PR', x => { x.job.existingPR = true; }],
+        ['did not create', x => { delete x.job.candidateBase; }],
+        ['not the branch created', x => { x.job.branch = 'codex/5-native-run'; x.f.state.localBranches.add('codex/5-native-run'); }],
         ["not this issue's Office branch", x => { x.job.branch = 'feature/human-work'; x.f.state.localBranches.add('feature/human-work'); }],
         ['outside', x => { const outside = resolve(x.f.root, 'elsewhere');mkdirSync(outside, { recursive: true });x.job.worktree = outside; }],
     ];
@@ -30,6 +31,10 @@ test('an adopted PR branch, another issue\'s branch or a worktree outside the wo
         const result = await removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard);
         expect(result.skipped).toContain(reason);expect(x.f.state.localBranches.has(x.job.branch)).toBe(true);expect(x.f.state.calls.some(c => /worktree remove|branch -D|push origin :/.test(c))).toBe(false);
     }
+});
+test('an Office-created candidate whose own PR discovery marked existingPR is still removed', async () => {
+    const { f, job, guard } = owned();job.existingPR = true;
+    expect(await removeCandidate(f.store, f.execute as any, job, guard, HEAD)).toEqual({ worktree: true, local: true, remote: true });
 });
 test('uncommitted work, a changed branch, an open PR from or into it, a later tip or a pause preserve everything', async () => {
     const cases: [string, (x: ReturnType<typeof owned>) => void, string?][] = [

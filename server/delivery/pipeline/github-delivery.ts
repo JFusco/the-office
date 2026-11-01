@@ -11,7 +11,7 @@ import { runHarnessStage } from '../harness/run-harness-stage';
 import { createCandidate } from '../candidate/create-candidate';
 import { moveLane } from '../board/move-lane';
 import { assertMayMutate } from '../harness/guards';
-import { BOARD_RULE, DECISION_RULE, implementInstruction } from '../harness/stage-instructions';
+import { BOARD_RULE, DECISION_RULE, conflictRefreshInstruction, implementInstruction } from '../harness/stage-instructions';
 import { REPAIR_DIAGNOSIS, verifyRepairCandidate } from '../repairs/delivery-repairs';
 import { amendmentIssueSha256, requireSourceAmendmentAcceptance } from '../recovery/source-amendment/source-amendment';
 import { reconcileNativeDelivery } from '../../maintenance/brain/brain-delivery-readback';
@@ -139,6 +139,8 @@ export class GitHubDelivery {
                 if (current.state !== 'open' || current.head.sha !== expectedRemote || current.head.ref !== job.branch)
                     throw new Error('Published repair identity or draft state changed; reconcile before source work');
             }
+            if (harnessDelivers(this.store, job) && job.stage === 'update-base')
+                await moveLane(this.store, this.execute, job, 'In progress', () => assertMayMutate(this.store, this.jobs, job, job.head));
             if (job.stage === 'draft' && job.approach && !job.sourceAmendment) {
                 const next = nextJobStage({ ...job, stage: 'validate' });
                 if (next !== 'draft') {
@@ -212,6 +214,8 @@ export class GitHubDelivery {
             }
             if (harnessDelivers(this.store, job) && job.stage === 'implement' && !technicalPhase)
                 instructions = implementInstruction(project, job, issue.number, root);
+            if (harnessDelivers(this.store, job) && job.stage === 'update-base' && job.repairReason === 'conflicts' && job.pr && !job.repairCycle)
+                instructions = conflictRefreshInstruction(project, job, root);
             instructions += `\n${scopeRepairResumeInstruction(this.store,job)}`;
             // The exceptional prepare-pr worker still owns its retarget/promotion steps.
             if (handsOff(this.store))

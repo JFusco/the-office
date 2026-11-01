@@ -1,5 +1,6 @@
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
+import { refreshConflicted } from '../repairs/refresh-conflicted';
 import { deliveryInputSha256 } from '../../github/github-context';
 import { queueMergeNotice } from '../../conversations/notifications';
 import type { GitHubDelivery } from './github-delivery';
@@ -61,6 +62,8 @@ export async function observe(this: GitHubDelivery) {
                 job.detail = 'Merge attempt has not been confirmed; Morgan must reconcile before any further write.';
                 continue;
             }
+            if (refreshConflicted(this.store, job, p))
+                continue;
             if(job.stage==='merge'&&['blocked','interrupted','watching'].includes(job.status)&&!job.mergeAttempt){await resumeReviewedMerge(this,job,p);continue;}
             if (p.state !== 'open') {
                 job.status = 'blocked';
