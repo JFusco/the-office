@@ -1,7 +1,10 @@
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
 afterEach(cleanupFakes);
+import { existsSync } from 'node:fs';
 import { harnessCloseout } from '../../../../server/delivery/closeout/closeout';
+import { retryCandidateCleanup } from '../../../../server/delivery/candidate/retry-candidate-cleanup';
+import { syncOutbox, openActions } from '../../../../server/conversations/outbox';
 
 const MERGE = 'f'.repeat(40);
 function merged() {
@@ -40,4 +43,18 @@ test('a completed CI repair chain stands in for the failed original merge run', 
     const result = await harnessCloseout(f.delivery, job, f.artifactRoot(job));
     expect(result.outcome).toBe('passed');
     expect(f.state.comments[0].body).toContain('repair GH-9');
+});
+test('closeout removes the merged candidate; a dirty candidate never holds closeout and is retried by the poll', async () => {
+    const { f, job } = merged();
+    f.state.localBranches.add(job.branch);f.state.remote[job.branch] = HEAD;f.state.local.head = HEAD;
+    await harnessCloseout(f.delivery, job, f.artifactRoot(job));
+    expect(job.candidateCleanup?.status).toBe('done');expect(existsSync(job.worktree)).toBe(false);expect(f.state.localBranches.has(job.branch)).toBe(false);expect(f.state.remote[job.branch]).toBeFalsy();
+    const dirty = merged();dirty.f.state.local.head = HEAD;dirty.f.state.local.dirty = true;
+    await expect(harnessCloseout(dirty.f.delivery, dirty.job, dirty.f.artifactRoot(dirty.job))).resolves.toMatchObject({ outcome: 'passed' });
+    expect(dirty.job.candidateCleanup).toMatchObject({ status: 'pending' });expect(existsSync(dirty.job.worktree)).toBe(true);
+    syncOutbox(dirty.f.store.state);expect(openActions(dirty.f.store.state).some(a => a.id === `candidate-cleanup:${dirty.job.id}`)).toBe(true);
+    dirty.job.status = 'completed';dirty.f.state.local.dirty = false;
+    await retryCandidateCleanup(dirty.f.store, dirty.f.execute as any, dirty.f.delivery.jobs);
+    expect(dirty.job.candidateCleanup?.status).toBe('done');expect(existsSync(dirty.job.worktree)).toBe(false);
+    syncOutbox(dirty.f.store.state);expect(openActions(dirty.f.store.state).some(a => a.id === `candidate-cleanup:${dirty.job.id}`)).toBe(false);
 });

@@ -30,6 +30,7 @@ export function fakeGitHub(issueNumber = 5) {
         prs: [] as any[],
         remote: {} as Record<string, string>,
         local: { head: BASE, branch: '', dirty: false },
+        localBranches: new Set<string>(),
         comments: [] as any[],
         runs: [] as any[],
         lanes: [{ id: 'ready', name: 'Ready' }, { id: 'progress', name: 'In progress' }, { id: 'review', name: 'In review' }, { id: 'done', name: 'Done' }, { id: 'block', name: 'Block' }, { id: 'backlog', name: 'Backlog' }],
@@ -50,10 +51,14 @@ export function fakeGitHub(issueNumber = 5) {
             if (cmd === 'remote') return `https://github.com/${REPOSITORY}.git\n`;
             if (cmd === 'fetch') return '';
             if (cmd === 'rev-parse') return rest[0] === 'HEAD' ? state.local.head : BASE;
-            if (cmd === 'branch') return state.local.branch;
+            if (cmd === 'branch') { if (rest[0] === '-D') { state.localBranches.delete(rest[1]); return ''; } return state.local.branch; }
             if (cmd === 'status') return state.local.dirty ? ' M file.ts' : '';
-            if (cmd === 'for-each-ref') return '';
-            if (cmd === 'worktree') { mkdirSync(rest[3], { recursive: true }); Object.assign(state.local, { head: rest[4], branch: rest[2], dirty: false }); return ''; }
+            if (cmd === 'for-each-ref') return state.localBranches.has(rest[1].replace('refs/heads/', '')) ? state.local.head : '';
+            if (cmd === 'worktree') {
+                if (rest[0] === 'remove') { rmSync(rest[2], { recursive: true, force: true }); return ''; }
+                if (rest[0] === 'prune') return '';
+                mkdirSync(rest[3], { recursive: true }); state.localBranches.add(rest[2]); Object.assign(state.local, { head: rest[4], branch: rest[2], dirty: false }); return '';
+            }
             if (cmd === 'merge-base') { if (state.notAncestor) throw new Error('not an ancestor'); return ''; }
             if (cmd === 'ls-remote') { const ref = rest[2].replace('refs/heads/', ''); return state.remote[ref] ? `${state.remote[ref]}\trefs/heads/${ref}\n` : ''; }
             if (cmd === 'push') { const [sha, ref] = rest[1].split(':'); const branch = ref.replace('refs/heads/', ''); state.remote[branch] = sha; for (const pr of state.prs) if (pr.head.ref === branch && pr.state === 'open') pr.head.sha = sha; return ''; }
@@ -62,7 +67,7 @@ export function fakeGitHub(issueNumber = 5) {
         if (program === 'pnpm') { if (state.lintFails) throw new Error('lint:pr failed'); return ''; }
         if (program === 'gh' && args[0] === 'pr') {
             const flag = (name: string) => args[args.indexOf(name) + 1];
-            if (args[1] === 'list') return JSON.stringify(state.prs.filter(pr => pr.head.ref === flag('--head') && (flag('--state') === 'all' || pr.state === flag('--state'))).map(prJson));
+            if (args[1] === 'list') return JSON.stringify(state.prs.filter(pr => (args.includes('--base') ? pr.base.ref === flag('--base') : pr.head.ref === flag('--head')) && (flag('--state') === 'all' || pr.state === flag('--state'))).map(prJson));
             if (args[1] === 'create') {
                 const number = 200 + state.prs.length, branch = flag('--head');
                 state.prs.push({ number, html_url: `https://github.com/${REPOSITORY}/pull/${number}`, state: 'open', draft: true, title: flag('--title'), body: options.input, head: { sha: state.remote[branch], ref: branch }, base: { ref: flag('--base'), sha: BASE, repo: { full_name: REPOSITORY } }, merged_at: null, merge_commit_sha: null, updated_at: '2026-10-31T12:00:00Z' });
