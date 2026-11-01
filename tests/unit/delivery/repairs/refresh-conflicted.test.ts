@@ -92,3 +92,38 @@ test('the observer refreshes the conflicting job, which reaches the guarded merg
     expect(job.steps.some(s => s.stage === 'conflict-readback')).toBe(false);
     expect(f.state.calls.some(c => c.includes('--force') || c.includes('/merge --method PUT'))).toBe(false);
 });
+/** Refresh once, then a sibling merges while Sam reviews the refreshed head. */
+async function conflictDuringReview(priorBaseUpdates = 0) {
+    const { f, job, pr } = conflicted();
+    for (let i = 0; i < priorBaseUpdates; i++) job.steps.push({ stage: 'update-base', result: result(job, BASE) });
+    const root = f.artifactRoot(job), checks = resolve(root, 'checks.log'), review = resolve(root, 'lead.json');
+    writeFileSync(checks, 'pass');writeFileSync(review, '{}');
+    f.engine.agents.run = (async (role: string) => {
+        if (role === 'developer') {
+            f.state.local.head = MERGED;
+            return result(job, MERGED, { evidence: [{ id: 'checks', kind: 'checks', summary: 'Required checks', path: checks, commit: MERGED, environment: 'Synthetic', url: '', observedAt: '' }] });
+        }
+        // A sibling merged while Sam reviewed: a conflict-only not-ready assessment.
+        pr.mergeable = false;
+        return result(job, MERGED, { outcome: 'blocked', blocker: 'Conflicts with main', findings: [{ id: 'merge-conflicts', summary: 'Conflicts', expected: '', actual: '', status: 'open', attempts: 0 }], evidence: [{ id: 'lead', kind: 'review', summary: 'Conflicting', path: review, commit: MERGED, environment: 'Synthetic', url: '', observedAt: '' }] });
+    }) as any;
+    await f.delivery.observe();
+    await f.delivery.step(job);
+    pr.mergeable = true;
+    for (const stage of ['draft', 'prepare-pr', 'lead-pr']) { expect(job.stage).toBe(stage);await f.delivery.step(job); }
+    return { f, job };
+}
+test('a conflict found during Sam\'s post-refresh readiness review refreshes again instead of taking the legacy repair route', async () => {
+    const { f, job } = await conflictDuringReview();
+    expect(job).toMatchObject({ stage: 'lead-pr', status: 'watching', head: MERGED });
+    expect(job.steps.some(s => s.stage === 'conflict-readback')).toBe(false);
+    await f.delivery.observe();
+    expect(job).toMatchObject({ stage: 'update-base', status: 'queued', head: MERGED });
+    expect(job.steps.some(s => s.stage === 'conflict-readback')).toBe(false);
+});
+test('a conflict the refresh cannot take (base-update cap reached) blocks with its reason instead of watching silently', async () => {
+    const { job } = await conflictDuringReview(2);
+    expect(job).toMatchObject({ stage: 'lead-pr', status: 'blocked' });
+    expect(job.detail).toContain('Repeated base changes need Morgan reconciliation');
+    expect(job.steps.some(s => s.stage === 'conflict-readback')).toBe(false);
+});

@@ -23,6 +23,7 @@ import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { hasUncertainEffects, closeoutReceipt } from '../pipeline/github-delivery';
 import { HOLDS } from '../../office/config';
 import { findingsBlock } from '../findings/advisory';
+import { refreshEligible } from '../repairs/refresh-conflicted';
 export async function readinessPolicy(this: GitHubDelivery, head: string) {
     const project = this.store.project;
     const [branch, pages] = await Promise.all([
@@ -150,8 +151,10 @@ export async function finishLeadReview(this: GitHubDelivery, job: TicketJob, res
         job.stage = 'merge';
     job.detail = `Sam: ${shortSummary(result.summary)}${result.blocker ? ` · ${shortSummary(result.blocker)}` : ''} ${job.status === 'queued' ? 'Office merge queued; no approval needed.' : 'Watching for readiness or dependency changes.'}`;
     this.store.emit('pr-review-finished', `${job.key}: ${job.detail}`, 'lead', job.key);
-    if (!ready && job.worktree && job.branch && p.mergeable === false && conflictOnlyAssessment(result))
-        await this.queueConflictRepair(job.key);
+    if (!ready && job.worktree && job.branch && p.mergeable === false && conflictOnlyAssessment(result)) {
+        // A refreshable hands-off job stays watching; the PR observer refreshes it without leaving harness delivery.
+        if (!refreshEligible(this.store, job, p)) await this.queueConflictRepair(job.key);
+    }
     else if (!ready)
         await this.queueCIRepair(job);
 }
