@@ -8,6 +8,7 @@ import { HOLDS } from '../../office/config';
 import { handsOff, harnessDelivers } from '../harness/scope';
 import { findingsBlock } from '../findings/advisory';
 import { runHarnessStage } from '../harness/run-harness-stage';
+import { dependabotReviewGuidance } from '../intake/dependabot/review-guidance';
 import { createCandidate } from '../candidate/create-candidate';
 import { moveLane } from '../board/move-lane';
 import { assertMayMutate } from '../harness/guards';
@@ -217,6 +218,7 @@ export class GitHubDelivery {
             if (harnessDelivers(this.store, job) && job.stage === 'update-base' && job.repairReason === 'conflicts' && job.pr && !job.repairCycle)
                 instructions = conflictRefreshInstruction(project, job, root);
             instructions += `\n${scopeRepairResumeInstruction(this.store,job)}`;
+            instructions += `\n${dependabotReviewGuidance(this.store, job)}`;
             // The exceptional prepare-pr worker still owns its retarget/promotion steps.
             if (handsOff(this.store))
                 instructions += `\n${job.stage === 'prepare-pr' || !harnessDelivers(this.store, job) ? '' : BOARD_RULE}\n${DECISION_RULE}`;

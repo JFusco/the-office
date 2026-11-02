@@ -39,3 +39,18 @@ test('a queued manual Start is admitted deterministically by pump without a work
     expect(c.state.jobs).toMatchObject([{ key: 'GH-5', stage: 'implement' }]);
     expect(modelCalls()).toBe(0);
 });
+test('a Dependabot PR moved to Ready is adopted on the poll, then routed to Sam on the next one', async () => {
+    const f = fakeGitHub(), { c, modelCalls } = coordinator(f), repo = 'JFusco/cms-field-vocabulary';
+    c.readAssignments = async () => [];
+    f.state.cards = [{ id: 'pr-card', kind: 'PullRequest', number: 121, status: 'ready' }];
+    Object.assign(f.state.issue, { body: '', assignees: [] });
+    f.state.prs.push({ number: 121, html_url: `https://github.com/${repo}/pull/121`, state: 'open', draft: false, user: { login: 'dependabot[bot]' }, title: 'chore(deps-dev): bump eslint', body: 'Updates `eslint`', head: { sha: HEAD, ref: 'dependabot/npm_and_yarn/eslint', repo: { full_name: repo } }, base: { ref: 'main', sha: BASE, repo: { full_name: repo } } });
+    f.state.prFiles[121] = ['package.json', 'pnpm-lock.yaml'];f.state.prCommits[121] = ['dependabot[bot]'];
+    await c.poll(new Date('2026-10-31T12:01:00Z'));
+    expect(c.state.listener.error).toBe('');
+    expect(c.state.adoptions).toMatchObject([{ pr: 121, issue: 5, status: 'adopted' }]);
+    c.readAssignments = async () => [{ ...ready, pickupStatus: 'In review' }];
+    await c.poll(new Date('2026-10-31T12:02:00Z'));
+    expect(c.state.jobs).toMatchObject([{ key: 'GH-5', pr: 121, stage: 'prepare-pr', existingPR: true }]);
+    expect(modelCalls()).toBe(0);
+});

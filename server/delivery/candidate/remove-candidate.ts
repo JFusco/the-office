@@ -1,11 +1,14 @@
 import { existsSync } from 'node:fs';
 import { basename, dirname, resolve, sep } from 'node:path';
 import { harnessEffect } from '../harness/effect';
+import { interruptedRemoval } from './interrupted-removal';
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
 type Execute = typeof command;
+/** Removing a worktree also deletes its ignored dependencies, which can take minutes. */
+const REMOVE_TIMEOUT_MS = 10 * 60 * 1000;
 export interface CandidateRemoval { worktree: boolean; local: boolean; remote: boolean; skipped?: string }
 
 /** Only a candidate the Office created for this issue is removable: never an adopted PR branch or another checkout. */
@@ -42,11 +45,15 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
     const remoteSha = async () => (await git(['ls-remote', '--heads', 'origin', `refs/heads/${branch}`])).split(/\s/)[0] || '';
     // Every preservation check reads before the first write, so a refusal leaves the candidate whole.
     const present = !!job.worktree && existsSync(job.worktree);
+    let interrupted = false;
     if (present) {
         const read = (...args: string[]) => execute('git', args, { cwd: job.worktree, timeout: 30000, readOnly: true }).then(out => out.trim());
         if (await read('branch', '--show-current') !== branch)
             throw new Error(`${job.worktree} is no longer on ${branch}; preserved`);
-        if (await read('status', '--porcelain=v1', '--untracked-files=all'))
+        // Untrimmed: porcelain status columns are significant.
+        const status = await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: job.worktree, timeout: 30000, readOnly: true });
+        interrupted = interruptedRemoval(status);
+        if (status.trim() && !interrupted)
             throw new Error(`${job.worktree} has uncommitted changes; preserved`);
         atTip(await read('rev-parse', 'HEAD'), job.worktree);
     }
@@ -61,7 +68,11 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
     }
     if (present) {
         guard();
-        await git(['worktree', 'remove', '--', job.worktree], true);
+        // Re-read just before forcing: anything written since the first read is real work, and git would refuse it unforced.
+        if (interrupted && !interruptedRemoval(await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: job.worktree, timeout: 30000, readOnly: true })))
+            throw new Error(`${job.worktree} changed during cleanup; preserved`);
+        // Only an earlier interrupted removal is forced: every remaining change is a deletion of committed content.
+        await execute('git', ['worktree', 'remove', ...(interrupted ? ['--force'] : []), '--', job.worktree], { cwd: repo, timeout: REMOVE_TIMEOUT_MS });
         if (existsSync(job.worktree))
             throw new Error(`${job.worktree} remains after removal`);
         removed.worktree = true;

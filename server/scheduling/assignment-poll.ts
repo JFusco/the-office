@@ -3,6 +3,7 @@ import { admitReadyCards } from '../delivery/intake/admission';
 import { resumeParked } from '../delivery/parking/resume';
 import { retireBacklogged } from '../delivery/parking/retire-backlogged';
 import { retryCandidateCleanup } from '../delivery/candidate/retry-candidate-cleanup';
+import { adoptDependabot } from '../delivery/intake/dependabot/adopt';
 import { CEC } from '../office/config';
 import { noticeState, queueMergeNotice } from '../conversations/notifications';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
@@ -93,6 +94,8 @@ export async function poll(this: Coordinator, now = new Date()) {
         }
         if (this.store.project.provider === 'github') {
             const delivery = new GitHubDelivery(this.store, this.engine, this.execute);
+            // Adoption creates the tracking issue; discovery routes the linked PR once the issue is assigned.
+            await adoptDependabot(this.store, this.execute, this.state.jobs ??= [], this.pickup);
             await delivery.discover(assigned);
             if (handsOff(this.store)) {
                 resumeParked(this.store, this.state.jobs!, assigned, this.pickup, this.dependencyStores(), now);

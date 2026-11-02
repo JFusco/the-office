@@ -282,7 +282,7 @@ test('CEC defaults To Do and queues only after board and ownership read-back', a
     expect(store.state.deliveryQueue![0].intakeStatus).toBe('To Do');
 });
 test('waiting for merge Actions releases the desks for the next project ticket', async () => {
-    const capacity = officeCapacity(), a = setup('brain', capacity), b = setup('cms-field-vocabulary', capacity);
+    const capacity = officeCapacity(), a = setup('brain', capacity), b = setup('cms-field-vocabulary', capacity, noOpenPRs);
     const offices = Object.create(Offices.prototype) as Offices;
     offices.capacity = capacity;
     initializeLanes(offices);

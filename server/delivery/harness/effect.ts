@@ -26,7 +26,7 @@ function activeEffectId(store: Store, base: string): string {
 }
 
 /** One durable write with read-back. Uncertain attempts are reconciled by reading, never resent. */
-export async function harnessEffect<R>(store: Store, job: TicketJob, effect: HarnessEffect<R>): Promise<R> {
+export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>, effect: HarnessEffect<R>): Promise<R> {
     const id = activeEffectId(store, `harness:${job.id}:${effect.key}`);
     const effects = new Effects(store);
     const prior = store.getEffect<R>(id);
