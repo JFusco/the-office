@@ -27,7 +27,7 @@ export async function findTrackingIssue(store: Store, execute: Execute, pr: numb
 
 export function trackingIssueBody(pr: DependabotPR): string {
     return [
-        '## Summary', '', `Dependabot opened #${pr.number} (\`${pr.title}\`), a dependency-only update, and its card was moved to the pickup lane.`, '',
+        '## Summary', '', `Dependabot opened #${pr.number} (\`${pr.title}\`), a dependency update, and its card was moved to the pickup lane.`, '',
         '## Details', '', `The Office adopts the existing PR instead of developing a duplicate: Sam reviews its exact head, and the guarded merge runs once its required checks pass. Merging #${pr.number} closes this issue.`, '',
         trackingMarker(pr.number), '',
     ].join('\n');

@@ -16,7 +16,7 @@ export function collectCTOFacts(entries: OfficeEntry[], collectedAt: string) {
             latestCompletedMaintenance: store.state.maintenance?.runs.filter(run => run.status === 'completed').at(-1)?.id || '',
             operationalInformation: 'Time, assignment and general health gaps are operational context; only goal-specific functional impediments belong in goal blockers.',
             health: { workers: store.state.workLog?.filter(work => ['running', 'stopping'].includes(work.status)).map(({ id, role, status, lastHeartbeatAt }) => ({ id, role, status, lastHeartbeatAt })) || [], busy: engine.busy, it: store.state.it?.reports.at(-1) || null },
-            time: { entries: boundedTime(store.state.coordination?.time?.entries || [], collectedAt), pending: store.state.coordination?.time?.publications?.filter(publication => publication.status !== 'verified') || [] },
+            time: { entries: boundedTime(store.state.coordination?.time?.entries || [], collectedAt), pending: store.state.coordination?.time?.publications?.filter(publication => !['verified', 'not-landed'].includes(publication.status)) || [] },
             evidenceGaps: [!(store.project.provider === 'github' ? store.state.github : store.state.azure)?.observedAt ? 'No confirmed provider observation' : '', store.state.coordination?.listener.error || ''].filter(Boolean),
         })) };
 }

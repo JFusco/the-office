@@ -2,8 +2,6 @@ import { cardStatus, projectCards, statusField, type Execute } from '../../board
 import type { Store } from '../../../store/store';
 
 export const DEPENDABOT = 'dependabot[bot]';
-/** A dependency update may change only package manifests and lockfiles. */
-const MANIFEST = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock)$/;
 
 export interface DependabotPR { number: number; title: string; url: string; head: string; body: string }
 
@@ -42,7 +40,10 @@ export async function inPickupLane(store: Store, execute: Execute, pulls: any[],
     return ready;
 }
 
-/** Why this PR is not a dependency-only Dependabot update the Office may adopt, or '' when it is. */
+/**
+ * Why this is not genuinely Dependabot's own PR, or '' when it is. Joe's rule: no project refuses a Dependabot
+ * update for what it changes (npm, GitHub Actions or any other ecosystem); only someone else's commits disqualify it.
+ */
 export async function refusal(store: Store, execute: Execute, p: any): Promise<string> {
     if (p.draft)
         return 'it is a draft';
@@ -52,15 +53,10 @@ export async function refusal(store: Store, execute: Execute, p: any): Promise<s
         return 'it comes from another repository';
     if (p.base?.ref !== store.project.target)
         return `it targets ${p.base?.ref}, not ${store.project.target}`;
-    const files = (await readRepo(store, execute, `pulls/${p.number}/files?per_page=100`, true)).map((f: any) => f.filename as string);
-    if (!files.length)
-        return 'its changed files are unavailable';
-    const other = files.filter((name: string) => !MANIFEST.test(name));
-    if (other.length)
-        return `it changes more than package manifests and lockfiles (${other.slice(0, 5).join(', ')})`;
     const commits = await readRepo(store, execute, `pulls/${p.number}/commits?per_page=100`, true);
     // Author identity alone can be spoofed; Dependabot's commits are also GitHub-verified.
-    const foreign = commits.filter((c: any) => c.author?.login !== DEPENDABOT || c.commit?.verification?.verified !== true);
+    // An author email can be set by anyone; Dependabot's commits are also committed and signed by GitHub itself (web-flow).
+    const foreign = commits.filter((c: any) => c.author?.login !== DEPENDABOT || c.committer?.login !== 'web-flow' || c.commit?.verification?.verified !== true);
     if (!commits.length || foreign.length)
         return `it has commits not authored and verified as Dependabot (${foreign.map((c: any) => String(c.sha).slice(0, 7)).join(', ') || 'none readable'})`;
     return '';

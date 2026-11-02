@@ -90,7 +90,7 @@ export function fakeGitHub(issueNumber = 5) {
             if (path.includes('/pulls?state=open')) return JSON.stringify([state.prs.filter(pr => pr.state === 'open')]);
             const files = path.match(/\/pulls\/(\d+)\/files/), commits = path.match(/\/pulls\/(\d+)\/commits/);
             if (files) return JSON.stringify([(state.prFiles[Number(files[1])] || []).map(filename => ({ filename }))]);
-            if (commits) return JSON.stringify([(state.prCommits[Number(commits[1])] || []).map((login, i) => ({ sha: `${i}`.padStart(40, 'c'), author: { login }, commit: { verification: { verified: login === 'dependabot[bot]' } } }))]);
+            if (commits) return JSON.stringify([(state.prCommits[Number(commits[1])] || []).map((login, i) => ({ sha: `${i}`.padStart(40, 'c'), author: { login }, committer: { login: login === 'dependabot[bot]' ? 'web-flow' : login }, commit: { verification: { verified: login === 'dependabot[bot]' } } }))]);
             if (path.endsWith('/issues') && args.includes('POST')) {
                 const field = (name: string) => args.find((arg, i) => args[i - 1] === '-f' && arg.startsWith(`${name}=`))!.slice(name.length + 1);
                 Object.assign(state.issue, { title: field('title'), body: field('body'), node_id: `issue-node-${issueNumber}`, user: { login: 'JFusco' }, assignees: [{ login: 'JFusco' }] });

@@ -61,9 +61,8 @@ test('the adopted PR runs prepare, Sam\'s exact-head review and reaches the guar
     expect(roles).toEqual(['lead']);
     expect(f.state.cards.find(c => c.kind === 'PullRequest')?.status).toBe('review');
 });
-test('non-dependency changes, foreign commits, drafts, other targets and cards outside Ready are never adopted', async () => {
+test('foreign commits, drafts, other targets and cards outside Ready are never adopted', async () => {
     const cases: [string, (x: ReturnType<typeof dependabot>) => void, string][] = [
-        ['workflow change', x => { x.f.state.prFiles[121].push('.github/workflows/quality.yml'); }, 'more than package manifests'],
         ['human commit', x => { x.f.state.prCommits[121].push('JFusco'); }, 'not authored and verified as Dependabot'],
         ['draft', x => { x.pr.draft = true; }, 'draft'],
         ['other target', x => { x.pr.base.ref = 'release'; }, 'targets release'],
@@ -129,7 +128,7 @@ test('a later non-Dependabot push withdraws the adoption, and a closed PR withdr
     await adopt();
     expect(f.store.state.coordination!.adoptions).toMatchObject([{ status: 'blocked' }]);
     expect(f.store.state.coordination!.adoptions![0].detail).toContain('no longer qualifies');
-    const refused = dependabot();refused.f.state.prFiles[121].push('src/index.ts');
+    const refused = dependabot();refused.f.state.prCommits[121].push('JFusco');
     await refused.adopt();
     refused.pr.state = 'closed';
     await refused.adopt();
@@ -148,4 +147,22 @@ test('a tracking issue is never admitted as new development', async () => {
     const outcome = admit({ store: f.store, state: f.store.state.coordination!, pickup: { enabled: true, status: 'Ready' }, dependencyStores: () => ({}) as any }, f.delivery, { key: 'GH-5', workRequested: 'automatic', prerequisites: [] }, new Date());
     expect(outcome).toMatchObject({ status: 'held' });
     expect(f.delivery.jobs).toEqual([]);
+});
+
+test('a Dependabot update of any ecosystem is adopted, including GitHub Actions workflow changes', async () => {
+    const { f, adopt } = dependabot({ title: 'ci(deps): bump actions/checkout from 4 to 5', head: { sha: HEAD, ref: 'dependabot/github_actions/actions/checkout-5', repo: { full_name: REPO } } });
+    f.state.prFiles[121] = ['.github/workflows/quality.yml', '.github/workflows/commitlint.yml'];
+    await adopt();
+    expect(f.store.state.coordination!.adoptions).toMatchObject([{ status: 'adopted', issue: 5 }]);
+});
+test('a commit claiming Dependabot as author but committed by someone else is refused', async () => {
+    const x = dependabot();
+    const execute = x.f.execute;
+    (x.f as any).execute = async (program: string, args: string[], options: any) => {
+        const out = await execute(program, args, options);
+        return /\/pulls\/121\/commits/.test(args[1] || '') ? JSON.stringify(JSON.parse(out).map((page: any[]) => page.map(c => ({ ...c, committer: { login: 'JFusco' } })))) : out;
+    };
+    await adoptDependabot(x.f.store, (x.f as any).execute, x.f.delivery.jobs, x.f.store.state.coordination!.pickup!);
+    expect(x.f.store.state.coordination!.adoptions).toMatchObject([{ status: 'refused' }]);
+    expect(x.f.state.issue.body).toBe('');
 });
