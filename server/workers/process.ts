@@ -1,4 +1,4 @@
-import { basename } from 'node:path';
+import { liveReach } from './live-reach';
 import { spawn } from 'node:child_process';
 import { sanitize } from '../office/security';
 export function workerFailure(program: string, code: number | null, stdout: string, stderr: string) {
@@ -33,8 +33,6 @@ export function processGroupAlive(pid: number): boolean {
     try { process.kill(-pid, 0); return true; }
     catch (error) { return (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
 }
-/** Provider CLIs that read or write live GitHub, Jira and Azure state. */
-const LIVE_PROVIDERS = new Set(['gh', 'twg', 'az']);
 export async function command(program: string, args: string[], options: {
     cwd?: string;
     timeout?: number;
@@ -49,9 +47,10 @@ export async function command(program: string, args: string[], options: {
 } = {}) {
     if (options.signal?.aborted)
         throw new CommandFailure('Worker cancelled before dispatch', 'cancelled', false);
-    // Unit tests inject fake runners; a test that reaches this real runner must never touch live providers.
-    if (process.env.VITEST && LIVE_PROVIDERS.has(basename(program)))
-        throw new CommandFailure(`Live provider CLI "${program}" is blocked under unit tests; inject a fake command runner`, 'cancelled', false);
+    // Unit tests inject fake runners; a test that reaches this real runner must never touch live services.
+    const live = process.env.VITEST ? liveReach(program, args, options.cwd) : '';
+    if (live)
+        throw new CommandFailure(`${live} is blocked under unit tests; inject a fake command runner`, 'cancelled', false);
     return new Promise<string>((resolve, reject) => {
         const child = spawn(program, args, { cwd: options.cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
         let out = '', err = '', line = '', failure: Error | undefined, killTimer: ReturnType<typeof setTimeout> | undefined;

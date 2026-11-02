@@ -59,6 +59,7 @@ export function fakeGitHub(issueNumber = 5) {
             if (cmd === 'worktree') {
                 if (rest[0] === 'remove') { rmSync(rest.at(-1)!, { recursive: true, force: true }); return ''; }
                 if (rest[0] === 'prune') return '';
+                if (rest[0] === 'list') return '';
                 mkdirSync(rest[3], { recursive: true }); state.localBranches.add(rest[2]); Object.assign(state.local, { head: rest[4], branch: rest[2], dirty: false }); return '';
             }
             if (cmd === 'merge-base') { if (state.notAncestor) throw new Error('not an ancestor'); return ''; }
@@ -66,6 +67,7 @@ export function fakeGitHub(issueNumber = 5) {
             if (cmd === 'push') { const [sha, ref] = rest[1].split(':'); const branch = ref.replace('refs/heads/', ''); state.remote[branch] = sha; for (const pr of state.prs) if (pr.head.ref === branch && pr.state === 'open') pr.head.sha = sha; return ''; }
             if (cmd === 'log') return 'fix(sources): restore release scans\n';
         }
+        if (program === 'rm') return '';
         if (program === 'pnpm') { if (state.lintFails) throw new Error('lint:pr failed'); return ''; }
         if (program === 'gh' && args[0] === 'pr') {
             const flag = (name: string) => args[args.indexOf(name) + 1];
