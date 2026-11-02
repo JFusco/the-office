@@ -13,7 +13,8 @@ export interface TimePublication {
     id: string;
     provider: 'github' | 'jira';
     key: string;
-    status: 'prepared' | 'dispatching' | 'verified' | 'uncertain';
+    /** `not-landed`: a GitHub hours write read back as never applied; terminal, superseded by a fresh write. */
+    status: 'prepared' | 'dispatching' | 'verified' | 'uncertain' | 'not-landed';
     projectId: string;
     itemId: string;
     fieldId: string;

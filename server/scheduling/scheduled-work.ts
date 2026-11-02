@@ -12,6 +12,7 @@ import { deferredPickup } from '../../src/work/pickup-state';
 import { ROLE_NAMES, workKey, type WorkKind, type WorkEligibility } from '../../src/shared';
 import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../delivery/pipeline/dependencies';
 import { executeRequest, deterministicActions } from './requests';
+import { dueReadback, readBackTime } from '../time/time-readback';
 import { TimeLedger } from '../time/time-ledger';
 import { easternDay } from '../office/clock';
 import { withAmendmentOwnership } from '../delivery/recovery/source-amendment/source-amendment';
@@ -57,6 +58,9 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const pendingTime = c.time?.enabled && publishingEnabled && c.time.entries.find(value => value.status === 'pending' && (store.project.provider === 'github' || value.date < easternDay(now)));
         if (pendingTime)
             add('reconciliation', { id: `time:${pendingTime.id}`, status: 'queued' }, 'time-publication', pendingTime.date, 3, () => new TimeLedger(store).sync());
+        const readback = !pendingTime && publishingEnabled && dueReadback(store, now);
+        if (readback)
+            add('reconciliation', { id: `time-readback:${readback.id}`, status: 'queued' }, 'time-readback', readback.createdAt, 3, () => readBackTime(store, readback.id));
         return withActiveClaims(store, lane, items);
     }
     if (lane !== 'delivery')

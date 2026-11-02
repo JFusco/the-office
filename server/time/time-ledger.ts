@@ -68,7 +68,7 @@ export class TimeLedger {
             const current = item.fieldValues.nodes.find((n: any) => n.field?.id === fieldId)?.number ?? null;
             const baselines = ledger.baselines ??= {}, saved = baselines[entry.key];
             if (reconcileKey) {
-                const publication = ledger.publications?.find(publication => publication.key === entry.key && publication.status === 'uncertain');
+                const publication = ledger.publications?.filter(publication => publication.key === entry.key && publication.status === 'uncertain').at(-1);
                 if (!publication || publication.itemId !== item.id || publication.fieldId !== fieldId)
                     throw new Error('Frozen publication identity is missing; legacy uncertainty requires explicit reconciliation');
                 if (current !== publication.intendedValue)

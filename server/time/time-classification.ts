@@ -40,7 +40,7 @@ export function correctRecoveryClassification(store: Store, request: HarnessRequ
     const ledger = timeLedger(store), keys = new Set(rows.map(row => row.ticket));
     if (!ledger.enabled) throw new Error('Enable time accounting before correction');
     if (ledger.entries.some(entry => keys.has(entry.key) && entry.status === 'uncertain')) throw new Error('Reconcile uncertain time entries before correction');
-    if ((ledger.publications || []).some(publication => keys.has(publication.key) && publication.status !== 'verified')) throw new Error('Reconcile pending or uncertain time publications before correction');
+    if ((ledger.publications || []).some(publication => keys.has(publication.key) && !['verified', 'not-landed'].includes(publication.status))) throw new Error('Reconcile pending or uncertain time publications before correction');
     const priorPublications = JSON.stringify(ledger.publications || []), prior = structuredClone(rows), priorEntries = structuredClone(ledger.entries.filter(entry => keys.has(entry.key))), at = store.clock.now().toISOString();
     const root = resolve(store.dataRoot, 'accounting-corrections'); mkdirSync(root, { recursive: true, mode: 0o700 });
     if (lstatSync(root).isSymbolicLink() || !realpathSync(root).startsWith(realpathSync(store.dataRoot) + sep)) throw new Error('Classification audit root is not owned');
