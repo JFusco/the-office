@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs';
+import { lstatSync } from 'node:fs';
+import { moveAside, moveBack, purgeRemoved } from './move-aside';
 import { basename, dirname, resolve, sep } from 'node:path';
 import { harnessEffect } from '../harness/effect';
 import { interruptedRemoval } from './interrupted-removal';
@@ -7,8 +9,6 @@ import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
 type Execute = typeof command;
-/** Removing a worktree also deletes its ignored dependencies, which can take minutes. */
-const REMOVE_TIMEOUT_MS = 10 * 60 * 1000;
 export interface CandidateRemoval { worktree: boolean; local: boolean; remote: boolean; skipped?: string }
 
 /** Only a candidate the Office created for this issue is removable: never an adopted PR branch or another checkout. */
@@ -19,8 +19,8 @@ function notOwned(store: Store, job: TicketJob): string {
         return 'the Office did not create this candidate';
     if (!job.branch.startsWith(`codex/${job.key.replace(/^GH-/, '')}-`))
         return `branch ${job.branch || '(none)'} is not this issue's Office branch`;
-    if (job.worktree && !resolve(job.worktree).startsWith(worktrees))
-        return `worktree ${job.worktree} is outside ${worktrees}`;
+    if (job.worktree && resolve(dirname(resolve(job.worktree))) + sep !== worktrees)
+        return `worktree ${job.worktree} is not directly inside ${worktrees}`;
     // Discovery can swap in another PR's branch; the created pair is `codex/<name>` in `<repo>-worktrees/<name>`.
     if (!job.worktree || basename(job.worktree) !== job.branch.slice('codex/'.length))
         return `branch ${job.branch} is not the branch created with worktree ${job.worktree || '(none)'}`;
@@ -68,11 +68,26 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
     }
     if (present) {
         guard();
-        // Re-read just before forcing: anything written since the first read is real work, and git would refuse it unforced.
-        if (interrupted && !interruptedRemoval(await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: job.worktree, timeout: 30000, readOnly: true })))
+        // Re-read just before acting: anything written during the network checks above is real work.
+        const now = await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: job.worktree, timeout: 30000, readOnly: true });
+        if (now.trim() && !(interrupted && interruptedRemoval(now)))
             throw new Error(`${job.worktree} changed during cleanup; preserved`);
-        // Only an earlier interrupted removal is forced: every remaining change is a deletion of committed content.
-        await execute('git', ['worktree', 'remove', ...(interrupted ? ['--force'] : []), '--', job.worktree], { cwd: repo, timeout: REMOVE_TIMEOUT_MS });
+        const registration = (await git(['worktree', 'list', '--porcelain'])).split('\n\n').find(block => block.split('\n')[0] === `worktree ${job.worktree}`) || '';
+        if (/^locked/m.test(registration))
+            throw new Error(`${job.worktree} is locked; preserved`);
+        if (lstatSync(job.worktree).isSymbolicLink() || existsSync(resolve(job.worktree, '.gitmodules')))
+            // Git's own removal handles submodules and linked trees; it refuses anything it would lose.
+            await execute('git', ['worktree', 'remove', ...(interrupted ? ['--force'] : []), '--', job.worktree], { cwd: repo, timeout: 10 * 60 * 1000 });
+        else {
+            // Deleting a worktree's dependencies can take minutes; set it aside instantly, unregister it, then delete in the background.
+            const aside = moveAside(job.worktree);
+            await git(['worktree', 'prune'], true);
+            if ((await git(['worktree', 'list', '--porcelain'])).split('\n').some(line => line === `worktree ${job.worktree}`)) {
+                moveBack(aside, job.worktree);
+                throw new Error(`${job.worktree} stayed registered after it was set aside; restored in place`);
+            }
+            purgeRemoved(execute, repo);
+        }
         if (existsSync(job.worktree))
             throw new Error(`${job.worktree} remains after removal`);
         removed.worktree = true;
