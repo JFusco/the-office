@@ -60,3 +60,12 @@ test('an uncertain earlier remote delete is settled by read-back once the branch
     await removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard);
     expect(x.f.store.getEffect(id)?.status).toBe('verified');expect(x.f.state.calls.filter(c => c.startsWith('git push origin :refs/heads/'))).toHaveLength(1);
 });
+test('a removal cut off midway (only committed files deleted) is finished with force; real changes still preserve', async () => {
+    const { f, job, guard } = owned();
+    f.state.local.status = ' D catalog/catalog.json\n D LICENSE';
+    expect(await removeCandidate(f.store, f.execute as any, job, guard, HEAD)).toEqual({ worktree: true, local: true, remote: true });
+    expect(f.state.calls.some(c => c.startsWith('git worktree remove --force -- '))).toBe(true);
+    const kept = owned();kept.f.state.local.status = ' D LICENSE\n M src/index.ts';
+    await expect(removeCandidate(kept.f.store, kept.f.execute as any, kept.job, kept.guard, HEAD)).rejects.toThrow('uncommitted changes');
+    expect(existsSync(kept.job.worktree)).toBe(true);expect(kept.f.state.calls.some(c => c.includes('worktree remove'))).toBe(false);
+});

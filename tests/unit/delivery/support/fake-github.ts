@@ -29,7 +29,7 @@ export function fakeGitHub(issueNumber = 5) {
         issue: { number: issueNumber, html_url: issueUrl, title: '[Bug] Restore release scans', state: 'open', updated_at: '2026-10-31T12:00:00Z', assignees: [{ login: 'JFusco' }] } as any,
         prs: [] as any[],
         remote: {} as Record<string, string>,
-        local: { head: BASE, branch: '', dirty: false },
+        local: { head: BASE, branch: '', dirty: false } as { head: string; branch: string; dirty: boolean; status?: string },
         localBranches: new Set<string>(),
         comments: [] as any[],
         runs: [] as any[],
@@ -39,6 +39,8 @@ export function fakeGitHub(issueNumber = 5) {
         fail: (_program: string, _args: string[]) => false as boolean | string,
         notAncestor: false,
         lintFails: false,
+        prFiles: {} as Record<number, string[]>,
+        prCommits: {} as Record<number, string[]>,
     };
     const prJson = (pr: any) => ({ number: pr.number, url: pr.html_url, state: pr.merged_at ? 'MERGED' : pr.state === 'open' ? 'OPEN' : 'CLOSED', headRefOid: pr.head.sha, baseRefName: pr.base.ref, isDraft: pr.draft, closingIssuesReferences: new RegExp(`Closes #${issueNumber}\\b`).test(pr.body || '') ? [{ url: issueUrl, number: issueNumber }] : [] });
     const execute = async (program: string, args: string[], options: any = {}): Promise<string> => {
@@ -52,10 +54,10 @@ export function fakeGitHub(issueNumber = 5) {
             if (cmd === 'fetch') return '';
             if (cmd === 'rev-parse') return rest[0] === 'HEAD' ? state.local.head : BASE;
             if (cmd === 'branch') { if (rest[0] === '-D') { state.localBranches.delete(rest[1]); return ''; } return state.local.branch; }
-            if (cmd === 'status') return state.local.dirty ? ' M file.ts' : '';
+            if (cmd === 'status') return state.local.status ?? (state.local.dirty ? ' M file.ts' : '');
             if (cmd === 'for-each-ref') return state.localBranches.has(rest[1].replace('refs/heads/', '')) ? state.local.head : '';
             if (cmd === 'worktree') {
-                if (rest[0] === 'remove') { rmSync(rest[2], { recursive: true, force: true }); return ''; }
+                if (rest[0] === 'remove') { rmSync(rest.at(-1)!, { recursive: true, force: true }); return ''; }
                 if (rest[0] === 'prune') return '';
                 mkdirSync(rest[3], { recursive: true }); state.localBranches.add(rest[2]); Object.assign(state.local, { head: rest[4], branch: rest[2], dirty: false }); return '';
             }
@@ -86,6 +88,17 @@ export function fakeGitHub(issueNumber = 5) {
             if (path.endsWith(`/issues/${issueNumber}`)) return JSON.stringify(state.issue);
             if (path.includes('/pulls?state=open&base=')) return JSON.stringify([state.prs.filter(pr => pr.state === 'open' && pr.base.ref === decodeURIComponent(path.split('base=')[1].split('&')[0]))]);
             if (path.includes('/pulls?state=open')) return JSON.stringify([state.prs.filter(pr => pr.state === 'open')]);
+            const files = path.match(/\/pulls\/(\d+)\/files/), commits = path.match(/\/pulls\/(\d+)\/commits/);
+            if (files) return JSON.stringify([(state.prFiles[Number(files[1])] || []).map(filename => ({ filename }))]);
+            if (commits) return JSON.stringify([(state.prCommits[Number(commits[1])] || []).map((login, i) => ({ sha: `${i}`.padStart(40, 'c'), author: { login }, commit: { verification: { verified: login === 'dependabot[bot]' } } }))]);
+            if (path.endsWith('/issues') && args.includes('POST')) {
+                const field = (name: string) => args.find((arg, i) => args[i - 1] === '-f' && arg.startsWith(`${name}=`))!.slice(name.length + 1);
+                Object.assign(state.issue, { title: field('title'), body: field('body'), node_id: `issue-node-${issueNumber}`, user: { login: 'JFusco' }, assignees: [{ login: 'JFusco' }] });
+                return JSON.stringify(state.issue);
+            }
+            if (path.includes('/issues?state=all')) return JSON.stringify([state.issue.body ? [state.issue] : []]);
+            const patch = path.match(/\/pulls\/(\d+)$/);
+            if (patch && args.includes('PATCH')) { const pr = state.prs.find(p => p.number === Number(patch[1])); pr.body = args[args.indexOf('-f') + 1].slice(5); return JSON.stringify(pr); }
             if (path.includes('/pulls/')) return JSON.stringify(state.prs.find(pr => path.endsWith(`/pulls/${pr.number}`)));
             if (path.includes('actions/runs')) return JSON.stringify({ total_count: state.runs.length, workflow_runs: state.runs });
             if (path.endsWith('/branches/main')) return JSON.stringify({ name: 'main', protected: false });
@@ -97,6 +110,7 @@ export function fakeGitHub(issueNumber = 5) {
         throw new Error(`Unexpected synthetic command: ${line}`);
     };
     function graphql({ query, variables }: { query: string; variables: any }) {
+        if (query.includes('addProjectV2ItemById')) { const id = `card-${variables.content}`; if (!state.cards.some(c => c.id === id)) state.cards.push({ id, kind: 'Issue', number: issueNumber, status: 'backlog' }); return { data: { addProjectV2ItemById: { item: { id } } } }; }
         if (query.startsWith('mutation')) { state.cards.find(c => c.id === variables.item)!.status = variables.option; return { data: { updateProjectV2ItemFieldValue: { projectV2Item: { id: variables.item } } } }; }
         if (query.includes('fields(first')) return { data: { user: { projectV2: { id: 'project', fields: { nodes: [{ id: 'status', name: 'Status', options: state.lanes }], pageInfo: { hasNextPage: false } } } } } };
         if (query.includes('items(first')) return { data: { node: { items: { nodes: state.cards.map(card => ({ id: card.id, content: { __typename: card.kind, number: card.number, repository: { nameWithOwner: REPOSITORY } } })), pageInfo: { hasNextPage: false } } } } };

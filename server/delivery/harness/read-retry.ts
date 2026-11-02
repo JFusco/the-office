@@ -9,3 +9,11 @@ export async function retryRead<T>(read: () => Promise<T | null>, attempts = 5, 
     }
     return null;
 }
+
+/** A write's own read-back: an unobserved write is left uncertain for reconciliation, never resent. */
+export async function readBackOrThrow<T>(read: () => Promise<T | null>, what: string): Promise<T> {
+    const value = await retryRead(read);
+    if (value === null)
+        throw new Error(`${what} was not observable after the write`);
+    return value;
+}
