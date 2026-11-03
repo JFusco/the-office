@@ -2,6 +2,7 @@ import {lstatSync,readlinkSync,realpathSync} from 'node:fs';
 import {basename,dirname,isAbsolute,relative,resolve,sep} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {ownedPath} from './readback-evidence';
+import {retiredInstallationAlias} from './retired-installation-alias';
 import type {Store} from './store';
 
 const within=(root:string,path:string)=>{const suffix=relative(root,path);return path===resolve(path)&&!!suffix&&suffix!=='..'&&!suffix.startsWith('..'+sep)&&!isAbsolute(suffix);};
@@ -15,7 +16,14 @@ export function historicalArtifactPath(store:Owner,jobId:string,path:string){
  if(basename(installation)!=='the-office'||resolve(installation,...parts)!==store.dataRoot)return;
  const alias=resolve(dirname(installation),'dev-team'),oldJob=resolve(alias,...parts,'ticket-work',jobId);
  if(!within(oldJob,path))return;
- const link=lstatSync(alias),target=readlinkSync(alias),canonical=lstatSync(installation);
+ const canonical=lstatSync(installation);
+ if(canonical.isSymbolicLink()||!canonical.isDirectory()||realpathSync(installation)!==installation)throw Error('Historical installation is not the verified physical directory');
+ let link;try{link=lstatSync(alias);}catch(error){
+  if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;
+  return {historicalPath:path,canonicalPath:resolve(store.dataRoot,'ticket-work',jobId,relative(oldJob,path)),
+   ...retiredInstallationAlias(installation),privateRootOwnership:ownedPath({dataRoot:installation},store.dataRoot)};
+ }
+ const target=readlinkSync(alias);
  if(!link.isSymbolicLink()||resolve(dirname(alias),target)!==installation||canonical.isSymbolicLink()||!canonical.isDirectory()||realpathSync(installation)!==installation||realpathSync(alias)!==installation)throw Error('Historical installation alias is not the verified sibling rename');
  return {historicalPath:path,canonicalPath:resolve(store.dataRoot,'ticket-work',jobId,relative(oldJob,path)),
   alias:{path:alias,target,dev:link.dev,ino:link.ino},installation:{path:installation,dev:canonical.dev,ino:canonical.ino},
@@ -23,7 +31,7 @@ export function historicalArtifactPath(store:Owner,jobId:string,path:string){
 }
 
 export type HistoricalArtifactPath=NonNullable<ReturnType<typeof historicalArtifactPath>>;
-/** The historical locator is context; its alias identity must still hold at the final handoff. */
+/** The original alias or its retirement receipt must still match at the final handoff. */
 export function assertHistoricalArtifactPath(store:Owner,jobId:string,saved:HistoricalArtifactPath){
  if(!isDeepStrictEqual(historicalArtifactPath(store,jobId,saved.historicalPath),saved))throw Error('Historical installation alias changed before handoff');
 }
