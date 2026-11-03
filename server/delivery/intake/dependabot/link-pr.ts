@@ -14,7 +14,7 @@ export function linkedBody(body: string, issue: number): string {
 }
 
 /** Links the PR to its tracking issue. Keyed by head, so a Dependabot rebase that rewrites the body is re-linked once. */
-export async function linkPR(store: Store, execute: Execute, record: { id: string }, pr: DependabotPR, issue: number, guard: () => void): Promise<void> {
+export async function linkPR(store: Store, execute: Execute, record: { id: string }, pr: DependabotPR, issue: number, guard: () => void | Promise<void>): Promise<void> {
     const linked = async () => {
         const p = await readRepo(store, execute, `pulls/${pr.number}`);
         return closesIssue(p.body || '', issue) ? { head: p.head?.sha as string } : null;
