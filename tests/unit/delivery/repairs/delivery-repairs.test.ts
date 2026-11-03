@@ -160,8 +160,17 @@ async function completedPublishedRepair() {
 }
 test('completed published source repair permits a later conflict repair without old findings', async () => {
  const f = await completedPublishedRepair(), c = 'c'.repeat(40);
+ Object.assign(f.remote,{number:700,html_url:f.job.prUrl,draft:false,mergeable:false});
+ Object.assign(f.remote.head,{repo:{full_name:f.store.project.repository}});Object.assign(f.remote.base,{repo:{full_name:f.store.project.repository}});
+ const execute=f.delivery.execute;
+ f.delivery.execute=async(program,args,options)=>{
+  if(program==='gh'&&args[1]==='graphql'&&options?.input&&JSON.parse(options.input).query.includes('headRefName'))return JSON.stringify({data:{repository:{pullRequest:{number:700,url:f.job.prUrl,state:'OPEN',isDraft:false,headRefOid:b,headRefName:f.job.branch,baseRefOid:a,baseRefName:'main',mergeable:'CONFLICTING',mergeStateStatus:'DIRTY',headRepository:{nameWithOwner:f.store.project.repository},baseRepository:{nameWithOwner:f.store.project.repository}}}}});
+  return execute(program,args,options);
+ };
  f.job.steps.push({ stage: 'lead-pr', result: { ...f.result('lead-pr'), prId: 700, outcome: 'blocked', findings: [{ ...f.failed().findings[0], id: 'merge-conflicts' }] } });
- f.delivery.queueConflictRepair('GH-999', 'conflicts');
+ f.job.reviewContext={head:b,issueUpdatedAt:'v1',prUpdatedAt:'v1',baseSha:a,target:'main',step:f.job.steps.length-1};
+ f.job.reviewInputSha256=deliveryInputSha256(f.store,f.job.key);
+ await f.delivery.queueConflictRepair('GH-999', 'conflicts');
  f.engine.agents.run = async () => { f.setHead(c); return { ...f.result('repair'), prId: 700 } as any; };
  await f.delivery.step(f.job);
  expect(f.job.status, f.job.detail).toBe('queued'); expect(f.job.stage).toBe('draft'); expect(f.job.head).toBe(c);

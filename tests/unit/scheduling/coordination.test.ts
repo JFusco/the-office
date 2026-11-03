@@ -484,7 +484,7 @@ test.each(['step', 'reconcile'] as const)('preparation %s defers checks only fro
                 return { sha: head, state: scenario === 'failed-status' ? 'failure' : scenario === 'pending-status' ? 'pending' : 'success', total_count: scenario === 'pending-status' || scenario === 'failed-status' ? 1 : 0, statuses: scenario === 'pending-status' || scenario === 'failed-status' ? [{ state: scenario === 'pending-status' ? 'pending' : 'failure' }] : [] };
             if (scenario === 'missing')
                 return {};
-            return { total_count: scenario === 'partial' ? 101 : 1, check_runs: [{ head_sha: scenario === 'wrong-head' ? 'b'.repeat(40) : head, status: ['failed', 'cancelled', 'passed', 'pending-status'].includes(scenario) ? 'completed' : 'in_progress', conclusion: scenario === 'failed' ? 'failure' : scenario === 'cancelled' ? 'cancelled' : ['passed', 'pending-status'].includes(scenario) ? 'success' : null }] };
+            return { total_count: scenario === 'partial' ? 101 : 1, check_runs: [{ id: 1, head_sha: scenario === 'wrong-head' ? 'b'.repeat(40) : head, status: ['failed', 'cancelled', 'passed', 'pending-status'].includes(scenario) ? 'completed' : 'in_progress', conclusion: scenario === 'failed' ? 'failure' : scenario === 'cancelled' ? 'cancelled' : ['passed', 'pending-status'].includes(scenario) ? 'success' : null }] };
         };
         job.steps = [{ stage: 'prepare-pr', result }];
         const allowed = ['pending', 'pending-status'].includes(scenario);

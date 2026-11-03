@@ -1,6 +1,6 @@
 import {test,expect,vi,afterEach} from 'vitest';
 import * as harnessScope from '../../../../../server/delivery/harness/scope';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,realpathSync,renameSync,rmSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,realpathSync,renameSync,rmSync,symlinkSync,lstatSync,readlinkSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {tmpdir} from 'node:os';
 const home=vi.hoisted(()=>({path:''}));
@@ -215,8 +215,13 @@ test.each([true,false])('existing request dispatch recovers completed publicatio
  expect(r,r.detail).toMatchObject({status:'completed'});expect(a.job).toMatchObject({stage:draft?'prepare-pr':'lead-pr',status:'queued',pr:119});expect(a.engine.agents.run).not.toHaveBeenCalled();expect(a.pr.draft).toBe(draft);
 });
 const continuationErrors:Record<string,string>={'missing-descriptor':'Immutable initial publication proof descriptor changed','changed-descriptor':'Immutable initial publication proof descriptor changed','changed-proof':'Immutable initial publication proof descriptor changed','unrelated-path':'unrelated candidate path','source-lock':'changed proposed or accepted target source observations','wrong-parent':'exact retained forward merge','extra-parent':'exact retained forward merge'};
-test('original implementation alias evidence passes real conflict publication and promotion with canonical proof and unchanged history',async()=>{
+test.each(['present','retired'])('original implementation alias evidence (%s) passes real conflict publication and promotion with canonical proof and unchanged history',async aliasState=>{
  const a=await initialDraftContinuation(true),implementation=JSON.stringify(a.job.steps[0]),original=readFileSync(resolve(a.root,'sessions/draft-worker/result.json'),'utf8');
+ if(aliasState==='retired'){
+  const identity=(path:string)=>{const stat=lstatSync(path);return {path,dev:stat.dev,ino:stat.ino};};
+  writeFileSync(resolve(a.installation,'.local/installation-rename.json'),JSON.stringify({version:1,alias:{...identity(a.alias),target:readlinkSync(a.alias)},installation:identity(a.installation)}));
+  rmSync(a.alias);
+ }
  await a.step();expect(a.job,a.job.detail).toMatchObject({stage:'prepare-pr',status:'queued',pr:119});
  const evidence=postConflictPreparationEvidence(a.store,a.job)!,references=evidence.gates.references as any[];
  expect(references.filter(r=>r.kind==='historical-installation-alias-context')).toHaveLength(8);
