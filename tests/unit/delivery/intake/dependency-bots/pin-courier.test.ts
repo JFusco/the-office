@@ -82,3 +82,11 @@ test('a known tracking issue that loses its assignment is preserved without a re
     expect(f.store.state.coordination!.adoptions![0].detail).toContain('Known tracking issue #5');
     expect(f.state.calls.filter(call => /POST|PATCH/.test(call))).toHaveLength(writes);
 });
+test.each(['progress', 'block', 'done'])('owned tracking issue in %s permits only a real review handoff', async lane => {
+    const { f, adopt } = fixture();
+    Object.assign(f.state.issue, { body: trackingMarker(314, 'pin-courier'), user: { login: 'JFusco' }, assignees: [{ login: 'JFusco' }], node_id: 'issue-node-5' });
+    f.state.cards.push({ id: 'issue-card', kind: 'Issue', number: 5, status: lane });
+    await adopt();
+    expect(f.store.state.coordination!.adoptions![0].status).toBe(lane === 'progress' ? 'adopted' : 'blocked');
+    expect(f.state.cards.find(c => c.kind === 'Issue')!.status).toBe(lane === 'progress' ? 'review' : lane);
+});

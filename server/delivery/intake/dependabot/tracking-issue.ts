@@ -73,14 +73,15 @@ export async function ensureReviewCards(store: Store, execute: Execute, record: 
         readBack: issueCard,
     });
     const prItem = await find('PullRequest', pr);
-    const cards = [{ item: issueItem, label: `tracking issue #${issue.number}` }, ...(prItem ? [{ item: prItem, label: `PR #${pr}` }] : [])];
-    for (const { item, label } of cards) {
+    const cards = [{ item: issueItem, label: `tracking issue #${issue.number}`, tracking: true }, ...(prItem ? [{ item: prItem, label: `PR #${pr}`, tracking: false }] : [])];
+    for (const { item, label, tracking } of cards) {
         const current = await cardStatus(store, execute, item.id, field.fieldId);
         if (current === option.id)
             continue;
-        // The issue starts in automation's default lane and the PR card in the pickup lane; any other lane is a human decision.
+        // An owned tracking issue may already be In progress; its implementation is the existing PR.
+        // Preserve Block/Done and unexpected PR lanes rather than overriding a human decision.
         const name = field.options.find(o => o.id === current)?.name.trim().toLowerCase() || '';
-        if (name && !['backlog', pickupLane.trim().toLowerCase()].includes(name))
+        if (name && !['backlog', pickupLane.trim().toLowerCase(), ...(tracking ? ['in progress'] : [])].includes(name))
             throw new Error(`The ${label} card is in "${name}"; the harness will not move it`);
         const inReview = async () => await cardStatus(store, execute, item.id, field.fieldId) === option.id ? { lane: option.name } : null;
         await harnessEffect(store, record, {
