@@ -148,6 +148,7 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    ciRepairs?: import('./contracts/ci-repair').CIRepair[];
     initialDraftConflict?: Readonly<{ originalWorkId: string; head: string; pr: number; proofPath: string; proofSha256: string }>;
     scopeRepairResumes?: { intentId: string; originalWorkId: string; head: string; proofPath: string; proofSha256: string; checkpointSha256: string; findingIds: string[]; afterStep: number; at: string }[];
     savedPrerequisiteHandoff?: { originalWorkId: string; fromHead: string; head: string; stage: 'implement' | 'scope-repair'; proofPath: string; proofSha256: string; findingIds: string[]; at: string };

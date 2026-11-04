@@ -1,4 +1,5 @@
 import { verifyRepairCandidate } from '../repairs/delivery-repairs';
+import { verifyCIHooks } from '../repairs/ci-checkout';
 import { assertMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { retryRead } from '../harness/read-retry';
@@ -52,6 +53,7 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
     const { head, branch, worktree } = candidate;
     assertCandidate(store, jobs, job, candidate);
     await verifyRepairCandidate(store.project, candidate, execute);
+    await verifyCIHooks({ execute }, job);
     const api = async (path: string) => JSON.parse(await execute('gh', ['api', `repos/${repository}/${path}`], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
     if (job.pr) {
         const p = await api(`pulls/${job.pr}`);
