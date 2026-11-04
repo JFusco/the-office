@@ -10,6 +10,45 @@ test('heart opens the shared drawer and keeps configured login separate from a w
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Service health',exact:true}).click();await expect(panel).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:evidence('office-service-health-mobile.png')});
 });
 
+test('health distinguishes delivery evidence, overdue assignments, provider incidents and passive recovery', async ({ page }) => {
+ const now = new Date().toISOString();
+ await page.route('**/api/service-health*', route => route.fulfill({ json: {
+  checkedAt: now, context: 'Background health monitoring is active.',
+  services: [
+   { id: 'slack', name: 'Slack · connected app', kind: 'activity', status: 'connected', statusLabel: 'Delivery verified', detail: 'A message was confirmed by reading it back.', checkedAt: now, checkedLabel: 'Last confirmed delivery' },
+   { id: 'listener:cec', name: 'CEC · assignment listener', kind: 'listener', status: 'unknown', statusLabel: 'Check queued', detail: 'The next assignment check is queued with the scheduler.', checkedAt: '', checkedLabel: 'Last successful assignment check' },
+   { id: 'provider:openai', name: 'OpenAI · public service status', kind: 'provider', status: 'warning', statusLabel: 'Service disruption', detail: 'Codex errors. Public provider status does not verify your account.', checkedAt: now, checkedLabel: 'Status page checked', sourceUrl: 'https://status.openai.com/' },
+   { id: 'provider:anthropic', name: 'Claude · public service status', kind: 'provider', status: 'connected', statusLabel: 'Operational', detail: 'All Systems Operational.', checkedAt: now, sourceUrl: 'https://status.claude.com/' },
+  ],
+ } }));
+ await page.goto('/'); await page.getByRole('button', { name: 'Service health', exact: true }).click();
+ const panel = page.getByRole('complementary', { name: 'Service health', exact: true });
+ await expect(panel.getByText('Delivery verified', { exact: true })).toBeVisible();
+ await expect(panel.getByText(/^Last confirmed delivery:/)).toBeVisible();
+ await expect(panel.getByText('Last successful assignment check: Not recorded')).toBeVisible();
+ await expect(panel.getByText('Service disruption', { exact: true })).toBeVisible();
+ await expect(panel.getByText('Operational', { exact: true })).toBeVisible();
+ await expect(panel.getByRole('link', { name: 'View provider status ↗' })).toHaveCount(2);
+ await expect(panel.getByText(/Current login has not been checked/)).toHaveCount(0);
+});
+
+test('a stalled refresh expires saved green and releases the refresh button', async ({ page }) => {
+ await page.clock.install({ time: new Date('2026-11-04T20:00:00Z') });
+ let calls = 0;
+ await page.route('**/api/service-health*', route => {
+  if (++calls > 1) return; // Deliberately leave the next read pending.
+  return route.fulfill({ json: { checkedAt: '2026-11-04T20:00:00Z', services: [{ id: 'provider:openai', name: 'OpenAI · public service status', kind: 'provider', status: 'connected', statusLabel: 'Operational', detail: 'All Systems Operational.', checkedAt: '2026-11-04T20:00:00Z', expiresAt: '2026-11-04T20:02:30Z' }] } });
+ });
+ await page.goto('/'); await page.getByRole('button', { name: 'Service health', exact: true }).click();
+ const panel = page.getByRole('complementary', { name: 'Service health', exact: true });
+ await expect(panel.getByText('Operational', { exact: true })).toBeVisible();
+ await page.clock.runFor(60001); await expect.poll(() => calls).toBe(2);
+ await page.clock.runFor(90001);
+ await expect(panel.getByText('Update overdue', { exact: true })).toBeVisible();
+ await expect(panel.getByRole('alert')).toContainText('Health refresh timed out');
+ await expect(panel.getByRole('button', { name: 'Refresh health', exact: true })).toBeEnabled();
+});
+
 test('queue retains the blocked PR and Ready prerequisite instead of claiming no work remains',async({page,request})=>{
  const state=await(await request.get('/api/office')).json();state.project={id:'cec',name:'CEC',provider:'azure'};state.projects=[{id:'brain',name:'Brain',paused:false}];state.pmQueue=[{project:'brain',projectName:'Brain',review:{id:'held254',key:'GH-254',summary:'Refresh references',status:'held',workRequested:'automatic',detail:'Keep held until GH-255 completes.',prerequisites:[{target:{projectId:'brain',kind:'issue',id:'255'},condition:'issue-closed',evidence:'Synthetic fixture',observedAt:new Date().toISOString()}],queuedAt:'2026-10-28T12:00:00Z'}}];state.teamQueue=[{project:'brain',projectName:'Brain',job:{id:'pr271',key:'GH-265',stage:'prepare-pr',status:'blocked',pr:271,prUrl:'https://github.com/JFusco/brain/pull/271',requestedAt:'2026-10-28T12:00:00Z',detail:'Source acceptance still needs follow-up.'}}];
  await page.route('**/api/office*',route=>route.fulfill({json:state}));await page.route('**/api/events*',route=>route.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));

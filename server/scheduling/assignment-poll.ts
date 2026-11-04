@@ -37,6 +37,8 @@ export async function poll(this: Coordinator, now = new Date()) {
     this.polling = true;
     try {
         const assigned = await this.readAssignments(), listener = this.state.listener;
+        // Date the completed provider read, before downstream delivery work can make it older.
+        const observedAt = this.store.clock.now().toISOString();
         const previous = new Map(listener.assigned.map(i => [i.key, i]));
         for (const issue of assigned) {
             const before = previous.get(issue.key), eligible = this.pickup.enabled && (issue.pickupStatus ?? issue.status) === this.pickup.status;
@@ -112,14 +114,14 @@ export async function poll(this: Coordinator, now = new Date()) {
             await observeGitHubMergeNotices(delivery);
         }
         listener.assigned = assigned;
-        listener.lastCheckedAt = now.toISOString();
+        listener.lastCheckedAt = observedAt;
         listener.error = '';
     }
     catch (error) {
         this.state.listener.error = String(error);
     }
     finally {
-        this.state.listener.nextCheckAt = new Date(now.getTime() + 60000).toISOString();
+        this.state.listener.nextCheckAt = new Date(this.store.clock.now().getTime() + 60000).toISOString();
         this.polling = false;
         this.store.save();
     }

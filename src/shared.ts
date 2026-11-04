@@ -942,6 +942,12 @@ export interface ServiceHealth {
     status: 'connected' | 'warning' | 'disconnected' | 'unknown';
     detail: string;
     checkedAt: string;
+    kind?: 'login' | 'activity' | 'listener' | 'provider';
+    statusLabel?: string;
+    checkedLabel?: string;
+    lastSuccessAt?: string;
+    expiresAt?: string;
+    sourceUrl?: string;
     identity?: string;
     nextStep?: string;
     lastFailure?: {

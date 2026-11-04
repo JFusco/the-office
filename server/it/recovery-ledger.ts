@@ -9,6 +9,8 @@ import type { ITContext } from './context';
 export async function reconcileRecoveryLedger(context: ITContext): Promise<void> {
     const { offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt, retainedPartials, retainedCloseouts, services, activationBudget, recover } = context;
     for (const service of services) {
+        // Public incidents and status-page read failures are monitored separately from account recovery.
+        if (service.kind === 'provider') continue;
         if (service.status === 'disconnected')
             followUps.push({ id: `login:${service.id}`, owner: 'You', detail: service.nextStep || `Restore ${service.name} access in the Office service account.` });
         // Unknown is evidence of an incomplete probe, never proof of logout.
@@ -43,7 +45,10 @@ export async function reconcileRecoveryLedger(context: ITContext): Promise<void>
             const unresolvedResume=resumeJob&&!['completed','cancelled'].includes(resumeJob.status)&&!resumeApplied;
             if (unresolvedCheckpoint || unresolvedDelivery || unresolvedImplementation || unresolvedValidation || unresolvedPreparation || unresolvedCore || unresolvedResume || savedAdmissionUnresolved(store,id) || repeatConflictRepairUnresolved(store,id) || completedConflictDraftUnresolved(store,id) || publishedDraftConflictUnresolved(store,id)) {
                 current.add(id);
-                followUps.push({ id, owner: 'IT', detail: state.paused ? 'Recovery waits while this project is paused; the source record remains unresolved.' : 'Recovery waits for the original source record to complete.', nextAt: r.nextAt || undefined });
+                const job = state.coordination?.jobs?.find(job => id.split(':').includes(job.id));
+                const checkpoint = checkpointId === null ? undefined : state.coordination?.checkpoints.find(checkpoint => checkpoint.id === checkpointId);
+                const source = job ? `${job.key} · ${job.stage}` : checkpoint ? `${store.project.name} checkpoint ${checkpoint.date}` : id;
+                followUps.push({ id, owner: 'IT', detail: `${source}: ${state.paused ? 'recovery waits while this project is paused.' : 'waiting for the original source record to complete.'}`, nextAt: r.nextAt || undefined });
                 continue;
             }
             r.status = 'resolved';
