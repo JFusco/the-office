@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'node:util';
 import { selectCurrentChecks, checksFailed } from '../readiness/github-check-selection';
 import { digest } from '../../store/readback-evidence';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -23,8 +24,8 @@ export async function readCIFailure(delivery: GitHubDelivery, job: TicketJob) {
             !run.pull_requests?.some((p: any) => p.number === job.pr) || run.run_attempt !== native.run_attempt)
             throw new Error('Failed Actions job/run identity changed');
         if (!runs.some(r => r.id === run.id)) runs.push(run);
-        const text = await delivery.execute('gh', ['api', `repos/${delivery.store.project.repository}/actions/jobs/${check.id}/logs`], { cwd: delivery.store.project.repo, readOnly: true, timeout: 60000 });
-        logs.push({ checkId: check.id, text });
+        const text = await delivery.execute('gh', ['api', `repos/${delivery.store.project.repository}/actions/jobs/${check.id}/logs`, '--allow-escape-sequences'], { cwd: delivery.store.project.repo, readOnly: true, timeout: 60000 });
+        logs.push({ checkId: check.id, text: stripVTControlCharacters(text) });
     }
     const fingerprint = digest({ head: job.head, base: pr.base.sha, metadata: [pr.title, pr.body], checks: selection.effective.map((c: any) => [c.id, c.status, c.conclusion]).sort((a, b) => a[0] - b[0]), statuses: statuses.statuses.map((s: any) => [s.id, s.context, s.state]).sort((a: any[], b: any[]) => a[0] - b[0]), runs: runs.map(r => [r.id, r.run_attempt]).sort((a, b) => a[0] - b[0]) });
     return { pr, selection, statuses, runs, logs, fingerprint };
