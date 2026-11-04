@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { pmQueueItems } from '../../../src/work/pm-queue';
+import { ticketUpdates } from '../../../src/work/TeamUpdates';
 const review = (key: string, status: string, extra = {}) => ({ project: 'brain', projectName: 'Brain', review: { id: key, key, status, summary: `Title ${key}`, queuedAt: '2026-10-28T12:00Z', ...extra } });
 const job = (key: string, status: string, extra = {}) => ({ project: 'brain', projectName: 'Brain', job: { id: key, key, status, stage: 'lead-pr', requestedAt: '2026-10-28T12:00Z', detail: 'Saved result', ...extra } });
 const state = (pmQueue: any[], teamQueue: any[] = []) => ({ pmQueue, teamQueue, tickets: [], projects: [] } as any);
@@ -35,4 +36,15 @@ test('reconciled maintenance keeps unfinished refresh visible with its source re
     expect(pmQueueItems(s)[0]).toMatchObject({ key: 'GH-273', phase: 'Source repair handoff queued', group: 'queued' });
     s.maintenance.runs[0].blockerFollowup = { status: 'completed', issue: 274, detail: 'Repair queued for ownership intake' };
     expect(pmQueueItems(s)[0]).toMatchObject({ key: 'GH-273', phase: 'Refresh waiting on GH-274', group: 'waiting', blockedBy: ['GH-274'] });
+});
+test('vendor review failures do not resurrect completed issues mentioned by an earlier maintenance stage', () => {
+    const s = state([], [job('GH-126', 'cancelled')]);
+    s.project = { id: 'brain', name: 'Brain', repository: 'JFusco/brain' };
+    s.agents = [];
+    s.maintenance = { runs: [{ id: 'run', status: 'blocked', stage: 'vendor-review', error: 'HTTP 403', steps: [
+        { stage: 'follow-up', result: { summary: 'GH-126 is Done', receipts: [{ verified: true, uncertain: false, target: 'https://github.com/JFusco/brain/issues/126#issuecomment-1' }] } },
+        { stage: 'vendor-review', result: { summary: 'Official sources returned HTTP 403', receipts: [] } },
+    ] }] };
+    expect(pmQueueItems(s)).toEqual([]);
+    expect(ticketUpdates(s)).toEqual([]);
 });

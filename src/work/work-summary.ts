@@ -74,7 +74,10 @@ export function readinessWait(job: TicketJob) {
     return { blocked, phase: job.mergeApprovalRequired ? 'Awaiting merge approval' : conflict ? 'Blocked · PR conflicts' : permission ? 'Blocked · GitHub policy inspection' : blocked ? 'Blocked · PR review needs follow-up' : draft ? 'Waiting · draft PR' : 'Waiting for PR readiness', summary: shortSummary(result?.blocker || result?.summary || job.detail, 240), next: job.mergeApprovalRequired ? 'You: approve this exact reviewed head.' : conflict ? 'Next needed: Alex resolves the branch conflicts; the team applies its selected checks to the changed head; Morgan then marks the PR ready.' : permission ? 'Next needed: Morgan and Ellis resolve GitHub policy visibility using permitted reads, then assign Sam to recheck this PR. No merge approval is being requested.' : blocked ? 'Next needed: Morgan assigns the unresolved review findings to the team. Sam is not currently reviewing this PR.' : draft ? 'Next needed: Morgan verifies the saved review and checks, then marks the PR ready. No reviewer is currently assigned.' : 'Next needed: Morgan reads the current PR requirements and assigns the remaining work.' };
 }
 export function maintenanceIssue(run: MaintenanceRun, repository: string) {
-    for (const receipt of run.steps.flatMap(s => s.result.receipts)) {
+    // Earlier successful closeout receipts do not identify the owner of a later
+    // vendor-review failure. A structured repair handoff retains its source issue.
+    const steps = run.blockerFollowup ? run.steps : run.steps.filter(step => step.stage === run.stage);
+    for (const receipt of steps.flatMap(s => s.result.receipts)) {
         if (!receipt.verified || receipt.uncertain || !receipt.target.startsWith(`https://github.com/${repository}/issues/`))
             continue;
         const number = receipt.target.match(/\/issues\/(\d+)(?:#|$)/)?.[1];
