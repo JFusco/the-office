@@ -3,7 +3,8 @@ import { conflictOnlyAssessment, readConflictRepairProof } from './conflict-repa
 import {repeatConflictRepairAdmission} from './conflict-chain';
 import {outsideAmendmentFindingIds,amendmentRepairView} from '../recovery/source-amendment/source-amendment-held';
 import { HOLDS } from '../../office/config';
-import { handsOff } from '../harness/scope';
+import { handsOff, harnessDelivers } from '../harness/scope';
+import { queueCIDiagnosis } from './ci-admission';
 import { githubRepairEligible, reserveRepair, enqueueRepairDiagnosis, approachFingerprint, verifyRepairCandidate, retainRepairEvidence } from './delivery-repairs';
 import { z } from 'zod';
 import { GITHUB_ISSUE_SKILL } from '../../github/github-context';
@@ -43,6 +44,7 @@ export async function queueConflictRepair(this: GitHubDelivery, key: string, rea
 }
 
 export async function queueCIRepair(this: GitHubDelivery, job: TicketJob) {
+    if (harnessDelivers(this.store, job)) return queueCIDiagnosis(this, job);
     if (job.stage !== 'lead-pr' || job.status !== 'watching' || job.mergeApprovalRequired || !job.worktree || !job.branch)
         return false;
     const p = await this.verifyPR(job, true);

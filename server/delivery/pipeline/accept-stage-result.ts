@@ -229,6 +229,11 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         return;
     }
     if (job.stage === 'lead-pr') {
+        if (harnessDelivers(this.store, job) && !conflictOnlyAssessment(result) && ['blocked', 'failed'].includes(result.outcome)) {
+            job.status = 'watching';
+            if (await this.queueCIRepair(job)) return;
+            job.status = 'working';
+        }
         if (!conflictOnlyAssessment(result) && await this.queueSourceRepair(job, result, root)) return;
         await this.finishLeadReview(job, result);
         return;

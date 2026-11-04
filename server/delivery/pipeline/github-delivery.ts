@@ -42,6 +42,7 @@ import { preparationChecksPending } from '../readiness/preparation-checks';
 import { stagePrompt } from './stage-prompts';
 import { deliveryTask } from './delivery-task';
 import { acceptStageResult } from './accept-stage-result';
+import { runCIRepair } from '../repairs/run-ci-repair';
 export function hasUncertainEffects(stage: string, result: StageResult) {
     return result.receipts.some(r => r.uncertain || !r.verified && !(['review', 'lead-pr'].includes(stage) && /^(?:get|read|query|inspect)\b/i.test(r.action)));
 }
@@ -163,6 +164,7 @@ export class GitHubDelivery {
                 return;
             }
             if (job.stage === 'lead-pr') {
+                if (await runCIRepair(this, job, issue, root)) return;
                 const saved = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
                 if ((job.reviewInputSha256 === deliveryInputSha256(this.store, job.key) || !job.reviewInputSha256 && !deliveryHumanInputs(this.store, job.key).length) && job.reviewContext?.issueUpdatedAt && job.reviewContext.prUpdatedAt && job.reviewContext.baseSha && job.reviewContext.issueUpdatedAt === issue.updated_at && job.reviewContext.step === job.steps.length - 1 && saved?.outcome === 'passed' && saved.prId === job.pr && !job.steps.some(s => hasUncertainEffects(s.stage, s.result)) && saved.evidence.length && !findingsBlock(this.store, saved.findings, f => f.status === 'open') && !hasUncertainEffects('lead-pr', saved)) {
                     const current = await this.verifyPR(job);
