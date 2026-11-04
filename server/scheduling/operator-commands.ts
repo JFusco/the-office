@@ -60,7 +60,7 @@ export function recheckPR(this: Coordinator, key: string) {
     if (job.steps.some(s => hasUncertainEffects(s.stage, s.result)))
         throw new Error('Original effects must be reconciled before a new review');
     job.status = 'queued';
-    job.detail = mergePreflight ? 'Merge preflight queued; no prior merge request was sent. Current head and checks will be verified again.' : 'Read-only PR reassessment queued. Prior sessions and results retained; source/publication stages will not replay.';
+    job.detail = ['apply', 'publish'].includes(job.ciRepairs?.at(-1)?.phase || '') ? 'Saved CI repair requeued for guarded reconciliation; diagnosis and prior evidence retained.' : mergePreflight ? 'Merge preflight queued; no prior merge request was sent. Current head and checks will be verified again.' : 'Read-only PR reassessment queued. Prior sessions and results retained; source/publication stages will not replay.';
     this.store.emit('pr-review-recheck', job.detail, 'lead', key);
 }
 

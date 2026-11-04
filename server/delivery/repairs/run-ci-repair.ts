@@ -1,13 +1,11 @@
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { contextPacket } from '../../office/projects';
 import { deliveryHumanInputs } from '../../github/github-context';
-import { lintPRContent } from '../publication/pr-body';
 import { ciCheckout } from './ci-checkout';
 import { guardCIRepair } from './ci-guard';
 import { publishCIRepair } from './ci-publication';
-import { rewordCommits } from './reword-commits';
+import { prepareCIMetadataRepair } from './ci-preparation';
 import type { CIFailure } from './ci-evidence';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
@@ -54,23 +52,8 @@ Issue: ${JSON.stringify(issue)}. Human inputs: ${JSON.stringify(deliveryHumanInp
         await delivery.queueConflictRepair(job.key, 'ci');
         store.save(); return true;
     }
-    if (repair.phase === 'apply' && (plan.kind === 'commit-messages' || plan.kind === 'pr-metadata')) {
-        const cwd = await ciCheckout(delivery, job, repair);
-        const pkgPath = resolve(cwd, 'package.json');
-        const pkg = existsSync(pkgPath) ? JSON.parse(readFileSync(pkgPath, 'utf8')) : {};
-        if (!pkg.packageManager?.startsWith('pnpm@')) throw new Error('CI metadata repair needs the repository’s declared validation commands');
-        await execute('pnpm', ['install', '--frozen-lockfile'], { cwd, timeout: 5 * 60000 });
-        if (plan.kind === 'commit-messages') {
-            if (!pkg.scripts?.['lint:commit']) throw new Error('Repository commit-range validation is unavailable');
-            const rewritten = await rewordCommits(execute, cwd, repair.base, repair.head, plan.messages);
-            repair.repairedHead = rewritten.head;
-            writeFileSync(resolve(root, `ci-reword-${repair.id}.json`), JSON.stringify(rewritten, null, 2), { flag: 'wx', mode: 0o600 }); store.save();
-            await execute('pnpm', ['run', '--silent', 'lint:commit', '--from', repair.base, '--to', rewritten.head], { cwd, timeout: 120000, readOnly: true });
-            await execute('git', ['update-ref', `refs/heads/${repair.branch}`, rewritten.head, repair.head], { cwd });
-        } else {
-            await lintPRContent(execute, cwd, { title: plan.title, body: plan.body, source: 'developer' }, issue.number);
-        }
-    }
+    if (repair.phase === 'apply' && (plan.kind === 'commit-messages' || plan.kind === 'pr-metadata'))
+        await prepareCIMetadataRepair(delivery, job, repair, issue, root);
     repair.phase = 'publish'; store.save();
     await publishCIRepair(delivery, job, repair, failure);
     repair.phase = 'done';
