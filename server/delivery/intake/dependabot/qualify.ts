@@ -3,7 +3,7 @@ import type { Store } from '../../../store/store';
 
 export const DEPENDABOT = 'dependabot[bot]';
 
-export interface DependabotPR { number: number; title: string; url: string; head: string; body: string }
+export interface DependabotPR { bot?: 'dependabot' | 'pin-courier'; number: number; title: string; url: string; head: string; body: string }
 
 export async function readRepo(store: Store, execute: Execute, path: string, paginate = false): Promise<any> {
     const args = ['api', `repos/${store.project.repository}/${path}`, ...(paginate ? ['--paginate', '--slurp'] : [])];

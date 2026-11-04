@@ -17,7 +17,7 @@ export function admit(context: IntakeContext, delivery: GitHubDelivery, input: {
         return { status: 'owned', detail: `Office delivery ${job.id} owns ${input.key} at ${job.stage}${job.pr ? ` (PR #${job.pr})` : ''}.`, owner: job.id };
     const adoption = state.adoptions?.find(a => a.issue && `GH-${a.issue}` === input.key);
     if (adoption)
-        return { status: 'held', detail: `${input.key} tracks Dependabot PR #${adoption.pr}; it is delivered through that PR, never as new development.`, owner: '' };
+        return { status: 'held', detail: `${input.key} tracks ${adoption.bot || 'Dependabot'} PR #${adoption.pr}; it is delivered through that PR, never as new development.`, owner: '' };
     const pilot = store.state.tickets.find(ticket => ticket.key === input.key && ticket.pilot);
     if (pilot)
         return { status: 'owned', detail: 'Existing Office delivery owns this ticket.', owner: pilot.runId };

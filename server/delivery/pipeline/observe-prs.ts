@@ -1,4 +1,5 @@
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
+import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
 import { refreshConflicted, refreshEligible } from '../repairs/refresh-conflicted';
 import { deliveryInputSha256 } from '../../github/github-context';
@@ -6,6 +7,7 @@ import { queueMergeNotice } from '../../conversations/notifications';
 import type { GitHubDelivery } from './github-delivery';
 
 export async function observe(this: GitHubDelivery) {
+    await retireInactiveDeliveries(this);
     for (const job of this.jobs.filter(j => j.status === 'watching' || j.stage === 'merge' && ['blocked', 'interrupted'].includes(j.status))) {
         try {
             const p = await this.verifyPR(job);

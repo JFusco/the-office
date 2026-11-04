@@ -42,7 +42,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
                 item(`checkpoint:${c.id}`, 'Daily checkpoint needs follow-up', c.detail, 'pm');
     for (const a of state.coordination?.adoptions || [])
         if (['refused', 'blocked'].includes(a.status))
-            item(`dependabot:${a.pr}`, `Dependabot PR #${a.pr} was not adopted`, a.detail, 'pm', a.issue ? `GH-${a.issue}` : '', a.url);
+            item(`dependabot:${a.pr}`, `${a.bot || 'Dependabot'} PR #${a.pr} was not adopted`, a.detail, 'pm', a.issue ? `GH-${a.issue}` : '', a.url);
     for (const run of state.maintenance?.runs || [])
         if (run.blockerFollowup && ['blocked', 'interrupted'].includes(run.blockerFollowup.status))
             item(`maintenance-blocker:${run.id}`, 'Read back the source repair handoff', run.blockerFollowup.detail, 'pm');

@@ -300,7 +300,7 @@ export interface TimeEntry {
     url: string;
 }
 /** A Dependabot PR the harness bridged (or refused to bridge) into the existing-PR delivery flow. */
-export interface DependabotAdoption { id: string; pr: number; url: string; title: string; issue: number; status: 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
+export interface DependabotAdoption { bot?: 'pin-courier'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
 export interface Coordination {
     adoptions?: DependabotAdoption[];
     requests?: import('./contracts/work').HarnessRequest[];

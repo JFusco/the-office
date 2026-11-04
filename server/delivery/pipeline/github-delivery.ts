@@ -1,4 +1,5 @@
 import { scopeRepairResumeInstruction, scopeRepairResumeNextStage } from '../recovery/scope-repair/scope-repair-resume';
+import { retireUnstartedDelivery } from '../recovery/retire-unstarted-delivery';
 import { requireSavedPrerequisites } from '../recovery/implementation/saved-prerequisite-handoff';
 import { CurrentChecksWait } from '../readiness/github-check-selection';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
@@ -118,6 +119,7 @@ export class GitHubDelivery {
             }
             await new ProjectProgress(this.store, this.execute).reconcile(job);
             const issue = await this.api(`issues/${Number(job.key.slice(3))}`);
+            if (await retireUnstartedDelivery(this, job, issue)) return;
             if (issue.pull_request || !['closeout', 'ci-recovery'].includes(job.stage) && issue.state !== 'open' || !job.existingPR && !issue.assignees?.some((a: any) => a.login === 'JFusco'))
                 throw new Error('Issue is closed or no longer assigned to Joe; delivery stopped');
             if (job.stage === 'implement' && job.automaticStatus) {
