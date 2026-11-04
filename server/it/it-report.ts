@@ -12,7 +12,7 @@ export async function publishITReport(context: ITContext): Promise<void> {
     // them on demand or through the daily review, and receives goal-specific PM updates.
     const changed = !previous || previous.status !== status || JSON.stringify(previous.followUps) !== JSON.stringify(followUps);
     if (actions.length || changed) {
-        const summary = actions.length ? `Ellis completed ${actions.length} operational recovery check${actions.length === 1 ? '' : 's'} for ${store.project.name}. ${followUps.length ? `${followUps.length} follow-up${followUps.length === 1 ? '' : 's'} remain.` : 'No operational follow-up remains.'}` : followUps.length ? `Ellis checked ${store.project.name}. ${followUps.length} operational follow-up${followUps.length === 1 ? '' : 's'} remain.` : `Ellis checked ${store.project.name}; monitored connections are available.`;
+        const summary = actions.length ? `Ellis completed ${actions.length} operational recovery check${actions.length === 1 ? '' : 's'} for ${store.project.name}. ${followUps.length ? `${followUps.length} follow-up${followUps.length === 1 ? '' : 's'} remain.` : 'No operational follow-up remains.'}` : followUps.length ? `Ellis checked ${store.project.name}. ${followUps.length} operational follow-up${followUps.length === 1 ? '' : 's'} remain.` : `Ellis checked ${store.project.name}; no operational recovery is pending.`;
         const report: ITReport = { id: crypto.randomUUID(), at: now.toISOString(), status, summary, actions, followUps, notified: team, fingerprint };
         it.reports.push(report);
         store.emit('it-report', `${summary} Report shared with Morgan, Alex, Sam and Riley.`, 'pm');

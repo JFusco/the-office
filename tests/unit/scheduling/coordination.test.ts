@@ -78,6 +78,20 @@ test('assignment polling deduplicates, preserves the last complete feed on failu
     await c.poll();
     expect(c.state.listener.reviews).toHaveLength(2);
 });
+test('slow assignment checks record completion time and schedule the next read from completion', async () => {
+    const { c, store } = setup('cec');
+    const started = new Date('2026-11-04T20:00:00Z'), completed = new Date('2026-11-04T20:04:00Z');
+    store.clock = { ...store.clock, now: () => completed };
+    c.readAssignments = async () => [];
+    await c.poll(started);
+    expect(c.state.listener.lastCheckedAt).toBe(completed.toISOString());
+    expect(c.state.listener.nextCheckAt).toBe('2026-11-04T20:05:00.000Z');
+    c.readAssignments = async () => { throw new Error('Read failed'); };
+    store.clock = { ...store.clock, now: () => new Date('2026-11-04T20:06:00Z') };
+    await c.poll();
+    expect(c.state.listener.lastCheckedAt).toBe(completed.toISOString());
+    expect(c.state.listener.nextCheckAt).toBe('2026-11-04T20:07:00.000Z');
+});
 test('PM reviews are FIFO, project-scoped, read-only and block uncertain ownership before any implementation', async () => {
     const { c, engine } = setup();
     c.readAssignments = async () => [issue('GH-255'), issue('GH-256')];

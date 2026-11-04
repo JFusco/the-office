@@ -6,6 +6,7 @@ function fixture(){
  const calls:{program:string;args:string[]}[]=[];
  const execute=async(program:string,args:string[])=>{
   calls.push({program,args});
+  if(program==='curl')return JSON.stringify({status:{indicator:'none',description:'All Systems Operational'},components:[],incidents:[]});
   if(program==='claude')return JSON.stringify({loggedIn:true,email:'fixture@example.test',accessToken:'never-return-this'});
   if(program==='codex')return '';
   if(program==='gh')return JSON.stringify({hosts:{'github.com':[{active:true,state:'success',login:'fixture',token:'never-return-this'}]}});
@@ -16,9 +17,9 @@ function fixture(){
 }
 test('service checks use status/read commands, coalesce requests and never return credentials',async()=>{
  const f=fixture(),checks=new ServiceHealthChecks(f.execute as any),[a,b]=await Promise.all([checks.report([state()]),checks.report([state()])]);
- expect(f.calls).toHaveLength(5);expect(a.services.filter(s=>['openai','anthropic','github','atlassian','azure'].includes(s.id)).every(s=>s.status==='connected')).toBe(true);
+ expect(f.calls).toHaveLength(7);expect(a.services.filter(s=>['openai','anthropic','github','atlassian','azure'].includes(s.id)).every(s=>s.status==='connected')).toBe(true);
  expect(JSON.stringify(a)).not.toContain('never-return-this');expect(b.services.find(s=>s.id==='slack')?.status).toBe('unknown');
- await checks.report([state()]);expect(f.calls).toHaveLength(5);expect(f.calls.every(c=>!c.args.includes('--show-token'))).toBe(true);
+ await checks.report([state()]);expect(f.calls).toHaveLength(7);expect(f.calls.every(c=>!c.args.includes('--show-token'))).toBe(true);
 });
 test('a delivery failure remains in history without turning a verified login into an outage',async()=>{
  const f=fixture(),checks=new ServiceHealthChecks(f.execute as any),failed={provider:'claude',status:'failed',stage:'github-update-base',ticket:'GH-255',endedAt:'2026-10-28T20:27:13Z'};

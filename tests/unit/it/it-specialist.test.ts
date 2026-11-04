@@ -56,6 +56,17 @@ test('unknown provider checks never request a login after retries, while confirm
     syncOutbox(a.state);
     expect(a.state.outbox.find(o => o.status === 'open')?.detail).toContain('Run /login');
 });
+test('public provider incidents and unreadable status pages do not request credential recovery', async () => {
+    const a = setup();
+    a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [
+        { id: 'provider:openai', kind: 'provider', name: 'OpenAI public status', status: 'warning', detail: 'Service disruption', checkedAt: '' },
+        { id: 'provider:anthropic', kind: 'provider', name: 'Claude public status', status: 'unknown', detail: 'Status unavailable', checkedAt: '' },
+    ] } as any);
+    await a.it.tick();
+    expect(a.state.it!.reports.at(-1)!.followUps).toEqual([]);
+    expect(a.state.it!.recoveries).toEqual({});
+    expect(a.state.it!.services).toHaveLength(2);
+});
 test('a listener recovery owned by IT resolves its duplicate human outbox item', async () => {
     const a = setup();
     a.state.coordination!.listener.error = 'gh read timed out';
