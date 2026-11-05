@@ -1,3 +1,4 @@
+import { featureDependencyEdges } from '../../features/dependency-edges';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { DependencyObservation, Prerequisite, WorkEligibility, WorkRef } from '../../../src/shared';
@@ -40,6 +41,7 @@ export function validatePrerequisites(dependencies: Prerequisite[], subject: Wor
     const normalized = (ref: WorkRef) => workKey({ ...ref, id: ref.kind === 'issue' || ref.kind === 'pr' ? issueKey(ref.id) : ref.id });
     const origin = normalized(subject);
     graph.set(origin, dependencies.map(dependency => dependency.target));
+    for (const store of stores.values()) for (const [from, to] of featureDependencyEdges(store)) graph.set(from, [...(graph.get(from) || []), to]);
     const visiting = new Set<string>(), visited = new Set<string>();
     const cycle = (key: string): boolean => {
         if (visiting.has(key))

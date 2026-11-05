@@ -9,7 +9,7 @@ export type FixtureState = {
 };
 
 const iso=(now:number,minutesAgo=0)=>new Date(now-minutesAgo*60000).toISOString();
-const agents=(now:number):Agent[]=>([['pm','Morgan','Project manager'],['developer','Alex','Developer'],['lead','Sam','Lead developer'],['qa','Riley','QA engineer'],['cto','Avery','Technology & priorities']] as [Role,string,string][])
+const agents=(now:number):Agent[]=>([['pm','Morgan','Project manager'],['analyst','Casey','Technical Business Analyst'],['developer','Alex','Developer'],['lead','Sam','Lead developer'],['qa','Riley','QA engineer'],['cto','Avery','Technology & priorities']] as [Role,string,string][])
   .map(([id,name,title])=>({id,name,title,activity:'idle',task:'Ready for the next handoff',ticket:'',sessionId:id==='qa'?'fixture-session-riley':'',lastSeen:iso(now,1),
     ...(id==='developer'?{provider:'claude' as const,model:'claude-opus-5-5',effort:'medium',observedModel:'claude-opus-5-5'}:{}),
     ...(id==='pm'?{lastOutcome:{ticket:'CEC-101',summary:'Fixture outcome: requirements confirmed and handed to development.',status:'completed',at:iso(now,30)}}:{})}));

@@ -14,12 +14,12 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { STAGE_LABELS, STAGE_ROLE, STAGES, ROLE_NAMES, type Agent, type OfficeSnapshot, type Role } from '../shared';
 import { sceneColors } from '../tokens/scene-colors';
 import { StatusDot, cx, interactiveScene } from '../ui';
-export type Selection={kind:'agent';id:Role}|{kind:'chat';ticket?:string}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|null;
+export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTicket?:string}|{kind:'agent';id:Role}|{kind:'chat';ticket?:string}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|null;
 const Party=createContext(false);
 type Vec=[number,number,number];
 type SceneAgent=Agent;
-const TEAM_COLOR={pm:'teamPm',developer:'teamDeveloper',lead:'teamLead',qa:'teamQa',cto:'teamCto',it:'teamIt'} as const;
-const TEAM_SWATCH={pm:'bg-team-pm',developer:'bg-team-developer',lead:'bg-team-lead',qa:'bg-team-qa',cto:'bg-team-cto',it:'bg-team-it',ideas:'bg-scene-ideas',reports:'bg-scene-reports'};
+const TEAM_COLOR={pm:'teamPm',developer:'teamDeveloper',lead:'teamLead',qa:'teamQa',cto:'teamCto',it:'teamIt',analyst:'teamPm'} as const;
+const TEAM_SWATCH={pm:'bg-team-pm',developer:'bg-team-developer',lead:'bg-team-lead',qa:'bg-team-qa',cto:'bg-team-cto',it:'bg-team-it',analyst:'bg-team-pm',ideas:'bg-scene-ideas',reports:'bg-scene-reports'};
 const sceneLabel=`border ${interactiveScene}`;
 function Box({pos=[0,0,0],size=[1,1,1],color,radius=0.03,...props}:{pos?:Vec;size?:Vec;color:string;radius?:number;[key:string]:any}){
   return <mesh position={pos} castShadow receiveShadow {...props}><boxGeometry args={size}/><meshStandardMaterial color={color} roughness={0.72}/></mesh>;

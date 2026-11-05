@@ -1,3 +1,4 @@
+import { featureGate } from '../../features/enrollment-gate';
 import { HOLDS } from '../../office/config';
 import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../pipeline/dependencies';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -10,6 +11,8 @@ export interface Admission { status: 'ready' | 'owned' | 'held'; detail: string;
 /** Deterministic replacement for the model intake: owners, holds and structured prerequisites decide. */
 export function admit(context: IntakeContext, delivery: GitHubDelivery, input: { key: string; workRequested?: 'automatic' | 'manual'; prerequisites: Prerequisite[] }, now: Date): Admission {
     const { store, state } = context;
+    const gate = featureGate(store, input.key);
+    if (!gate.allowed) return { status: 'held', detail: gate.reason, owner: '' };
     if (HOLDS[input.key])
         return { status: 'held', detail: HOLDS[input.key], owner: '' };
     const job = state.jobs?.find(candidate => candidate.key === input.key && candidate.status !== 'cancelled');

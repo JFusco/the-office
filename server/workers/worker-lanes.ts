@@ -1,6 +1,8 @@
 import type { ExecutionLane, Role, WorkClaim } from '../../src/shared';
 /** Leadership capacity never substitutes for delivery capacity. Free-form advice remains advice. */
 export function assertWorkerLane(role: Role, stage: string, readOnly: boolean, assignment?: { lane: ExecutionLane; claim: WorkClaim }) {
+    if (role === 'analyst' && (!readOnly || !['feature-research', 'feature-question-round'].includes(stage)))
+        throw new Error('Casey is restricted to read-only feature discovery');
     if (role === 'cto' && (!readOnly || !['conversation', 'daily-cto'].includes(stage)))
         throw new Error('CTO capacity is reserved for read-only advice and daily assessment');
     if (role === 'it' && (!readOnly || stage !== 'conversation'))

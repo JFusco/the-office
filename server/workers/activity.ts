@@ -3,6 +3,7 @@ import { STAGE_LABELS, type Role, type Stage } from '../../src/shared';
 
 const labels:Record<string,string>={
   ...githubStageLabels,
+  'feature-research':'Researching the feature brief','feature-question-round':'Clarifying feature decisions','feature-plan':'Writing the technical feature plan',
   'deferred-conversation':'Reconciling an earlier message · Backlog deferred',
   'conversation-readback':'Reading back an earlier request',
   'assignment-review':'Checking task ownership and investigating the assignment',
@@ -17,7 +18,7 @@ const labels:Record<string,string>={
 };
 export function workerActivity(role:Role,stage:string,project:string,ticket=''){
   const label=stage==='conversation'
-    ?({pm:'Coordinating your request',cto:'Reviewing goals and priorities',developer:'Reviewing your development request',lead:'Reviewing your changes',qa:'Reviewing verification needs',it:'Checking connections and recovery'})[role]
+    ?({analyst:'Researching your feature',pm:'Coordinating your request',cto:'Reviewing goals and priorities',developer:'Reviewing your development request',lead:'Reviewing your changes',qa:'Reviewing verification needs',it:'Checking connections and recovery'})[role]
     :labels[stage]||(Object.hasOwn(STAGE_LABELS,stage)?STAGE_LABELS[stage as Stage]:'Working on your request');
   return `${ticket||project} · ${label}`;
 }

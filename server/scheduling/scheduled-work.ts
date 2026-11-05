@@ -1,3 +1,5 @@
+import { scheduledFeatures } from '../features/scheduled-features';
+import { gateFeatureWork } from '../features/scheduling-gates';
 import { deliveryRepairProjection } from '../../src/work/delivery-repair-projection';
 import {closeoutRequestResolved,verifiedCloseoutCleanupRequest} from '../delivery/recovery/closeout/closeout-recovery-evidence';
 import {scopeRepairRequestResolved} from '../delivery/recovery/scope-repair/scope-repair-readback';
@@ -61,10 +63,11 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const readback = !pendingTime && publishingEnabled && dueReadback(store, now);
         if (readback)
             add('reconciliation', { id: `time-readback:${readback.id}`, status: 'queued' }, 'time-readback', readback.createdAt, 3, () => readBackTime(store, readback.id));
-        return withActiveClaims(store, lane, items);
+        return withActiveClaims(store, lane, gateFeatureWork(store, items));
     }
     if (lane !== 'delivery')
-        return withActiveClaims(store, lane, items);
+        return withActiveClaims(store, lane, gateFeatureWork(store, items));
+    items.push(...scheduledFeatures(entry));
     for (const job of c.jobs || []) {
         const validation = validatePrerequisites(job.prerequisites || [], { projectId: store.project.id, kind: 'delivery', id: job.id }, stores);
         const dependency = validation ? eligible('blocked', validation) : dependencyEligibility(job.prerequisites || [], stores, now);
@@ -120,7 +123,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     const mail = store.state.pendingMail;
     if (mail)
         add('mail', { id: mail.id || mail.requestedAt, status: 'queued' }, 'mailbox', mail.requestedAt, 3, () => engine.drainMail());
-    return withActiveClaims(store, lane, items);
+    return withActiveClaims(store, lane, gateFeatureWork(store, items));
 }
 
 /** A persisted execution claim is authoritative while synthetic source rows change. */

@@ -1,3 +1,5 @@
+import { assertFeatureGate, featureGate } from '../features/enrollment-gate';
+import { bindDelivery } from '../features/delivery-binding';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -7,6 +9,7 @@ import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
 
 export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string) {
+    assertFeatureGate(this.store, key);
     if (this.store.project.provider !== 'azure')
         throw new Error('GitHub issues use project chat and maintenance');
     const t = this.store.ticket(key), queue = this.store.state.deliveryQueue ??= [];
@@ -48,6 +51,11 @@ export async function drainDelivery(this: Engine, selectedId?: string) {
             request.error = this.store.ticket(request.key).blocker;
     }
     catch (e) {
+        if (!featureGate(this.store, request.key).allowed) {
+            request.status = 'queued';
+            request.error = '';
+            return;
+        }
         request.status = 'blocked';
         request.error = String(e);
         const t = this.store.ticket(request.key);
@@ -58,6 +66,7 @@ export async function drainDelivery(this: Engine, selectedId?: string) {
 }
 
 export async function startPilot(this: Engine, key: string, background = true, intakeStatus?: string) {
+    assertFeatureGate(this.store, key);
     if (this.store.project.provider === 'github')
         throw new Error('CMS issues are coordinated through project chat and the reviewed maintenance workflow');
     if (this.agents.active.size)
@@ -85,6 +94,7 @@ export async function startPilot(this: Engine, key: string, background = true, i
     const liveReason = eligibility({ ...live, key }, intakeStatus);
     if (liveReason || live.blocker || live.existingOwner || live.existingPrId)
         throw new Error(liveReason || live.blocker || `Existing owner/PR ${live.existingOwner || live.existingPrId} requires reconciliation before adoption`);
+    assertFeatureGate(this.store, key);
     t.pilot = true;
     t.runId = `${key.toLowerCase()}-${randomUUID()}`;
     t.stage = 'understand';
@@ -119,6 +129,7 @@ export async function dispatchNightly(this: Engine) {
                 break;
             if (ticket.stage !== 'mailbox' || ticket.blocker || eligibility(ticket))
                 continue;
+            if (!featureGate(this.store, ticket.key).allowed) continue;
             try {
                 this.requestDelivery(ticket.key, 'start-pilot');
             }
@@ -137,6 +148,7 @@ export async function dispatchNightly(this: Engine) {
 }
 
 export async function resume(this: Engine, key: string, background = true) {
+    assertFeatureGate(this.store, key);
     if (this.store.project.provider === 'github')
         throw new Error('Use CMS project chat to reconcile an issue; CEC delivery stages do not apply');
     if (this.agents.active.size)

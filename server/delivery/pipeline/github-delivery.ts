@@ -1,3 +1,5 @@
+import { assertFeatureGate } from '../../features/enrollment-gate';
+import { bindDelivery } from '../../features/delivery-binding';
 import { scopeRepairResumeInstruction, scopeRepairResumeNextStage } from '../recovery/scope-repair/scope-repair-resume';
 import { retireUnstartedDelivery } from '../recovery/retire-unstarted-delivery';
 import { requireSavedPrerequisites } from '../recovery/implementation/saved-prerequisite-handoff';
@@ -78,6 +80,7 @@ export class GitHubDelivery {
     constructor(public store: Store, public engine: Engine, public execute: typeof command = command) { }
     get jobs() { return this.store.state.coordination!.jobs ??= []; }
     enqueue(key: string, pr = 0, automaticStatus?: string) {
+        assertFeatureGate(this.store, key);
         if (this.jobs.some(j => j.key === key && j.status !== 'cancelled'))
             return;
         const job: TicketJob = { id: crypto.randomUUID(), key, requestedAt: new Date().toISOString(), status: 'queued', stage: pr ? 'prepare-pr' : 'implement', detail: pr ? 'Existing PR routed to Sam; no duplicate development.' : 'Waiting for the Office team.', head: '', worktree: '', branch: '', pr, automaticStatus, prUrl: pr ? `https://github.com/${this.store.project.repository}/pull/${pr}` : '', existingPR: !!pr, steps: [] };
@@ -108,6 +111,7 @@ export class GitHubDelivery {
     async continuationGuard(job: TicketJob,reconciliation?:import('../../../src/shared').HarnessRequest) { return continuationGuard.call(this, job, reconciliation); }
     async queueSourceRepair(job: TicketJob, result: StageResult, root: string) { return queueSourceRepair.call(this, job, result, root); }
     async step(job: TicketJob) {
+        bindDelivery(this.store, job, job.id);
         job.status = 'working';
         this.store.emit('github-delivery-stage', `${job.key} · ${job.stage}`, 'pm', job.key);
         const project = this.store.project, root = resolve(this.store.dataRoot, 'ticket-work', job.id);

@@ -61,13 +61,14 @@ async function close() {
     shutdown = true;
     stopTicks();
     for (const { engine } of offices.entries.values()) {
+        engine.features.pause();
         engine.agents.pause();
         engine.ctoAgents.pause();
         engine.itAgents.pause();
     }
     server.close();
     server.closeAllConnections();
-    await Promise.all([...offices.entries.values()].flatMap(({ engine }) => [engine.agents.waitForIdle(), engine.ctoAgents.waitForIdle(), engine.itAgents.waitForIdle()]));
+    await Promise.all([...offices.entries.values()].flatMap(({ engine }) => [engine.features.review.waitForIdle(), engine.agents.waitForIdle(), engine.ctoAgents.waitForIdle(), engine.itAgents.waitForIdle()]));
     await vite?.close();
     for (const { store } of offices.entries.values())
         store.close();

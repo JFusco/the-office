@@ -1,3 +1,4 @@
+import { featureEffectGate } from '../features/delivery-binding';
 import { randomUUID } from 'node:crypto';
 import { workKey } from '../../src/shared';
 import type { EffectIntent, WorkRef } from '../../src/shared';
@@ -45,6 +46,7 @@ export class Effects {
         }
         try {
             await operation.preflight();
+            featureEffectGate(this.store, operation.work, operation.target);
             if (this.store.state.paused)
                 throw new Error('Office paused before dispatch');
         }

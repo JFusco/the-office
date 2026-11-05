@@ -9,6 +9,7 @@ import { systemClock } from '../office/clock';
 export interface ScheduledWork extends ProgressionItem {
     store: Store;
     allowPaused?: boolean;
+    claimEligible?(): boolean;
     execute(): Promise<unknown>;
     timing?: QueueTiming[];
     saveTiming?(timing: QueueTiming): void;
@@ -64,7 +65,7 @@ export class Scheduler {
             let claim: ReturnType<Store['claimWork']>;
             try {
                 const expected = item.identity();
-                claim = store.claimWork(item.work, this.owner, item.stage, this.lane);
+                claim = store.transaction(() => item.claimEligible && !item.claimEligible() ? null : store.claimWork(item.work, this.owner, item.stage, this.lane));
                 if (!claim) {
                     scheduling.undispatchedCycles++;
                     store.save();

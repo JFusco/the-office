@@ -1,3 +1,4 @@
+import { featureDeliveryContext } from '../features/delivery-binding';
 import { REPAIR_DIAGNOSIS } from '../delivery/repairs/delivery-repairs';
 import { handsOff } from '../delivery/harness/scope';
 import { RESOLUTION_GUIDANCE, HANDS_OFF_RESOLUTION_GUIDANCE } from '../delivery/harness/resolution-guidance';
@@ -73,9 +74,10 @@ export class Agents extends WorkerRuntime {
     async stage(ticket: Ticket, stage: Stage, role: Role): Promise<StageResult> {
         const artifactRoot = resolve(DATA, 'runs', ticket.runId);
         mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
-        const prompt = cecPrompt(this.store, ticket, stage, role, artifactRoot) + (ticket.repairCycle?.phase === 'diagnosis' && stage === 'code-review' ? `\n${REPAIR_DIAGNOSIS}` : '');
-        const artifactOnly = ['plan', 'plan-review', 'code-review', 'repair-review', 'ci-diagnose'].includes(stage);
-        return this.run(role, prompt, ResultSchema, { ticket: ticket.key, stage, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT });
+        const prompt = featureDeliveryContext(this.store, ticket.featureBinding) + cecPrompt(this.store, ticket, stage, role, artifactRoot) + (ticket.repairCycle?.phase === 'diagnosis' && stage === 'code-review' ? `\n${REPAIR_DIAGNOSIS}` : '');
+        const featureEnhance = !!ticket.featureBinding && stage === 'enhance';
+        const artifactOnly = featureEnhance || ['plan', 'plan-review', 'code-review', 'repair-review', 'ci-diagnose'].includes(stage);
+        return this.run(role, prompt, ResultSchema, { ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT });
     }
     async transition(ticket: Ticket, target: string): Promise<StageResult> {
         return this.run('pm', cecTransitionPrompt(this.store, ticket, target), ResultSchema, { ticket: ticket.key, stage: 'transition' });
