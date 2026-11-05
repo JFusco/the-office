@@ -5,6 +5,7 @@ import { azurePRDescription, collectAzureGoalDocuments } from '../leadership/goa
 import type { AzureBuild, AzurePR } from '../../src/shared';
 import type { Store } from '../store/store';
 import { buildTiming, timelineTiming, rememberCi } from '../time/ci-timing';
+import { readAzurePRs } from './observed-prs';
 const base=['--organization',CEC.organization,'--project',CEC.project];
 async function readInPairs<T,R>(items:T[],read:(item:T)=>Promise<R>):Promise<R[]>{const out:R[]=[];for(let i=0;i<items.length;i+=2)out.push(...await Promise.all(items.slice(i,i+2).map(read)));return out;}
 export async function az<T>(args:string[],readOnly=false,timeout=55000):Promise<T>{
@@ -25,7 +26,7 @@ export class AzureMonitor {
     if(this.busy)return;this.busy=true;this.store.state.azure.status='working';this.store.save();
     try{
       const [rawPrs,rawBuilds]=await Promise.all([
-        az<any[]>(['repos','pr','list','--repository',CEC.repository,'--status','all','--top','25']),
+        readAzurePRs(CEC.repository,args=>az(args,true)),
         az<any[]>(['pipelines','build','list','--top','12'])
       ]);
       const prs:AzurePR[]=await Promise.all(rawPrs.map(async p=>{

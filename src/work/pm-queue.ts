@@ -1,5 +1,5 @@
 import type { OfficeSnapshot, AssignmentReview } from '../shared';
-import { deliveryLabel, shortSummary, readinessWait, maintenanceIssue } from './work-summary';
+import { deliveryLabel, shortSummary, readinessWait, maintenanceIssue, parkedProviderWait } from './work-summary';
 export function prerequisiteKeys(review: AssignmentReview) {
     return [...new Set((review.prerequisites || []).map(dependency => dependency.target.kind === 'issue' && /^\d+$/.test(dependency.target.id) ? `GH-${dependency.target.id}` : dependency.target.id))];
 }
@@ -56,12 +56,22 @@ export function pmQueueItems(snapshot: OfficeSnapshot) {
     const rank = { active: 0, queued: 1, waiting: 2, stopped: 3 };
     for (const row of rows) {
         const kind = row.id.startsWith('delivery:') ? 'delivery' : row.id.startsWith('intake:') ? 'intake' : undefined;
+        const delivery = kind === 'delivery' ? jobs.get(`${row.project}:${row.key}`)?.job : undefined;
+        if (delivery && parkedProviderWait(delivery)) {
+            row.phase = 'Blocked on board · upstream wait';
+            row.detail = `Saved blocker (${delivery.parked!.at}): ${delivery.parked!.reason}\nNext owner: Morgan rechecks current upstream evidence. The card stays in Block until deliberately moved to Ready; no approval or reply is requested.`;
+            row.group = 'stopped';
+            continue;
+        }
         const item = snapshot.progression?.find(item => item.work.projectId === row.project && item.work.kind === kind && item.work.id === row.id.slice(row.id.indexOf(':') + 1));
         if (!item)
             continue;
         row.group = item.eligibility.state === 'running' ? 'active' : item.eligibility.state === 'runnable' ? 'queued' : item.eligibility.state === 'waiting' ? 'waiting' : 'stopped';
-        if (['blocked', 'waiting'].includes(item.eligibility.state))
-            row.detail = `${item.eligibility.reason}. Next owner: ${item.eligibility.owner}`;
+        if (['blocked', 'waiting'].includes(item.eligibility.state)) {
+            const job = kind === 'delivery' ? jobs.get(`${row.project}:${row.key}`)?.job : undefined;
+            const blocker = job && ['blocked', 'interrupted'].includes(job.status) ? job.parked?.reason || job.detail : row.detail;
+            row.detail = `${blocker || item.eligibility.reason}\n${item.eligibility.reason}. Next owner: ${item.eligibility.owner}`;
+        }
     }
     return rows.sort((a, b) => rank[a.group] - rank[b.group] || (a.at || '').localeCompare(b.at || ''));
 }

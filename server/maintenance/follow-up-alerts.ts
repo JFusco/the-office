@@ -6,7 +6,12 @@ export function maintenanceNeedsFollowup(state: OfficeSnapshot, run: Maintenance
         (!run.readbackRetry || !!run.readbackRetry.exhausted) && !maintenanceSuperseded(state, run);
 }
 
-/** A checkpoint and its failed run share one actionable alert; neither history is removed. */
+/** Vendor evidence failures belong to Morgan's maintenance view; questions surface separately. */
+export function maintenanceNeedsHumanFollowup(state: OfficeSnapshot, run: MaintenanceRun): boolean {
+    return maintenanceNeedsFollowup(state, run) && run.stage !== 'vendor-review';
+}
+
+/** A checkpoint and its failed run share one follow-up owner; neither history is removed. */
 export function checkpointHasMaintenanceAlert(state: OfficeSnapshot, checkpoint: DailyCheckpoint): boolean {
     return !checkpoint.repairResume?.needsFollowup &&
         !!state.maintenance?.runs.some(run => run.id === checkpoint.runId && maintenanceNeedsFollowup(state, run));

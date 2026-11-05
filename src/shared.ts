@@ -269,13 +269,19 @@ export interface NoticePolicy {
     workspace: string;
     mappings: string;
     enabledAt: string;
+    goals?: {
+        enabled: boolean;
+        enabledAt: string;
+        version: string;
+        targetId: string;
+        targetName: string;
+        workspaceId: string;
+    };
 }
-export interface MergeNotice {
+interface NoticeEntry {
     id: string;
     event: string;
     key: string;
-    prUrl: string;
-    mergeCommit: string;
     identity: string;
     email: string;
     text: string;
@@ -288,6 +294,10 @@ export interface MergeNotice {
         workspaceId: string;
     };
 }
+export type MergeNotice = NoticeEntry & ({ kind?: 'merge'; prUrl: string; mergeCommit: string } | {
+    kind: 'goal'; goalId: string; goalTitle: string; completedAt: string; policyVersion: string;
+    prUrl?: never; mergeCommit?: never;
+});
 export interface TimeEntry {
     revision?: number;
     worklogId?: string;
@@ -358,6 +368,8 @@ export interface GitHubIssue {
     updatedAt: string;
 }
 export interface GitHubPR {
+    description?: string;
+    descriptionTruncated?: boolean;
     linkedIssues?: number[];
     number: number;
     title: string;

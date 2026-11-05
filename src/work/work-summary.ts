@@ -55,6 +55,11 @@ export function deliveryLabel(job: TicketJob) {
     const next = { 'scope-repair': 'saved candidate repair', 'ci-recovery': 'CI failure recovery', implement: 'development', 'update-base': 'candidate base update', review: 'code review', validate: 'verification', draft: 'draft PR', 'lead-pr': 'Sam’s PR review', 'prepare-pr': 'PR dependency preparation', merge: 'Sam’s merge', closeout: 'Morgan’s closeout' }[job.stage];
     return job.status === 'queued' ? `Queued for ${next}` : `Working on ${next}`;
 }
+/** External waits stay on the board with Morgan; they are not human approval requests. */
+export function parkedProviderWait(job: TicketJob): boolean {
+    return job.status === 'blocked' && !!job.parked?.published &&
+        job.steps?.filter(step => step.stage === job.parked!.stage).at(-1)?.result.resolution?.kind === 'provider-wait';
+}
 export function readinessNeedsFollowup(job: TicketJob) {
     if (job.status !== 'watching' || job.mergeCommit || job.mergeApprovalRequired || job.dependsOnPR)
         return false;

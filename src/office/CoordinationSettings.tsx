@@ -1,4 +1,5 @@
 import {SaveFeedback} from './SaveFeedback';
+import {GoalNoticeSettings} from '../leadership/GoalNoticeSettings';
 import { useState } from 'react';
 import { officeUrl,type OfficeSnapshot } from '../shared';
 import { Button, Card, Section, SectionTitle, Select, checkLabel, checkbox, cx, field, fieldFocus, mutedCopy } from '../ui';
@@ -19,6 +20,7 @@ function Settings({snapshot}:{snapshot:OfficeSnapshot}){
  <label className={label}>People mappings (optional)<textarea className={cx(input,'min-h-17.5')} value={mappings} disabled={disabled} maxLength={6000} placeholder="JFusco = Joe Fusco" onChange={e=>setMappings(e.target.value)}/></label>
  <p className={mutedCopy}>One provider login or Jira account ID = Slack name/email per line. Without a mapping Morgan requires matching verified email addresses. Ambiguous recipients go to your outbox. Enabling this authorizes future merge notices for this project. No historical messages are sent.</p>
  <Button type="submit" className="justify-self-start" disabled={disabled}>Save Slack notifications</Button>{saveAction==='configure-notifications'?<SaveFeedback message={feedback} error={saveError} pending={pending}/>:null}</form>
+ <GoalNoticeSettings snapshot={snapshot}/>
  <SectionTitle>Time attributed to Joe</SectionTitle><form className={form} onSubmit={e=>{e.preventDefault();void save('configure-time',{time:{enabled:trackTime,githubField:publishTime,...(snapshot.project?.provider==='azure'?{jira:publishJira}:{})}});}}>
  <label className={cx(checkLabel,'text-12')}><input type="checkbox" className={cx(checkbox,'mt-0.5')} checked={trackTime} disabled={disabled} onChange={e=>setTrackTime(e.target.checked)}/><span className="min-w-0 flex-1">Log measured Office work as my time</span></label>
  {snapshot.project?.provider==='github'?<label className={cx(checkLabel,'text-12')}><input type="checkbox" className={cx(checkbox,'mt-0.5')} checked={publishTime} disabled={disabled} onChange={e=>setPublishTime(e.target.checked)}/><span className="min-w-0 flex-1">Update Time Spent (Hours) on this board</span></label>:<label className={cx(checkLabel,'text-12')}><input type="checkbox" className={cx(checkbox,'mt-0.5')} checked={publishJira} disabled={disabled} onChange={e=>setPublishJira(e.target.checked)}/><span className="min-w-0 flex-1">Publish confirmed Jira effort after each Eastern date closes</span></label>}

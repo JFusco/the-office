@@ -86,7 +86,7 @@ export class ControlStore {
         }[]).map(row => JSON.parse(row.body));
     }
     summaries(): DailyCTOSummary[] {
-        return this.list(8).map(({ id, date, dueAt, collectedAt, status, detail }) => ({ id, date, dueAt, collectedAt, status, detail }));
+        return this.list(8).map(({ id, date, dueAt, collectedAt, status, detail, briefing }) => ({ id, date, dueAt, collectedAt, status, detail: briefing?.summary || detail }));
     }
     coalesceBefore(date: string): void {
         const rows = this.db.prepare("SELECT body FROM daily_cto WHERE date<? AND json_extract(body,'$.status')='queued'").all(date) as {

@@ -37,6 +37,10 @@ export interface DailyCTOResult {
     updates: DailyGoalUpdate[];
     unmapped: string[];
 }
+export interface DailyCTOBriefing {
+    summary: string;
+    goals: { projectId: string; goalId: string; progress: string; blockers: string[] }[];
+}
 export interface DailyCTOReport {
     id: string;
     revision: number;
@@ -49,6 +53,7 @@ export interface DailyCTOReport {
     attemptId: string;
     recoveryHistory?: { attemptId: string; detail: string; queuedAt: string }[];
     detail: string;
+    briefing?: DailyCTOBriefing;
     applied: string[];
     conflicts: string[];
 }

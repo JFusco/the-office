@@ -2,7 +2,7 @@ import {useLiveTiming} from '../timing/useLiveTiming';
 import {ROLE_NAMES} from '../shared';
 import {deliveryRepairProjection} from './delivery-repair-projection';
 import type {OfficeSnapshot,TicketJob} from '../shared';
-import {shortSummary,readinessWait,maintenanceIssue} from './work-summary';
+import {shortSummary,readinessWait,maintenanceIssue,parkedProviderWait} from './work-summary';
 import {displayAgentTask} from '../scene/agent-activity';
 import {Tag,cx,interactive} from '../ui';
 const phases:Record<TicketJob['stage'],string>={'ci-recovery':'Recovering failed merge checks','scope-repair':'Alex repairs the saved candidate', 'update-base':'Updating candidate base',implement:'Building the fix',review:'Independent review',validate:'Verifying the fix',draft:'Publishing the PR','lead-pr':'Checking PR readiness','prepare-pr':'Preparing PR dependencies',merge:'Merging verified PR',closeout:'Closing out merged work'};
@@ -26,6 +26,9 @@ export function ticketUpdates(snapshot:OfficeSnapshot){
   const repair=deliveryRepairProjection(j);
   const wait=j.status==='watching'&&!j.mergeCommit?readinessWait(j):undefined;
   rows.set(j.key,{key:j.key,title:snapshot.tickets.find(t=>t.key===j.key)?.summary||snapshot.github?.issues.find(t=>t.key===j.key)?.title||rows.get(j.key)?.title||'Issue delivery',workerActive,status:j.ciFollowupKey?'waiting':wait?wait.blocked?'blocked':'waiting':j.retry?.nextAt?'retrying':j.dependsOnPR?'waiting':j.status,phase:reconciling?`Delivery blocked · ${workerName} ${workerActive?'reconciles saved work':'last confirmed'}`:j.ciFollowupKey?`Waiting for CI repair ${j.ciFollowupKey}`:wait?wait.phase:j.status==='completed'?'Delivery complete':j.status==='watching'&&j.mergeCommit?'Watching merge Actions':repair?.phase||phases[j.stage],summary:agent?`${workerName}: ${shortSummary(displayAgentTask(agent,snapshot).split(' · ').slice(1).join(' · '),160)}`:j.ciFollowupKey?shortSummary(j.detail,240):wait?wait.summary:agent?shortSummary(displayAgentTask(agent,snapshot).split(' · ').slice(1).join(' · '),160):active?j.status==='watching'?'Waiting for GitHub verification; this ticket is still with the team.':`${phases[j.stage]}${j.pr?` · PR #${j.pr}`:''}.`:shortSummary(j.detail,160),next:reconciling?`Delivery awaits ${workerName}’s reconciliation result; Morgan coordinates the next stage.`:j.ciFollowupKey?`The team owns ${j.ciFollowupKey}; original failed runs remain recorded.`:wait?wait.next:j.retry?.nextAt?`Safe read retry at ${new Date(j.retry.nextAt).toLocaleTimeString()} (attempt ${j.retry.attempts+1}/3). No approval needed.`:j.dependsOnPR?`Waiting for parent PR #${j.dependsOnPR}.`:j.status==='completed'?'Closed out; the next eligible ticket can start.':['blocked','interrupted'].includes(j.status)&&j.repairCycle?.phase!=='diagnosis'?'Stopped; this delivery is not complete.':repair?`Delivery owner: ${repair.owner}. ${repair.next||following[j.stage]}`:following[j.stage],at:work?.lastHeartbeatAt||snapshot.events?.filter(e=>e.ticket===j.key&&e.kind==='github-delivery-stage'&&e.message===`${j.key} · ${j.stage}`).map(e=>e.at).sort().at(-1)||j.updatedAt||j.requestedAt});
+ }
+ for(const j of snapshot.coordination?.jobs||[])if(parkedProviderWait(j)){
+  const row=rows.get(j.key);if(row){row.phase='Blocked on board · upstream wait';row.summary=`Saved blocker (${j.parked!.at}): ${shortSummary(j.parked!.reason,160)}`;row.next='Next owner: Morgan rechecks current upstream evidence. The card stays in Block until deliberately moved to Ready; no approval or reply is requested.';}
  }
  const maintenance=snapshot.maintenance?.runs.at(-1);
  if(maintenance&&['working','blocked','interrupted','queued'].includes(maintenance.status)){
