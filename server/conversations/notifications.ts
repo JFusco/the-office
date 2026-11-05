@@ -4,10 +4,11 @@ import type { Store } from '../store/store';
 import type { Engine } from '../scheduling/engine';
 import { SlackMessages } from './slack';
 import type { MergeNotice } from '../../src/shared';
+import { sendGoalNotice } from '../leadership/send-goal-notice';
 export const NoticeSettings = z.object({ enabled: z.boolean(), recipients: z.enum(['assignee', 'reporter', 'both']), workspace: z.string().trim().min(1).max(100), mappings: z.string().max(6000) }).strict();
 const Identity = z.object({ found: z.boolean(), targetId: z.string(), targetName: z.string(), workspaceId: z.string(), evidence: z.array(z.string()), blocker: z.string() }).strict();
 export function noticeState(store: Store) { return store.state.coordination!.notices ??= { policy: { enabled: false, recipients: 'both', workspace: 'Verndale', mappings: '', enabledAt: '' }, entries: [] }; }
-export function configureNotices(store: Store, input: unknown) { const state = noticeState(store), settings = NoticeSettings.parse(input); state.policy = { ...settings, enabledAt: settings.enabled ? (state.policy.enabled ? state.policy.enabledAt : new Date().toISOString()) : '' }; store.emit('merge-notices-configured', `${store.project.name} merge Slack notices ${settings.enabled ? 'enabled' : 'disabled'}.`, 'pm'); }
+export function configureNotices(store: Store, input: unknown) { const state = noticeState(store), settings = NoticeSettings.parse(input); state.policy = { ...state.policy, ...settings, enabledAt: settings.enabled ? (state.policy.enabled ? state.policy.enabledAt : new Date().toISOString()) : '' }; store.emit('merge-notices-configured', `${store.project.name} merge Slack notices ${settings.enabled ? 'enabled' : 'disabled'}.`, 'pm'); }
 export function queueMergeNotice(store: Store, input: {
     key: string;
     prUrl: string;
@@ -54,6 +55,7 @@ export class MergeNotifications {
         const { policy, entries } = noticeState(this.store), notice = entries.find(n => n.status === 'queued' && (!id || n.id === id));
         if (!notice)
             return;
+        if (notice.kind === 'goal') return sendGoalNotice(this.store, this.engine.agents, notice);
         if (!policy.enabled) {
             notice.status = 'cancelled';
             notice.detail = 'Notifications disabled before delivery.';

@@ -1,7 +1,7 @@
 import { deferredPickup } from '../../src/work/pickup-state';
 import { checkpointSuperseded } from '../maintenance/superseded';
-import { checkpointHasMaintenanceAlert, maintenanceNeedsFollowup } from '../maintenance/follow-up-alerts';
-import { readinessNeedsFollowup, readinessWait } from '../../src/work/work-summary';
+import { checkpointHasMaintenanceAlert, maintenanceNeedsHumanFollowup } from '../maintenance/follow-up-alerts';
+import { parkedProviderWait, readinessNeedsFollowup, readinessWait } from '../../src/work/work-summary';
 import { HOLDS } from '../office/config';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
 export function conversationResolved(state: OfficeSnapshot, message: TeamMessage): boolean {
@@ -31,8 +31,8 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         item('assignment-listener', 'Restore assignment listening', state.coordination.listener.error, 'pm');
     for (const n of state.coordination?.notices?.entries || []) {
         const confirmed = state.slackDeliveries?.find(d => d.requestId === n.id && d.status === 'confirmed');
-        if (!confirmed && ['blocked', 'uncertain'].includes(n.status))
-            item(`merge-notice:${n.id}`, `Resolve ${n.key} Slack notice`, n.detail, 'pm', n.key, n.prUrl);
+        if (!confirmed && ['blocked', 'uncertain'].includes(n.status) && !(n.kind === 'goal' && state.slackDeliveries?.some(d => d.requestId === n.id && d.status === 'uncertain')))
+            item(`merge-notice:${n.id}`, n.kind === 'goal' ? `Resolve “${n.goalTitle}” completion DM` : `Resolve ${n.key} Slack notice`, n.detail, 'pm', n.key, n.prUrl);
     }
     for (const t of state.coordination?.time?.entries || [])
         if (t.status === 'uncertain')
@@ -61,7 +61,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
     if (state.github?.status === 'blocked' && state.github.error && !teamOwnsIT('project-progress'))
         item('github', 'Restore the GitHub connection', state.github.error, 'pm');
     for (const run of state.maintenance?.runs || [])
-        if (maintenanceNeedsFollowup(state, run))
+        if (maintenanceNeedsHumanFollowup(state, run))
             item(`maintenance:${run.id}`, `Read back ${state.project?.name || 'project'} maintenance`, `${run.stage}: ${run.error}`, 'pm');
     for (const t of state.tickets) {
         if (t.activity === 'blocked' && t.blocker)
@@ -82,11 +82,13 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
     for (const j of state.coordination?.jobs || [])
         if (j.mergeApprovalRequired)
             item(`merge-approval:${j.id}`, `Approve PR #${j.pr} merge`, `${j.key}: Sam’s review passed for ${j.head}. Approve this specific head to queue the merge; the Office will recheck live GitHub requirements first.`, 'pm', j.key, j.prUrl);
-    for (const j of state.coordination?.jobs || [])
+    for (const j of state.coordination?.jobs || []) {
+        if (parkedProviderWait(j)) continue;
         if (j.status === 'blocked' && j.parked?.published && j.detail.startsWith('Decision needed'))
             item(`ticket-job:${j.id}`, `${j.key} needs a decision on the board`, `${j.parked.reason}\nMove the card back to Ready to resume ${j.parked.stage}.`, 'pm', j.key, j.prUrl);
         else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt)
             item(`ticket-job:${j.id}`, `Read back ${j.key} delivery`, j.detail, 'pm', j.key, j.prUrl);
+    }
     for (const j of state.coordination?.jobs || [])
         if (j.candidateCleanup?.status === 'pending')
             item(`candidate-cleanup:${j.id}`, `Clean up ${j.key} worktree and branches`, `${j.candidateCleanup.detail}\nThe Office retries on each poll and never removes uncommitted work or a branch with an open PR. A refusal recorded as uncertain is only read back, never resent.`, 'pm', j.key, j.prUrl);

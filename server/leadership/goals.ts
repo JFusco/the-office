@@ -2,6 +2,7 @@ import { resolveProjectLabel } from '../store/migrations';
 import { z } from 'zod';
 import type { Store } from '../store/store';
 import type { ProjectGoal } from '../../src/shared';
+import { queueGoalNotice } from './queue-goal-notice';
 export const GoalInput = z.object({ id: z.string().uuid(), expectedUpdatedAt: z.string(), project: z.string().trim().min(1).max(80), title: z.string().trim().min(1).max(200), detail: z.string().max(6000), priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), status: z.enum(['idea', 'planned', 'active', 'blocked', 'done']) }).strict();
 export function saveGoal(store: Store, input: unknown): ProjectGoal {
     const { expectedUpdatedAt, ...data } = GoalInput.parse(input), goals = store.state.goals ??= [], old = goals.find(g => g.id === data.id);
@@ -11,11 +12,13 @@ export function saveGoal(store: Store, input: unknown): ProjectGoal {
         return old;
     if (old ? old.updatedAt !== expectedUpdatedAt : !!expectedUpdatedAt)
         throw new Error('This goal changed. Reopen it before saving your edit.');
+    const previousStatus = old?.status;
     const next: ProjectGoal = { ...data, projectId: store.project.id, mapping: 'mapped', progress: old?.progress, requestId: 'human', updatedAt: new Date(Math.max(Date.now(), old ? Date.parse(old.updatedAt) + 1 : 0)).toISOString() };
     if (old)
         Object.assign(old, next);
     else
         goals.push(next);
+    queueGoalNotice(store, previousStatus, old || next, 'Joe');
     store.emit('goals-updated', `Joe ${old ? 'updated' : 'added'} a goal for ${data.project}: ${data.title}`, 'cto');
     return old || next;
 }

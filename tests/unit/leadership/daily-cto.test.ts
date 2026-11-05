@@ -11,9 +11,18 @@ import { projectById } from '../../../server/office/projects';
 import { Engine } from '../../../server/scheduling/engine';
 const stores: Store[] = [], controls: ControlStore[] = [], roots:string[]=[];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); controls.splice(0).forEach(store => store.close());roots.splice(0).forEach(root=>rmSync(root,{recursive:true,force:true}));vi.restoreAllMocks(); });
-function setup() { const root=mkdtempSync(resolve(tmpdir(),'office-cto-recovery-'));roots.push(root);const clock = { now: () => new Date('2026-10-31T21:00:00Z'), monotonic: () => 0 }, store = new Store(':memory:', projectById('brain'), root, clock), control = new ControlStore(':memory:', clock); stores.push(store); controls.push(control); const engine = new Engine(store); store.state.paused = true; store.state.goals = [{ id: 'goal', projectId: 'brain', mapping: 'mapped', project: 'Brain', title: 'Keep human scope', detail: 'Keep human detail', status: 'idea', priority: 1, updatedAt: '2026-10-30T00:00:00Z', requestId: 'human' }]; return { store, control, engine, daily: new DailyCTO(control, () => [{ store, engine, conversations: {} as any }]) }; }
+function setup() { const root=mkdtempSync(resolve(tmpdir(),'office-cto-recovery-'));roots.push(root);const clock = { now: () => new Date('2026-10-30T21:00:00Z'), monotonic: () => 0 }, store = new Store(':memory:', projectById('brain'), root, clock), control = new ControlStore(':memory:', clock); stores.push(store); controls.push(control); const engine = new Engine(store); store.state.paused = true; store.state.goals = [{ id: 'goal', projectId: 'brain', mapping: 'mapped', project: 'Brain', title: 'Keep human scope', detail: 'Keep human detail', status: 'idea', priority: 1, updatedAt: '2026-10-30T00:00:00Z', requestId: 'human' }]; return { store, control, engine, daily: new DailyCTO(control, () => [{ store, engine, conversations: {} as any }]) }; }
 function update() { return { projectId: 'brain', goalId: 'goal', expectedUpdatedAt: '2026-10-30T00:00:00Z', progress: 'Evidence gap; no completion asserted', blockers: [], evidence: [], linkedWork: [], rationale: 'Actual collected facts', status: null }; }
-test('weekend 5 PM review deduplicates, includes paused projects and coalesces catch-up', () => { const { control, daily } = setup(); daily.collect(); daily.collect(); expect(control.list()).toHaveLength(1); expect((control.list()[0].facts as any).projects[0].paused).toBe(true); daily.collect(new Date('2026-11-03T22:01:00Z')); expect(control.list()).toHaveLength(2); expect(control.forDate('2026-10-31')?.status).toBe('coalesced'); expect(control.forDate('2026-11-03')?.dueAt).toBe('2026-11-03T22:00:00.000Z'); });
+test.each(['2026-10-31T21:00:00Z', '2026-11-01T22:00:00Z'])('weekend %s collects nothing and cannot dispatch a pending weekday review', async instant => {
+    const { control, daily, engine } = setup(); daily.collect();
+    const report = daily.pending()!, before = structuredClone(control.list());
+    vi.spyOn(control.clock, 'now').mockReturnValue(new Date(instant));
+    const run = vi.spyOn(engine.ctoAgents, 'run');
+    daily.collect(); expect(daily.pending()).toBeUndefined();
+    await daily.pump(report);
+    expect(run).not.toHaveBeenCalled(); expect(control.list()).toEqual(before);
+});
+test('weekday 5 PM review deduplicates, includes paused projects and coalesces catch-up', () => { const { control, daily } = setup(); daily.collect(); daily.collect(); expect(control.list()).toHaveLength(1); expect((control.list()[0].facts as any).projects[0].paused).toBe(true); daily.collect(new Date('2026-11-03T22:01:00Z')); expect(control.list()).toHaveLength(2); expect(control.forDate('2026-10-30')?.status).toBe('coalesced'); expect(control.forDate('2026-11-03')?.dueAt).toBe('2026-11-03T22:00:00.000Z'); });
 test('goal application survives lost central acknowledgement, enforces versions and preserves ideas', () => { const { store } = setup(); applyGoalReview(store, 'review', update()); applyGoalReview(store, 'review', update()); expect(goalHistory(store)).toHaveLength(1); expect(store.state.goals![0]).toMatchObject({ title: 'Keep human scope', detail: 'Keep human detail', priority: 1, status: 'idea' }); expect(() => applyGoalReview(store, 'other', update())).toThrow('edited'); expect(() => goalHistory(store, '', 101)).toThrow(); });
 test('daily assessment applies once, delivers a bounded conversation and protects concurrent edits', async () => { const { store, control, engine, daily } = setup(); daily.collect(); engine.ctoAgents.run = async () => ({ summary: 'All projects assessed with gaps.', updates: [update()], unmapped: [] } as any); await daily.pump(daily.pending()!); expect(control.list()[0].status).toBe('completed'); expect(goalHistory(store)).toHaveLength(1); expect(store.state.messages[0].body).toContain('All projects assessed'); expect(JSON.stringify(control.summaries())).not.toContain('collectedFacts'); });
 test('unmapped goals and unsupported automatic completion remain unchanged', () => { const { store } = setup(); expect(() => applyGoalReview(store, 'bad', { ...update(), status: 'done' })).toThrow(); store.state.goals![0].mapping = 'unmapped'; expect(() => applyGoalReview(store, 'bad', update())).toThrow('mapping'); expect(goalHistory(store)).toHaveLength(0); });
@@ -58,10 +67,10 @@ test('explicit CTO recovery survives the next daily collection while waiting for
     await daily.pump(daily.pending()!);
     expect(run).not.toHaveBeenCalled();
 
-    const nextCollection = new Date('2026-11-01T22:01:00Z');
+    const nextCollection = new Date('2026-11-02T22:01:00Z');
     vi.spyOn(control.clock, 'now').mockReturnValue(nextCollection);
     daily.collect();
-    expect(control.forDate('2026-11-01')?.status).toBe('queued');
+    expect(control.forDate('2026-11-02')?.status).toBe('queued');
     expect(control.get(report.id)).toEqual(queued);
     expect(daily.pending()).toEqual(queued);
     expect(daily.queueRecovery(report.id)).toEqual(queued);

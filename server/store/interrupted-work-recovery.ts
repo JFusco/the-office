@@ -3,6 +3,7 @@ import { projectOutbox } from '../conversations/outbox';
 import { ROLE_NAMES, workKey, type EffectIntent } from '../../src/shared';
 import { durationLabel } from '../../src/timing/timing';
 import type { Store } from './store';
+import { goalNoticeNeverDispatched } from '../leadership/goal-notice-authorization';
 
 export function recover(this: Store): void  {
     this.transaction(() => {
@@ -15,6 +16,7 @@ export function recover(this: Store): void  {
             }
         for (const n of coordination?.notices?.entries || [])
             if (n.status === 'working') {
+                if (goalNoticeNeverDispatched(this, n)) { n.status = 'queued'; n.detail = 'Recovered before any Slack attempt; completion DM remains queued.'; continue; }
                 n.status = 'uncertain';
                 n.detail = 'Notice interrupted; read back any saved Slack delivery before continuing. No automatic resend.';
             }

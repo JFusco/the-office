@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sanitize } from '../office/security';
 import { ROLE_NAMES, type Role, type TeamMessage } from '../../src/shared';
 import { acceptedGoalReport } from '../leadership/goal-reporting';
+import { queueGoalNotice } from '../leadership/queue-goal-notice';
 import type { Conversations } from './conversations';
 import { GoalChangeSchema, ReplySchema } from './conversations';
 
@@ -43,10 +44,12 @@ export function saveGoals(this: Conversations, changes: z.infer<typeof GoalChang
         const goal = change.id ? goals.find(g => g.id === change.id) : undefined;
         const { expectedUpdatedAt, ...fields } = change;
         const next = { ...fields, projectId: this.store.project.id, mapping: 'mapped' as const, id: goal?.id || crypto.randomUUID(), updatedAt: new Date(Math.max(Date.now(), goal ? Date.parse(goal.updatedAt) + 1 : 0)).toISOString(), requestId };
+        const previousStatus = goal?.status;
         if (goal)
             Object.assign(goal, next);
         else
             goals.push(next);
+        queueGoalNotice(this.store, previousStatus, goal || next, 'Office');
     }
     this.store.emit('goals-updated', `${ROLE_NAMES[role]} updated ${changes.length} project goal${changes.length === 1 ? '' : 's'}.`, role);
 }

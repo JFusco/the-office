@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest';
 import { pmQueueItems } from '../../../src/work/pm-queue';
 import { ticketUpdates } from '../../../src/work/TeamUpdates';
+import { initialSnapshot } from '../../../server/store/store';
+import { coordination } from '../../../server/scheduling/coordination';
+import { projectOutbox } from '../../../server/conversations/outbox';
 const review = (key: string, status: string, extra = {}) => ({ project: 'brain', projectName: 'Brain', review: { id: key, key, status, summary: `Title ${key}`, queuedAt: '2026-10-28T12:00Z', ...extra } });
 const job = (key: string, status: string, extra = {}) => ({ project: 'brain', projectName: 'Brain', job: { id: key, key, status, stage: 'lead-pr', requestedAt: '2026-10-28T12:00Z', detail: 'Saved result', ...extra } });
 const state = (pmQueue: any[], teamQueue: any[] = []) => ({ pmQueue, teamQueue, tickets: [], projects: [] } as any);
@@ -47,4 +50,41 @@ test('vendor review failures do not resurrect completed issues mentioned by an e
     ] }] };
     expect(pmQueueItems(s)).toEqual([]);
     expect(ticketUpdates(s)).toEqual([]);
+});
+test('scheduler eligibility retains the full published board blocker and its owner', () => {
+    const reason = 'The stable SDK 3.1 prerequisite has not been verified. '.repeat(6) + 'Verify the official stable release before moving this card to Ready.';
+    const s = state([], [job('GH-112', 'blocked', { detail: 'Decision needed: ' + reason, parked: { published: true, reason } })]);
+    s.progression = [{ work: { projectId: 'brain', kind: 'delivery', id: 'GH-112' }, eligibility: { state: 'blocked', reason: 'Work is blocked', owner: 'Morgan' } }];
+    const row = pmQueueItems(s)[0];
+    expect(row.group).toBe('stopped');
+    expect(row.detail).toContain(reason);
+    expect(row.detail).toContain('Next owner: Morgan');
+});
+test('scheduler prerequisite waits preserve the intake explanation and use the exact project identity', () => {
+    const s = state([review('GH-8', 'blocked', { workRequested: 'manual', detail: 'Waiting for the source repair to pass review.' })], [job('GH-8', 'blocked', { detail: 'Unrelated project blocker' , project: 'other' })]);
+    s.teamQueue[0].project = 'other';
+    s.progression = [{ work: { projectId: 'brain', kind: 'intake', id: 'GH-8' }, eligibility: { state: 'waiting', reason: 'Prerequisite unmet', owner: 'Sam' } }];
+    const row = pmQueueItems(s).find(row => row.project === 'brain')!;
+    expect(row.detail).toContain('Waiting for the source repair to pass review.');
+    expect(row.detail).toContain('Prerequisite unmet. Next owner: Sam');
+    expect(row.detail).not.toContain('Unrelated project blocker');
+});
+test('a structured upstream wait stays in PM and team updates with a dated blocker and Morgan ownership, without asking Joe', () => {
+    const s = { ...initialSnapshot(), ...state([], [job('GH-112', 'blocked', {
+        stage: 'implement', detail: 'Decision needed: Waiting for stable SDK',
+        parked: { published: true, stage: 'implement', at: '2026-10-31T16:17:18Z', reason: 'Waiting for stable SDK' },
+        steps: [{ stage: 'implement', result: { outcome: 'blocked', resolution: { kind: 'provider-wait' } } }],
+    })]), coordination: coordination() };
+    s.coordination.jobs = [s.teamQueue[0].job];
+    const before = structuredClone(s.coordination.jobs);
+    const row = pmQueueItems(s)[0];
+    expect(row).toMatchObject({ key: 'GH-112', phase: 'Blocked on board · upstream wait', group: 'stopped' });
+    expect(row.detail).toContain('Saved blocker (2026-10-31');
+    expect(row.detail).toContain('Next owner: Morgan');
+    expect(row.detail).toContain('no approval or reply is requested');
+    expect(projectOutbox(s).filter(a => a.status === 'open')).toEqual([]);
+    expect(ticketUpdates(s)[0].next).toContain('Morgan rechecks current upstream evidence');
+    expect(s.coordination.jobs).toEqual(before);
+    s.coordination.jobs[0].steps[0].result.resolution.kind = 'human-hold';
+    expect(projectOutbox(s).filter(a => a.status === 'open')).toHaveLength(1);
 });

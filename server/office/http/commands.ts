@@ -1,6 +1,7 @@
 import { TimeClassificationInput } from '../../time/time-classification';
 import { DiscoveryResumeInput, bindDiscoveryResume } from '../../delivery/recovery/implementation/discovery-recovery';
 import { reconcileGoalReportCommand } from '../../leadership/goal-reporting';
+import { configureGoalNotices } from '../../leadership/goal-notice-settings';
 import { enqueueRequest, enqueueSourceAmendment, enqueueCloseoutReconciliation } from '../../scheduling/requests';
 import { reconcileReadRetries } from '../../scheduling/read-retries';
 import { configureNotices, retryRecipientLookup } from '../../conversations/notifications';
@@ -25,6 +26,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
+            case 'configure-goal-notifications': configureGoalNotices(store, notifications); break;
             case 'authorize-source-amendment': return json({ accepted: true, id: enqueueSourceAmendment(store, amendment).id }, 202);
             case 'reconcile-goal-report': return json(reconcileGoalReportCommand(store, messageId), 202);
             case 'reconcile-conversation':

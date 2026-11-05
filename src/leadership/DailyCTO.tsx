@@ -2,16 +2,31 @@ import { useState } from 'react';
 import type { DailyCTOReport, OfficeSnapshot } from '../shared';
 import { officeUrl } from '../shared';
 import { Button, Section, SectionTitle, mutedCopy } from '../ui';
+import { CTOReview } from './CTOReview';
+import { ReviewText } from './ReviewText';
+
+const reportDate = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const reviewStatus = { completed: 'Review finished', conflicted: 'Needs a fresh look', blocked: 'Review stopped', interrupted: 'Review interrupted', working: 'Avery is reviewing', queued: 'Waiting for Avery', 'recovery-queued': 'Readback queued', assessed: 'Applying review', coalesced: 'Included in a newer review' };
 
 export function DailyCTO({ snapshot }: { snapshot: OfficeSnapshot }) {
-  const [report, setReport] = useState<DailyCTOReport | null>(null), [error, setError] = useState('');
+  const [report, setReport] = useState<DailyCTOReport | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState('');
   async function load(id: string) {
+    setLoading(id); setReport(null); setError('');
     try { const response = await fetch(`/api/daily-cto?id=${encodeURIComponent(id)}`); if (!response.ok) throw new Error('Could not load daily review'); setReport((await response.json()).report); setError(''); }
     catch (error) { setError(String(error)); }
+    finally { setLoading(''); }
   }
-  return <Section><SectionTitle className="mb-4">Daily CTO review</SectionTitle><p className={mutedCopy}>Avery reviews every project at 5 PM Eastern, including weekends. Reports include paused projects and evidence gaps.</p>
-    {(snapshot.dailyCTO || []).map(item => <article className="my-3 rounded-8 bg-report p-4" key={item.id}><strong>{item.date} · {item.status}</strong><p className="my-2 text-12">{item.detail}</p><small>Collected {new Date(item.collectedAt).toLocaleString()}</small><Button onClick={() => void load(item.id)}>Read full report</Button></article>)}
-    {error ? <p role="alert">{error}</p> : null}{report ? <details open><summary>{report.date} · complete report</summary><p className="my-2 whitespace-pre-wrap">{report.result?.summary || report.detail}</p>{report.conflicts.map(conflict => <p key={conflict}>{conflict}</p>)}{report.result?.updates.map(update=><article className="my-3" key={`${update.projectId}:${update.goalId}`}><strong>{update.projectId} · {update.status||'Progress update'}</strong><p>{update.progress}</p><p>{update.rationale}</p>{update.blockers.map(blocker=><p key={blocker}>Blocked: {blocker}</p>)}</article>)}{report.result?.unmapped.map(item=><p key={item}>Unmapped: {item}</p>)}</details> : null}
+  const cards = (snapshot.dailyCTO || []).map(item => <article className="my-3 rounded-8 bg-report p-4" key={item.id}>
+    <div className="flex flex-wrap items-center justify-between gap-2"><strong>Project review · {reportDate(item.date)}</strong><span className="text-12">{reviewStatus[item.status]}</span></div>
+    {report?.id === item.id ? <div className="mt-4"><CTOReview report={report} currentGoals={snapshot.ctoGoals || snapshot.goals} /><Button className="mt-3" onClick={() => setReport(null)}>Close recap</Button></div> : <>
+      {item.detail.length <= 1500 ? <ReviewText text={item.detail} /> : null}
+      <Button disabled={!!loading} aria-expanded={false} onClick={() => void load(item.id)}>{loading === item.id ? 'Loading recap…' : 'Read recap'}</Button>
+    </>}
+  </article>);
+  return <Section><SectionTitle className="mb-4">Daily CTO review</SectionTitle><p className={mutedCopy}>Avery reviews every project Monday–Friday at 5 PM Eastern. Weekends are off.</p>
+    {cards[0] || <p className="my-3 text-13">No reviews yet. Avery’s next weekday review will appear here.</p>}
+    {cards.length > 1 ? <details className="my-3"><summary className="cursor-pointer text-13">Earlier reviews ({cards.length - 1})</summary>{cards.slice(1)}</details> : null}
+    {error ? <p role="alert">{error}</p> : null}
   </Section>;
 }
 

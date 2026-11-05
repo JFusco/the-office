@@ -1,6 +1,7 @@
 import { command } from '../workers/process';
 import type { Store } from '../store/store';
 import type { GitHubBoard, GitHubPR, GitHubState, Ticket } from '../../src/shared';
+import { githubPRDescription } from './pr-evidence';
 
 export class GitHubMonitor {
   polling=false;
@@ -63,7 +64,7 @@ export class GitHubMonitor {
         ]);
         const latestStatuses=new Map<string,any>();for(const s of statusPages)if(!latestStatuses.has(s.context))latestStatuses.set(s.context,s);
         prs.push({linkedIssues:[...String(p.body||'').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map(m=>Number(m[1])),number:p.number,title:p.title,state:p.state,draft:p.draft,author:p.user.login,head:p.head.sha,base:p.base.ref,url:p.html_url,mergedAt:p.merged_at||'',mergeable:p.mergeable,
-          reviews:reviews.map((r:any)=>({author:r.user.login,state:r.state,commit:r.commit_id})),
+          ...githubPRDescription(p.body), reviews:reviews.map((r:any)=>({author:r.user.login,state:r.state,commit:r.commit_id})),
           checks:[...checkPages.flatMap((page:any)=>page.check_runs).map((c:any)=>({name:c.name,status:c.status,conclusion:c.conclusion||'',url:c.html_url,sha:c.head_sha})),...Array.from(latestStatuses.values()).map((s:any)=>({name:s.context,status:s.state==='pending'?'pending':'completed',conclusion:s.state,url:s.target_url||'',sha:p.head.sha}))]});
       }
       const observedAt=new Date().toISOString();

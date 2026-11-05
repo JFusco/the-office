@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { workKey, type TicketJob } from '../../../src/shared';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
+import { completedPRReviews } from './completed-pr-review';
 
 /** Only a read-only handoff of an existing PR can be retired by external completion. */
 function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
@@ -9,12 +10,12 @@ function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
         ['queued', 'blocked', 'interrupted'].includes(job.status) &&
         ['prepare-pr', 'lead-pr'].includes(job.stage) &&
         !job.worktree && !job.mergeAttempt && !job.mergeIntentId && !job.mergeCommit &&
-        !job.boardUpdates?.length && !job.candidateRecovery && !job.candidateBase &&
+        !job.boardUpdates?.some(update => update.status !== 'verified' || update.stage !== 'lead-pr' || update.head !== job.head || update.target !== 'In review') && !job.candidateRecovery && !job.candidateBase &&
         !job.implementationContinuation && !job.implementationRecovery && !job.discoveryRecovery &&
         !job.sourceAmendment && !job.repairCycle && !job.parked && !job.candidateCleanup &&
         job.steps.every(step => ['prepare-pr', 'lead-pr'].includes(step.stage) &&
             step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain && /^(?:get|read|query|inspect)\b/i.test(receipt.action))) &&
-        !store.state.workLog?.some(work => work.requestId === job.id) &&
+        completedPRReviews(store, job) &&
         !store.activeClaims().some(claim => claim.work.id === job.id) &&
         !store.db.prepare('SELECT id FROM effects WHERE work_key=? LIMIT 1').get(
             workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }));

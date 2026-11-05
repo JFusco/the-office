@@ -1,5 +1,6 @@
 import { pruneCompletedReads } from '../operations/request-retention';
 import { reconcileContinuations } from '../maintenance/continuations';
+import { reconcileCompletedCheckpoints } from '../maintenance/completed-checkpoints';
 import { enqueueRequest } from './requests';
 import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey } from '../delivery/pipeline/dependencies';
 import { reconcileReadRetries } from './read-retries';
@@ -20,6 +21,7 @@ export async function tick(this: Coordinator, now = new Date()) {
     reconcileReadRetries(this.store, now);
     reconcileNoticeConfirmations(this.store);
     reconcileContinuations(this.store);
+    reconcileCompletedCheckpoints(this.store);
     captureTime(this.store);
     c.lastTickAt = now.toISOString();
     const { due, next } = checkpointWindow(this.store.project.id, now, c.activatedAt);

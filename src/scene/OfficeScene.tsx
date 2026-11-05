@@ -2,12 +2,13 @@ import {itAgent} from '../health/it-agent';
 import { avatarHome, SPOTS, sceneHandoff, sceneNow } from './scene-motion';
 import { useAvatarMotion } from './useAvatarMotion';
 import { LiveAgentTask } from './LiveAgentTask';
+import { SceneOverlay as Html, FloorVisibility } from './SceneOverlay';
 import { withoutElapsed } from './agent-activity';
 export { SPOTS } from './scene-motion';
 import { mailboxWork } from '../work/work-summary';
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { ContactShadows, Html as DreiHtml, OrbitControls, QuadraticBezierLine } from '@react-three/drei';
+import { ContactShadows, OrbitControls, QuadraticBezierLine } from '@react-three/drei';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { STAGE_LABELS, STAGE_ROLE, STAGES, ROLE_NAMES, type Agent, type OfficeSnapshot, type Role } from '../shared';
@@ -15,13 +16,6 @@ import { sceneColors } from '../tokens/scene-colors';
 import { StatusDot, cx, interactiveScene } from '../ui';
 export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTicket?:string}|{kind:'agent';id:Role}|{kind:'chat';ticket?:string}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|null;
 const Party=createContext(false);
-const FloorVisibility=createContext({active:true,revealed:true,travelling:false,reduced:false});
-// Scene overlays fade with the elevator. Visibility transitions with the fade, so hidden
-// labels leave the tab order once faded; the inactive floor's labels are not rendered.
-function Html({children,...props}:ComponentProps<typeof DreiHtml>){
-  const {active,revealed,travelling,reduced}=useContext(FloorVisibility);
-  return <DreiHtml {...props}><div data-scene-overlay className={cx(!active&&'hidden',revealed?'visible opacity-100 duration-320':'invisible opacity-0 duration-180',travelling&&'pointer-events-none',reduced?'transition-none':'transition-[opacity,visibility] ease-fade')}>{children}</div></DreiHtml>;
-}
 type Vec=[number,number,number];
 type SceneAgent=Agent;
 const TEAM_COLOR={pm:'teamPm',developer:'teamDeveloper',lead:'teamLead',qa:'teamQa',cto:'teamCto',it:'teamIt',analyst:'teamPm'} as const;
@@ -344,7 +338,7 @@ export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,
     <Desk position={SPOTS.pm} active={snapshot.agents.find(a=>a.id==='pm')?.activity==='working'} accent={c.teamPm}/>
     <ITDesk snapshot={snapshot} name={names.it} reduced={reduced} onSelect={()=>onSelect({kind:'agent',id:'it'})}/>
     <AzureWall snapshot={snapshot} onSelect={()=>onSelect({kind:'azure'})}/>
-    <RoomLabel position={[-6,.2,4.65]} name="DEVELOPMENT" sub="Implementation" swatch="developer" onClick={()=>onSelect({kind:'agent',id:'developer'})}/>
+    <RoomLabel position={[SPOTS.developer[0]-.3,.2,SPOTS.developer[2]+1.85]} name="DEVELOPMENT" sub="Implementation" swatch="developer" onClick={()=>onSelect({kind:'agent',id:'developer'})}/>
     <RoomLabel position={[-3.6,.2,-5.45]} name="DEV LEAD" sub="Plan & code review" swatch="lead" onClick={()=>onSelect({kind:'agent',id:'lead'})}/>
     <RoomLabel position={[5.65,.2,-.25]} name="QA" sub="Browser testing" swatch="qa" onClick={()=>onSelect({kind:'agent',id:'qa'})}/>
     <RoomLabel position={[6.4,.2,5.55]} name="PROJECT MANAGEMENT" sub="Tickets & delivery" swatch="pm" onClick={()=>onSelect({kind:'agent',id:'pm'})}/>

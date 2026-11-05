@@ -52,6 +52,7 @@
   --default-transition-duration: 150ms;
   --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-fade: ease;
+  --ease-scene-enter: cubic-bezier(0.22, 1, 0.36, 1);
 
   --animate-*: initial;
   --animate-spin: spin 1.4s linear infinite;

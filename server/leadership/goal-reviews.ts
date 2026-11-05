@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import type { DailyGoalUpdate, GoalEvidenceRef, ProjectGoal } from '../../src/shared';
 import type { Store } from '../store/store';
+import { queueGoalNotice } from './queue-goal-notice';
 export const EvidenceRefSchema = z.object({ projectId: z.string().max(80), kind: z.enum(['ticket', 'job', 'issue', 'pr', 'maintenance', 'blocker']), id: z.string().max(200), version: z.string().max(100), head: z.string().max(100) }).strict();
 export const GoalEvidenceRequestSchema = z.object({ projectId: z.string().min(1).max(80), goals: z.array(z.object({ goalId: z.string().min(1).max(200), expectedUpdatedAt: z.string().min(1).max(100) }).strict()).min(1).max(12), inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/), questions: z.array(z.string().trim().min(1).max(500)).min(1).max(6) }).strict();
 export const DailyResultSchema = z.object({ evidenceRequests: z.array(GoalEvidenceRequestSchema).max(12).optional(), summary: z.string().min(1).max(12000), updates: z.array(z.object({ projectId: z.string(), goalId: z.string(), expectedUpdatedAt: z.string(), progress: z.string().max(2000), blockers: z.array(z.string().max(500)).max(10), evidence: z.array(EvidenceRefSchema).max(20), linkedWork: z.array(EvidenceRefSchema).max(20), rationale: z.string().min(1).max(4000), status: z.enum(['idea', 'planned', 'active', 'blocked', 'done']).nullable() }).strict()).max(200), unmapped: z.array(z.string().max(500)).max(200) }).strict();
-export const FreshDailyResultSchema = DailyResultSchema.extend({ evidenceRequests: z.array(GoalEvidenceRequestSchema).max(12) });
+export const FreshDailyResultSchema = DailyResultSchema.extend({ summary: z.string().min(1).max(1500), updates: z.array(DailyResultSchema.shape.updates.element.extend({ progress: z.string().max(350), blockers: z.array(z.string().max(220)).max(3) })).max(200), evidenceRequests: z.array(GoalEvidenceRequestSchema).max(12) });
 export function workEvidence(store: Store, ref: GoalEvidenceRef): {
     started: boolean;
     accepted: boolean;
@@ -79,9 +80,12 @@ export function applyGoalReview(store: Store, reviewId: string, update: DailyGoa
             throw new Error('Proposed status lacks scope acceptance, started work or blocker evidence');
         const before = structuredClone(goal), at = store.clock.now().toISOString();
         goal.progress = { note: update.progress, blockers: update.blockers, evidence: update.evidence, linkedWork: update.linkedWork, lastReviewId: reviewId, reviewedAt: at };
-        if (update.status)
+        if (update.status && update.status !== goal.status) {
             goal.status = update.status;
+            goal.requestId = `review:${reviewId}`;
+        }
         goal.updatedAt = new Date(Math.max(Date.parse(at), Date.parse(goal.updatedAt) + 1)).toISOString();
+        queueGoalNotice(store, before.status, goal, 'Avery');
         const application = { reviewId, projectId: store.project.id, goalId: goal.id, at, proposal: update, before, after: structuredClone(goal) };
         store.db.prepare('INSERT INTO goal_review_applications VALUES(?,?,?,?,?)').run(reviewId, store.project.id, goal.id, at, JSON.stringify(application));
         store.emit('goal-review-applied', `Avery updated progress for ${goal.title}.`, 'cto');

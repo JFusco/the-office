@@ -8,6 +8,7 @@ import { projectById, withCECGoalEvidence } from '../../../server/office/project
 import { collectAzureGoalDocuments, GOAL_EVIDENCE_LIMITS, azurePRDescription, goalEvidencePath } from '../../../server/leadership/goal-evidence';
 import { projectPRFacts, goalEvidenceFingerprint } from '../../../server/leadership/goal-reporting';
 import { collectCTOFacts } from '../../../server/leadership/cto-collector';
+import { workEvidence } from '../../../server/leadership/goal-reviews';
 import { localBindings } from '../../../server/office/local-config';
 import { AzureMonitor } from '../../../server/cec/azure';
 import * as processTools from '../../../server/workers/process';
@@ -24,10 +25,19 @@ function setup(paths: string[] = [path]) {
     return store;
 }
 const binding = () => ({ projectId: 'cec', repository: CEC.repository, repositoryId: CEC.repositoryId, project: CEC.project });
+test('CTO facts retain older active Azure PRs beyond recent closed history without treating them as accepted', () => {
+    const store = setup(), template = store.state.azure.prs[0];
+    store.state.azure.prs = [...Array.from({ length: 30 }, (_, index) => ({ ...template, id: index + 100 })), { ...template, id: 1, status: 'active', description: 'Feature is implemented; acceptance pending.' }];
+    const facts = projectPRFacts(store);
+    expect(facts.prs).toHaveLength(26);
+    expect(facts.prs[0]).toMatchObject({ id: 1, state: 'active', description: 'Feature is implemented; acceptance pending.', head: prior });
+    expect(workEvidence(store, { projectId: 'cec', kind: 'pr', id: '1', version: store.state.azure.observedAt, head: prior })).toEqual({ started: true, accepted: false });
+});
 function answer(args: string[]) { const commit = args.find(value => value.startsWith('versionDescriptor.version='))!.split('=')[1]; return { path, commitId: commit, objectId: blob, content: 'Hosted frame creation and selected-note persistence passed. Ordinary link click remains.' }; }
 test('actual Azure poll retains PR bodies and exact-repository document observations before cached CTO projection', async () => {
     const store = setup();
     const command = vi.spyOn(processTools, 'command').mockImplementation(async (_program, args) => {
+        if (args[0] === 'repos' && args.includes('active')) return '[]';
         if (args[0] === 'repos') return JSON.stringify([{ pullRequestId: 40904, title: 'Hosted acceptance', description: 'Selected note persisted; Bearer private-token', status: 'completed', sourceRefName: 'topic', targetRefName: 'staging', lastMergeSourceCommit: { commitId: prior }, lastMergeCommit: { commitId: head } }]);
         if (args[0] === 'pipelines') return '[]';
         if (args.includes('items')) return JSON.stringify(answer(args));

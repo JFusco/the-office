@@ -109,7 +109,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
                 }
             }, continuation.nextCheckAt && Date.parse(continuation.nextCheckAt) > now.getTime() ? eligible('waiting', 'Native gate backoff is active') : null);
     for (const notice of c.notices?.entries || [])
-        add('notice', notice, 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }));
+        add('notice', notice, notice.kind === 'goal' ? 'goal-completion-notice' : 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }));
     for (const request of store.state.deliveryQueue || [])
         add('delivery', request, request.action, request.requestedAt, 3, () => engine.drainDelivery(request.id));
     for (const ticket of store.state.tickets.filter(ticket => ticket.pilot && !['complete', 'mailbox'].includes(ticket.stage) && !store.state.deliveryQueue?.some(request => request.key === ticket.key && ['queued', 'working'].includes(request.status)))) {
@@ -147,8 +147,14 @@ function withActiveClaims(store: Store, lane: string, items: ScheduledWork[]): S
 
 /** Only these idempotent read-back contracts reconcile earlier attempts of the exact same intent. */
 function requestResolved(store: Store, request: import('../../src/shared').HarnessRequest): boolean {
-    if (!['blocked', 'interrupted'].includes(request.status)) return false;
     const c = store.state.coordination!;
+    if (['queued', 'blocked', 'interrupted'].includes(request.status) && ['retry-checkpoint', 'reconcile-native-checkpoint'].includes(request.action)) {
+        const checkpoint = c.checkpoints.find(checkpoint => checkpoint.id === request.key);
+        const original = store.state.maintenance?.runs.find(run => run.id === checkpoint?.runId);
+        return checkpoint?.status === 'completed' && !!original?.steps.some(step => ['checkpoint-native-readback', 'checkpoint-completion-readback'].includes(step.stage) &&
+            step.result.outcome === 'passed' && step.result.receipts.some(receipt => ['native-checkpoint-readback', 'checkpoint-completion-readback'].includes(receipt.action) && receipt.verified && !receipt.uncertain));
+    }
+    if (!['blocked', 'interrupted'].includes(request.status)) return false;
     if (request.action === 'reconcile-closeout') return closeoutRequestResolved(store,request);
     if (request.action === 'reconcile-scope-repair') return scopeRepairRequestResolved(store,request);
     if (request.action === 'reconcile-preparation') return preparationRequestResolved(store,request);
@@ -167,12 +173,6 @@ function requestResolved(store: Store, request: import('../../src/shared').Harne
     if (request.action === 'resume-discovery') {
         const job = c.jobs?.find(job => job.key === request.key && job.status !== 'cancelled');
         return !!job && [...(job.discoveryRecoveryHistory || []), ...(job.discoveryRecovery ? [job.discoveryRecovery] : [])].some(recovery => recovery.originalWorkId === request.head) && !!c.requests?.some(success => success.id !== request.id && success.action === request.action && success.key === request.key && success.head === request.head && success.status === 'completed' && !!request.discoveryResume && !!success.discoveryResume && success.discoveryResume?.workDigest === request.discoveryResume?.workDigest && success.discoveryResume?.jobDigest === request.discoveryResume?.jobDigest && success.discoveryResume?.scopeDigest === request.discoveryResume?.scopeDigest);
-    }
-    if (['retry-checkpoint', 'reconcile-native-checkpoint'].includes(request.action)) {
-        const checkpoint = c.checkpoints.find(checkpoint => checkpoint.id === request.key);
-        const original = store.state.maintenance?.runs.find(run => run.id === checkpoint?.runId);
-        return checkpoint?.status === 'completed' && !!original?.steps.some(step => step.stage === 'checkpoint-native-readback' &&
-            step.result.outcome === 'passed' && step.result.receipts.some(receipt => receipt.action === 'native-checkpoint-readback' && receipt.verified && !receipt.uncertain));
     }
     if (!['reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-implementation'].includes(request.action)) return false;
     return !!c.requests?.some(success => success.id !== request.id && success.status === 'completed' &&
