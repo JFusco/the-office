@@ -1,4 +1,8 @@
+import { acceptFeatureReview } from '../features/stage-acceptance';
+import { approvedDelivery } from '../features/delivery-binding';
+import { verifyFeatureEnhance } from '../features/cec-plan-gate';
 import { jiraRepairable, reserveRepair, enqueueRepairDiagnosis, revisedRepair, approachFingerprint, retainRepairEvidence } from '../delivery/repairs/delivery-repairs';
+import { bindDelivery } from '../features/delivery-binding';
 import { resolve } from 'node:path';
 import { recordApproach, reroute, missingApproachStage, stageNeeded } from '../delivery/pipeline/approach';
 import { correlatedBuild } from './azure';
@@ -16,6 +20,7 @@ export async function run(this: Engine, key: string) {
     this.heartbeat = setInterval(() => this.store.claim(this.owner), 20000);
     try {
         const t = this.store.ticket(key);
+        bindDelivery(this.store, t, t.runId);
         let performed = false;
         let priorRole = STAGE_ROLE[t.stage];
         while (!performed && !this.store.state.paused && t.stage !== 'complete') {
@@ -81,8 +86,12 @@ export async function run(this: Engine, key: string) {
                 t.repairCycle!.diagnosisAttempted = true; this.store.save();
             }
             let result: StageResult;
+            const beforeWorkers = new Set((this.store.state.workLog || []).map(w => w.id));
             try {
                 result = await this.agents.stage(t, stage, role);
+                if (t.featureBinding) approvedDelivery(this.store, t.featureBinding);
+                acceptFeatureReview(this.store, t, result, stage, beforeWorkers);
+                if (stage === 'enhance' && result.outcome === 'passed') await verifyFeatureEnhance(this.store, t, result);
             }
             catch (e) {
                 t.activity = 'blocked';

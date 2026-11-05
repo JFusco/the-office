@@ -4,7 +4,7 @@ import { ROLE_NAMES, type Role } from '../shared';
 export const PARTY_DURATION = 120_000;
 export const OFFICE_CAST: Record<Role, string> = {
   cto: 'Michael Scott', pm: 'Pam Beesly', developer: 'Jim Halpert',
-  lead: 'Dwight Schrute', qa: 'Angela Martin', it: 'Ryan Howard',
+  lead: 'Dwight Schrute', qa: 'Angela Martin', it: 'Ryan Howard', analyst: 'Oscar Martinez',
 };
 // A bounded prefix buffer keeps hidden typing out of the ordinary letter shortcuts.
 export function secretPhrase(buffer: string, key: string) {

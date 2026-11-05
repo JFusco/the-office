@@ -1,3 +1,4 @@
+import { acceptFeatureReview } from '../../features/stage-acceptance';
 import {completedExecution} from '../../workers/worker-completion';
 import { teamReviewedHead, mergeAuthorized } from '../readiness/team-review';
 import { assertScopeRepairResumeFindings } from '../recovery/scope-repair/scope-repair-resume';
@@ -39,6 +40,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         job.steps.push({ stage: 'superseded-stage-result', result });
         throw new Error('Delivery ownership, candidate, hold or pause state changed during this stage; result retained for reconciliation');
     }
+    acceptFeatureReview(this.store, job, result, job.stage, beforeWorkers);
     let nativeProof: { workerId?: string; nativeResultSha256?: string; issueSha256?: string } = issueSha256 ? { issueSha256 } : {};
     let continuationWorker: ReturnType<typeof continuationWorkerProof> | undefined;
     let reviewDiagnostics: ReturnType<typeof continuationReviewArtifacts> = [];

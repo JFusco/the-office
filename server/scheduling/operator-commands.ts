@@ -1,7 +1,9 @@
+import { assertFeatureGate } from '../features/enrollment-gate';
 import { hasUncertainEffects } from '../delivery/pipeline/github-delivery';
 import type { Coordinator } from './coordination';
 
 export function requestWork(this: Coordinator, key: string) {
+    assertFeatureGate(this.store, key);
     if (this.store.state.paused)
         throw new Error('Resume the project first');
     const issue = this.state.listener.assigned.find(i => i.key === key);

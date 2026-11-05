@@ -1,5 +1,5 @@
 import type { Role, StageResult } from '../shared';
-export type WorkKind = 'delivery' | 'intake' | 'checkpoint' | 'maintenance' | 'conversation' | 'notice' | 'mail' | 'continuation' | 'reconciliation' | 'daily-cto' | 'issue' | 'pr';
+export type WorkKind = 'feature' | 'delivery' | 'intake' | 'checkpoint' | 'maintenance' | 'conversation' | 'notice' | 'mail' | 'continuation' | 'reconciliation' | 'daily-cto' | 'issue' | 'pr';
 export interface WorkRef {
     projectId: string;
     kind: WorkKind;

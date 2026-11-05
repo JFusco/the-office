@@ -14,6 +14,7 @@ export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject): 
     state.projectNotes ??= [];
     state.slackDeliveries ??= [];
     state.goals ??= [];
+    state.features ??= [];
     state.leadershipReports ??= [];
     state.scheduler ??= { noticeClaims: 0, lastClaimAt: '', lastProgressAt: '', undispatchedCycles: 0 };
     state.draining ??= false;

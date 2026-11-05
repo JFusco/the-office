@@ -1,3 +1,4 @@
+import { externalPlanGap } from '../features/cec-plan-gate';
 import { existsSync, realpathSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { CEC, HOLDS } from '../office/config';
@@ -71,7 +72,8 @@ function stageResultGap(t: Ticket, stage: Stage, r: StageResult, artifactRoot: s
         return 'Diagnosis cannot clear CI. Current policies must pass before readiness.';
     if (r.receipts.some(x => x.uncertain || !x.verified))
         return 'External action requires read-back reconciliation';
-    if (stage === 'enhance' && !r.receipts.some(x => x.action === 'jira-update' && x.verified))
+    if (stage === 'enhance' && t.featureBinding && externalPlanGap(t)) return externalPlanGap(t);
+    if (stage === 'enhance' && !t.featureBinding && !r.receipts.some(x => x.action === 'jira-update' && x.verified))
         return 'Lossless Jira update read-back is required';
     if (['implement', 'repair', 'code-review', 'repair-review', 'draft-pr', 'preview', 'qa', 'retest', 'publish', 'staging-qa'].includes(stage) && !/^[a-f0-9]{40}$/i.test(r.commit))
         return 'Exact candidate commit is missing';
@@ -142,6 +144,7 @@ function stageResultGap(t: Ticket, stage: Stage, r: StageResult, artifactRoot: s
     return '';
 }
 export function publicationEvidenceGap(t: Ticket, artifactRoot: string): string {
+    if (t.featureBinding && (!t.approach || externalPlanGap(t))) return externalPlanGap(t) || 'Feature approach is missing';
     if (!t.approach)
         return t.prId ? '' : 'Verified draft PR read-back identity is required before publication';
     if (Object.values(t.results).some(r => r && (r.paidRuns === null || r.receipts.some(x => x.uncertain || !x.verified))))

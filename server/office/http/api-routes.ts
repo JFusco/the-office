@@ -1,3 +1,4 @@
+import { featureRoute } from '../../features/routes';
 import { projectReadiness } from '../readiness';
 import { goalHistory } from '../../leadership/goal-reviews';
 import { resolve, extname } from 'node:path';
@@ -12,6 +13,8 @@ import { json, fileResponse } from './responses';
 /** Read and write API routes other than office commands. */
 export async function apiRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
     const { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator } = context;
+    const features = url.pathname.startsWith('/api/features') ? await featureRoute(req, url, store, engine.features, new Map([...offices.entries].map(([id, entry]) => [id, entry.store]))) : undefined;
+    if (features) return features;
     if (url.pathname === '/api/service-health') {
         if (req.method !== 'GET')
             return json({ error: 'GET required' }, 405);

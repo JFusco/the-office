@@ -64,5 +64,6 @@ export function deliveryHumanInputs(store: Store, ticket: string) {
     });
 }
 export function deliveryInputSha256(store: Store, ticket: string) {
-    return createHash('sha256').update(JSON.stringify(deliveryHumanInputs(store, ticket))).digest('hex');
+    const inputs = deliveryHumanInputs(store, ticket), binding = store.state.coordination?.jobs?.find(j => j.key === ticket && j.status !== 'cancelled')?.featureBinding;
+    return createHash('sha256').update(JSON.stringify(binding ? [inputs, binding] : inputs)).digest('hex');
 }
