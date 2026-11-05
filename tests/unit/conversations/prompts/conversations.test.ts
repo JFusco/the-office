@@ -257,7 +257,9 @@ test('Ellis receives live IT context under read-only chat authority', async () =
     await engine.agents.followup('it', chat.enqueue(input('Why is a connection unknown?', { role: 'it' })));
     expect(prompt).toContain('Ellis');
     expect(prompt).toContain('CURRENT IT STATE');
-    expect(prompt).toContain('"status":"retrying"');
+    expect(prompt).toContain('"status":"unknown"');
+    expect(prompt).toContain('"fresh":false');
+    expect(prompt).toContain('History and retry budgets are retained evidence');
     expect(prompt).toContain('no source edits');
     store.close();
 });

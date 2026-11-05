@@ -1,5 +1,6 @@
 import { featureRoute } from '../../features/routes';
 import { projectReadiness } from '../readiness';
+import { diagnosticSnapshot } from '../../it/diagnostic-snapshot';
 import { goalHistory } from '../../leadership/goal-reviews';
 import { resolve, extname } from 'node:path';
 import { validTicket } from '../projects';
@@ -19,7 +20,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         if (req.method !== 'GET')
             return json({ error: 'GET required' }, 405);
         const report = await serviceHealth.report([...offices.entries.values()].map(e => e.store.state)), inventory = offices.sessions.forProject(store);
-        return json({ ...report, loadedHash: loadedRevision.hash, readiness: [...offices.entries.values()].map(entry => projectReadiness(entry, offices.projection(entry), Date.now(), offices.sessions.forProject(entry.store))), dailyCTO: offices.control.summaries()[0] || null, services: [...report.services, ...inventory.sources.map((source, index) => ({ id: `sessions:${index}`, name: source.name, status: source.ok && inventory.fresh ? 'connected' : 'unknown', detail: source.detail, checkedAt: inventory.observedAt || '', checkedLabel: 'Last session inventory read', expiresAt: inventory.observedAt ? new Date(Date.parse(inventory.observedAt) + 150000).toISOString() : undefined, nextStep: 'Ellis checks session visibility; Morgan investigates a persistent inventory failure. This is separate from your login. Implementation ownership remains unverified until the inventory succeeds.' }))], it: store.state.it });
+        return json({ ...report, loadedHash: loadedRevision.hash, readiness: [...offices.entries.values()].map(entry => projectReadiness(entry, offices.projection(entry), Date.now(), offices.sessions.forProject(entry.store))), dailyCTO: offices.control.summaries()[0] || null, services: [...report.services, ...inventory.sources.map((source, index) => ({ id: `sessions:${index}`, name: source.name, status: source.ok && inventory.fresh ? 'connected' : 'unknown', detail: source.detail, checkedAt: inventory.observedAt || '', checkedLabel: 'Last session inventory read', expiresAt: inventory.observedAt ? new Date(Date.parse(inventory.observedAt) + 150000).toISOString() : undefined, nextStep: 'Ellis checks session visibility; Morgan investigates a persistent inventory failure. This is separate from your login. Implementation ownership remains unverified until the inventory succeeds.' }))], it: diagnosticSnapshot(store) });
     }
     if (url.pathname === '/api/projects')
         return json({ projects: offices.summaries() });

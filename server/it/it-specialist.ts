@@ -20,6 +20,7 @@ export class ITSpecialist {
         this.running = true;
         if (!force || this.nextAt <= now.getTime())
             this.nextAt = now.getTime() + 60000;
+        let replaced = false;
         try {
             const entries = [...this.offices.entries.values()];
             const health = await this.health.report(entries.map(e => e.store.state));
@@ -54,10 +55,13 @@ export class ITSpecialist {
                 await readBackConversations(context);
                 await runDeliveryRecoveries(context);
                 await reconcileRecoveryLedger(context);
+                // A concurrent rollback replaces snapshot objects; never stamp detached diagnostics as fresh.
+                if (store.state !== state || store.state.it !== it) { replaced = true; continue; }
                 await publishITReport(context);
             }
         }
         finally {
+            if (replaced) this.nextAt = 0;
             this.running = false;
         }
     }

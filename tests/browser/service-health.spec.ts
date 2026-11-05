@@ -44,7 +44,7 @@ test('a stalled refresh expires saved green and releases the refresh button', as
  await expect(panel.getByText('Operational', { exact: true })).toBeVisible();
  await page.clock.runFor(60001); await expect.poll(() => calls).toBe(2);
  await page.clock.runFor(90001);
- await expect(panel.getByText('Update overdue', { exact: true })).toBeVisible();
+ await expect(panel.getByRole('group', { name: 'Service connections' }).getByText('Update overdue', { exact: true })).toBeVisible();
  await expect(panel.getByRole('alert')).toContainText('Health refresh timed out');
  await expect(panel.getByRole('button', { name: 'Refresh health', exact: true })).toBeEnabled();
 });

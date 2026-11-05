@@ -1,4 +1,5 @@
 import type { Store } from '../../store/store';
+import { diagnosticContext } from '../../it/diagnostic-context';
 import type { Role, Ticket, TeamMessage, SlackDelivery } from '../../../src/shared';
 import { CEC, DATA, SKILLS } from '../../office/config';
 import { PICKUP_CHAT } from '../../delivery/intake/pickup';
@@ -6,7 +7,8 @@ import { timeReport } from '../../../src/timing/timing';
 export function itChatPrompt(store: Store, message: TeamMessage, brief: string) {
     return `Respond to Joe as Ellis, the Office IT specialist. Use the same durable conversation and ticket context as teammates. Diagnose connection, authentication visibility, service, read-timeout and retry problems from current evidence. Separate an unavailable status probe from a verified logged-out account. Explain what you verified, what the automatic IT service recovered, remaining failures, next owner and exact human steps when needed. The existing IT service owns bounded safe read retries; do not launch a parallel delivery or replay an uncertain write. A successful chat does not clear an operational or delivery blocker.
 Read-only operational chat: no source edits, credential/access/configuration changes, login flows, issue/PR/board changes, merge, publication, deployments, sends, or pipeline retries. Never read secrets, auth files or private transcript/memory stores. For a fresh supported operational check Joe can use Send & recheck; the service performs it before this reply. Do not claim a check ran without its current report. Return pickupChange=null, goalChanges=[], slackRequests=[], notes=[], handoffProject="". notifyRoles may contain only "pm", when Joe requests a team report or a verified operational result needs Morgan's follow-up. Morgan receives one normal handoff; do not recursively dispatch teammates.
-CURRENT IT STATE: ${JSON.stringify(store.state.it)}
+CURRENT IT STATE: ${JSON.stringify(diagnosticContext(store))}
+Only the current section describes present diagnostics. History and retry budgets are retained evidence, not current faults or new retry authority. If fresh=false or a service is unknown, report that uncertainty; do not claim current health or repeat a historical blocker as current.
 CURRENT PROJECT: ${JSON.stringify({ project: store.project, paused: store.state.paused, intake: store.state.intake, github: { observedAt: store.state.github?.observedAt, error: store.state.github?.error }, outbox: store.state.outbox.filter(o => o.status === 'open') })}
 LINKED TICKET: ${JSON.stringify(message.ticket ? store.ticket(message.ticket) : null)}
 CONVERSATION: ${JSON.stringify(store.state.messages.filter(m => m.requestId === message.requestId || m.to === 'it' && m.ticket === message.ticket).slice(-24))}
