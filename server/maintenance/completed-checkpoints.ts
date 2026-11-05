@@ -1,4 +1,5 @@
 import { brainCheckpointCompletion } from './brain/checkpoint-completion';
+import { workKey } from '../../src/shared';
 import type { Store } from '../store/store';
 
 /** All projects reconcile stale checkpoints from their exact linked work, retaining the prior failure. */
@@ -13,7 +14,9 @@ export function reconcileCompletedCheckpoints(store: Store, read?: (path: string
         if (runs.length !== 1 || run.checkpointId !== checkpoint.id || run.blockerFollowup ||
             recoveries.some(request => request.status === 'working') ||
             store.state.workLog?.some(work => workIds.includes(work.requestId || '') && ['running', 'stopping'].includes(work.status)) ||
-            store.activeClaims().some(claim => workIds.includes(claim.work.id))) continue;
+            store.activeClaims().some(claim => workIds.includes(claim.work.id)) ||
+            store.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain')").get(
+                workKey({ projectId: store.project.id, kind: 'maintenance', id: run.id }))) continue;
         const finished = run.status === 'completed' && ['complete', 'brain-completed'].includes(run.stage) &&
             !!run.endedAt && run.steps.at(-1)?.result.outcome === 'passed' &&
             run.steps.every(step => step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain));

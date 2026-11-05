@@ -80,8 +80,10 @@ export function applyGoalReview(store: Store, reviewId: string, update: DailyGoa
             throw new Error('Proposed status lacks scope acceptance, started work or blocker evidence');
         const before = structuredClone(goal), at = store.clock.now().toISOString();
         goal.progress = { note: update.progress, blockers: update.blockers, evidence: update.evidence, linkedWork: update.linkedWork, lastReviewId: reviewId, reviewedAt: at };
-        if (update.status)
+        if (update.status && update.status !== goal.status) {
             goal.status = update.status;
+            goal.requestId = `review:${reviewId}`;
+        }
         goal.updatedAt = new Date(Math.max(Date.parse(at), Date.parse(goal.updatedAt) + 1)).toISOString();
         queueGoalNotice(store, before.status, goal, 'Avery');
         const application = { reviewId, projectId: store.project.id, goalId: goal.id, at, proposal: update, before, after: structuredClone(goal) };

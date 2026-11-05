@@ -14,7 +14,7 @@ export function CTOReview({ report, currentGoals = [] }: { report: DailyCTORepor
     {updates.length ? <div className="space-y-3"><h4 className="font-semibold">Goals reviewed</h4>{updates.map(update => {
       const project = projects.find(project => project.projectId === update.projectId), goal = project?.goals.find(goal => goal.id === update.goalId);
       const assessment = report.result?.updates.find(item => item.projectId === update.projectId && item.goalId === update.goalId);
-      const status = assessment?.status || goal?.status;
+      const status = (report.applied?.includes(`${update.projectId}:${update.goalId}`) ? assessment?.status : null) || goal?.status;
       const current = currentGoals.find(item => item.projectId === update.projectId && item.id === update.goalId);
       return <article className="rounded-8 border border-current/15 p-3" key={`${update.projectId}:${update.goalId}`}>
         <p className="text-12 opacity-70">{project?.project || update.projectId}{status ? ` · At this review: ${goalState[status]}` : ''}</p>

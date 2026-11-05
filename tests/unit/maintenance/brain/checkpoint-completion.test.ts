@@ -5,6 +5,7 @@ import { coordination } from '../../../../server/scheduling/coordination';
 import { brainCheckpointCompletion } from '../../../../server/maintenance/brain/checkpoint-completion';
 import { reconcileCompletedCheckpoints } from '../../../../server/maintenance/completed-checkpoints';
 import { projectOutbox } from '../../../../server/conversations/outbox';
+import { workKey } from '../../../../src/shared';
 
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));
@@ -33,6 +34,14 @@ test('a prior-date native completion and accepted readback clear the notice afte
     expect(JSON.parse(a.run.steps.at(-1).result.receipts[0].detail).native.native.id).toBe(a.native.id);
     reconcileCompletedCheckpoints(a.store, a.read);
     expect(a.read).toHaveBeenCalledTimes(2); expect(a.run.steps).toHaveLength(2);
+});
+test.each(['dispatching', 'uncertain'])('a %s Office effect blocks even complete native evidence', status => {
+    const a = fixture(), before = structuredClone(a.store.state);
+    a.store.db.prepare('INSERT INTO effects(id,work_key,status,body) VALUES(?,?,?,?)').run('effect', workKey({ projectId: a.store.project.id, kind: 'maintenance', id: a.run.id }), status, '{}');
+    reconcileCompletedCheckpoints(a.store, a.read);
+    expect(a.store.state).toEqual(before);
+    expect(a.checkpoint.status).toBe('blocked');
+    expect(a.read).not.toHaveBeenCalled();
 });
 test.each(['wrong-date', 'wrong-author', 'wrong-work', 'wrong-publication', 'active-native', 'incomplete-coverage', 'uncertain-call', 'pending-capture', 'pending-cleanup', 'missing-board', 'followup-after-readback', 'unreconciled', 'missing-report', 'unreadable'])('does not clear %s evidence', scenario => {
     const a = fixture();

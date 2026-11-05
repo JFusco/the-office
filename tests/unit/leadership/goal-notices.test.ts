@@ -2,6 +2,9 @@ import { afterEach, expect, test } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { GoalList } from '../../../src/leadership/GoalList';
 import { Store } from '../../../server/store/store';
 import { Engine } from '../../../server/scheduling/engine';
 import { coordination } from '../../../server/scheduling/coordination';
@@ -40,12 +43,21 @@ test('automatic accepted review and conversational goal completion queue exactly
     const { store, goal, engine } = setup(); configureGoalNotices(store, settings);
     store.state.tickets = [{ key: 'CEC-999', updated: 'version', commit: 'head', stage: 'complete', pilot: true, results: { 'staging-qa': { outcome: 'passed' } } } as any];
     const proposal = { projectId: 'cec', goalId: goal.id, expectedUpdatedAt: goal.updatedAt, status: 'done' as const, progress: 'Agreed scope verified.', rationale: 'Verified fixture acceptance.', blockers: [], linkedWork: [], evidence: [{ projectId: 'cec', kind: 'ticket' as const, id: 'CEC-999', version: 'version', head: 'head' }] };
-    applyGoalReview(store, 'review', proposal); applyGoalReview(store, 'review', proposal);
+    const application = applyGoalReview(store, 'review', proposal); applyGoalReview(store, 'review', proposal);
+    expect(application.before.requestId).toBe('human');
+    expect(application.after.requestId).toBe('review:review');
+    expect(renderToStaticMarkup(createElement(GoalList, { goals: [goal], disabled: false, onEdit: () => {} }))).not.toContain('Accepted by Joe.');
     expect(store.state.coordination!.notices!.entries).toHaveLength(1);
     expect(store.state.coordination!.notices!.entries[0].text).toContain('Verified by Avery');
     const chat = new Conversations(store, engine, store.dataRoot);
     chat.saveGoals([{ id: goal.id, expectedUpdatedAt: goal.updatedAt, project: goal.project, title: goal.title, detail: goal.detail, priority: goal.priority, status: 'done' }], 'cto', 'conversation');
     expect(store.state.coordination!.notices!.entries).toHaveLength(1);
+});
+test.each([null, 'done'] as const)('a review with status %s preserves Joe’s saved acceptance when the status does not change', status => {
+    const { store, goal, finish } = setup(); finish();
+    const application = applyGoalReview(store, 'later-review', { projectId: 'cec', goalId: goal.id, expectedUpdatedAt: goal.updatedAt, status, progress: 'Completion remains recorded.', rationale: 'No status change.', blockers: [], evidence: [], linkedWork: [] });
+    expect(application.after.requestId).toBe('human');
+    expect(renderToStaticMarkup(createElement(GoalList, { goals: [goal], disabled: false, onEdit: () => {} }))).toContain('Accepted by Joe.');
 });
 test('a failed goal review rolls back both completion and its queued notification', () => {
     const { store, goal } = setup(); configureGoalNotices(store, settings);

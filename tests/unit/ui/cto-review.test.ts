@@ -34,3 +34,19 @@ test('rewritten historical reviews show concise named goals and distinguish curr
   expect(html).toContain('Recovery cases still needed acceptance.');
   expect(html).toMatch(/<details[^>]*>.*Original long progress/);
 });
+
+test.each([{ applied: undefined }, { applied: [] }, { applied: ['brain:g'] }, { applied: ['cec:g'] }])('historical completion requires the owning goal in applied: $applied', ({ applied }) => {
+  const accepted = applied?.includes('cec:g');
+  const conflict = 'cec:g: Proposed status lacks scope acceptance, started work or blocker evidence';
+  const report: any = { status: accepted ? 'completed' : 'conflicted', applied, detail: '', collectedAt: '2026-11-03T22:00:00Z', conflicts: accepted ? [] : [conflict], facts: { projects: [{ projectId: 'cec', project: 'CEC', goals: [{ id: 'g', title: 'Deliver the integration', status: 'active' }] }] }, result: { summary: 'Scope reviewed.', updates: [{ projectId: 'cec', goalId: 'g', status: 'done', progress: 'Proposed completion.', rationale: 'Original proposal evidence.', blockers: [] }], unmapped: [] } };
+  const before = structuredClone(report);
+  const html = renderToStaticMarkup(createElement(CTOReview, { report, currentGoals: [{ id: 'g', projectId: 'cec', status: accepted ? 'done' : 'active' } as any] }));
+  expect(html).toContain(`At this review: ${accepted ? 'Goal complete' : 'In progress'}`);
+  if (!accepted) {
+    expect(html).not.toContain('Goal complete');
+    expect(html).toContain(conflict);
+  }
+  expect(html).toContain('Proposed completion.');
+  expect(html).toContain('Original proposal evidence.');
+  expect(report).toEqual(before);
+});
