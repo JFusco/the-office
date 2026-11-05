@@ -4,6 +4,7 @@ import { repeatConflictRepairUnresolved } from '../delivery/repairs/conflict-cha
 import { completedConflictDraftUnresolved } from '../delivery/recovery/preparation/post-conflict-preparation';
 import { publishedDraftConflictUnresolved } from '../delivery/recovery/preparation/published-draft-conflict';
 import type { ITContext } from './context';
+import { nativeDeliveryResolved } from './native-delivery-resolved';
 
 /** Service probes, retained closeout partials and resolution of recoveries no longer observed. */
 export async function reconcileRecoveryLedger(context: ITContext): Promise<void> {
@@ -31,10 +32,10 @@ export async function reconcileRecoveryLedger(context: ITContext): Promise<void>
                 r.status=budget.pending||r.attempts<3?'retrying':'needs-human';
                 current.add(id);followUps.push({id,owner:r.status==='needs-human'?'Morgan':'IT',detail:state.paused||state.draining?'Original readback waits for project controls; its consumed budget and queued intent remain unchanged.':budget.pending?'The exact original readback is queued or working; scheduler owns execution.':'The original activation/source-configuration readback remains unresolved; its consumed budget is retained.',nextAt:r.nextAt||undefined});continue;
             }
-            if(r.status==='resolved')continue;
+            const unresolvedDelivery = id.startsWith('native-delivery:') && !nativeDeliveryResolved(store, id, r.requestId);
+            if(r.status==='resolved'&&!unresolvedDelivery)continue;
             const checkpointId = id.startsWith('checkpoint-readback:') ? id.slice(20) : id.startsWith('checkpoint:') ? id.slice(11) : null;
             const unresolvedCheckpoint = checkpointId !== null && state.coordination?.checkpoints.find(checkpoint => checkpoint.id === checkpointId)?.status !== 'completed';
-            const unresolvedDelivery = id.startsWith('native-delivery:') && state.coordination?.jobs?.find(job => job.id === id.slice(16))?.status !== 'completed';
             const unresolvedImplementation = (id.startsWith('implementation:') || id.startsWith('implementation-audit-binding:')) && state.coordination?.jobs?.some(job => job.id === id.split(':')[1] && job.stage === 'implement' && ['blocked', 'interrupted'].includes(job.status));
             const unresolvedValidation = id.startsWith('validation:') && state.coordination?.jobs?.some(job => job.id === id.split(':')[1] && job.stage === 'validate' && ['blocked', 'interrupted'].includes(job.status));
             const unresolvedPreparation = (id.startsWith('pr-preparation:') || id.startsWith('post-conflict-preparation:')) && state.coordination?.jobs?.some(job => job.id === id.split(':')[1] && job.stage === 'prepare-pr' && ['blocked', 'interrupted'].includes(job.status));

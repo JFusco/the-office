@@ -991,6 +991,8 @@ export interface ITReport {
     fingerprint: string;
 }
 export interface ITState {
+    projectId?: string;
+    followUps?: ITFollowUp[];
     checkedAt: string;
     nextCheckAt: string;
     status: ITReport['status'];
