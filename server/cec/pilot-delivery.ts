@@ -51,6 +51,11 @@ export async function drainDelivery(this: Engine, selectedId?: string) {
             request.error = this.store.ticket(request.key).blocker;
     }
     catch (e) {
+        if (!featureGate(this.store, request.key).allowed) {
+            request.status = 'queued';
+            request.error = '';
+            return;
+        }
         request.status = 'blocked';
         request.error = String(e);
         const t = this.store.ticket(request.key);
