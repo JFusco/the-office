@@ -51,6 +51,6 @@ test.each(['advancing-base', 'retargeted-base', 'foreign-head'] as const)('uncer
     if (change === 'advancing-base') {
         await reconciled;
         expect(f.store.getEffect(`harness:${f.job.id}:ci-repair:${f.repair.id}`)?.status).toBe('verified');
-    } else await expect(reconciled).rejects.toThrow('will not be resent');
+    } else await expect(reconciled).rejects.toThrow(change === 'retargeted-base' ? 'repository or target' : 'will not be resent');
     expect(f.calls.filter(c => c.args[0] === 'push')).toHaveLength(1);
 });
