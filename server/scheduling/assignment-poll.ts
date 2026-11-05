@@ -1,4 +1,6 @@
 import { handsOff } from '../delivery/harness/scope';
+import { reconcileMailbox } from '../cec/reconcile-mailbox';
+import { syncOutbox } from '../conversations/outbox';
 import { admitReadyCards } from '../delivery/intake/admission';
 import { resumeParked } from '../delivery/parking/resume';
 import { retireBacklogged } from '../delivery/parking/retire-backlogged';
@@ -40,15 +42,13 @@ export async function poll(this: Coordinator, now = new Date()) {
         // Date the completed provider read, before downstream delivery work can make it older.
         const observedAt = this.store.clock.now().toISOString();
         const previous = new Map(listener.assigned.map(i => [i.key, i]));
+        if (this.store.project.provider === 'azure')
+            reconcileMailbox(this.store.state, new Set(assigned.filter(issue => (issue.pickupStatus ?? issue.status) === this.pickup.status).map(issue => issue.key)));
         for (const issue of assigned) {
             const before = previous.get(issue.key), eligible = this.pickup.enabled && (issue.pickupStatus ?? issue.status) === this.pickup.status;
             const latest = listener.reviews.slice().reverse().find(r => r.key === issue.key);
             const transitioned = eligible && (!before || (before.pickupStatus ?? before.status) !== this.pickup.status);
             const ticket = this.store.state.tickets.find(t => t.key === issue.key);
-            if (ticket && this.store.project.provider === 'azure' && ticket.stage === 'mailbox' && !eligible && ticket.blocker === 'No longer present in the latest eligible intake. Recheck before starting.') {
-                ticket.activity = 'idle';
-                ticket.blocker = '';
-            }
             if (ticket)
                 Object.assign(ticket, { summary: issue.summary, assignee: issue.assignee, updated: issue.updated, ...(this.store.project.provider === 'azure' ? { status: issue.status, statusId: issue.statusId } : {}) });
             else
@@ -116,6 +116,7 @@ export async function poll(this: Coordinator, now = new Date()) {
         listener.assigned = assigned;
         listener.lastCheckedAt = observedAt;
         listener.error = '';
+        syncOutbox(this.store.state);
     }
     catch (error) {
         this.state.listener.error = String(error);

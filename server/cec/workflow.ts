@@ -1,4 +1,5 @@
 import { externalPlanGap } from '../features/cec-plan-gate';
+import { MISSING_INTAKE, reconcileMailbox } from './reconcile-mailbox';
 import { existsSync, realpathSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { CEC, HOLDS } from '../office/config';
@@ -28,23 +29,26 @@ export function ingest(state: OfficeSnapshot, incoming: Ticket[], now = new Date
     for (const raw of incoming) {
         if (keys.has(raw.key))
             continue;
-        keys.add(raw.key);
         const existing = state.tickets.find(t => t.key === raw.key);
         const reason = eligibility(raw);
         if (reason)
             continue;
+        keys.add(raw.key);
         if (existing) {
             Object.assign(existing, { summary: raw.summary, status: raw.status, statusId: raw.statusId, assignee: raw.assignee, updated: raw.updated, observedAt: now });
+            if (existing.stage === 'mailbox' && existing.activity === 'idle' && existing.blocker === MISSING_INTAKE)
+                Object.assign(existing, { activity: 'waiting', blocker: '' });
             continue;
         }
         const epic = raw.type === 'Epic';
         state.tickets.push({ ...raw, stage: 'mailbox', activity: epic ? 'blocked' : 'waiting', blocker: epic ? 'Epic requires decomposition into development tickets.' : '', runId: '', attempt: 0, commit: '', branch: '', worktree: '', previewUrl: '', prId: 0, results: {}, findings: [], evidence: [], pilot: false, observedAt: now });
     }
     // Never delete active work simply because its PM-managed status left the intake query.
+    const retired = reconcileMailbox(state, keys);
     for (const t of state.tickets)
-        if (t.stage === 'mailbox' && !keys.has(t.key)) {
+        if (t.stage === 'mailbox' && !keys.has(t.key) && !retired.has(t.key)) {
             t.activity = 'blocked';
-            t.blocker = 'No longer present in the latest eligible intake. Recheck before starting.';
+            t.blocker ||= MISSING_INTAKE;
         }
 }
 export function nextStage(stage: Stage): Stage { return STAGES[Math.min(STAGES.indexOf(stage) + 1, STAGES.length - 1)]; }
