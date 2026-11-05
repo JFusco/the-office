@@ -41,3 +41,16 @@ test.each(['maintenance', 'repeated', 'new-attempt'] as const)('retry rejects %s
     await expect(publishCIRepair(f.delivery, f.job, f.repair, f.failure)).rejects.toThrow();
     expect(f.calls.some(c => c.args.includes('POST'))).toBe(false);
 });
+test.each(['advancing-base', 'retargeted-base', 'foreign-head'] as const)('uncertain push read-back preserves effect identity with %s', async change => {
+    const f = await setup('commit-messages'); f.failWrites();
+    await expect(publishCIRepair(f.delivery, f.job, f.repair, f.failure)).rejects.toThrow('Connection lost');
+    f.pr.base.sha = 'e'.repeat(40);
+    if (change === 'retargeted-base') f.pr.base.ref = 'other-target';
+    if (change === 'foreign-head') f.pr.head.repo.full_name = 'other/repository';
+    const reconciled = publishCIRepair(f.delivery, f.job, f.repair, f.failure);
+    if (change === 'advancing-base') {
+        await reconciled;
+        expect(f.store.getEffect(`harness:${f.job.id}:ci-repair:${f.repair.id}`)?.status).toBe('verified');
+    } else await expect(reconciled).rejects.toThrow('will not be resent');
+    expect(f.calls.filter(c => c.args[0] === 'push')).toHaveLength(1);
+});

@@ -38,7 +38,9 @@ export async function publishCIRepair(delivery: GitHubDelivery, job: TicketJob, 
             return run.head_sha === repair.head && run.id === plan.runId && run.run_attempt > before.run_attempt ? { runId: run.id, attempt: run.run_attempt } : null;
         }
         const pr = await delivery.verifyPR(job, true);
-        if (pr.state !== 'open' || pr.head.ref !== repair.branch || pr.base.sha !== repair.base) return null;
+        // The push does not freeze the target branch; its advancing SHA is checked by fresh readiness.
+        if (pr.state !== 'open' || pr.head.ref !== repair.branch || pr.head.repo?.full_name !== repo ||
+            pr.base.ref !== failure.pr.base.ref || pr.base.repo?.full_name !== repo) return null;
         if (plan.kind === 'commit-messages') return pr.head.sha === repair.repairedHead ? { head: pr.head.sha } : null;
         return pr.head.sha === repair.head && pr.title === plan.title && pr.body === plan.body ? { head: pr.head.sha, title: pr.title, body: pr.body } : null;
     };
