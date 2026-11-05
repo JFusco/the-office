@@ -1,3 +1,4 @@
+import { featureFixture } from './feature-fixture';
 // Isolated browser-test server: serves a built UI (static files) and answers the Office API
 // from in-memory synthetic fixtures. It never reads .local data, starts workers or contacts
 // providers. Writes only change this process's memory and are recorded for inspection.
@@ -29,6 +30,7 @@ createServer(async(req,res)=>{
     if(req.method==='POST'){
       const data=await body(req) as Record<string,any>;writes.push({at:new Date().toISOString(),method:'POST',path:`${url.pathname}${url.search}`,body:data});
       const s=state.snapshots[project];if(!s)return json(res,{error:'Unknown project'},409);
+      if(url.pathname.startsWith('/api/features')){try{const result=featureFixture(s,url.pathname,data);push(project);return json(res,result);}catch(error){return json(res,{error:String(error)},409);}}
       if(url.pathname==='/api/commands'){
         const c=s.coordination!;
         if(data.action==='configure-pickup')c.pickup={...c.pickup!,...data.pickup};
@@ -41,6 +43,7 @@ createServer(async(req,res)=>{
       if(url.pathname==='/api/goals')return json(res,{...data,updatedAt:new Date().toISOString(),requestId:'fixture'});
       return json(res,{error:'Not found'},404);
     }
+    if(url.pathname.startsWith('/api/features'))return json(res,featureFixture(state.snapshots[project],url.pathname));
     if(url.pathname==='/api/health')return json(res,{ok:true,mode:'fixture'});
     if(url.pathname==='/api/projects')return json(res,{projects:state.projects});
     if(url.pathname==='/api/service-health')return json(res,state.health);

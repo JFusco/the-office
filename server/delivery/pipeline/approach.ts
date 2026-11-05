@@ -1,3 +1,4 @@
+import { assertFeatureApproach } from '../../features/delivery-binding';
 import { z } from 'zod';
 import type { Role, Stage, Ticket, WorkApproach, StageResult, TicketJob } from '../../../src/shared';
 export const ApproachSchema = z.object({ plan: z.enum(['none', 'brief', 'reviewed']), review: z.enum(['none', 'focused', 'full']), validation: z.enum(['developer-checks', 'independent-checks', 'browser']), checks: z.array(z.string().trim().min(1)).min(1).max(12), reason: z.string().trim().min(1).max(3000) }).strict();
@@ -5,6 +6,8 @@ export const APPROACH_GUIDANCE = `TEAM JUDGMENT: Joe explicitly delegated planni
 Return approach=null when keeping the current decision. In understand, propose an explicit approach. To change the route BEFORE executing a stage that is no longer appropriate, return outcome=reroute with a revised approach, no write receipts, no paid runs and no implementation/remote changes. This is a decision handoff, not a passed stage. Do not execute a writer stage and then request a planning detour.`;
 export function recordApproach(t: Ticket, approach: WorkApproach, role: Role, stage: string) {
     const next = ApproachSchema.parse(approach);
+    assertFeatureApproach(t, next);
+    if (t.externalPlan) next.plan = 'none';
     const prior = t.approach || { plan: 'reviewed', review: 'focused', validation: 'browser' };
     const reducing = ['none', 'brief', 'reviewed'].indexOf(next.plan) < ['none', 'brief', 'reviewed'].indexOf(prior.plan) || ['none', 'focused', 'full'].indexOf(next.review) < ['none', 'focused', 'full'].indexOf(prior.review) || ['developer-checks', 'independent-checks', 'browser'].indexOf(next.validation) < ['developer-checks', 'independent-checks', 'browser'].indexOf(prior.validation);
     if (reducing && t.findings.some(f => f.status !== 'verified'))
@@ -127,6 +130,7 @@ export function reviewInstructions(mode: WorkApproach['review'] = 'full') {
 /** `advisoryFindings`: hands-off projects let a passed outcome decide; open findings on it are not a veto. */
 export function recordJobApproach(job: TicketJob, approach: WorkApproach, role: Role, workerFailure = false, advisoryFindings = false) {
     const next = ApproachSchema.parse(approach), prior = job.approach;
+    if (!(job.repairReason === 'conflicts' && job.approach?.review === 'none' && job.decisions?.some(d => d.stage === 'update-base' && d.role === 'pm' && JSON.stringify(d.approach) === JSON.stringify(job.approach)))) assertFeatureApproach(job, next);
     // A first focused review with independent checks is a choice, not a downgrade
     // from an invented full review. Skipping review/checks still retains guards.
     const reducing = prior ? ['none', 'focused', 'full'].indexOf(next.review) < ['none', 'focused', 'full'].indexOf(prior.review) || ['developer-checks', 'independent-checks', 'browser'].indexOf(next.validation) < ['developer-checks', 'independent-checks', 'browser'].indexOf(prior.validation) : next.review === 'none' || next.validation === 'developer-checks';

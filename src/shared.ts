@@ -9,7 +9,7 @@ export type * from './contracts/timing';
 export type * from './contracts/leadership';
 export const STAGES = ['mailbox', 'understand', 'enhance', 'plan', 'plan-review', 'implement', 'code-review', 'draft-pr', 'preview', 'qa', 'repair', 'repair-review', 'retest', 'publish', 'ci', 'ci-diagnose', 'ready-for-staging', 'staging-qa', 'complete'] as const;
 export type Stage = typeof STAGES[number];
-export type Role = 'pm' | 'developer' | 'lead' | 'qa' | 'cto' | 'it';
+export type Role = 'pm' | 'developer' | 'lead' | 'qa' | 'cto' | 'it' | 'analyst';
 export interface WorkApproach {
     plan: 'none' | 'brief' | 'reviewed';
     review: 'none' | 'focused' | 'full';
@@ -148,6 +148,8 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    featureBinding?: import('./contracts/features').FeatureBinding;
+    featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };
     ciRepairs?: import('./contracts/ci-repair').CIRepair[];
     initialDraftConflict?: Readonly<{ originalWorkId: string; head: string; pr: number; proofPath: string; proofSha256: string }>;
     scopeRepairResumes?: { intentId: string; originalWorkId: string; head: string; proofPath: string; proofSha256: string; checkpointSha256: string; findingIds: string[]; afterStep: number; at: string }[];
@@ -538,6 +540,9 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    featureBinding?: import('./contracts/features').FeatureBinding;
+    featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };
+    externalPlan?: { featureId: string; approvalId: string; digest: string };
     repairCycle?: DeliveryRepairCycle;
     routeChanges?: number;
     prerequisites?: Prerequisite[];
@@ -794,6 +799,7 @@ export interface DeliveryRequest {
     intakeStatus?: string;
 }
 export interface OfficeSnapshot {
+    features?: import('./contracts/features').Feature[];
     liveAnchor?: import('./contracts/timing').LiveAnchor;
     timerStatus?: 'live' | 'last-confirmed';
     serviceInstanceId?: string;
@@ -923,7 +929,7 @@ export interface OfficeSnapshot {
         ticket: string;
     } | null;
 }
-export const ROLE_NAMES: Record<Role, string> = { pm: 'Morgan', developer: 'Alex', lead: 'Sam', qa: 'Riley', cto: 'Avery', it: 'Ellis' };
+export const ROLE_NAMES: Record<Role, string> = { pm: 'Morgan', developer: 'Alex', lead: 'Sam', qa: 'Riley', cto: 'Avery', it: 'Ellis', analyst: 'Casey' };
 export const STAGE_LABELS: Record<Stage, string> = {
     mailbox: 'In the mailbox', understand: 'Reading the ticket', enhance: 'Detailing requirements', plan: 'Writing a plan',
     'plan-review': 'Reviewing the plan', implement: 'Building the fix', 'code-review': 'Reviewing the code', 'draft-pr': 'Opening a draft PR',
