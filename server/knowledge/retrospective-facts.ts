@@ -1,6 +1,7 @@
 import type { LessonEvidence, PendingRetrospective } from '../../src/shared';
 import type { Store } from '../store/store';
 import type { RetrospectiveSubject } from './retrospective-subject';
+import { maintenanceFacts, type MaintenancePacketSection } from './maintenance-facts';
 
 /** Initial engineering defaults, not measured optima. Mirrors the clipping in leadership/fact-bounds.ts. */
 export const PACKET_LIMIT = 24000;
@@ -17,12 +18,14 @@ export interface RetrospectivePacket {
     conversation: unknown[];
     notes: unknown[];
     activeLessons: { id: string; statement: string; recurrences: number }[];
+    /** Only for a maintenance run: ledgers, harness error and saved artifacts. Bounded by construction. */
+    maintenance?: MaintenancePacketSection;
     omitted: Record<string, number>;
     /** Harness-owned evidence references. The model cites refs; URLs are never model-supplied. */
     catalog: Record<string, LessonEvidence>;
 }
 
-/** Bounded, read-only facts about one finished job or CEC run, frozen for the duration of a retrospective. */
+/** Bounded, read-only facts about one finished job, CEC run or maintenance run, frozen for the duration of a retrospective. */
 export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pending: Pick<PendingRetrospective, 'id' | 'trigger' | 'event'>): RetrospectivePacket {
     const { issueUrl, prUrl } = job, link = prUrl || issueUrl;
     const catalog: Record<string, LessonEvidence> = Object.create(null);
@@ -54,6 +57,7 @@ export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pend
         ].slice(-ENTRIES),
         notes: store.state.projectNotes.filter(note => note.ticket === job.key).slice(-10).map(note => ({ summary: clip(note.summary, SHORT), detail: clip(note.detail, SHORT) })),
         activeLessons: (store.state.knowledge?.lessons || []).filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ id: lesson.id, statement: lesson.statement, recurrences: lesson.recurrences?.length || 0 })),
+        ...(job.maintenance ? { maintenance: maintenanceFacts(job, catalog) } : {}),
         omitted: {},
         catalog,
     };

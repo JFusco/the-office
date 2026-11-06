@@ -25,7 +25,7 @@ test('lessons reach delivery stages by purpose and nothing else', () => {
     expect(seen('assignment-review')).toContain('INTAKE-LESSON');
     expect(seen('github-merge')).toContain('ANY-LESSON');
     expect(seen('github-merge')).not.toContain('IMPLEMENT-LESSON');
-    for (const stage of ['conversation', 'feature-research', 'follow-up', 'daily-cto', 'retrospective', 'slack-send', 'something-new', undefined])
+    for (const stage of ['conversation', 'feature-research', 'daily-cto', 'retrospective', 'slack-send', 'something-new', undefined])
         expect(seen(stage as string)).toBe('');
 });
 

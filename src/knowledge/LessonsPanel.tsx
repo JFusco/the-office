@@ -35,7 +35,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
   const act = (action: string, lessonId: string) => void save(action, { lessonId }).then(saved => { if (saved) document.getElementById(headingId)?.focus(); });
   return <Section data-lessons-panel>
     <SectionTitle className="mb-2">Lessons</SectionTitle>
-    <p className={mutedCopy}>{harper} reviews each ticket that finishes, is parked, is retired, or uses up a repair budget, and keeps short lessons with links to the evidence. The team sees the relevant ones before each delivery stage. Lessons are advice, never a gate. Every Friday {harper} writes a roll-up of the week.</p>
+    <p className={mutedCopy}>{harper} reviews each ticket that finishes, is parked, is retired, or uses up a repair budget, and each CMS maintenance run that finishes or blocks, and keeps short lessons with links to the evidence. The team sees the relevant ones before each delivery stage. Lessons are advice, never a gate. Every Friday {harper} writes a roll-up of the week.</p>
     <form className="mt-5 grid gap-3" onSubmit={event => { event.preventDefault(); void save('configure-knowledge', { knowledge: { enabled } }).then(saved => { if (saved) setDraft(null); }); }}>
       <CheckField checked={enabled} disabled={disabled} onChange={event => setDraft(event.target.checked)}>Let {harper} write retrospectives for this project</CheckField>
       <Button type="submit" className="justify-self-start" disabled={disabled || draft === null || draft === view.enabled}>Save</Button>

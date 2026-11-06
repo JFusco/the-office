@@ -15,7 +15,11 @@ const PURPOSES: Record<string, Bucket> = Object.fromEntries(([
     ['general', ['merge', 'closeout', 'closeout-readback', 'closeout-original-readback']],
 ] as [Bucket, string[]][]).flatMap(([bucket, stages]) => stages.map(stage => [stage, bucket])));
 
-export function lessonPurpose(stage = ''): Bucket | undefined {
+/** CMS maintenance stages reach the runtime with bare names on GitHub projects only; CEC's bare `draft-pr` keeps its implement purpose. */
+const MAINTENANCE = new Set(['follow-up', 'vendor-review', 'proposal', 'proposal-plan', 'proposal-plan-review', 'proposal-review', 'package-verification', 'browser-verification', 'draft-pr']);
+
+export function lessonPurpose(stage = '', provider = 'github'): Bucket | undefined {
+    if (provider === 'github' && MAINTENANCE.has(stage)) return 'maintenance';
     return PURPOSES[stage.replace(/^github-/, '')];
 }
 
@@ -26,9 +30,9 @@ function render(lesson: Lesson): string {
     return line.length <= LESSON_LIMIT ? line : `${line.slice(0, LESSON_LIMIT - 1)}…`;
 }
 
-/** Active project lessons, then accepted office lessons, for a delivery stage; whole lessons within the section limit. */
+/** Active project lessons, then accepted office lessons, for a delivery or maintenance stage; whole lessons within the section limit. */
 export function knowledgeContext(store: Pick<Store, 'project' | 'state'>, stage?: string): string {
-    const bucket = lessonPurpose(stage), knowledge = store.state.knowledge;
+    const bucket = lessonPurpose(stage, store.project.provider), knowledge = store.state.knowledge;
     const matching = (lessons: Lesson[] = []) => lessons.filter(lesson => lesson.status === 'active' && (lesson.stages.includes('any') || bucket !== 'general' && lesson.stages.includes(bucket!)))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
     if (!bucket || !knowledge) return '';

@@ -3,11 +3,15 @@ import type { CIRepair } from '../../src/contracts/ci-repair';
 import { CEC } from '../office/config';
 import type { Store } from '../store/store';
 import { triggerJobId } from './retrospective-triggers';
+import { maintenanceSubject, type MaintenanceSubjectFacts } from './maintenance-subject';
 
 /** Same URL shape as server/cec/azure.ts prUrl, without its provider imports. */
 const azurePrUrl = (id: number) => CEC.organization && CEC.project && CEC.repository ? `${CEC.organization}/${CEC.project}/_git/${CEC.repository}/pullrequest/${id}` : '';
 
-/** One delivery unit Harper can review: a GitHub job or a CEC pilot run. */
+/** The step fields a retrospective reads; a maintenance result maps onto them without findings or evidence. */
+export type SubjectStepResult = Pick<StageResult, 'outcome' | 'summary' | 'blocker' | 'commit' | 'findings' | 'receipts' | 'evidence' | 'resolution'>;
+
+/** One unit Harper can review: a GitHub job, a CEC pilot run or a CMS maintenance run. */
 export interface RetrospectiveSubject {
     kind: RetrospectiveSubjectKind;
     id: string;
@@ -20,12 +24,14 @@ export interface RetrospectiveSubject {
     prUrl: string;
     head: string;
     approach?: WorkApproach;
-    steps: { stage: string; result: StageResult }[];
+    steps: { stage: string; result: SubjectStepResult }[];
     decisions: ApproachDecision[];
     ciRepairs: CIRepair[];
     timing: QueueTiming[];
     reroutes: number;
     repairCycle?: DeliveryRepairCycle;
+    /** Present only for kind `maintenance`. */
+    maintenance?: MaintenanceSubjectFacts;
 }
 
 export function jobSubject(store: Store, job: TicketJob): RetrospectiveSubject {
@@ -45,11 +51,13 @@ export function ticketSubject(ticket: Ticket): RetrospectiveSubject {
         decisions: ticket.decisions || [], ciRepairs: [], timing: ticket.timing || [], reroutes: ticket.routeChanges || 0, repairCycle: ticket.repairCycle };
 }
 
-/** Resolves a trigger id to the job or CEC run it belongs to. */
+/** Resolves a trigger id to the job, CEC run or maintenance run it belongs to. */
 export function findSubject(store: Store, triggerId: string): RetrospectiveSubject | undefined {
     const id = triggerJobId(triggerId);
     const job = store.state.coordination?.jobs?.find(entry => entry.id === id);
     if (job) return jobSubject(store, job);
     const ticket = store.state.tickets.find(entry => entry.runId === id);
-    return ticket ? ticketSubject(ticket) : undefined;
+    if (ticket) return ticketSubject(ticket);
+    const run = store.state.maintenance?.runs.find(entry => entry.id === id);
+    return run ? maintenanceSubject(store, run) : undefined;
 }
