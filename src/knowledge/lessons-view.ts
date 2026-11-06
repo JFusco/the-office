@@ -33,7 +33,7 @@ export function lessonsView(knowledge: KnowledgeState | undefined, office?: Offi
     };
 }
 
-export const TRIGGER_LABEL: Record<RetrospectiveRecord['trigger'], string> = { completed: 'Completed', parked: 'Parked in Block', retired: 'Retired', 'repair-budget': 'Repair budget used up' };
+export const TRIGGER_LABEL: Record<RetrospectiveRecord['trigger'], string> = { completed: 'Completed', parked: 'Parked in Block', retired: 'Retired', 'repair-budget': 'Repair budget used up', blocked: 'Blocked' };
 
 /** The roll-up table's rows: label and a formatter per metric. */
 export const ROLLUP_ROWS: [string, (rollup: WeeklyRollup) => string][] = [

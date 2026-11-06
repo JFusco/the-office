@@ -37,7 +37,7 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
     if (!knowledge || knowledge.consumed.includes(id)) return;
     let pending = knowledge.pending.find(entry => entry.id === id);
     if (!pending) {
-        const candidate = terminalCandidates(knowledge, store.state.coordination?.jobs || [], store.state.tickets).find(entry => entry.id === id);
+        const candidate = terminalCandidates(knowledge, store.state.coordination?.jobs || [], store.state.tickets, store.state.maintenance?.runs || []).find(entry => entry.id === id);
         if (!candidate) return;
         pending = { id, jobId: candidate.subjectId, key: candidate.key, trigger: candidate.trigger, subject: candidate.subject, createdAt: store.clock.now().toISOString(), event: { stage: candidate.stage, head: candidate.head, steps: candidate.steps, reason: candidate.reason }, attempts: 0, nextAt: '', lastError: '' };
         knowledge.pending.push(pending);

@@ -1,5 +1,6 @@
-import type { DeliveryRepairCycle, KnowledgeState, RetrospectiveSubjectKind, RetrospectiveTrigger, Ticket, TicketJob } from '../../src/shared';
+import type { DeliveryRepairCycle, KnowledgeState, MaintenanceRun, RetrospectiveSubjectKind, RetrospectiveTrigger, Ticket, TicketJob } from '../../src/shared';
 import type { CIRepair } from '../../src/contracts/ci-repair';
+import { maintenanceCandidates } from './maintenance-triggers';
 
 type JobRef = Pick<TicketJob, 'id' | 'steps'>;
 
@@ -38,8 +39,8 @@ export function visibleTicketTriggerIds(tickets: Ticket[]): string[] {
 
 export interface TerminalCandidate { id: string; trigger: RetrospectiveTrigger; subject: RetrospectiveSubjectKind; subjectId: string; key: string; stage: string; head: string; steps: number; reason: string; at: string }
 
-/** Stable terminal states are derived rather than hooked: completed or cancelled jobs, completed CEC runs. */
-export function terminalCandidates(knowledge: KnowledgeState, jobs: TicketJob[], tickets: Ticket[] = []): TerminalCandidate[] {
+/** Stable terminal states are derived rather than hooked: completed or cancelled jobs, completed CEC runs, blocked or completed maintenance runs. */
+export function terminalCandidates(knowledge: KnowledgeState, jobs: TicketJob[], tickets: Ticket[] = [], maintenanceRuns: MaintenanceRun[] = []): TerminalCandidate[] {
     const known = new Set([...knowledge.consumed, ...knowledge.pending.map(entry => entry.id)]);
     const fromJobs = jobs.flatMap(job => {
         const signal = job.status === 'completed' ? { id: completedId(job), trigger: 'completed' as const } : job.status === 'cancelled' ? { id: retiredId(job), trigger: 'retired' as const } : null;
@@ -49,5 +50,5 @@ export function terminalCandidates(knowledge: KnowledgeState, jobs: TicketJob[],
         const id = ticketCompletedId(ticket);
         return ticket.runId && ticket.pilot && ticket.stage === 'complete' && !known.has(id) ? [{ id, trigger: 'completed' as const, subject: 'ticket' as const, subjectId: ticket.runId, key: ticket.key, stage: ticket.stage, head: ticket.commit || '', steps: Object.keys(ticket.results || {}).length, reason: 'Deployed change verified in staging.', at: ticket.updated || ticket.observedAt }] : [];
     });
-    return [...fromJobs, ...fromTickets];
+    return [...fromJobs, ...fromTickets, ...maintenanceCandidates(known, maintenanceRuns)];
 }
