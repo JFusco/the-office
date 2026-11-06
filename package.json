@@ -10,7 +10,8 @@
     "test": "vitest run",
     "office": "tsx server/cli.ts",
     "test:browser": "playwright test",
-    "service:install": "node scripts/install-service.mjs"
+    "service:install": "node scripts/install-service.mjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
@@ -38,6 +39,7 @@
     "@types/react-dom": "^19.2.2",
     "@types/three": "^0.180.0",
     "@types/ws": "^8.18.2",
+    "husky": "^9.1.7",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5"
