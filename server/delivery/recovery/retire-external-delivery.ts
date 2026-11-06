@@ -3,7 +3,7 @@ import { workKey, type TicketJob } from '../../../src/shared';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { completedPRReviews } from './completed-pr-review';
 
-/** Only a read-only handoff of an existing PR can be retired by external completion. */
+/** Only a read-only handoff of an existing PR can be retired by external completion. A park that never reached the board is not a human decision. */
 function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
     const { store } = delivery;
     return !store.state.paused && !!job.existingPR && !!job.pr && !!job.head &&
@@ -12,7 +12,7 @@ function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
         !job.worktree && !job.mergeAttempt && !job.mergeIntentId && !job.mergeCommit &&
         !job.boardUpdates?.some(update => update.status !== 'verified' || update.stage !== 'lead-pr' || update.head !== job.head || update.target !== 'In review') && !job.candidateRecovery && !job.candidateBase &&
         !job.implementationContinuation && !job.implementationRecovery && !job.discoveryRecovery &&
-        !job.sourceAmendment && !job.repairCycle && !job.parked && !job.candidateCleanup &&
+        !job.sourceAmendment && !job.repairCycle && !job.parked?.published && !job.candidateCleanup &&
         job.steps.every(step => ['prepare-pr', 'lead-pr'].includes(step.stage) &&
             step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain && /^(?:get|read|query|inspect)\b/i.test(receipt.action))) &&
         completedPRReviews(store, job) &&
@@ -38,6 +38,7 @@ export async function retireExternalDeliveries(delivery: GitHubDelivery): Promis
                 !isDeepStrictEqual(job, prior) || !eligible(delivery, job)) continue;
             store.transaction(() => {
                 job.status = 'cancelled';
+                delete job.parked;
                 job.updatedAt = store.clock.now().toISOString();
                 job.detail = `PR #${job.pr} merged and ${job.key} closed outside this Office delivery. Retired the read-only handoff; original history retained. Office checks and closeout are not claimed.`;
                 job.steps.push({ stage: 'external-delivery-readback', result: {
