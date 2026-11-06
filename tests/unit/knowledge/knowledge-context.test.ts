@@ -11,7 +11,7 @@ const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).forEach(fn => fn()));
 function setup(projectId = 'brain') { const fixture = knowledgeStore(projectId); cleanup.push(fixture.close); return fixture; }
 let sequence = 0;
-const lesson = (statement: string, stages: LessonStage[], overrides: Partial<Lesson> = {}): Lesson => ({ id: `lesson-${++sequence}`, kind: 'pitfall', statement, detail: '', stages, paths: [], status: 'active', evidence: [{ kind: 'pr', ref: 'pr:x:1', url: 'https://github.com/JFusco/brain/pull/1', detail: 'PR #1' }], sourceRetrospectiveId: 'r', createdAt: `2026-11-0${(sequence % 9) + 1}T00:00:00Z`, updatedAt: '', ...overrides });
+const lesson = (statement: string, stages: LessonStage[], overrides: Partial<Lesson> = {}): Lesson => ({ id: `lesson-${++sequence}`, scope: 'project', recurrences: [], kind: 'pitfall', statement, detail: '', stages, paths: [], status: 'active', evidence: [{ kind: 'pr', ref: 'pr:x:1', url: 'https://github.com/JFusco/brain/pull/1', detail: 'PR #1' }], sourceRetrospectiveId: 'r', createdAt: `2026-11-0${(sequence % 9) + 1}T00:00:00Z`, updatedAt: '', ...overrides });
 
 test('lessons reach delivery stages by purpose and nothing else', () => {
     const { store } = setup();
@@ -29,10 +29,12 @@ test('lessons reach delivery stages by purpose and nothing else', () => {
         expect(seen(stage as string)).toBe('');
 });
 
-test('non-GitHub projects get no lessons', () => {
+test('CEC stages get lessons by purpose, and mailbox, CI and staging waits get none', () => {
     const { store } = setup('cec');
-    store.state.knowledge!.lessons.push(lesson('ANY-LESSON', ['any']));
-    expect(knowledgeContext(store, 'implement')).toBe('');
+    store.state.knowledge!.lessons.push(lesson('CEC-REVIEW', ['review']), lesson('CEC-REPAIR', ['repair']));
+    expect(knowledgeContext(store, 'code-review')).toContain('CEC-REVIEW');
+    expect(knowledgeContext(store, 'repair-review')).toContain('CEC-REPAIR');
+    for (const stage of ['mailbox', 'ci', 'ready-for-staging']) expect(knowledgeContext(store, stage)).toBe('');
 });
 
 test('the section is bounded to whole lessons and retirement removes a lesson', () => {

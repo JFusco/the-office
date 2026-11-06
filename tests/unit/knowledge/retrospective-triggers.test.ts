@@ -89,8 +89,9 @@ test('CI budget exhaustion records once per exhausted repair', () => {
     expect(store.state.knowledge!.pending[0].id).toBe(`${ci.id}:repair-budget:ci:ci-3`);
 });
 
-test('non-GitHub projects are out of scope for this slice', () => {
+test('CEC repair windows record against the run, through the same shared helper', () => {
     const { store } = setup('cec');
-    enqueueRepairDiagnosis(store, { id: 'run', key: 'CEC-1', head: '', steps: [], repairCycle: cycle() });
-    expect(store.state.knowledge!.pending).toEqual([]);
+    store.state.tickets.push({ key: 'CEC-1', runId: 'cec-1-run', results: {} } as never);
+    enqueueRepairDiagnosis(store, { id: 'cec-1-run', key: 'CEC-1', head: '', steps: [], repairCycle: cycle() });
+    expect(store.state.knowledge!.pending).toMatchObject([{ jobId: 'cec-1-run', key: 'CEC-1', trigger: 'repair-budget', subject: 'ticket' }]);
 });

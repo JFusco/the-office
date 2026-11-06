@@ -3,6 +3,7 @@ import { checkpointSuperseded } from '../maintenance/superseded';
 import { checkpointHasMaintenanceAlert, maintenanceNeedsHumanFollowup } from '../maintenance/follow-up-alerts';
 import { parkedProviderWait, readinessNeedsFollowup, readinessWait } from '../../src/work/work-summary';
 import { HOLDS } from '../office/config';
+import { knowledgeOutbox } from '../knowledge/knowledge-outbox';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
 export function conversationResolved(state: OfficeSnapshot, message: TeamMessage): boolean {
     return !!message.resolvedBy || state.messages.some(reply => reply.actionId === `message:${message.id}` && reply.from === 'pm' && reply.status === 'answered' &&
@@ -27,6 +28,8 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
     const teamOwnsIT = (id: string) => state.it?.reports.at(-1)?.followUps.some(f => f.id === id && f.owner !== 'You');
     if (itFollowUps.length)
         item('it-followup', 'Ellis needs your help', itFollowUps.map(f => f.detail).join('\n'), 'pm');
+    for (const decision of knowledgeOutbox(state))
+        item(decision.id, decision.title, decision.detail, 'knowledge');
     if (state.coordination?.listener.error && !teamOwnsIT('assignment-listener'))
         item('assignment-listener', 'Restore assignment listening', state.coordination.listener.error, 'pm');
     for (const n of state.coordination?.notices?.entries || []) {

@@ -13,14 +13,17 @@ import { SlackRequestSchema } from './slack';
 import { GoalReportSchema } from '../leadership/goal-reporting';
 import { saveGoals, queueCTOHandoff, pumpCTO } from './cto-conversations';
 import { queuedITMessage, pumpIT } from './it-conversations';
+import { pumpKnowledge } from './knowledge-conversations';
 import { pump } from './team-conversation-pump';
-export const MessageInput = z.object({ id: z.string().uuid(), role: z.enum(['pm', 'developer', 'lead', 'qa', 'cto', 'it']).default('pm'), ticket: z.string().regex(/^((CEC|GH)-\d+)?$/).default(''), actionId: z.string().max(200).default(''), body: z.string().trim().min(1).max(6000), recheck: z.boolean().default(false) }).strict();
+export const MessageInput = z.object({ id: z.string().uuid(), role: z.enum(['pm', 'developer', 'lead', 'qa', 'cto', 'it', 'knowledge']).default('pm'), ticket: z.string().regex(/^((CEC|GH)-\d+)?$/).default(''), actionId: z.string().max(200).default(''), body: z.string().trim().min(1).max(6000), recheck: z.boolean().default(false) }).strict();
 export const GoalChangeSchema = z.object({ id: z.string(), expectedUpdatedAt: z.string(), project: z.string().min(1).max(80), title: z.string().min(1).max(200), detail: z.string().max(6000), priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), status: z.enum(['idea', 'planned', 'active', 'blocked', 'done']) }).strict();
 export const ReplySchema = z.object({ handoffProject: z.string(), pickupChange: PickupSchema.nullable(), reply: z.string().min(1), notifyRoles: z.array(z.enum(['pm', 'developer', 'lead', 'qa', 'cto', 'it'])).max(4), question: z.string(), goalChanges: z.array(GoalChangeSchema).max(12), slackRequests: z.array(SlackRequestSchema).max(1), notes: z.array(z.object({ summary: z.string().min(1), detail: z.string().min(1) }).strict()).max(8), receipts: z.array(z.object({ id: z.string(), action: z.string(), target: z.string(), verified: z.boolean(), uncertain: z.boolean(), detail: z.string() }).strict()) }).strict();
 // Fresh workers require the nullable field; historic replies retain their original shape.
 export const ConversationResultSchema: z.ZodType<z.infer<typeof ReplySchema> & { goalReport?: z.infer<typeof GoalReportSchema> | null }> = ReplySchema.extend({ goalReport: GoalReportSchema.nullable() });
 export class Conversations {
     runningIT = false;
+    runningKnowledge = false;
+    knowledgeOwner = `knowledge-chat-${crypto.randomUUID()}`;
     itOwner = `it-chat-${crypto.randomUUID()}`;
     runningCTO = false;
     ctoOwner = `cto-chat-${crypto.randomUUID()}`;
@@ -70,5 +73,6 @@ export class Conversations {
     async pumpCTO() { return pumpCTO.call(this); }
     queuedITMessage(message: TeamMessage) { return queuedITMessage.call(this, message); }
     async pumpIT() { return pumpIT.call(this); }
+    async pumpKnowledge() { return pumpKnowledge.call(this); }
     async pump(id?: string) { return pump.call(this, id); }
 }

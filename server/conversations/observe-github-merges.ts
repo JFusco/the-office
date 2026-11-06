@@ -4,9 +4,12 @@ import type { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 /** Completed native/external merges still produce notices even when their Office queue mirror never ran. */
 export async function observeGitHubMergeNotices(delivery: GitHubDelivery): Promise<void> {
     const { store } = delivery, { policy, entries } = noticeState(store);
-    if (!policy.enabled || store.state.paused) return;
+    // Direct messages and channel posts are independent; observe merges when either is on, from the earlier start.
+    const starts = [policy.enabled ? policy.enabledAt : '', policy.channel?.enabled ? policy.channel.enabledAt : ''].filter(Boolean).map(at => Date.parse(at));
+    if (!starts.length || store.state.paused) return;
+    const since = Math.min(...starts);
     const candidates = delivery.jobs.filter(job => job.pr && job.prUrl &&
-        Date.parse(job.requestedAt) >= Date.parse(policy.enabledAt) &&
+        Date.parse(job.requestedAt) >= since &&
         !entries.some(notice => notice.prUrl === job.prUrl)).sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
     for (const job of candidates) {
         try {

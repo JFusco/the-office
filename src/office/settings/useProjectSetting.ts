@@ -16,11 +16,12 @@ export async function saveProjectSetting(fetchImpl: typeof fetch, projectId: str
 export function useProjectSetting({ projectId, demo, refresh, success }: { projectId: string; demo: boolean; refresh?: () => Promise<void>; success: string }) {
     const [pending, setPending] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState(false);
     const busy = useRef(false);
-    const save = useCallback(async (action: string, payload: object) => {
-        if (busy.current || demo) return;
+    /** Resolves true only when the Office accepted the change. */
+    const save = useCallback(async (action: string, payload: object): Promise<boolean> => {
+        if (busy.current || demo) return false;
         busy.current = true; setPending(true); setError(false); setMessage('');
-        try { await saveProjectSetting(fetch, projectId, action, payload); setMessage(success); void refresh?.(); }
-        catch (e) { setError(true); setMessage(String(e)); }
+        try { await saveProjectSetting(fetch, projectId, action, payload); setMessage(success); void refresh?.(); return true; }
+        catch (e) { setError(true); setMessage(String(e)); return false; }
         finally { busy.current = false; setPending(false); }
     }, [demo, projectId, refresh, success]);
     return { save, pending, message, error, disabled: pending || demo };

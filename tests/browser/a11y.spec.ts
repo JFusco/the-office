@@ -24,7 +24,7 @@ async function equivalentTarget(page:Page,target:string,failedTargets:string[]){
       const rooms:[string,string][]=[['DEVELOPMENT','Developer'],['DEV LEAD','Dev lead'],['QA','QA'],['PROJECT MANAGEMENT','PM'],['CTO OFFICE','Goals & priorities (CTO)']];
       const role=rooms.find(([label])=>name.startsWith(label+' '))?.[1]||(name.includes(' · IT SUPPORT ')?'IT specialist':undefined);
       if(role)equivalent=buttons.find(button=>button.getAttribute('aria-label')?.endsWith(', '+role));
-      if(name.includes(' · KNOWLEDGE '))equivalent=buttons.find(button=>/^Visit .+, knowledge engineer, /.test(button.getAttribute('aria-label')||''));
+      if(name.includes(' · KNOWLEDGE '))equivalent=buttons.find(button=>/^Visit .+, knowledge engineer$/.test(button.getAttribute('aria-label')||''));
       if(name.startsWith('IDEAS & POSSIBILITIES ')||name.startsWith('DELIVERY REPORTS '))equivalent=buttons.find(button=>button.getAttribute('aria-label')?.startsWith('Open project goals & ideas,'));
     }
     if(!equivalent||equivalent.disabled||!equivalent.checkVisibility({visibilityProperty:true}))return null;
@@ -82,4 +82,17 @@ test('loading and error states pass the WCAG 2.2 AA audit',async({page})=>{
   await page.route('**/api/office*',async route=>{await held;await route.fulfill({status:503,json:{error:'Fixture: office unavailable'}});});
   await page.goto('/');await expect(page.getByText('Connecting to your local office…')).toBeVisible();await audit(page,'state-loading');
   release();await expect(page.getByText(/Office returned 503/)).toBeVisible();await audit(page,'state-error');
+});
+test('Harper\'s drawer with chat, lessons, office proposals and the roll-up table passes the WCAG 2.2 AA audit',async({page,request})=>{
+  const at=new Date().toISOString(),cec=await(await request.get('/api/office')).json();
+  const lesson=(id:string,statement:string,extra:object={})=>({id,scope:'project',kind:'pitfall',statement,detail:'Why it matters.',stages:['implement'],paths:[],status:'active',evidence:[{kind:'pr',ref:`pr:${id}`,url:'https://github.com/JFusco/brain/pull/7',detail:'PR #7'}],sourceRetrospectiveId:'r',recurrences:[],createdAt:at,updatedAt:at,...extra});
+  const proposal={id:'p1',projectId:'cec',rollupId:'rollup:2026-11-06',kind:'process',statement:'Run the wiki build before every review',detail:'',stages:['review'],status:'proposed',createdAt:at};
+  await request.post('/__fixture/snapshot?project=cec',{data:{agents:[...cec.agents,{id:'knowledge',name:'Harper',title:'Knowledge engineer',activity:'idle',task:'Ready',ticket:'',sessionId:'',lastSeen:at}],officeKnowledge:{proposals:[proposal],lessons:[]},
+    knowledge:{enabled:true,consumed:[],retrospectives:[{id:'r1',jobId:'j',key:'CEC-12',trigger:'completed',attemptId:'',summary:'Shipped after one repair.',lessonIds:[],at}],pending:[{id:'q1',jobId:'j2',key:'CEC-14',trigger:'parked',createdAt:at,event:{stage:'qa',head:'',steps:1,reason:''},attempts:1,nextAt:at,lastError:'provider overloaded'}],officeProposals:[proposal],
+      lessons:[lesson('a1','Check focus rings before QA'),lesson('n1','Commit generated artifacts',{status:'ineffective',recurrences:[{retrospectiveId:'a',subjectId:'a',detail:'Drifted again',at}]}),lesson('s1','Use shared fixtures',{repositoryInstruction:{status:'proposed'}})],
+      rollups:[{id:'rollup:2026-11-06',weekEnding:'2026-11-06',summary:'Two runs shipped.',ineffectiveLessonIds:[],officeProposalIds:[],at,metrics:{from:at,to:at,completed:2,retired:0,parked:1,repairBudgets:0,repairAttempts:3,reroutes:1,ciRepairs:0,medianQueueMinutes:4,medianBlockHours:26,stillParked:0,retrospectives:3,lessonsAdded:2,lessonsRetired:0,recurrences:1}}]}}});
+  await ready(page);
+  await page.getByRole('button',{name:/^Visit Harper, .*knowledge engineer$/}).click();
+  await expect(page.getByRole('table',{name:/Delivery metrics/})).toBeVisible();
+  await audit(page,'drawer-harper');
 });

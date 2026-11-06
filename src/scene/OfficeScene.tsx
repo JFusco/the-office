@@ -112,7 +112,7 @@ function ITDesk({snapshot,reduced,onSelect,name}:{snapshot:OfficeSnapshot;reduce
 }
 function KnowledgeDesk({snapshot,reduced,onSelect,name}:{snapshot:OfficeSnapshot;reduced:boolean;onSelect:()=>void;name:string}){
   const agent=snapshot.agents.find(a=>a.id==='knowledge');
-  if(!agent||snapshot.project?.provider!=='github')return null;
+  if(!agent)return null;
   return <><Desk position={SPOTS.knowledge} active={agent.activity==='working'} accent={sceneColors().teamKnowledge}/><Avatar key={`${snapshot.mode}:${agent.name}`} agent={{...agent,name:agent.name||name}} snapshot={snapshot} reduced={reduced} onSelect={onSelect}/><RoomLabel position={[SPOTS.knowledge[0]-2.6,.2,SPOTS.knowledge[2]+1.1]} name={`${(agent.name||name).toUpperCase()} · KNOWLEDGE`} sub="Lessons & retrospectives" swatch="knowledge" onClick={onSelect}/></>;
 }
 const ROUTES:[Role,Role][]=[['pm','developer'],['developer','lead'],['lead','qa'],['qa','developer'],['qa','pm']];

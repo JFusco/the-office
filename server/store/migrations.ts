@@ -1,6 +1,6 @@
 import type { OfficeProject, OfficeSnapshot, Prerequisite } from '../../src/shared';
 import { PROJECTS } from '../office/projects';
-import { visibleTriggerIds } from '../knowledge/retrospective-triggers';
+import { visibleTicketTriggerIds, visibleTriggerIds } from '../knowledge/retrospective-triggers';
 export const STATE_VERSION = 1;
 export function resolveProjectLabel(label: string): OfficeProject | undefined {
     const value = label.trim().toLowerCase();
@@ -21,7 +21,17 @@ export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject): 
     state.draining ??= false;
     // First creation baselines what already happened, so a deploy never replays history as retrospectives.
     if (!state.knowledge)
-        state.knowledge = { enabled: true, consumed: visibleTriggerIds(state.coordination?.jobs || []), pending: [], lessons: [], retrospectives: [] };
+        state.knowledge = { enabled: true, consumed: [...visibleTriggerIds(state.coordination?.jobs || []), ...visibleTicketTriggerIds(state.tickets || [])], baselines: ['jobs', 'tickets'], pending: [], lessons: [], retrospectives: [] };
+    const knowledge = state.knowledge;
+    knowledge.baselines ??= ['jobs'];
+    if (!knowledge.baselines.includes('tickets')) {
+        knowledge.consumed = [...new Set([...knowledge.consumed, ...visibleTicketTriggerIds(state.tickets || [])])];
+        knowledge.baselines.push('tickets');
+    }
+    knowledge.rollups ??= [];
+    knowledge.officeLessons ??= [];
+    knowledge.officeProposals ??= [];
+    for (const lesson of knowledge.lessons) { lesson.scope ??= 'project'; lesson.recurrences ??= []; }
     for (const goal of state.goals) {
         goal.projectId = project.id;
         goal.mapping = resolveProjectLabel(goal.project)?.id === project.id ? 'mapped' : 'unmapped';

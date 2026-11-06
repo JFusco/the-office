@@ -54,6 +54,7 @@ test('an existing request is projected once and keeps stopping ownership until c
 });
 test.each([['cto','cto'],['it','it'],['operations','pm'],['knowledge','knowledge']] as [ExecutionLane,Role][])('%s claims do not inflate delivery counts or queued work', (lane,role)=>{
     const {store,project,summaries}=fixture();store.state.agents.find(agent=>agent.id===role)!.activity='working';
+    store.state.knowledge!.rollups=[{id:'rollup:2026-10-23'} as any]; // this week's roll-up is already done
     claim(store,{projectId:'brain',kind:'conversation',id:'separate-lane'},`conversation:${role}`,lane,role);
     expect(project().filter(item=>item.eligibility.state==='running')).toHaveLength(0);expect(summaries()[0]).toMatchObject({working:0,queued:0});
     expect(project(lane).filter(item=>item.eligibility.state==='running')).toHaveLength(1);expect(selectWork(project(lane),0)).toBeUndefined();
@@ -149,10 +150,21 @@ test('the knowledge lane carries only Harper retrospectives and the delivery lan
     const {store,project}=fixture();
     const done={id:crypto.randomUUID(),key:'GH-3',requestedAt:'2026-10-29T10:00:00Z',status:'completed',stage:'closeout',detail:'',head:'',worktree:'',branch:'',pr:0,prUrl:'',steps:[]} as any;
     store.state.coordination!.jobs=[done];
+    store.state.knowledge!.rollups=[{id:'rollup:2026-10-23'} as any];
     store.state.messages.push({id:'human-1',requestId:'human-1',from:'human',to:'pm',ticket:'',actionId:'',body:'hi',status:'queued',createdAt:'2026-10-29T21:00:00Z',sessionId:'',recheck:false,error:'',recipients:[],receipts:[]} as any);
     expect(project('knowledge').map(item=>[item.work.kind,item.stage,item.eligibility.owner])).toEqual([['retrospective','retrospective','Harper']]);
     expect(project().some(item=>item.work.kind==='retrospective')).toBe(false);
     store.state.knowledge!.enabled=false;
     expect(project('knowledge')[0].eligibility.state).toBe('waiting');
     expect(selectWork(project('knowledge'),0)).toBeUndefined();
+});
+
+test('Harper chat and the weekly roll-up ride the knowledge lane, and Harper hands Morgan a delivery-lane note', () => {
+    const {store,project}=fixture();
+    store.state.messages.push({id:'ask-harper',requestId:'ask-harper',from:'human',to:'knowledge',ticket:'',actionId:'',body:'What did we learn?',status:'queued',createdAt:'2026-10-29T21:00:00Z',sessionId:'',recheck:false,error:'',recipients:[],receipts:[]} as any,
+        {id:'knowledge-report:ask',requestId:'knowledge-report:ask',from:'knowledge',to:'pm',ticket:'',actionId:'',body:'Note for the team',status:'queued',createdAt:'2026-10-29T21:01:00Z',sessionId:'',recheck:false,error:'',recipients:[],receipts:[]} as any);
+    const knowledge=project('knowledge'),delivery=project();
+    expect(knowledge.map(item=>[item.work.kind,item.stage])).toEqual([['conversation','conversation:knowledge'],['knowledge-rollup','knowledge-rollup']]);
+    expect(delivery.some(item=>item.work.id==='ask-harper')).toBe(false);
+    expect(delivery.some(item=>item.work.id==='knowledge-report:ask')).toBe(true);
 });

@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DATA } from '../office/config';
 import { type Clock, systemClock } from '../office/clock';
-import type { DailyCTOReport, DailyCTOSummary } from '../../src/shared';
+import type { DailyCTOReport, DailyCTOSummary, OfficeKnowledge } from '../../src/shared';
 import { sanitizeObject } from '../office/security';
 export interface CTOConfiguration {
     enabled: boolean;
@@ -23,6 +23,7 @@ export class ControlStore {
       CREATE TABLE IF NOT EXISTS configuration (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS daily_cto (id TEXT PRIMARY KEY, date TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS leases (name TEXT PRIMARY KEY, owner TEXT NOT NULL, heartbeat_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS office_knowledge (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
     `);
         this.db.prepare('INSERT OR IGNORE INTO configuration VALUES(1,?)').run(JSON.stringify({ enabled: true, activatedAt: clock.now().toISOString() }));
     }
@@ -121,6 +122,24 @@ export class ControlStore {
             this.db.prepare('INSERT INTO leases VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET heartbeat_at=excluded.heartbeat_at').run(name, owner, this.clock.now().toISOString());
             this.db.exec('COMMIT');
             return true;
+        }
+        catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+    }
+    /** Office-wide lessons and Harper's proposals for them; one row, updated under an immediate lock. */
+    knowledge(): OfficeKnowledge {
+        const row = this.db.prepare('SELECT body FROM office_knowledge WHERE id=1').get() as { body: string } | undefined;
+        return row ? JSON.parse(row.body) : { proposals: [], lessons: [] };
+    }
+    updateKnowledge<T>(mutate: (knowledge: OfficeKnowledge) => T): T {
+        this.db.exec('BEGIN IMMEDIATE');
+        try {
+            const knowledge = this.knowledge(), result = mutate(knowledge);
+            this.db.prepare('INSERT INTO office_knowledge(id,body) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body').run(JSON.stringify(sanitizeObject(knowledge)));
+            this.db.exec('COMMIT');
+            return result;
         }
         catch (error) {
             this.db.exec('ROLLBACK');

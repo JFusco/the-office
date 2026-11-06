@@ -1,5 +1,6 @@
-import type { LessonEvidence, PendingRetrospective, TicketJob } from '../../src/shared';
+import type { LessonEvidence, PendingRetrospective } from '../../src/shared';
 import type { Store } from '../store/store';
+import type { RetrospectiveSubject } from './retrospective-subject';
 
 /** Initial engineering defaults, not measured optima. Mirrors the clipping in leadership/fact-bounds.ts. */
 export const PACKET_LIMIT = 24000;
@@ -8,28 +9,25 @@ const clip = (text: unknown, limit = TEXT) => { const value = typeof text === 's
 
 export interface RetrospectivePacket {
     trigger: { id: string; kind: PendingRetrospective['trigger']; event: PendingRetrospective['event'] };
-    job: { id: string; key: string; status: string; stage: string; issueUrl: string; pr: number; prUrl: string; head: string; detail: string; approach: unknown };
+    job: { kind: RetrospectiveSubject['kind']; id: string; key: string; status: string; stage: string; issueUrl: string; pr: number; prUrl: string; head: string; detail: string; approach: unknown; reroutes: number; repairAttempts: number };
     steps: unknown[];
     decisions: unknown[];
     ciRepairs: unknown[];
     timing: unknown[];
     conversation: unknown[];
     notes: unknown[];
-    activeLessons: { id: string; statement: string }[];
+    activeLessons: { id: string; statement: string; recurrences: number }[];
     omitted: Record<string, number>;
     /** Harness-owned evidence references. The model cites refs; URLs are never model-supplied. */
     catalog: Record<string, LessonEvidence>;
 }
 
-/** Bounded, read-only facts about one finished job, frozen for the duration of a retrospective. */
-export function retrospectiveFacts(store: Store, job: TicketJob, pending: Pick<PendingRetrospective, 'id' | 'trigger' | 'event'>): RetrospectivePacket {
-    const repository = store.project.repository || '', issueNumber = Number(job.key.replace(/^GH-/, ''));
-    const issueUrl = repository && Number.isFinite(issueNumber) ? `https://github.com/${repository}/issues/${issueNumber}` : '';
-    const prUrl = job.prUrl || (job.pr && repository ? `https://github.com/${repository}/pull/${job.pr}` : '');
-    const link = prUrl || issueUrl;
-    const catalog: Record<string, LessonEvidence> = {};
-    catalog[`job:${job.id}`] = { kind: 'job', ref: `job:${job.id}`, url: issueUrl, detail: clip(`${job.key} · ${job.status} at ${job.stage}`, SHORT) };
-    if (job.pr) catalog[`pr:${job.id}:${job.pr}`] = { kind: 'pr', ref: `pr:${job.id}:${job.pr}`, url: prUrl, detail: `PR #${job.pr}` };
+/** Bounded, read-only facts about one finished job or CEC run, frozen for the duration of a retrospective. */
+export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pending: Pick<PendingRetrospective, 'id' | 'trigger' | 'event'>): RetrospectivePacket {
+    const { issueUrl, prUrl } = job, link = prUrl || issueUrl;
+    const catalog: Record<string, LessonEvidence> = Object.create(null);
+    catalog[`${job.kind}:${job.id}`] = { kind: job.kind, ref: `${job.kind}:${job.id}`, url: issueUrl, detail: clip(`${job.key} · ${job.status} at ${job.stage}`, SHORT) };
+    if (job.pr && prUrl) catalog[`pr:${job.id}:${job.pr}`] = { kind: 'pr', ref: `pr:${job.id}:${job.pr}`, url: prUrl, detail: `PR #${job.pr}` };
     const trigger = Math.min(Math.max(pending.event.steps - 1, 0), Math.max(job.steps.length - 1, 0));
     const window = job.steps.map((step, index) => ({ step, index })).slice(-ENTRIES);
     if (job.steps[trigger] && !window.some(entry => entry.index === trigger)) window.unshift({ step: job.steps[trigger], index: trigger });
@@ -45,17 +43,17 @@ export function retrospectiveFacts(store: Store, job: TicketJob, pending: Pick<P
     });
     const packet: RetrospectivePacket = {
         trigger: { id: pending.id, kind: pending.trigger, event: pending.event },
-        job: { id: job.id, key: job.key, status: job.status, stage: job.stage, issueUrl, pr: job.pr, prUrl, head: job.head, detail: clip(job.detail), approach: job.approach ? { ...job.approach, checks: job.approach.checks.slice(0, ENTRIES).map(check => clip(check, SHORT)), reason: clip(job.approach.reason) } : null },
+        job: { kind: job.kind, id: job.id, key: job.key, status: job.status, stage: job.stage, issueUrl, pr: job.pr, prUrl, head: job.head, reroutes: job.reroutes, repairAttempts: job.repairCycle?.attempts || 0, detail: clip(job.detail), approach: job.approach ? { ...job.approach, checks: job.approach.checks.slice(0, ENTRIES).map(check => clip(check, SHORT)), reason: clip(job.approach.reason) } : null },
         steps,
-        decisions: (job.decisions || []).slice(-10).map(decision => ({ role: decision.role, stage: decision.stage, at: decision.at, plan: decision.approach.plan, review: decision.approach.review, validation: decision.approach.validation, reason: clip(decision.approach.reason, SHORT) })),
-        ciRepairs: (job.ciRepairs || []).slice(-5).map(repair => ({ id: repair.id, phase: repair.phase, head: repair.head, kind: repair.plan?.kind || '', summary: clip(repair.plan?.summary, SHORT) })),
-        timing: (job.timing || []).slice(-ENTRIES).map(timing => ({ stage: timing.stage, queueMs: timing.queueMs, claimedAt: timing.claimedAt })),
+        decisions: job.decisions.slice(-10).map(decision => ({ role: decision.role, stage: decision.stage, at: decision.at, plan: decision.approach.plan, review: decision.approach.review, validation: decision.approach.validation, reason: clip(decision.approach.reason, SHORT) })),
+        ciRepairs: job.ciRepairs.slice(-5).map(repair => ({ id: repair.id, phase: repair.phase, head: repair.head, kind: repair.plan?.kind || '', summary: clip(repair.plan?.summary, SHORT) })),
+        timing: job.timing.slice(-ENTRIES).map(timing => ({ stage: timing.stage, queueMs: timing.queueMs, claimedAt: timing.claimedAt })),
         conversation: [
             ...store.state.messages.filter(message => message.ticket === job.key).slice(-ENTRIES).map(message => ({ from: message.from, to: message.to, at: message.createdAt, body: clip(message.body, SHORT) })),
             ...(store.state.outbox || []).filter(item => item.ticket === job.key).slice(-ENTRIES).map(item => ({ outbox: item.title, status: item.status, detail: clip(item.detail, SHORT) })),
         ].slice(-ENTRIES),
         notes: store.state.projectNotes.filter(note => note.ticket === job.key).slice(-10).map(note => ({ summary: clip(note.summary, SHORT), detail: clip(note.detail, SHORT) })),
-        activeLessons: (store.state.knowledge?.lessons || []).filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ id: lesson.id, statement: lesson.statement })),
+        activeLessons: (store.state.knowledge?.lessons || []).filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ id: lesson.id, statement: lesson.statement, recurrences: lesson.recurrences?.length || 0 })),
         omitted: {},
         catalog,
     };

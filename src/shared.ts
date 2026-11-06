@@ -280,6 +280,16 @@ export interface NoticePolicy {
         targetName: string;
         workspaceId: string;
     };
+    /** One channel post per merge, mentioning these Slack user IDs. */
+    channel?: {
+        enabled: boolean;
+        channelId: string;
+        channelName: string;
+        workspaceId: string;
+        mentionIds: string[];
+        enabledAt: string;
+        version: string;
+    };
 }
 interface NoticeEntry {
     id: string;
@@ -297,9 +307,9 @@ interface NoticeEntry {
         workspaceId: string;
     };
 }
-export type MergeNotice = NoticeEntry & ({ kind?: 'merge'; prUrl: string; mergeCommit: string } | {
+export type MergeNotice = NoticeEntry & ({ kind?: 'merge'; prUrl: string; mergeCommit: string; channel?: true; channelVersion?: string } | {
     kind: 'goal'; goalId: string; goalTitle: string; completedAt: string; policyVersion: string;
-    prUrl?: never; mergeCommit?: never;
+    prUrl?: never; mergeCommit?: never; channel?: never; channelVersion?: never;
 });
 export interface TimeEntry {
     revision?: number;
@@ -862,6 +872,7 @@ export interface OfficeSnapshot {
     };
     it?: ITState;
     knowledge?: import('./contracts/knowledge').KnowledgeState;
+    officeKnowledge?: import('./contracts/knowledge').OfficeKnowledge;
     deliveryQueue?: DeliveryRequest[];
     project?: OfficeProject;
     projects?: {

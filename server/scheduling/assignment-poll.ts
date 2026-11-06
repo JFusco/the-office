@@ -82,7 +82,7 @@ export async function poll(this: Coordinator, now = new Date()) {
             if (eligible && (!before || transitioned || latest?.status === 'ready' && !this.engine.busy))
                 this.enqueue(issue, 'automatic');
         }
-        if (this.store.project.provider === 'azure' && noticeState(this.store).policy.enabled) {
+        if (this.store.project.provider === 'azure' && (noticeState(this.store).policy.enabled || noticeState(this.store).policy.channel?.enabled)) {
             const notices = noticeState(this.store), watched = this.store.state.azure.prs.filter(p => p.status === 'completed' && p.mergeCommit && p.closedAt && !notices.entries.some(n => n.prUrl === p.url && n.mergeCommit === p.mergeCommit)).map(pr => ({ pr, ticket: this.store.state.tickets.find(t => t.prId === pr.id) })).filter(x => x.ticket);
             if (watched.length) {
                 const keys = [...new Set(watched.map(x => x.ticket!.key))];

@@ -44,3 +44,56 @@ test('GitHub assignee email is read from the exact provider profile before Slack
  const execute=async(_b:string,args:string[])=>{expect(args).toEqual(['api','users/JFusco']);return JSON.stringify({login:'JFusco',email:'joe@example.invalid'});};
  await new MergeNotifications(store,engine,execute as any).pump();expect(store.state.coordination!.notices!.entries[0].email).toBe('joe@example.invalid');expect(store.state.slackDeliveries).toHaveLength(0);
 });
+
+test('a configured channel gets one merge post that tags people, skips the lookup and sends as a channel',async()=>{
+ const {store,engine,notices}=setup();
+ const {configureChannelNotices}=await import('../../../server/conversations/channel-notice');
+ expect(()=>configureChannelNotices(store,{enabled:true,channelId:'not-a-channel',channelName:'x',workspaceId:'T123',mentionIds:[]})).toThrow();
+ configureChannelNotices(store,{enabled:true,channelId:'C0DELIVER',channelName:'delivery',workspaceId:'T123',mentionIds:['U111','U222','U111']});
+ queueMergeNotice(store,{...request,mergedAt:'2020-01-01T00:00:00Z'});expect(store.state.coordination!.notices!.entries).toHaveLength(0); // no backfill
+ queueMergeNotice(store,request);queueMergeNotice(store,request);
+ const entries=store.state.coordination!.notices!.entries;expect(entries).toHaveLength(1); // DM notices still off; one channel post
+ expect(entries[0]).toMatchObject({channel:true,resolved:{targetId:'C0DELIVER',workspaceId:'T123'}});
+ expect(entries[0].text.split('\n')[0]).toBe('<@U111> <@U222>');
+ let lookups=0,sent:any;engine.agents.run=async()=>{lookups++;return {} as any;};
+ const ts=(Date.now()/1000).toFixed(6),receipt={channelId:'C0DELIVER',messageTs:ts,permalink:`https://fixture.slack.com/archives/C0DELIVER/p${ts.replace('.','')}`,detail:'Synthetic only'};
+ engine.agents.sendSlack=async delivery=>{sent=delivery;return receipt;};engine.agents.verifySlack=async()=>({...receipt,found:true,targetId:'C0DELIVER',workspaceId:'T123',text:entries[0].text.replace('<@U111>','<@U111|Joe>')});
+ await notices.pump();
+ expect(lookups).toBe(0);expect(sent).toMatchObject({targetType:'channel',targetId:'C0DELIVER'});expect(entries[0].status).toBe('sent');
+});
+
+test('changing the channel settings cancels unsent posts and a stale post cannot send',async()=>{
+ const {store,engine,notices}=setup();
+ const {configureChannelNotices}=await import('../../../server/conversations/channel-notice');
+ const settings={enabled:true,channelId:'C0DELIVER',channelName:'delivery',workspaceId:'T123',mentionIds:['U111']};
+ configureChannelNotices(store,settings);queueMergeNotice(store,request);
+ const notice=store.state.coordination!.notices!.entries[0];
+ configureChannelNotices(store,{...settings,mentionIds:['U333']});expect(notice.status).toBe('cancelled');
+ notice.status='queued';let sends=0;engine.agents.sendSlack=async()=>{sends++;return {} as any;};
+ await notices.pump();expect(notice.status).toBe('cancelled');expect(sends).toBe(0);
+ configureChannelNotices(store,{...settings,mentionIds:['U333']});expect(store.state.coordination!.notices!.policy.channel!.enabled).toBe(true); // unchanged settings keep their version
+});
+
+test('invalid channel settings explain themselves instead of returning raw validation output',async()=>{
+ const {store}=setup();
+ const {configureChannelNotices}=await import('../../../server/conversations/channel-notice');
+ expect(()=>configureChannelNotices(store,{enabled:true,channelId:'C0DELIVER',channelName:'delivery',workspaceId:'T123',mentionIds:['@joe']})).toThrow('Invalid merge channel: Slack member IDs start with U or W');
+ configureChannelNotices(store,{enabled:true,channelId:'C0DELIVER',channelName:'delivery',workspaceId:'T123',mentionIds:['W0GRID']}); // Enterprise Grid member IDs
+ expect(store.state.coordination!.notices!.policy.channel!.mentionIds).toEqual(['W0GRID']);
+});
+
+test('channel posts never block a person DM retry, and channel edits never cancel a DM mid-lookup',async()=>{
+ const {store,engine,notices}=setup();
+ const {configureChannelNotices}=await import('../../../server/conversations/channel-notice');
+ const channel={enabled:true,channelId:'C0DELIVER',channelName:'delivery',workspaceId:'T123',mentionIds:['U111']};
+ configureNotices(store,{enabled:true,recipients:'assignee',workspace:'Fixture',mappings:'assignee = Person Fixture'});configureChannelNotices(store,channel);
+ queueMergeNotice(store,request);
+ const [post,dm]=store.state.coordination!.notices!.entries;expect(post.channel).toBe(true);expect(dm.channel).toBeUndefined();
+ post.status='blocked';dm.status='blocked';store.state.workLog=[{id:'w',requestId:dm.id,stage:'slack-recipient',status:'interrupted'} as any];
+ retryRecipientLookup(store,dm.key);expect(dm.status).toBe('queued');
+ post.status='sent';
+ engine.agents.run=async()=>{configureChannelNotices(store,{...channel,mentionIds:['U999']});return {found:true,targetId:'U123',targetName:'Person Fixture',workspaceId:'T123',evidence:['Synthetic profile'],blocker:''} as any;};
+ const ts=(Date.now()/1000).toFixed(6),receipt={channelId:'D123',messageTs:ts,permalink:`https://fixture.slack.com/archives/D123/p${ts.replace('.','')}`,detail:'Synthetic only'};
+ engine.agents.sendSlack=async()=>receipt;engine.agents.verifySlack=async()=>({...receipt,found:true,targetId:'U123',workspaceId:'T123',text:dm.text});
+ await notices.pump(dm.id);expect(dm.status).toBe('sent');
+});

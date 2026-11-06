@@ -16,6 +16,7 @@ import { Store } from '../store/store';
 import { Engine } from './engine';
 import { Conversations } from '../conversations/conversations';
 import { PROJECTS, officeCapacity, projectById, projectData } from '../office/projects';
+import { mirrorOfficeKnowledge, proposeOfficeLessons } from '../knowledge/office-lessons';
 export class Offices {
     capacity = officeCapacity();
     ctoCapacity = officeCapacity();
@@ -33,7 +34,12 @@ export class Offices {
     serviceInstanceId = randomUUID();
     snapshotSequence = 0;
     stores() { return new Map([...this.entries].map(([id, entry]) => [id, entry.store])); }
-    projection(entry: typeof this.entries extends Map<string, infer E> ? E : never, lane = 'delivery') { return scheduledWork(entry, this.stores(), new Date(), lane); }
+    projection(entry: typeof this.entries extends Map<string, infer E> ? E : never, lane = 'delivery') { return scheduledWork(entry, this.stores(), new Date(), lane, lane === 'knowledge' ? this.knowledgeOptions() : {}); }
+    /** Harper's weekly roll-up waits for Avery's review and files office-wide proposals in the control store. */
+    knowledgeOptions() {
+        return { dailyStatus: (date: string) => this.control.forDate?.(date)?.status,
+            propose: (store: Store, rollupId: string, proposals: Parameters<typeof proposeOfficeLessons>[3]) => { const ids = proposeOfficeLessons(this.control, store.project.id, rollupId, proposals); mirrorOfficeKnowledge(this.control, this.stores().values()); return ids; } };
+    }
     sessions = new SessionBridge(() => [...this.entries.values()].map(e => e.store));
     entries = new Map<string, {
         store: Store;
@@ -68,6 +74,7 @@ export class Offices {
             entry.engine.ctoAgents.ctoContext = () => ({ viewedProject: entry.store.project.name, projects: [...this.entries.values()].map(entry => ({ project: entry.store.project, goalEvidence: collectCTOFacts([entry], entry.store.clock.now().toISOString()).projects[0], itReports: entry.store.state.it?.reports.slice(-3) || [], goals: entry.store.state.goals, notes: entry.store.state.projectNotes.slice(-20), tickets: entry.store.state.tickets.map(t => ({ key: t.key, summary: t.summary, stage: t.stage, activity: t.activity, blocker: t.blocker })), github: entry.store.state.github, azure: entry.store.state.azure })), history: [...this.entries.values()].flatMap(({ store }) => store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto').map(m => ({ project: store.project.name, ...m }))).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(-30) });
         }
         this.dailyCTO.recover();
+        mirrorOfficeKnowledge(this.control, this.stores().values());
     }
     reconcileConversation(project: string, id: string, replacementProject: string, replacementId: string) {
         const source = this.get(project).store, target = this.get(replacementProject).store;
@@ -89,7 +96,7 @@ export class Offices {
                 needsYou: projectOutbox(entry.store.state).filter(o => o.status === 'open').length };
         });
     }
-    snapshot(id = PROJECTS[0].id) { return { ...this.get(id).store.state, preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(this.get(id).store.state), dailyCTO: this.control.summaries(), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
+    snapshot(id = PROJECTS[0].id) { return { ...this.get(id).store.state, preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(this.get(id).store.state), dailyCTO: this.control.summaries(), officeKnowledge: this.control.knowledge?.(), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
     async tick(now = new Date()) { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); }
     async pump() {
         for (const { store } of this.entries.values()) recoverFeatures(store);
