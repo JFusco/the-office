@@ -5,6 +5,7 @@ import { ciCheckout, verifyCIHooks } from './ci-checkout';
 import { verifyRepairCandidate } from './delivery-repairs';
 import { rewordCommits } from './reword-commits';
 import { lintPRContent } from '../publication/pr-body';
+import { installDependencies } from '../candidate/install-dependencies';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
 import type { CIRepair } from '../../../src/contracts/ci-repair';
@@ -25,10 +26,7 @@ export async function prepareCIMetadataRepair(delivery: GitHubDelivery, job: Tic
     } else cwd = await ciCheckout(delivery, job, repair);
     const pkgPath = resolve(cwd, 'package.json');
     const pkg = existsSync(pkgPath) ? JSON.parse(readFileSync(pkgPath, 'utf8')) : {};
-    if (!pkg.packageManager?.startsWith('pnpm@')) throw new Error('CI metadata repair needs the repository’s declared validation commands');
-    // A standalone nested clone must not install the enclosing Office workspace instead.
-    const standalone = existsSync(resolve(cwd, 'pnpm-workspace.yaml')) ? [] : ['--ignore-workspace'];
-    await execute('pnpm', ['install', '--frozen-lockfile', '--prod=false', ...standalone], { cwd, timeout: 5 * 60000 });
+    if (await installDependencies(execute, cwd, { timeout: 5 * 60000, skipOnMajorMismatch: false }) === 'skipped') throw new Error('CI metadata repair needs the repository’s declared validation commands');
     if (plan.kind === 'commit-messages') {
         if (!pkg.scripts?.['lint:commit']) throw new Error('Repository commit-range validation is unavailable');
         const rewritten = await rewordCommits(execute, cwd, repair.base, repair.head, plan.messages);

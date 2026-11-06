@@ -1,3 +1,4 @@
+import { currentAssignment } from '../workers/assignment-context';
 import { handsOff } from '../delivery/harness/scope';
 import { admit } from '../delivery/intake/admission';
 import { enqueueRequest } from './requests';
@@ -13,7 +14,11 @@ import { ReviewResult } from './coordination';
 export async function pump(this: Coordinator, selection?: string | { kind: 'delivery' | 'intake' | 'notice' | 'checkpoint' | 'followup' | 'recovery'; id: string }) {
     const selected = typeof selection === 'string' ? { kind: 'delivery', id: selection } : selection;
     const focusedJobId = selected?.kind === 'delivery' ? selected.id : undefined;
-    if (!selected && !this.hasQueued() || this.store.state.paused || this.engine.busy || this.engine.agents.active.size)
+    // Under concurrent delivery the scheduler already reserved this project's stage and role;
+    // any other caller still waits for every project, exactly as with the single lane.
+    const capacity = this.engine.capacity, scheduled = capacity.limit > 1 && currentAssignment()?.claim.work.projectId === this.store.project.id;
+    const elsewhere = capacity.limit > 1 && !scheduled && [...capacity.busy].some(project => project !== this.store.project.id);
+    if (!selected && !this.hasQueued() || this.store.state.paused || this.engine.busy || elsewhere || this.engine.agents.active.size && !scheduled)
         return;
     this.engine.busy = true;
     try {

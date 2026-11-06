@@ -26,5 +26,8 @@
       }
     }
   ],
+  "delivery": {
+    "concurrency": 3
+  },
   "holds": {}
 }

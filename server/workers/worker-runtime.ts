@@ -165,7 +165,7 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
                             final = item.text;
                         if (e.type === 'turn.completed' && e.usage) {
                             this.store.checkpointWork(id, this.store.clock.monotonic() - started, { inputTokens: e.usage.input_tokens ?? null, outputTokens: e.usage.output_tokens ?? null });
-                            this.store.emit('usage', `${role} used ${e.usage.input_tokens ?? 0} input / ${e.usage.output_tokens ?? 0} output tokens`, role, opts.ticket);
+                            this.store.emit('usage', `${role} used ${e.usage.input_tokens ?? 0} input / ${e.usage.output_tokens ?? 0} output tokens · ${e.usage.cached_input_tokens ?? 0} cached input`, role, opts.ticket);
                         }
                         if (e.type === 'item.started' && ['command_execution', 'mcp_tool_call', 'web_search'].includes(item?.type))
                             progress({ name: item.tool || item.type, command: item.command });
@@ -194,7 +194,7 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
                 payload = completed.data;
                 this.store.agent(role, { observedModel: completed.model });
                 this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: completed.model, observedModel: completed.model, inputTokens: completed.usage.input_tokens ?? null, outputTokens: completed.usage.output_tokens ?? null });
-                this.store.emit('usage', `Alex (Opus 5.5) · provider aggregate ${completed.usage.input_tokens ?? 'unknown'} input / ${completed.usage.output_tokens ?? 'unknown'} output tokens`, role, opts.ticket);
+                this.store.emit('usage', `Alex (Opus 5.5) · provider aggregate ${completed.usage.input_tokens ?? 'unknown'} input / ${completed.usage.output_tokens ?? 'unknown'} output tokens · ${completed.usage.cache_read_input_tokens ?? 'unknown'} cache read / ${completed.usage.cache_creation_input_tokens ?? 'unknown'} cache write`, role, opts.ticket);
             }
             else {
                 if (!final) {

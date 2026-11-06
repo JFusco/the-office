@@ -19,3 +19,5 @@ export const HOLDS: Record<string, string> = LOCAL_BINDINGS.holds || {
     'CEC-120': 'Existing issue-specific draft/readiness hold. Requires explicit readiness approval.',
 };
 export const PORT = Number(process.env.OFFICE_PORT || 4318);
+/** Concurrent cross-project delivery stages; 1 is the original single lane. */
+export const DELIVERY_CONCURRENCY = LOCAL_BINDINGS.delivery?.concurrency ?? 1;

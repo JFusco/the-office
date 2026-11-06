@@ -1,4 +1,5 @@
 import { initializeLanes } from '../../fixtures/scheduler';
+import { withAssignment } from '../../../server/workers/assignment-context';
 import { pinLegacyRoute } from '../../fixtures/legacy-route';
 import { GitHubDelivery } from '../../../server/delivery/pipeline/github-delivery';
 import { MergeNotifications } from '../../../server/conversations/notifications';
@@ -127,6 +128,29 @@ test('another project waits while the PM lane is occupied; same issue numbers ne
         await b.c.pump();
         expect(calls).toEqual(['brain', 'cms-implement']);
         expect(a.c.state.listener.reviews[0].owner).toBe('another-session');
+    } finally { step.mockRestore(); }
+});
+test('concurrent delivery lets a scheduled stage in another project run beside an active worker', async () => {
+    const capacity = officeCapacity(2), a = setup('brain', capacity), b = setup('cms-field-vocabulary', capacity, noOpenPRs);
+    a.c.readAssignments = b.c.readAssignments = async () => [issue('GH-91')];
+    await a.c.poll();
+    await b.c.poll();
+    let release!: () => void;
+    const held = new Promise<void>(r => release = r), calls: string[] = [];
+    a.engine.agents.run = async () => { calls.push('brain'); a.engine.agents.active.set('pm', new AbortController()); await held; a.engine.agents.active.delete('pm'); return { outcome: 'owned', ownershipChecked: true, owner: 'another-session', summary: 'Existing owner', evidence: ['Synthetic session read'] } as any; };
+    const step = vi.spyOn(GitHubDelivery.prototype, 'step').mockImplementation(async job => { calls.push(`cms-${job.stage}`); job.status = 'blocked'; });
+    try {
+        const running = a.c.pump();
+        // Outside a scheduler claim the shared worker map still holds the pump, as before.
+        await b.c.pump();
+        expect(calls).toEqual(['brain']);
+        const job = b.c.state.jobs!.find(j => j.key === 'GH-91')!;
+        await withAssignment({ id: 'claim', work: { projectId: 'cms-field-vocabulary', kind: 'delivery', id: job.id } } as any, 'delivery', () => b.c.pump({ kind: 'delivery', id: job.id }));
+        expect(calls).toEqual(['brain', 'cms-implement']);
+        expect(a.engine.busy).toBe(true);
+        expect(b.engine.busy).toBe(false);
+        release();
+        await running;
     } finally { step.mockRestore(); }
 });
 test('an interrupted PM review is never silently replayed', async () => {

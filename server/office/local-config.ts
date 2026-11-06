@@ -20,6 +20,8 @@ export interface LocalBindings {
     projects?: OfficeProject[];
     holds?: Record<string, string>;
     legacyAutomation?: string;
+    /** Cross-project delivery stages that may run at once (1..3); absent means 1. */
+    delivery?: { concurrency?: number };
 }
 export function localBindings(dataRoot: string): LocalBindings {
     if (process.env.VITEST || process.env.NODE_ENV === 'test')
@@ -32,6 +34,12 @@ export function localBindings(dataRoot: string): LocalBindings {
         throw new Error('Local project bindings are incomplete or duplicated');
     if (config.cec && (typeof config.cec.board !== 'number' || ['site', 'cloudId', 'account', 'repo', 'organization', 'project', 'repository', 'repositoryId', 'target'].some(key => typeof config.cec![key as keyof CECBinding] !== 'string' || !config.cec![key as keyof CECBinding])))
         throw new Error('Local Jira/Azure binding is incomplete');
+    for (const project of config.projects || [])
+        if (project.checks !== undefined && (!Array.isArray(project.checks) || !project.checks.length || project.checks.length > 8 || project.checks.some(check => !check || typeof check.name !== 'string' || !/^[\w:.-]{1,60}$/.test(check.name) || !Array.isArray(check.command) || !check.command.length || check.command.some(part => typeof part !== 'string' || !part) || check.timeoutMs !== undefined && (!Number.isInteger(check.timeoutMs) || check.timeoutMs < 1000 || check.timeoutMs > 60 * 60000))))
+            throw new Error('Project checks must be named argv commands with an optional timeout');
+    const concurrency = config.delivery?.concurrency;
+    if (config.delivery !== undefined && (typeof config.delivery !== 'object' || config.delivery === null || concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3)))
+        throw new Error('Delivery concurrency must be an integer from 1 to 3');
     for (const value of [config.cec, ...(config.projects || [])]) {
         const paths = value?.goalEvidencePaths;
         if (paths !== undefined && (!Array.isArray(paths) || paths.length > GOAL_EVIDENCE_LIMITS.paths || paths.some(path => !goalEvidencePath(path)) || new Set(paths).size !== paths.length))
