@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixture-test';
 import { evidence } from './support';
 test('living office renders, opens contextual rooms and supports keyboard navigation',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
@@ -7,7 +7,7 @@ test('living office renders, opens contextual rooms and supports keyboard naviga
   await expect(page.getByRole('button',{name:/^PM mailbox,/})).toBeVisible({timeout:30000});
   const labels=await page.locator('[data-scene-label=agent]:visible,[data-scene-label=room]:visible,[data-scene-label=mail]:visible').evaluateAll(elements=>elements.map(e=>e.getBoundingClientRect().width));
   expect(labels.every(width=>width>10&&width<250)).toBe(true);
-  await page.waitForTimeout(2000);await page.screenshot({path:evidence('office-overview.png')});
+  await page.screenshot({path:evidence('office-overview.png')});
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
   await expect(page.getByRole('complementary',{name:'PM mailbox'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Check mail now'})).toBeVisible();

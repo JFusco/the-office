@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixture-test';
 import { evidence } from './support';
 
 test('room labels stay near their desks and arrive from above in screen order', async ({page}) => {

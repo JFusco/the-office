@@ -57,7 +57,24 @@ pnpm test
 pnpm test:browser
 ```
 
-Unit tests use isolated stores and injected transports. Browser tests use the synthetic fixture server by default. A live provider result, a local fixture result, and a production deployment are distinct evidence.
+Unit tests use isolated stores and injected transports. Global setup owns a temporary run directory; setup creates a separate data root before each test file imports Office configuration. Fixtures close Stores before deleting state. Browser tests reset the synthetic fixture server before every test and run with one worker. A live provider result, a local fixture result, and a production deployment are distinct evidence.
+
+Retain tests for distinct Office behavior and integration boundaries. Rewrite brittle assertions; consolidate only equivalent inputs, decisions, outcomes, failure timing and trust boundaries. Remove library-only assertions or duplicates with named surviving coverage. Record each changed assertion and its coverage replacement in the implementation handoff. Test count alone is not a target.
+
+Keep browser evidence outside installed Office state. For each invocation, allocate a new temporary directory, choose an unused loopback port and record the Chromium executable/version:
+
+```sh
+office_run=$(mktemp -d)
+OFFICE_DATA_ROOT="$office_run/state" pnpm test
+env -u OFFICE_TEST_BASE_URL OFFICE_DATA_ROOT="$office_run/state" \
+  OFFICE_EVIDENCE_DIR="$office_run/evidence" OFFICE_FIXTURE_PORT="$office_port" \
+  OFFICE_FIXTURE_DIST="$office_dist" PLAYWRIGHT_EXECUTABLE_PATH="$office_chromium" \
+  pnpm test:browser --output="$office_run/playwright" --retries=0
+```
+
+Set `office_dist` to the built UI and `office_chromium` to the recorded browser executable. Preserve reports and failure evidence; remove only owned disposable state after processes stop. The historical evidence default remains `.local/evidence`, so use the explicit override above. To verify no installed-state writes, use a matching source copy without `.local`; never diff or delete the running Office's state for this check.
+
+For performance comparisons, record source/tool identities, build separately, and use one warm-up plus three full measured runs with consistent caches. Report median and min/max, retaining failures. Compare serial refactoring before trying `fileParallelism:true,maxWorkers:2` with isolated forks. Adopt two workers only if repeated and shuffled runs pass without leaks or order dependence and the median improvement exceeds the larger timing spread; otherwise keep serial execution. Browser workers remain at one.
 
 Useful read-only endpoints include `/api/health`, `/api/office`, `/api/time`, `/api/goals/history`, and `/api/daily-cto`. Health includes the loaded source/assets hash separately from event revisions.
 

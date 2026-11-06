@@ -7,13 +7,16 @@ import { Engine } from '../../../server/scheduling/engine';
 import { CEC, DATA } from '../../../server/office/config';
 import type { Stage, StageResult, Ticket, Evidence } from '../../../src/shared';
 const cleanup: string[] = [];
+const stores: Store[] = [];
 afterEach(() => {
+    for (const store of stores.splice(0)) store.close();
     for (const p of cleanup.splice(0))
         rmSync(p, { recursive: true, force: true });
 });
 const sha = 'a'.repeat(40), fixed = 'b'.repeat(40);
 function setup() {
     const store = new Store(':memory:');
+    stores.push(store);
     const run = mkdtempSync(resolve(DATA, 'runs-test-'));
     cleanup.push(run);
     const runId = `unit-${crypto.randomUUID()}`;
@@ -59,7 +62,6 @@ test('QA failure goes through developer repair, lead review, independent retest 
     expect(t.activity).toBe('waiting');
     expect(t.results.qa?.paidRuns).toBe(1);
     expect(t.findings[0].status).toBe('verified');
-    store.close();
 });
 test('two failed repair cycles stop, retaining draft work and the last QA findings', async () => {
     const { store, t, engine, artifactRoot } = setup();
@@ -74,7 +76,6 @@ test('two failed repair cycles stop, retaining draft work and the last QA findin
     expect(t.stage).toBe('retest');
     expect(t.activity).toBe('blocked');
     expect(t.results.publish).toBeUndefined();
-    store.close();
 });
 test('a worker timeout cannot silently replay an uncertain paid/external effect', async () => {
     const { store, t, engine } = setup();
@@ -88,9 +89,8 @@ test('a worker timeout cannot silently replay an uncertain paid/external effect'
     engine.agents.reconcile = async () => output({ outcome: 'blocked', blocker: 'Provider effect still unknown' });
     await expect(engine.resume(t.key)).rejects.toThrow('Reconciliation incomplete');
     expect(executions).toBe(1);
-    store.close();
 });
-test('nightly activation cannot bypass the real pilot gate', () => { const { store, engine } = setup(); expect(() => engine.enableNightly()).toThrow('completed real ticket pilot'); store.close(); });
+test('nightly activation cannot bypass the real pilot gate', () => { const { store, engine } = setup(); expect(() => engine.enableNightly()).toThrow('completed real ticket pilot'); });
 test('review cannot start when its Jira status transition lacks verified read-back', async () => {
     const { store, t, engine } = setup();
     t.stage = 'code-review';
@@ -101,7 +101,6 @@ test('review cannot start when its Jira status transition lacks verified read-ba
     expect(reviews).toBe(0);
     expect(t.activity).toBe('blocked');
     expect(t.progressUpdates?.at(-1)?.target).toBe('Code Review');
-    store.close();
 });
 test('QA validates candidate evidence before publishing a passed outcome', async () => {
     const { store, t, engine } = setup();
@@ -114,7 +113,6 @@ test('QA validates candidate evidence before publishing a passed outcome', async
     expect(published.blocker).toContain('browser evidence');
     expect(t.activity).toBe('blocked');
     expect(t.stage).toBe('qa');
-    store.close();
 });
 
 test('typed blocked source finding follows the real Jira repair/review/retest path without a PM approval', async () => {
@@ -135,5 +133,4 @@ test('typed blocked source finding follows the real Jira repair/review/retest pa
     await drainStages(engine, t.key);
     expect(stages, t.blocker).toEqual(['qa', 'repair', 'repair-review', 'retest', 'publish']);
     expect(t.stage).toBe('ci'); expect(t.repairCycle?.owner).toBe('developer'); expect(t.results.qa?.outcome).toBe('blocked');
-    store.close();
 });

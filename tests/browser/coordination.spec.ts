@@ -1,7 +1,6 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './fixture-test';
 import { evidence, fixtureMode } from './support';
 // The settings test writes through the API; restore the in-memory fixture afterwards.
-test.afterEach(async({request})=>{if(fixtureMode)await request.post('/__fixture/reset');});
 test('project pickup, Slack and time settings save through the real API and survive reload',async({page,request})=>{
  // Run against the isolated OFFICE_NO_POLL fixture server only. These settings
  // never authorize an external send or worker in this disabled coordination state.

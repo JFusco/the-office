@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from './fixture-test';
 import { evidence } from './support';
 const full=async(page:Page)=>{await page.emulateMedia({reducedMotion:'no-preference'});await page.addInitScript(()=>{localStorage.setItem('office.motion','full');localStorage.setItem('office.quality','low');localStorage.setItem('office.floor','delivery');});};
 const ready=async(page:Page)=>{await page.goto('/');await expect(page.locator('canvas')).toBeVisible();await expect(page.getByRole('button',{name:/^PM mailbox,/})).toBeVisible({timeout:30000});};
@@ -23,9 +23,12 @@ test('representative controls visibly change on hover and show a keyboard focus 
   const targets:[string,Locator][]=[['icon button',page.getByRole('button',{name:'Office help'})],['dock button',page.getByRole('button',{name:/^Open your outbox,/})],['scene label',page.getByRole('button',{name:'DEVELOPMENT Implementation'})],
     ['project select',page.getByLabel('Office project')],['link',page.getByRole('link',{name:'Open board: CEC Jira board'})],['secondary button',drawer.getByRole('button',{name:'Save pickup rule'})],['summary',drawer.getByText('To Do · 1',{exact:true})],['text field',drawer.getByRole('combobox',{name:'Pickup status'})]];
   for(const [name,target] of targets){
-    await target.scrollIntoViewIfNeeded();await page.mouse.move(0,0);await page.waitForTimeout(200);const before=await look(target);
+    await target.scrollIntoViewIfNeeded();await page.mouse.move(0,0);
+    let previous:string|undefined;
+    await expect.poll(async()=>{const paint=(await look(target)).paint;const stable=paint===previous;previous=paint;return stable;},{timeout:3000,intervals:[100,100,100]}).toBe(true);
+    const before=await look(target);
     expect(before.duration,name).toContain('0.15s');
-    await target.hover();await page.waitForTimeout(250);expect((await look(target)).paint,`${name} hover`).not.toBe(before.paint);
+    await target.hover();await expect.poll(async()=>(await look(target)).paint,{message:`${name} hover`,timeout:3000}).not.toBe(before.paint);
   }
   await page.keyboard.press('Escape');await page.mouse.move(0,0);
   await page.getByRole('button',{name:'Office help'}).focus();await page.keyboard.press('Shift+Tab');await page.keyboard.press('Tab');

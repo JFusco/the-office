@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixture-test';
 
-test.beforeEach(async ({ request, page }) => {
-    await request.get('/__fixture/reset');
+test.beforeEach(async ({ page }) => {
+
     await page.addInitScript(() => { localStorage.setItem('office.motion', 'reduced'); localStorage.setItem('office.floor', 'delivery'); });
 });
 test('discovery drafts survive reload and approval submits the displayed plan and ticket manifest', async ({ page, request }) => {

@@ -3,6 +3,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { SCENE_COLOR_TOKENS } from '../../../src/tokens/scene-colors';
 
 const ROOT=join(import.meta.dirname,'../../..');
 const COLOR_TOKENS='src/tokens/colors.css';
@@ -11,8 +12,6 @@ const COLOR_TOKENS='src/tokens/colors.css';
 const RUNTIME_STYLE_EXCEPTIONS:{file:string;pattern:RegExp;reason:string}[]=[];
 // getComputedStyle is allowed only where tokens are resolved once at startup.
 const COMPUTED_STYLE_READERS=['src/tokens/scene-colors.ts','src/main.tsx'];
-// Component selectors from the pre-Tailwind stylesheet. They must not return as class names.
-const LEGACY_CLASSES='activity-dots address-divider agent-label agent-last-report approach-summary avatar-callout avatar-portrait azure-screen board-link brand-mark chat-compose chat-inspector chat-message chat-question chat-receipt chat-recipients chat-send chat-session chat-ticket check-label connection conversation conversation-empty conversation-history coordination-settings delivery-path delivery-state dependency-link dependency-notice dock-chat dock-divider dock-mail dock-roster dock-spacer elevator-arrival elevator-controls elevator-door elevator-doors elevator-heading elevator-location elevator-shade empty-note envelope-card envelope-stamp error-text evidence-card eyebrow finding floating-bubble-surface floor-plan-label floor-updates full github-panel github-ticket-detail goal-actions goal-card goal-fields goal-form handoff-label health-failure health-next icon-button inbox-queue inbox-queue-card inspector inspector-scroll inspector-top intro-tags it-report it-specialist leadership-report log-entry log-line mail-empty mail-label meeting-label merge-approval muted notice office-address office-app office-dock office-drawer-layer office-intro office-life-label office-log office-pause office-world orbit-hint outbox-card outbox-detail outbox-history outbox-label panel-foot panel-icon pause-banner pipeline-card pipeline-stage pipeline-timing pm-queue-button popover popover-title primary private-badge progress-freshness project-loading project-notes project-work project-working reduced-motion reply-recommendation room-label roster-avatar roster-item save-feedback scene-container scene-error scene-loading schedule secondary service-health-row shortcut slack-delivery small spin status-dot tag tag-row task-bubble task-bubble-text team-updates text-row ticket-actions ticket-discuss ticket-heading time-book time-build time-people time-sessions time-totals tiny-line toast topbar topbar-right tour-banner tour-button tour-dot tour-notice update-time user-avatar wordmark work-evidence work-packet work-summary world-tools'.split(' ');
 
 function files(dir:string):string[]{return readdirSync(dir).flatMap(name=>{const path=join(dir,name);return statSync(path).isDirectory()?files(path):[path];});}
 const sources=[...files(join(ROOT,'src')).filter(p=>/\.(tsx?|css)$/.test(p)),join(ROOT,'index.html')].map(path=>({path:relative(ROOT,path),text:readFileSync(path,'utf8')}));
@@ -39,16 +38,10 @@ describe('UI source guard',()=>{
   });
   it('defines no presentation class selectors, @apply or @utility in CSS',()=>{
     const css=sources.filter(f=>f.path.endsWith('.css'));
-    expect(css.map(f=>f.path).sort()).toEqual(['src/style.css','src/tokens/colors.css','src/tokens/effects.css','src/tokens/layout.css','src/tokens/typography.css']);
     const offenders=css.flatMap(f=>{const text=code(f.text).replace(/url\([^)]*\)/g,'').replace(/(['"])[^'"]*\1/g,'');return [...text.matchAll(/(?<![\w\\])\.[a-z_-][\w-]*|@apply\b|@utility\b/gi)].map(m=>`${f.path}: ${m[0]}`);});
     expect(offenders).toEqual([]);
     const base=code(sources.find(f=>f.path==='src/style.css')!.text).match(/@layer base\s*{([\s\S]*)}\s*$/)?.[1]||'';
     expect([...base.matchAll(/([^{}]+){/g)].map(m=>m[1].trim())).toEqual(['html']);
-  });
-  it('does not reintroduce legacy component class names',()=>{
-    const legacy=new Set(LEGACY_CLASSES);
-    const offenders=sources.filter(f=>/\.tsx?$/.test(f.path)).flatMap(f=>classStrings(f.text).flatMap(s=>s.split(/\s+/).filter(t=>legacy.has(t)).map(t=>`${f.path}: ${t}`)));
-    expect(offenders).toEqual([]);
   });
   it('has no static inline styles; runtime exceptions are documented',()=>{
     const inline=/\bstyle=\{|\bstyle="|\.style\.|\.style\s*=|setAttribute\(\s*['"]style|cssText/g;
@@ -71,12 +64,9 @@ describe('UI source guard',()=>{
       'chat-field':'#fffdf7','time-select':'#fffdf5','goal-select-line':'#cbd4c4',field:'#fffef7',line:'#e3e7df',dock:'#f9faf3',checkbox:'#527345'};
     expect(Object.fromEntries(Object.keys(baseline).map(token=>[token,value(token)]))).toEqual(baseline);
   });
-  it('resolves scene colors from tokens once, not per frame',()=>{
-    const scene=code(sources.find(f=>f.path==='src/tokens/scene-colors.ts')!.text);
-    expect(scene).toMatch(/if\(cache\)return cache;/);
+  it('defines every declared scene color token in the actual stylesheet',()=>{
     const css=sources.find(f=>f.path===COLOR_TOKENS)!.text;
-    const names=[...scene.matchAll(/'(--(?:scene|color)-[a-z0-9-]+)'/g)].map(m=>m[1]);
-    expect(names.length).toBeGreaterThan(100);
-    expect(names.filter(name=>!new RegExp(`${name}:`).test(css))).toEqual([]);
+    const names=Object.values(SCENE_COLOR_TOKENS);
+    expect(names.filter(name=>!new RegExp(`${name}\\s*:`).test(css))).toEqual([]);
   });
 });

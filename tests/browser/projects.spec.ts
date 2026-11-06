@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixture-test';
 import { evidence, fixtureMode } from './support';
 
 test('switching projects loads the real isolated API, scopes chat and restores CEC',async({page,request})=>{

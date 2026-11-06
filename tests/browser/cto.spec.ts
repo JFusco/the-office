@@ -1,7 +1,7 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './fixture-test';
 import { evidence } from './support';
 test('CTO reviews are compact, weekday-only, and expand goal details on demand (UI fixture)', async ({page, request}) => {
- await request.post('/__fixture/reset');
+
  const state=await(await request.get('/api/office?project=brain')).json();
  const summary='Historical technical evidence with exact commit identifiers and detailed acceptance records. '.repeat(30);
  const report={id:'daily-review',date:'2026-11-03',status:'completed',collectedAt:'2026-11-03T22:00:00Z',detail:summary,conflicts:[],facts:{projects:[{projectId:'cec',project:'CEC',goals:[{id:'g',title:'Content gap scan'}]}]},result:{summary,updates:[{projectId:'cec',goalId:'g',status:null,progress:'The comparison is ready for review.',rationale:'Supporting commit evidence is retained here.',blockers:['Need the approved design.']}],unmapped:[]}};
@@ -49,7 +49,7 @@ test('existing Goals & Ideas shows CEC goals from Brain and routes edits to CEC 
  await page.getByRole('textbox',{name:'Why it matters',exact:true}).fill('Updated CEC requirement');await page.getByRole('button',{name:'Save changes',exact:true}).click();expect(saved).toMatchObject({project:'CEC',detail:'Updated CEC requirement'});await expect(page.getByLabel('Office project')).toHaveValue('brain');
 });
 test('new CTO goals choose configured projects by canonical ID while preserving the current Office view',async({page,request})=>{
- await request.post('/__fixture/reset');const writes:any[]=[];
+ const writes:any[]=[];
  await page.route('**/api/goals*',async route=>{writes.push({url:route.request().url(),body:route.request().postDataJSON()});await route.fulfill({json:{ok:true}});});
  await page.goto('/');await page.getByRole('button',{name:/^Go to Floor 2, CTO Office/}).click();await page.getByRole('button',{name:/^Open project goals/}).click();
  const project=page.getByRole('combobox',{name:'Project',exact:true});await expect(project).toHaveValue('cec');
@@ -60,7 +60,7 @@ test('new CTO goals choose configured projects by canonical ID while preserving 
  await expect(page.getByLabel('Office project')).toHaveValue('cec');await expect(project).toHaveValue('cec');
 });
 test('ambiguous legacy goals keep their project label and require mapping instead of silently moving',async({page,request})=>{
- await request.post('/__fixture/reset');const state=await(await request.get('/api/office')).json();
+ const state=await(await request.get('/api/office')).json();
  state.ctoGoals=[{id:crypto.randomUUID(),project:'Old project name',projectId:'cec',mapping:'unmapped',title:'Legacy goal',detail:'Preserve human scope',priority:2,status:'planned',updatedAt:new Date().toISOString(),requestId:'fixture'}];
  await page.route('**/api/office*',route=>route.fulfill({json:state}));await page.route('**/api/events*',route=>route.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
  await page.goto('/');await page.getByRole('button',{name:/^Go to Floor 2, CTO Office/}).click();await page.getByRole('button',{name:/^Open project goals/}).click();await page.getByRole('button').filter({hasText:'Legacy goal'}).click();
@@ -74,7 +74,7 @@ test('global Avery history is visible across projects and does not claim to wait
 });
 
 test('historical review has a real short summary, named goals, and a separate current completion (UI fixture)', async ({page,request}) => {
- await request.post('/__fixture/reset');
+
  const state=await(await request.get('/api/office?project=cec')).json();
  const title='Create Figma frames from Conductor';
  const summary=`- ${title}: hosted creation worked, but recovery acceptance was missing.\n- No goal completed in this review.`;

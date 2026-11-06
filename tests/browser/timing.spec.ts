@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './fixture-test';
 import { evidence, fixtureMode } from './support';
 // These two cases measure one accepted snapshot, not connection recovery (covered below).
 // Pause before importing the app so startup/load time cannot advance its one-second clock.
@@ -35,7 +35,7 @@ test('the live time endpoint agrees with the persisted worker and build ledger',
 });
 test('running clocks tick each second without new SSE and freeze on stale evidence (isolated fixture)',async({page,request})=>{
   test.skip(!fixtureMode,'Synthetic timing fixture only');
-  await request.post('/__fixture/reset');
+
   const now=new Date().toISOString();
   const state=await(await request.get('/api/office')).json();
   const published=JSON.stringify(state.coordination?.time?.entries||[]);
@@ -50,7 +50,7 @@ test('running clocks tick each second without new SSE and freeze on stale eviden
 });
 
 test('activity bubbles and agent details share the second clock and freeze without changing recorded time',async({page,request})=>{
-  test.skip(!fixtureMode,'Synthetic timing fixture only');await request.post('/__fixture/reset');
+  test.skip(!fixtureMode,'Synthetic timing fixture only');
   const state=await(await request.get('/api/office')).json(),now=new Date().toISOString();
   const developer=state.agents.find((agent:any)=>agent.id==='developer');developer.activity='working';developer.ticket='CEC-999';developer.task='CEC-999 · Building the fixture';
   const published=JSON.stringify(state.coordination.time.entries);
@@ -101,7 +101,7 @@ test('wake invalidates delayed HTTP and old stream callbacks before timers can r
 });
 
 test('Team Updates ticks the actual reconciliation worker without new snapshots while delivery stays blocked',async({page,request})=>{
- test.skip(!fixtureMode,'Synthetic timing fixture only');await request.post('/__fixture/reset');
+ test.skip(!fixtureMode,'Synthetic timing fixture only');
  const state=await(await request.get('/api/office')).json(),now=new Date().toISOString();
  const sam=state.agents.find((agent:any)=>agent.id==='lead');Object.assign(sam,{activity:'working',ticket:'GH-67',task:'GH-67 · Working on your request · Inspecting project files'});
  const published=JSON.stringify(state.coordination.time.entries);
