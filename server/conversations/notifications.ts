@@ -5,6 +5,7 @@ import type { Engine } from '../scheduling/engine';
 import { SlackMessages } from './slack';
 import type { MergeNotice } from '../../src/shared';
 import { sendGoalNotice } from '../leadership/send-goal-notice';
+import { channelNoticeAuthorized, queueChannelNotice } from './channel-notice';
 export const NoticeSettings = z.object({ enabled: z.boolean(), recipients: z.enum(['assignee', 'reporter', 'both']), workspace: z.string().trim().min(1).max(100), mappings: z.string().max(6000) }).strict();
 const Identity = z.object({ found: z.boolean(), targetId: z.string(), targetName: z.string(), workspaceId: z.string(), evidence: z.array(z.string()), blocker: z.string() }).strict();
 export function noticeState(store: Store) { return store.state.coordination!.notices ??= { policy: { enabled: false, recipients: 'both', workspace: 'Verndale', mappings: '', enabledAt: '' }, entries: [] }; }
@@ -25,8 +26,9 @@ export function queueMergeNotice(store: Store, input: {
     };
 }) {
     const { policy, entries } = noticeState(store);
+    queueChannelNotice(store, { ...input, text: mergeText(store, input) });
     if (!policy.enabled || !policy.enabledAt || !Number.isFinite(Date.parse(input.mergedAt)) || Date.parse(input.mergedAt) < Date.parse(policy.enabledAt))
-        return;
+        return void store.save();
     const recipients = policy.recipients === 'assignee' ? input.assignees : policy.recipients === 'reporter' ? [input.reporter] : [...input.assignees, input.reporter];
     for (const person of recipients) {
         if (!person?.id)
@@ -34,12 +36,13 @@ export function queueMergeNotice(store: Store, input: {
         const event = `${store.project.repository}:${input.prUrl}:${input.mergeCommit}:${person.id}`;
         if (entries.some(e => e.event === event))
             continue;
-        entries.push({ id: crypto.randomUUID(), event, key: input.key, prUrl: input.prUrl, mergeCommit: input.mergeCommit, identity: person.id, email: person.email || '', text: `${store.project.name} · ${input.key}: PR merged.\n${input.prUrl}\n${input.summary}\nMerge commit: ${input.mergeCommit}\nThis confirms the merge; deployment and issue acceptance are separate.`, createdAt: new Date().toISOString(), status: 'queued', detail: 'Waiting for Morgan to verify the Slack recipient.' });
+        entries.push({ id: crypto.randomUUID(), event, key: input.key, prUrl: input.prUrl, mergeCommit: input.mergeCommit, identity: person.id, email: person.email || '', text: mergeText(store, input), createdAt: new Date().toISOString(), status: 'queued', detail: 'Waiting for Morgan to verify the Slack recipient.' });
     }
     store.save();
 }
+const mergeText = (store: Store, input: { key: string; prUrl: string; summary: string; mergeCommit: string }) => `${store.project.name} · ${input.key}: PR merged.\n${input.prUrl}\n${input.summary}\nMerge commit: ${input.mergeCommit}\nThis confirms the merge; deployment and issue acceptance are separate.`;
 export function retryRecipientLookup(store: Store, key: string) {
-    const notice = noticeState(store).entries.find(n => n.key === key && n.status === 'blocked');
+    const notice = noticeState(store).entries.find(n => n.key === key && n.status === 'blocked' && !n.channel);
     if (!notice || store.state.slackDeliveries?.some(d => d.requestId === notice.id))
         throw new Error('Only an interrupted recipient lookup with no Slack delivery attempt can be retried');
     const work = (store.state.workLog || []).filter(w => w.requestId === notice.id).at(-1);
@@ -51,18 +54,35 @@ export function retryRecipientLookup(store: Store, key: string) {
 }
 export class MergeNotifications {
     constructor(private store: Store, private engine: Engine, private execute: typeof command = command) { }
+    /** Channel posts have a configured, pre-verified target: no recipient lookup, same durable send and read-back. */
+    private async postToChannel(notice: MergeNotice) {
+        if (!channelNoticeAuthorized(this.store, notice)) {
+            notice.status = 'cancelled'; notice.detail = 'Channel notifications disabled or changed before delivery.'; this.store.save(); return;
+        }
+        notice.status = 'working'; this.store.save();
+        try {
+            const delivery = await new SlackMessages(this.store, this.engine.agents).sendNotification(notice.id, { ...notice.resolved!, targetType: 'channel', text: notice.text });
+            notice.status = 'sent'; notice.detail = delivery.permalink;
+        } catch (error) {
+            notice.status = this.store.state.slackDeliveries?.some(d => d.requestId === notice.id) ? 'uncertain' : 'blocked';
+            notice.detail = String(error);
+        } finally { this.store.save(); }
+    }
     async pump(id?: string) {
         const { policy, entries } = noticeState(this.store), notice = entries.find(n => n.status === 'queued' && (!id || n.id === id));
         if (!notice)
             return;
         if (notice.kind === 'goal') return sendGoalNotice(this.store, this.engine.agents, notice);
+        if (notice.channel) return this.postToChannel(notice);
         if (!policy.enabled) {
             notice.status = 'cancelled';
             notice.detail = 'Notifications disabled before delivery.';
             this.store.save();
             return;
         }
-        const policyVersion = JSON.stringify(policy);
+        // Channel settings are separate; changing them never cancels a person DM mid-lookup.
+        const personPolicy = () => { const { channel: _channel, ...rest } = noticeState(this.store).policy; return JSON.stringify(rest); };
+        const policyVersion = personPolicy();
         notice.status = 'working';
         this.store.save();
         try {
@@ -87,7 +107,7 @@ export class MergeNotifications {
             }
             notice.resolved = { targetId: target.targetId, targetName: target.targetName, workspaceId: target.workspaceId };
             this.store.save();
-            if (!noticeState(this.store).policy.enabled || JSON.stringify(noticeState(this.store).policy) !== policyVersion) {
+            if (!noticeState(this.store).policy.enabled || personPolicy() !== policyVersion) {
                 notice.status = 'cancelled';
                 notice.detail = 'Notification settings changed during identity resolution.';
                 return;

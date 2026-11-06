@@ -24,6 +24,7 @@ import type { TicketJob, StageResult, Role } from '../../../src/shared';
 import { recordJobApproach, acceptConflictRepair } from './approach';
 import { containedFile } from '../../cec/workflow';
 import { implementationContinuationDecision, negativeTechnicalReview } from '../recovery/implementation/implementation-continuation';
+import { recordTechnicalBudget } from '../../knowledge/record-trigger';
 import {publishedDraftConflictCandidate,reconcilePublishedDraftConflict} from '../recovery/preparation/published-draft-conflict';
 import { continuationWorkerProof, continuationReviewArtifacts, assertContinuationWorker } from '../recovery/implementation/continuation-evidence';
 import { artifact, digest } from '../../store/readback-evidence';
@@ -178,6 +179,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         const diagnosticFiles = () => continuationReviewArtifacts(this.store,job,continuationWorker!.result as StageResult);
         const implementationChanged = await continuation.verify(result);
         const decision = implementationContinuationDecision({ ...job, steps: job.steps.slice(0, -1) }, result, implementationChanged);
+        if (decision?.exhausted) recordTechnicalBudget(this.store, job);
         if (decision?.action === 'blocked') throw new Error(decision.reason);
         const assertFinal = () => {
             continuation.assertCurrent(); assertContinuationWorker(this.store, continuationWorker!,job);

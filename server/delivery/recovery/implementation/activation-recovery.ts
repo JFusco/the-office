@@ -1,5 +1,6 @@
 import {mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {recordSourceConfigBudget} from '../../../knowledge/record-trigger';
 import {homedir} from 'node:os';
 import {z} from 'zod';
 import {isDeepStrictEqual} from 'node:util';
@@ -94,6 +95,7 @@ export async function reconcileActivation(delivery:GitHubDelivery,key:string,ori
  const root=resolve(store.dataRoot,'ticket-work',job.id);mkdirSync(root,{recursive:true,mode:0o700});ownedPath(store,root);
  const path=resolve(root,`${intent.id}-activation-readback.json`),at=store.clock.now().toISOString();
  writeFileSync(path,JSON.stringify({prior:job,original:selected,reader,assessment,baseline,record,nativeRuns,providerBefore:before,providerAfter:after,scope:job.implementationContinuation,verifiedAt:at},null,2),{flag:'wx',mode:0o600});const file=artifact(store,path);
+ if((job.implementationContinuation?.sourceConfig?.attempts||0)>=2){recordSourceConfigBudget(store,job);store.save();}
  store.transaction(()=>{
   assertCurrent();assertContinuationWorker(store,reader,job);for(const f of [baseline.file,record.file,file])if(!isDeepStrictEqual(artifact(store,f.path),f))throw new Error('Activation proof changed');if(!isDeepStrictEqual(rootArtifact(job.worktree,nativeRuns.path),nativeRuns))throw new Error('Native retry state changed');
   const c=job.implementationContinuation!,attempts=c.sourceConfig?.attempts||0;
@@ -112,7 +114,7 @@ export async function runSourceConfiguration(delivery:GitHubDelivery,job:TicketJ
  if(!config||!['repair','technical-review'].includes(c.phase))throw new Error('Offline source-configuration phase required');
  const reviewing=c.phase==='technical-review';
  if(config.attemptOpen||config.reservation)throw new Error('Offline source configuration requires exact original reservation readback before another worker');
- if(!reviewing&&config.attempts>=config.maxAttempts)throw new Error('Bounded two-proposal source configuration budget exhausted');
+ if(!reviewing&&config.attempts>=config.maxAttempts){recordSourceConfigBudget(store,job);store.save();throw new Error('Bounded two-proposal source configuration budget exhausted');}
  if(config.readRetry?.nextAt&&Date.parse(config.readRetry.nextAt)>store.clock.now().getTime())throw new Error('Confirmed read-only transport retry waits for its recorded time');
  const guard=await delivery.continuationGuard(job),proof=continuationJsonArtifact(store,config.proofPath),facts=sourceFailureFacts(config.baseline,proof.value.record.value,config.sourceId);
  const role=reviewing?'lead':'developer',stage=reviewing?'github-review':'github-scope-repair',expectedProposal=config.proposal?digest(config.proposal):'';
@@ -155,7 +157,7 @@ async function applySourceConfiguration(delivery:GitHubDelivery,job:TicketJob,gu
   if(!reviewing){if(accepted){config.proposal=proposed!;config.proposalSha256=digest(proposed);config.proposalProof={path,sha256:file.sha256};delete config.reviewProof;delete config.reviewedSha256;c.phase='technical-review';job.stage='review';}else job.status='blocked';}
   else if(accepted){config.reviewedSha256=expectedProposal;config.reviewProof={path,sha256:file.sha256};c.phase='activation';job.stage='scope-repair';}
   else if(config.attempts<config.maxAttempts){delete config.proposal;delete config.proposalSha256;delete config.proposalProof;delete config.reviewProof;delete config.reviewedSha256;c.phase='repair';job.stage='scope-repair';}
-  else job.status='blocked';
+  else{job.status='blocked';recordSourceConfigBudget(store,job);}
   if(accepted||reviewing&&config.attempts<config.maxAttempts)job.status='queued';
   job.detail=accepted?(reviewing?`Exact source-input repair reviewed; activation waits for native retry time ${config.retryAt}. OPEN source findings still require actual capture.`:'Offline proposal retained; Sam independently reviews its exact scope and coverage before any source activation.'):response.summary;
   store.emit('source-configuration',job.detail,role,job.key);
@@ -269,6 +271,7 @@ export async function reconcileSourceConfiguration(delivery:GitHubDelivery,key:s
   delete config.reservation;config.attemptOpen=false;config.readRetryProof={path,sha256:file.sha256};(config.history??=[]).push({path,sha256:file.sha256});
   const retry={status:'blocked',detail:String(error.value.error),retry:config.readRetry};planReadRetry(retry,store.clock.now());config.readRetry=retry.retry;
   const exhausted=reservation.phase==='repair'&&config.attempts>=config.maxAttempts||config.readRetry?.exhausted||!config.readRetry?.nextAt;
+  if(reservation.phase==='repair'&&config.attempts>=config.maxAttempts)recordSourceConfigBudget(store,job);
   job.status=exhausted?'blocked':'queued';job.detail=exhausted?'Original offline transport is proven no-write, but its bounded retry/proposal budget is exhausted. Original failures and source findings remain.':`Original offline transport verified no-write; bounded reader retry waits until ${config.readRetry!.nextAt}. Consumed source attempt and native capture backoff remain unchanged.`;
   store.emit('source-config-transport-readback',job.detail,'pm',key);
  });

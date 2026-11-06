@@ -6,6 +6,7 @@ import { OfficeConfigSection } from './OfficeConfigSection';
 import { OfficePreferencesForm } from './OfficePreferencesForm';
 import { PickupForm } from './PickupForm';
 import { SlackNoticesForm } from './SlackNoticesForm';
+import { SlackChannelForm } from './SlackChannelForm';
 import { TimeForm } from './TimeForm';
 import type { OfficePreferencesController } from './useOfficePreferences';
 
@@ -14,6 +15,7 @@ function ProjectForms({ snapshot, refresh }: { snapshot: OfficeSnapshot; refresh
     <PickupForm snapshot={snapshot} refresh={refresh} />
     {snapshot.project?.provider === 'github' ? <MergeCloseoutForm snapshot={snapshot} refresh={refresh} /> : null}
     <SlackNoticesForm snapshot={snapshot} refresh={refresh} />
+    <SlackChannelForm snapshot={snapshot} refresh={refresh} />
     <GoalNoticeForm snapshot={snapshot} refresh={refresh} />
     <TimeForm snapshot={snapshot} refresh={refresh} />
   </div>;

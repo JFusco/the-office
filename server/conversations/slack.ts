@@ -7,6 +7,7 @@ import { sanitize } from '../office/security';
 import { CommandFailure } from '../workers/process';
 import { goalNoticeAuthorized } from '../leadership/goal-notice-authorization';
 import { Effects } from '../store/effects';
+import { channelNoticeAuthorized } from './channel-notice';
 export const SlackRequestSchema = z.object({ targetType: z.enum(['person', 'channel']), targetId: z.string().regex(/^[UCG][A-Z0-9]+$/), targetName: z.string().min(1), workspaceId: z.string().regex(/^T[A-Z0-9]+$/), text: z.string().min(1).max(5000) }).strict();
 export const SlackResultSchema = z.object({ channelId: z.string(), messageTs: z.string(), permalink: z.string(), detail: z.string() }).strict();
 export const SlackVerificationSchema = z.object({ found: z.boolean(), channelId: z.string(), messageTs: z.string(), permalink: z.string(), targetId: z.string(), workspaceId: z.string(), text: z.string(), detail: z.string() }).strict();
@@ -28,9 +29,10 @@ export class SlackMessages {
     }
     async sendNotification(requestId: string, input: z.infer<typeof SlackRequestSchema>) {
         const request = SlackRequestSchema.parse(input), state = this.store.state.coordination?.notices, notice = state?.entries.find(n => n.id === requestId);
-        if (!state?.policy.enabled || !notice || notice.kind === 'goal' || notice.status !== 'working' || !notice.resolved || notice.text !== request.text || notice.resolved.targetId !== request.targetId || notice.resolved.workspaceId !== request.workspaceId || request.targetType !== 'person')
+        const channel = !!notice?.channel;
+        if (!notice || notice.kind === 'goal' || notice.status !== 'working' || !notice.resolved || notice.text !== request.text || notice.resolved.targetId !== request.targetId || notice.resolved.workspaceId !== request.workspaceId || request.targetType !== (channel ? 'channel' : 'person') || (channel ? !channelNoticeAuthorized(this.store, notice) : !state?.policy.enabled))
             throw new Error('Merge notice lacks current project and recipient authorization');
-        return this.deliver(requestId, request, { body: 'Joe enabled this project’s verified merge notifications. Send only the saved message to the independently resolved recipient.', ticket: notice.key, requestId });
+        return this.deliver(requestId, request, { body: channel ? 'Joe configured this project’s merge posts for this exact Slack channel and these mentions. Send only the saved message to that channel.' : 'Joe enabled this project’s verified merge notifications. Send only the saved message to the independently resolved recipient.', ticket: notice.key, requestId });
     }
     async sendGoalNotification(requestId: string, input: z.infer<typeof SlackRequestSchema>) {
         const request = SlackRequestSchema.parse(input), notice = this.store.state.coordination?.notices?.entries.find(n => n.id === requestId);

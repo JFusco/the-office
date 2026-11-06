@@ -5,6 +5,7 @@ import {currentAssignment} from '../../../workers/assignment-context';
 import {ResultSchema} from '../../../workers/agents';
 import {continuationWorkerProof,assertContinuationWorker,continuationNativeReview,continuationReviewArtifacts} from './continuation-evidence';
 import {negativeTechnicalReview,implementationContinuationDecision} from './implementation-continuation';
+import {recordTechnicalBudget} from '../../../knowledge/record-trigger';
 import {artifact,ownedPath,digest} from '../../../store/readback-evidence';
 import {readValidationProviderContext,validationProviderVersion} from '../validation/validation-provider-context';
 import {deliveryHumanInputs} from '../../../github/github-context';
@@ -49,6 +50,7 @@ export async function reconcileContinuationReview(delivery:GitHubDelivery,key:st
  };
  assertCurrent();
  const decision=implementationContinuationDecision(job,selected.result,await guard.verify(selected.result));
+ if(decision?.exhausted)recordTechnicalBudget(store,job);
  if(!decision||decision.action!=='repair')throw new Error('Saved negative review must require the existing bounded technical repair');
  const after=await readValidationProviderContext(delivery,key);unchangedScope(after);
  if(validationProviderVersion(before)!==validationProviderVersion(after))throw new Error('Current provider scope changed during negative review reconciliation');

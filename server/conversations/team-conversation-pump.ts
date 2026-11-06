@@ -17,7 +17,7 @@ export async function pump(this: Conversations, id?: string) {
         return this.pumpCTO();
     if (this.running || this.engine.busy || this.engine.agents.active.size || this.store.state.paused || this.store.state.intake.status === 'working' || this.store.state.nightlyDispatching)
         return;
-    const message = this.store.state.messages.find(m => (m.from === 'human' || m.from === 'cto' || m.from === 'it') && !['cto', 'it'].includes(m.to) && m.status === 'queued' && (!id || m.id === id));
+    const message = this.store.state.messages.find(m => (m.from === 'human' || m.from === 'cto' || m.from === 'it' || m.from === 'knowledge') && !['cto', 'it', 'knowledge'].includes(m.to) && m.status === 'queued' && (!id || m.id === id));
     if (!message || !this.store.claim(this.owner))
         return;
     this.running = true;

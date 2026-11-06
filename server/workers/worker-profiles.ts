@@ -1,5 +1,5 @@
 export type WorkerProfile = 'reader' | 'editor' | 'checks' | 'jira-native' | 'qa-native' | 'brain-native' | 'github-native' | 'slack-native';
-const readers = new Set(['feature-research', 'feature-question-round', 'feature-plan', 'assignment-review', 'readback', 'intake', 'understand', 'ci-diagnose', 'reconcile', 'plan', 'plan-review', 'code-review', 'repair-review', 'github-review', 'github-lead-pr', 'vendor-review', 'proposal-plan', 'proposal-plan-review', 'proposal-review', 'maintenance-readback', 'daily-cto', 'retrospective']);
+const readers = new Set(['feature-research', 'feature-question-round', 'feature-plan', 'assignment-review', 'readback', 'intake', 'understand', 'ci-diagnose', 'reconcile', 'plan', 'plan-review', 'code-review', 'repair-review', 'github-review', 'github-lead-pr', 'vendor-review', 'proposal-plan', 'proposal-plan-review', 'proposal-review', 'maintenance-readback', 'daily-cto', 'retrospective', 'knowledge-rollup']);
 /** Native stages retain their required tools until their typed adapter passes parity. */
 export function workerProfile(stage: string, readOnly: boolean, slack = false): {
     name: WorkerProfile;

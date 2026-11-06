@@ -62,11 +62,13 @@ test('the active CTO conversation prompt queues ticket implementation and discov
     } finally { run.mockRestore(); store.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
-test('Harper runs only read-only retrospectives on the knowledge lane', () => {
+test('Harper runs only read-only retrospectives, roll-ups and chat on the knowledge lane', () => {
     expect(() => assertWorkerLane('knowledge', 'retrospective', true, assignment('knowledge', 'retrospective'))).not.toThrow();
     expect(() => assertWorkerLane('knowledge', 'retrospective', true)).not.toThrow();
+    expect(() => assertWorkerLane('knowledge', 'knowledge-rollup', true, assignment('knowledge', 'knowledge-rollup'))).not.toThrow();
+    expect(() => assertWorkerLane('knowledge', 'conversation', true, assignment('knowledge', 'conversation'))).not.toThrow();
     expect(() => assertWorkerLane('knowledge', 'retrospective', false, assignment('knowledge', 'retrospective'))).toThrow('read-only retrospectives');
-    expect(() => assertWorkerLane('knowledge', 'conversation', true, assignment('knowledge', 'conversation'))).toThrow('read-only retrospectives');
+    expect(() => assertWorkerLane('knowledge', 'github-implement', true, assignment('knowledge', 'retrospective'))).toThrow('read-only retrospectives');
     expect(() => assertWorkerLane('knowledge', 'retrospective', true, assignment('knowledge', 'delivery'))).toThrow('only claim retrospectives');
     expect(() => assertWorkerLane('knowledge', 'retrospective', true, assignment('delivery', 'retrospective'))).toThrow('claimed execution lane');
     expect(() => assertWorkerLane('developer', 'github-implement', false, assignment('knowledge', 'retrospective'))).toThrow('claimed execution lane');

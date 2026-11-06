@@ -31,6 +31,8 @@ import { ApproachSchema, APPROACH_GUIDANCE, reviewInstructions } from '../delive
 import { contextPacket, PROJECTS, type OfficeCapacity } from '../office/projects';
 import { githubFollowupPrompt, canFileGithubIssue, GITHUB_ISSUE_SKILL } from '../github/github-context';
 import { workerActivity, toolActivity } from './activity';
+import { knowledgeChatPrompt } from '../knowledge/chat-prompt';
+import { harperFolder } from '../knowledge/run-retrospective';
 const EvidenceSchema = z.object({ id: z.string(), kind: z.enum(['screenshot', 'browser', 'checks', 'review', 'provider', 'deployment', 'jira', 'pr']), summary: z.string(), path: z.string(), commit: z.string(), environment: z.string(), url: z.string(), observedAt: z.string() }).strict();
 const ReceiptSchema = z.object({ id: z.string(), action: z.string(), target: z.string(), verified: z.boolean(), uncertain: z.boolean(), detail: z.string() }).strict();
 export const LegacyResultSchema = z.object({ outcome: z.enum(['passed', 'failed', 'blocked', 'reroute']), prerequisites: PrerequisitesSchema, approach: ApproachSchema.nullable(), summary: z.string(), commit: z.string(), evidence: z.array(EvidenceSchema), findings: z.array(z.object({ id: z.string(), summary: z.string(), expected: z.string(), actual: z.string(), status: z.enum(['open', 'fixed', 'verified']), attempts: z.number().int().min(0) }).strict()), receipts: z.array(ReceiptSchema), previewUrl: z.string(), worktree: z.string(), branch: z.string(), prId: z.number().int(), qaRunDir: z.string(), paidRuns: z.number().int().min(0).nullable(), blocker: z.string() }).strict();
@@ -57,6 +59,8 @@ export class Agents extends WorkerRuntime {
         const guidance = `\n${GOAL_REPORT_GUIDANCE}`;
         if (role === 'it')
             return this.run('it', itChatPrompt(this.store, message, brief) + guidance, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
+        if (role === 'knowledge')
+            return this.run('knowledge', knowledgeChatPrompt(this.store, message, brief), ConversationResultSchema, { cwd: harperFolder(this.store, 'chat'), readOnly: true, effortKind: 'administrative', ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
         if (role === 'cto')
             return this.run('cto', ctoChatPrompt(this.store, message, goalReportContext(this.ctoContext(), message, this.store.project.id), brief) + guidance, ConversationResultSchema, { cwd: message.from === 'pm' ? this.store.project.repo : ROOT, readOnly: true, crossProjectRead: message.from !== 'pm', ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
         if (this.store.project.provider === 'github')

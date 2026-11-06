@@ -38,3 +38,10 @@ test.each(['open', 'unlinked', 'unassigned', 'disabled', 'paused', 'historical',
         await observeGitHubMergeNotices(f.delivery);
         expect(notices.entries).toEqual(before);
     });
+
+test('a merge channel alone is enough: external merges still post when direct messages are off', async () => {
+    const { f, notices } = fixture();
+    notices.policy = { ...notices.policy, enabled: false, enabledAt: '', channel: { enabled: true, channelId: 'C0DELIVER', channelName: 'delivery', workspaceId: 'T123', mentionIds: ['U111'], enabledAt: '2026-11-01T00:00:00Z', version: 'v1' } };
+    await observeGitHubMergeNotices(f.delivery);
+    expect(notices.entries).toMatchObject([{ key: 'GH-5', channel: true, resolved: { targetId: 'C0DELIVER' } }]);
+});

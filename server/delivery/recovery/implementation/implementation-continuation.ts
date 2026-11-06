@@ -23,7 +23,7 @@ export function negativeTechnicalReview(result:StageResult,job?:TicketJob){
      step.result.evidence.some(old=>old.path===evidence.path&&old.commit===evidence.commit));
   });
 }
-export type ContinuationDecision={action:'repair'|'activation'|'technical-review'|'acceptance'|'blocked';next:ImplementationContinuation;reason:string};
+export type ContinuationDecision={action:'repair'|'activation'|'technical-review'|'acceptance'|'blocked';next:ImplementationContinuation;reason:string;exhausted?:'technical'};
 /** Pure policy only. Callers must verify scope grant, original native effects, exact Git identity and claims before applying it. */
 export function implementationContinuationDecision(job:TicketJob,result:StageResult,implementationChanged=false):ContinuationDecision|null{
  const state=job.implementationContinuation;
@@ -40,7 +40,7 @@ export function implementationContinuationDecision(job:TicketJob,result:StageRes
   if(state.pendingFindingIds.some(id=>!result.findings.some(f=>f.id===id&&f.status==='open')))return blocked('Technical review cannot accept the pending source findings');
   next.repairFindingIds=[...new Set([...state.repairFindingIds,...result.findings.filter(f=>!pending.has(f.id)).map(f=>f.id)])];
   if(technical.length){
-   if(state.round>=state.maxRounds)return blocked('Bounded technical repair budget exhausted');
+   if(state.round>=state.maxRounds)return {...blocked('Bounded technical repair budget exhausted'),exhausted:'technical'};
    next.phase='repair';next.round++;
    return {action:'repair',next,reason:'Technical defects require repair on the same saved candidate; source acceptance remains pending'};
   }

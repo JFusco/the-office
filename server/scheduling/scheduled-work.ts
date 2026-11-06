@@ -19,6 +19,7 @@ import { TimeLedger } from '../time/time-ledger';
 import { easternDay } from '../office/clock';
 import { withAmendmentOwnership } from '../delivery/recovery/source-amendment/source-amendment';
 import { scheduledRetrospectives } from '../knowledge/scheduled-retrospectives';
+import { scheduledRollup, type RollupHooks } from '../knowledge/weekly-rollup';
 export interface OfficeEntry {
     store: Store;
     engine: Engine;
@@ -27,10 +28,10 @@ export interface OfficeEntry {
 }
 const eligible = (state: WorkEligibility['state'], reason: string, owner = 'Morgan'): WorkEligibility => ({ state, reason, owner, nextCheckAt: null });
 /** One projection drives dispatch, queue counts, owner labels and next actions. */
-export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery'): ScheduledWork[] {
+/** Office-level inputs to Harper's lane: Avery's review status and the office proposal store. */
+export interface KnowledgeOptions extends RollupHooks { dailyStatus?: (date: string) => string | undefined }
+export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery', knowledge: KnowledgeOptions = {}): ScheduledWork[] {
     const { store, engine, conversations, coordinator } = entry;
-    if (lane === 'knowledge')
-        return withActiveClaims(store, lane, scheduledRetrospectives(store, (prompt, schema, opts) => engine.knowledgeAgents.run('knowledge', prompt, schema, opts), now));
     const items: ScheduledWork[] = [], c = store.state.coordination!;
     const add = (kind: WorkKind, record: {
         id: string;
@@ -46,13 +47,17 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
             eligibility: store.state.paused || store.state.draining ? eligible('blocked', store.state.draining ? 'Office is draining' : 'Project is paused') : condition || eligible(status === 'queued' ? 'runnable' : status === 'working' ? 'running' : ['completed', 'cancelled', 'answered', 'sent', 'reconciled', 'ready'].includes(status) ? 'terminal' : ['watching', 'held'].includes(status) ? 'waiting' : 'blocked', status === 'queued' ? 'Ready for scheduler claim' : `Work is ${status}`),
             identity: () => JSON.stringify([record.status, stage, 'head' in record ? record.head : null, 'stage' in record ? record.stage : null]), execute });
     };
-    for (const message of store.state.messages.filter(message => ['human', 'cto', 'it', 'pm'].includes(message.from))) {
+    for (const message of store.state.messages.filter(message => ['human', 'cto', 'it', 'pm', 'knowledge'].includes(message.from))) {
         const messageLane = message.to === 'cto' ? 'cto' : message.to === 'it' ? 'it' : message.to === 'knowledge' ? 'knowledge' : 'delivery';
         if (messageLane !== lane) continue;
         const original = message.from === 'human' ? message : message.from === 'it' && message.actionId.startsWith('message:')
             ? store.state.messages.find(original => original.id === message.actionId.slice(8)) : undefined;
-        add('conversation', message, `conversation:${message.to}`, message.createdAt, 3, () => message.to === 'cto' ? conversations.pumpCTO() : message.to === 'it' ? conversations.pumpIT() : conversations.pump(message.id),
+        add('conversation', message, `conversation:${message.to}`, message.createdAt, 3, () => message.to === 'cto' ? conversations.pumpCTO() : message.to === 'it' ? conversations.pumpIT() : message.to === 'knowledge' ? conversations.pumpKnowledge() : conversations.pump(message.id),
             ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained') : null);
+    }
+    if (lane === 'knowledge') {
+        const run: import('../knowledge/run-retrospective').KnowledgeRunner = (prompt, schema, opts) => engine.knowledgeAgents.run('knowledge', prompt, schema, opts);
+        return withActiveClaims(store, lane, [...items, ...scheduledRetrospectives(store, run, now), ...scheduledRollup(store, run, now, knowledge)]);
     }
     for (const request of c.requests || [])
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)

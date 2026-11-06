@@ -10,7 +10,9 @@ import { validTicket } from '../projects';
 import { CEC } from '../config';
 import type { ServiceContext, RequestContext } from './context';
 import { json } from './responses';
-import { configureKnowledge, retireLesson } from '../../knowledge/lesson-commands';
+import { configureKnowledge, declineLessonIssue, reactivateLesson, retireLesson } from '../../knowledge/lesson-commands';
+import { decideOfficeProposal, mirrorOfficeKnowledge, retireOfficeLesson } from '../../knowledge/office-lessons';
+import { configureChannelNotices } from '../../conversations/channel-notice';
 
 /** POST /api/commands: operator and harness commands for one project. */
 export async function commandRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
@@ -23,7 +25,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, discovery, closeoutSupervisionProof, lessonId, knowledge } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, discovery, closeoutSupervisionProof, lessonId, knowledge, channel } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
@@ -81,6 +83,20 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             }
             case 'retire-lesson': retireLesson(store, lessonId); break;
             case 'configure-knowledge': configureKnowledge(store, knowledge); break;
+            case 'configure-channel-notifications': configureChannelNotices(store, channel); break;
+            case 'reactivate-lesson': reactivateLesson(store, lessonId); break;
+            case 'decline-lesson-issue': declineLessonIssue(store, lessonId); break;
+            case 'file-lesson-issue': {
+                if (typeof lessonId !== 'string' || !store.state.knowledge?.lessons.some(lesson => lesson.id === lessonId && lesson.repositoryInstruction?.status === 'proposed')) return json({ error: 'Only a proposed AGENTS.md suggestion can be filed' }, 400);
+                return json({ accepted: true, id: enqueueRequest(store, 'file-lesson-issue', '', lessonId).id }, 202);
+            }
+            case 'accept-office-lesson':
+            case 'decline-office-lesson':
+            case 'retire-office-lesson':
+                if (action === 'retire-office-lesson') retireOfficeLesson(offices.control, lessonId); else decideOfficeProposal(offices.control, lessonId, action === 'accept-office-lesson');
+                mirrorOfficeKnowledge(offices.control, offices.stores().values());
+                store.emit('office-knowledge-changed', action === 'accept-office-lesson' ? 'Office-wide lesson accepted; every project now sees it.' : action === 'decline-office-lesson' ? 'Office-wide lesson proposal declined.' : 'Office-wide lesson retired.', 'knowledge');
+                break;
             case 'configure-pickup':
                 coordinator!.configurePickup(pickup);
                 break;

@@ -3,6 +3,7 @@ import { CEC } from '../../office/config';
 import { BLOCKED, findComment, jira, readIssue, type Execute } from './jira-issue';
 import { STAGE_LABELS, type Stage, type StageResult, type Ticket } from '../../../src/shared';
 import type { Store } from '../../store/store';
+import { recordTicketParked } from '../../knowledge/record-trigger';
 
 const MARKER = 'Office decision ';
 /** A refused comment preflight never dispatched, so a later attempt is a fresh intent with its own id. */
@@ -65,6 +66,7 @@ export async function commentDecision(store: Store, execute: Execute, t: Ticket)
 
 export function publishParked(store: Store, t: Ticket) {
     t.parked!.published = true;
+    recordTicketParked(store, t);
     t.status = BLOCKED;
     t.statusId = '';
     t.blocker = `Decision needed: ${t.parked!.reason}`;
