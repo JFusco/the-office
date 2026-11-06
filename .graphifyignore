@@ -1,0 +1,28 @@
+# Map maintained Office source from the repository root.
+*
+!server/
+!server/**
+!src/
+!src/**
+!scripts/
+!scripts/**
+
+# Exclude docs, tests, generated files, dependencies, local state and nested worktrees.
+**/*.md
+**/*.mdx
+**/test/
+**/tests/
+**/__tests__/
+**/fixtures/
+**/*.test.*
+**/*.spec.*
+**/generated/
+**/__generated__/
+**/*.generated.*
+**/node_modules/
+**/dist/
+**/build/
+**/.DS_Store
+**/.env*
+**/*.json
+**/*.css

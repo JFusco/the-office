@@ -82,6 +82,18 @@ For performance comparisons, record source/tool identities, build separately, an
 
 Useful read-only endpoints include `/api/health`, `/api/office`, `/api/time`, `/api/goals/history`, and `/api/daily-cto`. Health includes the loaded source/assets hash separately from event revisions.
 
+## Maintainer code map
+
+Graphify 0.9.36 maps `server/`, `src/` and `scripts/`; `.graphifyignore` excludes tests,
+documentation, styles, JSON, generated files, dependencies and local state. The
+repository-local [Graphify skill](.agents/skills/graphify/SKILL.md) covers queries and
+refreshes. After `pnpm install` (which activates Husky) and installing Graphify 0.9.36,
+run `graphify hook install` and `graphify hook status` once per clone. Native hooks
+refresh the map after commits and branch switches in the primary checkout; linked
+worktrees are skipped. Run `PYTHONHASHSEED=0 graphify update .` after pulls or merges.
+Commit the graph, HTML, report, analysis and labels; keep `manifest.json`, caches,
+backups and query memory local. No agent tool hooks are installed.
+
 ## Controlled rollout
 
 Drain workers, confirm safe ownership boundaries, and back up SQLite stores consistently before replacing a running installation. Preserve source, assets, private bindings, uncertain effects, original failures, and goal application history. Reload, verify the expected loaded hash, then restore previous project running states. A rollback must retain any newly attempted effects and applied history.

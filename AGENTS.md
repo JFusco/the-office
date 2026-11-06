@@ -88,3 +88,16 @@ src/
 - Browser tests (`pnpm test:browser`) use the synthetic fixture server by default.
 - Version-control and release actions in this repository belong to Joe; deliver an
   uncommitted working tree.
+
+## Graphify repository workflow
+
+Use the repository-local [Graphify skill](.agents/skills/graphify/SKILL.md) for the
+shared code map of `server/`, `src/` and `scripts/`. Exact behavior comes from source;
+rationale comes from `docs/` and this file. Use Graphify 0.9.36. After cloning, run
+`pnpm install` (activates Husky) and `graphify hook install` for the native Git refresh
+hooks and the local `graph.json` merge driver. Hooks skip linked worktrees, including
+the harness's delivery worktrees; refresh the canonical map from the primary checkout.
+Commit only `graph.json`, `graph.html`, `GRAPH_REPORT.md`, `.graphify_analysis.json`,
+`.graphify_labels.json` and its `.sig`; `manifest.json`, caches and backups stay local.
+Keep `graphify-out/memory/` empty and review background graph changes before staging.
+Do not install Graphify agent tool hooks.
