@@ -8,6 +8,9 @@ export { workKey } from './contracts/work';
 export type * from './contracts/timing';
 export type * from './contracts/leadership';
 export type * from './contracts/knowledge';
+import { PERSONAS } from './contracts/people';
+export type * from './contracts/people';
+export { PERSONAS, OWNER, DEPARTMENTS, EMPLOYEE_IDS } from './contracts/people';
 export const STAGES = ['mailbox', 'understand', 'enhance', 'plan', 'plan-review', 'implement', 'code-review', 'draft-pr', 'preview', 'qa', 'repair', 'repair-review', 'retest', 'publish', 'ci', 'ci-diagnose', 'ready-for-staging', 'staging-qa', 'complete'] as const;
 export type Stage = typeof STAGES[number];
 export type Role = 'pm' | 'developer' | 'lead' | 'qa' | 'cto' | 'it' | 'analyst' | 'knowledge';
@@ -974,7 +977,7 @@ export interface OfficeSnapshot {
         ticket: string;
     } | null;
 }
-export const ROLE_NAMES: Record<Role, string> = { pm: 'Morgan', developer: 'Alex', lead: 'Sam', qa: 'Riley', cto: 'Avery', it: 'Ellis', analyst: 'Casey', knowledge: 'Harper' };
+export const ROLE_NAMES = Object.fromEntries(Object.values(PERSONAS).map(persona => [persona.id, persona.name])) as Record<Role, string>;
 export const STAGE_LABELS: Record<Stage, string> = {
     mailbox: 'In the mailbox', understand: 'Reading the ticket', enhance: 'Detailing requirements', plan: 'Writing a plan',
     'plan-review': 'Reviewing the plan', implement: 'Building the fix', 'code-review': 'Reviewing the code', 'draft-pr': 'Opening a draft PR',
