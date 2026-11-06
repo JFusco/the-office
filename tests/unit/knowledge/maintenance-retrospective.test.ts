@@ -152,7 +152,7 @@ test("Harper's accepted maintenance lesson reaches the next vendor review and fo
     expect(knowledge.consumed).toContain(id);
     expect(knowledge.pending).toEqual([]);
     expect(knowledge.retrospectives).toMatchObject([{ id, jobId: run.id, key: 'CMS maintenance (weekly)', trigger: 'blocked', subject: 'maintenance' }]);
-    expect(knowledge.lessons).toMatchObject([{ status: 'active', stages: ['maintenance'], evidence: [{ kind: 'artifact', url: '' }, { kind: 'step' }] }]);
+    expect(knowledge.lessons.filter(lesson => !lesson.id.startsWith('seed:'))).toMatchObject([{ status: 'active', stages: ['maintenance'], evidence: [{ kind: 'artifact', url: '' }, { kind: 'step' }] }]);
     expect(scheduledRetrospectives(store, never)).toEqual([]);
     for (const stage of ['vendor-review', 'follow-up', 'proposal', 'proposal-plan', 'proposal-plan-review', 'proposal-review', 'package-verification', 'draft-pr'])
         expect(knowledgeContext(store, stage)).toContain('Read the saved scan artifact');

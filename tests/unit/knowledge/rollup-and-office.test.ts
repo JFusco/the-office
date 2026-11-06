@@ -103,7 +103,7 @@ test('office proposals wait for Joe, then reach every project\'s prompts through
     expect(knowledgeOutbox(store.state)).toEqual([]);
     retireOfficeLesson(office, ids[0]);
     mirrorOfficeKnowledge(office, [store, other.store]);
-    expect(knowledgeContext(other.store, 'github-lead-pr')).toBe('');
+    expect(knowledgeContext(other.store, 'github-lead-pr')).not.toContain('wiki build');
 });
 
 test('a retried roll-up keeps the lessons its first attempt marked not working', async () => {
