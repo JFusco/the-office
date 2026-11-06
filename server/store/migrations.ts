@@ -2,6 +2,7 @@ import type { OfficeProject, OfficeSnapshot, Prerequisite } from '../../src/shar
 import { PROJECTS } from '../office/projects';
 import { visibleTicketTriggerIds, visibleTriggerIds } from '../knowledge/retrospective-triggers';
 import { visibleMaintenanceTriggerIds } from '../knowledge/maintenance-triggers';
+import { seedProjectLessons } from '../knowledge/seeded-lessons';
 export const STATE_VERSION = 1;
 export function resolveProjectLabel(label: string): OfficeProject | undefined {
     const value = label.trim().toLowerCase();
@@ -37,6 +38,7 @@ export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject): 
     knowledge.officeLessons ??= [];
     knowledge.officeProposals ??= [];
     for (const lesson of knowledge.lessons) { lesson.scope ??= 'project'; lesson.recurrences ??= []; }
+    seedProjectLessons(knowledge, project.id);
     for (const goal of state.goals) {
         goal.projectId = project.id;
         goal.mapping = resolveProjectLabel(goal.project)?.id === project.id ? 'mapped' : 'unmapped';

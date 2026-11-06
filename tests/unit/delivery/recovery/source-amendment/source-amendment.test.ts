@@ -428,7 +428,7 @@ test.each(['GH-91', 'GH-100'])('unamended %s retains the categorical held-source
     await adoptCandidate(a.delivery, key, await a.ownership());
     const prompt = a.run.mock.calls[0][1];
     expect(prompt).toContain('For #91 exclude all source-lock acceptance or unrelated drift.');
-    expect(prompt).toContain('For #100 require all eleven source dispositions and three held profile candidates');
+    expect(prompt).not.toContain('For #100');
     expect(prompt).not.toContain('Durable conditional amendment');
     if (key === 'GH-100') expect(childContext.readCandidateChildContext).toHaveBeenCalledWith(a.delivery, a.job, '25868923c5d69a7c98d807f537a3c757f6822431');
 });
