@@ -5,6 +5,7 @@ import { recordCandidateCleanup } from '../candidate/cleanup-status';
 import { workKey, type AssignedIssue, type TicketJob } from '../../../src/shared';
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
+import { likePrefix } from '../../store/like-prefix';
 
 const STOPPED = ['blocked', 'interrupted'];
 
@@ -48,6 +49,6 @@ function needsReconciliation(store: Store, job: TicketJob): boolean {
         || !!store.state.coordination?.requests?.some(r => r.key === job.key && ['queued', 'working'].includes(r.status))
         || !!job.boardUpdates?.some(update => update.status !== 'verified')
         // Its own earlier remote-branch delete is settled by the cleanup's read-back, not here.
-        || !!store.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain') AND id NOT LIKE ?").get(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }), `harness:${job.id}:remove-remote:%`)
+        || !!store.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain') AND id NOT LIKE ? ESCAPE '\\'").get(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }), likePrefix(`harness:${job.id}:remove-remote:`))
         || job.steps.some(step => hasUncertainEffects(step.stage, step.result));
 }
