@@ -1,12 +1,12 @@
 import { expect, test, type Page, type APIRequestContext } from './fixture-test';
+import { setPreferences } from './support';
 
-async function open(page: Page, reduced = false, floor = 'delivery') {
+async function open(page: Page, request: APIRequestContext, reduced = false, floor = 'delivery') {
 
     await page.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' });
-    await page.addInitScript(({ reduced, floor }) => {
-        localStorage.setItem('office.motion', reduced ? 'reduced' : 'full');
-        localStorage.setItem('office.quality', 'low'); localStorage.setItem('office.floor', floor);
-    }, { reduced, floor });
+    // Fixture seeding is not recorded, so the no-write assertions below stay meaningful.
+    await setPreferences(request, { reducedMotion: reduced, quality: 'low' });
+    await page.addInitScript(({ floor }) => { localStorage.setItem('office.floor', floor); }, { floor });
     await page.goto('/');
     await expect(page.locator('canvas')).toBeVisible();
     await expect(page.getByRole('button', { name: floor === 'cto' ? /^Avery, idle,/ : /^Sam, idle,/ })).toBeVisible();
@@ -26,7 +26,7 @@ const point = async (page: Page, name: RegExp) => {
 };
 
 test('a real worker-stage handoff walks without another SSE snapshot or a provider write', async ({ page, request }) => {
-    await open(page);
+    await open(page, request);
     const initial = await point(page, /^Sam, idle,/);
     await handoff(request);
     await expect.poll(async () => {
@@ -41,7 +41,7 @@ test('a real worker-stage handoff walks without another SSE snapshot or a provid
 });
 
 test('reduced motion keeps workers at their desks during a real handoff', async ({ page, request }) => {
-    await open(page, true);
+    await open(page, request, true);
     const initial = await point(page, /^Sam, idle,/);
     await handoff(request); await expect(page.getByRole('button', { name: /^Sam, CEC-102, working,/ })).toBeVisible();
     await page.waitForTimeout(1000);
@@ -51,7 +51,7 @@ test('reduced motion keeps workers at their desks during a real handoff', async 
 
 for (const reduced of [false, true]) {
     test(`working Sam ${reduced ? 'stays still with reduced motion' : 'keeps moving'} after the handoff settles without another snapshot`, async ({ page, request }) => {
-        await open(page, reduced);
+        await open(page, request, reduced);
         const home = await point(page, /^Sam, idle,/);
         await handoff(request);
         await expect(page.getByRole('button', { name: /^Sam, CEC-102, working,/ })).toBeVisible();
@@ -71,7 +71,7 @@ for (const reduced of [false, true]) {
 }
 
 test('Avery occasionally paces on the CTO floor while remaining idle', async ({ page, request }) => {
-    await open(page, false, 'cto');
+    await open(page, request, false, 'cto');
     const initial = await point(page, /^Avery, idle,/);
     await expect.poll(async () => {
         const next = await point(page, /^Avery, idle,/);

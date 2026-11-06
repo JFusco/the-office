@@ -1,5 +1,5 @@
 import { expect, test } from './fixture-test';
-import { evidence } from './support';
+import { evidence, setPreferences } from './support';
 test('Slack confirmations link to verified messages; uncertain deliveries have no success link',async({page,request})=>{
   const state=await(await request.get('/api/office')).json();
   const base={from:'human',to:'pm',ticket:'',actionId:'',body:'Synthetic Slack UI fixture',status:'answered',createdAt:new Date().toISOString(),sessionId:'',recheck:false,error:'',recipients:[],receipts:[]};
@@ -14,10 +14,10 @@ test('Slack confirmations link to verified messages; uncertain deliveries have n
   await page.getByRole('link',{name:'View sent message'}).focus();await expect(page.getByRole('link',{name:'View sent message'})).toBeFocused();
   await page.screenshot({path:evidence('office-slack-ui-fixture.png')});
 });
-test('occasional coffee breaks stay distinct from actual work and stop with reduced motion',async({page})=>{
+test('occasional coffee breaks stay distinct from actual work and stop with reduced motion',async({page,request})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});
-  await page.addInitScript(()=>{localStorage.setItem('office.motion','full');localStorage.setItem('office.quality','low');});
+  await setPreferences(request,{reducedMotion:false,quality:'low'});
   await page.goto('/');const coffee=page.locator('[data-office-life]');await expect(coffee).toContainText('Coffee break',{timeout:25000});await expect(coffee).toContainText('Office life');
   await page.screenshot({path:evidence('office-coffee-break.png')});
-  await page.getByRole('button',{name:'Office settings'}).click();await page.getByLabel('Reduced motion').check();await expect(coffee).toHaveCount(0);await page.keyboard.press('Escape');await expect(page.locator('canvas')).toBeVisible();
+  await page.getByRole('button',{name:'Office settings'}).click();await page.getByLabel('Reduced motion').check();await expect(page.getByLabel('Reduced motion')).toBeChecked();await expect(coffee).toHaveCount(0);await page.keyboard.press('Escape');await expect(page.locator('canvas')).toBeVisible();
 });

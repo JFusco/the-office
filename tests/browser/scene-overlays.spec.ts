@@ -1,9 +1,9 @@
 import { expect, test } from './fixture-test';
-import { evidence } from './support';
+import { evidence, setPreferences } from './support';
 
-test('room labels stay near their desks and arrive from above in screen order', async ({page}) => {
+test('room labels stay near their desks and arrive from above in screen order', async ({page,request}) => {
     await page.emulateMedia({reducedMotion:'no-preference'});
-    await page.addInitScript(()=>{localStorage.setItem('office.motion','full');localStorage.setItem('office.quality','low');localStorage.setItem('office.floor','delivery');});
+    await setPreferences(request,{reducedMotion:false,quality:'low'});await page.addInitScript(()=>{localStorage.setItem('office.floor','delivery');});
     await page.goto('/');
     const label=page.getByRole('button',{name:'DEVELOPMENT Implementation',exact:true});
     await expect(label).toBeVisible();

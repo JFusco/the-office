@@ -1,11 +1,14 @@
 // Deterministic, synthetic Office state for isolated browser tests and screenshots.
 // Nothing here reflects real tickets, people or services; every URL is a fixture.
-import type { Agent, AzureBuild, OfficeSnapshot, ProjectGoal, Role, ServiceHealth, Ticket } from '../../../src/shared';
+import { OFFICE_PREFERENCE_DEFAULTS, type Agent, type AzureBuild, type OfficeConfigSummary, type OfficePreferences, type OfficeSnapshot, type ProjectGoal, type Role, type ServiceHealth, type Ticket } from '../../../src/shared';
 
 export type FixtureState = {
   projects:{id:string;name:string}[];
   snapshots:Record<string,OfficeSnapshot>;
   health:{checkedAt:string;context:string;services:ServiceHealth[]};
+  /** Office-wide: one value stamped onto every project's snapshot. */
+  preferences:OfficePreferences;
+  config:OfficeConfigSummary;
 };
 
 const iso=(now:number,minutesAgo=0)=>new Date(now-minutesAgo*60000).toISOString();
@@ -76,6 +79,8 @@ const goals=(now:number):ProjectGoal[]=>[{id:'goal-1',project:'CEC',title:'Fixtu
 export function createFixtureState(now=Date.now()):FixtureState{
   const snapshots={cec:cec(now),brain:github(now,'brain'),'cms-field-vocabulary':github(now,'cms-field-vocabulary')};
   for(const s of Object.values(snapshots)){s.ctoGoals=goals(now);s.leadershipReports=[{id:'report-1',requestId:'fixture',summary:'Fixture delivery report: one ticket in QA.',ticket:'CEC-102',createdAt:iso(now,200)}];}
-  return {projects:[{id:'cec',name:'CEC'},{id:'brain',name:'Brain'},{id:'cms-field-vocabulary',name:'CMS field vocabulary'}],snapshots,
+  return {projects:[{id:'cec',name:'CEC'},{id:'brain',name:'Brain'},{id:'cms-field-vocabulary',name:'CMS field vocabulary'}],snapshots,preferences:{...OFFICE_PREFERENCE_DEFAULTS},
+    config:{projects:[{id:'cec',name:'CEC',provider:'azure',repository:'fixture-cec',target:'staging',boardName:'CEC Jira board',boardUrl:'https://fixture.example/jira/board'},{id:'brain',name:'Brain',provider:'github',repository:'JFusco/brain',target:'main',boardName:'Brain GitHub board',boardUrl:'https://github.com/users/fixture/projects/8'},{id:'cms-field-vocabulary',name:'CMS field vocabulary',provider:'github',repository:'JFusco/cms-field-vocabulary',target:'main',boardName:null,boardUrl:null}],
+      cec:{site:'https://fixture.example',organization:'https://dev.azure.com/fixture',project:'fixture',repository:'fixture-cec',target:'staging'},holds:[{key:'CEC-108',reason:'Fixture hold: requires an explicit unblock update.'}]},
     health:{checkedAt:iso(now,1),context:'Fixture checks: no real services are contacted.',services:[{id:'github',name:'GitHub',status:'connected',detail:'Fixture account verified.',checkedAt:iso(now,1)},{id:'anthropic',name:'Anthropic · Claude',status:'warning',detail:'Fixture: configured login, no model call made.',checkedAt:iso(now,1),nextStep:'Fixture next step.'},{id:'slack',name:'Slack',status:'unknown',detail:'Fixture: not verified.',checkedAt:iso(now,1)}]}};
 }

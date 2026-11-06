@@ -36,9 +36,12 @@ test('explicit tour is local, animated, and cannot execute real ticket actions',
   await page.keyboard.press('Escape');await page.getByRole('button',{name:'Next step'}).click();await page.getByRole('button',{name:'Next step'}).click();await page.getByRole('button',{name:'Next step'}).click();await expect(page.locator('[data-work-packet]').first()).toBeVisible();await page.screenshot({path:evidence('office-tour.png')});
   await page.getByRole('button',{name:'Back to live'}).click();await expect(page.getByText('ILLUSTRATIVE TOUR',{exact:true})).toHaveCount(0);
 });
-test('settings persist and keyboard focus is visible',async({page})=>{
+test('settings persist and keyboard focus is visible',async({page,request})=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});
   await page.goto('/');await page.getByRole('button',{name:'Office settings'}).click();
   await page.getByLabel('Reduced motion').check();await page.getByLabel('Graphics').selectOption('low');
+  // Office preferences are saved by the service, not the browser.
+  await expect.poll(async()=>{const p=await(await request.get('/api/preferences')).json();return [p.reducedMotion,p.quality];}).toEqual([true,'low']);
   await page.reload();await expect(page.locator('html')).toHaveAttribute('data-motion','reduced');
   await page.getByRole('button',{name:'Office settings'}).click();await expect(page.getByLabel('Graphics')).toHaveValue('low');await expect(page.getByLabel('Reduced motion')).toBeChecked();
   await page.keyboard.press('Escape');await page.keyboard.press('m');await expect(page.getByRole('button',{name:'Close details'})).toBeFocused();

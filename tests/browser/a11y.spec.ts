@@ -72,7 +72,8 @@ test('GitHub project, CTO floor and popovers pass the WCAG 2.2 AA audit',async({
   await page.getByRole('button',{name:'GitHub operations',exact:true}).click();await expect(page.getByRole('heading',{name:'GitHub & Actions'})).toBeVisible();await audit(page,'drawer-github');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:/^Go to Floor 2, CTO Office/}).click();await expect(page.getByRole('heading',{level:1,name:'CTO Office'})).toBeVisible();await audit(page,'cto-floor');
   await page.getByRole('button',{name:/^Open project goals/}).click();await expect(page.getByRole('complementary')).toBeVisible();await audit(page,'drawer-goals');await page.keyboard.press('Escape');
-  for(const [button,name] of [['Office settings','settings'],['Office help','help']] as const){await page.getByRole('button',{name:button,exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await audit(page,name);await page.keyboard.press('Escape');}
+  await page.getByRole('button',{name:'Office settings',exact:true}).click();await expect(page.getByRole('complementary',{name:'Settings'})).toBeVisible();await expect(page.locator('[data-office-config]')).toBeVisible();await audit(page,'settings');await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Office help',exact:true}).click();await expect(page.getByRole('dialog',{name:'Office controls'})).toBeVisible();await audit(page,'help');await page.keyboard.press('Escape');
 });
 test('loading and error states pass the WCAG 2.2 AA audit',async({page})=>{
   let release!:()=>void;const held=new Promise<void>(r=>{release=r;});

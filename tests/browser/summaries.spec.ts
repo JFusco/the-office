@@ -38,7 +38,7 @@ test('agent last report separates its status pill from the summary (UI fixture)'
 test('pickup checkbox is a compact inline control (UI fixture)',async({page,request})=>{
  const state=await(await request.get('/api/office?project=brain')).json();
  await page.route('**/api/office*',r=>r.fulfill({json:state}));await page.route('**/api/events*',r=>r.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
- await page.goto('/');await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+ await page.goto('/');await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:'Office settings'}).click();
  const checkbox=page.getByLabel('Automatically queue work assigned to me');await expect(checkbox).toBeVisible();
  const layout=await checkbox.evaluate(el=>({width:el.getBoundingClientRect().width,direction:getComputedStyle(el.parentElement!).flexDirection,display:getComputedStyle(el.parentElement!).display}));
  expect(layout).toEqual({width:16,direction:'row',display:'flex'});
@@ -49,10 +49,12 @@ test('GitHub drawer spaces notices, timestamps and checkbox text consistently (U
  await page.route('**/api/office*',r=>r.fulfill({json:state}));await page.route('**/api/events*',r=>r.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
  await page.goto('/');await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:'GitHub operations',exact:true}).click();
  const notice=page.locator('[data-github-panel]').getByText(/Another project has a worker assignment/);await expect(notice).toBeVisible();const n=await notice.boundingBox(),stamp=await page.locator('[data-github-panel] > p').last().boundingBox();expect(stamp!.y-(n!.y+n!.height)).toBeGreaterThanOrEqual(14);
- const row=page.getByLabel('Automatically queue work assigned to me');await row.scrollIntoViewIfNeeded();const input=await row.boundingBox(),label=await row.locator('..').locator('span').boundingBox();expect(label!.x-(input!.x+input!.width)).toBeGreaterThanOrEqual(10);expect(Math.abs(input!.y-label!.y)).toBeLessThanOrEqual(3);
  await page.screenshot({path:evidence('office-github-panel-spacing.png')});
+ // Checkbox rows now live in Settings; the spacing rule still applies there.
+ await page.keyboard.press('Escape');await page.getByRole('button',{name:'Office settings'}).click();
+ const row=page.getByLabel('Automatically queue work assigned to me');await row.scrollIntoViewIfNeeded();const input=await row.boundingBox(),label=await row.locator('..').locator('span').boundingBox();expect(label!.x-(input!.x+input!.width)).toBeGreaterThanOrEqual(10);expect(Math.abs(input!.y-label!.y)).toBeLessThanOrEqual(3);
 });
-test('inbox opens with the exact queued tickets above settings, with no long-link overflow (UI fixture)',async({page,request})=>{
+test('inbox opens with the exact queued tickets above checkpoint status, with no long-link overflow (UI fixture)',async({page,request})=>{
  const state=await(await request.get('/api/office?project=brain')).json();state.coordination.listener.reviews=[{id:'first',key:'GH-70',summary:'Add Shopify documentation coverage',status:'queued',queuedAt:'2026-10-28T12:00Z',workRequested:'manual'},{id:'second',key:'GH-71',summary:'Add Umbraco documentation coverage',status:'queued',queuedAt:'2026-10-28T13:00Z'}];
  state.coordination.notices={...state.coordination.notices,entries:[{id:'long',key:'GH-261',status:'sent',detail:'https://verndale.slack.com/archives/D1Z7SSZQ9/p'+ '1793212166310519'.repeat(20)}]};
  await page.route('**/api/office*',r=>r.fulfill({json:state}));await page.route('**/api/events*',r=>r.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
@@ -68,7 +70,7 @@ test('settings show styled save success and failure beside the submitted form (U
  const state=await(await request.get('/api/office?project=brain')).json();
  await page.route('**/api/office*',r=>r.fulfill({json:state}));await page.route('**/api/events*',r=>r.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
  let fail=false;await page.route('**/api/commands*',r=>r.fulfill({status:fail?500:200,json:fail?{error:'Settings store is unavailable'}:{accepted:true}}));
- await page.goto('/');await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+ await page.goto('/');await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:'Office settings'}).click();
  await page.getByRole('button',{name:'Save pickup rule',exact:true}).click();const feedback=page.locator('[data-save-feedback]');await expect(feedback).toHaveAttribute('data-save-feedback','success');await expect(feedback).toContainText('Pickup rule saved.');
  fail=true;await page.getByRole('button',{name:'Save pickup rule',exact:true}).click();await expect(feedback).toHaveAttribute('data-save-feedback','error');await expect(feedback).toHaveAttribute('role','alert');await expect(feedback).toContainText('Settings store is unavailable');
  await page.screenshot({path:evidence('office-save-feedback.png')});

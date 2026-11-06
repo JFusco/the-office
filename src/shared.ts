@@ -810,7 +810,27 @@ export interface DeliveryRequest {
     error: string;
     intakeStatus?: string;
 }
+/** Office-wide display and interaction preferences, stored by the local service. */
+export interface OfficePreferences {
+    quality: 'high' | 'low';
+    reducedMotion: boolean;
+    keyboardShortcuts: boolean;
+    deliveryToasts: boolean;
+    coffeeBreaks: boolean;
+    revision: number;
+}
+export type OfficePreferencesPatch = Partial<Omit<OfficePreferences, 'revision'>>;
+export const OFFICE_PREFERENCE_DEFAULTS: OfficePreferences = { quality: 'high', reducedMotion: false, keyboardShortcuts: true, deliveryToasts: true, coffeeBreaks: true, revision: 0 };
+/** Preference responses carry the service identity so a client can scope revision ordering. */
+export type OfficePreferencesResponse = OfficePreferences & { serviceInstanceId: string };
+/** Read-only public projection of the effective office configuration. */
+export interface OfficeConfigSummary {
+    projects: { id: string; name: string; provider: 'azure' | 'github'; repository: string; target: string; boardName: string | null; boardUrl: string | null }[];
+    cec: { site: string; organization: string; project: string; repository: string; target: string };
+    holds: { key: string; reason: string }[];
+}
 export interface OfficeSnapshot {
+    preferences?: OfficePreferences;
     features?: import('./contracts/features').Feature[];
     liveAnchor?: import('./contracts/timing').LiveAnchor;
     timerStatus?: 'live' | 'last-confirmed';

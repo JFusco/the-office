@@ -6,14 +6,17 @@ test('project pickup, Slack and time settings save through the real API and surv
  // never authorize an external send or worker in this disabled coordination state.
  const initial=await(await request.get('/api/office?project=brain')).json();
  test.skip(initial.coordination?.enabled!==false,'Requires dispatch-disabled isolated server');
- await page.goto('/');await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+ await page.goto('/');await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:'Office settings'}).click();
  await page.getByRole('combobox',{name:'Pickup status',exact:true}).fill('Approved');await page.getByRole('button',{name:'Save pickup rule',exact:true}).click();
  await expect.poll(async()=> (await(await request.get('/api/office?project=brain')).json()).coordination.pickup.status).toBe('Approved');
  await page.getByLabel('Slack workspace',{exact:true}).fill('Fixture workspace');await page.getByLabel('Notify people when a watched PR merges',{exact:true}).check();await page.getByRole('button',{name:'Save Slack notifications',exact:true}).click();
  await expect.poll(async()=> (await(await request.get('/api/office?project=brain')).json()).coordination.notices.policy.workspace).toBe('Fixture workspace');
  await page.getByLabel('Log measured Office work as my time',{exact:true}).uncheck();await page.getByRole('button',{name:'Save time settings',exact:true}).click();
  await expect.poll(async()=> (await(await request.get('/api/office?project=brain')).json()).coordination.time.enabled).toBe(false);
- await page.reload();await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await expect(page.getByRole('combobox',{name:'Pickup status',exact:true})).toHaveValue('Approved');await expect(page.getByLabel('Slack workspace',{exact:true})).toHaveValue('Fixture workspace');await expect(page.getByLabel('Log measured Office work as my time',{exact:true})).not.toBeChecked();
+ // An unsaved draft is discarded when another project is viewed; returning shows this project's saved values.
+ await page.getByRole('combobox',{name:'Pickup status',exact:true}).fill('Unsaved draft');await page.getByLabel('Office project').selectOption('cec');await page.getByRole('button',{name:'Office settings'}).click();await expect(page.getByRole('combobox',{name:'Pickup status',exact:true})).not.toHaveValue('Approved');await page.keyboard.press('Escape');
+ await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:'Office settings'}).click();await expect(page.getByRole('combobox',{name:'Pickup status',exact:true})).toHaveValue('Approved');
+ await page.reload();await page.getByRole('button',{name:'Office settings'}).click();await expect(page.getByRole('combobox',{name:'Pickup status',exact:true})).toHaveValue('Approved');await expect(page.getByLabel('Slack workspace',{exact:true})).toHaveValue('Fixture workspace');await expect(page.getByLabel('Log measured Office work as my time',{exact:true})).not.toBeChecked();
  const cec=await(await request.get('/api/office?project=cec')).json();expect(cec.coordination?.pickup?.status).not.toBe('Approved');
  await page.screenshot({path:evidence('office-coordination-settings.png')});
 });

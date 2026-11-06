@@ -12,7 +12,7 @@ The Office UI uses **Tailwind CSS 4** (`tailwindcss` and `@tailwindcss/vite`, pi
 | `src/tokens/layout.css` | 4px spacing base (`--spacing: 4px`), named shell/scene dimensions (`h-topbar`, `w-drawer`, `max-w-bubble` …) and breakpoints. |
 | `src/tokens/effects.css` | Radii, shadows (colors from tint tokens), blur, motion timing, animations, and the `reduce-motion:` variant. |
 | `src/tokens/scene-colors.ts` | Names the CSS tokens used by Three.js materials, lights and the canvas-drawn operations screen. |
-| `src/ui/` | Small shared pieces: `Button`, `IconButton`, `Tag`, `StatusDot`, `Select`, `TextLink`, `Notice`, `Section`, `PanelTitle`, `SectionTitle`, `Card`, decorative icon wrappers, and shared class strings (`interactive`, `focusRing`, `field`, `checkbox`, …). |
+| `src/ui/` | Small shared pieces: `Button`, `IconButton`, `Tag`, `StatusDot`, `Select`, `TextLink`, `Notice`, `Section`, `PanelTitle`, `SectionTitle`, `Card`, `CheckField`, decorative icon wrappers, and shared class strings (`interactive`, `focusRing`, `field`, `checkbox`, and the settings compositions `inputField`, `selectField`, `fieldLabel`, …). |
 
 Utility tokens use `@theme`; values that should not generate utilities stay in `:root`. Import order in `style.css` is the ownership order.
 
@@ -27,7 +27,7 @@ Utility tokens use `@theme`; values that should not generate utilities stay in `
 - **Motion:** `reduce-motion:` applies under the OS preference *or* the Office "Reduced motion" setting (`data-motion="reduced"` on `<html>`). Motion animations also receive the `reduced` prop.
 - **Inline styles:** none in source. Motion writes transforms/opacity and Drei writes overlay positions inside their libraries; those are the only runtime styles.
 - **Scene colors:** `sceneColors()` reads the CSS tokens once and caches them. Values are sRGB CSS colors, so three.js color management and the canvas texture's `SRGBColorSpace` behave as before. Never call it per frame.
-- **Semantics:** native buttons for actions, links for navigation, `details/summary` disclosures, labeled regions. The inspector is a non-modal `aside`; settings/help are named non-modal dialogs that take focus on open and return it on close. Icons are decorative (`aria-hidden`); status dots always pair with text.
+- **Semantics:** native buttons for actions, links for navigation, `details/summary` disclosures, labeled regions. The inspector, including Settings, is a named non-modal aside; help is a named non-modal dialog. Both take focus on open and return it on close; Settings returns focus to the gear. Icons are decorative (`aria-hidden`); status dots always pair with text.
 
 `tests/unit/ui/ui-source-guard.test.ts` enforces the color, selector, inline-style, transition and class-construction rules. The file ownership/import table is a documentation convention, not an exact filename-count assertion; historical component names are not a styling oracle. The source guard also verifies every declared scene token exists in CSS. `tests/unit/ui/scene-colors.test.ts` checks cached, trimmed resolution and recovery from a missing token without inspecting implementation text. Browser tests use roles, names or `data-*` hooks, never styling classes.
 

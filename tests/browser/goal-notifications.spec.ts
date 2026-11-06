@@ -9,7 +9,7 @@ test('goal completion DM settings use the verified recipient and stay separate f
     await page.route('**/api/events*', route => route.fulfill({ contentType: 'text/event-stream', body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` }));
     let submitted: any;
     await page.route('**/api/commands*', async route => { submitted = route.request().postDataJSON(); await route.fulfill({ json: { ok: true } }); });
-    await page.goto('/'); await page.getByRole('button', { name: /^Open PM mailbox,/ }).click();
+    await page.goto('/'); await page.getByRole('button', { name: 'Office settings' }).click();
     await expect(page.getByRole('combobox', { name: 'Goal completion recipient' })).toHaveValue('TFIXTURE:UFIXTURE');
     await page.getByLabel('Send Avery’s Slack DM when a goal is completed', { exact: true }).check();
     await page.getByRole('button', { name: 'Save goal notifications', exact: true }).click();

@@ -1,8 +1,9 @@
 import { test, expect } from './fixture-test';
+import { setPreferences } from './support';
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, request }) => {
 
-    await page.addInitScript(() => { localStorage.setItem('office.motion', 'reduced'); localStorage.setItem('office.floor', 'delivery'); });
+    await setPreferences(request, { reducedMotion: true }); await page.addInitScript(() => { localStorage.setItem('office.floor', 'delivery'); });
 });
 test('discovery drafts survive reload and approval submits the displayed plan and ticket manifest', async ({ page, request }) => {
     await page.goto('/');
