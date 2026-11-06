@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixture-test';
 import { evidence } from './support';
 test('Slack confirmations link to verified messages; uncertain deliveries have no success link',async({page,request})=>{
   const state=await(await request.get('/api/office')).json();

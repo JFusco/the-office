@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './fixture-test';
 import { evidence } from './support';
 test('outbox shows an explicit action and keeps evidence collapsed; mailbox counts queued reviews (UI fixture)',async({page,request})=>{
  const state=await(await request.get('/api/office?project=brain')).json();

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixture-test';
 import { evidence, fixtureMode } from './support';
 
 test('hidden phrases party for two minutes and keep cast names until reload', async ({ page }) => {
@@ -50,7 +50,7 @@ test('typing in chat is untouched and reduced motion still allows the hidden cas
 
 test('cast names stay consistent in generated drawer and chat copy', async ({ page, request }) => {
   test.skip(!fixtureMode, 'Requires empty synthetic conversation history');
-  await request.get('/__fixture/reset');
+
   await request.post('/__fixture/snapshot', { data: { messages: [] } });
   await page.goto('/');
   await expect(page.locator('[data-scene-label="agent"]').first()).toBeVisible();

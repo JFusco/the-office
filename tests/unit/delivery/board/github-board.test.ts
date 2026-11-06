@@ -2,10 +2,12 @@ import { afterEach, expect, test } from 'vitest';
 import { Store } from '../../../../server/store/store';
 import { projectById } from '../../../../server/office/projects';
 import { GitHubMonitor } from '../../../../server/github/github';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 const stores:Store[]=[];
-afterEach(()=>stores.splice(0).forEach(s=>s.close()));
-function setup(){const store=new Store(':memory:',projectById('brain'),'/tmp/office-board-fixture');stores.push(store);return store;}
+afterEach(()=>stores.splice(0).forEach(s=>{s.close();rmSync(s.dataRoot,{recursive:true,force:true});}));
+function setup(){const root=mkdtempSync(join(process.env.OFFICE_DATA_ROOT!,'board-'));const store=new Store(':memory:',projectById('brain'),root);stores.push(store);return store;}
 function page(number:number,next=false){return JSON.stringify({data:{user:{projectV2:{title:'Brain fixture',url:'https://github.com/users/JFusco/projects/8',shortDescription:'Synthetic board',readme:'Fixture README',fields:{nodes:[{name:'Status',options:[{name:'Backlog'},{name:'Ready'}]}],pageInfo:{hasNextPage:false}},items:{nodes:[{id:`item-${number}`,content:{number,title:`Fixture ${number}`,url:`https://github.com/JFusco/brain/issues/${number}`,state:'OPEN',repository:{nameWithOwner:'JFusco/brain'}},fieldValues:{nodes:[{name:'Ready',field:{name:'Status'}}],pageInfo:{hasNextPage:false}}}],pageInfo:{hasNextPage:next,endCursor:next?'page-2':null}}}}}});}
 test('Brain project reader collects all cards and only uses read queries against project 8',async()=>{
   const store=setup(),calls:string[][]=[];

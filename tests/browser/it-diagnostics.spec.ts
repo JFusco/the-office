@@ -1,4 +1,4 @@
-import {expect,test} from '@playwright/test';
+import {expect,test} from './fixture-test';
 
 test('current IT diagnostics do not repeat historical findings and expire when refresh fails',async({page,request})=>{
  const now=Date.now(),s=await(await request.get('/api/office?project=cec')).json();

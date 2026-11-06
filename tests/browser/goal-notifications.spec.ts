@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixture-test';
 import { evidence } from './support';
 
 test('goal completion DM settings use the verified recipient and stay separate from merge notices (UI fixture)', async ({ page, request }) => {
-    await request.post('/__fixture/reset');
+
     const state = await (await request.get('/api/office?project=cec')).json();
     state.coordination.notices.policy.goals = { enabled: false, enabledAt: '', version: 'fixture', targetId: 'UFIXTURE', targetName: 'Fixture owner', workspaceId: 'TFIXTURE' };
     await page.route('**/api/office*', route => route.fulfill({ json: state }));

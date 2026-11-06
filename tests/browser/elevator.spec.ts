@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixture-test';
 
 for(const busy of [false,true])test(`doors paint closed before switching and finish opening${busy?' after a slow frame':''}`,async({page})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});

@@ -1,6 +1,40 @@
-import { expect, test } from 'vitest';
-import { command } from '../../../server/workers/process';
+import { afterEach, expect, test } from 'vitest';
+import { command as execute } from '../../../server/workers/process';
 import { temporaryReadFailure } from '../../../server/scheduling/read-retries';
+function deadline<T>(promise:Promise<T>,label:string,ms=2000):Promise<T>{
+    let timer:ReturnType<typeof setTimeout>;
+    return Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error(`${label} timed out`)),ms);})]).finally(()=>clearTimeout(timer));
+}
+const owned:{pid:number;controller:AbortController;settled:Promise<unknown>}[]=[];
+function command(program:string,args:string[],options:NonNullable<Parameters<typeof execute>[2]>={}){
+    const controller=new AbortController();
+    const resource={pid:0,controller,settled:Promise.resolve() as Promise<unknown>};
+    owned.push(resource);
+    const run=execute(program,args,{timeout:7500,...options,signal:options.signal?AbortSignal.any([controller.signal,options.signal]):controller.signal,onSpawn:pid=>{resource.pid=pid;options.onSpawn?.(pid);}});
+    resource.settled=run.catch(()=>{});
+    return run;
+}
+function alive(pid:number){try{process.kill(-pid,0);return true;}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return false;throw error;}}
+afterEach(async()=>{
+    const results=await Promise.allSettled(owned.splice(0).map(async resource=>{
+        resource.controller.abort();
+        if(resource.pid){
+            for(const signal of ['SIGTERM','SIGKILL'] as const){
+                if(!alive(resource.pid))break;
+                process.kill(-resource.pid,signal);
+                const until=Date.now()+500;
+                while(alive(resource.pid)&&Date.now()<until)await new Promise(r=>setTimeout(r,25));
+            }
+            if(alive(resource.pid))throw new Error(`Owned worker group ${resource.pid} survived cleanup`);
+        }
+        await deadline(resource.settled,'worker settlement after cleanup');
+    }));
+    const failures=results.filter(result=>result.status==='rejected');
+    if(failures.length)throw new AggregateError(failures.map(result=>result.reason),'Worker fixture cleanup failed');
+});
+async function waitForReady(observed:Promise<void>,run:Promise<string>){
+    await deadline(Promise.race([observed,run.then(()=>{throw new Error('Worker exited before readiness');})]),'worker readiness');
+}
 test('timed-out read commands are safely retryable while unknown writer outcomes stay guarded', async () => {
     for (const readOnly of [true, false]) {
         let message = '';
@@ -41,7 +75,7 @@ test('cancellation stays active during descendant cleanup and does not release c
     const child="process.on('SIGTERM',()=>{});console.log('ready');setInterval(()=>{},1000)";
     const parent=`const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:['ignore','pipe','ignore']});child.unref();child.stdout.once('data',()=>{console.log(child.pid);process.exit(0);});`;
     const run=command(process.execPath,['-e',parent],{readOnly:true,signal:controller.signal,onSpawn:pid=>{leader=pid;},onLine:()=>ready()});
-    void run.then(()=>{settled=true;},()=>{settled=true;});await observed;controller.abort();
+    void run.then(()=>{settled=true;},()=>{settled=true;});await waitForReady(observed,run);controller.abort();
     await new Promise(resolve=>setTimeout(resolve,100));expect(settled).toBe(false);
     await expect(run).rejects.toThrow('Worker paused');expect(()=>process.kill(-leader,0)).toThrow();
 },10000);
@@ -60,7 +94,7 @@ test('straggler opt-in never converts a nonzero exit, timeout or cancellation in
     const child="process.on('SIGTERM',()=>{});console.log('ready');setInterval(()=>{},1000)";
     const parent=`const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:['ignore','pipe','ignore']});child.unref();child.stdout.once('data',()=>{console.log(child.pid);process.exit(0);});`;
     const run=command(process.execPath,['-e',parent],{terminateStragglers:true,signal:controller.signal,onSpawn:pid=>{leader=pid;},onLine:()=>ready()});
-    void run.then(()=>{settled=true;},()=>{settled=true;});await observed;controller.abort();
+    void run.then(()=>{settled=true;},()=>{settled=true;});await waitForReady(observed,run);controller.abort();
     await new Promise(resolve=>setTimeout(resolve,100));expect(settled).toBe(false);
     await expect(run).rejects.toThrow('Worker paused');expect(()=>process.kill(-leader,0)).toThrow();
 },15000);
