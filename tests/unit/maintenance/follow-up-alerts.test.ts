@@ -18,29 +18,31 @@ function fixture() {
     store.state.coordination.checkpoints = [2, 3].map(day => ({ id: `checkpoint-${day}`, date: `2026-11-0${day}`, runId: `run-${day}`, status: 'blocked', detail: `Source read denied on November ${day}` })) as any;
     return store;
 }
-test('vendor source failures stay with Morgan instead of producing human or duplicate checkpoint actions', () => {
+test('one vendor source failure stays with Morgan; the second in a row reaches Joe without duplicate checkpoint actions', () => {
     const store = fixture(), state = store.state;
     const history = structuredClone({ runs: state.maintenance!.runs, checkpoints: state.coordination!.checkpoints });
     state.outbox = state.coordination!.checkpoints.map(c => ({ id: `checkpoint:${c.id}`, title: 'Daily checkpoint needs follow-up', detail: c.detail, status: 'open', role: 'pm', ticket: '', url: '', createdAt: '', updatedAt: '' }));
     store.emit('test', 'Refresh alerts');
-    expect(state.outbox.filter(a => a.status === 'open')).toEqual([]);
+    expect(state.outbox.filter(a => a.status === 'open').map(a => a.id)).toEqual(['maintenance:run-3']);
     expect(state.outbox.filter(a => a.id.startsWith('checkpoint:')).every(a => a.status === 'resolved')).toBe(true);
     expect({ runs: state.maintenance!.runs, checkpoints: state.coordination!.checkpoints }).toEqual(history);
     expect(state.maintenance!.runs.every(run => maintenanceNeedsFollowup(state, run))).toBe(true);
+    expect(projectOutbox(state).filter(a => a.status === 'open').map(a => a.id)).toEqual(['maintenance:run-3']);
+    state.maintenance!.runs.splice(1, 1); state.coordination!.checkpoints.splice(1, 1);
     expect(projectOutbox(state).filter(a => a.status === 'open')).toHaveLength(0);
 });
 test('an independent checkpoint failure or repair follow-up is still visible', () => {
     const state = fixture().state;
     state.coordination!.checkpoints[0].runId = 'missing-run';
     state.coordination!.checkpoints[1].repairResume = { needsFollowup: true } as any;
-    expect(projectOutbox(state).filter(a => a.status === 'open')).toHaveLength(2);
+    expect(projectOutbox(state).filter(a => a.status === 'open').map(a => a.id).sort()).toEqual(['checkpoint:checkpoint-2', 'checkpoint:checkpoint-3', 'maintenance:run-3']);
 });
 test('only successful later maintenance resolves old source failures', () => {
     const state = fixture().state;
     const later = { id: 'later', requestedAt: '2026-11-04T20:00:00Z', stage: 'vendor-review', status: 'working' } as any;
     state.maintenance!.runs.push(later);
     expect(state.maintenance!.runs.slice(0, 2).every(run => maintenanceNeedsFollowup(state, run))).toBe(true);
-    expect(projectOutbox(state).filter(a => a.status === 'open')).toHaveLength(0);
+    expect(projectOutbox(state).filter(a => a.status === 'open').map(a => a.id)).toEqual(['maintenance:run-3']);
     later.status = 'completed'; later.stage = 'complete';
     state.coordination!.checkpoints.push({ id: 'later-checkpoint', date: '2026-11-04', status: 'completed', runId: 'later' } as any);
     expect(projectOutbox(state).filter(a => a.status === 'open')).toEqual([]);
