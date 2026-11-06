@@ -14,11 +14,12 @@ const labels:Record<string,string>={
   'package-verification':'Verifying the CMS package','maintenance-readback':'Reading back previous maintenance',
   'maintenance-blocker':'Investigating the catalog blocker and routing its repair',
   'closeout-readback':'Verifying completed closeout and rejected attempts',
+  retrospective:'Writing a retrospective',
   'slack-send':'Sending your Slack message','slack-verify':'Verifying Slack delivery',
 };
 export function workerActivity(role:Role,stage:string,project:string,ticket=''){
   const label=stage==='conversation'
-    ?({analyst:'Researching your feature',pm:'Coordinating your request',cto:'Reviewing goals and priorities',developer:'Reviewing your development request',lead:'Reviewing your changes',qa:'Reviewing verification needs',it:'Checking connections and recovery'})[role]
+    ?({analyst:'Researching your feature',pm:'Coordinating your request',cto:'Reviewing goals and priorities',developer:'Reviewing your development request',lead:'Reviewing your changes',qa:'Reviewing verification needs',it:'Checking connections and recovery',knowledge:'Reviewing what the team learned'})[role]
     :labels[stage]||(Object.hasOwn(STAGE_LABELS,stage)?STAGE_LABELS[stage as Stage]:'Working on your request');
   return `${ticket||project} · ${label}`;
 }

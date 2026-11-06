@@ -50,6 +50,8 @@ createServer(async(req,res)=>{
         if(data.action==='configure-notifications')c.notices={policy:{...c.notices!.policy,...data.notifications},entries:c.notices!.entries};
         if(data.action==='configure-time')c.time={...c.time!,...data.time};
         if(data.action==='configure-merges')c.merges={enabled:!!data.merges?.enabled,authorizedAt:new Date().toISOString()};
+        if(data.action==='configure-knowledge'&&s.knowledge)s.knowledge={...s.knowledge,enabled:!!data.knowledge?.enabled};
+        if(data.action==='retire-lesson'&&s.knowledge)s.knowledge={...s.knowledge,lessons:s.knowledge.lessons.map(l=>l.id===data.lessonId?{...l,status:'retired' as const,retiredAt:new Date().toISOString(),retiredBy:'human' as const}:l)};
         push(project);return json(res,{accepted:true,action:data.action},202);
       }
       if(url.pathname==='/api/messages')return json(res,{accepted:true,id:data.id},202);

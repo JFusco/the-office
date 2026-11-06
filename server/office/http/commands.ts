@@ -10,6 +10,7 @@ import { validTicket } from '../projects';
 import { CEC } from '../config';
 import type { ServiceContext, RequestContext } from './context';
 import { json } from './responses';
+import { configureKnowledge, retireLesson } from '../../knowledge/lesson-commands';
 
 /** POST /api/commands: operator and harness commands for one project. */
 export async function commandRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
@@ -22,7 +23,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, discovery, closeoutSupervisionProof } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, discovery, closeoutSupervisionProof, lessonId, knowledge } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
@@ -78,6 +79,8 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 store.emit('merge-policy', merges.enabled ? 'Sam may merge linked issue PRs after current-head review and required checks, then Morgan closes out the issue and board.' : 'Automatic PR merging disabled.', 'pm');
                 break;
             }
+            case 'retire-lesson': retireLesson(store, lessonId); break;
+            case 'configure-knowledge': configureKnowledge(store, knowledge); break;
             case 'configure-pickup':
                 coordinator!.configurePickup(pickup);
                 break;

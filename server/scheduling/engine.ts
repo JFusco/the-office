@@ -27,6 +27,7 @@ export class Engine {
     agents: Agents;
     ctoAgents: Agents;
     itAgents: Agents;
+    knowledgeAgents: Agents;
     azure: AzureMonitor;
     github: GitHubMonitor;
     maintenance: GitHubMaintenance;
@@ -42,7 +43,7 @@ export class Engine {
             this.capacity.lane = '';
     }
     heartbeat: ReturnType<typeof setInterval> | undefined;
-    constructor(public store: Store, public capacity: OfficeCapacity = officeCapacity(), ctoCapacity: OfficeCapacity = officeCapacity(), itCapacity: OfficeCapacity = officeCapacity()) { this.jira = new JiraOperations(store); this.itAgents = new Agents(store, command, itCapacity); this.ctoAgents = new Agents(store, command, ctoCapacity); this.agents = new Agents(store, command, capacity); this.features = new FeatureWorkflow(store, this.agents); this.azure = new AzureMonitor(store); this.github = new GitHubMonitor(store); this.maintenance = store.project.id === 'brain' ? new BrainMaintenance(store, this.agents) : new GitHubMaintenance(store, this.agents); }
+    constructor(public store: Store, public capacity: OfficeCapacity = officeCapacity(), ctoCapacity: OfficeCapacity = officeCapacity(), itCapacity: OfficeCapacity = officeCapacity(), knowledgeCapacity: OfficeCapacity = officeCapacity()) { this.knowledgeAgents = new Agents(store, command, knowledgeCapacity); this.jira = new JiraOperations(store); this.itAgents = new Agents(store, command, itCapacity); this.ctoAgents = new Agents(store, command, ctoCapacity); this.agents = new Agents(store, command, capacity); this.features = new FeatureWorkflow(store, this.agents); this.azure = new AzureMonitor(store); this.github = new GitHubMonitor(store); this.maintenance = store.project.id === 'brain' ? new BrainMaintenance(store, this.agents) : new GitHubMaintenance(store, this.agents); }
     requestMail(scheduled = false) { return requestMail.call(this, scheduled); }
     async drainMail() { return drainMail.call(this); }
     async checkMail(scheduled = false) { return checkMail.call(this, scheduled); }
@@ -55,7 +56,7 @@ export class Engine {
     requestMaintenance(scheduled = false) { return requestMaintenance.call(this, scheduled); }
     async reconcileMaintenance(id: string) { return reconcileMaintenance.call(this, id); }
     async drainMaintenance(selectedId?: string) { return drainMaintenance.call(this, selectedId); }
-    pause() { this.store.state.paused = true; this.features.pause(); this.agents.pause(); this.ctoAgents.pause(); this.itAgents.pause(); this.store.emit('paused', 'Office paused. Running workers are stopping; external effects require reconciliation.'); }
+    pause() { this.store.state.paused = true; this.features.pause(); this.agents.pause(); this.ctoAgents.pause(); this.itAgents.pause(); this.knowledgeAgents.pause(); this.store.emit('paused', 'Office paused. Running workers are stopping; external effects require reconciliation.'); }
     unpause() { this.store.state.paused = false; this.store.state.draining = false; this.store.emit('resumed', 'Office resumed. Existing blocked work remains available for deliberate reconciliation.'); }
     async run(key: string) { return run.call(this, key); }
     async observe() { return observe.call(this); }

@@ -18,8 +18,8 @@ export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTic
 const Party=createContext(false);
 type Vec=[number,number,number];
 type SceneAgent=Agent;
-const TEAM_COLOR={pm:'teamPm',developer:'teamDeveloper',lead:'teamLead',qa:'teamQa',cto:'teamCto',it:'teamIt',analyst:'teamPm'} as const;
-const TEAM_SWATCH={pm:'bg-team-pm',developer:'bg-team-developer',lead:'bg-team-lead',qa:'bg-team-qa',cto:'bg-team-cto',it:'bg-team-it',analyst:'bg-team-pm',ideas:'bg-scene-ideas',reports:'bg-scene-reports'};
+const TEAM_COLOR={pm:'teamPm',developer:'teamDeveloper',lead:'teamLead',qa:'teamQa',cto:'teamCto',it:'teamIt',analyst:'teamPm',knowledge:'teamKnowledge'} as const;
+const TEAM_SWATCH={pm:'bg-team-pm',developer:'bg-team-developer',lead:'bg-team-lead',qa:'bg-team-qa',cto:'bg-team-cto',it:'bg-team-it',analyst:'bg-team-pm',knowledge:'bg-team-knowledge',ideas:'bg-scene-ideas',reports:'bg-scene-reports'};
 const sceneLabel=`border ${interactiveScene}`;
 function Box({pos=[0,0,0],size=[1,1,1],color,radius=0.03,...props}:{pos?:Vec;size?:Vec;color:string;radius?:number;[key:string]:any}){
   return <mesh position={pos} castShadow receiveShadow {...props}><boxGeometry args={size}/><meshStandardMaterial color={color} roughness={0.72}/></mesh>;
@@ -109,6 +109,11 @@ function Avatar({agent,snapshot,reduced,onSelect}:{agent:SceneAgent;snapshot:Off
 function ITDesk({snapshot,reduced,onSelect,name}:{snapshot:OfficeSnapshot;reduced:boolean;onSelect:()=>void;name:string}){
   const agent={...itAgent(snapshot),name:snapshot.agents.find(a=>a.id==='it')?.name||name};
   return <><Desk position={SPOTS.it} active={agent.activity==='working'} accent={sceneColors().teamIt}/><Avatar key={`${snapshot.mode}:${agent.name}`} agent={agent} snapshot={snapshot} reduced={reduced} onSelect={onSelect}/><RoomLabel position={[1.2,.2,-5.05]} name={`${agent.name.toUpperCase()} · IT SUPPORT`} sub="Connections & recovery" swatch="it" onClick={onSelect}/></>;
+}
+function KnowledgeDesk({snapshot,reduced,onSelect,name}:{snapshot:OfficeSnapshot;reduced:boolean;onSelect:()=>void;name:string}){
+  const agent=snapshot.agents.find(a=>a.id==='knowledge');
+  if(!agent||snapshot.project?.provider!=='github')return null;
+  return <><Desk position={SPOTS.knowledge} active={agent.activity==='working'} accent={sceneColors().teamKnowledge}/><Avatar key={`${snapshot.mode}:${agent.name}`} agent={{...agent,name:agent.name||name}} snapshot={snapshot} reduced={reduced} onSelect={onSelect}/><RoomLabel position={[SPOTS.knowledge[0]-2.6,.2,SPOTS.knowledge[2]+1.1]} name={`${(agent.name||name).toUpperCase()} · KNOWLEDGE`} sub="Lessons & retrospectives" swatch="knowledge" onClick={onSelect}/></>;
 }
 const ROUTES:[Role,Role][]=[['pm','developer'],['developer','lead'],['lead','qa'],['qa','developer'],['qa','pm']];
 function WorkRoutes({snapshot,reduced,onSelect}:{snapshot:OfficeSnapshot;reduced:boolean;onSelect:(s:Selection)=>void}){
@@ -338,6 +343,7 @@ export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,
     <Desk position={[6.6,0,-4.7]} rotation={Math.PI} accent={c.teamQa}/>
     <Desk position={SPOTS.pm} active={snapshot.agents.find(a=>a.id==='pm')?.activity==='working'} accent={c.teamPm}/>
     <ITDesk snapshot={snapshot} name={names.it} reduced={reduced} onSelect={()=>onSelect({kind:'agent',id:'it'})}/>
+    <KnowledgeDesk snapshot={snapshot} name={names.knowledge} reduced={reduced} onSelect={()=>onSelect({kind:'agent',id:'knowledge'})}/>
     <AzureWall snapshot={snapshot} onSelect={()=>onSelect({kind:'azure'})}/>
     <RoomLabel position={[SPOTS.developer[0]-.3,.2,SPOTS.developer[2]+1.85]} name="DEVELOPMENT" sub="Implementation" swatch="developer" onClick={()=>onSelect({kind:'agent',id:'developer'})}/>
     <RoomLabel position={[-3.6,.2,-5.45]} name="DEV LEAD" sub="Plan & code review" swatch="lead" onClick={()=>onSelect({kind:'agent',id:'lead'})}/>
@@ -345,7 +351,7 @@ export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,
     <RoomLabel position={[6.4,.2,5.55]} name="PROJECT MANAGEMENT" sub="Tickets & delivery" swatch="pm" onClick={()=>onSelect({kind:'agent',id:'pm'})}/>
     {/* The review table has no other control, so its label stacks above every other scene label. */}
     <Html position={[0,1.04,0]} center zIndexRange={[31,0]}><button type="button" data-scene-label="meeting" className={cx('min-h-6 rounded-3 border-meeting-label-line bg-meeting-label px-1 py-1 text-5 tracking-caps-sm whitespace-nowrap text-meeting-label-ink hover:border-meeting-label-hover-line hover:bg-meeting-label-hover',sceneLabel)} aria-label="Review table and team handoffs" onClick={()=>onSelect({kind:'meeting'})}>REVIEW TABLE</button></Html>
-    {snapshot.agents.filter(a=>a.id!=='cto'&&a.id!=='it').map(a=><Avatar key={a.id} agent={a} snapshot={snapshot} reduced={reduced} onSelect={()=>onSelect({kind:'agent',id:a.id})}/>)}
+    {snapshot.agents.filter(a=>a.id!=='cto'&&a.id!=='it'&&a.id!=='knowledge').map(a=><Avatar key={a.id} agent={a} snapshot={snapshot} reduced={reduced} onSelect={()=>onSelect({kind:'agent',id:a.id})}/>)}
     <WorkRoutes snapshot={snapshot} reduced={reduced} onSelect={onSelect}/>
     <HumanOutbox snapshot={snapshot} onSelect={()=>onSelect({kind:'outbox'})}/><Mailbox snapshot={snapshot} pmName={pmName} onSelect={()=>onSelect({kind:'mailbox'})} reduced={reduced}/>{!snapshot.tickets.some(t=>t.activity==='working')?<Handoff snapshot={snapshot} reduced={reduced}/>:null}
     </>}</ElevatorStage>

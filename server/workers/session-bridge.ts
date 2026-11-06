@@ -83,7 +83,7 @@ export class SessionBridge {
   const sessions=new Map<string,LiveSession>();
   // Native runtime status is stronger than an open descriptor.
   for(const r of [results[2],results[0],results[1]])if(r.status==='fulfilled')for(const s of r.value)sessions.set(`${s.provider}:${s.id}`,s);
-  for(const store of this.stores())for(const w of store.state.workLog||[])if(w.status==='running')sessions.set(`${w.provider}:${w.sessionId}`,{id:w.sessionId||w.id,provider:'office',cwd:store.project.repo,title:w.task,branch:'',ticket:w.ticket,requestId:w.requestId,status:'active',source:'Office live worker claim'});
+  for(const store of this.stores())for(const w of store.state.workLog||[])if(w.status==='running'&&w.role!=='knowledge')/* Harper is read-only and never owns source. */sessions.set(`${w.provider}:${w.sessionId}`,{id:w.sessionId||w.id,provider:'office',cwd:store.project.repo,title:w.task,branch:'',ticket:w.ticket,requestId:w.requestId,status:'active',source:'Office live worker claim'});
   const stores=this.stores();const directories=[...new Set([...sessions.values()].map(s=>s.cwd).concat(stores.map(s=>s.project.repo)))];
   const commons=new Map<string,string>();await Promise.all(directories.map(async cwd=>{try{commons.set(cwd,(await this.execute('git',['rev-parse','--path-format=absolute','--git-common-dir'],{cwd,timeout:5000})).trim());}catch{/* A non-repository chat has no repository identity. */}}));
   for(const s of sessions.values()){const common=commons.get(s.cwd);s.project=stores.find(store=>resolve(s.cwd)===resolve(store.project.repo)||!!common&&common===commons.get(store.project.repo))?.project.id;}

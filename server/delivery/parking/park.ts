@@ -3,6 +3,7 @@ import { assertMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
+import { recordParked } from '../../knowledge/record-trigger';
 
 export { needsDecision } from './needs-decision';
 
@@ -30,6 +31,7 @@ export async function park(delivery: GitHubDelivery, job: TicketJob, result: Sta
         throw new Error('Decision comment could not be read back');
     await moveLane(store, execute, job, 'Block', guard);
     job.parked.published = true;
+    recordParked(store, job, reason);
     store.emit('delivery-parked', `${job.key}: decision needed — ${reason}`, 'pm', job.key);
     store.save();
 }
