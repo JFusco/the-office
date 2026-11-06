@@ -67,6 +67,27 @@ test('a published park is a human decision and is retained', async () => {
     await a.delivery.observe();
     expect(a.job.status).toBe('blocked');
 });
+test('a PR merged by the owner settles the handoff despite a failed park, recorded effects and a moved head', async () => {
+    const a = fixture();
+    (a.pull as any).merged_by = { login: 'JFusco' };
+    a.pull.head.sha = 'c'.repeat(40);
+    a.job.parked = { stage: 'lead-pr', reason: 'PR #127 is already merged', at: '2026-11-05T23:33:56.097Z', published: false };
+    a.job.detail = 'Error: Issue card is in "done", a human lane; the harness will not move it to Block';
+    a.store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run(
+        `harness:${a.job.id}:park-comment:1`, workKey({ projectId: a.store.project.id, kind: 'delivery', id: a.job.id }), 'verified', '{}');
+    await a.delivery.observe();
+    expect(a.job.status).toBe('cancelled');
+    expect(a.job.parked).toBeUndefined();
+    expect(a.job.detail).toContain('merged by JFusco');
+    expect(a.store.state.outbox.filter(o => o.status === 'open')).toEqual([]);
+});
+test('a PR merged by someone else still needs the strict external read-back', async () => {
+    const a = fixture();
+    (a.pull as any).merged_by = { login: 'someone-else' };
+    a.job.parked = { stage: 'lead-pr', reason: 'Decision needed', at: '2026-11-05T23:33:56.097Z', published: true };
+    await a.delivery.observe();
+    expect(a.job.status).toBe('blocked');
+});
 test.each(['open', 'not-planned', 'wrong-issue', 'unmerged', 'wrong-pr', 'changed-head', 'wrong-target', 'unlinked', 'read-failure', 'race', 'claim-race'])(
     '%s evidence cannot retire the original handoff', async scenario => {
         const a = fixture();
