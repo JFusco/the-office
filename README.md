@@ -53,6 +53,8 @@ Provider observations include open and draft PRs as pending evidence. GitHub pre
 
 **Goal completion messages** under Settings → Project enable Avery’s Slack DMs separately from merge notices. A goal moving to Done queues one short message to the configured verified recipient, including owner acceptance and automatic reviews. Enabling the setting never backfills completed goals; unchanged Done goals do not notify again. Reopened goals and changed settings cancel unsent messages. Delivery uses a durable effect and independent Slack readback; uncertain sends are reconciled, never resent. A project pause also pauses these messages.
 
+**People** (the header people icon, or `P`) has two views of one persona registry, `src/contracts/people.ts`. The Directory lists each employee by department with their manager, live status and model runtime. The Org chart shows reporting lines from Joe through Avery. Each employee's drawer shows who they report to and who reports to them. To add an employee, add a registry entry. The directory, chart and department counts come from the registry, so they need no other change.
+
 The gear opens **Settings**: Office preferences (graphics, reduced motion, keyboard shortcuts, delivery toasts, coffee-break coworkers), the read-only effective `office-config.json`, and the current project's pickup, PR closeout, Slack, goal-message and time settings. Display preferences now belong to the local service and apply to every project and browser; choices made earlier in a single browser must be selected again. The operating system's reduced-motion setting still applies. The bell and PM mailbox show status only.
 
 ## Development and verification

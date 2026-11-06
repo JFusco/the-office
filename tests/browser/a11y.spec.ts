@@ -59,10 +59,11 @@ for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
 }
 test('delivery drawers pass the WCAG 2.2 AA audit',async({page})=>{
   await ready(page);
-  for(const [button,name] of [['Open PM mailbox','mailbox'],['Open your outbox','outbox'],['Chat with Morgan','chat'],['Azure operations','azure'],['Service health','health'],['Visit Riley, QA','agent']] as const){
+  for(const [button,name] of [['Open PM mailbox','mailbox'],['Open your outbox','outbox'],['Chat with Morgan','chat'],['Azure operations','azure'],['Service health','health'],['People','people'],['Visit Riley, QA','agent']] as const){
     await page.getByRole('button',{name:new RegExp(`^${button}`)}).click();await expect(page.getByRole('complementary')).toBeVisible();
     if(name==='outbox')await page.getByRole('button',{name:/CEC-102 needs a test account/}).click();
-    await audit(page,`drawer-${name}`);await page.keyboard.press('Escape');await expect(page.getByRole('complementary')).toHaveCount(0);
+    await audit(page,`drawer-${name}`);
+    if(name==='people'){await page.getByRole('tab',{name:'Org chart'}).click();await expect(page.getByRole('list',{name:'Org chart'})).toBeVisible();await audit(page,'drawer-people-org-chart');await page.getByRole('tab',{name:'Directory'}).click();}await page.keyboard.press('Escape');await expect(page.getByRole('complementary')).toHaveCount(0);
   }
   await page.getByRole('button',{name:/^PM queue \d+:/}).click();await expect(page.getByRole('complementary')).toBeVisible();await audit(page,'drawer-pm-queue');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('button',{name:/CEC-102/}).first().click();

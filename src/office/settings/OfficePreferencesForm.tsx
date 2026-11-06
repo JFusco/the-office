@@ -3,7 +3,7 @@ import { CheckField, Select, fieldLabel, mutedCopy, selectField } from '../../ui
 import { SaveFeedback } from '../SaveFeedback';
 import type { PreferenceFeedback, PreferenceField } from './useOfficePreferences';
 
-const SHORTCUTS = [['M', 'PM mailbox'], ['O', 'Outbox'], ['C', 'Chat'], ['0', 'Reset view'], ['Esc', 'Close details']] as const;
+const SHORTCUTS = [['M', 'PM mailbox'], ['O', 'Outbox'], ['C', 'Chat'], ['P', 'People'], ['0', 'Reset view'], ['Esc', 'Close details']] as const;
 const detail = 'text-11 leading-body text-muted';
 
 /** Office-wide preferences. Each control saves on change; feedback sits beside the changed control. */
@@ -17,7 +17,7 @@ export function OfficePreferencesForm({ preferences, osReduced, pending, feedbac
     <div><CheckField checked={preferences.reducedMotion} disabled={disabled} onChange={e => onChange({ reducedMotion: e.target.checked })}>Reduced motion</CheckField><p className={detail}>Keep the office still.{osReduced ? ' Your system’s reduced-motion setting also keeps it still, whatever this toggle says.' : ''}</p>{status('reducedMotion')}</div>
     <div><CheckField checked={preferences.keyboardShortcuts} disabled={disabled} onChange={e => onChange({ keyboardShortcuts: e.target.checked })}>Keyboard shortcuts</CheckField>
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-8 text-shortcut" data-shortcut-keys>{SHORTCUTS.map(([key, label]) => <span key={key} className="contents"><kbd className="rounded-3 border border-kbd-line bg-kbd px-1 py-0.5 font-mono text-ink">{key}</kbd> {label}</span>)}</div>
-      <p className={detail}>Turns M, O, C and 0 on or off. Escape always closes details.</p>{status('keyboardShortcuts')}</div>
+      <p className={detail}>Turns M, O, C, P and 0 on or off. Escape always closes details.</p>{status('keyboardShortcuts')}</div>
     <div><CheckField checked={preferences.deliveryToasts} disabled={disabled} onChange={e => onChange({ deliveryToasts: e.target.checked })}>Delivery toasts</CheckField><p className={detail}>Brief notifications when a ticket’s delivery state changes. Results of your own actions still appear.</p>{status('deliveryToasts')}</div>
     <div><CheckField checked={preferences.coffeeBreaks} disabled={disabled} onChange={e => onChange({ coffeeBreaks: e.target.checked })}>Coffee-break coworkers</CheckField><p className={detail}>Background coworkers take occasional coffee breaks. They have no tickets or work status.</p>{status('coffeeBreaks')}</div>
   </div>;

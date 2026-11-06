@@ -67,6 +67,7 @@ src/
   leadership/      CTO review and goals
   conversations/   team conversation panel
   health/          service health and IT agent
+  people/          employee directory, org chart and reporting lines (registry: contracts/people.ts)
 ```
 
 ## Harness and agent boundaries
