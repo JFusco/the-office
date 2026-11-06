@@ -7,13 +7,16 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { Offices } from './scheduling/offices';
-import { DATA, ROOT, PORT } from './office/config';
+import { DATA, ROOT, PORT, CEC, HOLDS } from './office/config';
+import { PROJECTS } from './office/projects';
 import { safeOrigin, sanitize, sanitizeObject } from './office/security';
 import { acquireServiceLock } from './office/service-lock';
 import { json } from './office/http/responses';
 import { apiRoute } from './office/http/api-routes';
 import { commandRoute } from './office/http/commands';
 import { staticRoute } from './office/http/static-files';
+import { preferencesRoute } from './office/http/preferences';
+import { officeConfigRoute } from './office/http/office-config';
 import { startServiceTicks } from './office/service-ticks';
 mkdirSync(DATA, { recursive: true, mode: 0o700 });
 const releaseLock = acquireServiceLock(DATA);
@@ -28,6 +31,7 @@ const built = existsSync(resolve(ROOT, 'dist/index.html')) && process.env.OFFICE
 const vite = built ? null : await createServer({ configFile: resolve(ROOT, 'vite.config.ts'), server: { host: '127.0.0.1', port: PORT + 1, strictPort: true, hmr: { clientPort: PORT + 1 } } });
 if (vite)
     await vite.listen();
+const config = { projects: PROJECTS, cec: CEC, holds: HOLDS };
 function snapshot(project = 'cec') { return sanitizeObject(offices.snapshot(project)); }
 let shutdown = false;
 const server = serve({ hostname: '127.0.0.1', port: PORT,
@@ -36,9 +40,15 @@ const server = serve({ hostname: '127.0.0.1', port: PORT,
             return json({ error: 'Only same-origin local office requests are accepted' }, 403);
         const url = new URL(req.url);
         try {
+            // Office-wide routes run before project resolution: they need no project query.
+            const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, config, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
+            for (const route of [preferencesRoute, officeConfigRoute]) {
+                const response = await route(req, url, service);
+                if (response) return response;
+            }
             const project = url.searchParams.get('project') || offices.entries.keys().next().value || 'cec';
             const { store, engine, conversations, coordinator } = offices.get(project);
-            const context = { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator };
+            const context = { ...service, project, store, engine, conversations, coordinator };
             for (const route of [apiRoute, commandRoute, staticRoute]) {
                 const response = await route(req, url, context);
                 if (response) return response;

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './fixture-test';
+import { setPreferences } from './support';
 async function geometry(page:Page){return page.evaluate(()=>{
   const box=(selector:string)=>{const r=document.querySelector(selector)!.getBoundingClientRect();return [r.x,r.y,r.width,r.height];};
   return {world:box('main'),canvas:box('canvas'),header:box('header'),dock:box('[data-surface=dock]'),scroll:[scrollX,scrollY],width:document.documentElement.scrollWidth};
@@ -9,9 +10,9 @@ async function frames(page:Page){return page.evaluate(async()=>{
   return samples;
 });}
 for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
-  test(`drawer slides both ways without moving the office at ${viewport.width}px`,async({page})=>{
+  test(`drawer slides both ways without moving the office at ${viewport.width}px`,async({page,request})=>{
     await page.setViewportSize(viewport);await page.emulateMedia({reducedMotion:'no-preference'});
-    await page.addInitScript(()=>{localStorage.setItem('office.motion','full');localStorage.setItem('office.quality','low');});
+    await setPreferences(request,{reducedMotion:false,quality:'low'});
     await page.goto('/');await expect(page.locator('canvas')).toBeVisible();await expect(page.getByRole('button',{name:/^PM mailbox,/})).toBeVisible();
     const before=await geometry(page);
     await page.getByRole('button',{name:/^Open PM mailbox,/}).click();const opening=await frames(page);

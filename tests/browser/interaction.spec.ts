@@ -1,52 +1,67 @@
-import { expect, test, type Locator, type Page } from './fixture-test';
-import { evidence } from './support';
-const full=async(page:Page)=>{await page.emulateMedia({reducedMotion:'no-preference'});await page.addInitScript(()=>{localStorage.setItem('office.motion','full');localStorage.setItem('office.quality','low');localStorage.setItem('office.floor','delivery');});};
+import { expect, test, type APIRequestContext, type Locator, type Page } from './fixture-test';
+import { evidence, setPreferences } from './support';
+const full=async(page:Page,request:APIRequestContext)=>{await page.emulateMedia({reducedMotion:'no-preference'});await setPreferences(request,{reducedMotion:false,quality:'low'});await page.addInitScript(()=>{localStorage.setItem('office.floor','delivery');});};
 const ready=async(page:Page)=>{await page.goto('/');await expect(page.locator('canvas')).toBeVisible();await expect(page.getByRole('button',{name:/^PM mailbox,/})).toBeVisible({timeout:30000});};
 const look=(l:Locator)=>l.evaluate(el=>{const s=getComputedStyle(el);return {property:s.transitionProperty,duration:s.transitionDuration,paint:[s.backgroundColor,s.color,s.borderColor,s.outlineColor,s.textDecorationColor,s.filter].join('|')};});
 // Every enabled control in view: links, buttons, form fields, summaries and scene labels.
 const CONTROLS='a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary';
 
-test('every visible enabled control has a scoped 150ms hover/focus transition',async({page})=>{
-  await full(page);await ready(page);
+test('every visible enabled control has a scoped 150ms hover/focus transition',async({page,request})=>{
+  await full(page,request);await ready(page);
   const check=async(label:string)=>{
     const bad=await page.evaluate(selector=>[...document.querySelectorAll<HTMLElement>(selector)].filter(el=>el.checkVisibility({visibilityProperty:true})).map(el=>{const s=getComputedStyle(el);return {name:el.getAttribute('aria-label')||el.textContent?.trim().slice(0,40)||el.tagName,property:s.transitionProperty,duration:s.transitionDuration};}).filter(t=>t.property==='all'||t.property==='none'||!t.duration.split(',').some(d=>d.trim()==='0.15s')),CONTROLS);
     expect(bad,label).toEqual([]);
   };
   await check('overview');
   for(const button of ['Open PM mailbox','Open your outbox','Chat with Morgan','Azure operations']){await page.getByRole('button',{name:new RegExp(`^${button}`)}).click();await expect(page.getByRole('complementary')).toBeVisible();await check(button);await page.keyboard.press('Escape');}
-  await page.getByRole('button',{name:'Office settings'}).click();await check('settings');
+  await page.getByRole('button',{name:'Office settings'}).click();await expect(page.getByRole('complementary',{name:'Settings'})).toBeVisible();await check('settings');
 });
-test('representative controls visibly change on hover and show a keyboard focus ring',async({page})=>{
-  await full(page);await ready(page);
+test('representative controls visibly change on hover and show a keyboard focus ring',async({page,request})=>{
+  await full(page,request);await ready(page);
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
   const drawer=page.getByRole('complementary',{name:'PM mailbox'});
   const targets:[string,Locator][]=[['icon button',page.getByRole('button',{name:'Office help'})],['dock button',page.getByRole('button',{name:/^Open your outbox,/})],['scene label',page.getByRole('button',{name:'DEVELOPMENT Implementation'})],
-    ['project select',page.getByLabel('Office project')],['link',page.getByRole('link',{name:'Open board: CEC Jira board'})],['secondary button',drawer.getByRole('button',{name:'Save pickup rule'})],['summary',drawer.getByText('To Do · 1',{exact:true})],['text field',drawer.getByRole('combobox',{name:'Pickup status'})]];
-  for(const [name,target] of targets){
+    ['project select',page.getByLabel('Office project')],['link',page.getByRole('link',{name:'Open board: CEC Jira board'})],['summary',drawer.getByText('To Do · 1',{exact:true})]];
+  const hovers=async(targets:[string,Locator][])=>{for(const [name,target] of targets){
     await target.scrollIntoViewIfNeeded();await page.mouse.move(0,0);
     let previous:string|undefined;
     await expect.poll(async()=>{const paint=(await look(target)).paint;const stable=paint===previous;previous=paint;return stable;},{timeout:3000,intervals:[100,100,100]}).toBe(true);
     const before=await look(target);
     expect(before.duration,name).toContain('0.15s');
     await target.hover();await expect.poll(async()=>(await look(target)).paint,{message:`${name} hover`,timeout:3000}).not.toBe(before.paint);
-  }
+  }};
+  await hovers(targets);
+  // Project form controls now live in the Settings drawer.
+  await page.getByRole('button',{name:'Office settings'}).click();const settings=page.getByRole('complementary',{name:'Settings'});await expect(settings).toBeVisible();
+  await hovers([['secondary button',settings.getByRole('button',{name:'Save pickup rule'})],['text field',settings.getByRole('combobox',{name:'Pickup status'})]]);
   await page.keyboard.press('Escape');await page.mouse.move(0,0);
   await page.getByRole('button',{name:'Office help'}).focus();await page.keyboard.press('Shift+Tab');await page.keyboard.press('Tab');
   const ring=await page.evaluate(()=>{const s=getComputedStyle(document.activeElement!);return {style:s.outlineStyle,width:s.outlineWidth,visible:document.activeElement!.matches(':focus-visible')};});
   expect(ring).toEqual({style:'solid',width:'3px',visible:true});
 });
-test('system and Office reduced motion both remove transitions',async({page})=>{
-  await page.emulateMedia({reducedMotion:'reduce'});await page.addInitScript(()=>localStorage.setItem('office.motion','full'));await ready(page);
+test('system and Office reduced motion both remove transitions',async({page,request})=>{
+  await page.emulateMedia({reducedMotion:'reduce'});await setPreferences(request,{reducedMotion:false});await ready(page);
   expect((await look(page.getByRole('button',{name:'Office help'}))).property).toBe('none');
-  await page.emulateMedia({reducedMotion:'no-preference'});await page.addInitScript(()=>localStorage.setItem('office.motion','reduced'));await ready(page);
+  await page.emulateMedia({reducedMotion:'no-preference'});await setPreferences(request,{reducedMotion:true});await ready(page);
   await expect(page.locator('html')).toHaveAttribute('data-motion','reduced');
   expect((await look(page.getByRole('button',{name:'Office help'}))).property).toBe('none');
   await page.getByRole('button',{name:'Office settings'}).click();await page.getByLabel('Reduced motion').uncheck();
   await expect(page.locator('html')).toHaveAttribute('data-motion','full');expect((await look(page.getByRole('button',{name:'Office help'}))).property).not.toBe('none');
 });
-test('settings and help are named non-modal panels that take and return focus',async({page})=>{
+test('settings is a named non-modal drawer that returns focus to the gear from both entry paths',async({page})=>{
   await ready(page);
-  for(const [trigger,title,close] of [['Office settings','Display settings','Close settings'],['Office help','Office controls','Close help']] as const){
+  const gear=page.getByRole('button',{name:'Office settings'}),drawer=page.getByRole('complementary',{name:'Settings'}),close=page.getByRole('button',{name:'Close details'});
+  await gear.click();await expect(drawer).toBeVisible();await expect(drawer).not.toHaveAttribute('aria-modal');await expect(gear).toHaveAttribute('aria-expanded','true');await expect(close).toBeFocused();
+  await page.keyboard.press('Escape');await expect(drawer).toHaveCount(0);await expect(gear).toHaveAttribute('aria-expanded','false');await expect(gear).toBeFocused();
+  await gear.click();await expect(drawer).toBeVisible();await close.click();await expect(drawer).toHaveCount(0);await expect(gear).toBeFocused();
+  await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('complementary',{name:'PM mailbox'}).getByRole('button',{name:'Project settings'}).click();
+  await expect(drawer).toBeVisible();await expect(gear).toHaveAttribute('aria-expanded','true');
+  await page.keyboard.press('Escape');await expect(drawer).toHaveCount(0);await expect(gear).toBeFocused();
+  await expect(page.locator('[aria-modal]')).toHaveCount(0);
+});
+test('help is a named non-modal panel that takes and returns focus',async({page})=>{
+  await ready(page);
+  for(const [trigger,title,close] of [['Office help','Office controls','Close help']] as const){
     await page.getByRole('button',{name:trigger}).click();const panel=page.getByRole('dialog',{name:title});
     await expect(panel).toBeVisible();await expect(panel).not.toHaveAttribute('aria-modal');await expect(page.getByRole('button',{name:trigger})).toHaveAttribute('aria-expanded','true');
     await expect(page.getByRole('button',{name:close})).toBeFocused();
@@ -69,8 +84,8 @@ test('semantic landmarks, headings, buttons and decorative icons',async({page})=
   await expect(page.getByRole('complementary',{name:'Project manager'})).toBeVisible();await expect(page.getByRole('button',{name:'Close details'})).toBeFocused();
   await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Visit Morgan, PM',exact:true})).toBeFocused();
 });
-test('hidden floor and travelling scene controls are not focusable',async({page})=>{
-  await full(page);await ready(page);
+test('hidden floor and travelling scene controls are not focusable',async({page,request})=>{
+  await full(page,request);await ready(page);
   const reachable=()=>page.evaluate(()=>[...document.querySelectorAll<HTMLElement>('[data-scene-label]')].filter(el=>{el.focus();return document.activeElement===el;}).map(el=>el.textContent));
   const delivery=await reachable();expect(delivery.some(t=>t?.includes('CTO OFFICE'))).toBe(false);expect(delivery.some(t=>t?.includes('DEVELOPMENT'))).toBe(true);
   // Sample focusability in the same frame the doors report the brief `closed` phase.

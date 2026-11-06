@@ -65,14 +65,15 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
     if (url.pathname === '/api/events') {
         let timer: ReturnType<typeof setInterval>;
         let listener: () => void;
+        let unsubscribePreferences = () => { };
+        const stop = () => { clearInterval(timer); store.listeners.delete(listener); unsubscribePreferences(); };
         const stream = new ReadableStream({ start(c) {
                 const send = () => {
                     try {
                         c.enqueue(new TextEncoder().encode(`id: ${store.state.revision}\nevent: snapshot\ndata: ${JSON.stringify(snapshot(project))}\n\n`));
                     }
                     catch {
-                        clearInterval(timer);
-                        store.listeners.delete(listener);
+                        stop();
                     }
                 };
                 const after = Number(req.headers.get('last-event-id') || 0);
@@ -80,17 +81,18 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
                     c.enqueue(new TextEncoder().encode(`id: ${event.id}\nevent: office-event\ndata: ${JSON.stringify(event)}\n\n`));
                 listener = send;
                 store.listeners.add(listener);
+                // Preferences are office-wide: every project's stream receives a write immediately.
+                unsubscribePreferences = offices.preferences.subscribe(() => send());
                 send();
                 timer = setInterval(send, 10000);
                 req.signal.addEventListener('abort', () => {
-                    clearInterval(timer);
-                    store.listeners.delete(listener);
+                    stop();
                     try {
                         c.close();
                     }
                     catch { }
                 }, { once: true });
-            }, cancel() { clearInterval(timer); store.listeners.delete(listener); } });
+            }, cancel() { stop(); } });
         return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' } });
     }
     if (url.pathname === '/api/artifact') {

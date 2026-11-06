@@ -1,8 +1,9 @@
 import { expect, test } from './fixture-test';
+import { setPreferences } from './support';
 
-for(const busy of [false,true])test(`doors paint closed before switching and finish opening${busy?' after a slow frame':''}`,async({page})=>{
+for(const busy of [false,true])test(`doors paint closed before switching and finish opening${busy?' after a slow frame':''}`,async({page,request})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});
-  await page.addInitScript(()=>{localStorage.setItem('office.floor','delivery');localStorage.setItem('office.motion','full');localStorage.setItem('office.quality','low');});
+  await setPreferences(request,{reducedMotion:false,quality:'low'});await page.addInitScript(()=>{localStorage.setItem('office.floor','delivery');});
   await page.goto('/');await expect(page.locator('canvas')).toBeVisible();
   for(const target of ['CTO Office','Delivery Team','CTO Office','Delivery Team']){
     const frames=await page.evaluate(async({target,busy})=>{
@@ -42,8 +43,8 @@ for(const busy of [false,true])test(`doors paint closed before switching and fin
   }
 });
 
-test('reduced motion changes floors directly without waiting for door callbacks',async({page})=>{
-  await page.addInitScript(()=>{localStorage.setItem('office.floor','delivery');localStorage.setItem('office.motion','reduced');});
+test('reduced motion changes floors directly without waiting for door callbacks',async({page,request})=>{
+  await setPreferences(request,{reducedMotion:true});await page.addInitScript(()=>{localStorage.setItem('office.floor','delivery');});
   await page.goto('/');await page.getByRole('button',{name:/^Go to Floor 2, CTO Office/}).click();
   await expect(page.getByRole('heading',{level:1,name:'CTO Office',exact:true})).toBeVisible();
   await expect(page.locator('[data-elevator-doors]')).toHaveAttribute('data-phase','idle');

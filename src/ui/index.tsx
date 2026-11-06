@@ -1,4 +1,4 @@
-import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { forwardRef, type AnchorHTMLAttributes, type InputHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 import { ChevronDown } from './icons';
 export const cx=(...parts:(string|false|null|undefined)[])=>parts.filter(Boolean).join(' ');
 /** Visible keyboard focus for every interactive element. */
@@ -12,8 +12,8 @@ export const interactiveScene=`${behavior} focus-visible:outline-3 focus-visible
 export const interactiveOnDark=`${behavior} focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus-inverse`;
 /** Form control behavior shared by inputs, textareas and selects; callers add the role's border, surface and focus colors. */
 export const fieldBehavior='border transition-colors reduce-motion:transition-none enabled:hover:border-field-hover disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-3 focus-visible:outline-offset-4';
-/** Native checkbox (system accent unless the caller adds one): hover darkens the control, focus uses the shared ring. */
-export const checkbox=`size-4 shrink-0 cursor-pointer transition-[filter] reduce-motion:transition-none enabled:hover:brightness-90 disabled:cursor-wait disabled:opacity-50 ${focusRing}`;
+/** Native checkbox with the Office accent: hover darkens the control, focus uses the shared ring. */
+export const checkbox=`size-4 shrink-0 cursor-pointer accent-checkbox transition-[filter] reduce-motion:transition-none enabled:hover:brightness-90 disabled:cursor-wait disabled:opacity-50 ${focusRing}`;
 /** Disclosure summary rows. */
 export const summary=`cursor-pointer rounded-4 underline decoration-transparent underline-offset-2 transition-colors reduce-motion:transition-none hover:text-link hover:decoration-current ${focusRing}`;
 
@@ -114,3 +114,13 @@ export const envelopeCard=`relative my-2.5 flex w-full flex-col gap-2 rounded-8 
 export const field=`w-full min-w-0 border-field-line ${fieldBehavior}`;
 export const fieldFocus='focus-visible:outline-focus';
 export const checkLabel='flex w-full items-start gap-2.5 leading-normal';
+/** Settings text input: the shared field boundary, focus color and settings surface. */
+export const inputField=`${field} ${fieldFocus} rounded-6 bg-paper px-3 py-2`;
+/** Settings select presentation, passed to `Select` as its className. */
+export const selectField='rounded-6 border-line bg-paper px-3 py-2';
+/** Stacked label above a settings input or select. */
+export const fieldLabel='grid gap-1.5 text-12';
+/** Native checkbox with its wrapping label text. */
+export function CheckField({children,className,...props}:Omit<InputHTMLAttributes<HTMLInputElement>,'type'>&{children:ReactNode}){
+  return <label className={cx(checkLabel,'text-12',className)}><input type="checkbox" className={cx(checkbox,'mt-0.5')} {...props}/><span className="min-w-0 flex-1">{children}</span></label>;
+}

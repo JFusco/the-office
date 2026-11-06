@@ -14,7 +14,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { STAGE_LABELS, STAGE_ROLE, STAGES, ROLE_NAMES, type Agent, type OfficeSnapshot, type Role } from '../shared';
 import { sceneColors } from '../tokens/scene-colors';
 import { StatusDot, cx, interactiveScene } from '../ui';
-export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTicket?:string}|{kind:'agent';id:Role}|{kind:'chat';ticket?:string}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|null;
+export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTicket?:string}|{kind:'agent';id:Role}|{kind:'chat';ticket?:string}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|{kind:'settings'}|null;
 const Party=createContext(false);
 type Vec=[number,number,number];
 type SceneAgent=Agent;
@@ -218,10 +218,10 @@ const Furnishings=memo(function Furnishings(){const c=sceneColors();return <>
 </>});
 // Background coworkers have no ticket ownership or work status. Their short trips
 // request frames only while moving; an idle office keeps demand rendering.
-function OfficeLife({reduced,quality}:{reduced:boolean;quality:string}) {
-  return <>{[0,1].slice(0,quality==='high'?2:1).map(i=><Coworker key={i} index={i} reduced={reduced}/>)}</>;
+function OfficeLife({reduced,quality,coffeeBreaks}:{reduced:boolean;quality:string;coffeeBreaks:boolean}) {
+  return <>{[0,1].slice(0,quality==='high'?2:1).map(i=><Coworker key={i} index={i} reduced={reduced} coffeeBreaks={coffeeBreaks}/>)}</>;
 }
-function Coworker({index,reduced}:{index:number;reduced:boolean}) {
+function Coworker({index,reduced,coffeeBreaks}:{index:number;reduced:boolean;coffeeBreaks:boolean}) {
   const body=useRef<THREE.Group>(null),leftLeg=useRef<THREE.Group>(null),rightLeg=useRef<THREE.Group>(null),cup=useRef<THREE.Group>(null);
   const party=useContext(Party);
   const {invalidate}=useThree();const [outing,setOuting]=useState(false);
@@ -232,11 +232,12 @@ function Coworker({index,reduced}:{index:number;reduced:boolean}) {
     const p=new THREE.CurvePath<THREE.Vector3>();for(let i=1;i<points.length;i++)p.add(new THREE.LineCurve3(new THREE.Vector3(...points[i-1]),new THREE.Vector3(...points[i])));return p;
   },[home,index]);
   useEffect(()=>{
-    if(reduced){setOuting(false);body.current?.position.set(...home);invalidate();return;}
+    // Reduced motion or breaks turned off: cancel the trip and settle the coworker at the desk.
+    if(reduced||!coffeeBreaks){setOuting(false);body.current?.position.set(...home);if(cup.current)cup.current.visible=false;invalidate();return;}
     let timer:ReturnType<typeof setTimeout>;
     const schedule=(first=false)=>{timer=setTimeout(()=>{started.current=performance.now();setOuting(true);invalidate();timer=setTimeout(()=>{setOuting(false);schedule();invalidate();},(path.getLength()/.85*2+9)*1000);},first?(8+index*35+Math.random()*5)*1000:(45+Math.random()*40)*1000);};
     schedule(true);return()=>clearTimeout(timer);
-  },[reduced,path,home,index,invalidate]);
+  },[reduced,coffeeBreaks,path,home,index,invalidate]);
   useFrame(()=>{
     if(!body.current)return;
     if(party&&!reduced&&!document.hidden){
@@ -248,7 +249,7 @@ function Coworker({index,reduced}:{index:number;reduced:boolean}) {
       invalidate();return;
     }
     body.current.rotation.z=0;
-    if(reduced||!outing){body.current.position.set(...home);body.current.rotation.y=index?Math.PI:0;if(leftLeg.current)leftLeg.current.rotation.x=0;if(rightLeg.current)rightLeg.current.rotation.x=0;return;}
+    if(reduced||!coffeeBreaks||!outing){body.current.position.set(...home);body.current.rotation.y=index?Math.PI:0;if(leftLeg.current)leftLeg.current.rotation.x=0;if(rightLeg.current)rightLeg.current.rotation.x=0;if(cup.current)cup.current.visible=false;return;}
     const age=(performance.now()-started.current)/1000,travel=path.getLength()/.85,returning=age>travel+9;
     const progress=Math.max(0,Math.min(1,returning?1-(age-travel-9)/travel:age/travel));
     const point=path.getPoint(progress),walking=age<travel||returning;
@@ -268,7 +269,7 @@ function Coworker({index,reduced}:{index:number;reduced:boolean}) {
     {[-1,1].map(s=><group key={s} ref={s<0?leftLeg:rightLeg} position={[s*.12,.5,0]}><Box pos={[0,-.2,0]} size={[.16,.45,.17]} color={c.coworkerLeg}/><Box pos={[0,-.41,.05]} size={[.18,.12,.26]} color={c.coworkerShoe}/></group>)}
     {[-1,1].map(s=><Box key={s} pos={[s*.28,.75,.02]} size={[.12,.4,.16]} color={shirt}/>)}
     <group ref={cup} position={[.32,.83,.2]} visible={false}><mesh><cylinderGeometry args={[.085,.065,.18,10]}/><meshStandardMaterial color={c.coworkerCup}/></mesh><mesh position={[0,.093,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.067,10]}/><meshStandardMaterial color={c.coworkerCoffee} side={THREE.DoubleSide}/></mesh></group>
-    {outing&&!reduced?<Html center position={[0,1.9,0]} zIndexRange={[5,0]} pointerEvents="none"><span className="block rounded-7 border border-life-label-line bg-life-label px-2 py-1 text-center text-9 whitespace-nowrap text-life-label-ink shadow-life-label" data-office-life>Coffee break<small className="block text-7 leading-relaxed text-life-label-detail">Office life</small></span></Html>:null}
+    {outing&&!reduced&&coffeeBreaks?<Html center position={[0,1.9,0]} zIndexRange={[5,0]} pointerEvents="none"><span className="block rounded-7 border border-life-label-line bg-life-label px-2 py-1 text-center text-9 whitespace-nowrap text-life-label-ink shadow-life-label" data-office-life>Coffee break<small className="block text-7 leading-relaxed text-life-label-detail">Office life</small></span></Html>:null}
   </group>;
 }
 function PartyConfetti(){
@@ -318,7 +319,7 @@ function CTORoom({snapshot,onSelect,reduced,pmName}:{snapshot:OfficeSnapshot;onS
     <RoomLabel position={[-4.7,.2,4.7]} name="DELIVERY REPORTS" sub={`${(snapshot.leadershipReports||[]).length} reports from ${pmName}`} swatch="reports" onClick={()=>onSelect({kind:'goals'})}/>
   </>;
 }
-export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,quality,zoom,focus,floor='delivery',travelling=false,revealed=true,party=false,officeCast=false}:{snapshot:OfficeSnapshot;names?:Record<Role,string>;onSelect:(s:Selection)=>void;reduced:boolean;quality:string;zoom:number;focus:Vec;floor?:Floor;travelling?:boolean;revealed?:boolean;party?:boolean;officeCast?:boolean}){
+export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,quality,zoom,focus,floor='delivery',travelling=false,revealed=true,party=false,officeCast=false,coffeeBreaks=true}:{coffeeBreaks?:boolean;snapshot:OfficeSnapshot;names?:Record<Role,string>;onSelect:(s:Selection)=>void;reduced:boolean;quality:string;zoom:number;focus:Vec;floor?:Floor;travelling?:boolean;revealed?:boolean;party?:boolean;officeCast?:boolean}){
   const moving=!reduced&&(party||snapshot.agents.some(a=>a.activity==='working'));
   const pmName=snapshot.agents.find(a=>a.id==='pm')?.name||names.pm;
   const c=sceneColors();
@@ -328,7 +329,7 @@ export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,
     <directionalLight position={[-8,18,7]} intensity={2.8} castShadow={quality==='high'} shadow-mapSize={[1024,1024]} shadow-camera-left={-16} shadow-camera-right={16} shadow-camera-top={16} shadow-camera-bottom={-16} shadow-bias={-.001}/>
     <mesh rotation={[-Math.PI/2,0,0]} position={[0,-.74,0]} receiveShadow><planeGeometry args={[200,200]}/><meshStandardMaterial color={c.backdrop}/></mesh>
     <ElevatorStage floor={floor} reduced={reduced} travelling={travelling} revealed={revealed}>{displayed=>displayed==='cto'?<CTORoom snapshot={snapshot} onSelect={onSelect} reduced={reduced} pmName={pmName}/>:<><Furnishings/>
-    <OfficeLife reduced={reduced||floor==='cto'} quality={quality}/>
+    <OfficeLife reduced={reduced||floor==='cto'} quality={quality} coffeeBreaks={coffeeBreaks}/>
     <Desk position={SPOTS.developer} active={snapshot.agents.find(a=>a.id==='developer')?.activity==='working'} accent={c.teamDeveloper} double/>
     <Desk position={[-5.7,0,-1.8]} rotation={Math.PI} accent={c.teamDeveloper}/>
     <Desk position={[-7.1,0,3.2]} accent={c.teamDeveloper}/>

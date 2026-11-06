@@ -7,9 +7,11 @@ import {InboxQueue} from '../work/InboxQueue';
 import { ProjectWork } from '../work/ProjectWork';
 import { WorkSummary } from '../work/WorkSummary';
 import { Checkpoints } from '../work/Checkpoints';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
+import { SettingsPanel } from './settings/SettingsPanel';
+import type { OfficePreferencesController } from './settings/useOfficePreferences';
 import { motion, useIsPresent } from 'motion/react';
-import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullRequest, Inbox, LoaderCircle, X, AlertCircle, Camera, Clock3 } from '../ui/icons';
+import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullRequest, Inbox, LoaderCircle, X, AlertCircle, Camera, Clock3, Settings2 } from '../ui/icons';
 import { Button, Card, Count, IconButton, Notice, PanelIcon, PanelTitle, Section, SectionTitle, StatusDot, Tag, TextLink, cx, envelopeCard, eyebrow, interactive, mutedCopy, noticeIcon } from '../ui';
 import { STAGES, STAGE_LABELS, ROLE_NAMES, type OfficeSnapshot, type Ticket, type Evidence, type Role } from '../shared';
 import type { Selection } from '../scene/OfficeScene';
@@ -55,12 +57,15 @@ function TicketDetail({ticket:t,snapshot,act,onOpen}:{ticket:Ticket;snapshot:Off
   </>;
 }
 import { FeatureWorkspace } from '../features/FeatureWorkspace';
-export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,onSelect,act,busy,sendMessage,reduced,onOpenProject}:{selection:Exclude<Selection,null>;snapshot:OfficeSnapshot;names?:Record<Role,string>;onClose:()=>void;onSelect:(s:Selection)=>void;act:(action:string,key?:string)=>void;busy:boolean;sendMessage:SendMessage;reduced:boolean;onOpenProject:(project:string,key:string)=>void}){
+export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,onSelect,act,busy,sendMessage,reduced,onOpenProject,preferences,osReduced=false,refresh,settingsReturn}:{selection:Exclude<Selection,null>;snapshot:OfficeSnapshot;names?:Record<Role,string>;onClose:()=>void;onSelect:(s:Selection)=>void;act:(action:string,key?:string)=>void;busy:boolean;sendMessage:SendMessage;reduced:boolean;onOpenProject:(project:string,key:string)=>void;preferences?:OfficePreferencesController;osReduced?:boolean;refresh?:()=>Promise<void>;settingsReturn?:RefObject<HTMLElement|null>}){
   const close=useRef<HTMLButtonElement>(null),opener=useRef<HTMLElement|null>(null);
   const present=useIsPresent();
   const selectionId='id' in selection?selection.id:selection.kind==='chat'?selection.ticket:undefined;
   useEffect(()=>{
-    if(!present){if(opener.current?.isConnected)opener.current.focus({preventScroll:true});return;}
+    if(!present){
+      // Settings always returns to the gear, whichever control opened it, unless the user already moved focus elsewhere.
+      if(selection.kind==='settings'&&settingsReturn?.current){const active=document.activeElement;if(!active||active===document.body||active.closest('[data-inspector]'))settingsReturn.current.focus({preventScroll:true});return;}
+      if(opener.current?.isConnected)opener.current.focus({preventScroll:true});return;}
     const active=document.activeElement;
     if(active instanceof HTMLElement&&!active.closest('[data-inspector]'))opener.current=active;
     close.current?.focus({preventScroll:true});
@@ -70,7 +75,7 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
   const github=snapshot.project?.provider==='github';
   const chat=selection.kind==='chat'||selection.kind==='cto-chat';
   const pmName=snapshot.agents.find(a=>a.id==='pm')?.name||names.pm,ctoName=snapshot.agents.find(a=>a.id==='cto')?.name||names.cto;
-  const title=selection.kind==='features'?'Features':selection.kind==='health'?'Service health':selection.kind==='pm-queue'?'PM queue':selection.kind==='goals'?'Project goals':selection.kind==='cto-chat'?`Chat with ${ctoName}`:selection.kind==='outbox'?'Your outbox':selection.kind==='chat'?`Chat with ${pmName}`:selection.kind==='mailbox'?'PM mailbox':selection.kind==='azure'?(github?'GitHub operations':'Azure operations'):selection.kind==='meeting'?'Review table':agent?agent.title:'Ticket';
+  const title=selection.kind==='settings'?'Settings':selection.kind==='features'?'Features':selection.kind==='health'?'Service health':selection.kind==='pm-queue'?'PM queue':selection.kind==='goals'?'Project goals':selection.kind==='cto-chat'?`Chat with ${ctoName}`:selection.kind==='outbox'?'Your outbox':selection.kind==='chat'?`Chat with ${pmName}`:selection.kind==='mailbox'?'PM mailbox':selection.kind==='azure'?(github?'GitHub operations':'Azure operations'):selection.kind==='meeting'?'Review table':agent?agent.title:'Ticket';
   // The drawer is a non-modal complementary region: it takes focus on open, Escape closes it,
   // and focus returns to the control that opened it. Exiting drawers are inert and hidden.
   return <motion.aside data-inspector className={cx('fixed top-topbar right-0 bottom-dock z-45 flex flex-col border-l border-drawer-line bg-drawer shadow-drawer backdrop-blur-drawer will-change-transform overscroll-contain max-compact:top-topbar-compact max-compact:bottom-dock-compact max-compact:w-full',selection.kind==='features'?'w-[min(1280px,100vw)]':'w-drawer wide:w-drawer-wide max-tablet:w-drawer-tablet max-compact:max-w-drawer',present?'pointer-events-auto':'pointer-events-none')} aria-label={title}
@@ -82,6 +87,7 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
     <div className="flex h-drawer-head shrink-0 items-center justify-between border-b border-drawer-rule px-6"><span className={cx(eyebrow,'text-8 text-drawer-title')}>{title}</span><IconButton ref={close} aria-label="Close details" onClick={onClose}><X size={19}/></IconButton></div>
     <div key={`${selection.kind}:${selectionId}`} data-inspector-scroll className={cx('min-h-0 min-w-0 flex-1 overflow-x-hidden wrap-anywhere scrollbar-thin scrollbar-thumb-scrollbar',chat?'flex flex-col overflow-y-hidden px-6 py-4.5 max-compact:px-5 max-compact:py-3.5':'overflow-y-auto p-6')}>
       {selection.kind==='features'?<FeatureWorkspace key={[snapshot.project?.id,selection.id,selection.sourceGoalId,selection.sourceTicket].join(':')} snapshot={snapshot} initialId={selection.id} sourceGoalId={selection.sourceGoalId} sourceTicket={selection.sourceTicket} onOpen={(project,id)=>onOpenProject(project,'feature:'+id)}/>:null}
+      {selection.kind==='settings'&&preferences?<SettingsPanel snapshot={snapshot} preferences={preferences} osReduced={osReduced} refresh={refresh}/>:null}
       {selection.kind==='health'?<ServiceHealthPanel project={snapshot.project?.id} liveIT={snapshot.it} onChat={()=>onSelect({kind:'agent',id:'it'})}/>:null}
       {selection.kind==='chat'?<><PanelTitle size="md" className="mt-0.75 mb-2">Chat with {pmName}</PanelTitle><p className="text-11 leading-normal text-muted">Your PM coordinates the team and keeps the work up to date.</p><Conversation key={selection.ticket||'office'} snapshot={snapshot} names={names} sendMessage={sendMessage} initialTicket={selection.ticket||''} fill/></>:null}
       {selection.kind==='goals'?<Goals snapshot={snapshot} sendMessage={sendMessage} onDiscuss={()=>onSelect({kind:'cto-chat'})} onPlan={(project,goal)=>onOpenProject(project,'feature-goal:'+goal)}/>:null}
@@ -94,6 +100,7 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
         <Button variant="primary" full className="mt-5" disabled={busy||!!snapshot.pendingMail||snapshot.intake.status==='working'||snapshot.mode==='demo'||snapshot.paused} onClick={()=>act('check-mail')}>{snapshot.intake.status==='working'?<LoaderCircle size={16} className="animate-spin reduce-motion:animate-none"/>:<Inbox size={16}/>} {snapshot.pendingMail?'Mail check queued':'Check mail now'}</Button>
         <div className="mt-4 flex items-start gap-2 text-9 text-schedule"><Clock3 size={14}/><span>{snapshot.intake.schedule}<small className="mt-1 block text-8 leading-relaxed text-schedule-detail">{snapshot.intake.lastChecked?`Last checked ${new Date(snapshot.intake.lastChecked).toLocaleString()}`:'Mailbox has not been checked yet'}</small></span></div>
         {snapshot.intake.error?<Notice className="mt-5"><AlertCircle className={noticeIcon} size={17}/><span>{snapshot.intake.error}</span></Notice>:null}
+        <Button full className="mt-5" onClick={()=>onSelect({kind:'settings'})}><Settings2 size={16}/> Project settings</Button>
         <Checkpoints snapshot={snapshot}/><ProjectWork snapshot={snapshot} onOpen={key=>onSelect({kind:'ticket',id:key})}/>
         {snapshot.tickets.some(t=>t.stage!=='mailbox')?<Section><SectionTitle className="mb-4">Already with the team</SectionTitle>{snapshot.tickets.filter(t=>t.stage!=='mailbox').map(t=><button type="button" key={t.key} className={textRow} onClick={()=>onSelect({kind:'ticket',id:t.key})}><span>{t.key}<small className="mt-1 block text-9 leading-relaxed text-row-detail">{STAGE_LABELS[t.stage]}</small></span><ChevronRight size={15}/></button>)}</Section>:null}
       </>:null}

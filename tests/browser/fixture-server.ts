@@ -17,7 +17,10 @@ const streams=new Map<string,Set<ServerResponse>>();
 const types:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.json':'application/json'};
 const json=(res:ServerResponse,body:unknown,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(body));};
 let sequence=0;
-const snapshot=(project:string)=>{const s=state.snapshots[project];if(s){s.serverTime=new Date().toISOString();s.serviceInstanceId='fixture-service';s.snapshotSequence=++sequence;}return s;};
+const snapshot=(project:string)=>{const s=state.snapshots[project];if(s){s.serverTime=new Date().toISOString();s.serviceInstanceId='fixture-service';s.snapshotSequence=++sequence;s.preferences={...state.preferences};}return s;};
+const WRITABLE=['quality','reducedMotion','keyboardShortcuts','deliveryToasts','coffeeBreaks'];
+// Merge writable preference fields; returns false for an unknown or empty patch, like the real route's 400.
+const mergePreferences=(patch:Record<string,unknown>)=>{const keys=Object.keys(patch||{});if(!keys.length||keys.some(k=>!WRITABLE.includes(k)))return false;state.preferences={...state.preferences,...patch,revision:state.preferences.revision+1};for(const project of streams.keys())push(project);return true;};
 const push=(project:string)=>{for(const res of streams.get(project)||[])res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot(project))}\n\n`);};
 async function body(req:import('node:http').IncomingMessage){let text='';for await(const chunk of req)text+=chunk;try{return text?JSON.parse(text):{};}catch{return text;}}
 
@@ -26,6 +29,16 @@ createServer(async(req,res)=>{
   if(url.pathname==='/__fixture/reset'){state=createFixtureState();writes.length=0;return json(res,{reset:true});}
   if(url.pathname==='/__fixture/snapshot'&&req.method==='POST'){const patch=await body(req) as any;Object.assign(state.snapshots[project],patch);if(url.searchParams.get('push')!=='0')push(project);return json(res,{ok:true});}
   if(url.pathname==='/__fixture/writes')return json(res,writes);
+  // Test seeding only: not recorded in writes, so no-write assertions stay meaningful.
+  if(url.pathname==='/__fixture/preferences'&&req.method==='POST'){const patch=await body(req) as Record<string,unknown>;return mergePreferences(patch)?json(res,{...state.preferences,serviceInstanceId:'fixture-service'}):json(res,{error:'Invalid preferences'},400);}
+  // Office-wide routes run before project-specific dispatch, as in the real server.
+  if(url.pathname==='/api/preferences'){
+    if(req.method==='GET')return json(res,{...state.preferences,serviceInstanceId:'fixture-service'});
+    if(req.method!=='POST')return json(res,{error:'GET or POST required'},405);
+    const patch=await body(req) as Record<string,unknown>;writes.push({at:new Date().toISOString(),method:'POST',path:url.pathname,body:patch});
+    return mergePreferences(patch)?json(res,{...state.preferences,serviceInstanceId:'fixture-service'}):json(res,{error:'Invalid preferences'},400);
+  }
+  if(url.pathname==='/api/office-config')return req.method==='GET'?json(res,state.config):json(res,{error:'GET required'},405);
   if(url.pathname.startsWith('/api/')){
     if(req.method==='POST'){
       const data=await body(req) as Record<string,any>;writes.push({at:new Date().toISOString(),method:'POST',path:`${url.pathname}${url.search}`,body:data});
