@@ -32,8 +32,15 @@ export class Engine {
     github: GitHubMonitor;
     maintenance: GitHubMaintenance;
     private localBusy = false;
-    get busy() { return this.localBusy || !!(this.capacity.lane && this.capacity.lane !== this.store.project.id); }
+    get busy() { return this.localBusy || this.capacity.limit <= 1 && !!(this.capacity.lane && this.capacity.lane !== this.store.project.id); }
     set busy(value: boolean) {
+        // Concurrent delivery: busy is per project; the scheduler admits only one stage per project.
+        if (this.capacity.limit > 1) {
+            this.localBusy = value;
+            if (value) this.capacity.busy.add(this.store.project.id);
+            else this.capacity.busy.delete(this.store.project.id);
+            return;
+        }
         if (value && this.capacity.lane && this.capacity.lane !== this.store.project.id)
             throw new Error('Another project owns the worker lane');
         this.localBusy = value;

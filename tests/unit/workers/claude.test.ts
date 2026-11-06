@@ -94,3 +94,8 @@ test('explicit invalid aggregate counters remain unknown rather than hiding behi
  const {agents,store}=setup({modelUsage:{[DEVELOPER_MODEL]:{inputTokens:-1,outputTokens:'invalid'}}});
  await agents.run('developer','Synthetic invalid usage counters',schema);expect(store.state.workLog![0]).toMatchObject({inputTokens:null,outputTokens:null});
 });
+test('usage events report prompt cache reads and writes so cache reuse is measurable',async()=>{
+ const modelUsage={[DEVELOPER_MODEL]:{inputTokens:100,outputTokens:10,cacheReadInputTokens:9000,cacheCreationInputTokens:1200}};
+ const {agents,store}=setup({modelUsage});await agents.run('developer','Synthetic cache accounting',schema,{readOnly:true});
+ expect(store.state.events.find(event=>event.kind==='usage')?.message).toContain('9000 cache read / 1200 cache write');
+});

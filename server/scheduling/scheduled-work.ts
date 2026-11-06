@@ -4,6 +4,7 @@ import { deliveryRepairProjection } from '../../src/work/delivery-repair-project
 import {closeoutRequestResolved,verifiedCloseoutCleanupRequest} from '../delivery/recovery/closeout/closeout-recovery-evidence';
 import {scopeRepairRequestResolved} from '../delivery/recovery/scope-repair/scope-repair-readback';
 import {preparationRequestResolved} from '../delivery/recovery/preparation/preparation-readback';
+import { deliverySlot } from '../delivery/pipeline/stage-roles';
 import type { ScheduledWork } from './scheduler';
 import type { Store } from '../store/store';
 import type { Engine } from './engine';
@@ -87,6 +88,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
             if (!ownership) throw new Error('Amendment ownership inventory is unavailable');
             return ownership as any;
         }, () => coordinator!.pump({ kind: 'delivery', id: job.id })), dependency||timeWait, job.timing);
+        items.at(-1)!.slot = deliverySlot(job);
     }
     for (const review of [...new Map(c.listener.reviews.map(review => [review.key, review])).values()].filter(review => !(c.jobs || []).some(job => job.key === review.key && job.status !== 'cancelled')))
         add('intake', review, 'assignment-review', review.queuedAt, 3, () => coordinator!.pump({ kind: 'intake', id: review.id }), review.prerequisiteError ? eligible('blocked', review.prerequisiteError) : ['owned', 'held'].includes(review.status) && deferredPickup(store.state, review.key) ? eligible('waiting', 'Backlog assignment is deferred until its pickup lane or an explicit Start') : null, review.timing);

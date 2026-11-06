@@ -40,6 +40,8 @@ export async function command(program: string, args: string[], options: {
     input?: string;
     onSpawn?: (pid: number) => void;
     onLine?: (line: string) => void;
+    /** Raw output chunks, for callers that retain complete transcripts. */
+    onOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void;
     signal?: AbortSignal;
     /** Opt-in: after a clean zero exit, stop leftover helpers instead of treating them as an uncertain write. */
     terminateStragglers?: boolean;
@@ -70,6 +72,7 @@ export async function command(program: string, args: string[], options: {
         options.signal?.addEventListener('abort', abort, { once: true });
         child.stdout.on('data', (data: Buffer) => {
             const s = data.toString();
+            options.onOutput?.('stdout', s);
             out += s;
             line += s;
             const lines = line.split('\n');
@@ -79,7 +82,7 @@ export async function command(program: string, args: string[], options: {
             if (out.length > 16000000)
                 stop(new CommandFailure('Worker output limit exceeded', 'uncertain-effect', true));
         });
-        child.stderr.on('data', (data: Buffer) => { err = (err + data.toString()).slice(-12000); });
+        child.stderr.on('data', (data: Buffer) => { const s = data.toString(); options.onOutput?.('stderr', s); err = (err + s).slice(-12000); });
         child.on('error', stop);
         child.on('close', async (code) => {
             clearTimeout(timer);

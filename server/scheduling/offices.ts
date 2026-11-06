@@ -16,9 +16,10 @@ import { Store } from '../store/store';
 import { Engine } from './engine';
 import { Conversations } from '../conversations/conversations';
 import { PROJECTS, officeCapacity, projectById, projectData } from '../office/projects';
+import { DELIVERY_CONCURRENCY } from '../office/config';
 import { mirrorOfficeKnowledge, proposeOfficeLessons } from '../knowledge/office-lessons';
 export class Offices {
-    capacity = officeCapacity();
+    capacity = officeCapacity(DELIVERY_CONCURRENCY);
     ctoCapacity = officeCapacity();
     itCapacity = officeCapacity();
     knowledgeCapacity = officeCapacity();

@@ -60,3 +60,58 @@ test('observations and leadership claims cannot reset delivery notice fairness',
     expect(calls.filter(call => call === 'brain:notice')).toHaveLength(1);
     expect(a.state.schedulerLanes?.operations?.lastClaimAt).toBeTruthy();
 });
+function heldItem(store: Store, id: string, role: 'developer' | 'lead' | 'qa' | undefined, calls: string[], releases: Map<string, () => void>, slotted = true): ScheduledWork {
+    const work = item(store, id, 3, calls);
+    if (slotted) work.slot = { role };
+    work.execute = async () => {
+        const name = `${store.project.id}:${id}`;
+        calls.push(`start ${name}`);
+        await new Promise<void>(resolve => releases.set(name, resolve));
+        work.eligibility = { ...work.eligibility, state: 'terminal' };
+    };
+    return work;
+}
+test('concurrent delivery overlaps projects with different roles, one stage per project and per role', async () => {
+    const a = store('brain'), b = store('cms-field-vocabulary'), c = store('cec'), scheduler = new Scheduler(officeCapacity(3)), calls: string[] = [], releases = new Map<string, () => void>();
+    const projects = [
+        { store: a, items: [heldItem(a, 'review', 'lead', calls, releases), heldItem(a, 'validate', 'qa', calls, releases)] },
+        { store: b, items: [heldItem(b, 'implement', 'developer', calls, releases)] },
+        { store: c, items: [heldItem(c, 'implement', 'developer', calls, releases)] },
+    ];
+    const first = scheduler.pump(projects), second = scheduler.pump(projects);
+    await scheduler.pump(projects);
+    // Brain runs one stage only; CEC's developer stage waits for CMS's developer.
+    expect(calls).toEqual(['start brain:review', 'start cms-field-vocabulary:implement']);
+    releases.get('cms-field-vocabulary:implement')!();
+    await second;
+    const third = scheduler.pump(projects);
+    expect(calls.at(-1)).toBe('start cec:implement');
+    releases.get('brain:review')!(); releases.get('cec:implement')!();
+    await Promise.all([first, third]);
+    expect(a.activeClaims()).toEqual([]);
+});
+test('exclusive work drains running slots, runs alone, then slotted work resumes', async () => {
+    const a = store('brain'), b = store('cms-field-vocabulary'), c = store('cec'), capacity = officeCapacity(3), scheduler = new Scheduler(capacity), calls: string[] = [], releases = new Map<string, () => void>();
+    const projects = [
+        { store: a, items: [heldItem(a, 'review', 'lead', calls, releases)] },
+        { store: b, items: [] as ScheduledWork[] },
+        { store: c, items: [heldItem(c, 'implement', 'developer', calls, releases)] },
+    ];
+    const first = scheduler.pump(projects);
+    projects[1].items.push(heldItem(b, 'conversation', undefined, calls, releases, false));
+    await scheduler.pump(projects);
+    expect(calls).toEqual(['start brain:review']);
+    releases.get('brain:review')!();
+    await first;
+    const exclusive = scheduler.pump(projects);
+    await scheduler.pump(projects);
+    expect(calls).toEqual(['start brain:review', 'start cms-field-vocabulary:conversation']);
+    expect([...capacity.slots.values()]).toEqual([{ role: undefined, exclusive: true }]);
+    releases.get('cms-field-vocabulary:conversation')!();
+    await exclusive;
+    const last = scheduler.pump(projects);
+    expect(calls.at(-1)).toBe('start cec:implement');
+    releases.get('cec:implement')!();
+    await last;
+    expect(capacity.slots.size).toBe(0);
+});

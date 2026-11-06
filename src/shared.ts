@@ -32,6 +32,8 @@ export interface OfficeProject {
     repository: string;
     target: string;
     goalEvidencePaths?: string[];
+    /** Optional harness validation commands (argv, no shell); default is the repository's `verify:ci`. */
+    checks?: { name: string; command: string[]; timeoutMs?: number }[];
     board?: {
         name: string;
         url: string;
