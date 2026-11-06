@@ -7,7 +7,7 @@ import {InboxQueue} from '../work/InboxQueue';
 import { ProjectWork } from '../work/ProjectWork';
 import { WorkSummary } from '../work/WorkSummary';
 import { Checkpoints } from '../work/Checkpoints';
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react';
 import { SettingsPanel } from './settings/SettingsPanel';
 import type { OfficePreferencesController } from './settings/useOfficePreferences';
 import { motion, useIsPresent } from 'motion/react';
@@ -57,19 +57,28 @@ function TicketDetail({ticket:t,snapshot,act,onOpen}:{ticket:Ticket;snapshot:Off
   </>;
 }
 import { FeatureWorkspace } from '../features/FeatureWorkspace';
-export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,onSelect,act,busy,sendMessage,reduced,onOpenProject,preferences,osReduced=false,refresh,settingsReturn}:{selection:Exclude<Selection,null>;snapshot:OfficeSnapshot;names?:Record<Role,string>;onClose:()=>void;onSelect:(s:Selection)=>void;act:(action:string,key?:string)=>void;busy:boolean;sendMessage:SendMessage;reduced:boolean;onOpenProject:(project:string,key:string)=>void;preferences?:OfficePreferencesController;osReduced?:boolean;refresh?:()=>Promise<void>;settingsReturn?:RefObject<HTMLElement|null>}){
-  const close=useRef<HTMLButtonElement>(null),opener=useRef<HTMLElement|null>(null);
+export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,onSelect,act,busy,sendMessage,reduced,onOpenProject,preferences,osReduced=false,refresh,settingsReturn,drawerOpener,replacing}:{selection:Exclude<Selection,null>;snapshot:OfficeSnapshot;names?:Record<Role,string>;onClose:()=>void;onSelect:(s:Selection)=>void;act:(action:string,key?:string)=>void;busy:boolean;sendMessage:SendMessage;reduced:boolean;onOpenProject:(project:string,key:string)=>void;preferences?:OfficePreferencesController;osReduced?:boolean;refresh?:()=>Promise<void>;settingsReturn?:RefObject<HTMLElement|null>;drawerOpener?:MutableRefObject<HTMLElement|null>;replacing?:RefObject<boolean>}){
+  const close=useRef<HTMLButtonElement>(null),ownOpener=useRef<HTMLElement|null>(null),opener=drawerOpener||ownOpener;
   const present=useIsPresent();
   const selectionId='id' in selection?selection.id:selection.kind==='chat'?selection.ticket:undefined;
+  // Each drawer instance shows one selection; App remounts it when the selection changes.
   useEffect(()=>{
     if(!present){
-      // Settings always returns to the gear, whichever control opened it, unless the user already moved focus elsewhere.
-      if(selection.kind==='settings'&&settingsReturn?.current){const active=document.activeElement;if(!active||active===document.body||active.closest('[data-inspector]'))settingsReturn.current.focus({preventScroll:true});return;}
-      if(opener.current?.isConnected)opener.current.focus({preventScroll:true});return;}
+      // Another drawer replaces this one after it closes; that drawer takes focus when it opens.
+      if(replacing?.current)return;
+      const active=document.activeElement,gear=settingsReturn?.current as HTMLButtonElement|null|undefined,target=opener.current;
+      opener.current=null;
+      if(selection.kind==='settings'){
+        // Settings returns to the gear from any entry path, unless the user already moved focus elsewhere.
+        if(active&&active!==document.body&&!active.closest('[data-inspector]'))return;
+        if(gear&&!gear.disabled){gear.focus({preventScroll:true});return;}
+      }
+      if(target?.isConnected)target.focus({preventScroll:true});return;}
+    // Keep the original trigger across drawer swaps: a replacement opens with focus on the body.
     const active=document.activeElement;
-    if(active instanceof HTMLElement&&!active.closest('[data-inspector]'))opener.current=active;
+    if(active instanceof HTMLElement&&active!==document.body&&!active.closest('[data-inspector]'))opener.current=active;
     close.current?.focus({preventScroll:true});
-  },[selection.kind,selectionId,present]);
+  },[present]);
   const agent=selection.kind==='agent'?snapshot.agents.find(a=>a.id===selection.id):null;
   const ticket=selection.kind==='ticket'?snapshot.tickets.find(t=>t.key===selection.id):null;
   const github=snapshot.project?.provider==='github';
@@ -100,7 +109,7 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
         <Button variant="primary" full className="mt-5" disabled={busy||!!snapshot.pendingMail||snapshot.intake.status==='working'||snapshot.mode==='demo'||snapshot.paused} onClick={()=>act('check-mail')}>{snapshot.intake.status==='working'?<LoaderCircle size={16} className="animate-spin reduce-motion:animate-none"/>:<Inbox size={16}/>} {snapshot.pendingMail?'Mail check queued':'Check mail now'}</Button>
         <div className="mt-4 flex items-start gap-2 text-9 text-schedule"><Clock3 size={14}/><span>{snapshot.intake.schedule}<small className="mt-1 block text-8 leading-relaxed text-schedule-detail">{snapshot.intake.lastChecked?`Last checked ${new Date(snapshot.intake.lastChecked).toLocaleString()}`:'Mailbox has not been checked yet'}</small></span></div>
         {snapshot.intake.error?<Notice className="mt-5"><AlertCircle className={noticeIcon} size={17}/><span>{snapshot.intake.error}</span></Notice>:null}
-        <Button full className="mt-5" onClick={()=>onSelect({kind:'settings'})}><Settings2 size={16}/> Project settings</Button>
+        <Button full className="mt-5" disabled={!preferences?.preferences} onClick={()=>onSelect({kind:'settings'})}><Settings2 size={16}/> Project settings</Button>
         <Checkpoints snapshot={snapshot}/><ProjectWork snapshot={snapshot} onOpen={key=>onSelect({kind:'ticket',id:key})}/>
         {snapshot.tickets.some(t=>t.stage!=='mailbox')?<Section><SectionTitle className="mb-4">Already with the team</SectionTitle>{snapshot.tickets.filter(t=>t.stage!=='mailbox').map(t=><button type="button" key={t.key} className={textRow} onClick={()=>onSelect({kind:'ticket',id:t.key})}><span>{t.key}<small className="mt-1 block text-9 leading-relaxed text-row-detail">{STAGE_LABELS[t.stage]}</small></span><ChevronRight size={15}/></button>)}</Section>:null}
       </>:null}
