@@ -86,8 +86,14 @@ src/
 
 - `pnpm test` (unit, isolated stores) and `pnpm build` must pass before handing back.
 - Browser tests (`pnpm test:browser`) use the synthetic fixture server by default.
-- Version-control and release actions in this repository belong to Joe; deliver an
-  uncommitted working tree.
+- Office harness workers (delivery stages) commit on their owned branch only and never
+  push, open a PR, merge or release; the harness publishes after review.
+- Interactive sessions Joe drives in this repository hold a standing grant (2026-10-31)
+  to commit, push, open and merge PRs: work on a short-lived branch, keep `pnpm test`
+  and `pnpm build` green, put a review on record, merge with
+  `gh pr merge --merge --delete-branch`, then delete the branch and any worktree.
+  Deploy to the launchd service only when `/api/health` reports `busy: false`.
+  Other repositories and releases outside the Office's guarded merge still need Joe.
 
 ## Graphify repository workflow
 
