@@ -6,6 +6,7 @@ import { harnessEffect } from '../harness/effect';
 import { interruptedRemoval } from './interrupted-removal';
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
+import { likePrefix } from '../../store/like-prefix';
 import type { TicketJob } from '../../../src/shared';
 
 type Execute = typeof command;
@@ -105,7 +106,7 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
         removed.local = true;
     }
     // An earlier uncertain delete (including a `:retry-N` intent) is settled by read-back, even when the branch is already gone.
-    const unsettled = store.db.prepare("SELECT 1 FROM effects WHERE id LIKE ? AND status IN ('dispatching','uncertain')").get(`harness:${job.id}:remove-remote:${branch}%`);
+    const unsettled = store.db.prepare("SELECT 1 FROM effects WHERE id LIKE ? ESCAPE '\\' AND status IN ('dispatching','uncertain')").get(likePrefix(`harness:${job.id}:remove-remote:${branch}`));
     if (remote || unsettled) {
         const absent = async () => await remoteSha() ? null : { deleted: true };
         await harnessEffect(store, job, { key: `remove-remote:${branch}`, operation: 'git-remote-branch-delete', target: `refs/heads/${branch}`, payload: { branch }, guard,

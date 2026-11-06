@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { DATA } from '../office/config';
@@ -11,6 +11,8 @@ import { projectById, projectData } from '../office/projects';
 import type { OfficeProject } from '../../src/shared';
 import { type Clock, systemClock } from '../office/clock';
 import { initializeStoreSchema } from './store-schema';
+import { applyConnectionSettings, closeConnection, optimizeOnOpen } from './connection-settings';
+import { statementCache } from './statement-cache';
 import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
@@ -34,12 +36,16 @@ export class Store {
     listeners = new Set<(event: OfficeEvent) => void>();
     private transactionDepth = 0;
     private pendingEvents: OfficeEvent[] = [];
+    private statement: (sql: string) => StatementSync;
     constructor(path = `${DATA}/office.sqlite`, public project: OfficeProject = projectById(), public dataRoot = projectData(project), public clock: Clock = systemClock) {
         mkdirSync(dataRoot, { recursive: true, mode: 0o700 });
         mkdirSync(DATA, { recursive: true, mode: 0o700 });
         this.db = new DatabaseSync(path);
+        applyConnectionSettings(this.db);
         initializeStoreSchema(this.db);
-        const row = this.db.prepare('SELECT body FROM state WHERE id=1').get() as {
+        optimizeOnOpen(this.db);
+        this.statement = statementCache(this.db);
+        const row = this.statement('SELECT body FROM state WHERE id=1').get() as {
             body: string;
         } | undefined;
         this.state = row ? JSON.parse(row.body) : initialSnapshot();
@@ -57,7 +63,7 @@ export class Store {
         this.save();
     }
     save(): void {
-        this.db.prepare('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(JSON.stringify(sanitizeObject(this.state)));
+        this.statement('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(JSON.stringify(sanitizeObject(this.state)));
     }
     transaction<T>(operation: () => T): T {
         if (this.transactionDepth)
@@ -109,9 +115,9 @@ export class Store {
         if (!this.transactionDepth)
             return this.transaction(() => this.emit(kind, message, role, ticket));
         const event: OfficeEvent = { id: 0, at: this.clock.now().toISOString(), kind, message: sanitize(message).slice(0, 1500), role, ticket };
-        const inserted = this.db.prepare('INSERT INTO events(body) VALUES(?)').run(JSON.stringify(event));
+        const inserted = this.statement('INSERT INTO events(body) VALUES(?)').run(JSON.stringify(event));
         event.id = Number(inserted.lastInsertRowid);
-        this.db.prepare('UPDATE events SET body=? WHERE id=?').run(JSON.stringify(event), event.id);
+        this.statement('UPDATE events SET body=? WHERE id=?').run(JSON.stringify(event), event.id);
         this.state.revision = event.id;
         this.state.serverTime = event.at;
         this.state.events = [event, ...this.state.events].slice(0, 100);
@@ -120,7 +126,7 @@ export class Store {
         return event;
     }
     replay(after: number): OfficeEvent[] {
-        return (this.db.prepare('SELECT id,body FROM events WHERE id>? ORDER BY id LIMIT 1000').all(after) as {
+        return (this.statement('SELECT id,body FROM events WHERE id>? ORDER BY id LIMIT 1000').all(after) as {
             id: number;
             body: string;
         }[]).map(row => ({ ...JSON.parse(row.body), id: row.id }));
@@ -137,31 +143,31 @@ export class Store {
     }
     claim(owner: string, now = this.clock.now().getTime(), name = 'pipeline'): boolean {
         return this.transaction(() => {
-            const current = this.db.prepare('SELECT owner,expires FROM lock WHERE name=?').get(name) as {
+            const current = this.statement('SELECT owner,expires FROM lock WHERE name=?').get(name) as {
                 owner: string;
                 expires: number;
             } | undefined;
             if (current && current.owner !== owner && current.expires > now)
                 return false;
-            this.db.prepare('INSERT OR REPLACE INTO lock VALUES(?,?,?)').run(name, owner, now + 90000);
+            this.statement('INSERT OR REPLACE INTO lock VALUES(?,?,?)').run(name, owner, now + 90000);
             return true;
         });
     }
-    release(owner: string): void { this.db.prepare('DELETE FROM lock WHERE owner=?').run(owner); }
+    release(owner: string): void { this.statement('DELETE FROM lock WHERE owner=?').run(owner); }
     claimWork(work: WorkRef, owner: string, stage: string, lane: import('../../src/shared').ExecutionLane = 'delivery'): WorkClaim | null {
         if (work.projectId !== this.project.id)
             throw new Error('Work belongs to another project');
         return this.transaction(() => {
-            const active = this.db.prepare("SELECT body FROM work_claims WHERE work_key=? AND status IN ('running','stopping')").get(workKey(work));
+            const active = this.statement("SELECT body FROM work_claims WHERE work_key=? AND status IN ('running','stopping')").get(workKey(work));
             if (active)
                 return null;
             const claim: WorkClaim = { id: randomUUID(), work, owner, stage, lane, status: 'running', claimedAt: this.clock.now().toISOString(), endedAt: '' };
-            this.db.prepare('INSERT INTO work_claims VALUES(?,?,?,?)').run(claim.id, workKey(work), claim.status, JSON.stringify(claim));
+            this.statement('INSERT INTO work_claims VALUES(?,?,?,?)').run(claim.id, workKey(work), claim.status, JSON.stringify(claim));
             return claim;
         });
     }
     finishClaim(id: string, status: WorkClaim['status']): void {
-        const row = this.db.prepare('SELECT body FROM work_claims WHERE id=?').get(id) as {
+        const row = this.statement('SELECT body FROM work_claims WHERE id=?').get(id) as {
             body: string;
         } | undefined;
         if (!row)
@@ -170,15 +176,15 @@ export class Store {
         claim.status = status;
         if (status !== 'running' && status !== 'stopping')
             claim.endedAt = this.clock.now().toISOString();
-        this.db.prepare('UPDATE work_claims SET status=?,body=? WHERE id=?').run(status, JSON.stringify(claim), id);
+        this.statement('UPDATE work_claims SET status=?,body=? WHERE id=?').run(status, JSON.stringify(claim), id);
     }
     activeClaims(): WorkClaim[] {
-        return (this.db.prepare("SELECT body FROM work_claims WHERE status IN ('running','stopping')").all() as {
+        return (this.statement("SELECT body FROM work_claims WHERE status IN ('running','stopping')").all() as {
             body: string;
         }[]).map(row => JSON.parse(row.body));
     }
     getEffect<T = unknown>(id: string): EffectIntent<T> | undefined {
-        const row = this.db.prepare('SELECT body FROM effects WHERE id=?').get(id) as {
+        const row = this.statement('SELECT body FROM effects WHERE id=?').get(id) as {
             body: string;
         } | undefined;
         return row && JSON.parse(row.body);
@@ -186,7 +192,7 @@ export class Store {
     putEffect(intent: EffectIntent): void {
         if (intent.work.projectId !== this.project.id)
             throw new Error('Effect belongs to another project');
-        this.db.prepare('INSERT INTO effects VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,body=excluded.body').run(intent.id, workKey(intent.work), intent.status, JSON.stringify(sanitizeObject(intent)));
+        this.statement('INSERT INTO effects VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,body=excluded.body').run(intent.id, workKey(intent.work), intent.status, JSON.stringify(sanitizeObject(intent)));
     }
     updateEffect<T = unknown>(id: string, expected: EffectIntent['status'], mutate: (intent: EffectIntent<T>) => void): EffectIntent<T> | null {
         return this.transaction(() => {
@@ -201,16 +207,16 @@ export class Store {
     recover(): void  { return recover.call(this); }
     begin(ticket: Ticket, stage: Stage): string {
         const id = randomUUID();
-        this.db.prepare('INSERT INTO attempts VALUES(?,?,?,?,?,?)').run(id, ticket.key, stage, 'running', '', JSON.stringify({ startedAt: this.clock.now().toISOString(), commit: ticket.commit }));
+        this.statement('INSERT INTO attempts VALUES(?,?,?,?,?,?)').run(id, ticket.key, stage, 'running', '', JSON.stringify({ startedAt: this.clock.now().toISOString(), commit: ticket.commit }));
         return id;
     }
     finish(id: string, result: StageResult): void {
-        const prior = this.db.prepare('SELECT body FROM attempts WHERE id=?').get(id) as {
+        const prior = this.statement('SELECT body FROM attempts WHERE id=?').get(id) as {
             body: string;
         } | undefined;
         const startedAt = prior ? JSON.parse(prior.body).startedAt : undefined;
         const endedAt = this.clock.now().toISOString();
-        this.db.prepare('UPDATE attempts SET status=?,body=? WHERE id=?').run(result.outcome, JSON.stringify({ ...result, startedAt, endedAt, elapsedMs: startedAt ? Date.parse(endedAt) - Date.parse(startedAt) : null }), id);
+        this.statement('UPDATE attempts SET status=?,body=? WHERE id=?').run(result.outcome, JSON.stringify({ ...result, startedAt, endedAt, elapsedMs: startedAt ? Date.parse(endedAt) - Date.parse(startedAt) : null }), id);
     }
     beginWork(record: WorkTime): void {
         this.state.workLog ??= [];
@@ -252,5 +258,5 @@ export class Store {
             this.emit('work-time-reported', `${ROLE_NAMES[work.role]} reported ${work.durationUncertain ? 'at least ' : ''}${durationLabel(work.elapsedMs)} for ${work.ticket || 'office work'}${work.stage ? ` · ${work.stage}` : ''} to Morgan (${status}).`, 'pm', work.ticket);
         });
     }
-    close(): void { this.db.close(); }
+    close(): void { closeConnection(this.db); }
 }

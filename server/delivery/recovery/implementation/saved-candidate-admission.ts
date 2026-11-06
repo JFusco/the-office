@@ -63,7 +63,7 @@ export function savedCandidateAdmission(store:Store,job:TicketJob,nativeRoot=res
    return {jobId:child.id,key:relation.key,finding:relation.finding,head:child.head,branch:child.branch,pr:child.pr,url:child.prUrl,sourceHead:review.commit,reviewWorker:gate.reviewWorker,qaWorker:gate.qaWorker,files,humanInput:deliveryInputSha256(store,child.key),mergeCommit:child.mergeCommit||'',complete:!!closeout,closeoutReceipts:closeout?.receipts||[]};
   });
   const fingerprint=digest({project:store.project.id,repository:store.project.repository,jobId:job.id,candidate,basis,related,humanInput:deliveryInputSha256(store,job.key),holds:HOLDS[job.key]||null});
-  return {id:`saved-candidate-adoption:${job.id}:${parentHead}:${fingerprint}`,action:'adopt-candidate',key:job.key,head:parentHead,fingerprint,detail:'Three newly created, natively verified child source/PR references materially change the original blocked adoption context. Read-only reassessment preserves the original unaccepted candidate, eleven dispositions, three held profiles and eight pending baseline acceptance gates.'};
+  return {id:`saved-candidate-adoption:${job.id}:${parentHead}:${fingerprint}`,action:'adopt-candidate',key:job.key,head:parentHead,fingerprint,detail:'Three newly created, natively verified child source/PR references materially change the original blocked adoption context. Read-only reassessment preserves the original unaccepted candidate.'};
  }catch{return;}
 }
 /** Keep budget/history while paused, draining, running or temporarily unqualified; only real adoption/readback or terminal work clears it. */

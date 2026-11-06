@@ -1,10 +1,12 @@
 /** Harper's learning loop: lessons distilled from finished delivery work. Advisory only. */
 export type LessonKind = 'convention' | 'pitfall' | 'process' | 'tooling';
-export type LessonStage = 'intake' | 'implement' | 'review' | 'validate' | 'repair' | 'any';
+/** `maintenance`: CMS maintenance stages (follow-up, vendor review, proposal and verification). */
+export type LessonStage = 'intake' | 'implement' | 'review' | 'validate' | 'repair' | 'maintenance' | 'any';
 export const LESSON_KINDS: readonly LessonKind[] = ['convention', 'pitfall', 'process', 'tooling'];
-export const LESSON_STAGES: readonly LessonStage[] = ['intake', 'implement', 'review', 'validate', 'repair', 'any'];
+export const LESSON_STAGES: readonly LessonStage[] = ['intake', 'implement', 'review', 'validate', 'repair', 'maintenance', 'any'];
 export interface LessonEvidence {
-    kind: 'job' | 'ticket' | 'pr' | 'step' | 'finding' | 'rollup';
+    /** `maintenance`: a CMS maintenance run; `artifact`: a file the run saved under its artifact root. */
+    kind: 'job' | 'ticket' | 'maintenance' | 'pr' | 'step' | 'finding' | 'artifact' | 'rollup';
     ref: string;
     url: string;
     detail: string;
@@ -40,8 +42,9 @@ export interface Lesson {
     retiredBy?: 'human';
     reactivatedAt?: string;
 }
-export type RetrospectiveTrigger = 'completed' | 'parked' | 'retired' | 'repair-budget';
-export type RetrospectiveSubjectKind = 'job' | 'ticket';
+/** `blocked`: a CMS maintenance run stopped on a blocker (the maintenance analogue of a Block park). */
+export type RetrospectiveTrigger = 'completed' | 'parked' | 'retired' | 'repair-budget' | 'blocked';
+export type RetrospectiveSubjectKind = 'job' | 'ticket' | 'maintenance';
 /** What happened at the moment of the trigger; kept because the job may change afterwards. */
 export interface RetrospectiveEvent {
     stage: string;
