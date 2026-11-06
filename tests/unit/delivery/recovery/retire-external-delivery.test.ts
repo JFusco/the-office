@@ -52,6 +52,21 @@ test('polling retires externally completed metadata handoff and resolves its PM/
     await a.delivery.observe();
     expect(a.execute).toHaveBeenCalledTimes(3);
 });
+test('a park that never reached the board does not stop retirement', async () => {
+    const a = fixture();
+    a.job.parked = { stage: 'lead-pr', reason: 'PR #127 is already merged', at: '2026-11-05T23:33:56.097Z', published: false };
+    a.job.detail = 'Error: Issue card is in "done", a human lane; the harness will not move it to Block';
+    await a.delivery.observe();
+    expect(a.job.status).toBe('cancelled');
+    expect(a.job.parked).toBeUndefined();
+    expect(a.store.state.outbox.filter(o => o.status === 'open')).toEqual([]);
+});
+test('a published park is a human decision and is retained', async () => {
+    const a = fixture();
+    a.job.parked = { stage: 'lead-pr', reason: 'Decision needed', at: '2026-11-05T23:33:56.097Z', published: true };
+    await a.delivery.observe();
+    expect(a.job.status).toBe('blocked');
+});
 test.each(['open', 'not-planned', 'wrong-issue', 'unmerged', 'wrong-pr', 'changed-head', 'wrong-target', 'unlinked', 'read-failure', 'race', 'claim-race'])(
     '%s evidence cannot retire the original handoff', async scenario => {
         const a = fixture();
