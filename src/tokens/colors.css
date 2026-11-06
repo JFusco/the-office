@@ -694,6 +694,8 @@
   --color-roster-avatar-ink: var(--palette-olive-979);
   --color-roster-it: var(--palette-slate-907);
   --color-roster-it-ink: var(--palette-teal-484);
+  --color-roster-knowledge: var(--palette-sand-918);
+  --color-roster-knowledge-ink: var(--palette-sand-599);
   --color-tour: var(--palette-sage-551-2);
   --color-tour-hover: var(--palette-sage-398);
   --color-pause-button: var(--palette-olive-952);
@@ -885,6 +887,7 @@
   --color-team-qa: var(--palette-slate-657);
   --color-team-cto: var(--palette-lilac-629);
   --color-team-it: var(--palette-slate-622);
+  --color-team-knowledge: var(--palette-olive-682);
 }
 
 

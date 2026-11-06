@@ -6,7 +6,7 @@
 const TOKENS={
   prankJelly:'--scene-prank-jelly',prankStapler:'--scene-prank-stapler',prankPlate:'--scene-prank-plate',
   backdrop:'--scene-backdrop',hemisphereSky:'--scene-hemisphere-sky',hemisphereGround:'--scene-hemisphere-ground',contactShadow:'--scene-contact-shadow',
-  teamPm:'--color-team-pm',teamDeveloper:'--color-team-developer',teamLead:'--color-team-lead',teamQa:'--color-team-qa',teamCto:'--color-team-cto',teamIt:'--color-team-it',
+  teamPm:'--color-team-pm',teamDeveloper:'--color-team-developer',teamLead:'--color-team-lead',teamQa:'--color-team-qa',teamCto:'--color-team-cto',teamIt:'--color-team-it',teamKnowledge:'--color-team-knowledge',
   potBody:'--scene-pot-body',potStem:'--scene-pot-stem',potLeafDark:'--scene-pot-leaf-dark',potLeafLight:'--scene-pot-leaf-light',
   chairMetal:'--scene-chair-metal',deskChair:'--scene-desk-chair',meetingChair:'--scene-meeting-chair',
   deskTop:'--scene-desk-top',deskLeg:'--scene-desk-leg',deskDrawer:'--scene-desk-drawer',deskHandle:'--scene-desk-handle',

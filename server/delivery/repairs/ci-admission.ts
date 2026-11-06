@@ -7,6 +7,7 @@ import { hasUncertainEffects } from '../pipeline/github-delivery';
 import { readCIFailure } from './ci-evidence';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
+import { recordCIBudget } from '../../knowledge/record-trigger';
 
 /** Observation schedules Sam; it never starts a writer or takes over a checkout. */
 export async function queueCIDiagnosis(delivery: GitHubDelivery, job: TicketJob) {
@@ -24,6 +25,7 @@ export async function queueCIDiagnosis(delivery: GitHubDelivery, job: TicketJob)
     if (issue.state !== 'open' || !Number.isFinite(Date.parse(issue.updated_at))) return false;
     if ((job.ciRepairs?.length || 0) >= 3) {
         job.status = 'blocked'; job.detail = 'Sam exhausted three CI repair attempts; retained diagnostics need Morgan’s next decision.';
+        recordCIBudget(store, job);
         store.save(); return true;
     }
     const id = crypto.randomUUID(), root = resolve(store.dataRoot, 'ticket-work', job.id);

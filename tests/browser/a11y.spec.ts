@@ -24,6 +24,7 @@ async function equivalentTarget(page:Page,target:string,failedTargets:string[]){
       const rooms:[string,string][]=[['DEVELOPMENT','Developer'],['DEV LEAD','Dev lead'],['QA','QA'],['PROJECT MANAGEMENT','PM'],['CTO OFFICE','Goals & priorities (CTO)']];
       const role=rooms.find(([label])=>name.startsWith(label+' '))?.[1]||(name.includes(' · IT SUPPORT ')?'IT specialist':undefined);
       if(role)equivalent=buttons.find(button=>button.getAttribute('aria-label')?.endsWith(', '+role));
+      if(name.includes(' · KNOWLEDGE '))equivalent=buttons.find(button=>/^Visit .+, knowledge engineer, /.test(button.getAttribute('aria-label')||''));
       if(name.startsWith('IDEAS & POSSIBILITIES ')||name.startsWith('DELIVERY REPORTS '))equivalent=buttons.find(button=>button.getAttribute('aria-label')?.startsWith('Open project goals & ideas,'));
     }
     if(!equivalent||equivalent.disabled||!equivalent.checkVisibility({visibilityProperty:true}))return null;

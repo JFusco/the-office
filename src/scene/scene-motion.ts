@@ -3,7 +3,7 @@ import { STAGES, type OfficeSnapshot, type Role, type WorkTime } from '../shared
 export type ScenePoint = [number, number, number];
 export const SPOTS: Record<Role, ScenePoint> = {
     developer: [-5.7, 0, .8], lead: [-3.1, 0, -3.5], qa: [5.5, 0, -2.1],
-    analyst: [4.1, 0, 3.7], pm: [5.5, 0, 3.7], cto: [-4.5, 0, -2], it: [1.2, 0, -3.5],
+    analyst: [4.1, 0, 3.7], pm: [5.5, 0, 3.7], cto: [-4.5, 0, -2], it: [1.2, 0, -3.5], knowledge: [-2, 0, 2.9],
 };
 export const avatarHome = (role: Role): ScenePoint => [SPOTS[role][0], 0, SPOTS[role][2] + .85];
 const deliveryRoles = new Set<Role>(['pm', 'developer', 'lead', 'qa', 'analyst']);

@@ -1,5 +1,5 @@
 import type { Role, StageResult } from '../shared';
-export type WorkKind = 'feature' | 'delivery' | 'intake' | 'checkpoint' | 'maintenance' | 'conversation' | 'notice' | 'mail' | 'continuation' | 'reconciliation' | 'daily-cto' | 'issue' | 'pr';
+export type WorkKind = 'feature' | 'delivery' | 'intake' | 'checkpoint' | 'maintenance' | 'conversation' | 'notice' | 'mail' | 'continuation' | 'reconciliation' | 'daily-cto' | 'issue' | 'pr' | 'retrospective';
 export interface WorkRef {
     projectId: string;
     kind: WorkKind;
@@ -118,7 +118,7 @@ export interface SchedulerState {
     lastProgressAt: string;
     undispatchedCycles: number;
 }
-export type ExecutionLane = 'delivery' | 'cto' | 'it' | 'operations';
+export type ExecutionLane = 'delivery' | 'cto' | 'it' | 'operations' | 'knowledge';
 export interface WorkClaim {
     lane?: ExecutionLane;
     id: string;

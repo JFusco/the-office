@@ -20,10 +20,12 @@ export class Offices {
     capacity = officeCapacity();
     ctoCapacity = officeCapacity();
     itCapacity = officeCapacity();
+    knowledgeCapacity = officeCapacity();
     operationsCapacity = officeCapacity();
     scheduler = new Scheduler(this.capacity);
     ctoScheduler = new Scheduler(this.ctoCapacity, systemClock, 'cto');
     itScheduler = new Scheduler(this.itCapacity, systemClock, 'it');
+    knowledgeScheduler = new Scheduler(this.knowledgeCapacity, systemClock, 'knowledge');
     operationsScheduler = new Scheduler(this.operationsCapacity, systemClock, 'operations');
     control = new ControlStore();
     preferences = new PreferencesStore(this.control.db);
@@ -44,7 +46,7 @@ export class Offices {
         for (const project of PROJECTS) {
             const root = projectData(project), store = new Store(resolve(root, 'office.sqlite'), project, root);
             store.recover();
-            const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity), conversations = new Conversations(store, engine, root);
+            const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
         for (const entry of this.entries.values()) {
@@ -117,7 +119,7 @@ export class Offices {
             return queues;
         };
         // Independent lanes are reserved synchronously before any model is invoked.
-        const stopping = (lane: import('../../src/shared').ExecutionLane) => entries.some(entry => entry.store.state.workLog?.some(work => work.status === 'stopping' && (work.lane || (work.role === 'cto' ? 'cto' : work.role === 'it' ? 'it' : 'delivery')) === lane));
-        await Promise.allSettled([stopping('cto') ? Promise.resolve() : this.ctoScheduler.pump(queues('cto')), stopping('it') ? Promise.resolve() : this.itScheduler.pump(queues('it')), this.operationsScheduler.pump(queues('operations')), stopping('delivery') ? Promise.resolve() : this.scheduler.pump(queues('delivery'))]);
+        const stopping = (lane: import('../../src/shared').ExecutionLane) => entries.some(entry => entry.store.state.workLog?.some(work => work.status === 'stopping' && (work.lane || (work.role === 'cto' ? 'cto' : work.role === 'it' ? 'it' : work.role === 'knowledge' ? 'knowledge' : 'delivery')) === lane));
+        await Promise.allSettled([stopping('cto') ? Promise.resolve() : this.ctoScheduler.pump(queues('cto')), stopping('it') ? Promise.resolve() : this.itScheduler.pump(queues('it')), this.operationsScheduler.pump(queues('operations')), stopping('knowledge') ? Promise.resolve() : this.knowledgeScheduler.pump(queues('knowledge')), stopping('delivery') ? Promise.resolve() : this.scheduler.pump(queues('delivery'))]);
     }
 }

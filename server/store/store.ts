@@ -19,8 +19,8 @@ export function initialSnapshot(): OfficeSnapshot {
     return {
         revision: 0, serverTime: now, startedAt: now, paused: false, pilotKey: '', mode: 'live',
         intake: { status: 'idle', lastChecked: '', error: '', schedule: 'Weekdays · 9:00 AM America/New_York' },
-        agents: (['pm', 'developer', 'lead', 'qa', 'cto', 'it', 'analyst'] as Role[]).map(id => ({
-            id, name: ROLE_NAMES[id], title: { pm: 'Project manager', developer: 'Developer', lead: 'Lead developer', qa: 'QA engineer', cto: 'CTO', it: 'IT specialist', analyst: 'Technical Business Analyst' }[id],
+        agents: (['pm', 'developer', 'lead', 'qa', 'cto', 'it', 'analyst', 'knowledge'] as Role[]).map(id => ({
+            id, name: ROLE_NAMES[id], title: { pm: 'Project manager', developer: 'Developer', lead: 'Lead developer', qa: 'QA engineer', cto: 'CTO', it: 'IT specialist', analyst: 'Technical Business Analyst', knowledge: 'Knowledge engineer' }[id],
             activity: 'idle', task: 'Ready for the next request', ticket: '', sessionId: '', lastSeen: now,
         })),
         features: [], tickets: [], events: [], outbox: [], messages: [], projectNotes: [],
@@ -45,7 +45,7 @@ export class Store {
         this.state = row ? JSON.parse(row.body) : initialSnapshot();
         this.state.project = project;
         migrateSnapshot(this.state, project);
-        for (const role of ['cto', 'it', 'analyst'] as const)
+        for (const role of ['cto', 'it', 'analyst', 'knowledge'] as const)
             if (!this.state.agents.some(agent => agent.id === role))
                 this.state.agents.push(initialSnapshot().agents.find(agent => agent.id === role)!);
         Object.assign(this.state.agents.find(agent => agent.id === 'cto')!, { name: ROLE_NAMES.cto, title: 'CTO' });

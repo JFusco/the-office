@@ -18,6 +18,7 @@ import { dueReadback, readBackTime } from '../time/time-readback';
 import { TimeLedger } from '../time/time-ledger';
 import { easternDay } from '../office/clock';
 import { withAmendmentOwnership } from '../delivery/recovery/source-amendment/source-amendment';
+import { scheduledRetrospectives } from '../knowledge/scheduled-retrospectives';
 export interface OfficeEntry {
     store: Store;
     engine: Engine;
@@ -28,6 +29,8 @@ const eligible = (state: WorkEligibility['state'], reason: string, owner = 'Morg
 /** One projection drives dispatch, queue counts, owner labels and next actions. */
 export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery'): ScheduledWork[] {
     const { store, engine, conversations, coordinator } = entry;
+    if (lane === 'knowledge')
+        return withActiveClaims(store, lane, scheduledRetrospectives(store, (prompt, schema, opts) => engine.knowledgeAgents.run('knowledge', prompt, schema, opts), now));
     const items: ScheduledWork[] = [], c = store.state.coordination!;
     const add = (kind: WorkKind, record: {
         id: string;
@@ -44,7 +47,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
             identity: () => JSON.stringify([record.status, stage, 'head' in record ? record.head : null, 'stage' in record ? record.stage : null]), execute });
     };
     for (const message of store.state.messages.filter(message => ['human', 'cto', 'it', 'pm'].includes(message.from))) {
-        const messageLane = message.to === 'cto' ? 'cto' : message.to === 'it' ? 'it' : 'delivery';
+        const messageLane = message.to === 'cto' ? 'cto' : message.to === 'it' ? 'it' : message.to === 'knowledge' ? 'knowledge' : 'delivery';
         if (messageLane !== lane) continue;
         const original = message.from === 'human' ? message : message.from === 'it' && message.actionId.startsWith('message:')
             ? store.state.messages.find(original => original.id === message.actionId.slice(8)) : undefined;

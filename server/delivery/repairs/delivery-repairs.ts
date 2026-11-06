@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import type { DeliveryRepairCycle, StageResult, TicketJob, Ticket, Stage, WorkApproach } from '../../../src/shared';
 import type { Store } from '../../store/store';
 import { namedRepairIds } from '../findings/repair-scope';
+import { recordRepairBudget } from '../../knowledge/record-trigger';
 
 /** Models describe defects; the harness restricts which stages, identities and effects can repair. */
 /** `named`: hands-off projects repair the findings the reviewer names (see namedRepairIds). */
@@ -32,10 +33,11 @@ export function repairDispositions(cycle: DeliveryRepairCycle, result: StageResu
 }
 export function enqueueRepairDiagnosis(store: Store, job: Pick<TicketJob, 'id' | 'key' | 'head' | 'steps' | 'repairCycle'>) {
     const cycle = job.repairCycle!;
-    if (cycle.diagnosisRequestId) return;
+    if (cycle.diagnosisRequestId) return recordRepairBudget(store, job);
     const id = crypto.randomUUID();
     cycle.diagnosisRequestId = id;
     store.state.messages.push({ id, requestId: id, from: 'pm', to: 'it', ticket: job.key, actionId: '', body: `Bounded delivery repair window exhausted for ${job.key}, original delivery ${job.id}, exact head ${job.head}. Inspect retained stage evidence and provider health; report a concrete operational cause and supported next action to Morgan. Do not implement ticket code, reset budgets, change scope, replay effects or dispatch delivery. Findings: ${JSON.stringify(cycle.pendingFindingIds)}. Repair history: ${JSON.stringify(cycle.findingAttempts)}.`, status: 'queued', createdAt: store.clock.now().toISOString(), sessionId: '', recheck: false, error: '', recipients: [], receipts: [] });
+    recordRepairBudget(store, job);
 }
 export function githubRepairEligible(job: TicketJob, result: StageResult, named = false) {
     const ids = repairFindingIds(result, named);

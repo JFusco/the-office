@@ -52,7 +52,7 @@ test('an existing request is projected once and keeps stopping ownership until c
     const owned=claim(store,{projectId:'brain',kind:'reconciliation',id:request.id},request.action,'delivery','lead');store.state.paused=true;store.finishClaim(owned.id,'stopping');store.state.workLog![0].status='stopping';
     const items=project().filter(item=>item.work.id===request.id);expect(items).toHaveLength(1);expect(items[0].eligibility).toMatchObject({state:'running',owner:'Sam',reason:'Waiting for confirmed process termination'});expect(selectWork(items,0)).toBeUndefined();
 });
-test.each([['cto','cto'],['it','it'],['operations','pm']] as [ExecutionLane,Role][])('%s claims do not inflate delivery counts or queued work', (lane,role)=>{
+test.each([['cto','cto'],['it','it'],['operations','pm'],['knowledge','knowledge']] as [ExecutionLane,Role][])('%s claims do not inflate delivery counts or queued work', (lane,role)=>{
     const {store,project,summaries}=fixture();store.state.agents.find(agent=>agent.id===role)!.activity='working';
     claim(store,{projectId:'brain',kind:'conversation',id:'separate-lane'},`conversation:${role}`,lane,role);
     expect(project().filter(item=>item.eligibility.state==='running')).toHaveLength(0);expect(summaries()[0]).toMatchObject({working:0,queued:0});
@@ -143,4 +143,16 @@ test('an owned Backlog idea is waiting, while an explicit work request retains i
     c.listener.assigned=[{key:'GH-67',pickupStatus:'Backlog'} as any];c.listener.reviews=[{id:'held-idea',key:'GH-67',status:'owned',queuedAt:''} as any];
     expect(project().find(item=>item.work.id==='held-idea')?.eligibility.state).toBe('waiting');
     c.listener.reviews[0].workRequested='manual';expect(project().find(item=>item.work.id==='held-idea')?.eligibility.state).toBe('blocked');
+});
+
+test('the knowledge lane carries only Harper retrospectives and the delivery lane never sees them', () => {
+    const {store,project}=fixture();
+    const done={id:crypto.randomUUID(),key:'GH-3',requestedAt:'2026-10-29T10:00:00Z',status:'completed',stage:'closeout',detail:'',head:'',worktree:'',branch:'',pr:0,prUrl:'',steps:[]} as any;
+    store.state.coordination!.jobs=[done];
+    store.state.messages.push({id:'human-1',requestId:'human-1',from:'human',to:'pm',ticket:'',actionId:'',body:'hi',status:'queued',createdAt:'2026-10-29T21:00:00Z',sessionId:'',recheck:false,error:'',recipients:[],receipts:[]} as any);
+    expect(project('knowledge').map(item=>[item.work.kind,item.stage,item.eligibility.owner])).toEqual([['retrospective','retrospective','Harper']]);
+    expect(project().some(item=>item.work.kind==='retrospective')).toBe(false);
+    store.state.knowledge!.enabled=false;
+    expect(project('knowledge')[0].eligibility.state).toBe('waiting');
+    expect(selectWork(project('knowledge'),0)).toBeUndefined();
 });
