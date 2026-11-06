@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { coordination } from '../../../server/scheduling/coordination';
-import type { StageResult, TicketJob } from '../../../src/shared';
+import type { MaintenanceResult, MaintenanceRun, StageResult, TicketJob } from '../../../src/shared';
 
 /** Isolated store with a mutable clock; never touches live data or providers. */
 export function knowledgeStore(projectId = 'brain', start = '2026-11-06T15:00:00Z') {
@@ -23,4 +23,13 @@ export function result(stage: string, overrides: Partial<StageResult> = {}): Sta
 
 export function job(overrides: Partial<TicketJob> = {}): TicketJob {
     return { id: crypto.randomUUID(), key: 'GH-12', requestedAt: '2026-11-05T10:00:00Z', status: 'queued', stage: 'implement', detail: 'Working', head: 'b'.repeat(40), worktree: '', branch: '', pr: 0, prUrl: '', steps: [], ...overrides } as TicketJob;
+}
+
+export function maintenanceResult(overrides: Partial<MaintenanceResult> = {}): MaintenanceResult {
+    return { outcome: 'passed', summary: 'Stage summary', ledger: 'ledger', receipts: [], candidates: [], blocker: '', ...overrides };
+}
+
+/** A CMS maintenance run as the store keeps it; status and steps come from the caller. */
+export function maintenanceRun(overrides: Partial<MaintenanceRun> = {}): MaintenanceRun {
+    return { id: crypto.randomUUID(), requestedAt: '2026-11-06T09:00:00Z', startedAt: '2026-11-06T09:01:00Z', endedAt: '', status: 'queued', weekly: true, stage: 'follow-up', error: '', steps: [], ...overrides };
 }

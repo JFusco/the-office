@@ -15,7 +15,9 @@ const round = (value: number | null, places = 1) => value === null ? null : Math
  */
 export function deliveryMetrics(store: Store, from: Date, to: Date): DeliveryMetrics {
     const start = from.getTime(), end = to.getTime(), within = (at?: string) => !!at && Date.parse(at) >= start && Date.parse(at) < end;
-    const knowledge = store.state.knowledge, records = (knowledge?.retrospectives || []).filter(record => within(record.eventAt || record.at));
+    const knowledge = store.state.knowledge, all = (knowledge?.retrospectives || []).filter(record => within(record.eventAt || record.at));
+    // CMS maintenance runs are not deliveries; they count only toward retrospectives.
+    const records = all.filter(record => record.subject !== 'maintenance');
     const count = (trigger: string) => records.filter(record => record.trigger === trigger).length;
     let repairAttempts = 0, reroutes = 0, ciRepairs = 0, stillParked = 0;
     for (const record of records.filter(record => record.trigger === 'completed' || record.trigger === 'retired')) {
@@ -37,7 +39,7 @@ export function deliveryMetrics(store: Store, from: Date, to: Date): DeliveryMet
         completed: count('completed'), retired: count('retired'), parked: count('parked'), repairBudgets: count('repair-budget'),
         repairAttempts, reroutes, ciRepairs,
         medianQueueMinutes: round(median(queue)), medianBlockHours: round(median(dwell)), stillParked,
-        retrospectives: records.length,
+        retrospectives: all.length,
         lessonsAdded: lessons.filter(lesson => within(lesson.createdAt)).length,
         lessonsRetired: lessons.filter(lesson => within(lesson.retiredAt)).length,
         recurrences: lessons.flatMap(lesson => lesson.recurrences || []).filter(recurrence => within(recurrence.at)).length,
