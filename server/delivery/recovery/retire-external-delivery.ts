@@ -24,7 +24,7 @@ function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
 /**
  * Joe's rule: a PR he merged himself is settled. Parks, review bookkeeping, a moved head and verified
  * writes do not hold the handoff; owned or uncertain work (a worktree, an unfinished worker, an
- * unverified write or board move, a merge in flight, a repair cycle) still does.
+ * unverified write or board move, a merge in flight, a repair cycle, a worker not proven read-only) still does.
  */
 function ownerSettles(delivery: GitHubDelivery, job: TicketJob): boolean {
     const { store } = delivery;
@@ -36,7 +36,7 @@ function ownerSettles(delivery: GitHubDelivery, job: TicketJob): boolean {
         !job.discoveryRecovery && !job.sourceAmendment && !job.repairCycle && !job.candidateCleanup &&
         job.steps.every(step => ['prepare-pr', 'lead-pr'].includes(step.stage) &&
             step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain && /^(?:get|read|query|inspect)\b/i.test(receipt.action))) &&
-        (store.state.workLog || []).filter(work => work.requestId === job.id).every(work => work.executionStatus === 'completed') &&
+        completedPRReviews(store, job) &&
         !store.activeClaims().some(claim => claim.work.id === job.id) &&
         !store.db.prepare("SELECT id FROM effects WHERE work_key=? AND status!='verified' LIMIT 1").get(
             workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }));
