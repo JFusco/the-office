@@ -29,6 +29,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Store } from '../../store/store';
 import type { Engine } from '../../scheduling/engine';
+import { stageRole } from './stage-roles';
 import type { TicketJob, StageResult, Role } from '../../../src/shared';
 import { nextJobStage } from './approach';
 import { ResultSchema } from '../../workers/agents';
@@ -198,7 +199,7 @@ export class GitHubDelivery {
                 writeFileSync(path, JSON.stringify(policy, null, 2));
                 policyInstruction = `VERIFIED NATIVE GITHUB POLICY: ${JSON.stringify(policy)}. Saved at ${path}. These successful reads use the Office's existing gh authentication and include every repository/inherited ruleset page. When protectionDetailRequired=false, GitHub reports an unprotected target with no rulesets: the administrative /branches/{branch}/protection endpoint is unnecessary and MUST NOT be called. Preserve earlier connector denials as diagnostics for that unused operation; do not repeat the denied call or request broader permissions. This packet resolves only policy discovery, not source acceptance, required checks, review threads, holds or merge readiness. If protectionDetailRequired=true, inspect all applicable rules using permitted native reads; missing required policy evidence remains blocking. Prefer the configured native gh reader for GitHub readiness rather than mixing connector credentials. Reuse the saved source review and checks for the unchanged head; reassess only the remaining live readiness gates.`;
             }
-            const role: Role = ({ 'ci-recovery': 'pm', implement: 'developer', 'scope-repair': 'developer', 'update-base': 'developer', review: 'lead', validate: 'qa', draft: 'developer', 'lead-pr': 'lead', 'prepare-pr': 'lead', closeout: 'pm' } as const)[job.stage];
+            const role: Role = stageRole(job.stage);
             if (job.stage === 'prepare-pr') {
                 const current = await this.verifyPR(job);
                 job.head = current.head.sha;

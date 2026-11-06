@@ -26,7 +26,8 @@ export class ClaudeStream {
       const value=r?.usage?.[fallback];
       return values.every(value=>value===undefined||value===null)&&entries.length===1&&entries[0][0]===DEVELOPER_MODEL&&Number.isSafeInteger(value)&&value>=0?value:null;
     };
-    return {input_tokens:count('inputTokens','input_tokens'),output_tokens:count('outputTokens','output_tokens')};
+    // Cache reads/writes are reported, not billed here: they show whether prompt reuse is happening.
+    return {input_tokens:count('inputTokens','input_tokens'),output_tokens:count('outputTokens','output_tokens'),cache_read_input_tokens:count('cacheReadInputTokens','cache_read_input_tokens'),cache_creation_input_tokens:count('cacheCreationInputTokens','cache_creation_input_tokens')};
   }
   finish(expectedSession:string) {
     const r=this.result;if(!r||r.is_error||r.subtype!=='success')throw new Error(`Opus 5.5 worker failed: ${r?.errors?.join('; ')||r?.result||r?.subtype||'no completed result'}. Reconcile prior effects before another attempt.`);

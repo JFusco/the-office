@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import type { command } from '../../workers/process';
+import { installDependencies } from './install-dependencies';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
@@ -65,6 +66,9 @@ export async function createCandidate(store: Store, execute: Execute, job: Ticke
     const created = await readCandidate(execute, identity.worktree);
     if (created.head !== base || created.branch !== identity.branch || created.dirty)
         throw new Error('Created candidate read-back does not match the fetched target');
+    // Advisory: the developer can still install; a failed seed never blocks the candidate.
+    await installDependencies(execute, identity.worktree, { timeout: 10 * 60000 })
+        .catch(error => store.emit('candidate-seed-failed', `${job.key}: dependency install in ${identity.worktree} failed; the developer installs instead. ${String(error).slice(0, 400)}`, 'developer', job.key));
     store.emit('candidate-created', `${job.key}: worktree ${identity.worktree} on ${identity.branch} from ${target} ${base.slice(0, 7)}.`, 'developer', job.key);
     return { ...identity, base, reused: false };
 }

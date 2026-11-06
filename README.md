@@ -19,7 +19,7 @@ mkdir -p .local
 cp office-config.example.json .local/office-config.json
 ```
 
-Edit the private configuration for your repositories, account, project boards, base branches, and existing human holds. Keep credentials in their native authenticated tools. `.local`, environment files, databases, logs, sessions, and artifacts are ignored by Git.
+Edit the private configuration for your repositories, account, project boards, base branches, and existing human holds. `delivery.concurrency` (1 to 3, default 1) lets that many delivery stages from different projects run at once; each project still runs one stage at a time and each worker role one stage at a time. Hands-off `independent-checks` validation runs the repository's `verify:ci` script in the harness unless a project lists its own `checks` (argv commands with optional `timeoutMs`); browser validation, repairs and any check the harness cannot finish stay with Riley. Keep credentials in their native authenticated tools. `.local`, environment files, databases, logs, sessions, and artifacts are ignored by Git.
 
 ```sh
 pnpm dev
