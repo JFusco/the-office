@@ -2,6 +2,7 @@ import { parseBrainStatus } from './brain-status';
 import { z } from 'zod';
 import { GitHubMaintenance, easternDate } from '../maintenance';
 import { maintenancePolicies } from '../../github/github-context';
+import { BRAIN_DEPENDENCY_MERGES } from './brain-dependency-merges';
 import { command } from '../../workers/process';
 import { supersedablePriorRuns, unverifiedPriorRunNote } from '../unverified-prior-runs';
 import { queueMaintenanceNotice } from './queue-maintenance-notice';
@@ -40,7 +41,7 @@ export class BrainMaintenance extends GitHubMaintenance {
         this.store.save();
         try {
             const result = await this.agents.run('pm', `${unverifiedPriorRunNote(run)}Brain maintenance through the Office.
-Joe requested Brain's existing scheduled task hand work to this office on 2026-10-27. Execute the retained Brain workflow below, with the current repository instructions authoritative. You are the coordinator for this Brain assignment. Delegate the required fresh independent content review using available native agent delegation; missing capability blocks changed knowledge publication. Other planning/review choices cannot remove Brain's required content review or publication gates. Do not use the CMS vendor workflow or its Dependabot exception.
+Joe requested Brain's existing scheduled task hand work to this office on 2026-10-27. Execute the retained Brain workflow below, with the current repository instructions authoritative. You are the coordinator for this Brain assignment. Delegate the required fresh independent content review using available native agent delegation; missing capability blocks changed knowledge publication. Other planning/review choices cannot remove Brain's required content review or publication gates. ${BRAIN_DEPENDENCY_MERGES}
 IDENTITY OVERRIDE: Replace the old hard-coded --author-id 01a1421a-14c9-7162-8e37-074a60b11a41 in the retained policy with YOUR ACTUAL current agent/thread ID, and retain that identity throughout claim, review and publication. Do not impersonate the original author. Invoke the scheduled-agent claim even for a manual Office button: no forced rerun is authorized. Brain's gate owns dates, backoff, retry limits and interrupted-run reconciliation.
 PRIMARY OWNERSHIP: Read the current complete Office session inventory and inspect exact candidates before changing the primary checkout. A loaded session identity alone does not prove a competing writer. Approval-review/Guardian sessions can belong to this very assignment: use authoritative thread status and parent/reviewed-session evidence to prove that relationship, never infer it from the title alone. A completed approval review of YOUR current session is not an independent checkout owner. Preserve genuine active, unrelated or unverified owners; never interrupt them. Keep open issue/PR branches intact in isolated worktrees and use clean current primary main for nightly coordination. An open PR alone does not prohibit maintenance on a separate clean main checkout.
 Do not edit automations or memories. Keep private evidence under Brain's .state/nightly and this project's ${this.store.dataRoot}. Prior office ledger (historical context only): ${state.ledger}

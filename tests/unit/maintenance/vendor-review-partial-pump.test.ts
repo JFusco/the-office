@@ -57,3 +57,17 @@ test('a blocked vendor review that reports a write receipt is never treated as p
     expect(stages).toEqual(['vendor-review']);
     expect(run.status).toBe('blocked');
 });
+
+test('a passed vendor review with zero candidates that records a rotated entry completes the weekly run', async () => {
+    const ledger = 'Retained follow-up ledger.\nRotated upstream (unverifiable, no profile impact claimed): November 4 "Manage entries directly from the Visual Builder form panel".';
+    const { store, run, stages, maintenance } = weeklyRun({ ...passed, summary: 'No evidenced changes; one rotated entry recorded.', ledger, candidates: [] });
+    await maintenance.pump(run.id);
+    expect(run.status).toBe('queued');
+    expect(store.state.maintenance!.ledger).toBe(ledger);
+    await maintenance.pump(run.id);
+    expect(stages).toEqual(['vendor-review']);
+    expect(run.status).toBe('completed');
+    expect(run.stage).toBe('complete');
+    expect(store.state.maintenance!.lastWeekly).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(store.state.maintenance!.lastDaily).toBe(store.state.maintenance!.lastWeekly);
+});
