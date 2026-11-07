@@ -3,6 +3,7 @@ import { handsOff } from '../../harness/scope';
 import { dependabotPR, inPickupLane, readRepo } from '../dependabot/qualify';
 import { ensureReviewCards, ensureTrackingIssue } from '../dependabot/tracking-issue';
 import { closesIssue, linkPR } from '../dependabot/link-pr';
+import { autoAdoptable, autoAdopts, waitsQuietly } from './auto-adopt';
 import type { Execute } from '../../board/project-graphql';
 import type { Store } from '../../../store/store';
 import type { DependabotAdoption, PickupPolicy, TicketJob } from '../../../../src/shared';
@@ -33,10 +34,11 @@ export async function adoptDependencyBot(store: Store, execute: Execute, jobs: T
     withdrawStale(store, records, pulls, bot);
     if (pickup.enabled) {
         let ready: any[] = [];
-        try { ready = await inPickupLane(store, execute, pulls, pickup.status); }
+        const auto = autoAdopts(store.project, bot.id);
+        try { ready = auto ? await autoAdoptable(store, execute, pulls, pickup.status) : await inPickupLane(store, execute, pulls, pickup.status); }
         catch (error) { store.emit(`${bot.id}-unavailable`, `${bot.label} PR cards could not be read; adoption skipped this poll: ${String(error)}`, 'pm', ''); }
         for (const p of ready)
-            await adoptOne(store, execute, records, p, pickup, guard, bot);
+            await adoptOne(store, execute, records, p, pickup, guard, bot, auto);
     }
     await reverify(store, execute, records, pulls, jobs, guard, bot);
 }
@@ -47,10 +49,12 @@ function settle(store: Store, record: DependabotAdoption, status: DependabotAdop
     store.emit(kind, detail, 'pm', record.issue ? `GH-${record.issue}` : '');
 }
 
-async function adoptOne(store: Store, execute: Execute, records: DependabotAdoption[], p: any, pickup: PickupPolicy, guard: Guard, bot: DependencyBot): Promise<void> {
+async function adoptOne(store: Store, execute: Execute, records: DependabotAdoption[], p: any, pickup: PickupPolicy, guard: Guard, bot: DependencyBot, auto = false): Promise<void> {
     const pr = { ...dependabotPR(p), bot: bot.id };
     let record = records.find(r => r.pr === pr.number);
     if (record?.status === 'adopted' || HOLDS[`GH-${pr.number}`])
+        return;
+    if (auto && !record && waitsQuietly(await bot.refusal(store, execute, p)))
         return;
     if (!record)
         records.push(record = { id: crypto.randomUUID(), pr: pr.number, url: pr.url, title: pr.title, issue: 0, status: 'blocked', detail: `${bot.label} PR #${pr.number} adoption started.`, at: new Date().toISOString(), ...(bot.id === 'pin-courier' ? { bot: bot.id } : {}) });
@@ -58,7 +62,7 @@ async function adoptOne(store: Store, execute: Execute, records: DependabotAdopt
     try {
         const refused = await bot.refusal(store, execute, p);
         if (refused) {
-            settle(store, record, 'refused', `${bot.label} PR #${pr.number} was not adopted: ${refused}. Move its card out of ${pickup.status} or handle it manually.`, `${bot.id}-refused`);
+            settle(store, record, 'refused', auto ? `${bot.label} PR #${pr.number} was not adopted automatically: ${refused}. Handle it manually.` : `${bot.label} PR #${pr.number} was not adopted: ${refused}. Move its card out of ${pickup.status} or handle it manually.`, `${bot.id}-refused`);
             return;
         }
         const writeGuard = headGuard(store, execute, p, bot, guard);
