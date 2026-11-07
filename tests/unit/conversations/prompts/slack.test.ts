@@ -46,3 +46,9 @@ test('read-back accepts native mention expansion and known attribution, preservi
   expect(comparableSlackText('<https://example.org|Ticket>')).toBe('[Ticket](https://example.org)');
   expect(comparableSlackText('<https://different.example.org|Ticket>')).not.toBe('[Ticket](https://example.org)');
 });
+test('read-back accepts Slack list rendering of a saved bulleted notice, and nothing else',()=>{
+  const saved='Headline\n\nSummary.\n\n- Add a profile…\n- Register sources:\n\nPR: https://example.org/pull/1 · merge abc1234\nFooter.';
+  expect(comparableSlackText(saved)).toBe(saved);
+  expect(comparableSlackText('Headline\n\nSummary.\n\n• Add a profile…\n• Register sources:\nPR: <https://example.org/pull/1|example.org/pull/1> · merge abc1234\nFooter.\n*Sent using* <@U0A3Q4JJX17|ChatGPT>')).toBe(saved);
+  for(const changed of ['Headline\n\nSummary.\n\n• Add a profile…\nPR: https://example.org/pull/1 · merge abc1234\nFooter.','Headline\n\nSummary.\n\n• Add another profile…\n• Register sources:\nPR: https://example.org/pull/1 · merge abc1234\nFooter.','Headline\nSummary.\n\n• Add a profile…\n• Register sources:\nPR: https://example.org/pull/1 · merge abc1234\nFooter.'])expect(comparableSlackText(changed)).not.toBe(saved);
+});

@@ -13,9 +13,10 @@ export const SlackRequestSchema = z.object({ targetType: z.enum(['person', 'chan
 export const SlackResultSchema = z.object({ channelId: z.string(), messageTs: z.string(), permalink: z.string(), detail: z.string() }).strict();
 export const SlackVerificationSchema = z.object({ found: z.boolean(), channelId: z.string(), messageTs: z.string(), permalink: z.string(), targetId: z.string(), workspaceId: z.string(), text: z.string(), detail: z.string() }).strict();
 // The connector expands mentions on read and adds this app attribution on send.
+// Slack renders a `- ` list as `• ` items and drops the blank line after the list.
 // Normalize only those observed transport changes; never discard arbitrary text.
 export function comparableSlackText(text: string) {
-    return text.replace(/\r\n/g, '\n').replace(/&(?:amp|lt|gt);/g, s => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>' })[s]!)
+    return text.replace(/\r\n/g, '\n').replace(/^• /gm, '- ').replace(/^(- [^\n]*)\n(?![\n-])/gm, '$1\n\n').replace(/&(?:amp|lt|gt);/g, s => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>' })[s]!)
         .replace(/<@([UW][A-Z0-9]+)\|[^>]+>/g, '<@$1>').replace(/<#([CG][A-Z0-9]+)\|[^>]+>/g, '<#$1>')
         .replace(/<(https?:\/\/[^>|]+)(?:\|([^>]+))?>/g, (_all, url: string, label: string | undefined) => !label || label === url || label === url.replace(/^https?:\/\//, '') ? url : `[${label}](${url})`)
         .replace(/\n\*Sent using\* <@U0A3Q4JJX17>\s*$/, '').trim();
