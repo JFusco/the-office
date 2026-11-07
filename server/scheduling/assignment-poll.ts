@@ -93,7 +93,7 @@ export async function poll(this: Coordinator, now = new Date()) {
                     const issue = raw.data.find((i: any) => i.key === ticket!.key);
                     if (!issue)
                         throw new Error('Jira notice issue identity is missing');
-                    queueMergeNotice(this.store, { key: ticket!.key, prUrl: pr.url, mergeCommit: pr.mergeCommit, mergedAt: pr.closedAt!, summary: 'Azure build and deployment results are monitored separately in the Office.', assignees: issue.assignee?.accountId ? [{ id: issue.assignee.accountId, email: issue.assignee.emailAddress }] : [], reporter: issue.reporter?.accountId ? { id: issue.reporter.accountId, email: issue.reporter.emailAddress } : undefined });
+                    queueMergeNotice(this.store, { key: ticket!.key, prUrl: pr.url, mergeCommit: pr.mergeCommit, mergedAt: pr.closedAt!, summary: 'Azure build and deployment results are monitored separately in the Office.', pr: { title: pr.title, body: pr.description }, assignees: issue.assignee?.accountId ? [{ id: issue.assignee.accountId, email: issue.assignee.emailAddress }] : [], reporter: issue.reporter?.accountId ? { id: issue.reporter.accountId, email: issue.reporter.emailAddress } : undefined });
                 }
             }
         }

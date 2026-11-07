@@ -20,6 +20,7 @@ export async function observeGitHubMergeNotices(delivery: GitHubDelivery): Promi
                 issue.html_url !== `https://github.com/${store.project.repository}/issues/${issue.number}`) continue;
             queueMergeNotice(store, { key: job.key, prUrl: job.prUrl, mergeCommit: pull.merge_commit_sha,
                 mergedAt: pull.merged_at, summary: 'GitHub Actions and issue acceptance are tracked separately by the Office.',
+                pr: { title: pull.title, body: pull.body },
                 assignees: (issue.assignees || []).map((user: any) => ({ id: user.login })),
                 reporter: issue.user ? { id: issue.user.login } : undefined });
         } catch { /* Provider/linkage uncertainty never creates a notification or resends an attempted one. */ }

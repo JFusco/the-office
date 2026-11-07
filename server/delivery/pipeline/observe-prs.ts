@@ -17,7 +17,7 @@ export async function observe(this: GitHubDelivery) {
                 job.status = 'watching';
                 job.mergeCommit = p.merge_commit_sha;
                 const linkedIssue = await this.api(`issues/${Number(job.key.slice(3))}`);
-                queueMergeNotice(this.store, { key: job.key, prUrl: job.prUrl || p.html_url, mergeCommit: p.merge_commit_sha, mergedAt: p.merged_at, summary: 'GitHub Actions are monitored separately by the Office.', assignees: (linkedIssue.assignees || []).map((u: any) => ({ id: u.login })), reporter: linkedIssue.user ? { id: linkedIssue.user.login } : undefined });
+                queueMergeNotice(this.store, { key: job.key, prUrl: job.prUrl || p.html_url, mergeCommit: p.merge_commit_sha, mergedAt: p.merged_at, summary: 'GitHub Actions are monitored separately by the Office.', pr: { title: p.title, body: p.body }, assignees: (linkedIssue.assignees || []).map((u: any) => ({ id: u.login })), reporter: linkedIssue.user ? { id: linkedIssue.user.login } : undefined });
                 const runs = await this.api(`actions/runs?head_sha=${encodeURIComponent(p.merge_commit_sha)}&per_page=100`);
                 const actual = runs.workflow_runs?.filter((r: any) => r.head_sha === p.merge_commit_sha && r.event === 'push' && r.head_branch === this.store.project.target);
                 if (!actual?.length) {
