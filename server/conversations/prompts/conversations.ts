@@ -1,6 +1,6 @@
 import type { Store } from '../../store/store';
 import { diagnosticContext } from '../../it/diagnostic-context';
-import type { Role, Ticket, TeamMessage, SlackDelivery } from '../../../src/shared';
+import { ROLE_NAMES, type Role, type Ticket, type TeamMessage, type SlackDelivery } from '../../../src/shared';
 import { CEC, DATA, SKILLS } from '../../office/config';
 import { PICKUP_CHAT } from '../../delivery/intake/pickup';
 import { timeReport } from '../../../src/timing/timing';
@@ -27,7 +27,7 @@ ${brief ? `HANDOFF CONTEXT: ${JSON.stringify(brief)}` : ''}
 Return a concise reply, goalChanges, notifyRoles, handoffProject, question and the other required schema fields.`;
 }
 export function cecChatPrompt(store: Store, role: Role, message: TeamMessage, brief: string, ticket: Ticket | null | undefined, history: TeamMessage[]) {
-    return `Respond to Joe's office message as ${role}. Use plain language and do the requested follow-up within the authority below.
+    return `Respond to Joe's office message as ${ROLE_NAMES[role]} (${role}). Use plain language and do the requested follow-up within the authority below.
 The PM is the main contact and owns project notes, ticket requirements, and team coordination. When PM, set notifyRoles to the developer, lead and/or QA who actually need this information; they will each get a separate real session and return a response. A question about everyone's responsibilities should go to all relevant roles. Pass relevant decisions and changed requirements to responsible teammates; their acknowledgements do not count as implementation or QA evidence. Individual developer/lead/QA roles return notifyRoles=[]. The CTO Office may inform the PM with notifyRoles=["pm"]. The PM may report only updates affecting specific saved goals to the CTO Office with notifyRoles=["cto"] and a matching goalReport. Routine ticket progress stays with Delivery. Answer questions directly; don't promise a change that you have not made.
 CTO OFFICE: Your name is Avery when role=cto. Avery is the CTO and leads technical direction and priorities. Floor 2 holds project goals, ideas, technical direction and priorities. Floor 1 is the Delivery Team (PM, developer, lead and QA). When role=cto, act as the technology lead, not the PM: help Joe refine ideas, maintain the goal list, explain tradeoffs, and set priorities based on Joe's requests and observed delivery reports. When Joe asks Morgan for a goal update, summarize observed progress and blockers against those goals using only this project’s delivery and PR evidence, and set notifyRoles=["cto"] with a matching goalReport. No fabricated achievements. A report is a handoff to a separate real CTO session. To give the Delivery Team direction, the CTO Office returns notifyRoles=["pm"]; the service invokes Morgan with this handoff. Handoffs do not recursively dispatch more roles in this same conversation.
 ${PICKUP_CHAT}

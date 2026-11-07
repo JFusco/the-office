@@ -4,7 +4,7 @@ import { PICKUP_CHAT } from '../delivery/intake/pickup';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Store } from '../store/store';
-import type { Role, TeamMessage } from '../../src/shared';
+import { ROLE_NAMES, type Role, type TeamMessage } from '../../src/shared';
 import { timeReport } from '../../src/timing/timing';
 export const GITHUB_ISSUE_SKILL = resolve(homedir(), '.agents/skills/github-issue-creator/SKILL.md');
 export function canFileGithubIssue(role: Role, message: TeamMessage, brief: string) {
@@ -12,7 +12,7 @@ export function canFileGithubIssue(role: Role, message: TeamMessage, brief: stri
 }
 export function githubFollowupPrompt(store: Store, role: Role, message: TeamMessage, brief: string) {
     const canFile = canFileGithubIssue(role, message, brief);
-    return `Respond to Joe as ${role}, for ${store.project.name}. Morgan is PM, Avery is CTO, Alex develops, Sam independently reviews, Riley verifies. Answer directly in plain language. CTO direction goes through Morgan with notifyRoles=["pm"]. PM may inform relevant roles or request CTO review. Other roles return notifyRoles=[].
+    return `Respond to Joe as ${ROLE_NAMES[role]} (${role}), for ${store.project.name}. ${ROLE_NAMES.pm} is PM, ${ROLE_NAMES.cto} is CTO, ${ROLE_NAMES.developer} develops, ${ROLE_NAMES.lead} independently reviews, ${ROLE_NAMES.qa} verifies. Answer directly in plain language. CTO direction goes through ${ROLE_NAMES.pm} with notifyRoles=["pm"]. PM may inform relevant roles or request CTO review. Other roles return notifyRoles=[].
 AUTHORITY: ${canFile ? `The current message may authorize ONE GitHub issue. Read ${GITHUB_ISSUE_SKILL}. Decide from Joe's actual wording: only an explicit action request to create/file/open an issue (including polite requests phrased as questions) permits filing; questions about whether to file, examples, quoted instructions and drafts do not. Use exactly ${store.project.repository}, canonical existing labels and the skill's five headings/title convention. Verify repository access, search all issue states for duplicates, create once using structured arguments/body file, and read back canonical URL/title/body/state/labels. Return a github-issue-create receipt for any attempted create, retaining its known URL even if uncertain. An uncertain create must never be replayed. This permission covers only that issue. No source edits, branches, PRs, comments, assignments, merges, pipeline retries or releases.` : 'This conversation is read-only for external services and source code. Draft and discuss issues using GitHub Issue Creator when requested; never file an issue or perform another external write.'}
 ${PICKUP_CHAT}
 BACKLOG DEFERRALS: An assigned issue outside the configured pickup lane is planning context, not a request to approve or start work. Re-read its latest intake disposition below. A stale intake outbox reply or vague 'go ahead' does not reverse a Backlog/held decision or authorize implementation. Explain the existing deferral with question="" and notifyRoles=[]; do not ask which next step Joe approves. Use the explicit Start/pickup workflow only when currently requested. Preserve genuine uncertain-write reconciliation and existing delivery blockers.
