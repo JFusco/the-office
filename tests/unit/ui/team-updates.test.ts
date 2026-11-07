@@ -66,3 +66,35 @@ test('blocked delivery names its actual running reconciliation worker and shared
  s.workLog[0].status='completed';s.agents[0].activity='idle';
  const finished=ticketUpdates(liveTiming(s,100,45000,true,true))[0];expect(finished.summary).not.toContain('elapsed');expect(finished.workerActive).toBe(false);expect(finished.next).toContain('Stopped');expect(s.workLog[0].elapsedMs).toBe(58000);
 });
+
+test('a completed maintenance run keeps its outcome on Team updates and outranks older finished deliveries',()=>{
+ const s=snapshot([{...job,status:'completed',updatedAt:'2026-11-05T00:56:43Z'}]);s.project.repository='JFusco/brain';
+ const step=(summary:string)=>({role:'pm',stage:'brain-maintenance',at:'',result:{outcome:'passed',summary,ledger:'',blocker:'',candidates:[],receipts:[{id:'i',action:'create issue',target:'https://github.com/JFusco/brain/issues/337',verified:true,uncertain:false,detail:''}]}});
+ const run={id:'r',requestedAt:'2026-11-06T22:00:00Z',startedAt:'2026-11-06T22:00:15Z',endedAt:'2026-11-06T22:40:02Z',status:'completed',weekly:false,stage:'brain-completed',error:'',steps:[step('Merged PRs #338 and #340; accepted 12 captures.')]};
+ s.maintenance={runs:[run]};
+ const rows=ticketUpdates(s);
+ expect(rows[0]).toMatchObject({key:'GH-337',title:'Nightly maintenance',phase:'Maintenance complete',status:'completed',at:run.endedAt});
+ expect(rows[0].summary).toContain('accepted 12 captures');
+ s.maintenance={runs:[{...run,stage:'skipped: completed'}]};
+ expect(ticketUpdates(s).some(r=>r.key==='GH-337')).toBe(false);
+ s.maintenance={runs:[{...run,status:'blocked',stage:'brain-maintenance',steps:[step('Hosted checks failed.')]}]};
+ expect(ticketUpdates(s)[0]).toMatchObject({key:'GH-337',phase:'Maintenance stopped',status:'blocked'});
+});
+test('a later checkpoint read-back step keeps the Brain outcome row; CMS completions stay hidden',()=>{
+ const s=snapshot([]);s.project.repository='JFusco/brain';
+ const receipt=(target:string)=>({id:'i',action:'a',target,verified:true,uncertain:false,detail:''});
+ const step=(stage:string,summary:string,target:string)=>({role:'pm',stage,at:'',result:{outcome:'passed',summary,ledger:'',blocker:'',candidates:[],receipts:[receipt(target)]}});
+ const run={id:'r',requestedAt:'',startedAt:'',endedAt:'2026-11-06T22:40:02Z',status:'completed',weekly:false,stage:'brain-completed',error:'',steps:[step('brain-maintenance','Accepted 12 captures.','https://github.com/JFusco/brain/issues/337'),step('checkpoint-completion-readback','Checkpoint reconciled.','r')]};
+ s.maintenance={runs:[run]};
+ expect(ticketUpdates(s)[0]).toMatchObject({key:'GH-337',summary:'Accepted 12 captures.'});
+ s.maintenance={runs:[{...run,stage:'complete',steps:[step('draft-pr','CMS done.','https://github.com/JFusco/brain/issues/5')]}]};
+ expect(ticketUpdates(s)).toHaveLength(0);
+});
+test('a completed run sits beside, never replaces, a row for the same issue',()=>{
+ const receipt={id:'i',action:'a',target:'https://github.com/JFusco/brain/issues/263',verified:true,uncertain:false,detail:''};
+ const run={id:'r',requestedAt:'',startedAt:'',endedAt:'2026-11-06T22:40:02Z',status:'completed',weekly:false,stage:'brain-completed',error:'',steps:[{role:'pm',stage:'brain-maintenance',at:'',result:{outcome:'passed',summary:'Accepted 12 captures.',ledger:'',blocker:'',candidates:[],receipts:[receipt]}}]};
+ const finished=snapshot([{...job,status:'completed',updatedAt:'2026-11-06T22:30:00Z'}]);finished.project.repository='JFusco/brain';finished.maintenance={runs:[run]};
+ expect(ticketUpdates(finished).filter(r=>r.key==='GH-263').map(r=>r.phase)).toEqual(['Maintenance complete','Delivery complete']);
+ const live=snapshot([job]);live.project.repository='JFusco/brain';live.maintenance={runs:[run]};
+ expect(ticketUpdates(live).filter(r=>r.key==='GH-263').map(r=>r.phase)).toEqual(['Closing out merged work','Maintenance complete']);
+});

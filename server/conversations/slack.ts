@@ -6,6 +6,7 @@ import type { Agents } from '../workers/agents';
 import { sanitize } from '../office/security';
 import { CommandFailure } from '../workers/process';
 import { goalNoticeAuthorized } from '../leadership/goal-notice-authorization';
+import { maintenanceNoticeAuthorized } from '../maintenance/brain/maintenance-notice-authorization';
 import { Effects } from '../store/effects';
 import { channelNoticeAuthorized } from './channel-notice';
 export const SlackRequestSchema = z.object({ targetType: z.enum(['person', 'channel']), targetId: z.string().regex(/^[UCG][A-Z0-9]+$/), targetName: z.string().min(1), workspaceId: z.string().regex(/^T[A-Z0-9]+$/), text: z.string().min(1).max(5000) }).strict();
@@ -30,7 +31,7 @@ export class SlackMessages {
     async sendNotification(requestId: string, input: z.infer<typeof SlackRequestSchema>) {
         const request = SlackRequestSchema.parse(input), state = this.store.state.coordination?.notices, notice = state?.entries.find(n => n.id === requestId);
         const channel = !!notice?.channel;
-        if (!notice || notice.kind === 'goal' || notice.status !== 'working' || !notice.resolved || notice.text !== request.text || notice.resolved.targetId !== request.targetId || notice.resolved.workspaceId !== request.workspaceId || request.targetType !== (channel ? 'channel' : 'person') || (channel ? !channelNoticeAuthorized(this.store, notice) : !state?.policy.enabled))
+        if (!notice || (notice.kind && notice.kind !== 'merge') || notice.status !== 'working' || !notice.resolved || notice.text !== request.text || notice.resolved.targetId !== request.targetId || notice.resolved.workspaceId !== request.workspaceId || request.targetType !== (channel ? 'channel' : 'person') || (channel ? !channelNoticeAuthorized(this.store, notice) : !state?.policy.enabled))
             throw new Error('Merge notice lacks current project and recipient authorization');
         return this.deliver(requestId, request, { body: channel ? 'Joe configured this project’s merge posts for this exact Slack channel and these mentions. Send only the saved message to that channel.' : 'Joe enabled this project’s verified merge notifications. Send only the saved message to the independently resolved recipient.', ticket: notice.key, requestId });
     }
@@ -40,6 +41,13 @@ export class SlackMessages {
         if (!effect || effect.operation !== 'goal-completion-slack' || effect.status !== 'dispatching' || JSON.stringify(effect.payload) !== JSON.stringify(request) || !notice || notice.kind !== 'goal' || notice.status !== 'working' || !goalNoticeAuthorized(this.store, notice) || notice.text !== request.text || request.targetType !== 'person' || notice.resolved?.targetId !== request.targetId || notice.resolved?.workspaceId !== request.workspaceId)
             throw new Error('Goal notice lacks current completion and recipient authorization');
         return this.deliver(requestId, request, { body: 'Joe authorized future goal-completion DMs to this exact Slack recipient. Send only this saved Avery completion notice; independently verify the target before sending.', ticket: '', requestId });
+    }
+    async sendMaintenanceNotification(requestId: string, input: z.infer<typeof SlackRequestSchema>) {
+        const request = SlackRequestSchema.parse(input), notice = this.store.state.coordination?.notices?.entries.find(n => n.id === requestId);
+        const effect = this.store.getEffect(`slack:${requestId}`);
+        if (!effect || effect.operation !== 'maintenance-completion-slack' || effect.status !== 'dispatching' || JSON.stringify(effect.payload) !== JSON.stringify(request) || !notice || notice.kind !== 'maintenance' || notice.status !== 'working' || !maintenanceNoticeAuthorized(this.store, notice) || notice.text !== request.text || request.targetType !== 'person' || notice.resolved?.targetId !== request.targetId || notice.resolved?.workspaceId !== request.workspaceId)
+            throw new Error('Maintenance notice lacks current completion and recipient authorization');
+        return this.deliver(requestId, request, { body: 'Joe asked on 2026-11-06 to be told when Brain maintenance completes, at the exact Slack recipient he authorized for goal-completion DMs. Send only this saved Morgan completion notice; independently verify the target before sending.', ticket: '', requestId });
     }
     private async deliver(requestId: string, request: z.infer<typeof SlackRequestSchema>, human: {
         body: string;
@@ -92,7 +100,7 @@ export class SlackMessages {
             throw new Error('Slack read-back did not match the saved recipient, text, time, and message link');
         Object.assign(delivery, { channelId: result.channelId, messageTs: result.messageTs, permalink: result.permalink, status: 'confirmed', error: '', updatedAt: new Date().toISOString() });
         const effectId = `slack:${delivery.requestId}`;
-        if (this.store.getEffect(effectId)?.operation === 'goal-completion-slack' && this.store.getEffect(effectId)?.status === 'uncertain')
+        if (['goal-completion-slack', 'maintenance-completion-slack'].includes(this.store.getEffect(effectId)?.operation || '') && this.store.getEffect(effectId)?.status === 'uncertain')
             await new Effects(this.store).reconcile(effectId, async () => ({ verified: true, receipt: delivery }));
         reconcileNoticeConfirmations(this.store);
         this.store.emit('slack-confirmed', `Sent to ${delivery.targetName} on Slack. Verified by reading the message back.`, 'pm');
