@@ -40,8 +40,8 @@ export function helperTelemetry(store: Store, feature: Feature, alive = processG
             const work = store.state.workLog?.find(w => w.id === id);
             // Attach usage once, at the transition to finished; calls that finished before capture existed stay uncaptured.
             if (work && ['running', 'stopping'].includes(work.status)) {
-                try { const accounting = helperAccounting(folder, agent.provider, work.sessionId, at, now); if (accounting) store.recordRunEvidence(id, accounting); }
-                catch { /* accounting never blocks helper bookkeeping */ }
+                // Async, off the polling path; evidence attaches to the finished row when it resolves.
+                void helperAccounting(folder, agent.provider, work.sessionId, at, now).then(accounting => { if (accounting) store.recordRunEvidence(id, accounting); }).catch(() => { /* accounting never blocks helper bookkeeping */ });
             }
             store.finishWork(id, receipt.exit_code === 0 ? 'completed' : 'interrupted', elapsed);
         }

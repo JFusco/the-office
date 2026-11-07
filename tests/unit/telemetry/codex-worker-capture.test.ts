@@ -22,21 +22,21 @@ function home() {
     return { root, write: (thread: string, text: string, at = stamp) => writeFileSync(resolve(dir, `rollout-${at}-${thread}.jsonl`), text) };
 }
 
-test('a terminated Codex run is valued from its rollout, including child threads such as the approval guardian', () => {
+test('a terminated Codex run is valued from its rollout, including child threads such as the approval guardian', async () => {
     const h = home();
     h.write(PARENT, rollout(PARENT, [{ input: 1_000, output: 10 }]));
     h.write(CHILD, rollout(CHILD, [{ input: 500, output: 5 }], { model: 'codex-auto-review', effort: 'low', parent: PARENT }));
-    const accounting = codexAccounting(h.root, PARENT, clock.now().toISOString(), clock.now().toISOString());
+    const accounting = (await codexAccounting(h.root, PARENT, clock.now().toISOString(), clock.now().toISOString()));
     expect(accounting.usage).toMatchObject({ requests: 2, uncachedInputTokens: 1_500, outputTokens: 15 });
     // The guardian model has no public list price, so the run is a partial subtotal, not complete.
     expect(accounting.cost).toMatchObject({ completeness: 'partial', microUsd: null, partialMicroUsd: 10_500, reasons: ['no-price-row:codex-auto-review'] });
     expect(accounting.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
 });
 
-test('missing evidence is explicitly unpriced', () => {
+test('missing evidence is explicitly unpriced', async () => {
     const h = home();
-    expect(codexAccounting(h.root, '', clock.now().toISOString(), '').cost).toMatchObject({ completeness: 'unpriced', reasons: ['no-thread-started'] });
-    expect(codexAccounting(h.root, PARENT, clock.now().toISOString(), '').cost).toMatchObject({ completeness: 'unpriced', reasons: ['rollout-not-found'] });
+    expect((await codexAccounting(h.root, '', clock.now().toISOString(), '')).cost).toMatchObject({ completeness: 'unpriced', reasons: ['no-thread-started'] });
+    expect((await codexAccounting(h.root, PARENT, clock.now().toISOString(), '')).cost).toMatchObject({ completeness: 'unpriced', reasons: ['rollout-not-found'] });
 });
 
 test('the worker runtime pins the model, records requested settings and attaches accounting after termination', async () => {
@@ -62,7 +62,7 @@ test('the worker runtime pins the model, records requested settings and attaches
     finally { if (previous === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = previous; }
 });
 
-test('descendant threads are followed (a sub-agent guardian), and rollouts created before the run are ignored', () => {
+test('descendant threads are followed (a sub-agent guardian), and rollouts created before the run are ignored', async () => {
     const h = home();
     h.write(PARENT, rollout(PARENT, [{ input: 1_000, output: 10 }]));
     h.write(CHILD, rollout(CHILD, [{ input: 100, output: 1 }], { parent: PARENT }));
@@ -70,7 +70,7 @@ test('descendant threads are followed (a sub-agent guardian), and rollouts creat
     const stale = '01a1b000-0000-7000-8000-000000000000';
     const d = new Date(Date.parse(clock.now().toISOString()) - 3 * 3600_000);
     h.write(stale, rollout(stale, [{ input: 9_999, output: 9 }], { parent: PARENT }), `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}-00-00`);
-    const accounting = codexAccounting(h.root, PARENT, clock.now().toISOString(), '');
+    const accounting = (await codexAccounting(h.root, PARENT, clock.now().toISOString(), ''));
     expect(accounting.usage.requests).toBe(3);
     expect(accounting.cost).toMatchObject({ completeness: 'partial', reasons: ['no-price-row:codex-auto-review'] });
 });

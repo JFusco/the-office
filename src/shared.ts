@@ -964,6 +964,8 @@ export interface OfficeSnapshot {
         createdAt: string;
     }[];
     workLog?: WorkTime[];
+    /** When per-run usage capture began; earlier runs stay uncaptured. Set once, never reset. */
+    telemetryCaptureStartedAt?: string;
     ciHistory?: AzureBuild[];
     projectNotes: {
         id: string;

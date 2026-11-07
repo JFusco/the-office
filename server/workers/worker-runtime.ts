@@ -24,7 +24,7 @@ import { workerProfile } from './worker-profiles';
 import { codexArguments } from './codex';
 import { LOCAL_BINDINGS } from '../office/config';
 import { resolveModelRoute } from '../telemetry/model-routes';
-import { claudeAccounting, recordTerminalAccounting } from '../telemetry/run-accounting';
+import { recordTerminalAccounting } from '../telemetry/run-accounting';
 import { currentAssignment } from './assignment-context';
 import { assertWorkerLane } from './worker-lanes';
 import { knowledgeContext } from '../knowledge/knowledge-context';
@@ -98,13 +98,6 @@ export class WorkerRuntime {
                 usageAttribution: 'Provider aggregate includes inline helpers; additional model attribution is unexposed.',
                 costBasis: 'Provider estimate, not billing confirmation', at: this.store.clock.now().toISOString() }), null, 2), { mode: 0o600, flag: 'wx' });
             completionSaved = true;
-            // Accounting is captured before semantic validation can reject the result, and it survives
-            // a pause (stopping) because evidence attaches independently of execution status.
-            const completionPath = resolve(dir, 'provider-completion.json');
-            if (stream.result.session_id === id) {
-                try { this.store.recordRunEvidence(id, claudeAccounting(stream.result, { evidenceId: `claude:${id}`, sourcePath: completionPath, sourceSha256: createHash('sha256').update(readFileSync(completionPath)).digest('hex'), at: this.store.clock.now().toISOString() })); }
-                catch (accountingError) { try { this.store.emit('accounting-unavailable', `Usage evidence could not be recorded: ${sanitize(String(accountingError))}`, role, opts.ticket); } catch { /* never fail the run */ } }
-            }
             if (stream.result.session_id === id) this.store.checkpointWork(id, this.store.clock.monotonic() - started, {
                 inputTokens: stream.usageTotals().input_tokens, outputTokens: stream.usageTotals().output_tokens });
         };
@@ -253,11 +246,12 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
         finally {
             clearInterval(heartbeat);
             this.timing.delete(role);
-            // The provider process has terminated here; missing evidence is recorded as unpriced.
-            recordTerminalAccounting(this.store, { id, provider: claude ? 'claude' : 'codex', session, startedAt, role, ticket: opts.ticket });
             this.store.finishWork(id, workStatus, this.store.clock.monotonic() - started);
             this.active.delete(role);
             this.store.agent(role, { activity: 'idle', task: 'Ready for the next handoff', ticket: '' });
+            // The provider has terminated and its completion file (Claude) or rollouts (Codex) are final.
+            // Recorded after capacity is released; it never throws.
+            await recordTerminalAccounting(this.store, { id, provider: claude ? 'claude' : 'codex', sessionId: session, startedAt, role, ticket: opts.ticket });
         }
     }
     async waitForIdle() {
