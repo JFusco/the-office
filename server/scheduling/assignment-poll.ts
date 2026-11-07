@@ -7,6 +7,7 @@ import { retireBacklogged } from '../delivery/parking/retire-backlogged';
 import { retryCandidateCleanup } from '../delivery/candidate/retry-candidate-cleanup';
 import { adoptDependabot } from '../delivery/intake/dependabot/adopt';
 import { adoptDependencyBot } from '../delivery/intake/dependency-bots/adopt';
+import { unparkReleasedWaits } from '../delivery/parking/release-unpark';
 import { pinCourier } from '../delivery/intake/dependency-bots/pin-courier';
 import { observeGitHubMergeNotices } from '../conversations/observe-github-merges';
 import { CEC } from '../office/config';
@@ -104,6 +105,7 @@ export async function poll(this: Coordinator, now = new Date()) {
             await adoptDependencyBot(this.store, this.execute, this.state.jobs, this.pickup, pinCourier);
             await delivery.discover(assigned);
             if (handsOff(this.store)) {
+                await unparkReleasedWaits(this.store, this.execute, this.state.jobs!, this.pickup, now);
                 resumeParked(this.store, this.state.jobs!, assigned, this.pickup, this.dependencyStores(), now);
                 await retireBacklogged(this.store, this.execute, this.state.jobs!, assigned);
                 await retryCandidateCleanup(this.store, this.execute, this.state.jobs!);
