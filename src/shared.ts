@@ -489,6 +489,8 @@ export interface MaintenanceRun {
         at: string;
     }[];
     decisions?: ApproachDecision[];
+    /** Candidates left to the delivery pipeline because their issue is held or has an unsettled delivery job. */
+    skippedCandidates?: { index: number; checkpoint: 'triage' | 'proposal'; issue: number; reason: string; at: string }[];
 }
 export interface ProjectGoal {
     projectId?: string;
