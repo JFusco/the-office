@@ -11,6 +11,8 @@ test('the registry has one persona per role, keyed by its own id, in canonical r
     expect(DEPARTMENTS[PERSONAS[id].department]).toBeDefined();
     expect(PERSONAS[id].summary).not.toBe('');
     expect(PERSONAS[id].responsibilities).not.toBe('');
+    expect(PERSONAS[id].voice).not.toBe('');
+    expect(PERSONAS[id].boundaries).not.toBe('');
   }
 });
 
