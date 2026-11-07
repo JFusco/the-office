@@ -41,3 +41,19 @@ test('a retired seed stays retired across later migrations', () => {
     expect(store.state.knowledge!.lessons.filter(lesson => lesson.id === SEED)).toMatchObject([{ status: 'retired' }]);
     expect(knowledgeContext(store, 'scope-repair')).toBe('');
 });
+
+const WITHDRAWN = 'seed:cms-field-vocabulary:contentstack-withdrawn-changelog-items';
+
+test('the Contentstack withdrawn-item lesson reaches CMS maintenance stages only, with issue evidence', () => {
+    const store = setup('cms-field-vocabulary');
+    const seeded = store.state.knowledge!.lessons.filter(lesson => lesson.id === WITHDRAWN);
+    expect(seeded).toMatchObject([{ status: 'active', scope: 'project', stages: ['maintenance'] }]);
+    expect(seeded[0].evidence[0]).toMatchObject({ kind: 'ticket', ref: 'GH-137', url: 'https://github.com/JFusco/cms-field-vocabulary/issues/137' });
+    expect(seeded[0].evidence[1]).toMatchObject({ kind: 'maintenance', ref: '8a7f8a8e-47f7-4830-b18a-96520b689791', url: '' });
+    for (const stage of ['vendor-review', 'follow-up', 'proposal', 'proposal-plan', 'browser-verification']) {
+        const section = knowledgeContext(store, stage);
+        for (const text of ['record it as withdrawn upstream', 'still lists items dated on or before its scan date', 'merely aged out of the RSS window is not withdrawn', 'cms-field-vocabulary/issues/137']) expect(section).toContain(text);
+    }
+    for (const stage of ['implement', 'review', 'validate', 'scope-repair']) expect(knowledgeContext(store, stage)).not.toContain('withdrawn upstream');
+    for (const projectId of ['brain', 'cec']) expect(knowledgeContext(setup(projectId), 'vendor-review')).not.toContain('Contentstack');
+});

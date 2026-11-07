@@ -2,7 +2,8 @@ import {useLiveTiming} from '../timing/useLiveTiming';
 import {ROLE_NAMES} from '../shared';
 import {deliveryRepairProjection} from './delivery-repair-projection';
 import type {OfficeSnapshot,TicketJob} from '../shared';
-import {shortSummary,readinessWait,maintenanceIssue,parkedProviderWait} from './work-summary';
+import {shortSummary,readinessWait,parkedProviderWait} from './work-summary';
+import {maintenanceUpdate} from './maintenance-update';
 import {displayAgentTask} from '../scene/agent-activity';
 import {Tag,cx,interactive} from '../ui';
 const phases:Record<TicketJob['stage'],string>={'ci-recovery':'Recovering failed merge checks','scope-repair':'Alex repairs the saved candidate', 'update-base':'Updating candidate base',implement:'Building the fix',review:'Independent review',validate:'Verifying the fix',draft:'Publishing the PR','lead-pr':'Checking PR readiness','prepare-pr':'Preparing PR dependencies',merge:'Merging verified PR',closeout:'Closing out merged work'};
@@ -30,11 +31,9 @@ export function ticketUpdates(snapshot:OfficeSnapshot){
  for(const j of snapshot.coordination?.jobs||[])if(parkedProviderWait(j)){
   const row=rows.get(j.key);if(row){row.phase='Blocked on board · upstream wait';row.summary=`Saved blocker (${j.parked!.at}): ${shortSummary(j.parked!.reason,160)}`;row.next='Next owner: Morgan rechecks current upstream evidence. The card stays in Block until deliberately moved to Ready; no approval or reply is requested.';}
  }
- const maintenance=snapshot.maintenance?.runs.at(-1);
- if(maintenance&&['working','blocked','interrupted','queued'].includes(maintenance.status)){
-  const key=maintenanceIssue(maintenance,snapshot.project?.repository||'');
-  if(key&&!rows.has(key))rows.set(key,{key,title:snapshot.github?.issues.find(i=>i.key===key)?.title||'Project maintenance',status:maintenance.readbackRetry&&!maintenance.readbackRetry.exhausted?'queued':maintenance.status,phase:maintenance.readbackRetry&&!maintenance.readbackRetry.exhausted?'Recovery queued for Morgan':['blocked','interrupted'].includes(maintenance.status)?'Maintenance stopped':'Project maintenance',summary:shortSummary(maintenance.steps.at(-1)?.result.summary||maintenance.error||'Maintenance is queued.',240),next:['blocked','interrupted'].includes(maintenance.status)?'Next needed: Morgan reconciles the failed sources and catalog changes. Preserve the native retry gate; no automatic publication.':'Morgan coordinates maintenance through the project’s native gate.',at:maintenance.endedAt||maintenance.startedAt||maintenance.requestedAt});
- }
+ const maintenance=maintenanceUpdate(snapshot);
+ // A completed run's issue key can be one it only commented on, so its outcome sits beside that ticket's row rather than replacing it.
+ if(maintenance&&(maintenance.status==='completed'||!rows.has(maintenance.key)))rows.set(maintenance.status==='completed'?`maintenance:${maintenance.key}`:maintenance.key,maintenance);
  const rank=(s:string)=>['working','watching','retrying'].includes(s)?0:['blocked','interrupted','waiting'].includes(s)?1:s==='queued'?2:3;
  return [...rows.values()].sort((a,b)=>Number(!!b.workerActive)-Number(!!a.workerActive)||rank(a.status)-rank(b.status)||(b.at||'').localeCompare(a.at||''));
 }
@@ -54,5 +53,5 @@ export function TeamUpdates({snapshot,onOpen}:{snapshot:OfficeSnapshot;onOpen:(k
  const timed=useLiveTiming(snapshot);
  const all=ticketUpdates(timed),active=all.filter(r=>r.workerActive||['working','watching'].includes(r.status));
  const rows=[...active,...all.filter(r=>!active.includes(r)).slice(0,Math.max(0,2-active.length))];
- return rows.length?<section className="pointer-events-auto absolute bottom-6 left-9 z-7 max-h-updates-height w-updates overflow-auto rounded-10 border border-updates-line bg-updates p-4 max-dock:bottom-5 max-dock:left-4 max-dock:max-h-updates-height-compact max-dock:w-updates-compact" aria-labelledby="team-updates-title"><h2 id="team-updates-title" className="mb-2 text-13 font-heading">Team updates <small className="text-11 font-regular text-muted">Current work and the next step</small></h2><p className="mb-2 text-10 text-freshness">{observed?`Project progress checked ${new Date(observed).toLocaleTimeString()}`:'Project progress not yet verified'}{stale?' · Saved view; refresh needed':' · Current read-back'}</p>{rows.map(r=><button type="button" className={cx('-mx-2 block w-[calc(100%+16px)] rounded-5 border-t border-line px-2 py-2.5 text-left hover:bg-icon-hover',interactive)} key={r.key} onClick={()=>onOpen(r.key)}><strong className="block text-12 leading-normal">{r.key} · {r.title}</strong><Tag tone={r.status} className="mt-1">{r.phase} · {r.status}</Tag><p className="my-1.5 text-11 leading-normal">{r.summary}</p><small className="text-11 leading-normal">{r.next}</small><small className="mt-2 block text-11 leading-normal text-muted">Last update {r.at?new Date(r.at).toLocaleTimeString(): 'unavailable'}</small></button>)}</section>:null;
+ return rows.length?<section className="pointer-events-auto absolute bottom-6 left-9 z-7 max-h-updates-height w-updates overflow-auto rounded-10 border border-updates-line bg-updates p-4 max-dock:bottom-5 max-dock:left-4 max-dock:max-h-updates-height-compact max-dock:w-updates-compact" aria-labelledby="team-updates-title"><h2 id="team-updates-title" className="mb-2 text-13 font-heading">Team updates <small className="text-11 font-regular text-muted">Current work and the next step</small></h2><p className="mb-2 text-10 text-freshness">{observed?`Project progress checked ${new Date(observed).toLocaleTimeString()}`:'Project progress not yet verified'}{stale?' · Saved view; refresh needed':' · Current read-back'}</p>{rows.map(r=><button type="button" className={cx('-mx-2 block w-[calc(100%+16px)] rounded-5 border-t border-line px-2 py-2.5 text-left hover:bg-icon-hover',interactive)} key={`${r.key}:${r.phase}`} onClick={()=>onOpen(r.key)}><strong className="block text-12 leading-normal">{r.key} · {r.title}</strong><Tag tone={r.status} className="mt-1">{r.phase} · {r.status}</Tag><p className="my-1.5 text-11 leading-normal">{r.summary}</p><small className="text-11 leading-normal">{r.next}</small><small className="mt-2 block text-11 leading-normal text-muted">Last update {r.at?new Date(r.at).toLocaleTimeString(): 'unavailable'}</small></button>)}</section>:null;
 }
