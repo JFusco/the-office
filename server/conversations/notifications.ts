@@ -6,6 +6,7 @@ import { SlackMessages } from './slack';
 import type { MergeNotice } from '../../src/shared';
 import { sendGoalNotice } from '../leadership/send-goal-notice';
 import { channelNoticeAuthorized, queueChannelNotice } from './channel-notice';
+import { shippedSummary, type MergedPR } from './merge-summary';
 export const NoticeSettings = z.object({ enabled: z.boolean(), recipients: z.enum(['assignee', 'reporter', 'both']), workspace: z.string().trim().min(1).max(100), mappings: z.string().max(6000) }).strict();
 const Identity = z.object({ found: z.boolean(), targetId: z.string(), targetName: z.string(), workspaceId: z.string(), evidence: z.array(z.string()), blocker: z.string() }).strict();
 export function noticeState(store: Store) { return store.state.coordination!.notices ??= { policy: { enabled: false, recipients: 'both', workspace: 'Verndale', mappings: '', enabledAt: '' }, entries: [] }; }
@@ -16,6 +17,7 @@ export function queueMergeNotice(store: Store, input: {
     mergeCommit: string;
     mergedAt: string;
     summary: string;
+    pr?: MergedPR;
     assignees: {
         id: string;
         email?: string;
@@ -40,7 +42,16 @@ export function queueMergeNotice(store: Store, input: {
     }
     store.save();
 }
-const mergeText = (store: Store, input: { key: string; prUrl: string; summary: string; mergeCommit: string }) => `${store.project.name} · ${input.key}: PR merged.\n${input.prUrl}\n${input.summary}\nMerge commit: ${input.mergeCommit}\nThis confirms the merge; deployment and issue acceptance are separate.`;
+/** What shipped, from the merged PR's own title and body; blank lines separate headline, summary, changes and footer. */
+const mergeText = (store: Store, input: { key: string; prUrl: string; summary: string; mergeCommit: string; pr?: MergedPR }) => {
+    const shipped = shippedSummary(input.pr);
+    return [
+        `${store.project.name} · ${input.key} ${shipped.title ? `shipped: ${shipped.title}` : 'shipped'}`,
+        shipped.summary,
+        shipped.changes.map(change => `- ${change}`).join('\n'),
+        `PR: ${input.prUrl} · merge ${input.mergeCommit.slice(0, 7)}\n${input.summary}`,
+    ].filter(Boolean).join('\n\n');
+};
 export function retryRecipientLookup(store: Store, key: string) {
     const notice = noticeState(store).entries.find(n => n.key === key && n.status === 'blocked' && !n.channel);
     if (!notice || store.state.slackDeliveries?.some(d => d.requestId === notice.id))
