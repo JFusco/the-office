@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OfficeProject } from '../../src/shared';
 import { GOAL_EVIDENCE_LIMITS, goalEvidencePath } from '../leadership/goal-evidence';
+import { assertModelOverrides, type ModelOverrides } from '../telemetry/model-routes';
 export interface CECBinding {
     goalEvidencePaths?: string[];
     site: string;
@@ -23,6 +24,8 @@ export interface LocalBindings {
     legacyAutomation?: string;
     /** Cross-project delivery stages that may run at once (1..3); absent means 1. */
     delivery?: { concurrency?: number };
+    /** Per-role Codex model and effort pins; absent roles use the built-in routes. */
+    models?: ModelOverrides;
 }
 export function localBindings(dataRoot: string): LocalBindings {
     if (process.env.VITEST || process.env.NODE_ENV === 'test')
@@ -41,6 +44,7 @@ export function localBindings(dataRoot: string): LocalBindings {
     for (const project of config.projects || [])
         if (project.autoAdopt !== undefined && (project.provider !== 'github' || !Array.isArray(project.autoAdopt) || project.autoAdopt.some(bot => !(AUTO_ADOPT_BOTS as readonly string[]).includes(bot)) || new Set(project.autoAdopt).size !== project.autoAdopt.length))
             throw new Error('Project autoAdopt must list unique supported dependency bots on a GitHub project');
+    assertModelOverrides(config.models);
     const concurrency = config.delivery?.concurrency;
     if (config.delivery !== undefined && (typeof config.delivery !== 'object' || config.delivery === null || concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3)))
         throw new Error('Delivery concurrency must be an integer from 1 to 3');

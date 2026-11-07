@@ -22,6 +22,9 @@ import { githubFollowupPrompt, canFileGithubIssue, GITHUB_ISSUE_SKILL } from '..
 import { workerActivity, toolActivity } from './activity';
 import { workerProfile } from './worker-profiles';
 import { codexArguments } from './codex';
+import { LOCAL_BINDINGS } from '../office/config';
+import { resolveModelRoute } from '../telemetry/model-routes';
+import { recordTerminalAccounting } from '../telemetry/run-accounting';
 import { currentAssignment } from './assignment-context';
 import { assertWorkerLane } from './worker-lanes';
 import { knowledgeContext } from '../knowledge/knowledge-context';
@@ -130,14 +133,12 @@ export class WorkerRuntime {
             this.store.emit('activity', summary, role, opts.ticket);
         };
         try {
-            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly);
-            if (role === 'qa') {
-                const policy = JSON.parse(await command('python3', [`${SKILLS.qa}/scripts/qa_harness.py`, 'model-policy']));
-                const route = policy.roles.lead;
-                args.push('--model', route.model, '-c', `model_reasoning_effort="${route.reasoning_effort}"`);
-                this.store.agent(role, { model: route.model, effort: route.reasoning_effort });
-                this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.reasoning_effort, requestedModel: route.model, requestedEffort: route.reasoning_effort });
+            const route = claude ? null : await resolveModelRoute(role, LOCAL_BINDINGS.models, () => command('python3', [`${SKILLS.qa}/scripts/qa_harness.py`, 'model-policy']));
+            if (route) {
+                this.store.agent(role, { model: route.model, effort: route.effort });
+                this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.effort, requestedModel: route.model, requestedEffort: route.effort });
             }
+            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!);
             if (!claude)
                 args.push('-');
             if (!claude && !opts.readOnly)
@@ -248,6 +249,9 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
             this.store.finishWork(id, workStatus, this.store.clock.monotonic() - started);
             this.active.delete(role);
             this.store.agent(role, { activity: 'idle', task: 'Ready for the next handoff', ticket: '' });
+            // The provider has terminated and its completion file (Claude) or rollouts (Codex) are final.
+            // Recorded after capacity is released; it never throws.
+            await recordTerminalAccounting(this.store, { id, provider: claude ? 'claude' : 'codex', sessionId: session, startedAt, role, ticket: opts.ticket });
         }
     }
     async waitForIdle() {

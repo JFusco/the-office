@@ -99,3 +99,14 @@ test('usage events report prompt cache reads and writes so cache reuse is measur
  const {agents,store}=setup({modelUsage});await agents.run('developer','Synthetic cache accounting',schema,{readOnly:true});
  expect(store.state.events.find(event=>event.kind==='usage')?.message).toContain('9000 cache read / 1200 cache write');
 });
+test('estimated cost is captured from the result, including when the run is rejected after it', async () => {
+ const modelUsage = { [DEVELOPER_MODEL]: { inputTokens: 12, outputTokens: 3, cacheReadInputTokens: 900, cacheCreationInputTokens: 40, costUSD: 0.42, costBasis: 'list' } };
+ const ok = setup({ modelUsage, total_cost_usd: 0.42 }); await ok.agents.run('developer', 'Synthetic cost capture', schema, { ticket: 'CEC-999' });
+ expect(ok.store.state.workLog![0].accounting).toMatchObject({ provenance: 'live', usage: { uncachedInputTokens: 12, cacheReadInputTokens: 900, cacheWriteInputTokens: 40, outputTokens: 3 }, cost: { microUsd: 420_000, completeness: 'complete', providerBasis: 'list' } });
+ const rejected = setup({ modelUsage, total_cost_usd: 0.42, assistantModel: 'claude-sonnet-other' });
+ await expect(rejected.agents.run('developer', 'Synthetic rejected run', schema)).rejects.toThrow('No fallback accepted');
+ expect(rejected.store.state.workLog![0]).toMatchObject({ status: 'failed', accounting: { cost: { microUsd: 420_000 } } });
+ const crash = setup({ subtype: 'error_during_execution', is_error: true, total_cost_usd: 0, modelUsage: {} });
+ await expect(crash.agents.run('developer', 'Synthetic crash', schema)).rejects.toThrow();
+ expect(crash.store.state.workLog![0].accounting?.cost).toMatchObject({ completeness: 'unpriced', reasons: ['crash-result-zeroed'] });
+});

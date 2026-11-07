@@ -703,6 +703,8 @@ export interface WorkTime {
     queuedMs: number;
     inputTokens: number | null;
     outputTokens: number | null;
+    /** Normalized usage and estimated cost; legacy token fields above keep provider-native meaning. */
+    accounting?: import('./contracts/telemetry').RunAccounting;
     durationUncertain: boolean;
     reportedAt: string;
 }
@@ -962,6 +964,8 @@ export interface OfficeSnapshot {
         createdAt: string;
     }[];
     workLog?: WorkTime[];
+    /** When per-run usage capture began; earlier runs stay uncaptured. Set once, never reset. */
+    telemetryCaptureStartedAt?: string;
     ciHistory?: AzureBuild[];
     projectNotes: {
         id: string;

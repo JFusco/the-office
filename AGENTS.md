@@ -50,6 +50,8 @@ server/
   leadership/      CTO daily review and goals
   conversations/   team conversations, outbox, notifications, Slack
   time/            time accounting and publication
+  telemetry/       model routes, usage capture and estimated cost (price table, rollout and
+                   result parsing, run accounting, Claude backfill)
   operations/      harness operation retention
   it/              IT specialist: per-project check context, recovery attempts, delivery
                    recoveries, recovery ledger, reports

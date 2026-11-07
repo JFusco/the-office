@@ -5,6 +5,8 @@ import { DATA } from '../office/config';
 import { sanitize, sanitizeObject } from '../office/security';
 import { projectOutbox } from '../conversations/outbox';
 import { DEVELOPER_MODEL, DEVELOPER_EFFORT } from '../workers/claude';
+import { recordRunEvidence, type EvidenceOutcome } from './run-evidence';
+import type { RunAccounting } from '../../src/contracts/telemetry';
 import { PERSONAS, ROLE_NAMES, workKey, type Agent, type EffectIntent, type OfficeEvent, type OfficeSnapshot, type Role, type Stage, type StageResult, type Ticket, type WorkClaim, type WorkRef, type WorkTime } from '../../src/shared';
 import { durationLabel } from '../../src/timing/timing';
 import { projectById, projectData } from '../office/projects';
@@ -258,5 +260,7 @@ export class Store {
             this.emit('work-time-reported', `${ROLE_NAMES[work.role]} reported ${work.durationUncertain ? 'at least ' : ''}${durationLabel(work.elapsedMs)} for ${work.ticket || 'office work'}${work.stage ? ` · ${work.stage}` : ''} to Morgan (${status}).`, 'pm', work.ticket);
         });
     }
+    /** Final usage/cost evidence; allowed on running, stopping and finished work. */
+    recordRunEvidence(id: string, accounting: RunAccounting): EvidenceOutcome { return recordRunEvidence(this, id, accounting); }
     close(): void { closeConnection(this.db); }
 }

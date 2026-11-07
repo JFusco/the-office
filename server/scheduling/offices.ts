@@ -1,4 +1,6 @@
 import { recoverFeatures } from '../features/recovery';
+import { backfillClaudeCost } from '../telemetry/claude-backfill';
+import { markCaptureStart, reconcileUncapturedRuns } from '../telemetry/run-accounting';
 import { diagnosticSnapshot } from '../it/diagnostic-snapshot';
 import { DailyCTO } from '../leadership/daily-cto';
 import { collectCTOFacts } from '../leadership/cto-collector';
@@ -53,6 +55,7 @@ export class Offices {
         for (const project of PROJECTS) {
             const root = projectData(project), store = new Store(resolve(root, 'office.sqlite'), project, root);
             store.recover();
+            try { markCaptureStart(store); backfillClaudeCost(store); } catch (error) { store.emit('accounting-unavailable', `Saved Claude cost estimates were not imported: ${String(error).slice(0, 300)}`); } // idempotent
             const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
@@ -101,6 +104,8 @@ export class Offices {
     async tick(now = new Date()) { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); }
     async pump() {
         for (const { store } of this.entries.values()) recoverFeatures(store);
+        // Runs finished outside a worker (restart recovery, dead process) get their accounting here; async, never awaited.
+        for (const { store } of this.entries.values()) void reconcileUncapturedRuns(store).catch(() => { /* reported per run */ });
         for (const { store } of this.entries.values())
             for (const work of store.state.workLog || [])
                 if (work.status === 'stopping' && work.processId) {
