@@ -25,10 +25,15 @@ test('every role gets its identity, department, manager, voice and boundaries fr
 });
 
 test('reporting lines are derived: the CTO reports to Joe, managers list their direct reports', () => {
-    expect(personaContext('cto')).toContain('You are Avery, CTO (Leadership). You report to Joe (Owner). Your direct reports: Morgan (Project manager), Sam (Lead developer), Ellis (IT specialist), Harper (Knowledge engineer).');
-    expect(personaContext('lead')).toContain('You report to Avery (CTO). Your direct reports: Alex (Developer), Riley (QA engineer).');
+    expect(personaContext('cto')).toContain('You are Avery, CTO (Leadership). You report to Joe (Owner). Speak in the first person; where context or evidence names Avery, that is you. Your direct reports: Morgan (Project manager), Sam (Lead developer), Ellis (IT specialist), Harper (Knowledge engineer).');
+    expect(personaContext('lead')).toContain('You report to Avery (CTO). Speak in the first person; where context or evidence names Sam, that is you. Your direct reports: Alex (Developer), Riley (QA engineer).');
     expect(personaContext('pm')).toContain('Your direct reports: Casey (Technical Business Analyst).');
-    expect(personaContext('developer')).toContain('You are Alex, Developer (Delivery). You report to Sam (Lead developer).\n');
+    expect(personaContext('developer')).toContain('You are Alex, Developer (Delivery). You report to Sam (Lead developer). Speak in the first person; where context or evidence names Alex, that is you.\n');
+});
+
+test('every role is told to speak in the first person and that evidence naming it means itself', () => {
+    for (const id of EMPLOYEE_IDS)
+        expect(personaContext(id)).toContain(`Speak in the first person; where context or evidence names ${PERSONAS[id].name}, that is you.`);
 });
 
 test('a new employee in the registry appears under their manager without code changes', () => {
