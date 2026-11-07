@@ -1,9 +1,13 @@
 import { deliveryRepairProjection } from './delivery-repair-projection';
 import type { OfficeSnapshot, TicketJob, MaintenanceRun } from '../shared';
+// A URL may hold balanced parentheses; it never swallows wrapping quotes, backticks, brackets or trailing punctuation.
+const URL_BODY = String.raw`https?:\/\/(?:\([^\s()]*\)|[^\s()<>"'\x60\[\]])*(?:\([^\s()]*\)|[^\s()<>"'\x60\[\].,;:!?])`;
+const MD_LINK = new RegExp(String.raw`!?\[([^\]]+)\]\(\s*<?` + URL_BODY + String.raw`>?(?:\s+"[^"]*")?\s*\)`, 'g');
+const BARE_URL = new RegExp('<?' + URL_BODY + '>?', 'g');
 // Keep the saved record intact; only shorten its presentation.
 export function shortSummary(text: string = '', limit = 240) {
     const first = text.split('\n').find(s => s.trim())?.trim() || 'No update yet.';
-    const clean = first.replace(/https?:\/\/\S+/g, 'linked record').replace(/\b[a-f0-9]{40}\b/gi, 'the reviewed commit');
+    const clean = first.replace(MD_LINK, '$1').replace(BARE_URL, 'linked record').replace(/\b[a-f0-9]{40}\b/gi, 'the reviewed commit');
     if (clean.length <= limit)
         return clean;
     const end = clean.slice(0, limit - 1).lastIndexOf(' ');

@@ -32,3 +32,16 @@ test('Backlog approval questions leave the active outbox while their conversatio
  s.coordination.jobs=[{id:'live-work',key:'GH-70',status:'blocked',detail:'Uncertain writer result'}] as any;
  syncOutbox(s);expect(s.outbox.some(a=>a.id==='ticket-job:live-work'&&a.status==='open')).toBe(true);expect(s.outbox.some(a=>a.id==='question:question'&&a.status==='open')).toBe(true);
 });
+test('summary keeps markdown link text and never leaves a half-replaced link', () => {
+ expect(shortSummary('Joe, you’re right. I read the updated [GH-67 and both comments](https://github.com/JFusco/brain/issues/67).\n\n| table |')).toBe('Joe, you’re right. I read the updated GH-67 and both comments.');
+ expect(shortSummary('Merged [PR #136](https://github.com/JFusco/x/pull/136) and [v1.3.13](https://github.com/JFusco/x/releases/tag/v1.3.13).')).toBe('Merged PR #136 and v1.3.13.');
+ expect(shortSummary('Delivered (see https://github.com/JFusco/x/pull/1).')).toBe('Delivered (see linked record).');
+ expect(shortSummary('See https://example.com/a for details')).toBe('See linked record for details');
+});
+test('summary replaces whole URLs inside parentheses, quotes, backticks and before punctuation', () => {
+ expect(shortSummary('See https://en.wikipedia.org/wiki/Foo_(bar) now')).toBe('See linked record now');
+ expect(shortSummary('Read [Foo](https://en.wikipedia.org/wiki/Foo_(bar)) first')).toBe('Read Foo first');
+ expect(shortSummary('Open `https://x.example/a` or <https://x.example/b>')).toBe('Open `linked record` or linked record');
+ expect(shortSummary('Both https://x.example/a, then https://x.example/b.')).toBe('Both linked record, then linked record.');
+ expect(shortSummary('Titled [t](https://x.example "title") link')).toBe('Titled t link');
+});
