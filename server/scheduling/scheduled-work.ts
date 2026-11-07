@@ -119,7 +119,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
                 }
             }, continuation.nextCheckAt && Date.parse(continuation.nextCheckAt) > now.getTime() ? eligible('waiting', 'Native gate backoff is active') : null);
     for (const notice of c.notices?.entries || [])
-        add('notice', notice, notice.kind === 'goal' ? 'goal-completion-notice' : 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }));
+        add('notice', notice, notice.kind === 'goal' ? 'goal-completion-notice' : notice.kind === 'maintenance' ? 'maintenance-completion-notice' : 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }));
     for (const request of store.state.deliveryQueue || [])
         add('delivery', request, request.action, request.requestedAt, 3, () => engine.drainDelivery(request.id));
     for (const ticket of store.state.tickets.filter(ticket => ticket.pilot && !['complete', 'mailbox'].includes(ticket.stage) && !store.state.deliveryQueue?.some(request => request.key === ticket.key && ['queued', 'working'].includes(request.status)))) {

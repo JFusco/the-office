@@ -5,6 +5,7 @@ import type { Engine } from '../scheduling/engine';
 import { SlackMessages } from './slack';
 import type { MergeNotice } from '../../src/shared';
 import { sendGoalNotice } from '../leadership/send-goal-notice';
+import { sendMaintenanceNotice } from '../maintenance/brain/send-maintenance-notice';
 import { channelNoticeAuthorized, queueChannelNotice } from './channel-notice';
 export const NoticeSettings = z.object({ enabled: z.boolean(), recipients: z.enum(['assignee', 'reporter', 'both']), workspace: z.string().trim().min(1).max(100), mappings: z.string().max(6000) }).strict();
 const Identity = z.object({ found: z.boolean(), targetId: z.string(), targetName: z.string(), workspaceId: z.string(), evidence: z.array(z.string()), blocker: z.string() }).strict();
@@ -73,6 +74,7 @@ export class MergeNotifications {
         if (!notice)
             return;
         if (notice.kind === 'goal') return sendGoalNotice(this.store, this.engine.agents, notice);
+        if (notice.kind === 'maintenance') return sendMaintenanceNotice(this.store, this.engine.agents, notice);
         if (notice.channel) return this.postToChannel(notice);
         if (!policy.enabled) {
             notice.status = 'cancelled';
