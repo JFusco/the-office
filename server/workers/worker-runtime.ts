@@ -22,6 +22,9 @@ import { githubFollowupPrompt, canFileGithubIssue, GITHUB_ISSUE_SKILL } from '..
 import { workerActivity, toolActivity } from './activity';
 import { workerProfile } from './worker-profiles';
 import { codexArguments } from './codex';
+import { LOCAL_BINDINGS } from '../office/config';
+import { resolveModelRoute } from '../telemetry/model-routes';
+import { claudeAccounting, recordTerminalAccounting } from '../telemetry/run-accounting';
 import { currentAssignment } from './assignment-context';
 import { assertWorkerLane } from './worker-lanes';
 import { knowledgeContext } from '../knowledge/knowledge-context';
@@ -95,6 +98,13 @@ export class WorkerRuntime {
                 usageAttribution: 'Provider aggregate includes inline helpers; additional model attribution is unexposed.',
                 costBasis: 'Provider estimate, not billing confirmation', at: this.store.clock.now().toISOString() }), null, 2), { mode: 0o600, flag: 'wx' });
             completionSaved = true;
+            // Accounting is captured before semantic validation can reject the result, and it survives
+            // a pause (stopping) because evidence attaches independently of execution status.
+            const completionPath = resolve(dir, 'provider-completion.json');
+            if (stream.result.session_id === id) {
+                try { this.store.recordRunEvidence(id, claudeAccounting(stream.result, { evidenceId: `claude:${id}`, sourcePath: completionPath, sourceSha256: createHash('sha256').update(readFileSync(completionPath)).digest('hex'), at: this.store.clock.now().toISOString() })); }
+                catch (accountingError) { try { this.store.emit('accounting-unavailable', `Usage evidence could not be recorded: ${sanitize(String(accountingError))}`, role, opts.ticket); } catch { /* never fail the run */ } }
+            }
             if (stream.result.session_id === id) this.store.checkpointWork(id, this.store.clock.monotonic() - started, {
                 inputTokens: stream.usageTotals().input_tokens, outputTokens: stream.usageTotals().output_tokens });
         };
@@ -130,14 +140,12 @@ export class WorkerRuntime {
             this.store.emit('activity', summary, role, opts.ticket);
         };
         try {
-            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly);
-            if (role === 'qa') {
-                const policy = JSON.parse(await command('python3', [`${SKILLS.qa}/scripts/qa_harness.py`, 'model-policy']));
-                const route = policy.roles.lead;
-                args.push('--model', route.model, '-c', `model_reasoning_effort="${route.reasoning_effort}"`);
-                this.store.agent(role, { model: route.model, effort: route.reasoning_effort });
-                this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.reasoning_effort, requestedModel: route.model, requestedEffort: route.reasoning_effort });
+            const route = claude ? null : await resolveModelRoute(role, LOCAL_BINDINGS.models, () => command('python3', [`${SKILLS.qa}/scripts/qa_harness.py`, 'model-policy']));
+            if (route) {
+                this.store.agent(role, { model: route.model, effort: route.effort });
+                this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.effort, requestedModel: route.model, requestedEffort: route.effort });
             }
+            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!);
             if (!claude)
                 args.push('-');
             if (!claude && !opts.readOnly)
@@ -245,6 +253,8 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
         finally {
             clearInterval(heartbeat);
             this.timing.delete(role);
+            // The provider process has terminated here; missing evidence is recorded as unpriced.
+            recordTerminalAccounting(this.store, { id, provider: claude ? 'claude' : 'codex', session, startedAt, role, ticket: opts.ticket });
             this.store.finishWork(id, workStatus, this.store.clock.monotonic() - started);
             this.active.delete(role);
             this.store.agent(role, { activity: 'idle', task: 'Ready for the next handoff', ticket: '' });

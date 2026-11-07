@@ -703,6 +703,8 @@ export interface WorkTime {
     queuedMs: number;
     inputTokens: number | null;
     outputTokens: number | null;
+    /** Normalized usage and estimated cost; legacy token fields above keep provider-native meaning. */
+    accounting?: import('./contracts/telemetry').RunAccounting;
     durationUncertain: boolean;
     reportedAt: string;
 }

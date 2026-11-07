@@ -3,6 +3,7 @@ import { resolve, basename } from 'node:path';
 import type { Feature } from '../../src/contracts/features';
 import type { Store } from '../store/store';
 import { processGroupAlive } from '../workers/process';
+import { helperAccounting } from '../telemetry/helper-usage';
 export function helperTelemetry(store: Store, feature: Feature, alive = processGroupAlive) {
     if (!feature.review?.run) return;
     const calls = resolve(feature.review.run, 'calls');
@@ -35,7 +36,15 @@ export function helperTelemetry(store: Store, feature: Feature, alive = processG
             const work = store.state.workLog?.find(w => w.id === id);
             if (work && (session && work.sessionId !== session || model && work.observedModel !== model)) store.transaction(() => { if (session) work.sessionId = session; if (model) work.observedModel = model; });
         }
-        if (receipt && !alive(process.process_group)) store.finishWork(id, receipt.exit_code === 0 ? 'completed' : 'interrupted', elapsed);
+        if (receipt && !alive(process.process_group)) {
+            const work = store.state.workLog?.find(w => w.id === id);
+            // Attach usage once, at the transition to finished; calls that finished before capture existed stay uncaptured.
+            if (work && ['running', 'stopping'].includes(work.status)) {
+                try { const accounting = helperAccounting(folder, agent.provider, work.sessionId, at, now); if (accounting) store.recordRunEvidence(id, accounting); }
+                catch { /* accounting never blocks helper bookkeeping */ }
+            }
+            store.finishWork(id, receipt.exit_code === 0 ? 'completed' : 'interrupted', elapsed);
+        }
         else store.checkpointWork(id, elapsed);
     }
 }

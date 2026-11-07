@@ -7,11 +7,15 @@ declare module 'vitest' {
 }
 
 // No application imports: config captures DATA during test-module collection.
-const previous = process.env.OFFICE_DATA_ROOT;
+const previous = process.env.OFFICE_DATA_ROOT, previousCodexHome = process.env.CODEX_HOME;
 const root = mkdtempSync(join(inject('officeTestRoot'), 'file-'));
 process.env.OFFICE_DATA_ROOT = root;
+// Usage capture reads Codex rollouts from CODEX_HOME; tests never read the real one.
+process.env.CODEX_HOME = join(root, 'codex-home');
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   if (previous === undefined) delete process.env.OFFICE_DATA_ROOT;
   else process.env.OFFICE_DATA_ROOT = previous;
+  if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+  else process.env.CODEX_HOME = previousCodexHome;
 });

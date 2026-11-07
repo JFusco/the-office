@@ -1,4 +1,5 @@
 import { recoverFeatures } from '../features/recovery';
+import { backfillClaudeCost } from '../telemetry/claude-backfill';
 import { diagnosticSnapshot } from '../it/diagnostic-snapshot';
 import { DailyCTO } from '../leadership/daily-cto';
 import { collectCTOFacts } from '../leadership/cto-collector';
@@ -53,6 +54,7 @@ export class Offices {
         for (const project of PROJECTS) {
             const root = projectData(project), store = new Store(resolve(root, 'office.sqlite'), project, root);
             store.recover();
+            try { backfillClaudeCost(store); } catch (error) { store.emit('accounting-unavailable', `Saved Claude cost estimates were not imported: ${String(error).slice(0, 300)}`); } // idempotent
             const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
