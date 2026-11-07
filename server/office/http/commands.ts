@@ -13,6 +13,7 @@ import { json } from './responses';
 import { configureKnowledge, declineLessonIssue, reactivateLesson, retireLesson } from '../../knowledge/lesson-commands';
 import { decideOfficeProposal, mirrorOfficeKnowledge, retireOfficeLesson } from '../../knowledge/office-lessons';
 import { configureChannelNotices } from '../../conversations/channel-notice';
+import { requeueWaitedImplement } from '../../delivery/recovery/implementation/requeue-waited-implement';
 
 /** POST /api/commands: operator and harness commands for one project. */
 export async function commandRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
@@ -147,6 +148,9 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 break;
             case 'review-candidate':
                 coordinator!.recheckCandidate(key);
+                break;
+            case 'requeue-implement':
+                requeueWaitedImplement(store, key);
                 break;
             case 'review-pr':
                 coordinator!.recheckPR(key);
