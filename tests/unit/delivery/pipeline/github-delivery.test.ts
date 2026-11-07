@@ -639,6 +639,15 @@ test('a failed review cannot be bypassed by a later no-review decision', async (
     expect(a.job.status).toBe('blocked');
     expect(a.job.approach.review).toBe('full');
 });
+test('a re-dispatched implement that passes supersedes its earlier prerequisite wait', async () => {
+    const a = setup();
+    a.job.stage = 'implement';
+    a.job.steps = [{ stage: 'implement', result: { ...a.result('implement'), outcome: 'blocked', blocker: 'Upstream stable release missing', resolution: { kind: 'provider-wait', findingIds: ['no-stable'], evidenceIds: [] }, findings: [{ id: 'no-stable', summary: 'Upstream stable release missing', status: 'open', actual: 'Beta only', expected: 'Stable', attempts: 1 }] } as any }];
+    a.engine.agents.run = async () => ({ ...a.result(), approach: { plan: 'brief', review: 'focused', validation: 'developer-checks', checks: ['Checks'], reason: 'Data-only profile following precedent.' } }) as any;
+    await a.delivery.step(a.job);
+    expect(a.job.detail).not.toMatch(/Reconcile failed/);
+    expect(a.job.approach?.validation).toBe('developer-checks');
+});
 test('QA can request full review before acting without replaying the implementation', async () => {
     const a = setup();
     a.job.head = head;
