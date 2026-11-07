@@ -4,6 +4,7 @@ import { GitHubMaintenance, easternDate } from '../maintenance';
 import { maintenancePolicies } from '../../github/github-context';
 import { command } from '../../workers/process';
 import { supersedablePriorRuns, unverifiedPriorRunNote } from '../unverified-prior-runs';
+import { queueMaintenanceNotice } from './queue-maintenance-notice';
 import type { MaintenanceRun, MaintenanceResult } from '../../../src/shared';
 export const BrainResult = z.object({ outcome: z.enum(['completed', 'skipped', 'blocked']), runId: z.string(), reason: z.string(), summary: z.string(), ledger: z.string(), receipts: z.array(z.object({ id: z.string(), action: z.string(), target: z.string(), verified: z.boolean(), uncertain: z.boolean(), detail: z.string() }).strict()) }).strict();
 // Brain's own nightly runner remains the publication authority. The Office
@@ -77,6 +78,7 @@ RESULT: completed requires successful nightly complete and all required capture/
             run.status = 'completed';
             run.stage = result.outcome === 'skipped' ? `skipped: ${result.reason}` : 'brain-completed';
             run.error = '';
+            queueMaintenanceNotice(this.store, run, result.summary);
             this.store.emit('maintenance-completed', result.summary, 'pm');
         }
         catch (e) {

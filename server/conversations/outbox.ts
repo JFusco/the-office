@@ -34,8 +34,8 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         item('assignment-listener', 'Restore assignment listening', state.coordination.listener.error, 'pm');
     for (const n of state.coordination?.notices?.entries || []) {
         const confirmed = state.slackDeliveries?.find(d => d.requestId === n.id && d.status === 'confirmed');
-        if (!confirmed && ['blocked', 'uncertain'].includes(n.status) && !(n.kind === 'goal' && state.slackDeliveries?.some(d => d.requestId === n.id && d.status === 'uncertain')))
-            item(`merge-notice:${n.id}`, n.kind === 'goal' ? `Resolve “${n.goalTitle}” completion DM` : `Resolve ${n.key} Slack notice`, n.detail, 'pm', n.key, n.prUrl);
+        if (!confirmed && ['blocked', 'uncertain'].includes(n.status) && !((n.kind === 'goal' || n.kind === 'maintenance') && state.slackDeliveries?.some(d => d.requestId === n.id && d.status === 'uncertain')))
+            item(`merge-notice:${n.id}`, n.kind === 'goal' ? `Resolve “${n.goalTitle}” completion DM` : n.kind === 'maintenance' ? 'Resolve maintenance completion DM' : `Resolve ${n.key} Slack notice`, n.detail, 'pm', n.key, n.prUrl);
     }
     for (const t of state.coordination?.time?.entries || [])
         if (t.status === 'uncertain')

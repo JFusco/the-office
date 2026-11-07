@@ -315,6 +315,10 @@ interface NoticeEntry {
 export type MergeNotice = NoticeEntry & ({ kind?: 'merge'; prUrl: string; mergeCommit: string; channel?: true; channelVersion?: string } | {
     kind: 'goal'; goalId: string; goalTitle: string; completedAt: string; policyVersion: string;
     prUrl?: never; mergeCommit?: never; channel?: never; channelVersion?: never;
+} | {
+    /** One DM per completed maintenance run, to the recipient Joe verified for goal-completion DMs. */
+    kind: 'maintenance'; runId: string; policyVersion: string;
+    prUrl?: never; mergeCommit?: never; channel?: never; channelVersion?: never;
 });
 export interface TimeEntry {
     revision?: number;
