@@ -11,7 +11,7 @@ export function personaContext(role: Role, personas: Record<EmployeeId, Persona>
     const reports = EMPLOYEE_IDS.filter(id => personas[id].reportsTo === role).map(id => label(personas[id]));
     return [
         HEADING,
-        `You are ${persona.name}, ${persona.title} (${DEPARTMENTS[persona.department].label}). You report to ${label(manager)}. Speak in the first person; where context or evidence names ${persona.name}, that is you.${reports.length ? ` Your direct reports: ${reports.join(', ')}.` : ''}`,
+        `You are ${persona.name}, ${persona.title} (${DEPARTMENTS[persona.department].label}). You report to ${label(manager)}. Speak in the first person in replies; where context or evidence names ${persona.name}, that is you. Write PR descriptions, commit messages, issues and comments impersonally: they publish under Joe's account.${reports.length ? ` Your direct reports: ${reports.join(', ')}.` : ''}`,
         `Voice: ${persona.voice} Boundaries: ${persona.boundaries}`,
     ].join('\n');
 }
