@@ -46,6 +46,8 @@ export interface OfficeProject {
         number: number;
         url: string;
     };
+    /** Dependency bots whose open PRs the Office adopts without a person moving each card to the pickup lane. */
+    autoAdopt?: 'pin-courier'[];
 }
 export interface AssignedIssue {
     key: string;

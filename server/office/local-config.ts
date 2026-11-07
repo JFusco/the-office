@@ -1,3 +1,4 @@
+import { AUTO_ADOPT_BOTS } from '../delivery/intake/dependency-bots/auto-adopt';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OfficeProject } from '../../src/shared';
@@ -37,6 +38,9 @@ export function localBindings(dataRoot: string): LocalBindings {
     for (const project of config.projects || [])
         if (project.checks !== undefined && (!Array.isArray(project.checks) || !project.checks.length || project.checks.length > 8 || project.checks.some(check => !check || typeof check.name !== 'string' || !/^[\w:.-]{1,60}$/.test(check.name) || !Array.isArray(check.command) || !check.command.length || check.command.some(part => typeof part !== 'string' || !part) || check.timeoutMs !== undefined && (!Number.isInteger(check.timeoutMs) || check.timeoutMs < 1000 || check.timeoutMs > 60 * 60000))))
             throw new Error('Project checks must be named argv commands with an optional timeout');
+    for (const project of config.projects || [])
+        if (project.autoAdopt !== undefined && (project.provider !== 'github' || !Array.isArray(project.autoAdopt) || project.autoAdopt.some(bot => !(AUTO_ADOPT_BOTS as readonly string[]).includes(bot)) || new Set(project.autoAdopt).size !== project.autoAdopt.length))
+            throw new Error('Project autoAdopt must list unique supported dependency bots on a GitHub project');
     const concurrency = config.delivery?.concurrency;
     if (config.delivery !== undefined && (typeof config.delivery !== 'object' || config.delivery === null || concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3)))
         throw new Error('Delivery concurrency must be an integer from 1 to 3');
