@@ -196,7 +196,9 @@ export interface TicketJob {
     };
     boardUpdates?: BoardUpdate[];
     /** A model returned a genuine human decision; the card sits in Block until Joe moves it back to Ready. */
-    parked?: { stage: string; reason: string; at: string; published: boolean };
+    parked?: { stage: string; reason: string; at: string; published: boolean; release?: ReleaseWait; releaseCheckedAt?: string; releaseBaselineAt?: string; releaseFound?: string };
+    /** Times the harness returned this job to the pickup lane after its npm release wait was met. */
+    releaseUnparks?: number;
     approach?: WorkApproach;
     decisions?: ApproachDecision[];
     skippedStages?: Record<string, string>;
@@ -534,6 +536,14 @@ export interface DeliveryResolution {
     kind: 'source-repair' | 'conflict-repair' | 'provider-wait' | 'permission' | 'scope' | 'human-hold' | 'uncertain-effect';
     findingIds: string[];
     evidenceIds: string[];
+    /** A provider-wait on a published npm release; absent on results saved before it existed. */
+    release?: ReleaseWait | null;
+}
+export interface ReleaseWait {
+    registry: 'npm';
+    package: string;
+    /** Lowest stable x.y.z that satisfies the wait. */
+    minimum: string;
 }
 export interface DeliveryRepairCycle {
     owner: 'developer';

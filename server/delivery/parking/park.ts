@@ -12,7 +12,8 @@ export async function park(delivery: GitHubDelivery, job: TicketJob, result: Sta
     const { store, execute } = delivery, repository = store.project.repository, issueNumber = Number(job.key.slice(3));
     const reason = (result.blocker || result.summary).trim(), head = job.head;
     const guard = () => assertMayMutate(store, delivery.jobs, job, head);
-    job.parked = { stage: job.stage, reason, at: new Date().toISOString(), published: false };
+    const release = result.resolution?.kind === 'provider-wait' ? result.resolution.release : undefined;
+    job.parked = { stage: job.stage, reason, at: new Date().toISOString(), published: false, ...(release ? { release } : {}) };
     job.status = 'blocked';
     job.detail = `Decision needed: ${reason}`;
     store.save();

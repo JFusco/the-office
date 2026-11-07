@@ -31,6 +31,7 @@ import { ApproachSchema, APPROACH_GUIDANCE, reviewInstructions } from '../delive
 import { contextPacket, PROJECTS, type OfficeCapacity } from '../office/projects';
 import { githubFollowupPrompt, canFileGithubIssue, GITHUB_ISSUE_SKILL } from '../github/github-context';
 import { workerActivity, toolActivity } from './activity';
+import { ReleaseWaitSchema } from './release-wait-schema';
 import { knowledgeChatPrompt } from '../knowledge/chat-prompt';
 import { harperFolder } from '../knowledge/run-retrospective';
 const EvidenceSchema = z.object({ id: z.string(), kind: z.enum(['screenshot', 'browser', 'checks', 'review', 'provider', 'deployment', 'jira', 'pr']), summary: z.string(), path: z.string(), commit: z.string(), environment: z.string(), url: z.string(), observedAt: z.string() }).strict();
@@ -38,15 +39,17 @@ const ReceiptSchema = z.object({ id: z.string(), action: z.string(), target: z.s
 export const LegacyResultSchema = z.object({ outcome: z.enum(['passed', 'failed', 'blocked', 'reroute']), prerequisites: PrerequisitesSchema, approach: ApproachSchema.nullable(), summary: z.string(), commit: z.string(), evidence: z.array(EvidenceSchema), findings: z.array(z.object({ id: z.string(), summary: z.string(), expected: z.string(), actual: z.string(), status: z.enum(['open', 'fixed', 'verified']), attempts: z.number().int().min(0) }).strict()), receipts: z.array(ReceiptSchema), previewUrl: z.string(), worktree: z.string(), branch: z.string(), prId: z.number().int(), qaRunDir: z.string(), paidRuns: z.number().int().min(0).nullable(), blocker: z.string() }).strict();
 export const ResolutionSchema = z.object({ kind: z.enum(['source-repair', 'conflict-repair', 'provider-wait', 'permission', 'scope', 'human-hold', 'uncertain-effect']), findingIds: z.array(z.string()).max(32), evidenceIds: z.array(z.string()).min(1).max(16) }).strict();
 export const FreshResultSchema = LegacyResultSchema.extend({ resolution: ResolutionSchema.nullable() }).strict();
+/** Current worker output: a provider-wait may name the npm release it waits for. Older saved results still parse as Fresh or Legacy. */
+export const CurrentResultSchema = LegacyResultSchema.extend({ resolution: ResolutionSchema.extend({ release: ReleaseWaitSchema.nullable() }).strict().nullable() }).strict();
 // Historical provider bytes remain historical: parsing never inserts a resolution field.
-export const ResultSchema = z.union([FreshResultSchema, LegacyResultSchema]);
+export const ResultSchema = z.union([CurrentResultSchema, FreshResultSchema, LegacyResultSchema]);
 const IntakeSchema = z.object({ tickets: z.array(z.object({ key: z.string(), summary: z.string(), type: z.string(), status: z.string(), statusId: z.string(), assignee: z.string(), subtask: z.boolean(), boardMember: z.boolean(), url: z.string(), updated: z.string() }).strict()), summary: z.string(), complete: z.boolean(), blocker: z.string() }).strict();
 const ReadbackSchema = z.object({ key: z.string(), assignee: z.string(), subtask: z.boolean(), boardMember: z.boolean(), status: z.string(), statusId: z.string(), updated: z.string(), existingPrId: z.number().int(), existingOwner: z.string(), blocker: z.string() }).strict();
 export class Agents extends WorkerRuntime {
     override async run<T>(role: Role, task: string, schema: z.ZodType<T>, opts: Parameters<WorkerRuntime['run']>[3] = {}): Promise<T> {
         // Native workers receive one strict object schema; legacy parsing is only for saved results.
         return super.run(role, Object.is(schema, ResultSchema) ? `${task}\n${handsOff(this.store) ? HANDS_OFF_RESOLUTION_GUIDANCE : RESOLUTION_GUIDANCE}` : task,
-            Object.is(schema, ResultSchema) ? FreshResultSchema as unknown as z.ZodType<T> : schema, opts);
+            Object.is(schema, ResultSchema) ? CurrentResultSchema as unknown as z.ZodType<T> : schema, opts);
     }
     ctoContext: () => unknown = () => ({ projects: [{ project: this.store.project, goals: this.store.state.goals, notes: this.store.state.projectNotes }] });
     async sendSlack(delivery: SlackDelivery, human: Pick<TeamMessage, 'body' | 'ticket' | 'requestId'>) {
