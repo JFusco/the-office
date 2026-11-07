@@ -431,3 +431,21 @@ test('a first focused review is not a reduction from an invented full review; sk
     expect(job.approach.review).toBe('focused');
     expect(() => recordJobApproach(job, small, 'lead', true)).toThrow('Reconcile failed');
 });
+test('a passed implement supersedes only an earlier implement parked on a wait; defects, failures, other stages and uncertain receipts stay guarded', () => {
+    const waited = () => ({ stage: 'implement', result: output({ outcome: 'blocked', blocker: 'Upstream stable release missing', resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [] } } as any) });
+    const defect = output({ outcome: 'blocked', resolution: { kind: 'source-repair', findingIds: [], evidenceIds: [] } } as any);
+    expect(() => recordJobApproach({ stage: 'implement', steps: [{ stage: 'implement', result: defect }] } as any, small, 'developer', false, true, output())).toThrow('Reconcile failed');
+    expect(() => recordJobApproach({ stage: 'implement', steps: [{ stage: 'implement', result: output({ outcome: 'blocked' }) }] } as any, small, 'developer', false, true, output())).toThrow('Reconcile failed');
+    expect(() => recordJobApproach({ stage: 'implement', steps: [waited()] } as any, small, 'developer', false, true)).toThrow('Reconcile failed');
+    const job: any = { stage: 'implement', steps: [waited()] };
+    expect(() => recordJobApproach(job, small, 'developer', false, true, output())).not.toThrow();
+    expect(job.approach).toEqual(small);
+    expect(() => recordJobApproach({ stage: 'implement', steps: [waited()] } as any, small, 'developer', false, true, output({ outcome: 'blocked' }))).toThrow('Reconcile failed');
+    expect(() => recordJobApproach({ stage: 'implement', steps: [{ stage: 'implement', result: output({ outcome: 'failed' }) }] } as any, small, 'developer', false, true, output())).toThrow('Reconcile failed');
+    expect(() => recordJobApproach({ stage: 'review', steps: [{ stage: 'review', result: waited().result }] } as any, small, 'lead', false, true, output())).toThrow('Reconcile failed');
+    expect(() => recordJobApproach({ stage: 'implement', steps: [waited(), { stage: 'review', result: output({ outcome: 'failed' }) }] } as any, small, 'developer', false, true, output())).toThrow('Reconcile failed');
+    const uncertain = waited();
+    uncertain.result.receipts = [{ id: 'push', action: 'git push', target: 'origin', verified: false, uncertain: true, detail: 'Fixture' }];
+    expect(() => recordJobApproach({ stage: 'implement', steps: [uncertain] } as any, small, 'developer', false, true, output())).toThrow('Reconcile failed');
+    expect(() => recordJobApproach({ stage: 'implement', steps: [waited()] } as any, small, 'developer', false, true, output({ receipts: uncertain.result.receipts }))).toThrow('Reconcile failed');
+});

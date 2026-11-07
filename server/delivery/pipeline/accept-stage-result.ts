@@ -101,7 +101,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
                 result.approach.validation === 'developer-checks' ||
                 job.approach?.validation === 'browser' && result.approach.validation !== 'browser'))
                 throw new Error('Recovered implementation requires retained independent review and QA');
-            recordJobApproach(job, result.approach, role, failedWorker, handsOff(this.store));
+            recordJobApproach(job, result.approach, role, failedWorker, handsOff(this.store), result);
         }
         catch (error) {
             job.steps.push({ ...nativeProof, stage: job.stage, result });

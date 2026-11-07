@@ -1,4 +1,5 @@
 import { assertFeatureApproach } from '../../features/delivery-binding';
+import { needsDecision } from '../parking/needs-decision';
 import { z } from 'zod';
 import type { Role, Stage, Ticket, WorkApproach, StageResult, TicketJob } from '../../../src/shared';
 export const ApproachSchema = z.object({ plan: z.enum(['none', 'brief', 'reviewed']), review: z.enum(['none', 'focused', 'full']), validation: z.enum(['developer-checks', 'independent-checks', 'browser']), checks: z.array(z.string().trim().min(1)).min(1).max(12), reason: z.string().trim().min(1).max(3000) }).strict();
@@ -127,15 +128,19 @@ export function reviewInstructions(mode: WorkApproach['review'] = 'full') {
         return 'QUICK REVIEW: Inspect the exact changed code, acceptance criteria, adjacent callers and selected check evidence in this assigned session. Report concrete defects. Do not start nested models or a full implementation-review chain. Escalate to full with a reason if inspection warrants it.';
     return 'FULL IMPLEMENTATION REVIEW: Independently audit the exact implementation against requirements and repository rules, including affected callers, integration boundaries, error and recovery paths, security/data integrity and regression evidence. Trace consequential behavior beyond the edited lines. Report concrete findings with evidence; unresolved findings block publication. Use this assigned Lead session without nested model processes or automatic Claude delegation.';
 }
-/** `advisoryFindings`: hands-off projects let a passed outcome decide; open findings on it are not a veto. */
-export function recordJobApproach(job: TicketJob, approach: WorkApproach, role: Role, workerFailure = false, advisoryFindings = false) {
+/** `advisoryFindings`: hands-off projects let a passed outcome decide; open findings on it are not a veto.
+ * `incoming`: the result being accepted. A passed implement supersedes an earlier implement that was blocked on a
+ * structured wait or decision (`needsDecision`), not a defect; every other earlier result keeps guarding. */
+export function recordJobApproach(job: TicketJob, approach: WorkApproach, role: Role, workerFailure = false, advisoryFindings = false, incoming?: StageResult) {
     const next = ApproachSchema.parse(approach), prior = job.approach;
     if (!(job.repairReason === 'conflicts' && job.approach?.review === 'none' && job.decisions?.some(d => d.stage === 'update-base' && d.role === 'pm' && JSON.stringify(d.approach) === JSON.stringify(job.approach)))) assertFeatureApproach(job, next);
     // A first focused review with independent checks is a choice, not a downgrade
     // from an invented full review. Skipping review/checks still retains guards.
     const reducing = prior ? ['none', 'focused', 'full'].indexOf(next.review) < ['none', 'focused', 'full'].indexOf(prior.review) || ['developer-checks', 'independent-checks', 'browser'].indexOf(next.validation) < ['developer-checks', 'independent-checks', 'browser'].indexOf(prior.validation) : next.review === 'none' || next.validation === 'developer-checks';
-    const latest = [...new Map(job.steps.map(s => [s.stage, s.result])).values()];
-    if (reducing && (workerFailure || latest.some(r => ['failed', 'blocked'].includes(r.outcome) || !advisoryFindings && r.findings.some(f => f.status !== 'verified')) || job.steps.some(s => s.result.receipts.some(r => r.uncertain || !r.verified))))
+    const waited = job.steps.filter(s => s.stage === 'implement').at(-1)?.result;
+    const superseding = job.stage === 'implement' && incoming?.outcome === 'passed' && waited && needsDecision(waited) ? incoming : undefined;
+    const latest = [...new Map([...job.steps, ...(superseding ? [{ stage: job.stage, result: superseding }] : [])].map(s => [s.stage, s.result])).values()];
+    if (reducing && (workerFailure || latest.some(r => ['failed', 'blocked'].includes(r.outcome) || !advisoryFindings && r.findings.some(f => f.status !== 'verified')) || [...job.steps.map(s => s.result), ...(superseding ? [superseding] : [])].some(r => r.receipts.some(receipt => receipt.uncertain || !receipt.verified))))
         throw new Error('Reconcile failed work, findings and uncertain effects before reducing review or verification');
     job.approach = next;
     job.decisions ??= [];
