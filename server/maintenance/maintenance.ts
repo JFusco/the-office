@@ -1,6 +1,8 @@
 import {prepareMaintenanceReadback,maintenanceCoverageSchema,maintenanceCoveragePassed,MAINTENANCE_NATIVE_GUIDANCE} from './maintenance-readback';
 import { supersedablePriorRuns, unverifiedPriorRunNote } from './unverified-prior-runs';
 import { partialVendorReview, partialVendorReviewLedger } from './vendor-review-outcome';
+import { candidateOwner, skipOwnedCandidate, skippedCandidateLedger } from './candidate-ownership';
+import { HOLDS } from '../office/config';
 import { z } from 'zod';
 import { resolve } from 'node:path';
 import { mkdirSync, writeFileSync, realpathSync } from 'node:fs';
@@ -154,7 +156,18 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
 GITHUB PROJECT COORDINATION (Joe authorized 2026-10-28): Use ONLY ${this.store.project.githubProject?.url} and issues in ${this.store.project.repository}. Read current board Status options/cards, relevant issue bodies/comments, actual work evidence and current PR heads/checks. Update existing cards when evidence supports Backlog (unassessed/future/deferred or waiting on prerequisites), Ready (actionable unblocked scope), In progress (work actually started), In review (actual proposal awaiting applicable review/checks), or Done (verified acceptance after maintainer merge or documented completed no-impact disposition). Use actual lane names; report a blocker rather than inventing a lane. Preserve human holds and version prerequisites; SDK prereleases never prove a stable contract. A queued run, hash change, passing local check or open PR alone cannot establish completion. For each substantive change leave one focused issue comment with evidence, blocker if any and next step; read existing comments first to avoid repetition and read back both saved lane and comment. Record every attempted board/comment write in receipts; uncertain effects block and must not be replayed. This stage alone permits these board updates/comments; non-Dependabot PRs remain read-only, and no issue closure, source edits, profile/lock acceptance, merge or release is authorized by a board move. Report unchanged cards without heartbeat comments.`);
             if (run.weekly) {
                 const triage = await step('pm', 'vendor-review', 'READ ONLY. Review the latest completed weekly full Vendor documentation freshness Actions run and accumulated daily observations since the last completed review. Inspect uploaded index/full JSON, summary and logs (stream/download in memory when filesystem is read-only). Compare source IDs/fingerprints to source lock and prior dispositions; verify exact official locators and affected profiles. Return one candidate summary per EVIDENCED surface needing a proposal, including source IDs, fingerprints, exact claims and verification requirements. issue may be 0 before creation, worktree/branch/head empty. No issue/PR/source writes, merge or acceptance. No new evidence is a valid unchanged outcome. Missing scan evidence is blocked. When evidenced candidates exist and one historical observation cannot be resolved, return the candidates with the observation in blocker; the harness retains it as an open observation rather than stopping the review. Read official source text through the registered locators in sources/official-sources.json with curl in Bash, staying inside the allowed hosts of each source as the repository scanner does; do not use WebFetch, which some vendors bot-block. A WebFetch denial is not evidence that a source is unreachable.', true);
-                for (const candidate of triage.candidates) {
+                const leftToDelivery = (index: number, checkpoint: 'triage' | 'proposal', issue: number) => {
+                    const owned = skipOwnedCandidate(run, { index, checkpoint }, issue, cursor === run.steps.length, () => candidateOwner(this.store.state, HOLDS, issue));
+                    if (owned.added) {
+                        state.ledger = skippedCandidateLedger(state.ledger, issue, owned.reason, easternDate());
+                        this.store.emit('maintenance-observation', `Maintenance left #${issue} to delivery: ${owned.reason}`, 'pm');
+                        this.store.save();
+                    }
+                    return !!owned.reason;
+                };
+                for (const [index, candidate] of triage.candidates.entries()) {
+                    if (leftToDelivery(index, 'triage', candidate.issue))
+                        continue;
                     let approach: WorkApproach = candidate.approach || { plan: 'none', review: 'focused', validation: 'independent-checks', checks: ['Repository-required package checks'], reason: 'Retained CMS workflow until the team supplies an explicit new decision.' };
                     const decide = (next: WorkApproach, role: Role, stage: string) => {
                         approach = ApproachSchema.parse(next);
@@ -202,6 +215,8 @@ GITHUB PROJECT COORDINATION (Joe authorized 2026-10-28): Use ONLY ${this.store.p
                     if (built.candidates.length !== 1)
                         throw new Error('Proposal did not return exactly one verified candidate');
                     const proposal = built.candidates[0];
+                    if (leftToDelivery(index, 'proposal', proposal.issue))
+                        continue;
                     if (!proposal.issue || !proposal.worktree || !proposal.branch || !/^[a-f0-9]{40}$/.test(proposal.head))
                         throw new Error('Proposal is missing its issue, owned worktree, branch or immutable head');
                     if (!built.checks?.some(c => (!c.kind || c.kind === 'checks') && c.commit === proposal.head && containedFile(c.path, root)))
