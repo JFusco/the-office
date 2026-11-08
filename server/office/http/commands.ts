@@ -1,4 +1,5 @@
 import { TimeClassificationInput } from '../../time/time-classification';
+import { TimeScopeInput } from '../../time/time-scope';
 import { DiscoveryResumeInput, bindDiscoveryResume } from '../../delivery/recovery/implementation/discovery-recovery';
 import { reconcileGoalReportCommand } from '../../leadership/goal-reporting';
 import { configureGoalNotices } from '../../leadership/goal-notice-settings';
@@ -26,7 +27,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, discovery, closeoutSupervisionProof, lessonId, knowledge, channel } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
@@ -114,6 +115,13 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 const prior = store.state.coordination!.requests?.find(request => request.action === action && request.head === input.expectedSha256 && request.status === 'completed');
                 if (prior) return json({ accepted: true, id: prior.id, status: prior.status }, 202);
                 const request = store.transaction(() => { const request = enqueueRequest(store, action, '', input.expectedSha256); request.timeClassification = input; store.save(); return request; });
+                return json({ accepted: true, id: request.id }, 202);
+            }
+            case 'apply-time-scope': {
+                const input = TimeScopeInput.parse(timeScope);
+                const prior = store.state.coordination!.requests?.find(request => request.action === action && request.head === input.expectedSha256 && ['queued', 'working', 'completed'].includes(request.status));
+                if (prior) return json({ accepted: true, id: prior.id, status: prior.status }, 202);
+                const request = store.transaction(() => { const request = enqueueRequest(store, action, '', input.expectedSha256); request.timeScope = input; store.save(); return request; });
                 return json({ accepted: true, id: request.id }, 202);
             }
             case 'resume-discovery': {

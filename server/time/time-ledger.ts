@@ -4,6 +4,7 @@ import { command } from '../workers/process';
 const syncing = new WeakSet<Store>();
 const FIELD = 'Time Spent (Hours)';
 import { timeLedger } from './time-accounting';
+import { publishableEntry } from './publishable';
 export { timeLedger, captureTime } from './time-accounting';
 export class TimeLedger {
     constructor(private store: Store, private execute: typeof command = command) { }
@@ -32,7 +33,7 @@ export class TimeLedger {
         const ledger = timeLedger(this.store);
         if (!ledger.enabled || !ledger.githubField || this.store.project.provider !== 'github')
             return;
-        const entry = ledger.entries.find(e => reconcileKey ? e.key === reconcileKey && e.status === 'uncertain' : e.status === 'pending');
+        const entry = reconcileKey ? ledger.entries.find(e => e.key === reconcileKey && e.status === 'uncertain') : publishableEntry(ledger, this.store.project.provider);
         if (!entry)
             return;
         const config = this.store.project.githubProject;

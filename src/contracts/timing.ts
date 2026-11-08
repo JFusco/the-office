@@ -50,6 +50,10 @@ export interface TimeLedgerState {
     jiraActivatedAt?: string;
     jiraConnection?: string;
     jiraEnabled?: boolean;
+    /** Which work counts toward hours; see server/telemetry/billable-work.ts. Absent means legacy. */
+    scopePolicy?: 'legacy' | 'model-work-v1';
+    /** Receipt of the previewed historical correction that moved this ledger to the current scope. */
+    scopeCorrection?: { requestId: string; policy: 'model-work-v1'; expectedSha256: string; auditPath: string; changedEntries: number; at: string };
 }
 export interface SnapshotOrdering {
     serviceInstanceId: string;

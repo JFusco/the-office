@@ -1,4 +1,5 @@
 import type { TimeEntry, TimePublication } from '../../src/shared';
+import { publishableEntry } from './publishable';
 import type { Store } from '../store/store';
 import { command } from '../workers/process';
 import { CEC } from '../office/config';
@@ -66,7 +67,7 @@ export async function publishJiraTime(store: Store, execute: typeof command, rec
         return;
     if (!reconcileKey)
         captureTime(store);
-    const entry = ledger.entries.find(entry => reconcileKey ? entry.key === reconcileKey && entry.status === 'uncertain' : entry.status === 'pending' && entry.date < easternDay(store.clock.now()) && entry.date >= easternDay(new Date(ledger.jiraActivatedAt!)));
+    const entry = reconcileKey ? ledger.entries.find(entry => entry.key === reconcileKey && entry.status === 'uncertain') : publishableEntry(ledger, store.project.provider, entry => entry.date < easternDay(store.clock.now()) && entry.date >= easternDay(new Date(ledger.jiraActivatedAt!)));
     if (!entry)
         return;
     const lock = `${store.project.id}:${entry.key}`;
