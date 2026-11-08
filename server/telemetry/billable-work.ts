@@ -14,8 +14,8 @@ export type ScopePolicy = 'legacy' | 'model-work-v1';
 export const CURRENT_SCOPE_POLICY = 'model-work-v1' as const satisfies ScopePolicy;
 
 export const isModelWork = (work: Pick<WorkTime, 'provider'>) => !!work.provider && work.provider !== 'harness';
-/** An issue key (GH-123, CEC-45). Labels such as "CMS maintenance (weekly)" are project overhead, not a board item. */
-export const ISSUE_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
+import { ISSUE_KEY } from '../../src/contracts/telemetry';
+export { ISSUE_KEY };
 export const isTicketModelWork = (work: Pick<WorkTime, 'provider' | 'ticket'>) => ISSUE_KEY.test(work.ticket || '') && isModelWork(work);
 export const isLegacyTicketWork = (work: Pick<WorkTime, 'ticket' | 'effortKind' | 'stage'>) =>
     !!work.ticket && work.effortKind !== 'administrative' && !work.stage.startsWith('slack-') && !['transition', 'readback', 'maintenance-readback'].includes(work.stage);

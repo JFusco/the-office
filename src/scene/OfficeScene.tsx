@@ -14,7 +14,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { STAGE_LABELS, STAGE_ROLE, STAGES, ROLE_NAMES, type Agent, type OfficeSnapshot, type Role } from '../shared';
 import { sceneColors } from '../tokens/scene-colors';
 import { StatusDot, cx, interactiveScene } from '../ui';
-export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTicket?:string}|{kind:'agent';id:Role}|{kind:'chat';ticket?:string}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|{kind:'settings'}|{kind:'people'}|null;
+export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTicket?:string}|{kind:'agent';id:Role}|{kind:'chat';ticket?:string}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|{kind:'settings'}|{kind:'people'}|{kind:'telemetry'}|null;
 const Party=createContext(false);
 type Vec=[number,number,number];
 type SceneAgent=Agent;

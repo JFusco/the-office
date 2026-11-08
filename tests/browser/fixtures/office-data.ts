@@ -53,6 +53,23 @@ function cec(now:number):OfficeSnapshot{
     it:{checkedAt:iso(now,1),nextCheckAt:iso(now,-1),status:'monitoring',reports:[{id:'it-1',at:iso(now,30),status:'monitoring',summary:'Fixture: all checks connected.',actions:['Fixture read check recovered'],followUps:[],notified:[],fingerprint:'f'}],recoveries:{},services:[]},
   };
 }
+/** Synthetic runs with estimated cost: complete, partial (unpriced guardian), unpriced history, overhead and helper models. */
+function costed(micro:number|null,completeness:'complete'|'partial'|'unpriced',components:{model:string;microUsd:number|null}[]=[],reasons:string[]=[]):any{
+  return {usage:{uncachedInputTokens:40000,cacheReadInputTokens:900000,cacheWriteInputTokens:0,outputTokens:9000,reasoningOutputTokens:null,completeness:'complete',reasons:[],source:'codex-rollout',requests:12,observedModels:[],observedEfforts:[],producerVersion:'0.163.0'},
+    cost:{microUsd:completeness==='complete'?micro:null,partialMicroUsd:completeness==='partial'?micro:null,completeness,valuation:completeness==='unpriced'?null:'price-table',providerBasis:'list',reportedTotalUsd:null,priceRefs:[],components:components.map(c=>({...c,providerBasis:'list'})),reasons},
+    provenance:'live',evidenceId:'fixture',sourcePath:null,sourceSha256:null,acceptedAt:''};
+}
+function telemetryRuns(now:number):OfficeSnapshot['workLog']{
+  const run=(id:string,minutesAgo:number,ms:number,extra:Record<string,unknown>)=>({id,role:'lead',task:'Fixture run',ticket:'GH-256',stage:'github-review',requestId:'fixture',sessionId:id,provider:'codex',model:'gpt-6-astra',effort:'high',requestedModel:'gpt-6-astra',requestedEffort:'high',status:'completed',startedAt:iso(now,minutesAgo),lastHeartbeatAt:iso(now,minutesAgo-ms/60000),endedAt:iso(now,minutesAgo-ms/60000),elapsedMs:ms,queuedMs:0,inputTokens:null,outputTokens:null,durationUncertain:false,reportedAt:iso(now,minutesAgo-ms/60000),...extra}) as any;
+  return [
+    run('cost-1',300,600000,{accounting:costed(2410000,'complete',[{model:'gpt-6-astra',microUsd:2410000}])}),
+    run('cost-2',240,420000,{stage:'slack-send',accounting:costed(1020000,'partial',[{model:'gpt-6-astra',microUsd:1020000}],['no-price-row:codex-auto-review'])}),
+    run('cost-3',200,900000,{role:'developer',stage:'github-implement',provider:'claude',model:'claude-opus-5-5',effort:'medium',requestedModel:'claude-opus-5-5',requestedEffort:'medium',accounting:costed(3110000,'complete',[{model:'claude-opus-5-5',microUsd:2900000},{model:'claude-haiku-5-5',microUsd:210000}])}),
+    run('cost-4',180,300000,{ticket:'GH-255',stage:'github-review'}),
+    run('cost-5',120,240000,{ticket:'Brain maintenance (daily)',stage:'maintenance',accounting:costed(550000,'complete',[{model:'gpt-6-astra',microUsd:550000}])}),
+    run('cost-6',100,60000,{ticket:'GH-255',stage:'publish',provider:'harness',model:'',effort:''}),
+  ];
+}
 function github(now:number,id:'brain'|'cms-field-vocabulary'):OfficeSnapshot{
   const brain=id==='brain',repository=brain?'JFusco/brain':'JFusco/cms-field-vocabulary',name=brain?'Brain':'CMS field vocabulary',number=brain?8:6;
   const lanes=['Backlog','Ready','In progress','Done'];
@@ -71,7 +88,7 @@ function github(now:number,id:'brain'|'cms-field-vocabulary'):OfficeSnapshot{
       board:{title:brain?'Brain':'CMS Field Vocabulary',url:`https://github.com/users/JFusco/projects/${number}`,description:'Fixture project board.',readme:'Fixture README for the board.',observedAt:iso(now,2),error:'',lanes,items}},
     maintenance:{runs:[],lastDaily:'',lastWeekly:'',ledger:''},
     coordination:{...base.coordination!,enabled:!brain,pickup:{enabled:true,status:'Ready'},listener:{...base.coordination!.listener,assigned:[],reviews:[]},jobs:[]},
-    workLog:[],ciHistory:[],
+    workLog:brain?telemetryRuns(now):[],ciHistory:[],
   };
 }
 const goals=(now:number):ProjectGoal[]=>[{id:'goal-1',project:'CEC',title:'Fixture: faster review handoffs',detail:'Synthetic goal for the CTO floor.',priority:1,status:'active',updatedAt:iso(now,300),requestId:'fixture'},{id:'goal-2',project:'Brain',title:'Fixture: weekly capture review',detail:'Synthetic idea.',priority:3,status:'idea',updatedAt:iso(now,400),requestId:'fixture'}];

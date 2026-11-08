@@ -17,6 +17,7 @@ import { commandRoute } from './office/http/commands';
 import { staticRoute } from './office/http/static-files';
 import { preferencesRoute } from './office/http/preferences';
 import { officeConfigRoute } from './office/http/office-config';
+import { telemetryRoute } from './telemetry/telemetry-route';
 import { startServiceTicks } from './office/service-ticks';
 mkdirSync(DATA, { recursive: true, mode: 0o700 });
 const releaseLock = acquireServiceLock(DATA);
@@ -42,7 +43,7 @@ const server = serve({ hostname: '127.0.0.1', port: PORT,
         try {
             // Office-wide routes run before project resolution: they need no project query.
             const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, config, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
-            for (const route of [preferencesRoute, officeConfigRoute]) {
+            for (const route of [preferencesRoute, officeConfigRoute, telemetryRoute]) {
                 const response = await route(req, url, service);
                 if (response) return response;
             }

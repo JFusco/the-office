@@ -59,7 +59,7 @@ for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
 }
 test('delivery drawers pass the WCAG 2.2 AA audit',async({page})=>{
   await ready(page);
-  for(const [button,name] of [['Open PM mailbox','mailbox'],['Open your outbox','outbox'],['Chat with Morgan','chat'],['Azure operations','azure'],['Service health','health'],['People','people'],['Visit Riley, QA','agent']] as const){
+  for(const [button,name] of [['Open PM mailbox','mailbox'],['Open your outbox','outbox'],['Chat with Morgan','chat'],['Azure operations','azure'],['Service health','health'],['People','people'],['Telemetry','telemetry'],['Visit Riley, QA','agent']] as const){
     await page.getByRole('button',{name:new RegExp(`^${button}`)}).click();await expect(page.getByRole('complementary')).toBeVisible();
     if(name==='outbox')await page.getByRole('button',{name:/CEC-102 needs a test account/}).click();
     await audit(page,`drawer-${name}`);

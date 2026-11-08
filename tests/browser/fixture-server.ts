@@ -7,6 +7,7 @@ import { createServer, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, resolve, sep } from 'node:path';
 import { createFixtureState, type FixtureState } from './fixtures/office-data';
+import { telemetryReport } from '../../src/telemetry/report';
 
 const arg=(name:string,fallback:string)=>{const i=process.argv.indexOf(`--${name}`);return i>0?process.argv[i+1]:fallback;};
 const port=Number(arg('port',process.env.OFFICE_FIXTURE_PORT||'4460')),dist=resolve(arg('dist',process.env.OFFICE_FIXTURE_DIST||'dist'));
@@ -39,6 +40,13 @@ createServer(async(req,res)=>{
     return mergePreferences(patch)?json(res,{...state.preferences,serviceInstanceId:'fixture-service'}):json(res,{error:'Invalid preferences'},400);
   }
   if(url.pathname==='/api/office-config')return req.method==='GET'?json(res,state.config):json(res,{error:'GET required'},405);
+  if(url.pathname==='/api/telemetry'){
+    const scope=url.searchParams.get('scope')||'office',projectId=url.searchParams.get('projectId'),days=url.searchParams.get('days')||'30',ticket=url.searchParams.get('ticket');
+    if(!['office','project'].includes(scope)||!['7','30','all'].includes(days)||scope==='project'&&!state.snapshots[projectId||'']||ticket&&scope!=='project')return json(res,{error:'Invalid telemetry query'},400);
+    const projects=Object.values(state.snapshots).map(s=>({id:s.project!.id,name:s.project!.name,provider:s.project!.provider,workLog:s.workLog||[],time:s.coordination?.time,hasBoard:!!s.project!.githubProject}));
+    return json(res,telemetryReport(projects as any,{scope:scope as 'office'|'project',projectId,ticket,days:days==='all'?'all':Number(days) as 7|30}));
+  }
+  if(url.pathname==='/api/time/scope-preview')return json(res,{applied:true,applicable:false,expectedSha256:null,rows:[],tickets:[],blockers:{disabled:false,liveWork:[],publications:[],manual:[]}});
   if(url.pathname.startsWith('/api/')){
     if(req.method==='POST'){
       const data=await body(req) as Record<string,any>;writes.push({at:new Date().toISOString(),method:'POST',path:`${url.pathname}${url.search}`,body:data});

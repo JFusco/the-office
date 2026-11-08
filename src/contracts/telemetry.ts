@@ -8,6 +8,8 @@
  * Cost is an estimate at API list price, not a bill or a CLI subscription charge.
  * Money is integer micro-USD; rounding to cents happens only at publication.
  */
+/** An issue key (GH-123, CEC-45). Labels such as "CMS maintenance (weekly)" are overhead, not a board item. */
+export const ISSUE_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 export type UsageCompleteness = 'complete' | 'partial' | 'unknown';
 export type CostCompleteness = 'complete' | 'partial' | 'unpriced';
 export type UsageSource = 'claude-result' | 'codex-rollout';
@@ -113,4 +115,40 @@ export interface CostLedgerState {
     entries: CostEntry[];
     /** Per ticket: the board value before the Office first wrote, and the last verified write. */
     baselines: Record<string, { baseline: number; lastWritten: number | null; itemId: string; fieldId: string; abandonedUsd?: number }>;
+}
+
+/** One breakdown row. Model time is summed per run (not overlap-adjusted like accounted hours). */
+export interface TelemetryRow {
+    id: string;
+    label: string;
+    projectId?: string;
+    runs: number;
+    modelMs: number;
+    /** Priced amount: complete runs in full plus partial runs' independently valued part. */
+    microUsd: number;
+    partialRuns: number;
+    unpricedRuns: number;
+}
+export interface TelemetrySync {
+    projectId: string;
+    projectName: string;
+    provider: 'github' | 'azure';
+    scopePolicy: 'legacy' | 'model-work-v1';
+    /** Entry counts, plus accounted seconds (overlap-adjusted) and the seconds already posted. */
+    hours: Record<'pending' | 'posting' | 'posted' | 'uncertain' | 'excluded', number> & { publishing: boolean; accountedSeconds: number; postedSeconds: number };
+    cost: { publishing: boolean; counts: Record<CostEntry['status'], number>; attention: Pick<CostEntry, 'key' | 'status' | 'detail' | 'needsDecision' | 'intendedUsd'>[] };
+}
+export interface TelemetryReport {
+    scope: { kind: 'office' | 'project'; projectId: string | null; ticket: string | null; days: 7 | 30 | 'all'; fromDay: string | null; observedAt: string };
+    totals: { runs: number; modelMs: number; microUsd: number; completeRuns: number; partialRuns: number; unpricedRuns: number; inProgressRuns: number;
+        tokens: { uncachedInput: number; cacheRead: number; cacheWrite: number; output: number } };
+    byProject: TelemetryRow[];
+    byTicket: TelemetryRow[];
+    byStage: TelemetryRow[];
+    byRole: TelemetryRow[];
+    byModel: TelemetryRow[];
+    byDay: TelemetryRow[];
+    byEffortKind: TelemetryRow[];
+    overhead: TelemetryRow;
+    sync: TelemetrySync[];
 }

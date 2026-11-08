@@ -1,4 +1,5 @@
 import {MergeApproval} from '../work/MergeApproval';
+import { TelemetryPanel } from '../telemetry/TelemetryPanel';
 import {prerequisiteKeys} from '../work/pm-queue';
 import {DependencyNotice} from '../work/DependencyNotice';
 import {ServiceHealthPanel} from '../health/ServiceHealthPanel';
@@ -87,10 +88,10 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
   const github=snapshot.project?.provider==='github';
   const chat=selection.kind==='chat'||selection.kind==='cto-chat';
   const pmName=snapshot.agents.find(a=>a.id==='pm')?.name||names.pm,ctoName=snapshot.agents.find(a=>a.id==='cto')?.name||names.cto;
-  const title=selection.kind==='settings'?'Settings':selection.kind==='features'?'Features':selection.kind==='people'?'People':selection.kind==='health'?'Service health':selection.kind==='pm-queue'?'PM queue':selection.kind==='goals'?'Project goals':selection.kind==='cto-chat'?`Chat with ${ctoName}`:selection.kind==='outbox'?'Your outbox':selection.kind==='chat'?`Chat with ${pmName}`:selection.kind==='mailbox'?'PM mailbox':selection.kind==='azure'?(github?'GitHub operations':'Azure operations'):selection.kind==='meeting'?'Review table':agent?agent.title:'Ticket';
+  const title=selection.kind==='settings'?'Settings':selection.kind==='features'?'Features':selection.kind==='people'?'People':selection.kind==='telemetry'?'Telemetry':selection.kind==='health'?'Service health':selection.kind==='pm-queue'?'PM queue':selection.kind==='goals'?'Project goals':selection.kind==='cto-chat'?`Chat with ${ctoName}`:selection.kind==='outbox'?'Your outbox':selection.kind==='chat'?`Chat with ${pmName}`:selection.kind==='mailbox'?'PM mailbox':selection.kind==='azure'?(github?'GitHub operations':'Azure operations'):selection.kind==='meeting'?'Review table':agent?agent.title:'Ticket';
   // The drawer is a non-modal complementary region: it takes focus on open, Escape closes it,
   // and focus returns to the control that opened it. Exiting drawers are inert and hidden.
-  return <motion.aside data-inspector className={cx('fixed top-topbar right-0 bottom-dock z-45 flex flex-col border-l border-drawer-line bg-drawer shadow-drawer backdrop-blur-drawer will-change-transform overscroll-contain max-compact:top-topbar-compact max-compact:bottom-dock-compact max-compact:w-full',selection.kind==='features'||selection.kind==='people'?'w-[min(1280px,100vw)]':'w-drawer wide:w-drawer-wide max-tablet:w-drawer-tablet max-compact:max-w-drawer',present?'pointer-events-auto':'pointer-events-none')} aria-label={title}
+  return <motion.aside data-inspector className={cx('fixed top-topbar right-0 bottom-dock z-45 flex flex-col border-l border-drawer-line bg-drawer shadow-drawer backdrop-blur-drawer will-change-transform overscroll-contain max-compact:top-topbar-compact max-compact:bottom-dock-compact max-compact:w-full',selection.kind==='features'||selection.kind==='people'||selection.kind==='telemetry'?'w-[min(1280px,100vw)]':'w-drawer wide:w-drawer-wide max-tablet:w-drawer-tablet max-compact:max-w-drawer',present?'pointer-events-auto':'pointer-events-none')} aria-label={title}
     initial={{x:reduced?0:'calc(100% + 80px)'}} animate={{x:0}}
     exit={{x:reduced?0:'calc(100% + 80px)',transition:{duration:reduced?0:.26,ease:[.4,0,.6,1]}}}
     transition={{duration:reduced?0:.34,ease:[.22,1,.36,1]}}
@@ -101,6 +102,7 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
       {selection.kind==='features'?<FeatureWorkspace key={[snapshot.project?.id,selection.id,selection.sourceGoalId,selection.sourceTicket].join(':')} snapshot={snapshot} initialId={selection.id} sourceGoalId={selection.sourceGoalId} sourceTicket={selection.sourceTicket} onOpen={(project,id)=>onOpenProject(project,'feature:'+id)}/>:null}
       {selection.kind==='people'?<PeoplePanel snapshot={snapshot} names={names} onSelect={onSelect}/>:null}
       {selection.kind==='settings'&&preferences?<SettingsPanel snapshot={snapshot} preferences={preferences} osReduced={osReduced} refresh={refresh}/>:null}
+      {selection.kind==='telemetry'?<TelemetryPanel projects={snapshot.projects||[]} defaultProject={snapshot.project?.id}/>:null}
       {selection.kind==='health'?<ServiceHealthPanel project={snapshot.project?.id} liveIT={snapshot.it} onChat={()=>onSelect({kind:'agent',id:'it'})}/>:null}
       {selection.kind==='chat'?<><PanelTitle size="md" className="mt-0.75 mb-2">Chat with {pmName}</PanelTitle><p className="text-11 leading-normal text-muted">Your PM coordinates the team and keeps the work up to date.</p><Conversation key={selection.ticket||'office'} snapshot={snapshot} names={names} sendMessage={sendMessage} initialTicket={selection.ticket||''} fill/></>:null}
       {selection.kind==='goals'?<Goals snapshot={snapshot} sendMessage={sendMessage} onDiscuss={()=>onSelect({kind:'cto-chat'})} onPlan={(project,goal)=>onOpenProject(project,'feature-goal:'+goal)}/>:null}
