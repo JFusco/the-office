@@ -98,3 +98,18 @@ test('straggler opt-in never converts a nonzero exit, timeout or cancellation in
     await new Promise(resolve=>setTimeout(resolve,100));expect(settled).toBe(false);
     await expect(run).rejects.toThrow('Worker paused');expect(()=>process.kill(-leader,0)).toThrow();
 },15000);
+
+test('a terminal provider event with a surviving child retains lifecycle evidence and writer uncertainty', async () => {
+    let leader = 0, helper = 0; let diagnostic: import('../../../server/workers/lifecycle/contract').LifecycleDiagnostic | undefined;
+    const parent = helperProgram(0).replace('console.log(child.pid)', `console.log(JSON.stringify({type:'turn.completed',text:'PRIVATE_PROVIDER_TEXT'}));console.log(child.pid)`);
+    await expect(command(process.execPath, ['-e', parent], { onSpawn: pid => { leader = pid; }, onLine: line => { if (/^\d+$/.test(line)) helper = Number(line); }, lifecycleInventory: async () => helper ? `${helper} ${leader} ${leader} Sun Nov 8 14:00:00 2026 /usr/local/bin/node` : '', onLifecycle: value => { diagnostic = value; } })).rejects.toThrow('surviving subprocesses');
+    expect(alive(leader)).toBe(false);
+    expect(diagnostic).toMatchObject({ providerTerminalObserved: true, outcome: 'failed', failureCategory: 'uncertain-effect' });
+    expect(diagnostic!.events).toEqual(expect.arrayContaining([expect.objectContaining({ phase: 'exit', code: 0 }), expect.objectContaining({ phase: 'term' })]));
+    expect(diagnostic!.snapshots.some(s => s.members.some(m => m.pid === helper && m.pgid === leader))).toBe(true);
+    expect(JSON.stringify(diagnostic)).not.toContain('PRIVATE_PROVIDER_TEXT');
+}, 10000);
+test('a failing diagnostic consumer cannot change successful read cleanup', async () => {
+    const output = await command(process.execPath, ['-e', helperProgram(0)], { readOnly: true, onLifecycle: () => { throw new Error('disk unavailable'); } });
+    expect(Number(output.trim())).toBeGreaterThan(0);
+}, 10000);

@@ -1,3 +1,7 @@
+import { probeProcessGroup } from './lifecycle/process-group';
+import { lifecycleRecorder } from './lifecycle/recorder';
+import type { LifecycleDiagnostic } from './lifecycle/contract';
+import type { InventoryRunner } from './lifecycle/group-inventory';
 import { liveReach } from './live-reach';
 import { spawn } from 'node:child_process';
 import { sanitize } from '../office/security';
@@ -30,8 +34,7 @@ export class CommandFailure extends Error {
 }
 /** Negative PID probes the entire owned group, not just the leader. */
 export function processGroupAlive(pid: number): boolean {
-    try { process.kill(-pid, 0); return true; }
-    catch (error) { return (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+    return probeProcessGroup(pid).state !== 'absent';
 }
 export async function command(program: string, args: string[], options: {
     cwd?: string;
@@ -46,6 +49,8 @@ export async function command(program: string, args: string[], options: {
     /** Opt-in: after a clean zero exit, stop leftover helpers instead of treating them as an uncertain write. */
     terminateStragglers?: boolean;
     onStragglersTerminated?: (processGroup: number) => void;
+    onLifecycle?: (diagnostic: LifecycleDiagnostic) => void;
+    lifecycleInventory?: InventoryRunner;
 } = {}) {
     if (options.signal?.aborted)
         throw new CommandFailure('Worker cancelled before dispatch', 'cancelled', false);
@@ -55,12 +60,17 @@ export async function command(program: string, args: string[], options: {
         throw new CommandFailure(`${live} is blocked under unit tests; inject a fake command runner`, 'cancelled', false);
     return new Promise<string>((resolve, reject) => {
         const child = spawn(program, args, { cwd: options.cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+        const lifecycle = child.pid && options.onLifecycle ? lifecycleRecorder(child.pid, options.lifecycleInventory) : undefined;
         let out = '', err = '', line = '', failure: Error | undefined, killTimer: ReturnType<typeof setTimeout> | undefined;
-        const alive = () => !!child.pid && processGroupAlive(child.pid);
+        const alive = () => { if (!child.pid) return false; const probe = probeProcessGroup(child.pid); lifecycle?.probe(probe); return probe.state !== 'absent'; };
+        const signalGroup = (phase: 'term' | 'kill', signal: 'SIGTERM' | 'SIGKILL') => {
+            const send = () => { process.kill(-child.pid!, signal); };
+            if (lifecycle) lifecycle.signal(phase, send); else try { send(); } catch {}
+        };
         const terminate = () => {
             if (!child.pid || killTimer) return;
-            try { process.kill(-child.pid, 'SIGTERM'); } catch { }
-            killTimer = setTimeout(() => { try { process.kill(-child.pid!, 'SIGKILL'); } catch { } }, 3000);
+            signalGroup('term', 'SIGTERM');
+            killTimer = setTimeout(() => signalGroup('kill', 'SIGKILL'), 3000);
         };
         const stop = (reason: Error) => {
             if (failure) return;
@@ -77,14 +87,15 @@ export async function command(program: string, args: string[], options: {
             line += s;
             const lines = line.split('\n');
             line = lines.pop()!;
-            for (const l of lines)
-                options.onLine?.(l);
+            for (const l of lines) { lifecycle?.line(l); options.onLine?.(l); }
             if (out.length > 16000000)
                 stop(new CommandFailure('Worker output limit exceeded', 'uncertain-effect', true));
         });
         child.stderr.on('data', (data: Buffer) => { const s = data.toString(); options.onOutput?.('stderr', s); err = (err + s).slice(-12000); });
+        child.on('exit', (code, signal) => lifecycle?.exit(code, signal));
         child.on('error', stop);
-        child.on('close', async (code) => {
+        child.on('close', async (code, signal) => {
+            lifecycle?.close(code, signal); if (line) lifecycle?.line(line);
             clearTimeout(timer);
             // CLI helpers can finish just after their leader. Allow a bounded normal
             // shutdown before classifying a surviving writer as an uncertain effect.
@@ -111,12 +122,12 @@ export async function command(program: string, args: string[], options: {
             options.signal?.removeEventListener('abort', abort);
             if (stragglersTerminated && !failure && child.pid)
                 try { options.onStragglersTerminated?.(child.pid); } catch { }
-            if (failure)
-                reject(failure);
-            else if (code === 0)
-                resolve(out);
-            else
-                reject(new CommandFailure(workerFailure(program, code, out, err), options.readOnly ? 'other' : 'uncertain-effect', true));
+            const finalFailure = failure || (code === 0 ? undefined : new CommandFailure(workerFailure(program, code, out, err), options.readOnly ? 'other' : 'uncertain-effect', true));
+            try {
+                const diagnostic = await lifecycle?.finish(finalFailure instanceof CommandFailure ? finalFailure.category : finalFailure ? 'other' : undefined);
+                if (diagnostic) options.onLifecycle?.(diagnostic);
+            } catch { /* Diagnostic capture/persistence never changes the frozen execution disposition. */ }
+            if (finalFailure) reject(finalFailure); else resolve(out);
         });
         child.stdin.on('error', () => { });
         try {
