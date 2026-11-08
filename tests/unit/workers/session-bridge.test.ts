@@ -5,7 +5,25 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {codexSessions,claudeSessions,guardianReview,loadedCodexSession,openRollouts,SessionBridge} from '../../../server/workers/session-bridge';
+import {sessionScope} from '../../../server/workers/session-scope';
 const cleanup:(()=>void)[]=[];afterEach(()=>cleanup.splice(0).forEach(f=>f()));
+test('retained conversation exposes an outside chat to both projects without claiming historical issues',()=>{
+ const stores:any[]=['brain','cms'].map(id=>({project:{id,repo:'/'+id,repository:'Joe/'+id},state:{workLog:[]}}));
+ const row=(type:string,payload:unknown)=>JSON.stringify({type,payload});
+ const raw=[row('session_meta',{id:'outside'}),row('event_msg',{type:'task_started'}),
+  row('response_item',{type:'custom_tool_call',input:'gh issue view 352 --repo Joe/brain; gh issue view 142 --repo Joe/cms'}),
+  row('response_item',{type:'message',role:'assistant',content:[{type:'output_text',text:'Leave dashboard #355 out of Ready.'}]}),
+  row('event_msg',{type:'task_started'}),row('response_item',{type:'message',role:'user',content:[{type:'input_text',text:'Check Monday.'}]})].join('\n');
+ const context=sessionScope(raw,'outside',stores.map(s=>s.project));
+ const bridge=new SessionBridge(()=>stores);
+ bridge.current={observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:true,sources:[],sessions:[{id:'outside',provider:'codex',cwd:'/preset',title:'Implement Renovate trust-boundary plan',branch:'main',status:'active',source:'test',context}]};
+ for(const [index,key] of ['GH-352','GH-142'].entries()){
+  const packet=bridge.forProject(stores[index],key);
+  expect(packet.sessions.map(s=>s.id)).toEqual(['outside']);
+  expect(packet.sessions[0].context?.conversation?.messages[0].text).toContain('out of Ready');
+  expect(packet.ownership.status).toBe('clear');
+ }
+});
 test('native bridge reads loaded live metadata only and follows pagination without resuming or loading turns',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'office-session-'));const server=createServer(),wss=new WebSocketServer({server});cleanup.push(()=>{wss.clients.forEach(c=>c.terminate());wss.close();server.close();rmSync(dir,{recursive:true,force:true});});const socket=join(dir,'test.sock');await new Promise<void>(resolve=>server.listen(socket,resolve));const methods:string[]=[];
  wss.on('connection',ws=>ws.on('message',raw=>{const m=JSON.parse(raw.toString());methods.push(m.method);if(m.id==null)return;let result:any={};

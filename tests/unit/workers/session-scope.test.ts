@@ -30,6 +30,22 @@ test('new turns drop historical ticket ownership; completed turns keep context w
     expect(sessionScope([...old, start, call('gh pr view 354 --repo Joe/brain')].join('\n'), 'outside', projects).scopes.map(s => s.project)).toEqual(['brain']);
     expect(sessionScope([...old, row('event_msg', { type: 'task_complete' })].join('\n'), 'outside', projects)).toMatchObject({ activity: 'idle', scopes: [{ issues: [142] }] });
 });
+test('later follow-ups retain cross-project conversation and decisions without retaining active issue claims', () => {
+    const raw = [meta, start, call('gh pr merge 143 --repo Joe/cms --merge'), call('gh pr view 354 --repo Joe/brain'),
+        row('response_item', { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Keep major updates behind checkbox approval.' }] }),
+        row('response_item', { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Office remains sole merge owner. Do not move dashboard #355 to Ready.' }] }),
+        row('event_msg', { type: 'task_complete' }), start,
+        row('response_item', { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Check after Monday’s run.' }] }),
+    ].join('\n');
+    const context = sessionScope(raw, 'outside', projects);
+    expect(context).toMatchObject({ activity: 'active', scopes: [], userMessages: [{ text: 'Check after Monday’s run.' }], conversation: {
+        projects: ['cms', 'brain'], omittedMessages: 0, messages: [
+            { role: 'user', text: 'Keep major updates behind checkbox approval.' },
+            { role: 'assistant', text: 'Office remains sole merge owner. Do not move dashboard #355 to Ready.' },
+            { role: 'user', text: 'Check after Monday’s run.' },
+        ],
+    } });
+});
 test('missing/wrong identity and partial records cannot establish complete session coverage', () => {
     expect(() => sessionScope(start, 'outside', projects)).toThrow('identity');
     expect(() => sessionScope(meta, 'different', projects)).toThrow('identity');
@@ -42,5 +58,5 @@ test('forked sessions bind the first header and replace inherited scope with the
     ].join('\n');
     expect(sessionScope(raw, 'outside', projects)).toMatchObject({ activity: 'idle', scopes: [{ project: 'brain', prs: [354] }] });
     expect(() => sessionScope(raw, 'parent', projects)).toThrow('identity');
-    expect(sessionScope(raw.split('\n').slice(0, 4).join('\n'), 'outside', projects)).toEqual({ activity: 'unknown', scopes: [], userMessages: [] });
+    expect(sessionScope(raw.split('\n').slice(0, 4).join('\n'), 'outside', projects)).toEqual({ activity: 'unknown', scopes: [], userMessages: [], conversation: { projects: [], messages: [], omittedMessages: 0 } });
 });

@@ -24,3 +24,14 @@ test('unbound, mismatched and partial Claude transcripts fail closed', () => {
     expect(() => claudeSessionScope(row('user', 'hello', { sessionId: 'other' }), 'live', projects)).toThrow('identity');
     expect(() => claudeSessionScope('{', 'live', projects)).toThrow('incomplete');
 });
+test('Claude retains prior decisions and project visibility after a brief new prompt', () => {
+    const raw = [row('user', 'Read https://github.com/Joe/brain/issues/352 and https://github.com/Joe/cms/issues/142'),
+        row('assistant', 'Office owns merges; leave major updates awaiting checkbox approval.'),
+        row('user', 'Check on Monday.'),
+    ].join('\n');
+    expect(claudeSessionScope(raw, 'live', projects)).toMatchObject({ scopes: [], conversation: {
+        projects: ['brain', 'cms'], messages: [
+            { role: 'user' }, { role: 'assistant', text: 'Office owns merges; leave major updates awaiting checkbox approval.' }, { role: 'user', text: 'Check on Monday.' },
+        ],
+    } });
+});
