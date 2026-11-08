@@ -1,5 +1,6 @@
 import { TimeClassificationInput } from '../../time/time-classification';
 import { TimeScopeInput } from '../../time/time-scope';
+import { COST_DECISIONS } from '../../telemetry/reconcile-cost';
 import { DiscoveryResumeInput, bindDiscoveryResume } from '../../delivery/recovery/implementation/discovery-recovery';
 import { reconcileGoalReportCommand } from '../../leadership/goal-reporting';
 import { configureGoalNotices } from '../../leadership/goal-notice-settings';
@@ -54,10 +55,17 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 break;
             case 'defer-non-ready': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
             case 'reconcile-time': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
+            case 'reconcile-cost': {
+                if (!validTicket(store.project, key || '')) return json({ error: 'Invalid ticket key' }, 400);
+                if (!(COST_DECISIONS as readonly string[]).includes(head || '')) return json({ error: 'Decision must be accept-board or abandon' }, 400);
+                return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
+            }
             case 'configure-time': {
                 void coordinator!.state;
                 if (typeof time?.enabled !== 'boolean' || typeof time?.githubField !== 'boolean')
                     throw new Error('Invalid time settings');
+                if (time.cost !== undefined && (typeof time.cost?.githubField !== 'boolean' || store.project.provider !== 'github'))
+                    throw new Error('Invalid cost settings');
                 const ledger = timeLedger(store);
                 if (ledger.enabled && !time.enabled)
                     ledger.disabledSince = new Date().toISOString();
@@ -67,6 +75,8 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 }
                 ledger.enabled = time.enabled;
                 ledger.githubField = time.githubField;
+                if (time.cost !== undefined)
+                    (ledger.cost ??= { githubField: false, entries: [], baselines: {} }).githubField = time.cost.githubField;
                 if (typeof time.jira === 'boolean')
                     ledger.jiraEnabled = time.jira;
                 if (time.jira === true && !ledger.jiraActivatedAt) {

@@ -1,4 +1,7 @@
 import { scheduledFeatures } from '../features/scheduled-features';
+import { costLedger } from '../telemetry/cost-entries';
+import { costPublishingEnabled, publishCost } from '../telemetry/cost-ledger';
+import { dueCostReadback, readBackCost } from '../telemetry/cost-readback';
 import { publishableEntry } from '../time/publishable';
 import { gateFeatureWork } from '../features/scheduling-gates';
 import { deliveryRepairProjection } from '../../src/work/delivery-repair-projection';
@@ -81,6 +84,13 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const readback = !pendingTime && publishingEnabled && dueReadback(store, now);
         if (readback)
             add('reconciliation', { id: `time-readback:${readback.id}`, status: 'queued' }, 'time-readback', readback.createdAt, 3, () => readBackTime(store, readback.id));
+        // Cost publication and its read-back are independent of hours and of each other.
+        const pendingCost = costPublishingEnabled(store) && costLedger(store)?.entries.find(entry => entry.status === 'pending');
+        if (pendingCost)
+            add('reconciliation', { id: `cost:${pendingCost.key}`, status: 'queued' }, 'cost-publication', pendingCost.updatedAt, 3, () => publishCost(store));
+        const costReadback = dueCostReadback(store, now);
+        if (costReadback)
+            add('reconciliation', { id: `cost-readback:${costReadback.key}`, status: 'queued' }, 'cost-readback', costReadback.updatedAt, 3, () => readBackCost(store, costReadback.key));
         return withActiveClaims(store, lane, gateFeatureWork(store, items));
     }
     if (lane !== 'delivery')

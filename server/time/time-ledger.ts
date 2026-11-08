@@ -5,15 +5,11 @@ const syncing = new WeakSet<Store>();
 const FIELD = 'Time Spent (Hours)';
 import { timeLedger } from './time-accounting';
 import { publishableEntry } from './publishable';
+import { boardItem, githubGraphql, numberField, numberValue, readNumber } from './board-number-field';
 export { timeLedger, captureTime } from './time-accounting';
 export class TimeLedger {
     constructor(private store: Store, private execute: typeof command = command) { }
-    async graphql(query: string, variables: Record<string, string | number>) {
-        const result = JSON.parse(await this.execute('gh', ['api', 'graphql', '--input', '-'], { input: JSON.stringify({ query, variables }), cwd: this.store.project.repo, timeout: 60000, readOnly: !query.trimStart().startsWith('mutation') }));
-        if (result.errors?.length)
-            throw new Error(result.errors.map((e: any) => e.message).join('; '));
-        return result.data;
-    }
+    graphql(query: string, variables: Record<string, string | number>) { return githubGraphql(this.store, this.execute)(query, variables); }
     async sync(reconcileKey?: string) {
         if (syncing.has(this.store))
             return;
@@ -45,28 +41,10 @@ export class TimeLedger {
         let attempted = false;
         this.store.save();
         try {
-            const metadata = await this.graphql(`query($owner:String!,$number:Int!){user(login:$owner){projectV2(number:$number){id fields(first:100){nodes{... on ProjectV2Field{id name dataType}} pageInfo{hasNextPage}}}}}`, { owner: config.owner, number: config.number });
-            const project = metadata.user?.projectV2;
-            if (!project || project.fields.pageInfo.hasNextPage)
-                throw new Error('Project field coverage is incomplete');
-            const fields = project.fields.nodes.filter((f: any) => f?.name === FIELD);
-            if (fields.length !== 1 || fields[0].dataType !== 'NUMBER')
-                throw new Error(`Exactly one Number field named ${FIELD} is required`);
-            const fieldId = fields[0].id;
-            let after = '', item: any;
-            do {
-                const data = await this.graphql(`query($project:ID!,$after:String){node(id:$project){... on ProjectV2{items(first:100,after:$after){nodes{id content{... on Issue{number repository{nameWithOwner}}} fieldValues(first:100){nodes{... on ProjectV2ItemFieldNumberValue{number field{... on ProjectV2Field{id}}}} pageInfo{hasNextPage}}} pageInfo{hasNextPage endCursor}}}}}`, { project: project.id, ...(after ? { after } : {}) });
-                const page = data.node.items;
-                item = page.nodes.find((i: any) => i.content?.number === Number(entry.key.slice(3)) && i.content.repository.nameWithOwner === this.store.project.repository);
-                if (item)
-                    break;
-                if (page.pageInfo.hasNextPage && (!page.pageInfo.endCursor || page.pageInfo.endCursor === after))
-                    throw new Error('Board pagination did not advance');
-                after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : '';
-            } while (after);
-            if (!item || item.fieldValues.pageInfo.hasNextPage)
-                throw new Error('Issue is not on this board or field coverage is incomplete; no hours written');
-            const current = item.fieldValues.nodes.find((n: any) => n.field?.id === fieldId)?.number ?? null;
+            const graphql = (query: string, variables: Record<string, string | number>) => this.graphql(query, variables);
+            const { projectId, fieldId } = await numberField(graphql, config.owner, config.number, FIELD), project = { id: projectId };
+            const item = await boardItem(graphql, projectId, Number(entry.key.slice(3)), this.store.project.repository);
+            const current = numberValue(item, fieldId);
             const baselines = ledger.baselines ??= {}, saved = baselines[entry.key];
             if (reconcileKey) {
                 const publication = ledger.publications?.filter(publication => publication.key === entry.key && publication.status === 'uncertain').at(-1);
@@ -99,8 +77,7 @@ export class TimeLedger {
             this.store.save();
             attempted = true;
             await this.graphql(`mutation($project:ID!,$item:ID!,$field:ID!,$hours:Float!){updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{number:$hours}}){projectV2Item{id}}}`, { project: project.id, item: item.id, field: fieldId, hours });
-            const check = await this.graphql(`query($item:ID!){node(id:$item){... on ProjectV2Item{fieldValues(first:100){nodes{... on ProjectV2ItemFieldNumberValue{number field{... on ProjectV2Field{id}}}} pageInfo{hasNextPage}}}}}`, { item: item.id });
-            if (check.node.fieldValues.pageInfo.hasNextPage || check.node.fieldValues.nodes.find((n: any) => n.field?.id === fieldId)?.number !== hours)
+            if (await readNumber(graphql, item.id, fieldId) !== hours)
                 throw new Error('Saved board hours could not be read back');
             publication.status = 'verified';
             baseline.lastWritten = hours;

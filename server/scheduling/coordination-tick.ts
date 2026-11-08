@@ -6,6 +6,7 @@ import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey }
 import { reconcileReadRetries } from './read-retries';
 import { HOLDS } from '../office/config';
 import { captureTime } from '../time/time-ledger';
+import { captureCost } from '../telemetry/cost-entries';
 import { reconcileNoticeConfirmations } from '../conversations/notifications';
 import { BrainFollowup } from '../maintenance/brain/brain-followup';
 import type { Coordinator } from './coordination';
@@ -23,6 +24,7 @@ export async function tick(this: Coordinator, now = new Date()) {
     reconcileContinuations(this.store);
     reconcileCompletedCheckpoints(this.store);
     captureTime(this.store);
+    captureCost(this.store);
     c.lastTickAt = now.toISOString();
     const { due, next } = checkpointWindow(this.store.project.id, now, c.activatedAt);
     c.nextDueAt = next;
