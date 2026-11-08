@@ -22,7 +22,7 @@ export async function pumpIT(this: Conversations) {
         if (message.recheck)
             await this.checkIT?.();
         const reply = await agents.followup('it', message);
-        if (reply.notifyRoles.some(r => r !== 'pm') || reply.goalChanges.length || reply.slackRequests.length || reply.notes.length || reply.pickupChange || reply.receipts.some(r => r.uncertain || !r.verified))
+        if (reply.notifyRoles.some(r => r !== 'pm') || reply.goalChanges.length || reply.slackRequests.length || reply.notes.length || reply.pickupChange || reply.receipts.some(r => !r.verified))
             throw new Error('IT chat may report verified operational findings to Morgan, but cannot change delivery, goals, logins or external services');
         this.record({ ...message, id: crypto.randomUUID(), from: 'it', body: reply.reply, status: 'answered', createdAt: new Date().toISOString(), sessionId: this.store.state.agents.find(a => a.id === 'it')?.sessionId || '', recipients: reply.notifyRoles, receipts: reply.receipts, recheck: false, error: '', question: reply.question });
         if (reply.notifyRoles.includes('pm'))

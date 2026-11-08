@@ -5,7 +5,7 @@ export function assertWorkerLane(role: Role, stage: string, readOnly: boolean, a
         throw new Error('Casey is restricted to read-only feature discovery');
     if (role === 'cto' && (!readOnly || !['conversation', 'daily-cto'].includes(stage)))
         throw new Error('CTO capacity is reserved for read-only advice and daily assessment');
-    if (role === 'it' && (!readOnly || stage !== 'conversation'))
+    if (role === 'it' && (!readOnly || !['conversation', 'it-investigation'].includes(stage)))
         throw new Error('IT capacity is reserved for read-only operational assessment');
     if (role === 'knowledge' && (!readOnly || !['retrospective', 'knowledge-rollup', 'conversation'].includes(stage)))
         throw new Error('Knowledge capacity is reserved for read-only retrospectives, roll-ups and chat');

@@ -1,3 +1,4 @@
+import { scheduledInvestigations } from '../it/investigations/scheduled';
 import { scheduledFeatures } from '../features/scheduled-features';
 import { costLedger } from '../telemetry/cost-entries';
 import { costPublishingEnabled, publishCost } from '../telemetry/cost-ledger';
@@ -60,6 +61,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         add('conversation', message, `conversation:${message.to}`, message.createdAt, 3, () => message.to === 'cto' ? conversations.pumpCTO() : message.to === 'it' ? conversations.pumpIT() : message.to === 'knowledge' ? conversations.pumpKnowledge() : conversations.pump(message.id),
             ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained') : null);
     }
+    if (lane === 'it') items.push(...scheduledInvestigations(store, (prompt, schema, options) => engine.itAgents.run('it', prompt, schema, options), now));
     if (lane === 'knowledge') {
         const run: import('../knowledge/run-retrospective').KnowledgeRunner = (prompt, schema, opts) => engine.knowledgeAgents.run('knowledge', prompt, schema, opts);
         return withActiveClaims(store, lane, [...items, ...scheduledRetrospectives(store, run, now), ...scheduledRollup(store, run, now, knowledge)]);

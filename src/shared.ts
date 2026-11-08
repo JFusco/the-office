@@ -1051,6 +1051,7 @@ export interface ITReport {
     fingerprint: string;
 }
 export interface ITState {
+    investigations?: import('./contracts/it-investigations').ITInvestigation[];
     projectId?: string;
     followUps?: ITFollowUp[];
     checkedAt: string;
