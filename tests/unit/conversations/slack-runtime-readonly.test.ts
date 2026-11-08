@@ -32,7 +32,7 @@ function helperProgram(ignoreTerm=false){
 }
 test.each(['slack-recipient','slack-verify'])('actual %s runtime retains a completed read after confirmed helper cleanup',async stage=>{
  const store=fixture();let group=0;
- const execute:typeof command=async(_program,_args,options={})=>command(process.execPath,['-e',helperProgram()],{...options,onSpawn:pid=>{group=pid;options.onSpawn?.(pid);}});
+ const execute:typeof command=async(_program,_args,options={})=>command(process.execPath,['-e',helperProgram()],{...options,cwd:store.dataRoot,onSpawn:pid=>{group=pid;options.onSpawn?.(pid);}});
  const runtime=new WorkerRuntime(store,execute);
  await expect(runtime.run('pm','Local read-only Slack verification fixture',schema,{stage,readOnly:true})).resolves.toEqual({ok:true});
  const worker=store.state.workLog!.at(-1)!;
@@ -42,7 +42,7 @@ test.each(['slack-recipient','slack-verify'])('actual %s runtime retains a compl
 },10000);
 test.each([['slack-send',true],['slack-unknown',false]] as const)('actual %s runtime still rejects surviving external-effect helpers',async(stage,slackSend)=>{
  const store=fixture();let group=0;
- const execute:typeof command=async(_program,_args,options={})=>command(process.execPath,['-e',helperProgram()],{...options,onSpawn:pid=>{group=pid;options.onSpawn?.(pid);}});
+ const execute:typeof command=async(_program,_args,options={})=>command(process.execPath,['-e',helperProgram()],{...options,cwd:store.dataRoot,onSpawn:pid=>{group=pid;options.onSpawn?.(pid);}});
  const runtime=new WorkerRuntime(store,execute);
  const failure=await runtime.run('pm','Local writer uncertainty fixture',schema,{stage,readOnly:true,slackSend}).catch(error=>error);
  expect(failure).toBeInstanceOf(CommandFailure);expect(failure).toMatchObject({category:'uncertain-effect',dispatched:true});expect(String(failure)).toContain('surviving subprocesses');
@@ -51,7 +51,7 @@ test.each([['slack-send',true],['slack-unknown',false]] as const)('actual %s run
 },10000);
 test('a cancelled actual Slack verifier retains capacity until its whole helper group is stopped',async()=>{
  const store=fixture();let group=0,ready!:()=>void,settled=false;const observed=new Promise<void>(resolve=>{ready=resolve;});
- const execute:typeof command=async(_program,_args,options={})=>command(process.execPath,['-e',helperProgram(true)],{...options,onSpawn:pid=>{group=pid;options.onSpawn?.(pid);},onLine:line=>{options.onLine?.(line);if(JSON.parse(line).type==='item.completed')ready();}});
+ const execute:typeof command=async(_program,_args,options={})=>command(process.execPath,['-e',helperProgram(true)],{...options,cwd:store.dataRoot,onSpawn:pid=>{group=pid;options.onSpawn?.(pid);},onLine:line=>{options.onLine?.(line);if(JSON.parse(line).type==='item.completed')ready();}});
  const runtime=new WorkerRuntime(store,execute);
  const run=runtime.run('pm','Local verifier cancellation fixture',schema,{stage:'slack-verify',readOnly:true});const outcome=run.then(()=>{settled=true;return undefined;},error=>{settled=true;return error;});
  await observed;runtime.pause();await new Promise(resolve=>setTimeout(resolve,100));
