@@ -849,6 +849,11 @@
   --color-time-detail: var(--palette-sage-542);
   --color-timing-detail: var(--palette-sage-542);
   --color-timing-rule: var(--palette-sage-917);
+  --color-telemetry-tile: var(--palette-olive-969);
+  --color-telemetry-tile-line: var(--palette-olive-907);
+  --color-telemetry-bar: var(--palette-sage-490);
+  --color-telemetry-track: var(--palette-olive-907);
+  --color-telemetry-row: var(--palette-sage-917);
 
   /* Conversation */
   --color-chat-label: var(--palette-sage-551);
