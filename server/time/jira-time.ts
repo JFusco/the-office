@@ -1,4 +1,5 @@
 import type { TimeEntry, TimePublication } from '../../src/shared';
+import type { TimeLedgerState } from '../../src/contracts/timing';
 import { publishableEntry } from './publishable';
 import type { Store } from '../store/store';
 import { command } from '../workers/process';
@@ -8,12 +9,13 @@ import { easternDay, easternInstant } from '../office/clock';
 const label = 'Office agent effort';
 const propertyKey = 'officeEntryId';
 const locks = new Set<string>();
-const data = (raw: string): any => {
+const envelope = (raw: string): any => {
     const result = JSON.parse(raw);
     if (result.error || result.ok === false)
         throw new Error('Jira worklog transport did not confirm success');
-    return result.data;
+    return result;
 };
+const data = (raw: string): any => envelope(raw).data;
 const localId = (value: string) => value.split('/').at(-1)!;
 /** One selected TWG connection, complete pagination and property read-back. */
 export class JiraWorklogs {
@@ -21,16 +23,18 @@ export class JiraWorklogs {
         if (connection !== `twg:${CEC.site}`)
             throw new Error('Unverified Jira worklog connection');
     }
-    private async call(action: string, args: string[], write = false): Promise<any> {
-        return data(await this.execute('twg', ['jira', 'workitem', 'worklog', action, ...args, '--site', CEC.site, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: !write }));
+    private async call(action: string, args: string[], write = false, whole = false): Promise<any> {
+        const result = envelope(await this.execute('twg', ['jira', 'workitem', 'worklog', action, ...args, '--site', CEC.site, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: !write }));
+        return whole ? result : result.data;
     }
     async get(key: string, id: string): Promise<any> { const result = await this.call('get', ['--issue-id', key, '--id', id, '--expand', 'properties']); return result?.worklog || result; }
     async list(key: string): Promise<any[]> {
         const logs: any[] = [];
         let after = '';
         do {
-            const result = await this.call('query', ['--issue-id', key, '--first', '100', '--expand', 'properties', ...(after ? ['--after', after] : [])]);
-            const page = result?.worklogs || result;
+            const result = await this.call('query', ['--issue-id', key, '--first', '100', '--expand', 'properties', ...(after ? ['--after', after] : [])], false, true);
+            // TWG v2 returns the page as a bare array with pageInfo beside it; older output nests both.
+            const page = Array.isArray(result?.data) ? { nodes: result.data, pageInfo: result.pageInfo } : result?.data?.worklogs || result?.data;
             const nodes = Array.isArray(page?.nodes) ? page.nodes : Array.isArray(page?.edges) ? page.edges.map((edge: any) => edge.node) : Array.isArray(page?.items) ? page.items : null;
             if (!nodes || typeof page.pageInfo?.hasNextPage !== 'boolean')
                 throw new Error('Jira worklog pagination coverage is unverified');
@@ -42,9 +46,10 @@ export class JiraWorklogs {
                     throw new Error('Jira worklog property expansion is unavailable');
                 logs.push(log);
             }
-            if (page.pageInfo.hasNextPage && (!page.pageInfo.endCursor || page.pageInfo.endCursor === after))
+            const cursor = page.pageInfo.endCursor ?? page.pageInfo.nextCursor;
+            if (page.pageInfo.hasNextPage && (!cursor || cursor === after))
                 throw new Error('Jira worklog pagination did not advance');
-            after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : '';
+            after = page.pageInfo.hasNextPage ? cursor : '';
         } while (after);
         return logs;
     }
@@ -63,6 +68,8 @@ export class JiraWorklogs {
 }
 export async function publishJiraTime(store: Store, execute: typeof command, reconcileKey?: string): Promise<void> {
     const ledger = store.state.coordination?.time;
+    if (reconcileKey && ledger && requeueNeverSent(store, ledger, reconcileKey))
+        return;
     if (!ledger?.enabled || ledger.jiraEnabled === false || !ledger.jiraActivatedAt || !ledger.jiraConnection)
         return;
     if (!reconcileKey)
@@ -129,6 +136,23 @@ export async function publishJiraTime(store: Store, execute: typeof command, rec
         store.save();
         locks.delete(lock);
     }
+}
+/**
+ * A day left uncertain with no dispatched attempt failed before anything reached Jira (a read or
+ * identity check), so there is nothing to read back. Reconciling it queues it to publish again;
+ * no provider call is needed. A dispatched attempt keeps the read-back-only rule.
+ */
+function requeueNeverSent(store: Store, ledger: TimeLedgerState, key: string): boolean {
+    const dispatched = (entry: TimeEntry) => (ledger.publications || []).some(publication => publication.provider === 'jira' && ['dispatching', 'uncertain'].includes(publication.status) && publication.covered.some(covered => covered.id === entry.id));
+    // A day with a known worklog is held for a human (missing worklog, measurement gap), never requeued here.
+    const entry = ledger.entries.find(item => item.key === key && item.status === 'uncertain' && !item.worklogId && !dispatched(item));
+    if (!entry)
+        return false;
+    entry.status = 'pending';
+    entry.detail = `No Jira write was attempted; queued to publish again. Previously: ${entry.detail}`;
+    store.emit('time-requeued', `${entry.key} ${entry.date}: no Jira write was attempted; queued to publish again.`, 'pm', entry.key);
+    store.save();
+    return true;
 }
 function matches(log: any, publication: TimePublication): boolean {
     const payload = publication.payload as {
