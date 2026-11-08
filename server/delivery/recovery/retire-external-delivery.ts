@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { workKey, type TicketJob } from '../../../src/shared';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { completedPRReviews } from './completed-pr-review';
+import { settledExternalRepair } from './settled-external-repair';
 
 /** Only a read-only handoff of an existing PR can be retired by external completion. A park that never reached the board is not a human decision. */
 function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
@@ -23,11 +24,12 @@ function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
 
 /**
  * Joe's rule: a PR he merged himself is settled. Parks, review bookkeeping, a moved head and verified
- * writes do not hold the handoff; owned or uncertain work (a worktree, an unfinished worker, an
- * unverified write or board move, a merge in flight, a repair cycle, a worker not proven read-only) still does.
+ * writes do not hold a read-only handoff. A finished CI repair may also retire while retaining
+ * its local worktree; unfinished workers, uncertain effects and recovery/merge work still block.
  */
 function ownerSettles(delivery: GitHubDelivery, job: TicketJob): boolean {
     const { store } = delivery;
+    if (settledExternalRepair(store, job)) return true;
     return !store.state.paused && !!job.existingPR && !!job.pr &&
         ['queued', 'blocked', 'interrupted', 'watching'].includes(job.status) &&
         !job.worktree && !job.mergeAttempt && !job.mergeIntentId && !job.mergeCommit &&
@@ -68,7 +70,7 @@ export async function retireExternalDeliveries(delivery: GitHubDelivery): Promis
                 delete job.parked;
                 job.updatedAt = store.clock.now().toISOString();
                 job.detail = byOwner
-                    ? `PR #${job.pr} was merged by ${pull.merged_by.login}; ${job.key} is settled. Retired the Office handoff; original history retained.`
+                    ? `PR #${job.pr} was merged by ${pull.merged_by.login}; ${job.key} is settled. Retired the Office handoff; original history${job.worktree ? ' and local repair worktree' : ''} retained. Office review and closeout completion are not claimed.`
                     : `PR #${job.pr} merged and ${job.key} closed outside this Office delivery. Retired the read-only handoff; original history retained. Office checks and closeout are not claimed.`;
                 job.steps.push({ stage: 'external-delivery-readback', result: {
                     outcome: 'passed', summary: job.detail, commit: job.head, evidence: [], findings: [],

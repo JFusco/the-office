@@ -40,3 +40,26 @@ test('ownership is exact-project and exact-issue; unrelated loaded chats and the
  const store:any={project:{id:'brain',repo:'/brain'},state:{workLog:[{requestId:'review',sessionId:'self',status:'running'}]}};const b=new SessionBridge(()=>[store]);b.current={observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:true,sources:[],sessions:[{id:'other',provider:'codex',project:'brain',cwd:'/brain',title:'Database guidance',branch:'codex/261-supabase',status:'loaded',source:'test'},{id:'self',provider:'codex',cwd:'/brain',title:'Review GH-255',branch:'',status:'loaded',source:'test'}]};
  expect(b.forProject(store,'GH-255','review').ownership.status).toBe('clear');expect(b.forProject(store,'GH-261','review').ownership.status).toBe('uncertain');b.current.sessions[0].status='active';expect(b.forProject(store,'GH-261','review').ownership.status).toBe('owned');expect(b.forProject(store,'GH-26','review').ownership.status).toBe('clear');
 });
+test('cross-repository current-turn references match the exact issue or linked PR and idle context does not own work',()=>{
+ const store:any={project:{id:'brain',repo:'/brain'},state:{workLog:[],coordination:{jobs:[{key:'GH-352',pr:354,status:'blocked'}]}}};
+ const bridge=new SessionBridge(()=>[store]);bridge.current={observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:true,sources:[],sessions:[{id:'outside',provider:'codex',cwd:'/preset',title:'Cross-repository rollout',branch:'main',status:'active',source:'test',context:{activity:'active',scopes:[{project:'brain',issues:[],prs:[354],evidence:[{at:'',reference:'gh pr merge 354 --repo Joe/brain',kind:'command',pr:354}]}],userMessages:[{at:'',text:'Proceed with the reviewed implementation.'}]}}]};
+ const view=bridge.forProject(store,'GH-352');expect(view.sessions.map(s=>s.id)).toEqual(['outside']);expect(view.ownership.status).toBe('owned');expect(view.sessions[0].context?.userMessages).toHaveLength(1);
+ expect(bridge.forProject(store,'GH-354').ownership.status).toBe('clear');bridge.current.sessions[0].status='idle';expect(bridge.forProject(store,'GH-352').ownership.status).toBe('clear');
+ bridge.current.sessions[0].status='loaded';expect(bridge.forProject(store,'GH-352').ownership.status).toBe('uncertain');
+ bridge.current.sessions[0].status='active';bridge.current.sessions[0].context!.scopes[0].evidence[0].kind='reference';expect(bridge.forProject(store,'GH-352').ownership.status).toBe('uncertain');
+});
+test('an idle shared runtime cannot erase a positively active desktop turn for the same persisted thread',async()=>{
+ const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
+ const base={id:'outside',provider:'codex' as const,cwd:'/preset',title:'Rollout',branch:'main',source:'test'};
+ const desktop={...base,status:'active' as const,context:{activity:'active' as const,scopes:[{project:'brain',issues:[255],prs:[],evidence:[{at:'',reference:'repos/Joe/brain/issues/255',kind:'command' as const,issue:255}]}],userMessages:[]}};
+ const execute:any=async(program:string)=>program==='claude'?'[]':'/test/.git';
+ const bridge=new SessionBridge(()=>[store],execute,async()=>[{...base,status:'idle'}],async()=>[desktop]);
+ await bridge.refresh();expect(bridge.forProject(store,'GH-255').ownership.status).toBe('owned');
+});
+test('Claude cross-repository scope and decisions reach the same project ownership packet',async()=>{
+ const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
+ const execute:any=async(program:string)=>program==='claude'?JSON.stringify([{sessionId:'live',cwd:'/preset',status:'working'}]):'/test/.git';
+ const context:any=async(sessions:any[])=>sessions.map(s=>({...s,context:{activity:'active',scopes:[{project:'brain',issues:[352],prs:[],evidence:[{at:'',reference:'repos/Joe/brain/issues/352',kind:'command',issue:352}]}],userMessages:[{at:'',text:'Keep the approved rollout boundaries.'}]}}));
+ const bridge=new SessionBridge(()=>[store],execute,async()=>[],async()=>[],undefined,context);await bridge.refresh();
+ const view=bridge.forProject(store,'GH-352');expect(view.complete).toBe(true);expect(view.ownership.status).toBe('owned');expect(view.sessions[0].provider).toBe('claude');expect(view.sessions[0].context?.userMessages[0].text).toContain('boundaries');
+});

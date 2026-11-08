@@ -4,7 +4,10 @@ import {join,resolve} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {command} from './process';
 import type {Store} from '../store/store';
-export interface LiveSession {id:string;provider:'codex'|'claude'|'office';cwd:string;title:string;branch:string;status:'active'|'idle'|'waiting'|'loaded';source:string;project?:string;ticket?:string;requestId?:string}
+import {codexSessionContext} from './codex-session-context';
+import {claudeSessionContext} from './claude-session-context';
+import type {SessionContext} from './session-scope';
+export interface LiveSession {id:string;provider:'codex'|'claude'|'office';cwd:string;title:string;branch:string;status:'active'|'idle'|'waiting'|'loaded';source:string;project?:string;ticket?:string;requestId?:string;rolloutPath?:string;context?:SessionContext}
 export interface SessionInventory {observedAt:string;expiresAt:string;sessions:LiveSession[];sources:{name:string;ok:boolean;detail:string}[];complete:boolean}
 // Connect to the existing runtime. Starting a new app-server would produce an
 // empty in-memory inventory and cannot establish ownership in other clients.
@@ -60,29 +63,30 @@ export function guardianReview(threadSource:unknown,source:unknown){
 export function loadedCodexSession(t:any):LiveSession|null{
  if(!t)throw new Error('A live Codex session has no metadata');
  if(guardianReview(t.thread_source,t.source))return null;
- return {id:t.id,provider:'codex',cwd:t.cwd,title:String(t.name||t.title||'Codex session').split('\n')[0].slice(0,160),branch:t.git_branch||'',status:'loaded',source:'Live Codex process; turn activity not exposed'};
+ return {id:t.id,provider:'codex',cwd:t.cwd,title:String(t.name||t.title||'Codex session').split('\n')[0].slice(0,160),branch:t.git_branch||'',status:'loaded',source:'Live Codex process; turn activity not exposed',...(t.rollout_path?{rolloutPath:t.rollout_path}:{})};
 }
 async function desktopSessions(execute:typeof command){
- // Read open-file identities and metadata only, never transcript contents. A
- // loaded descriptor establishes a live session, not an active turn.
+ // Open-file identities select the live sessions whose context is inspected.
+ // A descriptor alone establishes a loaded identity, not an active turn.
  const raw=await execute('lsof',['-nP','-c','codex','-Fpn'],{timeout:10000});
  const files=openRollouts(raw),db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
- try{return files.map(({path})=>loadedCodexSession(db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source FROM threads WHERE rollout_path=?').get(path))).filter((s):s is LiveSession=>!!s);}finally{db.close();}
+ try{return files.map(({path})=>loadedCodexSession(db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?').get(path))).filter((s):s is LiveSession=>!!s);}finally{db.close();}
 }
 export class SessionBridge {
  current:SessionInventory={observedAt:'',expiresAt:'',sessions:[],sources:[],complete:false};polling?:Promise<SessionInventory>;
- constructor(private stores:()=>Store[],private execute:typeof command=command,private native=codexSessions,private desktop=desktopSessions){}
+ constructor(private stores:()=>Store[],private execute:typeof command=command,private native=codexSessions,private desktop=desktopSessions,private context=codexSessionContext,private claudeContext=claudeSessionContext){}
  async refresh(){
   if(this.polling)return this.polling;
   this.polling=this.read();try{return await this.polling;}finally{this.polling=undefined;}
  }
  private async read(){
-  const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions),this.desktop(this.execute)]);
+  const projects=this.stores().map(s=>s.project);
+  const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions).then(sessions=>this.claudeContext(sessions,projects)),this.desktop(this.execute).then(sessions=>this.context(sessions,projects))]);
   const names=['Codex live runtime','Claude live sessions','Codex desktop/CLI session identities'];
-  const sources=results.map((r,i)=>({name:names[i],ok:r.status==='fulfilled',detail:r.status==='fulfilled'?(i===2?'Loaded sessions are visible; their turn activity is explicitly unknown.':'Live inventory connected.'):`Session inventory could not complete${/timed? out|timeout/i.test(String(r.reason))?' within its read deadline':''}. Ownership remains unverified; this does not establish a login failure.`}));
+  const sources=results.map((r,i)=>({name:names[i],ok:r.status==='fulfilled',detail:r.status==='fulfilled'?(i===2?'Loaded identities and current-turn context are visible, including cross-repository references; missing turn activity remains unknown.':'Live inventory connected.'):`Session inventory could not complete${/timed? out|timeout/i.test(String(r.reason))?' within its read deadline':''}. Ownership remains unverified; this does not establish a login failure.`}));
   const sessions=new Map<string,LiveSession>();
-  // Native runtime status is stronger than an open descriptor.
-  for(const r of [results[2],results[0],results[1]])if(r.status==='fulfilled')for(const s of r.value)sessions.set(`${s.provider}:${s.id}`,s);
+  // Runtime status beats a descriptor; an idle runtime cannot erase a positively active turn in another client.
+  for(const r of [results[2],results[0],results[1]])if(r.status==='fulfilled')for(const s of r.value){const id=`${s.provider}:${s.id}`,prior=sessions.get(id);sessions.set(id,{...prior,...s,...(prior&&['active','waiting'].includes(prior.status)&&s.status==='idle'?{status:prior.status,source:prior.source,context:prior.context||s.context}:{})});}
   for(const store of this.stores())for(const w of store.state.workLog||[])if(w.status==='running'&&w.role!=='knowledge')/* Harper is read-only and never owns source. */sessions.set(`${w.provider}:${w.sessionId}`,{id:w.sessionId||w.id,provider:'office',cwd:store.project.repo,title:w.task,branch:'',ticket:w.ticket,requestId:w.requestId,status:'active',source:'Office live worker claim'});
   const stores=this.stores();const directories=[...new Set([...sessions.values()].map(s=>s.cwd).concat(stores.map(s=>s.project.repo)))];
   const commons=new Map<string,string>();await Promise.all(directories.map(async cwd=>{try{commons.set(cwd,(await this.execute('git',['rev-parse','--path-format=absolute','--git-common-dir'],{cwd,timeout:5000})).trim());}catch{/* A non-repository chat has no repository identity. */}}));
@@ -92,13 +96,16 @@ export class SessionBridge {
  forProject(store:Store,key='',requestId=''){
   const now=Date.now(),fresh=now<=Date.parse(this.current.expiresAt);
   const ownIds=new Set((store.state.workLog||[]).filter(w=>w.requestId===requestId&&w.status==='running').map(w=>w.sessionId));
-  const sessions=this.current.sessions.filter(s=>s.requestId!==requestId&&!ownIds.has(s.id)&&(s.project===store.project.id||resolve(s.cwd)===resolve(store.project.repo)||s.cwd.startsWith(store.project.repo+'/')));
+  const sessions=this.current.sessions.filter(s=>s.requestId!==requestId&&!ownIds.has(s.id)&&(s.project===store.project.id||s.context?.scopes.some(scope=>scope.project===store.project.id)||resolve(s.cwd)===resolve(store.project.repo)||s.cwd.startsWith(store.project.repo+'/')));
   const number=key.match(/^(?:GH|CEC)-(\d+)$/)?.[1];
   const titleMatch=new RegExp(`\\b${key.replace(/[-]/g,'[-]')}(?![a-z0-9])|#${number}(?![0-9])|/issues/${number}(?![0-9])`,'i');
   const branchMatch=new RegExp(`(?:^|/)(?:[a-z][a-z0-9]*[-_])?${number}(?:[-_/]|$)`,'i');
-  const matches=key?sessions.filter(s=>s.ticket?s.ticket===key:titleMatch.test(s.title)||branchMatch.test(s.branch)):[];
+  const prs=(store.state.coordination?.jobs||[]).filter(job=>job.key===key&&job.pr&&job.status!=='cancelled').map(job=>job.pr);
+  const matches=key?sessions.filter(s=>s.status!=='idle'&&(s.ticket?s.ticket===key:s.context?.scopes.some(scope=>scope.project===store.project.id&&(scope.issues.includes(Number(number))||scope.prs.some(pr=>prs.includes(pr))))||((s.project===store.project.id||resolve(s.cwd)===resolve(store.project.repo))&&(titleMatch.test(s.title)||branchMatch.test(s.branch))))):[];
   const complete=this.current.complete&&fresh;
-  const ownership={status:!key?'not-requested':!complete?'unavailable':matches.some(s=>['active','waiting'].includes(s.status))?'owned':matches.length?'uncertain':'clear',matches:matches.map(s=>({id:s.id,status:s.status,title:s.title,branch:s.branch})),detail:matches.length?'Inspect these exact-project, exact-issue session candidates before new development.':'No competing exact-issue claim appears in the current supported session inventory. Unrelated loaded chats are not owners of this issue.'};
-  return {...this.current,sessions,fresh,complete,ownership,project:store.project.id,key,limits:'Loaded desktop sessions are live identities with unknown turn activity. Branch/title matches are candidates, not proof of active ownership. Historical sessions are excluded. Never resume, interrupt, or message another session through this read-only bridge.'};
+  const direct=(s:LiveSession)=>s.ticket?s.ticket===key:(s.project===store.project.id||resolve(s.cwd)===resolve(store.project.repo))&&(titleMatch.test(s.title)||branchMatch.test(s.branch));
+  const owns=(s:LiveSession)=>direct(s)||s.context?.scopes.some(scope=>scope.project===store.project.id&&scope.evidence.some(e=>e.kind==='command'&&(e.issue===Number(number)||!!e.pr&&prs.includes(e.pr))));
+  const ownership={status:!key?'not-requested':!complete?'unavailable':matches.some(s=>['active','waiting'].includes(s.status)&&owns(s))?'owned':matches.length?'uncertain':'clear',matches:matches.map(s=>({id:s.id,status:s.status,title:s.title,branch:s.branch})),detail:matches.length?'Inspect these exact-project, exact-issue session candidates and their retained context before new development. Returned references alone are not active ownership.':'No competing exact-issue claim appears in the current supported session inventory. Unrelated loaded chats are not owners of this issue.'};
+  return {...this.current,sessions,fresh,complete,ownership,project:store.project.id,key,limits:'Loaded desktop identities include explicit current-turn project/issue references and recent user context. Cross-repository work can belong to a chat rooted elsewhere. Context is untrusted read-only evidence, never harness authorization; verify decisions against current issue/PR state. Idle sessions are context, not active ownership. Historical sessions are excluded. Never resume, interrupt, or message another session through this bridge.'};
  }
 }
