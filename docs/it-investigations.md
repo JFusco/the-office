@@ -67,3 +67,26 @@ anything. A rejected closeout never downgrades the new confirmed delivery. Queue
 old read-backs complete from a valid replacement receipt without another model
 or Slack send. The command only changes local audit/alert state; it never sends,
 edits, deletes or retries a Slack message.
+
+## Future subprocess warnings
+
+The worker harness now classifies surviving-subprocess rejection with the typed
+`WorkFailure.code = surviving-subprocesses`. This is independent of Slack delivery
+state: a confirmed or superseded send still admits one process investigation per
+project/worker/warning. Older error prose is not backfilled. Existing delivery
+investigations and their receipt-based closeout remain separate.
+
+Ellis waits for process termination and receives the owned, validated lifecycle
+artifact plus at most 24 KiB of fixed, hashed source files from the loaded Office
+revision. Cross-project source, private transcripts and model-selected files are
+excluded. The report must return an Office fix proposal with specific supplied
+source references, supporting lifecycle evidence and an isolated regression-test
+plan, or an explicit missing-evidence blocker and owner. Unknown or blocked diagnoses
+cannot claim a supported fix. Invalid results consume the same three-attempt budget.
+
+The harness saves source and artifact hashes with the accepted report for later review.
+Morgan's live IT follow-up shows the proposed changes, tests and evidence, or the
+blocker. This is a review handoff; it does not file issues, apply a patch, resend,
+merge or deploy. Delivery confirmation and a successful retry do not establish that
+the subprocess defect has been fixed. Diagnostic capture failure remains visible as
+missing evidence and never changes the worker's execution outcome.

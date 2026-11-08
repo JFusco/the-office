@@ -6,5 +6,5 @@ import type { Store } from '../store/store';
 export function recordWorkerFailure(store: Store, id: string, error: unknown): void {
     const work = store.state.workLog?.find(work => work.id === id);
     if (work && error instanceof CommandFailure)
-        work.failure = { category: error.category, dispatched: error.dispatched, detail: sanitize(error.message).slice(0, 1000) };
+        work.failure = { category: error.category, dispatched: error.dispatched, detail: sanitize(error.message).slice(0, 1000), ...(error.code ? { code: error.code } : {}) };
 }

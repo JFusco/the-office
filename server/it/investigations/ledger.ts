@@ -14,6 +14,8 @@ export function investigationResolution(store: Store, entry: ITInvestigation) {
         const replacement = original && supersedingDelivery(store.state, original);
         return replacement ? { sourceId: replacement.id, receipt: replacement.permalink, kind: 'superseded' as const } : undefined;
     }
+    // Delivery recovery does not prove that the subprocess defect was fixed.
+    if (entry.source.failureKind === 'surviving-subprocesses') return;
     const recovery = store.state.workLog?.find(work => work.originalId === entry.source.id && work.requestId === entry.source.requestId && work.status === 'completed' && completedExecution(store, work));
     return recovery ? { kind: 'confirmed' as const, sourceId: recovery.id, receipt: `sessions/${recovery.id}/execution-completion.json` } : undefined;
 }

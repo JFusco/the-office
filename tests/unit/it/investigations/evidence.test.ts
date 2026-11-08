@@ -23,11 +23,12 @@ test('packet includes bounded whitelisted artifacts and drops transcript, privat
 test('Ellis receives validated lifecycle facts with artifact hash, never private additions or malformed data', () => {
     const f = investigationFixture(); try {
         const dir = resolve(f.root, 'sessions/sender'); mkdirSync(dir, { recursive: true });
-        const path = resolve(dir, 'process-lifecycle.json'); writeFileSync(path, JSON.stringify({ ...diagnostic(), env: 'PRIVATE_ENV' }));
+        const path = resolve(dir, 'process-lifecycle.json'); writeFileSync(path, JSON.stringify({ ...diagnostic(), processGroup: f.worker.processId, env: 'PRIVATE_ENV' }));
         syncInvestigations(f.store); const entry = f.store.state.it!.investigations![0];
         const packet = investigationEvidence(f.store, entry), artifact = packet.evidence.find(e => e.ref === 'artifact:sender/process-lifecycle.json');
         expect(artifact?.facts).toMatchObject({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/), providerTerminalObserved: true, failureCategory: 'uncertain-effect' });
         expect(JSON.stringify(packet)).not.toContain('PRIVATE_ENV');
+        writeFileSync(path, JSON.stringify(diagnostic())); expect(investigationEvidence(f.store, entry).evidence.map(e => e.ref)).not.toContain('artifact:sender/process-lifecycle.json');
         writeFileSync(path, '{"version":1}'); expect(investigationEvidence(f.store, entry).evidence.map(e => e.ref)).not.toContain('artifact:sender/process-lifecycle.json');
     } finally { f.close(); }
 });
