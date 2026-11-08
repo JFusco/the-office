@@ -136,7 +136,7 @@ export interface TelemetrySync {
     scopePolicy: 'legacy' | 'model-work-v1';
     /** Entry counts, plus accounted seconds (overlap-adjusted) and the seconds already posted. */
     hours: Record<'pending' | 'posting' | 'posted' | 'uncertain' | 'excluded', number> & { publishing: boolean; accountedSeconds: number; postedSeconds: number };
-    cost: { publishing: boolean; counts: Record<CostEntry['status'], number>; attention: Pick<CostEntry, 'key' | 'status' | 'detail' | 'needsDecision' | 'intendedUsd'>[] };
+    cost: { publishing: boolean; counts: Record<CostEntry['status'], number>; subtotals: number; attention: Pick<CostEntry, 'key' | 'status' | 'detail' | 'needsDecision' | 'intendedUsd'>[] };
 }
 export interface TelemetryReport {
     scope: { kind: 'office' | 'project'; projectId: string | null; ticket: string | null; days: 7 | 30 | 'all'; fromDay: string | null; observedAt: string };

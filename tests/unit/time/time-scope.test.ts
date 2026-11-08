@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../../../server/store/store';
@@ -9,6 +9,9 @@ import { applyTimeScope, previewTimeScope } from '../../../server/time/time-scop
 import { publishableEntry } from '../../../server/time/publishable';
 import { migrateSnapshot } from '../../../server/store/migrations';
 import { projectById } from '../../../server/office/projects';
+import { captureCost, costLedger } from '../../../server/telemetry/cost-entries';
+import { costPublishingEnabled } from '../../../server/telemetry/cost-ledger';
+import { claudeAccounting } from '../../../server/telemetry/run-accounting';
 import type { HarnessRequest, WorkTime } from '../../../src/shared';
 
 const stores: Store[] = [], paths: string[] = [];
@@ -55,6 +58,52 @@ test('the preview names every changed ticket-day, including new days and harness
     expect(preview.rows.map(r => [r.id, r.status, r.oldSeconds, r.newSeconds])).toEqual([['GH-1:2026-10-28', 'pending', 80, 90], ['GH-1:2026-10-29', 'new', 0, 45]]);
     expect(preview.tickets).toEqual([{ key: 'GH-1', oldSeconds: 80, newSeconds: 135 }]);
     expect(preview.expectedSha256).toMatch(/^[a-f0-9]{64}$/);
+});
+
+test.each(['empty', 'unchanged'] as const)('%s legacy hours adopt the current policy only after explicit apply, without rewriting history', kind => {
+    const store = setup(), ledger = timeLedger(store);
+    ledger.cost = { githubField: true, entries: [], baselines: {} };
+    const priced = work('priced', '2026-10-28T14:00:00Z', 60_000, { provider: 'claude', accounting: claudeAccounting({ total_cost_usd: 1.25, modelUsage: { 'claude-opus-5-5': { costUSD: 1.25, costBasis: 'list' } } }, { evidenceId: 'claude:priced', sourcePath: null, sourceSha256: null, at: '' }) });
+    if (kind === 'unchanged') {
+        store.state.workLog = [priced]; captureTime(store);
+        Object.assign(ledger.entries[0], { status: 'posted', revision: 3, worklogId: 'existing-worklog' });
+        ledger.baselines = { 'GH-1': { baseline: 1, lastWritten: 1.0167, itemId: 'existing-item' } };
+        ledger.publications = [{ id: 'verified-hours', provider: 'github', projectId: store.project.id, key: 'GH-1', status: 'verified', itemId: 'existing-item', fieldId: 'HOURS', worklogId: '', baseline: 1, previousValue: 1, intendedValue: 1.0167, covered: [{ id: ledger.entries[0].id, revision: 3, seconds: 60 }], payload: {}, createdAt: '', detail: '' }];
+    }
+    captureCost(store);
+    expect(costLedger(store)!.entries).toEqual([]);
+    expect(costPublishingEnabled(store)).toBe(false);
+    const before = structuredClone(store.state), preview = previewTimeScope(store);
+    expect(preview).toMatchObject({ applicable: true, applied: false, rows: [], tickets: [], expectedSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(previewTimeScope(store).expectedSha256).toBe(preview.expectedSha256);
+    expect(store.state).toEqual(before);
+    const req = request(preview.expectedSha256!);
+    applyTimeScope(store, req);
+    expect(ledger.scopePolicy).toBe('model-work-v1');
+    expect(ledger.scopeCorrection).toMatchObject({ requestId: req.id, expectedSha256: preview.expectedSha256, changedEntries: 0 });
+    const audit = JSON.parse(readFileSync(ledger.scopeCorrection!.auditPath, 'utf8'));
+    expect(audit).toMatchObject({ requestId: req.id, input: req.timeScope, preview: { rows: [], expectedSha256: preview.expectedSha256 }, priorEntries: [] });
+    expect({ ...ledger, scopePolicy: 'legacy', scopeCorrection: undefined }).toEqual({ ...before.coordination!.time, scopeCorrection: undefined });
+    const applied = structuredClone(ledger); applyTimeScope(store, req); expect(ledger).toEqual(applied);
+    expect(costPublishingEnabled(store)).toBe(true);
+    if (kind === 'empty') store.state.workLog = [priced];
+    captureCost(store);
+    expect(costLedger(store)!.entries[0]).toMatchObject({ key: 'GH-1', microUsd: 1_250_000, pricedRuns: 1, status: 'pending' });
+    expect(ledger.entries).toEqual(before.coordination!.time!.entries);
+    expect(ledger.publications).toEqual(before.coordination!.time!.publications);
+});
+
+test.each(['empty', 'unchanged'] as const)('a new hours difference invalidates a zero-row preview of %s history', kind => {
+    const store = setup();
+    store.state.workLog = kind === 'unchanged' ? [work('ordinary', '2026-10-28T14:00:00Z', 60_000)] : [];
+    captureTime(store);
+    const preview = previewTimeScope(store);
+    expect(preview).toMatchObject({ rows: [], applicable: true });
+    store.state.workLog.push(work('late', '2026-10-28T18:00:00Z', 7_000, { stage: 'transition' }));
+    const before = structuredClone(timeLedger(store));
+    expect(() => applyTimeScope(store, request(preview.expectedSha256!))).toThrow('stale');
+    expect(timeLedger(store)).toEqual(before);
+    expect(existsSync(resolve(store.dataRoot, 'accounting-corrections'))).toBe(false);
 });
 
 test('apply changes exactly the previewed entries, keeps worklog identity, records a receipt, and repeats as a no-op', () => {

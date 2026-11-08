@@ -62,3 +62,28 @@ test('telemetry is reachable from the dock on a phone and fits the viewport', as
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: evidence('telemetry-phone.png') });
 });
+
+test('publication status discloses posted subtotals and confirms policy adoption with unchanged hours', async ({ page, request }) => {
+  const snapshot = await (await request.get('/api/office?project=brain')).json();
+  const entry = (key: string, status: string, unpricedRuns: number) => ({ key, status, unpricedRuns, partialRuns: 0, pricedRuns: 1, revision: 1, microUsd: 1_000_000, coverageDigest: key, detail: '', effectId: null, attempt: 0, intendedUsd: 1, updatedAt: '' });
+  await request.post('/__fixture/snapshot?project=brain', { data: { coordination: { ...snapshot.coordination, time: { enabled: true, githubField: true, activatedAt: snapshot.startedAt, scopePolicy: 'legacy', entries: [], cost: { githubField: true, baselines: {}, entries: [entry('GH-1', 'posted', 1), entry('GH-2', 'posted', 0), entry('GH-3', 'pending', 1)] } } } } });
+  const digest = 'a'.repeat(64);
+  await page.route('**/api/time/scope-preview?project=brain', route => route.fulfill({ json: { applied: false, applicable: true, expectedSha256: digest, rows: [], tickets: [], blockers: { disabled: false, liveWork: [], publications: [], manual: [] } } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Telemetry', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'Telemetry', exact: true });
+  await expect(panel.getByText(/Est\. cost: 2 posted .*1 posted as subtotals \(some runs unpriced\)/)).toBeVisible();
+  await expect(panel.getByText(/Existing hours totals will remain unchanged/)).toBeVisible();
+  await panel.getByRole('button', { name: 'Review and apply…' }).click();
+  const confirmation = panel.getByRole('group', { name: 'Confirm scope correction' });
+  await expect(confirmation).toContainText('Existing GitHub hours and Jira worklogs remain unchanged.');
+  const scopeWrites = async () => (await (await request.get('/__fixture/writes')).json()).filter((write: any) => write.body?.action === 'apply-time-scope');
+  expect(await scopeWrites()).toEqual([]);
+  await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+  expect(await scopeWrites()).toEqual([]);
+  await panel.getByRole('button', { name: 'Review and apply…' }).click();
+  await confirmation.getByRole('button', { name: 'Apply correction', exact: true }).click();
+  await expect(panel.getByRole('status').filter({ hasText: 'Correction queued' })).toBeVisible();
+  expect(await scopeWrites()).toEqual([expect.objectContaining({ path: '/api/commands?project=brain', body: { action: 'apply-time-scope', timeScope: { policy: 'model-work-v1', expectedSha256: digest } } })]);
+});

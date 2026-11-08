@@ -94,14 +94,27 @@ test('publication goes through Effects with read-back, preserves the board basel
     expect(costLedger(store)!.entries[0]).toMatchObject({ status: 'posted', revision: 2 });
 });
 
-test('an all-unpriced ticket publishes its zero subtotal over the baseline and says why', async () => {
-    const store = setup(), b = board(null);
+test.each([null, 3])('an all-unpriced ticket leaves the board value %s alone until a priced run is available', async initial => {
+    const store = setup(), b = board(initial);
     store.state.workLog = [run('d', '2026-11-02T13:00:00Z')];
     captureCost(store);
     await publishCost(store, b.execute);
-    // An empty field reads as null, so the $0.00 subtotal is written; the entry says nothing was priced.
+    expect(costLedger(store)!.entries).toEqual([]);
+    expect(costLedger(store)!.baselines).toEqual({});
+    expect(b.state.writes).toEqual([]);
+    expect(b.state.value).toBe(initial);
+    store.state.workLog.push(run('priced', '2026-11-02T14:00:00Z', { accounting: accounting('complete', 1_250_000) }));
+    captureCost(store); await publishCost(store, b.execute);
+    expect(b.state.writes).toEqual([(initial ?? 0) + 1.25]);
+    expect(costLedger(store)!.entries[0]).toMatchObject({ status: 'posted', microUsd: 1_250_000, pricedRuns: 1, unpricedRuns: 1, detail: expect.stringContaining('1 unpriced run') });
+});
+
+test.each(['complete', 'partial'] as const)('a supported %s zero amount still publishes', async completeness => {
+    const store = setup(), b = board(null);
+    store.state.workLog = [run('zero', '2026-11-02T13:00:00Z', { accounting: accounting(completeness, 0) })];
+    captureCost(store); await publishCost(store, b.execute);
+    expect(costLedger(store)!.entries[0]).toMatchObject({ status: 'posted', microUsd: 0 });
     expect(b.state.writes).toEqual([0]);
-    expect(costLedger(store)!.entries[0]).toMatchObject({ status: 'posted', unpricedRuns: 1, detail: expect.stringContaining('1 unpriced run') });
 });
 
 test('an outside edit, a missing field, or turning publishing off blocks without writing', async () => {
@@ -182,7 +195,7 @@ test('a just-finished run awaiting its evidence is in progress, not an unpriced 
     captureCost(store);
     expect(costLedger(store)!.entries).toEqual([]);
     millis += 2 * 60_000; captureCost(store);
-    expect(costLedger(store)!.entries[0]).toMatchObject({ unpricedRuns: 1 });
+    expect(costLedger(store)!.entries).toEqual([]);
     expect([boardUsd(0, 1_005_000), boardUsd(0, 1_015_000), boardUsd(0.1, 200_000)]).toEqual([1.01, 1.02, 0.3]);
 });
 
