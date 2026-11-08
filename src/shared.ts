@@ -46,8 +46,8 @@ export interface OfficeProject {
         number: number;
         url: string;
     };
-    /** Dependency bots whose open PRs the Office adopts without a person moving each card to the pickup lane. */
-    autoAdopt?: 'pin-courier'[];
+    /** Automation sources whose open PRs the Office adopts without a person moving each card. */
+    autoAdopt?: ('pin-courier' | 'wiki-sync')[];
 }
 export interface AssignedIssue {
     key: string;
@@ -336,8 +336,8 @@ export interface TimeEntry {
     detail: string;
     url: string;
 }
-/** A Dependabot PR the harness bridged (or refused to bridge) into the existing-PR delivery flow. */
-export interface DependabotAdoption { bot?: 'pin-courier'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
+/** An automated PR the harness bridged (or refused to bridge) into existing-PR delivery. */
+export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
 export interface Coordination {
     adoptions?: DependabotAdoption[];
     requests?: import('./contracts/work').HarnessRequest[];

@@ -9,6 +9,7 @@ import { adoptDependabot } from '../delivery/intake/dependabot/adopt';
 import { adoptDependencyBot } from '../delivery/intake/dependency-bots/adopt';
 import { unparkReleasedWaits } from '../delivery/parking/release-unpark';
 import { pinCourier } from '../delivery/intake/dependency-bots/pin-courier';
+import { wikiSync } from '../delivery/intake/dependency-bots/wiki-sync';
 import { observeGitHubMergeNotices } from '../conversations/observe-github-merges';
 import { CEC } from '../office/config';
 import { noticeState, queueMergeNotice } from '../conversations/notifications';
@@ -103,6 +104,7 @@ export async function poll(this: Coordinator, now = new Date()) {
             // Adoption creates the tracking issue; discovery routes the linked PR once the issue is assigned.
             await adoptDependabot(this.store, this.execute, this.state.jobs ??= [], this.pickup);
             await adoptDependencyBot(this.store, this.execute, this.state.jobs, this.pickup, pinCourier);
+            await adoptDependencyBot(this.store, this.execute, this.state.jobs, this.pickup, wikiSync);
             await delivery.discover(assigned);
             if (handsOff(this.store)) {
                 await unparkReleasedWaits(this.store, this.execute, this.state.jobs!, this.pickup, now);

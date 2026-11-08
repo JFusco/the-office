@@ -2,7 +2,7 @@ import { cardStatus, projectCards, statusField, type Execute } from '../../board
 import type { Store } from '../../../store/store';
 import type { OfficeProject } from '../../../../src/shared';
 
-export const AUTO_ADOPT_BOTS = ['pin-courier'] as const;
+export const AUTO_ADOPT_BOTS = ['pin-courier', 'wiki-sync'] as const;
 export type AutoAdoptBot = typeof AUTO_ADOPT_BOTS[number];
 
 /** A project opts a dependency bot into adoption without a person moving each PR's card to the pickup lane. */
@@ -16,11 +16,11 @@ export const waitsQuietly = (refusal: string) => NOT_YET.has(refusal);
 
 /**
  * Open PRs automatic mode may adopt: those with no board card, or a card still in Backlog or the pickup lane.
- * A card a person put in any other lane (Block, Done, In progress, In review) keeps that PR out of adoption.
+ * Source-specific additional lanes may opt in (wiki-sync includes In review). Other lanes stay untouched.
  */
-export async function autoAdoptable(store: Store, execute: Execute, pulls: any[], pickupLane: string): Promise<any[]> {
+export async function autoAdoptable(store: Store, execute: Execute, pulls: any[], pickupLane: string, additionalLanes: readonly string[] = []): Promise<any[]> {
     if (!pulls.length || !store.project.githubProject) return pulls;
-    const field = await statusField(store, execute), open = new Set(['backlog', pickupLane.trim().toLowerCase()]);
+    const field = await statusField(store, execute), open = new Set(['backlog', pickupLane.trim().toLowerCase(), ...additionalLanes.map(lane => lane.trim().toLowerCase())]);
     const cards = await projectCards(store, execute, field.projectId, pulls.map(p => ({ kind: 'PullRequest' as const, number: p.number })));
     const adoptable: any[] = [];
     for (const p of pulls) {
