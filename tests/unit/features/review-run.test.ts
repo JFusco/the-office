@@ -1,4 +1,10 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
+
+// Command execution is injected below; unit tests must not resolve a host skill install.
+vi.mock('../../../server/features/review-evidence', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../server/features/review-evidence')>(),
+    helperInstallation: () => ({ root: '/fixture/review', python: '/fixture/review/python', helper: '/fixture/review/review_cli.py' }),
+}));
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
