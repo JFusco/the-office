@@ -1,3 +1,4 @@
+import { recordWorkerFailure } from './record-failure';
 import { deferredPickup } from '../../src/work/pickup-state';
 import { diagnosticContext } from '../it/diagnostic-context';
 import { shortSummary } from '../../src/work/work-summary';
@@ -236,6 +237,7 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
             return result;
         }
         catch (error) {
+            recordWorkerFailure(this.store, id, error);
             try { retainClaudeCompletion(); } catch (persistenceError) { error = new Error(`${sanitize(String(error))}; provider completion persistence failed: ${sanitize(String(persistenceError))}`); }
             if (controller.signal.aborted)
                 workStatus = 'interrupted';
