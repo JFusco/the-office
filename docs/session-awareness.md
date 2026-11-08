@@ -12,6 +12,16 @@ back to its exact Office delivery ticket; identical numbers in other repositorie
 not match. New turn events replace the prior turn's scope. Completed/idle chats supply
 context without claiming active ownership.
 
+The same loaded chat also retains conversation project references across turns and
+up to 64 user/assistant messages, with 4000 characters per message. Roles, timestamps,
+truncated-message flags and an omitted-message count make the evidence limits explicit.
+This allows a later brief follow-up to preserve visibility in every previously referenced
+Office project, including chats rooted in a shared configuration repository. Earlier
+user decisions and assistant reports remain readable in `context.conversation`; they
+are evidence to verify, not inferred approvals. Current-turn references and native metadata feed issue ownership; retained
+conversation evidence never turns old commands into new active claims. This history starts
+at the child session's own history boundary for a fork, and does not load closed chats.
+
 Tool-returned URLs are references for focused investigation. They do not prove an
 active writer. Exact issue/PR commands in an active turn can establish ownership;
 unknown activity or reference-only evidence requires reconciliation. Reasoning is

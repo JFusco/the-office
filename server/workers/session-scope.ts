@@ -1,4 +1,5 @@
 import type { OfficeProject } from '../../src/shared';
+import { retainSessionMessage, type SessionConversation } from './session-conversation';
 
 export interface SessionScope {
     project: string;
@@ -10,6 +11,7 @@ export interface SessionContext {
     activity: 'active' | 'idle' | 'unknown';
     scopes: SessionScope[];
     userMessages: { at: string; text: string }[];
+    conversation?: SessionConversation;
 }
 const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -17,6 +19,8 @@ const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function sessionScope(raw: string, sessionId: string, projects: Pick<OfficeProject, 'id' | 'repo' | 'repository'>[]): SessionContext {
     let identity = '', header = false, historyStart = 0, activity: SessionContext['activity'] = 'unknown';
     const scopes = new Map<string, SessionScope>(), userMessages: SessionContext['userMessages'] = [];
+    let conversation: SessionConversation = { projects: [], messages: [], omittedMessages: 0 };
+    const conversationProjects = new Set<string>();
     for (const [ordinal, line] of raw.split('\n').entries()) {
         if (!line.trim()) continue;
         let row: any;
@@ -42,6 +46,7 @@ export function sessionScope(raw: string, sessionId: string, projects: Pick<Offi
         const text = message
             ? (payload.content || []).filter((part: any) => ['input_text', 'output_text', 'text'].includes(part.type)).map((part: any) => part.text || '').join('\n')
             : output ? typeof payload.output === 'string' ? payload.output : JSON.stringify(payload.output || '') : String(payload.arguments || payload.input || '');
+        if (message && text.trim()) conversation = retainSessionMessage(conversation, payload.role, text, row.timestamp || '');
         if (message && payload.role === 'user' && text.trim()) {
             userMessages.push({ at: row.timestamp || '', text: text.slice(0, 800) });
             if (userMessages.length > 4) userMessages.shift();
@@ -49,6 +54,7 @@ export function sessionScope(raw: string, sessionId: string, projects: Pick<Offi
         for (const project of projects) {
             const repo = escaped(project.repository), path = escaped(project.repo);
             if (!new RegExp(`(?:(?<![\\w.-])${repo}(?![\\w.-])|${path}(?=[/\\s'"\\\\]|$))`, 'i').test(text)) continue;
+            conversationProjects.add(project.id);
             const scope = scopes.get(project.id) || { project: project.id, issues: [], prs: [], evidence: [] };
             // Canonical URLs and REST paths bind the number to this repository.
             const refs = new RegExp(`(?:(?<![\\w.-])github\\.com/|(?<![\\w/.-])repos/)${repo}/(issues|pulls?)/(\\d+)(?![a-z0-9])`, 'gi');
@@ -69,5 +75,6 @@ export function sessionScope(raw: string, sessionId: string, projects: Pick<Offi
         }
     }
     if (identity !== sessionId) throw new Error('Codex rollout identity does not match the loaded session');
-    return { activity, scopes: [...scopes.values()], userMessages };
+    conversation.projects = [...conversationProjects];
+    return { activity, scopes: [...scopes.values()], userMessages, conversation };
 }
