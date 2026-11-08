@@ -1,3 +1,4 @@
+import { finishSupersededReadback } from './slack/finish-superseded-readback';
 import { assertConversationReadback } from './conversation-recovery';
 import { enqueueRequest } from '../scheduling/requests';
 import { deferredPickup } from '../../src/work/pickup-state';
@@ -27,6 +28,7 @@ export async function pump(this: Conversations, id?: string) {
     this.store.emit('message-started', `${ROLE_NAMES[message.to]} is reading your message.`, message.to, message.ticket);
     let shouldRecheck = false;
     try {
+        if (finishSupersededReadback(this.store, message, reply => this.record(reply))) return;
         const slack = new SlackMessages(this.store, this.engine.agents);
         const originalId = message.actionId.startsWith('message:') ? message.actionId.slice(8) : '';
         const unresolved = (this.store.state.slackDeliveries || []).filter(d => d.requestId === originalId && d.status === 'uncertain');

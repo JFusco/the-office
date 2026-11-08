@@ -1,3 +1,4 @@
+import { supersedingDelivery, slackRequestSettled } from './slack/supersession-proof';
 import { deferredPickup } from '../../src/work/pickup-state';
 import { checkpointSuperseded } from '../maintenance/superseded';
 import { checkpointHasMaintenanceAlert, maintenanceNeedsHumanFollowup } from '../maintenance/follow-up-alerts';
@@ -33,8 +34,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
     if (state.coordination?.listener.error && !teamOwnsIT('assignment-listener'))
         item('assignment-listener', 'Restore assignment listening', state.coordination.listener.error, 'pm');
     for (const n of state.coordination?.notices?.entries || []) {
-        const confirmed = state.slackDeliveries?.find(d => d.requestId === n.id && d.status === 'confirmed');
-        if (!confirmed && ['blocked', 'uncertain'].includes(n.status) && !((n.kind === 'goal' || n.kind === 'maintenance') && state.slackDeliveries?.some(d => d.requestId === n.id && d.status === 'uncertain')))
+        if (!slackRequestSettled(state, n.id) && ['blocked', 'uncertain'].includes(n.status) && !((n.kind === 'goal' || n.kind === 'maintenance') && state.slackDeliveries?.some(d => d.requestId === n.id && d.status === 'uncertain')))
             item(`merge-notice:${n.id}`, n.kind === 'goal' ? `Resolve “${n.goalTitle}” completion DM` : n.kind === 'maintenance' ? 'Resolve maintenance completion DM' : `Resolve ${n.key} Slack notice`, n.detail, 'pm', n.key, n.prUrl);
     }
     for (const t of state.coordination?.time?.entries || [])
@@ -101,14 +101,14 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
             item(`ticket-job:${j.id}`, `${j.key} needs team follow-up`, `${wait.summary}\n${wait.next}`, 'pm', j.key, j.prUrl);
         }
     for (const m of state.messages) {
-        const reconciledSlackReadback = m.actionId.startsWith('message:') && m.error.includes('Slack read-back did not match') && (state.slackDeliveries || []).some(d => d.requestId === m.actionId.slice(8) && d.status === 'confirmed');
+        const reconciledSlackReadback = /Slack delivery could not be confirmed|Slack read-back did not match/.test(m.error) && slackRequestSettled(state, m.actionId.startsWith('message:') ? m.actionId.slice(8) : m.id);
         if (m.question && !deferredPickup(state, m.ticket) && !state.messages.some(reply => reply.from === 'human' && reply.actionId === `question:${m.id}` && reply.status === 'answered'))
             item(`question:${m.id}`, `${m.from === 'human' ? 'Morgan' : ROLE_NAMES[m.from]} has a question`, m.question, m.from === 'human' ? 'pm' : m.from, m.ticket);
         if (m.from === 'human' && !conversationResolved(state, m) && !reconciledSlackReadback && ['failed', 'interrupted'].includes(m.status))
             item(`message:${m.id}`, 'Follow up on an interrupted conversation', m.error || 'The team could not complete this reply.', 'pm', m.ticket);
     }
     for (const d of state.slackDeliveries || [])
-        if (d.status === 'uncertain')
+        if (d.status === 'uncertain' && !supersedingDelivery(state, d))
             item(`message:${d.requestId}`, 'Read back a Slack delivery', `Message to ${d.targetName} could not be confirmed. ${d.error} Reply here to read it back; the office will not resend it.`, 'pm', state.messages.find(m => m.id === d.requestId)?.ticket || state.coordination?.notices?.entries.find(n => n.id === d.requestId)?.key || '');
     for (const old of outbox)
         if (!current.has(old.id) && old.status !== 'resolved') {

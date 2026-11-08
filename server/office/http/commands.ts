@@ -1,3 +1,4 @@
+import { supersedeSlackDelivery } from '../../conversations/slack/supersede-delivery';
 import { TimeClassificationInput } from '../../time/time-classification';
 import { TimeScopeInput } from '../../time/time-scope';
 import { COST_DECISIONS } from '../../telemetry/reconcile-cost';
@@ -28,10 +29,11 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
+            case 'supersede-slack-delivery': supersedeSlackDelivery(store, slackSupersession); break;
             case 'configure-goal-notifications': configureGoalNotices(store, notifications); break;
             case 'authorize-source-amendment': return json({ accepted: true, id: enqueueSourceAmendment(store, amendment).id }, 202);
             case 'reconcile-goal-report': return json(reconcileGoalReportCommand(store, messageId), 202);

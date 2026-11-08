@@ -1,3 +1,4 @@
+import { supersedingDelivery } from './slack/supersession-proof';
 import { projectOutbox } from './outbox';
 import { PickupSchema } from '../delivery/intake/pickup';
 import { z } from 'zod';
@@ -15,7 +16,7 @@ import { saveGoals, queueCTOHandoff, pumpCTO } from './cto-conversations';
 import { queuedITMessage, pumpIT } from './it-conversations';
 import { pumpKnowledge } from './knowledge-conversations';
 import { pump } from './team-conversation-pump';
-export const MessageInput = z.object({ id: z.string().uuid(), role: z.enum(['pm', 'developer', 'lead', 'qa', 'cto', 'it', 'knowledge']).default('pm'), ticket: z.string().regex(/^((CEC|GH)-\d+)?$/).default(''), actionId: z.string().max(200).default(''), body: z.string().trim().min(1).max(6000), recheck: z.boolean().default(false) }).strict();
+export const MessageInput = z.object({ id: z.string().uuid(), role: z.enum(['pm', 'developer', 'lead', 'qa', 'cto', 'it', 'knowledge']).default('pm'), ticket: z.string().regex(/^((CEC|GH)-\d+)?$/).default(''), actionId: z.string().max(200).default(''), body: z.string().trim().min(1).max(6000), recheck: z.boolean().default(false), slackReplacement: z.object({ originalDeliveryId: z.string().min(1).max(200), reason: z.string().trim().min(1).max(1000) }).strict().optional() }).strict();
 export const GoalChangeSchema = z.object({ id: z.string(), expectedUpdatedAt: z.string(), project: z.string().min(1).max(80), title: z.string().min(1).max(200), detail: z.string().max(6000), priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), status: z.enum(['idea', 'planned', 'active', 'blocked', 'done']) }).strict();
 export const ReplySchema = z.object({ handoffProject: z.string(), pickupChange: PickupSchema.nullable(), reply: z.string().min(1), notifyRoles: z.array(z.enum(['pm', 'developer', 'lead', 'qa', 'cto', 'it'])).max(4), question: z.string(), goalChanges: z.array(GoalChangeSchema).max(12), slackRequests: z.array(SlackRequestSchema).max(1), notes: z.array(z.object({ summary: z.string().min(1), detail: z.string().min(1) }).strict()).max(8), receipts: z.array(z.object({ id: z.string(), action: z.string(), target: z.string(), verified: z.boolean(), uncertain: z.boolean(), detail: z.string() }).strict()) }).strict();
 // Fresh workers require the nullable field; historic replies retain their original shape.
@@ -36,10 +37,11 @@ export class Conversations {
     enqueue(input: unknown) {
         const data = MessageInput.parse(input), old = this.store.state.messages.find(m => m.id === data.id);
         if (old) {
-            if (old.from !== 'human' || old.body !== sanitize(data.body) || old.to !== data.role || old.ticket !== data.ticket || old.actionId !== data.actionId || old.recheck !== data.recheck)
+            if (old.from !== 'human' || old.body !== sanitize(data.body) || old.to !== data.role || old.ticket !== data.ticket || old.actionId !== data.actionId || old.recheck !== data.recheck || JSON.stringify(old.slackReplacement) !== JSON.stringify(data.slackReplacement))
                 throw new Error('Message ID already belongs to a different request');
             return old;
         }
+        if (data.slackReplacement && (data.role !== 'pm' || !this.store.state.slackDeliveries?.some(delivery => delivery.id === data.slackReplacement!.originalDeliveryId && delivery.status === 'uncertain' && !supersedingDelivery(this.store.state, delivery)))) throw new Error('Slack replacement requires a current uncertain delivery and a human request to Morgan');
         if (data.ticket) {
             if (!validTicket(this.store.project, data.ticket))
                 throw new Error('Ticket belongs to another project');
@@ -54,7 +56,7 @@ export class Conversations {
         }
         if (this.store.state.messages.filter(m => m.status === 'queued' && m.from === 'human').length >= 20)
             throw new Error('There are already 20 messages waiting for the team');
-        const m: TeamMessage = { id: data.id, requestId: data.id, from: 'human', to: data.role, ticket: data.ticket, actionId: data.actionId, body: sanitize(data.body), status: 'queued', createdAt: new Date().toISOString(), sessionId: '', recheck: data.recheck, error: '', recipients: [], receipts: [] };
+        const m: TeamMessage = { id: data.id, requestId: data.id, from: 'human', to: data.role, ticket: data.ticket, actionId: data.actionId, body: sanitize(data.body), status: 'queued', createdAt: new Date().toISOString(), sessionId: '', recheck: data.recheck, ...(data.slackReplacement ? { slackReplacement: data.slackReplacement } : {}), error: '', recipients: [], receipts: [] };
         this.store.state.messages.push(m);
         this.store.emit('message-queued', `Your message is waiting for ${ROLE_NAMES[m.to]}.`, m.to, m.ticket);
         return m;

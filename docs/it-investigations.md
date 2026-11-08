@@ -41,3 +41,29 @@ being mistaken for an attempted mutation; uncertain receipts never settle delive
 Tests inject model runners and use isolated stores; they never send Slack or call a
 live model/provider. Implementation and tests live in `server/it/investigations/` and
 `tests/unit/it/investigations/`.
+
+## Verified replacement closeout
+
+An explicit operator command, `supersede-slack-delivery`, accepts
+`slackSupersession: { originalDeliveryId, replacementDeliveryId, reason }`. The
+replacement must already be confirmed, be newer than the uncertain original,
+and have the same target type, recipient and workspace. It must be backed by a
+human request to Morgan linked to the same ticket (and PR URL for a merge notice).
+An unticketed replacement request must explicitly identify the original request
+or delivery. A verified message for unrelated work never clears the warning.
+
+The original delivery remains `uncertain`. A local supersession record binds the
+project, immutable message fingerprints, context and verified replacement receipt.
+That evidence closes the active Slack/outbox and IT follow-ups. History presents
+“Superseded by verified follow-up” and a link, never “original delivered.” If the
+receipt, recipient, text or context changes, the warnings return without refunding
+investigation attempts. Reconciling a stale proof archives its previous record.
+
+For future explicitly authorized replacements, a human `POST /api/messages` can
+include `slackReplacement: { originalDeliveryId, reason }`. After the fresh send
+is independently confirmed, the harness applies the same policy automatically.
+Absent that explicit binding, a new confirmed message alone does not supersede
+anything. A rejected closeout never downgrades the new confirmed delivery. Queued
+old read-backs complete from a valid replacement receipt without another model
+or Slack send. The command only changes local audit/alert state; it never sends,
+edits, deletes or retries a Slack message.

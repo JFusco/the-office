@@ -1,8 +1,9 @@
+import { supersedingDelivery } from '../conversations/slack/supersession-proof';
 import type { OfficeSnapshot, ServiceHealth } from '../../src/shared';
 
 /** Delivery receipts are passive evidence, never an invented authentication probe. */
 export function slackHealth(snapshots: OfficeSnapshot[], now = Date.now()): ServiceHealth {
-    const deliveries = snapshots.flatMap(s => s.slackDeliveries || []).filter(d => Number.isFinite(Date.parse(d.updatedAt)) && Date.parse(d.updatedAt) <= now).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    const deliveries = snapshots.flatMap(s => (s.slackDeliveries || []).filter(delivery => !supersedingDelivery(s, delivery))).filter(d => Number.isFinite(Date.parse(d.updatedAt)) && Date.parse(d.updatedAt) <= now).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
     const confirmed = deliveries.find(d => d.status === 'confirmed');
     const pending = deliveries.find(d => d.status !== 'confirmed' && (!confirmed || Date.parse(d.updatedAt) >= Date.parse(confirmed.updatedAt)));
     const recent = !!confirmed && now - Date.parse(confirmed.updatedAt) < 86400000;

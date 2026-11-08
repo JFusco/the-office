@@ -1,3 +1,4 @@
+import { settleRequestedSlackReplacement } from './slack/settle-replacement';
 import { reconcileNoticeConfirmations } from './notifications';
 import { z } from 'zod';
 import { slackMessageUrl, type SlackDelivery } from '../../src/shared';
@@ -104,6 +105,7 @@ export class SlackMessages {
         if (['goal-completion-slack', 'maintenance-completion-slack'].includes(this.store.getEffect(effectId)?.operation || '') && this.store.getEffect(effectId)?.status === 'uncertain')
             await new Effects(this.store).reconcile(effectId, async () => ({ verified: true, receipt: delivery }));
         reconcileNoticeConfirmations(this.store);
+        settleRequestedSlackReplacement(this.store, delivery);
         this.store.emit('slack-confirmed', `Sent to ${delivery.targetName} on Slack. Verified by reading the message back.`, 'pm');
         return delivery;
     }

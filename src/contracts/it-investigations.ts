@@ -9,5 +9,5 @@ export interface ITInvestigation {
     nextAt: string;
     lastError: string;
     report?: { summary: string; cause: 'process' | 'authentication' | 'provider' | 'harness' | 'unknown'; evidence: { ref: string; observation: string }[]; recommendation: string; blocker: string };
-    resolution?: { sourceId: string; at: string; receipt: string };
+    resolution?: { kind?: 'confirmed' | 'superseded'; sourceId: string; at: string; receipt: string };
 }
