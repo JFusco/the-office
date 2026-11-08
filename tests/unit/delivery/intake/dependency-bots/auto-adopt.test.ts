@@ -112,7 +112,7 @@ test('autoAdopt config must list unique supported bots on a GitHub project', () 
     vi.stubEnv('VITEST', ''); vi.stubEnv('NODE_ENV', 'production');
     const project = { id: 'cms-field-vocabulary', name: 'CMS', provider: 'github', repo: '/tmp/cms', repository: 'JFusco/cms-field-vocabulary', target: 'main' };
     const write = (extra: Record<string, unknown>) => writeFileSync(resolve(root, 'office-config.json'), JSON.stringify({ projects: [{ ...project, ...extra }] }));
-    write({ autoAdopt: ['pin-courier'] }); expect(localBindings(root).projects![0].autoAdopt).toEqual(['pin-courier']);
+    write({ autoAdopt: ['pin-courier', 'wiki-sync'] }); expect(localBindings(root).projects![0].autoAdopt).toEqual(['pin-courier', 'wiki-sync']);
     write({}); expect(localBindings(root).projects![0].autoAdopt).toBeUndefined();
     for (const autoAdopt of [['dependabot'], ['pin-courier', 'pin-courier'], 'pin-courier'])
         { write({ autoAdopt }); expect(() => localBindings(root)).toThrow('autoAdopt'); }

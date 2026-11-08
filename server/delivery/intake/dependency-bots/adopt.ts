@@ -9,8 +9,9 @@ import type { Store } from '../../../store/store';
 import type { DependabotAdoption, PickupPolicy, TicketJob } from '../../../../src/shared';
 
 export interface DependencyBot {
-    id: 'dependabot' | 'pin-courier';
+    id: 'dependabot' | 'pin-courier' | 'wiki-sync';
     label: string;
+    autoAdoptLanes?: readonly string[];
     openPulls: (store: Store, execute: Execute) => Promise<any[]>;
     refusal: (store: Store, execute: Execute, pull: any) => Promise<string>;
 }
@@ -35,7 +36,7 @@ export async function adoptDependencyBot(store: Store, execute: Execute, jobs: T
     if (pickup.enabled) {
         let ready: any[] = [];
         const auto = autoAdopts(store.project, bot.id);
-        try { ready = auto ? await autoAdoptable(store, execute, pulls, pickup.status) : await inPickupLane(store, execute, pulls, pickup.status); }
+        try { ready = auto ? await autoAdoptable(store, execute, pulls, pickup.status, bot.autoAdoptLanes) : await inPickupLane(store, execute, pulls, pickup.status); }
         catch (error) { store.emit(`${bot.id}-unavailable`, `${bot.label} PR cards could not be read; adoption skipped this poll: ${String(error)}`, 'pm', ''); }
         for (const p of ready)
             await adoptOne(store, execute, records, p, pickup, guard, bot, auto);
@@ -57,7 +58,7 @@ async function adoptOne(store: Store, execute: Execute, records: DependabotAdopt
     if (auto && !record && waitsQuietly(await bot.refusal(store, execute, p)))
         return;
     if (!record)
-        records.push(record = { id: crypto.randomUUID(), pr: pr.number, url: pr.url, title: pr.title, issue: 0, status: 'blocked', detail: `${bot.label} PR #${pr.number} adoption started.`, at: new Date().toISOString(), ...(bot.id === 'pin-courier' ? { bot: bot.id } : {}) });
+        records.push(record = { id: crypto.randomUUID(), pr: pr.number, url: pr.url, title: pr.title, issue: 0, status: 'blocked', detail: `${bot.label} PR #${pr.number} adoption started.`, at: new Date().toISOString(), ...(bot.id !== 'dependabot' ? { bot: bot.id } : {}) });
     if (!store.state.coordination!.adoptions!.includes(record)) store.state.coordination!.adoptions!.push(record);
     try {
         const refused = await bot.refusal(store, execute, p);
@@ -115,13 +116,13 @@ async function reverify(store: Store, execute: Execute, records: DependabotAdopt
     }
 }
 
-/** Recheck pin-courier identity at each write boundary, including a bot rebase during adoption. */
+/** Recheck opt-in automation identity and exact head at every adoption write boundary. */
 function headGuard(store: Store, execute: Execute, pull: any, bot: DependencyBot, guard: Guard) {
     return async () => {
         guard();
-        if (bot.id !== 'pin-courier') return;
+        if (bot.id === 'dependabot') return;
         const current = await readRepo(store, execute, `pulls/${pull.number}`);
-        if (current.state !== 'open' || current.head?.sha !== pull.head?.sha) throw new Error('pin-courier head changed before adoption write');
+        if (current.state !== 'open' || current.head?.sha !== pull.head?.sha) throw new Error(`${bot.id} head changed before adoption write`);
         const refused = await bot.refusal(store, execute, current);
         if (refused) throw new Error(refused);
     };

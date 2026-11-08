@@ -25,13 +25,16 @@ export async function findTrackingIssue(store: Store, execute: Execute, pr: numb
     return found.length ? { number: found[0].number, nodeId: found[0].node_id, url: found[0].html_url } : null;
 }
 
+export const trackingIssueTitle = (pr: DependabotPR) => pr.bot === 'wiki-sync' ? `[Task] Merge wiki-sync PR #${pr.number}` : `[Task] Merge ${pr.bot === 'pin-courier' ? 'pin-courier' : 'Dependabot'} update #${pr.number}`;
+
 export function trackingIssueBody(pr: DependabotPR): string {
+    const wiki = pr.bot === 'wiki-sync';
     return [
-        '## Summary', '', `${pr.bot === 'pin-courier' ? 'pin-courier' : 'Dependabot'} opened #${pr.number} (\`${pr.title}\`), a dependency update, and its card was moved to the pickup lane.`, '',
-        '## Context', '', 'The dependency PR already contains the implementation; this issue tracks its review and delivery.', '',
+        '## Summary', '', wiki ? `wiki-sync opened #${pr.number} (\`${pr.title}\`), a wiki reconciliation adopted under the project's automation policy.` : `${pr.bot === 'pin-courier' ? 'pin-courier' : 'Dependabot'} opened #${pr.number} (\`${pr.title}\`), a dependency update, and its card was moved to the pickup lane.`, '',
+        '## Context', '', wiki ? 'The wiki PR already contains the reconciliation; this issue tracks its review and delivery.' : 'The dependency PR already contains the implementation; this issue tracks its review and delivery.', '',
         '## Details', '', `The Office adopts the existing PR instead of developing a duplicate: Sam reviews its exact head, and the guarded merge runs once its required checks pass. Merging #${pr.number} closes this issue.`, '',
-        '## Expected Outcome', '', 'The existing dependency update is reviewed and delivered through the Office.', '',
-        '**Acceptance Criteria**', '', '- Review the exact dependency changes and retain required repository checks.', '- Merge only the verified current head under the project merge policy.', '- Verify issue closure, board closeout and the configured Slack notification.', '',
+        '## Expected Outcome', '', wiki ? 'The existing wiki reconciliation is reviewed and delivered through the Office.' : 'The existing dependency update is reviewed and delivered through the Office.', '',
+        '**Acceptance Criteria**', '', wiki ? '- Review the exact wiki changes and retain required repository checks.' : '- Review the exact dependency changes and retain required repository checks.', '- Merge only the verified current head under the project merge policy.', '- Verify issue closure, board closeout and the configured Slack notification.', '',
         '## Additional Notes', '', `Existing PR: ${pr.url}. No duplicate implementation is requested.`, '',
         trackingMarker(pr.number, pr.bot), '',
     ].join('\n');
@@ -47,8 +50,8 @@ export async function ensureTrackingIssue(store: Store, execute: Execute, record
     return harnessEffect(store, record, {
         key: `issue:${pr.number}`, operation: 'github-issue-create', target: `${store.project.repository}#${pr.bot || 'dependabot'}-${pr.number}`, payload: { pr: pr.number }, guard,
         dispatch: async () => {
-            await execute('gh', ['api', `repos/${store.project.repository}/issues`, '-X', 'POST', '-f', `title=[Task] Merge ${pr.bot === 'pin-courier' ? 'pin-courier' : 'Dependabot'} update #${pr.number}`, '-f', `body=${trackingIssueBody(pr)}`, '-f', 'assignees[]=JFusco'], { cwd: store.project.repo, timeout: 60000 });
-            return readBackOrThrow(read, `Tracking issue for Dependabot PR #${pr.number}`);
+            await execute('gh', ['api', `repos/${store.project.repository}/issues`, '-X', 'POST', '-f', `title=${trackingIssueTitle(pr)}`, '-f', `body=${trackingIssueBody(pr)}`, '-f', 'assignees[]=JFusco'], { cwd: store.project.repo, timeout: 60000 });
+            return readBackOrThrow(read, `Tracking issue for ${pr.bot || 'Dependabot'} PR #${pr.number}`);
         },
         readBack: read,
     });
