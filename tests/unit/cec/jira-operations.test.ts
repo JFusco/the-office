@@ -118,3 +118,59 @@ test('QA comment readback accepts canonical ADF paragraphs without trailing blan
     await new JiraOperations(store, execute).qaComment(ticket, 'qa', 'canonical', result);
     expect(result.receipts[0].verified).toBe(true);
 });
+test('TWG v2 worklog pages (bare data array, top-level pageInfo with nextCursor) are read in full before one write', async () => {
+    const store = setup();
+    let log: any = null, writes = 0;
+    const afters: string[] = [];
+    const execute: any = async (_program: string, args: string[]) => {
+        const get = (flag: string) => args[args.indexOf(flag) + 1];
+        if (args[0] === 'whoami')
+            return JSON.stringify({ data: { accountId: CEC.account } });
+        if (args[3] === 'query') {
+            const after = args.includes('--after') ? get('--after') : '';
+            afters.push(after);
+            const other = { id: '7', author: { accountId: 'someone-else' }, timeSpentSeconds: 60, started: '2026-10-29T12:00:00.000+0000', comment: 'other', properties: [] };
+            return JSON.stringify({ apiVersion: 'v2', data: after ? (log ? [log] : []) : [other], pageInfo: after ? { hasNextPage: false, nextCursor: null } : { hasNextPage: true, nextCursor: 'c1' } });
+        }
+        if (args[3] === 'get')
+            return JSON.stringify({ apiVersion: 'v2', data: log });
+        writes++;
+        log = { id: '12', author: { accountId: CEC.account }, started: get('--started'), timeSpentSeconds: Number(get('--time-spent-seconds')), comment: get('--comment'), properties: JSON.parse(get('--properties-json')) };
+        return JSON.stringify({ apiVersion: 'v2', data: log });
+    };
+    await publishJiraTime(store, execute);
+    expect(store.state.coordination!.time!.entries[0]).toMatchObject({ status: 'posted', worklogId: '12' });
+    expect(afters).toEqual(['', 'c1']);
+    expect(writes).toBe(1);
+});
+test('reconciling a day that failed before dispatch queues it again without calling Jira; dispatched or identified days stay held', async () => {
+    const store = setup(), time = store.state.coordination!.time!, entry = time.entries[0];
+    const reason = 'Jira time needs read-back; no automatic resubmission: Error: Jira worklog pagination coverage is unverified';
+    Object.assign(entry, { status: 'uncertain', detail: reason });
+    time.jiraEnabled = false;
+    let calls = 0;
+    const execute: any = async () => { calls++; throw new Error('must not call provider'); };
+    const attempt = (status: string, id: string, revision = 1): any => ({ id: `p-${status}-${revision}`, provider: 'jira', projectId: 'cec', key: 'CEC-999', status, itemId: id, fieldId: '', worklogId: '', baseline: null, previousValue: null, intendedValue: 30, covered: [{ id, revision, seconds: 30 }], payload: {}, createdAt: '', detail: '' });
+    await publishJiraTime(store, execute, 'CEC-999');
+    expect(entry).toMatchObject({ status: 'pending', detail: `No Jira write was attempted; queued to publish again. Previously: ${reason}` });
+    // A dispatched attempt (dispatching, uncertain, or from an older revision of the same day) stays read-back-only.
+    for (const publication of [attempt('dispatching', entry.id), attempt('uncertain', entry.id), attempt('uncertain', entry.id, 0)]) {
+        Object.assign(entry, { status: 'uncertain', detail: reason });
+        time.publications = [publication];
+        await publishJiraTime(store, execute, 'CEC-999');
+        expect(entry.status, publication.id).toBe('uncertain');
+    }
+    // A known worklog is held for a human, even with no attempt on record.
+    time.publications = [];
+    Object.assign(entry, { status: 'uncertain', worklogId: '10' });
+    await publishJiraTime(store, execute, 'CEC-999');
+    expect(entry.status).toBe('uncertain');
+    // A never-sent day behind a dispatched one on the same ticket is still found.
+    Object.assign(entry, { worklogId: undefined });
+    time.publications = [attempt('uncertain', entry.id)];
+    const later = { ...entry, id: 'CEC-999:2026-10-30', date: '2026-10-30', status: 'uncertain' as const, detail: reason };
+    time.entries.push(later);
+    await publishJiraTime(store, execute, 'CEC-999');
+    expect([entry.status, later.status]).toEqual(['uncertain', 'pending']);
+    expect(calls).toBe(0);
+});
