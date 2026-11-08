@@ -168,3 +168,19 @@ test('Harper chat and the weekly roll-up ride the knowledge lane, and Harper han
     expect(delivery.some(item=>item.work.id==='ask-harper')).toBe(false);
     expect(delivery.some(item=>item.work.id==='knowledge-report:ask')).toBe(true);
 });
+test('the ledger-only scope correction stays runnable while the office drains, unlike other operations',()=>{
+    const {store,project}=fixture(),request:any={id:'scope',action:'apply-time-scope',lane:'operations',key:'',requestedAt:store.clock.now().toISOString(),status:'queued',head:'a'.repeat(64),detail:'',timeScope:{policy:'model-work-v1',expectedSha256:'a'.repeat(64)}};
+    const other:any={id:'refresh',action:'refresh',lane:'operations',key:'',requestedAt:store.clock.now().toISOString(),status:'queued',head:'',detail:''};
+    store.state.coordination!.requests=[request,other];store.state.draining=true;
+    const items=project('operations'),scope=items.find(item=>item.work.id==='scope')!,refresh=items.find(item=>item.work.id==='refresh')!;
+    expect(scope).toMatchObject({allowPaused:true,eligibility:{state:'runnable'}});expect(refresh.allowPaused).toBeFalsy();expect(refresh.eligibility.state).toBe('blocked');
+});
+test('a pending time day waits only on an unsettled write for its ticket and never starves read-back',()=>{
+    const {store,project}=fixture(),time:any=store.state.coordination!.time={enabled:true,githubField:true,activatedAt:store.clock.now().toISOString(),entries:[],baselines:{},publications:[]};
+    time.entries=[{id:'GH-1:2026-10-28',key:'GH-1',date:'2026-10-28',status:'uncertain',seconds:60},{id:'GH-1:2026-10-29',key:'GH-1',date:'2026-10-29',status:'pending',seconds:60}];
+    // A day stuck before dispatch is not a settlement risk: the ticket total still publishes.
+    expect(project('operations').some(item=>item.stage==='time-publication')).toBe(true);
+    // An attempted write awaiting read-back is: the newer total waits and read-back is scheduled instead.
+    time.publications=[{id:'attempt',provider:'github',projectId:'brain',key:'GH-1',status:'uncertain',itemId:'i',fieldId:'f',worklogId:'',baseline:0,previousValue:0,intendedValue:0.0167,covered:[],payload:{},createdAt:'2026-01-01T00:00:00Z',detail:''}];
+    const items=project('operations');expect(items.some(item=>item.stage==='time-publication')).toBe(false);expect(items.some(item=>item.stage==='time-readback')).toBe(true);
+});

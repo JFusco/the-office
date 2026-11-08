@@ -13,12 +13,12 @@ import { executeRequest } from '../../../server/scheduling/requests';
 import type { HarnessRequest, WorkTime } from '../../../src/shared';
 const roots: string[] = [], stores: Store[] = [];
 afterEach(() => { vi.restoreAllMocks(); stores.splice(0).forEach(store => store.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
-function fixture() {
+function fixture(scope: 'legacy' | 'model-work-v1' = 'legacy') {
     const root = mkdtempSync(resolve(tmpdir(), 'office-effort-correction-')); roots.push(root);
     const store = new Store(':memory:', projectById('cms-field-vocabulary'), root); stores.push(store); store.state.coordination = coordination();
     const work: WorkTime = { id: randomUUID(), role: 'lead', task: 'Provider reconciliation', ticket: 'GH-113', stage: 'implementation-readback', requestId: 'original-job', sessionId: randomUUID(), provider: 'codex', model: '', effort: '', status: 'completed', startedAt: '2026-10-29T14:02:00Z', lastHeartbeatAt: '2026-10-29T14:02:30Z', endedAt: '2026-10-29T14:02:30Z', elapsedMs: 30000, queuedMs: 0, inputTokens: 10, outputTokens: 10, durationUncertain: false, reportedAt: '', effortKind: 'substantive', segments: [{ startedAt: '2026-10-29T14:02:00Z', endedAt: '2026-10-29T14:02:30Z', durationMs: 30000 }], gaps: [] };
     const developer = { ...structuredClone(work), id: randomUUID(), role: 'developer' as const, stage: 'github-implement', startedAt: '2026-10-29T14:00:00Z', endedAt: '2026-10-29T14:01:00Z', lastHeartbeatAt: '2026-10-29T14:01:00Z', segments: [{ startedAt: '2026-10-29T14:00:00Z', endedAt: '2026-10-29T14:01:00Z', durationMs: 60000 }], elapsedMs: 60000 };
-    store.state.workLog = [work, developer]; timeLedger(store).activatedAt = '2026-10-29T00:00:00Z'; timeLedger(store).enabled = true; captureTime(store);
+    store.state.workLog = [work, developer]; timeLedger(store).activatedAt = '2026-10-29T00:00:00Z'; timeLedger(store).scopePolicy = scope; timeLedger(store).enabled = true; captureTime(store);
     const ledger = timeLedger(store); ledger.publications = [{ id: 'old-publication', provider: 'github', key: work.ticket, status: 'verified', intendedValue: 1.25, baseline: 1, covered: [{ id: ledger.entries[0].id, revision: 1, seconds: 90 }] } as any];
     const save = (name: string, value: unknown) => { const dir = resolve(root, 'sessions', work.id); mkdirSync(dir, { recursive: true }); writeFileSync(resolve(dir, name), JSON.stringify(value)); };
     save('provider.json', { project: store.project.id, repository: store.project.repository, role: work.role, provider: work.provider, readOnly: true });
@@ -121,4 +121,12 @@ test('overlapping substantive effort survives correction when cached contributor
     expect(f.work).toEqual({ ...raw[0], effortKind: 'administrative', effortCorrection: expect.any(Object) });
     expect(f.developer).toEqual(raw[1]);
     expect(JSON.stringify(f.ledger.publications)).toBe(publications); expect(JSON.stringify(f.ledger.baselines)).toBe(baselines);
+});
+
+test('under the all-model-work scope a recovery correction is a label only; ticket totals do not change', () => {
+    const { store, request, ledger, work } = fixture('model-work-v1');
+    const before = structuredClone(ledger.entries);
+    correctRecoveryClassification(store, request);
+    expect(store.state.workLog!.find(w => w.id === work.id)?.effortKind).toBe('administrative');
+    expect(ledger.entries).toEqual(before);
 });

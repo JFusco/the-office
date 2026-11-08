@@ -1,73 +1,17 @@
-import { easternDay, easternInstant } from '../office/clock';
+import { easternDay } from '../office/clock';
+import { CURRENT_SCOPE_POLICY, scopeSelector } from '../telemetry/billable-work';
+import { ticketDayTotals } from './ticket-day-totals';
 import type { Store } from '../store/store';
 import type { TimeEntry } from '../../src/shared';
-export function timeLedger(store: Store) { return store.state.coordination!.time ??= { enabled: true, githubField: true, activatedAt: store.clock.now().toISOString(), entries: [], baselines: {} }; }
-function midnight(date: string) { return easternInstant(date).getTime(); }
+/** A new ledger starts on the current scope; existing ledgers are migrated to `legacy` until corrected. */
+export function timeLedger(store: Store) { return store.state.coordination!.time ??= { enabled: true, githubField: true, activatedAt: store.clock.now().toISOString(), entries: [], baselines: {}, scopePolicy: CURRENT_SCOPE_POLICY }; }
 export function captureTime(store: Store) {
     const ledger = timeLedger(store);
     if (!ledger.enabled)
         return;
-    const groups = new Map<string, {
-        key: string;
-        date: string;
-        intervals: [
-            number,
-            number
-        ][];
-        ids: string[];
-        seconds?: number;
-    }>();
-    for (const w of store.state.workLog || []) {
-        if (!w.ticket || w.effortKind === 'administrative' || w.stage.startsWith('slack-') || ['transition', 'readback', 'maintenance-readback'].includes(w.stage))
-            continue;
-        let segments: [
-            number,
-            number
-        ][] = (w.segments || []).map(segment => [Date.parse(segment.startedAt), Date.parse(segment.endedAt)]);
-        if (!w.segments && !['running', 'stopping'].includes(w.status) && !w.durationUncertain)
-            segments = [[Date.parse(w.startedAt), Date.parse(w.startedAt) + w.elapsedMs]];
-        segments = segments.map(([a, b]): [
-            number,
-            number
-        ] => [Math.max(a, Date.parse(ledger.activatedAt), ledger.jiraActivatedAt && store.project.provider === 'azure' ? Date.parse(ledger.jiraActivatedAt) : 0), b]).filter(([a, b]) => Number.isFinite(a) && b > a);
-        let start = 0, end = 0;
-        for (const period of ledger.disabledPeriods || []) {
-            const a = Date.parse(period.start), b = Date.parse(period.end);
-            segments = segments.flatMap(([x, y]): [
-                number,
-                number
-            ][] => b <= x || a >= y ? [[x, y]] : [...(a > x ? [[x, Math.min(y, a)] as [
-                        number,
-                        number
-                    ]] : []), ...(b < y ? [[Math.max(x, b), y] as [
-                        number,
-                        number
-                    ]] : [])]);
-        }
-        for (const segment of segments) {
-            start = segment[0];
-            end = segment[1];
-            while (start < end) {
-                const date = easternDay(start), nextDate = new Date(`${date}T12:00:00Z`);
-                nextDate.setUTCDate(nextDate.getUTCDate() + 1);
-                const stop = Math.min(end, midnight(nextDate.toISOString().slice(0, 10)));
-                const id = `${w.ticket}:${date}`, g = groups.get(id) || { key: w.ticket, date, intervals: [], ids: [] };
-                g.intervals.push([start, stop]);
-                g.ids.push(w.id);
-                groups.set(id, g);
-                start = stop;
-            }
-        }
-    }
+    const groups = ticketDayTotals(store, ledger, scopeSelector(ledger.scopePolicy));
     for (const [id, g] of groups) {
-        const sorted = g.intervals.sort((a, b) => a[0] - b[0]);
-        let total = 0, end = 0;
-        for (const [a, b] of sorted) {
-            total += Math.max(0, b - Math.max(a, end));
-            end = Math.max(end, b);
-        }
-        const seconds = Math.floor(total / 1000);
-        g.seconds = seconds;
+        const seconds = g.seconds;
         const old = ledger.entries.find(e => e.id === id);
         if (seconds < 1 || old && seconds === old.seconds && old.status !== 'excluded')
             continue;

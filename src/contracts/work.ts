@@ -133,6 +133,7 @@ export const workKey = (work: WorkRef) => `${work.projectId}:${work.kind}:${work
 export interface HarnessRequest {
     closeoutSupervisionProof?: { path: string; sha256: string };
     timeClassification?: { workIds: string[]; expectedSha256: string; reason: 'recovery-work-is-administrative' };
+    timeScope?: { policy: 'model-work-v1'; expectedSha256: string };
     sourceAmendment?: import('../shared').SourceAmendmentAuthorization;
     discoveryResume?: { noteId: string; scopeDigest: string; jobDigest: string; workDigest: string };
     id: string;

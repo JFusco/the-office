@@ -1,4 +1,5 @@
 import { featureRoute } from '../../features/routes';
+import { previewTimeScope } from '../../time/time-scope';
 import { projectReadiness } from '../readiness';
 import { diagnosticSnapshot } from '../../it/diagnostic-snapshot';
 import { goalHistory } from '../../leadership/goal-reviews';
@@ -42,6 +43,11 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         if (ticket && !validTicket(store.project, ticket))
             return json({ error: 'Invalid ticket key' }, 400);
         return json(sanitizeObject({ summary: timeReport(store.state, ticket), workers: (store.state.workLog || []).filter(w => !ticket || w.ticket === ticket), builds: (store.state.ciHistory || []).filter(b => !ticket || b.linkedTickets?.includes(ticket)) }));
+    }
+    if (url.pathname === '/api/time/scope-preview') {
+        if (req.method !== 'GET')
+            return json({ error: 'GET required' }, 405);
+        return json(sanitizeObject(previewTimeScope(store)));
     }
     if (url.pathname === '/api/goals/history') {
         if (req.method !== 'GET')

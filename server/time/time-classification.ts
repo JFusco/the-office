@@ -70,6 +70,9 @@ export function correctRecoveryClassification(store: Store, request: HarnessRequ
             }
         }
         if (JSON.stringify(ledger.publications || []) !== priorPublications) throw new Error('Frozen publication history changed during classification');
-        store.emit('time-classification-corrected', `Excluded ${rows.length} verified recovery sessions from ticket effort. Original measurements and publication receipts retained; corrected totals are queued for normal verified publication.`, 'pm');
+        // Under the all-model-work scope classification is a reporting label only; totals do not change.
+        store.emit('time-classification-corrected', ledger.scopePolicy === 'model-work-v1'
+            ? `Labelled ${rows.length} verified recovery sessions as administrative. Ticket totals are unchanged: hours count all model work.`
+            : `Excluded ${rows.length} verified recovery sessions from ticket effort. Original measurements and publication receipts retained; corrected totals are queued for normal verified publication.`, 'pm');
     });
 }

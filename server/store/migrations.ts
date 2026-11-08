@@ -83,6 +83,8 @@ export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject): 
         run.timing ??= [];
     if (coordination.time) {
         coordination.time.publications ??= [];
+        // Existing ledgers keep their original scope until a previewed correction is applied.
+        coordination.time.scopePolicy ??= 'legacy';
         for (const entry of coordination.time.entries)
             entry.revision ??= 1;
     }

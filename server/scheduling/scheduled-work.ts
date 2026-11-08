@@ -1,4 +1,5 @@
 import { scheduledFeatures } from '../features/scheduled-features';
+import { publishableEntry } from '../time/publishable';
 import { gateFeatureWork } from '../features/scheduling-gates';
 import { deliveryRepairProjection } from '../../src/work/delivery-repair-projection';
 import {closeoutRequestResolved,verifiedCloseoutCleanupRequest} from '../delivery/recovery/closeout/closeout-recovery-evidence';
@@ -64,9 +65,17 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)
             add('reconciliation', request, request.action, request.requestedAt, request.action==='cleanup-merged-candidate'&&verifiedCloseoutCleanupRequest(store,request)?0:2, () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
                 requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') : null);
+    // Applying the scope correction only rewrites the local ledger (publishing stays paused), so it may
+    // run while the office is paused or draining: draining is how live work on affected tickets ends.
+    for (const item of items) if (item.stage === 'apply-time-scope' && (store.state.paused || store.state.draining)) {
+        item.allowPaused = true;
+        const request = c.requests?.find(r => r.id === item.work.id);
+        if (request?.status === 'queued') item.eligibility = eligible('runnable', 'Ledger-only correction may run while paused');
+    }
     if (lane === 'operations') {
         const publishingEnabled = store.project.provider === 'github' ? c.time?.githubField : !!c.time?.jiraActivatedAt && c.time.jiraEnabled !== false;
-        const pendingTime = c.time?.enabled && publishingEnabled && c.time.entries.find(value => value.status === 'pending' && (store.project.provider === 'github' || value.date < easternDay(now)));
+        // A pending day on a ticket with an unresolved publication waits, and does not block read-back.
+        const pendingTime = c.time?.enabled && publishingEnabled && publishableEntry(c.time, store.project.provider, value => store.project.provider === 'github' || value.date < easternDay(now));
         if (pendingTime)
             add('reconciliation', { id: `time:${pendingTime.id}`, status: 'queued' }, 'time-publication', pendingTime.date, 3, () => new TimeLedger(store).sync());
         const readback = !pendingTime && publishingEnabled && dueReadback(store, now);
@@ -176,6 +185,7 @@ function requestResolved(store: Store, request: import('../../src/shared').Harne
         const job = c.jobs?.find(job => job.key === request.key && job.status !== 'cancelled');
         return !!request.sourceAmendment && !!job?.sourceAmendment?.adoptedAt && JSON.stringify(job.sourceAmendment.authorization) === JSON.stringify(request.sourceAmendment) && !!c.requests?.some(success => success.id !== request.id && success.action === request.action && success.key === request.key && success.head === request.head && success.status === 'completed' && JSON.stringify(success.sourceAmendment) === JSON.stringify(request.sourceAmendment));
     }
+    if (request.action === 'apply-time-scope') return !!request.timeScope && c.time?.scopeCorrection?.expectedSha256 === request.head;
     if (request.action === 'correct-recovery-time') {
         const input = request.timeClassification;
         return !!input && input.expectedSha256 === request.head && input.workIds.every(id => store.state.workLog?.some(work => work.id === id && work.effortKind === 'administrative' && work.effortCorrection?.originalDigest === request.head)) && !!c.requests?.some(success => success.id !== request.id && success.action === request.action && success.head === request.head && success.status === 'completed' && success.timeClassification?.expectedSha256 === input.expectedSha256);
