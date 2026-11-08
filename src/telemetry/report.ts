@@ -84,7 +84,7 @@ export function telemetryReport(projects: TelemetryProject[], query: TelemetryQu
     return {
         scope: { kind: query.scope, projectId: query.scope === 'project' ? query.projectId ?? null : null, ticket: query.ticket ?? null, days: query.days, fromDay, observedAt: new Date(now).toISOString() },
         totals,
-        byProject: ranked(maps.project), byTicket: ranked(maps.ticket), byStage: ranked(maps.stage), byRole: ranked(maps.role), byModel: ranked(maps.model),
+        byProject: ranked(maps.project), byTicket: ranked(maps.ticket), byStage: ranked(maps.stage), byRole: [...maps.role.values()].sort((a, b) => a.label.localeCompare(b.label)), byModel: ranked(maps.model),
         byDay: [...maps.day.values()].sort((a, b) => a.id.localeCompare(b.id)), byEffortKind: ranked(maps.effort),
         overhead,
         sync: selected.map(syncStatus),
@@ -108,6 +108,7 @@ function syncStatus(project: TelemetryProject): TelemetrySync {
         hours: { ...hours, accountedSeconds, postedSeconds,
             publishing: enabled && (project.provider === 'github' ? !!time?.githubField && !!project.hasBoard : !!time?.jiraActivatedAt && !!time.jiraConnection && time.jiraEnabled !== false) },
         cost: { publishing: enabled && project.provider === 'github' && !!project.hasBoard && time?.scopePolicy === 'model-work-v1' && !!time?.cost?.githubField, counts,
+            subtotals: (time?.cost?.entries || []).filter(entry => entry.status === 'posted' && (entry.partialRuns || entry.unpricedRuns)).length,
             attention: (time?.cost?.entries || []).filter(entry => ['uncertain', 'blocked'].includes(entry.status)).map(({ key, status, detail, needsDecision, intendedUsd }) => ({ key, status, detail, needsDecision, intendedUsd })) },
     };
 }

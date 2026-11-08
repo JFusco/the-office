@@ -30,7 +30,7 @@ export function captureCost(store: Store): void {
     const context = { captureStartedAt: store.state.telemetryCaptureStartedAt, now: at, graceMs: RECONCILE_GRACE_MS };
     for (const total of ticketCosts(store.state.workLog || [], time, context).values()) {
         if (!validTicket(store.project, total.key)) continue;
-        if (total.inProgressRuns && !total.pricedRuns && !total.partialRuns && !total.unpricedRuns) continue;
+        if (!total.pricedRuns && !total.partialRuns) continue;
         const entry = ledger.entries.find(item => item.key === total.key);
         // Frozen while an attempt is unsettled or waiting on Joe's decision; recomputed afterwards.
         if (entry && (['posting', 'uncertain'].includes(entry.status) || entry.needsDecision || entry.coverageDigest === total.coverageDigest)) continue;

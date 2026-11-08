@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { telemetryReport, windowStart, type TelemetryProject } from '../../../src/telemetry/report';
-import type { RunAccounting } from '../../../src/contracts/telemetry';
+import type { CostEntry, RunAccounting } from '../../../src/contracts/telemetry';
 import type { WorkTime } from '../../../src/shared';
 
 const NOW = Date.parse('2026-11-07T17:00:00Z');
@@ -65,4 +65,22 @@ test('model rows count only priced money and attribute run time once, whatever t
     expect(report.byModel.reduce((n, r) => n + r.modelMs, 0)).toBe(report.totals.modelMs);
     expect(report.byModel.find(r => r.label === 'claude-opus-5-5 · medium')).toMatchObject({ microUsd: 800_000, modelMs: 120_000 });
     expect(report.byEffortKind.map(r => r.label)).toEqual(['Substantive']);
+});
+
+test.each([{ partialRuns: 0, unpricedRuns: 1 }, { partialRuns: 1, unpricedRuns: 0 }, { partialRuns: 1, unpricedRuns: 1 }])('sync discloses posted subtotals with coverage %j, excluding unsettled entries', coverage => {
+    const entry = (key: string, status: CostEntry['status'], gaps = { partialRuns: 0, unpricedRuns: 0 }): CostEntry => ({ key, status, ...gaps, pricedRuns: 1, revision: 1, microUsd: 1_000_000, coverageDigest: key, detail: '', effectId: null, attempt: 0, intendedUsd: 1, updatedAt: '' });
+    const report = telemetryReport([{ id: 'brain', name: 'Brain', provider: 'github', workLog: [], hasBoard: true,
+        time: { enabled: true, githubField: true, activatedAt: '', entries: [], scopePolicy: 'model-work-v1', cost: { githubField: true, baselines: {}, entries: [
+            entry('GH-1', 'posted', coverage), entry('GH-2', 'posted'),
+            ...(['pending', 'posting', 'uncertain', 'blocked'] as const).map((status, i) => entry(`GH-${i + 3}`, status, coverage)),
+        ] } } }], { scope: 'office', days: 'all' }, NOW);
+    expect(report.sync[0].cost).toMatchObject({ subtotals: 1, counts: { posted: 2, pending: 1, posting: 1, uncertain: 1, blocked: 1 } });
+});
+
+test('role attribution stays alphabetical when costs and model time change', () => {
+    const workLog = [run('pm', { role: 'pm', elapsedMs: 120_000, accounting: cost('complete', 9_000_000) }), run('dev', { role: 'developer', accounting: cost('complete', 1_000_000) })];
+    const report = () => telemetryReport([{ id: 'p', name: 'P', provider: 'github', workLog }], { scope: 'office', days: 'all' }, NOW);
+    expect(report().byRole.map(row => row.id)).toEqual(['developer', 'pm']);
+    workLog[0].accounting = cost('complete', 100_000); workLog[0].elapsedMs = 1_000;
+    expect(report().byRole.map(row => row.id)).toEqual(['developer', 'pm']);
 });

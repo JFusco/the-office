@@ -60,7 +60,7 @@ export function previewTimeScope(store: Store): ScopePreview {
     // A Jira worklog cannot be set to zero by the publisher; that day needs a manual correction.
     const manual = store.project.provider === 'azure' ? rows.filter(row => row.newSeconds < 1 && row.worklogId).map(row => row.id) : [];
     const preview: ScopePreview = { ...base, rows, tickets, blockers: { disabled: false, liveWork, publications, manual } };
-    if (!rows.length || liveWork.length || publications.length || manual.length) return preview;
+    if (liveWork.length || publications.length || manual.length) return preview;
     // Bound to every input of the correction and nothing unrelated (other tickets' live work, timestamps).
     const sources = (store.state.workLog || []).filter(work => affected.has(work.ticket) && isTicketModelWork(work));
     preview.expectedSha256 = digest({
@@ -105,6 +105,8 @@ export function applyTimeScope(store: Store, request: HarnessRequest): void {
         }
         ledger.scopePolicy = input.policy;
         ledger.scopeCorrection = { requestId: request.id, policy: input.policy, expectedSha256: input.expectedSha256, auditPath, changedEntries: current.rows.length, at };
-        store.emit('time-scope-applied', `Hours now count all ticket model work: ${current.rows.length} ticket-day totals corrected across ${current.tickets.length} tickets and queued for verified publication. Audit: ${auditPath}`, 'pm');
+        store.emit('time-scope-applied', current.rows.length
+            ? `Hours now count all ticket model work: ${current.rows.length} ticket-day totals corrected across ${current.tickets.length} tickets and queued for verified publication. Audit: ${auditPath}`
+            : `Hours now count all ticket model work; existing hours totals are unchanged. Audit: ${auditPath}`, 'pm');
     });
 }

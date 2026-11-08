@@ -28,13 +28,12 @@ function ScopeCorrection({ projectId, observedAt, onDone }: { projectId: string;
   }, [projectId, observedAt]);
   if (!preview || preview.applied) return message ? <p className={cx(mutedCopy, 'mt-1')} role="status">{message}</p> : null;
   const blockers = [...(preview.blockers.disabled ? ['time accounting is off'] : []), ...preview.blockers.liveWork.map(item => `live work on ${item.ticket}`), ...preview.blockers.publications.map(key => `${key} needs reconciliation`), ...preview.blockers.manual.map(id => `${id} needs a manual Jira fix`)];
-  if (!preview.rows.length && !blockers.length) return null; // nothing would change
   const apply = async () => { try { await command(projectId, { action: 'apply-time-scope', timeScope: { policy: 'model-work-v1', expectedSha256: preview.expectedSha256 } }); setMessage('Correction queued; it re-checks the preview before applying.'); setConfirming(false); onDone(); } catch (e) { setMessage(String(e)); } };
   return <div className="mt-2 rounded-7 border border-telemetry-tile-line p-3 text-12">
-    <p><strong>Hours scope correction available.</strong> {preview.rows.length} ticket-days across {preview.tickets.length} tickets would count all model work.</p>
+    <p><strong>Hours scope correction available.</strong> {preview.rows.length ? `${preview.rows.length} ticket-days across ${preview.tickets.length} tickets would count all model work.` : 'Adopt all model work for hours and cost. Existing hours totals will remain unchanged.'}</p>
     {blockers.length ? <p className={cx(mutedCopy, 'mt-1')}>Not applicable yet: {blockers.join(' · ')}.</p> : null}
     {preview.applicable && !confirming ? <Button className="mt-2" onClick={() => setConfirming(true)}>Review and apply…</Button> : null}
-    {confirming ? <div className="mt-2" role="group" aria-label="Confirm scope correction"><p className="leading-body">This rewrites published hours: GitHub board totals and existing Jira worklogs for these tickets. It applies exactly this preview.</p><div className="mt-2 flex gap-2"><Button variant="primary" onClick={() => void apply()}>Apply correction</Button><Button onClick={() => setConfirming(false)}>Cancel</Button></div></div> : null}
+    {confirming ? <div className="mt-2" role="group" aria-label="Confirm scope correction"><p className="leading-body">{preview.rows.length ? 'This rewrites published hours: GitHub board totals and existing Jira worklogs for these tickets. It applies exactly this preview.' : 'This adopts all model work for hours and cost. Existing GitHub hours and Jira worklogs remain unchanged. It applies exactly this preview.'}</p><div className="mt-2 flex gap-2"><Button variant="primary" onClick={() => void apply()}>Apply correction</Button><Button onClick={() => setConfirming(false)}>Cancel</Button></div></div> : null}
     {message ? <p className={cx(mutedCopy, 'mt-1')} role="status">{message}</p> : null}
   </div>;
 }
@@ -54,7 +53,7 @@ export function SyncStatus({ sync, observedAt, onChanged }: { sync: TelemetrySyn
         <Tag>{project.scopePolicy === 'model-work-v1' ? 'All model work' : 'Original hours scope'}</Tag></h4>
       <p className="mt-1 leading-body">Hours: {durationLabel(project.hours.accountedSeconds * 1000)} accounted · {durationLabel(project.hours.postedSeconds * 1000)} posted · {project.hours.pending} pending · {project.hours.uncertain} uncertain{project.hours.publishing ? '' : ' · publishing off'}</p>
       <p className="leading-body">{project.provider === 'github'
-        ? `Est. cost: ${project.cost.counts.posted} posted · ${project.cost.counts.pending} pending · ${project.cost.counts.uncertain} uncertain · ${project.cost.counts.blocked} blocked${project.cost.publishing ? '' : ' · board sync off'}`
+        ? `Est. cost: ${project.cost.counts.posted} posted · ${project.cost.counts.pending} pending · ${project.cost.counts.uncertain} uncertain · ${project.cost.counts.blocked} blocked${project.cost.subtotals ? ` · ${project.cost.subtotals} posted as subtotals (some runs unpriced)` : ''}${project.cost.publishing ? '' : ' · board sync off'}`
         : 'Est. cost is tracked in the Office; Jira sync is not enabled yet.'}</p>
       {project.scopePolicy === 'legacy' ? <ScopeCorrection projectId={project.projectId} observedAt={observedAt} onDone={onChanged} /> : null}
       {project.cost.attention.map(entry => <div key={entry.key} className="mt-2 rounded-7 border border-telemetry-tile-line p-3">
