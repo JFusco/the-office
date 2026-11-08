@@ -12,7 +12,7 @@ const PURPOSES: Record<string, Bucket> = Object.fromEntries(([
     ['review', ['review', 'lead-pr', 'plan-review', 'code-review', 'candidate-adoption']],
     ['validate', ['validate', 'validation-readback', 'qa', 'retest', 'staging-qa']],
     ['repair', ['update-base', 'repair', 'repair-review', 'ci-recovery', 'ci-diagnosis', 'ci-diagnose', 'base-update-readback', 'conflict-readback', 'implementation-readback', 'scope-repair-readback', 'scope-repair-resume-readback', 'activation-readback', 'source-config-readback']],
-    ['general', ['merge', 'closeout', 'closeout-readback', 'closeout-original-readback']],
+    ['general', ['merge', 'closeout', 'closeout-readback', 'closeout-original-readback', 'slack-send', 'slack-recipient', 'slack-verify', 'readback', 'it-investigation', 'conversation']],
 ] as [Bucket, string[]][]).flatMap(([bucket, stages]) => stages.map(stage => [stage, bucket])));
 
 /** CMS maintenance stages reach the runtime with bare names on GitHub projects only; CEC's bare `draft-pr` keeps its implement purpose. */
