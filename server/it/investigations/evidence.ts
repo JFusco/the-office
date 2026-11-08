@@ -1,3 +1,4 @@
+import { officeSource } from './office-source';
 import { lifecycleFacts } from '../../workers/lifecycle/facts';
 import { readOwnedSessionArtifact } from '../../store/owned-artifact';
 import { workKey } from '../../../src/shared';
@@ -8,7 +9,7 @@ import type { ITInvestigation } from '../../../src/contracts/it-investigations';
 /** Whitelisted small completion/error metadata only; never provider turns, credentials or arbitrary paths. */
 export function investigationEvidence(store: Store, entry: ITInvestigation) {
     const evidence: { ref: string; facts: unknown }[] = [];
-    const delivery = entry.source.kind === 'slack' && store.state.slackDeliveries?.find(delivery => delivery.id === entry.source.id);
+    const delivery = store.state.slackDeliveries?.find(delivery => delivery.requestId === entry.source.requestId && (entry.source.kind !== 'slack' || delivery.id === entry.source.id));
     if (delivery) evidence.push({ ref: `delivery:${delivery.id}`, facts: { status: delivery.status, createdAt: delivery.createdAt, updatedAt: delivery.updatedAt, error: delivery.error.slice(0, 1000), channelId: delivery.channelId, messageTs: delivery.messageTs, permalink: delivery.permalink } });
     for (const id of entry.source.workerIds.slice(-8)) {
         const work = store.state.workLog?.find(work => work.id === id && work.requestId === entry.source.requestId);
@@ -20,11 +21,12 @@ export function investigationEvidence(store: Store, entry: ITInvestigation) {
                 const file = readOwnedSessionArtifact(store.dataRoot, id, name, 16384);
                 if (!('text' in file)) continue;
                 const raw = JSON.parse(file.text), result = raw.result;
-                if (name === 'process-lifecycle.json') { const facts = lifecycleFacts(raw); if (facts) evidence.push({ ref: `artifact:${id}/${name}`, facts: { sha256: file.sha256, ...facts } }); continue; }
+                if (name === 'process-lifecycle.json') { const facts = lifecycleFacts(raw); if (facts && facts.processGroup === work.processId) evidence.push({ ref: `artifact:${id}/${name}`, facts: { sha256: file.sha256, ...facts } }); continue; }
                 evidence.push({ ref: `artifact:${id}/${name}`, facts: { sha256: file.sha256, at: raw.at, error: typeof raw.error === 'string' ? raw.error.slice(0, 1000) : undefined, workerId: raw.workerId, resultSha256: raw.resultSha256, ...(result ? { found: result.found, channelId: result.channelId, messageTs: result.messageTs, permalink: result.permalink } : {}) } });
             } catch { /* Missing or unsafe artifacts remain missing, never an invented receipt. */ }
         }
     }
+    if (entry.source.failureKind === 'surviving-subprocesses') evidence.push(...officeSource());
     const keys = (['conversation', 'notice', 'delivery', 'reconciliation'] as const).map(kind => workKey({ projectId: store.project.id, kind, id: entry.source.requestId }));
     const rows = store.db.prepare('SELECT body FROM effects WHERE work_key IN (?,?,?,?) LIMIT 8').all(...keys) as { body: string }[];
     for (const row of rows) {

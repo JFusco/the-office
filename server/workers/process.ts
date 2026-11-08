@@ -30,7 +30,7 @@ export function workerFailure(program: string, code: number | null, stdout: stri
     return sanitize(`${program} exited ${code}: ${stderr.trim().slice(-2000) || 'No provider diagnostic was returned. Read the saved session before another attempt.'}`);
 }
 export class CommandFailure extends Error {
-    constructor(message: string, public category: import('../../src/shared').FailureCategory, public dispatched: boolean) { super(message); }
+    constructor(message: string, public category: import('../../src/shared').FailureCategory, public dispatched: boolean, public code?: 'surviving-subprocesses') { super(message); }
 }
 /** Negative PID probes the entire owned group, not just the leader. */
 export function processGroupAlive(pid: number): boolean {
@@ -111,7 +111,7 @@ export async function command(program: string, args: string[], options: {
                     stragglersTerminated = true;
                 }
                 else if (!failure)
-                    stop(new CommandFailure('Worker exited with surviving subprocesses; effects require reconciliation', 'uncertain-effect', true));
+                    stop(new CommandFailure('Worker exited with surviving subprocesses; effects require reconciliation', 'uncertain-effect', true, 'surviving-subprocesses'));
                 else terminate();
             }
             // Keep cancellation active and retain capacity until every owned process

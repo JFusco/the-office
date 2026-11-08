@@ -60,6 +60,8 @@ export interface AssignmentResult {
 }
 export type FailureCategory = 'transient-read' | 'authentication' | 'permission' | 'ownership' | 'uncertain-effect' | 'cancelled' | 'timeout' | 'invalid-output' | 'other';
 export interface WorkFailure {
+    /** Harness-classified shutdown warning; never inferred from model prose. */
+    code?: 'surviving-subprocesses';
     category: FailureCategory;
     detail: string;
     dispatched: boolean;

@@ -102,7 +102,7 @@ test('straggler opt-in never converts a nonzero exit, timeout or cancellation in
 test('a terminal provider event with a surviving child retains lifecycle evidence and writer uncertainty', async () => {
     let leader = 0, helper = 0; let diagnostic: import('../../../server/workers/lifecycle/contract').LifecycleDiagnostic | undefined;
     const parent = helperProgram(0).replace('console.log(child.pid)', `console.log(JSON.stringify({type:'turn.completed',text:'PRIVATE_PROVIDER_TEXT'}));console.log(child.pid)`);
-    await expect(command(process.execPath, ['-e', parent], { onSpawn: pid => { leader = pid; }, onLine: line => { if (/^\d+$/.test(line)) helper = Number(line); }, lifecycleInventory: async () => helper ? `${helper} ${leader} ${leader} Sun Nov 8 14:00:00 2026 /usr/local/bin/node` : '', onLifecycle: value => { diagnostic = value; } })).rejects.toThrow('surviving subprocesses');
+    await expect(command(process.execPath, ['-e', parent], { onSpawn: pid => { leader = pid; }, onLine: line => { if (/^\d+$/.test(line)) helper = Number(line); }, lifecycleInventory: async () => helper ? `${helper} ${leader} ${leader} Sun Nov 8 14:00:00 2026 /usr/local/bin/node` : '', onLifecycle: value => { diagnostic = value; } })).rejects.toMatchObject({ code: 'surviving-subprocesses', category: 'uncertain-effect' });
     expect(alive(leader)).toBe(false);
     expect(diagnostic).toMatchObject({ providerTerminalObserved: true, outcome: 'failed', failureCategory: 'uncertain-effect' });
     expect(diagnostic!.events).toEqual(expect.arrayContaining([expect.objectContaining({ phase: 'exit', code: 0 }), expect.objectContaining({ phase: 'term' })]));
