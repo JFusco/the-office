@@ -77,11 +77,13 @@ src/
 - Models decide: research, implementation, review verdicts, repair content.
 - The deterministic harness acts: worktrees, pushes, PR creation and promotion, board
   lanes, merges, issue closure, comments, time publication.
-- Every external mutation goes through `server/effects.ts` (durable intent, preflight,
+- Every external mutation goes through `server/store/effects.ts` (durable intent, preflight,
   single dispatch, read-back). An uncertain effect is reconciled by read-back, never
   resent. One exception: GitHub board hours are an absolute total, so a write read back as
   never landed after it settled is written once more (`server/time/time-readback.ts`); a
   second miss goes to Joe.
+  Board estimated cost (`Est. Cost (USD)`) follows the ordinary rule: one dispatch through
+  Effects, settled only by read-back, never resent (`server/telemetry/cost-ledger.ts`).
 - Only `holds` in the local office config and structured `prerequisites` gate work.
   Model-written findings are advisory unless the model returns a blocking `outcome`.
 

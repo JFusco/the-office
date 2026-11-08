@@ -184,3 +184,9 @@ test('a pending time day waits only on an unsettled write for its ticket and nev
     time.publications=[{id:'attempt',provider:'github',projectId:'brain',key:'GH-1',status:'uncertain',itemId:'i',fieldId:'f',worklogId:'',baseline:0,previousValue:0,intendedValue:0.0167,covered:[],payload:{},createdAt:'2026-01-01T00:00:00Z',detail:''}];
     const items=project('operations');expect(items.some(item=>item.stage==='time-publication')).toBe(false);expect(items.some(item=>item.stage==='time-readback')).toBe(true);
 });
+test('cost publication and cost read-back are scheduled independently of hours and of each other',()=>{
+    const {store,project}=fixture(),time:any=store.state.coordination!.time={enabled:true,githubField:true,activatedAt:store.clock.now().toISOString(),entries:[],baselines:{},publications:[],scopePolicy:'model-work-v1',cost:{githubField:true,entries:[],baselines:{}}};
+    time.cost.entries=[{key:'GH-1',revision:1,status:'pending',updatedAt:'2026-01-01T00:00:00Z'},{key:'GH-2',revision:1,status:'posting',updatedAt:'2026-01-01T00:00:00Z'}];
+    const stages=project('operations').map(item=>item.stage);expect(stages).toEqual(expect.arrayContaining(['cost-publication','cost-readback']));
+    time.cost.githubField=false;expect(project('operations').map(item=>item.stage)).not.toContain('cost-publication');
+});

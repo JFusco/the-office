@@ -9,6 +9,7 @@ import {postConflictReadbackCandidate,preparationReadbackCandidate,reconcilePrep
 import { reconcileValidation } from '../delivery/recovery/validation/validation-readback';
 import { correctRecoveryClassification } from '../time/time-classification';
 import { applyTimeScope } from '../time/time-scope';
+import { reconcileCost, type CostDecision } from '../telemetry/reconcile-cost';
 import { closeNativeRefresh } from '../maintenance/brain/brain-refresh-closeout';
 import { adoptCandidate } from '../delivery/recovery/implementation/candidate-adoption';
 import { recoverDiscovery } from '../delivery/recovery/implementation/discovery-recovery';
@@ -25,8 +26,8 @@ import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import { TimeLedger } from '../time/time-ledger';
 import { fileLessonIssue } from '../knowledge/file-lesson-issue';
 import { command } from '../workers/process';
-const actions = new Set(['apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'file-lesson-issue']);
-export const deterministicActions = new Set(['apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'file-lesson-issue']);
+const actions = new Set(['apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'file-lesson-issue']);
+export const deterministicActions = new Set(['apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'file-lesson-issue']);
 export function enqueueSourceAmendment(store: Store, input: unknown): HarnessRequest {
     const authorization = validateAmendmentIntent(store, input);
     const prior = store.state.coordination!.requests?.find(request => request.action === 'authorize-source-amendment' && ['queued', 'working', 'completed'].includes(request.status) && JSON.stringify(request.sourceAmendment) === JSON.stringify(authorization));
@@ -141,6 +142,9 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                 break;
             case 'reconcile-time':
                 await new TimeLedger(store).sync(request.key);
+                break;
+            case 'reconcile-cost':
+                await reconcileCost(store, request.key, request.head as CostDecision);
                 break;
             case 'retry-checkpoint':
                 await coordinator.retryCheckpoint(request.key);

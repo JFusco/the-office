@@ -54,6 +54,8 @@ export interface TimeLedgerState {
     scopePolicy?: 'legacy' | 'model-work-v1';
     /** Receipt of the previewed historical correction that moved this ledger to the current scope. */
     scopeCorrection?: { requestId: string; policy: 'model-work-v1'; expectedSha256: string; auditPath: string; changedEntries: number; at: string };
+    /** Estimated-cost publication, separate from hours (own entries, baselines and effects). */
+    cost?: import('./telemetry').CostLedgerState;
 }
 export interface SnapshotOrdering {
     serviceInstanceId: string;

@@ -80,3 +80,37 @@ export interface RunAccounting {
     sourceSha256: string | null;
     acceptedAt: string;
 }
+
+/**
+ * One ticket's estimated cost on the GitHub board's `Est. Cost (USD)` Number field. The value is
+ * the priced subtotal of eligible runs (same window as hours, by run start); coverage says how
+ * many runs could not be priced, because a Number field cannot.
+ */
+export interface CostEntry {
+    key: string;
+    revision: number;
+    microUsd: number;
+    pricedRuns: number;
+    partialRuns: number;
+    unpricedRuns: number;
+    coverageDigest: string;
+    status: 'pending' | 'posting' | 'posted' | 'uncertain' | 'blocked';
+    detail: string;
+    /** Effect for the current attempt; its durable state decides recovery. */
+    effectId: string | null;
+    attempt: number;
+    intendedUsd: number | null;
+    updatedAt: string;
+    /** Last read-back of an uncertain attempt (a polling cadence, never evidence of non-execution). */
+    readbackAt?: string;
+    /** A never-dispatched failure retries on its own after this time; absent when a decision is needed. */
+    retryAt?: string;
+    /** Set when only Joe can resolve it (an outside board edit): `reconcile-cost` with accept-board. */
+    needsDecision?: 'outside-edit';
+}
+export interface CostLedgerState {
+    githubField: boolean;
+    entries: CostEntry[];
+    /** Per ticket: the board value before the Office first wrote, and the last verified write. */
+    baselines: Record<string, { baseline: number; lastWritten: number | null; itemId: string; fieldId: string; abandonedUsd?: number }>;
+}
