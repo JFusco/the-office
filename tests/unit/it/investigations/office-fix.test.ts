@@ -6,7 +6,9 @@ import { assertStrictOutputSchema } from '../../../../server/workers/structured-
 import { officeFix, sourceRef } from './subprocess-fixture';
 const evidence = [{ ref: sourceRef, facts: {} }, { ref: 'artifact:sender/process-lifecycle.json', facts: {} }];
 test('a concrete proposal needs original diagnostics, supplied code and regression tests; schema is provider-safe', () => {
-    assertStrictOutputSchema(z.toJSONSchema(SubprocessReport));
+    const schema = z.toJSONSchema(SubprocessReport); assertStrictOutputSchema(schema);
+    expect(schema.properties?.officeFix).toHaveProperty('anyOf');
+    expect(JSON.stringify(schema)).not.toContain('\"oneOf\"');
     expect(validateOfficeFix(officeFix, 'sender', evidence)).toEqual(officeFix);
     expect(() => validateOfficeFix(officeFix, 'other-worker', evidence)).toThrow('original lifecycle');
     expect(() => validateOfficeFix(officeFix, 'sender', evidence.slice(0, 1))).toThrow('original lifecycle');

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { OfficeFix } from '../../../src/contracts/it-investigations';
 
-export const OfficeFixResult = z.discriminatedUnion('status', [
+export const OfficeFixResult = z.union([
     z.object({ status: z.literal('proposed'), title: z.string().trim().min(12).max(160),
         changes: z.array(z.object({ sourceRef: z.string().max(200), change: z.string().trim().min(12).max(800) }).strict()).min(1).max(5),
         tests: z.array(z.string().trim().min(12).max(500)).min(1).max(5), evidenceRefs: z.array(z.string().max(200)).min(1).max(8) }).strict(),
