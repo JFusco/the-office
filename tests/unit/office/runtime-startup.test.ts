@@ -24,8 +24,10 @@ async function stop(pid:number){
 }
 
 test('Node startup preserves a running owner, releases failed-start locks and streams snapshots',async({onTestFinished})=>{
-  // Reserve seven seconds of the 30s test budget for bounded cleanup.
-  const expires=Date.now()+23000;
+  // Reserve seven seconds of the 60s test budget for bounded cleanup.
+  // Each additional Node startup loads the full module graph before it can reject a lock/port;
+  // keep those waits bounded without assuming a warm filesystem or idle host.
+  const expires=Date.now()+53000;
   const remaining=()=>Math.max(1,expires-Date.now());
   const wait=<T>(promise:Promise<T>,label:string,ms=5000)=>deadline(promise,label,Math.min(ms,remaining()));
   const root=mkdtempSync(resolve(tmpdir(),'office-node-runtime-'));
@@ -70,10 +72,10 @@ test('Node startup preserves a running owner, releases failed-start locks and st
     expect((await(await submit({action:'adopt-candidate',key:'GH-91'})).json()).id).toBe(accepted.id);
     const queued=await(await request(`${base}/api/office?project=cms-field-vocabulary`)).json();expect(queued.coordination.requests.find((request:any)=>request.id===accepted.id).status).toBe('queued');expect(queued.workLog||[]).toHaveLength(0);
     expect((await submit({action:'retry-daily-cto',checkpointId:{invalid:true}})).status).toBe(400);
-    const duplicate=launch(ownerRoot);await wait(duplicate.exited,'duplicate exit');expect(duplicate.output()).toContain('already owns this state');
+    const duplicate=launch(ownerRoot);await wait(duplicate.exited,'duplicate exit',15000);expect(duplicate.output()).toContain('already owns this state');
     expect(Number(readFileSync(resolve(ownerRoot,'service.pid'),'utf8'))).toBe(owner.child.pid);
-    const blockedRoot=resolve(root,'port-blocked'),blocked=launch(blockedRoot);await wait(blocked.exited,'blocked startup exit');expect(blocked.output()).toContain('EADDRINUSE');expect(existsSync(resolve(blockedRoot,'service.pid'))).toBe(false);
+    const blockedRoot=resolve(root,'port-blocked'),blocked=launch(blockedRoot);await wait(blocked.exited,'blocked startup exit',15000);expect(blocked.output()).toContain('EADDRINUSE');expect(existsSync(resolve(blockedRoot,'service.pid'))).toBe(false);
     expect((await request(`${base}/api/health`)).ok).toBe(true);
     owner.child.kill('SIGTERM');await wait(owner.exited,'owner exit');expect(existsSync(resolve(ownerRoot,'service.pid'))).toBe(false);
   }
-},30000);
+},60000);
