@@ -1,3 +1,4 @@
+import { supersedingDelivery } from '../../conversations/slack/supersession-proof';
 import { slackMessageUrl } from '../../../src/shared';
 import type { ITInvestigation } from '../../../src/contracts/it-investigations';
 import { completedExecution } from '../../workers/worker-completion';
@@ -8,10 +9,13 @@ import type { Store } from '../../store/store';
 export function investigationResolution(store: Store, entry: ITInvestigation) {
     if (entry.source.kind === 'slack') {
         const delivery = store.state.slackDeliveries?.find(delivery => delivery.id === entry.source.id && delivery.requestId === entry.source.requestId && delivery.status === 'confirmed' && slackMessageUrl(delivery.permalink, delivery.channelId, delivery.messageTs));
-        return delivery ? { sourceId: delivery.id, receipt: delivery.permalink } : undefined;
+        if (delivery) return { sourceId: delivery.id, receipt: delivery.permalink, kind: 'confirmed' as const };
+        const original = store.state.slackDeliveries?.find(delivery => delivery.id === entry.source.id && delivery.requestId === entry.source.requestId);
+        const replacement = original && supersedingDelivery(store.state, original);
+        return replacement ? { sourceId: replacement.id, receipt: replacement.permalink, kind: 'superseded' as const } : undefined;
     }
     const recovery = store.state.workLog?.find(work => work.originalId === entry.source.id && work.requestId === entry.source.requestId && work.status === 'completed' && completedExecution(store, work));
-    return recovery ? { sourceId: recovery.id, receipt: `sessions/${recovery.id}/execution-completion.json` } : undefined;
+    return recovery ? { kind: 'confirmed' as const, sourceId: recovery.id, receipt: `sessions/${recovery.id}/execution-completion.json` } : undefined;
 }
 /** Admit once and settle only from the original delivery or an explicitly bound successful recovery. */
 export function syncInvestigations(store: Store, now = store.clock.now()): void {
@@ -30,7 +34,7 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
             if (entry.status !== 'resolved') {
                 entry.status = 'resolved'; entry.nextAt = ''; entry.updatedAt = now.toISOString();
                 entry.resolution = { ...resolution, at: now.toISOString() };
-                store.emit('it-investigation-resolved', 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
+                store.emit('it-investigation-resolved', resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
             }
         } else if (entry.status === 'resolved') {
             // A stale resolved flag cannot hide a reactivated source or lost receipt.

@@ -1,10 +1,11 @@
+import { supersedingDelivery } from '../../conversations/slack/supersession-proof';
 import type { OfficeSnapshot } from '../../../src/shared';
 import type { ITInvestigation } from '../../../src/contracts/it-investigations';
 
 /** Saved source identities, never error prose or a model recommendation, authorize diagnosis. */
 export function investigationCandidates(projectId: string, state: OfficeSnapshot): ITInvestigation['source'][] {
     const deliveries = state.slackDeliveries || [], workers = state.workLog || [];
-    const slack = deliveries.filter(delivery => delivery.status === 'uncertain').map(delivery => ({
+    const slack = deliveries.filter(delivery => delivery.status === 'uncertain' && !supersedingDelivery(state, delivery)).map(delivery => ({
         kind: 'slack' as const, id: delivery.id, requestId: delivery.requestId,
         ticket: state.coordination?.notices?.entries.find(notice => notice.id === delivery.requestId)?.key || state.messages.find(message => message.id === delivery.requestId)?.ticket || '',
         failureKind: 'unconfirmed-delivery', workerIds: workers.filter(work => work.requestId === delivery.requestId).map(work => work.id),

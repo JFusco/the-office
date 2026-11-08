@@ -786,6 +786,7 @@ export interface HumanAction {
     updatedAt: string;
 }
 export interface TeamMessage {
+    slackReplacement?: import('./contracts/slack-supersession').SlackReplacementRequest;
     goalEvidenceReturn?: { requestId: string; answerId: string };
     goalEvidenceRequest?: { reviewId: string; projectId: string; goalIds: string[]; goals: { goalId: string; expectedUpdatedAt: string }[]; fingerprint: string };
     goalReport?: { projectId: string; goalIds: string[]; summary: string };
@@ -812,6 +813,9 @@ export interface TeamMessage {
     question?: string;
 }
 export interface SlackDelivery {
+    supersededBy?: import('./contracts/slack-supersession').SlackSupersession;
+    supersessionHistory?: import('./contracts/slack-supersession').SlackSupersession[];
+    supersession?: import('./contracts/slack-supersession').SlackSupersessionView;
     id: string;
     requestId: string;
     targetType: 'person' | 'channel';
