@@ -4,7 +4,8 @@ The Office checks the shared Codex runtime, open Codex desktop/CLI rollout ident
 Claude's live inventory and its own worker claims. A chat's starting directory alone
 does not describe all the repositories it is working in.
 
-For positively loaded Codex identities, the bridge reads the latest turn's explicit
+For positively loaded Codex identities and live Claude interactive/background sessions,
+the bridge reads the current turn's explicit
 repository, issue and PR references and up to four recent user messages. It includes
 cross-repository context in the project's ownership packet. A linked PR number maps
 back to its exact Office delivery ticket; identical numbers in other repositories do
@@ -21,7 +22,11 @@ The bridge never messages, resumes or interrupts another session.
 Reads stay within the local Codex session directory and are bounded at 64 MiB per
 loaded rollout. Unreadable, mismatched or incomplete context makes coverage unavailable;
 it cannot produce a clear ownership verdict. This does not provide universal visibility
-into remote clients or historical chats. Claude's supported inventory remains metadata.
+into remote clients or historical chats. Claude's native inventory supplies activity;
+its exact session ID selects the local transcript, including after a checkout moves.
+Claude tool results and API-history blobs cannot masquerade as new human decisions
+or new tool executions. Unchanged files reuse a derived context index so idle chats
+do not require repeated full transcript scans.
 
 When Joe merges an existing PR and completes its linked issue elsewhere, ordinary
 read-only handoffs retire through positive provider read-back. A stopped CI source

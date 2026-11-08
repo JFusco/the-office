@@ -56,3 +56,10 @@ test('an idle shared runtime cannot erase a positively active desktop turn for t
  const bridge=new SessionBridge(()=>[store],execute,async()=>[{...base,status:'idle'}],async()=>[desktop]);
  await bridge.refresh();expect(bridge.forProject(store,'GH-255').ownership.status).toBe('owned');
 });
+test('Claude cross-repository scope and decisions reach the same project ownership packet',async()=>{
+ const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
+ const execute:any=async(program:string)=>program==='claude'?JSON.stringify([{sessionId:'live',cwd:'/preset',status:'working'}]):'/test/.git';
+ const context:any=async(sessions:any[])=>sessions.map(s=>({...s,context:{activity:'active',scopes:[{project:'brain',issues:[352],prs:[],evidence:[{at:'',reference:'repos/Joe/brain/issues/352',kind:'command',issue:352}]}],userMessages:[{at:'',text:'Keep the approved rollout boundaries.'}]}}));
+ const bridge=new SessionBridge(()=>[store],execute,async()=>[],async()=>[],undefined,context);await bridge.refresh();
+ const view=bridge.forProject(store,'GH-352');expect(view.complete).toBe(true);expect(view.ownership.status).toBe('owned');expect(view.sessions[0].provider).toBe('claude');expect(view.sessions[0].context?.userMessages[0].text).toContain('boundaries');
+});

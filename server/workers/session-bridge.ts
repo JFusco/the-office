@@ -5,6 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {command} from './process';
 import type {Store} from '../store/store';
 import {codexSessionContext} from './codex-session-context';
+import {claudeSessionContext} from './claude-session-context';
 import type {SessionContext} from './session-scope';
 export interface LiveSession {id:string;provider:'codex'|'claude'|'office';cwd:string;title:string;branch:string;status:'active'|'idle'|'waiting'|'loaded';source:string;project?:string;ticket?:string;requestId?:string;rolloutPath?:string;context?:SessionContext}
 export interface SessionInventory {observedAt:string;expiresAt:string;sessions:LiveSession[];sources:{name:string;ok:boolean;detail:string}[];complete:boolean}
@@ -73,13 +74,14 @@ async function desktopSessions(execute:typeof command){
 }
 export class SessionBridge {
  current:SessionInventory={observedAt:'',expiresAt:'',sessions:[],sources:[],complete:false};polling?:Promise<SessionInventory>;
- constructor(private stores:()=>Store[],private execute:typeof command=command,private native=codexSessions,private desktop=desktopSessions,private context=codexSessionContext){}
+ constructor(private stores:()=>Store[],private execute:typeof command=command,private native=codexSessions,private desktop=desktopSessions,private context=codexSessionContext,private claudeContext=claudeSessionContext){}
  async refresh(){
   if(this.polling)return this.polling;
   this.polling=this.read();try{return await this.polling;}finally{this.polling=undefined;}
  }
  private async read(){
-  const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions),this.desktop(this.execute).then(sessions=>this.context(sessions,this.stores().map(s=>s.project)))]);
+  const projects=this.stores().map(s=>s.project);
+  const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions).then(sessions=>this.claudeContext(sessions,projects)),this.desktop(this.execute).then(sessions=>this.context(sessions,projects))]);
   const names=['Codex live runtime','Claude live sessions','Codex desktop/CLI session identities'];
   const sources=results.map((r,i)=>({name:names[i],ok:r.status==='fulfilled',detail:r.status==='fulfilled'?(i===2?'Loaded identities and current-turn context are visible, including cross-repository references; missing turn activity remains unknown.':'Live inventory connected.'):`Session inventory could not complete${/timed? out|timeout/i.test(String(r.reason))?' within its read deadline':''}. Ownership remains unverified; this does not establish a login failure.`}));
   const sessions=new Map<string,LiveSession>();
