@@ -28,7 +28,7 @@ function setup() {
     store.state.coordination = coordination();
     store.state.coordination.pickup = { enabled: true, status: 'Ready' };
     store.state.tickets.push({ key: 'GH-999', summary: 'Test', type: 'Issue', status: 'open', statusId: '', assignee: 'JFusco', subtask: false, boardMember: true, url, updated: '', stage: 'mailbox', activity: 'waiting', blocker: '', runId: '', attempt: 0, commit: '', branch: '', worktree: '', previewUrl: '', prId: 0, results: {}, findings: [], evidence: [], pilot: false, observedAt: '' });
-    const engine = new Engine(store), calls: string[] = [], pr: any = { number: 700, html_url: 'https://github.com/JFusco/brain/pull/700', state: 'open', draft: true, head: { sha: head, ref: 'issue-999' }, base: { ref: 'main', repo: { full_name: 'JFusco/brain' } }, mergeable: true, updated_at: '', merged_at: null };
+    const engine = new Engine(store), calls: string[] = [], pr: any = { number: 700, html_url: 'https://github.com/JFusco/brain/pull/700', state: 'open', draft: true, head: { sha: head, ref: 'issue-999' }, base: { ref: 'main', sha: 'b'.repeat(40), repo: { full_name: 'JFusco/brain' } }, mergeable: true, updated_at: '2026-10-28T12:00:00Z', merged_at: null };
     let linked = true, comments: any[] = [], failComment = false, runs: any[] = [], issueState = 'open', checkConclusion = 'success', unresolved = false, children: any[] = [];
     let lane = 'in-progress', rulesetPages: unknown = [[]];
     const policyBranch: any = { name: 'main', protected: false };
@@ -1106,7 +1106,7 @@ test('blocked unchanged accepted Lead merge resumes through scheduler queue with
  const a=acceptedMergeResume(),prior=JSON.stringify(a.job.steps);await a.delivery.observe();expect(a.job).toMatchObject({stage:'merge',status:'queued'});expect(JSON.stringify(a.job.steps)).toBe(prior);expect(a.run).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
  await a.delivery.step(a.job);expect(a.calls.filter(c=>c.includes('/merge --method PUT'))).toHaveLength(1);expect(a.run).not.toHaveBeenCalled();
 });
-test.each(['latest-failure','latest-pending','approval','disabled','paused','draining','head','base','updated','human-input','native-result','missing-completion','uncertain-effect','attempted','open-source-finding','foreign-claim','retained-result','active-claim'])('merge resumption preserves %s restriction and never repeats review or writes',async scenario=>{
+test.each(['latest-failure','latest-pending','approval','disabled','paused','draining','head','native-result','missing-completion','uncertain-effect','attempted','open-source-finding','foreign-claim','retained-result','active-claim'])('merge resumption preserves %s restriction and never repeats review or writes',async scenario=>{
  const a=acceptedMergeResume();if(scenario==='latest-failure')a.setCheckConclusion('failure');if(scenario==='latest-pending')a.setCheckConclusion('pending');if(scenario==='approval')a.job.mergeApprovalRequired=true;if(scenario==='disabled')a.store.state.coordination!.merges!.enabled=false;if(scenario==='paused')a.store.state.paused=true;if(scenario==='draining')a.store.state.draining=true;if(scenario==='head')a.pr.head.sha='c'.repeat(40);if(scenario==='base')a.pr.base.sha='c'.repeat(40);if(scenario==='updated')a.pr.updated_at='2026-10-29T01:00:00Z';
  if(scenario==='human-input')a.job.reviewInputSha256='old';if(scenario==='native-result')a.put('result.json',{});if(scenario==='missing-completion')a.put('execution-completion.json',{});if(scenario==='foreign-claim')a.store.finishClaim(a.claim.id,'interrupted');if(scenario==='retained-result')a.job.steps[0].result.previewUrl='https://changed.invalid';if(scenario==='active-claim')a.store.claimWork({projectId:'brain',kind:'delivery',id:a.job.id},'other-reader','merge');if(scenario==='open-source-finding')a.job.steps[0].result.findings.push({id:'source-acceptance',summary:'Human acceptance absent',actual:'Pending',expected:'Approval',status:'open',attempts:0});
  if(scenario==='attempted')a.job.mergeAttempt={head,at:'before'};if(scenario==='uncertain-effect')a.store.putEffect({id:`merge:${a.job.id}:${head}`,work:{projectId:'brain',kind:'delivery',id:a.job.id},status:'uncertain',dispatchedAt:'before'}as any);
@@ -1179,4 +1179,37 @@ test('transient merged Actions read failure keeps watching without creating a hu
  const run=vi.spyOn(a.engine.agents,'run');await a.delivery.observe();
  expect(a.job).toMatchObject({stage:'merge',status:'watching',mergeCommit});expect(a.job.detail).toContain('PR observation unavailable');expect(a.job.detail).toContain('Transient Actions read failure');
  expect(projectOutbox(a.store.state).some(action=>action.ticket===a.job.key&&action.status==='open')).toBe(false);expect(a.store.state.outbox.some(action=>action.ticket===a.job.key&&action.status==='open')).toBe(false);expect(run).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+});
+
+test.each(['base', 'updated', 'human-input', 'issue'])('changed %s queues fresh review before any scheduled merge', async scenario => {
+ const a=acceptedMergeResume(), history=structuredClone(a.job.steps);
+ if(scenario==='base')a.pr.base.sha='c'.repeat(40);
+ if(scenario==='updated')a.pr.updated_at='2026-11-09T12:00:00Z';
+ if(scenario==='human-input')a.job.reviewInputSha256='old';
+ if(scenario==='issue')a.job.reviewContext!.issueUpdatedAt='old';
+ await a.delivery.observe();expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});
+ expect(a.job.steps).toEqual(history);expect(a.run).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+});
+test.each(['base', 'human-input'])('directly queued merge refreshes changed %s without relying on observation', async scenario => {
+ const a=acceptedMergeResume();a.job.status='queued';
+ if(scenario==='base')a.pr.base.sha='c'.repeat(40);else a.job.reviewInputSha256='old';
+ await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});
+ expect(a.run).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+});
+test('merge effect preflight refreshes a base that changes after the initial gate without dispatch', async()=>{
+ const a=acceptedMergeResume();a.job.status='queued';const original=a.delivery.verifyPR.bind(a.delivery);let reads=0;
+ a.delivery.verifyPR=async(...args)=>{const p=await original(...args);if(++reads===2)p.base.sha='c'.repeat(40);return p;};
+ await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});
+ expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);expect(a.job.mergeIntentId).toBeUndefined();
+ expect(a.store.getEffect(`merge:${a.job.id}:${head}`)).toMatchObject({status:'rejected',dispatchedAt:''});
+});
+
+test('draining during merge preflight cannot bypass changed acceptance, then observation requeues after drain', async () => {
+ const a=acceptedMergeResume(), history=structuredClone(a.job.steps);a.job.status='queued';
+ const original=a.delivery.verifyPR.bind(a.delivery);let reads=0;
+ a.delivery.verifyPR=async(...args)=>{const p=await original(...args);if(++reads===2){a.pr.base.sha=p.base.sha='c'.repeat(40);a.store.state.draining=true;}return p;};
+ await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'merge',status:'blocked'});expect(a.job.mergeAttempt).toBeUndefined();
+ expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+ expect(a.store.getEffect(a.job.mergeIntentId!)).toMatchObject({status:'rejected',dispatchedAt:''});
+ a.store.state.draining=false;await a.delivery.observe();expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});expect(a.job.steps).toEqual(history);
 });

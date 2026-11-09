@@ -16,7 +16,7 @@ export interface HarnessEffect<R> {
 }
 
 /** A rejected preflight never dispatched, so a later attempt may use a fresh intent id. */
-function activeEffectId(store: Store, base: string): string {
+export function activeEffectId(store: Store, base: string): string {
     for (let attempt = 0; ; attempt++) {
         const id = attempt ? `${base}:retry-${attempt}` : base;
         const intent = store.getEffect(id);

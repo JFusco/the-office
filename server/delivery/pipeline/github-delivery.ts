@@ -1,3 +1,4 @@
+import { FreshMergeReview } from '../readiness/refresh-merge-review';
 import { assertFeatureGate } from '../../features/enrollment-gate';
 import { bindDelivery } from '../../features/delivery-binding';
 import { scopeRepairResumeInstruction, scopeRepairResumeNextStage } from '../recovery/scope-repair/scope-repair-resume';
@@ -223,7 +224,7 @@ export class GitHubDelivery {
             }
             if (job.stage === 'update-base' && job.repairCycle?.phase === 'repair') {
                 await verifyRepairCandidate(project, job, this.execute);
-                instructions = `Repair only the scoped source/check defects on the existing owned candidate ${job.head}, branch ${job.branch}, worktree ${job.worktree}. Findings ${JSON.stringify(job.repairCycle.pendingFindingIds)} from ${job.repairCycle.sourceStage}; inspect the complete retained stage result, diagnostic paths and original receipts below. Verify exact origin, current HEAD, clean worktree, current issue/comments/holds and native ownership before editing. Preserve original commits and IDs. Make a follow-up commit on this SAME branch/worktree and run the required repository checks. No push, PR, source acceptance, issue/board write, reset, duplicate worktree or mutation retry. A genuine permission/service/scope/human hold must remain explicit. Return an actual disposition for every original finding. Independent current-head review and verification follow; do not reduce the approach to escape a failure.`;
+                instructions = `Repair only the scoped source/check defects on the existing owned candidate ${job.head}, branch ${job.branch}, worktree ${job.worktree}. Findings ${JSON.stringify(job.repairCycle.pendingFindingIds)} from ${job.repairCycle.sourceStage}; inspect the complete retained stage result, diagnostic paths and original receipts below. Verify exact origin, current HEAD, clean worktree, current issue/comments/holds and native ownership before editing. Preserve original commits and IDs. Run missing mandatory repository checks and retain their exact-head receipts as actual work; do not return to read-only review merely to request those receipts again. For a source defect, make a follow-up commit on this SAME branch/worktree. A check-only finding needs truthful passing check evidence and may retain the unchanged head; never manufacture a source edit or commit. No push, PR, source acceptance, issue/board write, reset, duplicate worktree or mutation retry. A genuine permission/service/scope/human hold must remain explicit. Return an actual disposition for every original finding. Independent current-head review and verification follow; do not reduce the approach to escape a failure.`;
             }
             if (harnessDelivers(this.store, job) && job.stage === 'implement' && !technicalPhase)
                 instructions = implementInstruction(project, job, issue.number, root);
@@ -241,6 +242,7 @@ export class GitHubDelivery {
         }
         catch (error) {
             job = this.jobs.find(current => current.id === job.id) || job;
+            if (error instanceof FreshMergeReview && job.stage === 'lead-pr' && job.status === 'queued') return;
             const waiting = error instanceof CurrentChecksWait && job.stage === 'merge' && !job.mergeAttempt && !this.store.state.paused;
             job.status = this.store.state.paused ? 'interrupted' : waiting ? 'watching' : 'blocked';
             job.detail = String(error);
