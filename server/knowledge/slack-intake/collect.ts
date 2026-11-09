@@ -50,7 +50,7 @@ export function settlePage(ledger: IntakeLedger, config: Config, task: ReadTask,
             current.cursor = observation.cursor; current.status = 'pending';
         }
         // A replayed first page of an incomplete window must not erase its continuation failures.
-        current.attempt = ''; current.ownerClaim = ''; current.nextAt = ''; if (observation.complete) { current.failures = 0; current.error = ''; }
+        current.attempt = ''; current.ownerClaim = ''; current.nextAt = ''; current.error = ''; if (observation.complete) current.failures = 0;
         ledger.put('task', current.id, current);
     });
 }

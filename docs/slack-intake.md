@@ -217,3 +217,12 @@ Operational metrics are revision-cached. Control changes, claims, retry deadline
 and New York day rollover update independently without reloading source bodies.
 The status does not reset source authority, counters, capture Effects or the
 latched historical completion receipt. Inbox capture does not publish guidance.
+
+CLI qualification has a bounded 30-second startup allowance per metadata probe;
+exact version and feature checks still fail closed. A pre-worker failure retains
+the continuation because no reading worker used it. Five failures still exhaust
+the same window. Verified partial-page settlement clears the current error while
+preserving cumulative failures until complete. The retry count uses the current
+retry deadline/error, so older successful checkpoints do not appear as active
+failures solely because their cumulative count remains nonzero. Saved failure
+receipts and prior work records remain unchanged.

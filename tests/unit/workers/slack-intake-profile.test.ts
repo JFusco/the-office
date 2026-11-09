@@ -29,3 +29,12 @@ test('qualified CLI profile passes version and feature checks; unqualified upgra
     await expect(assertSlackIntakeCapability(execute, '/tmp', config)).resolves.toBeUndefined(); expect(calls).toBe(2);
     await expect(assertSlackIntakeCapability((async () => 'codex-cli 0.999.0') as typeof command, '/tmp', config)).rejects.toThrow('intake-capability-version');
 });
+
+test('capability startup stays bounded and read-only while version and feature assertions remain strict', async () => {
+    const probes: unknown[] = [];
+    const execute = (async (_program, args, opts) => { probes.push(opts); return args[0] === '--version' ? RESEARCH_CODEX_VERSION : [...RESEARCH_DISABLED_FEATURES, 'code_mode_host'].map(f => `${f} stable false`).join('\n'); }) as typeof command;
+    await assertSlackIntakeCapability(execute, '/tmp', config);
+    expect(probes).toEqual([{ cwd: '/tmp', readOnly: true, timeout: 30000 }, { cwd: '/tmp', readOnly: true, timeout: 30000 }]);
+    const missing = (async (_program, args) => args[0] === '--version' ? RESEARCH_CODEX_VERSION : 'code_mode_host stable true') as typeof command;
+    await expect(assertSlackIntakeCapability(missing, '/tmp', config)).rejects.toThrow('intake-capability-features');
+});
