@@ -7,6 +7,7 @@ import { newTask, recordObservation, settlePage } from '../../../../server/knowl
 import { acceptProposals } from '../../../../server/knowledge/slack-intake/proposals';
 import { runIntakeTask } from '../../../../server/knowledge/slack-intake/run';
 import { IntakeLedger } from '../../../../server/knowledge/slack-intake/ledger';
+import { intakeStatusMetrics } from '../../../../server/knowledge/slack-intake/status-metrics';
 import type { KnowledgeRunner } from '../../../../server/knowledge/run-retrospective';
 import { CommandFailure } from '../../../../server/workers/process';
 import type { ReadTask, SourceUnit } from '../../../../server/knowledge/slack-intake/contracts';
@@ -203,5 +204,47 @@ test('a canvas linked from a channel message is read under its own permalink, ne
         await runIntakeTask(f.store, run, canvas.id);
         expect(f.ledger.get<ReadTask>('task', canvas.id)).toMatchObject({ status: 'pending', failures: 1, error: 'Error: intake-provenance-missing' });
         expect(f.ledger.all('proposal')).toEqual([]);
+    } finally { f.close(); }
+});
+
+test('pre-worker capability failure retains the continuation and failure limit without charging a model launch', async () => {
+    const f = intakeFixture();
+    try {
+        f.task.cursor = 'verified-continuation'; f.task.failures = 3; f.task.nextAt = f.store.clock.now().toISOString(); f.ledger.put('task', f.task.id, f.task);
+        const preflight = (async () => { throw new CommandFailure('intake-worker-unavailable', 'transient-read', true); }) as KnowledgeRunner;
+        await runIntakeTask(f.store, preflight, f.task.id);
+        expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'pending', cursor: 'verified-continuation', failures: 4 });
+        expect(f.ledger.get('launches', '2026-11-06')).toBeUndefined();
+        f.advance(24 * 3600000); await runIntakeTask(f.store, preflight, f.task.id);
+        expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'needs-attention', cursor: 'verified-continuation', failures: 5 });
+    } finally { f.close(); }
+});
+test('a verified partial-page recovery clears the current error while retaining cumulative failures', async () => {
+    const f = intakeFixture();
+    try {
+        f.task.cursor = 'previous'; f.task.failures = 2; f.task.error = 'old read failure'; f.task.nextAt = f.store.clock.now().toISOString(); f.ledger.put('task', f.task.id, f.task);
+        const success = (async (_prompt, _schema, opts) => {
+            opts.onIntakeLaunch?.(); opts.onIntakeEvent?.(event(f.ledger.get<ReadTask>('task', f.task.id)!, undefined, true));
+            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'fixture' }], proposals: [] };
+        }) as KnowledgeRunner;
+        await runIntakeTask(f.store, success, f.task.id);
+        expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'pending', failures: 2, error: '', nextAt: '', cursor: 'transient-cursor' });
+        const freshPage = (async (_prompt, _schema, opts) => {
+            expect(f.ledger.get<ReadTask>('task', f.task.id)?.error).toBe(''); opts.onIntakeLaunch?.(); throw Error('new provider failure');
+        }) as KnowledgeRunner;
+        await runIntakeTask(f.store, freshPage, f.task.id);
+        expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'pending', failures: 3, error: 'Error: new provider failure' });
+        expect(f.ledger.get<ReadTask>('task', f.task.id)?.cursor).toBeUndefined();
+    } finally { f.close(); }
+});
+test('a legacy checkpointed task with a stale error is not a current retry while its next page runs', async () => {
+    const f = intakeFixture();
+    try {
+        f.ledger.put('task', f.task.id, { ...f.task, failures: 1, error: 'old timeout', nextAt: '', cursor: 'kept' });
+        let claimed: ReadTask | undefined, retrying = -1;
+        // Snapshot before launch; runIntakeTask catches runner exceptions, so assertions stay outside.
+        const run = (async () => { claimed = f.ledger.get<ReadTask>('task', f.task.id); retrying = intakeStatusMetrics(f.ledger).retryingReads; throw Error('stop'); }) as KnowledgeRunner;
+        await runIntakeTask(f.store, run, f.task.id);
+        expect(claimed).toMatchObject({ status: 'running', error: '', failures: 1, cursor: 'kept' }); expect(retrying).toBe(0);
     } finally { f.close(); }
 });

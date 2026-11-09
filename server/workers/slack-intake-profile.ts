@@ -20,9 +20,11 @@ export function slackIntakeConfiguration(config: Config, tools = true): string[]
 /** Unknown CLI or missing native capability evidence never enables unattended reading. */
 export async function assertSlackIntakeCapability(execute: typeof command, cwd: string, config: Config): Promise<void> {
     slackIntakeConfiguration(config);
-    const version = (await execute('codex', ['--version'], { cwd, readOnly: true, timeout: 10000 })).trim();
+    // Metadata startup can stall on a loaded host. Keep qualification strict with a bounded startup allowance.
+    const probe = { cwd, readOnly: true, timeout: 30000 };
+    const version = (await execute('codex', ['--version'], probe)).trim();
     if (version !== RESEARCH_CODEX_VERSION) throw Error('intake-capability-version');
-    const features = await execute('codex', ['features', 'list'], { cwd, readOnly: true, timeout: 10000 });
+    const features = await execute('codex', ['features', 'list'], probe);
     if ([...RESEARCH_DISABLED_FEATURES, 'code_mode_host'].some(feature => !new RegExp('^' + feature + '\\s', 'm').test(features))) throw Error('intake-capability-features');
     // Qualified on 0.163.0 with native channel/thread/search completion events.
     // The connector decoder separately rejects unknown formats and incomplete reads.
