@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { ROOT } from '../../office/config';
 import { readBoundedNoFollowSync } from '../../store/owned-artifact';
+import { invocationSource } from './invocation-source';
 
 export const OFFICE_SOURCE_PATHS = ['server/workers/process.ts', 'server/workers/lifecycle/process-group.ts', 'server/workers/lifecycle/group-inventory.ts', 'server/workers/lifecycle/recorder.ts', 'server/workers/worker-profiles.ts'] as const;
 /** Current loaded Office source only. No model-selected paths, project files or private transcripts. */
@@ -13,6 +14,10 @@ export function officeSource(root = ROOT, read = readBoundedNoFollowSync) {
         if (!('text' in file) || Buffer.byteLength(file.text) > remaining || !/^[a-f0-9]{64}$/.test(file.sha256)) continue;
         evidence.push({ ref: `office-source:${path}`, facts: { repository: 'JFusco/the-office', path, sha256: file.sha256, firstLine: 1, code: file.text } });
         remaining -= Buffer.byteLength(file.text);
+    }
+    for (const row of remaining > 0 ? invocationSource(root, read) : []) {
+        const size = Buffer.byteLength(row.facts.code);
+        if (size <= remaining) { evidence.push(row); remaining -= size; }
     }
     return evidence;
 }

@@ -1,0 +1,2 @@
+export const INVESTIGATION_TIMEOUT = 3 * 60 * 1000;
+export const INVESTIGATION_ATTEMPTS = 3;

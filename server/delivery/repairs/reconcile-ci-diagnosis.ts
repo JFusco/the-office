@@ -8,6 +8,7 @@ import { continuationWorkerProof, assertContinuationWorker } from '../recovery/i
 import { assertMayMutate } from '../harness/guards';
 import { containedFile } from '../../cec/workflow';
 import { currentAssignment } from '../../workers/assignment-context';
+import { ghLogCacheEvidence } from './gh-log-cache-evidence';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
 
@@ -16,7 +17,7 @@ const Audit = z.object({ outcome: z.enum(['passed', 'blocked']), originalWorkerI
     calls: z.array(z.object({ id: z.string(), inputSha256: z.string(), classification: z.enum(['read-only', 'owned-diagnostic', 'external', 'unknown']) }).strict()) }).strict();
 
 /** A prior needs-human diagnosis is settled only by an actual full native no-external-write audit. */
-export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: TicketJob, roots?: Parameters<typeof offlineNativeEvidence>[3]) {
+export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: TicketJob, roots?: Parameters<typeof offlineNativeEvidence>[3], readCaches = ghLogCacheEvidence) {
     const { store } = delivery, attemptAt = job.ciRecoveryAttemptAt, head = job.head, merged = job.mergeCommit;
     if (!attemptAt) return false;
     const writer = store.state.workLog?.filter(w => w.requestId === job.id && w.stage === 'ci-recovery' && w.role === 'pm' && w.startedAt >= attemptAt)
@@ -39,7 +40,7 @@ export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: Ticket
         if (saved) throw new Error('Saved CI diagnosis outcome changed');
         return false;
     }
-    const native = offlineNativeEvidence(store, writer, store.project.repo, roots), root = resolve(store.dataRoot, 'ticket-work', job.id);
+    const native = offlineNativeEvidence(store, writer, store.project.repo, roots), root = resolve(store.dataRoot, 'ticket-work', job.id), logCaches = readCaches(job, writer);
     const assertCurrent = () => {
         assertMayMutate(store, delivery.jobs, job, head);
         if (store.state.draining || job.status !== 'working' || job.stage !== 'ci-recovery' || job.mergeCommit !== merged ||
@@ -52,10 +53,11 @@ export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: Ticket
             throw new Error('Saved CI diagnosis reconciliation identity changed');
         const proof = JSON.parse(readFileSync(saved.evidencePath, 'utf8'));
         if (!isDeepStrictEqual(proof.originalFiles, original.files) || !isDeepStrictEqual(proof.nativeFile, native.file)) throw new Error('Original CI diagnosis evidence changed');
+        if (!isDeepStrictEqual(proof.localLogCaches || [], logCaches)) throw new Error('Original CI diagnosis log-cache evidence changed');
         audit = Audit.parse(proof.audit); readerId = saved.readerWorkerId; savedReaderFiles = proof.readerFiles;
     } else {
         const before = new Set(store.state.workLog?.map(w => w.id));
-        audit = await delivery.engine.agents.run('pm', `READ-BACK ONLY. Reconcile the original completed CI diagnosis ${writer.id} for ${job.prUrl}, merge ${merged}, attempt marker ${attemptAt}. It returned needs-human and issue=0; that statement alone does not prove no effects. Audit EVERY paired call and result in the complete retained native session ${JSON.stringify(native.file)} (${native.recordCount} records), including arbitrary shell/Python/subprocess bodies, nested tool orchestration and approval rejections. Bind each actual call id and SHA256 of its full original input: ${JSON.stringify(native.calls.map(c => ({ id: c.id, name: c.name, inputSha256: digest(c.input) })))}. Read the owning native file and original assignment/result artifacts ${JSON.stringify(original.files)}. Classify read-only, owned-diagnostic, external or unknown. Owned diagnostics are permitted only in ${root} or that original worker's own completed-output.json. Any source/Git/config write, external mutation attempt, unpaired/unknown effect or incomplete audit blocks noExternalWrites. An empty provider search is never proof that a write did not happen. Do not create/adopt issues or cards, retry CI, change source or resolve uncertain effects by assertion. Return passed only with complete positive no-external-write proof; otherwise blocked with the original uncertainty and next owner. This audit does not certify current CI or delivery closeout.`, Audit,
+        audit = await delivery.engine.agents.run('pm', `READ-BACK ONLY. Reconcile the original completed CI diagnosis ${writer.id} for ${job.prUrl}, merge ${merged}, attempt marker ${attemptAt}. It returned needs-human and issue=0; that statement alone does not prove no effects. Audit EVERY paired call and result in the complete retained native session ${JSON.stringify(native.file)} (${native.recordCount} records), including arbitrary shell/Python/subprocess bodies, nested tool orchestration and approval rejections. Bind each actual call id and SHA256 of its full original input: ${JSON.stringify(native.calls.map(c => ({ id: c.id, name: c.name, inputSha256: digest(c.input) })))}. Read the owning native file and original assignment/result artifacts ${JSON.stringify(original.files)}. Classify read-only, owned-diagnostic, external or unknown. Owned diagnostics are permitted ONLY in ${root}, that original worker's own completed-output.json, or a listed exact cache file that meets the conditions below; any other local write is unapproved. Additional POTENTIAL local GitHub CLI log-cache facts: ${JSON.stringify(logCaches)}. These facts alone never prove who wrote a file or authorize any external operation. A listed exact file may count as owned-diagnostic ONLY when the actual complete paired gh run view --log/--log-failed read and result explain that cache for the saved run, including command timing, filename, creation/modification times and current digest. Explain that positive causal correspondence in the audit summary; a filename or an empty remote search is insufficient. GitHub CLI run-log cache creation during an otherwise read-only log command is a local diagnostic, not a remote issue/card mutation. Unlisted cache paths and arbitrary home/cache/config writes remain unapproved. Do not run log commands, create caches or modify the listed originals during this audit; read existing evidence only. Any source/Git/config write, external mutation attempt, unpaired/unknown effect or incomplete audit blocks noExternalWrites. An empty provider search is never proof that a write did not happen. Do not create/adopt issues or cards, retry CI, change source or resolve uncertain effects by assertion. Return passed only with complete positive no-external-write proof; otherwise blocked with the original uncertainty and next owner. This audit does not certify current CI or delivery closeout.`, Audit,
             { cwd: store.project.repo, readOnly: true, ticket: job.key, requestId: job.id, stage: 'ci-recovery-original-readback', timeout: 15 * 60 * 1000 });
         const readers = store.state.workLog?.filter(w => !before.has(w.id) && w.requestId === job.id && w.stage === 'ci-recovery-original-readback') || [];
         if (readers.length !== 1) throw new Error('One actual CI diagnosis read-back worker required');
@@ -71,6 +73,7 @@ export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: Ticket
         throw new Error('Complete original CI diagnosis audit identity required');
     assertContinuationWorker(store, original, job); assertContinuationWorker(store, proof, job);
     if (!isDeepStrictEqual(offlineNativeEvidence(store, writer, store.project.repo, roots), native)) throw new Error('Original native CI diagnosis changed during audit');
+    if (!isDeepStrictEqual(readCaches(job, writer), logCaches)) throw new Error('Original CI diagnosis log-cache evidence changed during audit');
     assertCurrent();
     if (audit.outcome !== 'passed' || !audit.noExternalWrites || audit.calls.some(c => !['read-only', 'owned-diagnostic'].includes(c.classification))) {
         if (saved) throw new Error('Saved CI diagnosis no-external-write proof changed');
@@ -78,7 +81,7 @@ export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: Ticket
     }
     if (!saved) {
         mkdirSync(root, { recursive: true }); const path = resolve(root, `ci-diagnosis-readback-${crypto.randomUUID()}.json`);
-        writeFileSync(path, JSON.stringify({ audit, originalFiles: original.files, nativeFile: native.file, readerFiles: proof.files }, null, 2), { mode: 0o600, flag: 'wx' });
+        writeFileSync(path, JSON.stringify({ audit, originalFiles: original.files, nativeFile: native.file, readerFiles: proof.files, localLogCaches: logCaches }, null, 2), { mode: 0o600, flag: 'wx' });
         job.ciRecoveryNoWriteProof = { attemptAt, originalWorkerId: writer.id, readerWorkerId: readerId, evidencePath: path, sha256: artifact(store, path).sha256 };
         store.emit('merge-ci-original-reconciled', 'Original completed CI diagnosis independently verified as no external writes; original result and full native evidence retained.', 'pm', job.key);
     }
