@@ -47,14 +47,24 @@ test('a completed no-write diagnosis is audited once with actual native and work
     expect(await reconcileCIDiagnosis(f.delivery, f.job, f.roots)).toBe(true); expect(f.runs()).toBe(1);
     expect(f.calls).toHaveLength(0);
 });
-test.each(['external', 'incomplete', 'wrong-input', 'blocked'])('a %s audit never clears the original attempt', async kind => {
+test.each(['external', 'blocked'])('a bound %s audit leaves ordinary read-back available without clearing the attempt', async kind => {
     const f = setup();
     if (kind === 'external') f.audit.calls[0].classification = 'external';
+    if (kind === 'blocked') f.audit.outcome = 'blocked';
+    expect(await reconcileCIDiagnosis(f.delivery, f.job, f.roots)).toBe(false);
+    expect(f.job.ciRecoveryNoWriteProof).toBeUndefined(); expect(f.job.stage).toBe('ci-recovery'); expect(f.calls).toHaveLength(0);
+});
+test.each(['incomplete', 'wrong-input'])('an audit with %s coverage remains a hard evidence failure', async kind => {
+    const f = setup();
     if (kind === 'incomplete') f.audit.calls = [];
     if (kind === 'wrong-input') f.audit.calls[0].inputSha256 = 'changed';
-    if (kind === 'blocked') f.audit.outcome = 'blocked';
-    await expect(reconcileCIDiagnosis(f.delivery, f.job, f.roots)).rejects.toThrow('no-external-write');
-    expect(f.job.ciRecoveryNoWriteProof).toBeUndefined(); expect(f.job.stage).toBe('ci-recovery'); expect(f.calls).toHaveLength(0);
+    await expect(reconcileCIDiagnosis(f.delivery, f.job, f.roots)).rejects.toThrow('audit identity');
+    expect(f.job.ciRecoveryNoWriteProof).toBeUndefined();
+});
+test('an interrupted predecessor is not treated as a completed no-write diagnosis', async () => {
+    const f = setup(); f.original.status = 'interrupted';
+    expect(await reconcileCIDiagnosis(f.delivery, f.job, f.roots)).toBe(false); expect(f.runs()).toBe(0);
+    expect(f.job.ciRecoveryNoWriteProof).toBeUndefined();
 });
 test('a native execution changed after accepted reconciliation invalidates the saved proof', async () => {
     const f = setup(); await reconcileCIDiagnosis(f.delivery, f.job, f.roots);

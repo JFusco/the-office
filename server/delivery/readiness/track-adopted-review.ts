@@ -12,7 +12,7 @@ export function trackAdoptedReview(store: Store, jobs: TicketJob[], job: TicketJ
     const merge = store.getEffect(job.mergeIntentId || `merge:${job.id}:${job.head}`);
     const unsettled = store.db.prepare("SELECT id FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain') LIMIT 1")
         .get(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }));
-    if (store.state.draining || job.stage !== 'lead-pr' || job.status !== 'working' || job.adoptedRepairCheckout || job.repairCycle ||
+    if (store.state.draining || job.stage !== 'lead-pr' || job.status !== 'working' || job.repairCycle ||
         job.mergeAttempt || job.mergeCommit || job.mergeIntentId || job.mergeApprovalRequired || unsettled ||
         merge?.dispatchedAt || job.steps.some(s => hasUncertainEffects(s.stage, s.result)) ||
         pr.number !== job.pr || pr.state !== 'open' || pr.merged_at || pr.draft || !/^[a-f0-9]{40}$/.test(pr.head?.sha || '') ||

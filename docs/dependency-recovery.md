@@ -22,6 +22,11 @@ has not changed the PR's saved base SHA or timestamps.
 An advanced bot head is tracked before its fresh Lead assessment only when the
 adopted job has no owned candidate or unsettled effects. Retained candidates and
 attempted merges require their original reconciliation instead.
+Never-handed-off clones are reconciled before reuse or replacement. Only a clean
+original clone or a positively verified empty initial clone can be retired when
+the bot advances. An initial clone with no files or index work can finish its
+missing hooks setup and exact-head checkout after a pause; ambiguous directories
+remain preserved. No forced checkout, second clone or remote-branch deletion is used.
 
 Before any merge request is sent, changes to the accepted base, issue or
 authenticated review inputs queue a fresh read-only Lead assessment. A dispatched
@@ -43,6 +48,9 @@ that reported no repair issue can be cleared only by an actual read-only audit o
 every paired call in its original native execution, bound to the saved worker,
 assignment and completion. Missing, external or uncertain effects remain blocked;
 passing CI and an empty issue search cannot substitute for that audit.
+An interrupted predecessor or a correctly bound blocked/external audit instead
+uses the existing read-only issue/card reconciliation. It cannot authorize a new
+write or the green-CI shortcut; saved-proof drift remains a hard failure.
 
 Successful closeout removes only a clean, exact delivered-head private repair
 clone. Dirty or changed clones remain pending cleanup. Adopted remote branches,

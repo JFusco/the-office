@@ -19,13 +19,21 @@ export async function ciCheckout(delivery: GitHubDelivery, job: TicketJob, repai
     repair.worktree = path; store.save();
     beforeMutation();
     await execute('git', ['clone', '--no-checkout', '--origin', 'origin', `https://github.com/${store.project.repository}.git`, path], { cwd: store.project.repo, timeout: 120000 });
+    return finishCISetup(delivery, repair, beforeMutation);
+}
+
+/** Complete only the initial setup; callers must prove any existing clone is still uninitialized. */
+export async function finishCISetup(delivery: Pick<GitHubDelivery, 'execute'>, repair: RepairCheckout, beforeMutation: () => void, hooksConfigured = false) {
+    const { execute } = delivery, path = repair.worktree!, head = repair.head, branch = repair.branch;
+    if (!hooksConfigured) {
+        beforeMutation();
+        await execute('git', ['config', 'core.hooksPath', repair.hooksPath!], { cwd: path });
+    }
     beforeMutation();
-    await execute('git', ['config', 'core.hooksPath', repair.hooksPath], { cwd: path });
-    beforeMutation();
-    await execute('git', ['checkout', '-b', repair.branch, repair.head], { cwd: path, timeout: 60000 });
-    const head = (await execute('git', ['rev-parse', 'HEAD'], { cwd: path, readOnly: true })).trim();
+    await execute('git', ['checkout', '-b', branch, head], { cwd: path, timeout: 60000 });
+    const actual = (await execute('git', ['rev-parse', 'HEAD'], { cwd: path, readOnly: true })).trim();
     const dirty = await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: path, readOnly: true });
-    if (head !== repair.head || dirty.trim()) throw new Error('CI checkout differs from the diagnosed head');
+    if (actual !== head || dirty.trim()) throw new Error('CI checkout differs from the diagnosed head');
     return path;
 }
 

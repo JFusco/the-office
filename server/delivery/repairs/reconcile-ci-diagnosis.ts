@@ -21,11 +21,24 @@ export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: Ticket
     if (!attemptAt) return false;
     const writer = store.state.workLog?.filter(w => w.requestId === job.id && w.stage === 'ci-recovery' && w.role === 'pm' && w.startedAt >= attemptAt)
         .sort((a, b) => a.startedAt.localeCompare(b.startedAt))[0];
-    if (!writer) return false; // The existing read-back-only recovery must resolve an unknown predecessor.
-    const original = continuationWorkerProof(store, job, writer, false, store.project.repo);
+    const saved = job.ciRecoveryNoWriteProof;
+    if (!writer) {
+        if (saved) throw new Error('Saved CI diagnosis predecessor is missing');
+        return false; // The existing read-back-only recovery must resolve an unknown predecessor.
+    }
+    let original: ReturnType<typeof continuationWorkerProof>;
+    try {
+        original = continuationWorkerProof(store, job, writer, false, store.project.repo);
+        if (!completedExecution(store, writer)) throw new Error('Original CI diagnosis completion is unverified');
+    } catch (error) {
+        if (saved) throw error;
+        return false; // Failure to qualify for a no-write shortcut never waives ordinary effect read-back.
+    }
     const diagnostic = original.result as unknown as { outcome: string; issue: number };
-    if (diagnostic.outcome !== 'needs-human' || diagnostic.issue !== 0) return false;
-    if (!completedExecution(store, writer)) throw new Error('Original CI diagnosis completion is unverified');
+    if (diagnostic.outcome !== 'needs-human' || diagnostic.issue !== 0) {
+        if (saved) throw new Error('Saved CI diagnosis outcome changed');
+        return false;
+    }
     const native = offlineNativeEvidence(store, writer, store.project.repo, roots), root = resolve(store.dataRoot, 'ticket-work', job.id);
     const assertCurrent = () => {
         assertMayMutate(store, delivery.jobs, job, head);
@@ -34,7 +47,6 @@ export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: Ticket
     };
     assertCurrent();
     let audit: z.infer<typeof Audit>, readerId: string, savedReaderFiles: typeof original.files | undefined;
-    const saved = job.ciRecoveryNoWriteProof;
     if (saved) {
         if (saved.attemptAt !== attemptAt || saved.originalWorkerId !== writer.id || !containedFile(saved.evidencePath, root) || artifact(store, saved.evidencePath).sha256 !== saved.sha256)
             throw new Error('Saved CI diagnosis reconciliation identity changed');
@@ -53,13 +65,17 @@ export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: Ticket
     if (!reader || reader.role !== 'pm' || reader.stage !== 'ci-recovery-original-readback' || !completedExecution(store, reader) ||
         !saved && currentAssignment() && reader.claimId !== currentAssignment()!.claim.id) throw new Error('CI diagnosis read-back completion missing');
     const proof = continuationWorkerProof(store, job, reader, true, store.project.repo);
-    if (saved && !isDeepStrictEqual(proof.files, savedReaderFiles) || !isDeepStrictEqual(proof.result, audit) || audit.outcome !== 'passed' || audit.originalWorkerId !== writer.id || audit.nativeSha256 !== native.file.sha256 ||
-        !audit.completeNativeExecution || !audit.noExternalWrites || audit.calls.length !== native.calls.length || new Set(audit.calls.map(c => c.id)).size !== native.calls.length ||
-        native.calls.some(c => !audit.calls.some(a => a.id === c.id && a.inputSha256 === digest(c.input) && ['read-only', 'owned-diagnostic'].includes(a.classification))))
-        throw new Error('Complete original CI diagnosis no-external-write proof required');
+    if (saved && !isDeepStrictEqual(proof.files, savedReaderFiles) || !isDeepStrictEqual(proof.result, audit) || audit.originalWorkerId !== writer.id || audit.nativeSha256 !== native.file.sha256 ||
+        !audit.completeNativeExecution || audit.calls.length !== native.calls.length || new Set(audit.calls.map(c => c.id)).size !== native.calls.length ||
+        native.calls.some(c => !audit.calls.some(a => a.id === c.id && a.inputSha256 === digest(c.input))))
+        throw new Error('Complete original CI diagnosis audit identity required');
     assertContinuationWorker(store, original, job); assertContinuationWorker(store, proof, job);
     if (!isDeepStrictEqual(offlineNativeEvidence(store, writer, store.project.repo, roots), native)) throw new Error('Original native CI diagnosis changed during audit');
     assertCurrent();
+    if (audit.outcome !== 'passed' || !audit.noExternalWrites || audit.calls.some(c => !['read-only', 'owned-diagnostic'].includes(c.classification))) {
+        if (saved) throw new Error('Saved CI diagnosis no-external-write proof changed');
+        return false; // A bound blocked/external audit leaves the existing READ-BACK ONLY route available.
+    }
     if (!saved) {
         mkdirSync(root, { recursive: true }); const path = resolve(root, `ci-diagnosis-readback-${crypto.randomUUID()}.json`);
         writeFileSync(path, JSON.stringify({ audit, originalFiles: original.files, nativeFile: native.file, readerFiles: proof.files }, null, 2), { mode: 0o600, flag: 'wx' });

@@ -8,7 +8,9 @@ import { harnessDelivers } from '../harness/scope';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
 import { repairFindingIds, verifyRepairCandidate } from './delivery-repairs';
 import { conflictOnlyAssessment } from './conflict-repair';
-import { ciCheckout, verifyCIHooks } from './ci-checkout';
+import { ciCheckout, finishCISetup, verifyCIHooks } from './ci-checkout';
+import { readInitialCheckout } from './read-initial-checkout';
+import { removeAdoptedClone } from '../candidate/remove-adopted-clone';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
@@ -49,6 +51,14 @@ export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: Tick
     const inputs = result.resolution?.evidenceIds.map(id => result.evidence.find(e => e.id === id)!) || [];
     if (!conflict && inputs.some(e => !containedFile(e.path, root) && !containedFile(e.path, store.project.repo)))
         throw new Error('Adopted repair diagnostic lies outside its project or saved artifacts');
+    if (candidate && candidate.head !== head) {
+        if (job.repairCycle || candidate.branch !== job.branch) throw new Error('Prior adopted candidate ownership changed; preserved');
+        const removed = await removeAdoptedClone(store, delivery.execute, job, assertCurrent, '');
+        await guard();
+        mkdirSync(root, { recursive: true });
+        writeFileSync(resolve(root, `superseded-checkout-${crypto.randomUUID()}.json`), JSON.stringify({ prior: candidate, newHead: head, removed, observedAt: new Date().toISOString() }), { mode: 0o600, flag: 'wx' });
+        candidate = undefined;
+    }
     let worktree: string;
     if (candidate) {
         const expected = resolve(store.dataRoot, 'ticket-work', job.id, `ci-${candidate.id}`, 'candidate');
@@ -62,6 +72,11 @@ export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: Tick
             candidate = undefined;
         } else {
             if (candidate.worktree !== expected || present.isSymbolicLink()) throw new Error('Prior adopted checkout path changed; preserved');
+            const initial = await readInitialCheckout(store, delivery.execute, job, candidate);
+            if (initial) {
+                await guard();
+                await finishCISetup(delivery, candidate, assertCurrent, initial.hooksConfigured);
+            }
             await verifyRepairCandidate(store.project, { head, branch: candidate.branch, worktree: expected }, delivery.execute);
             await verifyCIHooks(delivery, { ...job, worktree: expected });
         }

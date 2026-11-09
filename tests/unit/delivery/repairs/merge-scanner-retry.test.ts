@@ -186,6 +186,25 @@ test('green Actions cannot bypass an earlier unresolved PM issue/card recovery a
     expect(f.job).toMatchObject({ stage: 'ci-recovery', status: 'blocked', ciRecoveryAttemptAt: 'original-attempt' });
     expect(f.job.detail).toContain('still uncertain'); expect(f.job.mergeScannerRetry).toBeUndefined();
 });
+test('an interrupted original diagnosis reaches only the existing read-only issue/card reconciliation', async () => {
+    const f = setup(); f.job.ciRecoveryAttemptAt = '2026-11-09T08:00:00Z';
+    f.store.state.workLog ??= [];
+    f.store.state.workLog.push({ id: 'interrupted-original', requestId: f.job.id, ticket: f.job.key, role: 'pm', stage: 'ci-recovery', status: 'interrupted',
+        startedAt: '2026-11-09T08:00:01Z', endedAt: '2026-11-09T08:00:02Z' } as any);
+    f.run.status = 'completed'; f.run.conclusion = 'success'; let reads = 0;
+    f.engine.agents.run = async (_role, task, _schema, options) => {
+        reads++; expect(task).toContain('READ-BACK ONLY'); expect(options?.readOnly).toBe(true); expect(options?.stage).toBe('ci-recovery');
+        return { outcome: 'repair-issue', issue: 777, summary: 'Original exact repair issue/card read back', receipts: [] } as any;
+    };
+    const api = f.delivery.api;
+    f.delivery.api = async path => path === 'issues/777' ? { number: 777, state: 'open', body: `Office CI recovery ${f.job.id} ${f.job.mergeCommit}`, assignees: [{ login: 'JFusco' }] } : api(path);
+    f.job.status = 'blocked'; recheckPR.call({ store: f.store, state: f.store.state.coordination } as any, f.job.key);
+    await f.delivery.step(f.job);
+    expect(reads).toBe(1); expect(f.writes()).toBe(0); expect(f.job.mergeScannerRetry).toBeUndefined();
+    expect(f.job).toMatchObject({ stage: 'ci-recovery', status: 'watching', ciFollowupKey: 'GH-777' });
+    expect(f.delivery.jobs.some(j => j.key === 'GH-777')).toBe(true);
+    expect(f.store.state.workLog.find(w => w.id === 'interrupted-original')?.status).toBe('interrupted');
+});
 
 test('an externally merged PR without an Office merge attempt never gets a new scanner retry', async () => {
     const f = setup(); delete f.job.mergeAttempt;
