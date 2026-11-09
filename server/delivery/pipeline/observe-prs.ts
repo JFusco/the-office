@@ -1,4 +1,5 @@
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
+import { refreshMergeReview } from '../readiness/refresh-merge-review';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
 import { retireExternalDeliveries } from '../recovery/retire-external-delivery';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
@@ -68,7 +69,7 @@ export async function observe(this: GitHubDelivery) {
             }
             if (refreshConflicted(this.store, job, p))
                 continue;
-            if(job.stage==='merge'&&['blocked','interrupted','watching'].includes(job.status)&&!job.mergeAttempt){await resumeReviewedMerge(this,job,p);continue;}
+            if(job.stage==='merge'&&['blocked','interrupted','watching'].includes(job.status)&&!job.mergeAttempt){if(!await refreshMergeReview(this,job,p))await resumeReviewedMerge(this,job,p);continue;}
             if (p.state !== 'open') {
                 job.status = 'blocked';
                 job.detail = 'PR closed without merge; needs Morgan’s reconciliation.';

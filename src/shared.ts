@@ -160,6 +160,7 @@ export interface TicketJob {
     featureBinding?: import('./contracts/features').FeatureBinding;
     featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };
     ciRepairs?: import('./contracts/ci-repair').CIRepair[];
+    adoptedRepairCheckout?: import('./contracts/ci-repair').RepairCheckout;
     initialDraftConflict?: Readonly<{ originalWorkId: string; head: string; pr: number; proofPath: string; proofSha256: string }>;
     scopeRepairResumes?: { intentId: string; originalWorkId: string; head: string; proofPath: string; proofSha256: string; checkpointSha256: string; findingIds: string[]; afterStep: number; at: string }[];
     savedPrerequisiteHandoff?: { originalWorkId: string; fromHead: string; head: string; stage: 'implement' | 'scope-repair'; proofPath: string; proofSha256: string; findingIds: string[]; at: string };
@@ -188,6 +189,7 @@ export interface TicketJob {
     };
     ciFollowupKey?: string;
     ciRecoveryAttemptAt?: string;
+    mergeScannerRetry?: { runId: number; attempt: number; head: string; evidencePath: string };
     repairReason?: 'conflicts' | 'ci' | 'source';
     repairCycle?: DeliveryRepairCycle;
     mergeApprovalRequired?: boolean;

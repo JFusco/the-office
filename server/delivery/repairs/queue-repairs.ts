@@ -14,6 +14,8 @@ import type { TicketJob, StageResult } from '../../../src/shared';
 import { recordJobApproach } from '../pipeline/approach';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
+import { adoptedReviewCandidate } from './adopted-review-candidate';
+import { retryMergeScanner } from './merge-scanner-retry';
 
 export async function queueConflictRepair(this: GitHubDelivery, key: string, reason: 'conflicts' | 'ci' = 'conflicts') {
     const job = this.jobs.find(j => j.key === key && j.stage === 'lead-pr' && (['watching', 'blocked'].includes(j.status) || reason === 'conflicts' && j.status === 'interrupted'));
@@ -70,6 +72,20 @@ export async function recoverMergeCI(this: GitHubDelivery, job: TicketJob) {
     const p = await this.verifyPR(job, true);
     if (!p.merged_at || !job.mergeCommit || p.merge_commit_sha !== job.mergeCommit)
         throw new Error('Merged CI recovery identity changed');
+    // A crash or operator recheck may resume after the retry already finished. Observe current
+    // exact-merge runs before diagnosing a failure that may no longer exist.
+    if (harnessDelivers(this.store, job) && !job.ciFollowupKey) {
+        const page = await this.api(`actions/runs?head_sha=${job.mergeCommit}&per_page=100`);
+        if (!Array.isArray(page.workflow_runs) || page.total_count !== page.workflow_runs.length || page.total_count > 100)
+            throw new Error('Merge Actions coverage is incomplete');
+        const actual = page.workflow_runs.filter((run: any) => run.head_sha === job.mergeCommit && run.event === 'push' && run.head_branch === this.store.project.target);
+        if (actual.length && (actual.some((run: any) => run.status !== 'completed') || actual.every((run: any) => ['success', 'skipped', 'neutral'].includes(run.conclusion)))) {
+            job.status = 'watching';
+            job.detail = 'Exact-merge Actions are running or passed; normal observation will verify every run before closeout. Prior failures and retry effects retained.';
+            this.store.save(); return;
+        }
+    }
+    if (harnessDelivers(this.store, job) && await retryMergeScanner(this, job)) return;
     if (job.ciFollowupKey) {
         job.status = 'watching';
         return;
@@ -95,14 +111,15 @@ Save no source changes. Prior job/evidence: ${JSON.stringify(job)}.`, schema, { 
 }
 
 export async function queueSourceRepair(this: GitHubDelivery, job: TicketJob, result: StageResult, root: string) {
-    const held=await outsideAmendmentFindingIds(this,job,result.commit,result),repairView=amendmentRepairView(result,held);
+    const held = await outsideAmendmentFindingIds(this, job, result.commit, result);
+    const repairView = await adoptedReviewCandidate(this, job, amendmentRepairView(result, held), root);
     const named = handsOff(this.store), ids = githubRepairEligible(job, repairView, named);
     const publishedAccepted = !!job.pr && job.implementationContinuation?.phase === 'acceptance';
     const nativeAdoptionPending = !!(job.implementationContinuation || job.discoveryRecovery || job.implementationRecovery) && !publishedAccepted;
     if (!ids || nativeAdoptionPending || HOLDS[job.key] || this.jobs.find(current => current.id === job.id) !== job || job.status !== 'working' || this.store.state.paused || job.steps.some(step => hasUncertainEffects(step.stage, step.result))) return false;
-    if (!retainRepairEvidence(repairView, job.stage, root, result.worktree, named)) return false;
+    if (!retainRepairEvidence(repairView, job.stage, root, repairView.worktree, named)) return false;
     if (job.repairCycle?.pendingFindingIds.some(id => !result.findings.some(f => f.id === id))) return false;
-    if (result.worktree === this.store.project.repo || result.paidRuns !== 0) return false;
+    if (repairView.worktree === this.store.project.repo || result.paidRuns !== 0) return false;
     let publishedHead: string | undefined;
     if (job.pr) {
         const published = await this.verifyPR(job, true);
@@ -111,12 +128,12 @@ export async function queueSourceRepair(this: GitHubDelivery, job: TicketJob, re
         if (!expectedRemote || published.state !== 'open' || published.merged_at || published.head.sha !== expectedRemote || published.head.ref !== job.branch)
             throw new Error('Published repair PR identity or exact remote head changed; reconcile before source work');
         publishedHead = expectedRemote;
-        await this.execute('git', ['merge-base', '--is-ancestor', publishedHead, result.commit], { cwd: result.worktree, timeout: 10000, readOnly: true });
+        await this.execute('git', ['merge-base', '--is-ancestor', publishedHead, result.commit], { cwd: repairView.worktree, timeout: 10000, readOnly: true });
     }
-    await verifyRepairCandidate(this.store.project, { head: result.commit, branch: result.branch, worktree: result.worktree }, this.execute);
+    await verifyRepairCandidate(this.store.project, { head: result.commit, branch: repairView.branch, worktree: repairView.worktree }, this.execute);
     if (job.head && job.head !== result.commit)
-        await this.execute('git', ['merge-base', '--is-ancestor', job.head, result.commit], { cwd: result.worktree, timeout: 10000, readOnly: true });
-    job.head = result.commit; job.worktree = result.worktree; job.branch = result.branch;
+        await this.execute('git', ['merge-base', '--is-ancestor', job.head, result.commit], { cwd: repairView.worktree, timeout: 10000, readOnly: true });
+    job.head = result.commit; job.worktree = repairView.worktree; job.branch = repairView.branch;
     job.repairCycle = reserveRepair(job.repairCycle, ids, job.stage, job.head);
     if (publishedHead) { job.repairCycle.publishedHead = publishedHead; job.repairReason = 'source'; }
     if (!job.approach || job.approach.review === 'none' || job.approach.validation === 'developer-checks') {

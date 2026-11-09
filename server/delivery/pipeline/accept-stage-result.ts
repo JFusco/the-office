@@ -233,7 +233,9 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             if (observed)
                 Object.assign(observed, { state: p.state, base: p.base.ref, head: p.head.sha, mergedAt: p.merged_at || '', draft: p.draft });
         }
-        if (teamReviewedHead(this.store, job) && !p.draft && mergeAuthorized(this.store, job)) {
+        const priorLead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
+        const rejectedSameHead = priorLead?.commit === job.head && priorLead.outcome !== 'passed';
+        if (teamReviewedHead(this.store, job) && !rejectedSameHead && !p.draft && mergeAuthorized(this.store, job)) {
             job.stage = 'merge';
             job.status = 'queued';
             job.detail = 'PR prepared. The team already reviewed and verified this exact head, so the guarded merge runs without a second readiness review.';
@@ -254,7 +256,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             if (await this.queueCIRepair(job)) return;
             job.status = 'working';
         }
-        if (!conflictOnlyAssessment(result) && await this.queueSourceRepair(job, result, root)) { learn(); return; }
+        if ((!conflictOnlyAssessment(result) || job.existingPR && !job.worktree && harnessDelivers(this.store, job)) && await this.queueSourceRepair(job, result, root)) { learn(); return; }
         await this.finishLeadReview(job, result);
         learn();
         return;

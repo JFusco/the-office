@@ -1,3 +1,4 @@
+import { removeAdoptedClone } from './remove-adopted-clone';
 import { existsSync } from 'node:fs';
 import { lstatSync } from 'node:fs';
 import { moveAside, moveBack, purgeRemoved } from './move-aside';
@@ -37,6 +38,7 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
     const repo = store.project.repo, branch = job.branch, removed: CandidateRemoval = { worktree: false, local: false, remote: false };
     if (!branch && !job.worktree)
         return removed;
+    if (job.adoptedRepairCheckout) return removeAdoptedClone(store, execute, job, guard, tip);
     const skipped = notOwned(store, job);
     if (skipped)
         return { ...removed, skipped };
