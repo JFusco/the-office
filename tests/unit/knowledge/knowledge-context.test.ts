@@ -28,7 +28,8 @@ test('lessons reach delivery stages by purpose and nothing else', () => {
     for (const stage of ['conversation', 'slack-send', 'slack-recipient', 'slack-verify', 'readback', 'it-investigation']) {
         expect(seen(stage)).toContain('ANY-LESSON'); expect(seen(stage)).not.toContain('IMPLEMENT-LESSON');
     }
-    for (const stage of ['feature-research', 'daily-cto', 'retrospective', 'something-new', undefined])
+    expect(seen('feature-research')).toContain('INTAKE-LESSON');
+    for (const stage of ['knowledge-research', 'daily-cto', 'retrospective', 'something-new', undefined])
         expect(seen(stage as string)).toBe('');
 });
 

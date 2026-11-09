@@ -1,3 +1,6 @@
+import { captureLearning } from '../knowledge/learning-events';
+import { selectLessons } from '../knowledge/lesson-selection';
+import { prepareExposure } from '../knowledge/lesson-exposure';
 import { helperTelemetry } from './helper-telemetry';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -24,6 +27,7 @@ export function importReview(store: Store, feature: Feature, evidence: ReviewEvi
             if (feature.plans.at(-1)?.digest !== digest(evidence.plan)) feature.plans.push(document(store, feature, evidence.plan));
             feature.manifest = manifest;
             feature.review!.acceptedArtifact = evidence.artifact; feature.review!.acceptedDigest = digest(evidence.plan);
+            captureLearning(store, { kind: 'feature', id: feature.id }, feature.title, 'plan-review', feature.review!.run, evidence.plan, 'Independent feature plan review accepted.', 'work', true);
             feature.phase = 'approval'; feature.status = 'waiting'; feature.detail = 'Independent review is complete. Review the exact plan and ticket changes before approving.';
         } else if (evidence.status === 'needs_user') {
             feature.review!.pendingQuestions = evidence.findings.filter(f => f.disposition === 'PENDING_USER').map(f => ({ id: f.id, question: f.evidence, recommendation: f.correction_recommended, choices: ['Accept the recommendation', 'Keep the current requirement'] }));
@@ -56,7 +60,9 @@ export class FeatureReviewRunner {
             if (feature.revision !== revision || feature.paused || this.store.state.paused || feature.review) throw new Error('Feature review changed before start');
             const attemptDir = resolve(featureRoot(this.store, feature), 'reviews', randomUUID());
             mkdirSync(attemptDir, { recursive: true, mode: 0o700 });
-            writeFileSync(resolve(attemptDir, 'requirements.md'), feature.briefs.at(-1)!.markdown + '\n\nHuman decisions:\n' + feature.conversation.filter(m => m.role === 'human').map(m => m.text).join('\n\n') + '\n\nReview the exact feature-manifest section. Preserve project ownership, stable publication identities, started scope, required review and validation floors, and only the displayed provider changes. Unsettled product decisions require Joe.', { flag: 'wx', mode: 0o600 });
+            const selection = selectLessons(this.store, { stage: 'plan-review', paths: feature.baseline!.scope });
+            prepareExposure(this.store, attemptDir, attemptDir, 'plan-review', selection, { kind: 'feature', id: feature.id });
+            writeFileSync(resolve(attemptDir, 'requirements.md'), selection.text + '\n\n' + feature.briefs.at(-1)!.markdown + '\n\nHuman decisions:\n' + feature.conversation.filter(m => m.role === 'human').map(m => m.text).join('\n\n') + '\n\nReview the exact feature-manifest section. Preserve project ownership, stable publication identities, started scope, required review and validation floors, and only the displayed provider changes. Unsettled product decisions require Joe.', { flag: 'wx', mode: 0o600 });
             writeFileSync(resolve(attemptDir, 'plan.md'), feature.plans.at(-1)!.markdown, { flag: 'wx', mode: 0o600 });
             this.store.transaction(() => { feature.review = { attemptDir, run: '', helper: install.helper, helperCommit: commit, revision: 0, fingerprint: '', researchDigest: '', status: 'starting', stage: 'research', processes: [], acceptedArtifact: '', acceptedDigest: '' }; });
         }

@@ -52,7 +52,7 @@ export class Store {
         } | undefined;
         this.state = row ? JSON.parse(row.body) : initialSnapshot();
         this.state.project = project;
-        migrateSnapshot(this.state, project);
+        migrateSnapshot(this.state, project, this.clock.now().toISOString());
         for (const role of ['cto', 'it', 'analyst', 'knowledge'] as const)
             if (!this.state.agents.some(agent => agent.id === role))
                 this.state.agents.push(initialSnapshot().agents.find(agent => agent.id === role)!);

@@ -85,6 +85,7 @@ export class GitHubDelivery {
         if (this.jobs.some(j => j.key === key && j.status !== 'cancelled'))
             return;
         const job: TicketJob = { id: crypto.randomUUID(), key, requestedAt: new Date().toISOString(), status: 'queued', stage: pr ? 'prepare-pr' : 'implement', detail: pr ? 'Existing PR routed to Sam; no duplicate development.' : 'Waiting for the Office team.', head: '', worktree: '', branch: '', pr, automaticStatus, prUrl: pr ? `https://github.com/${this.store.project.repository}/pull/${pr}` : '', existingPR: !!pr, steps: [] };
+        job.improvementId = this.store.state.knowledge?.improvements?.find(item => item.providerId === key)?.id;
         this.jobs.push(job);
         this.store.emit('github-delivery-queued', `${key} queued for ${pr ? 'Lead PR review' : 'development'}.`, 'pm', key);
     }

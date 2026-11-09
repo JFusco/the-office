@@ -13,7 +13,7 @@ export interface OfficeKnowledgeStore {
 const DECLINED_RETENTION = 90 * 86400000;
 
 /** Harper proposes; Joe decides. Duplicates of any open proposal or office lesson are skipped. */
-export function proposeOfficeLessons(control: OfficeKnowledgeStore, projectId: string, rollupId: string, proposals: RollupResult['officeProposals']): string[] {
+export function proposeOfficeLessons(control: OfficeKnowledgeStore, projectId: string, rollupId: string, proposals: (Omit<RollupResult['officeProposals'][number], 'evidenceIds'> & { evidenceIds?: string[] })[], evidence: Record<string, import('../../src/shared').LessonEvidence> = {}): string[] {
     return control.updateKnowledge(knowledge => {
         const now = control.clock.now(), seen = new Set([...knowledge.lessons.filter(lesson => lesson.status !== 'retired'), ...knowledge.proposals.filter(proposal => proposal.status !== 'declined')].map(item => normalizeStatement(item.statement)));
         knowledge.proposals = knowledge.proposals.filter(proposal => proposal.status !== 'declined' || now.getTime() - Date.parse(proposal.decidedAt || proposal.createdAt) < DECLINED_RETENTION);
@@ -23,7 +23,7 @@ export function proposeOfficeLessons(control: OfficeKnowledgeStore, projectId: s
             if (!key || seen.has(key)) continue;
             seen.add(key);
             const id = randomUUID();
-            knowledge.proposals.push({ id, projectId, rollupId, kind: proposal.kind, statement: proposal.statement.trim(), detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], status: 'proposed', createdAt: now.toISOString() });
+            knowledge.proposals.push({ evidence: (proposal.evidenceIds || []).filter(id => Object.hasOwn(evidence, id)).map(id => structuredClone(evidence[id])), id, projectId, rollupId, kind: proposal.kind, statement: proposal.statement.trim(), detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], status: 'proposed', createdAt: now.toISOString() });
             ids.push(id);
         }
         return ids;
@@ -40,8 +40,8 @@ export function decideOfficeProposal(control: OfficeKnowledgeStore, proposalId: 
         const now = control.clock.now().toISOString();
         proposal.status = accept ? 'accepted' : 'declined';
         proposal.decidedAt = now;
-        if (accept) knowledge.lessons.push({ id: proposal.id, scope: 'office', kind: proposal.kind, statement: proposal.statement, detail: proposal.detail, stages: proposal.stages, paths: [], status: 'active',
-            evidence: [{ kind: 'rollup', ref: `${proposal.projectId}:${proposal.rollupId}`, url: '', detail: `Proposed by Harper from ${proposal.projectId}, ${proposal.rollupId.replace('rollup:', 'week ending ')}` }],
+        if (accept) knowledge.lessons.push({ id: proposal.id, scope: 'office', tier: 'guidance', revision: 1, kind: proposal.kind, statement: proposal.statement, detail: proposal.detail, stages: proposal.stages, paths: [], status: 'active',
+            evidence: [...(proposal.evidence || []), { kind: 'rollup', ref: `${proposal.projectId}:${proposal.rollupId}`, url: '', detail: `Proposed by Harper from ${proposal.projectId}, ${proposal.rollupId.replace('rollup:', 'week ending ')}` }],
             sourceRetrospectiveId: proposal.rollupId, recurrences: [], createdAt: now, updatedAt: now });
     });
 }
@@ -53,7 +53,7 @@ export function retireOfficeLesson(control: OfficeKnowledgeStore, lessonId: unkn
         if (!lesson) throw new Error('Office lesson not found');
         if (lesson.status === 'retired') return;
         const now = control.clock.now().toISOString();
-        Object.assign(lesson, { status: 'retired', retiredAt: now, retiredBy: 'human', updatedAt: now } satisfies Partial<Lesson>);
+        Object.assign(lesson, { revision: (lesson.revision || 1) + 1, status: 'retired', retiredAt: now, retiredBy: 'human', updatedAt: now } satisfies Partial<Lesson>);
     });
 }
 

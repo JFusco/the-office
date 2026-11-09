@@ -33,3 +33,10 @@ export function maintenanceResult(overrides: Partial<MaintenanceResult> = {}): M
 export function maintenanceRun(overrides: Partial<MaintenanceRun> = {}): MaintenanceRun {
     return { id: crypto.randomUUID(), requestedAt: '2026-11-06T09:00:00Z', startedAt: '2026-11-06T09:01:00Z', endedAt: '', status: 'queued', weekly: true, stage: 'follow-up', error: '', steps: [], ...overrides };
 }
+
+export function learningLesson(id = 'L1', overrides: Partial<import('../../../src/shared').Lesson> = {}): import('../../../src/shared').Lesson {
+    return { id, scope: 'project', tier: 'guidance', revision: 1, kind: 'process', statement: `Guidance ${id}`, detail: '', stages: ['review'], paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'origin:completed', sourceSubject: { kind: 'job', id: 'origin' }, recurrences: [], createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', ...overrides };
+}
+export function opportunity(id = 'event:one', overrides: Partial<import('../../../src/shared').LearningOpportunity> = {}): import('../../../src/shared').LearningOpportunity {
+    return { id, subject: { kind: 'feature', id: 'feature:with:colons' }, key: 'GH-1', stage: 'feature-research', at: '2026-11-06T15:00:00Z', disposition: 'accepted', summary: 'Accepted discovery', digest: id, evidence: [{ kind: 'learning', ref: id, url: '', detail: 'Verified accepted content' }], origin: 'work', phaseBoundary: true, ...overrides };
+}

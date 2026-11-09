@@ -1,3 +1,4 @@
+import { captureLearning } from '../knowledge/learning-events';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -31,7 +32,7 @@ export function acceptReader(store: Store, feature: Feature, attempt: FeatureAtt
         const result = attempt.stage === 'feature-plan' ? PlanSchema.parse(output) : DiscoverySchema.parse(output);
         if ('ready' in result && !result.ready && !result.questions.length) throw new Error('Unready discovery must identify the unresolved product decisions');
         if ('ready' in result && result.ready && result.questions.length) throw new Error('Ready discovery cannot contain unanswered questions');
-        const at = store.clock.now().toISOString();
+        const at = store.clock.now().toISOString(), phase = feature.phase;
         if ('brief' in result) feature.briefs.push(document(store, feature, result.brief));
         else if (!result.questions.length) {
             const manifest = manifestFromPlan(result.markdown);
@@ -47,6 +48,7 @@ export function acceptReader(store: Store, feature: Feature, attempt: FeatureAtt
         attempt.status = 'completed'; attempt.endedAt = at; feature.activeAttempt = undefined;
         feature.status = feature.phase === 'review' ? 'queued' : 'waiting'; feature.enqueuedAt = at;
         feature.detail = result.questions.length ? 'Casey is waiting for your answers.' : feature.phase === 'review' ? 'Plan ready for independent review.' : 'Review the brief, then create the technical plan.';
+        captureLearning(store, { kind: 'feature', id: feature.id }, feature.title, attempt.stage, attempt.id, result, result.summary, 'work', feature.phase !== phase);
         store.emit('feature-reader-completed', feature.title + ': ' + feature.detail, 'analyst');
         return true;
     });

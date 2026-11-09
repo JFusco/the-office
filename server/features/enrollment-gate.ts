@@ -1,3 +1,4 @@
+import { improvementIntakeGate } from '../knowledge/improvement-intake-gate';
 import type { Feature, FeatureApproval, FeatureBinding } from '../../src/contracts/features';
 import type { Store } from '../store/store';
 import { digest } from './documents';
@@ -21,6 +22,8 @@ export function predecessorComplete(store: Store, feature: Feature, itemId: stri
 }
 /** Durable structured prerequisites, independent of replaceable intake rows. */
 export function featureGate(store: Store, key: string): { allowed: boolean; reason: string; version: string } {
+    const improvement = improvementIntakeGate(store, key);
+    if (!improvement.allowed) return improvement;
     if (!store.state.features?.length) return { allowed: true, reason: '', version: '' };
     const entry = enrolled(store, key), started = entry?.item?.startedApprovalId;
     const version = digest([entry?.feature.revision, entry?.feature.paused, entry?.feature.approvals.at(-1)?.digest, store.state.features?.flatMap(f => f.publication.map(p => [p.id, p.verified, p.fence, p.startedApprovalId]))]);

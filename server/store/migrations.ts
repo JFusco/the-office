@@ -1,3 +1,4 @@
+import { LEARNING_BASELINES } from '../knowledge/learning-maintenance';
 import type { OfficeProject, OfficeSnapshot, Prerequisite } from '../../src/shared';
 import { PROJECTS } from '../office/projects';
 import { visibleTicketTriggerIds, visibleTriggerIds } from '../knowledge/retrospective-triggers';
@@ -9,7 +10,7 @@ export function resolveProjectLabel(label: string): OfficeProject | undefined {
     return PROJECTS.find(project => project.id.toLowerCase() === value || project.name.toLowerCase() === value);
 }
 /** Add fields without guessing evidence, moving goals, or replaying work. */
-export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject): void {
+export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject, now = new Date().toISOString()): void {
     state.workLog ??= [];
     state.ciHistory ??= [];
     state.outbox ??= [];
@@ -39,6 +40,16 @@ export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject): 
     knowledge.officeProposals ??= [];
     for (const lesson of knowledge.lessons) { lesson.scope ??= 'project'; lesson.recurrences ??= []; }
     seedProjectLessons(knowledge, project.id);
+    for (const lesson of [...knowledge.lessons, ...(knowledge.officeLessons || [])]) { lesson.tier ??= 'guidance'; lesson.revision ??= 1; }
+    knowledge.learningStartedAt ??= now;
+    knowledge.baselines = [...new Set([...knowledge.baselines, ...LEARNING_BASELINES])];
+    knowledge.learningConsumed ??= [];
+    knowledge.exposures ??= [];
+    knowledge.followups ??= [];
+    knowledge.improvements ??= [];
+    knowledge.learningAttempts ??= {};
+    knowledge.improvementGrant ??= { policy: 'harper-improvement-queue-v1', source: 'review-run:84119be0-70d6-4517-8041-77434244ab06; Joe: Implement the proposed plan', registeredAt: now, projectId: project.id, enabled: true };
+
     for (const goal of state.goals) {
         goal.projectId = project.id;
         goal.mapping = resolveProjectLabel(goal.project)?.id === project.id ? 'mapped' : 'unmapped';

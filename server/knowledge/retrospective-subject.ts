@@ -53,11 +53,15 @@ export function ticketSubject(ticket: Ticket): RetrospectiveSubject {
 
 /** Resolves a trigger id to the job, CEC run or maintenance run it belongs to. */
 export function findSubject(store: Store, triggerId: string): RetrospectiveSubject | undefined {
-    const id = triggerJobId(triggerId);
+    const pending = store.state.knowledge?.pending.find(entry => entry.id === triggerId);
+    const record = pending || [...(store.state.knowledge?.deliveryEvents || []), ...(store.state.knowledge?.retrospectives || [])].find(entry => entry.id === triggerId);
+    const id = record?.source?.id || record?.jobId || triggerJobId(triggerId), kind = record?.source?.kind || record?.subject;
     const job = store.state.coordination?.jobs?.find(entry => entry.id === id);
-    if (job) return jobSubject(store, job);
+    if (job && (!kind || kind === 'job')) return jobSubject(store, job);
     const ticket = store.state.tickets.find(entry => entry.runId === id);
-    if (ticket) return ticketSubject(ticket);
+    if (ticket && (!kind || kind === 'ticket')) return ticketSubject(ticket);
     const run = store.state.maintenance?.runs.find(entry => entry.id === id);
-    return run ? maintenanceSubject(store, run) : undefined;
+    if (run && (!kind || kind === 'maintenance')) return maintenanceSubject(store, run);
+    if (pending?.source) return { kind: pending.source.kind, id, key: pending.key, status: 'accepted', stage: pending.event.stage, detail: pending.event.reason, issueUrl: '', pr: 0, prUrl: '', head: pending.event.head, steps: [], decisions: [], ciRepairs: [], timing: [], reroutes: 0 };
+    return undefined;
 }

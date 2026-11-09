@@ -1,3 +1,4 @@
+import { dispatchExposure } from '../knowledge/lesson-exposure';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
 import type { Feature } from '../../src/contracts/features';
@@ -27,6 +28,11 @@ export function helperTelemetry(store: Store, feature: Feature, alive = processG
             for (const line of readFileSync(stdout, 'utf8').split('\n')) {
                 try {
                     const event = JSON.parse(line);
+                    // Claude's helper uses final JSON, not streaming assistant events. Native
+                    // input/cache usage proves dispatch; a wrapper start or empty error does not.
+                    const claudeResult = agent.provider === 'claude' && event.type === 'result' && typeof event.session_id === 'string' && event.session_id.length > 0 &&
+                        [event.usage?.input_tokens, event.usage?.cache_creation_input_tokens, event.usage?.cache_read_input_tokens].some(value => Number.isSafeInteger(value) && value > 0);
+                    if (event.type === 'turn.started' || event.type === 'assistant' || claudeResult) dispatchExposure(store, feature.review.attemptDir);
                     if (event.type === 'thread.started' && typeof event.thread_id === 'string') session = event.thread_id;
                     if (event.session_id && typeof event.session_id === 'string') session = event.session_id;
                     const models = Object.keys(event.modelUsage || {});

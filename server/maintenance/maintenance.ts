@@ -1,3 +1,4 @@
+import { captureMaintenanceStep } from '../knowledge/maintenance-learning';
 import {prepareMaintenanceReadback,maintenanceCoverageSchema,maintenanceCoveragePassed,MAINTENANCE_NATIVE_GUIDANCE} from './maintenance-readback';
 import { supersedablePriorRuns, unverifiedPriorRunNote } from './unverified-prior-runs';
 import { partialVendorReview, partialVendorReviewLedger } from './vendor-review-outcome';
@@ -72,6 +73,7 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
         original.assertClaimed();
         run.steps.push({ role: 'pm', stage: 'maintenance-readback', result, at: new Date().toISOString() });
         if (result.outcome === 'passed' && maintenanceCoveragePassed(original.packet, result.coverage) && !result.receipts.some(r => !r.verified || r.uncertain)) {
+            captureMaintenanceStep(this.store, run, result, 'original effects reconciled; unfinished work remains', true);
             run.status = 'reconciled';
             run.error = '';
             if (result.ledger)
@@ -141,15 +143,18 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                 if (result.outcome === 'reroute') {
                     if (!['proposal-plan', 'proposal-plan-review', 'proposal', 'proposal-review', 'package-verification', 'browser-verification'].includes(stage) || !result.approach || result.receipts.length || result.checks?.length)
                         throw new Error('An approach handoff must precede effects and include a reason');
+                    captureMaintenanceStep(this.store, run, result, 'accepted reroute');
                     throw new StageYield('Approach handoff persisted');
                 }
                 if (stage === 'vendor-review' && partialVendorReview(result) && !result.receipts.length) {
+                    captureMaintenanceStep(this.store, run, result, 'partial observation; verification incomplete');
                     state.ledger = partialVendorReviewLedger(result, easternDate(), state.ledger);
                     this.store.emit('maintenance-observation', `Vendor review kept an open observation and continues with ${result.candidates.length} candidate(s): ${result.blocker}`, 'pm');
                     throw new StageYield('Vendor review persisted with an open observation; waiting for the next scheduler claim');
                 }
                 if (result.outcome !== 'passed' || result.receipts.some(r => r.uncertain || !r.verified))
                     throw new Error(result.blocker || `Unverified ${stage}; inspect original worker session before another write.`);
+                if (['follow-up', 'vendor-review', 'proposal-plan', 'proposal-plan-review'].includes(stage)) captureMaintenanceStep(this.store, run, result);
                 if (result.ledger)
                     state.ledger = result.ledger;
                 throw new StageYield('Stage persisted; waiting for the next scheduler claim');
@@ -223,6 +228,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     if (!built.checks?.some(c => (!c.kind || c.kind === 'checks') && c.commit === proposal.head && containedFile(c.path, root)))
                         throw new Error('Actual saved implementation check evidence for this head is missing');
                     await this.verifyCandidate(proposal);
+                    captureMaintenanceStep(this.store, run, built);
                     let reviewDone = false, qaDone: WorkApproach['validation'] | null = null;
                     while (true) {
                         proposal.approach = approach;
@@ -252,6 +258,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                             if (review.approach)
                                 decide(review.approach, 'lead', 'proposal-review');
                             await this.verifyCandidate(proposal);
+                            captureMaintenanceStep(this.store, run, run.steps[cursor - 1].result);
                         }
                         if (approach.validation !== 'developer-checks' && qaDone !== approach.validation) {
                             const qa = await step('qa', approach.validation === 'browser' ? 'browser-verification' : 'package-verification', `Independently verify the exact candidate worktree/head using the selected checks: ${JSON.stringify(approach)}. Use package/CLI/API checks for check-based validation, without launching a browser. If browser validation was selected, use actual candidate browser evidence and save browser plus screenshot artifacts with commit and URL; do not invent a deployed application. Return actual saved check outputs with kind/path/commit/summary/url. Missing access or failing checks are blocked, not a reason to silently downgrade. No source edits, remote writes, releases or paid provider actions. Return reroute only for a reasoned scope correction BEFORE executing verification.`, false, [proposal]);
@@ -268,6 +275,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                                 decide(qa.approach, 'qa', 'verification');
                             qaDone = approach.validation;
                             await this.verifyCandidate(proposal);
+                            captureMaintenanceStep(this.store, run, run.steps[cursor - 1].result);
                         }
                         if (approach.plan !== 'none' && !planDone || approach.plan === 'reviewed' && !planReviewDone || approach.review !== 'none' && !reviewDone || approach.validation !== 'developer-checks' && qaDone !== approach.validation)
                             continue;
@@ -281,6 +289,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     if (published.outcome === 'reroute')
                         throw new Error('Draft publication must reconcile effects before changing its route');
                     await this.verifyDraft(proposal);
+                    captureMaintenanceStep(this.store, run, published);
                 }
                 state.lastWeekly = easternDate();
             }

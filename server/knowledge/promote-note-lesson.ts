@@ -20,7 +20,7 @@ export function promoteNoteLesson(control: OfficeKnowledgeStore, store: Store, i
         }
         if (knowledge.lessons.some(lesson => lesson.status === 'active' && normalizeStatement(lesson.statement) === normalizeStatement(data.statement))) throw new Error('An equivalent active Office lesson already exists');
         const at = control.clock.now().toISOString(), ticket = store.state.tickets.find(ticket => ticket.key === note.ticket);
-        knowledge.lessons.push({ id, scope: 'office', kind: data.kind, statement: data.statement, detail: data.detail, stages: [...new Set(data.stages)], paths: [], status: 'active',
+        knowledge.lessons.push({ id, scope: 'office', tier: 'guidance', revision: 1, kind: data.kind, statement: data.statement, detail: data.detail, stages: [...new Set(data.stages)], paths: [], status: 'active',
             evidence: [{ kind: 'artifact', ref: `project-note:${store.project.id}:${note.id}`, url: '', detail: `Explicitly promoted by Joe from the reviewed note: ${note.summary}` }, ...(ticket ? [{ kind: 'ticket' as const, ref: ticket.key, url: ticket.url, detail: 'Source incident tracking issue' }] : [])],
             sourceRetrospectiveId: id, recurrences: [], createdAt: at, updatedAt: at });
         return id;

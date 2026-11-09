@@ -135,7 +135,9 @@ export class ControlStore {
     /** Office-wide lessons and Harper's proposals for them; one row, updated under an immediate lock. */
     knowledge(): OfficeKnowledge {
         const row = this.statement('SELECT body FROM office_knowledge WHERE id=1').get() as { body: string } | undefined;
-        return row ? JSON.parse(row.body) : { proposals: [], lessons: [] };
+        const knowledge: OfficeKnowledge = row ? JSON.parse(row.body) : { proposals: [], lessons: [] };
+        for (const lesson of knowledge.lessons) { lesson.tier ??= 'guidance'; lesson.revision ??= 1; }
+        return knowledge;
     }
     updateKnowledge<T>(mutate: (knowledge: OfficeKnowledge) => T): T {
         this.db.exec('BEGIN IMMEDIATE');

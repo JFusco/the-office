@@ -8,12 +8,27 @@ const clip = (text: string, limit = 500) => text.length <= limit ? text : `${tex
  * Local, idempotent bookkeeping for a retrospective trigger. No provider calls and no delivery state;
  * the caller's existing save persists it.
  */
-export function recordTrigger(store: Store, entry: { id: string; jobId: string; key: string; trigger: RetrospectiveTrigger; subject?: RetrospectiveSubjectKind; event: PendingRetrospective['event'] }): void {
+export function recordTrigger(store: Store, entry: { id: string; jobId: string; key: string; trigger: RetrospectiveTrigger; at?: string; subject?: RetrospectiveSubjectKind; event: PendingRetrospective['event'] }): void {
     const knowledge = store.state.knowledge;
     if (!knowledge) return;
     if (knowledge.consumed.includes(entry.id) || knowledge.pending.some(pending => pending.id === entry.id)) return;
+    const subject = { kind: entry.subject || 'job' as const, id: entry.jobId };
+    if (['job', 'ticket'].includes(subject.kind)) {
+        const events = knowledge.deliveryEvents ??= [];
+        const source = subject.kind === 'job' ? store.state.coordination?.jobs?.find(job => job.id === subject.id) : store.state.tickets.find(ticket => ticket.runId === subject.id);
+        const job = subject.kind === 'job' ? store.state.coordination?.jobs?.find(job => job.id === subject.id) : undefined;
+        const delivery = source ? { repairAttempts: source.repairCycle?.attempts || 0, reroutes: job ? job.steps.filter(step => step.result.outcome === 'reroute').length : (source as Ticket).routeChanges || 0, ciRepairs: job?.ciRepairs?.length || 0, timing: structuredClone(source.timing || []) } : undefined;
+        if (!events.some(event => event.id === entry.id)) events.push({ ...entry, delivery, source: subject, subject: subject.kind, eventAt: entry.at || store.clock.now().toISOString(), attemptId: '', summary: entry.event.reason, lessonIds: [], at: store.clock.now().toISOString() });
+    }
     if (!knowledge.enabled) { knowledge.consumed.push(entry.id); return; }
-    knowledge.pending.push({ ...entry, subject: entry.subject || 'job', event: { ...entry.event, reason: clip(entry.event.reason) }, createdAt: store.clock.now().toISOString(), attempts: 0, nextAt: '', lastError: '' });
+    const batch = knowledge.pending.find(item => item.trigger === 'learning' && !item.frozen && item.source?.kind === subject.kind && item.source.id === subject.id);
+    if (batch) {
+        batch.eventIds!.push(entry.id); batch.nextAt = '';
+        batch.event = { ...entry.event, reason: clip(entry.event.reason) };
+        knowledge.consumed.push(entry.id);
+        return;
+    }
+    knowledge.pending.push({ ...entry, subject: entry.subject || 'job', event: { ...entry.event, reason: clip(entry.event.reason) }, createdAt: entry.at || store.clock.now().toISOString(), attempts: 0, nextAt: '', lastError: '' });
 }
 
 type JobLike = Pick<TicketJob, 'id' | 'key' | 'head' | 'steps'> & Partial<Pick<TicketJob, 'stage' | 'repairCycle' | 'ciRepairs'>>;

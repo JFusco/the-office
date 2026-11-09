@@ -7,7 +7,7 @@ export const lessonIssueMarker = (lesson: Pick<Lesson, 'id'>) => `Office lesson 
 
 export function lessonIssueBody(store: Store, lesson: Lesson): string {
     const evidence = lesson.evidence.filter(item => /^https:\/\//.test(item.url)).map(item => `- [${item.detail}](${item.url})`).join('\n') || '- Recorded in the Office Lessons panel';
-    return `## Summary\nAdd this ${lesson.kind} to the repository's AGENTS.md so every future session, human or model, follows it.\n\n> ${lesson.statement}\n\n## Why\n${lesson.detail || 'Harper found it in an Office delivery retrospective.'}\n\n## Evidence\n${evidence}\n\n## Acceptance\n- AGENTS.md states the convention in the repository's own words.\n- Nothing else changes.\n\n${lessonIssueMarker(lesson)} · proposed by Harper (Office knowledge engineer) for ${store.project.name}; filed after Joe's approval.`;
+    return `## Summary\nPromote this ${lesson.kind} into the appropriate repository documentation, regression test, or harness check after inspecting existing guidance.\n\n> ${lesson.statement}\n\n## Why\n${lesson.detail || 'Harper found it in an Office delivery retrospective.'}\n\n## Evidence\n${evidence}\n\n## Acceptance\n- Choose and justify documentation, test, or harness enforcement based on the evidence.\n- Consolidate duplicate guidance; use AGENTS.md only for durable repository conventions and navigation.\n- Report instruction-file line counts; 200 lines is a review guideline.\n- Verify behavior with the applicable focused checks.\n\n${lessonIssueMarker(lesson)} · proposed by Harper (Office knowledge engineer) for ${store.project.name}; filed after Joe's approval.`;
 }
 
 /**
@@ -19,7 +19,7 @@ export async function fileLessonIssue(store: Store, execute: typeof command, les
     if (!lesson) throw new Error('Lesson not found in this project');
     if (lesson.repositoryInstruction?.status === 'filed' && lesson.repositoryInstruction.issueUrl) return lesson.repositoryInstruction.issueUrl;
     if (lesson.repositoryInstruction?.status !== 'proposed') throw new Error('Only a proposed AGENTS.md suggestion can be filed');
-    const repository = store.project.repository, marker = lessonIssueMarker(lesson), title = `AGENTS.md: ${lesson.statement}`.slice(0, 240);
+    const repository = store.project.repository, marker = lessonIssueMarker(lesson), title = `Team learning: ${lesson.statement}`.slice(0, 240);
     if (store.project.provider !== 'github' || !repository) throw new Error('AGENTS.md issues are filed for GitHub projects only');
     const find = async (): Promise<{ url: string } | null> => {
         const found = JSON.parse(await execute('gh', ['issue', 'list', '--repo', repository, '--state', 'all', '--search', `"${marker}" in:body`, '--json', 'url,body', '--limit', '10'], { cwd: store.project.repo, timeout: 60000, readOnly: true })) as { url: string; body: string }[];

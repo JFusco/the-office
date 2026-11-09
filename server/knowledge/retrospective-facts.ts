@@ -17,7 +17,7 @@ export interface RetrospectivePacket {
     timing: unknown[];
     conversation: unknown[];
     notes: unknown[];
-    activeLessons: { id: string; statement: string; recurrences: number }[];
+    activeLessons: { scope?: 'project' | 'office'; revision?: number; id: string; statement: string; recurrences: number }[];
     /** Only for a maintenance run: ledgers, harness error and saved artifacts. Bounded by construction. */
     maintenance?: MaintenancePacketSection;
     omitted: Record<string, number>;
@@ -29,7 +29,7 @@ export interface RetrospectivePacket {
 export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pending: Pick<PendingRetrospective, 'id' | 'trigger' | 'event'>): RetrospectivePacket {
     const { issueUrl, prUrl } = job, link = prUrl || issueUrl;
     const catalog: Record<string, LessonEvidence> = Object.create(null);
-    catalog[`${job.kind}:${job.id}`] = { kind: job.kind, ref: `${job.kind}:${job.id}`, url: issueUrl, detail: clip(`${job.key} · ${job.status} at ${job.stage}`, SHORT) };
+    catalog[`${job.kind}:${job.id}`] = { kind: ['job', 'ticket', 'maintenance'].includes(job.kind) ? job.kind as 'job' | 'ticket' | 'maintenance' : 'learning', ref: `${job.kind}:${job.id}`, url: issueUrl, detail: clip(`${job.key} · ${job.status} at ${job.stage}`, SHORT) };
     if (job.pr && prUrl) catalog[`pr:${job.id}:${job.pr}`] = { kind: 'pr', ref: `pr:${job.id}:${job.pr}`, url: prUrl, detail: `PR #${job.pr}` };
     const trigger = Math.min(Math.max(pending.event.steps - 1, 0), Math.max(job.steps.length - 1, 0));
     const window = job.steps.map((step, index) => ({ step, index })).slice(-ENTRIES);
@@ -56,7 +56,7 @@ export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pend
             ...(store.state.outbox || []).filter(item => item.ticket === job.key).slice(-ENTRIES).map(item => ({ outbox: item.title, status: item.status, detail: clip(item.detail, SHORT) })),
         ].slice(-ENTRIES),
         notes: store.state.projectNotes.filter(note => note.ticket === job.key).slice(-10).map(note => ({ summary: clip(note.summary, SHORT), detail: clip(note.detail, SHORT) })),
-        activeLessons: (store.state.knowledge?.lessons || []).filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ id: lesson.id, statement: lesson.statement, recurrences: lesson.recurrences?.length || 0 })),
+        activeLessons: [...(store.state.knowledge?.lessons || []), ...(store.state.knowledge?.officeLessons || [])].filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ scope: lesson.scope, revision: lesson.revision || 1, id: lesson.id, statement: lesson.statement, recurrences: lesson.recurrences?.length || 0 })),
         ...(job.maintenance ? { maintenance: maintenanceFacts(job, catalog) } : {}),
         omitted: {},
         catalog,

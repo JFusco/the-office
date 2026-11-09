@@ -10,6 +10,8 @@ import { publishParked } from '../../../server/cec/parking/park-ticket';
 import { implementationContinuationDecision } from '../../../server/delivery/recovery/implementation/implementation-continuation';
 import type { Ticket } from '../../../src/shared';
 import { job, knowledgeStore, result } from './knowledge-fixture';
+import { captureLearning } from '../../../server/knowledge/learning-events';
+import { maintainLearning } from '../../../server/knowledge/learning-maintenance';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).forEach(fn => fn()));
@@ -27,7 +29,7 @@ test('CEC history is baselined once when tickets first join the trigger sources'
     expect(store.state.knowledge!.baselines).toContain('tickets');
 });
 
-test('a completed CEC pilot run gets a retrospective with Jira and Azure links and results in pipeline order', async () => {
+test('a completed CEC pilot run learns from accepted results and retains Jira and Azure identity links', async () => {
     const { store } = setup();
     const done = ticket({ stage: 'complete', results: { qa: result('qa', { findings: [{ id: 'Q1', summary: 'Focus ring missing', expected: '', actual: '', status: 'verified', attempts: 1 }] }), implement: result('implement') } });
     store.state.tickets = [done];
@@ -36,9 +38,12 @@ test('a completed CEC pilot run gets a retrospective with Jira and Azure links a
     expect(packet.steps.map(step => (step as { stage: string }).stage)).toEqual(['implement', 'qa']);
     expect(packet.catalog[`ticket:${done.runId}`].url).toBe(done.url);
     expect(packet.catalog[`pr:${done.runId}:41`].url).toMatch(/\/pullrequest\/41$/);
+    captureLearning(store, { kind: 'ticket', id: done.runId! }, done.key, 'qa', 'qa-accepted', done.results.qa, 'Accepted QA findings', 'work', true);
+    maintainLearning(store);
+    const batch = store.state.knowledge!.pending[0], evidenceRef = batch.opportunities![0].evidence[0].ref;
     let prompt = '';
-    const run = (async (text: string) => { prompt = text; return { summary: 'QA caught a focus ring gap.', lessons: [{ statement: 'Check focus rings on new controls before QA', detail: '', kind: 'pitfall', stages: ['implement'], paths: [], evidenceIds: [`finding:${done.runId}:1:Q1`], repositoryInstruction: true }], recurrences: [] }; }) as KnowledgeRunner;
-    await runRetrospective(store, run, ticketCompletedId(done));
+    const run = (async (text: string) => { prompt = text; return { summary: 'QA caught a focus ring gap.', lessons: [{ statement: 'Check focus rings on new controls before QA', detail: '', kind: 'pitfall', stages: ['implement'], paths: [], evidenceIds: [evidenceRef], repositoryInstruction: true }], recurrences: [] }; }) as KnowledgeRunner;
+    await runRetrospective(store, run, batch.id);
     expect(prompt).toContain('a Jira/Azure ticket');
     const knowledge = store.state.knowledge!;
     expect(knowledge.consumed).toContain(ticketCompletedId(done));

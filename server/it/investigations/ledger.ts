@@ -1,3 +1,4 @@
+import { captureLearning } from '../../knowledge/learning-events';
 import { supersedingDelivery } from '../../conversations/slack/supersession-proof';
 import { slackMessageUrl } from '../../../src/shared';
 import type { ITInvestigation } from '../../../src/contracts/it-investigations';
@@ -36,6 +37,7 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
             if (entry.status !== 'resolved') {
                 entry.status = 'resolved'; entry.nextAt = ''; entry.updatedAt = now.toISOString();
                 entry.resolution = { ...resolution, at: now.toISOString() };
+                captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
                 store.emit('it-investigation-resolved', resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
             }
         } else if (entry.status === 'resolved') {

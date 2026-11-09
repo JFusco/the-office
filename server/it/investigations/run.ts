@@ -1,3 +1,4 @@
+import { captureLearning } from '../../knowledge/learning-events';
 import { OfficeFixResult, OFFICE_FIX_PROMPT, validateOfficeFix } from './office-fix';
 import type { ITInvestigation } from '../../../src/contracts/it-investigations';
 import { z } from 'zod';
@@ -44,6 +45,7 @@ export async function runInvestigation(store: Store, id: string, run: Investigat
             return typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash) ? [{ ref: item.ref, sha256: hash }] : [];
         });
         current.report = report; current.status = report.blocker ? 'blocked' : 'diagnosed'; current.nextAt = ''; current.lastError = '';
+        captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'it-investigation', String(entry.attempts), report, report.summary);
         store.emit('it-investigation-diagnosed', `${report.summary} ${subprocess ? 'Office fix proposal or evidence blocker is ready for Morgan.' : 'Original outcome requires its own verified resolution.'}`, 'it', entry.source.ticket);
     } catch (error) {
         const current = store.state.it?.investigations?.find(entry => entry.id === id);

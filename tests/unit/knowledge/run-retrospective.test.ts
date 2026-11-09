@@ -7,6 +7,8 @@ import { jobSubject } from '../../../server/knowledge/retrospective-subject';
 import { completedId } from '../../../server/knowledge/retrospective-triggers';
 import type { RetrospectiveResult } from '../../../server/knowledge/retrospective-result';
 import { job, knowledgeStore, result } from './knowledge-fixture';
+import { captureLearning } from '../../../server/knowledge/learning-events';
+import { maintainLearning } from '../../../server/knowledge/learning-maintenance';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).forEach(fn => fn()));
@@ -19,10 +21,14 @@ function setup() {
     fixture.store.state.coordination!.jobs!.push(done);
     return { ...fixture, done, id: completedId(done) };
 }
-const lesson = (statement: string, evidenceIds: string[]): RetrospectiveResult['lessons'][number] => ({ statement, detail: 'Why it matters', kind: 'pitfall', stages: ['implement'], paths: ['scripts/wiki'], evidenceIds, repositoryInstruction: false });
+const lesson = (statement: string, evidenceIds: string[]): RetrospectiveResult['lessons'][number] => ({ tier: 'guidance', statement, detail: 'Why it matters', kind: 'pitfall', stages: ['implement'], paths: ['scripts/wiki'], evidenceIds, repositoryInstruction: false });
 
 test('a failed run waits with capped backoff instead of blocking, then a later success consumes the trigger', async () => {
-    const { store, advance, id, done } = setup();
+    const { store, advance, done } = setup();
+    captureLearning(store, { kind: 'job', id: done.id }, done.key, 'review', '0', done.steps[0].result, 'Accepted negative review', 'work', true);
+    maintainLearning(store);
+    const id = store.state.knowledge!.pending[0].id;
+    const packetRef = store.state.knowledge!.pending[0].opportunities![0].evidence[0].ref;
     let provisional = '';
     const failing = (async () => { provisional = store.state.knowledge!.pending[0].nextAt; throw new Error('provider overloaded'); }) as RetrospectiveRunner;
     await runRetrospective(store, failing, id);
@@ -38,13 +44,12 @@ test('a failed run waits with capped backoff instead of blocking, then a later s
 
     advance(retryDelay(1));
     expect(scheduledRetrospectives(store, failing)[0].eligibility.state).toBe('runnable');
-    const packetRef = `finding:${done.id}:0:F1`;
     await runRetrospective(store, (async () => ({ summary: 'Catalog drift caused one repair.', lessons: [lesson('Regenerate the catalog before review', [packetRef, 'invented:ref'])], recurrences: [] })) as RetrospectiveRunner, id);
     const knowledge = store.state.knowledge!;
     expect(knowledge.pending).toEqual([]);
     expect(knowledge.consumed).toContain(id);
     expect(knowledge.retrospectives).toHaveLength(1);
-    expect(knowledge.lessons[0]).toMatchObject({ status: 'active', evidence: [{ ref: packetRef, url: 'https://github.com/JFusco/brain/pull/7' }] });
+    expect(knowledge.lessons[0]).toMatchObject({ status: 'active', evidence: [{ ref: packetRef, kind: 'learning' }] });
     expect(scheduledRetrospectives(store, failing)).toEqual([]);
 });
 
