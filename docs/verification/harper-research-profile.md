@@ -1,31 +1,44 @@
 # Harper research capability evidence
 
-Native fixture run: 2026-11-08. Installed CLI: `codex-cli 0.163.0`.
+The public research profile is verified for `codex-cli 0.163.0`, using Harper's
+existing `gpt-6-astra` / `high` route. The native Office worker successfully opened
+SQLite's official transaction page on 2026-11-09. Its accepted source contains a
+`native-read:` receipt copied from the CLI's completed `web_search/open_page` event,
+not the model's claimed citation. The compact receipt and raw-event digests are in
+[harper-research-profile-native.json](harper-research-profile-native.json).
 
-A disposable directory outside the repositories contained an AGENTS sentinel. The
-public prompt requested only a hosted read of SQLite's official transaction page.
-No private incident text, repository context, credentials or real issue writes were
-part of this fixture. Invocation used `--ignore-user-config`, `--ignore-rules`,
-read-only sandboxing, approval policy never, `project_doc_max_bytes=0`,
-`agents.enabled=false`, hosted `web_search="live"`, host skill discovery disabled,
-and the disabled features recorded in `server/workers/research-profile.ts`.
+The profile enables `code_mode_host`, required by the tested tool route, and
+excludes the `functions` tool namespace from its executor. A separate native
+capability fixture enumerated only `web__run` and `clock__curr_time` in `ALL_TOOLS`;
+this inventory is the fixture's reported metadata, not a provider attestation.
+Before that exclusion, a negative write fixture captured the native error
+`writing is blocked by read-only sandbox`; independent filesystem read-back
+confirmed no file was created. Connected resource/template lists were empty.
 
-The native stream reported:
+The exact profile retains read-only sandboxing, approval policy never,
+`--ignore-user-config`, `--ignore-rules`, ephemeral execution,
+`project_doc_max_bytes=0`, `agents.enabled=false`, and disabled shell, apps,
+plugins, hooks, memories, subagents, local images, browsers, computer use and goals.
+Each scheduled attempt gets a fresh temporary working directory outside project
+repositories and data, removed after completion or failure. Runtime fixture input
+contains only the public question: no project context, IT diagnostics, lessons,
+session bridge or private artifact paths. An AGENTS instruction sentinel was not
+returned; sentinel absence alone does not prove isolation.
 
-> Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.
+The native fixture used `WorkerRuntime.run`, an isolated Store and the real command
+transport. Focused injected-runner tests separately cover the public-only prompt,
+native receipt binding, unavailable versions/controls, disposable-directory
+cleanup, shared scheduling and the original retry budgets. These are distinct from
+live deployment or a scheduled production research run; neither is claimed here.
+Unknown CLI versions or missing required feature controls still block dispatch.
 
-The final response was “Hosted web retrieval is unavailable in this session.”
-No native page-open event was emitted. Exit code was 0; that does **not** establish
-research success. The sentinel was absent from the returned stream, which alone
-also does not establish the complete model-visible tool surface.
+The earlier 2026-11-08 fixture disabled `code_mode_host`. The CLI reported
+`code-mode host is disabled`, returned hosted retrieval unavailable, and emitted
+no page-open event. Enabling standalone web search without its host also failed.
+These failures were configuration evidence, not proof that the account lacked web
+access. The old guard has been removed. Only its exact zero-launch unavailable
+record may return to pending; exhausted or other unavailable results stay settled.
 
-Consequently automatic research remains unavailable for this profile. Weekly
-reports retain that reason without blocking local learning, metrics or delivery.
-Enabling research requires a new native capability fixture demonstrating hosted
-retrieval, source-read receipts and the restricted tool surface; version and flag
-presence alone are insufficient. Do not relax local access or delegation controls
-to make research run. Unit fixtures test the scheduler, budgets and acceptance
-logic but are not provider capability proof.
-
-Original receipt location for this run:
+Raw receipts: `/Users/joe.fusco/.codex/artifacts/harper-research-20261109/`.
+Prior failed receipt:
 `/var/folders/j6/ns8v4yrn5kq61phl2ffhrt1m0000gs/T/harper-public-profile-3dshlxv5/events.jsonl`.
