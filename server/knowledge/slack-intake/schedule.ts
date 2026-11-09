@@ -1,3 +1,4 @@
+import { reconcileIntakeStatus } from './operational-status';
 import { intakeLaunchLimit } from './seed-status';
 import { queueReconsideration } from './reconsider';
 import { runSlackLinks, type LinkRecord } from './read-links';
@@ -105,6 +106,9 @@ function projectSlackIntake(store: Store, run: KnowledgeRunner, now: Date): Sche
 }
 
 export function scheduledSlackIntake(store: Store, run: KnowledgeRunner, now: Date): ScheduledWork[] {
-    try { return projectSlackIntake(store, run, now); }
-    catch { return [{ store, work: { projectId: store.project.id, kind: 'knowledge-slack-intake', id: 'intake-configuration' }, stage: 'knowledge-slack-intake', rank: 5, enqueuedAt: '', eligibility: { state: 'blocked', reason: 'Private learning intake configuration needs attention', owner: 'Harper', nextCheckAt: null }, identity: () => 'invalid-config', execute: async () => undefined }]; }
+    let work: ScheduledWork[];
+    try { work = projectSlackIntake(store, run, now); }
+    catch { work = [{ store, work: { projectId: store.project.id, kind: 'knowledge-slack-intake', id: 'intake-configuration' }, stage: 'knowledge-slack-intake', rank: 5, enqueuedAt: '', eligibility: { state: 'blocked', reason: 'Private learning intake configuration needs attention', owner: 'Harper', nextCheckAt: null }, identity: () => 'invalid-config', execute: async () => undefined }]; }
+    try { reconcileIntakeStatus(store, work, now); } catch { /* Status must not block scheduling. */ }
+    return work;
 }

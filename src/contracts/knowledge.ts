@@ -164,7 +164,19 @@ export interface SlackSeedProgress {
     channelsTotal: number; channelsEnumerated: number; pendingReads: number; pendingCaptures: number;
     unresolvedSources: number; coverageGaps: number; dailyLimit: number; completedAt?: string;
 }
+/** Deterministic, aggregate-only operational status, independent of latched historical completion. */
+export interface SlackIntakeStatus {
+    activity: 'reading' | 'classifying' | 'reading-references' | 'capturing' | 'working' | 'stopping' | 'queued' | 'waiting-budget' | 'waiting-retry' | 'waiting' | 'caught-up' | 'paused' | 'disabled' | 'needs-attention';
+    configuration: 'valid' | 'missing' | 'invalid' | 'changed';
+    enabled: boolean; paused: boolean; draining: boolean; needsAttention: boolean;
+    completedReads: number; pendingReads: number; failedReads: number; retryingReads: number;
+    verifiedCaptures: number; duplicates: number; quarantines: number; pendingCaptures: number; uncertainCaptures: number;
+    observedSources: number; unresolvedSources: number; sourceErrors: number;
+    day: string; launches: number; dailyLimit: number; changedAt: string;
+    activeSince?: string; nextAttemptAt?: string; lastCaptureAt?: string; lastReadAt?: string;
+}
 export interface KnowledgeState {
+    slackIntake?: SlackIntakeStatus;
     slackSeed?: SlackSeedProgress;
 
     learningStartedAt?: string;
