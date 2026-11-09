@@ -18,10 +18,10 @@ export function intakeLaunchLimit(ledger: IntakeLedger, config: Config): number 
     return key && ledger.get<Completion>('seed-completion', key) ? LIMITS.launches : config.seedLaunchesPerDay ?? LIMITS.launches;
 }
 /** The first completion is latched: later weekly reads cannot reopen this historical seed. */
-export function reconcileSeedStatus(ledger: IntakeLedger, config: Config, tasks: ReadTask[], units: SourceUnit[], links: LinkRecord[], proposals: Proposal[]): SlackSeedProgress {
+export function reconcileSeedStatus(ledger: IntakeLedger, config: Config, tasks: ReadTask[], units: SourceUnit[], links: LinkRecord[], proposals: Proposal[], terminal: Set<string>): SlackSeedProgress {
     const key = seedKey(ledger, config), completed = key && ledger.get<Completion>('seed-completion', key);
     if (completed) return { ...completed.summary, dailyLimit: LIMITS.launches };
-    const progress = intakeProgress(tasks, units, links, proposals), hash = configDigest(config);
+    const progress = intakeProgress(tasks, units, links, proposals, terminal), hash = configDigest(config);
     const channels = config.channels.map(c => ledger.get<ChannelProgress>('channel', c.id));
     const histories = channels.filter(c => c?.enumerated).length;
     const caughtUp = config.channels.every((c, i) => {

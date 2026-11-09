@@ -1,4 +1,4 @@
-import { intakeProgress } from './progress';
+import { intakeProgress, terminalDeferred } from './progress';
 import { reconcileSeedStatus } from './seed-status';
 import type { SlackSeedProgress } from '../../../src/contracts/knowledge';
 import { mkdirSync, renameSync, writeFileSync, readFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ const byWeek = <T>(rows: T[], week: (row: T) => string | undefined) => {
 /** Private reports follow the intake ledger's weeks; a matching narrative rollup only receives the aggregate appendix. */
 export function reconcileIntakeReports(store: Store): void {
     const config = readConfig(store); if (!config) return;
-    const ledger = new IntakeLedger(store), token = `seed-v1:${ledger.revision()}:${configDigest(config)}:${config.seedLaunchesPerDay ?? 8}`;
+    const ledger = new IntakeLedger(store), token = `seed-v2:${ledger.revision()}:${configDigest(config)}:${config.seedLaunchesPerDay ?? 8}`;
     // Full rescans run only after an effective ledger write; rollups that appear later still receive the cached aggregates.
     const cached = ledger.get<{ token: string; summaries: IntakeSummary[]; seed: SlackSeedProgress }>('meta', 'report');
     const report = cached?.token === token ? cached : refreshReports(store, ledger, config);
@@ -33,18 +33,20 @@ export function reconcileIntakeReports(store: Store): void {
 type ReportRows = { tasks: ReadTask[]; proposals: Proposal[]; units: SourceUnit[]; links: LinkRecord[] };
 function refreshReports(store: Store, ledger: IntakeLedger, config: Config) {
     const rows: ReportRows = { tasks: ledger.all('task'), proposals: ledger.all('proposal'), units: ledger.all('unit'), links: ledger.all('link') };
-    const seed = reconcileSeedStatus(ledger, config, rows.tasks, rows.units, rows.links, rows.proposals);
-    const summaries = writeReports(store, ledger, config, seed, rows);
-    return { token: `seed-v1:${ledger.revision()}:${configDigest(config)}:${config.seedLaunchesPerDay ?? 8}`, summaries, seed };
+    // Computed from all retained rows: a later week's reconsideration settles a deferral from an earlier week.
+    const terminal = terminalDeferred(ledger, rows.units, rows.tasks);
+    const seed = reconcileSeedStatus(ledger, config, rows.tasks, rows.units, rows.links, rows.proposals, terminal);
+    const summaries = writeReports(store, ledger, config, seed, rows, terminal);
+    return { token: `seed-v2:${ledger.revision()}:${configDigest(config)}:${config.seedLaunchesPerDay ?? 8}`, summaries, seed };
 }
-function writeReports(store: Store, ledger: IntakeLedger, config: Config, seed: SlackSeedProgress, { tasks, proposals, units: allUnits, links: allLinks }: ReportRows): IntakeSummary[] {
+function writeReports(store: Store, ledger: IntakeLedger, config: Config, seed: SlackSeedProgress, { tasks, proposals, units: allUnits, links: allLinks }: ReportRows, terminal: Set<string>): IntakeSummary[] {
     const taskWeeks = byWeek(tasks, t => t.week), unitWeeks = byWeek(allUnits, u => u.week), linkWeeks = byWeek(allLinks, l => l.week);
     const proposalTasks = byWeek(proposals, p => p.task), summaries: IntakeSummary[] = [];
     for (const week of new Set([...taskWeeks.keys(), ...unitWeeks.keys(), ...linkWeeks.keys()])) {
         const matching = taskWeeks.get(week) || [], units = unitWeeks.get(week) || [], links = linkWeeks.get(week) || [];
         const captures = matching.flatMap(t => proposalTasks.get(t.id) || []), settled = captures.filter(p => p.status === 'captured');
         const internal = units.flatMap(u => u.references.filter(r => r.kind === 'internal').map(r => ({ source: u.id, url: r.id })));
-        const progress = intakeProgress(matching, units, links, captures), outstanding = progress.outstanding;
+        const progress = intakeProgress(matching, units, links, captures, terminal), outstanding = progress.outstanding;
         const summary: IntakeSummary = { id: `intake-${week}`, week, status: outstanding ? 'partial' : 'settled', coverageGaps: progress.gaps + 4, reads: matching.filter(t => t.status === 'complete').length,
             captures: settled.length, duplicates: settled.filter(p => p.receipt?.duplicate).length, quarantines: settled.filter(p => p.receipt?.status === 'quarantined').length, outstanding,
             reasons: ['search-dependent', 'channel-resource-inventory-unavailable', ...(internal.length ? ['internal-references-unread'] : []), ...(matching.some(t => t.status === 'needs-attention') || links.some(l => l.state === 'needs-attention') ? ['needs-attention'] : [])] };

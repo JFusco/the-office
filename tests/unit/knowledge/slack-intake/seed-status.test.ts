@@ -7,6 +7,8 @@ import { IntakeConfig, configDigest } from '../../../../server/knowledge/slack-i
 import { reconcileIntakeReports, readIntakeReport } from '../../../../server/knowledge/slack-intake/report';
 import { intakeLaunchLimit } from '../../../../server/knowledge/slack-intake/seed-status';
 import { scheduledSlackIntake } from '../../../../server/knowledge/slack-intake/schedule';
+import { queueReconsideration } from '../../../../server/knowledge/slack-intake/reconsider';
+import type { LinkRecord } from '../../../../server/knowledge/slack-intake/read-links';
 import type { ReadTask, SourceUnit, Proposal } from '../../../../server/knowledge/slack-intake/contracts';
 import type { KnowledgeRunner } from '../../../../server/knowledge/run-retrospective';
 import { SlackSeedStatus } from '../../../../src/knowledge/SlackSeedStatus';
@@ -67,6 +69,45 @@ test('unresolved sources, exhausted reads, and uncertain or invalid capture rece
             expect(intakeLaunchLimit(f.ledger, configured)).toBe(32);
         } finally { f.close(); }
     }
+});
+test('a deferral backed by a terminal reference gap completes only after reconsidering its current evidence', () => {
+    const f = intakeFixture();
+    try {
+        finishedReads(f);
+        const url = 'https://www.sqlite.org/', link = (state: LinkRecord['state'], reason: string) => f.ledger.put('link', url, { url, source: 'fixture:v1', week: '2026-11-06', depth: 0, state, reason, failures: 0, nextAt: '' } satisfies LinkRecord);
+        const reconsideration = () => f.ledger.all<ReadTask>('task').find(t => t.processing?.length && t.status !== 'complete')!;
+        const finish = (t: ReadTask) => f.ledger.put('task', t.id, { ...t, status: 'complete' });
+        f.ledger.put('unit', 'fixture:v1', { ...unit('deferred'), references: [{ kind: 'link', id: url }] });
+        link('pending', ''); reconcileIntakeReports(f.store);
+        expect(f.store.state.knowledge!.slackSeed).toMatchObject({ status: 'seeding', unresolvedSources: 1 });
+        link('deferred', 'public-read-unverified'); queueReconsideration(f.ledger, configured, '2026-11-13', 'later');
+        reconcileIntakeReports(f.store);
+        expect(f.store.state.knowledge!.slackSeed).toMatchObject({ status: 'seeding', unresolvedSources: 1, pendingReads: 1 });
+        // Evidence changes after the first reconsideration finished: its identity no longer matches.
+        finish(reconsideration()); link('deferred', 'link-budget'); reconcileIntakeReports(f.store);
+        expect(f.store.state.knowledge!.slackSeed).toMatchObject({ unresolvedSources: 1 }); expect(f.store.state.knowledge!.slackSeed?.status).not.toBe('complete-with-gaps');
+        expect(f.ledger.all('seed-completion')).toHaveLength(0); expect(f.store.state.events.filter(e => e.kind === 'slack-seed-complete')).toHaveLength(0);
+        queueReconsideration(f.ledger, configured, '2026-11-13', 'later'); finish(reconsideration()); reconcileIntakeReports(f.store);
+        expect(f.store.state.knowledge!.slackSeed).toMatchObject({ status: 'complete-with-gaps', unresolvedSources: 0, pendingReads: 0, coverageGaps: 6 });
+        expect(f.store.state.events.filter(e => e.kind === 'slack-seed-complete')).toHaveLength(1);
+        expect(JSON.parse(readIntakeReport(f.store, 'intake-2026-11-06'))).toMatchObject({ status: 'settled', outstanding: 0, coverageGaps: 6 });
+        expect(JSON.parse(readIntakeReport(f.store, 'intake-2026-11-13'))).toMatchObject({ status: 'settled', reads: 2 });
+    } finally { f.close(); }
+});
+test('public reads enforce the current allowance even when projected under a larger one', async () => {
+    const f = intakeFixture();
+    try {
+        f.configure(configured); f.ledger.put('channel', 'C123', { id: 'C123', seedUpperTs: '200.000000', enumerated: false, through: '200.000000', week: '2026-11-06' });
+        const url = 'https://www.sqlite.org/', pending: LinkRecord = { url, source: 'fixture:v1', week: '2026-11-06', depth: 0, state: 'pending', reason: '', failures: 0, nextAt: '' };
+        f.ledger.put('link', url, pending); f.ledger.put('launches', '2026-11-06', 8);
+        let calls = 0;
+        const run = (async (_p, _s, opts) => { calls++; opts.onIntakeLaunch?.(); return { sources: [], references: [] }; }) as KnowledgeRunner;
+        const [projected] = scheduledSlackIntake(f.store, run, f.store.clock.now()); expect(projected.work.id).toBe('intake-public-links');
+        f.configure(config); await projected.execute();
+        expect(calls).toBe(0); expect(f.ledger.get('launches', '2026-11-06')).toBe(8); expect(f.ledger.get('link', url)).toEqual(pending);
+        f.ledger.put('launches', '2026-11-06', 7); await projected.execute();
+        expect(calls).toBe(1); expect(f.ledger.get('launches', '2026-11-06')).toBe(8);
+    } finally { f.close(); }
 });
 test('missing native-window proof or changed authority never reuses a completion record', () => {
     const f = intakeFixture();

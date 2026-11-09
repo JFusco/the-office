@@ -25,7 +25,7 @@ export async function runSlackLinks(store: Store, config: Config, run: Knowledge
     const current = readConfig(store);
     if (!current?.enabled || configDigest(current) !== configDigest(config) || !store.state.knowledge?.enabled || store.state.paused || store.state.draining) return;
     const ledger = new IntakeLedger(store);
-    if ((ledger.get<number>('launches', easternDay(store.clock.now())) || 0) >= intakeLaunchLimit(ledger, config)) return;
+    if ((ledger.get<number>('launches', easternDay(store.clock.now())) || 0) >= intakeLaunchLimit(ledger, current)) return;
     const selected: { url: string; item: LinkRecord }[] = [];
     const perSource = new Map<string, number>();
     for (const prior of ledger.all<LinkRecord>('link')) if (prior.state === 'read') perSource.set(prior.source, (perSource.get(prior.source) || 0) + 1);

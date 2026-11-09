@@ -173,7 +173,11 @@ channel identities, completed catch-up channel/search/inventory reads, and no
 unfinished read, actionable source outcome or unsettled capture. Queued catch-up
 alone is not completion. Needs-attention reads, failed source outcomes and uncertain
 capture receipts prevent completion. Explicit unavailable bodies and terminal public
-reference gaps remain separate coverage limits. Bookmarks/pins and search-based
+reference gaps remain separate coverage limits. A deferred source becomes such a gap
+only once a reconsideration of its current reference evidence (including at least
+one unavailable reference) has completed; changed evidence needs another one.
+Public-reference reads check the current private allowance when they run, not the
+one in effect when they were scheduled. Bookmarks/pins and search-based
 discovery prevent a claim of lossless coverage, so the finished label is
 **Complete with coverage gaps**.
 
