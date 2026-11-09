@@ -1,3 +1,4 @@
+import { retrySlackIntake } from '../../knowledge/slack-intake/schedule';
 import { promoteNoteLesson } from '../../knowledge/promote-note-lesson';
 import { supersedeSlackDelivery } from '../../conversations/slack/supersede-delivery';
 import { TimeClassificationInput } from '../../time/time-classification';
@@ -34,6 +35,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
+            case 'retry-slack-intake': return json(retrySlackIntake(store, messageId), 202);
             case 'promote-note-lesson': {
                 const id = promoteNoteLesson(offices.control, store, lessonPromotion);
                 mirrorOfficeKnowledge(offices.control, offices.stores().values());

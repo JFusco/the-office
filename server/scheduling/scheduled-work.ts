@@ -1,3 +1,4 @@
+import { scheduledSlackIntake } from '../knowledge/slack-intake/schedule';
 import { scheduledInvestigations } from '../it/investigations/scheduled';
 import { scheduledFeatures } from '../features/scheduled-features';
 import { costLedger } from '../telemetry/cost-entries';
@@ -64,7 +65,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     if (lane === 'it') items.push(...scheduledInvestigations(store, (prompt, schema, options) => engine.itAgents.run('it', prompt, schema, options), now));
     if (lane === 'knowledge') {
         const run: import('../knowledge/run-retrospective').KnowledgeRunner = (prompt, schema, opts) => engine.knowledgeAgents.run('knowledge', prompt, schema, opts);
-        return withActiveClaims(store, lane, [...items, ...scheduledRetrospectives(store, run, now), ...scheduledRollup(store, run, now, knowledge)]);
+        return withActiveClaims(store, lane, [...items, ...scheduledRetrospectives(store, run, now), ...scheduledRollup(store, run, now, knowledge), ...scheduledSlackIntake(store, run, now)]);
     }
     for (const request of c.requests || [])
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)

@@ -116,6 +116,7 @@ export interface DeliveryMetrics {
     recurrences: number;
 }
 export interface WeeklyRollup {
+    intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; captures: number; duplicates: number; quarantines: number; outstanding: number; reasons: string[] };
     learning?: LearningMetrics;
     researchId?: string;
     research?: WeeklyResearch;
