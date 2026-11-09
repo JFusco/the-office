@@ -148,8 +148,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_cec_azure_correlatedbuild",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": "correlatedbuild()"
     },
     {
@@ -2082,8 +2082,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_conversations_notifications_mergenotifications_constructor",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".constructor()"
     },
     {
@@ -5150,8 +5150,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_delivery_pipeline_github_delivery_githubdelivery_constructor",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".constructor()"
     },
     {
@@ -5175,7 +5175,7 @@
       "_origin": "ast",
       "id": "server_delivery_pipeline_github_delivery_githubdelivery_enqueue",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": ".enqueue()"
     },
     {
@@ -10866,7 +10866,7 @@
       "_origin": "ast",
       "id": "server_features_approval",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "approval.ts"
     },
     {
@@ -10878,7 +10878,7 @@
       "_origin": "ast",
       "id": "server_features_approval_assertretaineditems",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "assertretaineditems()"
     },
     {
@@ -10890,7 +10890,7 @@
       "_origin": "ast",
       "id": "server_features_approval_approvefeature",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "approvefeature()"
     },
     {
@@ -10936,7 +10936,7 @@
       "_origin": "ast",
       "id": "server_features_commands",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "features/commands.ts"
     },
     {
@@ -10948,7 +10948,7 @@
       "_origin": "ast",
       "id": "server_features_commands_featurebyid",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "featurebyid()"
     },
     {
@@ -10960,7 +10960,7 @@
       "_origin": "ast",
       "id": "server_features_commands_reviewquestions",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "reviewquestions()"
     },
     {
@@ -10972,7 +10972,7 @@
       "_origin": "ast",
       "id": "server_features_commands_mutation",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "mutation()"
     },
     {
@@ -10984,7 +10984,7 @@
       "_origin": "ast",
       "id": "server_features_commands_createfeature",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "createfeature()"
     },
     {
@@ -10996,7 +10996,7 @@
       "_origin": "ast",
       "id": "server_features_commands_commandfeature",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "commandfeature()"
     },
     {
@@ -11042,7 +11042,7 @@
       "_origin": "ast",
       "id": "server_features_delivery_binding",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "delivery-binding.ts"
     },
     {
@@ -11102,7 +11102,7 @@
       "_origin": "ast",
       "id": "server_features_delivery_binding_featureeffectgate",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "featureeffectgate()"
     },
     {
@@ -11113,7 +11113,7 @@
       "_origin": "ast",
       "id": "server_features_dependency_edges",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "dependency-edges.ts"
     },
     {
@@ -11125,7 +11125,7 @@
       "_origin": "ast",
       "id": "server_features_dependency_edges_key",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "key()"
     },
     {
@@ -11137,7 +11137,7 @@
       "_origin": "ast",
       "id": "server_features_dependency_edges_featuredependencyedges",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "featuredependencyedges()"
     },
     {
@@ -11149,7 +11149,7 @@
       "_origin": "ast",
       "id": "server_features_dependency_edges_assertfeaturedependencyorder",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "assertfeaturedependencyorder()"
     },
     {
@@ -11160,7 +11160,7 @@
       "_origin": "ast",
       "id": "server_features_discovery_prompts",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "discovery-prompts.ts"
     },
     {
@@ -11172,7 +11172,7 @@
       "_origin": "ast",
       "id": "server_features_discovery_prompts_discoveryprompt",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "discoveryprompt()"
     },
     {
@@ -11184,7 +11184,7 @@
       "_origin": "ast",
       "id": "server_features_discovery_prompts_planprompt",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "planprompt()"
     },
     {
@@ -11195,7 +11195,7 @@
       "_origin": "ast",
       "id": "server_features_documents",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "documents.ts"
     },
     {
@@ -11207,7 +11207,7 @@
       "_origin": "ast",
       "id": "server_features_documents_digest",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "digest()"
     },
     {
@@ -11219,7 +11219,7 @@
       "_origin": "ast",
       "id": "server_features_documents_featureroot",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "featureroot()"
     },
     {
@@ -11231,7 +11231,7 @@
       "_origin": "ast",
       "id": "server_features_documents_document",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "document()"
     },
     {
@@ -11243,7 +11243,7 @@
       "_origin": "ast",
       "id": "server_features_documents_artifactpath",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "artifactpath()"
     },
     {
@@ -11254,7 +11254,7 @@
       "_origin": "ast",
       "id": "server_features_enrollment_gate",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "enrollment-gate.ts"
     },
     {
@@ -11266,7 +11266,7 @@
       "_origin": "ast",
       "id": "server_features_enrollment_gate_enrolled",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "enrolled()"
     },
     {
@@ -11278,7 +11278,7 @@
       "_origin": "ast",
       "id": "server_features_enrollment_gate_currentapproval",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "currentapproval()"
     },
     {
@@ -11290,7 +11290,7 @@
       "_origin": "ast",
       "id": "server_features_enrollment_gate_predecessorcomplete",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "predecessorcomplete()"
     },
     {
@@ -11302,7 +11302,7 @@
       "_origin": "ast",
       "id": "server_features_enrollment_gate_featuregate",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "featuregate()"
     },
     {
@@ -11314,7 +11314,7 @@
       "_origin": "ast",
       "id": "server_features_enrollment_gate_assertfeaturegate",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "assertfeaturegate()"
     },
     {
@@ -11326,7 +11326,7 @@
       "_origin": "ast",
       "id": "server_features_enrollment_gate_assertenrollable",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "assertenrollable()"
     },
     {
@@ -11338,7 +11338,7 @@
       "_origin": "ast",
       "id": "server_features_enrollment_gate_bindfeature",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "bindfeature()"
     },
     {
@@ -11349,7 +11349,7 @@
       "_origin": "ast",
       "id": "server_features_feature_schema",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "feature-schema.ts"
     },
     {
@@ -11360,7 +11360,7 @@
       "_origin": "ast",
       "id": "server_features_feature_schema_text",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "text"
     },
     {
@@ -11371,7 +11371,7 @@
       "_origin": "ast",
       "id": "server_features_feature_schema_identity",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "identity"
     },
     {
@@ -11382,7 +11382,7 @@
       "_origin": "ast",
       "id": "server_features_feature_schema_manifestschema",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "manifestschema"
     },
     {
@@ -11393,7 +11393,7 @@
       "_origin": "ast",
       "id": "server_features_feature_schema_discoveryschema",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "discoveryschema"
     },
     {
@@ -11404,7 +11404,7 @@
       "_origin": "ast",
       "id": "server_features_feature_schema_planschema",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "planschema"
     },
     {
@@ -11415,7 +11415,7 @@
       "_origin": "ast",
       "id": "server_features_feature_schema_featurecommandschema",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "featurecommandschema"
     },
     {
@@ -11427,7 +11427,7 @@
       "_origin": "ast",
       "id": "server_features_feature_schema_manifestfromplan",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "manifestfromplan()"
     },
     {
@@ -11437,8 +11437,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_features_github_publication",
-      "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community": 5,
+      "community_name": "Store",
       "norm_label": "github-publication.ts"
     },
     {
@@ -11450,8 +11450,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_features_github_publication_githubfeaturepublisher",
-      "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community": 5,
+      "community_name": "Store",
       "norm_label": "githubfeaturepublisher"
     },
     {
@@ -11462,8 +11462,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_features_github_publication_githubfeaturepublisher_constructor",
-      "community": 44,
-      "community_name": ".transaction",
+      "community": 5,
+      "community_name": "Store",
       "norm_label": ".constructor()"
     },
     {
@@ -11555,7 +11555,7 @@
       "_origin": "ast",
       "id": "server_features_linked_features",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "linked-features.ts"
     },
     {
@@ -11566,7 +11566,7 @@
       "_origin": "ast",
       "id": "server_features_linked_features_link",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "link"
     },
     {
@@ -11578,7 +11578,7 @@
       "_origin": "ast",
       "id": "server_features_linked_features_linkfeature",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "linkfeature()"
     },
     {
@@ -11589,7 +11589,7 @@
       "_origin": "ast",
       "id": "server_features_planning_baseline",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "planning-baseline.ts"
     },
     {
@@ -11602,7 +11602,7 @@
       "_origin": "ast",
       "id": "server_features_planning_baseline_sourcechanged",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "sourcechanged"
     },
     {
@@ -11614,7 +11614,7 @@
       "_origin": "ast",
       "id": "server_features_planning_baseline_scopepaths",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "scopepaths()"
     },
     {
@@ -11626,7 +11626,7 @@
       "_origin": "ast",
       "id": "server_features_planning_baseline_tree",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "tree()"
     },
     {
@@ -11638,7 +11638,7 @@
       "_origin": "ast",
       "id": "server_features_planning_baseline_preparebaseline",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "preparebaseline()"
     },
     {
@@ -11650,7 +11650,7 @@
       "_origin": "ast",
       "id": "server_features_planning_baseline_comparebaseline",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "comparebaseline()"
     },
     {
@@ -11661,7 +11661,7 @@
       "_origin": "ast",
       "id": "server_features_publication",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "publication.ts"
     },
     {
@@ -11673,8 +11673,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_features_publication_publicationreceipt",
-      "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community": 54,
+      "community_name": "JiraIssuePublisher",
       "norm_label": "publicationreceipt"
     },
     {
@@ -11687,7 +11687,7 @@
       "_origin": "ast",
       "id": "server_features_publication_featurepublisher",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "featurepublisher"
     },
     {
@@ -11699,7 +11699,7 @@
       "_origin": "ast",
       "id": "server_features_publication_featurepublisher_context",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".context()"
     },
     {
@@ -11711,7 +11711,7 @@
       "_origin": "ast",
       "id": "server_features_publication_featurepublisher_verifyfinal",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".verifyfinal()"
     },
     {
@@ -11723,7 +11723,7 @@
       "_origin": "ast",
       "id": "server_features_publication_featurepublisher_validate",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".validate()"
     },
     {
@@ -11735,7 +11735,7 @@
       "_origin": "ast",
       "id": "server_features_publication_featurepublisher_preflight",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".preflight()"
     },
     {
@@ -11747,7 +11747,7 @@
       "_origin": "ast",
       "id": "server_features_publication_featurepublisher_dispatch",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".dispatch()"
     },
     {
@@ -11759,7 +11759,7 @@
       "_origin": "ast",
       "id": "server_features_publication_featurepublisher_readback",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".readback()"
     },
     {
@@ -11771,7 +11771,7 @@
       "_origin": "ast",
       "id": "server_features_publication_featurepublisher_verify",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".verify()"
     },
     {
@@ -11783,7 +11783,7 @@
       "_origin": "ast",
       "id": "server_features_publication_reserveidentity",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "reserveidentity()"
     },
     {
@@ -11795,7 +11795,7 @@
       "_origin": "ast",
       "id": "server_features_publication_publishfeature",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "publishfeature()"
     },
     {
@@ -11806,7 +11806,7 @@
       "_origin": "ast",
       "id": "server_features_reader_attempts",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "reader-attempts.ts"
     },
     {
@@ -11818,7 +11818,7 @@
       "_origin": "ast",
       "id": "server_features_reader_attempts_beginreader",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "beginreader()"
     },
     {
@@ -11830,7 +11830,7 @@
       "_origin": "ast",
       "id": "server_features_reader_attempts_acceptreader",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "acceptreader()"
     },
     {
@@ -11969,8 +11969,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_features_review_run_importreview",
-      "community": 10,
-      "community_name": "features/workflow.ts",
+      "community": 44,
+      "community_name": ".transaction",
       "norm_label": "importreview()"
     },
     {
@@ -12042,7 +12042,7 @@
       "_origin": "ast",
       "id": "server_features_revise_lineage",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "revise-lineage.ts"
     },
     {
@@ -12054,7 +12054,7 @@
       "_origin": "ast",
       "id": "server_features_revise_lineage_reviselineage",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "reviselineage()"
     },
     {
@@ -12065,7 +12065,7 @@
       "_origin": "ast",
       "id": "server_features_routes",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "routes.ts"
     },
     {
@@ -12077,7 +12077,7 @@
       "_origin": "ast",
       "id": "server_features_routes_featureroute",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "featureroute()"
     },
     {
@@ -12088,7 +12088,7 @@
       "_origin": "ast",
       "id": "server_features_scheduled_features",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "scheduled-features.ts"
     },
     {
@@ -12100,7 +12100,7 @@
       "_origin": "ast",
       "id": "server_features_scheduled_features_scheduledfeatures",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "scheduledfeatures()"
     },
     {
@@ -12111,7 +12111,7 @@
       "_origin": "ast",
       "id": "server_features_scheduling_gates",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "scheduling-gates.ts"
     },
     {
@@ -12123,7 +12123,7 @@
       "_origin": "ast",
       "id": "server_features_scheduling_gates_gatefeaturework",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "gatefeaturework()"
     },
     {
@@ -12157,7 +12157,7 @@
       "_origin": "ast",
       "id": "server_features_target_observation",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "target-observation.ts"
     },
     {
@@ -12169,7 +12169,7 @@
       "_origin": "ast",
       "id": "server_features_target_observation_targetobservation",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "targetobservation()"
     },
     {
@@ -12180,7 +12180,7 @@
       "_origin": "ast",
       "id": "server_features_workflow",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "features/workflow.ts"
     },
     {
@@ -12193,7 +12193,7 @@
       "_origin": "ast",
       "id": "server_features_workflow_featureworkflow",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": "featureworkflow"
     },
     {
@@ -12205,7 +12205,7 @@
       "_origin": "ast",
       "id": "server_features_workflow_featureworkflow_constructor",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": ".constructor()"
     },
     {
@@ -12217,7 +12217,7 @@
       "_origin": "ast",
       "id": "server_features_workflow_featureworkflow_create",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": ".create()"
     },
     {
@@ -12229,7 +12229,7 @@
       "_origin": "ast",
       "id": "server_features_workflow_featureworkflow_change",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": ".change()"
     },
     {
@@ -12241,7 +12241,7 @@
       "_origin": "ast",
       "id": "server_features_workflow_featureworkflow_pause",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": ".pause()"
     },
     {
@@ -12253,7 +12253,7 @@
       "_origin": "ast",
       "id": "server_features_workflow_featureworkflow_step",
       "community": 10,
-      "community_name": "features/workflow.ts",
+      "community_name": "features.ts",
       "norm_label": ".step()"
     },
     {
@@ -12597,8 +12597,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_github_issue_publication",
-      "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community": 5,
+      "community_name": "Store",
       "norm_label": "github/issue-publication.ts"
     },
     {
@@ -12608,8 +12608,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "server_github_issue_publication_content",
-      "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community": 5,
+      "community_name": "Store",
       "norm_label": "content"
     },
     {
@@ -12620,7 +12620,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_assign",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "assign"
     },
     {
@@ -12631,7 +12631,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_board",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "board"
     },
     {
@@ -12643,7 +12643,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_number",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "number()"
     },
     {
@@ -12655,7 +12655,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_same",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "same()"
     },
     {
@@ -12668,7 +12668,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "githubissuepublisher"
     },
     {
@@ -12679,8 +12679,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_constructor",
-      "community": 5,
-      "community_name": "Store",
+      "community": 30,
+      "community_name": "publication.ts",
       "norm_label": ".constructor()"
     },
     {
@@ -12692,7 +12692,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_api",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".api()"
     },
     {
@@ -12704,7 +12704,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_issue",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".issue()"
     },
     {
@@ -12716,7 +12716,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_content",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".content()"
     },
     {
@@ -12728,7 +12728,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_receipt",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".receipt()"
     },
     {
@@ -12740,7 +12740,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_closed",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".closed()"
     },
     {
@@ -12752,7 +12752,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_openitems",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".openitems()"
     },
     {
@@ -12764,7 +12764,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_context",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".context()"
     },
     {
@@ -12776,7 +12776,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_validate",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".validate()"
     },
     {
@@ -12788,7 +12788,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_preflight",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".preflight()"
     },
     {
@@ -12800,7 +12800,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_dispatch",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".dispatch()"
     },
     {
@@ -12812,7 +12812,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_verify",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".verify()"
     },
     {
@@ -12824,7 +12824,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_verifyfinal",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".verifyfinal()"
     },
     {
@@ -12836,7 +12836,7 @@
       "_origin": "ast",
       "id": "server_github_issue_publication_githubissuepublisher_readback",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": ".readback()"
     },
     {
@@ -13911,7 +13911,7 @@
       "_origin": "ast",
       "id": "server_knowledge_improvement_intake_gate",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "improvement-intake-gate.ts"
     },
     {
@@ -13923,7 +13923,7 @@
       "_origin": "ast",
       "id": "server_knowledge_improvement_intake_gate_improvementintakegate",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "improvementintakegate()"
     },
     {
@@ -15726,8 +15726,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_run_retrospective_harperfolder",
-      "community": 51,
-      "community_name": "weekly-research.ts",
+      "community": 28,
+      "community_name": "run-retrospective.ts",
       "norm_label": "harperfolder()"
     },
     {
@@ -15838,7 +15838,7 @@
       "label": "ResearchResult",
       "file_type": "code",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L15",
+      "source_location": "L18",
       "_origin": "ast",
       "id": "server_knowledge_weekly_research_researchresult",
       "community": 51,
@@ -15849,7 +15849,7 @@
       "label": "mirror()",
       "file_type": "code",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L16",
+      "source_location": "L19",
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_weekly_research_mirror",
@@ -15861,7 +15861,7 @@
       "label": "scheduledResearch()",
       "file_type": "code",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L37",
+      "source_location": "L40",
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_weekly_research_scheduledresearch",
@@ -15873,7 +15873,7 @@
       "label": "runWeeklyResearch()",
       "file_type": "code",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L66",
+      "source_location": "L74",
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_weekly_research_runweeklyresearch",
@@ -17178,8 +17178,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_maintenance_brain_brain_followup_brainfollowup_constructor",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".constructor()"
     },
     {
@@ -18519,8 +18519,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "server_office_config_local_bindings",
-      "community": 42,
-      "community_name": "offices.ts",
+      "community": 14,
+      "community_name": "worker-runtime.ts",
       "norm_label": "local_bindings"
     },
     {
@@ -19030,8 +19030,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_office_projects",
-      "community": 42,
-      "community_name": "offices.ts",
+      "community": 14,
+      "community_name": "worker-runtime.ts",
       "norm_label": "projects.ts"
     },
     {
@@ -19042,8 +19042,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_office_projects_withcecgoalevidence",
-      "community": 42,
-      "community_name": "offices.ts",
+      "community": 14,
+      "community_name": "worker-runtime.ts",
       "norm_label": "withcecgoalevidence()"
     },
     {
@@ -19102,8 +19102,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_office_projects_deliveryslot",
-      "community": 42,
-      "community_name": "offices.ts",
+      "community": 14,
+      "community_name": "worker-runtime.ts",
       "norm_label": "deliveryslot"
     },
     {
@@ -19127,8 +19127,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_office_projects_contextpacket",
-      "community": 42,
-      "community_name": "offices.ts",
+      "community": 14,
+      "community_name": "worker-runtime.ts",
       "norm_label": "contextpacket()"
     },
     {
@@ -19747,8 +19747,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_coordination_coordinator_constructor",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".constructor()"
     },
     {
@@ -19987,8 +19987,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": "engine"
     },
     {
@@ -20011,8 +20011,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_busy",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".busy()"
     },
     {
@@ -20023,8 +20023,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_constructor",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".constructor()"
     },
     {
@@ -20035,8 +20035,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_requestmail",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".requestmail()"
     },
     {
@@ -20047,8 +20047,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_drainmail",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".drainmail()"
     },
     {
@@ -20059,8 +20059,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_checkmail",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".checkmail()"
     },
     {
@@ -20071,8 +20071,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_requestdelivery",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".requestdelivery()"
     },
     {
@@ -20083,8 +20083,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_draindelivery",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".draindelivery()"
     },
     {
@@ -20095,8 +20095,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_startpilot",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".startpilot()"
     },
     {
@@ -20107,8 +20107,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_enablenightly",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".enablenightly()"
     },
     {
@@ -20119,8 +20119,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_dispatchnightly",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".dispatchnightly()"
     },
     {
@@ -20131,8 +20131,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_resume",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".resume()"
     },
     {
@@ -20143,8 +20143,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_requestmaintenance",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".requestmaintenance()"
     },
     {
@@ -20167,8 +20167,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_drainmaintenance",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".drainmaintenance()"
     },
     {
@@ -20179,8 +20179,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_pause",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".pause()"
     },
     {
@@ -20191,8 +20191,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_unpause",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".unpause()"
     },
     {
@@ -20203,8 +20203,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_run",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".run()"
     },
     {
@@ -20215,8 +20215,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_engine_engine_observe",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": ".observe()"
     },
     {
@@ -20465,8 +20465,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_scheduling_provider_observation",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": "provider-observation.ts"
     },
     {
@@ -20477,8 +20477,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_provider_observation_observe",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": "observe()"
     },
     {
@@ -20488,8 +20488,8 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "server_scheduling_provider_observation_parkedreaderror",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": "parkedreaderror"
     },
     {
@@ -20500,8 +20500,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_scheduling_provider_observation_observeparked",
-      "community": 5,
-      "community_name": "Store",
+      "community": 49,
+      "community_name": "engine.ts",
       "norm_label": "observeparked()"
     },
     {
@@ -21705,8 +21705,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_store_run_evidence",
-      "community": 1,
-      "community_name": "store.ts",
+      "community": 82,
+      "community_name": "run-evidence.ts",
       "norm_label": "run-evidence.ts"
     },
     {
@@ -21718,8 +21718,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_store_run_evidence_evidenceoutcome",
-      "community": 1,
-      "community_name": "store.ts",
+      "community": 82,
+      "community_name": "run-evidence.ts",
       "norm_label": "evidenceoutcome"
     },
     {
@@ -21730,8 +21730,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_store_run_evidence_comparable",
-      "community": 1,
-      "community_name": "store.ts",
+      "community": 82,
+      "community_name": "run-evidence.ts",
       "norm_label": "comparable()"
     },
     {
@@ -21742,8 +21742,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_store_run_evidence_recordrunevidence",
-      "community": 1,
-      "community_name": "store.ts",
+      "community": 82,
+      "community_name": "run-evidence.ts",
       "norm_label": "recordrunevidence()"
     },
     {
@@ -22100,8 +22100,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_store_store_store_finishwork",
-      "community": 44,
-      "community_name": ".transaction",
+      "community": 5,
+      "community_name": "Store",
       "norm_label": ".finishwork()"
     },
     {
@@ -22254,8 +22254,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_telemetry_codex_rollout_file",
-      "community": 82,
-      "community_name": "codex-rollout-file.ts",
+      "community": 40,
+      "community_name": "run-accounting.ts",
       "norm_label": "codex-rollout-file.ts"
     },
     {
@@ -22265,8 +22265,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "server_telemetry_codex_rollout_file_rollout_max_bytes",
-      "community": 82,
-      "community_name": "codex-rollout-file.ts",
+      "community": 40,
+      "community_name": "run-accounting.ts",
       "norm_label": "rollout_max_bytes"
     },
     {
@@ -22277,8 +22277,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_telemetry_codex_rollout_file_codexhome",
-      "community": 82,
-      "community_name": "codex-rollout-file.ts",
+      "community": 40,
+      "community_name": "run-accounting.ts",
       "norm_label": "codexhome()"
     },
     {
@@ -22289,8 +22289,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_telemetry_codex_rollout_file_daydirs",
-      "community": 82,
-      "community_name": "codex-rollout-file.ts",
+      "community": 40,
+      "community_name": "run-accounting.ts",
       "norm_label": "daydirs()"
     },
     {
@@ -22301,8 +22301,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_telemetry_codex_rollout_file_createdat",
-      "community": 82,
-      "community_name": "codex-rollout-file.ts",
+      "community": 40,
+      "community_name": "run-accounting.ts",
       "norm_label": "createdat()"
     },
     {
@@ -22313,8 +22313,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_telemetry_codex_rollout_file_header",
-      "community": 82,
-      "community_name": "codex-rollout-file.ts",
+      "community": 40,
+      "community_name": "run-accounting.ts",
       "norm_label": "header()"
     },
     {
@@ -22326,8 +22326,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_telemetry_codex_rollout_file_rolloutscan",
-      "community": 82,
-      "community_name": "codex-rollout-file.ts",
+      "community": 40,
+      "community_name": "run-accounting.ts",
       "norm_label": "rolloutscan"
     },
     {
@@ -22338,8 +22338,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_telemetry_codex_rollout_file_scancodexrollouts",
-      "community": 82,
-      "community_name": "codex-rollout-file.ts",
+      "community": 40,
+      "community_name": "run-accounting.ts",
       "norm_label": "scancodexrollouts()"
     },
     {
@@ -23307,8 +23307,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_telemetry_run_cost_unpriced",
-      "community": 40,
-      "community_name": "run-accounting.ts",
+      "community": 37,
+      "community_name": "telemetry.ts",
       "norm_label": "unpriced()"
     },
     {
@@ -23343,8 +23343,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_telemetry_run_cost_codexcost",
-      "community": 40,
-      "community_name": "run-accounting.ts",
+      "community": 37,
+      "community_name": "telemetry.ts",
       "norm_label": "codexcost()"
     },
     {
@@ -23414,8 +23414,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_telemetry_run_usage_codexusage",
-      "community": 40,
-      "community_name": "run-accounting.ts",
+      "community": 37,
+      "community_name": "telemetry.ts",
       "norm_label": "codexusage()"
     },
     {
@@ -24843,8 +24843,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_workers_command_registry",
-      "community": 5,
-      "community_name": "Store",
+      "community": 84,
+      "community_name": "command-registry.ts",
       "norm_label": "command-registry.ts"
     },
     {
@@ -24856,8 +24856,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_workers_command_registry_registeredcommand",
-      "community": 5,
-      "community_name": "Store",
+      "community": 84,
+      "community_name": "command-registry.ts",
       "norm_label": "registeredcommand"
     },
     {
@@ -24869,8 +24869,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_workers_command_registry_commandscope",
-      "community": 5,
-      "community_name": "Store",
+      "community": 84,
+      "community_name": "command-registry.ts",
       "norm_label": "commandscope"
     },
     {
@@ -24882,7 +24882,7 @@
       "_origin": "ast",
       "id": "server_workers_command_registry_inside",
       "community": 84,
-      "community_name": "CommandRegistry",
+      "community_name": "command-registry.ts",
       "norm_label": "inside()"
     },
     {
@@ -24895,7 +24895,7 @@
       "_origin": "ast",
       "id": "server_workers_command_registry_commandregistry",
       "community": 84,
-      "community_name": "CommandRegistry",
+      "community_name": "command-registry.ts",
       "norm_label": "commandregistry"
     },
     {
@@ -24907,7 +24907,7 @@
       "_origin": "ast",
       "id": "server_workers_command_registry_commandregistry_constructor",
       "community": 84,
-      "community_name": "CommandRegistry",
+      "community_name": "command-registry.ts",
       "norm_label": ".constructor()"
     },
     {
@@ -24919,7 +24919,7 @@
       "_origin": "ast",
       "id": "server_workers_command_registry_commandregistry_register",
       "community": 84,
-      "community_name": "CommandRegistry",
+      "community_name": "command-registry.ts",
       "norm_label": ".register()"
     },
     {
@@ -24931,7 +24931,7 @@
       "_origin": "ast",
       "id": "server_workers_command_registry_commandregistry_registerpackagescript",
       "community": 84,
-      "community_name": "CommandRegistry",
+      "community_name": "command-registry.ts",
       "norm_label": ".registerpackagescript()"
     },
     {
@@ -24943,7 +24943,7 @@
       "_origin": "ast",
       "id": "server_workers_command_registry_commandregistry_map",
       "community": 84,
-      "community_name": "CommandRegistry",
+      "community_name": "command-registry.ts",
       "norm_label": ".map()"
     },
     {
@@ -24955,7 +24955,7 @@
       "_origin": "ast",
       "id": "server_workers_command_registry_commandregistry_run",
       "community": 84,
-      "community_name": "CommandRegistry",
+      "community_name": "command-registry.ts",
       "norm_label": ".run()"
     },
     {
@@ -25284,7 +25284,7 @@
       "_origin": "ast",
       "id": "server_workers_persona_context_label",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "label()"
     },
     {
@@ -25428,15 +25428,15 @@
       "norm_label": "research-profile.ts"
     },
     {
-      "label": "RESEARCH_PROFILE_UNAVAILABLE",
+      "label": "PREVIOUS_RESEARCH_PROFILE_UNAVAILABLE",
       "file_type": "code",
       "source_file": "server/workers/research-profile.ts",
       "source_location": "L3",
       "_origin": "ast",
-      "id": "server_workers_research_profile_research_profile_unavailable",
+      "id": "server_workers_research_profile_previous_research_profile_unavailable",
       "community": 14,
       "community_name": "worker-runtime.ts",
-      "norm_label": "research_profile_unavailable"
+      "norm_label": "previous_research_profile_unavailable"
     },
     {
       "label": "RESEARCH_CODEX_VERSION",
@@ -25488,7 +25488,7 @@
       "label": "researchRead()",
       "file_type": "code",
       "source_file": "server/workers/research-profile.ts",
-      "source_location": "L18",
+      "source_location": "L17",
       "_callable": true,
       "_origin": "ast",
       "id": "server_workers_research_profile_researchread",
@@ -25972,8 +25972,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_workers_worker_runtime_workerruntime",
-      "community": 14,
-      "community_name": "worker-runtime.ts",
+      "community": 1,
+      "community_name": "store.ts",
       "norm_label": "workerruntime"
     },
     {
@@ -26008,8 +26008,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_workers_worker_runtime_workerruntime_waitforidle",
-      "community": 14,
-      "community_name": "worker-runtime.ts",
+      "community": 1,
+      "community_name": "store.ts",
       "norm_label": ".waitforidle()"
     },
     {
@@ -26020,8 +26020,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_workers_worker_runtime_workerruntime_pause",
-      "community": 14,
-      "community_name": "worker-runtime.ts",
+      "community": 1,
+      "community_name": "store.ts",
       "norm_label": ".pause()"
     },
     {
@@ -26068,7 +26068,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_contracts_features",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "features.ts"
     },
@@ -26081,7 +26081,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featurephase",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "featurephase"
     },
@@ -26094,7 +26094,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featuredocument",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "featuredocument"
     },
@@ -26107,7 +26107,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featurequestion",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "featurequestion"
     },
@@ -26133,7 +26133,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featurebaseline",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "featurebaseline"
     },
@@ -26147,7 +26147,7 @@
       "_origin": "ast",
       "id": "src_contracts_features_featureoperation",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "featureoperation"
     },
     {
@@ -26160,7 +26160,7 @@
       "_origin": "ast",
       "id": "src_contracts_features_featuremanifestitem",
       "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community_name": "publication.ts",
       "norm_label": "featuremanifestitem"
     },
     {
@@ -26172,8 +26172,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featuremanifest",
-      "community": 30,
-      "community_name": "github/issue-publication.ts",
+      "community": 5,
+      "community_name": "Store",
       "norm_label": "featuremanifest"
     },
     {
@@ -26185,7 +26185,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featureapproval",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "featureapproval"
     },
@@ -26198,7 +26198,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featurepublicationitem",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "featurepublicationitem"
     },
@@ -26211,7 +26211,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featureattempt",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "featureattempt"
     },
@@ -26224,7 +26224,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "src_contracts_features_featurereview",
-      "community": 48,
+      "community": 10,
       "community_name": "features.ts",
       "norm_label": "featurereview"
     },
@@ -26251,7 +26251,7 @@
       "_origin": "ast",
       "id": "src_contracts_features_featurebinding",
       "community": 48,
-      "community_name": "features.ts",
+      "community_name": "delivery-binding.ts",
       "norm_label": "featurebinding"
     },
     {
@@ -112558,7 +112558,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L12",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -112750,7 +112750,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L12",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -112763,7 +112763,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L46",
+      "source_location": "L49",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -116751,7 +116751,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L11",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -116799,7 +116799,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L11",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -116812,7 +116812,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L45",
+      "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -118621,7 +118621,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L9",
+      "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -118694,7 +118694,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L9",
+      "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -118707,7 +118707,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L73",
+      "source_location": "L81",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_runweeklyresearch",
@@ -118754,7 +118754,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L8",
+      "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -118784,30 +118784,6 @@
       "source": "server_knowledge_run_retrospective_runretrospective",
       "target": "server_knowledge_run_retrospective_harperfolder",
       "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L9",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "server_knowledge_weekly_research",
-      "target": "server_knowledge_run_retrospective_harperfolder",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L78",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "server_knowledge_weekly_research_runweeklyresearch",
-      "target": "server_knowledge_run_retrospective_harperfolder"
     },
     {
       "relation": "imports",
@@ -119228,7 +119204,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L16",
+      "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119239,7 +119215,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L15",
+      "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119250,7 +119226,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L66",
+      "source_location": "L74",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119261,7 +119237,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L37",
+      "source_location": "L40",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119273,7 +119249,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L10",
+      "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119285,7 +119261,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L10",
+      "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119297,7 +119273,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L13",
+      "source_location": "L16",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119309,7 +119285,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L13",
+      "source_location": "L16",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119321,7 +119297,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L7",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119333,7 +119309,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L7",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119345,7 +119321,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L5",
+      "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119357,7 +119333,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L5",
+      "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119369,7 +119345,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L6",
+      "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119381,7 +119357,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L6",
+      "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119393,7 +119369,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L2",
+      "source_location": "L5",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119405,7 +119381,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L2",
+      "source_location": "L5",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119417,7 +119393,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L1",
+      "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119429,11 +119405,11 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L1",
+      "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
-      "target": "server_workers_research_profile_research_profile_unavailable",
+      "target": "server_workers_research_profile_previous_research_profile_unavailable",
       "confidence_score": 1.0
     },
     {
@@ -119441,7 +119417,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L4",
+      "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119453,7 +119429,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L4",
+      "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research",
@@ -119478,7 +119454,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L78",
+      "source_location": "L88",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_runweeklyresearch",
@@ -119490,7 +119466,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L17",
+      "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_mirror",
@@ -119502,7 +119478,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L33",
+      "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_mirror",
@@ -119513,7 +119489,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L95",
+      "source_location": "L106",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_runweeklyresearch",
@@ -119525,7 +119501,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L40",
+      "source_location": "L43",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -119537,7 +119513,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L64",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -119550,7 +119526,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L38",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -119562,7 +119538,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L39",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -119574,7 +119550,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L43",
+      "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -119586,7 +119562,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L48",
+      "source_location": "L51",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -119598,7 +119574,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L56",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -119610,7 +119586,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L56",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_scheduledresearch",
@@ -119646,7 +119622,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L68",
+      "source_location": "L76",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_runweeklyresearch",
@@ -119658,7 +119634,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L96",
+      "source_location": "L107",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_runweeklyresearch",
@@ -119670,7 +119646,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/weekly-research.ts",
-      "source_location": "L70",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_weekly_research_runweeklyresearch",
@@ -151696,6 +151672,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/workers/research-profile.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "server_workers_research_profile",
+      "target": "server_workers_research_profile_previous_research_profile_unavailable",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/workers/research-profile.ts",
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
@@ -151718,17 +151705,6 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/workers/research-profile.ts",
-      "source_location": "L3",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "server_workers_research_profile",
-      "target": "server_workers_research_profile_research_profile_unavailable",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "server/workers/research-profile.ts",
       "source_location": "L6",
       "weight": 1.0,
       "_origin": "ast",
@@ -151740,7 +151716,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/workers/research-profile.ts",
-      "source_location": "L18",
+      "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_workers_research_profile",
@@ -151758,18 +151734,6 @@
       "source": "server_workers_worker_runtime",
       "target": "server_workers_research_profile",
       "confidence_score": 1.0
-    },
-    {
-      "relation": "references",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "server/workers/research-profile.ts",
-      "source_location": "L15",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "server_workers_research_profile_assertresearchcapability",
-      "target": "server_workers_research_profile_research_disabled_features"
     },
     {
       "relation": "references",
@@ -174808,5 +174772,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "2e0f2155daf23f11aab3c1fc9968ad9b89d33b23"
+  "built_at_commit": "1d5ffff97733d21e55a2a995b17a63ab6dd6fd0e"
 }
