@@ -194,3 +194,26 @@ allowance: [Slack MCP rate limits](https://docs.slack.dev/ai/slack-mcp-server/)
 and [cursor-paginated history](https://docs.slack.dev/reference/methods/conversations.history/).
 Those documented rates are not a measured throughput guarantee for this connector;
 its existing method backoff, page size and restricted reader remain in force.
+
+## Operational status
+
+Brain → Lessons shows deterministic Slack intake activity separately from the
+historical seed. Durable claims identify reading, reference reads, assessment,
+inbox capture and stopping. The existing scheduler supplies queued work and the
+daily-budget wait; recorded retry timestamps supply retry waits. Paused, disabled,
+invalid configuration and changed source authority remain explicit. Attention
+counts stay visible while other work is active.
+
+Verified capture totals require the exact request, input hash, domain and inbox
+identity receipt. Duplicates are included in verified totals and broken out;
+quarantined captures are separate. Uncertain or mismatched receipts never count
+as success. Completed read/assessment batches, pending work, source-version
+counts, current New York-day launch use/limit, available source-read/capture
+timestamps and recorded next checks appear as aggregates only. Next checks can
+be delayed by worker availability; growing source totals are not an ETA. Earlier
+records with no verified timestamp keep it unknown.
+
+Operational metrics are revision-cached. Control changes, claims, retry deadlines
+and New York day rollover update independently without reloading source bodies.
+The status does not reset source authority, counters, capture Effects or the
+latched historical completion receipt. Inbox capture does not publish guidance.

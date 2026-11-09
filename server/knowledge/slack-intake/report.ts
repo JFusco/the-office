@@ -1,3 +1,4 @@
+import { isStoppingFor, reconcileIntakeStatus } from './operational-status';
 import { intakeProgress, terminalDeferred } from './progress';
 import { reconcileSeedStatus } from './seed-status';
 import type { SlackSeedProgress } from '../../../src/contracts/knowledge';
@@ -16,8 +17,10 @@ const byWeek = <T>(rows: T[], week: (row: T) => string | undefined) => {
 };
 /** Private reports follow the intake ledger's weeks; a matching narrative rollup only receives the aggregate appendix. */
 export function reconcileIntakeReports(store: Store): void {
+    // The knowledge lane skips projection while its work is stopping, so stopping status is reconciled here.
+    if (store.activeClaims().some(c => c.work.kind === 'knowledge-slack-intake' && store.state.workLog?.some(w => isStoppingFor(w, c)))) reconcileIntakeStatus(store, [], store.clock.now());
     const config = readConfig(store); if (!config) return;
-    const ledger = new IntakeLedger(store), token = `seed-v2:${ledger.revision()}:${configDigest(config)}:${config.seedLaunchesPerDay ?? 8}`;
+    const ledger = new IntakeLedger(store), token = `seed-v3:${ledger.revision()}:${configDigest(config)}:${config.seedLaunchesPerDay ?? 8}`;
     // Full rescans run only after an effective ledger write; rollups that appear later still receive the cached aggregates.
     const cached = ledger.get<{ token: string; summaries: IntakeSummary[]; seed: SlackSeedProgress }>('meta', 'report');
     const report = cached?.token === token ? cached : refreshReports(store, ledger, config);
@@ -37,7 +40,8 @@ function refreshReports(store: Store, ledger: IntakeLedger, config: Config) {
     const terminal = terminalDeferred(ledger, rows.units, rows.tasks);
     const seed = reconcileSeedStatus(ledger, config, rows.tasks, rows.units, rows.links, rows.proposals, terminal);
     const summaries = writeReports(store, ledger, config, seed, rows, terminal);
-    return { token: `seed-v2:${ledger.revision()}:${configDigest(config)}:${config.seedLaunchesPerDay ?? 8}`, summaries, seed };
+    const sourceProgress = { revision: ledger.revision(), unresolvedSources: intakeProgress(rows.tasks, rows.units, rows.links, rows.proposals, terminal).unresolvedSources };
+    return { sourceProgress, token: `seed-v3:${ledger.revision()}:${configDigest(config)}:${config.seedLaunchesPerDay ?? 8}`, summaries, seed };
 }
 function writeReports(store: Store, ledger: IntakeLedger, config: Config, seed: SlackSeedProgress, { tasks, proposals, units: allUnits, links: allLinks }: ReportRows, terminal: Set<string>): IntakeSummary[] {
     const taskWeeks = byWeek(tasks, t => t.week), unitWeeks = byWeek(allUnits, u => u.week), linkWeeks = byWeek(allLinks, l => l.week);
