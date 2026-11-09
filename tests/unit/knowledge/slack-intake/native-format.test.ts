@@ -14,6 +14,41 @@ const envelope = (body: unknown) => ({ content: [{ type: 'text', text: JSON.stri
 const parent = '=== THREAD PARENT MESSAGE ===\nFrom: Fixture\nTime: fixture\nMessage TS: 10.000001\nParent body\n\n';
 const replies = (stamps: string[]) => `=== THREAD REPLIES (${stamps.length} total) ===\n\n` + stamps.map((s, i) => `--- Reply ${i + 1} of ${stamps.length} ---\nFrom: Fixture\nTime: fixture\nMessage TS: ${s}\nReply body\n`).join('\n');
 
+test('native seed pages omit zero oldest while preserving stored bounds, cursor and positive incremental queries', async () => {
+    const f = intakeFixture();
+    try {
+        const calls: Record<string, unknown>[] = [];
+        const run = (async (_prompt, _schema, opts) => {
+            const task = f.ledger.get<ReadTask>('task', f.task.id)!;
+            const raw = event(task) as any;
+            calls.push(raw.item.arguments);
+            raw.item.result = envelope({ messages: 'Channel: #fixture-channel (C123)\n\n=== Message from Fixture at fixture ===\nMessage TS: 100.000001\nFixture discussion.\n',
+                pagination_info: calls.length === 1 ? 'There are more messages available. To view the next page, use cursor: `seed-next`\n' : 'There are no more messages available.\n' });
+            opts.onIntakeEvent?.(raw);
+            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Fixture discussion only' }], proposals: [] };
+        }) as KnowledgeRunner;
+        await runIntakeTask(f.store, run, f.task.id);
+        expect(calls[0]).not.toHaveProperty('oldest');
+        expect(calls[0]).toMatchObject({ latest: '200.000000', limit: 100 });
+        expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'pending', oldest: '0.000000', latest: '200.000000', cursor: 'seed-next' });
+        await runIntakeTask(f.store, run, f.task.id);
+        expect(calls[1]).not.toHaveProperty('oldest');
+        expect(calls[1]).toMatchObject({ latest: '200.000000', cursor: 'seed-next', limit: 100 });
+        expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'complete', oldest: '0.000000', latest: '200.000000' });
+        for (const kind of ['channel', 'thread'] as const) {
+            const task = { ...f.task, kind, resource: '100.000001', cursor: 'kept-cursor' };
+            expect(readArguments(task)).not.toHaveProperty('oldest');
+            expect(readArguments({ ...task, oldest: '99.123456' })).toMatchObject({ oldest: '99.123456', latest: '200.000000', cursor: 'kept-cursor', limit: 100 });
+        }
+        const observations = f.ledger.all('observation').length;
+        for (const change of [{ oldest: '0.000000' }, { latest: '201.000000' }]) {
+            const raw = event(f.task); raw.item.arguments = { ...raw.item.arguments, ...change };
+            expect(() => observeRead(raw, config, f.task, 'now')).toThrow(/scope-mismatch/);
+        }
+        expect(f.ledger.all('observation')).toHaveLength(observations);
+    } finally { f.close(); }
+});
+
 test('native text envelope labels excerpts and requires independent pagination evidence', () => {
     const f = intakeFixture();
     try {

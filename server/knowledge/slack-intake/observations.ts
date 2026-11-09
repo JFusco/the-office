@@ -18,7 +18,8 @@ export function readArguments(task: ReadTask): Record<string, unknown> {
     if (task.kind === 'search') return { filters: `in:<#${task.channel}> threads:replies`, after: task.oldest, before: task.latest, keywords: [], natural_language_query: '', include_bots: true, include_context: false, sort: 'timestamp', sort_dir: 'desc', content_types: 'messages', limit: 20 };
     if (task.kind === 'file') return { file_id: task.resource };
     if (task.kind === 'canvas') return { canvas_id: task.resource };
-    return { channel_id: task.channel, oldest: task.oldest, latest: task.latest, limit: 100, response_format: 'detailed', ...(task.kind === 'thread' ? { message_ts: task.resource } : {}) };
+    // Zero is the stored unbounded seed start; omit it from the native query, which times out on that sentinel.
+    return { channel_id: task.channel, ...(task.oldest === '0.000000' ? {} : { oldest: task.oldest }), latest: task.latest, limit: 100, response_format: 'detailed', ...(task.kind === 'thread' ? { message_ts: task.resource } : {}) };
 }
 /** Only native completion events establish read evidence; model summaries never do. */
 export function observeRead(event: any, config: Config, task: ReadTask, at: string): Observation | undefined {
