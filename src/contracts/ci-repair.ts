@@ -1,9 +1,13 @@
 /** Retained per-attempt diagnosis; a new head never erases the failure that led to it. */
-export interface CIRepair {
+export interface RepairCheckout {
     id: string;
     head: string;
-    base: string;
     branch: string;
+    worktree?: string;
+    hooksPath?: string;
+}
+export interface CIRepair extends RepairCheckout {
+    base: string;
     fingerprint: string;
     inputSha256: string;
     issueUpdatedAt: string;
@@ -12,8 +16,6 @@ export interface CIRepair {
     startedAt: string;
     diagnosisStarted?: boolean;
     plan?: CIRepairPlan;
-    worktree?: string;
-    hooksPath?: string;
     repairedHead?: string;
 }
 export interface CIRepairPlan {

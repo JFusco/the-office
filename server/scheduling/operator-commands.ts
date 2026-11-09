@@ -57,12 +57,13 @@ export function recheckCandidate(this: Coordinator, key: string) {
 export function recheckPR(this: Coordinator, key: string) {
     const job = this.state.jobs!.find(j => j.key === key && j.status !== 'cancelled');
     const mergePreflight = job?.stage === 'merge' && !job.mergeAttempt && job.status === 'blocked';
-    if (!job || !mergePreflight && (job.stage !== 'lead-pr' || !['blocked', 'interrupted', 'watching'].includes(job.status)))
+    const mergeRecovery = job?.stage === 'ci-recovery' && ['blocked', 'interrupted'].includes(job.status) && !!job.mergeCommit && !job.ciFollowupKey;
+    if (!job || !mergePreflight && !mergeRecovery && (job.stage !== 'lead-pr' || !['blocked', 'interrupted', 'watching'].includes(job.status)))
         throw new Error('Only an inactive PR review or a merge preflight with no attempted write can be rechecked');
     if (job.steps.some(s => hasUncertainEffects(s.stage, s.result)))
         throw new Error('Original effects must be reconciled before a new review');
     job.status = 'queued';
-    job.detail = ['apply', 'publish'].includes(job.ciRepairs?.at(-1)?.phase || '') ? 'Saved CI repair requeued for guarded reconciliation; diagnosis and prior evidence retained.' : mergePreflight ? 'Merge preflight queued; no prior merge request was sent. Current head and checks will be verified again.' : 'Read-only PR reassessment queued. Prior sessions and results retained; source/publication stages will not replay.';
+    job.detail = mergeRecovery ? 'Post-merge CI recovery queued; the harness verifies the original failure and bounded retry state before effects.' : ['apply', 'publish'].includes(job.ciRepairs?.at(-1)?.phase || '') ? 'Saved CI repair requeued for guarded reconciliation; diagnosis and prior evidence retained.' : mergePreflight ? 'Merge preflight queued; no prior merge request was sent. Current head and checks will be verified again.' : 'Read-only PR reassessment queued. Prior sessions and results retained; source/publication stages will not replay.';
     this.store.emit('pr-review-recheck', job.detail, 'lead', key);
 }
 
