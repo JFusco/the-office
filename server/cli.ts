@@ -28,6 +28,8 @@ try{
       if(!complete){console.error(`Still waiting. Request ${id} is saved; do not resubmit with a new ID.`);process.exitCode=1;}
     }
   }
+  else if(cmd==='retry-slack-intake'){const r=await fetch(`${base}${scoped('/api/commands')}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:cmd,messageId:args[0]})});console.log(JSON.stringify(await r.json(),null,2));if(!r.ok)process.exitCode=1;}
+  else if(cmd==='slack-intake-report'){const {readLocalIntakeReport}=await import('./knowledge/slack-intake/local-report');console.log(readLocalIntakeReport(project,args[0]));}
   else if(cmd==='time'){const key=args[0]||'';const response=await fetch(`${base}${scoped(`/api/time?ticket=${encodeURIComponent(key)}`)}`);console.log(JSON.stringify(await response.json(),null,2));if(!response.ok)process.exitCode=1;}
   else if(cmd==='status'){const r=await fetch(`${base}${scoped("/api/office")}`);console.log(JSON.stringify(await r.json(),null,2));}
   else if(commands[cmd]){
@@ -46,5 +48,5 @@ try{
       }
     }
   }
-  else {console.log('The Office · add --project cms-field-vocabulary to select CMS\n\n  pnpm office projects\n  pnpm office maintenance --project cms-field-vocabulary --scheduled --wait\n  pnpm office status\n  pnpm office outbox\n  pnpm office time [CEC-123]\n  pnpm office chat --file message.txt [--ticket CEC-123] --wait\n  pnpm office reply ITEM_ID --file reply.txt --recheck --wait\n  pnpm office intake\n  pnpm office pilot CEC-123\n  pnpm office continue CEC-123\n  pnpm office pause | resume | azure\n\nStart the service first: pnpm start');process.exitCode=cmd?1:0;}
+  else {console.log('The Office · add --project cms-field-vocabulary to select CMS\n\n  pnpm office projects\n  pnpm office maintenance --project cms-field-vocabulary --scheduled --wait\n  pnpm office status\n  pnpm office outbox\n  pnpm office time [CEC-123]\n  pnpm office slack-intake-report intake-YYYY-MM-DD --project brain\n  pnpm office retry-slack-intake BATCH_ID --project brain\n  pnpm office chat --file message.txt [--ticket CEC-123] --wait\n  pnpm office reply ITEM_ID --file reply.txt --recheck --wait\n  pnpm office intake\n  pnpm office pilot CEC-123\n  pnpm office continue CEC-123\n  pnpm office pause | resume | azure\n\nStart the service first: pnpm start');process.exitCode=cmd?1:0;}
 }catch(e){console.error(`Office request failed at ${base}: ${String(e)}`);process.exitCode=1;}

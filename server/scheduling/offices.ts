@@ -1,3 +1,5 @@
+import { reconcileIntakeReports } from '../knowledge/slack-intake/report';
+import { readConfig as readIntakeConfig } from '../knowledge/slack-intake/config';
 import { maintainLearning } from '../knowledge/learning-maintenance';
 import { scheduledResearch } from '../knowledge/weekly-research';
 import { queueImprovements } from '../knowledge/queue-improvements';
@@ -108,7 +110,14 @@ export class Offices {
     snapshot(id = PROJECTS[0].id) { return { ...this.get(id).store.state, slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(this.get(id).store.state), dailyCTO: this.control.summaries(), officeKnowledge: this.control.knowledge?.(), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
     async tick(now = new Date()) { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); }
     async pump() {
-        for (const { store } of this.entries.values()) { recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); }
+        for (const { store, engine } of this.entries.values()) {
+            if (store.project.id === 'brain') {
+                try {
+                    if (readIntakeConfig(store)?.enabled === false && store.state.workLog?.some(w => w.status === 'running' && w.stage?.startsWith('knowledge-slack-'))) engine.knowledgeAgents.pause();
+                    reconcileIntakeReports(store);
+                } catch { /* Invalid private intake state must not block other Office work. */ }
+            }
+            recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); }
         // Runs finished outside a worker (restart recovery, dead process) get their accounting here; async, never awaited.
         for (const { store } of this.entries.values()) void reconcileUncapturedRuns(store).catch(() => { /* reported per run */ });
         for (const { store } of this.entries.values())

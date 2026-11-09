@@ -1,11 +1,13 @@
 export type WorkerProfile = 'reader' | 'editor' | 'checks' | 'jira-native' | 'qa-native' | 'brain-native' | 'github-native' | 'slack-native';
-const readers = new Set(['knowledge-research', 'feature-research', 'feature-question-round', 'feature-plan', 'assignment-review', 'readback', 'intake', 'understand', 'ci-diagnose', 'reconcile', 'plan', 'plan-review', 'code-review', 'repair-review', 'github-review', 'github-lead-pr', 'vendor-review', 'proposal-plan', 'proposal-plan-review', 'proposal-review', 'maintenance-readback', 'daily-cto', 'retrospective', 'knowledge-rollup']);
+const readers = new Set(['knowledge-slack-intake', 'knowledge-slack-links', 'knowledge-research', 'feature-research', 'feature-question-round', 'feature-plan', 'assignment-review', 'readback', 'intake', 'understand', 'ci-diagnose', 'reconcile', 'plan', 'plan-review', 'code-review', 'repair-review', 'github-review', 'github-lead-pr', 'vendor-review', 'proposal-plan', 'proposal-plan-review', 'proposal-review', 'maintenance-readback', 'daily-cto', 'retrospective', 'knowledge-rollup']);
 /** Native stages retain their required tools until their typed adapter passes parity. */
 export function workerProfile(stage: string, readOnly: boolean, slack = false): {
     name: WorkerProfile;
     readOnly: boolean;
     cutover: 'verified' | 'native';
 } {
+    if (stage === 'knowledge-slack-intake' || stage === 'knowledge-slack-links')
+        return { name: 'reader', readOnly: true, cutover: 'verified' };
     if (stage === 'brain-maintenance')
         return { name: 'brain-native', readOnly: false, cutover: 'native' };
     if (slack || stage.startsWith('slack-'))

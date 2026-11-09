@@ -21,3 +21,5 @@ export function researchRead(event: any): { url: string; receipt: string } | und
     if (!['open_page', 'open'].includes(action?.type) || typeof action.url !== 'string' || !/^https:\/\//.test(action.url) || !item.id) return;
     return { url: action.url, receipt: item.id };
 }
+
+export const isPublicRetrieval = (stage?: string): boolean => stage === "knowledge-research" || stage === "knowledge-slack-links";

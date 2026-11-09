@@ -22,7 +22,7 @@ const FIRST_DELAY = 5 * 60 * 1000, MAX_DELAY = 6 * 60 * 60 * 1000;
 /** Capped exponential backoff; each batch has at most five total attempts. */
 export const retryDelay = (attempts: number) => Math.min(MAX_DELAY, FIRST_DELAY * 2 ** Math.max(0, attempts - 1));
 
-export interface KnowledgeRunOptions { readOnly: true; effortKind: 'administrative'; stage: 'retrospective' | 'knowledge-rollup' | 'knowledge-research'; requestId: string; ticket: string; cwd: string; enqueuedAt: string; timeout: number }
+export interface KnowledgeRunOptions { readOnly: true; effortKind: 'administrative'; stage: 'retrospective' | 'knowledge-rollup' | 'knowledge-research' | 'knowledge-slack-intake' | 'knowledge-slack-links'; intakeConfig?: import('./slack-intake/config').Config; intakeProcessing?: boolean; onIntakeEvent?: (event: unknown) => void; onIntakeLaunch?: () => void; requestId: string; ticket: string; cwd: string; enqueuedAt: string; timeout: number }
 /** Harper's model call, injected so tests never reach a provider. */
 export type KnowledgeRunner = <T>(prompt: string, schema: z.ZodType<T>, opts: KnowledgeRunOptions) => Promise<T>;
 /** @deprecated name kept for slice 1 callers. */
