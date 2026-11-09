@@ -1203,3 +1203,13 @@ test('merge effect preflight refreshes a base that changes after the initial gat
  expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);expect(a.job.mergeIntentId).toBeUndefined();
  expect(a.store.getEffect(`merge:${a.job.id}:${head}`)).toMatchObject({status:'rejected',dispatchedAt:''});
 });
+
+test('draining during merge preflight cannot bypass changed acceptance, then observation requeues after drain', async () => {
+ const a=acceptedMergeResume(), history=structuredClone(a.job.steps);a.job.status='queued';
+ const original=a.delivery.verifyPR.bind(a.delivery);let reads=0;
+ a.delivery.verifyPR=async(...args)=>{const p=await original(...args);if(++reads===2){a.pr.base.sha=p.base.sha='c'.repeat(40);a.store.state.draining=true;}return p;};
+ await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'merge',status:'blocked'});expect(a.job.mergeAttempt).toBeUndefined();
+ expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+ expect(a.store.getEffect(a.job.mergeIntentId!)).toMatchObject({status:'rejected',dispatchedAt:''});
+ a.store.state.draining=false;await a.delivery.observe();expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});expect(a.job.steps).toEqual(history);
+});

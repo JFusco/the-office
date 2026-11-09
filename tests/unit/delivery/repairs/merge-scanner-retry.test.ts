@@ -1,3 +1,6 @@
+import { recordOfficeMerge } from '../../../fixtures/office-merge';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test, expect } from 'vitest';
 import { ciFixture, newHead } from '../../../fixtures/ci-repair';
 import { retryMergeScanner, transientScannerJobs } from '../../../../server/delivery/repairs/merge-scanner-retry';
@@ -6,6 +9,7 @@ import { recheckPR } from '../../../../server/scheduling/operator-commands';
 function setup() {
     const f = ciFixture(); Object.assign(f.job, { stage: 'ci-recovery', status: 'working', mergeCommit: newHead });
     Object.assign(f.pr, { merged_at: '2026-11-09T08:00:00Z', merge_commit_sha: newHead });
+    recordOfficeMerge(f);
     const run = { ...f.run, head_sha: newHead, event: 'push', head_branch: 'main', path: '.github/workflows/quality.yml' };
     const jobs = [{ id: 10, run_id: run.id, run_attempt: 1, head_sha: newHead, status: 'completed', conclusion: 'failure', steps: [{ name: 'Install the pinned scanner profile', conclusion: 'failure' }] }];
     const runs = [run];
@@ -108,4 +112,24 @@ test('successful scanner retry does not hide another failed exact-merge workflow
     let diagnoses = 0; f.engine.agents.run = async () => { diagnoses++; return { outcome: 'needs-human', issue: 0, summary: 'Other workflow failed', receipts: [] } as any; };
     await expect(f.delivery.recoverMergeCI(f.job)).rejects.toThrow('Other workflow');
     expect(diagnoses).toBe(1); expect(f.writes()).toBe(1);
+});
+
+test('an externally merged PR without an Office merge attempt never gets a new scanner retry', async () => {
+    const f = setup(); delete f.job.mergeAttempt;
+    expect(await retryMergeScanner(f.delivery, f.job)).toBe(false); expect(f.writes()).toBe(0);
+});
+test('an orphaned pre-dispatch evidence artifact cannot permanently block a retry', async () => {
+    const f = setup(), orphan = resolve(f.artifactRoot, 'merge-scanner-20.json');
+    writeFileSync(orphan, 'Retained orphan evidence');
+    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true);
+    const path = f.job.mergeScannerRetry!.evidencePath;
+    expect(path).not.toBe(orphan); expect(readFileSync(orphan, 'utf8')).toBe('Retained orphan evidence');
+    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true);
+    expect(f.job.mergeScannerRetry!.evidencePath).toBe(path); expect(f.writes()).toBe(1);
+});
+test('already dispatched uncertain scanner retry remains read-back only even if merge proof is unavailable', async () => {
+    const f = setup(); f.fail(true);
+    await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow('Lost response');
+    delete f.job.mergeAttempt;
+    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true); expect(f.writes()).toBe(1);
 });

@@ -1,3 +1,4 @@
+import { officeMergeProvenance } from './merge-provenance';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -26,6 +27,7 @@ export async function retryMergeScanner(delivery: GitHubDelivery, job: TicketJob
     const root = resolve(store.dataRoot, 'ticket-work', job.id);
     let record = job.mergeScannerRetry;
     if (!record) {
+        if (!await officeMergeProvenance(delivery, job)) return false;
         const inventory = await delivery.api(`actions/runs?head_sha=${job.mergeCommit}&per_page=100`);
         if (!Array.isArray(inventory.workflow_runs) || inventory.total_count !== inventory.workflow_runs.length || inventory.total_count > 100) return false;
         const failed = inventory.workflow_runs.filter((r: any) => r.head_sha === job.mergeCommit && r.event === 'push' &&
@@ -42,7 +44,7 @@ export async function retryMergeScanner(delivery: GitHubDelivery, job: TicketJob
             logs.push(stripVTControlCharacters(await delivery.execute('gh', ['api', `repos/${repo}/actions/jobs/${j.id}/logs`, '--allow-escape-sequences'], { cwd: store.project.repo, readOnly: true, timeout: 60000 })));
         if (!transientScannerJobs(page.jobs, logs)) return false;
         mkdirSync(root, { recursive: true });
-        const evidencePath = resolve(root, `merge-scanner-${run.id}.json`);
+        const evidencePath = resolve(root, `merge-scanner-${run.id}-${crypto.randomUUID()}.json`);
         writeFileSync(evidencePath, JSON.stringify({ run, jobs: page.jobs, logs }, null, 2), { mode: 0o600, flag: 'wx' });
         record = job.mergeScannerRetry = { runId: run.id, attempt: 1, head: job.mergeCommit, evidencePath };
         store.save();
@@ -57,6 +59,7 @@ export async function retryMergeScanner(delivery: GitHubDelivery, job: TicketJob
         return runIdentity(live, repo, r.head, store.project.target) && live.run_attempt === r.attempt + 1 ? { runId: live.id, attempt: live.run_attempt } : null;
     };
     const key = `merge-scanner-retry:${r.runId}`, prior = store.getEffect(activeEffectId(store, `harness:${job.id}:${key}`));
+    if ((!prior || !prior.dispatchedAt && ['prepared', 'rejected'].includes(prior.status)) && !await officeMergeProvenance(delivery, job)) return false;
     if (prior?.status === 'verified') {
         const live = await delivery.api(`actions/runs/${r.runId}`);
         if (!runIdentity(live, repo, r.head, store.project.target) || live.run_attempt !== 2) throw new Error('Verified merge retry execution changed');
@@ -65,6 +68,7 @@ export async function retryMergeScanner(delivery: GitHubDelivery, job: TicketJob
         const guard = async () => {
             assertMayMutate(store, delivery.jobs, job, job.head);
             if (store.state.draining || job.status !== 'working' || job.stage !== 'ci-recovery' || job.mergeScannerRetry !== r) throw new Error('Merge retry ownership changed');
+            if (!await officeMergeProvenance(delivery, job)) throw new Error('A verified guarded Office merge is required before a new scanner retry');
             const pr = await delivery.verifyPR(job, true), live = await delivery.api(`actions/runs/${r.runId}`);
             if (!pr.merged_at || pr.merge_commit_sha !== r.head || !runIdentity(live, repo, r.head, store.project.target) ||
                 live.run_attempt !== r.attempt || live.status !== 'completed' || live.conclusion !== 'failure') throw new Error('Merge retry scope or run attempt changed');
