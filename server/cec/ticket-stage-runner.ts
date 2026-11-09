@@ -1,3 +1,4 @@
+import { captureLearning } from '../knowledge/learning-events';
 import { acceptFeatureReview } from '../features/stage-acceptance';
 import { approvedDelivery } from '../features/delivery-binding';
 import { verifyFeatureEnhance } from '../features/cec-plan-gate';
@@ -119,11 +120,13 @@ export async function run(this: Engine, key: string) {
                     result.receipts.push({ id: `qa-comment:${attemptId}`, action: 'jira-comment', target: t.key, verified: false, uncertain: this.store.getEffect(`qa-comment:${attemptId}`)?.status === 'uncertain', detail: result.blocker });
                 }
             }
+            const learn = (boundary = false) => captureLearning(this.store, { kind: 'ticket', id: t.runId }, key, stage, attemptId, result, result.summary, 'work', boundary);
             this.store.finish(attemptId, result);
             if (result.outcome === 'reroute') {
                 if ((t.routeChanges = (t.routeChanges || 0) + 1) > 3)
                     throw new Error('Team approach remains unsettled after three route changes; preserve the discussion before continuing');
                 reroute(t, stage, result, role);
+                learn();
                 this.store.emit('approach-changed', `${role} changed the approach: ${t.approach!.reason}`, role, key);
                 continue;
             }
@@ -135,6 +138,7 @@ export async function run(this: Engine, key: string) {
                     t.repairAttempts = { ...revised.findingAttempts };
                     t.findings = result.findings; t.results[stage] = result; t.evidence.push(...result.evidence);
                     t.attempt++; t.stage = 'repair'; t.activity = 'waiting'; t.blocker = '';
+                    learn();
                     this.store.emit('delivery-repair-revised', 'Sam established one changed technical approach; Alex retains ownership and all original repair counters.', role, key);
                     continue;
                 }
@@ -178,6 +182,7 @@ export async function run(this: Engine, key: string) {
                     t.blocker = '';
                     if (t.approachReturnStage && stage !== 'plan-review')
                         t.approachReturnStage = 'retest';
+                    learn();
                     this.store.emit('fix-requested', `Focused fixes requested: ${unresolved.map(f => `${f.id} (${f.attempts}/2)`).join(', ')}`, role, key);
                     continue;
                 }
@@ -210,6 +215,7 @@ export async function run(this: Engine, key: string) {
                     break;
                 }
             }
+            learn(stage === 'ready-for-staging' || stage === 'staging-qa');
             if (stage === 'ready-for-staging') {
                 // Ready is a waiting state. A human merge and proven running staging version unlock staging QA.
                 t.stage = 'ready-for-staging';

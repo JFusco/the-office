@@ -1,3 +1,4 @@
+import { captureLearning } from '../../knowledge/learning-events';
 import { acceptFeatureReview } from '../../features/stage-acceptance';
 import {completedExecution} from '../../workers/worker-completion';
 import { teamReviewedHead, mergeAuthorized } from '../readiness/team-review';
@@ -37,6 +38,8 @@ export interface StageContext { job: TicketJob; result: StageResult; project: St
 /** Validates and applies one stage result: identity fences, proofs, parking, repairs, gates and the next stage. */
 export async function acceptStageResult(this: GitHubDelivery, context: StageContext): Promise<void> {
     const { job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, issueSha256, candidateAtStart, technicalPhase } = context;
+    const originalStage = job.stage;
+    const learn = (boundary = false) => captureLearning(this.store, { kind: 'job', id: job.id }, job.key, originalStage, String(job.steps.length), result, result.summary, 'work', boundary);
     if (this.jobs.find(current => current.id === job.id) !== job || this.store.state.paused || HOLDS[job.key] || candidateAtStart !== JSON.stringify({ id: job.id, stage: job.stage, head: job.head, branch: job.branch, worktree: job.worktree })) {
         job.steps.push({ stage: 'superseded-stage-result', result });
         throw new Error('Delivery ownership, candidate, hold or pause state changed during this stage; result retained for reconciliation');
@@ -117,6 +120,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         if (!revised || revised.phase !== 'repair') throw new Error(result.blocker || 'No permitted changed technical approach was established; Morgan retains the concrete restriction and original repair evidence');
         job.repairCycle = revised; job.stage = 'update-base'; job.status = 'queued';
         job.detail = 'Sam established one changed technical approach. Alex continues the same candidate within the extended bounded window; original counters are retained.';
+        learn();
         this.store.emit('delivery-repair-revised', job.detail, 'developer', job.key);
         return;
     }
@@ -129,6 +133,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         if (job.steps.filter(s => s.result.outcome === 'reroute' && s.result.commit === result.commit).length >= 3)
             throw new Error('Repeated approach changes need team reconciliation before another worker call');
         job.steps.push({ ...nativeProof, stage: job.stage, result });
+        learn(true);
         this.store.emit('review-route-changed', `${job.key}: ${result.approach.reason}`, role, job.key);
         job.status = 'queued';
         job.detail = result.approach.reason;
@@ -196,6 +201,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
                 job.stage = decision.action === 'technical-review' || decision.action === 'acceptance' ? 'review' : 'scope-repair';
                 job.candidateRecovery!.findingIds = [...new Set([...job.candidateRecovery!.findingIds, ...decision.next.pendingFindingIds, ...decision.next.repairFindingIds, ...result.findings.map(f => f.id)])];
                 job.status = 'queued'; job.detail = decision.reason;
+                learn();
                 this.store.emit('implementation-continuation', decision.reason, job.stage === 'review' ? 'lead' : 'developer', job.key);
             });
             return;
@@ -205,6 +211,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             result.commit !== job.head || result.findings.some(f => f.status === 'open') || new Set(result.findings.map(f => f.id)).size !== result.findings.length || result.paidRuns !== 0) throw new Error('Continuation ordinary review/QA has unresolved original or technical findings');
         this.store.transaction(() => {
             assertFinal(); job.stage = deliveryNextStage(job); job.status = 'queued'; job.detail = result.summary;
+            learn();
             this.store.emit('implementation-acceptance-stage', `${job.key}: ordinary independent stage passed; remaining delivery gates retained.`, role, job.key);
         });
         return;
@@ -230,12 +237,14 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             job.stage = 'merge';
             job.status = 'queued';
             job.detail = 'PR prepared. The team already reviewed and verified this exact head, so the guarded merge runs without a second readiness review.';
+            learn();
             this.store.emit('pr-prepared', `${job.key}: PR prepared; team-reviewed head goes to the guarded merge.`, 'lead', job.key);
             return;
         }
         job.stage = 'lead-pr';
         job.status = 'queued';
         job.detail = 'PR metadata and dependent bases verified; Sam will assess current-head checks and the final diff.';
+        learn();
         this.store.emit('pr-prepared', `${job.key}: PR metadata prepared; current-head review queued.`, 'lead', job.key);
         return;
     }
@@ -245,11 +254,12 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             if (await this.queueCIRepair(job)) return;
             job.status = 'working';
         }
-        if (!conflictOnlyAssessment(result) && await this.queueSourceRepair(job, result, root)) return;
+        if (!conflictOnlyAssessment(result) && await this.queueSourceRepair(job, result, root)) { learn(); return; }
         await this.finishLeadReview(job, result);
+        learn();
         return;
     }
-    if (await this.queueSourceRepair(job, result, root)) return;
+    if (await this.queueSourceRepair(job, result, root)) { learn(); return; }
     if (!discoveryReviewSatisfied(job, job.stage, result))
         throw new Error('Discovery continuation requires independent disposition of each original finding');
     if (!recoveredFindingsResolved(job, job.stage, result)||!savedPrerequisiteFindingsResolved(job,job.stage,result))
@@ -286,6 +296,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         ticket.status = 'closed';
         ticket.stage = 'complete';
         ticket.activity = 'idle';
+        learn(true);
         job.status = 'completed';
         job.detail = job.ciFollowupKey ? `Original merge checks failed; repair ${job.ciFollowupKey} merged and passed verification. Issue closure and Done lane verified; original failures retained.` : 'PR merged, merge Actions passed, issue closed, and Done lane verified.';
         this.store.emit('github-closeout', `${job.key}: merged, verified and closed out.`, 'pm', job.key);
@@ -355,6 +366,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         else if (job.stage === 'review') job.repairCycle.phase = 'verify';
         else if (job.stage === 'validate') job.repairCycle.pendingFindingIds = [];
     }
+    learn();
     job.stage = deliveryNextStage(job);
     job.status = 'queued';
     job.detail = result.summary;

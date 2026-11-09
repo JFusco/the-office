@@ -1,3 +1,4 @@
+import { harperHandoff } from '../knowledge/blocker-followups';
 import { featureDeliveryContext } from '../features/delivery-binding';
 import { REPAIR_DIAGNOSIS } from '../delivery/repairs/delivery-repairs';
 import { handsOff } from '../delivery/harness/scope';
@@ -59,6 +60,7 @@ export class Agents extends WorkerRuntime {
         return this.run('pm', slackVerifyPrompt(this.store, delivery), SlackVerificationSchema, { readOnly: true, stage: 'slack-verify', requestId: delivery.requestId, ticket: this.store.state.messages.find(m => m.id === delivery.requestId)?.ticket || '', timeout: 10 * 60 * 1000 });
     }
     async followup(role: Role, message: TeamMessage, brief = '') {
+        if (harperHandoff(this.store, message)) return this.run('pm', message.body, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation-readback', requestId: message.requestId, effortKind: 'administrative', timeout: 15 * 60 * 1000 });
         const guidance = `\n${GOAL_REPORT_GUIDANCE}`;
         if (role === 'it')
             return this.run('it', itChatPrompt(this.store, message, brief) + guidance, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });

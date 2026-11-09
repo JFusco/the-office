@@ -1,3 +1,4 @@
+import { captureLearning } from '../../knowledge/learning-events';
 import { featureGate } from '../../features/enrollment-gate';
 import { HOLDS } from '../../office/config';
 import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../pipeline/dependencies';
@@ -58,6 +59,8 @@ export function admitReadyCards(context: IntakeContext, delivery: GitHubDelivery
         const at = now.toISOString();
         const row: AssignmentReview = { id: crypto.randomUUID(), key: issue.key, summary: issue.summary, url: issue.url, queuedAt: at, startedAt: at, endedAt: at, status: outcome.status, detail: outcome.detail, owner: outcome.owner, workRequested: 'automatic', prerequisites, ...(latest ? { parentReviewId: latest.id } : {}) };
         state.listener.reviews.push(row);
+        // One card is one subject, so successive dispositions coalesce; the row ID stays in the event identity.
+        captureLearning(store, { kind: 'orchestration', id: issue.key }, row.key, 'admission', row.id, outcome, outcome.detail);
         store.emit('assignment-reviewed', `${issue.key}: ${outcome.status}. ${outcome.detail}`, 'pm', issue.key);
     }
 }

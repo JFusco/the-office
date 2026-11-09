@@ -1,3 +1,4 @@
+import { harperHandoff } from '../knowledge/blocker-followups';
 import { finishSupersededReadback } from './slack/finish-superseded-readback';
 import { assertConversationReadback } from './conversation-recovery';
 import { enqueueRequest } from '../scheduling/requests';
@@ -62,6 +63,8 @@ export async function pump(this: Conversations, id?: string) {
             await this.checkIT?.();
         const reply = await this.engine.agents.followup(message.to, message);
         assertConversationReadback(message, reply);
+        if (harperHandoff(this.store, message) && (reply.goalChanges.length || reply.slackRequests.length || reply.notes.length || reply.notifyRoles.length || reply.pickupChange || reply.handoffProject)) throw new Error('Harper follow-up authorizes read-only diagnosis only');
+        if (harperHandoff(this.store, message) && message.actionId.startsWith('message:')) assertConversationReadback({ ...message, from: 'it' }, reply);
         if (message.to === 'it' && (reply.notifyRoles.some(r => r !== 'pm') || reply.goalChanges.length || reply.slackRequests.length || reply.notes.length || reply.pickupChange))
             throw new Error('IT chat may report operational findings to Morgan, but cannot change delivery, goals, logins or external services');
         message.sessionId = this.store.state.agents.find(a => a.id === message.to)?.sessionId || '';

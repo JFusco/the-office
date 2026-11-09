@@ -95,6 +95,7 @@ export async function startPilot(this: Engine, key: string, background = true, i
     if (liveReason || live.blocker || live.existingOwner || live.existingPrId)
         throw new Error(liveReason || live.blocker || `Existing owner/PR ${live.existingOwner || live.existingPrId} requires reconciliation before adoption`);
     assertFeatureGate(this.store, key);
+    t.improvementId = this.store.state.knowledge?.improvements?.find(item => item.providerId === key)?.id;
     t.pilot = true;
     t.runId = `${key.toLowerCase()}-${randomUUID()}`;
     t.stage = 'understand';

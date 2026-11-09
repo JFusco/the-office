@@ -1,3 +1,7 @@
+import { maintainLearning } from '../knowledge/learning-maintenance';
+import { scheduledResearch } from '../knowledge/weekly-research';
+import { queueImprovements } from '../knowledge/queue-improvements';
+import { reconcileBlockerFollowups } from '../knowledge/blocker-followups';
 import { projectSlackDeliveries } from '../conversations/slack/project-deliveries';
 import { recoverFeatures } from '../features/recovery';
 import { backfillClaudeCost } from '../telemetry/claude-backfill';
@@ -42,7 +46,7 @@ export class Offices {
     /** Harper's weekly roll-up waits for Avery's review and files office-wide proposals in the control store. */
     knowledgeOptions() {
         return { dailyStatus: (date: string) => this.control.forDate?.(date)?.status,
-            propose: (store: Store, rollupId: string, proposals: Parameters<typeof proposeOfficeLessons>[3]) => { const ids = proposeOfficeLessons(this.control, store.project.id, rollupId, proposals); mirrorOfficeKnowledge(this.control, this.stores().values()); return ids; } };
+            propose: (store: Store, rollupId: string, proposals: Parameters<typeof proposeOfficeLessons>[3]) => { const ids = proposeOfficeLessons(this.control, store.project.id, rollupId, proposals, Object.fromEntries((store.state.knowledge?.lessons || []).flatMap(lesson => lesson.evidence).map(proof => [proof.ref, proof]))); mirrorOfficeKnowledge(this.control, this.stores().values()); return ids; } };
     }
     sessions = new SessionBridge(() => [...this.entries.values()].map(e => e.store));
     entries = new Map<string, {
@@ -104,7 +108,7 @@ export class Offices {
     snapshot(id = PROJECTS[0].id) { return { ...this.get(id).store.state, slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(this.get(id).store.state), dailyCTO: this.control.summaries(), officeKnowledge: this.control.knowledge?.(), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
     async tick(now = new Date()) { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); }
     async pump() {
-        for (const { store } of this.entries.values()) recoverFeatures(store);
+        for (const { store } of this.entries.values()) { recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); }
         // Runs finished outside a worker (restart recovery, dead process) get their accounting here; async, never awaited.
         for (const { store } of this.entries.values()) void reconcileUncapturedRuns(store).catch(() => { /* reported per run */ });
         for (const { store } of this.entries.values())
@@ -127,6 +131,7 @@ export class Offices {
         const entries = [...this.entries.values()];
         const queues = (lane: string) => {
             const queues = entries.map(entry => ({ store: entry.store, items: this.projection(entry, lane) }));
+            if (lane === 'knowledge') for (const item of scheduledResearch(this.control, entries.map(entry => entry.store), store => (prompt, schema, opts) => this.entries.get(store.project.id)!.engine.knowledgeAgents.run('knowledge', prompt, schema, opts), new Date())) queues.find(queue => queue.store === item.store)?.items.push(item);
             const report = lane === 'cto' ? this.dailyCTO.pending() : undefined;
             if (report && queues[0])
                 queues[0].items.push({ store: entries[0].store, work: { projectId: entries[0].store.project.id, kind: 'daily-cto', id: report.id }, stage: 'daily-cto', rank: 3, enqueuedAt: report.collectedAt, eligibility: { state: 'runnable', reason: 'Daily all-project assessment is due', owner: 'Avery', nextCheckAt: null }, identity: () => String(this.control.get(report.id)?.revision), execute: () => this.dailyCTO.pump(report), allowPaused: true });

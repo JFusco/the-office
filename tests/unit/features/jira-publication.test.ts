@@ -53,6 +53,6 @@ test('plain Jira paragraphs may be updated while existing labels must survive va
 test('required unsupported Jira fields stop publication rather than being silently omitted',async()=>{
  const f=fixture('cec');try{
  const p=new JiraFeaturePublisher(f.store,f.feature,async(_p,args)=>JSON.stringify({data:args.includes('types')?[{name:'Build Task',hierarchyLevel:0,subtask:false}]:{fields:[{id:'customfield_required',required:true}]}}));
- await expect(p.preflight({} as any,{kind:'create',payload:{space:'CEC',type:'Build Task',summary:'Feature',description:'Text',labels:[]}} as any,'')).rejects.toThrow('Required CEC fields');
+ await expect(p.preflight({} as any,{kind:'create',payload:{space:'CEC',type:'Build Task',summary:'Feature',description:'Text',labels:[]}} as any,'')).rejects.toThrow('Unsupported required CEC fields');
  }finally{f.close();}
 });

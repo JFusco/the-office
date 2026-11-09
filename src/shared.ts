@@ -156,6 +156,7 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    improvementId?: string;
     featureBinding?: import('./contracts/features').FeatureBinding;
     featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };
     ciRepairs?: import('./contracts/ci-repair').CIRepair[];
@@ -586,6 +587,7 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    improvementId?: string;
     featureBinding?: import('./contracts/features').FeatureBinding;
     featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };
     externalPlan?: { featureId: string; approvalId: string; digest: string };

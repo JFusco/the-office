@@ -3,6 +3,8 @@ import type { KnowledgeState, Lesson, OfficeKnowledge, OfficeProposal, PendingRe
 export interface LessonsView {
     enabled: boolean;
     active: Lesson[];
+    /** Active but report-only: lesson selection never supplies hypotheses to prompts. */
+    hypotheses: Lesson[];
     ineffective: Lesson[];
     retired: Lesson[];
     agentsSuggestions: Lesson[];
@@ -20,7 +22,8 @@ export function lessonsView(knowledge: KnowledgeState | undefined, office?: Offi
     const lessons = knowledge?.lessons || [];
     return {
         enabled: knowledge?.enabled ?? false,
-        active: lessons.filter(lesson => lesson.status === 'active').sort(newest(lesson => lesson.createdAt)),
+        active: lessons.filter(lesson => lesson.status === 'active' && lesson.tier !== 'hypothesis').sort(newest(lesson => lesson.createdAt)),
+        hypotheses: lessons.filter(lesson => lesson.status === 'active' && lesson.tier === 'hypothesis').sort(newest(lesson => lesson.updatedAt)),
         ineffective: lessons.filter(lesson => lesson.status === 'ineffective').sort(newest(lesson => lesson.updatedAt)),
         retired: lessons.filter(lesson => lesson.status === 'retired').sort(newest(lesson => lesson.retiredAt || lesson.updatedAt)),
         agentsSuggestions: lessons.filter(lesson => lesson.status !== 'retired' && lesson.repositoryInstruction && lesson.repositoryInstruction.status !== 'declined').sort(newest(lesson => lesson.createdAt)),
@@ -33,7 +36,7 @@ export function lessonsView(knowledge: KnowledgeState | undefined, office?: Offi
     };
 }
 
-export const TRIGGER_LABEL: Record<RetrospectiveRecord['trigger'], string> = { completed: 'Completed', parked: 'Parked in Block', retired: 'Retired', 'repair-budget': 'Repair budget used up', blocked: 'Blocked' };
+export const TRIGGER_LABEL: Record<RetrospectiveRecord['trigger'], string> = { learning: 'Accepted work', completed: 'Completed', parked: 'Parked in Block', retired: 'Retired', 'repair-budget': 'Repair budget used up', blocked: 'Blocked' };
 
 /** The roll-up table's rows: label and a formatter per metric. */
 export const ROLLUP_ROWS: [string, (rollup: WeeklyRollup) => string][] = [
@@ -42,7 +45,7 @@ export const ROLLUP_ROWS: [string, (rollup: WeeklyRollup) => string][] = [
     ['Repair rounds', rollup => String(rollup.metrics.repairAttempts)],
     ['Reroutes', rollup => String(rollup.metrics.reroutes)],
     ['CI repairs', rollup => String(rollup.metrics.ciRepairs)],
-    ['Block hours (median)', rollup => rollup.metrics.medianBlockHours === null ? '—' : String(rollup.metrics.medianBlockHours)],
+    ['Park to next claim hours (median)', rollup => rollup.metrics.medianBlockHours === null ? '—' : String(rollup.metrics.medianBlockHours)],
     ['Lessons added', rollup => String(rollup.metrics.lessonsAdded)],
     ['Recurrences', rollup => String(rollup.metrics.recurrences)],
 ];

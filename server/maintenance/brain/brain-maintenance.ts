@@ -1,3 +1,4 @@
+import { captureLearning } from '../../knowledge/learning-events';
 import { parseBrainStatus } from './brain-status';
 import { z } from 'zod';
 import { GitHubMaintenance, easternDate } from '../maintenance';
@@ -76,6 +77,7 @@ RESULT: completed requires successful nightly complete and all required capture/
                 if (!valid)
                     throw new Error('Brain gate refusal could not be independently confirmed');
             }
+            captureLearning(this.store, { kind: 'maintenance', id: run.id }, run.id, 'brain-maintenance', String(run.steps.length), saved, saved.summary, 'work', true);
             run.status = 'completed';
             run.stage = result.outcome === 'skipped' ? `skipped: ${result.reason}` : 'brain-completed';
             run.error = '';

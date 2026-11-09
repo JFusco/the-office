@@ -18,6 +18,8 @@ import { WorkerRuntime } from '../../../server/workers/worker-runtime';
 import type { command } from '../../../server/workers/process';
 import type { Lesson, MaintenanceRun } from '../../../src/shared';
 import { knowledgeStore, maintenanceResult, maintenanceRun } from './knowledge-fixture';
+import { captureMaintenanceStep } from '../../../server/knowledge/maintenance-learning';
+import { maintainLearning } from '../../../server/knowledge/learning-maintenance';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).forEach(fn => fn()));
@@ -140,19 +142,23 @@ test('a run with long ledgers, many steps and many artifacts stays within the pa
 test("Harper's accepted maintenance lesson reaches the next vendor review and follow-up, but no CEC or leadership stage", async () => {
     const { store } = setup();
     const run = seedRun(store, blockedRun());
-    const id = maintenanceBlockedId(run);
     const root = resolve(store.dataRoot, 'runs', run.id);
     mkdirSync(root, { recursive: true });
     writeFileSync(resolve(root, '2-vendor-review.json'), '{}');
+    captureMaintenanceStep(store, run, run.steps[1].result, 'partial vendor observation', true);
+    maintainLearning(store);
+    const batch = store.state.knowledge!.pending[0], id = batch.id, evidenceRef = batch.opportunities![0].evidence[0].ref;
     const prompts: string[] = [];
-    const harper: KnowledgeRunner = (async (prompt: string) => { prompts.push(prompt); return { summary: 'The vendor review blocked on a refused fetch.', lessons: [{ statement: 'Read the saved scan artifact before fetching a vendor changelog', detail: 'WebFetch is refused with 403 by this vendor.', kind: 'process', stages: ['maintenance'], paths: [], evidenceIds: [`artifact:${run.id}:2-vendor-review.json`, `step:${run.id}:1`], repositoryInstruction: false }], recurrences: [] }; }) as KnowledgeRunner;
+    const harper: KnowledgeRunner = (async (prompt: string) => { prompts.push(prompt); return { summary: 'The vendor review blocked on a refused fetch.', lessons: [{ statement: 'Read the saved scan artifact before fetching a vendor changelog', detail: 'WebFetch is refused with 403 by this vendor.', kind: 'process', stages: ['maintenance'], paths: [], evidenceIds: [evidenceRef], repositoryInstruction: false }], recurrences: [] }; }) as KnowledgeRunner;
     await runRetrospective(store, harper, id);
     expect(prompts).toHaveLength(1);
     const knowledge = store.state.knowledge!;
     expect(knowledge.consumed).toContain(id);
     expect(knowledge.pending).toEqual([]);
-    expect(knowledge.retrospectives).toMatchObject([{ id, jobId: run.id, key: 'CMS maintenance (weekly)', trigger: 'blocked', subject: 'maintenance' }]);
-    expect(knowledge.lessons.filter(lesson => !lesson.id.startsWith('seed:'))).toMatchObject([{ status: 'active', stages: ['maintenance'], evidence: [{ kind: 'artifact', url: '' }, { kind: 'step' }] }]);
+    expect(knowledge.retrospectives).toMatchObject([{ id, jobId: run.id, trigger: 'learning', subject: 'maintenance' }]);
+    expect(knowledge.lessons.filter(lesson => !lesson.id.startsWith('seed:'))).toMatchObject([{ status: 'active', stages: ['maintenance'], evidence: [{ kind: 'learning', ref: evidenceRef }] }]);
+    expect(prompts[0]).toContain('partial vendor observation');
+    expect(prompts[0]).not.toContain(`artifact:${run.id}:2-vendor-review.json`);
     expect(scheduledRetrospectives(store, never)).toEqual([]);
     for (const stage of ['vendor-review', 'follow-up', 'proposal', 'proposal-plan', 'proposal-plan-review', 'proposal-review', 'package-verification', 'draft-pr'])
         expect(knowledgeContext(store, stage)).toContain('Read the saved scan artifact');
