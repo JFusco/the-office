@@ -1196,6 +1196,14 @@ test.each(['base', 'human-input'])('directly queued merge refreshes changed %s w
  await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});
  expect(a.run).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
 });
+test('a passed fresh Lead verdict cannot create a repeated merge-review loop on a still-conflicting PR', async () => {
+ const a=acceptedMergeResume();a.job.status='queued';a.pr.mergeable=false;
+ await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});
+ a.run.mockResolvedValue(a.result('review'));
+ await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'lead-pr',status:'watching'});expect(a.run).toHaveBeenCalledTimes(1);
+ await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'lead-pr',status:'watching'});expect(a.run).toHaveBeenCalledTimes(1);
+ expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+});
 test('merge effect preflight refreshes a base that changes after the initial gate without dispatch', async()=>{
  const a=acceptedMergeResume();a.job.status='queued';const original=a.delivery.verifyPR.bind(a.delivery);let reads=0;
  a.delivery.verifyPR=async(...args)=>{const p=await original(...args);if(++reads===2)p.base.sha='c'.repeat(40);return p;};

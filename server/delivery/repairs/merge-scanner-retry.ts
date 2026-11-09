@@ -1,13 +1,49 @@
 import { officeMergeProvenance } from './merge-provenance';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { stripVTControlCharacters } from 'node:util';
+import { isDeepStrictEqual, stripVTControlCharacters } from 'node:util';
+import { setTimeout as wait } from 'node:timers/promises';
+import { Effects } from '../../store/effects';
 import { containedFile } from '../../cec/workflow';
 import { assertMayMutate } from '../harness/guards';
 import { activeEffectId, harnessEffect } from '../harness/effect';
 import { handsOff } from '../harness/scope';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
+
+type Retry = NonNullable<TicketJob['mergeScannerRetry']>;
+
+function savedRetry(delivery: GitHubDelivery, job: TicketJob, r: Retry) {
+    const root = resolve(delivery.store.dataRoot, 'ticket-work', job.id);
+    if (r.attempt !== 1 || !Number.isSafeInteger(r.runId) || r.runId <= 0 || r.head !== job.mergeCommit || !containedFile(r.evidencePath, root)) throw new Error('Saved merge retry evidence changed');
+    const evidence = JSON.parse(readFileSync(r.evidencePath, 'utf8'));
+    if (evidence.run.id !== r.runId || evidence.run.run_attempt !== r.attempt || !runIdentity(evidence.run, delivery.store.project.repository, r.head, delivery.store.project.target) || !transientScannerJobs(evidence.jobs, evidence.logs))
+        throw new Error('Original transient failure proof changed');
+}
+
+async function retryReadBack(delivery: GitHubDelivery, r: Retry) {
+    const live = await delivery.api(`actions/runs/${r.runId}`);
+    return live.id === r.runId && runIdentity(live, delivery.store.project.repository, r.head, delivery.store.project.target) && live.run_attempt === r.attempt + 1 ? { runId: live.id, attempt: live.run_attempt } : null;
+}
+
+/** Settle only the original dispatched retry before successful Actions can advance closeout. */
+export async function reconcileMergeScannerRetry(delivery: GitHubDelivery, job: TicketJob) {
+    const { store } = delivery, r = job.mergeScannerRetry;
+    if (!r) return;
+    const id = activeEffectId(store, `harness:${job.id}:merge-scanner-retry:${r.runId}`), prior = store.getEffect(id);
+    if (!prior || !['dispatching', 'uncertain'].includes(prior.status)) return;
+    savedRetry(delivery, job, r);
+    if (!prior.dispatchedAt || prior.operation !== 'github-merge-scanner-retry' || prior.target !== `https://github.com/${store.project.repository}/actions/runs/${r.runId}` ||
+        prior.work.projectId !== store.project.id || prior.work.kind !== 'delivery' || prior.work.id !== job.id || prior.attemptId !== job.id || prior.authorization !== 'office-harness' ||
+        !isDeepStrictEqual(prior.payload, { runId: r.runId, head: r.head, attempt: r.attempt, evidencePath: r.evidencePath }) ||
+        !isDeepStrictEqual(prior.expectedState, { key: `merge-scanner-retry:${r.runId}` })) throw new Error('Original scanner retry effect identity changed');
+    const expected = structuredClone(prior), record = structuredClone(r);
+    if (!await new Effects(store).reconcile(id, async () => {
+        const receipt = await retryReadBack(delivery, r);
+        return { verified: !!receipt && delivery.jobs.find(j => j.id === job.id) === job && job.stage === 'ci-recovery' && !job.ciFollowupKey &&
+            job.mergeCommit === record.head && isDeepStrictEqual(job.mergeScannerRetry, record) && isDeepStrictEqual(store.getEffect(id), expected), receipt };
+    })) throw new Error('Original scanner retry is still unverified; no operation resent');
+}
 
 /** Only the scanner installer failing with a positively evidenced GitHub gateway error is retryable. */
 export function transientScannerJobs(jobs: any[], logs: string[]) {
@@ -50,14 +86,8 @@ export async function retryMergeScanner(delivery: GitHubDelivery, job: TicketJob
         store.save();
     }
     const r = record;
-    if (r.head !== job.mergeCommit || !containedFile(r.evidencePath, root)) throw new Error('Saved merge retry evidence changed');
-    const evidence = JSON.parse(readFileSync(r.evidencePath, 'utf8'));
-    if (evidence.run.id !== r.runId || evidence.run.run_attempt !== r.attempt || evidence.run.head_sha !== r.head || !transientScannerJobs(evidence.jobs, evidence.logs))
-        throw new Error('Original transient failure proof changed');
-    const readBack = async () => {
-        const live = await delivery.api(`actions/runs/${r.runId}`);
-        return runIdentity(live, repo, r.head, store.project.target) && live.run_attempt === r.attempt + 1 ? { runId: live.id, attempt: live.run_attempt } : null;
-    };
+    savedRetry(delivery, job, r);
+    const readBack = () => retryReadBack(delivery, r);
     const key = `merge-scanner-retry:${r.runId}`, prior = store.getEffect(activeEffectId(store, `harness:${job.id}:${key}`));
     if ((!prior || !prior.dispatchedAt && ['prepared', 'rejected'].includes(prior.status)) && !await officeMergeProvenance(delivery, job)) return false;
     if (prior?.status === 'verified') {
@@ -65,19 +95,31 @@ export async function retryMergeScanner(delivery: GitHubDelivery, job: TicketJob
         if (!runIdentity(live, repo, r.head, store.project.target) || live.run_attempt !== 2) throw new Error('Verified merge retry execution changed');
         if (live.status === 'completed') return false;
     } else {
+        const head = job.head, record = structuredClone(r), merged = job.mergeCommit;
+        const assertCurrent = () => {
+            assertMayMutate(store, delivery.jobs, job, head);
+            if (store.state.draining || job.status !== 'working' || job.stage !== 'ci-recovery' || job.mergeScannerRetry !== r ||
+                job.mergeCommit !== merged || !isDeepStrictEqual(r, record)) throw new Error('Merge retry ownership changed');
+        };
         const guard = async () => {
-            assertMayMutate(store, delivery.jobs, job, job.head);
-            if (store.state.draining || job.status !== 'working' || job.stage !== 'ci-recovery' || job.mergeScannerRetry !== r) throw new Error('Merge retry ownership changed');
+            assertCurrent();
             if (!await officeMergeProvenance(delivery, job)) throw new Error('A verified guarded Office merge is required before a new scanner retry');
             const pr = await delivery.verifyPR(job, true), live = await delivery.api(`actions/runs/${r.runId}`);
             if (!pr.merged_at || pr.merge_commit_sha !== r.head || !runIdentity(live, repo, r.head, store.project.target) ||
                 live.run_attempt !== r.attempt || live.status !== 'completed' || live.conclusion !== 'failure') throw new Error('Merge retry scope or run attempt changed');
+            assertCurrent();
         };
         await harnessEffect(store, job, { key, operation: 'github-merge-scanner-retry', target: `https://github.com/${repo}/actions/runs/${r.runId}`,
             payload: { runId: r.runId, head: r.head, attempt: r.attempt, evidencePath: r.evidencePath }, guard, readBack,
             dispatch: async () => {
                 await delivery.execute('gh', ['api', `repos/${repo}/actions/runs/${r.runId}/rerun-failed-jobs`, '--method', 'POST'], { cwd: store.project.repo, timeout: 60000 });
-                return readBack();
+                // GitHub may accept the POST before its GET exposes the new attempt. Only reads repeat.
+                for (const delay of [0, 1000, 3000, 6000]) {
+                    if (delay) await wait(delay);
+                    const receipt = await readBack();
+                    if (receipt) return receipt;
+                }
+                return null;
             } });
     }
     job.status = 'watching'; job.detail = 'One evidenced transient scanner-download retry submitted and read back; original failed attempt retained. Waiting for exact-merge Actions.';

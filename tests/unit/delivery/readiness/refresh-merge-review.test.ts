@@ -31,3 +31,13 @@ test('issue-only change queues a fresh review with the original history intact',
     expect(await refreshMergeReview(f.delivery, f.job, f.pr)).toBe(true);
     expect(f.job.stage).toBe('lead-pr'); expect(f.job.steps).toEqual(before);
 });
+
+test.each([false, true])('a new conflict invalidates acceptance even when GitHub retains base and timestamps (scheduled=%s)', async scheduled => {
+    const f = setup(); f.pr.base.sha = base; f.pr.mergeable = false;
+    if (scheduled) f.job.status = 'working';
+    const history = structuredClone(f.job.steps);
+    expect(await refreshMergeReview(f.delivery, f.job, f.pr, scheduled)).toBe(true);
+    expect(f.job).toMatchObject({ stage: 'lead-pr', status: 'queued', head: oldHead });
+    expect(f.job.reviewContext).toBeUndefined(); expect(f.job.steps).toEqual(history);
+    expect(f.calls.some(c => c.args.includes('POST') || c.args.includes('PUT') || c.args[0] === 'clone')).toBe(false);
+});

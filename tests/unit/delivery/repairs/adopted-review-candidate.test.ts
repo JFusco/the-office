@@ -31,6 +31,20 @@ test('adopted review findings create one guarded candidate and enter actual repa
     f.job.adoptedRepairCheckout!.hooksPath = '/disabled-hooks';
     await expect(verifyCIHooks(f.delivery, f.job)).rejects.toThrow('safeguards');
 });
+test('a read-only primary inspection checkout is retained as evidence and replaced only in the repair view', async () => {
+    const f = setup(); f.result.worktree = f.store.project.repo;
+    expect(await f.delivery.queueSourceRepair(f.job, f.result, f.artifactRoot)).toBe(true);
+    expect(f.result.worktree).toBe(f.store.project.repo);
+    expect(f.job.worktree).not.toBe(f.store.project.repo);
+    expect(f.job.worktree.startsWith(f.artifactRoot)).toBe(true);
+    expect(f.job.stage).toBe('update-base');
+    expect(f.calls.some(c => c.options?.cwd === f.store.project.repo && ['checkout', 'merge', 'push', 'reset', 'clean'].includes(c.args[0]))).toBe(false);
+});
+test('an unrelated reported checkout never becomes an adopted repair candidate', async () => {
+    const f = setup(); f.result.worktree = '/unrelated/candidate';
+    await expect(f.delivery.queueSourceRepair(f.job, f.result, f.artifactRoot)).rejects.toThrow('unowned');
+    expect(f.job.worktree).toBe(''); expect(f.calls.some(c => c.args[0] === 'clone')).toBe(false);
+});
 test.each(['permission', 'human-hold', 'scope'] as const)('adopted %s is never converted into a writer', async kind => {
     const f = setup(); f.result.resolution!.kind = kind;
     expect(await f.delivery.queueSourceRepair(f.job, f.result, f.artifactRoot)).toBe(false);
@@ -51,6 +65,27 @@ test('unknown paid runs refuses a checkout before any candidate is created', asy
     const f = setup(); f.result.paidRuns = null;
     expect(await f.delivery.queueSourceRepair(f.job, f.result, f.artifactRoot)).toBe(false);
     expect(f.job.worktree).toBe(''); expect(f.calls.some(c => c.args[0] === 'clone')).toBe(false);
+});
+test('a pause arriving during session readback stops acquisition before any local candidate mutation', async () => {
+    const f = setup(), original = f.delivery.execute;
+    f.delivery.execute = async (bin, args, options) => {
+        const value = await original(bin, args, options);
+        if (bin === 'curl') f.store.state.paused = true;
+        return value;
+    };
+    await expect(f.delivery.queueSourceRepair(f.job, f.result, f.artifactRoot)).rejects.toThrow('paused');
+    expect(f.calls.some(c => c.bin === 'git' && ['clone', 'config', 'checkout'].includes(c.args[0]))).toBe(false);
+    expect(f.result.worktree).toBe(''); expect(f.job.adoptedRepairCheckout).toBeUndefined();
+});
+test('a pause during hooks discovery stops the adopted clone before any Git mutation', async () => {
+    const f = setup(), original = f.delivery.execute;
+    f.delivery.execute = async (bin, args, options) => {
+        const value = await original(bin, args, options);
+        if (bin === 'git' && args[0] === 'rev-parse' && args.includes('--git-path')) f.store.state.paused = true;
+        return value;
+    };
+    await expect(f.delivery.queueSourceRepair(f.job, f.result, f.artifactRoot)).rejects.toThrow('paused');
+    expect(f.calls.some(c => c.bin === 'git' && ['clone', 'config', 'checkout'].includes(c.args[0]))).toBe(false);
 });
 test('a completed checkout survives a temporary post-clone ownership restriction and is reconciled once', async () => {
     const f = setup(), original = f.delivery.execute;

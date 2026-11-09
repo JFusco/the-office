@@ -15,6 +15,14 @@ can retain the same commit; a prior blocked Lead verdict still requires a fresh
 readiness assessment. A conflict on an adopted PR uses this full route, not the
 shortcut reserved for previously reviewed Office candidates.
 
+A review's primary inspection checkout is evidence, never permission to write in
+that checkout. The same guarded private-clone route applies when the reviewer
+reports it. A newly reported conflict invalidates merge acceptance even if GitHub
+has not changed the PR's saved base SHA or timestamps.
+An advanced bot head is tracked before its fresh Lead assessment only when the
+adopted job has no owned candidate or unsettled effects. Retained candidates and
+attempted merges require their original reconciliation instead.
+
 Before any merge request is sent, changes to the accepted base, issue or
 authenticated review inputs queue a fresh read-only Lead assessment. A dispatched
 or uncertain merge always requires read-back and is never replayed.
@@ -27,6 +35,14 @@ retries fall through to normal diagnosis when needed; uncertain submissions are
 read back without another POST. Interrupted or blocked recovery can be requeued
 using the existing project-scoped `review-pr` command; it does not itself retry CI.
 Releases and deterministic failures do not qualify for this operational retry.
+After the single retry POST, bounded read-only polling allows GitHub's attempt
+identity to become visible. A later successful run still reconciles the original
+uncertain retry effect before closeout can proceed; it never erases that intent.
+An earlier PM issue/card recovery remains a separate gate. A completed diagnosis
+that reported no repair issue can be cleared only by an actual read-only audit of
+every paired call in its original native execution, bound to the saved worker,
+assignment and completion. Missing, external or uncertain effects remain blocked;
+passing CI and an empty issue search cannot substitute for that audit.
 
 Successful closeout removes only a clean, exact delivered-head private repair
 clone. Dirty or changed clones remain pending cleanup. Adopted remote branches,

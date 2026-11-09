@@ -147,7 +147,7 @@ export async function finishLeadReview(this: GitHubDelivery, job: TicketJob, res
         result.evidence.push({ id: crypto.randomUUID(), kind: 'review', summary: 'Sam’s saved current-head review', path, commit: p.head.sha, environment: 'Office Lead review', url: p.html_url, observedAt: new Date().toISOString() });
     }
     const heldFindings=await outsideAmendmentFindingIds(this,job,result.commit,result);
-    const ready = result.outcome === 'passed' && result.commit === p.head.sha && !findingsBlock(this.store, result.findings, f => f.status === 'open' && !heldFindings.has(f.id)) && result.evidence.some(e => e.commit === p.head.sha && containedFile(e.path, root) && e.kind === 'review') && !p.draft && p.base.ref === this.store.project.target;
+    const ready = result.outcome === 'passed' && result.commit === p.head.sha && !findingsBlock(this.store, result.findings, f => f.status === 'open' && !heldFindings.has(f.id)) && result.evidence.some(e => e.commit === p.head.sha && containedFile(e.path, root) && e.kind === 'review') && !p.draft && p.mergeable !== false && p.base.ref === this.store.project.target;
     if (job.mergeAuthorization && job.mergeAuthorization.head !== job.head)
         job.mergeApprovalRequired = true;
     job.status = ready && !job.mergeApprovalRequired && (this.store.state.coordination?.merges?.enabled || job.mergeAuthorization?.head === job.head) ? 'queued' : 'watching';
