@@ -1,3 +1,4 @@
+import { intakeLaunchLimit } from './seed-status';
 import { queueReconsideration } from './reconsider';
 import { runSlackLinks, type LinkRecord } from './read-links';
 import type { Store } from '../../store/store';
@@ -88,8 +89,9 @@ function projectSlackIntake(store: Store, run: KnowledgeRunner, now: Date): Sche
     const captures = ledger.all<Proposal>('proposal').filter(p => (p.status === 'pending' || p.status === 'unresolved') && p.configHash === digestNow && (!p.nextAt || Date.parse(p.nextAt) <= now.getTime()));
     if (captures.length) return [item(captures[0].id, now.toISOString(), () => captureProposal(store, config, captures[0].id))];
     queueReconsideration(ledger, config, lastFriday(now), now.toISOString());
+    const dailyLimit = intakeLaunchLimit(ledger, config);
     const links = ledger.all<LinkRecord>('link').filter(link => link.state === 'pending' && (!link.nextAt || Date.parse(link.nextAt) <= now.getTime()));
-    if (links.length && (ledger.get<number>('launches', easternDay(now)) || 0) < LIMITS.launches) return [item('intake-public-links', now.toISOString(), () => runSlackLinks(store, config, run, links.slice(0, LIMITS.links), 'intake-public-links'))];
+    if (links.length && (ledger.get<number>('launches', easternDay(now)) || 0) < dailyLimit) return [item('intake-public-links', now.toISOString(), () => runSlackLinks(store, config, run, links.slice(0, LIMITS.links), 'intake-public-links'))];
     const backedOff = (t: ReadTask) => { const until = !t.processing && ledger.get<string>('backoff', readMethod(config, t.kind)); return !!until && Date.parse(until) > now.getTime(); };
     const tasks = ledger.all<ReadTask>('task').filter(t => (t.kind === 'lookup' || ledger.get<{ configHash: string }>('identity', t.channel)?.configHash === digestNow) && !backedOff(t) && t.status === 'pending' && t.configHash === digestNow && (!t.nextAt || Date.parse(t.nextAt) <= now.getTime()));
     const previous = ledger.get<string>('rotation', 'channel'), position = config.channels.findIndex(channel => channel.id === previous);
@@ -97,8 +99,8 @@ function projectSlackIntake(store: Store, run: KnowledgeRunner, now: Date): Sche
     tasks.sort((a, b) => order.get(a.channel)! - order.get(b.channel)! || a.createdAt.localeCompare(b.createdAt));
     const task = tasks[0]; if (!task) return [];
     const daily = ledger.get<number>('launches', easternDay(now)) || 0;
-    const result = item(task.id, task.createdAt, async () => { ledger.put('rotation', 'channel', task.channel); await runIntakeTask(store, run, task.id); }, daily < LIMITS.launches, daily >= LIMITS.launches ? 'Learning intake daily launch budget reached' : undefined);
-    if (daily >= LIMITS.launches) result.eligibility.nextCheckAt = easternInstant(addDays(easternDay(now), 1)).toISOString();
+    const result = item(task.id, task.createdAt, async () => { ledger.put('rotation', 'channel', task.channel); await runIntakeTask(store, run, task.id); }, daily < dailyLimit, daily >= dailyLimit ? 'Learning intake daily launch budget reached' : undefined);
+    if (daily >= dailyLimit) result.eligibility.nextCheckAt = easternInstant(addDays(easternDay(now), 1)).toISOString();
     return [result];
 }
 

@@ -157,7 +157,7 @@ test('late quiet-week appendix is aggregate-only and never changes the narrative
         expect(JSON.stringify(report)).not.toContain('C123'); expect(JSON.stringify(report)).not.toContain('fixture.slack.com');
         expect(readIntakeReport(f.store, report.intake!.id)).toContain('C123');
         f.task.status = 'complete'; f.ledger.put('task', f.task.id, f.task); reconcileIntakeReports(f.store);
-        expect(report.intake?.outstanding).toBe(0); expect(report.intake?.status).toBe('partial');
+        expect(report.intake?.outstanding).toBe(0); expect(report.intake?.status).toBe('settled');
         expect(() => readIntakeReport(f.store, '../../unsafe')).toThrow();
     } finally { f.close(); }
 });
