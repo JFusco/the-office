@@ -49,6 +49,38 @@ test('native seed pages omit zero oldest while preserving stored bounds, cursor 
     } finally { f.close(); }
 });
 
+test('message proposals use every canonical permalink supplied by the read prompt before advancing a page', async () => {
+    for (const canonical of [false, true]) {
+        const f = intakeFixture();
+        try {
+            const stamps = ['100.000001', '101.000002'];
+            const run = (async (prompt, _schema, opts) => {
+                const prefix = /Canonical message permalink prefix: "([^"]+)"/.exec(prompt)?.[1];
+                expect(prefix).toBe('https://fixture.slack.com/archives/C123/p');
+                expect(prompt).toContain('preserve all six fractional digits');
+                expect(prompt).toContain('EVERY source id');
+                const raw = event(f.ledger.get<ReadTask>('task', f.task.id)!) as any;
+                raw.item.result = envelope({ messages: 'Channel: #fixture-channel (C123)\n\n' + stamps.map(stamp => `=== Message from Fixture at fixture ===\nMessage TS: ${stamp}\nA participant report.\n`).join('\n'),
+                    pagination_info: 'There are more messages available. To view the next page, use cursor: `next-page`\n' });
+                opts.onIntakeEvent?.(raw);
+                const links = stamps.map(stamp => `${canonical ? prefix : 'https://app.slack.com/archives/C123/p'}${stamp.replace('.', '')}`);
+                return { units: stamps.map(stamp => ({ id: `C123:${stamp}`, outcome: 'proposed', reason: '' })),
+                    proposals: [{ domain: 'tooling', body: `Participant report; not independently verified. Sources: ${links.join(' ')}`, units: stamps.map(stamp => `C123:${stamp}`) }] };
+            }) as KnowledgeRunner;
+            await runIntakeTask(f.store, run, f.task.id);
+            const task = f.ledger.get<ReadTask>('task', f.task.id)!;
+            if (canonical) {
+                expect(task).toMatchObject({ status: 'pending', cursor: 'next-page', failures: 0, oldest: '0.000000', latest: '200.000000' });
+                expect(f.ledger.all('proposal')).toHaveLength(1);
+            } else {
+                expect(task.error).toContain('intake-provenance-missing');
+                expect(task.cursor).toBeUndefined();
+                expect(f.ledger.all('proposal')).toHaveLength(0);
+            }
+        } finally { f.close(); }
+    }
+});
+
 test('native text envelope labels excerpts and requires independent pagination evidence', () => {
     const f = intakeFixture();
     try {
