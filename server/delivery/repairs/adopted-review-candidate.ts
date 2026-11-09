@@ -8,25 +8,34 @@ import { harnessDelivers } from '../harness/scope';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
 import { repairFindingIds, verifyRepairCandidate } from './delivery-repairs';
 import { conflictOnlyAssessment } from './conflict-repair';
-import { ciCheckout, verifyCIHooks } from './ci-checkout';
+import { ciCheckout, finishCISetup, verifyCIHooks } from './ci-checkout';
+import { readInitialCheckout } from './read-initial-checkout';
+import { removeAdoptedClone } from '../candidate/remove-adopted-clone';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
 /** Supply an owned clone for an adopted PR's scoped repair, retaining its original assessment. */
 export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: TicketJob, result: StageResult, root: string) {
     const { store } = delivery, conflict = conflictOnlyAssessment(result);
-    if (!harnessDelivers(store, job) || !job.existingPR || job.stage !== 'lead-pr' || job.worktree || result.worktree ||
+    // A read-only reviewer may report the inspection checkout. It is never a repair candidate.
+    if (!harnessDelivers(store, job) || !job.existingPR || job.stage !== 'lead-pr' || job.worktree ||
         !job.pr || result.prId !== job.pr || result.commit !== job.head || result.paidRuns !== 0 ||
         job.repairCycle?.pendingFindingIds.some(id => !result.findings.some(f => f.id === id)) ||
         (!repairFindingIds(result, true) && !conflict)) return result;
-    const input = deliveryInputSha256(store, job.key), head = job.head;
-    const guard = async () => {
+    if (result.worktree && result.worktree !== store.project.repo)
+        throw new Error('Adopted repair cannot use an unowned reported checkout');
+    const input = deliveryInputSha256(store, job.key), head = job.head, branch = job.branch, prId = job.pr;
+    let candidate = job.adoptedRepairCheckout;
+    const assertCurrent = () => {
         assertMayMutate(store, delivery.jobs, job, head);
-        if (store.state.draining || job.status !== 'working' || job.mergeAttempt || job.mergeIntentId || job.mergeApprovalRequired ||
+        if (store.state.draining || job.stage !== 'lead-pr' || job.status !== 'working' || job.branch !== branch || job.pr !== prId || job.adoptedRepairCheckout !== candidate || job.mergeAttempt || job.mergeIntentId || job.mergeApprovalRequired ||
             job.prerequisites?.length || deliveryInputSha256(store, job.key) !== input ||
             job.steps.some(s => hasUncertainEffects(s.stage, s.result)) ||
             store.activeClaims().some(c => c.work.kind === 'delivery' && c.work.id === job.id && c.id !== currentAssignment()?.claim.id))
             throw new Error('Adopted repair ownership, inputs or effects changed');
+    };
+    const guard = async () => {
+        assertCurrent();
         const p = await delivery.verifyPR(job, true);
         if (p.state !== 'open' || p.merged_at || p.draft || p.head.sha !== head || p.head.ref !== job.branch ||
             p.head.repo?.full_name !== store.project.repository || p.head.ref === store.project.target || conflict && p.mergeable !== false)
@@ -35,13 +44,21 @@ export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: Tick
             `http://127.0.0.1:${process.env.OFFICE_PORT || 4318}/api/sessions?project=${encodeURIComponent(store.project.id)}&ticket=${encodeURIComponent(job.key)}&requestId=${encodeURIComponent(job.id)}`], { readOnly: true, timeout: 60000 }));
         if (!ownership.complete || !ownership.fresh || ownership.project !== store.project.id || ownership.key !== job.key || ownership.ownership?.status !== 'clear')
             throw new Error('Adopted repair waits for fresh clear exact-issue ownership');
+        assertCurrent();
         return p;
     };
     const provider = await guard();
     const inputs = result.resolution?.evidenceIds.map(id => result.evidence.find(e => e.id === id)!) || [];
     if (!conflict && inputs.some(e => !containedFile(e.path, root) && !containedFile(e.path, store.project.repo)))
         throw new Error('Adopted repair diagnostic lies outside its project or saved artifacts');
-    let candidate = job.adoptedRepairCheckout;
+    if (candidate && candidate.head !== head) {
+        if (job.repairCycle || candidate.branch !== job.branch) throw new Error('Prior adopted candidate ownership changed; preserved');
+        const removed = await removeAdoptedClone(store, delivery.execute, job, assertCurrent, '');
+        mkdirSync(root, { recursive: true });
+        writeFileSync(resolve(root, `superseded-checkout-${crypto.randomUUID()}.json`), JSON.stringify({ prior: candidate, newHead: head, removed, observedAt: new Date().toISOString() }), { mode: 0o600, flag: 'wx' });
+        await guard();
+        candidate = undefined;
+    }
     let worktree: string;
     if (candidate) {
         const expected = resolve(store.dataRoot, 'ticket-work', job.id, `ci-${candidate.id}`, 'candidate');
@@ -55,6 +72,11 @@ export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: Tick
             candidate = undefined;
         } else {
             if (candidate.worktree !== expected || present.isSymbolicLink()) throw new Error('Prior adopted checkout path changed; preserved');
+            const initial = await readInitialCheckout(store, delivery.execute, job, candidate);
+            if (initial) {
+                await guard();
+                await finishCISetup(delivery, candidate, assertCurrent, initial.hooksConfigured);
+            }
             await verifyRepairCandidate(store.project, { head, branch: candidate.branch, worktree: expected }, delivery.execute);
             await verifyCIHooks(delivery, { ...job, worktree: expected });
         }
@@ -63,7 +85,7 @@ export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: Tick
     else {
         candidate = { id: `review-${crypto.randomUUID()}`, head, branch: job.branch };
         job.adoptedRepairCheckout = candidate; store.save();
-        worktree = await ciCheckout(delivery, job, candidate);
+        worktree = await ciCheckout(delivery, job, candidate, assertCurrent);
     }
     await guard();
     // This records a repair request and provider identity, never source acceptance.

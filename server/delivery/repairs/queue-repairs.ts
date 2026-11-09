@@ -15,7 +15,8 @@ import { recordJobApproach } from '../pipeline/approach';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
 import { adoptedReviewCandidate } from './adopted-review-candidate';
-import { retryMergeScanner } from './merge-scanner-retry';
+import { reconcileMergeScannerRetry, retryMergeScanner } from './merge-scanner-retry';
+import { reconcileCIDiagnosis } from './reconcile-ci-diagnosis';
 
 export async function queueConflictRepair(this: GitHubDelivery, key: string, reason: 'conflicts' | 'ci' = 'conflicts') {
     const job = this.jobs.find(j => j.key === key && j.stage === 'lead-pr' && (['watching', 'blocked'].includes(j.status) || reason === 'conflicts' && j.status === 'interrupted'));
@@ -72,9 +73,11 @@ export async function recoverMergeCI(this: GitHubDelivery, job: TicketJob) {
     const p = await this.verifyPR(job, true);
     if (!p.merged_at || !job.mergeCommit || p.merge_commit_sha !== job.mergeCommit)
         throw new Error('Merged CI recovery identity changed');
+    const settledDiagnosis = !job.ciRecoveryAttemptAt || harnessDelivers(this.store, job) && !job.ciFollowupKey && await reconcileCIDiagnosis(this, job);
     // A crash or operator recheck may resume after the retry already finished. Observe current
     // exact-merge runs before diagnosing a failure that may no longer exist.
-    if (harnessDelivers(this.store, job) && !job.ciFollowupKey) {
+    if (harnessDelivers(this.store, job) && !job.ciFollowupKey && settledDiagnosis) {
+        await reconcileMergeScannerRetry(this, job);
         const page = await this.api(`actions/runs?head_sha=${job.mergeCommit}&per_page=100`);
         if (!Array.isArray(page.workflow_runs) || page.total_count !== page.workflow_runs.length || page.total_count > 100)
             throw new Error('Merge Actions coverage is incomplete');
@@ -85,7 +88,7 @@ export async function recoverMergeCI(this: GitHubDelivery, job: TicketJob) {
             this.store.save(); return;
         }
     }
-    if (harnessDelivers(this.store, job) && await retryMergeScanner(this, job)) return;
+    if (harnessDelivers(this.store, job) && settledDiagnosis && await retryMergeScanner(this, job)) return;
     if (job.ciFollowupKey) {
         job.status = 'watching';
         return;

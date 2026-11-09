@@ -41,6 +41,7 @@ import { reconcileWrongLink, reconcilePreparation, reconcileReview, reconcileBas
 import { approveMerge } from '../readiness/approve-merge';
 import { observe } from './observe-prs';
 import { queueConflictRepair, queueCIRepair, recoverMergeCI, queueSourceRepair } from '../repairs/queue-repairs';
+import { trackAdoptedReview } from '../readiness/track-adopted-review';
 import { continuationGuard } from '../recovery/implementation/continuation-guard';
 import { preparationChecksPending } from '../readiness/preparation-checks';
 import { stagePrompt } from './stage-prompts';
@@ -195,6 +196,7 @@ export class GitHubDelivery {
                 await new ProjectProgress(this.store, this.execute).reviewStarted(job);
             const continuation = job.implementationContinuation && (!job.pr || technicalPhase) && ['review', 'scope-repair', 'validate'].includes(job.stage) ? await this.continuationGuard(job) : undefined;
             const reviewStart = job.stage === 'lead-pr' ? await this.verifyPR(job) : undefined;
+            if (reviewStart) trackAdoptedReview(this.store, this.jobs, job, reviewStart);
             let policyInstruction = '';
             if (reviewStart) {
                 const policy = await this.readinessPolicy(reviewStart.head.sha), path = resolve(root, `github-policy-${crypto.randomUUID()}.json`);

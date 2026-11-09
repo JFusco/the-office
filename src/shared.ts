@@ -189,6 +189,7 @@ export interface TicketJob {
     };
     ciFollowupKey?: string;
     ciRecoveryAttemptAt?: string;
+    ciRecoveryNoWriteProof?: { attemptAt: string; originalWorkerId: string; readerWorkerId: string; evidencePath: string; sha256: string };
     mergeScannerRetry?: { runId: number; attempt: number; head: string; evidencePath: string };
     repairReason?: 'conflicts' | 'ci' | 'source';
     repairCycle?: DeliveryRepairCycle;

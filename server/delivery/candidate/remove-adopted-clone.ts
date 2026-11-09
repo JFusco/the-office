@@ -1,6 +1,7 @@
 import { lstatSync, realpathSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { verifyRepairCandidate } from '../repairs/delivery-repairs';
+import { readInitialCheckout } from '../repairs/read-initial-checkout';
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
@@ -13,17 +14,20 @@ export async function removeAdoptedClone(store: Store, execute: typeof command, 
         throw new Error('Adopted clone cleanup identity changed; preserved');
     const entry = lstatSync(expected, { throwIfNoEntry: false });
     if (!entry) return { worktree: false, local: false, remote: false };
-    const handedOff = !!job.worktree;
+    const handedOff = !!job.worktree || !!job.repairCycle;
     if (candidate.worktree !== expected || handedOff && (!tip || tip !== job.head || job.worktree !== expected || candidate.branch !== job.branch))
         throw new Error('Adopted clone cleanup identity changed; preserved');
     if (entry.isSymbolicLink() || realpathSync(expected) !== resolve(realpathSync(root), `ci-${candidate.id}`, 'candidate'))
         throw new Error('Adopted clone cleanup path changed; preserved');
     // A never-handed-off clone has no developer changes: only its original clean head is removable.
     const removal = { head: handedOff ? tip : candidate.head, branch: candidate.branch, worktree: expected };
-    await verifyRepairCandidate(store.project, removal, execute);
+    const verify = async () => {
+        if (handedOff || !await readInitialCheckout(store, execute, job, candidate)) await verifyRepairCandidate(store.project, removal, execute);
+    };
+    await verify();
     guard();
     // A final read protects new uncommitted work arriving during the earlier checks.
-    await verifyRepairCandidate(store.project, removal, execute);
+    await verify();
     guard();
     rmSync(expected, { recursive: true });
     return { worktree: true, local: false, remote: false };

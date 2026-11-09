@@ -32,7 +32,8 @@ export async function refreshMergeReview(delivery: GitHubDelivery, job: TicketJo
     if (scheduled) {
         if (!eligible(true) || !validPR()) throw new Error('Accepted merge context changed during validation');
     } else if (!eligible() || !validPR()) return false;
-    if (context!.head === pr.head.sha && context!.target === pr.base.ref && context!.baseSha === pr.base.sha && context!.prUpdatedAt === pr.updated_at && context!.issueUpdatedAt === issue.updated_at &&
+    // GitHub can retain the PR's saved base SHA/timestamp while mergeability changes.
+    if (pr.mergeable !== false && context!.head === pr.head.sha && context!.target === pr.base.ref && context!.baseSha === pr.base.sha && context!.prUpdatedAt === pr.updated_at && context!.issueUpdatedAt === issue.updated_at &&
         (job.reviewInputSha256 ? job.reviewInputSha256 === deliveryInputSha256(store, job.key) : !deliveryHumanInputs(store, job.key).length)) return false;
     if (!eligible()) {
         if (scheduled) throw new Error('Merge review changed while reassessment cannot be queued; no merge dispatched');
