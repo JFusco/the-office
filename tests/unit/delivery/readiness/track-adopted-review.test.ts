@@ -1,11 +1,11 @@
 import { test, expect, vi } from 'vitest';
-import { writeFileSync, existsSync } from 'node:fs';
+import { writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ciFixture, oldHead, newHead } from '../../../fixtures/ci-repair';
 import { trackAdoptedReview } from '../../../../server/delivery/readiness/track-adopted-review';
 import { ProjectProgress } from '../../../../server/delivery/board/project-progress';
 
-test.each(['none', 'clean', 'dirty'])('an advanced adopted PR reconciles its %s unused clone before fresh repair', async retained => {
+test.each(['none', 'clean', 'dirty', 'post-removal-failure'])('an advanced adopted PR reconciles its %s unused clone before fresh repair', async retained => {
     const f = ciFixture(); f.job.existingPR = true;
     f.delivery.queueCIRepair = async () => false;
     f.delivery.readinessPolicy = async () => ({}) as any;
@@ -25,7 +25,12 @@ test.each(['none', 'clean', 'dirty'])('an advanced adopted PR reconciles its %s 
         await expect(f.delivery.queueSourceRepair(f.job, assessment(oldHead), f.artifactRoot)).rejects.toThrow('Post-checkout');
         oldPath = f.job.adoptedRepairCheckout!.worktree!; oldId = f.job.adoptedRepairCheckout!.id;
         expect(f.job.worktree).toBe(''); expect(existsSync(oldPath)).toBe(true);
-        f.delivery.verifyPR = verify; f.job.status = 'watching';
+        let failAfterRemoval = retained === 'post-removal-failure';
+        f.delivery.verifyPR = async (...args) => {
+            if (failAfterRemoval && !existsSync(oldPath)) { failAfterRemoval = false; throw new Error('Post-removal ownership read failed'); }
+            return verify(...args);
+        };
+        f.job.status = 'watching';
         const execute = f.delivery.execute;
         f.delivery.execute = async (bin, args, options) => {
             if (bin === 'git' && options?.cwd === oldPath) {
@@ -45,9 +50,14 @@ test.each(['none', 'clean', 'dirty'])('an advanced adopted PR reconciles its %s 
     expect(f.job.lastPRFingerprint).toContain(newHead);
     await f.delivery.step(f.job);
     expect(runs).toBe(1);
-    if (retained === 'dirty') {
+    if (retained === 'dirty' || retained === 'post-removal-failure') {
         expect(f.job).toMatchObject({ stage: 'lead-pr', status: 'blocked', head: newHead });
-        expect(f.job.adoptedRepairCheckout?.id).toBe(oldId); expect(existsSync(oldPath)).toBe(true);
+        expect(f.job.adoptedRepairCheckout?.id).toBe(oldId);
+        expect(existsSync(oldPath)).toBe(retained === 'dirty');
+        if (retained === 'post-removal-failure') {
+            const receipts = readdirSync(f.artifactRoot).filter(name => name.startsWith('superseded-checkout-')).map(name => JSON.parse(readFileSync(resolve(f.artifactRoot, name), 'utf8')));
+            expect(receipts).toContainEqual(expect.objectContaining({ prior: expect.objectContaining({ id: oldId }), removed: { worktree: true, local: false, remote: false } }));
+        }
     } else {
         expect(f.job).toMatchObject({ stage: 'update-base', status: 'queued', head: newHead, repairCycle: { publishedHead: newHead } });
         if (oldPath) { expect(existsSync(oldPath)).toBe(false); expect(f.job.adoptedRepairCheckout?.id).not.toBe(oldId); }

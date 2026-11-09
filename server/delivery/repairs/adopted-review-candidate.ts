@@ -54,9 +54,9 @@ export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: Tick
     if (candidate && candidate.head !== head) {
         if (job.repairCycle || candidate.branch !== job.branch) throw new Error('Prior adopted candidate ownership changed; preserved');
         const removed = await removeAdoptedClone(store, delivery.execute, job, assertCurrent, '');
-        await guard();
         mkdirSync(root, { recursive: true });
         writeFileSync(resolve(root, `superseded-checkout-${crypto.randomUUID()}.json`), JSON.stringify({ prior: candidate, newHead: head, removed, observedAt: new Date().toISOString() }), { mode: 0o600, flag: 'wx' });
+        await guard();
         candidate = undefined;
     }
     let worktree: string;
