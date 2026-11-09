@@ -1,3 +1,4 @@
+import { intakeLaunchLimit } from './seed-status';
 import { IntakeRateLimit } from './rate-limits';
 import { readyReferences } from './reconsider';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -20,7 +21,7 @@ export async function runIntakeTask(store: Store, run: KnowledgeRunner, id: stri
     if (!config?.enabled || !store.state.knowledge?.enabled || store.state.paused || store.state.draining || !task || task.status !== 'pending' || task.configHash !== configDigest(config)) return;
     if (task.kind !== 'lookup' && ledger.get<{ configHash: string }>('identity', task.channel)?.configHash !== configDigest(config)) return;
     const day = easternDay(store.clock.now()), launches = ledger.get<number>('launches', day) || 0;
-    if (launches >= LIMITS.launches || task.failures >= 5 || Date.parse(task.nextAt) > store.clock.now().getTime()) return;
+    if (launches >= intakeLaunchLimit(ledger, config) || task.failures >= 5 || Date.parse(task.nextAt) > store.clock.now().getTime()) return;
     task.attempt = ledger.id(); task.status = 'running'; task.ownerClaim = store.activeClaims().find(c => c.work.id === id)?.id || '';
     task.nextAt = new Date(store.clock.now().getTime() + LIMITS.timeout + retryDelay(task.failures + 1)).toISOString(); ledger.put('task', id, task);
     const cwd = mkdtempSync(resolve(tmpdir(), 'office-intake-read-')), observations: Observation[] = [];

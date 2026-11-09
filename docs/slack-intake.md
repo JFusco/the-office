@@ -63,8 +63,12 @@ Discovery completion does not imply every source body or proposal is settled.
 Every effective record write changes a ledger revision; report reconciliation and
 reconsideration rescan only after it changes, so idle service ticks stay cheap.
 
-A day allows eight actual worker launches shared by authenticated reads and public
-follow-ups, independently of delivery retrospectives. Each read has a 20-minute
+A day normally allows eight actual worker launches shared by authenticated reads and public
+follow-ups, independently of delivery retrospectives. The optional private
+`seedLaunchesPerDay` setting accepts 8–32 launches during initial seeding (Joe
+approved 32 for this rollout). A retained seed-completion receipt automatically
+returns the limit to eight. Changing this operational allowance does not change
+source authority or reset the already-used daily count. Each read has a 20-minute
 limit, one page per launch (below the ten-page ceiling), at most 200 messages, 25 MiB
 of returned data and 1 MiB decoded text. File reads are one per launch and limited
 to 10 MB. Native rate limits back off the method (inventory and reply search share
@@ -156,3 +160,33 @@ References: [Codex configuration](https://learn.chatgpt.com/docs/config-file/con
 [Slack MCP](https://docs.slack.dev/ai/slack-mcp-server/),
 [Slack CLI API command](https://docs.slack.dev/tools/slack-cli/reference/commands/slack_api/),
 and [bookmarks.list](https://docs.slack.dev/reference/methods/bookmarks.list/).
+
+## Historical seed completion
+
+Lessons shows aggregate historical seed progress even without a weekly narrative.
+The private intake reports include the same `historicalSeed` result. In-progress
+counts are outstanding work, not a percentage or ETA: later pages can discover
+more threads, attachments and references.
+
+Completion requires every configured history and its initial inventory, verified
+channel identities, completed catch-up channel/search/inventory reads, and no
+unfinished read, actionable source outcome or unsettled capture. Queued catch-up
+alone is not completion. Needs-attention reads, failed source outcomes and uncertain
+capture receipts prevent completion. Explicit unavailable bodies and terminal public
+reference gaps remain separate coverage limits. Bookmarks/pins and search-based
+discovery prevent a claim of lossless coverage, so the finished label is
+**Complete with coverage gaps**.
+
+The first completion records a private receipt bound to the configured authority
+and fixed historical windows, plus one aggregate Office `slack-seed-complete` event.
+Its timestamp and result survive restart; later weekly work does not reopen the
+seed or send another completion event. There is no Slack notification. Before the
+first completion, the check conservatively waits for all retained intake work,
+including catch-up or weekly work queued while seeding, to settle. A reset or
+configuration reconciliation must preserve existing receipts and original evidence.
+
+Slack documents substantially higher provider read rates than this local worker
+allowance: [Slack MCP rate limits](https://docs.slack.dev/ai/slack-mcp-server/)
+and [cursor-paginated history](https://docs.slack.dev/reference/methods/conversations.history/).
+Those documented rates are not a measured throughput guarantee for this connector;
+its existing method backoff, page size and restricted reader remain in force.

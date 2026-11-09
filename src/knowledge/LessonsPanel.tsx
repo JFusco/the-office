@@ -1,3 +1,4 @@
+import { SlackSeedStatus } from './SlackSeedStatus';
 import { IntakeSummary } from './IntakeSummary';
 import { BlockerFollowups } from './BlockerFollowups';
 import { ResearchSummary } from './ResearchSummary';
@@ -39,6 +40,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
   return <Section data-lessons-panel>
     <SectionTitle className="mb-2">Lessons</SectionTitle>
     <p className={mutedCopy}>{harper} learns from accepted research, plans, reviews, implementation, delivery and orchestration, including successes and blockers. Relevant guidance is supplied automatically; that does not prove it was applied. Ellis owns supported recovery and Morgan handles missing decisions. Proven requirements belong in harness code or tests. Friday reports close at 17:00 Eastern, with bounded retries and targeted public research when available.</p>
+    <SlackSeedStatus seed={snapshot.knowledge?.slackSeed} />
     <form className="mt-5 grid gap-3" onSubmit={event => { event.preventDefault(); void save('configure-knowledge', { knowledge: { enabled } }).then(saved => { if (saved) setDraft(null); }); }}>
       <CheckField checked={enabled} disabled={disabled} onChange={event => setDraft(event.target.checked)}>Let {harper} write retrospectives for this project</CheckField>
       <Button type="submit" className="justify-self-start" disabled={disabled || draft === null || draft === view.enabled}>Save</Button>

@@ -1,3 +1,4 @@
+import { intakeLaunchLimit } from './seed-status';
 import { z } from 'zod';
 import { easternDay } from '../../office/clock';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -24,7 +25,7 @@ export async function runSlackLinks(store: Store, config: Config, run: Knowledge
     const current = readConfig(store);
     if (!current?.enabled || configDigest(current) !== configDigest(config) || !store.state.knowledge?.enabled || store.state.paused || store.state.draining) return;
     const ledger = new IntakeLedger(store);
-    if ((ledger.get<number>('launches', easternDay(store.clock.now())) || 0) >= LIMITS.launches) return;
+    if ((ledger.get<number>('launches', easternDay(store.clock.now())) || 0) >= intakeLaunchLimit(ledger, config)) return;
     const selected: { url: string; item: LinkRecord }[] = [];
     const perSource = new Map<string, number>();
     for (const prior of ledger.all<LinkRecord>('link')) if (prior.state === 'read') perSource.set(prior.source, (perSource.get(prior.source) || 0) + 1);

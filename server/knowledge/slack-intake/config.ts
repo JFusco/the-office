@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { Store } from '../../store/store';
 const ToolNames = z.object({ channel: z.string(), thread: z.string(), search: z.string(), file: z.string(), canvas: z.string(), lookup: z.string() }).strict();
 export const IntakeConfig = z.object({
+    seedLaunchesPerDay: z.number().int().min(8).max(32).optional(),
     enabled: z.boolean(), workspace: z.string().url(), appId: z.string().regex(/^[a-zA-Z0-9_-]+$/), tools: ToolNames,
     channels: z.array(z.object({ id: z.string().regex(/^[CG][A-Z0-9]+$/), name: z.string().regex(/^[a-z0-9_-]+$/) }).strict()).min(1).max(7),
     domains: z.array(z.string().regex(/^[a-z0-9_/-]+$/)).min(1), publicHosts: z.array(z.string().regex(/^[a-z0-9.-]+$/)),
@@ -16,7 +17,7 @@ export const IntakeConfig = z.object({
 });
 export type Config = z.infer<typeof IntakeConfig>;
 export const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
-export const configDigest = (c: Config) => digest(JSON.stringify({ ...IntakeConfig.parse(c), enabled: undefined }));
+export const configDigest = (c: Config) => digest(JSON.stringify({ ...IntakeConfig.parse(c), enabled: undefined, seedLaunchesPerDay: undefined }));
 export function privateFile(store: Pick<Store, 'dataRoot'>, relative: string): string {
     if (!/^[a-zA-Z0-9/_.-]+$/.test(relative) || relative.split('/').some(x => x === '..' || !x)) throw Error('Invalid intake artifact path');
     const root = realpathSync(store.dataRoot), target = resolve(root, 'slack-intake', relative);

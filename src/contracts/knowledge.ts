@@ -116,7 +116,7 @@ export interface DeliveryMetrics {
     recurrences: number;
 }
 export interface WeeklyRollup {
-    intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; captures: number; duplicates: number; quarantines: number; outstanding: number; reasons: string[] };
+    intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; captures: number; duplicates: number; quarantines: number; outstanding: number; coverageGaps?: number; reasons: string[] };
     learning?: LearningMetrics;
     researchId?: string;
     research?: WeeklyResearch;
@@ -158,7 +158,15 @@ export interface OfficeKnowledge {
     proposals: OfficeProposal[];
     lessons: Lesson[];
 }
+/** Aggregate-only historical intake progress; private source data stays in the intake ledger. */
+export interface SlackSeedProgress {
+    status: 'seeding' | 'needs-attention' | 'complete-with-gaps';
+    channelsTotal: number; channelsEnumerated: number; pendingReads: number; pendingCaptures: number;
+    unresolvedSources: number; coverageGaps: number; dailyLimit: number; completedAt?: string;
+}
 export interface KnowledgeState {
+    slackSeed?: SlackSeedProgress;
+
     learningStartedAt?: string;
     exposures?: LessonExposure[];
     learningConsumed?: string[];
