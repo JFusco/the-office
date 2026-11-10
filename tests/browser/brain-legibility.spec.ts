@@ -72,6 +72,9 @@ test('map labels do not steal marker clicks and explicit connections reveal filt
     await page.getByLabel('Find a node').fill('schema');await page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true}).click();
     await page.getByRole('region',{name:'Selected node'}).getByRole('button',{name:/^citation ·/}).first().click();
     await expect(page.getByRole('region',{name:'Selected evidence'})).toBeVisible();await expect(page.getByRole('combobox',{name:'Show',exact:true})).toHaveValue('all');
+    const selected=page.getByRole('region',{name:'Selected node'});
+    await expect(selected.locator(':scope > h3')).toHaveText(/^#cec-team · Confirm the schema version/);
+    await expect(selected).toContainText('Source record CCEC1:1');
     const activity=page.getByRole('checkbox',{name:'Include employee activity'});await expect(activity).toHaveClass(/accent-checkbox/);await activity.focus();await expect(activity).toBeFocused();
 });
 

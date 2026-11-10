@@ -46,7 +46,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         visuals = nodeVisuals(palette);
         graph.backgroundColor(palette.brainBackground).nodeThreeObject(raw => visuals!.create(raw as never))
             .nodeVisibility(raw => (raw as { visible: boolean }).visible)
-            .nodeLabel(raw => { const label = document.createElement('span'); label.textContent = (raw as KnowledgeNode).title; return label; })
+            .nodeLabel('') // The canvas owns hover/selection captions; avoid a duplicate HTML tooltip.
             .linkColor(() => palette.brainFocusConnection).linkOpacity(.5).linkWidth(.6)
             .enableNodeDrag(false).showNavInfo(false).cooldownTicks(0)
             .onNodeClick(node => select(node as KnowledgeNode)).onNodeHover(node => { visuals!.hover(node?.id?.toString() || ''); });
