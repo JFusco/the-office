@@ -4,6 +4,7 @@ import { resolveLane } from '../../board/move-lane';
 import { cardStatus, projectCards, projectGraphql, setCardStatus, statusField, type Execute } from '../../board/project-graphql';
 import { readRepo, type DependabotPR } from './qualify';
 import type { Store } from '../../../store/store';
+import { centralCompanionHandoff, centralCompanionIssue } from '../dependency-bots/companion-issue';
 
 export interface TrackingIssue { number: number; nodeId: string; url: string }
 
@@ -16,8 +17,10 @@ function ownTracking(i: any, pr: number, bot = 'dependabot'): boolean {
 }
 
 export async function findTrackingIssue(store: Store, execute: Execute, pr: number, known = 0, bot = 'dependabot'): Promise<TrackingIssue | null> {
-    const found = known ? [await readRepo(store, execute, `issues/${known}`)].filter(i => ownTracking(i, pr, bot))
-        : (await readRepo(store, execute, 'issues?state=all&creator=JFusco&per_page=100', true)).filter((i: any) => ownTracking(i, pr, bot));
+    const central = bot === 'pin-courier' && centralCompanionHandoff(store.project.repository);
+    const matches = (i: any) => ownTracking(i, pr, bot) || central && centralCompanionIssue(i, store.project.repository, pr);
+    const found = known ? [await readRepo(store, execute, `issues/${known}`)].filter(matches)
+        : (await readRepo(store, execute, central ? 'issues?state=all&per_page=100' : 'issues?state=all&creator=JFusco&per_page=100', true)).filter(matches);
     if (found.length > 1)
         throw new Error(`Dependency PR #${pr} has ${found.length} tracking issues; reconcile before adoption`);
     if (found[0] && found[0].state !== 'open')
@@ -46,6 +49,8 @@ export async function ensureTrackingIssue(store: Store, execute: Execute, record
     if (existing)
         return existing;
     if (record.issue) throw new Error(`Known tracking issue #${record.issue} no longer matches; preserve it for reconciliation`);
+    if (pr.bot === 'pin-courier' && centralCompanionHandoff(store.project.repository))
+        throw new Error(`Pin Courier PR #${pr.number} awaits its central companion issue; Office will not create a competing issue`);
     const read = () => findTrackingIssue(store, execute, pr.number, 0, pr.bot);
     return harnessEffect(store, record, {
         key: `issue:${pr.number}`, operation: 'github-issue-create', target: `${store.project.repository}#${pr.bot || 'dependabot'}-${pr.number}`, payload: { pr: pr.number }, guard,
