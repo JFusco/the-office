@@ -12,6 +12,8 @@ import { deliveryInputSha256 } from '../../../../server/github/github-context';
 import { publishMetadata } from '../../../../server/delivery/publication/publish-metadata';
 import { metadataAppliesToHead } from '../../../../server/delivery/publication/metadata-context';
 import { plan } from '../../../fixtures/ci-repair';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 function leadResult(f: ReturnType<typeof metadataFixture>, changes: Partial<StageResult> = {}): StageResult {
     return { outcome: 'passed', commit: f.job.head, prId: f.job.pr, branch: f.job.branch, worktree: f.job.worktree,
@@ -131,6 +133,42 @@ test.each(['blocked', 'failed'] as const)('a native metadata-verifying %s verdic
     expect(f.record.phase).toBe('review'); expect(f.record.review).toBeUndefined();
     await expect(requireMetadataReview(f.delivery, f.job)).rejects.toThrow('Fresh independent');
     expect(f.writes.patches).toBe(1); expect(model).not.toHaveBeenCalled();
+});
+
+test.each([
+    ['blocked', false], ['failed', false], ['blocked', true], ['failed', true],
+] as const)('a native metadata-verifying %s source verdict uses bounded repair with failing CI=%s', async (outcome, failingCI) => {
+    const f = metadataFixture(), model = vi.spyOn(f.engine.agents, 'run');
+    await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true)); f.store.finishClaim(f.claim.id, 'completed');
+    const history = structuredClone(f.record), effectId = `harness:${f.job.id}:pr-metadata:${f.record.id}`, effect = structuredClone(f.store.getEffect(effectId));
+    const api = f.delivery.api.bind(f.delivery);
+    f.delivery.api = async path => path.includes('/check-runs') ? { total_count: 1, check_runs: [{ id: 10, head_sha: f.job.head,
+        name: 'unit', status: 'completed', conclusion: failingCI ? 'failure' : 'success' }] } :
+        path.endsWith('/status') ? { sha: f.job.head, total_count: 0, statuses: [], state: 'success' } : api(path);
+    const path = resolve(f.root, 'source-review.json');
+    writeFileSync(path, JSON.stringify({ head: f.job.head, finding: 'src', detail: 'Unrelated source defect requires repair' }));
+    const result = leadResult(f, { outcome, blocker: 'Unrelated source defect requires repair',
+        resolution: { kind: 'source-repair', findingIds: ['src'], evidenceIds: ['src-ev'], release: null } });
+    result.findings.push({ id: 'src', status: 'open', summary: 'Unrelated source defect', expected: 'Correct source behavior', actual: 'Defect observed', attempts: 0 });
+    result.evidence.push({ id: 'src-ev', kind: 'review', commit: f.job.head, path, summary: 'Exact-head source defect', url: '', environment: 'fixture', observedAt: '' });
+    const ci = vi.spyOn(f.delivery, 'queueCIRepair'), source = vi.spyOn(f.delivery, 'queueSourceRepair');
+    const native = await acceptLead(f, result);
+    expect(ci).toHaveBeenCalledOnce(); expect(ci).toHaveBeenCalledWith(f.job);
+    if (failingCI) {
+        expect(source).not.toHaveBeenCalled(); expect(f.job).toMatchObject({ stage: 'lead-pr', status: 'queued' });
+        expect(f.job.ciRepairs?.at(-1)?.phase).toBe('diagnose'); expect(f.job.repairCycle).toBeUndefined();
+    } else {
+        expect(source).toHaveBeenCalledOnce(); expect(source).toHaveBeenCalledWith(f.job, result, f.root);
+        expect(ci.mock.invocationCallOrder[0]).toBeLessThan(source.mock.invocationCallOrder[0]);
+        expect(f.job).toMatchObject({ stage: 'update-base', status: 'queued', repairReason: 'source',
+            repairCycle: { pendingFindingIds: ['src'], attempts: 1, findingAttempts: { src: 1 }, phase: 'repair', publishedHead: f.job.head } });
+        expect(f.job.ciRepairs).toBeUndefined();
+    }
+    expect(f.job.steps.at(-1)).toMatchObject({ workerId: native.worker.id, nativeResultSha256: native.resultSha256 });
+    expect(f.store.state.knowledge?.learningConsumed?.some(id => id.startsWith(`job:${f.job.id}:lead-pr:`))).toBe(true);
+    expect(f.record).toEqual(history); expect(f.record.phase).toBe('review'); expect(f.record.review).toBeUndefined();
+    await expect(requireMetadataReview(f.delivery, f.job)).rejects.toThrow('Fresh independent');
+    expect(f.store.getEffect(effectId)).toEqual(effect); expect(f.writes.patches).toBe(1); expect(model).not.toHaveBeenCalled();
 });
 
 test.each(['review', 'done'] as const)('verified metadata in phase %s becomes retained history on a repaired source head', async phase => {

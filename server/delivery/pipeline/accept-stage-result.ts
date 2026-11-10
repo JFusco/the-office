@@ -259,6 +259,12 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         if (await admitPRMetadata(this, job, result, inputSha256)) { learn(); return; }
         if (metadataAppliesToHead(this.store, job)) {
             await acceptMetadataReview(this, job, result, beforeWorkers);
+            if (['blocked', 'failed'].includes(result.outcome) && result.resolution?.kind === 'source-repair') {
+                job.status = 'watching';
+                if (await this.queueCIRepair(job)) { learn(); return; }
+                job.status = 'working';
+                if (await this.queueSourceRepair(job, result, root)) { learn(); return; }
+            }
             await this.finishLeadReview(job, result);
             learn(); return;
         }
