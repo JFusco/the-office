@@ -71,6 +71,8 @@ function fixture(historical=false){
    if(args[0]==='diff'&&args[1]==='--name-only')return 'ticket.md\0';
    throw Error('Unexpected Git command '+cmd);
   }
+  if(program==='gh'&&cmd==='api user --method GET')return JSON.stringify({login:'JFusco'});
+  if(program==='gh'&&cmd===`api repos/${store.project.repository}/pulls/119 --method GET`)return JSON.stringify(pr);
   if(program==='gh'&&args[0]==='pr')return JSON.stringify({closingIssuesReferences:[{url:issue.html_url}]});
   if(program==='gh'&&args[1]==='graphql')return JSON.stringify({data:{repository:{pullRequest:graph()}}});
   if(program==='gh'&&cmd.includes('pulls?state=open'))return JSON.stringify([[pr]]);
@@ -119,7 +121,7 @@ async function initialDraftContinuation(historical=false){
    if(args[0]==='diff'&&args[1]==='--name-only')return paths.join('\0')+'\0';
    if(args[0]==='show'){const commit=args[1].split(':')[0];return JSON.stringify(commit===fork?base:commit===a.head?proposal:commit===a.base?target:integrated);}
   }
-  if(program==='gh'&&args[0]==='api'&&args[1].includes('/issues/100/comments'))return JSON.stringify([[{body:'Office delivery job'}]]);
+  if(program==='gh'&&args[0]==='api'&&args[1].includes('/issues/100/comments'))return JSON.stringify([[{id:902,user:{login:'JFusco'},html_url:a.issue.html_url+'#issuecomment-902',body:`Office delivery ${a.job.id}: Draft PR ${a.pr.html_url} is linked to this issue. Sam will check PR readiness; maintainer merge and release gates still apply.`}]]);
   if(program==='gh'&&args[0]==='api'&&args[1].includes('pulls?state=open&base='))return '[[]]';
   return execute(program,args);
  });

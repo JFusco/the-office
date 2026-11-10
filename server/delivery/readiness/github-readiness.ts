@@ -39,13 +39,13 @@ export async function readinessPolicy(this: GitHubDelivery, head: string) {
         throw new Error('GitHub ruleset identity or enforcement is unavailable');
     return { repository: project.repository, branch: branch.name, head, observedAt: new Date().toISOString(), branchProtected: branch.protected, rulesets, protectionDetailRequired: branch.protected || rulesets.length > 0 };
 }
-export async function verifyPR(this: GitHubDelivery, job: TicketJob, requireTarget = false) {
-    const p = await this.api(`pulls/${job.pr}`);
+export async function verifyPR(this: GitHubDelivery, job: TicketJob, requireTarget = false, read?: (kind: 'pull-request' | 'issue-links') => Promise<any>) {
+    const p = read ? await read('pull-request') : await this.api(`pulls/${job.pr}`);
     if (!p.head?.sha || !p.html_url?.startsWith(`https://github.com/${this.store.project.repository}/pull/`))
         throw new Error('Canonical PR identity is unavailable');
     if (p.base?.repo?.full_name !== this.store.project.repository || requireTarget && p.base.ref !== this.store.project.target)
         throw new Error('PR repository or target does not match this project');
-    const links = JSON.parse(await this.execute('gh', ['pr', 'view', String(job.pr), '--repo', this.store.project.repository, '--json', 'closingIssuesReferences'], { cwd: this.store.project.repo, timeout: 60000 }));
+    const links = read ? await read('issue-links') : JSON.parse(await this.execute('gh', ['pr', 'view', String(job.pr), '--repo', this.store.project.repository, '--json', 'closingIssuesReferences'], { cwd: this.store.project.repo, timeout: 60000 }));
     const issueUrl = `https://github.com/${this.store.project.repository}/issues/${Number(job.key.slice(3))}`;
     // GitHub does not populate closingIssuesReferences until a stacked PR targets
     // the default branch. A same-repository closing directive routes review only.

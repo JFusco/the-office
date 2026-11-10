@@ -30,6 +30,8 @@ import {publishedDraftConflictCandidate,reconcilePublishedDraftConflict} from '.
 import { continuationWorkerProof, continuationReviewArtifacts, assertContinuationWorker } from '../recovery/implementation/continuation-evidence';
 import { artifact, digest } from '../../store/readback-evidence';
 import { currentAssignment } from '../../workers/assignment-context';
+import { linkDraftIssue } from '../publication/link-draft-issue';
+import { readPublication } from '../publication/read-command';
 import { isDeepStrictEqual } from 'node:util';
 import { admitPRMetadata, METADATA_FINDING } from '../publication/metadata-admission';
 import { metadataAppliesToHead } from '../publication/metadata-context';
@@ -353,23 +355,12 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         job.pr = result.prId;
         if (!job.pr)
             throw new Error('PR identity is missing');
-        const p = await this.verifyPR(job, true);
+        const p = await this.verifyPR(job, true, kind => readPublication(this.store, this.execute, job, root, kind));
         job.prUrl = p.html_url;
         if (job.repairCycle?.publishedHead) job.repairCycle.publishedHead = p.head.sha;
         if (!p.draft && !job.repairReason || p.head.sha !== job.head)
             throw new Error('Draft state or exact PR head is unverified');
-        const linked = JSON.parse(await this.execute('gh', ['pr', 'view', String(job.pr), '--repo', project.repository, '--json', 'closingIssuesReferences'], { cwd: project.repo, timeout: 60000 }));
-        if (!linked.closingIssuesReferences?.some((i: any) => i.url === issue.html_url))
-            throw new Error('GitHub has not confirmed the native issue-to-PR link');
-        const comments = JSON.parse(await this.execute('gh', ['api', `repos/${project.repository}/issues/${issue.number}/comments?per_page=100`, '--paginate', '--slurp'], { cwd: project.repo, timeout: 60000 }));
-        const marker = `Office delivery ${job.id}`;
-        if (!comments.flat().some((c: any) => c.body?.includes(marker))) {
-            // Job is durably working before this single write. Timeout/restart blocks replay.
-            const comment = JSON.parse(await this.execute('gh', ['api', `repos/${project.repository}/issues/${issue.number}/comments`, '-f', `body=${marker}: Draft PR ${p.html_url} is linked to this issue. Team-selected checks cover ${job.head}; ${job.approach ? `review=${job.approach.review}, validation=${job.approach.validation}. ${job.approach.reason}` : 'the retained independent review and validation apply.'} Sam will check PR readiness; maintainer merge and release gates still apply.`], { cwd: project.repo, timeout: 60000 }));
-            const saved = await this.api(`issues/comments/${comment.id}`);
-            if (!saved.body?.includes(marker) || !saved.body.includes(p.html_url))
-                throw new Error('Issue comment read-back failed');
-        }
+        await linkDraftIssue(this, job, issue, root);
         this.store.ticket(job.key).prId = job.pr;
         this.store.emit('github-pr-linked', `${job.key} linked to draft PR #${job.pr}; handing off to Sam.`, 'lead', job.key);
         if (await routeReadyPostConflictPublication(this,job,result)) return;

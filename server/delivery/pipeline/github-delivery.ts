@@ -95,7 +95,7 @@ export class GitHubDelivery {
     async reconcileNativeDelivery(key: string) { return reconcileNativeDelivery.call(this, key); }
     async api(path: string) { return JSON.parse(await this.execute('gh', ['api', `repos/${this.store.project.repository}${path ? `/${path}` : ''}`], { cwd: this.store.project.repo, timeout: 60000, readOnly: true })); }
     async readinessPolicy(head: string) { return readiness.readinessPolicy.call(this, head); }
-    async verifyPR(job: TicketJob, requireTarget = false) { return readiness.verifyPR.call(this, job, requireTarget); }
+    async verifyPR(job: TicketJob, requireTarget = false, read?: (kind: 'pull-request' | 'issue-links') => Promise<any>) { return readiness.verifyPR.call(this, job, requireTarget, read); }
     /** True only on positive evidence that the job's PR is already merged; any read failure is not evidence. */
     async mergedOutside(job: TicketJob): Promise<boolean> { try { return !!(await this.verifyPR(job, true)).merged_at; } catch { return false; } }
     async preparationChecksPending(job: TicketJob, result: StageResult): Promise<boolean>  { return preparationChecksPending.call(this, job, result); }
