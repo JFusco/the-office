@@ -9,6 +9,9 @@ it('names evidence with its configured source and a bounded readable excerpt', (
     expect(evidenceTitle('🧠'.repeat(120), '#team')).toBe('#team · ' + '🧠'.repeat(96) + '…');
     expect(evidenceTitle('Rename user_id to account_id', '#team')).toBe('#team · Rename user_id to account_id');
     expect(evidenceTitle('Keep `__init__.py` and `a*b*c`', '#team')).toBe('#team · Keep __init__.py and a*b*c');
+    expect(evidenceTitle('Call `handlers[type](event)`', '#team')).toBe('#team · Call handlers[type](event)');
+    expect(evidenceTitle('Keep `<https://h.test|v>`', '#team')).toBe('#team · Keep <https://h.test|v>');
+    expect(evidenceTitle('`a``b` and ``a`b``', '#team')).toBe('#team · a``b and a`b');
 });
 
 it('reads admitted public claims instead of showing their serialized record fields', () => {

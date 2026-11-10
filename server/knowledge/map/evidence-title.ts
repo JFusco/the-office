@@ -12,8 +12,8 @@ export function evidenceTitle(text: string, sourceTitle: string, publicClaims = 
     const candidate = document.frontmatter === 'invalid' || document.frontmatter === 'incomplete' ? ''
         : document.metadata.title?.trim() || document.body.trimStart().split(/\r?\n/, 1)[0];
     const plain = candidate.replace(/^\s{0,3}(?:#{1,6}\s+|>\s*|[-*+]\s+)/, '')
-        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/<https?:\/\/[^|>]+\|([^>]+)>/g, '$1')
-        .replace(/(`+)(.*?)\1|(?<!\w)(\*\*|\*)(?=\S)(.+?\S|\S)\3(?!\w)/g, (_match, ticks, code, _emphasis, words) => ticks ? code : words)
+        .replace(/(?<!`)(`+)(?!`)(.*?)(?<!`)\1(?!`)|\[([^\]]+)\]\([^)]*\)|<https?:\/\/[^|>]+\|([^>]+)>|(?<!\w)(\*\*|\*)(?=\S)(.+?\S|\S)\5(?!\w)/g,
+            (_match, ticks, code, link, slack, _emphasis, words) => ticks ? code : link ?? slack ?? words)
         .replace(/\s+/g, ' ').trim();
     const excerpt = Array.from(plain);
     return `${sourceTitle} · ${excerpt.length ? excerpt.slice(0, 96).join('') + (excerpt.length > 96 ? '…' : '') : 'Source evidence'}`;
