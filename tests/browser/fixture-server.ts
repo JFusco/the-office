@@ -1,3 +1,4 @@
+import { brainFixture } from './brain-fixture';
 import { featureFixture } from './feature-fixture';
 // Isolated browser-test server: serves a built UI (static files) and answers the Office API
 // from in-memory synthetic fixtures. It never reads .local data, starts workers or contacts
@@ -13,6 +14,7 @@ const arg=(name:string,fallback:string)=>{const i=process.argv.indexOf(`--${name
 const port=Number(arg('port',process.env.OFFICE_FIXTURE_PORT||'4460')),dist=resolve(arg('dist',process.env.OFFICE_FIXTURE_DIST||'dist'));
 if(!existsSync(resolve(dist,'index.html')))throw new Error(`No built UI at ${dist}. Run a Vite build first.`);
 let state:FixtureState=createFixtureState();
+let brain=brainFixture();
 const writes:{at:string;method:string;path:string;body:unknown}[]=[];
 const streams=new Map<string,Set<ServerResponse>>();
 const types:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.json':'application/json'};
@@ -27,8 +29,9 @@ async function body(req:import('node:http').IncomingMessage){let text='';for awa
 
 createServer(async(req,res)=>{
   const url=new URL(req.url||'/',`http://127.0.0.1:${port}`),project=url.searchParams.get('project')||'cec';
-  if(url.pathname==='/__fixture/reset'){state=createFixtureState();writes.length=0;return json(res,{reset:true});}
+  if(url.pathname==='/__fixture/reset'){state=createFixtureState();brain.close();brain=brainFixture();writes.length=0;return json(res,{reset:true});}
   if(url.pathname==='/__fixture/snapshot'&&req.method==='POST'){const patch=await body(req) as any;Object.assign(state.snapshots[project],patch);if(url.searchParams.get('push')!=='0')push(project);return json(res,{ok:true});}
+  if(url.pathname==='/__fixture/technical'){brain.close();brain=brainFixture(true);return json(res,{syntheticPublished:true});}
   if(url.pathname==='/__fixture/writes')return json(res,writes);
   // Test seeding only: not recorded in writes, so no-write assertions stay meaningful.
   if(url.pathname==='/__fixture/preferences'&&req.method==='POST'){const patch=await body(req) as Record<string,unknown>;return mergePreferences(patch)?json(res,{...state.preferences,serviceInstanceId:'fixture-service'}):json(res,{error:'Invalid preferences'},400);}
@@ -46,6 +49,7 @@ createServer(async(req,res)=>{
     const projects=Object.values(state.snapshots).map(s=>({id:s.project!.id,name:s.project!.name,provider:s.project!.provider,workLog:s.workLog||[],time:s.coordination?.time,hasBoard:!!s.project!.githubProject}));
     return json(res,telemetryReport(projects as any,{scope:scope as 'office'|'project',projectId,ticket,days:days==='all'?'all':Number(days) as 7|30}));
   }
+  if(url.pathname.startsWith('/api/knowledge/')){let request:Request|undefined;if(req.method==='POST'){const chunks:Buffer[]=[];let bytes=0;for await(const chunk of req){bytes+=chunk.length;if(bytes>10000000)return json(res,{error:'Too large'},413);chunks.push(Buffer.from(chunk));}request=new Request(url,{method:'POST',headers:{'Content-Type':String(req.headers['content-type']||'')},body:Buffer.concat(chunks)});}const response=await brain.read(url,project,request);if(response){res.writeHead(response.status,Object.fromEntries(response.headers));res.end(await response.text());return;}}
   if(url.pathname==='/api/time/scope-preview')return json(res,{applied:true,applicable:false,expectedSha256:null,rows:[],tickets:[],blockers:{disabled:false,liveWork:[],publications:[],manual:[]}});
   if(url.pathname.startsWith('/api/')){
     if(req.method==='POST'){
@@ -53,6 +57,8 @@ createServer(async(req,res)=>{
       const s=state.snapshots[project];if(!s)return json(res,{error:'Unknown project'},409);
       if(url.pathname.startsWith('/api/features')){try{const result=featureFixture(s,url.pathname,data);push(project);return json(res,result);}catch(error){return json(res,{error:String(error)},409);}}
       if(url.pathname==='/api/commands'){
+        if(data.action==='knowledge-source'){try{return json(res,brain.command(project,data.source),202);}catch(error){return json(res,{error:String(error)},400);}}
+        if(data.action==='configure-knowledge-digest'){try{brain.configureDigest(project,data.knowledge);return json(res,{accepted:true},202);}catch(error){return json(res,{error:String(error)},400);}}
         const c=s.coordination!;
         if(data.action==='configure-pickup')c.pickup={...c.pickup!,...data.pickup};
         if(data.action==='configure-notifications')c.notices={policy:{...c.notices!.policy,...data.notifications},entries:c.notices!.entries};

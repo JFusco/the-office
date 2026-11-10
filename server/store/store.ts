@@ -1,4 +1,5 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
+import { eventSourceBindings } from '../knowledge/events/source-bindings';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { DATA } from '../office/config';
@@ -106,17 +107,18 @@ export class Store {
             }
         return result;
     }
-    transition<T>(kind: string, message: string, operation: () => T, role?: Role, ticket?: string): T {
+    transition<T>(kind: string, message: string, operation: () => T, role?: Role, ticket?: string,sourceBindings?:OfficeEvent['sourceBindings']): T {
         return this.transaction(() => {
             const result = operation();
-            this.emit(kind, message, role, ticket);
+            this.emit(kind, message, role, ticket,sourceBindings);
             return result;
         });
     }
-    emit(kind: string, message: string, role?: Role, ticket?: string): OfficeEvent {
+    emit(kind: string, message: string, role?: Role, ticket?: string,sourceBindings?:OfficeEvent['sourceBindings']): OfficeEvent {
         if (!this.transactionDepth)
-            return this.transaction(() => this.emit(kind, message, role, ticket));
-        const event: OfficeEvent = { id: 0, at: this.clock.now().toISOString(), kind, message: sanitize(message).slice(0, 1500), role, ticket };
+            return this.transaction(() => this.emit(kind, message, role, ticket,sourceBindings));
+        const bindings=[...(sourceBindings||[]),...eventSourceBindings(this,role,ticket)];
+        const event: OfficeEvent = { id: 0, at: this.clock.now().toISOString(), kind, message: sanitize(message).slice(0, 1500), role, ticket,...(bindings.length?{sourceBindings:[...new Map(bindings.map(b=>[JSON.stringify(b),b])).values()]}:{}) };
         const inserted = this.statement('INSERT INTO events(body) VALUES(?)').run(JSON.stringify(event));
         event.id = Number(inserted.lastInsertRowid);
         this.statement('UPDATE events SET body=? WHERE id=?').run(JSON.stringify(event), event.id);

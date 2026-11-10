@@ -1,17 +1,31 @@
 # Private Slack learning intake
 
-Harper uses the existing Office knowledge lane to collect learning candidates into
-Brain's private inbox. Delivery, publication and active guidance remain separate.
-The implementation is opt-in: absent or disabled private configuration schedules
-nothing. This document is a local implementation record, not proof of a deployed
-schedule or completed historical seed.
+Harper collects through one Office source registry and the existing knowledge lane.
+Project evidence stays private to subscribed projects; technical sources retain Brain's
+capture, review and publication workflow. Collection is distinct from publication and
+accepted employee outcomes. This document describes implementation, not a completed
+historical seed or live qualification of the new registry.
 
-## Configuration and ownership
+## Registry authority and migration
 
-Only the Brain project accepts `slack-intake/config.json` under its Office data
-root. Require owner-only permissions (`0600`), no symlink path components, and keep
-all workspace names, channel IDs, app identifiers and domain mappings private.
-Never commit a real configuration. Its shape is:
+Office → Brain → Sources and each project's Sources screen edit the same registry.
+A project can subscribe to multiple channels. A shared channel has one fixed home,
+stream, progress ledger and budget owner; subscribers curate their own local lessons.
+Pause, resume, remove, unsubscribe, withdraw, cadence and coalesced refresh use that
+registry. Removal retains history; unsubscribe revokes the project's next read;
+withdrawal excludes retained evidence and dependent guidance from ordinary delivery.
+
+The old Brain `slack-intake/config.json` is one-time migration evidence. It stays
+private and unchanged after cutover, and no longer controls collection or scheduling.
+Preparing/ready cutover markers fence legacy and registry ownership; existing claims
+must settle before cutover. Import preserves windows, source versions, request UUIDs,
+hashes and Effects identities. Disabled legacy configuration imports paused sources.
+Uncertain captures keep independent reconciliation; source changes never permit replay.
+
+The legacy import format below requires owner-only permissions, no symlink components,
+verified workspace/app/channel bindings and registered Brain domains. Its original
+seven-channel bound applies to this legacy import, not the number of registered sources.
+Never commit real connection identities or configuration.
 
 ```json
 {
@@ -32,17 +46,12 @@ Never commit a real configuration. Its shape is:
 }
 ```
 
-Resolve up to seven exact channel names/IDs and verify native lookup permalinks
-against the configured workspace. Domain values must exist in Brain's private
-configuration. Public hosts are an explicit list of destinations permitted for
-anonymous reading. Do not add internal, signed or credential-bearing URLs.
-The workspace is the bare origin (`https://NAME.slack.com`, no trailing slash).
-Changing collection scope requires operator reconciliation of retained records;
-old tasks with a different configuration digest do not run under new authority.
-While any unfinished task, pending capture or channel identity carries another
-digest, the scheduler projects a single blocked `intake-config-reconcile` item and
-runs no intake work. Restore the matching configuration or reconcile the retained
-private records before collection resumes; nothing migrates automatically.
+Each active Slack authority contains exactly one validated channel and the same six
+restricted read tools. Before probes or workers, the harness checks the exact source,
+home, task, attempt, channel and current authority digest. Invalid bindings launch no
+commands and consume no allowance. Public hosts remain explicitly approved; signed,
+credential-bearing, internal and unverified URLs stay unread. A changed source authority
+cannot authorize retained tasks or references from another digest.
 
 ## Scheduling and progress
 
@@ -50,7 +59,7 @@ The existing scheduler projects `knowledge-slack-intake` at rank 5 in Harper's
 knowledge lane. It freezes a seed upper timestamp, enumerates history, queues
 threads and referenced files/canvases, and starts catch-up immediately after seed
 enumeration. Reads rotate through configured channels so continuing history in one
-channel cannot monopolize the seed. Friday at 17:00 America/New_York, incremental windows include a 48-hour
+channel cannot monopolize the seed. Project channels default to daily cadence; the imported technical group keeps Friday at 17:00 America/New_York. Incremental windows include a 48-hour
 overlap and timestamp-filtered reply discovery, including replies to older parents.
 Resource versions use content hashes; known canvases are re-read weekly. Message
 edit/deletion sweeps and whole-site recrawls are not included.
@@ -63,8 +72,7 @@ Discovery completion does not imply every source body or proposal is settled.
 Every effective record write changes a ledger revision; report reconciliation and
 reconsideration rescan only after it changes, so idle service ticks stay cheap.
 
-A day normally allows eight actual worker launches shared by authenticated reads and public
-follow-ups, independently of delivery retrospectives. The optional private
+One Office-wide counter normally allows eight actual worker launches across source homes, authenticated reads and public follow-ups, independently of delivery retrospectives. New projects and subscriptions add no allowance. The optional private
 `seedLaunchesPerDay` setting accepts 8–32 launches during initial seeding (Joe
 approved 32 for this rollout). A retained seed-completion receipt automatically
 returns the limit to eight. Changing this operational allowance does not change
@@ -226,3 +234,122 @@ preserving cumulative failures until complete. The retry count uses the current
 retry deadline/error, so older successful checkpoints do not appear as active
 failures solely because their cumulative count remains nonzero. Saved failure
 receipts and prior work records remain unchanged.
+
+## Acquisition, admission and retained copies
+
+The restricted acquisition/classification worker necessarily sees native source content
+before scanning. Secret scanning runs after acquisition and before evidence admission,
+curation, ordinary employee briefings, search or digests. Scanner failure or findings
+make downstream evidence unavailable; they do not erase the acquisition. Scanning does
+not establish confidentiality, factual accuracy or protection from prompt injection.
+
+Each native unit is scanned separately. A version with findings stays private and
+is withheld from downstream results; clean units on the same page can settle.
+Capture groups that mix clean and withheld units are deferred until clean support
+is separated. Generated classifications are scanned separately; findings withhold
+that classification without turning its claims into accepted outcomes. Sources
+shows value-free counts of these gaps. Scanner unavailability still fails closed.
+
+Withdraw evidence requires confirmation. Withdrawal is final in this version:
+the retained source identity cannot resume or be registered again, and its
+evidence and dependent guidance remain excluded. Pause and remove retain
+historical access. No revalidation operation is available in this version.
+
+Activity's Brain capture reviews paginate all retained capture requests and read
+at most four current receipts per page. Brain's inbox `currentStatus` may remain
+pending after review: `disposition.as` records accepted, rejected or superseded.
+Office validates the original request, candidate, input hash and domain before
+displaying that outcome. Accepted rows link to the recorded acceptance PR; exact
+note mappings are shown only when recorded, with committed-content inspection.
+Older acceptances without mappings remain explicitly unknown. Missing receipts,
+quarantine and conflicting identities never imply publication. Candidate bodies
+are excluded from this view.
+
+Confirmed Office digests and identified reposts remain inspectable as source
+observations, but are excluded from new weekly findings. A frozen review whose
+source is later recognized as Office-authored is withheld from ordinary delivery;
+its private audit bytes remain intact and a queued Slack send loses authorization.
+Enabling optional Slack delivery explicitly authorizes short excerpts from sources
+shared with the project to the configured, verified internal channel. The operator
+must choose a destination authorized to receive that material.
+
+Technical sources retain their private capture, review and merged-publication gate.
+Raw technical observations and capture candidates do not enter ordinary search,
+employee briefings, lookups or weekly digests, including for subscribed projects.
+The home operator can inspect retained technical evidence and capture lineage.
+Only published notes read at a committed revision enter technical delivery.
+Project-evidence sources enter scoped delivery after validation and scanning.
+Subscriptions never convert a technical source into project evidence or share
+another project's derived lessons. Withdrawal excludes dependent guidance immediately and marks its
+retained lesson records for source-withdrawn review, including after a restart.
+
+Stopped reservation recovery never treats an uncertain launch as proven unspawned
+and never authorizes replay. Once source claims and surviving worker ownership
+are absent, the reservation becomes an uncertain debit on its original day. If
+recovery crosses midnight, an additional conservative debit covers recovery day
+because the actual launch day may be unknown. Later days are not charged forever.
+Active or uncertain surviving ownership retains its reservation.
+
+Uploads use generated private paths and bounded text/Markdown, text-PDF and DOCX
+extraction. The native Slack reader does not gain attachment download authority from
+upload support: missing binary text remains an explicit coverage gap. Evidence retains
+identity, immutable version/hash, reader/extractor, scan receipt, provenance and limits.
+
+Current grants and withdrawal rules apply again to retrieval, maps, frozen learning
+packets, assignment briefings, recorded lookups, historical details, digests and retained
+conversation copies. Previously supplied bytes cannot be recalled; future delivery uses
+current permissions. Exact supplied text stays in immutable private `lessons.json`;
+exact lookup responses stay in separate private `lookups.jsonl`. Store snapshots carry
+reference/hash metadata. Lookup capabilities expire with the active attempt or restart.
+
+Supplied means dispatched briefing; retrieved means a response was durably recorded
+before service; verified means an accepted outcome cited exact supplied/retrieved
+identities or an existing installed procedure use was confirmed. None alone proves
+general application. Morgan gets one frozen scoped internal review per project/week.
+That internal handoff gives no implementation, promotion or outbound Slack authority.
+
+## Library, map and team feedback
+
+Brain is an Office view, opened by the Brain toolbar icon on the same URL. Sources,
+Library, Map and Activity use Office's existing styles, project selection and commands.
+The map opens separately from the room, disposes its renderer when leaving and restores
+the room camera. Fixed ID-derived node positions and stored relationships determine the
+display; ambient dust and orbit movement have no routing or retrieval authority. The
+searchable connection list provides the same selection and detail actions without 3D.
+
+The Library combines permitted project evidence and advisory lessons, approved Office
+knowledge, and committed technical notes through supported Brain CLI interfaces. It
+never reads the viewer or treats inbox candidates as published guidance. Exact note
+revision/hash and evidence versions remain inspectable. Activity separates collection
+and private capture status from verified incorporation mappings. Publication read-back
+checks at most four original requests and four mapped committed notes; missing lineage
+and unknown publication times remain unknown.
+
+Source-backed Harper review and weekly narrative inputs and retained generated outputs
+use the same scanner. Accepted employee results retain exact private bytes and source
+dependencies. Revocation filters future historical-detail reads, source-derived work,
+events, session context and retained run artifacts as well as search and briefings.
+Audit records remain retained privately. A failed lookup log or summary save serves no
+unrecorded response; original supplied knowledge remains distinct from a lookup-log gap.
+
+Optional outbound weekly digests have separate per-project workspace/channel settings
+and are off by default. Enabling applies to future frozen weekly reviews. A destination
+or permission change cancels queued sends. Native destination verification, the existing
+notification lane and Effects perform one dispatch; uncertain sends use independent
+read-back and never replay. Private message bodies are stored separately from ordinary
+notice and delivery metadata. Only confirmed native delivery identity marks recollected
+messages Office-authored. Known-link reposts also require an exact comparable text hash;
+merely linking a digest does not classify an independent discussion as a repost.
+Office-authored material is not independent corroboration and direct derived lessons
+require review. Accepted task evidence with inherited source dependencies remains
+separate from direct source curation.
+
+Sources also accepts approved public HTTPS URLs as project evidence. These use the same
+isolated public reader, scheduler, global allowance, scanner and admission path. Each
+collection allows one hop and five pages on the exact approved host. Native reads support
+the returned claims, but original page bytes are unavailable: versions hash the admitted
+normalized claims. Signed, credential-bearing, internal or unsupported URLs stay unread.
+Public sources cannot produce technical capture proposals. Uploads are limited to 10 MB,
+200 PDF pages, 500,000 text characters/1 MiB extracted text, 30 seconds, a 256 MiB child
+heap and a monitored 512 MiB process-tree RSS. Unsupported, encrypted, image-only and
+unreadable inputs retain explicit outcomes; there is no OCR or attachment permission gain.

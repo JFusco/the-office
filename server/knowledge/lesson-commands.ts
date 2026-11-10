@@ -1,3 +1,4 @@
+import { proofBindings } from './sources/proof-scope';
 import { baselineLearning } from './learning-maintenance';
 import type { Store } from '../store/store';
 import { visibleTicketTriggerIds, visibleTriggerIds } from './retrospective-triggers';
@@ -11,7 +12,7 @@ export function retireLesson(store: Store, lessonId: unknown): void {
     store.transition('lesson-retired', `Lesson retired: ${lesson.statement}`, () => {
         const now = store.clock.now().toISOString();
         Object.assign(lesson, { revision: (lesson.revision || 1) + 1, status: 'retired', retiredAt: now, retiredBy: 'human', updatedAt: now });
-    }, 'knowledge');
+    }, 'knowledge',undefined,lesson.evidence.flatMap(proofBindings));
 }
 
 /** Turning retrospectives off stops new runs; turning them back on does not replay what finished meanwhile. */
@@ -43,7 +44,7 @@ export function reactivateLesson(store: Store, lessonId: unknown): void {
     store.transition('lesson-reactivated', `Lesson reactivated: ${lesson.statement}`, () => {
         const now = store.clock.now().toISOString();
         Object.assign(lesson, { revision: (lesson.revision || 1) + 1, needsReview: false, status: 'active', reactivatedAt: now, updatedAt: now, retiredAt: undefined, retiredBy: undefined });
-    }, 'knowledge');
+    }, 'knowledge',undefined,lesson.evidence.flatMap(proofBindings));
 }
 
 /** Joe declines Harper's AGENTS.md suggestion; the lesson itself stays active. */
@@ -61,5 +62,5 @@ export function demoteLesson(store: Store, lessonId: unknown): void {
     const lesson = store.state.knowledge?.lessons.find(item => item.id === lessonId);
     if (!lesson || ['rule', 'procedure'].includes(lesson.tier || '')) throw new Error('Only advisory guidance can be demoted');
     if (lesson.tier === 'hypothesis') return;
-    store.transition('lesson-demoted', `Guidance kept as a hypothesis: ${lesson.statement}`, () => { lesson.tier = 'hypothesis'; lesson.needsReview = false; lesson.revision = (lesson.revision || 1) + 1; lesson.updatedAt = store.clock.now().toISOString(); }, 'knowledge');
+    store.transition('lesson-demoted', `Guidance kept as a hypothesis: ${lesson.statement}`, () => { lesson.tier = 'hypothesis'; lesson.needsReview = false; lesson.revision = (lesson.revision || 1) + 1; lesson.updatedAt = store.clock.now().toISOString(); }, 'knowledge',undefined,lesson.evidence.flatMap(proofBindings));
 }

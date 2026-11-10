@@ -20,7 +20,7 @@ const evidenceRequestConflicts = new Set([
 export class DailyCTO {
     private running = false;
     private owner = randomUUID();
-    constructor(public control: ControlStore, private entries: () => OfficeEntry[]) { }
+    constructor(public control: ControlStore, private entries: () => OfficeEntry[], private readEntries = entries) { }
     collect(now = this.control.clock.now()): void {
         const config = this.control.configuration();
         if (!config.enabled)
@@ -30,7 +30,7 @@ export class DailyCTO {
             return;
         if (!this.control.forDate(date)) {
             this.control.coalesceBefore(date);
-            this.control.enqueue(date, easternInstant(date, 17).toISOString(), collectCTOFacts(this.entries(), now.toISOString()));
+            this.control.enqueue(date, easternInstant(date, 17).toISOString(), collectCTOFacts(this.readEntries(), now.toISOString()));
         }
     }
     recover(): void {

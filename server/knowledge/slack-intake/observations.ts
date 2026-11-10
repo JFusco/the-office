@@ -2,14 +2,15 @@ import { nativeReadPayload } from './native-format';
 import { readRateLimit } from './rate-limits';
 import { z } from 'zod';
 import { isDeepStrictEqual } from 'node:util';
-import { digest, type Config } from './config';
+import { digest } from './config';
+import type { SlackReadAuthority } from './read-authority';
 import { compareTs, micros } from './timestamps';
 import type { Observation, ReadTask, SourceUnit } from './contracts';
 const Message = z.object({ ts: z.string(), text: z.string(), thread_ts: z.string().optional(), reply_count: z.number().int().nonnegative().optional(), latest_reply: z.string().optional(), files: z.array(z.object({ id: z.string(), size: z.number().optional() }).passthrough()).optional() }).passthrough();
 const Page = z.object({ channel: z.string(), messages: z.array(Message), has_more: z.boolean(), response_metadata: z.object({ next_cursor: z.string() }), truncated: z.literal(false).optional(), format: z.literal('slack-text-v1').optional() }).passthrough();
 export class ReadUnavailable extends Error { constructor(readonly code: string) { super(code); } }
 /** Inventory and reply search share one provider method, so they share its rate-limit backoff. */
-export const readMethod = (config: Config, kind: ReadTask['kind']): string => config.tools[(kind === 'inventory' ? 'search' : kind) as keyof Config['tools']];
+export const readMethod = (config: SlackReadAuthority, kind: ReadTask['kind']): string => config.tools[(kind === 'inventory' ? 'search' : kind) as keyof SlackReadAuthority['tools']];
 /** Harness-owned query scope; the native call must match it exactly. */
 export function readArguments(task: ReadTask): Record<string, unknown> {
     if (task.cursor) return { ...readArguments({ ...task, cursor: undefined }), cursor: task.cursor };
@@ -22,7 +23,7 @@ export function readArguments(task: ReadTask): Record<string, unknown> {
     return { channel_id: task.channel, ...(task.oldest === '0.000000' ? {} : { oldest: task.oldest }), latest: task.latest, limit: 100, response_format: 'detailed', ...(task.kind === 'thread' ? { message_ts: task.resource } : {}) };
 }
 /** Only native completion events establish read evidence; model summaries never do. */
-export function observeRead(event: any, config: Config, task: ReadTask, at: string): Observation | undefined {
+export function observeRead(event: any, config: SlackReadAuthority, task: ReadTask, at: string): Observation | undefined {
     const item = event?.item;
     if (event?.type !== 'item.completed' || item?.type !== 'mcp_tool_call') return;
     readRateLimit(item.result);

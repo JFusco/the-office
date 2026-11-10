@@ -1,3 +1,4 @@
+import { PanelHeader } from '../ui/PanelHeader';
 import { slackMessageStatus } from './slack-message-status';
 import { SlackDeliveryCard } from './SlackDeliveryCard';
 import {MergeApproval} from '../work/MergeApproval';
@@ -59,7 +60,7 @@ export function Outbox({snapshot,names=ROLE_NAMES,sendMessage,initialId}:{snapsh
   const [chosen,setChosen]=useState(initialId||''),[showResolved,setShowResolved]=useState(false);
   const open=snapshot.outbox.filter(a=>a.status==='open'),items=snapshot.outbox.filter(a=>showResolved||a.status==='open');
   const selected=snapshot.outbox.find(a=>a.id===chosen);
-  return <><PanelIcon><Send size={26}/></PanelIcon><PanelTitle className="mt-3 mb-4">Your outbox</PanelTitle><p className={mutedCopy}>Items the team needs you to act on. Reply to {snapshot.agents.find(agent=>agent.id==='pm')?.name||names.pm} here; the team will check what changed.</p>
+  return <><PanelHeader icon={<Send size={26}/>}>Your outbox</PanelHeader><p className={mutedCopy}>Items the team needs you to act on. Reply to {snapshot.agents.find(agent=>agent.id==='pm')?.name||names.pm} here; the team will check what changed.</p>
     <label className="my-4 flex items-center gap-2 text-12"><input type="checkbox" className={checkbox} checked={showResolved} onChange={e=>setShowResolved(e.target.checked)}/> Show resolved items</label>
     {!items.length?<div className="rounded-8 border border-dashed border-mail-empty-line bg-mail-empty px-4 py-6 text-center text-mail-empty-ink"><Check size={30} className="mx-auto mt-0.75 mb-4 block text-mail-empty-icon"/><strong className="block text-12 font-medium text-mail-empty-title">Nothing needs you right now.</strong><p className="mt-2 text-10 leading-body">Questions and blockers that need your input will arrive here.</p></div>:null}
     {items.map(a=><button type="button" key={a.id} data-outbox-item className={cx(cardButton,chosen===a.id?cardButtonSelected:cardButtonIdle)} onClick={()=>setChosen(a.id)} aria-pressed={chosen===a.id}><span className={cx(eyebrow,'text-9')}>{a.ticket||'Office'} · {a.status==='resolved'?'Resolved':`From ${snapshot.agents.find(agent=>agent.id===a.role)?.name||names[a.role]}`}</span><strong className="text-14">{a.title}</strong><span className="text-13 leading-relaxed">{shortSummary(a.detail)}</span><small className="mt-1 block text-11 leading-relaxed"><b>{snapshot.messages.some(m=>m.from==='human'&&m.actionId===a.id&&['queued','working'].includes(m.status))?'Team handling:':'Action:'}</b> {snapshot.messages.some(m=>m.from==='human'&&m.actionId===a.id&&['queued','working'].includes(m.status))?'Read-back is queued or running; no additional reply needed.':actionSummary(a.id)}</small></button>)}

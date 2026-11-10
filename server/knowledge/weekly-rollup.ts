@@ -1,4 +1,8 @@
 import { expireLearningPackets } from './learning-maintenance';
+import { knowledgeSnapshot,knowledgeScopeRevision } from './knowledge-snapshot';
+import type { KnowledgeContext } from './context';
+import { proofBindings } from './sources/proof-scope';
+import { scanCuration } from './sources/curation-scan';
 import { learningMetrics, lessonsNeedingReview } from './learning-metrics';
 import type { Lesson, WorkEligibility } from '../../src/shared';
 import { addDays, easternDay, easternInstant } from '../office/clock';
@@ -31,8 +35,8 @@ export function rollupDue(store: Store, now: Date, dailyStatus?: (date: string) 
 /** Legacy API; recurrence alone never establishes ineffective guidance. */
 export function ineffectiveLessons(_lessons: Lesson[]): Lesson[] { return []; }
 
-function rollupPrompt(store: Store, weekEnding: string, metrics: ReturnType<typeof deliveryMetrics>, flagged: Lesson[], learning: ReturnType<typeof learningMetrics>): string {
-    const knowledge = store.state.knowledge!, from = Date.parse(metrics.from);
+function rollupPrompt(store: Store, weekEnding: string, metrics: ReturnType<typeof deliveryMetrics>, flagged: Lesson[], learning: ReturnType<typeof learningMetrics>,knowledge=store.state.knowledge!): string {
+    const from = Date.parse(metrics.from);
     return `Harper weekly roll-up · ${store.project.name} · week ending ${weekEnding}
 You are Harper, the Office knowledge engineer. Write a short weekly roll-up for Joe about how delivery went on this project and whether the team's lessons are helping. READ ONLY.
 Report observations and unknowns, never causal claims that storing lessons improved efficiency. Use the deterministic metrics as the facts; do not recompute or contradict them. Name what improved or got worse, which lessons recurred anyway (flagged for review below; exposure does not prove application), and what to watch next week. Three to six sentences.
@@ -51,6 +55,7 @@ FACTS: ${JSON.stringify({
 }
 
 export interface RollupHooks {
+    context?:KnowledgeContext;
     /** Persists office-wide proposals (control store) and returns their ids. */
     propose?: (store: Store, rollupId: string, proposals: RollupResult['officeProposals']) => string[];
 }
@@ -60,17 +65,19 @@ export async function runRollup(store: Store, run: KnowledgeRunner, id: string, 
     const knowledge = store.state.knowledge;
     if (!knowledge || knowledge.rollups?.some(rollup => rollup.id === id)) return;
     const weekEnding = id.slice('rollup:'.length), now = store.clock.now();
+    const scoped=hooks.context?knowledgeSnapshot(hooks.context.registry,store.project.id,knowledge)!:knowledge;
+    const scopeRevision=hooks.context?knowledgeScopeRevision(hooks.context.registry,store.project.id,knowledge):'';
     // Friday 5 PM to Friday 5 PM Eastern: contiguous weeks, so nothing after the review falls between two roll-ups.
     expireLearningPackets(store);
-    const metrics = knowledge.rollupRetry?.id === id && knowledge.rollupRetry.metrics || deliveryMetrics(store, easternInstant(addDays(weekEnding, -7), 17), easternInstant(weekEnding, 17));
+    const metrics = knowledge.rollupRetry?.id === id && scoped.rollupRetry?.metrics || deliveryMetrics(store, easternInstant(addDays(weekEnding, -7), 17), easternInstant(weekEnding, 17),scoped);
     // Review annotations retain active guidance and the original revision.
     const earlier = knowledge.rollupRetry?.id === id ? knowledge.rollupRetry.flaggedLessonIds || [] : [];
-    const newlyFlagged = lessonsNeedingReview(knowledge);
-    for (const lesson of newlyFlagged) { lesson.needsReview = true; lesson.updatedAt = now.toISOString(); }
+    const newlyFlagged = lessonsNeedingReview(scoped);
+    for (const lesson of knowledge.lessons.filter(l=>newlyFlagged.some(s=>s.id===l.id))) { lesson.needsReview = true; lesson.updatedAt = now.toISOString(); }
     const flaggedIds = [...new Set([...earlier, ...newlyFlagged.map(lesson => lesson.id)])];
-    const flagged = knowledge.lessons.filter(lesson => flaggedIds.includes(lesson.id));
+    const flagged = scoped.lessons.filter(lesson => flaggedIds.includes(lesson.id));
     // A quiet week needs no model call: record it deterministically and move on.
-    const activity = knowledge.rollupRetry?.id === id && knowledge.rollupRetry.learning || learningMetrics(knowledge, metrics.from, metrics.to);
+    const activity = knowledge.rollupRetry?.id === id && scoped.rollupRetry?.learning || learningMetrics(scoped, metrics.from, metrics.to);
     if (!activity.assignments && !knowledge.retrospectives.some(record => record.trigger === 'learning' && (record.eventAt || record.at) >= metrics.from && (record.eventAt || record.at) < metrics.to) && !metrics.completed && !metrics.parked && !metrics.retrospectives && !metrics.lessonsAdded && !metrics.recurrences && metrics.medianQueueMinutes === null && !flagged.length) {
         store.transaction(() => {
             const current = store.state.knowledge!;
@@ -94,7 +101,13 @@ export async function runRollup(store: Store, run: KnowledgeRunner, id: string, 
     knowledge.rollupRetry = retry;
     store.save();
     try {
-        const result = RollupResultSchema.parse(await run(rollupPrompt(store, weekEnding, metrics, flagged, activity), RollupResultSchema, { readOnly: true, effortKind: 'administrative', stage: 'knowledge-rollup', requestId: `${store.project.id}:${id}`, ticket: '', cwd: harperFolder(store, 'rollups'), enqueuedAt: easternInstant(weekEnding, 17).toISOString(), timeout: RETROSPECTIVE_TIMEOUT }));
+        const prompt=rollupPrompt(store,weekEnding,metrics,flagged,activity,scoped),sourceBacked=[...scoped.lessons,...(scoped.officeLessons||[])].some(l=>l.evidence.some(p=>proofBindings(p).length))||scoped.retrospectives.some(r=>r.sourceBindings?.length);
+        if(sourceBacked&&!hooks.context)throw Error('Source-backed weekly review requires current knowledge scope');
+        if(sourceBacked)await scanCuration(store,id,'input',prompt,hooks.context?.scan);
+        if(hooks.context&&scopeRevision!==knowledgeScopeRevision(hooks.context.registry,store.project.id,store.state.knowledge))throw Error('Weekly knowledge scope changed during input scanning');
+        const result = RollupResultSchema.parse(await run(prompt, RollupResultSchema, { readOnly: true, effortKind: 'administrative', stage: 'knowledge-rollup', requestId: `${store.project.id}:${id}`, ticket: '', cwd: harperFolder(store, 'rollups'), enqueuedAt: easternInstant(weekEnding, 17).toISOString(), timeout: RETROSPECTIVE_TIMEOUT }));
+        if(sourceBacked)await scanCuration(store,id,'output',JSON.stringify(result),hooks.context?.scan);
+        if(hooks.context&&scopeRevision!==knowledgeScopeRevision(hooks.context.registry,store.project.id,store.state.knowledge))throw Error('Knowledge scope changed during the weekly rollup; retained output cannot be delivered');
         const proposalIds = hooks.propose?.(store, id, result.officeProposals) || [];
         store.transaction(() => {
             const current = store.state.knowledge!;

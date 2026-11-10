@@ -13,9 +13,9 @@ const round = (value: number | null, places = 1) => value === null ? null : Math
  * One window of delivery, counted from Harper's own trigger log and the jobs and runs it names.
  * Deterministic and model-free: these are the numbers the weekly roll-up reports and trends.
  */
-export function deliveryMetrics(store: Store, from: Date, to: Date): DeliveryMetrics {
+export function deliveryMetrics(store: Store, from: Date, to: Date, scoped=store.state.knowledge): DeliveryMetrics {
     const start = from.getTime(), end = to.getTime(), within = (at?: string) => !!at && Date.parse(at) >= start && Date.parse(at) < end;
-    const knowledge = store.state.knowledge, all = (knowledge?.retrospectives || []).filter(record => within(record.eventAt || record.at));
+    const knowledge = scoped, all = (knowledge?.retrospectives || []).filter(record => within(record.eventAt || record.at));
     // CMS maintenance runs are not deliveries; they count only toward retrospectives.
     // The durable delivery contribution wins over a same-ID retrospective summary, which carries no counters.
     const records = [...new Map([...all, ...(knowledge?.deliveryEvents || [])].filter(record => within(record.eventAt || record.at)).map(record => [record.id, record])).values()].filter(record => (!record.subject || ['job', 'ticket'].includes(record.subject)) && record.trigger !== 'learning');

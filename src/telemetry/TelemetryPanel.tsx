@@ -1,3 +1,4 @@
+import { PanelHeader } from '../ui/PanelHeader';
 import { useEffect, useState } from 'react';
 import type { TelemetryReport } from '../contracts/telemetry';
 import { ChartColumn, RefreshCw } from '../ui/icons';
@@ -40,8 +41,7 @@ export function TelemetryPanel({ projects, defaultProject = '' }: { projects: { 
   const drill = (next: Scope) => { setScope(next); requestAnimationFrame(() => document.getElementById(SCOPE_ID)?.focus()); };
   const ticketKeys = tickets.project === scope.project ? tickets.keys : [];
   return <>
-    <PanelIcon><ChartColumn size={26} /></PanelIcon>
-    <PanelTitle className="mt-3 mb-2">Telemetry</PanelTitle>
+    <PanelHeader icon={<ChartColumn size={26}/>}>Telemetry</PanelHeader>
     <p className={mutedCopy}>Model time and estimated cost at API list price, for every model run in every project. Estimates, not a bill. Runs that could not be priced are counted, never shown as free.</p>
     <div className="mt-4 flex flex-wrap items-end gap-3">
       <label className={fieldLabel}>Scope<Select id={SCOPE_ID} className={selectField} aria-label="Telemetry scope" value={scope.project} onChange={e => setScope({ ...scope, project: e.target.value, ticket: '' })}>

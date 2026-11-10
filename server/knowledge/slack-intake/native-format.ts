@@ -1,5 +1,6 @@
 import { nativeFile } from './native-resource';
-import { digest, type Config } from './config';
+import { digest } from './config';
+import type { SlackReadAuthority } from './read-authority';
 import type { ReadTask } from './contracts';
 
 interface Message { ts: string; text: string; thread_ts?: string; reply_count?: number; files?: { id: string }[] }
@@ -22,7 +23,7 @@ function message(block: string, task: ReadTask): Message {
         reply_count: Number(/^Thread: (\d+) replies/m.exec(block)?.[1] || 0), files: [...block.matchAll(/\(ID: (F[A-Z0-9]+),/g)].map(m => ({ id: m[1] })) };
 }
 /** Decode only the observed connector's envelope. Source prose remains untrusted evidence. */
-export function nativeReadPayload(result: any, config: Config, task: ReadTask): any {
+export function nativeReadPayload(result: any, config: SlackReadAuthority, task: ReadTask): any {
     if (result?.structured_content) return task.kind === 'file' ? nativeFile(result.structured_content, task) : result.structured_content;
     // Kept for injected fixtures and transports that use the MCP spelling.
     if (result?.structuredContent) return result.structuredContent;

@@ -1,5 +1,6 @@
+import { linkKey } from '../../../../server/knowledge/slack-intake/read-links';
 import { expect, test } from 'vitest';
-import { config, intakeFixture, event } from './fixture';
+import { cleanScan, config, intakeFixture, event } from './fixture';
 import { observeRead } from '../../../../server/knowledge/slack-intake/observations';
 import { nativeReadPayload } from '../../../../server/knowledge/slack-intake/native-format';
 import { recordObservation, settlePage } from '../../../../server/knowledge/slack-intake/collect';
@@ -27,11 +28,11 @@ test('native seed pages omit zero oldest while preserving stored bounds, cursor 
             opts.onIntakeEvent?.(raw);
             return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Fixture discussion only' }], proposals: [] };
         }) as KnowledgeRunner;
-        await runIntakeTask(f.store, run, f.task.id);
+        await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
         expect(calls[0]).not.toHaveProperty('oldest');
         expect(calls[0]).toMatchObject({ latest: '200.000000', limit: 100 });
         expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'pending', oldest: '0.000000', latest: '200.000000', cursor: 'seed-next' });
-        await runIntakeTask(f.store, run, f.task.id);
+        await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
         expect(calls[1]).not.toHaveProperty('oldest');
         expect(calls[1]).toMatchObject({ latest: '200.000000', cursor: 'seed-next', limit: 100 });
         expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'complete', oldest: '0.000000', latest: '200.000000' });
@@ -67,7 +68,7 @@ test('message proposals use every canonical permalink supplied by the read promp
                 return { units: stamps.map(stamp => ({ id: `C123:${stamp}`, outcome: 'proposed', reason: '' })),
                     proposals: [{ domain: 'tooling', body: `Participant report; not independently verified. Sources: ${links.join(' ')}`, units: stamps.map(stamp => `C123:${stamp}`) }] };
             }) as KnowledgeRunner;
-            await runIntakeTask(f.store, run, f.task.id);
+            await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
             const task = f.ledger.get<ReadTask>('task', f.task.id)!;
             if (canonical) {
                 expect(task).toMatchObject({ status: 'pending', cursor: 'next-page', failures: 0, oldest: '0.000000', latest: '200.000000' });
@@ -101,7 +102,7 @@ test('thread continuation reads older batches without moving the lower bound pas
         f.task.kind = 'thread'; f.task.resource = '10.000001'; f.task.status = 'running'; f.task.attempt = 'a'; f.ledger.put('task', f.task.id, f.task);
         const raw = event(f.task) as any; raw.item.tool = config.tools.thread; raw.item.arguments = readArguments(f.task);
         raw.item.result = envelope({ messages: parent + replies(['80.000001', '90.000001']), pagination_info: 'There are more messages in this thread. To view the next page, use cursor: `opaque-next`\n' });
-        const first = observeRead(raw, config, f.task, 'now')!; recordObservation(f.ledger, f.task.id, first); settlePage(f.ledger, config, f.task, first);
+        const first = observeRead(raw, config, f.task, 'now')!; recordObservation(f.ledger, f.task.id, first); settlePage(f.ledger, f.policy, f.task, first);
         const next = f.ledger.get<ReadTask>('task', f.task.id)!;
         expect(next).toMatchObject({ oldest: '0.000000', latest: '200.000000', cursor: 'opaque-next' });
         const run = (async (_p, _s, opts) => {
@@ -112,7 +113,7 @@ test('thread continuation reads older batches without moving the lower bound pas
             opts.onIntakeEvent?.(call);
             return { units: ['10.000001', '20.000001', '30.000001'].map(s => ({ id: `C123:${s}`, outcome: 'no-reusable-lesson', reason: 'Fixture discussion only' })), proposals: [] };
         }) as KnowledgeRunner;
-        await runIntakeTask(f.store, run, f.task.id);
+        await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'complete', oldest: '0.000000', latest: '200.000000' });
         expect(f.ledger.all('unit')).toHaveLength(5);
     } finally { f.close(); }
@@ -172,7 +173,7 @@ test('Slack permalinks become explicit internal gaps, never public link jobs', (
         recordObservation(f.ledger, f.task.id, o);
         const key = `${o.units[0].id}:${o.units[0].version}`, saved = f.ledger.get<SourceUnit>('unit', key)!;
         saved.state = 'deferred'; f.ledger.put('unit', key, saved);
-        settlePage(f.ledger, config, f.task, o);
+        settlePage(f.ledger, f.policy, f.task, o);
         expect(f.ledger.all<{ url: string }>('link').map(link => link.url)).toEqual(['https://www.sqlite.org/docs.html']);
     } finally { f.close(); }
 });
@@ -184,16 +185,16 @@ test.each(['no-reusable-lesson', 'deferred'] as const)('public reads are queued 
         await runIntakeTask(f.store, (async (_p, _s, opts) => {
             opts.onIntakeLaunch?.(); opts.onIntakeEvent?.(event(f.ledger.get<ReadTask>('task', f.task.id)!, [{ ts: '100.000001', text: `See ${url}` }]));
             return { units: [{ id: 'C123:100.000001', outcome, reason: 'Fixture outcome' }], proposals: [] };
-        }) as KnowledgeRunner, f.task.id);
+        }) as KnowledgeRunner, f.task.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.get<ReadTask>('task', f.task.id)?.status).toBe('complete');
-        const projected = scheduledSlackIntake(f.store, noRun, f.store.clock.now())[0]?.work.id;
+        const projected = scheduledSlackIntake(f.store, noRun, f.store.clock.now(), f.registry, cleanScan)[0];
         if (outcome === 'no-reusable-lesson') {
             expect(f.ledger.all('link')).toEqual([]);
-            expect(f.ledger.get<ReadTask>('task', projected!)).toMatchObject({ status: 'pending' });
+            expect(projected?.eligibility.state).toBe('runnable'); expect(projected?.identity()).not.toContain('links');
         } else {
-            expect(f.ledger.get<LinkRecord>('link', url)).toMatchObject({ state: 'pending' }); expect(projected).toBe('intake-public-links');
-            await runSlackLinks(f.store, config, (async () => ({ findings: [], unavailable: [], sources: [{ url, readEvidence: 'native-read:fixture', claim: 'Public claim' }], references: [] })) as KnowledgeRunner, [f.ledger.get<LinkRecord>('link', url)!], 'intake-public-links');
-            queueReconsideration(f.ledger, config, '2026-11-06', 'now');
+            expect(getLink(f, url)).toMatchObject({ state: 'pending' }); expect(projected?.identity()).toContain('links');
+            await runSlackLinks(f.store, f.policy, (async () => ({ findings: [], unavailable: [], sources: [{ url, readEvidence: 'native-read:fixture', claim: 'Public claim' }], references: [] })) as KnowledgeRunner, [getLink(f, url)!], 'intake-public-links', f.registry, cleanScan);
+            queueReconsideration(f.ledger, f.policy, '2026-11-06', 'now');
             const processing = f.ledger.all<ReadTask>('task').filter(t => t.processing?.length);
             expect(processing).toHaveLength(1); expect(processing[0].processing![0]).toMatch(/^C123:100\.000001:/);
         }
@@ -207,8 +208,14 @@ test('canvas inventory schedules body reads without treating search metadata as 
         const raw = event(f.task) as any; raw.item.tool = config.tools.search; raw.item.arguments = readArguments(task);
         raw.item.result = envelope({ results: '# Search Results for: \n\n## Files (1 results)\n### Result 1 of 1\nTitle: Fixture\nFile type: canvas\nFile ID: F123\nPermalink: [link](https://fixture.slack.com/docs/T123/F123)\n', pagination_info: 'End of results - No more pages available.\\n' });
         const o = observeRead(raw, config, task, 'now')!;
-        expect(o.units[0].state).toBe('no-reusable-lesson'); recordObservation(f.ledger, task.id, o); settlePage(f.ledger, config, task, o);
+        expect(o.units[0].state).toBe('no-reusable-lesson'); recordObservation(f.ledger, task.id, o); settlePage(f.ledger, f.policy, task, o);
         expect(f.ledger.all<ReadTask>('task').find(t => t.kind === 'canvas')).toMatchObject({ resource: 'F123', sourceUrl: 'https://fixture.slack.com/docs/T123/F123', status: 'pending' });
         expect(f.ledger.all('proposal')).toEqual([]);
     } finally { f.close(); }
 });
+
+function putLink(f: ReturnType<typeof intakeFixture>, url: string, record: any) { f.ledger.put('link', linkKey(record.source, url), record); }
+function getLink(f: ReturnType<typeof intakeFixture>, url: string): import('../../../../server/knowledge/slack-intake/read-links').LinkRecord | undefined {
+    const rows = f.ledger.all<import('../../../../server/knowledge/slack-intake/read-links').LinkRecord>('link').filter(r => r.url === url);
+    expect(rows.length).toBeLessThanOrEqual(1); return rows[0];
+}

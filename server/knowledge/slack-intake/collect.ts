@@ -1,9 +1,10 @@
+import { linkKey } from './read-links';
 import { randomUUID } from 'node:crypto';
 import { IntakeLedger } from './ledger';
-import { configDigest, type Config } from './config';
+import type { CollectionPolicy } from '../sources/collection-policy';
 import type { Observation, ReadTask, SourceUnit } from './contracts';
-export function newTask(config: Config, channel: string, kind: ReadTask['kind'], resource: string, oldest: string, latest: string, week: string, at: string): ReadTask {
-    return { id: randomUUID(), channel, kind, resource, oldest, latest, week, status: 'pending', failures: 0, nextAt: '', createdAt: at, attempt: '', ownerClaim: '', error: '', configHash: configDigest(config) };
+export function newTask(config: CollectionPolicy, channel: string, kind: ReadTask['kind'], resource: string, oldest: string, latest: string, week: string, at: string): ReadTask {
+    return { id: randomUUID(), channel, kind, resource, oldest, latest, week, status: 'pending', failures: 0, nextAt: '', createdAt: at, attempt: '', ownerClaim: '', error: '', configHash: '', sourceId: config.sourceId, sourceDigest: config.sourceDigest };
 }
 export function recordObservation(ledger: IntakeLedger, taskId: string, observation: Observation): void {
     ledger.transaction(() => {
@@ -18,7 +19,7 @@ export function recordObservation(ledger: IntakeLedger, taskId: string, observat
     });
 }
 /** Checkpoints advance only after every observed identity has been durably queued. */
-export function settlePage(ledger: IntakeLedger, config: Config, task: ReadTask, observation: Observation): void {
+export function settlePage(ledger: IntakeLedger, config: CollectionPolicy, task: ReadTask, observation: Observation): void {
     ledger.transaction(() => {
         const current = ledger.get<ReadTask>('task', task.id);
         if (!current || current.attempt !== task.attempt || current.status !== 'running') throw Error('stale-intake-result');
@@ -38,10 +39,10 @@ export function settlePage(ledger: IntakeLedger, config: Config, task: ReadTask,
                 // A linked canvas keeps its own permalink; message attachments fall back to the message.
                 if (ref.kind === 'file' || ref.kind === 'canvas') enqueue(ref.kind, ref.id, ref.url ?? unit.url);
                 // Internal workspace links stay explicit gaps on the unit; the public reader never receives them.
-                else if (ref.kind === 'link' && deferred && !ledger.get('link', ref.id)) ledger.put('link', ref.id, { url: ref.id, source: `${unit.id}:${unit.version}`, state: 'pending', week: task.week, depth: 0, failures: 0, nextAt: '' });
+                else if (ref.kind === 'link' && deferred && !ledger.get('link', linkKey(`${unit.id}:${unit.version}`, ref.id))) ledger.put('link', linkKey(`${unit.id}:${unit.version}`, ref.id), { url: ref.id, source: `${unit.id}:${unit.version}`, state: 'pending', week: task.week, depth: 0, failures: 0, nextAt: '' });
             }
         }
-        if (task.kind === 'lookup') ledger.put('identity', task.channel, { configHash: task.configHash, at: observation.at, observation: `${observation.attempt}:${observation.id}` });
+        if (task.kind === 'lookup') ledger.put('identity', task.channel, { configHash: task.configHash, sourceId: task.sourceId, sourceDigest: task.sourceDigest, at: observation.at, observation: `${observation.attempt}:${observation.id}` });
         if (observation.complete) { current.status = 'complete'; delete current.cursor; }
         else {
             if (!observation.cursor || observation.cursor === current.cursor) throw Error('pagination-did-not-advance');
