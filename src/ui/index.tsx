@@ -18,13 +18,13 @@ export const checkbox=`size-4 shrink-0 cursor-pointer accent-checkbox transition
 /** Disclosure summary rows. */
 export const summary=`cursor-pointer rounded-4 underline decoration-transparent underline-offset-2 transition-colors reduce-motion:transition-none hover:text-link hover:decoration-current ${focusRing}`;
 
-type ButtonProps=ButtonHTMLAttributes<HTMLButtonElement>&{variant?:ButtonVariant;layout?:ButtonLayout;full?:boolean};
+type ButtonProps=ButtonHTMLAttributes<HTMLButtonElement>&{variant?:ButtonVariant;layout?:ButtonLayout;compactIcon?:boolean;full?:boolean};
 /** Primary and secondary actions. Spacing around the button belongs to the caller. */
-export const Button=forwardRef<HTMLButtonElement,ButtonProps>(function Button({variant='secondary',layout='action',full=false,className,type='button',...props},ref){
-  return <button ref={ref} type={type} className={cx(buttonClasses(variant,layout),full&&'w-full',interactive,className)} {...props}/>;
+export const Button=forwardRef<HTMLButtonElement,ButtonProps>(function Button({variant='secondary',layout='action',compactIcon=false,full=false,className,type='button',...props},ref){
+  return <button ref={ref} type={type} className={cx(buttonClasses(variant,layout,compactIcon),full&&'w-full',interactive,className)} {...props}/>;
 });
-export const ButtonLink=forwardRef<HTMLAnchorElement,AnchorHTMLAttributes<HTMLAnchorElement>&{variant?:ButtonVariant;layout?:ButtonLayout;full?:boolean}>(function ButtonLink({variant='secondary',layout='action',full=false,className,...props},ref){
-  return <a ref={ref} className={cx(buttonClasses(variant,layout),full&&'w-full',interactive,className)} {...props}/>;
+export const ButtonLink=forwardRef<HTMLAnchorElement,AnchorHTMLAttributes<HTMLAnchorElement>&{variant?:ButtonVariant;layout?:ButtonLayout;compactIcon?:boolean;full?:boolean}>(function ButtonLink({variant='secondary',layout='action',compactIcon=false,full=false,className,...props},ref){
+  return <a ref={ref} className={cx(buttonClasses(variant,layout,compactIcon),full&&'w-full',interactive,className)} {...props}/>;
 });
 export const IconButton=forwardRef<HTMLButtonElement,ButtonHTMLAttributes<HTMLButtonElement>&{'aria-label':string}>(function IconButton({className,type='button',...props},ref){
   return <button ref={ref} type={type} className={cx('inline-flex size-icon-control shrink-0 items-center justify-center rounded-control text-icon enabled:hover:bg-icon-hover [&>svg]:size-control-icon',interactive,className)} {...props}/>;

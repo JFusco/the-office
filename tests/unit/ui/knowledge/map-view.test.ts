@@ -69,3 +69,10 @@ it('preserves group page and search context when the selected record needs no fi
     expect(displayScene(data,next).group?.id).toBe('technical:cms');expect(displayScene(data,{...next,selected:''}).pageNodes[0].id).toBe(member.id);
     expect(selectRecord({...selection,query:'Guide',page:1},member)).toMatchObject({query:'Guide',page:1});
 });
+
+it('counts connected records in the current view distinctly, excluding filtered neighbors',()=>{
+    const map:KnowledgeMap={...data,edges:[...data.edges,{source:'note:1',target:'note:2',kind:'citation'},{source:'note:1',target:'attempt',kind:'supplied'}]};
+    const view=displayScene(map,{...selection,selected:'note:1'});
+    expect(view.neighborCount).toBe(1);expect(view.scene.edges).toHaveLength(2);
+    expect(displayScene(map,{...selection,selected:'note:1',activity:true}).neighborCount).toBe(2);
+});

@@ -22,6 +22,15 @@ test('the decorative focus tag escapes the record title and stays hidden until p
     expect(html).toContain('&lt;source&gt;'); expect(html).toContain('hidden=""'); expect(html).toContain('aria-hidden="true"'); expect(html).toContain('pointer-events-none');
 });
 
+test('the focus tag flips left when the floating inspector leaves too little room on the right', () => {
+    const camera = new PerspectiveCamera(50, 2, .1, 1000); camera.position.z = 360; camera.lookAt(0,0,0);
+    const set = vi.fn(), overlay = { hidden:true,style:{setProperty:set} } as unknown as HTMLElement;
+    const node = {id:'n',title:'Note',kind:'technical' as const,detail:'',visible:true,emphasized:true,position:{x:0,y:0,z:0}};
+    positionFocusOverlay(overlay,node,camera,700,400,{occupied:332,gap:16,minimum:120});
+    expect(set).toHaveBeenCalledWith('--map-focus-label-shift','calc(-100% - var(--spacing-card-padding))');
+    expect(set).toHaveBeenCalledWith('--map-focus-label-width','318px');
+});
+
 test('the depth field stays deterministic and distributes a single record type across the whole map', () => {
     const points = Array.from({ length: 200 }, (_, i) => stablePosition(`note:${i}`, 'technical', ['technical']));
     const quadrants = new Set(points.map(p => `${Math.sign(p.x)},${Math.sign(p.y)}`));

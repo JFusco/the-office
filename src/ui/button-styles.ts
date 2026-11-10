@@ -6,6 +6,7 @@ const variants = {
 };
 export type ButtonVariant = keyof typeof variants;
 export type ButtonLayout = 'action' | 'row';
-export function buttonClasses(variant: ButtonVariant = 'secondary', layout: ButtonLayout = 'action') {
-    return `${base} ${layout === 'row' ? 'min-h-control-height justify-between whitespace-normal text-left' : 'h-control-height justify-center whitespace-nowrap'} ${variants[variant]}`;
+export function buttonClasses(variant: ButtonVariant = 'secondary', layout: ButtonLayout = 'action', compactIcon = false) {
+    const geometry = layout === 'row' ? 'min-h-control-height justify-between whitespace-normal text-left' : compactIcon ? 'compact:h-control-height max-compact:size-icon-control max-compact:p-0 justify-center whitespace-nowrap' : 'h-control-height justify-center whitespace-nowrap';
+    return `${base} ${geometry} ${variants[variant]}`;
 }

@@ -1,3 +1,4 @@
+import { LoadingState } from '../../ui/LoadingState';
 import { useEffect, useState } from 'react';
 import { Tag } from '../../ui';
 import { KnowledgeDocument } from './KnowledgeDocument';
@@ -13,7 +14,7 @@ export function EvidencePacket({ text, selected = empty }: { text: string; selec
         return () => { current = false; };
     }, [text, selected]);
     if (!text) return <p className="text-12 text-muted">No source evidence was supplied.</p>;
-    if (result?.text !== text || result.selected !== selected) return <p role="status" className="text-12 text-muted">Preparing the recorded excerpts…</p>;
+    if (result?.text !== text || result.selected !== selected) return <LoadingState className="text-12 text-muted">Preparing the recorded excerpts…</LoadingState>;
     return <div className="my-4 grid gap-4">
         {result.cards.map(card => {
             const baseUrl = card.reference.kind === 'brain' && card.reference.snapshot && card.reference.path ? `https://github.com/JFusco/brain/blob/${card.reference.snapshot}/${card.reference.path}` : undefined;

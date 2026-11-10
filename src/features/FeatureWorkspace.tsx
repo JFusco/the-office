@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import { FileText } from '../ui/icons';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -56,6 +57,6 @@ export function FeatureWorkspace({ snapshot, initialId = '', sourceGoalId = '', 
                 <form onSubmit={async e => { e.preventDefault(); if (await send('revise', { instruction: revision })) setRevision(''); }}><label className="my-3 grid gap-2">Correct or add a decision<textarea className={field + " " + fieldFocus + " rounded-6 p-3"} required value={revision} maxLength={20000} rows={3} onChange={e => setRevision(e.target.value)} /></label><Button type="submit" disabled={busy || !revision.trim()}>Save decision & revise</Button></form>
             </section><div id={panelId + "Documentpanel"} role="tabpanel" aria-labelledby={panelId + "Document"} className={mobile === "Document" ? "min-w-0" : "min-w-0 max-tablet:hidden"}><FeatureDocuments key={feature.id} feature={feature} snapshot={snapshot} /></div></div>
         </main> : <p className="p-4 text-muted">Choose a feature or start discovery with Casey.</p>}
-        {error && <p role="alert" className="col-span-full text-tag-blocked-ink">{error}</p>}
+        {busy && <LoadingState className="col-span-full">Saving feature progress…</LoadingState>}{error && <p role="alert" className="col-span-full text-tag-blocked-ink">{error}</p>}
     </div>;
 }

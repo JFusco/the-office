@@ -20,3 +20,10 @@ test('wrapping list actions use the same spacing and minimum control height', ()
     }
     expect(row).toContain('min-h-control-height'); expect(row).toContain('whitespace-normal');
 });
+
+test('compact header actions collapse to the shared icon token without leaking component props', () => {
+    const button = renderToStaticMarkup(createElement(Button,{compactIcon:true,children:'Open'}));
+    const link = renderToStaticMarkup(createElement(ButtonLink,{compactIcon:true,href:'/example',children:'Open'}));
+    expect(button.match(/class="([^"]+)"/)![1]).toBe(link.match(/class="([^"]+)"/)![1]);
+    expect(button).toContain('max-compact:size-icon-control'); expect(button).not.toContain('compactIcon=');
+});

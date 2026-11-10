@@ -7,7 +7,7 @@ vi.mock('../../../../src/knowledge/map/node-visuals',()=>({nodeVisuals:()=>state
 import { createConstellation } from '../../../../src/knowledge/map/constellation-runtime';
 import { displayScene, type MapSelection } from '../../../../src/knowledge/map/display-scene';
 import { knowledgeCameraDuration, knowledgeOrbitIdle } from '../../../../src/tokens/motion';
-import { overviewDistance } from '../../../../src/knowledge/map/camera-target';
+import { overviewDistance, focusDistance } from '../../../../src/knowledge/map/camera-target';
 afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();});
 
 it('retains graph identities, animates camera navigation, respects reduced motion and releases its single renderer once',()=>{
@@ -22,7 +22,8 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     vi.stubGlobal('devicePixelRatio',3);vi.stubGlobal('document',{hidden:false,addEventListener:vi.fn(),removeEventListener:vi.fn()});
     let frame: (now:number)=>void=()=>{};
     vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{frame=callback;return 1;}));vi.stubGlobal('cancelAnimationFrame',vi.fn());
-    const container={replaceChildren:vi.fn(),clientWidth:1200,clientHeight:800} as unknown as HTMLElement;
+    const addEventListener=vi.fn(),removeEventListener=vi.fn();
+    const container={replaceChildren:vi.fn(),addEventListener,removeEventListener,clientWidth:1200,clientHeight:800} as unknown as HTMLElement;
     const runtime=createConstellation(container,vi.fn()), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,page:0};
     const map={nodes:[{id:'note',title:'Note',kind:'technical' as const,detail:''}],edges:[],truncated:false};
     const overview=displayScene(map,selection), focused=displayScene(map,{...selection,selected:'note'});
@@ -42,7 +43,16 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     const start=controls.addEventListener.mock.calls.find(call=>call[0]==='start')![1],end=controls.addEventListener.mock.calls.find(call=>call[0]==='end')![1];
     start();frame(25000);expect(controls.autoRotate).toBe(false);end();frame(25001);expect(controls.autoRotate).toBe(false);
     frame(25001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
+    const enter=addEventListener.mock.calls.find(call=>call[0]==='pointerenter')![1],leave=addEventListener.mock.calls.find(call=>call[0]==='pointerleave')![1];
+    const hover=graph.onNodeHover.mock.calls[0][0];
+    enter();hover({id:'note'});frame(32000);expect(controls.autoRotate).toBe(false);
+    leave();hover({id:'note'});frame(32001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
+    expect(state.visuals.hover).toHaveBeenLastCalledWith('');
+    runtime.update({data:focused.scene,focusId:'note',reduced:false});frame(36000);frame(36050);
+    runtime.update({data:focused.scene,focusId:'note',reduced:false,paused:true});
+    expect(graph.cameraPosition).toHaveBeenLastCalledWith({...original.position,z:original.position.z+focusDistance},original.position,0);
     expect(renderer.dispose).not.toHaveBeenCalled();expect(renderer.setPixelRatio).toHaveBeenCalledWith(2);
     runtime.dispose();runtime.dispose();expect(graph._destructor).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce();expect(renderer.forceContextLoss).toHaveBeenCalledOnce();expect(container.replaceChildren).toHaveBeenCalledOnce();
     expect(controls.removeEventListener).toHaveBeenCalledWith('start',start);expect(controls.removeEventListener).toHaveBeenCalledWith('end',end);
+    expect(removeEventListener).toHaveBeenCalledWith('pointerenter',enter);expect(removeEventListener).toHaveBeenCalledWith('pointerleave',leave);
 });

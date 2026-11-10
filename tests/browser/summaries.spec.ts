@@ -52,7 +52,7 @@ test('GitHub drawer spaces notices, timestamps and checkbox text consistently (U
  await page.screenshot({path:evidence('office-github-panel-spacing.png')});
  // Checkbox rows now live in Settings; the spacing rule still applies there.
  await page.keyboard.press('Escape');await page.getByRole('button',{name:'Office settings'}).click();
- const row=page.getByLabel('Automatically queue work assigned to me');await row.scrollIntoViewIfNeeded();const input=await row.boundingBox(),label=await row.locator('..').locator('span').boundingBox();expect(label!.x-(input!.x+input!.width)).toBeGreaterThanOrEqual(10);expect(Math.abs(input!.y-label!.y)).toBeLessThanOrEqual(3);
+ const row=page.getByLabel('Automatically queue work assigned to me');await row.scrollIntoViewIfNeeded();const input=await row.boundingBox(),label=await row.locator('..').locator('span').boundingBox();expect(label!.x-(input!.x+input!.width)).toBe(await page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--spacing-control-gap'))));expect(Math.abs(input!.y-label!.y)).toBeLessThanOrEqual(3);
 });
 test('inbox opens with the exact queued tickets above checkpoint status, with no long-link overflow (UI fixture)',async({page,request})=>{
  const state=await(await request.get('/api/office?project=brain')).json();state.coordination.listener.reviews=[{id:'first',key:'GH-70',summary:'Add Shopify documentation coverage',status:'queued',queuedAt:'2026-10-28T12:00Z',workRequested:'manual'},{id:'second',key:'GH-71',summary:'Add Umbraco documentation coverage',status:'queued',queuedAt:'2026-10-28T13:00Z'}];

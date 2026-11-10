@@ -1,3 +1,4 @@
+import { LoadingState } from '../../ui/LoadingState';
 import { useMemo, useState } from 'react';
 import { PanelHeader } from '../../ui/PanelHeader';
 import { Brain, Pause, Play } from '../../ui/icons';
@@ -30,7 +31,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
             <Button disabled={reduced} aria-pressed={paused} aria-label={reduced ? 'Motion off: reduced motion enabled' : undefined} onClick={() => setPaused(value => !value)}>{paused || reduced ? <Play/> : <Pause/>}{reduced ? 'Motion off' : paused ? 'Resume map motion' : 'Pause map motion'}</Button>
         </div>
         <CheckField className="w-fit" checked={selection.activity} onChange={event => setSelection(prior => ({ ...initial, activity: event.target.checked, filter: prior.filter }))}>Include employee activity</CheckField>
-        {error && <p role="alert">{error}</p>}{!data && !error && <p role="status">Loading connections…</p>}
+        {error && <p role="alert">{error}</p>}{!data && !error && <LoadingState panel>Loading connections…</LoadingState>}
         {data && view && <>
             <div className="my-4 flex flex-wrap items-center justify-between gap-3 text-11 text-muted">
                 <p>{data.nodes.length} loaded records · {data.edges.length} saved connections</p>
@@ -46,7 +47,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
                     <div><strong className="block text-11 font-medium tracking-wide text-map-ink">Office Brain / Knowledge Graph</strong><span>{data.nodes.length} records · {data.edges.length} saved links</span></div>
                     <span>{scope === 'global' ? 'Global scope' : project} / scoped</span>
                 </div>
-                <aside className="absolute top-map-hud right-card-padding z-10 max-h-[calc(100%-72px)] w-map-overlay overflow-y-auto rounded-4 border border-secondary-line bg-map-panel/95 p-card-padding max-tablet:static max-tablet:mx-card-padding max-tablet:my-card-padding max-tablet:max-h-none max-tablet:w-auto" data-brain-list-frame>
+                <aside className="absolute top-map-hud right-card-padding z-10 max-h-[calc(100%-var(--spacing-map-hud)-var(--spacing-card-padding))] w-map-overlay overflow-y-auto rounded-4 border border-secondary-line bg-map-panel/95 p-card-padding max-tablet:static max-tablet:mx-card-padding max-tablet:my-card-padding max-tablet:max-h-none max-tablet:w-auto" data-brain-list-frame>
                     {view.selected ? <><Button className="mb-3" onClick={()=>setSelection(prior=>({...prior,selected:''}))}>Back to map</Button><MapNodePanel project={project} node={view.selected} data={data} onSelect={selectNode}/></> : <MapBrowser view={view} onGroup={selectGroup} onNode={selectNode} onHighlight={setHighlight} onPage={page => setSelection(prior => ({ ...prior, page }))}/>}
                 </aside>
             </div>
@@ -55,7 +56,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
                 {[
                     ['Loaded records', data.nodes.length], ['Saved links', data.edges.length],
                     ['In this view', view.scene.nodes.filter(node => node.visible).length],
-                    [view.selected ? 'Selected connections' : 'Knowledge groups', view.selected ? view.neighborCount : view.groups.length],
+                    [view.selected ? 'Connected records in this view' : 'Knowledge groups', view.selected ? view.neighborCount : view.groups.length],
                 ].map(([label, value]) => <div key={label} className="rounded-3 border border-map-line bg-map-panel p-card-padding"><dt className="font-mono text-9 uppercase tracking-label text-map-muted">{label}</dt><dd className="mt-2 font-mono text-23 text-map-accent">{value}</dd></div>)}
             </dl>
         </>}

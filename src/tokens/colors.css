@@ -1051,6 +1051,7 @@
 }
 .brain-map-theme {
   color: var(--color-map-ink);
+  --color-drawer: var(--color-map-panel);
   --color-paper: var(--color-map-panel);
   --color-ink: var(--color-map-ink);
   --color-muted: var(--color-map-muted);
