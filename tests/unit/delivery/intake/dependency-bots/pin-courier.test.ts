@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD, REPOSITORY } from '../../support/fake-github';
 import { adoptDependencyBot } from '../../../../../server/delivery/intake/dependency-bots/adopt';
 import { pinCourier } from '../../../../../server/delivery/intake/dependency-bots/pin-courier';
@@ -6,7 +6,7 @@ import { adoptDependabot } from '../../../../../server/delivery/intake/dependabo
 import { dependabotReviewGuidance } from '../../../../../server/delivery/intake/dependabot/review-guidance';
 import { trackingMarker } from '../../../../../server/delivery/intake/dependabot/tracking-issue';
 
-afterEach(cleanupFakes);
+afterEach(() => { cleanupFakes(); vi.unstubAllEnvs(); });
 function fixture() {
     const f = fakeGitHub();
     f.state.cards = [{ id: 'pr-card', kind: 'PullRequest', number: 314, status: 'ready' }];
@@ -28,6 +28,28 @@ function fixture() {
     const adopt = () => adoptDependencyBot(f.store, execute, f.delivery.jobs, f.store.state.coordination!.pickup!, pinCourier);
     return { f, pr, commits, execute, adopt };
 }
+test('central companion enters the existing adoption and native-link path without issue creation', async () => {
+    vi.stubEnv('OFFICE_PIN_COURIER_CENTRAL_ISSUES', 'true');
+    const { f, pr, adopt } = fixture();
+    Object.assign(f.state.issue, { node_id: 'issue-node-5', user: { login: 'pin-courier[bot]', id: 351979519 }, assignees: [],
+        body: `<!-- pin-courier-companion:v1 ${REPOSITORY}#314 -->\n${trackingMarker(314, 'pin-courier')}` });
+    const original = structuredClone(f.state.issue);
+    await adopt();
+    expect(f.store.state.coordination!.adoptions![0]).toMatchObject({ bot: 'pin-courier', status: 'adopted', issue: 5 });
+    expect(pr.body).toContain('Closes #5');
+    expect(f.state.issue).toEqual(original);
+    expect(f.state.calls.some(call => /issues .*POST/.test(call))).toBe(false);
+    await adopt();
+    expect(f.store.state.coordination!.adoptions![0].issue).toBe(5);
+});
+test('handoff waits for a missing issue without adopting a second implementation', async () => {
+    vi.stubEnv('OFFICE_PIN_COURIER_CENTRAL_ISSUES', 'true');
+    const { f, adopt } = fixture();
+    await adopt();
+    expect(f.store.state.coordination!.adoptions![0]).toMatchObject({ status: 'blocked', issue: 0 });
+    expect(f.store.state.coordination!.adoptions![0].detail).toContain('awaits its central companion');
+    expect(f.state.calls.some(call => /POST|PATCH/.test(call))).toBe(false);
+});
 test('verified Ready pin-courier PR gets one assigned linked issue and ordinary existing-PR review', async () => {
     const { f, pr, execute, adopt } = fixture();
     await adopt();
