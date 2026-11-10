@@ -1,19 +1,22 @@
 import ForceGraph from '3d-force-graph';
-import { PerspectiveCamera } from 'three';
+import { PerspectiveCamera, Raycaster, Vector2 } from 'three';
+import { knowledgeLayout } from '../../tokens/knowledge-layout';
+import { focusOverlayMotion } from './focus-overlay-motion';
 import type { OrbitControls } from 'three-stdlib';
 import { sceneColors } from '../../tokens/scene-colors';
-import { knowledgeCameraDuration, knowledgeMaxFrameStep, knowledgeOrbitIdle, knowledgeOrbitSpeed } from '../../tokens/motion';
+import { knowledgeCameraDuration, knowledgeMaxFrameStep, knowledgeOrbitIdle, knowledgeOrbitSpeed, knowledgeTapSlop } from '../../tokens/motion';
 import type { KnowledgeNode } from '../../contracts/knowledge-views';
 import type { ConstellationView } from './Constellation';
 import { nodeVisuals } from './node-visuals';
 import { cameraTarget, overviewDistance } from './camera-target';
 import { flightPose, type CameraPose } from './camera-flight';
-import { positionFocusOverlay, type FocusOverlayLayout } from './focus-overlay-position';
+import { focusOverlayPosition, type FocusOverlayLayout } from './focus-overlay-position';
 
 export interface ConstellationRuntime { update(view: ConstellationView): void; dispose(): void }
 /** One persistent graph and one frame loop. Navigation changes camera/opacity, never the renderer. */
 export function createConstellation(container: HTMLElement, select: (node: KnowledgeNode) => void, overlay?: HTMLElement): ConstellationRuntime {
-    const palette = sceneColors(), graph = new ForceGraph(container, { controlType: 'orbit', rendererConfig: { antialias: true } });
+    const palette = sceneColors(), spacing=overlay?knowledgeLayout():undefined;
+    const graph = new ForceGraph(container, { controlType: 'orbit', rendererConfig: { antialias: true } });
     const renderer = graph.renderer(), controls = graph.controls() as OrbitControls;
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     controls.enableDamping = true; controls.dampingFactor = .08;
@@ -23,6 +26,11 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
     let flight: { from: CameraPose; to: CameraPose; elapsed: number } | undefined;
     let visuals: ReturnType<typeof nodeVisuals> | undefined, resize: ResizeObserver | undefined;
     let overlayLayout: FocusOverlayLayout | undefined;
+    const ray=new Raycaster(), pointer=new Vector2();
+    let annotation: ReturnType<typeof focusOverlayMotion>|undefined;
+    let hoverId='';
+    let tap: {id:number;x:number;y:number}|undefined;
+    const touchPointers=new Set<number>();
     const dispose = () => {
         if (cleaned) return; cleaned = true; cancelAnimationFrame(frameId); resize?.disconnect();
         document.removeEventListener('visibilitychange', visibility);
@@ -30,6 +38,11 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         controls.removeEventListener('end', endInteraction);
         container.removeEventListener('pointerenter', enter);
         container.removeEventListener('pointerleave', leave);
+        container.removeEventListener('pointermove', move);
+        container.removeEventListener('pointerdown', startTap, true);
+        container.removeEventListener('pointerup', finishTap, true);
+        container.removeEventListener('pointercancel', cancelTap, true);
+        annotation?.dispose();
         if (overlay) overlay.hidden = true;
         graph.pauseAnimation(); graph._destructor(); visuals?.dispose(); renderer.dispose(); renderer.forceContextLoss(); container.replaceChildren();
     };
@@ -43,38 +56,58 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
             graph.cameraPosition(pose.position, pose.lookAt, 0);
             if (flight.elapsed >= knowledgeCameraDuration) { flight = undefined; lastInteraction = now; }
         }
+        // Check only the last notified sprite: the library has two independent hover caches.
+        if(pointerInside&&hoverId){ray.setFromCamera(pointer,graph.camera() as PerspectiveCamera);hovered=!!visuals?.hit(hoverId,ray);}else hovered=false;
+        visuals?.hover(hovered?hoverId:'');renderer.domElement.classList.toggle('clickable',hovered);
         controls.autoRotate = !!view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId && now - lastInteraction > knowledgeOrbitIdle;
         visuals?.update(view, graph.camera() as PerspectiveCamera, container, delta);
-        positionFocusOverlay(overlay, view?.data.nodes.find(n => n.id === view?.focusId), graph.camera() as PerspectiveCamera, container.clientWidth, container.clientHeight, overlayLayout);
+        annotation?.render(focusOverlayPosition(view?.data.nodes.find(n => n.id === view?.focusId), graph.camera() as PerspectiveCamera, container.clientWidth, container.clientHeight, overlayLayout));
         frameId = requestAnimationFrame(frame);
     };
     function stopFlight() { flight = undefined; dragging = true; controls.autoRotate = false; lastInteraction = previous; }
     function endInteraction() { dragging = false; lastInteraction = previous; }
-    function enter() { pointerInside = true; graph.enablePointerInteraction(true); lastInteraction = previous; }
-    function leave() { pointerInside = false; graph.enablePointerInteraction(false); hovered = false; visuals?.hover(''); lastInteraction = previous; controls.autoRotate = false; }
+    function move(event?: PointerEvent) { if(!event)return;const rect=container.getBoundingClientRect();pointer.set((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2); }
+    function enter(event?: PointerEvent) { pointerInside = true;move(event);lastInteraction = previous; }
+    function leave() { pointerInside = false; hovered = false; visuals?.hover(''); lastInteraction = previous; controls.autoRotate = false; }
+    function startTap(event: PointerEvent) {
+        if(event.pointerType==='mouse'||event.button!==0)return;
+        touchPointers.add(event.pointerId);tap=touchPointers.size===1?{id:event.pointerId,x:event.clientX,y:event.clientY}:undefined;
+    }
+    function cancelTap() { tap=undefined;touchPointers.clear(); }
+    function finishTap(event: PointerEvent) {
+        const start=tap;tap=undefined;touchPointers.delete(event.pointerId);
+        if(!start||event.pointerId!==start.id||Math.hypot(event.clientX-start.x,event.clientY-start.y)>knowledgeTapSlop)return;
+        move(event);const camera=graph.camera() as PerspectiveCamera;camera.updateMatrixWorld();ray.setFromCamera(pointer,camera);
+        // A tap gets one fresh hit test; it never depends on the library's throttled hover.
+        const node=visuals?.pick(ray);if(node)select(node);
+    }
     function visibility() {
         cancelAnimationFrame(frameId); previous = 0;
         if (document.hidden) graph.pauseAnimation(); else { graph.resumeAnimation(); frameId = requestAnimationFrame(frame); }
     }
     try {
+        annotation=focusOverlayMotion(overlay);
         visuals = nodeVisuals(palette);
         graph.backgroundColor(palette.brainBackground).nodeThreeObject(raw => visuals!.create(raw as never))
             .nodeVisibility(raw => (raw as { visible: boolean }).visible)
             .nodeLabel('') // The canvas owns hover/selection captions; avoid a duplicate HTML tooltip.
             .linkColor(() => view?.focusId ? palette.brainFocusConnection : palette.brainConnection).linkOpacity(.5).linkWidth(.6)
-            .enableNodeDrag(false).enablePointerInteraction(false).showNavInfo(false).cooldownTicks(0)
-            .onNodeClick(node => select(node as KnowledgeNode)).onNodeHover(node => { if (!pointerInside) return; hovered = !!node; lastInteraction = previous; controls.autoRotate = false; visuals!.hover(node?.id?.toString() || ''); });
+            .enableNodeDrag(false).showNavInfo(false).cooldownTicks(0)
+            .onNodeClick((node,event) => { if(!['touch','pen'].includes((event as PointerEvent).pointerType))select(node as KnowledgeNode); }).onNodeHover(node => { hoverId=node?.id?.toString()||'';lastInteraction=previous;controls.autoRotate=false; });
         graph.cameraPosition({x: 0, y: 0, z: overviewDistance});
         controls.addEventListener('start', stopFlight);
         controls.addEventListener('end', endInteraction);
         container.addEventListener('pointerenter', enter);
         container.addEventListener('pointerleave', leave);
+        container.addEventListener('pointermove', move);
+        container.addEventListener('pointerdown', startTap, true);
+        container.addEventListener('pointerup', finishTap, true);
+        container.addEventListener('pointercancel', cancelTap, true);
         const fit = () => {
             graph.width(container.clientWidth).height(container.clientHeight);
             if (overlay) {
-                const css = getComputedStyle(container), panel = container.closest('[data-brain-map-frame]')?.querySelector<HTMLElement>('[data-brain-list-frame]');
-                const gap = parseFloat(css.getPropertyValue('--spacing-card-padding'));
-                overlayLayout = { gap, minimum: parseFloat(css.getPropertyValue('--spacing-map-label-min')), occupied: panel && getComputedStyle(panel).position === 'absolute' ? panel.getBoundingClientRect().width + gap * 2 : 0 };
+                const panel = container.closest('[data-brain-map-frame]')?.querySelector<HTMLElement>('[data-brain-list-frame]'), bounds=panel?.getBoundingClientRect();
+                overlayLayout = { ...spacing!, occupied: bounds && bounds.top<container.getBoundingClientRect().bottom ? bounds.width+spacing!.gap*2 : 0 };
             }
         };
         fit(); resize = new ResizeObserver(fit); resize.observe(container);
@@ -104,7 +137,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
                 if (next.reduced || next.paused) graph.cameraPosition(destination.position, destination.lookAt, 0);
                 focusId = next.focusId;
             }
-            positionFocusOverlay(overlay, next.data.nodes.find(n => n.id === next.focusId), graph.camera() as PerspectiveCamera, container.clientWidth, container.clientHeight, overlayLayout);
+            annotation?.render(focusOverlayPosition(next.data.nodes.find(n => n.id === next.focusId), graph.camera() as PerspectiveCamera, container.clientWidth, container.clientHeight, overlayLayout));
         } };
     } catch (error) { dispose(); throw error; }
 }

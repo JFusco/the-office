@@ -4,7 +4,7 @@
 // Values are sRGB CSS colors; three.js converts them to linear working space exactly
 // as it did for the former inline hex strings.
 const TOKENS={
-brainBackground:'--scene-brain-background',brainEvidence:'--scene-brain-evidence',brainConnection:'--scene-brain-connection',brainFocusConnection:'--scene-brain-focusconnection',brainSource:'--scene-brain-source',brainProject:'--scene-brain-project',brainClusterViolet:'--scene-brain-clusterviolet',brainLabel:'--scene-brain-label',brainLesson:'--scene-brain-lesson',brainFocused:'--scene-brain-focused',brainMarker:'--scene-brain-marker',
+brainBackground:'--scene-brain-background',brainEvidence:'--scene-brain-evidence',brainConnection:'--scene-brain-connection',brainFocusConnection:'--scene-brain-focusconnection',brainSource:'--scene-brain-source',brainProject:'--scene-brain-project',brainClusterViolet:'--scene-brain-clusterviolet',brainLabel:'--scene-brain-label',brainLesson:'--scene-brain-lesson',brainFocused:'--scene-brain-focused',brainMarker:'--scene-brain-marker',brainMarkerDim:'--scene-brain-marker-dim',brainMarkerClear:'--scene-brain-marker-clear',
   prankJelly:'--scene-prank-jelly',prankStapler:'--scene-prank-stapler',prankPlate:'--scene-prank-plate',
   backdrop:'--scene-backdrop',hemisphereSky:'--scene-hemisphere-sky',hemisphereGround:'--scene-hemisphere-ground',contactShadow:'--scene-contact-shadow',
   teamPm:'--color-team-pm',teamDeveloper:'--color-team-developer',teamLead:'--color-team-lead',teamQa:'--color-team-qa',teamCto:'--color-team-cto',teamIt:'--color-team-it',teamKnowledge:'--color-team-knowledge',

@@ -1,7 +1,7 @@
 import { expect, it, vi, afterEach } from 'vitest';
 import { PerspectiveCamera, Vector3 } from 'three';
-const state = vi.hoisted(()=>({ graph: null as any, visuals: {create:vi.fn(),update:vi.fn(),retain:vi.fn(),hover:vi.fn(),dispose:vi.fn()}, atmosphere:{texture:{},update:vi.fn(),dispose:vi.fn()} }));
-vi.mock('3d-force-graph', ()=>({ default: class { constructor(){return state.graph;} } }));
+const state = vi.hoisted(()=>({ graph: null as any,build:vi.fn(), visuals: {create:vi.fn(),update:vi.fn(),retain:vi.fn(),hover:vi.fn(),hit:vi.fn(()=>true),pick:vi.fn(),dispose:vi.fn()}, atmosphere:{texture:{},update:vi.fn(),dispose:vi.fn()} }));
+vi.mock('3d-force-graph', ()=>({ default: class { constructor(){state.build();return state.graph;} } }));
 vi.mock('../../../../src/tokens/scene-colors',()=>({sceneColors:()=>({brainBackground:'paper',brainFocusConnection:'ink'})}));
 vi.mock('../../../../src/knowledge/map/node-visuals',()=>({nodeVisuals:()=>state.visuals}));
 import { createConstellation } from '../../../../src/knowledge/map/constellation-runtime';
@@ -12,7 +12,7 @@ afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();});
 
 it('retains graph identities, animates camera navigation, respects reduced motion and releases its single renderer once',()=>{
     let saved:{nodes:any[];links:any[]}={nodes:[],links:[]};
-    const camera=new PerspectiveCamera(), controls={target:new Vector3(),autoRotate:false,addEventListener:vi.fn(),removeEventListener:vi.fn()}, renderer={setPixelRatio:vi.fn(),dispose:vi.fn(),forceContextLoss:vi.fn()};
+    const camera=new PerspectiveCamera(), controls={target:new Vector3(),autoRotate:false,addEventListener:vi.fn(),removeEventListener:vi.fn()}, renderer={domElement:{classList:{toggle:vi.fn()}},setPixelRatio:vi.fn(),dispose:vi.fn(),forceContextLoss:vi.fn()};
     camera.position.set(0,0,300);
     const graph:any={renderer:()=>renderer,controls:()=>controls,scene:()=>({}),camera:()=>camera};
     for(const name of ['backgroundColor','nodeThreeObject','nodeVisibility','nodeLabel','linkColor','linkOpacity','linkWidth','enableNodeDrag','enablePointerInteraction','showNavInfo','cooldownTicks','onNodeClick','onNodeHover','width','height','pauseAnimation','resumeAnimation','_destructor'])graph[name]=vi.fn(()=>graph);
@@ -23,8 +23,8 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     let frame: (now:number)=>void=()=>{};
     vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{frame=callback;return 1;}));vi.stubGlobal('cancelAnimationFrame',vi.fn());
     const addEventListener=vi.fn(),removeEventListener=vi.fn();
-    const container={replaceChildren:vi.fn(),addEventListener,removeEventListener,clientWidth:1200,clientHeight:800} as unknown as HTMLElement;
-    const runtime=createConstellation(container,vi.fn()), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,page:0};
+    const container={replaceChildren:vi.fn(),addEventListener,removeEventListener,getBoundingClientRect:()=>({left:0,top:0,width:1200,height:800}),clientWidth:1200,clientHeight:800} as unknown as HTMLElement;
+    const select=vi.fn(),runtime=createConstellation(container,select), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,page:0};
     const map={nodes:[{id:'note',title:'Note',kind:'technical' as const,detail:''}],edges:[],truncated:false};
     const overview=displayScene(map,selection), focused=displayScene(map,{...selection,selected:'note'});
     runtime.update({data:overview.scene,reduced:false});const original=saved.nodes[0];
@@ -46,14 +46,26 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     const enter=addEventListener.mock.calls.find(call=>call[0]==='pointerenter')![1],leave=addEventListener.mock.calls.find(call=>call[0]==='pointerleave')![1];
     const hover=graph.onNodeHover.mock.calls[0][0];
     enter();hover({id:'note'});frame(32000);expect(controls.autoRotate).toBe(false);
-    leave();expect(graph.enablePointerInteraction).toHaveBeenLastCalledWith(false);hover({id:'note'});frame(32001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
+    leave();hover({id:'note'});frame(32001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
     expect(state.visuals.hover).toHaveBeenLastCalledWith('');
-    enter();expect(graph.enablePointerInteraction).toHaveBeenLastCalledWith(true);hover({id:'note'});expect(state.visuals.hover).toHaveBeenLastCalledWith('note');leave();
+    enter();hover({id:'note'});frame(36000);expect(state.visuals.hover).toHaveBeenLastCalledWith('note');leave({pointerType:'touch'});expect(graph.enablePointerInteraction).not.toHaveBeenCalled();
     runtime.update({data:focused.scene,focusId:'note',reduced:false});frame(36000);frame(36050);
     runtime.update({data:focused.scene,focusId:'note',reduced:false,paused:true});
     expect(graph.cameraPosition).toHaveBeenLastCalledWith({...original.position,z:original.position.z+focusDistance},original.position,0);
+    const down=addEventListener.mock.calls.find(call=>call[0]==='pointerdown')![1],up=addEventListener.mock.calls.find(call=>call[0]==='pointerup')![1],cancel=addEventListener.mock.calls.find(call=>call[0]==='pointercancel')![1];
+    const touch={pointerId:4,pointerType:'touch',button:0,clientX:100,clientY:100};state.visuals.pick.mockReturnValue(original);
+    down(touch);leave(touch);up(touch);expect(select).toHaveBeenCalledExactlyOnceWith(original);
+    graph.onNodeClick.mock.calls[0][0](original,touch);expect(select).toHaveBeenCalledOnce();
+    down(touch);up({...touch,clientX:140});expect(select).toHaveBeenCalledOnce();
+    down(touch);down({...touch,pointerId:5});up({...touch,pointerId:5});up(touch);expect(select).toHaveBeenCalledOnce();
+    down(touch);cancel();up(touch);expect(select).toHaveBeenCalledOnce();
     expect(renderer.dispose).not.toHaveBeenCalled();expect(renderer.setPixelRatio).toHaveBeenCalledWith(2);
     runtime.dispose();runtime.dispose();expect(graph._destructor).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce();expect(renderer.forceContextLoss).toHaveBeenCalledOnce();expect(container.replaceChildren).toHaveBeenCalledOnce();
     expect(controls.removeEventListener).toHaveBeenCalledWith('start',start);expect(controls.removeEventListener).toHaveBeenCalledWith('end',end);
-    expect(removeEventListener).toHaveBeenCalledWith('pointerenter',enter);expect(removeEventListener).toHaveBeenCalledWith('pointerleave',leave);
+    expect(removeEventListener).toHaveBeenCalledWith('pointerenter',enter);expect(removeEventListener).toHaveBeenCalledWith('pointerleave',leave);expect(removeEventListener).toHaveBeenCalledWith('pointermove',expect.any(Function));
+});
+
+it('refuses missing layout tokens before allocating a renderer',()=>{
+    vi.stubGlobal('document',{documentElement:{}});vi.stubGlobal('getComputedStyle',()=>({getPropertyValue:()=>''}));
+    expect(()=>createConstellation({} as HTMLElement,vi.fn(),{} as HTMLElement)).toThrow('Knowledge layout token');expect(state.build).not.toHaveBeenCalled();
 });

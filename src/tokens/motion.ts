@@ -12,3 +12,4 @@ export const knowledgeMaxFrameStep = 50;
 
 export const knowledgeOrbitIdle = 3000;
 export const knowledgeOrbitSpeed = .2;
+export const knowledgeTapSlop = 8;

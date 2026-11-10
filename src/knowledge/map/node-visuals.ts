@@ -1,4 +1,4 @@
-import { CanvasTexture, Color, Group, Sprite, SpriteMaterial, Vector3, type PerspectiveCamera } from 'three';
+import { CanvasTexture, Color, Group, Sprite, SpriteMaterial, Vector3, type Raycaster, type PerspectiveCamera } from 'three';
 import type { SceneColors } from '../../tokens/scene-colors';
 import type { ConstellationView } from './Constellation';
 import type { DisplayNode } from './display-scene';
@@ -10,10 +10,10 @@ import { overviewDistance } from './camera-target';
 export function nodeVisuals(palette: SceneColors) {
     const marker = document.createElement('canvas'); marker.width = marker.height = 64;
     const markerContext = marker.getContext('2d'); if (!markerContext) throw new Error('Marker canvas unavailable');
-    const white = new Color(palette.brainMarker).getStyle(), gradient = markerContext.createRadialGradient(32,32,0,32,32,30);
-    gradient.addColorStop(0, white); gradient.addColorStop(.1, white);
-    gradient.addColorStop(.3, white.replace('rgb(', 'rgba(').replace(')', ', .3)'));
-    gradient.addColorStop(1, white.replace('rgb(', 'rgba(').replace(')', ', 0)'));
+    const gradient = markerContext.createRadialGradient(32,32,0,32,32,30);
+    gradient.addColorStop(0, palette.brainMarker); gradient.addColorStop(.1, palette.brainMarker);
+    gradient.addColorStop(.3, palette.brainMarkerDim);
+    gradient.addColorStop(1, palette.brainMarkerClear);
     markerContext.fillStyle = gradient; markerContext.fillRect(0,0,64,64);
     const markerTexture = new CanvasTexture(marker);
     const colors = { project: new Color(palette.brainProject), source: new Color(palette.brainSource), evidence: new Color(palette.brainEvidence), lesson: new Color(palette.brainLesson), assignment: new Color(palette.brainFocused), technical: new Color(palette.brainClusterViolet) };
@@ -22,11 +22,17 @@ export function nodeVisuals(palette: SceneColors) {
     let hovered = '';
     return {
         hover(id: string) { hovered = id; },
+        hit(id: string, ray: Raycaster) { const record = records.get(id); return !!record?.node.visible && ray.intersectObject(record.star, false).length > 0; },
+        pick(ray: Raycaster) {
+            const hit=ray.intersectObjects([...records.values()].filter(record=>record.node.visible).map(record=>record.star),false)[0];
+            return hit?records.get(hit.object.userData.knowledgeId)?.node:undefined;
+        },
         retain(ids: Set<string>) { for (const [id, record] of records) if (!ids.has(id)) { record.dispose(); records.delete(id); } },
         create(node: DisplayNode) {
             records.get(node.id)?.dispose();
             const group = new Group(), starMaterial = new SpriteMaterial({map: markerTexture, color: colors[node.kind], transparent: true, opacity: .95, depthWrite: false});
             const star = new Sprite(starMaterial); star.scale.setScalar(node.kind === 'project' ? 12 : 7); group.add(star);
+            star.userData.knowledgeId=node.id;
             const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 80;
             const context = canvas.getContext('2d'); if (!context) { starMaterial.dispose(); throw new Error('Label canvas unavailable'); }
             context.font = '28px monospace'; context.fillStyle = palette.brainLabel; context.textAlign = 'center';

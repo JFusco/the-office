@@ -13,14 +13,24 @@ export function Sources({ project, projects }: { project: string; projects: { id
     const [addingPublic,setAddingPublic]=useState(false);
     const [sources, setSources] = useState<KnowledgeSourceSummary[]>([]), [connections, setConnections] = useState<SourceConnection[]>([]);
     const [error, setError] = useState(''), [loading, setLoading] = useState(true), [adding, setAdding] = useState(false), [uploading,setUploading] = useState(false), [history, setHistory] = useState(false);
-    const reading=useRef(false), [refreshing,setRefreshing] = useState<''|'refresh'|'more'>('');
+    const reading=useRef<Promise<void>|null>(null), [refreshing,setRefreshing] = useState<''|'refresh'|'more'>('');
     const [pending, setPending] = useState(false), [notice, setNotice] = useState(''), [next, setNext] = useState<string | null>(null), [cutover, setCutover] = useState('');
-    async function reload(after = '') {
-        if(reading.current)return;reading.current=true;setRefreshing(after?'more':'refresh');
-        try { const response = await fetch(`/api/knowledge/sources?project=${encodeURIComponent(project)}${after ? `&after=${encodeURIComponent(after)}` : ''}`, { cache: 'no-store' });
-        const data = await response.json(); if (!response.ok) throw Error(data.error || 'Sources unavailable');
-        setSources(old => after ? [...old, ...data.sources] : data.sources); setConnections(data.connections); setNext(data.next); setCutover(data.cutover);
-        } finally {reading.current=false;setRefreshing('');}
+    async function reload(after = ''): Promise<void> {
+        if(reading.current) {
+            if(after)return reading.current;
+            await reading.current.catch(()=>{});
+            return reload();
+        }
+        const operation=(async()=>{
+            setRefreshing(after?'more':'refresh');
+            try {
+                const response=await fetch(`/api/knowledge/sources?project=${encodeURIComponent(project)}${after?`&after=${encodeURIComponent(after)}`:''}`,{cache:'no-store'});
+                const data=await response.json();if(!response.ok)throw Error(data.error||'Sources unavailable');
+                setSources(old=>after?[...old,...data.sources]:data.sources);setConnections(data.connections);setNext(data.next);setCutover(data.cutover);
+            }finally{setRefreshing('');}
+        })();
+        reading.current=operation;
+        try{await operation;}finally{if(reading.current===operation)reading.current=null;}
     }
     useEffect(() => { let current = true; setLoading(true); setError(''); setSources([]);
         // Abort old-project requests so delayed responses cannot replace the selected project's list.

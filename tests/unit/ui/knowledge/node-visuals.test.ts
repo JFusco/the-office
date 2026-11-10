@@ -33,7 +33,8 @@ it('keeps landmark labels sparse, labels individual nodes on interaction and rel
         groups[0].updateMatrixWorld(true);
         const ray=new Raycaster(new Vector3(0,groups[0].children[1].position.y,300),new Vector3(0,0,-1));ray.camera=camera;
         expect(ray.intersectObject(groups[0],true)).toEqual([]);
-        ray.ray.origin.y=0;expect(ray.intersectObject(groups[0],true).map(hit=>hit.object)).toEqual([groups[0].children[0]]);
+        expect(visuals.hit('n0',ray)).toBe(false);
+        ray.ray.origin.y=0;expect(visuals.hit('n0',ray)).toBe(true);expect(visuals.pick(ray)?.id).toBe('n0');expect(ray.intersectObject(groups[0],true).map(hit=>hit.object)).toEqual([groups[0].children[0]]);
         const material=(groups[0].children[0] as any).material as SpriteMaterial,dispose=vi.spyOn(material,'dispose');
         visuals.retain(new Set(['n1']));expect(dispose).toHaveBeenCalledOnce();visuals.dispose();expect(dispose).toHaveBeenCalledOnce();
     }finally{vi.unstubAllGlobals();}

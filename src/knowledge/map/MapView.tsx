@@ -10,6 +10,8 @@ import { displayScene, type MapSelection, selectRecord } from './display-scene';
 import { MapNodePanel } from './MapNodePanel';
 import { MapBrowser } from './MapBrowser';
 
+const mapTheme = 'text-map-ink [--color-drawer:var(--color-map-panel)] [--color-paper:var(--color-map-panel)] [--color-ink:var(--color-map-ink)] [--color-muted:var(--color-map-muted)] [--color-secondary:var(--color-map-panel)] [--color-secondary-hover:var(--color-map-hover)] [--color-secondary-line:var(--color-map-line)] [--color-control-hover-line:var(--color-map-accent)] [--color-roster-hover:var(--color-map-hover)] [--color-field-line:var(--color-map-hairline)] [--color-field-hover:var(--color-map-accent)] [--color-focus:var(--color-map-accent)] [--color-link:var(--color-map-accent)] [--color-select-chevron:var(--color-map-muted)] [--color-drawer-line:var(--color-map-line)] [--color-drawer-rule:var(--color-map-line)] [--color-section-rule:var(--color-map-line)] [--color-tag:var(--color-map-panel)] [--color-tag-line:var(--color-map-line)] [--color-tag-ink:var(--color-map-muted)]';
+
 const initial: MapSelection = { group: '', selected: '', query: '', filter: 'all', activity: false, page: 0 };
 const filterNames = { all: 'All knowledge', source: 'Sources', evidence: 'Source evidence', lesson: 'Lessons', technical: 'Technical knowledge', assignment: 'Employee activity' } as const;
 
@@ -22,7 +24,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
     return <section aria-labelledby="map-heading">
         <PanelHeader id="map-heading" icon={<Brain size={26}/>}>Map</PanelHeader>
         <p className={cx(mutedCopy, "max-w-reading-copy")}>See how notes, source evidence and team lessons connect. Key labels orient the map; hover or select a node to explore.</p>
-        <div className="brain-map-theme mt-section-gap rounded-7 border border-map-line bg-map-surface p-card-padding">
+        <div className={cx(mapTheme,"mt-section-gap rounded-7 border border-map-line bg-map-surface p-card-padding")}>
         <div className="mb-section-gap flex flex-wrap items-end gap-control-gap">
             <label className={cx(fieldLabel, 'min-w-0 max-w-full')}><span>Map scope</span><Select className={selectField} value={scope} onChange={event => { setSelection(initial); setScope(event.target.value); }}><option value="project">This project and shared knowledge</option><option value="global">Global · approved Office and technical knowledge</option></Select></label>
             <label className={fieldLabel}><span>Show</span><Select className={selectField} value={selection.filter} onChange={event => setSelection({ ...initial, filter: event.target.value as MapSelection['filter'], activity: selection.activity })}>{Object.entries(filterNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select></label>

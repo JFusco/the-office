@@ -1036,6 +1036,8 @@
   --scene-brain-lesson: #9ee3de;
   --scene-brain-focused: #a1f3fa;
   --scene-brain-marker: #fff;
+  --scene-brain-marker-dim: rgba(255, 255, 255, .3);
+  --scene-brain-marker-clear: rgba(255, 255, 255, 0);
 }
 
 /* The knowledge graph is a scoped dark surface; control geometry/interaction stays shared. */
@@ -1048,27 +1050,4 @@
   --color-map-accent: #8ee7f3;
   --color-map-hairline: #568d9e;
   --color-map-hover: #12313e;
-}
-.brain-map-theme {
-  color: var(--color-map-ink);
-  --color-drawer: var(--color-map-panel);
-  --color-paper: var(--color-map-panel);
-  --color-ink: var(--color-map-ink);
-  --color-muted: var(--color-map-muted);
-  --color-secondary: var(--color-map-panel);
-  --color-secondary-hover: var(--color-map-hover);
-  --color-secondary-line: var(--color-map-line);
-  --color-control-hover-line: var(--color-map-accent);
-  --color-roster-hover: var(--color-map-hover);
-  --color-field-line: var(--color-map-hairline);
-  --color-field-hover: var(--color-map-accent);
-  --color-focus: var(--color-map-accent);
-  --color-link: var(--color-map-accent);
-  --color-select-chevron: var(--color-map-muted);
-  --color-drawer-line: var(--color-map-line);
-  --color-drawer-rule: var(--color-map-line);
-  --color-section-rule: var(--color-map-line);
-  --color-tag: var(--color-map-panel);
-  --color-tag-line: var(--color-map-line);
-  --color-tag-ink: var(--color-map-muted);
 }

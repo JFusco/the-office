@@ -19,6 +19,7 @@ export function useOffice() {
         current.current = id;
         localStorage.setItem('office.project', id);
         setConnected(false);
+        setError('');
         setSwitching(true);
         setProject(id);
     }, []);

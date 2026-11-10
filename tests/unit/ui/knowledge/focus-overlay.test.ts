@@ -1,20 +1,17 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PerspectiveCamera } from 'three';
-import { expect, test, vi } from 'vitest';
+import { expect, test } from 'vitest';
 import { FocusOverlay } from '../../../../src/knowledge/map/FocusOverlay';
-import { positionFocusOverlay } from '../../../../src/knowledge/map/focus-overlay-position';
+import { focusOverlayPosition } from '../../../../src/knowledge/map/focus-overlay-position';
 import { stablePosition } from '../../../../src/knowledge/map/layout';
 
 test('the reticle follows the same camera projection and hides unavailable or off-screen nodes', () => {
     const camera = new PerspectiveCamera(50, 2, .1, 1000); camera.position.z = 360; camera.lookAt(0, 0, 0);
-    const set = vi.fn(), overlay = { hidden: true, style: { setProperty: set } } as unknown as HTMLElement;
     const node = { id: 'n', title: 'Node', kind: 'technical' as const, detail: '', visible: true, emphasized: true, position: { x: 0, y: 0, z: 0 } };
-    positionFocusOverlay(overlay, node, camera, 800, 400);
-    expect(overlay.hidden).toBe(false); expect(set).toHaveBeenCalledWith('--map-focus-x', '400px'); expect(set).toHaveBeenCalledWith('--map-focus-y', '200px');
-    for (const candidate of [undefined, { ...node, visible: false }, { ...node, position: { x: 0, y: 0, z: 500 } }, { ...node, position: { x: 10000, y: 0, z: 0 } }]) {
-        positionFocusOverlay(overlay, candidate, camera, 800, 400); expect(overlay.hidden).toBe(true);
-    }
+    expect(focusOverlayPosition(node,camera,800,400)).toEqual({x:400,y:200});
+    for (const candidate of [undefined, { ...node, visible: false }, { ...node, position: { x: 0, y: 0, z: 500 } }, { ...node, position: { x: 10000, y: 0, z: 0 } }]) expect(focusOverlayPosition(candidate,camera,800,400)).toBeUndefined();
+
 });
 
 test('the decorative focus tag escapes the record title and stays hidden until projected', () => {
@@ -24,11 +21,9 @@ test('the decorative focus tag escapes the record title and stays hidden until p
 
 test('the focus tag flips left when the floating inspector leaves too little room on the right', () => {
     const camera = new PerspectiveCamera(50, 2, .1, 1000); camera.position.z = 360; camera.lookAt(0,0,0);
-    const set = vi.fn(), overlay = { hidden:true,style:{setProperty:set} } as unknown as HTMLElement;
     const node = {id:'n',title:'Note',kind:'technical' as const,detail:'',visible:true,emphasized:true,position:{x:0,y:0,z:0}};
-    positionFocusOverlay(overlay,node,camera,700,400,{occupied:332,gap:16,minimum:120});
-    expect(set).toHaveBeenCalledWith('--map-focus-label-shift','calc(-100% - var(--spacing-card-padding))');
-    expect(set).toHaveBeenCalledWith('--map-focus-label-width','318px');
+    expect(focusOverlayPosition(node,camera,700,400,{occupied:332,gap:16,minimum:120})).toEqual({x:350,y:200,labelLeft:true,labelWidth:318});
+
 });
 
 test('the depth field stays deterministic and distributes a single record type across the whole map', () => {
