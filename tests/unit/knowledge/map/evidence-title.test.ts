@@ -12,6 +12,11 @@ it('names evidence with its configured source and a bounded readable excerpt', (
     expect(evidenceTitle('Call `handlers[type](event)`', '#team')).toBe('#team · Call handlers[type](event)');
     expect(evidenceTitle('Keep `<https://h.test|v>`', '#team')).toBe('#team · Keep <https://h.test|v>');
     expect(evidenceTitle('`a``b` and ``a`b``', '#team')).toBe('#team · a``b and a`b');
+    expect(evidenceTitle('See <https://a.test `x|y>`', '#team')).toBe('#team · See <https://a.test x|y>');
+    expect(evidenceTitle('Keep *ptr `a*` safe', '#team')).toBe('#team · Keep *ptr a* safe');
+    expect(evidenceTitle('## Keep **`config.ts`** stable', '#team')).toBe('#team · Keep config.ts stable');
+    expect(evidenceTitle('See [`evidenceTitle`](https://x.test)', '#team')).toBe('#team · See evidenceTitle');
+    expect(evidenceTitle('\ue0000\ue000 and `user_id`', '#team')).toBe('#team · \ue0000\ue000 and user_id');
 });
 
 it('reads admitted public claims instead of showing their serialized record fields', () => {
