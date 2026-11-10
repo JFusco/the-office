@@ -1,4 +1,5 @@
 import { AUTO_ADOPT_BOTS } from '../delivery/intake/dependency-bots/auto-adopt';
+import { assertFeaturePlanningConfig, type FeaturePlanningBindings } from '../features/progression/policy';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OfficeProject } from '../../src/shared';
@@ -18,6 +19,7 @@ export interface CECBinding {
     target: string;
 }
 export interface LocalBindings {
+    featurePlanning?: FeaturePlanningBindings;
     cec?: CECBinding;
     projects?: OfficeProject[];
     holds?: Record<string, string>;
@@ -45,6 +47,7 @@ export function localBindings(dataRoot: string): LocalBindings {
         if (project.autoAdopt !== undefined && (project.provider !== 'github' || !Array.isArray(project.autoAdopt) || project.autoAdopt.some(bot => !(AUTO_ADOPT_BOTS as readonly string[]).includes(bot)) || new Set(project.autoAdopt).size !== project.autoAdopt.length))
             throw new Error('Project autoAdopt must list unique supported dependency bots on a GitHub project');
     assertModelOverrides(config.models);
+    assertFeaturePlanningConfig(config.featurePlanning);
     const concurrency = config.delivery?.concurrency;
     if (config.delivery !== undefined && (typeof config.delivery !== 'object' || config.delivery === null || concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3)))
         throw new Error('Delivery concurrency must be an integer from 1 to 3');

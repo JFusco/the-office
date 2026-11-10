@@ -12,6 +12,11 @@ import { approveFeature } from './approval';
 import { publishFeature, type FeaturePublisher } from './publication';
 import { GitHubFeaturePublisher } from './github-publication';
 import { JiraFeaturePublisher } from './jira-publication';
+import { releaseStep } from './release/release-step';
+import { recoverFailure } from './progression/recover-failure';
+import { automaticFeature, automaticEnabled } from './progression/policy';
+import { FEATURE_PLANNING } from '../office/config';
+import { FeatureError } from './progression/failure';
 
 export class FeatureWorkflow {
     readonly review: FeatureReviewRunner;
@@ -39,6 +44,8 @@ export class FeatureWorkflow {
         const revision = feature.revision;
         let attemptId: string | undefined;
         try {
+            if (automaticFeature(feature) && !automaticEnabled(feature, FEATURE_PLANNING)) throw new FeatureError('policy-disabled', 'Waiting for automatic feature policy activation');
+            if (feature.phase === 'approval') { await releaseStep(this.store, id, manifest => this.publisher(feature).validate(manifest), this.execute); return; }
             if (feature.phase === 'review') { await this.review.step(feature); return; }
             if (feature.phase === 'delivery') { await publishFeature(this.store, feature, this.publisher(feature)); return; }
             await prepareBaseline(this.store, feature, this.execute);
@@ -67,6 +74,7 @@ export class FeatureWorkflow {
                 const current = featureById(this.store, id), attempt = current.attempts.find(a => a.id === attemptId);
                 if (attempt?.status === 'working') { attempt.status = current.paused || this.store.state.paused ? 'interrupted' : 'failed'; attempt.endedAt = this.store.clock.now().toISOString(); }
                 if (current.revision !== revision) return;
+                if (recoverFailure(this.store, current, error, attemptId || `${revision}:${current.phase}:${current.recovery?.generation ?? 0}`)) return;
                 current.status = 'blocked'; current.detail = String(error);
                 this.store.emit('feature-blocked', current.title + ': ' + current.detail, 'analyst');
             });

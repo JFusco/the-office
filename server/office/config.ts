@@ -5,6 +5,7 @@ import { localBindings } from './local-config';
 export const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const DATA = resolve(process.env.OFFICE_DATA_ROOT || resolve(ROOT, '.local'));
 export const LOCAL_BINDINGS = localBindings(DATA);
+export const FEATURE_PLANNING = LOCAL_BINDINGS.featurePlanning || {};
 // Examples are inert until configured; existing installations use private bindings.
 export const CEC = LOCAL_BINDINGS.cec || {
     site: 'https://example.atlassian.net', cloudId: 'configure-locally', board: 0,

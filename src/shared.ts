@@ -882,6 +882,8 @@ export interface OfficeConfigSummary {
 export interface OfficeSnapshot {
     preferences?: OfficePreferences;
     features?: import('./contracts/features').Feature[];
+    featureQuestions?: import('./contracts/features').FeatureQuestionProjection[];
+    featurePlanning?: import('./contracts/features').FeaturePlanningActivation;
     liveAnchor?: import('./contracts/timing').LiveAnchor;
     timerStatus?: 'live' | 'last-confirmed';
     serviceInstanceId?: string;
