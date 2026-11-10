@@ -1,0 +1,10 @@
+import { it,expect,afterEach } from 'vitest';
+import { mkdtempSync,writeFileSync,rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { extractDocument } from '../../../../server/knowledge/artifacts/extraction';
+const roots:string[]=[];afterEach(()=>roots.splice(0).forEach(r=>rmSync(r,{recursive:true,force:true})));
+function file(bytes:Buffer|string){const root=mkdtempSync(join(tmpdir(),'brain-extract-'));roots.push(root);const path=join(root,'original');writeFileSync(path,bytes);return path;}
+it('extracts UTF-8 bytes in the real bounded child and reports empty and invalid UTF-8 distinctly',async()=>{expect(await extractDocument(file('Project knowledge 🌱'),'text')).toMatchObject({outcome:'extracted',text:'Project knowledge 🌱',extractor:'utf8-v1'});expect((await extractDocument(file('  '),'text')).outcome).toBe('no-text');expect((await extractDocument(file(Buffer.from([255])),'text')).outcome).toBe('malformed');});
+it('rejects text and raw limits and malformed documents',async()=>{expect((await extractDocument(file('a'.repeat(500001)),'text')).outcome).toBe('text-limit');expect((await extractDocument(file(Buffer.alloc(10000001)),'text')).outcome).toBe('oversized');expect((await extractDocument(file('invalid document'),'docx')).outcome).toBe('malformed');expect((await extractDocument(file('invalid PDF'),'pdf')).outcome).toBe('malformed');});
+it('extracts text PDFs with page provenance, image-only PDFs as no-text and DOCX paragraph offsets',async()=>{const {pdf,docx}=await import('./document-fixtures');expect(await extractDocument(file(pdf('Project evidence')),'pdf')).toMatchObject({outcome:'extracted',text:expect.stringContaining('Project evidence'),extractor:'pdfjs-6.5.438',references:[{page:1,start:0,end:17}]});expect((await extractDocument(file(pdf('')),'pdf')).outcome).toBe('no-text');expect(await extractDocument(file(await docx()),'docx')).toMatchObject({outcome:'extracted',text:expect.stringContaining('Project evidence'),extractor:'mammoth-1.13.0',references:expect.arrayContaining([{paragraph:1,start:0,end:16}])});});

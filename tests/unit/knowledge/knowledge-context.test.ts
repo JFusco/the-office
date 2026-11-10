@@ -51,7 +51,7 @@ test('the section is bounded to whole lessons and retirement removes a lesson', 
     expect(lines.length).toBeGreaterThan(0);
     expect(lines.length).toBeLessThanOrEqual(20);
     for (const line of lines) {
-        expect(line).toMatch(/^- \[pitfall · any\] Lesson \d+ (detail ){39}detail Evidence: \S+ \S+$/);
+        expect(line).toMatch(/^- \[pitfall · any\] Lesson \d+ (detail ){39}detail Evidence: \S+ \S+ Reference: lesson:project:lesson-\d+@1$/);
         expect(line).not.toContain('x'.repeat(600)); // oversized URLs are omitted, never cut
     }
     const first = store.state.knowledge!.lessons.find(item => section.includes(item.statement))!;

@@ -1,114 +1,77 @@
+import { addDays,easternDay,easternInstant } from '../../office/clock';
 import { reconcileIntakeStatus } from './operational-status';
-import { intakeLaunchLimit } from './seed-status';
-import { queueReconsideration } from './reconsider';
-import { runSlackLinks, type LinkRecord } from './read-links';
+import { scanText, type SecretScanner } from '../sources/admission';
 import type { Store } from '../../store/store';
 import type { ScheduledWork } from '../../scheduling/scheduler';
 import type { KnowledgeRunner } from '../run-retrospective';
-import { lastFriday } from '../weekly-rollup';
-import { easternDay, easternInstant, addDays } from '../../office/clock';
+import type { SourceRegistry } from '../sources/registry';
+import type { KnowledgeSource } from '../sources/source-record';
+import { collectionPolicy, collectionAllowed } from '../sources/collection-policy';
+import { IntakeBudget } from '../sources/launch-budget';
 import { IntakeLedger } from './ledger';
-import { configDigest, readConfig, type Config } from './config';
-import { newTask } from './collect';
-import { nowTs, overlapTs } from './timestamps';
+import { initialize, refresh } from './windows';
+import { queueReconsideration } from './reconsider';
+import { runSlackLinks, type LinkRecord } from './read-links';
+import { captureProposal } from './capture-effect';
 import { runIntakeTask } from './run';
 import { readMethod } from './observations';
-import { captureProposal } from './capture-effect';
-import { LIMITS, type ChannelProgress, type Proposal, type ReadTask } from './contracts';
+import { lastFriday } from '../weekly-rollup';
+import { LIMITS, type Proposal, type ReadTask } from './contracts';
+import { publicSourceWork } from '../sources/public-source';
+export { retrySlackIntake } from './retry';
 
-function initialize(ledger: IntakeLedger, config: Config, now: Date): void {
-    ledger.transaction(() => {
-        const week = lastFriday(now);
-        for (const channel of config.channels) if (!ledger.get('channel', channel.id)) {
-            const progress: ChannelProgress = { id: channel.id, seedUpperTs: nowTs(now), enumerated: false, through: nowTs(now), week };
-            ledger.put('channel', channel.id, progress);
-            const identity = newTask(config, channel.id, 'lookup', channel.name, '0.000000', progress.seedUpperTs, week, now.toISOString()); ledger.put('task', identity.id, identity);
-            const task = newTask(config, channel.id, 'channel', '', '0.000000', progress.seedUpperTs, week, now.toISOString()); ledger.put('task', task.id, task);
-            const canvases = newTask(config, channel.id, 'inventory', '', '0.000000', progress.seedUpperTs, week, now.toISOString()); ledger.put('task', canvases.id, canvases);
-            ledger.put('gap', channel.id, { channel: channel.id, week, reasons: ['bookmark-inventory-unavailable', 'pin-inventory-unavailable', 'canvas-inventory-search-dependent', 'reply-discovery-search-dependent'] });
-        }
+function sourceWork(store: Store, run: KnowledgeRunner, now: Date, registry: SourceRegistry, source: KnowledgeSource, scan: SecretScanner): ScheduledWork | undefined {
+    const policy = collectionPolicy(source), ledger = new IntakeLedger(store, source), budget = new IntakeBudget(registry);
+    const allowed = () => collectionAllowed(registry, store, policy);
+    const homeReady = () => !store.state.paused && !store.state.draining;
+    const item = (key: string, at: string, execute: () => Promise<unknown>, reason: string, ready = true, reconcile = false): ScheduledWork => ({
+        store, work: { projectId: store.project.id, kind: 'knowledge-slack-intake', id: `source:${source.id}` }, stage: 'knowledge-slack-intake', rank: 5, enqueuedAt: at,
+        eligibility: { state: (reconcile ? homeReady() : allowed()) ? ready ? 'runnable' : 'waiting' : 'blocked', reason, owner: 'Harper', nextCheckAt: ready?null:easternInstant(addDays(easternDay(now),1)).toISOString() },
+        identity: () => JSON.stringify([key, registry.get(source.id)?.revision, ledger.revision(), allowed(), homeReady(), budget.used(),budget.limit(source.id)]),
+        claimEligible: () => ready && (reconcile ? homeReady() : allowed()),
+        execute: async () => { registry.setMeta(`rotation:${store.project.id}`, source.id); await execute(); },
     });
-}
-function refresh(ledger: IntakeLedger, config: Config, now: Date): void {
-    ledger.transaction(() => {
-        const tasks = ledger.all<ReadTask>('task'), week = lastFriday(now);
-        for (const channel of config.channels) {
-            const progress = ledger.get<ChannelProgress>('channel', channel.id); if (!progress) continue;
-            const seed = tasks.find(t => t.channel === channel.id && t.kind === 'channel' && t.createdAt && t.week === progress.week);
-            if (!progress.enumerated && seed?.status === 'complete') { progress.enumerated = true; progress.week = ''; }
-            if (progress.enumerated && (!progress.caughtUp || progress.week !== week && now >= easternInstant(week, 17))) {
-                const latest = nowTs(now), oldest = overlapTs(progress.through, 48n * 3600n * 1000000n);
-                for (const kind of ['channel', 'search', 'inventory'] as const) {
-                    const task = newTask(config, channel.id, kind, '', oldest, latest, week, now.toISOString()); ledger.put('task', task.id, task);
-                }
-                // Resource inventories remain explicit gaps. Known living documents are re-read.
-                const resources = new Map(tasks.filter(t => t.channel === channel.id && t.kind === 'canvas').map(t => [t.resource, t]));
-                for (const prior of resources.values()) { const task = newTask(config, channel.id, 'canvas', prior.resource, oldest, latest, week, now.toISOString()); task.sourceUrl = prior.sourceUrl; ledger.put('task', task.id, task); }
-                progress.through = latest; progress.week = week; progress.caughtUp = true;
-            }
-            ledger.put('channel', channel.id, progress);
-        }
-        for (const task of tasks) if (task.status === 'running' && !ledger.store.activeClaims().some(c => c.id === task.ownerClaim && ['running', 'stopping'].includes(c.status)) && Date.parse(task.nextAt) <= now.getTime()) {
-            task.status = ++task.failures >= 5 ? 'needs-attention' : 'pending'; task.attempt = ''; task.ownerClaim = ''; task.error = 'interrupted-read'; ledger.put('task', task.id, task);
-        }
-    });
-}
-export function retrySlackIntake(store: Store, id: string): { accepted: true } {
-    const ledger = new IntakeLedger(store), task = ledger.get<ReadTask>('task', id);
-    if (!task) {
-        const link = ledger.get<LinkRecord>('link', id);
-        if (!link || link.state !== 'needs-attention' || store.activeClaims().some(c => c.work.id === 'intake-public-links')) throw Error('Intake batch is not available for reset');
-        ledger.put('retry-history', ledger.id(), { link: id, failures: link.failures || 0, reason: link.reason || '', at: store.clock.now().toISOString() });
-        ledger.put('link', id, { ...link, state: 'pending', failures: 0, nextAt: '', reason: '' }); return { accepted: true };
+    // Reconciliation has its own gate; withdrawal, pause, disabled learning and changed authority never permit redispatch.
+    const proposals = ledger.all<Proposal>('proposal');
+    const uncertain = proposals.find(p => p.status !== 'captured' && (!p.nextAt || Date.parse(p.nextAt) <= now.getTime()) && ['verified', 'dispatching', 'uncertain'].includes(store.getEffect(`slack-capture:${p.id}`)?.status || ''));
+    if (uncertain) return item(uncertain.id, now.toISOString(), () => captureProposal(store, policy, uncertain.id, registry), 'Reconciling an existing Brain receipt', true, true);
+    if (!allowed()) return;
+    const tasks = ledger.all<ReadTask>('task');
+    if (tasks.some(t => t.status !== 'complete' && (t.sourceDigest !== policy.sourceDigest || t.sourceId !== source.id || t.channel !== policy.channels[0].id)) || proposals.some(p => p.status === 'pending' && p.sourceDigest !== policy.sourceDigest)) {
+        const blocked = item('authority', now.toISOString(), async () => undefined, 'Retained source work needs authority reconciliation', false);
+        blocked.eligibility.state = 'blocked';blocked.eligibility.nextCheckAt=null; return blocked;
     }
-    if (task.status !== 'needs-attention' || task.ownerClaim || store.activeClaims().some(c => c.work.id === id)) throw Error('Intake batch is not available for reset');
-    if (ledger.all<Proposal>('proposal').some(p => p.task === id && p.status === 'unresolved')) throw Error('Uncertain capture requires receipt reconciliation');
-    ledger.put('retry-history', ledger.id(), { task: id, failures: task.failures, error: task.error, at: store.clock.now().toISOString() });
-    task.failures = 0; task.nextAt = ''; task.status = 'pending'; task.error = ''; ledger.put('task', id, task); return { accepted: true };
+    if (!ledger.get('channel', policy.channels[0].id)) {
+        if (source.cadence === 'manual' && !source.refreshRequestedAt) return;
+        return item('initialize', source.createdAt, async () => { if (allowed()) initialize(ledger, policy, now); }, 'Preparing source collection');
+    }
+    refresh(ledger, policy, now, source.cadence, source.refreshRequestedAt);
+    if (source.refreshRequestedAt && ledger.get('meta', 'refresh-consumed') === source.refreshRequestedAt) registry.update(source.id, source.revision, s => { delete s.refreshRequestedAt; });
+    const capture = proposals.find(p => p.status === 'pending' && p.sourceDigest === policy.sourceDigest && (!p.nextAt || Date.parse(p.nextAt) <= now.getTime()));
+    if (capture && policy.destination === 'technical-brain') return item(capture.id, now.toISOString(), () => captureProposal(store, policy, capture.id, registry), 'Submitting curated technical evidence');
+    queueReconsideration(ledger, policy, lastFriday(now), now.toISOString());
+    const capacity = budget.used() < budget.limit(source.id);
+    const links = ledger.all<LinkRecord>('link').filter(l => l.state === 'pending' && (!l.nextAt || Date.parse(l.nextAt) <= now.getTime()));
+    if (links.length) return item('links', now.toISOString(), () => runSlackLinks(store, policy, run, links.slice(0, LIMITS.links), `source:${source.id}`, registry, scan), capacity ? 'Reading permitted public references' : 'Office intake launch allowance reached', capacity);
+    const task = ledger.all<ReadTask>('task').filter(t => t.status === 'pending' && t.sourceId === source.id && t.sourceDigest === policy.sourceDigest && t.channel === policy.channels[0].id
+        && (t.kind === 'lookup' || ledger.get<{ sourceDigest: string }>('identity', t.channel)?.sourceDigest === policy.sourceDigest)
+        && (!t.nextAt || Date.parse(t.nextAt) <= now.getTime())
+        && (t.processing || Date.parse(budget.backoff(policy.workspace, policy.appId, readMethod(policy, t.kind)) || '') <= now.getTime() || !budget.backoff(policy.workspace, policy.appId, readMethod(policy, t.kind))))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))[0];
+    if (!task) return;
+    return item(task.id, task.createdAt, () => runIntakeTask(store, run, task.id, registry, source.id, scan), capacity ? 'Source collection is due' : 'Office intake launch allowance reached', capacity);
 }
-function projectSlackIntake(store: Store, run: KnowledgeRunner, now: Date): ScheduledWork[] {
-    const config = readConfig(store); if (!config) return [];
-    const ledger = new IntakeLedger(store);
-    const allowed = () => !!readConfig(store)?.enabled && !!store.state.knowledge?.enabled && !store.state.paused && !store.state.draining;
-    const item = (id: string, at: string, execute: () => Promise<unknown>, ready = true, reason = 'Private learning intake is due'): ScheduledWork => ({
-        store, work: { projectId: 'brain', kind: 'knowledge-slack-intake', id }, stage: 'knowledge-slack-intake', rank: 5, enqueuedAt: at,
-        eligibility: { state: allowed() ? ready ? 'runnable' : 'waiting' : 'blocked', reason: allowed() ? reason : 'Learning intake is disabled, paused or draining', owner: 'Harper', nextCheckAt: null },
-        identity: () => JSON.stringify([allowed(), readConfig(store) ? configDigest(readConfig(store)!) : null, ledger.get('task', id), ledger.get('proposal', id)]),
-        claimEligible: () => allowed() && ready && configDigest(readConfig(store)!) === configDigest(config), execute,
+export function scheduledSlackIntake(store: Store, run: KnowledgeRunner, now: Date, registry?: SourceRegistry, scan: SecretScanner = scanText): ScheduledWork[] {
+    // Missing registry never falls back to config.json.
+    if (!registry || registry.meta<{ state: string }>('cutover')?.state !== 'ready') {reconcileIntakeStatus(store,[],now,registry);return [];}
+    const sources = registry.home(store.project.id).filter(s => s.kind === 'slack'||s.kind==='link');
+    const previous = sources.findIndex(s => s.id === registry.meta<string>(`rotation:${store.project.id}`));
+    const rotated = [...sources.slice(previous + 1), ...sources.slice(0, previous + 1)];
+    let invalid=false;
+    const work=rotated.flatMap(source => {
+        try { const work = source.kind==='link'?publicSourceWork(store,run,now,registry,source,scan):sourceWork(store, run, now, registry, source, scan); return work ? [work] : []; }
+        catch { invalid=true;return [{ store, work: { projectId: store.project.id, kind: 'knowledge-slack-intake' as const, id: `source:${source.id}` }, stage: 'knowledge-slack-intake', rank: 5, enqueuedAt: source.createdAt,
+            eligibility: { state: 'blocked' as const, reason: 'Source configuration needs attention', owner: 'Harper', nextCheckAt: null }, identity: () => `invalid:${source.id}:${source.revision}`, execute: async () => undefined }]; }
     });
-    if (!config.enabled) return [];
-    const digestNow = configDigest(config);
-    // Retained work frozen under other authority never runs or silently stalls; it is surfaced for operator reconciliation.
-    const stale = ledger.all<ReadTask>('task').some(t => t.status !== 'complete' && t.configHash !== digestNow)
-        || ledger.all<Proposal>('proposal').some(p => (p.status === 'pending' || p.status === 'unresolved') && p.configHash !== digestNow)
-        || ledger.all<{ configHash: string }>('identity').some(identity => identity.configHash !== digestNow);
-    if (stale) return [{ store, work: { projectId: 'brain', kind: 'knowledge-slack-intake', id: 'intake-config-reconcile' }, stage: 'knowledge-slack-intake', rank: 5, enqueuedAt: now.toISOString(),
-        eligibility: { state: 'blocked', reason: 'Private learning intake needs configuration reconciliation: retained records were frozen under a different configuration', owner: 'Harper', nextCheckAt: null },
-        identity: () => `intake-config-reconcile:${digestNow}`, claimEligible: () => false, execute: async () => undefined }];
-    if (config.channels.some(c => !ledger.get('channel', c.id))) return [item('intake-initialize', now.toISOString(), async () => { if (allowed()) initialize(ledger, config, now); })];
-    refresh(ledger, config, now);
-    const captures = ledger.all<Proposal>('proposal').filter(p => (p.status === 'pending' || p.status === 'unresolved') && p.configHash === digestNow && (!p.nextAt || Date.parse(p.nextAt) <= now.getTime()));
-    if (captures.length) return [item(captures[0].id, now.toISOString(), () => captureProposal(store, config, captures[0].id))];
-    queueReconsideration(ledger, config, lastFriday(now), now.toISOString());
-    const dailyLimit = intakeLaunchLimit(ledger, config);
-    const links = ledger.all<LinkRecord>('link').filter(link => link.state === 'pending' && (!link.nextAt || Date.parse(link.nextAt) <= now.getTime()));
-    if (links.length && (ledger.get<number>('launches', easternDay(now)) || 0) < dailyLimit) return [item('intake-public-links', now.toISOString(), () => runSlackLinks(store, config, run, links.slice(0, LIMITS.links), 'intake-public-links'))];
-    const backedOff = (t: ReadTask) => { const until = !t.processing && ledger.get<string>('backoff', readMethod(config, t.kind)); return !!until && Date.parse(until) > now.getTime(); };
-    const tasks = ledger.all<ReadTask>('task').filter(t => (t.kind === 'lookup' || ledger.get<{ configHash: string }>('identity', t.channel)?.configHash === digestNow) && !backedOff(t) && t.status === 'pending' && t.configHash === digestNow && (!t.nextAt || Date.parse(t.nextAt) <= now.getTime()));
-    const previous = ledger.get<string>('rotation', 'channel'), position = config.channels.findIndex(channel => channel.id === previous);
-    const order = new Map(config.channels.map((channel, index) => [channel.id, (index - position - 1 + config.channels.length) % config.channels.length]));
-    tasks.sort((a, b) => order.get(a.channel)! - order.get(b.channel)! || a.createdAt.localeCompare(b.createdAt));
-    const task = tasks[0]; if (!task) return [];
-    const daily = ledger.get<number>('launches', easternDay(now)) || 0;
-    const result = item(task.id, task.createdAt, async () => { ledger.put('rotation', 'channel', task.channel); await runIntakeTask(store, run, task.id); }, daily < dailyLimit, daily >= dailyLimit ? 'Learning intake daily launch budget reached' : undefined);
-    if (daily >= dailyLimit) result.eligibility.nextCheckAt = easternInstant(addDays(easternDay(now), 1)).toISOString();
-    return [result];
-}
-
-export function scheduledSlackIntake(store: Store, run: KnowledgeRunner, now: Date): ScheduledWork[] {
-    let work: ScheduledWork[];
-    try { work = projectSlackIntake(store, run, now); }
-    catch { work = [{ store, work: { projectId: store.project.id, kind: 'knowledge-slack-intake', id: 'intake-configuration' }, stage: 'knowledge-slack-intake', rank: 5, enqueuedAt: '', eligibility: { state: 'blocked', reason: 'Private learning intake configuration needs attention', owner: 'Harper', nextCheckAt: null }, identity: () => 'invalid-config', execute: async () => undefined }]; }
-    try { reconcileIntakeStatus(store, work, now); } catch { /* Status must not block scheduling. */ }
-    return work;
+    reconcileIntakeStatus(store,work,now,registry,invalid);return work;
 }

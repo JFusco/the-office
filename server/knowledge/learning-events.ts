@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { LearningOpportunity, LearningSubject } from '../../src/contracts/knowledge';
 import type { Store } from '../store/store';
+import { recordAcceptedKnowledge } from './outcomes/accepted';
+import { acceptedSourceBindings, retainAcceptedResult } from './outcomes/private-result';
 
 export const learningDigest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Called only at a domain's accepted boundary, inside its save/transaction. */
@@ -31,5 +33,8 @@ export function captureLearning(store: Store, subject: LearningSubject, key: str
     if (store.state.coordination?.jobs?.some(job => job.id === subject.id && job.improvementId) || store.state.tickets.some(ticket => ticket.runId === subject.id && ticket.improvementId)) origin = 'harper';
     if (store.state.knowledge?.improvements?.some(item => item.providerId && [key, keyNumber].includes(item.providerId))) origin = 'harper';
     const digest = learningDigest(result), id = `${subject.kind}:${subject.id}:${stage}:${identity}:${digest}`;
-    recordLearningOpportunity(store, { id, subject, key, stage, digest, at: store.clock.now().toISOString(), disposition: 'accepted', origin, phaseBoundary, summary: summary.slice(0, 1500), evidence: [{ kind: 'learning', ref: id, url: '', detail: JSON.stringify(result).length > 1500 ? JSON.stringify(result).slice(0, 1450) + '\n[Accepted result excerpt; remainder omitted]' : JSON.stringify(result) }] });
+    if(origin==='work')recordAcceptedKnowledge(store,subject,stage,id,result);
+    const bindings = acceptedSourceBindings(store, subject), text = JSON.stringify(result);
+    const evidence: LearningOpportunity['evidence'] = bindings.length ? [retainAcceptedResult(store, id, result, summary, bindings)] : [{ kind: 'learning', ref: id, url: '', detail: text.length > 1500 ? text.slice(0, 1450) + '\n[Accepted result excerpt; remainder omitted]' : text }];
+    recordLearningOpportunity(store, { id, subject, key, stage, digest, at: store.clock.now().toISOString(), disposition: 'accepted', origin, phaseBoundary, summary: bindings.length ? 'Accepted work with scoped knowledge; details retained privately' : summary.slice(0, 1500), evidence });
 }

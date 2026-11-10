@@ -11,15 +11,15 @@ export function intakeStatusMetrics(ledger: IntakeLedger): IntakeMetrics {
     const token = `retry-v2:${revision}:${sourcePending ?? 'unknown'}`, cached = ledger.get<{ token: string; metrics: IntakeMetrics }>('meta', 'operational-metrics');
     if (cached?.token === token) return cached.metrics;
     const tasks = ledger.all<ReadTask>('task');
-    const proposals = (ledger.store.db.prepare("SELECT json_extract(body,'$.id') AS id, json_extract(body,'$.status') AS status, json_extract(body,'$.domain') AS domain, json_extract(body,'$.hash') AS hash, json_extract(body,'$.receipt') AS receipt, json_extract(body,'$.nextAt') AS nextAt FROM slack_intake WHERE kind='proposal'").all() as { id: string; status: Proposal['status']; domain: string; hash: string; receipt: string | null; nextAt: string | null }[]).map(p => ({ ...p, receipt: p.receipt ? JSON.parse(p.receipt) : undefined }));
-    const links = ledger.store.db.prepare("SELECT json_extract(body,'$.state') AS state, json_extract(body,'$.failures') AS failures, json_extract(body,'$.nextAt') AS nextAt FROM slack_intake WHERE kind='link'").all() as { state: string; failures: number | null; nextAt: string | null }[];
-    const sources = ledger.store.db.prepare("SELECT json_extract(body,'$.state') AS state, count(*) AS n FROM slack_intake WHERE kind='unit' GROUP BY 1").all() as { state: string; n: number }[];
+    const proposals=ledger.columns<{id:string;status:Proposal['status'];domain:string;hash:string;receipt:string|null;nextAt:string|null}>('proposal',['id','status','domain','hash','receipt','nextAt']).map(p=>({...p,receipt:p.receipt?JSON.parse(p.receipt):undefined}));
+    const links=ledger.columns<{state:string;failures:number|null;nextAt:string|null}>('link',['state','failures','nextAt']);
+    const states=ledger.columns<{state:string}>('unit',['state']),sources=[...new Set(states.map(s=>s.state))].map(state=>({state,n:states.filter(s=>s.state===state).length}));
     const count = (state: string) => sources.find(s => s.state === state)?.n || 0;
     const verified = proposals.filter(verifiedCapture), usable = verified.filter(p => p.receipt.status !== 'quarantined');
     const successes = new Set(usable.map(p => `slack-capture:${p.id}`));
     const verifiedTimes = ledger.store.db.prepare("SELECT id, json_extract(body,'$.verifiedAt') AS at FROM effects WHERE id LIKE 'slack-capture:%' AND json_extract(body,'$.status')='verified'").all() as { id: string; at: string | null }[];
     const lastCaptureAt = verifiedTimes.filter(e => successes.has(e.id) && validTime(e.at)).map(e => e.at!).sort().at(-1);
-    const observed = ledger.store.db.prepare("SELECT max(json_extract(body,'$.at')) AS at FROM slack_intake WHERE kind='observation'").get() as { at: string | null };
+    const observed={at:ledger.columns<{at:string}>('observation',['at']).map(r=>r.at).filter(validTime).sort().at(-1)};
     const retryTimes = [...tasks.filter(t => t.status === 'pending').map(t => t.nextAt), ...proposals.filter(p => p.status === 'pending' || p.status === 'unresolved').map(p => p.nextAt), ...links.filter(l => l.state === 'pending').map(l => l.nextAt), ...ledger.all<string>('backoff')].filter(validTime);
     const metrics: IntakeMetrics = {
         completedReads: tasks.filter(t => t.status === 'complete').length + links.filter(l => l.state === 'read').length,
@@ -33,4 +33,11 @@ export function intakeStatusMetrics(ledger: IntakeLedger): IntakeMetrics {
         ...(lastCaptureAt ? { lastCaptureAt } : {}), ...(validTime(observed.at) ? { lastReadAt: observed.at } : {}), retryTimes,
     };
     ledger.put('meta', 'operational-metrics', { token, metrics }); return metrics;
+}
+
+export function combineIntakeMetrics(rows:IntakeMetrics[]):IntakeMetrics {
+    const counts=['completedReads','pendingReads','failedReads','retryingReads','verifiedCaptures','duplicates','quarantines','pendingCaptures','uncertainCaptures','observedSources','unresolvedSources','sourceErrors'] as const;
+    const values=Object.fromEntries(counts.map(key=>[key,rows.reduce((n,row)=>n+row[key],0)])) as Pick<IntakeMetrics,typeof counts[number]>;
+    const latest=(key:'lastCaptureAt'|'lastReadAt')=>rows.flatMap(r=>r[key]?[r[key]!]:[]).sort().at(-1);
+    return {...values,retryTimes:rows.flatMap(r=>r.retryTimes),...(latest('lastCaptureAt')?{lastCaptureAt:latest('lastCaptureAt')}:{}),...(latest('lastReadAt')?{lastReadAt:latest('lastReadAt')}:{})};
 }

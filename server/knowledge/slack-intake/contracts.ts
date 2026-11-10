@@ -2,15 +2,17 @@ import { z } from 'zod';
 export const LIMITS = { timeout: 1200000, launches: 8, pages: 10, messages: 200, files: 10, links: 25, bytes: 25 * 1024 * 1024, text: 1024 * 1024, fileBytes: 10000000 } as const;
 export type ReadKind = 'channel' | 'thread' | 'search' | 'file' | 'canvas' | 'inventory' | 'lookup';
 export interface SourceUnit {
-    id: string; channel: string; resource: string; kind: ReadKind; version: string; text: string; url: string;
+    authorship?:{kind:'office-digest'|'identified-repost';noticeId:string};
+    id: string; channel: string; resource: string; kind: ReadKind | 'public-link'; version: string; text: string; url: string;
     ts?: string; parent?: string; replies?: number; latestReply?: string;
     evidence?: 'formatted-excerpt' | 'structured';
     /** `internal`: a workspace link this connector cannot dereference; an explicit gap, never a public read. */
     references: { kind: 'file' | 'canvas' | 'link' | 'internal'; id: string; /** Canonical resource permalink when the reference carries one. */ url?: string }[];
-    state: 'pending' | 'captured' | 'no-reusable-lesson' | 'deferred' | 'inaccessible' | 'error';
+    state: 'admitted' | 'pending' | 'captured' | 'no-reusable-lesson' | 'deferred' | 'inaccessible' | 'error';
     reason: string; requests: string[]; observedAt: string; attempt: string; week?: string;
 }
 export interface ReadTask {
+    sourceId?: string; sourceDigest?: string;
     id: string; channel: string; kind: ReadKind; resource: string; oldest: string; latest: string; week: string;
     status: 'pending' | 'running' | 'complete' | 'needs-attention'; failures: number; nextAt: string; createdAt: string;
     attempt: string; ownerClaim: string; error: string; configHash: string; cursor?: string; processing?: string[]; sourceUrl?: string;
@@ -21,6 +23,7 @@ export interface Observation {
     complete: boolean; cursor: string; bytes: number; textBytes: number; at: string;
 }
 export interface Proposal {
+    sourceId?: string; sourceDigest?: string;
     id: string; task: string; domain: string; body: string; hash: string; units: string[]; sourceVersions: string[];
     status: 'pending' | 'captured' | 'unresolved' | 'rejected'; receipt?: CaptureReceipt; predecessor?: string; configHash: string; nextAt?: string;
 }

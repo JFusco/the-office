@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { config } from '../knowledge/slack-intake/fixture';
+import { authority as config } from '../knowledge/slack-intake/fixture';
 import { assertSlackIntakeCapability, slackIntakeConfiguration } from '../../../server/workers/slack-intake-profile';
 import { assertWorkerLane } from '../../../server/workers/worker-lanes';
 import { RESEARCH_CODEX_VERSION, RESEARCH_DISABLED_FEATURES } from '../../../server/workers/research-profile';

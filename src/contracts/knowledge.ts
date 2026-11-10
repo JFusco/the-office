@@ -5,8 +5,12 @@ export type LessonStage = 'intake' | 'implement' | 'review' | 'validate' | 'repa
 export const LESSON_KINDS: readonly LessonKind[] = ['convention', 'pitfall', 'process', 'tooling'];
 export const LESSON_STAGES: readonly LessonStage[] = ['intake', 'implement', 'review', 'validate', 'repair', 'maintenance', 'any'];
 export interface LessonEvidence {
+    /** Original private-source dependencies survive accepted-work and lesson derivation. */
+    sourceBindings?: KnowledgeSourceBinding[];
+    acceptedResult?: { id: string; sha256: string };
     /** `maintenance`: a CMS maintenance run; `artifact`: a file the run saved under its artifact root. */
-    kind: 'job' | 'ticket' | 'maintenance' | 'pr' | 'step' | 'finding' | 'artifact' | 'rollup' | 'learning';
+    kind: 'job' | 'ticket' | 'maintenance' | 'pr' | 'step' | 'finding' | 'artifact' | 'rollup' | 'learning' | 'source';
+    source?: { sourceId: string; unitId: string; version: string };
     ref: string;
     url: string;
     detail: string;
@@ -27,10 +31,12 @@ export interface RepositoryInstruction {
 }
 export type LessonTier = 'hypothesis' | 'guidance' | 'procedure' | 'rule';
 export interface Lesson {
+    originProjectId?:string;
     /** Absent only in legacy snapshots; normalized to guidance/revision 1. */
     tier?: LessonTier;
     revision?: number;
     needsReview?: boolean;
+    sourceReviewReason?: 'source-changed' | 'source-withdrawn' | 'office-authored';
     sourceSubject?: LearningSubject;
     implementationRef?: string;
     id: string;
@@ -54,7 +60,7 @@ export interface Lesson {
 }
 /** `blocked`: a CMS maintenance run stopped on a blocker (the maintenance analogue of a Block park). */
 export type RetrospectiveTrigger = 'completed' | 'parked' | 'retired' | 'repair-budget' | 'blocked' | 'learning';
-export type RetrospectiveSubjectKind = 'job' | 'ticket' | 'maintenance' | 'feature' | 'investigation' | 'recovery' | 'orchestration' | 'message';
+export type RetrospectiveSubjectKind = 'job' | 'ticket' | 'maintenance' | 'feature' | 'investigation' | 'recovery' | 'orchestration' | 'message' | 'source';
 /** What happened at the moment of the trigger; kept because the job may change afterwards. */
 export interface RetrospectiveEvent {
     stage: string;
@@ -81,6 +87,7 @@ export interface PendingRetrospective {
     lastError: string;
 }
 export interface RetrospectiveRecord {
+    sourceBindings?: KnowledgeSourceBinding[];
     delivery?: { repairAttempts: number; reroutes: number; ciRepairs: number; timing: import('../shared').QueueTiming[] };
     source?: LearningSubject;
     eventIds?: string[];
@@ -116,7 +123,7 @@ export interface DeliveryMetrics {
     recurrences: number;
 }
 export interface WeeklyRollup {
-    intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; captures: number; duplicates: number; quarantines: number; outstanding: number; coverageGaps?: number; reasons: string[] };
+    intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; captures: number; duplicates: number; quarantines: number; outstanding: number; coverageGaps?:number; reasons: string[] };
     learning?: LearningMetrics;
     researchId?: string;
     research?: WeeklyResearch;
@@ -158,7 +165,6 @@ export interface OfficeKnowledge {
     proposals: OfficeProposal[];
     lessons: Lesson[];
 }
-/** Aggregate-only historical intake progress; private source data stays in the intake ledger. */
 export interface SlackSeedProgress {
     status: 'seeding' | 'needs-attention' | 'complete-with-gaps';
     channelsTotal: number; channelsEnumerated: number; pendingReads: number; pendingCaptures: number;
@@ -176,11 +182,15 @@ export interface SlackIntakeStatus {
     activeSince?: string; nextAttemptAt?: string; lastCaptureAt?: string; lastReadAt?: string;
 }
 export interface KnowledgeState {
+    digestDelivery?:import('./knowledge-digests').KnowledgeDigestDelivery;
     slackIntake?: SlackIntakeStatus;
     slackSeed?: SlackSeedProgress;
 
     learningStartedAt?: string;
     exposures?: LessonExposure[];
+    lookups?: import('./knowledge-lookups').KnowledgeLookupSummary[];
+    outcomes?: import('./knowledge-outcomes').KnowledgeOutcome[];
+    digests?: import('./knowledge-digests').KnowledgeDigest[];
     learningConsumed?: string[];
     learningAttempts?: Record<string, number>;
     followups?: BlockerFollowup[];
@@ -216,12 +226,17 @@ export interface LearningOpportunity {
     origin: 'work' | 'harper'; phaseBoundary: boolean;
 }
 export interface LessonReference { scope: 'project' | 'office'; id: string; revision: number }
+export interface KnowledgeSourceBinding { sourceId:string;unitId?:string;version?:string;approvedTextOnly?:boolean }
 export interface LessonExposure {
+    sourceBindings?:KnowledgeSourceBinding[];
+    evidence?:{reference:import('./knowledge-retrieval').KnowledgeReference;excerptSha256:string}[];
+    evidenceDigest?:string; brainSnapshot?:string|null; suppliedTextSha256?:string;
     id: string; subject?: LearningSubject; stage: string; at: string; dispatchedAt?: string;
     digest: string; eligible: LessonReference[]; selected: LessonReference[];
     omitted: (LessonReference & { reason: 'count-limit' | 'character-limit' })[];
 }
 export interface LearningMetrics {
+    retrievedLookups?:number; verifiedKnowledgeOutcomes?:number;
     /** Absent on reports written before activation coverage was recorded. */
     coverage?: { status: 'complete' | 'partial' | 'unavailable'; startedAt: string | null };
     assignments: number; eligibleAssignments: number; exposedAssignments: number;

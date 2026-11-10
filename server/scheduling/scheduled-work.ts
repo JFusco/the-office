@@ -36,7 +36,7 @@ export interface OfficeEntry {
 const eligible = (state: WorkEligibility['state'], reason: string, owner = 'Morgan'): WorkEligibility => ({ state, reason, owner, nextCheckAt: null });
 /** One projection drives dispatch, queue counts, owner labels and next actions. */
 /** Office-level inputs to Harper's lane: Avery's review status and the office proposal store. */
-export interface KnowledgeOptions extends RollupHooks { dailyStatus?: (date: string) => string | undefined }
+export interface KnowledgeOptions extends RollupHooks { context?:import('../knowledge/context').KnowledgeContext; sources?: import('../knowledge/sources/registry').SourceRegistry; dailyStatus?: (date: string) => string | undefined }
 export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery', knowledge: KnowledgeOptions = {}): ScheduledWork[] {
     const { store, engine, conversations, coordinator } = entry;
     const items: ScheduledWork[] = [], c = store.state.coordination!;
@@ -65,7 +65,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     if (lane === 'it') items.push(...scheduledInvestigations(store, (prompt, schema, options) => engine.itAgents.run('it', prompt, schema, options), now));
     if (lane === 'knowledge') {
         const run: import('../knowledge/run-retrospective').KnowledgeRunner = (prompt, schema, opts) => engine.knowledgeAgents.run('knowledge', prompt, schema, opts);
-        return withActiveClaims(store, lane, [...items, ...scheduledRetrospectives(store, run, now), ...scheduledRollup(store, run, now, knowledge), ...scheduledSlackIntake(store, run, now)]);
+        return withActiveClaims(store, lane, [...items, ...scheduledRetrospectives(store, run, now,knowledge.context), ...scheduledRollup(store, run, now, knowledge), ...scheduledSlackIntake(store, run, now, knowledge.sources)]);
     }
     for (const request of c.requests || [])
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)

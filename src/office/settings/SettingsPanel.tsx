@@ -1,3 +1,5 @@
+import { Settings2 } from '../../ui/icons';
+import { PanelHeader } from '../../ui/PanelHeader';
 import type { OfficeSnapshot } from '../../shared';
 import { Notice, PanelTitle, Section, SectionTitle, mutedCopy } from '../../ui';
 import { GoalNoticeForm } from './GoalNoticeForm';
@@ -25,7 +27,7 @@ function ProjectForms({ snapshot, refresh }: { snapshot: OfficeSnapshot; refresh
 export function SettingsPanel({ snapshot, preferences, osReduced, refresh }: { snapshot: OfficeSnapshot; preferences: OfficePreferencesController; osReduced: boolean; refresh?: () => Promise<void> }) {
   const tour = snapshot.mode === 'demo';
   return <>
-    <PanelTitle className="mb-2">Settings</PanelTitle>
+    <PanelHeader icon={<Settings2 size={26}/>}>Settings</PanelHeader>
     <Section data-settings-block="office"><SectionTitle className="mb-4">Office</SectionTitle>
       {preferences.displayed ? <OfficePreferencesForm preferences={preferences.displayed} osReduced={osReduced} pending={preferences.pending} feedback={preferences.feedback} writable={preferences.writable} onChange={patch => void preferences.save(patch)} /> : <p className={mutedCopy} role="status">Loading Office preferences…</p>}
     </Section>

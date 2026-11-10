@@ -1,3 +1,4 @@
+import { PanelHeader } from '../ui/PanelHeader';
 import {DailyCTO,GoalHistory} from './DailyCTO';
 import { GoalList } from './GoalList';
 import {SaveFeedback} from '../office/SaveFeedback';
@@ -38,7 +39,7 @@ export function Goals({snapshot,sendMessage,onDiscuss,onPlan}:{snapshot:OfficeSn
     }catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function report(){setBusy(true);setError('');reportId.current??=crypto.randomUUID();try{await sendMessage({id:reportId.current,role:'pm',ticket:'',actionId:'',body:`Please prepare a delivery report for the CTO Office from the current observed ${snapshot.project?.name||'CEC'} issues, checks, blockers and deployments, and hand it to the CTO Office for review against our project goals and priorities. Distinguish verified results from work still waiting. No Slack messages or external changes.`,recheck:false});setSaved('Morgan’s report is queued. The CTO Office will review it when a desk is free.');reportId.current=null;}catch(e){setError(String(e));}finally{setBusy(false);}}
-  return <><PanelIcon tone="review"><MessageCircle size={25}/></PanelIcon><PanelTitle className="mt-3 mb-4">Goals & ideas</PanelTitle><p className={mutedCopy}>Goals and ideas across Office projects: what we want to build, why it matters, and what comes first.</p>
+  return <><PanelHeader icon={<MessageCircle size={26}/>} tone="review">Goals &amp; ideas</PanelHeader><p className={mutedCopy}>Goals and ideas across Office projects: what we want to build, why it matters, and what comes first.</p>
     <div className="my-3.5 flex flex-wrap gap-2"><Button className="text-12" onClick={onDiscuss}>Talk to Avery <ArrowUpRight size={14}/></Button><Button className="text-12" disabled={busy||snapshot.mode==='demo'} onClick={()=>void report()}>Request delivery report</Button></div>
     <GoalList goals={goals} disabled={busy||snapshot.mode==='demo'} onEdit={edit}/>
     <form className="mt-6" onSubmit={e=>{e.preventDefault();void save();}}><SectionTitle className="mb-4">{draft.expectedUpdatedAt?'Edit goal':'Add a goal or idea'}</SectionTitle><label className={goalLabel}>Project<Select aria-label="Project" className={goalSelect} value={needsMapping?'unmapped':selectedProject?.id||''} required disabled={busy||snapshot.mode==='demo'||editing} onChange={e=>{setProjectId(e.target.value);const project=projects.find(project=>project.id===e.target.value);setDraft({...draft,project:project?.name||''});}}>

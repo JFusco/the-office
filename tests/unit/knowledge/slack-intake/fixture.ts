@@ -1,3 +1,8 @@
+import { DatabaseSync } from 'node:sqlite';
+import { SourceRegistry } from '../../../../server/knowledge/sources/registry';
+import { IntakeBudget } from '../../../../server/knowledge/sources/launch-budget';
+import { collectionPolicy, readAuthority } from '../../../../server/knowledge/sources/collection-policy';
+import { digest } from '../../../../server/knowledge/slack-intake/config';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { knowledgeStore } from '../knowledge-fixture';
@@ -10,15 +15,22 @@ export const config: Config = {
     tools: { channel: 'slack.slack_read_channel', thread: 'slack.slack_read_thread', search: 'slack.slack_search_public_and_private', file: 'slack.slack_read_file', canvas: 'slack.slack_read_canvas', lookup: 'slack.slack_search_channels' },
     channels: [{ id: 'C123', name: 'fixture-channel' }],
 };
-export function intakeFixture() {
+export const authority = { workspace: config.workspace, appId: config.appId, channels: config.channels, tools: config.tools, publicHosts: config.publicHosts };
+export const cleanScan = async (text: string) => ({ version: 1 as const, inputSha256: digest(text), scannerVersion: 'synthetic', policyVersion: 'fixture-v1', clean: true, findings: [] });
+export function intakeFixture(destination:'technical-brain'|'project-evidence'='technical-brain') {
     const f = knowledgeStore('brain', '2026-11-06T23:00:00Z'); f.store.state.knowledge!.enabled = true;
     mkdirSync(resolve(f.store.dataRoot, 'slack-intake'), { mode: 0o700 });
     const configure = (value: Config = config) => writeFileSync(resolve(f.store.dataRoot, 'slack-intake/config.json'), JSON.stringify(value), { mode: 0o600 });
     configure();
-    const ledger = new IntakeLedger(f.store), task = newTask(config, 'C123', 'channel', '', '0.000000', '200.000000', '2026-11-06', f.store.clock.now().toISOString());
+    const db = new DatabaseSync(':memory:'), registry = new SourceRegistry(db, f.store.clock);
+    const source = registry.create({ kind: 'slack', title: 'Fixture', homeProjectId: 'brain', destination, cadence: 'weekly', ...(destination==='technical-brain'?{domains:config.domains}:{}), authority });
+    registry.setMeta('cutover', { state: 'ready' });
+    const policy = collectionPolicy(source), budget = new IntakeBudget(registry);
+    const ledger = new IntakeLedger(f.store, source), task = newTask(policy, 'C123', 'channel', '', '0.000000', '200.000000', '2026-11-06', f.store.clock.now().toISOString());
     ledger.put('task', task.id, task);
-    ledger.put('identity', 'C123', { configHash: configDigest(config), observation: 'synthetic-fixture' });
-    return { ...f, ledger, task, configure };
+    ledger.put('identity', 'C123', { sourceId: source.id, sourceDigest: policy.sourceDigest, configHash: '', observation: 'synthetic-fixture' });
+    const binding = () => { task.status = 'running'; task.attempt = 'fixture-runtime'; ledger.put('task', task.id, task); return { registry, sourceId: source.id, homeProjectId: source.homeProjectId, sourceDigest: source.sourceDigest, taskId: task.id, attempt: task.attempt }; };
+    return { ...f, binding, close: () => { db.close(); f.close(); }, ledger, task, configure, registry, source, policy, budget };
 }
 /** Synthetic structured transport. This is not a fixture of the currently formatted Slack connector. */
 export function event(task: ReturnType<typeof newTask>, messages: ({ ts: string; text: string } & Record<string, unknown>)[] = [{ ts: '100.000001', text: 'Useful technique' }], more = false) {

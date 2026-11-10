@@ -1,3 +1,6 @@
+import { RoomCamera } from './RoomCamera';
+import type { CameraBookmark } from './camera-bookmark';
+import type { RefObject } from 'react';
 import {itAgent} from '../health/it-agent';
 import { avatarHome, SPOTS, sceneHandoff, sceneNow } from './scene-motion';
 import { useAvatarMotion } from './useAvatarMotion';
@@ -8,9 +11,8 @@ export { SPOTS } from './scene-motion';
 import { mailboxWork } from '../work/work-summary';
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { ContactShadows, OrbitControls, QuadraticBezierLine } from '@react-three/drei';
+import { ContactShadows, QuadraticBezierLine } from '@react-three/drei';
 import * as THREE from 'three';
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { STAGE_LABELS, STAGE_ROLE, STAGES, ROLE_NAMES, type Agent, type OfficeSnapshot, type Role } from '../shared';
 import { sceneColors } from '../tokens/scene-colors';
 import { StatusDot, cx, interactiveScene } from '../ui';
@@ -290,13 +292,6 @@ function PartyConfetti(){
   });
   return <group ref={pieces}>{Array.from({length:100},(_,i)=><mesh key={i}><planeGeometry args={[.09,.16]}/><meshStandardMaterial color={colors[i%colors.length]} side={THREE.DoubleSide}/></mesh>)}</group>;
 }
-function Camera({focus,zoom}:{focus:Vec;zoom:number}){
-  const controls=useRef<OrbitControlsImpl>(null);
-  const {camera,invalidate,size}=useThree();
-  const responsiveZoom=zoom*Math.min(1,size.width/1200);
-  useEffect(()=>{if(controls.current){controls.current.target.set(...focus);controls.current.update();}if(camera instanceof THREE.OrthographicCamera){camera.zoom=responsiveZoom;camera.updateProjectionMatrix();}invalidate();},[focus,responsiveZoom,camera,invalidate]);
-  return <OrbitControls ref={controls} makeDefault enableDamping maxPolarAngle={Math.PI*.44} minPolarAngle={Math.PI*.12} minZoom={8} maxZoom={100} maxDistance={60} minDistance={10}/>;
-}
 export type Floor='delivery'|'cto';
 function ElevatorStage({floor,reduced,travelling,revealed,children}:{floor:Floor;reduced:boolean;travelling:boolean;revealed:boolean;children:(floor:Floor)=>ReactNode}) {
   const ref=useRef<THREE.Group>(null),initial=useRef(new THREE.Vector3(0,floor==='cto'?-18:0,0));
@@ -324,7 +319,7 @@ function CTORoom({snapshot,onSelect,reduced,pmName}:{snapshot:OfficeSnapshot;onS
     <RoomLabel position={[-4.7,.2,4.7]} name="DELIVERY REPORTS" sub={`${(snapshot.leadershipReports||[]).length} reports from ${pmName}`} swatch="reports" onClick={()=>onSelect({kind:'goals'})}/>
   </>;
 }
-export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,quality,zoom,focus,floor='delivery',travelling=false,revealed=true,party=false,officeCast=false,coffeeBreaks=true}:{coffeeBreaks?:boolean;snapshot:OfficeSnapshot;names?:Record<Role,string>;onSelect:(s:Selection)=>void;reduced:boolean;quality:string;zoom:number;focus:Vec;floor?:Floor;travelling?:boolean;revealed?:boolean;party?:boolean;officeCast?:boolean}){
+export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,quality,zoom,focus,cameraBookmark,floor='delivery',travelling=false,revealed=true,party=false,officeCast=false,coffeeBreaks=true}:{cameraBookmark?:RefObject<CameraBookmark|null>;coffeeBreaks?:boolean;snapshot:OfficeSnapshot;names?:Record<Role,string>;onSelect:(s:Selection)=>void;reduced:boolean;quality:string;zoom:number;focus:Vec;floor?:Floor;travelling?:boolean;revealed?:boolean;party?:boolean;officeCast?:boolean}){
   const moving=!reduced&&(party||snapshot.agents.some(a=>a.activity==='working'));
   const pmName=snapshot.agents.find(a=>a.id==='pm')?.name||names.pm;
   const c=sceneColors();
@@ -357,6 +352,6 @@ export default function OfficeScene({snapshot,names=ROLE_NAMES,onSelect,reduced,
     </>}</ElevatorStage>
     {quality==='high'?<ContactShadows frames={1} position={[0,-.7,0]} opacity={.24} scale={40} blur={2.5} far={12} resolution={256} color={c.contactShadow}/>:null}
     {party&&!reduced?<PartyConfetti/>:null}
-    <Camera focus={focus} zoom={zoom}/>
+    <RoomCamera focus={focus} zoom={zoom} bookmark={cameraBookmark}/>
   </Canvas></Party.Provider>;
 }
