@@ -6,12 +6,13 @@ vi.mock('../../../../src/tokens/scene-colors',()=>({sceneColors:()=>({brainBackg
 vi.mock('../../../../src/knowledge/map/node-visuals',()=>({nodeVisuals:()=>state.visuals}));
 import { createConstellation } from '../../../../src/knowledge/map/constellation-runtime';
 import { displayScene, type MapSelection } from '../../../../src/knowledge/map/display-scene';
-import { knowledgeCameraDuration } from '../../../../src/tokens/motion';
+import { knowledgeCameraDuration, knowledgeOrbitIdle } from '../../../../src/tokens/motion';
+import { overviewDistance } from '../../../../src/knowledge/map/camera-target';
 afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();});
 
 it('retains graph identities, animates camera navigation, respects reduced motion and releases its single renderer once',()=>{
     let saved:{nodes:any[];links:any[]}={nodes:[],links:[]};
-    const camera=new PerspectiveCamera(), controls={target:new Vector3(),addEventListener:vi.fn(),removeEventListener:vi.fn()}, renderer={setPixelRatio:vi.fn(),dispose:vi.fn(),forceContextLoss:vi.fn()};
+    const camera=new PerspectiveCamera(), controls={target:new Vector3(),autoRotate:false,addEventListener:vi.fn(),removeEventListener:vi.fn()}, renderer={setPixelRatio:vi.fn(),dispose:vi.fn(),forceContextLoss:vi.fn()};
     camera.position.set(0,0,300);
     const graph:any={renderer:()=>renderer,controls:()=>controls,scene:()=>({}),camera:()=>camera};
     for(const name of ['backgroundColor','nodeThreeObject','nodeVisibility','nodeLabel','linkColor','linkOpacity','linkWidth','enableNodeDrag','showNavInfo','cooldownTicks','onNodeClick','onNodeHover','width','height','pauseAnimation','resumeAnimation','_destructor'])graph[name]=vi.fn(()=>graph);
@@ -28,8 +29,20 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     runtime.update({data:overview.scene,reduced:false});const original=saved.nodes[0];
     runtime.update({data:focused.scene,focusId:'note',reduced:false});expect(saved.nodes[0]).toBe(original);
     frame(1);frame(knowledgeCameraDuration+1);
+    // A stalled frame slows the flight rather than jumping straight to its end.
+    expect(graph.cameraPosition.mock.calls.at(-1)![1]).not.toEqual(original.position);
+    for(let i=1;i<=Math.ceil(knowledgeCameraDuration/16);i++)frame(knowledgeCameraDuration+1+i*16);
     expect(graph.cameraPosition).toHaveBeenLastCalledWith(expect.any(Object),original.position,0);
-    runtime.update({data:overview.scene,reduced:true});expect(graph.cameraPosition).toHaveBeenLastCalledWith({x:0,y:0,z:300},{x:0,y:0,z:0},0);
+    runtime.update({data:overview.scene,reduced:true});expect(graph.cameraPosition).toHaveBeenLastCalledWith({x:0,y:0,z:overviewDistance},{x:0,y:0,z:0},0);
+    frame(10000);expect(controls.autoRotate).toBe(false);
+    runtime.update({data:overview.scene,reduced:false});frame(14000);expect(controls.autoRotate).toBe(true);
+    runtime.update({data:overview.scene,reduced:false,paused:true});frame(18000);expect(controls.autoRotate).toBe(false);
+    runtime.update({data:overview.scene,reduced:false,paused:false});frame(18001);expect(controls.autoRotate).toBe(false);
+    frame(18001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
+    const start=controls.addEventListener.mock.calls.find(call=>call[0]==='start')![1],end=controls.addEventListener.mock.calls.find(call=>call[0]==='end')![1];
+    start();frame(25000);expect(controls.autoRotate).toBe(false);end();frame(25001);expect(controls.autoRotate).toBe(false);
+    frame(25001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
     expect(renderer.dispose).not.toHaveBeenCalled();expect(renderer.setPixelRatio).toHaveBeenCalledWith(2);
     runtime.dispose();runtime.dispose();expect(graph._destructor).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce();expect(renderer.forceContextLoss).toHaveBeenCalledOnce();expect(container.replaceChildren).toHaveBeenCalledOnce();
+    expect(controls.removeEventListener).toHaveBeenCalledWith('start',start);expect(controls.removeEventListener).toHaveBeenCalledWith('end',end);
 });

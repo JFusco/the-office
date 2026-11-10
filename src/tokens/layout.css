@@ -13,8 +13,17 @@
   --spacing-section-gap: 24px;
   --spacing-card-padding: 16px;
   --spacing-control-gap: 8px;
+  --spacing-control-height: 40px;
+  --spacing-control-inline: 16px;
+  --spacing-control-block: 10px;
+  --spacing-control-icon: 16px;
+  --spacing-icon-control: 28px;
   --spacing-field-label-gap: 8px;
-  --spacing-brain-canvas: clamp(420px, 52dvh, 600px);
+  --spacing-brain-canvas: clamp(420px, 50dvh, 600px);
+  --spacing-map-reticle: 180px;
+  --spacing-map-hud: 56px;
+  --spacing-map-overlay: 300px;
+  --spacing-map-browser-list: 200px;
   --spacing-brain-details: clamp(320px, 28vw, 440px);
   --spacing-brain-drawer: 80vw;
   --spacing-brain-content: 1280px;

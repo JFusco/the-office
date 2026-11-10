@@ -62,7 +62,7 @@ test('all knowledge screens share the content width; map frames and checkbox sta
     await nav.getByRole('button', { name: 'Map', exact: true }).click();
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
     const borderColor = await page.evaluate(() => {
-        const probe = document.createElement('span'); probe.style.color = 'var(--color-secondary-line)'; document.body.append(probe);
+        const probe = document.createElement('span'); probe.style.color = 'var(--color-secondary-line)'; document.querySelector('[data-brain-map-frame]')!.append(probe);
         const color = getComputedStyle(probe).color; probe.remove(); return color;
     });
     for (const selector of ['[data-brain-map-frame]', '[data-brain-list-frame]']) {
@@ -161,7 +161,11 @@ for (const viewport of [{ width: 1440, height: 800 }, { width: 390, height: 844 
         await page.getByRole('button', { name: 'Confirm schema versions before mapping changes · lesson', exact: true }).click();
         const nav = (await page.getByRole('navigation', { name: 'Brain views' }).boundingBox())!;
         const frame = (await page.locator('[data-brain-map-frame]').boundingBox())!;
-        expect(frame.y).toBeGreaterThanOrEqual(nav.y + nav.height);
+        if (viewport.width > 1000) expect(frame.y).toBeGreaterThanOrEqual(nav.y + nav.height);
+        else {
+            const canvas = (await page.locator('[data-brain-renderer]').boundingBox())!, list = (await page.locator('[data-brain-list-frame]').boundingBox())!;
+            expect(list.y).toBeGreaterThanOrEqual(canvas.y + canvas.height);
+        }
         const back = page.getByRole('button', { name: 'Back to map', exact: true }); await back.scrollIntoViewIfNeeded();
         expect((await back.boundingBox())!.y).toBeGreaterThanOrEqual(nav.y + nav.height);
         expect(await back.evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);

@@ -8,6 +8,7 @@ test('wraps a native checkbox and its text in one label and passes state through
     expect(html).toMatch(/^<label[^>]*><input type="checkbox"[^>]*\/><span[^>]*>Delivery toasts<\/span><\/label>$/);
     expect(html).toContain('checked=""'); expect(html).toContain('disabled=""');
     expect(html).toContain('accent-checkbox');
+    expect(html).toContain('text-12'); expect(html).not.toContain('text-11'); expect(html).not.toContain('size=');
 });
 
 test.each([['sm', 'text-11'], ['md', 'text-12']] as const)('checkbox %s size has one text token and does not leak a native input size', (size, token) => {

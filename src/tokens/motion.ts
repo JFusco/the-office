@@ -7,4 +7,8 @@ export function panelMotion(reduced: boolean) {
         transition: { duration: reduced ? 0 : .34, ease: [.22, 1, .36, 1] as const },
     };
 }
-export const knowledgeCameraDuration = 850;
+export const knowledgeCameraDuration = 1100;
+export const knowledgeMaxFrameStep = 50;
+
+export const knowledgeOrbitIdle = 3000;
+export const knowledgeOrbitSpeed = .2;

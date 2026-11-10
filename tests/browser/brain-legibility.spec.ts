@@ -30,7 +30,7 @@ test('knowledge uses shared form spacing and safe formatted documents while reta
     expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
 });
 
-test('white universe keeps its renderer through selection, search and filters; labels and controls stay legible', async ({page,request})=>{
+test('constellation keeps its renderer through selection, search and filters; labels and controls stay legible', async ({page,request})=>{
     await page.emulateMedia({reducedMotion:'no-preference'}); await request.post('/__fixture/preferences',{data:{reducedMotion:false}});
     await page.route('**/api/knowledge/map?**',async route=>{
         const response=await route.fetch(), map=await response.json();
@@ -42,7 +42,9 @@ test('white universe keeps its renderer through selection, search and filters; l
     const original=await canvas.elementHandle(); expect(original).toBeTruthy();
     const dimensions=await canvas.boundingBox(),frame=(await page.locator('[data-brain-map-frame]').boundingBox())!,list=(await page.locator('[data-brain-list-frame]').boundingBox())!;
     expect(dimensions!.width).toBeCloseTo(frame.width-2,0);expect(dimensions!.height).toBeGreaterThan(450);expect(dimensions!.height).toBeLessThanOrEqual(600);
-    expect(frame.width).toBeGreaterThan(list.width);expect(list.width).toBeCloseTo(1440*.28,0);
+    expect(frame.width).toBeGreaterThan(list.width*3);expect(list.width).toBeCloseTo(300,0);
+    expect(list.x).toBeGreaterThan(frame.x+frame.width/2);expect(list.x+list.width).toBeLessThan(frame.x+frame.width);
+    expect(list.y).toBeGreaterThan(frame.y);expect(list.y).toBeLessThan(frame.y+100);
     const scope=page.getByLabel('Map scope');
     expect(await scope.evaluate(el=>getComputedStyle(el).paddingInlineEnd)).toBe('38px');
     const inset=await scope.evaluate(el=>{const svg=el.parentElement!.querySelector('svg')!; return el.getBoundingClientRect().right-svg.getBoundingClientRect().right;});expect(inset).toBe(12);

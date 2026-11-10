@@ -1025,14 +1025,49 @@
 
 /* Brain constellation colors, resolved through the shared scene token reader. */
 :root {
-  --scene-brain-background: var(--color-paper);
-  --scene-brain-evidence: var(--color-team-developer);
-  --scene-brain-focusconnection: var(--color-link);
-  --scene-brain-source: var(--color-team-qa);
-  --scene-brain-project: var(--color-ink);
-  --scene-brain-clusterviolet: var(--color-team-cto);
-  --scene-brain-label: var(--color-ink);
-  --scene-brain-lesson: var(--color-panel-icon-ink);
-  --scene-brain-focused: var(--color-action);
+  --scene-brain-background: var(--color-map-surface);
+  --scene-brain-evidence: #69c4ce;
+  --scene-brain-connection: #6cacc4;
+  --scene-brain-focusconnection: #8ee7f3;
+  --scene-brain-source: #8bdbea;
+  --scene-brain-project: #d5f5ff;
+  --scene-brain-clusterviolet: #70cfe5;
+  --scene-brain-label: #a6c9d5;
+  --scene-brain-lesson: #9ee3de;
+  --scene-brain-focused: #a1f3fa;
   --scene-brain-marker: #fff;
+}
+
+/* The knowledge graph is a scoped dark surface; control geometry/interaction stays shared. */
+@theme {
+  --color-map-surface: #050d14;
+  --color-map-panel: #081923;
+  --color-map-line: #284652;
+  --color-map-ink: #dcf0f7;
+  --color-map-muted: #9cb8c4;
+  --color-map-accent: #8ee7f3;
+  --color-map-hairline: #568d9e;
+  --color-map-hover: #12313e;
+}
+.brain-map-theme {
+  color: var(--color-map-ink);
+  --color-paper: var(--color-map-panel);
+  --color-ink: var(--color-map-ink);
+  --color-muted: var(--color-map-muted);
+  --color-secondary: var(--color-map-panel);
+  --color-secondary-hover: var(--color-map-hover);
+  --color-secondary-line: var(--color-map-line);
+  --color-control-hover-line: var(--color-map-accent);
+  --color-roster-hover: var(--color-map-hover);
+  --color-field-line: var(--color-map-hairline);
+  --color-field-hover: var(--color-map-accent);
+  --color-focus: var(--color-map-accent);
+  --color-link: var(--color-map-accent);
+  --color-select-chevron: var(--color-map-muted);
+  --color-drawer-line: var(--color-map-line);
+  --color-drawer-rule: var(--color-map-line);
+  --color-section-rule: var(--color-map-line);
+  --color-tag: var(--color-map-panel);
+  --color-tag-line: var(--color-map-line);
+  --color-tag-ink: var(--color-map-muted);
 }

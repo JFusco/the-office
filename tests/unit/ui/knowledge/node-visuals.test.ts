@@ -4,7 +4,7 @@ import {nodeVisuals} from '../../../../src/knowledge/map/node-visuals';
 import {SCENE_COLOR_TOKENS,type SceneColors} from '../../../../src/tokens/scene-colors';
 
 it('keeps landmark labels sparse, labels individual nodes on interaction and releases visual resources',()=>{
-    vi.stubGlobal('document',{createElement:()=>({width:0,height:0,getContext:()=>({fillText:()=>{},measureText:(t:string)=>({width:t.length*16}),beginPath:()=>{},arc:()=>{},fill:()=>{}})})});
+    vi.stubGlobal('document',{createElement:()=>({width:0,height:0,getContext:()=>({createRadialGradient:()=>({addColorStop:()=>{}}),fillRect:()=>{},fillText:()=>{},measureText:(t:string)=>({width:t.length*16}),beginPath:()=>{},arc:()=>{},fill:()=>{}})})});
     try{
         const palette=Object.fromEntries(Object.keys(SCENE_COLOR_TOKENS).map(k=>[k,'#fff'])) as SceneColors;
         const visuals=nodeVisuals(palette), camera=new PerspectiveCamera(50,2,.1,1000);camera.position.z=300;camera.lookAt(0,0,0);
@@ -23,13 +23,13 @@ it('keeps landmark labels sparse, labels individual nodes on interaction and rel
         expect(groups[8].children[1].visible).toBe(true);
         nodes.forEach((node,i)=>{node.emphasized=i<2;}); // Selected node and a connected neighbor.
         visuals.update({data:{nodes,edges:[],truncated:false},reduced:true,focusId:'n0'},camera,{clientWidth:1200,clientHeight:800} as HTMLElement,16);
-        expect(groups.filter(g=>g.children[1].visible)).toHaveLength(1);
-        expect(groups[0].children[1].visible).toBe(true);expect(groups[1].children[1].visible).toBe(false);
+        expect(groups.filter(g=>g.children[1].visible)).toHaveLength(0);
+        expect(groups[0].children[1].visible).toBe(false);expect(groups[1].children[1].visible).toBe(false);
         expect((groups[0].children[0] as any).material.opacity).toBeCloseTo(.95);expect((groups[2].children[0] as any).material.opacity).toBeCloseTo(.18);
         visuals.hover('n1');visuals.update({...overview,focusId:'n0'},camera,container,16);
         expect(groups[1].children[1].visible).toBe(true);expect(groups[0].children[1].visible).toBe(false);
         visuals.hover('');visuals.update({...overview,focusId:'n0'},camera,container,16);
-        expect(groups[0].children[1].visible).toBe(true);expect(groups[1].children[1].visible).toBe(false);
+        expect(groups[0].children[1].visible).toBe(false);expect(groups[1].children[1].visible).toBe(false);
         groups[0].updateMatrixWorld(true);
         const ray=new Raycaster(new Vector3(0,groups[0].children[1].position.y,300),new Vector3(0,0,-1));ray.camera=camera;
         expect(ray.intersectObject(groups[0],true)).toEqual([]);
@@ -40,7 +40,7 @@ it('keeps landmark labels sparse, labels individual nodes on interaction and rel
 });
 
 it('fits long labels by measured width and keeps the full source title unchanged',()=>{
-    const drawn=vi.fn();vi.stubGlobal('document',{createElement:()=>({width:0,height:0,getContext:()=>({fillText:drawn,measureText:(t:string)=>({width:t.length*16}),beginPath:()=>{},arc:()=>{},fill:()=>{}})})});
+    const drawn=vi.fn();vi.stubGlobal('document',{createElement:()=>({width:0,height:0,getContext:()=>({createRadialGradient:()=>({addColorStop:()=>{}}),fillRect:()=>{},fillText:drawn,measureText:(t:string)=>({width:t.length*16}),beginPath:()=>{},arc:()=>{},fill:()=>{}})})});
     try{
         const palette=Object.fromEntries(Object.keys(SCENE_COLOR_TOKENS).map(k=>[k,'#fff'])) as SceneColors;
         const visuals=nodeVisuals(palette),node={id:'long',title:'Accessibility review for confirmation dialogs',kind:'technical' as const,detail:'',visible:true,emphasized:true,position:{x:0,y:0,z:0}};

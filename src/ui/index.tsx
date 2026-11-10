@@ -1,5 +1,6 @@
 import { forwardRef, type AnchorHTMLAttributes, type InputHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 import { ChevronDown } from './icons';
+import { buttonClasses, type ButtonVariant, type ButtonLayout } from './button-styles';
 export const cx=(...parts:(string|false|null|undefined)[])=>parts.filter(Boolean).join(' ');
 /** Visible keyboard focus for every interactive element. */
 export const focusRing='focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus';
@@ -17,17 +18,16 @@ export const checkbox=`size-4 shrink-0 cursor-pointer accent-checkbox transition
 /** Disclosure summary rows. */
 export const summary=`cursor-pointer rounded-4 underline decoration-transparent underline-offset-2 transition-colors reduce-motion:transition-none hover:text-link hover:decoration-current ${focusRing}`;
 
-const buttonVariants={
-  primary:'bg-action text-action-ink shadow-button enabled:hover:bg-action-hover',
-  secondary:'border border-secondary-line bg-secondary enabled:hover:border-control-hover-line enabled:hover:bg-secondary-hover',
-};
-type ButtonProps=ButtonHTMLAttributes<HTMLButtonElement>&{variant?:keyof typeof buttonVariants;full?:boolean};
+type ButtonProps=ButtonHTMLAttributes<HTMLButtonElement>&{variant?:ButtonVariant;layout?:ButtonLayout;full?:boolean};
 /** Primary and secondary actions. Spacing around the button belongs to the caller. */
-export const Button=forwardRef<HTMLButtonElement,ButtonProps>(function Button({variant='secondary',full=false,className,type='button',...props},ref){
-  return <button ref={ref} type={type} className={cx('inline-flex items-center justify-center gap-2 rounded-7 px-4 py-3 text-11 font-emphasis',full&&'w-full',buttonVariants[variant],interactive,className)} {...props}/>;
+export const Button=forwardRef<HTMLButtonElement,ButtonProps>(function Button({variant='secondary',layout='action',full=false,className,type='button',...props},ref){
+  return <button ref={ref} type={type} className={cx(buttonClasses(variant,layout),full&&'w-full',interactive,className)} {...props}/>;
+});
+export const ButtonLink=forwardRef<HTMLAnchorElement,AnchorHTMLAttributes<HTMLAnchorElement>&{variant?:ButtonVariant;layout?:ButtonLayout;full?:boolean}>(function ButtonLink({variant='secondary',layout='action',full=false,className,...props},ref){
+  return <a ref={ref} className={cx(buttonClasses(variant,layout),full&&'w-full',interactive,className)} {...props}/>;
 });
 export const IconButton=forwardRef<HTMLButtonElement,ButtonHTMLAttributes<HTMLButtonElement>&{'aria-label':string}>(function IconButton({className,type='button',...props},ref){
-  return <button ref={ref} type={type} className={cx('inline-flex items-center justify-center rounded-7 p-1.5 text-icon enabled:hover:bg-icon-hover',interactive,className)} {...props}/>;
+  return <button ref={ref} type={type} className={cx('inline-flex size-icon-control shrink-0 items-center justify-center rounded-control text-icon enabled:hover:bg-icon-hover [&>svg]:size-control-icon',interactive,className)} {...props}/>;
 });
 
 const tagTones:Record<string,string>={
