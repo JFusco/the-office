@@ -161,7 +161,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
     }
     if (hasUncertainEffects(job.stage, result))
         throw new Error('Uncertain external effect; read back original session before continuing');
-    if (handsOff(this.store) && needsDecision(result)) {
+    if (handsOff(this.store) && needsDecision(result, job)) {
         // A PR merged outside the Office is settled by external-delivery retirement, not by a decision comment and a Block move.
         if (job.existingPR && job.pr && await this.mergedOutside(job)) {
             job.status = 'blocked';

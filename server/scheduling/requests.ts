@@ -1,4 +1,5 @@
 import { admitImprovement } from '../knowledge/admit-improvement';
+import { reconcileBoardPreflight } from '../delivery/recovery/board-preflight';
 import {hasSavedPrerequisiteResult,handoffSavedPrerequisites} from '../delivery/recovery/implementation/saved-prerequisite-handoff';
 import {publishedDraftConflictCandidate,reconcilePublishedDraftConflict} from '../delivery/recovery/preparation/published-draft-conflict';
 import {completedConflictDraftCandidate,reconcileCompletedConflictDraft} from '../delivery/recovery/preparation/post-conflict-preparation';
@@ -195,7 +196,12 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                 break;
             }
             case 'reconcile-base-update':
-                await delivery.reconcileBaseUpdate(request.key);
+                if (!await reconcileBoardPreflight(delivery, request, async () => {
+                    await coordinator.sessionBridge?.refresh();
+                    const owner = coordinator.sessionBridge?.forProject(store, request.key, request.id);
+                    if (!owner) throw new Error('Board-preflight ownership inventory is unavailable');
+                    return owner;
+                })) await delivery.reconcileBaseUpdate(request.key);
                 break;
             case 'cleanup-merged-candidate':
             case 'reconcile-closeout': {

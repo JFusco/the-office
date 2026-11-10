@@ -4,13 +4,15 @@ import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery'
 import { retireExternalDeliveries } from '../recovery/retire-external-delivery';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
 import { refreshConflicted, refreshEligible } from '../repairs/refresh-conflicted';
-import { deliveryInputSha256 } from '../../github/github-context';
+import { deliveryInputSha256, deliveryResearchContext, deliveryResearchSha256 } from '../../github/github-context';
+import { resumeProviderReviews } from '../parking/resume-provider-review';
 import { queueMergeNotice } from '../../conversations/notifications';
 import type { GitHubDelivery } from './github-delivery';
 
 export async function observe(this: GitHubDelivery) {
     await retireInactiveDeliveries(this);
     await retireExternalDeliveries(this);
+    await resumeProviderReviews(this);
     for (const job of this.jobs.filter(j => j.status === 'watching' || j.stage === 'merge' && ['blocked', 'interrupted'].includes(j.status))) {
         try {
             const p = await this.verifyPR(job);
@@ -97,8 +99,15 @@ export async function observe(this: GitHubDelivery) {
             // A rejected conflict proof permits reassessment, never a CI writer fallback.
             if (!conflictRepairError && await this.queueCIRepair(job))
                 continue;
-            const fingerprint = JSON.stringify([p.head.sha, p.base.ref, p.base.sha, p.draft, p.mergeable, p.updated_at, deliveryInputSha256(this.store, job.key), checks.check_runs.map((c: any) => [c.id, c.status, c.conclusion]), statuses.state]);
+            const parts = [p.head.sha, p.base.ref, p.base.sha, p.draft, p.mergeable, p.updated_at, deliveryInputSha256(this.store, job.key), checks.check_runs.map((c: any) => [c.id, c.status, c.conclusion]), statuses.state];
+            const research = deliveryResearchContext(this.store, job.key).length ? deliveryResearchSha256(this.store, job.key) : undefined;
+            if (research) parts.push(research);
+            const fingerprint = JSON.stringify(parts);
             if (job.lastPRFingerprint !== fingerprint) {
+                let previousResearch: string | undefined;
+                try { previousResearch = JSON.parse(job.lastPRFingerprint || '[]')[9]; }
+                catch { /* An unavailable prior fingerprint cannot establish unchanged research. */ }
+                if (previousResearch !== research) delete job.reviewContext;
                 job.lastPRFingerprint = fingerprint;
                 job.status = 'queued';
                 job.stage = 'lead-pr';
