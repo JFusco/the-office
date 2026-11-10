@@ -1,25 +1,33 @@
-import { assertFeatureGate } from '../features/enrollment-gate';
+import type { FeatureBinding } from '../../src/contracts/features';
+import { intakeDisposition, closeIntakeEpisode } from '../features/handoff/intake-disposition';
+import { assessmentEnabled } from '../features/handoff/disposition-store';
+import { enrolled, assertFeatureGate } from '../features/enrollment-gate';
 import { hasUncertainEffects } from '../delivery/pipeline/github-delivery';
 import type { Coordinator } from './coordination';
 
-export function requestWork(this: Coordinator, key: string) {
-    assertFeatureGate(this.store, key);
-    if (this.store.state.paused)
-        throw new Error('Resume the project first');
-    const issue = this.state.listener.assigned.find(i => i.key === key);
-    if (!issue)
-        throw new Error('Ticket must be open and assigned to Joe in the latest feed');
-    const existing = this.state.listener.reviews.slice().reverse().find(r => r.key === key);
-    if (existing && ['blocked', 'interrupted'].includes(existing.status))
-        throw new Error('Read back the blocked or interrupted review before starting work');
-    if (this.state.jobs?.some(j => j.key === key && j.status !== 'cancelled'))
-        throw new Error('Delivery already exists; read back its current state');
-    if (existing && ['queued', 'working'].includes(existing.status)) {
-        existing.workRequested = 'manual';
-        this.store.save();
-        return;
-    }
-    this.enqueue(issue, 'manual');
+export function requestWork(this: Coordinator, key: string, binding?: FeatureBinding) {
+    return this.store.transaction(() => {
+        assertFeatureGate(this.store, key);
+        if (!binding && assessmentEnabled(this.store) && enrolled(this.store,key)) throw new Error('Open the feature plan; its authorized handoff owns this ticket');
+        if (binding) intakeDisposition(this.store, key, binding);
+        if (this.store.state.paused || this.store.state.draining) throw new Error('Resume the project first');
+        const issue = this.state.listener.assigned.find(i => i.key === key);
+        if (!issue) throw new Error('Ticket must be open and assigned to Joe in the latest feed');
+        const existing = this.state.listener.reviews.slice().reverse().find(r => r.key === key);
+        if (existing && ['blocked', 'interrupted'].includes(existing.status)) throw new Error('Read back the blocked or interrupted review before starting work');
+        if (this.state.jobs?.some(j => j.key === key && j.status !== 'cancelled')) throw new Error('Delivery already exists; read back its current state');
+        if (existing && ['queued', 'working'].includes(existing.status)) {
+            if (binding && JSON.stringify(existing.featureBinding) !== JSON.stringify(binding)) throw new Error('Another intake request owns this ticket');
+            existing.workRequested = 'manual';
+            if (!binding) closeIntakeEpisode(this.store, key, true);
+            this.store.save(); return existing;
+        }
+        this.enqueue(issue, 'manual');
+        const review = this.state.listener.reviews.at(-1)!;
+        if (binding) review.featureBinding = structuredClone(binding);
+        else closeIntakeEpisode(this.store, key, true);
+        this.store.save(); return review;
+    });
 }
 
 export function preparePR(this: Coordinator, key: string) {

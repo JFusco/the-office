@@ -1,3 +1,5 @@
+import { intakeDisposition, closeIntakeEpisode } from '../../features/handoff/intake-disposition';
+import type { FeatureBinding } from '../../../src/contracts/features';
 import { captureLearning } from '../../knowledge/learning-events';
 import { featureGate } from '../../features/enrollment-gate';
 import { HOLDS } from '../../office/config';
@@ -7,11 +9,13 @@ import type { Store } from '../../store/store';
 import type { AssignedIssue, AssignmentReview, Coordination, PickupPolicy, Prerequisite } from '../../../src/shared';
 
 export interface IntakeContext { store: Store; state: Coordination; pickup: PickupPolicy; dependencyStores: () => DependencyStores }
-export interface Admission { status: 'ready' | 'owned' | 'held'; detail: string; owner: string }
+export interface Admission { assessmentHold?: AssignmentReview['assessmentHold']; status: 'ready' | 'owned' | 'held'; detail: string; owner: string }
 
 /** Deterministic replacement for the model intake: owners, holds and structured prerequisites decide. */
-export function admit(context: IntakeContext, delivery: GitHubDelivery, input: { key: string; workRequested?: 'automatic' | 'manual'; prerequisites: Prerequisite[] }, now: Date): Admission {
+export function admit(context: IntakeContext, delivery: GitHubDelivery, input: { key: string; workRequested?: 'automatic' | 'manual'; prerequisites: Prerequisite[]; featureBinding?: FeatureBinding }, now: Date): Admission {
     const { store, state } = context;
+    const disposition = intakeDisposition(store, input.key, input.featureBinding);
+    if (disposition.kind !== 'proceed') return { status: 'held', detail: disposition.reason, owner: '', assessmentHold: disposition };
     const gate = featureGate(store, input.key);
     if (!gate.allowed) return { status: 'held', detail: gate.reason, owner: '' };
     if (HOLDS[input.key])
@@ -35,7 +39,7 @@ export function admit(context: IntakeContext, delivery: GitHubDelivery, input: {
         if (waiting)
             return { status: 'held', detail: waiting.reason, owner: '' };
     }
-    delivery.enqueue(input.key, 0, input.workRequested === 'automatic' ? context.pickup.status : undefined);
+    store.transaction(() => { delivery.enqueue(input.key, 0, input.workRequested === 'automatic' ? context.pickup.status : undefined); closeIntakeEpisode(store, input.key); });
     const queued = state.jobs!.find(candidate => candidate.key === input.key && candidate.status !== 'cancelled')!;
     if (input.prerequisites.length)
         queued.prerequisites = input.prerequisites;
@@ -57,7 +61,7 @@ export function admitReadyCards(context: IntakeContext, delivery: GitHubDelivery
         const outcome = admit(context, delivery, { key: issue.key, workRequested: 'automatic', prerequisites }, now);
         if (outcome.status !== 'ready' && latest?.status === outcome.status && latest.detail === outcome.detail) continue;
         const at = now.toISOString();
-        const row: AssignmentReview = { id: crypto.randomUUID(), key: issue.key, summary: issue.summary, url: issue.url, queuedAt: at, startedAt: at, endedAt: at, status: outcome.status, detail: outcome.detail, owner: outcome.owner, workRequested: 'automatic', prerequisites, ...(latest ? { parentReviewId: latest.id } : {}) };
+        const row: AssignmentReview = { id: crypto.randomUUID(), key: issue.key, summary: issue.summary, url: issue.url, queuedAt: at, startedAt: at, endedAt: at, status: outcome.status, assessmentHold: outcome.assessmentHold, detail: outcome.detail, owner: outcome.owner, workRequested: 'automatic', prerequisites, ...(latest ? { parentReviewId: latest.id } : {}) };
         state.listener.reviews.push(row);
         // One card is one subject, so successive dispositions coalesce; the row ID stays in the event identity.
         captureLearning(store, { kind: 'orchestration', id: issue.key }, row.key, 'admission', row.id, outcome, outcome.detail);

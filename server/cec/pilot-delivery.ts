@@ -1,4 +1,7 @@
-import { assertFeatureGate, featureGate } from '../features/enrollment-gate';
+import type { FeatureBinding } from '../../src/contracts/features';
+import { intakeDisposition, closeIntakeEpisode } from '../features/handoff/intake-disposition';
+import { assessmentEnabled } from '../features/handoff/disposition-store';
+import { enrolled, assertFeatureGate, featureGate } from '../features/enrollment-gate';
 import { bindDelivery } from '../features/delivery-binding';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -8,14 +11,20 @@ import { DATA, CEC, HOLDS, LEGACY_AUTOMATION } from '../office/config';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
 
-export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string) {
+export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean }) {
+    return this.store.transaction(() => {
     assertFeatureGate(this.store, key);
+    if (action === 'start-pilot' && !routing?.binding && assessmentEnabled(this.store) && enrolled(this.store,key)) throw new Error('Open the feature plan; its authorized handoff owns this ticket');
     if (this.store.project.provider !== 'azure')
         throw new Error('GitHub issues use project chat and maintenance');
     const t = this.store.ticket(key), queue = this.store.state.deliveryQueue ??= [];
     const existing = queue.find(r => r.key === key && ['queued', 'working'].includes(r.status));
-    if (existing)
+    if (existing) {
+        if (routing?.binding && JSON.stringify(existing.featureBinding) !== JSON.stringify(routing.binding)) throw new Error('Another delivery request owns this ticket');
+        if (!routing?.binding && !routing?.automatic) closeIntakeEpisode(this.store, key, true);
         return existing;
+    }
+    if (routing?.binding || routing?.automatic) { const decision = intakeDisposition(this.store, key, routing.binding); if (decision.kind !== 'proceed') throw new Error(decision.reason); }
     if (action === 'start-pilot') {
         const reason = eligibility(t, intakeStatus) || t.blocker;
         if (reason)
@@ -28,9 +37,12 @@ export function requestDelivery(this: Engine, key: string, action: 'start-pilot'
     else if (!t.pilot || t.stage === 'complete')
         throw new Error('Ticket has no resumable delivery');
     const request = { id: randomUUID(), key, action, requestedAt: new Date(Math.max(this.store.clock.now().getTime(), Date.parse(queue.at(-1)?.requestedAt || '') + 1 || 0)).toISOString(), status: 'queued' as const, error: '', intakeStatus };
+    if (routing?.binding) Object.assign(request, {featureBinding: structuredClone(routing.binding)});
     queue.push(request);
+    if (!routing?.binding) closeIntakeEpisode(this.store, key, !routing?.automatic);
     this.store.emit('delivery-queued', `${key} queued for ${action === 'start-pilot' ? 'implementation' : 'live read-back and resume'}.`, 'pm', key);
     return request;
+    });
 }
 
 export async function drainDelivery(this: Engine, selectedId?: string) {
@@ -130,9 +142,10 @@ export async function dispatchNightly(this: Engine) {
                 break;
             if (ticket.stage !== 'mailbox' || ticket.blocker || eligibility(ticket))
                 continue;
+            if (intakeDisposition(this.store, ticket.key).kind !== 'proceed') continue;
             if (!featureGate(this.store, ticket.key).allowed) continue;
             try {
-                this.requestDelivery(ticket.key, 'start-pilot');
+                this.requestDelivery(ticket.key, 'start-pilot', undefined, {automatic: true});
             }
             catch (e) {
                 ticket.activity = 'blocked';

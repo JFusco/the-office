@@ -1,8 +1,9 @@
+import { reserveIdentity } from './release/reserve-identity';
 import type { Feature, FeatureManifest, FeatureManifestItem, FeatureOperation } from '../../src/contracts/features';
 import type { EffectIntent } from '../../src/shared';
 import type { Store } from '../store/store';
 import { Effects, EffectUncertainError } from '../store/effects';
-import { assertEnrollable, currentApproval } from './enrollment-gate';
+import { currentApproval } from './enrollment-gate';
 import { featureById } from './commands';
 
 export interface PublicationReceipt { key: string; url: string; [field: string]: unknown }
@@ -14,16 +15,6 @@ export interface FeaturePublisher {
     dispatch(item: FeatureManifestItem, operation: FeatureOperation, key: string, marker: string): Promise<PublicationReceipt>;
     readBack(intent: Readonly<EffectIntent>): Promise<{ verified: boolean; receipt: PublicationReceipt }>;
     verify(receipt: PublicationReceipt, operation: FeatureOperation): Promise<boolean>;
-}
-function reserveIdentity(store: Store, featureId: string, itemId: string, receipt: PublicationReceipt) {
-    store.transaction(() => {
-        const feature = featureById(store, featureId), item = feature.publication.find(p => p.id === itemId);
-        if (!item) throw new Error('Publication item is missing');
-        if (!receipt.key || !receipt.url || item.key && item.key !== receipt.key) throw new Error('Publication returned conflicting ticket identity');
-        if (store.state.features?.some(f => f.id !== feature.id && (f.sourceTicket === receipt.key || f.publication.some(p => p.key === receipt.key)))) throw new Error('Ticket belongs to another feature');
-        if (!item.startedApprovalId) assertEnrollable(store, receipt.key, feature.id);
-        item.key = receipt.key; item.url = receipt.url; item.fence = false;
-    });
 }
 /** Stable item create IDs survive reorder and reapproval. Existing intent metadata is immutable. */
 export async function publishFeature(store: Store, feature: Feature, provider: FeaturePublisher) {
@@ -106,6 +97,7 @@ export async function publishFeature(store: Store, feature: Feature, provider: F
                 if (create && failed?.status === 'rejected' && !failed.dispatchedAt) store.transaction(() => { mappedItem(item.id).fence = false; });
                 throw error;
             }
+            if (receipt.requirementPostimage) store.updateEffect(effectId, 'verified', intent => { intent.receipt = structuredClone(receipt); });
             reserveIdentity(store, featureId, item.id, receipt);
         }
     }

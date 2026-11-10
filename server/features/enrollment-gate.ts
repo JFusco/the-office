@@ -1,10 +1,13 @@
+import { FEATURE_PLANNING } from '../office/config';
+import { featurePolicy } from './progression/policy';
+import { FeatureError } from './progression/failure';
 import { improvementIntakeGate } from '../knowledge/improvement-intake-gate';
 import type { Feature, FeatureApproval, FeatureBinding } from '../../src/contracts/features';
 import type { Store } from '../store/store';
 import { digest } from './documents';
 
 export function enrolled(store: Store, key: string) {
-    const feature = store.state.features?.find(f => f.sourceTicket === key || f.publication.some(p => p.key === key));
+    const feature = store.state.features?.find(f => (!featurePolicy(store.project.id, FEATURE_PLANNING).assessment.enabled || f.phase !== 'complete') && (f.sourceTicket === key || f.publication.some(p => p.key === key)));
     return feature ? { feature, item: feature.publication.find(p => p.key === key) } : undefined;
 }
 export function currentApproval(feature: Feature): FeatureApproval | undefined {
@@ -43,14 +46,14 @@ export function assertFeatureGate(store: Store, key: string) {
 }
 export function assertEnrollable(store: Store, key: string, featureId = '') {
     const other = enrolled(store, key);
-    if (other && other.feature.id !== featureId) throw new Error('Ticket is already enrolled in a feature');
+    if (other && other.feature.id !== featureId) throw new FeatureError('ownership', 'Ticket is already enrolled in a feature');
     const jobs = store.state.coordination?.jobs || [], reviews = store.state.coordination?.listener.reviews || [];
     const aliases = new Set([key, 'ticket:' + key, ...jobs.filter(j => j.key === key).map(j => j.id), ...reviews.filter(r => r.key === key).map(r => r.id), ...(store.state.deliveryQueue || []).filter(r => r.key === key).map(r => r.id)]);
     if (jobs.some(j => j.key === key && j.status !== 'cancelled') || store.state.tickets.some(t => t.key === key && t.pilot) ||
         store.state.deliveryQueue?.some(r => r.key === key && ['working', 'queued', 'interrupted'].includes(r.status)) ||
         store.activeClaims().some(c => aliases.has(c.work.id)) ||
         reviews.some(r => r.key === key && r.status === 'working'))
-        throw new Error('Delivery already owns this ticket. Start a separate follow-up feature.');
+        throw new FeatureError('ownership', 'Delivery already owns this ticket. Start a separate follow-up feature.');
 }
 export function bindFeature(store: Store, key: string, ownerId: string): FeatureBinding | undefined {
     return store.transaction(() => {

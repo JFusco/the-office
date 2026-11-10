@@ -1,3 +1,5 @@
+import { scheduledCaptures } from '../features/handoff/scheduled-captures';
+import { scheduledAssessments } from '../features/handoff/scheduled-assessments';
 import { scheduledSlackIntake } from '../knowledge/slack-intake/schedule';
 import { metadataRequestResolved } from '../delivery/recovery/pr-metadata-recovery';
 import { scheduledInvestigations } from '../it/investigations/scheduled';
@@ -38,7 +40,7 @@ const eligible = (state: WorkEligibility['state'], reason: string, owner = 'Morg
 /** One projection drives dispatch, queue counts, owner labels and next actions. */
 /** Office-level inputs to Harper's lane: Avery's review status and the office proposal store. */
 export interface KnowledgeOptions extends RollupHooks { context?:import('../knowledge/context').KnowledgeContext; sources?: import('../knowledge/sources/registry').SourceRegistry; dailyStatus?: (date: string) => string | undefined }
-export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery', knowledge: KnowledgeOptions = {}): ScheduledWork[] {
+export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery', knowledge: KnowledgeOptions = {}, assessmentDiagnostic = false): ScheduledWork[] {
     const { store, engine, conversations, coordinator } = entry;
     const items: ScheduledWork[] = [], c = store.state.coordination!;
     const add = (kind: WorkKind, record: {
@@ -80,6 +82,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         if (request?.status === 'queued') item.eligibility = eligible('runnable', 'Ledger-only correction may run while paused');
     }
     if (lane === 'operations') {
+        items.push(...scheduledCaptures(entry, engine.captureEvidence));
         const publishingEnabled = store.project.provider === 'github' ? c.time?.githubField : !!c.time?.jiraActivatedAt && c.time.jiraEnabled !== false;
         // A pending day on a ticket with an unresolved publication waits, and does not block read-back.
         const pendingTime = c.time?.enabled && publishingEnabled && publishableEntry(c.time, store.project.provider, value => store.project.provider === 'github' || value.date < easternDay(now));
@@ -99,7 +102,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     }
     if (lane !== 'delivery')
         return withActiveClaims(store, lane, gateFeatureWork(store, items));
-    items.push(...scheduledFeatures(entry));
+    items.push(...scheduledFeatures(entry), ...scheduledAssessments(entry, now, assessmentDiagnostic));
     for (const job of c.jobs || []) {
         const validation = validatePrerequisites(job.prerequisites || [], { projectId: store.project.id, kind: 'delivery', id: job.id }, stores);
         const dependency = validation ? eligible('blocked', validation) : dependencyEligibility(job.prerequisites || [], stores, now);

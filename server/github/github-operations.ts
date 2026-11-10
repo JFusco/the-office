@@ -1,6 +1,11 @@
 import type { Store } from '../store/store';
 import { Effects } from '../store/effects';
 import { command } from '../workers/process';
+/** Shared exact repository/issue identity validation for ordinary reads and bounded evidence capture. */
+export function validateGitHubIssue(issue: any, repository: string, number: number) {
+    if (!Number.isSafeInteger(number) || number <= 0 || issue?.number !== number || issue.pull_request || issue.html_url !== `https://github.com/${repository}/issues/${number}`) throw new Error('GitHub issue identity mismatch');
+    return issue;
+}
 /** Fixed repository operations; no arbitrary command or endpoint is exposed. */
 export class GitHubOperations {
     constructor(private store: Store, private execute: typeof command = command) { }
@@ -10,9 +15,7 @@ export class GitHubOperations {
     async issue(number: number): Promise<any> {
         this.number(number);
         const issue = await this.api(`issues/${number}`);
-        if (issue.number !== number || issue.pull_request || issue.html_url !== `https://github.com/${this.store.project.repository}/issues/${number}`)
-            throw new Error('GitHub issue identity mismatch');
-        return issue;
+        return validateGitHubIssue(issue, this.store.project.repository, number);
     }
     async comments(number: number): Promise<any[]> {
         this.number(number);

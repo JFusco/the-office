@@ -1,3 +1,5 @@
+import { maintainAssessmentWork } from '../features/handoff/maintenance';
+import { deliveryOccupied } from './slot-policy';
 import { knowledgeSessionVisibility } from '../knowledge/sources/session-visibility';
 import { leadershipEntries,leadershipContext } from '../knowledge/leadership-context';
 import { knowledgeOfficeState,knowledgeEntries } from '../knowledge/office-state-view';
@@ -56,7 +58,7 @@ export class Offices {
     serviceInstanceId = randomUUID();
     snapshotSequence = 0;
     stores() { return new Map([...this.entries].map(([id, entry]) => [id, entry.store])); }
-    projection(entry: typeof this.entries extends Map<string, infer E> ? E : never, lane = 'delivery') { return scheduledWork(entry, this.stores(), new Date(), lane, lane === 'knowledge' ? this.knowledgeOptions() : {}); }
+    projection(entry: typeof this.entries extends Map<string, infer E> ? E : never, lane = 'delivery') { return scheduledWork(entry, this.stores(), entry.store.clock.now(), lane, lane === 'knowledge' ? this.knowledgeOptions() : {}); }
     /** Harper's weekly roll-up waits for Avery's review and files office-wide proposals in the control store. */
     knowledgeOptions() {
         return { context:{registry:this.sources,stores:this.stores(),brain:new CommittedBrain()}, sources: this.sources, dailyStatus: (date: string) => this.control.forDate?.(date)?.status,
@@ -171,6 +173,8 @@ export class Offices {
         };
         // Independent lanes are reserved synchronously before any model is invoked.
         const stopping = (lane: import('../../src/shared').ExecutionLane) => entries.some(entry => entry.store.state.workLog?.some(work => work.status === 'stopping' && (work.lane || (work.role === 'cto' ? 'cto' : work.role === 'it' ? 'it' : work.role === 'knowledge' ? 'knowledge' : 'delivery')) === lane));
+        const stoppingDelivery = stopping('delivery');
+        for (const entry of entries) maintainAssessmentWork(entry, projectId => deliveryOccupied(this.capacity, projectId, stoppingDelivery), () => scheduledWork(entry, this.stores(), entry.store.clock.now(), 'delivery', {}, true));
         await Promise.allSettled([stopping('cto') ? Promise.resolve() : this.ctoScheduler.pump(queues('cto')), stopping('it') ? Promise.resolve() : this.itScheduler.pump(queues('it')), this.operationsScheduler.pump(queues('operations')), stopping('knowledge') ? Promise.resolve() : this.knowledgeScheduler.pump(queues('knowledge')), stopping('delivery') ? Promise.resolve() : this.scheduler.pump(queues('delivery'))]);
     }
 }
