@@ -46,7 +46,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
                     {view.selected ? <><Button className="mb-3" onClick={()=>setSelection(prior=>({...prior,selected:'',query:''}))}>Back to map</Button><MapNodePanel project={project} node={view.selected} data={data} onSelect={selectNode}/></> : <MapBrowser view={view} onGroup={selectGroup} onNode={selectNode} onHighlight={setHighlight} onPage={page => setSelection(prior => ({ ...prior, page }))}/>}
                 </aside>
             </div>
-            <p className="mt-4 text-11 text-muted">Groups use recorded types and technical domains. Counts describe loaded records; a reference can appear in multiple recorded domains. Decorative stars are separate from knowledge records.</p>
+            <p className="mt-4 text-11 text-muted">Every node represents a loaded knowledge record. Groups use recorded types and technical domains; a reference can appear in multiple recorded domains.</p>
             {data.technicalStatus === 'unavailable' && <p role="status" className="mt-3 text-11 text-muted">Published technical Brain is unavailable. Permitted Office connections remain available.</p>}
             {data.truncated && <p role="status" className="mt-3 text-11 text-muted">This is a partial map. Additional records are omitted from the loaded page. Use Library search for exact evidence.</p>}
             {data.snapshot && <details className="mt-4 text-11 text-muted"><summary className={summary}>Map source details</summary><p className="mt-3 break-all">Technical revision {data.snapshot}</p></details>}

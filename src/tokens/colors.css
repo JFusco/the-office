@@ -1026,25 +1026,13 @@
 /* Brain constellation colors, resolved through the shared scene token reader. */
 :root {
   --scene-brain-background: var(--color-paper);
-  --scene-brain-connection: var(--color-roster-line);
-  --scene-brain-nebulablue: var(--color-team-qa);
   --scene-brain-evidence: var(--color-team-developer);
   --scene-brain-focusconnection: var(--color-link);
-  --scene-brain-nebulaviolet: var(--color-team-cto);
   --scene-brain-source: var(--color-team-qa);
-  --scene-brain-halo: var(--color-roster-cto);
-  --scene-brain-dustblue: var(--color-roster-line);
-  --scene-brain-distantblue: var(--color-roster-line);
-  --scene-brain-clusterblue: var(--color-team-qa);
   --scene-brain-project: var(--color-ink);
   --scene-brain-clusterviolet: var(--color-team-cto);
   --scene-brain-label: var(--color-ink);
   --scene-brain-lesson: var(--color-panel-icon-ink);
-  --scene-brain-dustwarm: var(--color-panel-icon);
   --scene-brain-focused: var(--color-action);
-  --scene-brain-distantwarm: var(--color-panel-icon);
-  --scene-brain-glowcore: #fff;
-  --scene-brain-core: var(--color-panel-icon-ink);
-  --scene-brain-glowclear: #ffffff00;
-  --scene-brain-glowfade: #ffffff99;
+  --scene-brain-marker: #fff;
 }

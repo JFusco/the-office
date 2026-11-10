@@ -5,7 +5,6 @@ import { sceneColors } from '../../tokens/scene-colors';
 import { knowledgeCameraDuration } from '../../tokens/motion';
 import type { KnowledgeNode } from '../../contracts/knowledge-views';
 import type { ConstellationView } from './Constellation';
-import { brainAtmosphere } from './appearance';
 import { nodeVisuals } from './node-visuals';
 import { cameraTarget } from './camera-target';
 import { flightPose, type CameraPose } from './camera-flight';
@@ -19,12 +18,12 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
     controls.enableDamping = true; controls.dampingFactor = .08;
     let cleaned = false, frameId = 0, previous = 0, view: ConstellationView | undefined, focusId: string | undefined;
     let flight: { from: CameraPose; to: CameraPose; elapsed: number } | undefined;
-    let atmosphere: ReturnType<typeof brainAtmosphere> | undefined, visuals: ReturnType<typeof nodeVisuals> | undefined, resize: ResizeObserver | undefined;
+    let visuals: ReturnType<typeof nodeVisuals> | undefined, resize: ResizeObserver | undefined;
     const dispose = () => {
         if (cleaned) return; cleaned = true; cancelAnimationFrame(frameId); resize?.disconnect();
         document.removeEventListener('visibilitychange', visibility);
         controls.removeEventListener('start', stopFlight);
-        graph.pauseAnimation(); graph._destructor(); visuals?.dispose(); atmosphere?.dispose(); renderer.dispose(); renderer.forceContextLoss(); container.replaceChildren();
+        graph.pauseAnimation(); graph._destructor(); visuals?.dispose(); renderer.dispose(); renderer.forceContextLoss(); container.replaceChildren();
     };
     const frame = (now: number) => {
         if (cleaned || document.hidden) return;
@@ -35,7 +34,6 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
             graph.cameraPosition(pose.position, pose.lookAt, 0);
             if (flight.elapsed >= knowledgeCameraDuration) flight = undefined;
         }
-        if (!view?.reduced) atmosphere?.update(delta);
         visuals?.update(view, graph.camera() as PerspectiveCamera, container, delta);
         frameId = requestAnimationFrame(frame);
     };
@@ -45,7 +43,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         if (document.hidden) graph.pauseAnimation(); else { graph.resumeAnimation(); frameId = requestAnimationFrame(frame); }
     }
     try {
-        atmosphere = brainAtmosphere(graph.scene()); visuals = nodeVisuals(palette);
+        visuals = nodeVisuals(palette);
         graph.backgroundColor(palette.brainBackground).nodeThreeObject(raw => visuals!.create(raw as never))
             .nodeVisibility(raw => (raw as { visible: boolean }).visible)
             .nodeLabel(raw => { const label = document.createElement('span'); label.textContent = (raw as KnowledgeNode).title; return label; })

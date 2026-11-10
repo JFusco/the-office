@@ -8,7 +8,7 @@ import { visibleLabels, type LabelRectangle } from './label-visibility';
 export function nodeVisuals(palette: SceneColors) {
     const marker = document.createElement('canvas'); marker.width = marker.height = 64;
     const markerContext = marker.getContext('2d'); if (!markerContext) throw new Error('Marker canvas unavailable');
-    markerContext.fillStyle = palette.brainGlowCore;
+    markerContext.fillStyle = palette.brainMarker;
     markerContext.beginPath(); markerContext.arc(32,32,18,0,Math.PI*2); markerContext.fill();
     const markerTexture = new CanvasTexture(marker);
     const colors = { project: palette.brainProject, source: palette.brainSource, evidence: palette.brainEvidence, lesson: palette.brainLesson, assignment: palette.brainFocused, technical: palette.brainClusterViolet };

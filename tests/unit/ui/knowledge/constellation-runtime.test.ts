@@ -3,7 +3,6 @@ import { PerspectiveCamera, Vector3 } from 'three';
 const state = vi.hoisted(()=>({ graph: null as any, visuals: {create:vi.fn(),update:vi.fn(),retain:vi.fn(),hover:vi.fn(),dispose:vi.fn()}, atmosphere:{texture:{},update:vi.fn(),dispose:vi.fn()} }));
 vi.mock('3d-force-graph', ()=>({ default: class { constructor(){return state.graph;} } }));
 vi.mock('../../../../src/tokens/scene-colors',()=>({sceneColors:()=>({brainBackground:'paper',brainFocusConnection:'ink'})}));
-vi.mock('../../../../src/knowledge/map/appearance',()=>({brainAtmosphere:()=>state.atmosphere}));
 vi.mock('../../../../src/knowledge/map/node-visuals',()=>({nodeVisuals:()=>state.visuals}));
 import { createConstellation } from '../../../../src/knowledge/map/constellation-runtime';
 import { displayScene, type MapSelection } from '../../../../src/knowledge/map/display-scene';
