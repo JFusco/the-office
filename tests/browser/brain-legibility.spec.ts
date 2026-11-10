@@ -62,7 +62,11 @@ test('map labels do not steal marker clicks and explicit connections reveal filt
     const box=(await canvas.boundingBox())!;
     await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
     await expect.poll(()=>canvas.evaluate(el=>getComputedStyle(el).cursor)).toBe('pointer');
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2-20);
+    await expect.poll(()=>canvas.evaluate(el=>getComputedStyle(el).cursor)).not.toBe('pointer');
     await page.mouse.click(box.x+box.width/2,box.y+box.height/2-20);await expect(page.getByRole('region',{name:'Selected node'})).toHaveCount(0);
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+    await expect.poll(()=>canvas.evaluate(el=>getComputedStyle(el).cursor)).toBe('pointer');
     await page.mouse.click(box.x+box.width/2,box.y+box.height/2);await expect(page.getByRole('region',{name:'Selected node'})).toBeVisible();
     await page.getByRole('combobox',{name:'Show',exact:true}).selectOption('lesson');
     await page.getByLabel('Find a node').fill('schema');await page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true}).click();
@@ -97,4 +101,16 @@ test('unformatted historical assignment and lookup entries retain every receipt 
     await detail.getByText('Assignment receipt',{exact:true}).click();const supplied=detail.locator('li').filter({has:page.getByText(`Recorded reference: ${recorded!.id}`,{exact:true})});await expect(supplied).toBeVisible();await expect(supplied.getByText(`Version: ${recorded!.version}`,{exact:true})).toBeVisible();await expect(supplied.getByText(`Excerpt SHA-256: ${recorded!.sha}`,{exact:true})).toBeVisible();
     await detail.getByRole('button',{name:'Lookup 1 · served',exact:true}).click();const lookup=page.getByRole('region',{name:'Selected lookup',exact:true});await expect(lookup).toContainText('Some excerpts could not be formatted');
     await lookup.getByText('Lookup receipt',{exact:true}).click();const retrieved=lookup.locator('li').filter({has:page.getByText(`Recorded reference: ${recorded!.id}`,{exact:true})});await expect(retrieved).toBeVisible();await expect(retrieved.getByText(`Version: ${recorded!.version}`,{exact:true})).toBeVisible();await expect(retrieved.getByText(`Excerpt SHA-256: ${recorded!.sha}`,{exact:true})).toBeVisible();
+});
+
+test('group and search context survive inspecting a record, with readable map captions',async({page})=>{
+    await page.route('**/api/knowledge/map?**',async route=>{const response=await route.fetch(),map=await response.json();await route.fulfill({response,json:{...map,nodes:[...map.nodes,...Array.from({length:100},(_,i)=>({id:`synthetic:${i}`,title:`Synthetic note ${i}`,kind:'technical',domains:['cms'],detail:'Synthetic group context fixture'}))]}});});
+    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
+    const browser=page.getByRole('region',{name:'Map browser'});await browser.getByRole('button',{name:'CMS 100',exact:true}).click();
+    await browser.getByRole('button',{name:'Next records',exact:true}).click();await expect(browser).toContainText('2 / 3');
+    const record=browser.getByRole('button',{name:/Synthetic note .* · technical/}).first(),name=await record.innerText();await record.click();
+    await expect(page.getByRole('navigation',{name:'Map location'}).getByRole('button',{name:'CMS',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Back to map',exact:true}).click();await expect(browser).toContainText('2 / 3');await expect(browser.getByRole('button',{name,exact:true})).toBeVisible();
+    const caption=page.getByText('Drag to orbit and scroll to zoom.',{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
+    expect(bounds!.width).toBeLessThan(canvas!.width*.65);expect(await caption.evaluate(el=>getComputedStyle(el).maxWidth)).not.toBe('none');
 });

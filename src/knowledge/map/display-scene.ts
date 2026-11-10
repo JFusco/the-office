@@ -7,6 +7,8 @@ export interface MapSelection { group: string; selected: string; query: string; 
 const sectors = ['project', 'source', 'evidence', 'lesson', 'assignment', 'technical'];
 /** Following an explicit saved connection widens display filters to reveal its target. */
 export function selectRecord(prior: MapSelection, node: KnowledgeNode): MapSelection {
+    const widen = (prior.filter !== 'all' && prior.filter !== node.kind) || (node.kind === 'assignment' && !prior.activity && prior.filter !== 'assignment');
+    if (!widen) return {...prior, selected:node.id};
     return {...prior, selected:node.id, filter:prior.filter !== 'all' && prior.filter !== node.kind ? 'all' : prior.filter,
         activity:prior.activity || node.kind === 'assignment', group:'', query:'', page:0};
 }

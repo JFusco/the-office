@@ -53,3 +53,10 @@ it('reveals an explicitly followed connection when a type or activity filter hid
     const activity=selectRecord(selection,data.nodes.find(n=>n.id==='attempt')!);
     expect(activity.activity).toBe(true);expect(displayScene(data,activity).selected?.id).toBe('attempt');
 });
+
+it('preserves group page and search context when the selected record needs no filter widening',()=>{
+    const prior={...selection,group:'technical:cms',page:2},member=displayScene(data,prior).pageNodes[0];
+    const next=selectRecord(prior,member);expect(next).toMatchObject({group:'technical:cms',page:2,selected:member.id});
+    expect(displayScene(data,next).group?.id).toBe('technical:cms');expect(displayScene(data,{...next,selected:''}).pageNodes[0].id).toBe(member.id);
+    expect(selectRecord({...selection,query:'Guide',page:1},member)).toMatchObject({query:'Guide',page:1});
+});
