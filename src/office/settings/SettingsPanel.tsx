@@ -1,3 +1,4 @@
+import { LoadingState } from '../../ui/LoadingState';
 import { Settings2 } from '../../ui/icons';
 import { PanelHeader } from '../../ui/PanelHeader';
 import type { OfficeSnapshot } from '../../shared';
@@ -29,7 +30,7 @@ export function SettingsPanel({ snapshot, preferences, osReduced, refresh }: { s
   return <>
     <PanelHeader icon={<Settings2 size={26}/>}>Settings</PanelHeader>
     <Section data-settings-block="office"><SectionTitle className="mb-4">Office</SectionTitle>
-      {preferences.displayed ? <OfficePreferencesForm preferences={preferences.displayed} osReduced={osReduced} pending={preferences.pending} feedback={preferences.feedback} writable={preferences.writable} onChange={patch => void preferences.save(patch)} /> : <p className={mutedCopy} role="status">Loading Office preferences…</p>}
+      {preferences.displayed ? <OfficePreferencesForm preferences={preferences.displayed} osReduced={osReduced} pending={preferences.pending} feedback={preferences.feedback} writable={preferences.writable} onChange={patch => void preferences.save(patch)} /> : <LoadingState className={mutedCopy} >Loading Office preferences…</LoadingState>}
     </Section>
     <Section data-settings-block="configuration"><SectionTitle className="mb-4">Office configuration</SectionTitle><OfficeConfigSection /></Section>
     <Section data-settings-block="project"><SectionTitle className="mb-4">{tour ? 'Project' : `Project · ${snapshot.project?.name || 'Loading'}`}</SectionTitle>

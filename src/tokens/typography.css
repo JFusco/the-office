@@ -29,6 +29,8 @@
   --text-9: 9px;
   --text-10: 10px;
   --text-11: 11px;
+  --text-button: var(--text-11);
+  --text-button--line-height: 16px;
   --text-12: 12px;
   --text-13: 13px;
   --text-14: 14px;

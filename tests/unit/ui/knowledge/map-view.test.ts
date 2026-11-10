@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { displayScene, selectRecord, type MapSelection } from '../../../../src/knowledge/map/display-scene';
 import { visibleLabels } from '../../../../src/knowledge/map/label-visibility';
-import { cameraTarget } from '../../../../src/knowledge/map/camera-target';
+import { cameraTarget, focusDistance, overviewDistance } from '../../../../src/knowledge/map/camera-target';
 import { flightPose } from '../../../../src/knowledge/map/camera-flight';
 import type { KnowledgeMap } from '../../../../src/contracts/knowledge-views';
 const selection: MapSelection = {group: '', selected: '', query: '', filter: 'all', activity: false, page: 0};
@@ -36,15 +36,24 @@ it('labels a bounded collision-free subset with hover/focus priority and stable 
 });
 it('flies from the current orbit direction to the exact stable node location', () => {
     const target = {x:10,y:20,z:30};
-    expect(cameraTarget(target, {x:50,y:0,z:0},{x:0,y:0,z:0})).toEqual({position:{x:110,y:20,z:30},lookAt:target});
-    expect(cameraTarget(target, {x:0,y:0,z:0},{x:0,y:0,z:0}).position).toEqual({x:10,y:20,z:130});
-    expect(cameraTarget(undefined, target, target)).toEqual({position:{x:0,y:0,z:300},lookAt:{x:0,y:0,z:0}});
+    expect(cameraTarget(target, {x:50,y:0,z:0},{x:0,y:0,z:0})).toEqual({position:{x:10+focusDistance,y:20,z:30},lookAt:target});
+    expect(cameraTarget(target, {x:0,y:0,z:0},{x:0,y:0,z:0}).position).toEqual({x:10,y:20,z:30+focusDistance});
+    expect(cameraTarget(undefined, target, target)).toEqual({position:{x:0,y:0,z:overviewDistance},lookAt:{x:0,y:0,z:0}});
 });
 it('interrupts a flight at the visible pose rather than jumping to the previous destination',()=>{
     const from={position:{x:0,y:0,z:300},lookAt:{x:0,y:0,z:0}},to={position:{x:80,y:40,z:100},lookAt:{x:80,y:40,z:0}};
     expect(flightPose(from,to,0,850)).toEqual(from);expect(flightPose(from,to,850,850)).toEqual(to);
     const current=flightPose(from,to,200,850);expect(current.position.x).toBeGreaterThan(0);expect(current.position.x).toBeLessThan(80);
     expect(flightPose(current,from,0,850)).toEqual(current);expect(flightPose(current,from,0,0)).toEqual(from);
+});
+
+it('eases both ends of a camera flight without overshooting its stable destination',()=>{
+    const from={position:{x:0,y:0,z:300},lookAt:{x:0,y:0,z:0}},to={position:{x:100,y:0,z:100},lookAt:{x:100,y:0,z:0}};
+    const start=flightPose(from,to,10,1000),end=flightPose(from,to,990,1000);
+    expect(start.position.x).toBeLessThan(.01); expect(100-end.position.x).toBeLessThan(.01);
+    const samples=Array.from({length:101},(_,i)=>flightPose(from,to,i*10,1000).position.x);
+    expect(samples.every((x,i)=>x>=0&&x<=100&&(!i||x>=samples[i-1]))).toBe(true);
+    expect(flightPose(from,to,500,1000).position.x).toBe(50);
 });
 
 it('reveals an explicitly followed connection when a type or activity filter hid its target',()=>{
@@ -59,4 +68,11 @@ it('preserves group page and search context when the selected record needs no fi
     const next=selectRecord(prior,member);expect(next).toMatchObject({group:'technical:cms',page:2,selected:member.id});
     expect(displayScene(data,next).group?.id).toBe('technical:cms');expect(displayScene(data,{...next,selected:''}).pageNodes[0].id).toBe(member.id);
     expect(selectRecord({...selection,query:'Guide',page:1},member)).toMatchObject({query:'Guide',page:1});
+});
+
+it('counts connected records in the current view distinctly, excluding filtered neighbors',()=>{
+    const map:KnowledgeMap={...data,edges:[...data.edges,{source:'note:1',target:'note:2',kind:'citation'},{source:'note:1',target:'attempt',kind:'supplied'}]};
+    const view=displayScene(map,{...selection,selected:'note:1'});
+    expect(view.neighborCount).toBe(1);expect(view.scene.edges).toHaveLength(2);
+    expect(displayScene(map,{...selection,selected:'note:1',activity:true}).neighborCount).toBe(2);
 });

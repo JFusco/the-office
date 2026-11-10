@@ -1,3 +1,4 @@
+import {LoadingMark,LoadingState} from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import { useEffect, useState } from 'react';
 import type { TelemetryReport } from '../contracts/telemetry';
@@ -53,11 +54,11 @@ export function TelemetryPanel({ projects, defaultProject = '' }: { projects: { 
       <label className={fieldLabel}>Started<Select className={selectField} aria-label="Telemetry date range" value={scope.days} onChange={e => setScope({ ...scope, days: e.target.value as Days })}>
         <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="all">All time</option>
       </Select></label>
-      <Button disabled={loading} onClick={() => setRefresh(n => n + 1)}><RefreshCw size={14} className={cx(loading && 'animate-spin reduce-motion:animate-none')} />Refresh</Button>
+      <Button disabled={loading} onClick={() => setRefresh(n => n + 1)}>{loading?<LoadingMark/>:<RefreshCw size={14}/>} Refresh</Button>
       {defaultProject ? <Button disabled={scope.project === defaultProject} onClick={() => drill({ ...scope, project: defaultProject, ticket: '' })}>This project</Button> : null}
     </div>
     {error ? <Notice className="mt-4" role="alert">{error}</Notice> : null}
-    {loading ? <p className={cx(mutedCopy, 'mt-4')} role="status">{report ? 'Updating…' : 'Loading telemetry…'}</p> : null}
+    {loading ? <LoadingState className="mt-4">{report ? 'Updating…' : 'Loading telemetry…'}</LoadingState> : null}
     {report ? <div className={cx('mt-5', !current && 'opacity-60')} aria-busy={!current}>
       <KpiTiles totals={report.totals} />
       {report.totals.runs === 0 ? <p className={cx(mutedCopy, 'mt-4')}>{report.totals.inProgressRuns ? 'Only in-progress runs so far; they appear here when they finish.' : 'No model runs started in this range.'}</p> : <>

@@ -1,5 +1,6 @@
 import { forwardRef, type AnchorHTMLAttributes, type InputHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 import { ChevronDown } from './icons';
+import { buttonClasses, type ButtonVariant, type ButtonLayout } from './button-styles';
 export const cx=(...parts:(string|false|null|undefined)[])=>parts.filter(Boolean).join(' ');
 /** Visible keyboard focus for every interactive element. */
 export const focusRing='focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus';
@@ -17,17 +18,16 @@ export const checkbox=`size-4 shrink-0 cursor-pointer accent-checkbox transition
 /** Disclosure summary rows. */
 export const summary=`cursor-pointer rounded-4 underline decoration-transparent underline-offset-2 transition-colors reduce-motion:transition-none hover:text-link hover:decoration-current ${focusRing}`;
 
-const buttonVariants={
-  primary:'bg-action text-action-ink shadow-button enabled:hover:bg-action-hover',
-  secondary:'border border-secondary-line bg-secondary enabled:hover:border-control-hover-line enabled:hover:bg-secondary-hover',
-};
-type ButtonProps=ButtonHTMLAttributes<HTMLButtonElement>&{variant?:keyof typeof buttonVariants;full?:boolean};
+type ButtonProps=ButtonHTMLAttributes<HTMLButtonElement>&{variant?:ButtonVariant;layout?:ButtonLayout;compactIcon?:boolean;full?:boolean};
 /** Primary and secondary actions. Spacing around the button belongs to the caller. */
-export const Button=forwardRef<HTMLButtonElement,ButtonProps>(function Button({variant='secondary',full=false,className,type='button',...props},ref){
-  return <button ref={ref} type={type} className={cx('inline-flex items-center justify-center gap-2 rounded-7 px-4 py-3 text-11 font-emphasis',full&&'w-full',buttonVariants[variant],interactive,className)} {...props}/>;
+export const Button=forwardRef<HTMLButtonElement,ButtonProps>(function Button({variant='secondary',layout='action',compactIcon=false,full=false,className,type='button',...props},ref){
+  return <button ref={ref} type={type} className={cx(buttonClasses(variant,layout,compactIcon),full&&'w-full',interactive,className)} {...props}/>;
+});
+export const ButtonLink=forwardRef<HTMLAnchorElement,AnchorHTMLAttributes<HTMLAnchorElement>&{variant?:ButtonVariant;layout?:ButtonLayout;compactIcon?:boolean;full?:boolean}>(function ButtonLink({variant='secondary',layout='action',compactIcon=false,full=false,className,...props},ref){
+  return <a ref={ref} className={cx(buttonClasses(variant,layout,compactIcon),full&&'w-full',interactive,className)} {...props}/>;
 });
 export const IconButton=forwardRef<HTMLButtonElement,ButtonHTMLAttributes<HTMLButtonElement>&{'aria-label':string}>(function IconButton({className,type='button',...props},ref){
-  return <button ref={ref} type={type} className={cx('inline-flex items-center justify-center rounded-7 p-1.5 text-icon enabled:hover:bg-icon-hover',interactive,className)} {...props}/>;
+  return <button ref={ref} type={type} className={cx('inline-flex size-icon-control shrink-0 items-center justify-center rounded-control text-icon enabled:hover:bg-icon-hover [&>svg]:size-control-icon',interactive,className)} {...props}/>;
 });
 
 const tagTones:Record<string,string>={
@@ -113,7 +113,7 @@ export const envelopeCard=`relative my-2.5 flex w-full flex-col gap-2 rounded-8 
 /** Text inputs and textareas: a 3:1 boundary (WCAG 1.4.11), hover and focus. Callers add padding and surface. */
 export const field=`w-full min-w-0 border-field-line ${fieldBehavior}`;
 export const fieldFocus='focus-visible:outline-focus';
-export const checkLabel='flex w-full items-start gap-2.5 leading-normal';
+export const checkLabel='flex max-w-full items-start gap-control-gap leading-normal';
 /** Settings text input: the shared field boundary, focus color and settings surface. */
 export const inputField=`${field} ${fieldFocus} rounded-6 bg-paper px-3 py-2`;
 /** Settings select presentation, passed to `Select` as its className. */
@@ -121,6 +121,6 @@ export const selectField='rounded-6 border-line bg-paper px-3 py-2';
 /** Stacked label above a settings input or select. */
 export const fieldLabel='grid gap-field-label-gap text-12';
 /** Native checkbox with its wrapping label text. */
-export function CheckField({children,className,...props}:Omit<InputHTMLAttributes<HTMLInputElement>,'type'>&{children:ReactNode}){
-  return <label className={cx(checkLabel,'text-12',className)}><input type="checkbox" className={cx(checkbox,'mt-0.5')} {...props}/><span className="min-w-0 flex-1">{children}</span></label>;
+export function CheckField({children,className,size='md',...props}:Omit<InputHTMLAttributes<HTMLInputElement>,'type'|'size'>&{children:ReactNode;size?:'sm'|'md'}){
+  return <label className={cx(checkLabel,size==='sm'?'text-11':'text-12',className)}><input type="checkbox" className={cx(checkbox,'mt-0.5')} {...props}/><span className="min-w-0 flex-1">{children}</span></label>;
 }

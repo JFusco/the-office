@@ -30,7 +30,7 @@ test('knowledge uses shared form spacing and safe formatted documents while reta
     expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
 });
 
-test('white universe keeps its renderer through selection, search and filters; labels and controls stay legible', async ({page,request})=>{
+test('constellation keeps its renderer through selection, search and filters; labels and controls stay legible', async ({page,request})=>{
     await page.emulateMedia({reducedMotion:'no-preference'}); await request.post('/__fixture/preferences',{data:{reducedMotion:false}});
     await page.route('**/api/knowledge/map?**',async route=>{
         const response=await route.fetch(), map=await response.json();
@@ -40,8 +40,11 @@ test('white universe keeps its renderer through selection, search and filters; l
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
     const canvas=page.locator('[data-brain-renderer] canvas'); await expect(canvas).toHaveCount(1);
     const original=await canvas.elementHandle(); expect(original).toBeTruthy();
-    const dimensions=await canvas.boundingBox();expect(dimensions!.width).toBeGreaterThan(800);expect(dimensions!.height).toBeGreaterThan(450);expect(dimensions!.height).toBeLessThanOrEqual(600);
-    expect((await page.getByRole('complementary').last().boundingBox())!.width).toBeGreaterThan(440);
+    const dimensions=await canvas.boundingBox(),frame=(await page.locator('[data-brain-map-frame]').boundingBox())!,list=(await page.locator('[data-brain-list-frame]').boundingBox())!;
+    expect(dimensions!.width).toBeCloseTo(frame.width-2,0);expect(dimensions!.height).toBeGreaterThan(450);expect(dimensions!.height).toBeLessThanOrEqual(600);
+    expect(frame.width).toBeGreaterThan(list.width*3);expect(list.width).toBeCloseTo(300,0);
+    expect(list.x).toBeGreaterThan(frame.x+frame.width/2);expect(list.x+list.width).toBeLessThan(frame.x+frame.width);
+    expect(list.y).toBeGreaterThan(frame.y);expect(list.y).toBeLessThan(frame.y+100);
     const scope=page.getByLabel('Map scope');
     expect(await scope.evaluate(el=>getComputedStyle(el).paddingInlineEnd)).toBe('38px');
     const inset=await scope.evaluate(el=>{const svg=el.parentElement!.querySelector('svg')!; return el.getBoundingClientRect().right-svg.getBoundingClientRect().right;});expect(inset).toBe(12);
@@ -115,6 +118,6 @@ test('group and search context survive inspecting a record, with a concise intro
     await expect(page.getByRole('navigation',{name:'Map location'}).getByRole('button',{name:'CMS',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Back to map',exact:true}).click();await expect(browser).toContainText('2 / 3');await expect(browser.getByRole('button',{name,exact:true})).toBeVisible();
     const caption=page.getByText('See how notes, source evidence and team lessons connect.',{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
-    expect(bounds!.width).toBeLessThan(canvas!.width*.65);expect(bounds!.y+bounds!.height).toBeLessThan(canvas!.y);expect(await caption.evaluate(el=>getComputedStyle(el).maxWidth)).not.toBe('none');
+    expect(bounds!.width).toBeLessThan((await page.locator('[data-brain-content]').boundingBox())!.width*.65);expect(bounds!.y+bounds!.height).toBeLessThan(canvas!.y);expect(await caption.evaluate(el=>getComputedStyle(el).maxWidth)).not.toBe('none');
     await page.getByText('Controls and source details',{exact:true}).click();await expect(page.getByText('Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.',{exact:true})).toBeVisible();
 });

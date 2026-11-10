@@ -1,3 +1,4 @@
+import {LoadingMark} from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import { panelMotion } from '../tokens/motion';
 import {MergeApproval} from '../work/MergeApproval';
@@ -14,7 +15,7 @@ import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react'
 import { SettingsPanel } from './settings/SettingsPanel';
 import type { OfficePreferencesController } from './settings/useOfficePreferences';
 import { motion, useIsPresent } from 'motion/react';
-import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullRequest, Inbox, LoaderCircle, X, AlertCircle, Camera, Clock3, Settings2, MessageCircle } from '../ui/icons';
+import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullRequest, Inbox, X, AlertCircle, Camera, Clock3, Settings2, MessageCircle } from '../ui/icons';
 import { Button, Card, Count, IconButton, Notice, PanelIcon, PanelTitle, Section, SectionTitle, StatusDot, Tag, TextLink, cx, envelopeCard, eyebrow, interactive, mutedCopy, noticeIcon } from '../ui';
 import { STAGES, STAGE_LABELS, ROLE_NAMES, PERSONAS, type OfficeSnapshot, type Ticket, type Evidence, type Role } from '../shared';
 import type { Selection } from '../scene/OfficeScene';
@@ -112,7 +113,7 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
       {selection.kind==='pm-queue'?<PMQueue snapshot={snapshot} onOpen={onOpenProject}/>:null}
       {selection.kind==='mailbox'?<>
         <PanelHeader icon={<Inbox size={26}/>}>PM mailbox</PanelHeader><InboxQueue snapshot={snapshot} onOpen={key=>onSelect({kind:'ticket',id:key})}/><p className={cx(mutedCopy,'mt-4')}>{github?`GitHub issues for this project. Ask ${pmName} to draft or create an issue using GitHub Issue Creator, or coordinate the daily maintenance review.`:'The PM receives CEC parent tickets assigned to you in To Do or Open. Every ticket is checked before it reaches a desk.'}</p>
-        <Button variant="primary" full className="mt-5" disabled={busy||!!snapshot.pendingMail||snapshot.intake.status==='working'||snapshot.mode==='demo'||snapshot.paused} onClick={()=>act('check-mail')}>{snapshot.intake.status==='working'?<LoaderCircle size={16} className="animate-spin reduce-motion:animate-none"/>:<Inbox size={16}/>} {snapshot.pendingMail?'Mail check queued':'Check mail now'}</Button>
+        <Button variant="primary" full className="mt-5" disabled={busy||!!snapshot.pendingMail||snapshot.intake.status==='working'||snapshot.mode==='demo'||snapshot.paused} onClick={()=>act('check-mail')}>{snapshot.intake.status==='working'?<LoadingMark/>:<Inbox size={16}/>} {snapshot.pendingMail?'Mail check queued':'Check mail now'}</Button>
         <div className="mt-4 flex items-start gap-2 text-9 text-schedule"><Clock3 size={14}/><span>{snapshot.intake.schedule}<small className="mt-1 block text-8 leading-relaxed text-schedule-detail">{snapshot.intake.lastChecked?`Last checked ${new Date(snapshot.intake.lastChecked).toLocaleString()}`:'Mailbox has not been checked yet'}</small></span></div>
         {snapshot.intake.error?<Notice className="mt-5"><AlertCircle className={noticeIcon} size={17}/><span>{snapshot.intake.error}</span></Notice>:null}
         <Button full className="mt-5" disabled={!preferences?.preferences} onClick={()=>onSelect({kind:'settings'})}><Settings2 size={16}/> Project settings</Button>

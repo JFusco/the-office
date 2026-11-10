@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState';
 import { useEffect, useRef, useState } from 'react';
 import type { KnowledgeLookupResponse } from '../contracts/knowledge-lookups';
 import { useKnowledgeView } from './useKnowledgeView';
@@ -19,14 +20,14 @@ function Lookup({ query, response }: { query: string; response: KnowledgeLookupR
     </section>;
 }
 
-export function AssignmentKnowledge({ project, id }: { project: string; id: string }) {
+export function AssignmentKnowledge({ project, id, autoFocus = true }: { project: string; id: string; autoFocus?: boolean }) {
     const heading = useRef<HTMLHeadingElement>(null), [index, setIndex] = useState(0);
-    useEffect(() => heading.current?.focus(), [id]);
+    useEffect(() => { if(autoFocus) heading.current?.focus(); }, [id, autoFocus]);
     const { data, error } = useKnowledgeView<KnowledgeAssignment>(project, `assignment?id=${encodeURIComponent(id)}${index ? `&lookup=${index}` : ''}`);
     const suppliedText = data ? [data.supplied.lessonText, data.supplied.sourceEvidenceText].filter(Boolean).join('\n') : '';
     return <section aria-label="Assignment knowledge" className="my-5 rounded-7 border border-drawer-line bg-paper p-card-padding">
         <h3 ref={heading} tabIndex={-1} className="font-heading text-18">Assignment knowledge</h3>
-        {error ? <p role="alert">{error}</p> : !data ? <p role="status">Loading exact knowledge records…</p> : <>
+        {error ? <p role="alert">{error}</p> : !data ? <LoadingState>Loading exact knowledge records…</LoadingState> : <>
             <p className="my-3 text-11 text-muted">{data.stage}</p>
             <h4 className="my-3 font-heading text-15">Supplied at dispatch</h4>
             <p className="text-12 leading-relaxed text-muted">A formatted view of the recorded text. Inclusion does not establish application.</p>
@@ -38,7 +39,7 @@ export function AssignmentKnowledge({ project, id }: { project: string; id: stri
             <h4 className="my-5 font-heading text-15">Recorded lookups</h4>
             {data.lookupRecordingUnavailable && <p role="status" className="my-3 text-12 text-muted">Exact lookup recording is unavailable or incomplete. The original supplied record above is unchanged.</p>}
             {!data.lookups.length && <p className="text-12">No recorded lookups for this assignment.</p>}
-            {data.lookups.length > 0 && <div role="group" className="mb-4 flex flex-wrap gap-2" aria-label="Recorded lookup pages">{data.lookups.map(record => <Button key={record.index} aria-pressed={record.index === index} onClick={() => setIndex(record.index)}>Lookup {record.index} · {record.outcome}</Button>)}</div>}
+            {data.lookups.length > 0 && <div role="group" className="mb-4 flex flex-wrap gap-2" aria-label="Recorded lookup pages">{data.lookups.map(record => <Button layout="row" key={record.index} aria-pressed={record.index === index} onClick={() => setIndex(record.index)}>Lookup {record.index} · {record.outcome}</Button>)}</div>}
             {data.lookup && <Lookup {...data.lookup}/>}
             <h4 className="my-5 font-heading text-15">Accepted outcome citations</h4>
             {!data.outcomes.length && <p className="text-12">No accepted outcome citation is recorded. Application remains unknown.</p>}

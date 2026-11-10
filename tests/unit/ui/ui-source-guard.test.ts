@@ -11,7 +11,8 @@ const COLOR_TOKENS='src/tokens/colors.css';
 // source today: Motion and Drei write transforms/positions inside their own libraries.
 const RUNTIME_STYLE_EXCEPTIONS:{file:string;pattern:RegExp;reason:string}[]=[];
 // getComputedStyle is allowed only where tokens are resolved once at startup.
-const COMPUTED_STYLE_READERS=['src/tokens/scene-colors.ts','src/main.tsx'];
+// Knowledge layout resolves two fixed spacing tokens at renderer startup, alongside the scene palette.
+const COMPUTED_STYLE_READERS=['src/tokens/scene-colors.ts','src/tokens/knowledge-layout.ts','src/main.tsx'];
 
 function files(dir:string):string[]{return readdirSync(dir).flatMap(name=>{const path=join(dir,name);return statSync(path).isDirectory()?files(path):[path];});}
 const sources=[...files(join(ROOT,'src')).filter(p=>/\.(tsx?|css)$/.test(p)),join(ROOT,'index.html')].map(path=>({path:relative(ROOT,path),text:readFileSync(path,'utf8')}));

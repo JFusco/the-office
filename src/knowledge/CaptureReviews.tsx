@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState';
 import { useState } from 'react';
 import type { KnowledgeCapturePage } from '../contracts/knowledge-captures';
 import { Button,Tag,TextLink } from '../ui';
@@ -11,7 +12,7 @@ export function CaptureReviews({project}:{project:string}) {
         <h3 className="font-heading text-18">Brain capture reviews</h3>
         <p className="text-11 leading-body text-muted">Follow private inbox captures through Brain’s review. Inbox capture, acceptance and verified note content are separate steps.</p>
         <Button className="justify-self-start" onClick={()=>{setAfter('');setHistory([]);setSelected('');refresh();}}>Refresh capture reviews</Button>
-        {error&&<p role="alert">{error}</p>}{!data&&!error&&<p role="status">Loading current Brain receipts…</p>}
+        {error&&<p role="alert">{error}</p>}{!data&&!error&&<LoadingState>Loading current Brain receipts…</LoadingState>}
         {data?.captures.map(capture=><article key={capture.detailCursor} aria-label={`Capture ${capture.requestId}`} className="rounded-7 border border-drawer-line bg-paper p-card-padding">
             <div className="flex flex-wrap items-center gap-3"><h4 className="font-heading text-15">{capture.source}</h4><Tag tone={capture.reviewStatus==='accepted'?'passed':capture.reviewStatus==='pending'?'waiting':'neutral'}>{capture.reviewStatus}</Tag></div>
             <p className="mt-2 text-11 break-all">Request {capture.requestId}</p><p className="text-11 text-muted">Office intake: {capture.intakeStatus}</p>
