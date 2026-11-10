@@ -28,7 +28,7 @@ export async function committedKnowledgeMap(context: KnowledgeContext, project: 
     const ids = new Map<string, string>();
     for (const node of page.nodes) {
         const id = `technical:${node.id}`; ids.set(node.id, id);
-        result.nodes.push({ id, title: node.title, kind: 'technical', scope: 'technical', detail: `${node.summary || ''}\nPublished technical revision ${page.snapshot}`,
+        result.nodes.push({ id, title: node.title, kind: 'technical', scope: 'technical', technicalKind: node.kind, domains: node.domains?.length ? node.domains : node.domain ? [node.domain] : [], detail: `${node.summary || ''}\nPublished technical revision ${page.snapshot}`,
             ...(node.kind === 'curated-note' && node.path && node.sha256 ? { knowledgeReference: { id: `brain:${page.snapshot}:${node.path}`, kind: 'brain', path: node.path, snapshot: page.snapshot, contentSha256: node.sha256 } } : {}),
         });
     }

@@ -1,4 +1,5 @@
 import { PanelHeader } from '../ui/PanelHeader';
+import { panelMotion } from '../tokens/motion';
 import {MergeApproval} from '../work/MergeApproval';
 import { TelemetryPanel } from '../telemetry/TelemetryPanel';
 import {prerequisiteKeys} from '../work/pm-queue';
@@ -93,9 +94,7 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
   // The drawer is a non-modal complementary region: it takes focus on open, Escape closes it,
   // and focus returns to the control that opened it. Exiting drawers are inert and hidden.
   return <motion.aside data-inspector className={cx('fixed top-topbar right-0 bottom-dock z-45 flex flex-col border-l border-drawer-line bg-drawer shadow-drawer backdrop-blur-drawer will-change-transform overscroll-contain max-compact:top-topbar-compact max-compact:bottom-dock-compact max-compact:w-full',selection.kind==='features'||selection.kind==='people'||selection.kind==='telemetry'?'w-[min(1280px,100vw)]':'w-drawer wide:w-drawer-wide max-tablet:w-drawer-tablet max-compact:max-w-drawer',present?'pointer-events-auto':'pointer-events-none')} aria-label={title}
-    initial={{x:reduced?0:'calc(100% + 80px)'}} animate={{x:0}}
-    exit={{x:reduced?0:'calc(100% + 80px)',transition:{duration:reduced?0:.26,ease:[.4,0,.6,1]}}}
-    transition={{duration:reduced?0:.34,ease:[.22,1,.36,1]}}
+    {...panelMotion(reduced)}
     inert={!present} aria-hidden={!present}>
 
     <div className="flex h-drawer-head shrink-0 items-center justify-between border-b border-drawer-rule px-6"><span className={cx(eyebrow,'text-8 text-drawer-title')}>{title}</span><IconButton ref={close} aria-label="Close details" onClick={onClose}><X size={19}/></IconButton></div>

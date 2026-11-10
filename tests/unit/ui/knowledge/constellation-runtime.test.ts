@@ -1,0 +1,35 @@
+import { expect, it, vi, afterEach } from 'vitest';
+import { PerspectiveCamera, Vector3 } from 'three';
+const state = vi.hoisted(()=>({ graph: null as any, visuals: {create:vi.fn(),update:vi.fn(),retain:vi.fn(),hover:vi.fn(),dispose:vi.fn()}, atmosphere:{texture:{},update:vi.fn(),dispose:vi.fn()} }));
+vi.mock('3d-force-graph', ()=>({ default: class { constructor(){return state.graph;} } }));
+vi.mock('../../../../src/tokens/scene-colors',()=>({sceneColors:()=>({brainBackground:'paper',brainFocusConnection:'ink'})}));
+vi.mock('../../../../src/knowledge/map/node-visuals',()=>({nodeVisuals:()=>state.visuals}));
+import { createConstellation } from '../../../../src/knowledge/map/constellation-runtime';
+import { displayScene, type MapSelection } from '../../../../src/knowledge/map/display-scene';
+import { knowledgeCameraDuration } from '../../../../src/tokens/motion';
+afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();});
+
+it('retains graph identities, animates camera navigation, respects reduced motion and releases its single renderer once',()=>{
+    let saved:{nodes:any[];links:any[]}={nodes:[],links:[]};
+    const camera=new PerspectiveCamera(), controls={target:new Vector3(),addEventListener:vi.fn(),removeEventListener:vi.fn()}, renderer={setPixelRatio:vi.fn(),dispose:vi.fn(),forceContextLoss:vi.fn()};
+    camera.position.set(0,0,300);
+    const graph:any={renderer:()=>renderer,controls:()=>controls,scene:()=>({}),camera:()=>camera};
+    for(const name of ['backgroundColor','nodeThreeObject','nodeVisibility','nodeLabel','linkColor','linkOpacity','linkWidth','enableNodeDrag','showNavInfo','cooldownTicks','onNodeClick','onNodeHover','width','height','pauseAnimation','resumeAnimation','_destructor'])graph[name]=vi.fn(()=>graph);
+    graph.graphData=vi.fn((data?:typeof saved)=>data?(saved=data,graph):saved);
+    graph.cameraPosition=vi.fn((position?:Vector3)=>position?graph:camera.position);
+    state.graph=graph;
+    vi.stubGlobal('devicePixelRatio',3);vi.stubGlobal('document',{hidden:false,addEventListener:vi.fn(),removeEventListener:vi.fn()});
+    let frame: (now:number)=>void=()=>{};
+    vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{frame=callback;return 1;}));vi.stubGlobal('cancelAnimationFrame',vi.fn());
+    const container={replaceChildren:vi.fn(),clientWidth:1200,clientHeight:800} as unknown as HTMLElement;
+    const runtime=createConstellation(container,vi.fn()), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,page:0};
+    const map={nodes:[{id:'note',title:'Note',kind:'technical' as const,detail:''}],edges:[],truncated:false};
+    const overview=displayScene(map,selection), focused=displayScene(map,{...selection,selected:'note'});
+    runtime.update({data:overview.scene,reduced:false});const original=saved.nodes[0];
+    runtime.update({data:focused.scene,focusId:'note',reduced:false});expect(saved.nodes[0]).toBe(original);
+    frame(1);frame(knowledgeCameraDuration+1);
+    expect(graph.cameraPosition).toHaveBeenLastCalledWith(expect.any(Object),original.position,0);
+    runtime.update({data:overview.scene,reduced:true});expect(graph.cameraPosition).toHaveBeenLastCalledWith({x:0,y:0,z:300},{x:0,y:0,z:0},0);
+    expect(renderer.dispose).not.toHaveBeenCalled();expect(renderer.setPixelRatio).toHaveBeenCalledWith(2);
+    runtime.dispose();runtime.dispose();expect(graph._destructor).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce();expect(renderer.forceContextLoss).toHaveBeenCalledOnce();expect(container.replaceChildren).toHaveBeenCalledOnce();
+});

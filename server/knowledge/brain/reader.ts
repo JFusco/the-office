@@ -7,7 +7,7 @@ export type { BrainCaptureReceipt } from './capture-receipt';
 const sha = z.string().regex(/^[a-f0-9]{40}$/), hash = z.string().regex(/^[a-f0-9]{64}$/);
 const Note = z.object({ id: z.string(), path: z.string(), title: z.string(), contentSha256: hash, summary: z.string().optional(), citations: z.array(z.unknown()).optional(), versions: z.array(z.string()).optional(), freshness: z.unknown().optional(), applicability: z.string().optional(), limitations: z.array(z.string()).optional() });
 export type BrainNote = z.infer<typeof Note>;
-const GraphNode = z.object({id:z.string().max(2000),title:z.string().max(2000),kind:z.string().max(100),path:z.string().max(500).optional(),sha256:hash.optional(),summary:z.string().max(2000).optional()});
+const GraphNode = z.object({id:z.string().max(2000),title:z.string().max(2000),kind:z.string().max(100),path:z.string().max(500).optional(),sha256:hash.optional(),summary:z.string().max(2000).optional(),domain:z.string().max(200).nullable().optional(),domains:z.array(z.string().max(200)).max(50).optional()});
 const GraphPage = z.object({version:z.literal(1),snapshot:sha,nodes:z.array(GraphNode).max(500),edges:z.array(z.object({source:z.string().max(2000),target:z.string().max(2000),relation:z.string().max(500)})).max(1000),truncated:z.boolean(),nextCursor:z.string().max(200).nullable()});
 export type BrainGraph = z.infer<typeof GraphPage>;
 export interface BrainReader {

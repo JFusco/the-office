@@ -8,7 +8,7 @@ import { TechnicalDetail } from './TechnicalDetail';
 export function CaptureReviewDetail({project,cursor}:{project:string;cursor:string}) {
     const {data,error,refresh}=useKnowledgeView<KnowledgeCapturePage>(project,`captures?selected=${encodeURIComponent(cursor)}`),[note,setNote]=useState<KnowledgeReference>();
     const capture=data?.captures[0];
-    return <section aria-label="Recorded capture mappings" className="rounded-7 border border-drawer-line bg-paper p-5">
+    return <section aria-label="Recorded capture mappings" className="rounded-7 border border-drawer-line bg-paper p-card-padding">
         <h4 className="font-heading text-15">Recorded published-note mappings</h4><Button className="my-3" onClick={()=>{setNote(undefined);refresh();}}>Refresh selected capture</Button>
         {error&&<p role="alert">{error}</p>}{!data&&!error&&<p role="status">Loading selected capture…</p>}
         {capture?.notes.map(mapping=><div key={mapping.reference.id} className="my-3 text-11"><TextLink className="break-all" href={mapping.url} target="_blank" rel="noreferrer">{mapping.path}</TextLink><Button className="ml-3" onClick={()=>setNote(mapping.reference)}>Verify committed note</Button></div>)}

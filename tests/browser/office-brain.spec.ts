@@ -39,6 +39,7 @@ test('synthetic fixture: published technical notes and global scope share the Of
     await page.screenshot({path:`${artifacts}/office-brain-03-published-note.synthetic.png`,fullPage:true});
     await page.getByLabel('Map scope').selectOption('global');
     await page.getByLabel('Find a node').fill('');
+    await page.getByRole('region',{name:'Map browser'}).getByRole('button',{name:/Tooling|Technical knowledge/}).click();
     await expect(page.getByRole('button',{name:'Published validation guide · technical',exact:true})).toBeVisible();
     await expect(page.getByRole('button',{name:'#cec-team · source',exact:true})).toHaveCount(0);
     await expect(page.getByRole('button',{name:'implement assignment · assignment',exact:true})).toHaveCount(0);

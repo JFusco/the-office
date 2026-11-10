@@ -30,7 +30,7 @@ test('synthetic Library, Map and Activity preserve Office navigation and scoped 
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     for(let n=0;n<3;n++) { await nav.getByRole('button',{name:'Map',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(1); await nav.getByRole('button',{name:'Library',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(0); }
 });
-test('ambient galaxy moves only when Office and system motion preferences permit', async ({ page,request }) => {
+test('node navigation animates only when Office and system motion preferences permit', async ({ page,request }) => {
     await page.emulateMedia({ reducedMotion:'no-preference' });
     for (const scenario of [{reducedMotion:false,system:false},{reducedMotion:true,system:false},{reducedMotion:false,system:true}]) {
         const {reducedMotion,system}=scenario; await page.emulateMedia({reducedMotion:system?'reduce':'no-preference'});
@@ -38,8 +38,10 @@ test('ambient galaxy moves only when Office and system motion preferences permit
         await page.goto('/'); await page.getByRole('button',{name:'Brain',exact:true}).click();
         await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Map',exact:true}).click();
         const canvas=page.locator('[data-brain-renderer] canvas'); await expect(canvas).toHaveCount(1);
-        // Sample the moving scene over a known interval after its initial camera/resize frames.
-        await page.waitForTimeout(500); const before=await canvas.screenshot(); await page.waitForTimeout(500); const after=await canvas.screenshot();
+        // Actual camera flight changes rendered frames; reduced motion settles immediately.
+        await page.getByLabel('Find a node').fill('schema');
+        await page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true}).click();
+        await page.waitForTimeout(100); const before=await canvas.screenshot(); await page.waitForTimeout(300); const after=await canvas.screenshot();
         expect(before.equals(after)).toBe(reducedMotion || system);
         await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Library',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(0);
     }

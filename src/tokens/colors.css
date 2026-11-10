@@ -1025,26 +1025,14 @@
 
 /* Brain constellation colors, resolved through the shared scene token reader. */
 :root {
-  --scene-brain-background: #02050c;
-  --scene-brain-connection: #376681;
-  --scene-brain-nebulablue: #466ca7;
-  --scene-brain-evidence: #4db6aa;
-  --scene-brain-focusconnection: #68b7d8;
-  --scene-brain-nebulaviolet: #71548f;
-  --scene-brain-source: #75b6d0;
-  --scene-brain-halo: #8dbbe4;
-  --scene-brain-dustblue: #8fbee8;
-  --scene-brain-distantblue: #91b6dd;
-  --scene-brain-clusterblue: #a0dffe;
-  --scene-brain-project: #a1efe0;
-  --scene-brain-clusterviolet: #c3b5f5;
-  --scene-brain-label: #cfe5ef;
-  --scene-brain-lesson: #e8c68c;
-  --scene-brain-dustwarm: #e8d3b9;
-  --scene-brain-focused: #e8f9ff;
-  --scene-brain-distantwarm: #f3dbb8;
-  --scene-brain-glowcore: #fff;
-  --scene-brain-core: #fff0d5;
-  --scene-brain-glowclear: #ffffff00;
-  --scene-brain-glowfade: #ffffff99;
+  --scene-brain-background: var(--color-paper);
+  --scene-brain-evidence: var(--color-team-developer);
+  --scene-brain-focusconnection: var(--color-link);
+  --scene-brain-source: var(--color-team-qa);
+  --scene-brain-project: var(--color-ink);
+  --scene-brain-clusterviolet: var(--color-team-cto);
+  --scene-brain-label: var(--color-ink);
+  --scene-brain-lesson: var(--color-panel-icon-ink);
+  --scene-brain-focused: var(--color-action);
+  --scene-brain-marker: #fff;
 }

@@ -55,8 +55,8 @@ export function StatusDot({status,size='sm',className}:{status?:string;size?:'sm
     Callers pass the role's border/surface colors; `focusClassName` keeps a role's own focus color. */
 export function Select({className,wrapperClassName,iconClassName,focusClassName='focus-visible:outline-focus',children,...props}:SelectHTMLAttributes<HTMLSelectElement>&{wrapperClassName?:string;iconClassName?:string;focusClassName?:string}){
   return <span className={cx('relative inline-flex min-w-0',wrapperClassName)}>
-    <select className={cx('w-full min-w-0 cursor-pointer appearance-none pr-9.5 forced-colors:appearance-auto',fieldBehavior,focusClassName,className)} {...props}>{children}</select>
-    <ChevronDown size={16} className={cx('pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-select-chevron forced-colors:hidden',iconClassName)}/>
+    <select className={cx('w-full min-w-0 cursor-pointer appearance-none pe-select-clearance forced-colors:appearance-auto',fieldBehavior,focusClassName,className)} {...props}>{children}</select>
+    <ChevronDown size={16} className={cx('pointer-events-none absolute top-1/2 right-select-inset -translate-y-1/2 text-select-chevron forced-colors:hidden',iconClassName)}/>
   </span>;
 }
 
@@ -119,7 +119,7 @@ export const inputField=`${field} ${fieldFocus} rounded-6 bg-paper px-3 py-2`;
 /** Settings select presentation, passed to `Select` as its className. */
 export const selectField='rounded-6 border-line bg-paper px-3 py-2';
 /** Stacked label above a settings input or select. */
-export const fieldLabel='grid gap-1.5 text-12';
+export const fieldLabel='grid gap-field-label-gap text-12';
 /** Native checkbox with its wrapping label text. */
 export function CheckField({children,className,...props}:Omit<InputHTMLAttributes<HTMLInputElement>,'type'>&{children:ReactNode}){
   return <label className={cx(checkLabel,'text-12',className)}><input type="checkbox" className={cx(checkbox,'mt-0.5')} {...props}/><span className="min-w-0 flex-1">{children}</span></label>;
