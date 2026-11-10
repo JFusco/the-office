@@ -1,127 +1,139 @@
-# Graph Report - office  (2026-11-09)
+# Graph Report - the-office  (2026-11-09)
 
 ## Corpus Check
-- 541 files · ~255,289 words
+- 658 files · ~274,291 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3022 nodes · 12907 edges · 96 communities (92 shown, 4 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 71 edges (avg confidence: 0.75)
+- 3410 nodes · 15055 edges · 108 communities (106 shown, 2 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 92 edges (avg confidence: 0.75)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e437b3d3`
+- Built from commit: `24292f7e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - github-delivery.ts
 - Inspector.tsx
-- store.ts
-- schedule.ts
-- artifact
-- knowledge.ts
-- workKey
-- App.tsx
+- .transaction
 - OfficeScene.tsx
-- brain-maintenance.ts
-- .emit
-- conversations/conversations.ts
+- saved-prerequisite-handoff.ts
+- App.tsx
+- knowledge/routes.ts
 - source-amendment.ts
-- digest
-- .save
-- record-trigger.ts
-- weekly-rollup.ts
-- Store
-- weekly-research.ts
-- PeoplePanel.tsx
-- cec/workflow.ts
-- TimeBook.tsx
-- goal-reporting.ts
-- engine.ts
-- .getEffect
+- agents.ts
+- artifact
 - TicketJob
-- index.ts
-- activation-recovery.ts
-- process.ts
-- scope-repair-resume.ts
-- shared.ts
-- .run
-- github/issue-publication.ts
-- publish-pr.ts
-- session-bridge.ts
-- mutedCopy
-- dependencies.ts
-- cost-ledger.ts
-- OfficeSnapshot
-- dependency-bots/adopt.ts
-- investigations/run.ts
+- digest
+- index.tsx
+- worker-runtime.ts
+- requests.ts
+- conversations/conversations.ts
+- run-retrospective.ts
+- store.ts
+- TimeBook.tsx
+- Store
+- slack-intake/run.ts
+- record-trigger.ts
 - maintenance.ts
-- assignment-poll.ts
-- http/commands.ts
-- release-unpark.ts
-- remove-candidate.ts
-- useOfficePreferences.ts
-- Coordinator
-- scheduled-work.ts
-- telemetry.ts
-- cec/issue-publication.ts
-- time-scope.ts
-- observations.ts
-- closeout.ts
-- features.ts
-- outbox.ts
+- dependency-bots/adopt.ts
 - offices.ts
-- migrations.ts
-- Goals.tsx
-- harnessEffect
+- easternDay
+- OrgChart.tsx
+- cec/workflow.ts
+- SettingsPanel.tsx
+- command
+- cec/issue-publication.ts
+- knowledge.ts
+- task-briefing.ts
+- SourceRegistry
+- scope-repair-resume.ts
+- engine.ts
+- digest
+- schedule.ts
+- IntakeLedger
+- shared.ts
+- sourceVisible
+- cost-ledger.ts
+- Role
+- telemetry.ts
+- .save
 - run-accounting.ts
-- WorkTime
-- it-specialist.ts
-- lesson-selection.ts
-- jira-time.ts
+- .emit
 - tracking-issue.ts
-- source-amendment-scope.ts
-- service-health.ts
+- slack-intake/report.ts
+- time-scope.ts
+- OfficeSnapshot
+- .getEffect
+- outbox.ts
+- scheduled-work.ts
+- investigations/ledger.ts
+- closeout.ts
+- investigations/run.ts
+- Coordinator
+- it-specialist.ts
+- process.ts
+- remove-candidate.ts
+- dependencies.ts
 - coordination.ts
-- model-routes.ts
-- evidence.ts
-- blocker-followups.ts
-- sanitizeObject
-- work.ts
+- jira-time.ts
 - discovery-recovery.ts
-- time-readback.ts
-- delivery-task.ts
-- codex-rollout.ts
-- command-registry.ts
-- Offices
-- cost-totals.ts
-- cli.ts
-- read-retries.ts
+- retrospective-subject.ts
+- claude-session-context.ts
+- azure.ts
+- GitHubIssuePublisher
+- lesson-selection.ts
+- telemetry/report.ts
+- workKey
+- service-health.ts
+- coordination-tick.ts
+- admit-improvement.ts
+- api-routes.ts
+- outbound.ts
+- knowledge/learning-events.ts
+- json
+- publish-pr.ts
 - owned-artifact.ts
-- codex-rollout-file.ts
-- run-usage.ts
-- SlackIntakeStatus.tsx
-- channel-notice.ts
+- fact-bounds.ts
+- project-progress.ts
+- index.ts
+- weekly-research.ts
+- goal-reviews.ts
+- session-bridge.ts
+- assignment-poll.ts
+- harnessEffect
+- http/context.ts
+- blocker-followups.ts
+- goal-evidence.ts
+- goal-reporting.ts
+- DailyCTO.tsx
+- create-candidate.ts
+- command-registry.ts
+- codex-rollout.ts
+- windows.ts
+- cli.ts
+- OfficeConfigView.tsx
+- extract-worker.mjs
 - BrainFollowup
-- codexAccounting
-- helper-usage.ts
+- static-files.ts
+- SlackIntakeStatus.tsx
 - highestStableAtLeast
-- dependency-edges.ts
 - slack-supersession.ts
 - helper-evidence.py
 
 ## God Nodes (most connected - your core abstractions)
-1. `Store` - 283 edges
+1. `Store` - 313 edges
 2. `TicketJob` - 129 edges
 3. `GitHubDelivery` - 119 edges
-4. `command()` - 100 edges
+4. `command()` - 102 edges
 5. `artifact()` - 87 edges
 6. `digest()` - 84 edges
-7. `workKey()` - 79 edges
-8. `cx()` - 77 edges
-9. `OfficeSnapshot` - 66 edges
-10. `StageResult` - 64 edges
+7. `cx()` - 84 edges
+8. `workKey()` - 79 edges
+9. `OfficeSnapshot` - 70 edges
+10. `digest()` - 66 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `readAzurePRs()` --indirect_call--> `row()`  [INFERRED]
@@ -136,9 +148,9 @@
   server/features/planning-baseline.ts → src/telemetry/report.ts
 
 ## Import Cycles
-- 3-file cycle: `server/knowledge/slack-intake/progress.ts -> server/knowledge/slack-intake/read-links.ts -> server/knowledge/slack-intake/seed-status.ts -> server/knowledge/slack-intake/progress.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/recovery/stage-reconciliation.ts -> server/delivery/recovery/implementation/continuation-review-readback.ts -> server/delivery/pipeline/github-delivery.ts`
-- 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/pipeline/observe-prs.ts -> server/delivery/recovery/retire-external-delivery.ts -> server/delivery/pipeline/github-delivery.ts`
+- 3-file cycle: `server/conversations/notifications.ts -> server/conversations/slack.ts -> server/knowledge/digests/outbound.ts -> server/conversations/notifications.ts`
+- 3-file cycle: `server/conversations/notifications.ts -> server/knowledge/digests/send-notice.ts -> server/knowledge/digests/outbound.ts -> server/conversations/notifications.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/repairs/run-ci-repair.ts -> server/delivery/repairs/ci-guard.ts -> server/delivery/pipeline/github-delivery.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/repairs/queue-repairs.ts -> server/delivery/repairs/reconcile-ci-diagnosis.ts -> server/delivery/pipeline/github-delivery.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/pipeline/observe-prs.ts -> server/delivery/repairs/refresh-conflicted.ts -> server/delivery/pipeline/github-delivery.ts`
@@ -150,398 +162,454 @@
 - 3-file cycle: `server/conversations/conversations.ts -> server/conversations/slack.ts -> server/workers/agents.ts -> server/conversations/conversations.ts`
 - 3-file cycle: `server/conversations/slack.ts -> server/workers/agents.ts -> server/workers/worker-runtime.ts -> server/conversations/slack.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/recovery/scope-repair/scope-repair-resume.ts -> server/delivery/recovery/validation/validation-provider-context.ts -> server/delivery/pipeline/github-delivery.ts`
+- 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/pipeline/observe-prs.ts -> server/delivery/recovery/retire-external-delivery.ts -> server/delivery/pipeline/github-delivery.ts`
 - 3-file cycle: `server/conversations/conversations.ts -> server/scheduling/engine.ts -> server/workers/agents.ts -> server/conversations/conversations.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/pipeline/stage-prompts.ts -> server/delivery/repairs/conflict-repair.ts -> server/delivery/pipeline/github-delivery.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/repairs/run-ci-repair.ts -> server/delivery/repairs/ci-checkout.ts -> server/delivery/pipeline/github-delivery.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/repairs/run-ci-repair.ts -> server/delivery/repairs/ci-evidence.ts -> server/delivery/pipeline/github-delivery.ts`
 - 3-file cycle: `server/delivery/pipeline/github-delivery.ts -> server/delivery/repairs/run-ci-repair.ts -> server/delivery/repairs/ci-preparation.ts -> server/delivery/pipeline/github-delivery.ts`
-- 3-file cycle: `server/conversations/conversation-recovery.ts -> server/conversations/conversations.ts -> server/conversations/team-conversation-pump.ts -> server/conversations/conversation-recovery.ts`
 
-## Communities (96 total, 4 thin omitted)
+## Communities (108 total, 2 thin omitted)
 
 ### Community 0 - "github-delivery.ts"
-Cohesion: 0.07
-Nodes (83): findingsBlock(), HANDS_OFF_PROJECTS, handsOff(), harnessDelivers(), legacyRecovery(), BOARD_RULE, conflictRefreshInstruction(), DECISION_RULE (+75 more)
+Cohesion: 0.06
+Nodes (84): containedFile(), findingsBlock(), assertMayMutate(), HANDS_OFF_PROJECTS, handsOff(), harnessDelivers(), legacyRecovery(), BOARD_RULE (+76 more)
 
 ### Community 1 - "Inspector.tsx"
 Cohesion: 0.06
-Nodes (75): Conversation(), Outbox(), recommendedReply(), slackMessageStatus(), SlackDeliveryCard(), labels, BlockerFollowups(), IntakeSummary() (+67 more)
+Nodes (76): Conversation(), Outbox(), SendMessage, SlackDeliveryCard(), itDiagnostics(), ServiceHealthPanel(), labels, ServiceHealthRow() (+68 more)
 
-### Community 2 - "store.ts"
-Cohesion: 0.07
-Nodes (56): JiraOperations, plain(), cecPrompt(), cecIntakePrompt(), cecReadbackPrompt(), cecReconcilePrompt(), cecTransitionPrompt(), resolvedDecisionNote() (+48 more)
+### Community 2 - ".transaction"
+Cohesion: 0.08
+Nodes (55): approveFeature(), assertRetainedItems(), commandFeature(), createFeature(), featureById(), mutation(), reviewQuestions(), assertFeatureDependencyOrder() (+47 more)
 
-### Community 3 - "schedule.ts"
-Cohesion: 0.10
-Nodes (62): KnowledgeRunner, captureProposal(), effectId(), newTask(), recordObservation(), settlePage(), Config, configDigest() (+54 more)
-
-### Community 4 - "artifact"
-Cohesion: 0.09
-Nodes (69): partialLocalCleanupCandidate(), savedActivationFailure(), continuationWorkerProof(), candidateInput(), children, oldAdoptionBasis(), savedCandidateAdmission, assertPostConflictFiles() (+61 more)
-
-### Community 5 - "knowledge.ts"
+### Community 3 - "OfficeScene.tsx"
 Cohesion: 0.05
-Nodes (65): Accepted, acceptRetrospective(), RETROSPECTIVE_HISTORY, improvementIntakeGate(), learningDigest(), recordLearningOpportunity(), appendLearningFacts(), expireLearningPackets() (+57 more)
+Nodes (64): itAgent(), Constellation(), sectors, focusPosition(), stableHash(), stablePosition(), displayAgentTask(), withoutElapsed() (+56 more)
 
-### Community 6 - "workKey"
+### Community 4 - "saved-prerequisite-handoff.ts"
 Cohesion: 0.07
-Nodes (61): HarnessControl, completedPRReviews(), continuationScope(), continuationWorktree(), continuationGuard(), brainImplementationCandidate(), BrainReadback, digest() (+53 more)
+Nodes (59): reported, Scope, advisoryPM(), assertCandidateChildContextCurrent(), readCandidateChildContext(), related, requireThat(), continuationScope() (+51 more)
 
-### Community 7 - "App.tsx"
-Cohesion: 0.06
-Nodes (55): themeColor, App(), CONNECTION, CONNECTION_DOT, dockItemVariants, dockVariants, ElevatorPhase, floorVariants (+47 more)
+### Community 5 - "App.tsx"
+Cohesion: 0.05
+Nodes (59): compactSteps(), BrainWorkspace(), themeColor, App(), CONNECTION, CONNECTION_DOT, dockItemVariants, dockVariants (+51 more)
 
-### Community 8 - "OfficeScene.tsx"
-Cohesion: 0.06
-Nodes (56): displayAgentTask(), githubStageLabels, withoutElapsed(), LiveAgentTask(), Props, RunningTask(), text(), Avatar() (+48 more)
-
-### Community 9 - "brain-maintenance.ts"
-Cohesion: 0.06
-Nodes (46): maintenancePolicies(), collectCTOFacts(), boundedIntake(), boundedJobs(), boundedMaintenance(), boundedTime(), clip(), FINISHED_JOB (+38 more)
-
-### Community 10 - ".emit"
-Cohesion: 0.11
-Nodes (40): approveFeature(), assertRetainedItems(), commandFeature(), createFeature(), featureById(), mutation(), reviewQuestions(), discoveryPrompt() (+32 more)
-
-### Community 11 - "conversations/conversations.ts"
-Cohesion: 0.08
-Nodes (32): assertConversationReadback(), ConversationResultSchema, Conversations, GoalChangeSchema, ReplySchema, pumpCTO(), queueCTOHandoff(), saveGoals() (+24 more)
-
-### Community 12 - "source-amendment.ts"
-Cohesion: 0.08
-Nodes (55): adoptCandidate(), reported, Scope, advisoryPM(), assertCandidateChildContextCurrent(), readCandidateChildContext(), related, requireThat() (+47 more)
-
-### Community 13 - "digest"
-Cohesion: 0.10
-Nodes (52): closeoutReceipt(), assertCoreCloseoutCoverage(), Assessment, closeoutClaim(), CloseoutOwnership, CoreAssessment, CoreAssessmentV2, closeoutCheckpoint() (+44 more)
-
-### Community 14 - ".save"
-Cohesion: 0.09
-Nodes (38): file, folder, logs, root, xml(), unpack(), BLOCKED, Execute (+30 more)
-
-### Community 15 - "record-trigger.ts"
-Cohesion: 0.09
-Nodes (47): maintenanceSubject(), MaintenanceSubjectFacts, busyMaintenanceIds(), clip(), maintenanceBlockedId(), MaintenanceCandidate, maintenanceCandidates(), maintenanceCompletedId() (+39 more)
-
-### Community 16 - "weekly-rollup.ts"
+### Community 6 - "knowledge/routes.ts"
 Cohesion: 0.07
-Nodes (40): deliveryMetrics(), median(), learningMetrics(), lessonsNeedingReview(), RollupResult, RollupResultSchema, harperFolder(), RETROSPECTIVE_TIMEOUT (+32 more)
+Nodes (39): captureAfter(), CaptureMetadata, capturePage(), cursor(), key(), intakeActivity(), knowledgeActivityPage(), assignmentKnowledge() (+31 more)
 
-### Community 17 - "Store"
+### Community 7 - "source-amendment.ts"
+Cohesion: 0.07
+Nodes (63): adoptCandidate(), approvedText(), assert(), amendmentIssueSha256(), authorizeSourceAmendment(), Binding, assert(), normalize() (+55 more)
+
+### Community 8 - "agents.ts"
+Cohesion: 0.06
+Nodes (41): cecPrompt(), cecIntakePrompt(), cecReadbackPrompt(), cecReconcilePrompt(), cecTransitionPrompt(), resolvedDecisionNote(), stageInstructions, ConversationResultSchema (+33 more)
+
+### Community 9 - "artifact"
+Cohesion: 0.11
+Nodes (55): activationAuditResponseSchema(), ActivationAuditSchema, applySourceConfiguration(), assertSourceConfiguration(), cancelUnusedSourceReservation(), Hash, Proposal, reconcileActivation() (+47 more)
+
+### Community 10 - "TicketJob"
+Cohesion: 0.09
+Nodes (28): removeAdoptedClone(), namedRepairIds(), StageContext, GitHubDelivery, stageRole(), adoptedReviewCandidate(), ciCheckout(), finishCISetup() (+20 more)
+
+### Community 11 - "digest"
+Cohesion: 0.09
+Nodes (54): closeoutReceipt(), assertCoreCloseoutCoverage(), Assessment, closeoutClaim(), CloseoutOwnership, CoreAssessment, CoreAssessmentV2, closeoutCheckpoint() (+46 more)
+
+### Community 12 - "index.tsx"
+Cohesion: 0.09
+Nodes (40): KnowledgeCapturePage, KnowledgeSourceSummary, Activity(), ActivityStatus(), AssignmentKnowledge(), CaptureReviewDetail(), CaptureReviews(), DigestDetail() (+32 more)
+
+### Community 13 - "worker-runtime.ts"
+Cohesion: 0.07
+Nodes (43): SlackVerificationSchema, candidateWorkspaceEnvironment(), assertDigestDispatch(), assignmentSubject(), prepareExposure(), assertRetainedDispatchScope(), CODEX_DEFAULT_EFFORT, CODEX_DEFAULT_MODEL (+35 more)
+
+### Community 14 - "requests.ts"
+Cohesion: 0.10
+Nodes (48): assertPostConflictFiles(), assertPostConflictOwnership(), completedConflictDraftCandidate(), postConflictPreparationEvidence(), readPostConflictPreparationFacts(), reconcileCompletedConflictDraft(), routeReadyPostConflictPublication(), verifyInitialDraftConflictPreparation() (+40 more)
+
+### Community 15 - "conversations/conversations.ts"
+Cohesion: 0.09
+Nodes (27): assertConversationReadback(), Conversations, GoalChangeSchema, MessageInput, ReplySchema, pumpCTO(), queueCTOHandoff(), saveGoals() (+19 more)
+
+### Community 16 - "run-retrospective.ts"
+Cohesion: 0.09
+Nodes (39): Accepted, acceptRetrospective(), RETROSPECTIVE_HISTORY, improvementIntakeGate(), learningDigest(), appendLearningFacts(), baselineLearning(), expireLearningPackets() (+31 more)
+
+### Community 17 - "store.ts"
+Cohesion: 0.10
+Nodes (25): channelNoticeAuthorized(), notices(), queueChannelNotice(), clamp(), LIMITS, MergedPR, plainSlackText(), section() (+17 more)
+
+### Community 18 - "TimeBook.tsx"
+Cohesion: 0.10
+Nodes (38): TelemetryReport, LiveAnchor, AzureBuild, BreakdownTable(), CostBar(), coverage(), pricedLabel(), tokens() (+30 more)
+
+### Community 19 - "Store"
 Cohesion: 0.08
-Nodes (15): featureItemComplete(), reconcileFeatureCompletion(), helperTelemetry(), JiraFeaturePublisher, observeHelperGroups(), stopHelperGroups(), FeatureReviewRunner, fifo() (+7 more)
+Nodes (24): featureItemComplete(), reconcileFeatureCompletion(), helperTelemetry(), recoverFeatures(), dispatchExposure(), Clock, DATA, applyConnectionSettings() (+16 more)
 
-### Community 18 - "weekly-research.ts"
-Cohesion: 0.09
-Nodes (19): mirror(), ResearchResult, runWeeklyResearch(), scheduledResearch(), DailyCTO, dailyReviewPrompt(), Briefing, saveReviewBriefing() (+11 more)
+### Community 20 - "slack-intake/run.ts"
+Cohesion: 0.13
+Nodes (31): independentIntakeResult(), newTask(), recordObservation(), settlePage(), IntakeResult, IntakeResultValue, LIMITS, Observation (+23 more)
 
-### Community 19 - "PeoplePanel.tsx"
+### Community 21 - "record-trigger.ts"
 Cohesion: 0.10
-Nodes (40): Department, DEPARTMENTS, EMPLOYEE_IDS, EmployeeId, ManagerId, OWNER, Persona, PERSONAS (+32 more)
+Nodes (40): busyMaintenanceIds(), clip(), maintenanceBlockedId(), MaintenanceCandidate, maintenanceCandidates(), maintenanceCompletedId(), maintenanceKey(), visibleMaintenanceTriggerIds() (+32 more)
 
-### Community 20 - "cec/workflow.ts"
-Cohesion: 0.11
-Nodes (38): parksInJira(), MISSING_INTAKE, reconcileMailbox(), unusedMailbox(), run(), advance(), nextStage(), publicationEvidenceGap() (+30 more)
-
-### Community 21 - "TimeBook.tsx"
+### Community 22 - "maintenance.ts"
 Cohesion: 0.10
-Nodes (36): TelemetryReport, AzureBuild, BreakdownTable(), CostBar(), coverage(), pricedLabel(), tokens(), usd() (+28 more)
+Nodes (27): maintenancePolicies(), BRAIN_DEPENDENCY_MERGES, BrainMaintenance, BrainResult, capped(), queueMaintenanceNotice(), candidateOwner(), SETTLED (+19 more)
 
-### Community 22 - "goal-reporting.ts"
-Cohesion: 0.09
-Nodes (30): az(), AzureMonitor, base, buildUrl(), prUrl(), readInPairs(), ProviderPR, readAzurePRs() (+22 more)
-
-### Community 23 - "engine.ts"
-Cohesion: 0.08
-Nodes (21): correlatedBuild(), checkMail(), drainMail(), requestMail(), dispatchNightly(), drainDelivery(), enableNightly(), requestDelivery() (+13 more)
-
-### Community 24 - ".getEffect"
-Cohesion: 0.11
-Nodes (21): publishFeature(), recoverFeatures(), GitHubOperations, fileLessonIssue(), lessonIssueBody(), lessonIssueMarker(), goalNoticeAuthorized(), goalNoticeNeverDispatched() (+13 more)
-
-### Community 25 - "TicketJob"
-Cohesion: 0.09
-Nodes (16): dependabotReviewGuidance(), StageContext, GitHubDelivery, stagePrompt(), StagePromptInput, stageRole(), implementationContinuationInstruction(), retireInactiveDeliveries() (+8 more)
-
-### Community 26 - "index.ts"
-Cohesion: 0.11
-Nodes (31): close(), config, itSpecialist, loadedRevision, offices, releaseLock, server, serviceHealth (+23 more)
-
-### Community 27 - "activation-recovery.ts"
-Cohesion: 0.14
-Nodes (34): activationAuditResponseSchema(), ActivationAuditSchema, applySourceConfiguration(), assertSourceConfiguration(), cancelUnusedSourceReservation(), Hash, Proposal, reconcileActivation() (+26 more)
-
-### Community 28 - "process.ts"
-Cohesion: 0.10
-Nodes (23): Execute, GITHUB_ISSUE_SKILL, Result, Assessment, At, Errno, GroupInventory, GroupProbe (+15 more)
-
-### Community 29 - "scope-repair-resume.ts"
-Cohesion: 0.15
-Nodes (32): containedFile(), assertContinuationWorker(), Assessment, outsideScanSources(), Ownership, reconcileScopeRepairReadback(), requireThat(), scopeRepairReadbackCandidate() (+24 more)
-
-### Community 30 - "shared.ts"
-Cohesion: 0.10
-Nodes (27): diagnosticContext(), ProjectReadiness, DailyCTOSummary, SchedulerState, itAgent(), itDiagnostics(), currentServices(), ServiceHealthPanel() (+19 more)
-
-### Community 31 - ".run"
-Cohesion: 0.09
-Nodes (22): candidateWorkspaceEnvironment(), assignmentSubject(), dispatchExposure(), prepareExposure(), ClaudeStream, codexArguments(), LaunchPolicy, LaunchPolicyReceipt (+14 more)
-
-### Community 32 - "github/issue-publication.ts"
-Cohesion: 0.16
-Nodes (13): GitHubFeaturePublisher, FeaturePublisher, PublicationReceipt, Assign, Board, Content, GitHubIssuePublisher, number() (+5 more)
-
-### Community 33 - "publish-pr.ts"
-Cohesion: 0.14
-Nodes (26): retryRead(), developerPRContent(), Execute, lintPRContent(), officePRContent(), prContent, assertCandidate(), Candidate (+18 more)
-
-### Community 34 - "session-bridge.ts"
+### Community 23 - "dependency-bots/adopt.ts"
 Cohesion: 0.12
-Nodes (23): claudeSessionContext(), readTranscript, root, claudeSessionScope(), codexSessionContext(), readRollout, claudeSessions(), codexSessions() (+15 more)
+Nodes (33): readBackOrThrow(), adoptDependabot(), closesIssue(), linkedBody(), linkPR(), DEPENDABOT, dependabotPR, openDependabotPulls() (+25 more)
 
-### Community 35 - "mutedCopy"
-Cohesion: 0.20
-Nodes (22): SaveFeedback(), TONE, GoalNoticeForm(), MergeCloseoutForm(), OfficePreferencesForm(), SHORTCUTS, PickupForm(), channelSettingsProblem() (+14 more)
+### Community 24 - "offices.ts"
+Cohesion: 0.10
+Nodes (24): normalizeStatement(), leadershipContext(), leadershipEntries(), decideOfficeProposal(), mirrorOfficeKnowledge(), now(), OfficeKnowledgeStore, proposeOfficeLessons() (+16 more)
 
-### Community 36 - "dependencies.ts"
-Cohesion: 0.16
-Nodes (25): reconcileNoticeConfirmations(), Admission, admit(), admitReadyCards(), IntakeContext, WAIT_STATUSES, resumeParked(), compatible() (+17 more)
+### Community 25 - "easternDay"
+Cohesion: 0.11
+Nodes (18): DailyCTO, EvidenceRequestConflict, evidenceRequestConflicts, dailyReviewPrompt(), dailyReviewDate(), reviewWeekday(), DailyResultSchema, Briefing (+10 more)
 
-### Community 37 - "cost-ledger.ts"
-Cohesion: 0.17
-Nodes (25): captureCost(), costLedger(), summary(), COST_FIELD, COST_OPERATION, costPublishingEnabled(), costPublishingInProgress(), effectId() (+17 more)
+### Community 26 - "OrgChart.tsx"
+Cohesion: 0.11
+Nodes (34): Department, DEPARTMENTS, EMPLOYEE_IDS, EmployeeId, ManagerId, OWNER, Persona, PERSONAS (+26 more)
 
-### Community 38 - "OfficeSnapshot"
+### Community 27 - "cec/workflow.ts"
+Cohesion: 0.13
+Nodes (34): parksInJira(), MISSING_INTAKE, reconcileMailbox(), unusedMailbox(), run(), advance(), nextStage(), publicationEvidenceGap() (+26 more)
+
+### Community 28 - "SettingsPanel.tsx"
 Cohesion: 0.12
-Nodes (22): FeatureRound, ProgressionItem, FeatureDelivery(), FeatureDocuments(), views, FeatureWorkspace(), phases, LinkedFeatures() (+14 more)
+Nodes (29): SaveFeedback(), TONE, GoalNoticeForm(), MergeCloseoutForm(), OfficePreferencesForm(), SHORTCUTS, PickupForm(), acceptPreferences() (+21 more)
 
-### Community 39 - "dependency-bots/adopt.ts"
-Cohesion: 0.16
-Nodes (22): adoptDependabot(), closesIssue(), linkedBody(), linkPR(), dependabotPR, openDependabotPulls(), readRepo(), refusal() (+14 more)
+### Community 29 - "command"
+Cohesion: 0.06
+Nodes (12): correlatedBuild(), JiraOperations, GitHubMonitor, Engine, observe(), observeParked(), parkedReadError, command() (+4 more)
 
-### Community 40 - "investigations/run.ts"
-Cohesion: 0.17
-Nodes (20): INVESTIGATION_ATTEMPTS, INVESTIGATION_TIMEOUT, investigationCandidates(), investigationId(), investigationFollowUps(), investigationResolution(), syncInvestigations(), OFFICE_FIX_PROMPT (+12 more)
-
-### Community 41 - "maintenance.ts"
+### Community 30 - "cec/issue-publication.ts"
 Cohesion: 0.14
-Nodes (18): captureMaintenanceStep(), candidateOwner(), SETTLED, skipOwnedCandidate(), Skipped, skippedCandidateLedger(), CmsFollowUpContext, cmsFollowUpInstructions() (+10 more)
+Nodes (13): Assignment, Content, JiraIssuePublisher, jiraText(), keyOf(), plainDescription(), Transition, JiraFeaturePublisher (+5 more)
 
-### Community 42 - "assignment-poll.ts"
+### Community 31 - "knowledge.ts"
+Cohesion: 0.09
+Nodes (35): learningMetrics(), lessonsNeedingReview(), Kind, RetrospectiveResult, RollupResult, RollupResultSchema, Stage, harperFolder() (+27 more)
+
+### Community 32 - "task-briefing.ts"
+Cohesion: 0.11
+Nodes (25): LessonSelection, AssignmentLookups, Binding, lookupInstructions(), decodeLookupJournal(), lookupJournal, readLookupJournal(), officeSearch() (+17 more)
+
+### Community 33 - "SourceRegistry"
+Cohesion: 0.12
+Nodes (22): effectId(), CaptureReceipt, SlackReadAuthority, collectionPolicy, readAuthority(), Command, sourceCommand(), assertIntakeBinding() (+14 more)
+
+### Community 34 - "scope-repair-resume.ts"
+Cohesion: 0.13
+Nodes (34): deliveryTask(), stagePrompt(), StagePromptInput, Assessment, outsideScanSources(), Ownership, reconcileScopeRepairReadback(), requireThat() (+26 more)
+
+### Community 35 - "engine.ts"
+Cohesion: 0.13
+Nodes (28): checkMail(), drainMail(), requestMail(), dispatchNightly(), drainDelivery(), enableNightly(), requestDelivery(), resume() (+20 more)
+
+### Community 36 - "digest"
 Cohesion: 0.14
-Nodes (21): clamp(), LIMITS, MergedPR, plainSlackText(), section(), shippedSummary(), configureNotices(), Identity (+13 more)
+Nodes (28): comparableSlackText(), AuthoredDigest, reconcileDigestAuthorship(), unitAuthorship(), annotateAuthoredUnits(), outboundBody(), reconcileAuthoredEvidence(), Config (+20 more)
 
-### Community 43 - "http/commands.ts"
-Cohesion: 0.18
-Nodes (21): normalizeStatement(), baselineLearning(), configureKnowledge(), declineLessonIssue(), demoteLesson(), reactivateLesson(), retireLesson(), decideOfficeProposal() (+13 more)
-
-### Community 44 - "release-unpark.ts"
-Cohesion: 0.21
-Nodes (21): Lane, MOVABLE, moveLane(), resolveLane(), cardStatus(), Execute, ProjectCard, projectCards() (+13 more)
-
-### Community 45 - "remove-candidate.ts"
+### Community 37 - "schedule.ts"
 Cohesion: 0.17
-Nodes (18): recordCandidateCleanup(), interruptedRemoval(), moveAside(), moveBack(), purgeRemoved(), purging, removedRoot(), removeAdoptedClone() (+10 more)
+Nodes (19): KnowledgeRunner, captureProposal(), isStoppingFor(), reconcileIntakeStatus(), runSlackLinks(), reconcileIntakeReports(), retrySlackIntake(), scheduledSlackIntake() (+11 more)
 
-### Community 46 - "useOfficePreferences.ts"
-Cohesion: 0.11
-Nodes (20): PreferencesRouteContext, fields, PreferencesPatch, PreferencesStore, StoredBody, acceptPreferences(), PreferenceCandidate, PreferenceState (+12 more)
+### Community 38 - "IntakeLedger"
+Cohesion: 0.14
+Nodes (18): createExtractor(), extractDocument, Extraction, Extractor, uploadArtifact(), DERIVED, IntakeLedger, LinkResult (+10 more)
 
-### Community 48 - "scheduled-work.ts"
-Cohesion: 0.16
-Nodes (20): deliverySlot(), ROLES, closeoutRequestResolved(), preparationRequestResolved(), withAmendmentOwnership(), gateFeatureWork(), scheduledSlackIntake(), officeCapacity (+12 more)
+### Community 39 - "shared.ts"
+Cohesion: 0.09
+Nodes (30): ProjectReadiness, DailyCTOSummary, ConfirmedSegment, ObservationGap, SnapshotOrdering, AssignmentResult, CompletionCondition, Continuation (+22 more)
 
-### Community 49 - "telemetry.ts"
-Cohesion: 0.11
-Nodes (22): CacheWriteDuration, CODEX_ROWS, codexPriceRef(), ModelRow, OPENAI_LONG_CONTEXT_INPUT_TOKENS, OPENAI_PRICING_AS_OF, OPENAI_PRICING_URL, Rates (+14 more)
-
-### Community 50 - "cec/issue-publication.ts"
+### Community 40 - "sourceVisible"
 Cohesion: 0.24
-Nodes (7): Assignment, Content, JiraIssuePublisher, jiraText(), keyOf(), plainDescription(), Transition
+Nodes (22): knowledgeActivity(), eventVisible(), knowledgeSnapshot(), officeKnowledgeSnapshot(), publicReference(), lookupSummaryVisible(), publicLookupSummary(), knowledgeMap() (+14 more)
 
-### Community 51 - "time-scope.ts"
-Cohesion: 0.21
-Nodes (20): CURRENT_SCOPE_POLICY, isLegacyTicketWork(), ScopePolicy, scopeSelector(), midnight(), TicketDay, ticketDayTotals(), captureTime() (+12 more)
-
-### Community 52 - "observations.ts"
-Cohesion: 0.15
-Nodes (18): exactly(), Message, nativeReadPayload(), pagination(), nativeFile(), Message, observeRead(), Page (+10 more)
-
-### Community 53 - "closeout.ts"
-Cohesion: 0.21
-Nodes (17): installDependencies(), major(), harnessCloseout(), PASSING, verifyMergeActions(), withHarnessWork(), runHarnessStage(), harnessStageResult() (+9 more)
-
-### Community 54 - "features.ts"
+### Community 41 - "cost-ledger.ts"
 Cohesion: 0.16
-Nodes (19): bindDelivery(), featureEffectGate(), assertEnrollable(), bindFeature(), currentApproval(), enrolled(), featureGate(), predecessorComplete() (+11 more)
+Nodes (25): EffectUncertainError, captureCost(), costLedger(), summary(), COST_FIELD, COST_OPERATION, costPublishingInProgress(), effectId() (+17 more)
 
-### Community 55 - "outbox.ts"
-Cohesion: 0.20
-Nodes (14): MessageInput, projectOutbox(), syncOutbox(), projectSlackDeliveries(), Input, supersedeSlackDelivery(), replacementContext(), slackFingerprint() (+6 more)
+### Community 42 - "Role"
+Cohesion: 0.13
+Nodes (17): ROLES, LOCAL_BINDINGS, contextPacket(), DeliverySlot, officeCapacity, fifo(), ScheduledWork, Scheduler (+9 more)
 
-### Community 56 - "offices.ts"
+### Community 43 - "telemetry.ts"
+Cohesion: 0.10
+Nodes (27): CodexRollout, CacheWriteDuration, CODEX_ROWS, codexPriceRef(), ModelRow, OPENAI_LONG_CONTEXT_INPUT_TOKENS, OPENAI_PRICING_AS_OF, OPENAI_PRICING_URL (+19 more)
+
+### Community 44 - ".save"
 Cohesion: 0.19
-Nodes (15): admitImprovement(), improvementEligible(), distinct(), identity(), improvementIncident(), improvementIncidentKey(), improvementManifest(), improvementMarker() (+7 more)
+Nodes (26): plain(), unpack(), BLOCKED, Execute, findComment(), jira(), LiveIssue, readIssue() (+18 more)
 
-### Community 57 - "migrations.ts"
-Cohesion: 0.14
-Nodes (15): LEARNING_BASELINES, seedProjectLessons(), readLocalIntakeReport(), GoalInput, saveGoal(), queueGoalNotice(), file, project (+7 more)
+### Community 45 - "run-accounting.ts"
+Cohesion: 0.12
+Nodes (28): BoundedRead, backfillClaudeCost(), CompletionReader, codexHome(), createdAt(), dayDirs(), header(), readCodexRollout() (+20 more)
 
-### Community 58 - "Goals.tsx"
-Cohesion: 0.14
-Nodes (16): GoalProgress, SendMessage, CTOReview(), goalState, DailyCTO(), GoalHistory(), reportDate(), reviewStatus (+8 more)
+### Community 46 - ".emit"
+Cohesion: 0.15
+Nodes (23): ChannelSettings, configureChannelNotices(), configureNotices(), NoticeSettings, retryRecipientLookup(), failedWorker(), requeueWaitedImplement(), configureDigestDelivery() (+15 more)
 
-### Community 59 - "harnessEffect"
-Cohesion: 0.25
-Nodes (14): activeEffectId(), harnessEffect, assertMayMutate(), park(), Execute, promoteReady(), officeMergeProvenance(), reconcileMergeScannerRetry() (+6 more)
+### Community 47 - "tracking-issue.ts"
+Cohesion: 0.20
+Nodes (24): Lane, MOVABLE, moveLane(), resolveLane(), cardStatus(), Execute, ProjectCard, projectCards() (+16 more)
 
-### Community 60 - "run-accounting.ts"
+### Community 48 - "slack-intake/report.ts"
 Cohesion: 0.16
-Nodes (15): BoundedRead, backfillClaudeCost(), CompletionReader, COMPLETION_MAX_BYTES, completionAccounting(), markCaptureStart(), readCompletion(), RECONCILE_GRACE_MS (+7 more)
+Nodes (23): privateFile(), ChannelProgress, Proposal, intakeProgress(), terminalDeferred(), unitKey(), verifiedCapture(), LinkRecord (+15 more)
 
-### Community 61 - "WorkTime"
+### Community 49 - "time-scope.ts"
+Cohesion: 0.17
+Nodes (25): CURRENT_SCOPE_POLICY, isLegacyTicketWork(), isModelWork(), isTicketModelWork(), ScopePolicy, scopeSelector(), awaitingEvidence(), CaptureContext (+17 more)
+
+### Community 50 - "OfficeSnapshot"
+Cohesion: 0.13
+Nodes (19): FeatureRound, FeatureDelivery(), FeatureDocuments(), views, FeatureWorkspace(), phases, LinkedFeatures(), draftKey() (+11 more)
+
+### Community 51 - ".getEffect"
+Cohesion: 0.17
+Nodes (12): GitHubOperations, digestNoticeNeverDispatched(), fileLessonIssue(), lessonIssueBody(), lessonIssueMarker(), goalNoticeNeverDispatched(), Assessment, closeNativeRefresh() (+4 more)
+
+### Community 52 - "outbox.ts"
+Cohesion: 0.15
+Nodes (19): projectOutbox(), syncOutbox(), slackRequestSettled(), knowledgeOutbox(), Result, checkpointHasMaintenanceAlert(), maintenanceNeedsFollowup(), maintenanceNeedsHumanFollowup() (+11 more)
+
+### Community 53 - "scheduled-work.ts"
+Cohesion: 0.13
+Nodes (23): deliverySlot(), closeoutRequestResolved(), verifiedCloseoutCleanupRequest(), preparationRequestResolved(), withAmendmentOwnership(), rollupDue(), scheduledRollup(), status() (+15 more)
+
+### Community 54 - "investigations/ledger.ts"
+Cohesion: 0.21
+Nodes (16): projectSlackDeliveries(), settleRequestedSlackReplacement(), Input, supersedeSlackDelivery(), replacementContext(), slackFingerprint(), supersedingDelivery(), investigationCandidates() (+8 more)
+
+### Community 55 - "closeout.ts"
 Cohesion: 0.18
-Nodes (18): ConfirmedSegment, LiveAnchor, ObservationGap, SnapshotOrdering, TimeLedgerState, WorkTime, Acc, bump() (+10 more)
+Nodes (18): harnessCloseout(), PASSING, verifyMergeActions(), HarnessControl, withHarnessWork(), runHarnessStage(), harnessStageResult(), receipt() (+10 more)
 
-### Community 62 - "it-specialist.ts"
+### Community 56 - "investigations/run.ts"
+Cohesion: 0.18
+Nodes (17): INVESTIGATION_ATTEMPTS, INVESTIGATION_TIMEOUT, investigationEvidence(), OFFICE_FIX_PROMPT, OfficeFixResult, validateOfficeFix(), investigationReady(), InvestigationOptions (+9 more)
+
+### Community 57 - "Coordinator"
+Cohesion: 0.09
+Nodes (4): coordination(), Coordinator, OfficeEntry, AssignedIssue
+
+### Community 58 - "it-specialist.ts"
+Cohesion: 0.18
+Nodes (16): savedAdmissionUnresolved(), completedConflictDraftUnresolved(), publishedDraftConflictUnresolved(), repeatConflictRepairUnresolved(), ITContext, diagnosticContext(), diagnosticSnapshot(), publishITReport() (+8 more)
+
+### Community 59 - "process.ts"
+Cohesion: 0.17
+Nodes (17): At, Errno, GroupInventory, GroupProbe, LifecycleDiagnostic, Phase, Pid, groupInventory() (+9 more)
+
+### Community 60 - "remove-candidate.ts"
+Cohesion: 0.20
+Nodes (16): recordCandidateCleanup(), interruptedRemoval(), moveAside(), moveBack(), purgeRemoved(), purging, removedRoot(), CandidateRemoval (+8 more)
+
+### Community 61 - "dependencies.ts"
+Cohesion: 0.21
+Nodes (17): Admission, admit(), admitReadyCards(), IntakeContext, WAIT_STATUSES, compatible(), dependencyCompletionKey(), dependencyEligibility() (+9 more)
+
+### Community 62 - "coordination.ts"
+Cohesion: 0.16
+Nodes (19): completeNativeCheckpoint(), queueCheckpointRetry(), readBackCheckpoint(), resumeRepairedMaintenance(), retryCheckpoint(), legacy, validateNativeContinuation(), checkpointWindow() (+11 more)
+
+### Community 63 - "jira-time.ts"
+Cohesion: 0.19
+Nodes (15): data(), envelope(), JiraWorklogs, localId(), locks, matches(), publishJiraTime(), requeueNeverSent() (+7 more)
+
+### Community 64 - "discovery-recovery.ts"
+Cohesion: 0.15
+Nodes (16): Assessment, bindDiscoveryResume(), diagnosticProof(), discoveryRecoveryCandidate(), DiscoveryResumeInput, ownedArtifact(), Ownership, rawHash() (+8 more)
+
+### Community 65 - "retrospective-subject.ts"
+Cohesion: 0.18
+Nodes (16): deliveryMetrics(), median(), maintenanceSubject(), MaintenanceSubjectFacts, azurePrUrl(), findSubject(), jobSubject(), RetrospectiveSubject (+8 more)
+
+### Community 66 - "claude-session-context.ts"
 Cohesion: 0.23
-Nodes (13): partialLocalCleanupKey(), savedAdmissionUnresolved(), completedConflictDraftUnresolved(), publishedDraftConflictUnresolved(), repeatConflictRepairUnresolved(), ITContext, publishITReport(), delays (+5 more)
+Nodes (13): readTranscript, root, claudeSessionScope(), readRollout, LiveSession, ContextProject, ContextReader, sessionContextFile() (+5 more)
 
-### Community 63 - "lesson-selection.ts"
-Cohesion: 0.19
-Nodes (16): knowledgeContext(), INSTALLED, installedLesson(), Bucket, LESSON_LIMIT, lessonPurpose(), LessonSelection, MAINTENANCE (+8 more)
-
-### Community 64 - "jira-time.ts"
-Cohesion: 0.22
-Nodes (12): data(), envelope(), JiraWorklogs, localId(), locks, matches(), publishJiraTime(), requeueNeverSent() (+4 more)
-
-### Community 65 - "tracking-issue.ts"
-Cohesion: 0.22
-Nodes (14): readBackOrThrow(), ensureTrackingIssue(), findTrackingIssue(), ownTracking(), TrackingIssue, trackingIssueBody(), trackingIssueTitle(), trackingMarker() (+6 more)
-
-### Community 66 - "source-amendment-scope.ts"
-Cohesion: 0.26
-Nodes (15): approvedText(), assert(), assert(), boundProfiles, canonical(), Document, ReadSourceFile, releaseAmendmentJournal() (+7 more)
-
-### Community 67 - "service-health.ts"
-Cohesion: 0.19
-Nodes (8): listenerHealth(), providers, ProviderStatusChecks, summary, Probe, probes, ServiceHealthChecks, ServiceHealth
-
-### Community 68 - "coordination.ts"
+### Community 67 - "azure.ts"
 Cohesion: 0.20
-Nodes (13): checkpointWindow(), coordination(), dueAt(), hours, localDay(), ReviewResult, deferNonReady(), preparePR() (+5 more)
+Nodes (14): az(), AzureMonitor, base, buildUrl(), prUrl(), readInPairs(), ProviderPR, readAzurePRs() (+6 more)
 
-### Community 69 - "model-routes.ts"
+### Community 68 - "GitHubIssuePublisher"
+Cohesion: 0.28
+Nodes (6): Assign, Board, GitHubIssuePublisher, number(), same(), label()
+
+### Community 69 - "lesson-selection.ts"
+Cohesion: 0.20
+Nodes (16): knowledgeContext(), INSTALLED, installedLesson(), Bucket, LESSON_LIMIT, lessonPurpose(), MAINTENANCE, MAX_LESSONS (+8 more)
+
+### Community 70 - "telemetry/report.ts"
+Cohesion: 0.19
+Nodes (17): validTicket(), telemetryRoute(), TelemetryRow, TelemetrySync, Acc, bump(), EASTERN, easternDay() (+9 more)
+
+### Community 71 - "workKey"
+Cohesion: 0.23
+Nodes (12): completedPRReviews(), eligible(), mergedByOwner(), ownerSettles(), retireExternalDeliveries(), retireInactiveDeliveries(), retireUnstartedDelivery(), unstartedDelivery() (+4 more)
+
+### Community 72 - "service-health.ts"
+Cohesion: 0.20
+Nodes (9): listenerHealth(), providers, ProviderStatusChecks, summary, Probe, probes, ServiceHealthChecks, slackHealth() (+1 more)
+
+### Community 73 - "coordination-tick.ts"
 Cohesion: 0.21
-Nodes (13): AUTO_ADOPT_BOTS, goalEvidencePath(), localBindings, assertModelOverrides(), CODEX_DEFAULT_EFFORT, CODEX_DEFAULT_MODEL, CODEX_EFFORTS, CODEX_ROLES (+5 more)
+Nodes (13): reconcileNoticeConfirmations(), PrerequisitesSchema, brainCheckpointCompletion(), reconcileCompletedCheckpoints(), reconcileContinuations(), pruneCompletedReads(), READ_OPERATIONS, RETAINED_PER_ACTION (+5 more)
 
-### Community 70 - "evidence.ts"
-Cohesion: 0.29
-Nodes (9): investigationEvidence(), INVOCATION_SOURCE_REFS, invocationSource(), sections, OFFICE_SOURCE_PATHS, officeSource(), ROOT, launchPolicyFacts() (+1 more)
+### Community 74 - "admit-improvement.ts"
+Cohesion: 0.27
+Nodes (12): admitImprovement(), improvementEligible(), distinct(), identity(), improvementIncident(), improvementIncidentKey(), improvementManifest(), improvementMarker() (+4 more)
 
-### Community 71 - "blocker-followups.ts"
-Cohesion: 0.36
-Nodes (9): conversationReadbackReady(), queueConversationReadback(), uncertainConversations(), conversationResolved(), readBackConversations(), diagnosticSnapshot(), nativeDeliveryResolved(), handoff() (+1 more)
+### Community 75 - "api-routes.ts"
+Cohesion: 0.28
+Nodes (11): retainedArtifactScope(), eventSourceBindings(), exposureBindings(), requestSourceBindings(), knowledgePromptStore(), acceptedSourceBindings(), knowledgeSessionVisibility(), goalHistory() (+3 more)
 
-### Community 72 - "sanitizeObject"
-Cohesion: 0.18
-Nodes (9): sanitizeObject(), comparable(), EvidenceOutcome, recordRunEvidence(), checkpointMeasurement(), HEARTBEAT_GAP_MS, HEARTBEAT_MS, startMeasurement() (+1 more)
+### Community 76 - "outbound.ts"
+Cohesion: 0.26
+Nodes (12): independentDigestEvidence(), retainOutboundBody(), digestNoticeRequest(), queueOutboundDigests(), digestKnowledge(), prepareDigestBodies(), retainDigestBody(), knowledgeScopeRevision() (+4 more)
 
-### Community 73 - "work.ts"
-Cohesion: 0.17
-Nodes (11): pruneCompletedReads(), READ_OPERATIONS, RETAINED_PER_ACTION, AssignmentResult, CompletionCondition, DependencyObservation, EligibilityState, FailureCategory (+3 more)
-
-### Community 74 - "discovery-recovery.ts"
-Cohesion: 0.29
-Nodes (10): Assessment, bindDiscoveryResume(), diagnosticProof(), discoveryRecoveryCandidate(), DiscoveryResumeInput, ownedArtifact(), Ownership, rawHash() (+2 more)
-
-### Community 75 - "time-readback.ts"
+### Community 77 - "knowledge/learning-events.ts"
 Cohesion: 0.24
-Nodes (7): TimeLedger, dueReadback(), Readback, READBACK_INTERVAL_MS, readBackTime(), SETTLE_MS, TimePublication
+Nodes (12): captureLearning(), recordLearningOpportunity(), captureMaintenanceStep(), citations(), recordAcceptedKnowledge(), stageName(), knowledgeCitation(), lessonCitation() (+4 more)
 
-### Community 76 - "delivery-task.ts"
+### Community 78 - "json"
+Cohesion: 0.19
+Nodes (10): preferencesRoute(), PreferencesRouteContext, json(), fields, PreferencesPatch, PreferencesStore, StoredBody, PreferenceState (+2 more)
+
+### Community 79 - "publish-pr.ts"
+Cohesion: 0.26
+Nodes (13): retryRead(), developerPRContent(), Execute, lintPRContent(), officePRContent(), prContent, assertCandidate(), Candidate (+5 more)
+
+### Community 80 - "owned-artifact.ts"
+Cohesion: 0.25
+Nodes (11): ghLogCacheEvidence(), INVOCATION_SOURCE_REFS, invocationSource(), sections, OFFICE_SOURCE_PATHS, officeSource(), ROOT, done() (+3 more)
+
+### Community 81 - "fact-bounds.ts"
+Cohesion: 0.30
+Nodes (13): collectCTOFacts(), boundedIntake(), boundedJobs(), boundedMaintenance(), boundedTime(), clip(), FINISHED_JOB, goalReferences() (+5 more)
+
+### Community 82 - "project-progress.ts"
+Cohesion: 0.20
+Nodes (7): file, folder, logs, root, xml(), ProjectProgress, BoardUpdate
+
+### Community 83 - "index.ts"
+Cohesion: 0.18
+Nodes (12): close(), config, itSpecialist, loadedRevision, offices, releaseLock, server, serviceHealth (+4 more)
+
+### Community 84 - "weekly-research.ts"
+Cohesion: 0.27
+Nodes (10): publicTopicSafe(), researchTopics(), TEMPLATES, mirror(), ResearchResult, runWeeklyResearch(), scheduledResearch(), PREVIOUS_RESEARCH_PROFILE_UNAVAILABLE (+2 more)
+
+### Community 85 - "goal-reviews.ts"
+Cohesion: 0.18
+Nodes (12): applyGoalReview(), EvidenceRefSchema, FreshDailyResultSchema, statusAllowed(), workEvidence(), DailyCTOBriefing, DailyCTOResult, DailyGoalUpdate (+4 more)
+
+### Community 86 - "session-bridge.ts"
+Cohesion: 0.22
+Nodes (10): claudeSessionContext(), codexSessionContext(), claudeSessions(), codexSessions(), desktopSessions(), guardianReview(), loadedCodexSession(), openRollouts() (+2 more)
+
+### Community 87 - "assignment-poll.ts"
 Cohesion: 0.31
-Nodes (7): deliveryTask(), DeliveryTaskInput, DISCOVERY_GUIDANCE, compactSteps(), AMENDMENT_REVIEW_PROOF, featureDeliveryContext(), deliveryResearchContext()
+Nodes (9): noticeState(), queueMergeNotice(), observeGitHubMergeNotices(), pinCourier, due(), unparkReleasedWaits(), resumeParked(), poll() (+1 more)
 
-### Community 77 - "codex-rollout.ts"
-Cohesion: 0.29
-Nodes (9): add(), CodexRequest, CodexTokens, FIELDS, parseCodexRollout(), same(), tokens(), ZERO (+1 more)
+### Community 88 - "harnessEffect"
+Cohesion: 0.37
+Nodes (10): activeEffectId(), harnessEffect, officeMergeProvenance(), reconcileMergeScannerRetry(), Retry, retryMergeScanner(), retryReadBack(), runIdentity() (+2 more)
 
-### Community 78 - "command-registry.ts"
+### Community 89 - "http/context.ts"
+Cohesion: 0.26
+Nodes (8): ITSpecialist, ServiceContext, OfficeConfigInputs, officeConfigRoute(), officeConfigSummary(), CECBinding, runtimeRevision(), startServiceTicks()
+
+### Community 90 - "blocker-followups.ts"
+Cohesion: 0.42
+Nodes (9): conversationReadbackReady(), queueConversationReadback(), uncertainConversations(), conversationResolved(), canFileGithubIssue(), readBackConversations(), handoff(), reconcileBlockerFollowups() (+1 more)
+
+### Community 91 - "goal-evidence.ts"
+Cohesion: 0.27
+Nodes (10): AUTO_ADOPT_BOTS, collectAzureGoalDocuments(), EvidenceStore, GOAL_EVIDENCE_LIMITS, goalEvidencePath(), localBindings, assertModelOverrides(), ModelOverrides (+2 more)
+
+### Community 92 - "goal-reporting.ts"
+Cohesion: 0.32
+Nodes (10): githubPRDescription(), azureGoalFacts(), azurePRDescription(), boundedEvidence(), GOAL_REPORT_GUIDANCE, goalEvidenceFingerprint(), GoalReport, projectPRFacts() (+2 more)
+
+### Community 93 - "DailyCTO.tsx"
+Cohesion: 0.26
+Nodes (8): CTOReview(), goalState, DailyCTO(), GoalHistory(), reportDate(), reviewStatus, reviewExcerpt(), ReviewText()
+
+### Community 94 - "create-candidate.ts"
+Cohesion: 0.31
+Nodes (9): candidateIdentity(), candidateSlug(), createCandidate(), Execute, readCandidate(), repositoryOf(), Execute, installDependencies() (+1 more)
+
+### Community 95 - "command-registry.ts"
 Cohesion: 0.29
 Nodes (4): CommandRegistry, CommandScope, inside(), RegisteredCommand
 
-### Community 80 - "cost-totals.ts"
-Cohesion: 0.36
-Nodes (8): isModelWork(), isTicketModelWork(), awaitingEvidence(), CaptureContext, inCostWindow(), TicketCost, ticketCosts(), ISSUE_KEY
+### Community 96 - "codex-rollout.ts"
+Cohesion: 0.33
+Nodes (8): add(), CodexRequest, CodexTokens, FIELDS, parseCodexRollout(), same(), tokens(), ZERO
 
-### Community 81 - "cli.ts"
-Cohesion: 0.25
-Nodes (6): args, [cmd,...rawArgs], commands, key, projectIndex, PORT
+### Community 97 - "windows.ts"
+Cohesion: 0.61
+Nodes (6): compareTs(), micros(), nowTs(), overlapTs(), timestamp(), refresh()
 
-### Community 82 - "read-retries.ts"
-Cohesion: 0.32
-Nodes (7): PrerequisitesSchema, incompleteReadOutput(), IntakeResult, planReadRetry(), reconcileReadRetries(), WorkFailure, ReadRetry
+### Community 98 - "cli.ts"
+Cohesion: 0.29
+Nodes (5): args, [cmd,...rawArgs], commands, key, projectIndex
 
-### Community 83 - "owned-artifact.ts"
-Cohesion: 0.54
-Nodes (6): ghLogCacheEvidence(), done(), readBoundedNoFollow(), readBoundedNoFollowSync(), readOwnedSessionArtifact(), reasonOf()
+### Community 99 - "OfficeConfigView.tsx"
+Cohesion: 0.48
+Nodes (5): loadOfficeConfig(), OfficeConfigSection(), OfficeConfigState, OfficeConfigView(), OfficeConfigSummary
 
-### Community 84 - "codex-rollout-file.ts"
-Cohesion: 0.36
-Nodes (7): codexHome(), createdAt(), dayDirs(), header(), ROLLOUT_MAX_BYTES, RolloutScan, scanCodexRollouts()
-
-### Community 85 - "run-usage.ts"
-Cohesion: 0.38
-Nodes (5): CodexRollout, claudeCrashZero(), claudeUsage(), count(), RunUsage
-
-### Community 86 - "SlackIntakeStatus.tsx"
-Cohesion: 0.47
-Nodes (5): SlackIntakeStatus, format, labels, SlackIntakeStatus(), time()
-
-### Community 87 - "channel-notice.ts"
+### Community 100 - "extract-worker.mjs"
 Cohesion: 0.70
-Nodes (4): ChannelSettings, configureChannelNotices(), notices(), queueChannelNotice()
+Nodes (4): bounded(), extract(), fail(), [path,kind]
 
-### Community 89 - "codexAccounting"
+### Community 102 - "static-files.ts"
 Cohesion: 0.50
-Nodes (5): readCodexRollout(), codexAccounting(), codexCost(), unpriced(), codexUsage()
+Nodes (4): PORT, RequestContext, fileResponse(), staticRoute()
 
-### Community 90 - "helper-usage.ts"
+### Community 103 - "SlackIntakeStatus.tsx"
 Cohesion: 0.60
-Nodes (4): HELPER_STDOUT_MAX_BYTES, helperAccounting(), claudeAccounting(), withReason()
+Nodes (4): format, labels, SlackIntakeStatus(), time()
 
-### Community 91 - "highestStableAtLeast"
+### Community 104 - "highestStableAtLeast"
 Cohesion: 0.83
 Nodes (3): compare(), highestStableAtLeast(), parts()
 
-### Community 92 - "dependency-edges.ts"
-Cohesion: 1.00
-Nodes (3): assertFeatureDependencyOrder(), featureDependencyEdges(), key()
-
-### Community 93 - "slack-supersession.ts"
+### Community 105 - "slack-supersession.ts"
 Cohesion: 0.50
 Nodes (3): SlackReplacementRequest, SlackSupersession, SlackSupersessionView
 
 ## Knowledge Gaps
-- **357 isolated node(s):** `root`, `folder`, `file`, `logs`, `base` (+352 more)
+- **377 isolated node(s):** `root`, `folder`, `file`, `logs`, `base` (+372 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **2 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Store` connect `Store` to `github-delivery.ts`, `store.ts`, `schedule.ts`, `artifact`, `knowledge.ts`, `workKey`, `brain-maintenance.ts`, `.emit`, `conversations/conversations.ts`, `source-amendment.ts`, `digest`, `.save`, `record-trigger.ts`, `weekly-rollup.ts`, `weekly-research.ts`, `cec/workflow.ts`, `goal-reporting.ts`, `engine.ts`, `.getEffect`, `TicketJob`, `index.ts`, `activation-recovery.ts`, `process.ts`, `scope-repair-resume.ts`, `shared.ts`, `.run`, `github/issue-publication.ts`, `publish-pr.ts`, `session-bridge.ts`, `dependencies.ts`, `cost-ledger.ts`, `OfficeSnapshot`, `dependency-bots/adopt.ts`, `investigations/run.ts`, `maintenance.ts`, `assignment-poll.ts`, `http/commands.ts`, `release-unpark.ts`, `remove-candidate.ts`, `Coordinator`, `scheduled-work.ts`, `cec/issue-publication.ts`, `time-scope.ts`, `features.ts`, `outbox.ts`, `offices.ts`, `migrations.ts`, `harnessEffect`, `run-accounting.ts`, `it-specialist.ts`, `lesson-selection.ts`, `jira-time.ts`, `tracking-issue.ts`, `coordination.ts`, `evidence.ts`, `blocker-followups.ts`, `sanitizeObject`, `discovery-recovery.ts`, `time-readback.ts`, `delivery-task.ts`, `read-retries.ts`, `channel-notice.ts`, `BrainFollowup`, `dependency-edges.ts`?**
-  _High betweenness centrality (0.105) - this node is a cross-community bridge._
-- **Why does `Role` connect `store.ts` to `github-delivery.ts`, `Inspector.tsx`, `workKey`, `App.tsx`, `OfficeScene.tsx`, `.emit`, `conversations/conversations.ts`, `record-trigger.ts`, `Store`, `PeoplePanel.tsx`, `TicketJob`, `shared.ts`, `.run`, `OfficeSnapshot`, `maintenance.ts`, `http/commands.ts`, `scheduled-work.ts`, `outbox.ts`, `run-accounting.ts`, `model-routes.ts`, `work.ts`?**
+- **Why does `Store` connect `Store` to `github-delivery.ts`, `.transaction`, `saved-prerequisite-handoff.ts`, `knowledge/routes.ts`, `source-amendment.ts`, `agents.ts`, `artifact`, `TicketJob`, `digest`, `worker-runtime.ts`, `requests.ts`, `conversations/conversations.ts`, `run-retrospective.ts`, `store.ts`, `slack-intake/run.ts`, `record-trigger.ts`, `maintenance.ts`, `dependency-bots/adopt.ts`, `offices.ts`, `easternDay`, `cec/workflow.ts`, `command`, `cec/issue-publication.ts`, `knowledge.ts`, `task-briefing.ts`, `SourceRegistry`, `scope-repair-resume.ts`, `engine.ts`, `digest`, `schedule.ts`, `IntakeLedger`, `sourceVisible`, `cost-ledger.ts`, `Role`, `.save`, `run-accounting.ts`, `.emit`, `tracking-issue.ts`, `slack-intake/report.ts`, `time-scope.ts`, `OfficeSnapshot`, `.getEffect`, `outbox.ts`, `scheduled-work.ts`, `investigations/ledger.ts`, `closeout.ts`, `investigations/run.ts`, `Coordinator`, `it-specialist.ts`, `remove-candidate.ts`, `dependencies.ts`, `coordination.ts`, `jira-time.ts`, `discovery-recovery.ts`, `retrospective-subject.ts`, `azure.ts`, `lesson-selection.ts`, `telemetry/report.ts`, `workKey`, `coordination-tick.ts`, `admit-improvement.ts`, `api-routes.ts`, `outbound.ts`, `knowledge/learning-events.ts`, `publish-pr.ts`, `project-progress.ts`, `weekly-research.ts`, `goal-reviews.ts`, `session-bridge.ts`, `harnessEffect`, `blocker-followups.ts`, `goal-evidence.ts`, `goal-reporting.ts`, `create-candidate.ts`, `BrainFollowup`?**
+  _High betweenness centrality (0.113) - this node is a cross-community bridge._
+- **Why does `Role` connect `Role` to `github-delivery.ts`, `Inspector.tsx`, `OfficeScene.tsx`, `App.tsx`, `agents.ts`, `TicketJob`, `worker-runtime.ts`, `conversations/conversations.ts`, `store.ts`, `Store`, `maintenance.ts`, `OrgChart.tsx`, `cec/workflow.ts`, `shared.ts`, `run-accounting.ts`, `.emit`, `OfficeSnapshot`, `outbox.ts`, `closeout.ts`, `retrospective-subject.ts`, `api-routes.ts`?**
   _High betweenness centrality (0.020) - this node is a cross-community bridge._
-- **Why does `TicketJob` connect `TicketJob` to `github-delivery.ts`, `Inspector.tsx`, `store.ts`, `artifact`, `workKey`, `App.tsx`, `brain-maintenance.ts`, `source-amendment.ts`, `digest`, `.save`, `record-trigger.ts`, `cec/workflow.ts`, `activation-recovery.ts`, `scope-repair-resume.ts`, `shared.ts`, `.run`, `publish-pr.ts`, `dependencies.ts`, `dependency-bots/adopt.ts`, `release-unpark.ts`, `remove-candidate.ts`, `scheduled-work.ts`, `closeout.ts`, `features.ts`, `harnessEffect`, `it-specialist.ts`, `tracking-issue.ts`, `discovery-recovery.ts`, `delivery-task.ts`, `owned-artifact.ts`?**
-  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+- **Why does `TicketJob` connect `TicketJob` to `github-delivery.ts`, `Inspector.tsx`, `saved-prerequisite-handoff.ts`, `App.tsx`, `source-amendment.ts`, `agents.ts`, `artifact`, `digest`, `worker-runtime.ts`, `requests.ts`, `record-trigger.ts`, `dependency-bots/adopt.ts`, `cec/workflow.ts`, `scope-repair-resume.ts`, `engine.ts`, `shared.ts`, `Role`, `tracking-issue.ts`, `outbox.ts`, `closeout.ts`, `it-specialist.ts`, `remove-candidate.ts`, `dependencies.ts`, `discovery-recovery.ts`, `retrospective-subject.ts`, `workKey`, `publish-pr.ts`, `owned-artifact.ts`, `fact-bounds.ts`, `project-progress.ts`, `harnessEffect`, `create-candidate.ts`?**
+  _High betweenness centrality (0.018) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `command()` (e.g. with `.constructor()` and `executeRequest()`) actually correct?**
   _`command()` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `root`, `folder`, `file` to the rest of the system?**
-  _357 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _377 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `github-delivery.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.06805671392827356 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.064030131826742 - nodes in this community are weakly interconnected._
 - **Should `Inspector.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.05711022272986865 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.061239731142643763 - nodes in this community are weakly interconnected._
