@@ -134,3 +134,55 @@ test('rapid reopen and switching from Brain to another panel keep one drawer', a
     await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
     await expect(page.locator('canvas')).toHaveCount(1);
 });
+
+test('a late Inspector exit cannot restore the room underneath Brain', async ({ page, request }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await request.post('/__fixture/preferences', { data: { reducedMotion: false } });
+    await page.goto('/'); await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
+    await page.getByRole('button', { name: 'People', exact: true }).click();
+    await expect(page.getByRole('complementary', { name: 'People', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Sources', exact: true })).toBeVisible();
+    await expect(page.locator('[data-scene-label="room"]')).toHaveCount(0);
+    await expect(page.locator('canvas')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await expect(page.locator('canvas')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
+    await expect(page.locator('canvas')).toHaveCount(1);
+});
+
+for (const viewport of [{ width: 1440, height: 800 }, { width: 390, height: 844 }]) {
+    test(`selected map content stays below navigation at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+        await page.getByRole('button', { name: 'Map', exact: true }).click();
+        await page.getByLabel('Find a node').fill('schema');
+        await page.getByRole('button', { name: 'Confirm schema versions before mapping changes · lesson', exact: true }).click();
+        const nav = (await page.getByRole('navigation', { name: 'Brain views' }).boundingBox())!;
+        const frame = (await page.locator('[data-brain-map-frame]').boundingBox())!;
+        expect(frame.y).toBeGreaterThanOrEqual(nav.y + nav.height);
+        const back = page.getByRole('button', { name: 'Back to map', exact: true }); await back.scrollIntoViewIfNeeded();
+        expect((await back.boundingBox())!.y).toBeGreaterThanOrEqual(nav.y + nav.height);
+        expect(await back.evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
+    });
+}
+
+test('the activity checkbox reflows at narrow widths and large text', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    const label = await page.getByRole('checkbox', { name: 'Include employee activity' }).evaluate(el => {
+        const label = el.closest('label')!; label.style.fontSize = '24px';
+        const text = label.querySelector('span')!, bounds = label.getBoundingClientRect(), content = document.querySelector('[data-brain-content]')!;
+        return { right: bounds.right, contentRight: content.getBoundingClientRect().right, fits: text.scrollWidth <= text.clientWidth, height: text.getBoundingClientRect().height };
+    });
+    expect(label.right).toBeLessThanOrEqual(label.contentRight); expect(label.fits).toBe(true); expect(label.height).toBeGreaterThan(30);
+});
+
+test('the source checkbox uses the same small text token as its source count', async ({ page }) => {
+    await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    const count = page.getByText(/^\d+ sources in this view$/); await expect(count).toBeVisible();
+    const countSize = await count.evaluate(el => getComputedStyle(el).fontSize);
+    expect(await page.getByRole('checkbox', { name: 'Show removed and withdrawn' }).evaluate(el => getComputedStyle(el.closest('label')!).fontSize)).toBe(countSize);
+});

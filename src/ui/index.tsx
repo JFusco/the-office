@@ -121,6 +121,6 @@ export const selectField='rounded-6 border-line bg-paper px-3 py-2';
 /** Stacked label above a settings input or select. */
 export const fieldLabel='grid gap-field-label-gap text-12';
 /** Native checkbox with its wrapping label text. */
-export function CheckField({children,className,...props}:Omit<InputHTMLAttributes<HTMLInputElement>,'type'>&{children:ReactNode}){
-  return <label className={cx(checkLabel,'text-12',className)}><input type="checkbox" className={cx(checkbox,'mt-0.5')} {...props}/><span className="min-w-0 flex-1">{children}</span></label>;
+export function CheckField({children,className,size='md',...props}:Omit<InputHTMLAttributes<HTMLInputElement>,'type'|'size'>&{children:ReactNode;size?:'sm'|'md'}){
+  return <label className={cx(checkLabel,size==='sm'?'text-11':'text-12',className)}><input type="checkbox" className={cx(checkbox,'mt-0.5')} {...props}/><span className="min-w-0 flex-1">{children}</span></label>;
 }

@@ -24,12 +24,12 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
         <PanelHeader id="map-heading" icon={<Brain size={26}/>}>Map</PanelHeader>
         <p className={cx(mutedCopy, "max-w-reading-copy")}>See how notes, source evidence and team lessons connect. Key labels orient the map; hover or select a node to explore.</p>
         <div className="my-section-gap flex flex-wrap items-end gap-4">
-            <label className={fieldLabel}><span>Map scope</span><Select className={selectField} value={scope} onChange={event => { setSelection(initial); setScope(event.target.value); }}><option value="project">This project and shared knowledge</option><option value="global">Global · approved Office and technical knowledge</option></Select></label>
+            <label className={cx(fieldLabel, 'min-w-0 max-w-full')}><span>Map scope</span><Select className={selectField} value={scope} onChange={event => { setSelection(initial); setScope(event.target.value); }}><option value="project">This project and shared knowledge</option><option value="global">Global · approved Office and technical knowledge</option></Select></label>
             <label className={fieldLabel}><span>Show</span><Select className={selectField} value={selection.filter} onChange={event => setSelection({ ...initial, filter: event.target.value as MapSelection['filter'], activity: selection.activity })}>{Object.entries(filterNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select></label>
             <label className={cx(fieldLabel, "min-w-44 flex-1")}><span>Find a node</span><input className={inputField} value={selection.query} onChange={event => setSelection(prior => ({ ...prior, query: event.target.value, selected: '', group: '', page: 0 }))}/></label>
             <Button onClick={() => { setSelection(initial); refresh(); }}>Refresh map</Button>
         </div>
-        <CheckField className="w-fit [&>span]:whitespace-nowrap" checked={selection.activity} onChange={event => setSelection(prior => ({ ...initial, activity: event.target.checked, filter: prior.filter }))}>Include employee activity</CheckField>
+        <CheckField className="w-fit" checked={selection.activity} onChange={event => setSelection(prior => ({ ...initial, activity: event.target.checked, filter: prior.filter }))}>Include employee activity</CheckField>
         {error && <p role="alert">{error}</p>}{!data && !error && <p role="status">Loading connections…</p>}
         {data && view && <>
             <div className="my-4 flex flex-wrap items-center justify-between gap-3 text-11 text-muted">
