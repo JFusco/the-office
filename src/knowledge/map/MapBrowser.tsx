@@ -4,7 +4,7 @@ import type { displayScene } from './display-scene';
 
 export function MapBrowser({ view, onGroup, onNode, onHighlight, onPage }: { view: ReturnType<typeof displayScene>; onGroup: (id: string) => void; onNode: (node: KnowledgeNode) => void; onHighlight: (id: string) => void; onPage: (page: number) => void }) {
     const browsingNodes = view.browsingNodes;
-    return <section aria-label="Map browser" className="rounded-7 border border-drawer-line bg-paper p-card-padding">
+    return <section aria-label="Map browser" className="min-w-0">
         <h3 className="font-heading text-18">{view.group?.title || (browsingNodes ? 'Matching records' : 'Explore knowledge')}</h3>
         <p className="my-3 text-12 leading-relaxed text-muted">{view.total} loaded {browsingNodes ? 'records' : 'groups'}. {browsingNodes ? 'Select a record to inspect its saved connections.' : 'Open a group to explore individual records.'}</p>
         {!browsingNodes && view.scene.nodes.filter(n=>n.kind==='project' && n.visible).map(node=><Button key={node.id} onClick={()=>onNode(node)} onFocus={()=>onHighlight(node.id)} onBlur={()=>onHighlight('')}>Project · {node.title}</Button>)}

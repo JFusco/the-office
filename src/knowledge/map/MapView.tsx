@@ -29,7 +29,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
             <label className={cx(fieldLabel, "min-w-44 flex-1")}><span>Find a node</span><input className={inputField} value={selection.query} onChange={event => setSelection(prior => ({ ...prior, query: event.target.value, selected: '', group: '', page: 0 }))}/></label>
             <Button onClick={() => { setSelection(initial); refresh(); }}>Refresh map</Button>
         </div>
-        <CheckField checked={selection.activity} onChange={event => setSelection(prior => ({ ...initial, activity: event.target.checked, filter: prior.filter }))}>Include employee activity</CheckField>
+        <CheckField className="w-fit [&>span]:whitespace-nowrap" checked={selection.activity} onChange={event => setSelection(prior => ({ ...initial, activity: event.target.checked, filter: prior.filter }))}>Include employee activity</CheckField>
         {error && <p role="alert">{error}</p>}{!data && !error && <p role="status">Loading connections…</p>}
         {data && view && <>
             <div className="my-4 flex flex-wrap items-center justify-between gap-3 text-11 text-muted">
@@ -41,10 +41,10 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
             {data.truncated && <p role="status" className="my-3 max-w-reading-copy text-11 leading-relaxed text-muted">Showing a partial map. Use Library search to find more records.</p>}
             <nav aria-label="Map location" className="my-3 flex flex-wrap items-center gap-2 text-12"><Button onClick={() => setSelection(prior => ({ ...initial, filter: prior.filter, activity: prior.activity }))}>Overview</Button>{view.group && <><span aria-hidden="true">/</span><Button onClick={() => selectGroup(view.group!.id)}>{view.group.title}</Button></>}{view.selected && <><span aria-hidden="true">/</span><span className="font-emphasis">{view.selected.title}</span></>}</nav>
             <div ref={stage} className="grid grid-cols-[minmax(0,1fr)_var(--spacing-brain-details)] items-start gap-section-gap max-tablet:grid-cols-1">
-                <div className="min-w-0"><div className="overflow-hidden rounded-7 border border-drawer-line bg-paper"><Constellation data={view.scene} reduced={reduced} focusId={view.selected?.id} highlightId={highlight} onSelect={selectNode}/></div>
+                <div className="min-w-0"><div className="overflow-hidden rounded-7 border border-secondary-line bg-paper" data-brain-map-frame><Constellation data={view.scene} reduced={reduced} focusId={view.selected?.id} highlightId={highlight} onSelect={selectNode}/></div>
 
                 </div>
-                <aside className="sticky top-4 max-h-[calc(100dvh-14rem)] min-w-0 overflow-auto rounded-7 max-tablet:static max-tablet:max-h-none">
+                <aside className="sticky top-4 max-h-[calc(100dvh-14rem)] min-w-0 overflow-auto rounded-7 border border-secondary-line bg-paper p-card-padding max-tablet:static max-tablet:max-h-none" data-brain-list-frame>
                     {view.selected ? <><Button className="mb-3" onClick={()=>setSelection(prior=>({...prior,selected:''}))}>Back to map</Button><MapNodePanel project={project} node={view.selected} data={data} onSelect={selectNode}/></> : <MapBrowser view={view} onGroup={selectGroup} onNode={selectNode} onHighlight={setHighlight} onPage={page => setSelection(prior => ({ ...prior, page }))}/>}
                 </aside>
             </div>

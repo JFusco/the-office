@@ -1,7 +1,7 @@
 import { UploadSource } from './UploadSource';
 import { PanelHeader } from '../../ui/PanelHeader';
 import { FileText, Plus } from '../../ui/icons';
-import { Button, Select, Notice, Tag, cx, field, fieldLabel, selectField, checkbox, summary, mutedCopy } from '../../ui';
+import { Button, CheckField, Select, Notice, Tag, cx, field, fieldLabel, selectField, checkbox, summary, mutedCopy } from '../../ui';
 import { useEffect, useState } from 'react';
 import type { KnowledgeSourceSummary } from '../../contracts/knowledge-sources';
 import { SourceCard } from './SourceCard';
@@ -45,7 +45,7 @@ export function Sources({ project, projects }: { project: string; projects: { id
         {uploading && <UploadSource key={uploadTarget||'new'} sourceId={uploadTarget} project={project} onSaved={()=>void reload().catch(e=>setError(String(e.message)))} onClose={()=>setUploading(false)}/>}
         {adding && <AddSourceForm connections={connections} project={project} pending={pending} onSubmit={mutate} onClose={() => setAdding(false)}/>}
         {addingPublic&&<AddPublicSource project={project} pending={pending} onSubmit={mutate} onClose={()=>setAddingPublic(false)}/>}
-        <div className="flex flex-wrap justify-between items-center gap-3 my-5 text-11 text-muted"><span>{visible.length} sources in this view</span><label className="flex items-center gap-2 text-11"><input className={checkbox} type="checkbox" checked={history} onChange={e => setHistory(e.target.checked)}/> Show removed and withdrawn</label></div>
+        <div className="flex flex-wrap justify-between items-center gap-3 my-5 text-11 text-muted"><span>{visible.length} sources in this view</span><CheckField className="w-fit text-11" checked={history} onChange={e => setHistory(e.target.checked)}>Show removed and withdrawn</CheckField></div>
         {loading ? <p role="status">Loading Harper’s sources…</p> : !visible.length ? <div className="rounded-7 border border-drawer-line bg-paper p-8 text-center text-12 leading-body text-muted"><h3 className="text-15 font-heading">No sources yet</h3><p>Add a Slack channel to give Harper project evidence. You can add several channels and explicitly share a stream with other projects.</p></div> : <div className="grid gap-4">{visible.map(source => <SourceCard key={source.id} source={source} project={project} projects={projects} pending={pending} onUpload={()=>{setUploadTarget(source.id);setUploading(true);}} onCommand={mutate}/>)}</div>}
         {next && <Button onClick={() => void reload(next).catch(e => setError(String(e.message)))}>Load more sources</Button>}
         <p className="mt-6 max-w-3xl text-11 leading-body text-muted">The restricted acquisition worker sees native Slack content first. Secret scanning happens after acquisition and before evidence enters the library, curation, employee briefings or digests.</p>

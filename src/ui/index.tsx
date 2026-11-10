@@ -113,7 +113,7 @@ export const envelopeCard=`relative my-2.5 flex w-full flex-col gap-2 rounded-8 
 /** Text inputs and textareas: a 3:1 boundary (WCAG 1.4.11), hover and focus. Callers add padding and surface. */
 export const field=`w-full min-w-0 border-field-line ${fieldBehavior}`;
 export const fieldFocus='focus-visible:outline-focus';
-export const checkLabel='flex w-full items-start gap-2.5 leading-normal';
+export const checkLabel='flex max-w-full items-start gap-control-gap leading-normal';
 /** Settings text input: the shared field boundary, focus color and settings surface. */
 export const inputField=`${field} ${fieldFocus} rounded-6 bg-paper px-3 py-2`;
 /** Settings select presentation, passed to `Select` as its className. */

@@ -15,7 +15,9 @@
   --spacing-control-gap: 8px;
   --spacing-field-label-gap: 8px;
   --spacing-brain-canvas: clamp(420px, 52dvh, 600px);
-  --spacing-brain-details: clamp(400px, 34vw, 520px);
+  --spacing-brain-details: clamp(320px, 28vw, 440px);
+  --spacing-brain-drawer: 80vw;
+  --spacing-brain-content: 1280px;
   --spacing-reading-copy: 65ch;
 
   /* Shell */
