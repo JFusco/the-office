@@ -1,16 +1,16 @@
-# Graph Report - office-session-context  (2026-11-10)
+# Graph Report - the-office  (2026-11-10)
 
 ## Corpus Check
-- 662 files · ~277,062 words
+- 662 files · ~277,248 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3427 nodes · 15185 edges · 95 communities (93 shown, 2 thin omitted)
+- 3427 nodes · 15187 edges · 95 communities (93 shown, 2 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 93 edges (avg confidence: 0.75)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `76413511`
+- Built from commit: `e669bcc2`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -236,7 +236,7 @@ Nodes (31): channelNoticeAuthorized(), ChannelSettings, configureChannelNotices(
 
 ### Community 19 - "IntakeLedger"
 Cohesion: 0.12
-Nodes (33): Config, ChannelProgress, IntakeResultValue, LIMITS, Observation, Proposal, ReadKind, ReadTask (+25 more)
+Nodes (35): Config, ChannelProgress, LIMITS, Proposal, ReadKind, ReadTask, SourceUnit, IntakeLedger (+27 more)
 
 ### Community 20 - "requests.ts"
 Cohesion: 0.10
@@ -275,8 +275,8 @@ Cohesion: 0.12
 Nodes (24): assertConversationReadback(), Conversations, GoalChangeSchema, MessageInput, ReplySchema, pumpCTO(), queueCTOHandoff(), pumpIT() (+16 more)
 
 ### Community 29 - "schedule.ts"
-Cohesion: 0.13
-Nodes (26): newTask(), reconcileIntakeStatus(), queueReconsideration(), resourceUnits(), scheduledSlackIntake(), sourceWork(), micros(), nowTs() (+18 more)
+Cohesion: 0.15
+Nodes (24): newTask(), reconcileIntakeStatus(), scheduledSlackIntake(), sourceWork(), micros(), nowTs(), overlapTs(), timestamp() (+16 more)
 
 ### Community 30 - "azure.ts"
 Cohesion: 0.09
@@ -331,8 +331,8 @@ Cohesion: 0.16
 Nodes (25): MOVABLE, moveLane(), harnessCloseout(), PASSING, verifyMergeActions(), activeEffectId(), harnessEffect, assertMayMutate() (+17 more)
 
 ### Community 43 - "offices.ts"
-Cohesion: 0.10
-Nodes (24): leadershipContext(), leadershipEntries(), knowledgeEntries(), configDigest(), IntakeConfig, privateFile(), readConfig(), DERIVED (+16 more)
+Cohesion: 0.11
+Nodes (20): leadershipContext(), leadershipEntries(), knowledgeEntries(), privateFile(), DERIVED, readLocalIntakeReport(), readIntakeReport(), retrySlackIntake() (+12 more)
 
 ### Community 44 - "cost-ledger.ts"
 Cohesion: 0.16
@@ -347,8 +347,8 @@ Cohesion: 0.16
 Nodes (26): readBackOrThrow(), closesIssue(), linkedBody(), linkPR(), dependabotPR, readRepo(), ensureTrackingIssue(), findTrackingIssue() (+18 more)
 
 ### Community 47 - "slack-intake/run.ts"
-Cohesion: 0.16
-Nodes (22): independentIntakeResult(), recordObservation(), settlePage(), IntakeResult, Message, observeRead(), Page, readArguments() (+14 more)
+Cohesion: 0.15
+Nodes (22): independentIntakeResult(), recordObservation(), settlePage(), IntakeResult, IntakeResultValue, Observation, Message, observeRead() (+14 more)
 
 ### Community 48 - "publication.ts"
 Cohesion: 0.16
@@ -455,8 +455,8 @@ Cohesion: 0.24
 Nodes (13): retryRead(), developerPRContent(), Execute, lintPRContent(), officePRContent(), prContent, assertCandidate(), Candidate (+5 more)
 
 ### Community 74 - "slack-intake/config.ts"
-Cohesion: 0.23
-Nodes (12): exactly(), Message, nativeReadPayload(), pagination(), nativeFile(), Fields, PublicHosts, SlackAppId (+4 more)
+Cohesion: 0.18
+Nodes (16): configDigest(), IntakeConfig, readConfig(), exactly(), Message, nativeReadPayload(), pagination(), nativeFile() (+8 more)
 
 ### Community 75 - "run-accounting.ts"
 Cohesion: 0.21

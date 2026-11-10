@@ -6,7 +6,7 @@ import { LIMITS, type SourceUnit, type ReadTask } from './contracts';
 import { linkKey, type LinkRecord } from './read-links';
 /** One load of units and tasks per reconsideration pass, reused for every reference. */
 export interface ReferenceIndex { resources: Map<string, SourceUnit>; tasks: ReadTask[] }
-/** File and canvas bodies are the only units a reference resolves to. */
+/** File and canvas bodies are the only units a reference resolves to; same-message versions are queried per deferral. */
 const resourceUnits = (ledger: IntakeLedger) => [...ledger.where<SourceUnit>('unit', '$.kind', 'file'), ...ledger.where<SourceUnit>('unit', '$.kind', 'canvas')];
 export function referenceIndex(ledger: IntakeLedger, units = resourceUnits(ledger), tasks = ledger.all<ReadTask>('task')): ReferenceIndex {
     const resources = new Map<string, SourceUnit>();
@@ -37,14 +37,31 @@ export function readyReferences(ledger: IntakeLedger, unit: SourceUnit, index = 
             references.push(unavailable(`${ref.kind}:${ref.id}`, reads.some(t => t.status === 'needs-attention') ? 'resource-read-needs-attention' : 'resource-body-unavailable'));
         }
     }
+    // Any deferral can have a later admitted version of the same message (such as a thread read);
+    // only a reference-less excerpt also scans for a native resource identifier.
+    // Only exact, independently admitted local evidence is eligible.
+    const referenceLess = !unit.references.length;
+    for (const related of [...(referenceLess ? index.resources.values() : []), ...ledger.where<SourceUnit>('unit', '$.id', unit.id)]) {
+        if (related.channel !== unit.channel || related.id === unit.id && related.version === unit.version) continue;
+        const sameMessage = related.id === unit.id;
+        const resourceMention = referenceLess && ['file', 'canvas'].includes(related.kind) && /^[F][A-Z0-9]+$/.test(related.resource)
+            && new RegExp('\\b' + related.resource + '\\b').test(unit.text);
+        if (!sameMessage && !resourceMention) continue;
+        if (ledger.get<{state:string}>('admission', `${related.id}:${related.version}`)?.state !== 'admitted'
+            || related.state === 'error' || related.state === 'inaccessible') continue;
+        references.push({ id: related.id, version: related.version, url: related.url, text: related.text });
+    }
+    // A completed reassessment can retain this as an explicit coverage gap;
+    // this marker never supplies invented reference content.
+    if (referenceLess && !references.length) references.push(unavailable(unit.id, 'no-recorded-reference-locator'));
     return references;
 }
 export function queueReconsideration(ledger: IntakeLedger, config: CollectionPolicy, week: string, at: string): void {
     // Readiness depends only on ledger records, so an unchanged revision has nothing new to queue.
-    if (ledger.get<string>('meta', 'reconsidered') === ledger.revision()) return;
+    if (ledger.get<string>('meta', 'reconsidered') === `deferred-v2:${ledger.revision()}`) return;
     const tasks = ledger.all<ReadTask>('task'), index = referenceIndex(ledger, resourceUnits(ledger), tasks);
     for (const unit of ledger.where<SourceUnit>('unit', '$.state', 'deferred')) {
-        if (unit.requests.length || !unit.references.length) continue;
+        if (unit.requests.length) continue;
         const references = readyReferences(ledger, unit, index); if (!references) continue;
         if (Buffer.byteLength(JSON.stringify([unit, references])) > LIMITS.text) continue;
         const identity = digest(JSON.stringify([unit.id, unit.version, references]));
@@ -53,5 +70,5 @@ export function queueReconsideration(ledger: IntakeLedger, config: CollectionPol
         task.processing = [`${unit.id}:${unit.version}`]; ledger.put('task', task.id, task); tasks.push(task);
     }
     // Recorded after this pass's own task writes: rerunning would only find the same identities.
-    ledger.put('meta', 'reconsidered', ledger.revision());
+    ledger.put('meta', 'reconsidered', `deferred-v2:${ledger.revision()}`);
 }

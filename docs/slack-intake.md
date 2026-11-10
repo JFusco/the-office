@@ -353,3 +353,16 @@ Public sources cannot produce technical capture proposals. Uploads are limited t
 200 PDF pages, 500,000 text characters/1 MiB extracted text, 30 seconds, a 256 MiB child
 heap and a monitored 512 MiB process-tree RSS. Unsupported, encrypted, image-only and
 unreadable inputs retain explicit outcomes; there is no OCR or attachment permission gain.
+
+Deferred excerpts without recorded reference locators also receive one bounded
+reassessment through the existing scheduler. Any deferral's reassessment can use
+admitted versions of the same message (including a later thread read); a
+reference-less excerpt can also use an admitted file/canvas whose exact native
+resource ID occurs in it. Other channels, unadmitted bodies and incidental
+identifier prefixes are excluded. The evidence identity prevents unchanged
+reclassification loops; newly admitted context gets a new identity. Where no
+locator or related admitted context exists, the prompt records that evidence as
+unavailable. Only a completed reassessment whose generated classification was
+admitted and still returns a deferral can retain that unavailable evidence as a
+coverage gap; a scan-withheld classification leaves the source unresolved. This
+never marks the missing body as read, accepts a capture or publishes guidance.

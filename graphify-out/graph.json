@@ -18358,8 +18358,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_collect",
-      "community": 19,
-      "community_name": "IntakeLedger",
+      "community": 47,
+      "community_name": "slack-intake/run.ts",
       "norm_label": "collect.ts"
     },
     {
@@ -18416,8 +18416,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_config_intakeconfig",
-      "community": 43,
-      "community_name": "offices.ts",
+      "community": 74,
+      "community_name": "slack-intake/config.ts",
       "norm_label": "intakeconfig"
     },
     {
@@ -18453,8 +18453,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_config_configdigest",
-      "community": 43,
-      "community_name": "offices.ts",
+      "community": 74,
+      "community_name": "slack-intake/config.ts",
       "norm_label": "configdigest()"
     },
     {
@@ -18477,8 +18477,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_config_readconfig",
-      "community": 43,
-      "community_name": "offices.ts",
+      "community": 74,
+      "community_name": "slack-intake/config.ts",
       "norm_label": "readconfig()"
     },
     {
@@ -18564,8 +18564,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_contracts_observation",
-      "community": 19,
-      "community_name": "IntakeLedger",
+      "community": 47,
+      "community_name": "slack-intake/run.ts",
       "norm_label": "observation"
     },
     {
@@ -18614,8 +18614,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_contracts_intakeresultvalue",
-      "community": 19,
-      "community_name": "IntakeLedger",
+      "community": 47,
+      "community_name": "slack-intake/run.ts",
       "norm_label": "intakeresultvalue"
     },
     {
@@ -18685,8 +18685,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_ledger_intakeledger_get",
-      "community": 47,
-      "community_name": "slack-intake/run.ts",
+      "community": 19,
+      "community_name": "IntakeLedger",
       "norm_label": ".get()"
     },
     {
@@ -18721,8 +18721,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_ledger_intakeledger_where",
-      "community": 29,
-      "community_name": "schedule.ts",
+      "community": 19,
+      "community_name": "IntakeLedger",
       "norm_label": ".where()"
     },
     {
@@ -18745,8 +18745,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_ledger_intakeledger_revision",
-      "community": 29,
-      "community_name": "schedule.ts",
+      "community": 19,
+      "community_name": "IntakeLedger",
       "norm_label": ".revision()"
     },
     {
@@ -19059,7 +19059,7 @@
       "label": "intakeProgress()",
       "file_type": "code",
       "source_file": "server/knowledge/slack-intake/progress.ts",
-      "source_location": "L24",
+      "source_location": "L26",
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_progress_intakeprogress",
@@ -19097,8 +19097,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_proposal_scope",
-      "community": 19,
-      "community_name": "IntakeLedger",
+      "community": 47,
+      "community_name": "slack-intake/run.ts",
       "norm_label": "proposal-scope.ts"
     },
     {
@@ -19120,8 +19120,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_proposals",
-      "community": 19,
-      "community_name": "IntakeLedger",
+      "community": 47,
+      "community_name": "slack-intake/run.ts",
       "norm_label": "proposals.ts"
     },
     {
@@ -19392,8 +19392,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_reconsider_resourceunits",
-      "community": 29,
-      "community_name": "schedule.ts",
+      "community": 19,
+      "community_name": "IntakeLedger",
       "norm_label": "resourceunits()"
     },
     {
@@ -19404,8 +19404,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_reconsider_unavailable",
-      "community": 47,
-      "community_name": "slack-intake/run.ts",
+      "community": 19,
+      "community_name": "IntakeLedger",
       "norm_label": "unavailable()"
     },
     {
@@ -19416,20 +19416,20 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_reconsider_readyreferences",
-      "community": 47,
-      "community_name": "slack-intake/run.ts",
+      "community": 19,
+      "community_name": "IntakeLedger",
       "norm_label": "readyreferences()"
     },
     {
       "label": "queueReconsideration()",
       "file_type": "code",
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L42",
+      "source_location": "L59",
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_slack_intake_reconsider_queuereconsideration",
-      "community": 29,
-      "community_name": "schedule.ts",
+      "community": 19,
+      "community_name": "IntakeLedger",
       "norm_label": "queuereconsideration()"
     },
     {
@@ -20478,8 +20478,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "server_knowledge_sources_migration_configdigestforseed",
-      "community": 43,
-      "community_name": "offices.ts",
+      "community": 74,
+      "community_name": "slack-intake/config.ts",
       "norm_label": "configdigestforseed()"
     },
     {
@@ -143979,7 +143979,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L52",
+      "source_location": "L69",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider_queuereconsideration",
@@ -144645,7 +144645,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/progress.ts",
-      "source_location": "L19",
+      "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_progress_terminaldeferred",
@@ -144693,7 +144693,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L50",
+      "source_location": "L67",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider_queuereconsideration",
@@ -147059,7 +147059,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L44",
+      "source_location": "L61",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider_queuereconsideration",
@@ -147322,6 +147322,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
+      "source_file": "server/knowledge/slack-intake/progress.ts",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "server_knowledge_slack_intake_progress_terminaldeferred",
+      "target": "server_knowledge_slack_intake_ledger_intakeledger_columns"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/status-metrics.ts",
       "source_location": "L14",
       "weight": 1.0,
@@ -147335,10 +147347,22 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L46",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider_queuereconsideration",
+      "target": "server_knowledge_slack_intake_ledger_intakeledger_where"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "server/knowledge/slack-intake/reconsider.ts",
+      "source_location": "L44",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "server_knowledge_slack_intake_reconsider_readyreferences",
       "target": "server_knowledge_slack_intake_ledger_intakeledger_where"
     },
     {
@@ -147383,7 +147407,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L53",
+      "source_location": "L70",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider_queuereconsideration",
@@ -147575,7 +147599,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L44",
+      "source_location": "L61",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider_queuereconsideration",
@@ -149010,7 +149034,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/slack-intake/progress.ts",
-      "source_location": "L24",
+      "source_location": "L26",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_progress",
@@ -149151,7 +149175,7 @@
       "context": "argument",
       "confidence": "INFERRED",
       "source_file": "server/knowledge/slack-intake/progress.ts",
-      "source_location": "L25",
+      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_progress_intakeprogress",
@@ -149211,7 +149235,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/slack-intake/progress.ts",
-      "source_location": "L28",
+      "source_location": "L30",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_progress_intakeprogress",
@@ -149223,7 +149247,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/slack-intake/progress.ts",
-      "source_location": "L19",
+      "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_progress_terminaldeferred",
@@ -149236,7 +149260,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/slack-intake/progress.ts",
-      "source_location": "L16",
+      "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_progress_terminaldeferred",
@@ -150692,7 +150716,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L42",
+      "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider",
@@ -150784,7 +150808,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L45",
+      "source_location": "L62",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider_queuereconsideration",
@@ -150808,7 +150832,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server/knowledge/slack-intake/reconsider.ts",
-      "source_location": "L48",
+      "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_slack_intake_reconsider_queuereconsideration",
@@ -219958,5 +219982,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "764135115da5505616a917771911ae22da8b622b"
+  "built_at_commit": "e669bcc2e12092467b95b5a2df6a8582a99703e3"
 }
