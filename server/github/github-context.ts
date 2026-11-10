@@ -53,6 +53,11 @@ export function deliveryResearchContext(store: Store, ticket: string) {
         }).slice(-3);
 }
 
+/** A changed completed research packet permits reassessment, never acceptance. */
+export function deliveryResearchSha256(store: Store, ticket: string) {
+    return createHash('sha256').update(JSON.stringify(deliveryResearchContext(store, ticket))).digest('hex');
+}
+
 /** Only persisted PM notes attributable to an answered human request carry human input provenance. */
 export function deliveryHumanInputs(store: Store, ticket: string) {
     return store.state.projectNotes.filter(note => note.ticket === ticket).flatMap(note => {

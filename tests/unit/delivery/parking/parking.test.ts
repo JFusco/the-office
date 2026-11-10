@@ -13,6 +13,15 @@ test('only a structured human, scope or permission decision parks', () => {
     expect(needsDecision(blocked('source-repair'))).toBe(false);
     expect(needsDecision({ ...blocked('human-hold'), outcome: 'passed' })).toBe(false);
 });
+test('a published PR provider wait watches normally; release and actual human decisions still park', () => {
+    const pr = { stage: 'lead-pr', pr: 362 } as const;
+    expect(needsDecision(blocked('provider-wait'), pr)).toBe(false);
+    expect(needsDecision(blocked('provider-wait'), { stage: 'implement', pr: 0 })).toBe(true);
+    for (const kind of ['human-hold', 'scope', 'permission']) expect(needsDecision(blocked(kind), pr)).toBe(true);
+    const release = blocked('provider-wait');
+    release.resolution!.release = { registry: 'npm', package: 'example', minimum: '2.0.0' };
+    expect(needsDecision(release, pr)).toBe(true);
+});
 test('parking asks once on the issue, moves the card to Block and keeps the job', async () => {
     const f = fakeGitHub(), job = f.candidate({ stage: 'review', status: 'working' });
     f.state.cards[0].status = 'progress';

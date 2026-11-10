@@ -14,12 +14,14 @@ import { implementationRecoveryCandidate } from '../delivery/recovery/implementa
 import { nativeDeliveryReadbackCandidate } from '../maintenance/brain/brain-delivery-readback';
 import { enqueueRequest } from '../scheduling/requests';
 import { HOLDS } from '../office/config';
+import { recoverBoardPreflights } from './board-preflight-recovery';
 import { temporaryReadFailure, reconcileReadRetries } from '../scheduling/read-retries';
 import type { ITContext } from './context';
 
 /** Read-only recoveries for delivery, intake, provider and checkpoint failures of an unpaused project. */
 export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
     const { offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt, retainedPartials, retainedCloseouts, services, activationBudget, recover } = context;
+    await recoverBoardPreflights(context);
     if (!state.paused) {
         if (offices.sessions) {
             let inventory = offices.sessions.forProject(store);
