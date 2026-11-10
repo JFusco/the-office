@@ -4,6 +4,7 @@ import { evidenceRecords } from './sources/evidence-read';
 import { sourceVisible } from './sources/visibility';
 import { lessonVisible, lessonForProject, lessonSourceBindings } from './sources/lesson-visibility';
 import { digest } from './slack-intake/config';
+import { guidanceExcerpt } from './content/guidance-excerpt';
 const words = (text: string) => [...new Set(text.toLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) || [])];
 export function officeSearch(context: KnowledgeContext, project: string, query: string, limit = 10, kind:'all'|'source'='all'): KnowledgeHit[] {
     const store = context.stores.get(project); if (!store) throw Error('Unknown knowledge project');
@@ -30,8 +31,10 @@ export async function retrieve(context: KnowledgeContext, project: string, query
         for (const note of notes) {
             const body = await context.brain.read(snapshot, note.path);
             if (body.contentSha256 !== note.contentSha256) throw Error('Brain search/read content mismatch');
+            const excerpt = guidanceExcerpt(body.text);
+            if (!excerpt) continue;
             technical.push({ reference: { id: `brain:${snapshot}:${note.path}`, kind: 'brain', path: note.path, snapshot, contentSha256: body.contentSha256 }, title: note.title,
-                excerpt: body.text.slice(0, 1000), citation: note.path, scope: 'technical', limitations: note.limitations || [] });
+                excerpt, citation: note.path, scope: 'technical', limitations: note.limitations || [] });
         }
         technicalStatus = 'available';
     } catch { technical = []; }

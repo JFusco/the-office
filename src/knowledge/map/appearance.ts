@@ -12,9 +12,9 @@ export function brainAtmosphere(scene: THREE.Scene, focused = false, palette = s
     const positions: number[] = [], colors: number[] = [];
     for(let i=0;i<1800;i++) { const h=stableHash(`star:${i}`), j=stableHash(`star-z:${i}`); positions.push(h%10000/10000*1000-500,(h>>>12)%10000/10000*700-350,-80-j%1000/1000*200); const c=new THREE.Color(i%7?palette.brainDistantBlue:palette.brainDistantWarm); colors.push(c.r,c.g,c.b); }
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3)); geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-    const material = new THREE.PointsMaterial({size:1.5,map:texture,vertexColors:true,transparent:true,opacity:.8,depthWrite:false}); resources.push(geometry,material);
+    const material = new THREE.PointsMaterial({size:1.5,map:texture,vertexColors:true,transparent:true,opacity:.3,depthWrite:false}); resources.push(geometry,material);
     const stars = new THREE.Points(geometry,material); objects.push(stars); scene.add(stars);
-    for(let i=0;i<9;i++) { const material = new THREE.SpriteMaterial({map:texture,color:i%2?palette.brainNebulaBlue:palette.brainNebulaViolet,opacity:.07,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}); resources.push(material); const cloud = new THREE.Sprite(material), angle=i*2.399; cloud.position.set(Math.cos(angle)*90,Math.sin(angle)*65,-35); cloud.scale.set(95,70,1); objects.push(cloud); scene.add(cloud); }
+    for(let i=0;i<9;i++) { const material = new THREE.SpriteMaterial({map:texture,color:i%2?palette.brainNebulaBlue:palette.brainNebulaViolet,opacity:.025,transparent:true,depthWrite:false,blending:THREE.NormalBlending}); resources.push(material); const cloud = new THREE.Sprite(material), angle=i*2.399; cloud.position.set(Math.cos(angle)*90,Math.sin(angle)*65,-35); cloud.scale.set(95,70,1); objects.push(cloud); scene.add(cloud); }
     let visualTime = 0, disposed = false, animateDust = (_seconds: number) => {};
     if (!focused) {
         const dust: number[] = [], tint: number[] = [], particles: { cluster:number; radius:number; angle:number; flatten:number; depth:number; speed:number }[] = [];
@@ -28,14 +28,14 @@ export function brainAtmosphere(scene: THREE.Scene, focused = false, palette = s
             const c=new THREE.Color(cluster<0?(i%5?palette.brainDustBlue:palette.brainDustWarm):cluster%2?palette.brainClusterBlue:palette.brainClusterViolet); tint.push(c.r,c.g,c.b);
         }
         const geometry=new THREE.BufferGeometry(); geometry.setAttribute('position',new THREE.Float32BufferAttribute(dust,3)); geometry.setAttribute('color',new THREE.Float32BufferAttribute(tint,3));
-        const material=new THREE.PointsMaterial({size:2.2,map:texture,vertexColors:true,transparent:true,opacity:.65,depthWrite:false,blending:THREE.AdditiveBlending}); resources.push(geometry,material); const galaxy=new THREE.Points(geometry,material); objects.push(galaxy); scene.add(galaxy);
+        const material=new THREE.PointsMaterial({size:2.2,map:texture,vertexColors:true,transparent:true,opacity:.24,depthWrite:false,blending:THREE.NormalBlending}); resources.push(geometry,material); const galaxy=new THREE.Points(geometry,material); objects.push(galaxy); scene.add(galaxy);
         animateDust = seconds => {
             const positions = geometry.getAttribute('position');
             const centers = Array.from({length:7},(_,i) => { const angle=i*2.399+seconds*(i%2?1:-1)*(.009+i*.002),radius=48+i*15,tilt=(i%2?1:-1)*(.38+i*.06); return {x:Math.cos(angle)*radius,y:Math.sin(angle)*radius*Math.cos(tilt),z:Math.sin(angle)*radius*Math.sin(tilt)}; });
             particles.forEach((p,i) => { const center=p.cluster<0?{x:0,y:0,z:0}:centers[p.cluster],angle=p.angle+seconds*p.speed; positions.setXYZ(i,center.x+Math.cos(angle)*p.radius,center.y+Math.sin(angle)*p.radius*p.flatten,center.z+p.depth+Math.sin(angle)*p.radius*.24); });
             positions.needsUpdate=true;
         };
-        for (const [color,size,opacity] of [[palette.brainCore,21,.85],[palette.brainHalo,58,.15]] as const) { const material=new THREE.SpriteMaterial({map:texture,color,transparent:true,opacity,depthWrite:false,blending:THREE.AdditiveBlending}); resources.push(material); const core=new THREE.Sprite(material); core.scale.set(size,size,1); objects.push(core); scene.add(core); }
+        for (const [color,size,opacity] of [[palette.brainCore,21,.85],[palette.brainHalo,58,.15]] as const) { const material=new THREE.SpriteMaterial({map:texture,color,transparent:true,opacity,depthWrite:false,blending:THREE.NormalBlending}); resources.push(material); const core=new THREE.Sprite(material); core.scale.set(size,size,1); objects.push(core); scene.add(core); }
     }
     return { texture, update: (deltaMs: number) => { if (disposed || deltaMs <= 0 || !Number.isFinite(deltaMs)) return; visualTime += Math.min(deltaMs,50)/1000; animateDust(visualTime); }, dispose: () => { disposed = true; objects.forEach(o=>scene.remove(o)); resources.forEach(r=>r.dispose()); } };
 }

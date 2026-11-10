@@ -1,13 +1,47 @@
-import { useEffect,useRef,useState } from 'react';
-import type { KnowledgeAssignment } from '../contracts/knowledge-assignment';
+import { useEffect, useRef, useState } from 'react';
 import type { KnowledgeLookupResponse } from '../contracts/knowledge-lookups';
 import { useKnowledgeView } from './useKnowledgeView';
-import { Button } from '../ui';
-function Lookup({query,response:r}:{query:string;response:KnowledgeLookupResponse}) {
-    return <section aria-label="Selected lookup" className="border-t border-drawer-line pt-3"><h5 className="font-heading text-15">Lookup {r.index}</h5><p className="my-2 text-11 text-muted">{r.outcome} · <time dateTime={r.at}>{new Date(r.at).toLocaleString()}</time></p><p className="my-2 break-words text-12">Query: {query}</p><pre className="whitespace-pre-wrap break-words text-12 leading-body">{r.text||'No evidence available.'}</pre><p className="mt-2 break-all text-10 text-muted">Response text SHA-256 {r.textSha256}</p>{r.selected.map(s=><p key={s.reference.id} className="mt-1 break-all text-10 text-muted">{s.reference.id} · {s.reference.version||s.reference.snapshot} · excerpt SHA-256 {s.excerptSha256}</p>)}</section>;
+import type { KnowledgeAssignment } from '../contracts/knowledge-assignment';
+import { Button, summary } from '../ui';
+import { EvidencePacket } from './content/EvidencePacket';
+import { MarkdownBody } from './content/MarkdownBody';
+import { OriginalText } from './content/KnowledgeDocument';
+
+function Lookup({ query, response }: { query: string; response: KnowledgeLookupResponse }) {
+    return <section aria-label="Selected lookup" className="border-t border-drawer-line pt-4">
+        <h5 className="font-heading text-15">Lookup {response.index}</h5>
+        <p className="my-2 text-11 text-muted">{response.outcome} · <time dateTime={response.at}>{new Date(response.at).toLocaleString()}</time></p>
+        <p className="my-3 break-words text-12">Query: {query}</p>
+        <EvidencePacket text={response.text} selected={response.selected}/>
+        <OriginalText text={response.text || 'No evidence available.'} label="Exact lookup response"/>
+        <details className="mt-3"><summary className={summary}>Lookup receipt</summary><p className="mt-3 break-all text-10 text-muted">Response text SHA-256 {response.textSha256}</p></details>
+    </section>;
 }
-export function AssignmentKnowledge({project,id}:{project:string;id:string}) {
-    const heading=useRef<HTMLHeadingElement>(null),[index,setIndex]=useState(0);useEffect(()=>heading.current?.focus(),[id]);
-    const {data,error}=useKnowledgeView<KnowledgeAssignment>(project,`assignment?id=${encodeURIComponent(id)}${index?`&lookup=${index}`:''}`);
-    return <section aria-label="Assignment knowledge" className="my-5 rounded-7 border border-drawer-line bg-paper p-5"><h3 ref={heading} tabIndex={-1} className="font-heading text-18">Assignment knowledge</h3>{error?<p role="alert">{error}</p>:!data?<p role="status">Loading exact knowledge records…</p>:<><p className="my-3 break-all text-11 text-muted">{data.stage} · {data.id}</p><h4 className="my-3 font-heading text-15">Supplied at dispatch</h4><p className="text-11 text-muted">This immutable record shows what was supplied. It does not establish application.</p><pre className="my-3 whitespace-pre-wrap break-words text-12 leading-body">{[data.supplied.lessonText,data.supplied.sourceEvidenceText].filter(Boolean).join('\n')||'No matching lessons or source evidence supplied.'}</pre><p className="break-all text-10 text-muted">Supplied SHA-256 {data.supplied.suppliedTextSha256}</p><h4 className="my-4 font-heading text-15">Recorded lookups</h4>{data.lookupRecordingUnavailable&&<p role="status" className="my-3 text-12 text-muted">Exact lookup recording is unavailable or incomplete. The original supplied record above is unchanged.</p>}{!data.lookups.length&&<p className="text-12">No recorded lookups for this assignment.</p>}{data.lookups.length>0&&<div role="group" className="mb-4 flex flex-wrap gap-2" aria-label="Recorded lookup pages">{data.lookups.map(r=><Button key={r.index} aria-pressed={r.index===index} onClick={()=>setIndex(r.index)}>Lookup {r.index} · {r.outcome}</Button>)}</div>}{data.lookup&&<Lookup {...data.lookup}/>}<h4 className="my-4 font-heading text-15">Accepted outcome citations</h4>{!data.outcomes.length&&<p className="text-12">No accepted outcome citation is recorded. Application remains unknown.</p>}{data.outcomes.map(r=><div key={r.id} className="mb-3 text-12"><p>{r.stage} · {r.lessons.length} lesson revisions and {r.evidence.length} evidence identities cited by an accepted outcome.</p><p className="my-2 break-all text-10 text-muted">Accepted result SHA-256 {r.resultSha256}</p></div>)}</>}</section>;
+
+export function AssignmentKnowledge({ project, id }: { project: string; id: string }) {
+    const heading = useRef<HTMLHeadingElement>(null), [index, setIndex] = useState(0);
+    useEffect(() => heading.current?.focus(), [id]);
+    const { data, error } = useKnowledgeView<KnowledgeAssignment>(project, `assignment?id=${encodeURIComponent(id)}${index ? `&lookup=${index}` : ''}`);
+    const suppliedText = data ? [data.supplied.lessonText, data.supplied.sourceEvidenceText].filter(Boolean).join('\n') : '';
+    return <section aria-label="Assignment knowledge" className="my-5 rounded-7 border border-drawer-line bg-paper p-card-padding">
+        <h3 ref={heading} tabIndex={-1} className="font-heading text-18">Assignment knowledge</h3>
+        {error ? <p role="alert">{error}</p> : !data ? <p role="status">Loading exact knowledge records…</p> : <>
+            <p className="my-3 text-11 text-muted">{data.stage}</p>
+            <h4 className="my-3 font-heading text-15">Supplied at dispatch</h4>
+            <p className="text-12 leading-relaxed text-muted">A formatted view of the recorded text. Inclusion does not establish application.</p>
+            {data.supplied.lessonText && <div className="my-4"><h5 className="font-heading text-15">Advisory lessons</h5><MarkdownBody text={data.supplied.lessonText}/></div>}
+            <h5 className="mt-5 font-heading text-15">Source evidence supplied</h5>
+            <EvidencePacket text={data.supplied.sourceEvidenceText} selected={data.supplied.evidence}/>
+            <OriginalText text={suppliedText || 'No matching lessons or source evidence supplied.'} label="Exact supplied text"/>
+            <details className="mt-3"><summary className={summary}>Assignment receipt</summary><div className="mt-3 grid gap-2 break-all text-10 text-muted"><p>Assignment {data.id}</p><p>Supplied SHA-256 {data.supplied.suppliedTextSha256}</p></div></details>
+            <h4 className="my-5 font-heading text-15">Recorded lookups</h4>
+            {data.lookupRecordingUnavailable && <p role="status" className="my-3 text-12 text-muted">Exact lookup recording is unavailable or incomplete. The original supplied record above is unchanged.</p>}
+            {!data.lookups.length && <p className="text-12">No recorded lookups for this assignment.</p>}
+            {data.lookups.length > 0 && <div role="group" className="mb-4 flex flex-wrap gap-2" aria-label="Recorded lookup pages">{data.lookups.map(record => <Button key={record.index} aria-pressed={record.index === index} onClick={() => setIndex(record.index)}>Lookup {record.index} · {record.outcome}</Button>)}</div>}
+            {data.lookup && <Lookup {...data.lookup}/>}
+            <h4 className="my-5 font-heading text-15">Accepted outcome citations</h4>
+            {!data.outcomes.length && <p className="text-12">No accepted outcome citation is recorded. Application remains unknown.</p>}
+            {data.outcomes.map(record => <div key={record.id} className="mb-3 text-12"><p>{record.stage} · {record.lessons.length} lesson revisions and {record.evidence.length} evidence identities cited by an accepted outcome.</p><details className="mt-3"><summary className={summary}>Accepted result receipt</summary><p className="my-2 break-all text-10 text-muted">Accepted result SHA-256 {record.resultSha256}</p></details></div>)}
+        </>}
+    </section>;
 }

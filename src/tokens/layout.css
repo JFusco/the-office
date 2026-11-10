@@ -6,6 +6,15 @@
 */
 @theme {
   --spacing: 4px;
+  /* Shared form chrome and panel rhythm. */
+  --spacing-select-inset: 12px;
+  --spacing-select-clearance: 38px;
+  --spacing-panel-padding: 24px;
+  --spacing-section-gap: 24px;
+  --spacing-card-padding: 16px;
+  --spacing-control-gap: 8px;
+  --spacing-field-label-gap: 8px;
+  --spacing-brain-canvas: max(520px, calc(100dvh - 280px));
 
   /* Shell */
   --spacing-app-min: 600px;
