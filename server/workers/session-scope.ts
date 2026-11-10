@@ -17,12 +17,21 @@ const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Index explicit references; returned URLs provide context, never action ownership or permission. */
 export function sessionScope(raw: string, sessionId: string, projects: Pick<OfficeProject, 'id' | 'repo' | 'repository'>[]): SessionContext {
+    const parser = sessionScopeParser(sessionId, projects);
+    for (const line of raw.split('\n')) parser.write(line);
+    return parser.finish();
+}
+
+/** The same strict record fold supports bounded complete-file reads without retaining transcripts. */
+export function sessionScopeParser(sessionId: string, projects: Pick<OfficeProject, 'id' | 'repo' | 'repository'>[]) {
+    let ordinal = -1;
     let identity = '', header = false, historyStart = 0, activity: SessionContext['activity'] = 'unknown';
     const scopes = new Map<string, SessionScope>(), userMessages: SessionContext['userMessages'] = [];
     let conversation: SessionConversation = { projects: [], messages: [], omittedMessages: 0 };
     const conversationProjects = new Set<string>();
-    for (const [ordinal, line] of raw.split('\n').entries()) {
-        if (!line.trim()) continue;
+    return { write(line: string) {
+        ordinal++;
+        if (!line.trim()) return;
         let row: any;
         try { row = JSON.parse(line); }
         catch { throw new Error('Codex session context contains an incomplete record'); }
@@ -33,16 +42,16 @@ export function sessionScope(raw: string, sessionId: string, projects: Pick<Offi
             if (Number.isSafeInteger(payload?.subagent_history_start_ordinal) && payload.subagent_history_start_ordinal >= 0)
                 historyStart = payload.subagent_history_start_ordinal;
         }
-        if (ordinal < historyStart) continue;
+        if (ordinal < historyStart) return;
         if (row.type === 'event_msg' && payload?.type === 'task_started') {
             scopes.clear(); userMessages.length = 0; activity = 'active';
         }
         if (row.type === 'event_msg' && ['task_complete', 'turn_aborted'].includes(payload?.type)) activity = 'idle';
-        if (row.type !== 'response_item' || !payload) continue;
+        if (row.type !== 'response_item' || !payload) return;
         const message = payload.type === 'message' && ['user', 'assistant'].includes(payload.role);
         const call = ['function_call', 'custom_tool_call'].includes(payload.type);
         const output = ['function_call_output', 'custom_tool_call_output'].includes(payload.type);
-        if (!message && !call && !output) continue;
+        if (!message && !call && !output) return;
         const text = message
             ? (payload.content || []).filter((part: any) => ['input_text', 'output_text', 'text'].includes(part.type)).map((part: any) => part.text || '').join('\n')
             : output ? typeof payload.output === 'string' ? payload.output : JSON.stringify(payload.output || '') : String(payload.arguments || payload.input || '');
@@ -73,8 +82,9 @@ export function sessionScope(raw: string, sessionId: string, projects: Pick<Offi
             scope.evidence = scope.evidence.slice(-8);
             scopes.set(project.id, scope);
         }
-    }
+    }, finish(): SessionContext {
     if (identity !== sessionId) throw new Error('Codex rollout identity does not match the loaded session');
     conversation.projects = [...conversationProjects];
     return { activity, scopes: [...scopes.values()], userMessages, conversation };
+    } };
 }
