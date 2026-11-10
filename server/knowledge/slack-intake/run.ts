@@ -22,10 +22,12 @@ export async function runIntakeTask(store: Store, run: KnowledgeRunner, id: stri
     if (task.kind !== 'lookup' && ledger.get<{ configHash: string }>('identity', task.channel)?.configHash !== configDigest(config)) return;
     const day = easternDay(store.clock.now()), launches = ledger.get<number>('launches', day) || 0;
     if (launches >= intakeLaunchLimit(ledger, config) || task.failures >= 5 || Date.parse(task.nextAt) > store.clock.now().getTime()) return;
+    // A settled partial page has no retry deadline, even when its cumulative failure allowance is retained.
+    if (!task.nextAt) task.error = '';
     task.attempt = ledger.id(); task.status = 'running'; task.ownerClaim = store.activeClaims().find(c => c.work.id === id)?.id || '';
     task.nextAt = new Date(store.clock.now().getTime() + LIMITS.timeout + retryDelay(task.failures + 1)).toISOString(); ledger.put('task', id, task);
     const cwd = mkdtempSync(resolve(tmpdir(), 'office-intake-read-')), observations: Observation[] = [];
-    let readError: unknown;
+    let readError: unknown, launched = false;
     const processing = (task.processing || []).map(key => ledger.get<SourceUnit>('unit', key)).filter((u): u is SourceUnit => !!u);
     const args = readArguments(task);
     const messageLinks = ['channel', 'thread', 'search'].includes(task.kind) ? `Canonical message permalink prefix: ${JSON.stringify(`${config.workspace}/archives/${task.channel}/p`)}. For each contributing message, append its exact Message TS with only the decimal point removed (preserve all six fractional digits). Include the complete canonical permalink for EVERY source id listed in each proposal, including grouped lessons. Do not use app.slack.com or substitute another workspace. ` : '';
@@ -33,7 +35,7 @@ export async function runIntakeTask(store: Store, run: KnowledgeRunner, id: stri
     try {
         const result = await run(prompt, IntakeResult, { readOnly: true, effortKind: 'administrative', stage: 'knowledge-slack-intake', cwd, requestId: id, ticket: '', enqueuedAt: task.createdAt, timeout: LIMITS.timeout, intakeConfig: config, intakeProcessing: !!task.processing,
             // Charge the actual launch to its own Eastern day, not the day the attempt was claimed.
-            onIntakeLaunch: () => { const launchDay = easternDay(store.clock.now()); ledger.put('launches', launchDay, (ledger.get<number>('launches', launchDay) || 0) + 1); },
+            onIntakeLaunch: () => { launched = true; const launchDay = easternDay(store.clock.now()); ledger.put('launches', launchDay, (ledger.get<number>('launches', launchDay) || 0) + 1); },
             onIntakeEvent: event => {
                 let observation: Observation | undefined;
                 try {
@@ -67,7 +69,8 @@ export async function runIntakeTask(store: Store, run: KnowledgeRunner, id: stri
                 ledger.put('task', id, current); return;
             }
             // A rejected or expired continuation never changes the fixed time window. Replay deduplicates observations.
-            delete current.cursor;
+            // Capability preflight has not used the continuation. Preserve it until a reading worker actually launches.
+            if (launched) delete current.cursor;
             current.failures++; current.status = current.failures >= 5 ? 'needs-attention' : 'pending'; current.attempt = ''; current.ownerClaim = '';
             current.error = String(error).slice(0, 1000); current.nextAt = new Date(store.clock.now().getTime() + retryDelay(current.failures)).toISOString();
             ledger.put('task', id, current);

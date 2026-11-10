@@ -8,7 +8,7 @@ const validTime = (value: unknown): value is string => typeof value === 'string'
 export function intakeStatusMetrics(ledger: IntakeLedger): IntakeMetrics {
     const revision = ledger.revision(), source = ledger.get<{ sourceProgress?: { revision: string; unresolvedSources: number } }>('meta', 'report')?.sourceProgress;
     const sourcePending = source?.revision === revision ? source.unresolvedSources : undefined;
-    const token = `${revision}:${sourcePending ?? 'unknown'}`, cached = ledger.get<{ token: string; metrics: IntakeMetrics }>('meta', 'operational-metrics');
+    const token = `retry-v2:${revision}:${sourcePending ?? 'unknown'}`, cached = ledger.get<{ token: string; metrics: IntakeMetrics }>('meta', 'operational-metrics');
     if (cached?.token === token) return cached.metrics;
     const tasks = ledger.all<ReadTask>('task');
     const proposals = (ledger.store.db.prepare("SELECT json_extract(body,'$.id') AS id, json_extract(body,'$.status') AS status, json_extract(body,'$.domain') AS domain, json_extract(body,'$.hash') AS hash, json_extract(body,'$.receipt') AS receipt, json_extract(body,'$.nextAt') AS nextAt FROM slack_intake WHERE kind='proposal'").all() as { id: string; status: Proposal['status']; domain: string; hash: string; receipt: string | null; nextAt: string | null }[]).map(p => ({ ...p, receipt: p.receipt ? JSON.parse(p.receipt) : undefined }));
@@ -25,7 +25,7 @@ export function intakeStatusMetrics(ledger: IntakeLedger): IntakeMetrics {
         completedReads: tasks.filter(t => t.status === 'complete').length + links.filter(l => l.state === 'read').length,
         pendingReads: tasks.filter(t => t.status !== 'complete').length + links.filter(l => l.state === 'pending' || l.state === 'needs-attention').length,
         failedReads: tasks.filter(t => t.status === 'needs-attention').length + links.filter(l => l.state === 'needs-attention').length,
-        retryingReads: tasks.filter(t => t.status !== 'complete' && t.status !== 'needs-attention' && t.failures > 0).length + links.filter(l => l.state === 'pending' && (l.failures || 0) > 0).length,
+        retryingReads: tasks.filter(t => t.failures > 0 && t.error !== 'intake-worker-cancelled' && (t.status === 'pending' && !!t.nextAt || t.status === 'running' && !!t.error)).length + links.filter(l => l.state === 'pending' && (l.failures || 0) > 0).length,
         verifiedCaptures: usable.length, duplicates: usable.filter(p => p.receipt.duplicate).length, quarantines: verified.length - usable.length,
         pendingCaptures: proposals.filter(p => p.status !== 'rejected' && !verifiedCapture(p)).length,
         uncertainCaptures: proposals.filter(p => p.status === 'unresolved' || p.status === 'captured' && !verifiedCapture(p)).length,

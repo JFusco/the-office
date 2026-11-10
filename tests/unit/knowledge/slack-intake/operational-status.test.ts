@@ -12,7 +12,7 @@ import { intakeStatusMetrics } from '../../../../server/knowledge/slack-intake/s
 import { scheduledSlackIntake } from '../../../../server/knowledge/slack-intake/schedule';
 import { reconcileIntakeReports } from '../../../../server/knowledge/slack-intake/report';
 import { lastFriday } from '../../../../server/knowledge/weekly-rollup';
-import type { Proposal } from '../../../../server/knowledge/slack-intake/contracts';
+import type { Proposal, ReadTask } from '../../../../server/knowledge/slack-intake/contracts';
 import type { KnowledgeRunner } from '../../../../server/knowledge/run-retrospective';
 import { SlackIntakeStatus } from '../../../../src/knowledge/SlackIntakeStatus';
 const noRun = vi.fn() as KnowledgeRunner;
@@ -164,5 +164,21 @@ test('current report source accounting clears terminal gaps while later unaccoun
         expect(reconcile(f)).toMatchObject({ activity: 'caught-up', unresolvedSources: 0 });
         f.ledger.put('unit', 'later-week', { state: 'deferred' });
         expect(reconcile(f)).toMatchObject({ activity: 'needs-attention', unresolvedSources: 2 });
+    } finally { f.close(); }
+});
+
+test('historical failures after a successful checkpoint are not current retries; a due failure still is', () => {
+    const f = intakeFixture();
+    try {
+        f.ledger.put('task', f.task.id, { ...f.task, failures: 1, error: 'old timeout', nextAt: '', cursor: 'verified-next-page' });
+        const cached = intakeStatusMetrics(f.ledger);
+        f.ledger.put('meta', 'operational-metrics', { token: `${f.ledger.revision()}:unknown`, metrics: { ...cached, retryingReads: 4 } });
+        expect(reconcile(f).retryingReads).toBe(0); expect(f.ledger.get<ReadTask>('task', f.task.id)?.failures).toBe(1);
+        f.ledger.put('task', f.task.id, { ...f.task, failures: 2, error: 'current timeout', nextAt: '2026-11-06T22:00:00.000Z' });
+        expect(reconcile(f).retryingReads).toBe(1);
+        f.ledger.put('task', f.task.id, { ...f.task, status: 'running', failures: 2, error: '', nextAt: '2026-11-07T00:00:00.000Z' });
+        expect(reconcile(f).retryingReads).toBe(0);
+        f.ledger.put('task', f.task.id, { ...f.task, status: 'running', failures: 2, error: 'current timeout', nextAt: '2026-11-07T00:00:00.000Z' });
+        expect(reconcile(f).retryingReads).toBe(1);
     } finally { f.close(); }
 });
