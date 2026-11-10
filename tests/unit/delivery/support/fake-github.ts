@@ -83,8 +83,9 @@ export function fakeGitHub(issueNumber = 5) {
         if (program === 'gh' && args[0] === 'issue' && args[1] === 'close') { state.issue.state = 'closed'; return ''; }
         if (program === 'gh' && args[0] === 'api') {
             const path = args[1];
+            if (path === 'user') return JSON.stringify({ login: 'JFusco' });
             if (path === 'graphql') return JSON.stringify(graphql(JSON.parse(options.input)));
-            if (path.includes('/comments') && args.includes('-f')) { const comment = { id: 900 + state.comments.length, html_url: `${issueUrl}#issuecomment-${900 + state.comments.length}`, body: args[args.indexOf('-f') + 1].slice(5) }; state.comments.push(comment); return JSON.stringify(comment); }
+            if (path.includes('/comments') && args.includes('-f')) { const comment = { id: 900 + state.comments.length, html_url: `${issueUrl}#issuecomment-${900 + state.comments.length}`, user: { login: 'JFusco' }, body: args[args.indexOf('-f') + 1].slice(5) }; state.comments.push(comment); return JSON.stringify(comment); }
             if (path.includes('issues/comments/')) return JSON.stringify(state.comments.find(c => path.endsWith(`/${c.id}`)));
             if (path.includes(`/issues/${issueNumber}/comments`)) return JSON.stringify([state.comments]);
             if (path.endsWith(`/issues/${issueNumber}`)) return JSON.stringify(state.issue);

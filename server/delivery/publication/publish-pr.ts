@@ -4,6 +4,7 @@ import { assertMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { retryRead } from '../harness/read-retry';
 import { lintPRContent, prContent } from './pr-body';
+import { readPublication } from './read-command';
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
@@ -54,9 +55,8 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
     assertCandidate(store, jobs, job, candidate);
     await verifyRepairCandidate(store.project, candidate, execute);
     await verifyCIHooks({ execute }, job);
-    const api = async (path: string) => JSON.parse(await execute('gh', ['api', `repos/${repository}/${path}`], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
     if (job.pr) {
-        const p = await api(`pulls/${job.pr}`);
+        const p = await readPublication(store, execute, job, root, 'pull-request');
         if (p.state !== 'open' || p.head?.ref !== branch || p.base?.ref !== target)
             throw new Error(`PR #${job.pr} is not open on ${branch} targeting ${target}; reconcile before publication`);
         let pushed = false;
@@ -65,7 +65,7 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
             await pushOnce(store, execute, jobs, job, candidate);
             pushed = true;
         }
-        const updated = await retryRead(async () => { const current = await api(`pulls/${job.pr}`); return current.head?.sha === head ? current : null; });
+        const updated = await retryRead(async () => { const current = await readPublication(store, execute, job, root, 'pull-request'); return current.head?.sha === head ? current : null; });
         if (!updated)
             throw new Error(`PR #${job.pr} head did not update to ${head}`);
         return { pr: job.pr, url: updated.html_url, pushed, created: false };
