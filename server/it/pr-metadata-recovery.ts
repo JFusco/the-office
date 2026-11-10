@@ -17,7 +17,8 @@ export async function recoverPRMetadata(context: ITContext): Promise<void> {
         const owner = offices.sessions?.forProject(store, job.key);
         if (!owner?.complete || !owner.fresh || owner.ownership?.status !== 'clear') continue;
         await recover(key, job.detail, async () => {
-            if (r.origin === 'original-recovery') {
+            if (job.parked) {
+                if (r.origin !== 'original-recovery') return false;
                 const request = store.state.coordination?.requests?.find(q => q.id === r.original?.requestId);
                 if (!request || request.action !== 'reconcile-pr-metadata' || !['blocked', 'interrupted'].includes(request.status)) return false;
                 // Keep the original request ID and failure in the existing attempts ledger.

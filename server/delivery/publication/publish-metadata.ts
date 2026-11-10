@@ -74,7 +74,7 @@ export async function publishMetadata(delivery: GitHubDelivery, job: TicketJob):
             },
         });
     }
-    await metadataWorkspace(delivery, job); await metadataOwnership(delivery, job);
+    await metadataWorkspace(delivery, job); await metadataOwnership(delivery, job, false);
     metadataClaim(delivery, job, claim);
     if (!await readBack()) throw new Error('Metadata changed before fresh review could be queued');
     r.phase = 'review'; r.publishedAfterStep ??= job.steps.length;

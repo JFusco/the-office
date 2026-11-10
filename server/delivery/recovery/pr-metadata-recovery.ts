@@ -45,7 +45,8 @@ export async function reconcilePRMetadata(delivery: GitHubDelivery, request: Har
         const proposal = artifact(store, input.proposal.path);
         if (proposal.sha256 !== input.proposal.sha256 || input.proposal.path !== resolve(store.dataRoot, 'ticket-work', job.id, 'update-base-checks', `pr-${job.pr}-body.md`))
             throw new Error('Original metadata proposal changed');
-        await metadataProvider(delivery, job); await metadataOwnership(delivery, job);
+        await metadataProvider(delivery, job);
+        await metadataOwnership(delivery, job, !store.getEffect(metadataEffectId)?.dispatchedAt && !['review', 'done'].includes(r.phase));
         assertMetadataBinding(delivery, job); metadataClaim(delivery, job);
     };
     await guard();

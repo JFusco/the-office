@@ -5,7 +5,7 @@ import { cleanupFakes, fakeGitHub, HEAD, BASE, REPOSITORY } from '../support/fak
 import { bindMetadata, assertMetadataBinding } from '../../../../server/delivery/publication/metadata-context';
 import { metadataWorkspace } from '../../../../server/delivery/publication/metadata-workspace';
 import { runHarnessStage } from '../../../../server/delivery/harness/run-harness-stage';
-import { metadataFixture } from '../../../fixtures/pr-metadata';
+import { addMetadataHumanInput, metadataFixture } from '../../../fixtures/pr-metadata';
 import { withAssignment } from '../../../../server/workers/assignment-context';
 import { harnessPrepare } from '../../../../server/delivery/publication/prepare-stage';
 import { acceptMetadataReview, requireMetadataReview } from '../../../../server/delivery/publication/metadata-review';
@@ -32,6 +32,24 @@ test('the immutable binding rejects a rewritten job head, metadata bytes and con
     expect(() => assertMetadataBinding(f.delivery, f.job)).toThrow('changed');
     r.binding.before.body = f.pr.body; f.store.state.draining = true;
     expect(() => assertMetadataBinding(f.delivery, f.job)).toThrow('changed');
+});
+
+test.each(['absent', 'prepared', 'rejected', 'foreign-job', 'foreign-binding', 'foreign-result', 'review-only', 'done-only'])('changed human input retains the fence for %s publication evidence', state => {
+    const f = metadataFixture(), r = f.record, a = r.assessment!;
+    if (state === 'review-only') r.phase = 'review';
+    if (state === 'done-only') r.phase = 'done';
+    if (!['absent', 'review-only', 'done-only'].includes(state)) {
+        f.store.putEffect({ id: `harness:${f.job.id}:pr-metadata:${r.id}`, work: { projectId: f.store.project.id, kind: 'delivery', id: state === 'foreign-job' ? 'other' : f.job.id },
+            attemptId: f.job.id, operation: 'github-pr-metadata', target: r.binding.url, authorization: 'office-harness',
+            payload: { binding: state === 'foreign-binding' ? { ...r.binding, head: 'f'.repeat(40) } : r.binding, origin: r.origin,
+                workerId: a.workerId, resultSha256: state === 'foreign-result' ? 'f'.repeat(64) : a.resultSha256, proposalSha256: a.proposalSha256, selected: a.selected },
+            expectedState: {}, status: state === 'prepared' || state === 'rejected' ? state : 'uncertain', createdAt: '',
+            dispatchedAt: state === 'prepared' || state === 'rejected' ? '' : f.store.clock.now().toISOString(),
+            verifiedAt: '', receipt: null, error: '', elapsedMs: null });
+    }
+    addMetadataHumanInput(f);
+    expect(() => assertMetadataBinding(f.delivery, f.job)).toThrow('inputs or controls changed');
+    expect(f.writes.patches).toBe(0);
 });
 
 test.each(['prepared', 'rejected', 'dispatching', 'uncertain', 'dispatched-rejection', 'wrong-operation', 'wrong-job', 'wrong-kind', 'wrong-head'])('metadata binding fences merge intent state: %s', async state => {

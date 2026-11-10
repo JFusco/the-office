@@ -12,7 +12,7 @@ import { publishMetadata } from './publish-metadata';
  */
 export async function harnessPrepare(delivery: GitHubDelivery, job: TicketJob, root: string, readyChecks: boolean): Promise<StageResult | null> {
     const { store, execute } = delivery;
-    const metadata = metadataAppliesToHead(job);
+    const metadata = metadataAppliesToHead(store, job);
     if (metadata) assertMetadataBinding(delivery, job);
     const p = await delivery.api(`pulls/${job.pr}`);
     if (p.state !== 'open' || p.base?.ref !== store.project.target) {

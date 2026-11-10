@@ -240,7 +240,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         }
         const priorLead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
         const rejectedSameHead = priorLead?.commit === job.head && priorLead.outcome !== 'passed';
-        if (!metadataAppliesToHead(job) && teamReviewedHead(this.store, job) && !rejectedSameHead && !p.draft && mergeAuthorized(this.store, job)) {
+        if (!metadataAppliesToHead(this.store, job) && teamReviewedHead(this.store, job) && !rejectedSameHead && !p.draft && mergeAuthorized(this.store, job)) {
             job.stage = 'merge';
             job.status = 'queued';
             job.detail = 'PR prepared. The team already reviewed and verified this exact head, so the guarded merge runs without a second readiness review.';
@@ -257,7 +257,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
     }
     if (job.stage === 'lead-pr') {
         if (await admitPRMetadata(this, job, result, inputSha256)) { learn(); return; }
-        if (metadataAppliesToHead(job)) {
+        if (metadataAppliesToHead(this.store, job)) {
             await acceptMetadataReview(this, job, result, beforeWorkers);
             await this.finishLeadReview(job, result);
             learn(); return;

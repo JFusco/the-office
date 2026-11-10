@@ -206,9 +206,9 @@ export class GitHubDelivery {
             }
             const role: Role = stageRole(job.stage);
             if (job.stage === 'prepare-pr') {
-                if (metadataAppliesToHead(job)) assertMetadataBinding(this, job);
+                if (metadataAppliesToHead(this.store, job)) assertMetadataBinding(this, job);
                 const current = await this.verifyPR(job);
-                if (metadataAppliesToHead(job) && (current.head.sha !== job.head || current.head.ref !== job.branch))
+                if (metadataAppliesToHead(this.store, job) && (current.head.sha !== job.head || current.head.ref !== job.branch))
                     throw new Error('Bound metadata head changed before preparation; no overwrite or worker');
                 job.head = current.head.sha;
                 job.branch = current.head.ref || job.branch;

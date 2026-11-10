@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { metadataFixture } from '../../fixtures/pr-metadata';
+import { metadataFixture, originalMetadataFixture } from '../../fixtures/pr-metadata';
 import { recoverPRMetadata } from '../../../server/it/pr-metadata-recovery';
 import { recoverAttempt } from '../../../server/it/recovery-attempt';
 import { reconcileRecoveryLedger } from '../../../server/it/recovery-ledger';
@@ -44,6 +44,35 @@ test('the real IT ledger permits only three preparation wakes and clears only af
     f.record.phase = 'done'; context.current.clear();
     await recoverPRMetadata(context); await reconcileRecoveryLedger(context);
     expect(context.current.has(key)).toBe(false); expect(context.it.recoveries[key]).toMatchObject({ attempts: 3, status: 'resolved', nextAt: '' });
+});
+
+test.each([false, true])('the real IT ledger wakes the original request only while its park is held: returned=%s', async returned => {
+    const f = originalMetadataFixture();
+    if (returned) { await f.run(); f.request.status = 'completed'; }
+    else {
+        // Admit the record but stop before assessment/publication, preserving the actual original park.
+        f.ownership.complete = false; await expect(f.run()).rejects.toThrow('ownership'); f.ownership.complete = true;
+        f.request.status = 'interrupted';
+    }
+    f.store.finishClaim(f.claim.id, 'interrupted'); f.job.status = 'interrupted';
+    const record = f.job.prMetadataRepair!, key = `pr-metadata:${f.job.id}:${record.id}`;
+    const history = structuredClone(f.job.steps), cycle = structuredClone(f.job.repairCycle), writes = f.writes.patches;
+    const context = { store: f.store, state: f.store.state, offices: { sessions: { forProject: () => f.ownership } },
+        current: new Set<string>(), it: { recoveries: {} }, now: new Date('2026-11-10T12:00:00Z'),
+        actions: [], followUps: [], retainedPartials: [], retainedCloseouts: new Set(), services: [], activationBudget: () => undefined } as unknown as ITContext;
+    context.recover = (...args) => recoverAttempt(context, ...args);
+    const failure = structuredClone(f.request);
+    await recoverPRMetadata(context);
+    expect(context.it.recoveries[key].attempts).toBe(1);
+    if (returned) {
+        expect(f.job).toMatchObject({ stage: 'prepare-pr', status: 'queued' });
+        expect(f.request).toEqual(failure); expect(record.phase).toBe('review'); expect(f.job.parked).toBeUndefined();
+    } else {
+        expect(f.request.status).toBe('queued'); expect(f.job.status).toBe('interrupted'); expect(f.job.parked).toBeDefined();
+        const row = f.store.db.prepare('SELECT body FROM attempts WHERE id LIKE ?').get(`metadata-request-failure:${f.request.id}:%`) as { body: string };
+        expect(JSON.parse(row.body)).toEqual(failure); expect(context.it.recoveries[key].requestId).toBe(f.request.id);
+    }
+    expect(f.writes.patches).toBe(writes); expect(f.job.steps).toEqual(history); expect(f.job.repairCycle).toEqual(cycle);
 });
 
 test.each(['pause', 'ownership', 'worker'])('IT preserves a live %s gate without changing the original budget or job', async gate => {

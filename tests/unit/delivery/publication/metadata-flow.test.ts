@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { metadataFixture } from '../../../fixtures/pr-metadata';
+import { addMetadataHumanInput, metadataFixture } from '../../../fixtures/pr-metadata';
 import { assessPRMetadata } from '../../../../server/delivery/publication/metadata-assessment';
 import { harnessPrepare } from '../../../../server/delivery/publication/prepare-stage';
 import { acceptMetadataReview, requireMetadataReview } from '../../../../server/delivery/publication/metadata-review';
@@ -9,6 +9,9 @@ import { metadataScope } from '../../../../server/delivery/publication/metadata-
 import { digest } from '../../../../server/store/readback-evidence';
 import { acceptStageResult } from '../../../../server/delivery/pipeline/accept-stage-result';
 import { deliveryInputSha256 } from '../../../../server/github/github-context';
+import { publishMetadata } from '../../../../server/delivery/publication/publish-metadata';
+import { metadataAppliesToHead } from '../../../../server/delivery/publication/metadata-context';
+import { plan } from '../../../fixtures/ci-repair';
 
 function leadResult(f: ReturnType<typeof metadataFixture>, changes: Partial<StageResult> = {}): StageResult {
     return { outcome: 'passed', commit: f.job.head, prId: f.job.pr, branch: f.job.branch, worktree: f.job.worktree,
@@ -81,7 +84,9 @@ test('a native provider wait keeps metadata proof pending while ordinary observa
 });
 
 test.each(['source-resolution', 'older-metadata'])('an unadmitted reserved metadata finding never falls through to source or CI repair: %s', async kind => {
-    const f = metadataFixture(), record = structuredClone(f.record);
+    const f = metadataFixture();
+    if (kind === 'older-metadata') await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true));
+    const record = structuredClone(f.record);
     f.store.finishClaim(f.claim.id, 'completed');
     if (kind === 'source-resolution') delete f.job.prMetadataRepair;
     else { f.record.phase = 'done'; f.job.head = f.pr.head.sha = 'd'.repeat(40); }
@@ -90,9 +95,92 @@ test.each(['source-resolution', 'older-metadata'])('an unadmitted reserved metad
     result.findings[0].status = 'open';
     await expect(acceptLead(f, result)).rejects.toThrow('Unadmitted reserved PR metadata');
     expect(f.job.steps.at(-1)?.result).toEqual(result); expect(f.job.repairCycle).toEqual(cycle); expect(f.job.ciRepairs).toBeUndefined();
-    expect(source).not.toHaveBeenCalled(); expect(ci).not.toHaveBeenCalled(); expect(model).not.toHaveBeenCalled(); expect(f.writes.patches).toBe(0);
+    expect(source).not.toHaveBeenCalled(); expect(ci).not.toHaveBeenCalled(); expect(model).not.toHaveBeenCalled(); expect(f.writes.patches).toBe(kind === 'older-metadata' ? 1 : 0);
     if (kind === 'source-resolution') expect(f.job.prMetadataRepair).toBeUndefined();
     else expect(f.record).toEqual({ ...record, phase: 'done' });
+});
+
+test('fresh native Lead review accepts later authenticated human input while retaining the original binding', async () => {
+    const f = metadataFixture(), binding = structuredClone(f.record.binding);
+    await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true)); f.store.finishClaim(f.claim.id, 'completed');
+    addMetadataHumanInput(f);
+    expect(deliveryInputSha256(f.store, f.job.key)).not.toBe(binding.inputSha256);
+    await acceptLead(f, leadResult(f));
+    expect(f.record.phase).toBe('done'); await requireMetadataReview(f.delivery, f.job);
+    expect(f.record.binding).toEqual(binding); expect(f.writes.patches).toBe(1);
+});
+
+test('authenticated human input before metadata dispatch retains the original input fence', async () => {
+    const f = metadataFixture(); addMetadataHumanInput(f);
+    expect(deliveryInputSha256(f.store, f.job.key)).not.toBe(f.record.binding.inputSha256);
+    await expect(f.run(() => publishMetadata(f.delivery, f.job))).rejects.toThrow('inputs or controls changed');
+    expect(f.writes.patches).toBe(0);
+});
+
+test.each(['blocked', 'failed'] as const)('a native metadata-verifying %s verdict reaches ordinary CI routing without merge proof', async outcome => {
+    const f = metadataFixture(), model = vi.spyOn(f.engine.agents, 'run');
+    await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true)); f.store.finishClaim(f.claim.id, 'completed');
+    const api = f.delivery.api.bind(f.delivery);
+    f.delivery.api = async path => path.includes('/check-runs') ? { total_count: 1, check_runs: [{ id: 10, head_sha: f.job.head,
+        name: 'unit', status: 'completed', conclusion: 'failure' }] } :
+        path.endsWith('/status') ? { sha: f.job.head, total_count: 0, statuses: [], state: 'success' } : api(path);
+    const ci = vi.spyOn(f.delivery, 'queueCIRepair');
+    const native = await acceptLead(f, leadResult(f, { outcome, resolution: null, blocker: 'Exact-head unit check failed' }));
+    expect(ci).toHaveBeenCalledWith(f.job); expect(f.job.ciRepairs?.at(-1)?.phase).toBe('diagnose');
+    expect(f.job.steps.at(-1)).toMatchObject({ workerId: native.worker.id, nativeResultSha256: native.resultSha256 });
+    expect(f.record.phase).toBe('review'); expect(f.record.review).toBeUndefined();
+    await expect(requireMetadataReview(f.delivery, f.job)).rejects.toThrow('Fresh independent');
+    expect(f.writes.patches).toBe(1); expect(model).not.toHaveBeenCalled();
+});
+
+test.each(['review', 'done'] as const)('verified metadata in phase %s becomes retained history on a repaired source head', async phase => {
+    const f = metadataFixture(); await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true));
+    f.record.phase = phase; f.job.head = 'd'.repeat(40);
+    const history = structuredClone(f.record);
+    expect(metadataAppliesToHead(f.store, f.job)).toBe(false);
+    await requireMetadataReview(f.delivery, f.job);
+    expect(f.record).toEqual(history); expect(f.writes.patches).toBe(1);
+    const effect = f.store.getEffect(`harness:${f.job.id}:pr-metadata:${f.record.id}`)!;
+    f.store.putEffect({ ...effect, status: 'uncertain' });
+    expect(metadataAppliesToHead(f.store, f.job)).toBe(true);
+});
+
+test.each(['pr-metadata', 'source'] as const)('provider-wait CI diagnosis keeps the admitted one-shot boundary for %s plans', async kind => {
+    const f = metadataFixture(false), model = vi.spyOn(f.engine.agents, 'run').mockImplementation(async () => { f.nativeAssessment(); return f.verdict as any; });
+    await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true)); f.store.finishClaim(f.claim.id, 'completed');
+    const history = structuredClone(f.record), id = `harness:${f.job.id}:pr-metadata:${f.record.id}`, effect = structuredClone(f.store.getEffect(id));
+    const execute = f.delivery.execute; let failing = false;
+    f.delivery.execute = (async (program, args, options) => {
+        if (program === 'gh' && args[1]?.includes('/check-runs')) return JSON.stringify({ total_count: 1, check_runs: [{ id: 10, head_sha: f.job.head, name: 'unit', status: failing ? 'completed' : 'in_progress', conclusion: failing ? 'failure' : null }] });
+        if (program === 'gh' && args[1]?.endsWith('/status')) return JSON.stringify({ sha: f.job.head, total_count: 0, statuses: [], state: 'success' });
+        return execute(program, args, options);
+    }) as typeof execute;
+    await acceptLead(f, leadResult(f, { outcome: 'blocked', resolution: { kind: 'provider-wait', findingIds: ['checks'], evidenceIds: ['checks'], release: null } }));
+    failing = true;
+    await f.delivery.observe(); expect(f.job.ciRepairs?.at(-1)?.phase).toBe('diagnose');
+    model.mockImplementation(async (_role, prompt) => {
+        expect(prompt).not.toContain('pr-metadata (return');
+        return { ...plan(kind), title: f.selected.title, body: f.selected.body } as any;
+    });
+    await f.delivery.step(f.job);
+    expect(f.job.ciRepairs!.at(-1)?.phase).toBe(kind === 'pr-metadata' ? 'blocked' : 'apply');
+    if (kind === 'pr-metadata') expect(f.job.detail).toContain('one-shot');
+    expect(f.record).toEqual(history); expect(f.store.getEffect(id)).toEqual(effect);
+    expect(f.writes.patches).toBe(1); expect(model).toHaveBeenCalledTimes(2);
+    await expect(requireMetadataReview(f.delivery, f.job)).rejects.toThrow('Fresh independent');
+});
+
+test.each(['permission', 'human-hold', 'scope', 'uncertain-effect', 'release'] as const)('metadata verification does not release a genuine %s gate', async kind => {
+    const f = metadataFixture(); await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true));
+    f.store.finishClaim(f.claim.id, 'completed'); f.job.stage = 'lead-pr';
+    const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'gated-lead', 'lead-pr')!;
+    const result = leadResult(f, { outcome: 'failed', resolution: { kind: kind === 'release' ? 'provider-wait' : kind,
+        findingIds: ['gate'], evidenceIds: ['checks'], release: kind === 'release' ? { registry: 'npm', package: 'fixture', minimum: '1.0.0' } : null } });
+    f.job.steps.push({ stage: 'lead-pr', result });
+    const before = new Set(f.store.state.workLog?.map(w => w.id));
+    f.nativeAssessment(result, { stage: 'github-lead-pr', claim });
+    await expect(withAssignment(claim, 'delivery', () => acceptMetadataReview(f.delivery, f.job, result, before))).rejects.toThrow('explicitly verify');
+    expect(f.record.phase).toBe('review'); expect(f.record.review).toBeUndefined(); expect(f.writes.patches).toBe(1);
 });
 
 test('a completed original assessment is read back after a lost harness return without dispatching another model', async () => {

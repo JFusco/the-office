@@ -9,7 +9,7 @@ import type { StageResult, TicketJob } from '../../../src/shared';
 
 /** Returns a harness StageResult for model-free stages, or null when a model worker should run. */
 export async function runHarnessStage(delivery: GitHubDelivery, job: TicketJob, root: string, readyChecks: boolean): Promise<StageResult | null> {
-    if (metadataAppliesToHead(job) && !harnessDelivers(delivery.store, job))
+    if (metadataAppliesToHead(delivery.store, job) && !harnessDelivers(delivery.store, job))
         throw new Error('Admitted PR metadata cannot fall through to a legacy preparation worker');
     if (!harnessDelivers(delivery.store, job)) return null;
     if (job.stage === 'validate') return harnessValidate(delivery, job, root);

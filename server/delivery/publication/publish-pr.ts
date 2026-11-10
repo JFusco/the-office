@@ -53,7 +53,7 @@ async function pushOnce(store: Store, execute: Execute, jobs: TicketJob[], job: 
  */
 export async function publishCandidate(store: Store, execute: Execute, jobs: TicketJob[], job: TicketJob, root: string, delivery?: GitHubDelivery): Promise<Publication> {
     // The existing-PR head update may not silently bypass an admitted metadata handoff.
-    const metadata = metadataAppliesToHead(job);
+    const metadata = metadataAppliesToHead(store, job);
     if (metadata) {
         if (!delivery || delivery.store !== store || delivery.execute !== execute || delivery.jobs !== jobs)
             throw new Error('Admitted metadata requires its actual delivery owner before publication');

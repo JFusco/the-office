@@ -10,9 +10,10 @@ import { savedMetadataAssessment } from './metadata-assessment';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
-function verdict(job: TicketJob, result: StageResult, allowProviderWait = false): void {
+function verdict(job: TicketJob, result: StageResult, allowOrdinaryBlock = false): void {
     const r = job.prMetadataRepair!;
-    const waiting = allowProviderWait && result.outcome === 'blocked' && result.resolution?.kind === 'provider-wait' && !result.resolution.release;
+    const waiting = allowOrdinaryBlock && ['blocked', 'failed'].includes(result.outcome) && !result.resolution?.release &&
+        (!result.resolution || ['provider-wait', 'source-repair', 'conflict-repair'].includes(result.resolution.kind));
     if ((!waiting && result.outcome !== 'passed') || result.commit !== r.binding.head || result.prId !== r.binding.pr ||
         result.branch !== r.binding.branch || result.worktree !== r.binding.worktree ||
         new Set(result.findings.map(f => f.id)).size !== result.findings.length ||
@@ -22,7 +23,7 @@ function verdict(job: TicketJob, result: StageResult, allowProviderWait = false)
 
 /** The one metadata assessment is context, never the independent readiness verdict. */
 export async function acceptMetadataReview(delivery: GitHubDelivery, job: TicketJob, result: StageResult, before: Set<string>): Promise<void> {
-    if (!metadataAppliesToHead(job)) return;
+    if (!metadataAppliesToHead(delivery.store, job)) return;
     assertMetadataBinding(delivery, job);
     const r = job.prMetadataRepair!, claim = currentAssignment()?.claim;
     if (!['review', 'done'].includes(r.phase) || r.publishedAfterStep === undefined || job.steps.length - 1 < r.publishedAfterStep ||
@@ -61,7 +62,7 @@ async function currentMetadata(delivery: GitHubDelivery, job: TicketJob): Promis
 
 /** Rechecked at ordinary merge preflight, including after intervening awaits. */
 export async function requireMetadataReview(delivery: GitHubDelivery, job: TicketJob): Promise<void> {
-    if (!metadataAppliesToHead(job)) return;
+    if (!metadataAppliesToHead(delivery.store, job)) return;
     assertMetadataBinding(delivery, job);
     const r = job.prMetadataRepair!, proof = r.review, index = r.reviewedAfterStep;
     if (r.phase !== 'done' || !proof || index === undefined || r.publishedAfterStep === undefined || index < r.publishedAfterStep)

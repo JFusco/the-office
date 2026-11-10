@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import type { Store } from '../../store/store';
+import { activeEffectId } from '../harness/effect';
 import { HOLDS } from '../../office/config';
 import { deliveryInputSha256 } from '../../github/github-context';
 import { digest } from '../../store/readback-evidence';
@@ -8,9 +11,20 @@ import { currentAssignment } from '../../workers/assignment-context';
 import type { TicketJob } from '../../../src/shared';
 import type { PRMetadataRepair } from '../../../src/contracts/pr-metadata';
 
-/** Completed metadata on an older source head remains history, never a new attempt or current handoff. */
-export function metadataAppliesToHead(job: TicketJob): boolean {
-    return !!job.prMetadataRepair && (job.prMetadataRepair.phase !== 'done' || job.prMetadataRepair.binding.head === job.head);
+/** Only the exact bound publication can release the original pre-dispatch input fence. */
+function dispatchedMetadataEffect(store: Store, job: TicketJob, repair: PRMetadataRepair) {
+    const effect = store.getEffect<Record<string, unknown>>(activeEffectId(store, `harness:${job.id}:pr-metadata:${repair.id}`));
+    return effect?.dispatchedAt && effect.operation === 'github-pr-metadata' && effect.target === repair.binding.url &&
+        effect.work.projectId === repair.binding.projectId && effect.work.kind === 'delivery' && effect.work.id === job.id && effect.attemptId === job.id &&
+        isDeepStrictEqual(effect.payload.binding, repair.binding) && effect.payload.origin === repair.origin &&
+        !!repair.assessment && effect.payload.workerId === repair.assessment.workerId && effect.payload.resultSha256 === repair.assessment.resultSha256 &&
+        effect.payload.proposalSha256 === repair.assessment.proposalSha256 && isDeepStrictEqual(effect.payload.selected, repair.assessment.selected) ? effect : undefined;
+}
+
+/** Verified metadata on an older source head remains history, never a new attempt or source acceptance. */
+export function metadataAppliesToHead(store: Store, job: TicketJob): boolean {
+    const r = job.prMetadataRepair;
+    return !!r && (r.binding.head === job.head || !['review', 'done'].includes(r.phase) || dispatchedMetadataEffect(store, job, r)?.status !== 'verified');
 }
 
 export function bindMetadata(delivery: GitHubDelivery, job: TicketJob, pr: any, findingIds: string[], origin: PRMetadataRepair['origin']): PRMetadataRepair {
@@ -40,7 +54,7 @@ export function assertMetadataBinding(delivery: GitHubDelivery, job: TicketJob, 
         !harnessDelivers(store, job) || digest(b) !== repair.bindingSha256 || b.projectId !== store.project.id || b.repository !== store.project.repository || b.jobId !== job.id || b.key !== job.key ||
         b.pr !== job.pr || b.url !== job.prUrl || b.head !== job.head || b.branch !== job.branch || b.base !== store.project.target || b.worktree !== job.worktree ||
         !/^[a-f0-9]{40}$/.test(b.head) || b.url !== `https://github.com/${b.repository}/pull/${b.pr}` || digest(b.before) !== b.beforeSha256 ||
-        deliveryInputSha256(store, job.key) !== b.inputSha256 || store.state.paused || store.state.draining || !store.state.coordination?.enabled ||
+        (!dispatchedMetadataEffect(store, job, repair) && deliveryInputSha256(store, job.key) !== b.inputSha256) || store.state.paused || store.state.draining || !store.state.coordination?.enabled ||
         HOLDS[job.key] || HOLDS[`GH-${job.pr}`] || job.prerequisites?.length || job.mergeAttempt || job.mergeCommit || job.mergeIntentId && !ownPreparedMerge || job.mergeApprovalRequired ||
         job.boardUpdates?.some(u => u.status !== 'verified') || job.steps.some(s => hasUncertainEffects(s.stage, s.result)) ||
         store.activeClaims().some(c => c.work.kind === 'delivery' && c.work.id === job.id && c.id !== claimId) ||

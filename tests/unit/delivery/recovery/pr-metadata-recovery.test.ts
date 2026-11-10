@@ -1,41 +1,13 @@
 import { expect, test, vi } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { metadataFixture } from '../../../fixtures/pr-metadata';
-import { digest, artifact } from '../../../../server/store/readback-evidence';
+import { writeFileSync } from 'node:fs';
+import { addMetadataHumanInput, originalMetadataFixture as original } from '../../../fixtures/pr-metadata';
 import { enqueueMetadataRecovery } from '../../../../server/delivery/recovery/pr-metadata-intent';
 import { reconcilePRMetadata, metadataRequestResolved } from '../../../../server/delivery/recovery/pr-metadata-recovery';
 import { withAssignment } from '../../../../server/workers/assignment-context';
-import type { StageResult } from '../../../../src/shared';
 import { harnessPrepare } from '../../../../server/delivery/publication/prepare-stage';
 import { requireMetadataReview } from '../../../../server/delivery/publication/metadata-review';
+import { deliveryInputSha256 } from '../../../../server/github/github-context';
 
-function original() {
-    const f = metadataFixture(false); delete f.job.prMetadataRepair; f.store.finishClaim(f.claim.id, 'completed');
-    f.job.stage = 'update-base'; f.job.status = 'blocked';
-    const old = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'source-fixture', 'update-base')!;
-    const result: StageResult = { outcome: 'blocked', commit: f.job.head, prId: f.job.pr, branch: f.job.branch, worktree: f.job.worktree,
-        summary: 'Source stage cannot write GitHub metadata', blocker: 'Use the exact prepared body through the Office harness',
-        evidence: [{ id: 'B3', kind: 'checks', summary: 'Prepared body passes', path: '', commit: f.job.head, environment: 'fixture', observedAt: '', url: '' }],
-        findings: [{ id: 'F2', status: 'open', summary: 'PR body missing', expected: 'Prepared body', actual: 'Unpublished', attempts: 3 }],
-        resolution: { kind: 'permission', findingIds: ['F2'], evidenceIds: ['B3'], release: null }, receipts: [], paidRuns: 0, approach: null, prerequisites: null, previewUrl: '', qaRunDir: '' };
-    const source = f.nativeAssessment(result, { role: 'developer', stage: 'github-update-base', claim: old });
-    f.store.finishClaim(old.id, 'completed');
-    f.job.steps = [{ stage: 'update-base', result }]; f.job.repairCycle = { attempts: 2, findingAttempts: { F2: 2 }, pendingFindingIds: ['F2'], owner: 'developer', sourceStage: 'lead-pr', sourceHead: f.job.head, phase: 'repair', publishedHead: f.job.head };
-    const at = source.worker.endedAt!;
-    f.job.parked = { at, stage: 'update-base', published: true, reason: result.blocker };
-    f.state.cards[0].status = 'block'; f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: f.job.pr, status: 'block' });
-    f.job.boardUpdates = f.state.cards.map(card => ({ stage: 'update-base', head: f.job.head, project: 'project', item: card.id, field: 'status', option: 'block', target: 'Block', at, status: 'verified', detail: 'Block verified by read-back.' }));
-    const dir = resolve(f.root, 'update-base-checks'); mkdirSync(dir, { recursive: true }); const path = resolve(dir, 'pr-200-body.md'); writeFileSync(path, f.selected.body);
-    const intent = { jobId: f.job.id, head: f.job.head, workerId: source.worker.id, parkAt: at, parkSha256: digest(f.job.parked),
-        proposal: { path, sha256: artifact(f.store, path).sha256, bytes: Buffer.byteLength(f.selected.body) }, authorization: { reference: 'Synthetic explicit operator command', sha256: digest('fixture authorization') } };
-    const request = enqueueMetadataRecovery(f.store, f.job.key, intent); request.status = 'working';
-    const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'reconciliation', id: request.id }, 'original-metadata', 'reconcile-pr-metadata')!;
-    const verdict = { ...f.verdict, findingIds: ['F2'] };
-    const model = vi.spyOn(f.engine.agents, 'run').mockImplementation(async () => { f.nativeAssessment(verdict, { claim }); return verdict as any; });
-    const run = () => withAssignment(claim, 'delivery', () => reconcilePRMetadata(f.delivery, request));
-    return { ...f, source, intent, request, claim, model, run };
-}
 
 test('an exact original permission park completes one metadata assessment/PATCH and two verified returns without replaying source or resetting budgets', async () => {
     const f = original(), cycle = structuredClone(f.job.repairCycle), steps = structuredClone(f.job.steps);
@@ -50,6 +22,7 @@ test('an exact original permission park completes one metadata assessment/PATCH 
     expect((effect?.payload as any).original.returnedEffects).toBeUndefined(); expect(returns).toHaveLength(2);
     expect(returns!.map(id => f.store.getEffect(id)?.status)).toEqual(['verified', 'verified']);
     f.store.finishClaim(f.claim.id, 'completed'); f.request.status = 'completed'; f.job.status = 'working';
+    f.state.comments.push({ id: 501, user: { login: 'JFusco' }, body: 'Review the published metadata in the current context.' });
     const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'recovered-prepare', 'prepare-pr')!;
     const prepared = await withAssignment(claim, 'delivery', () => harnessPrepare(f.delivery, f.job, f.root, true));
     expect(prepared?.outcome).toBe('passed'); expect(f.model).toHaveBeenCalledTimes(1); expect(f.writes.patches).toBe(1);
@@ -73,12 +46,26 @@ test.each([true, false])('a rejected preflight retry with a lost metadata respon
     f.writes.loseResponse = true; f.writes.land = landed;
     await expect(f.run()).rejects.toThrow('499');
     expect(f.store.getEffect(`${base}:retry-1`)?.status).toBe('uncertain'); expect(f.job.parked).toBeDefined();
-    if (landed) await f.run();
-    else await expect(f.run()).rejects.toThrow('will not be resent');
+    const r = f.job.prMetadataRepair!, binding = structuredClone(r.binding), history = r.original!.historySha256;
+    const cycle = structuredClone(f.job.repairCycle), steps = structuredClone(f.job.steps);
+    expect(r.phase).toBe('publish');
+    addMetadataHumanInput(f);
+    expect(deliveryInputSha256(f.store, f.job.key)).not.toBe(binding.inputSha256);
+    f.store.finishClaim(f.claim.id, 'interrupted');
+    const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'reconciliation', id: f.request.id }, 'fresh-readback', 'reconcile-pr-metadata')!;
+    const resume = () => withAssignment(claim, 'delivery', () => reconcilePRMetadata(f.delivery, f.request));
+    if (landed) await resume();
+    else await expect(resume()).rejects.toThrow('will not be resent');
     expect(f.store.getEffect(base)).toEqual(prior); expect(f.writes.patches).toBe(1); expect(f.model).toHaveBeenCalledTimes(1);
     expect(f.store.getEffect(`${base}:retry-1`)?.status).toBe(landed ? 'verified' : 'uncertain');
     expect(f.state.cards.map(c => c.status)).toEqual(landed ? ['review', 'review'] : ['block', 'block']);
     expect(!!f.job.parked).toBe(!landed); expect(metadataRequestResolved(f.store, f.request)).toBe(landed);
+    expect(r.binding).toEqual(binding); expect(r.original!.historySha256).toBe(history);
+    expect(f.job.steps).toEqual(steps); expect(f.job.repairCycle).toEqual(cycle);
+    if (landed) {
+        expect(f.job).toMatchObject({ stage: 'prepare-pr', status: 'queued' });
+        await expect(withAssignment(claim, 'delivery', () => requireMetadataReview(f.delivery, f.job))).rejects.toThrow('Fresh independent');
+    }
 });
 
 test('a current human lane prevents the model, metadata write and any return', async () => {
@@ -90,8 +77,28 @@ test('a current human lane prevents the model, metadata write and any return', a
 test('lost metadata response is read back under the same original request without a second assessment/PATCH', async () => {
     const f = original(); f.writes.loseResponse = true;
     await expect(f.run()).rejects.toThrow('499'); expect(f.job.parked).toBeDefined();
+    f.state.comments.push({ id: 500, user: { login: 'JFusco' }, body: 'New context after the dispatched metadata write.' });
     await f.run();
     expect(f.model).toHaveBeenCalledTimes(1); expect(f.writes.patches).toBe(1); expect(f.job.stage).toBe('prepare-pr');
+    expect(f.job.status).toBe('queued'); expect(f.state.cards.map(c => c.status)).toEqual(['review', 'review']);
+    expect(f.store.getEffect(`harness:${f.job.id}:pr-metadata:${f.job.prMetadataRepair!.id}`)?.status).toBe('verified');
+});
+
+test('an authenticated note after a rejected never-dispatched preflight still prevents publication', async () => {
+    const f = original(), execute = f.delivery.execute;
+    f.delivery.execute = (async (program, args, options) => {
+        const r = f.job.prMetadataRepair;
+        if (program === 'curl' && r && f.store.getEffect(`harness:${f.job.id}:pr-metadata:${r.id}`)?.status === 'prepared')
+            throw new Error('Synthetic preflight rejection');
+        return execute(program, args, options);
+    }) as typeof execute;
+    await expect(f.run()).rejects.toThrow('preflight rejection');
+    const r = f.job.prMetadataRepair!;
+    addMetadataHumanInput(f);
+    expect(deliveryInputSha256(f.store, f.job.key)).not.toBe(r.binding.inputSha256);
+    await expect(f.run()).rejects.toThrow('inputs or controls changed');
+    expect(f.writes.patches).toBe(0); expect(f.model).toHaveBeenCalledTimes(1);
+    expect(f.state.cards.map(c => c.status)).toEqual(['block', 'block']);
 });
 
 test.each([true, false])('a partial original card return landed=%s never repeats the uncertain mutation', async landed => {
