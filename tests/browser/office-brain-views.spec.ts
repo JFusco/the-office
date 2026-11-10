@@ -73,6 +73,24 @@ test('synthetic Activity opens immutable supplied knowledge and recorded lookup 
     await page.getByRole('button',{name:'Inspect weekly review',exact:true}).click();await expect(page.getByRole('region',{name:'Weekly knowledge review',exact:true})).toContainText('CEC · weekly knowledge review');await page.getByRole('heading',{name:'Morgan’s weekly knowledge review',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:`${artifacts}/office-brain-04-morgan-review.synthetic.png`,fullPage:true});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
 });
 
+test('synthetic assignment with no lookups retains an accessible and honest empty state',async({page},testInfo)=>{
+    testInfo.annotations.push({type:'evidence',description:'Synthetic empty lookup response; no live assignment or accepted outcome'});
+    await page.route('**/api/knowledge/assignment?**',async route=>{
+        const response=await route.fetch();
+        const data=await response.json();
+        await route.fulfill({response,json:{...data,lookups:[],lookup:undefined,outcomes:[]}});
+    });
+    await page.goto('/');
+    await page.getByRole('button',{name:'Brain',exact:true}).click();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Activity',exact:true}).click();
+    await page.getByRole('button',{name:'Inspect assignment knowledge',exact:true}).first().click();
+    const detail=page.getByRole('region',{name:'Assignment knowledge',exact:true});
+    await expect(detail).toContainText('No recorded lookups for this assignment.');
+    await expect(detail).toContainText('No accepted outcome citation is recorded. Application remains unknown.');
+    await expect(detail.getByRole('group',{name:'Recorded lookup pages'})).toHaveCount(0);
+    expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
+});
+
 test('room orbit and zoom survive renderer disposal while visiting the Brain map',async({page})=>{
     await page.goto('/');await expect(page.locator('canvas')).toHaveCount(1);const canvas=page.locator('canvas');
     const positions=()=>page.locator('[data-scene-label="mail"]').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width};}).filter(r=>r.w>0));
