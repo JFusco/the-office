@@ -4,6 +4,7 @@ import { evidenceRecords } from '../sources/evidence-read';
 import { lessonVisible } from '../sources/lesson-visibility';
 import { sourceVisible } from '../sources/visibility';
 import { knowledgeSnapshot } from '../knowledge-snapshot';
+import { evidenceTitle } from './evidence-title';
 /** Edges come from retained subscriptions and citations; distance carries no authority. */
 export function knowledgeMap(context: KnowledgeContext, project: string,global = false): KnowledgeMap {
     const nodes: KnowledgeMap['nodes'] = [{ id: global?'office:knowledge':`project:${project}`, title: global?'Office knowledge':project, kind: 'project',scope:global?'office':'project', detail: global?'Approved Office guidance and published technical knowledge':'Current project scope' }], edges: KnowledgeMap['edges'] = [];
@@ -13,7 +14,7 @@ export function knowledgeMap(context: KnowledgeContext, project: string,global =
         edges.push({ source: `project:${project}`, target: `stream:${source.id}`, kind: 'subscription' });
     }
     const records = global?[]:evidenceRecords(context, project,true), evidence = records.filter(r => sources.some(s => s.id === r.sourceId)).slice(0, 200);
-    for (const r of evidence) { nodes.push({ id: r.id, title: r.unitId, kind: 'evidence',scope:'project', detail: `Version ${r.version} · ${r.readerVersion}`, reference: r.id,knowledgeReference:{id:r.id,kind:'source',sourceId:r.sourceId,unitId:r.unitId,version:r.version,contentSha256:r.contentSha256} }); edges.push({ source: `stream:${r.sourceId}`, target: r.id, kind: 'provenance' }); }
+    for (const r of evidence) { nodes.push({ id: r.id, title: evidenceTitle(r.text, sources.find(s => s.id === r.sourceId)!.title), kind: 'evidence',scope:'project', detail: `Source record ${r.unitId}\nVersion ${r.version} · ${r.readerVersion}`, reference: r.id,knowledgeReference:{id:r.id,kind:'source',sourceId:r.sourceId,unitId:r.unitId,version:r.version,contentSha256:r.contentSha256} }); edges.push({ source: `stream:${r.sourceId}`, target: r.id, kind: 'provenance' }); }
     const knowledge = knowledgeSnapshot(context.registry,project,context.stores.get(project)?.state.knowledge);
     const lessons = [...(global?[]:knowledge?.lessons || []), ...(knowledge?.officeLessons || [])].filter(l => l.status === 'active' && lessonVisible(context.registry, project, l)).slice(0, 100);
     for (const lesson of lessons) {

@@ -1,5 +1,5 @@
 export interface LabelRectangle { id: string; priority: number; x: number; y: number; width: number; height: number }
-/** Stable screen-space collision selection; a hover/focus label takes precedence over overview labels. */
+/** Stable screen-space collision selection; hover/keyboard focus takes precedence over selection. */
 export function visibleLabels(rectangles: LabelRectangle[], width: number, height: number, limit = 12): Set<string> {
     const accepted: LabelRectangle[] = [], result = new Set<string>();
     if (limit <= 0) return result;

@@ -3,16 +3,33 @@ import {PerspectiveCamera,SpriteMaterial,Raycaster,Vector3} from 'three';
 import {nodeVisuals} from '../../../../src/knowledge/map/node-visuals';
 import {SCENE_COLOR_TOKENS,type SceneColors} from '../../../../src/tokens/scene-colors';
 
-it('bounds visible labels, fades irrelevant stars and disposes removed visual resources',()=>{
+it('keeps landmark labels sparse, labels individual nodes on interaction and releases visual resources',()=>{
     vi.stubGlobal('document',{createElement:()=>({width:0,height:0,getContext:()=>({fillText:()=>{},measureText:(t:string)=>({width:t.length*16}),beginPath:()=>{},arc:()=>{},fill:()=>{}})})});
     try{
         const palette=Object.fromEntries(Object.keys(SCENE_COLOR_TOKENS).map(k=>[k,'#fff'])) as SceneColors;
         const visuals=nodeVisuals(palette), camera=new PerspectiveCamera(50,2,.1,1000);camera.position.z=300;camera.lookAt(0,0,0);
-        const nodes=Array.from({length:20},(_,i)=>({id:`n${i}`,title:`Guide ${i}`,kind:'technical' as const,detail:'',visible:true,emphasized:i===0,position:{x:i*5,y:0,z:0}}));
+        const nodes=Array.from({length:20},(_,i)=>({id:`n${i}`,title:`Guide ${i}`,kind:i===0?'project' as const:i===19?'source' as const:'technical' as const,technicalKind:i===10?'index':undefined,detail:'',visible:true,emphasized:true,position:{x:i===10?-150:i===19?150:i*5,y:0,z:0}}));
         const groups=nodes.map(node=>visuals.create(node));
+        const overview={data:{nodes,edges:[],truncated:false},reduced:true};
+        const container={clientWidth:1200,clientHeight:800} as HTMLElement;
+        visuals.update(overview,camera,container,16);
+        expect(groups.filter(g=>g.children[1].visible)).toEqual([groups[0],groups[10],groups[19]]);
+        visuals.hover('n4');visuals.update(overview,camera,container,16);
+        expect(groups[4].children[1].visible).toBe(true);expect(groups[0].children[1].visible).toBe(false);
+        expect(groups.filter((g,i)=>![0,4,10,19].includes(i)&&g.children[1].visible)).toHaveLength(0);
+        visuals.hover('');visuals.update(overview,camera,container,16);
+        expect(groups.filter(g=>g.children[1].visible)).toEqual([groups[0],groups[10],groups[19]]);
+        visuals.update({...overview,highlightId:'n8'},camera,container,16);
+        expect(groups[8].children[1].visible).toBe(true);
+        nodes.forEach((node,i)=>{node.emphasized=i<2;}); // Selected node and a connected neighbor.
         visuals.update({data:{nodes,edges:[],truncated:false},reduced:true,focusId:'n0'},camera,{clientWidth:1200,clientHeight:800} as HTMLElement,16);
         expect(groups.filter(g=>g.children[1].visible)).toHaveLength(1);
-        expect((groups[0].children[0] as any).material.opacity).toBeCloseTo(.95);expect((groups[1].children[0] as any).material.opacity).toBeCloseTo(.18);
+        expect(groups[0].children[1].visible).toBe(true);expect(groups[1].children[1].visible).toBe(false);
+        expect((groups[0].children[0] as any).material.opacity).toBeCloseTo(.95);expect((groups[2].children[0] as any).material.opacity).toBeCloseTo(.18);
+        visuals.hover('n1');visuals.update({...overview,focusId:'n0'},camera,container,16);
+        expect(groups[1].children[1].visible).toBe(true);expect(groups[0].children[1].visible).toBe(false);
+        visuals.hover('');visuals.update({...overview,focusId:'n0'},camera,container,16);
+        expect(groups[0].children[1].visible).toBe(true);expect(groups[1].children[1].visible).toBe(false);
         groups[0].updateMatrixWorld(true);
         const ray=new Raycaster(new Vector3(0,groups[0].children[1].position.y,300),new Vector3(0,0,-1));ray.camera=camera;
         expect(ray.intersectObject(groups[0],true)).toEqual([]);

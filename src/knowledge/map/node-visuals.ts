@@ -45,12 +45,13 @@ export function nodeVisuals(palette: SceneColors) {
                 const scale = container.clientHeight / (2 * Math.tan(camera.fov * Math.PI / 360) * -depth);
                 star.scale.setScalar((active || node.kind === 'project' ? 24 : 16) / scale);
                 label.scale.set(240 / scale, 30 / scale, 1); label.position.y = 18 / scale;
-                if (!active && !node.emphasized) continue;
+                const landmark = node.kind === 'project' || node.kind === 'source' || node.technicalKind === 'index';
+                if (!active && (!landmark || view.focusId)) continue;
                 world.y += label.position.y;
                 const screen = world.project(camera), width = 240, height = 30;
-                rectangles.push({id: node.id, priority: active ? 0 : node.kind === 'project' ? 1 : 2, x: (screen.x + 1) * container.clientWidth / 2 - width / 2, y: (1 - screen.y) * container.clientHeight / 2 - height / 2, width, height});
+                rectangles.push({id: node.id, priority: node.id === hovered || node.id === view.highlightId ? 0 : node.id === view.focusId ? 1 : node.kind === 'project' ? 2 : 3, x: (screen.x + 1) * container.clientWidth / 2 - width / 2, y: (1 - screen.y) * container.clientHeight / 2 - height / 2, width, height});
             }
-            const visible = visibleLabels(rectangles, container.clientWidth, container.clientHeight, view.focusId ? 6 : 8);
+            const visible = visibleLabels(rectangles, container.clientWidth, container.clientHeight, view.focusId ? 2 : 5);
             const blend = view.reduced ? 1 : 1 - Math.exp(-Math.min(delta, 50) / 100);
             for (const {node, star, label} of records.values()) {
                 const active = node.id === hovered || node.id === view.highlightId || node.id === view.focusId;
