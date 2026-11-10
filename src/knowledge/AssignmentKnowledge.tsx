@@ -6,6 +6,7 @@ import { Button, summary } from '../ui';
 import { EvidencePacket } from './content/EvidencePacket';
 import { MarkdownBody } from './content/MarkdownBody';
 import { OriginalText } from './content/KnowledgeDocument';
+import { RecordedEvidence } from './content/RecordedEvidence';
 
 function Lookup({ query, response }: { query: string; response: KnowledgeLookupResponse }) {
     return <section aria-label="Selected lookup" className="border-t border-drawer-line pt-4">
@@ -14,7 +15,7 @@ function Lookup({ query, response }: { query: string; response: KnowledgeLookupR
         <p className="my-3 break-words text-12">Query: {query}</p>
         <EvidencePacket text={response.text} selected={response.selected}/>
         <OriginalText text={response.text || 'No evidence available.'} label="Exact lookup response"/>
-        <details className="mt-3"><summary className={summary}>Lookup receipt</summary><p className="mt-3 break-all text-10 text-muted">Response text SHA-256 {response.textSha256}</p></details>
+        <details className="mt-3"><summary className={summary}>Lookup receipt</summary><p className="mt-3 break-all text-10 text-muted">Response text SHA-256 {response.textSha256}</p><RecordedEvidence entries={response.selected}/></details>
     </section>;
 }
 
@@ -33,7 +34,7 @@ export function AssignmentKnowledge({ project, id }: { project: string; id: stri
             <h5 className="mt-5 font-heading text-15">Source evidence supplied</h5>
             <EvidencePacket text={data.supplied.sourceEvidenceText} selected={data.supplied.evidence}/>
             <OriginalText text={suppliedText || 'No matching lessons or source evidence supplied.'} label="Exact supplied text"/>
-            <details className="mt-3"><summary className={summary}>Assignment receipt</summary><div className="mt-3 grid gap-2 break-all text-10 text-muted"><p>Assignment {data.id}</p><p>Supplied SHA-256 {data.supplied.suppliedTextSha256}</p></div></details>
+            <details className="mt-3"><summary className={summary}>Assignment receipt</summary><div className="mt-3 grid gap-2 break-all text-10 text-muted"><p>Assignment {data.id}</p><p>Supplied SHA-256 {data.supplied.suppliedTextSha256}</p></div><RecordedEvidence entries={data.supplied.evidence}/></details>
             <h4 className="my-5 font-heading text-15">Recorded lookups</h4>
             {data.lookupRecordingUnavailable && <p role="status" className="my-3 text-12 text-muted">Exact lookup recording is unavailable or incomplete. The original supplied record above is unchanged.</p>}
             {!data.lookups.length && <p className="text-12">No recorded lookups for this assignment.</p>}

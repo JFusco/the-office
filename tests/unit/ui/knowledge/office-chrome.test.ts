@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Select } from '../../../../src/ui';
+import { Select, CheckField } from '../../../../src/ui';
 import { panelMotion } from '../../../../src/tokens/motion';
 import { DocumentPreview } from '../../../../src/knowledge/content/DocumentPreview';
 
@@ -17,4 +17,9 @@ it('shares inspector entry timing and removes movement for reduced motion', () =
 it('shows only a short body preview without metadata or a full hidden document', () => {
     const html = renderToStaticMarkup(createElement(DocumentPreview, {text:'---\ntitle: Secret title\n---\n# Document title\n\nKeep **receipts**.\n\n## Full detail\n\nHidden long section'}));
     expect(html).toContain('<strong>receipts</strong>'); expect(html).not.toContain('Secret title'); expect(html).not.toContain('Hidden long section');
+});
+
+it('uses Office hover and focus behavior on the activity checkbox',()=>{
+    const html=renderToStaticMarkup(createElement(CheckField,{children:'Include employee activity'}));
+    expect(html).toContain('accent-checkbox');expect(html).toContain('focus-visible:outline-focus');expect(html).toContain('enabled:hover:brightness-90');
 });

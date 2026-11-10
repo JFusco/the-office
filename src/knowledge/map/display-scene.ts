@@ -5,6 +5,11 @@ import { stablePosition } from './layout';
 export interface DisplayNode extends KnowledgeNode { visible: boolean; emphasized: boolean; position: { x: number; y: number; z: number } }
 export interface MapSelection { group: string; selected: string; query: string; filter: 'all' | KnowledgeNode['kind']; activity: boolean; page: number }
 const sectors = ['project', 'source', 'evidence', 'lesson', 'assignment', 'technical'];
+/** Following an explicit saved connection widens display filters to reveal its target. */
+export function selectRecord(prior: MapSelection, node: KnowledgeNode): MapSelection {
+    return {...prior, selected:node.id, filter:prior.filter !== 'all' && prior.filter !== node.kind ? 'all' : prior.filter,
+        activity:prior.activity || node.kind === 'assignment', group:'', query:'', page:0};
+}
 
 /** Bounded view projection. All entity IDs and detail edges retain their original persisted identities. */
 export function displayScene(data: KnowledgeMap, selection: MapSelection) {
@@ -28,7 +33,7 @@ export function displayScene(data: KnowledgeMap, selection: MapSelection) {
         emphasized: selected ? emphasizedIds.has(n.id) : true,
         position: n.kind === 'project' ? {x: 0, y: 0, z: 0} : stablePosition(n.id, n.kind, sectors),
     }));
-    const edges = selected ? data.edges.filter(e => (e.source === selected.id || e.target === selected.id) && eligibleIds.has(e.source) && eligibleIds.has(e.target)) : [];
+    const edges = data.edges.filter(e => (selected ? (e.source === selected.id || e.target === selected.id) && eligibleIds.has(e.source) && eligibleIds.has(e.target) : visibleIds.has(e.source) && visibleIds.has(e.target)));
 
     return { groups, group, selected, pageGroups, pageNodes, page, pages, total, neighborCount, browsingNodes, scene: { ...data, nodes, edges } };
 }

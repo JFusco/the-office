@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { displayScene, type MapSelection } from '../../../../src/knowledge/map/display-scene';
+import { displayScene, selectRecord, type MapSelection } from '../../../../src/knowledge/map/display-scene';
 import { visibleLabels } from '../../../../src/knowledge/map/label-visibility';
 import { cameraTarget } from '../../../../src/knowledge/map/camera-target';
 import { flightPose } from '../../../../src/knowledge/map/camera-flight';
@@ -14,7 +14,7 @@ const data: KnowledgeMap = {truncated: false, nodes: [
 it('keeps the original real-node constellation and stable coordinates through navigation', () => {
     const overview = displayScene(data, selection), group = displayScene(data, {...selection, group: 'technical:cms'});
     expect(overview.scene.nodes.map(n=>n.id)).toEqual(data.nodes.map(n=>n.id));
-    expect(overview.scene.edges).toEqual([]);
+    expect(overview.scene.edges).toEqual(data.edges);
     expect(overview.scene.nodes.find(n=>n.id==='attempt')?.visible).toBe(false);
     expect(group.pageNodes).toHaveLength(40); expect(group.pages).toBe(3);
     expect(group.groups.find(g=>g.id==='technical:cms')?.members).toHaveLength(85);
@@ -45,4 +45,11 @@ it('interrupts a flight at the visible pose rather than jumping to the previous 
     expect(flightPose(from,to,0,850)).toEqual(from);expect(flightPose(from,to,850,850)).toEqual(to);
     const current=flightPose(from,to,200,850);expect(current.position.x).toBeGreaterThan(0);expect(current.position.x).toBeLessThan(80);
     expect(flightPose(current,from,0,850)).toEqual(current);expect(flightPose(current,from,0,0)).toEqual(from);
+});
+
+it('reveals an explicitly followed connection when a type or activity filter hid its target',()=>{
+    const next=selectRecord({...selection,filter:'lesson'},data.nodes.find(n=>n.id==='note:1')!);
+    expect(next.filter).toBe('all');expect(displayScene(data,next).selected?.id).toBe('note:1');
+    const activity=selectRecord(selection,data.nodes.find(n=>n.id==='attempt')!);
+    expect(activity.activity).toBe(true);expect(displayScene(data,activity).selected?.id).toBe('attempt');
 });

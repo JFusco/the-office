@@ -24,9 +24,12 @@ export function nodeVisuals(palette: SceneColors) {
             const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 80;
             const context = canvas.getContext('2d'); if (!context) { starMaterial.dispose(); throw new Error('Label canvas unavailable'); }
             context.font = '32px sans-serif'; context.fillStyle = palette.brainLabel; context.textAlign = 'center';
-            context.fillText(node.title.length > 44 ? node.title.slice(0, 41) + '…' : node.title, 320, 45);
+            const characters = Array.from(node.title); let caption = node.title;
+            while (characters.length && context.measureText(caption).width > canvas.width - 24) { characters.pop(); caption = characters.join('') + '…'; }
+            context.fillText(caption, 320, 45);
             const labelTexture = new CanvasTexture(canvas), labelMaterial = new SpriteMaterial({map: labelTexture, transparent: true, opacity: 0, depthWrite: false, depthTest: false});
             const label = new Sprite(labelMaterial); label.scale.set(100, 12.5, 1); label.position.y = 9; group.add(label);
+            label.raycast = () => {}; // Invisible or visible captions never steal the marker's pointer target.
             records.set(node.id, {node, star, label, dispose() {starMaterial.dispose(); labelMaterial.dispose(); labelTexture.dispose();}});
             return group;
         },

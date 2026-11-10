@@ -6,31 +6,33 @@ async function sha256(text: string) {
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return [...new Uint8Array(bytes)].map(v => v.toString(16).padStart(2, '0')).join('');
 }
-/** Format only excerpts matching the immutable manifest; embedded packet-like text cannot create cards. */
+/** Consume the entire packet in manifest order; source text cannot supply another entry's envelope. */
 export async function suppliedEvidence(text: string, selected: readonly SuppliedReference[], hash = sha256): Promise<SuppliedExcerpt[]> {
-    const excerpts: SuppliedExcerpt[] = [];
-    for (const { reference, excerptSha256 } of selected.slice(0, 8)) {
+    const headerEnd = text.indexOf('\n\n'), excerpts: SuppliedExcerpt[] = [];
+    if (headerEnd < 0 || !text.startsWith('SOURCE EVIDENCE') || text.slice(0, headerEnd).includes('\n') || selected.length > 8) return [];
+    let cursor = headerEnd + 2;
+    for (const [index, { reference, excerptSha256 }] of selected.entries()) {
         const scope = reference.kind === 'brain' ? 'technical' : reference.kind === 'source' ? 'project' : reference.lesson?.scope;
-        const citation = reference.kind === 'lesson' && reference.lesson ? `lesson:${reference.lesson.scope}:${reference.lesson.id}@${reference.lesson.revision}` : reference.id;
-        if (!scope || !/^[a-f0-9]{64}$/.test(excerptSha256)) continue;
-        const marker = `\n[${scope} · ${citation}] `;
-        let position = -1, found: SuppliedExcerpt | undefined;
-        while (!found && (position = text.indexOf(marker, position + 1)) >= 0) {
-            const start = position + marker.length, headingEnd = text.indexOf('\n', start);
-            if (headingEnd < 0) break;
-            const title = text.slice(start, headingEnd);
-            const candidates = text.slice(headingEnd + 1, headingEnd + 1 + 350 + '\nCitation: '.length);
-            for (const match of candidates.matchAll(/\nCitation: /g)) {
-                const end = headingEnd + 1 + match.index!, excerpt = text.slice(headingEnd + 1, end);
-                if (await hash(excerpt) !== excerptSha256) continue;
-                const citationStart = end + '\nCitation: '.length, limitsStart = text.indexOf('\nLimitations: ', citationStart);
-                if (limitsStart < 0) continue;
-                const next = text.indexOf('\n\n[', limitsStart);
-                found = { reference, scope, title, excerpt, citation: text.slice(citationStart, limitsStart), limitations: text.slice(limitsStart + '\nLimitations: '.length, next < 0 ? undefined : next) };
-                break;
-            }
+        const identity = reference.kind === 'lesson' && reference.lesson ? `lesson:${reference.lesson.scope}:${reference.lesson.id}@${reference.lesson.revision}` : reference.id;
+        const marker = `[${scope} · ${identity}] `;
+        if (!scope || !/^[a-f0-9]{64}$/.test(excerptSha256) || !text.startsWith(marker, cursor)) return [];
+        const start = cursor + marker.length, headingEnd = text.indexOf('\n', start);
+        if (headingEnd < 0) return [];
+        const bodyStart = headingEnd + 1, candidates = text.slice(bodyStart, bodyStart + 350 + '\nCitation: '.length);
+        let entry: SuppliedExcerpt | undefined;
+        for (const match of candidates.matchAll(/\nCitation: /g)) {
+            const end = bodyStart + match.index!, excerpt = text.slice(bodyStart, end);
+            if (await hash(excerpt) !== excerptSha256) continue;
+            const citationStart = end + '\nCitation: '.length, citationEnd = text.indexOf('\n', citationStart);
+            if (citationEnd < 0 || !text.startsWith('\nLimitations: ', citationEnd)) return [];
+            const limitsStart = citationEnd + '\nLimitations: '.length, limitsEnd = text.indexOf('\n', limitsStart);
+            if (index === selected.length - 1 ? limitsEnd !== -1 : limitsEnd < 0 || !text.startsWith('\n\n[', limitsEnd)) return [];
+            entry = {reference, scope, title:text.slice(start,headingEnd), excerpt, citation:text.slice(citationStart,citationEnd), limitations:text.slice(limitsStart,limitsEnd < 0 ? undefined : limitsEnd)};
+            cursor = limitsEnd < 0 ? text.length : limitsEnd + 2;
+            break;
         }
-        if (found) excerpts.push(found);
+        if (!entry) return [];
+        excerpts.push(entry);
     }
-    return excerpts;
+    return cursor === text.length ? excerpts : [];
 }

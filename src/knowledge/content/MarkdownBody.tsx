@@ -10,7 +10,7 @@ const typography = [
     '[&_a]:text-link [&_a]:underline [&_a]:underline-offset-3 [&_a]:break-words',
     '[&_blockquote]:border-l-2 [&_blockquote]:border-drawer-line [&_blockquote]:pl-4 [&_blockquote]:text-muted',
     '[&_code]:font-mono [&_code]:text-12 [&_code]:bg-roster-hover [&_code]:rounded-3 [&_code]:px-1',
-    '[&_pre]:overflow-x-auto [&_pre]:rounded-7 [&_pre]:bg-roster-hover [&_pre]:p-4 [&_pre_code]:p-0',
+    '[&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:rounded-7 [&_pre]:bg-roster-hover [&_pre]:p-4 [&_pre_code]:p-0',
     '[&_table]:w-full [&_th]:text-left [&_th]:font-emphasis [&_th]:p-2 [&_td]:p-2',
     '[&_th]:border-b [&_td]:border-b [&_th]:border-drawer-line [&_td]:border-drawer-line',
     '[&_hr]:my-section-gap [&_hr]:border-drawer-line [&_input]:mr-2',

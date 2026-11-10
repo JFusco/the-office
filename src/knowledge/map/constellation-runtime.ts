@@ -63,6 +63,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
                 const old = new Map(graph.graphData().nodes.map(n => [n.id, n]));
                 visuals!.retain(new Set(next.data.nodes.map(n => n.id)));
                 const nodes = next.data.nodes.map(n => Object.assign(old.get(n.id) || {}, n, { ...n.position, fx: n.position.x, fy: n.position.y, fz: n.position.z }));
+                graph.linkOpacity(next.focusId ? .5 : .16).linkWidth(next.focusId ? .3 : 0);
                 graph.graphData({ nodes, links: next.data.edges.map(e => ({...e})) });
                 graph.nodeVisibility(raw => (raw as { visible: boolean }).visible);
             }
