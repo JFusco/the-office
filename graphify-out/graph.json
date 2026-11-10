@@ -137686,7 +137686,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/knowledge/map/evidence-title.ts",
-      "source_location": "L5",
+      "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_knowledge_map_evidence_title_evidencetitle",
@@ -222889,5 +222889,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "3a8bb0d5c5cc0a91605f0aa0c445b235043f0772"
+  "built_at_commit": "2e431f7bf3a84de49548eb0aee163307953656f1"
 }
