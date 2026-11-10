@@ -97,3 +97,23 @@ test('a candidate changed mid-publication is never pushed', async () => {
     await expect(publishCandidate(f.store, execute as any, f.delivery.jobs, job, root)).rejects.toThrow('head changed');
     expect(f.state.calls.some(c => c.startsWith('git push'))).toBe(false);
 });
+
+test('post-push head observation stops after five reads without repeating the push', async () => {
+    const f = fakeGitHub(), job = f.candidate(), root = f.artifactRoot(job);
+    await publishCandidate(f.store, f.execute as any, f.delivery.jobs, job, root);
+    job.pr = 200; job.head = 'c'.repeat(40); f.state.local.head = job.head;
+    f.state.calls.length = 0;
+    let reads = 0;
+    const execute = async (program: string, args: string[], options: any) => {
+        const out = await f.execute(program, args, options);
+        if (program === 'gh' && args[0] === 'api' && args[1].endsWith('/pulls/200')) {
+            reads++;
+            return JSON.stringify({ ...JSON.parse(out), head: { sha: HEAD, ref: job.branch } });
+        }
+        return out;
+    };
+    await expect(publishCandidate(f.store, execute as any, f.delivery.jobs, job, root)).rejects.toThrow('head did not update');
+    expect(reads).toBe(6); // Initial identity read plus exactly five head observations.
+    expect(f.state.calls.filter(call => call.startsWith('git push '))).toHaveLength(1);
+    expect(f.state.calls.filter(call => call.startsWith('gh pr create '))).toHaveLength(0);
+});

@@ -39,6 +39,7 @@ function setup() {
         if (args[0] === 'pr')
             return JSON.stringify({ closingIssuesReferences: linked ? [{ url }] : [] });
         const path = args[1];
+        if (path === 'user') return JSON.stringify({ login: 'JFusco' });
         if (path.endsWith('/issues/999'))
             return JSON.stringify({ number: 999, html_url: url, updated_at: '2026-10-28T12:00:00Z', state: issueState, assignees: [{ login: 'JFusco' }] });
         if (path.endsWith('/branches/main'))
@@ -76,7 +77,7 @@ function setup() {
             if (args.includes('-f')) {
                 if (failComment)
                     throw new Error('Comment timeout');
-                const comment = { id: 1, body: args[args.length - 1].slice(5) };
+                const comment = { id: 1, html_url: `${url}#issuecomment-1`, user: { login: 'JFusco' }, body: args[args.length - 1].slice(5) };
                 comments = [comment];
                 return JSON.stringify(comment);
             }
