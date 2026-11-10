@@ -8,10 +8,12 @@ export function focusOverlayMotion(element?: HTMLElement) {
     return {
         render(position?: FocusOverlayPosition) {
             if (!element) return;
-            element.hidden=!position;if(!position)return;
+            if(!position){element.hidden=true;return;}
             values['--map-focus-x'].set(`${position.x}px`);values['--map-focus-y'].set(`${position.y}px`);
             if(position.labelWidth!==undefined)values['--map-focus-label-width'].set(`${position.labelWidth}px`);
             values['--map-focus-label-shift'].set(position.labelLeft?'calc(-100% - var(--spacing-card-padding))':'var(--spacing-card-padding)');
+            // Flush through Motion's public effect API before revealing the same camera pose.
+            styleEffect.flush(element);element.hidden=false;
         },
         dispose() { detach?.();Object.values(values).forEach(value=>value.destroy());if(element)element.hidden=true; },
     };

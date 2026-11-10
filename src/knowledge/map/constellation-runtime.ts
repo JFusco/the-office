@@ -38,7 +38,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         controls.removeEventListener('end', endInteraction);
         container.removeEventListener('pointerenter', enter);
         container.removeEventListener('pointerleave', leave);
-        container.removeEventListener('pointermove', move);
+        container.removeEventListener('pointermove', move, true);
         container.removeEventListener('pointerdown', startTap, true);
         container.removeEventListener('pointerup', finishTap, true);
         container.removeEventListener('pointercancel', cancelTap, true);
@@ -66,7 +66,11 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
     };
     function stopFlight() { flight = undefined; dragging = true; controls.autoRotate = false; lastInteraction = previous; }
     function endInteraction() { dragging = false; lastInteraction = previous; }
-    function move(event?: PointerEvent) { if(!event)return;const rect=container.getBoundingClientRect();pointer.set((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2); }
+    function move(event?: PointerEvent) {
+        if(!event)return;
+        if(tap&&event.pointerId===tap.id&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)>knowledgeTapSlop)tap=undefined;
+        const rect=container.getBoundingClientRect();pointer.set((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2);
+    }
     function enter(event?: PointerEvent) { pointerInside = true;move(event);lastInteraction = previous; }
     function leave() { pointerInside = false; hovered = false; visuals?.hover(''); lastInteraction = previous; controls.autoRotate = false; }
     function startTap(event: PointerEvent) {
@@ -93,13 +97,13 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
             .nodeLabel('') // The canvas owns hover/selection captions; avoid a duplicate HTML tooltip.
             .linkColor(() => view?.focusId ? palette.brainFocusConnection : palette.brainConnection).linkOpacity(.5).linkWidth(.6)
             .enableNodeDrag(false).showNavInfo(false).cooldownTicks(0)
-            .onNodeClick((node,event) => { if(!['touch','pen'].includes((event as PointerEvent).pointerType))select(node as KnowledgeNode); }).onNodeHover(node => { hoverId=node?.id?.toString()||'';lastInteraction=previous;controls.autoRotate=false; });
+            .onNodeClick((node,event) => { if(!['touch','pen'].includes((event as PointerEvent).pointerType))select(node as KnowledgeNode); }).onNodeHover(node => { hoverId=node?.id?.toString()||'';if(!pointerInside)return;lastInteraction=previous;controls.autoRotate=false; });
         graph.cameraPosition({x: 0, y: 0, z: overviewDistance});
         controls.addEventListener('start', stopFlight);
         controls.addEventListener('end', endInteraction);
         container.addEventListener('pointerenter', enter);
         container.addEventListener('pointerleave', leave);
-        container.addEventListener('pointermove', move);
+        container.addEventListener('pointermove', move, true);
         container.addEventListener('pointerdown', startTap, true);
         container.addEventListener('pointerup', finishTap, true);
         container.addEventListener('pointercancel', cancelTap, true);

@@ -46,7 +46,7 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     const enter=addEventListener.mock.calls.find(call=>call[0]==='pointerenter')![1],leave=addEventListener.mock.calls.find(call=>call[0]==='pointerleave')![1];
     const hover=graph.onNodeHover.mock.calls[0][0];
     enter();hover({id:'note'});frame(32000);expect(controls.autoRotate).toBe(false);
-    leave();hover({id:'note'});frame(32001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
+    leave();frame(33000);hover({id:'note'});hover(null);frame(32001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
     expect(state.visuals.hover).toHaveBeenLastCalledWith('');
     enter();hover({id:'note'});frame(36000);expect(state.visuals.hover).toHaveBeenLastCalledWith('note');leave({pointerType:'touch'});expect(graph.enablePointerInteraction).not.toHaveBeenCalled();
     runtime.update({data:focused.scene,focusId:'note',reduced:false});frame(36000);frame(36050);
@@ -57,12 +57,13 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     down(touch);leave(touch);up(touch);expect(select).toHaveBeenCalledExactlyOnceWith(original);
     graph.onNodeClick.mock.calls[0][0](original,touch);expect(select).toHaveBeenCalledOnce();
     down(touch);up({...touch,clientX:140});expect(select).toHaveBeenCalledOnce();
+    const move=addEventListener.mock.calls.find(call=>call[0]==='pointermove')![1];down(touch);move({...touch,clientX:140});move({...touch,clientX:101});up({...touch,clientX:101});expect(select).toHaveBeenCalledOnce();
     down(touch);down({...touch,pointerId:5});up({...touch,pointerId:5});up(touch);expect(select).toHaveBeenCalledOnce();
     down(touch);cancel();up(touch);expect(select).toHaveBeenCalledOnce();
     expect(renderer.dispose).not.toHaveBeenCalled();expect(renderer.setPixelRatio).toHaveBeenCalledWith(2);
     runtime.dispose();runtime.dispose();expect(graph._destructor).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce();expect(renderer.forceContextLoss).toHaveBeenCalledOnce();expect(container.replaceChildren).toHaveBeenCalledOnce();
     expect(controls.removeEventListener).toHaveBeenCalledWith('start',start);expect(controls.removeEventListener).toHaveBeenCalledWith('end',end);
-    expect(removeEventListener).toHaveBeenCalledWith('pointerenter',enter);expect(removeEventListener).toHaveBeenCalledWith('pointerleave',leave);expect(removeEventListener).toHaveBeenCalledWith('pointermove',expect.any(Function));
+    expect(removeEventListener).toHaveBeenCalledWith('pointerenter',enter);expect(removeEventListener).toHaveBeenCalledWith('pointerleave',leave);expect(removeEventListener).toHaveBeenCalledWith('pointermove',expect.any(Function),true);
 });
 
 it('refuses missing layout tokens before allocating a renderer',()=>{

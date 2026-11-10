@@ -42480,7 +42480,7 @@
       "label": "knowledgeLayout()",
       "file_type": "code",
       "source_file": "src/tokens/knowledge-layout.ts",
-      "source_location": "L2",
+      "source_location": "L3",
       "_callable": true,
       "_origin": "ast",
       "id": "src_tokens_knowledge_layout_knowledgelayout",
@@ -226808,7 +226808,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/knowledge/map/constellation-runtime.ts",
-      "source_location": "L89",
+      "source_location": "L93",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_knowledge_map_constellation_runtime_createconstellation",
@@ -226832,7 +226832,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/knowledge/map/constellation-runtime.ts",
-      "source_location": "L90",
+      "source_location": "L94",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_knowledge_map_constellation_runtime_createconstellation",
@@ -241336,7 +241336,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/tokens/knowledge-layout.ts",
-      "source_location": "L2",
+      "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_tokens_knowledge_layout",
@@ -244983,5 +244983,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "e0cf8310e5dfdd23fa9d4e2eb12cf51dd7d93442"
+  "built_at_commit": "c69bc599854234eac0dea942a72ebfcc88cb24ae"
 }
