@@ -10,9 +10,11 @@ const unitKey = (u: SourceUnit) => `${u.id}:${u.version}`;
 /** Deferred versions with a terminal reference gap whose current reference evidence already finished reconsideration. Uses loaded rows only. */
 export function terminalDeferred(ledger: IntakeLedger, units: SourceUnit[], tasks: ReadTask[]): Set<string> {
     const index = referenceIndex(ledger, units, tasks), terminal = new Set<string>();
-    const reconsidered = new Set(tasks.filter(t => t.status === 'complete' && t.processing?.length).map(t => t.resource));
+    // A scan-withheld classification is a harness fallback, not a model decision; the last record per task wins.
+    const classified = new Map(ledger.columns<{ taskId: string; state: string }>('classification-admission', ['taskId', 'state']).map(r => [r.taskId, r.state]));
+    const reconsidered = new Set(tasks.filter(t => t.status === 'complete' && t.processing?.length && classified.get(t.id) !== 'blocked').map(t => t.resource));
     for (const unit of units) {
-        if (unit.state !== 'deferred' || unit.requests.length || !unit.references.length) continue;
+        if (unit.state !== 'deferred' || unit.requests.length) continue;
         const references = readyReferences(ledger, unit, index);
         if (!references?.some(r => typeof r === 'object' && r !== null && 'unavailable' in r)) continue;
         // Same identity as queueReconsideration: changed evidence needs its own completed reconsideration.
