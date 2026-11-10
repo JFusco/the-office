@@ -33,6 +33,9 @@ import { currentAssignment } from '../../workers/assignment-context';
 import { linkDraftIssue } from '../publication/link-draft-issue';
 import { readPublication } from '../publication/read-command';
 import { isDeepStrictEqual } from 'node:util';
+import { admitPRMetadata, METADATA_FINDING } from '../publication/metadata-admission';
+import { metadataAppliesToHead } from '../publication/metadata-context';
+import { acceptMetadataReview } from '../publication/metadata-review';
 import type { GitHubDelivery } from './github-delivery';
 import { deliveryNextStage, hasUncertainEffects, pendingPreparationCheck, closeoutReceipt } from './github-delivery';
 
@@ -237,7 +240,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         }
         const priorLead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
         const rejectedSameHead = priorLead?.commit === job.head && priorLead.outcome !== 'passed';
-        if (teamReviewedHead(this.store, job) && !rejectedSameHead && !p.draft && mergeAuthorized(this.store, job)) {
+        if (!metadataAppliesToHead(this.store, job) && teamReviewedHead(this.store, job) && !rejectedSameHead && !p.draft && mergeAuthorized(this.store, job)) {
             job.stage = 'merge';
             job.status = 'queued';
             job.detail = 'PR prepared. The team already reviewed and verified this exact head, so the guarded merge runs without a second readiness review.';
@@ -253,6 +256,20 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         return;
     }
     if (job.stage === 'lead-pr') {
+        if (await admitPRMetadata(this, job, result, inputSha256)) { learn(); return; }
+        if (metadataAppliesToHead(this.store, job)) {
+            await acceptMetadataReview(this, job, result, beforeWorkers);
+            if (['blocked', 'failed'].includes(result.outcome) && result.resolution?.kind === 'source-repair') {
+                job.status = 'watching';
+                if (await this.queueCIRepair(job)) { learn(); return; }
+                job.status = 'working';
+                if (await this.queueSourceRepair(job, result, root)) { learn(); return; }
+            }
+            await this.finishLeadReview(job, result);
+            learn(); return;
+        }
+        if (result.findings.some(f => f.id === METADATA_FINDING && f.status === 'open'))
+            throw new Error('Unadmitted reserved PR metadata finding requires reconciliation; no source or CI repair');
         if (harnessDelivers(this.store, job) && !conflictOnlyAssessment(result) && ['blocked', 'failed'].includes(result.outcome)) {
             job.status = 'watching';
             if (await this.queueCIRepair(job)) return;

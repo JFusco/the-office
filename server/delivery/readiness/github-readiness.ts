@@ -25,6 +25,7 @@ import { hasUncertainEffects, closeoutReceipt } from '../pipeline/github-deliver
 import { HOLDS } from '../../office/config';
 import { findingsBlock } from '../findings/advisory';
 import { refreshEligible } from '../repairs/refresh-conflicted';
+import { requireMetadataReview } from '../publication/metadata-review';
 export async function readinessPolicy(this: GitHubDelivery, head: string) {
     const project = this.store.project;
     const [branch, pages] = await Promise.all([
@@ -63,6 +64,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
     if (job.mergeAttempt || priorIntent && ['dispatching', 'uncertain', 'verified'].includes(priorIntent.status))
         throw new Error('Prior merge attempt needs read-back; it will not be repeated');
     const p = await this.verifyPR(job, true);
+    await requireMetadataReview(this, job);
     if (await refreshMergeReview(this, job, p, true)) return;
     const lead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
     // A Lead review of an older head never counts; the team's exact-head review does for hands-off jobs.
@@ -114,6 +116,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
                 throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
             await requireSourceAmendmentAcceptance(this, job);
             const current = await this.verifyPR(job, true);
+            await requireMetadataReview(this, job);
             if (current.head.sha !== payload.sha || current.state !== 'open' || current.draft)
                 throw new Error('Merge candidate changed immediately before dispatch');
             await currentMergeChecks(this,job,current);

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ciFixture, newHead, oldHead, plan } from '../../../fixtures/ci-repair';
 import { publishCIRepair } from '../../../../server/delivery/repairs/ci-publication';
+import { bindMetadata } from '../../../../server/delivery/publication/metadata-context';
 
 async function setup(kind: 'pr-metadata' | 'commit-messages' | 'retry') {
     const f = ciFixture(); await f.delivery.queueCIRepair(f.job); f.job.status = 'working';
@@ -27,6 +28,37 @@ test.each([true, false])('lost response reconciles by read-back and never resend
     const second = publishCIRepair(f.delivery, f.job, f.repair, f.failure);
     if (landed) await second; else await expect(second).rejects.toThrow('will not be resent');
     expect(f.calls.filter(c => c.args.includes('PATCH'))).toHaveLength(1);
+});
+test('a retained admitted metadata record prevents a separate CI metadata dispatch', async () => {
+    const f = await setup('pr-metadata');
+    f.job.prMetadataRepair = bindMetadata(f.delivery, f.job, f.pr, ['pr-metadata'], 'lead-pr');
+    await expect(publishCIRepair(f.delivery, f.job, f.repair, f.failure)).rejects.toThrow('one-shot');
+    expect(f.calls.filter(c => c.args.includes('PATCH'))).toHaveLength(0);
+    expect(f.store.getEffect(`harness:${f.job.id}:ci-repair:${f.repair.id}`)).toBeUndefined();
+});
+test.each([true, false])('a retained metadata record preserves readback of an uncertain CI retry ID landed=%s', async landed => {
+    const f = await setup('pr-metadata'), execute = f.delivery.execute;
+    const id = `harness:${f.job.id}:ci-repair:${f.repair.id}`;
+    let rejected = false;
+    f.delivery.execute = (async (program, args, options) => {
+        if (program === 'curl' && f.store.getEffect(id)?.status === 'prepared' && !rejected) {
+            rejected = true; throw new Error('Synthetic rejected preflight');
+        }
+        return execute(program, args, options);
+    }) as typeof execute;
+    await expect(publishCIRepair(f.delivery, f.job, f.repair, f.failure)).rejects.toThrow('rejected preflight');
+    const original = structuredClone(f.store.getEffect(id)); expect(original?.dispatchedAt).toBe('');
+    f.failWrites(landed);
+    await expect(publishCIRepair(f.delivery, f.job, f.repair, f.failure)).rejects.toThrow('Connection lost');
+    const retry = `${id}:retry-1`, uncertain = structuredClone(f.store.getEffect(retry));
+    expect(uncertain?.status).toBe('uncertain'); expect(uncertain?.dispatchedAt).not.toBe('');
+    f.job.prMetadataRepair = bindMetadata(f.delivery, f.job, f.pr, ['pr-metadata'], 'lead-pr');
+    const record = structuredClone(f.job.prMetadataRepair);
+    const resume = publishCIRepair(f.delivery, f.job, f.repair, f.failure);
+    if (landed) await resume; else await expect(resume).rejects.toThrow('will not be resent');
+    expect(f.store.getEffect(id)).toEqual(original); expect(f.store.getEffect(retry)?.payload).toEqual(uncertain?.payload);
+    expect(f.store.getEffect(retry)?.status).toBe(landed ? 'verified' : 'uncertain');
+    expect(f.job.prMetadataRepair).toEqual(record); expect(f.calls.filter(c => c.args.includes('PATCH'))).toHaveLength(1);
 });
 test('changed head blocks a message rewrite before dispatch', async () => {
     const f = await setup('commit-messages'); f.pr.head.sha = 'e'.repeat(40);

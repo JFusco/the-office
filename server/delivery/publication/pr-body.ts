@@ -2,9 +2,21 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { command } from '../../workers/process';
 import type { TicketJob } from '../../../src/shared';
+import { CommandFailure } from '../../workers/process';
 
 type Execute = typeof command;
 export interface PRContent { title: string; body: string; source: 'developer' | 'office' }
+/** Content rejection is distinct from missing tools, timeouts and unknown command failures. */
+export class PRContentRejected extends Error {}
+
+/** Only native title-rule reports grant content authority; tool/configuration errors do not. */
+function commitlintRejection(stdout: string): boolean {
+    const report = stdout.replace(/\u001b\[[0-9;]*m/g, '').replace(/\r\n/g, '\n').trim();
+    const rules = '(?:(?:type|scope|subject)-(?:empty|enum|case|max-length|min-length)|subject-full-stop|header-(?:case|max-length|min-length|trim))';
+    const match = new RegExp(`^⧗   --- input ---\\n.+\\n((?:[✖⚠]   [^\\n]+ \\[${rules}\\]\\n)+)\\n✖   found ([1-9][0-9]*) problems, ([0-9]+) warnings(?:\\nⓘ   Get help: https?://\\S+)?$`).exec(report);
+    return !!match && match[1].split('\n').filter(line => line.startsWith('✖')).length === Number(match[2]) &&
+        match[1].split('\n').filter(line => line.startsWith('⚠')).length === Number(match[3]);
+}
 
 /** Alex writes `pr.json` ({title, body}) in the job's artifact directory; that is the model's half of the handoff. */
 export function developerPRContent(root: string): PRContent | null {
@@ -49,13 +61,32 @@ export async function prContent(execute: Execute, job: TicketJob, issueNumber: n
 /** Runs the repository's own PR body/title linters when it defines them, so CI does not reject the PR. */
 export async function lintPRContent(execute: Execute, worktree: string, content: PRContent, issueNumber: number): Promise<void> {
     if (!new RegExp(`\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+#${issueNumber}(?![0-9])`, 'i').test(content.body))
-        throw new Error(`PR body needs a native closing reference to this issue: "Closes #${issueNumber}"`);
+        throw new PRContentRejected(`PR body needs a native closing reference to this issue: "Closes #${issueNumber}"`);
     const others = [...content.body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)].map(match => Number(match[1])).filter(number => number !== issueNumber);
     if (others.length)
-        throw new Error(`PR body would also close unrelated issue(s) ${others.map(n => `#${n}`).join(', ')}`);
+        throw new PRContentRejected(`PR body would also close unrelated issue(s) ${others.map(n => `#${n}`).join(', ')}`);
     const pkg = existsSync(resolve(worktree, 'package.json')) ? JSON.parse(readFileSync(resolve(worktree, 'package.json'), 'utf8')) : {};
-    if (pkg.scripts?.['lint:pr'])
-        await execute('pnpm', ['run', '--silent', 'lint:pr'], { cwd: worktree, input: content.body, timeout: 120000, readOnly: true });
-    if (existsSync(resolve(worktree, 'commitlint.config.cjs')))
-        await execute('pnpm', ['exec', 'commitlint', '--config', 'commitlint.config.cjs'], { cwd: worktree, input: `${content.title}\n`, timeout: 120000, readOnly: true });
+    if (pkg.scripts?.['lint:pr']) {
+        try { await execute('pnpm', ['run', '--silent', 'lint:pr'], { cwd: worktree, input: content.body, env: { PR_BODY: content.body }, timeout: 120000, readOnly: true }); }
+        catch (error) {
+            if (error instanceof CommandFailure && error.category === 'other' &&
+                /^pnpm exited 1: Pull request body does not match the repository contract:\r?\n- /.test(error.message))
+                throw new PRContentRejected(error.message);
+            throw error;
+        }
+    }
+    if (existsSync(resolve(worktree, 'commitlint.config.cjs'))) {
+        let stdout = '', stderr = '';
+        try {
+            await execute('pnpm', ['exec', 'commitlint', '--config', 'commitlint.config.cjs'], {
+                cwd: worktree, input: `${content.title}\n`, timeout: 120000, readOnly: true,
+                onOutput: (stream, chunk) => { if (stream === 'stdout') stdout += chunk; else stderr += chunk; },
+            });
+        } catch (error) {
+            if (error instanceof CommandFailure && error.category === 'other' && error.dispatched &&
+                /^pnpm exited 1: /.test(error.message) && !stderr.trim() && commitlintRejection(stdout))
+                throw new PRContentRejected(stdout.trim());
+            throw error;
+        }
+    }
 }

@@ -16,12 +16,14 @@ import { enqueueRequest } from '../scheduling/requests';
 import { HOLDS } from '../office/config';
 import { recoverBoardPreflights } from './board-preflight-recovery';
 import { temporaryReadFailure, reconcileReadRetries } from '../scheduling/read-retries';
+import { recoverPRMetadata } from './pr-metadata-recovery';
 import type { ITContext } from './context';
 
 /** Read-only recoveries for delivery, intake, provider and checkpoint failures of an unpaused project. */
 export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
     const { offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt, retainedPartials, retainedCloseouts, services, activationBudget, recover } = context;
     await recoverBoardPreflights(context);
+    await recoverPRMetadata(context);
     if (!state.paused) {
         if (offices.sessions) {
             let inventory = offices.sessions.forProject(store);

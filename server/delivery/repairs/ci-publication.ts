@@ -1,4 +1,4 @@
-import { harnessEffect } from '../harness/effect';
+import { activeEffectId, harnessEffect } from '../harness/effect';
 import { guardCIRepair } from './ci-guard';
 import { isDeepStrictEqual } from 'node:util';
 import { resolve } from 'node:path';
@@ -8,6 +8,8 @@ import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
 import type { CIRepair } from '../../../src/contracts/ci-repair';
 import type { CIFailure } from './ci-evidence';
+
+export const CI_METADATA_CONSUMED = 'Admitted PR metadata already owns the one-shot assessment/publication; CI cannot prepare or dispatch another metadata repair';
 
 /** Fixed operations only. Every write retains intent, exact-head guard and provider read-back. */
 export async function publishCIRepair(delivery: GitHubDelivery, job: TicketJob, repair: CIRepair, failure: CIFailure) {
@@ -53,9 +55,12 @@ export async function publishCIRepair(delivery: GitHubDelivery, job: TicketJob, 
     }
     if (!['commit-messages', 'pr-metadata', 'retry'].includes(plan.kind)) throw new Error('Unsupported CI publication');
     const payload = { head: repair.head, base: repair.base, branch: repair.branch, plan, repairedHead: repair.repairedHead || '' };
-    const prior = store.getEffect(`harness:${job.id}:ci-repair:${repair.id}`);
+    const prior = store.getEffect(activeEffectId(store, `harness:${job.id}:ci-repair:${repair.id}`));
     if (prior && (prior.operation !== `ci-${plan.kind}` || prior.target !== job.prUrl || !isDeepStrictEqual(prior.payload, payload)))
         throw new Error('Saved CI effect differs from the diagnosed operation');
+    if (plan.kind === 'pr-metadata' && job.prMetadataRepair &&
+        (!prior?.dispatchedAt || !['dispatching', 'uncertain', 'verified'].includes(prior.status)))
+        throw new Error(CI_METADATA_CONSUMED);
     if (prior?.status === 'verified') {
         if (!await readBack()) throw new Error('Previously verified CI repair changed; preserve its receipt for reconciliation');
         return;

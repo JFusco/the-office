@@ -1,4 +1,5 @@
 import { scheduledSlackIntake } from '../knowledge/slack-intake/schedule';
+import { metadataRequestResolved } from '../delivery/recovery/pr-metadata-recovery';
 import { scheduledInvestigations } from '../it/investigations/scheduled';
 import { scheduledFeatures } from '../features/scheduled-features';
 import { costLedger } from '../telemetry/cost-entries';
@@ -187,6 +188,7 @@ function requestResolved(store: Store, request: import('../../src/shared').Harne
             step.result.outcome === 'passed' && step.result.receipts.some(receipt => ['native-checkpoint-readback', 'checkpoint-completion-readback'].includes(receipt.action) && receipt.verified && !receipt.uncertain));
     }
     if (!['blocked', 'interrupted'].includes(request.status)) return false;
+    if (request.action === 'reconcile-pr-metadata') return metadataRequestResolved(store, request);
     if (request.action === 'reconcile-closeout') return closeoutRequestResolved(store,request);
     if (request.action === 'reconcile-scope-repair') return scopeRepairRequestResolved(store,request);
     if (request.action === 'reconcile-preparation') return preparationRequestResolved(store,request);
