@@ -7,6 +7,7 @@ import type {HealthReport,ITFollowUp,ITState} from '../shared';
 import {ServiceHealthRow} from './ServiceHealthRow';
 import {currentServices} from './service-health-view';
 import {itDiagnostics} from './it-diagnostics';
+import {ITFollowUps} from './ITFollowUps';
 export function ServiceHealthPanel({project='cec',liveIT,onChat}:{project?:string;liveIT?:ITState;onChat?:()=>void}){
  const [savedReport,setReport]=useState<{project:string;report:HealthReport}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0);
  const report=savedReport?.project===project?savedReport.report:null;
@@ -43,7 +44,7 @@ export function ServiceHealthPanel({project='cec',liveIT,onChat}:{project?:strin
    <p className="leading-body">{!diagnostics.fresh?'Current IT diagnostics need a fresh check. Earlier findings remain in report history; their current status is unverified.':human?`${human} confirmed access follow-up${human===1?' needs':'s need'} your help.`:followUps.length?'Ellis and Morgan own the remaining checks. No login action is requested from you.':'No current IT follow-up.'}</p>
    <Button className="mt-5" disabled={loading} onClick={()=>void checkIT()}>Check IT again</Button>
    {Number.isFinite(Date.parse(it.checkedAt))?<p className={cx(mutedCopy,'mt-3')}>Last IT review {new Date(it.checkedAt).toLocaleString()}</p>:null}
-   {followUps.filter(f=>!f.id.startsWith('probe:')&&!f.id.startsWith('login:')).map(followUp)}
+   <ITFollowUps it={it} followUps={followUps.filter(f=>!f.id.startsWith('probe:')&&!f.id.startsWith('login:'))}/>
    {latest?.actions.length?<p className={mutedCopy}>Last report ({new Date(latest.at).toLocaleString()}) recorded {latest.actions.length} operational action{latest.actions.length===1?'':'s'}. Report shared with the team.</p>:null}
   </section>:null}
   {services.length?<><p className={cx(mutedCopy,'mt-4')}>{report?.context||'Showing the latest saved checks while fresh checks finish.'}</p><div role="group" aria-label="Service connections">{services.map(service=><ServiceHealthRow key={service.id} service={service}/>)}</div></>:null}
