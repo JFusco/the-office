@@ -1,13 +1,12 @@
 import type { command } from './process';
-import type { Config } from '../knowledge/slack-intake/config';
-import { IntakeConfig } from '../knowledge/slack-intake/config';
+import { SlackReadAuthority } from '../knowledge/slack-intake/read-authority';
 import { RESEARCH_CODEX_VERSION, RESEARCH_DISABLED_FEATURES } from './research-profile';
 
 export const isSlackIntake = (stage?: string) => stage === 'knowledge-slack-intake' || stage === 'knowledge-slack-links';
 /** Only explicit read tool keys are admitted; no inherited app or plugin configuration.
  * Classification of already-collected evidence (`tools: false`) keeps every isolation flag and disables apps entirely. */
-export function slackIntakeConfiguration(config: Config, tools = true): string[] {
-    IntakeConfig.parse(config);
+export function slackIntakeConfiguration(config: SlackReadAuthority, tools = true): string[] {
+    config = SlackReadAuthority.parse(config);
     const app = `apps.${config.appId}`;
     const apps = tools ? ['features.apps=true', 'apps._default.enabled=false', `${app}.enabled=true`, `${app}.default_tools_enabled=false`,
         `${app}.destructive_enabled=false`, `${app}.tools={${Object.values(config.tools).map(tool => `${JSON.stringify(tool)}={enabled=true}`).join(',')}}`]
@@ -18,7 +17,7 @@ export function slackIntakeConfiguration(config: Config, tools = true): string[]
     return ['--ephemeral', '--ignore-user-config', '--ignore-rules', '--strict-config', ...settings.flatMap(setting => ['-c', setting])];
 }
 /** Unknown CLI or missing native capability evidence never enables unattended reading. */
-export async function assertSlackIntakeCapability(execute: typeof command, cwd: string, config: Config): Promise<void> {
+export async function assertSlackIntakeCapability(execute: typeof command, cwd: string, config: SlackReadAuthority): Promise<void> {
     slackIntakeConfiguration(config);
     // Metadata startup can stall on a loaded host. Keep qualification strict with a bounded startup allowance.
     const probe = { cwd, readOnly: true, timeout: 30000 };

@@ -7,7 +7,7 @@ export function learningMetrics(knowledge: KnowledgeState, from: string, to: str
     const uses = (knowledge.procedureUses || []).filter(item => item.at >= from && item.at < to);
     const followups = (knowledge.followups || []).filter(item => item.createdAt < to).map(item => ({ ...item, disposition: item.history.filter(entry => entry.at < to).at(-1)?.disposition || 'unknown' }));
     const exposedPairs = exposures.reduce((sum, item) => sum + item.selected.length, 0);
-    return { coverage, assignments: exposures.length, eligibleAssignments: exposures.filter(item => item.eligible.length).length,
+    return { coverage, retrievedLookups:(knowledge.lookups||[]).flatMap(s=>s.records).filter(r=>r.outcome==='served'&&r.at>=from&&r.at<to).length,verifiedKnowledgeOutcomes:(knowledge.outcomes||[]).filter(r=>r.at>=from&&r.at<to).length, assignments: exposures.length, eligibleAssignments: exposures.filter(item => item.eligible.length).length,
         exposedAssignments: exposures.filter(item => item.selected.length).length,
         eligiblePairs: exposures.reduce((sum, item) => sum + item.eligible.length, 0), exposedPairs,
         omittedPairs: exposures.reduce((sum, item) => sum + item.omitted.length, 0), applicationUnknown: exposedPairs,

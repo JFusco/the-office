@@ -22,7 +22,7 @@ function busySubjects(store: Store): Set<string> {
 }
 
 /** Harper's queue: recorded triggers plus unrecorded terminal jobs, CEC runs and maintenance runs. Pure; reading never mutates. */
-export function scheduledRetrospectives(store: Store, run: KnowledgeRunner, now = store.clock.now()): ScheduledWork[] {
+export function scheduledRetrospectives(store: Store, run: KnowledgeRunner, now = store.clock.now(), context?:import('./context').KnowledgeContext): ScheduledWork[] {
     const knowledge = store.state.knowledge;
     if (!knowledge) return [];
     const entries = [
@@ -46,6 +46,6 @@ export function scheduledRetrospectives(store: Store, run: KnowledgeRunner, now 
         return { store, work: { projectId: store.project.id, kind: 'retrospective' as const, id }, stage: 'retrospective', rank: 3, enqueuedAt: at, eligibility,
             claimEligible: () => due(id),
             identity: () => { const current = store.state.knowledge!; const entry = current.pending.find(pending => pending.id === id); return JSON.stringify([current.enabled, current.consumed.includes(id), entry?.attempts ?? null, entry?.nextAt ?? null]); },
-            execute: () => runRetrospective(store, run, id) };
+            execute: () => runRetrospective(store, run, id,context) };
     });
 }

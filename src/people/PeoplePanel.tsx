@@ -1,9 +1,10 @@
+import { PanelHeader } from '../ui/PanelHeader';
 import { useId, useState, type KeyboardEvent } from 'react';
 import { DEPARTMENTS, PERSONAS } from '../contracts/people';
 import type { OfficeSnapshot, Role } from '../shared';
 import type { Selection } from '../scene/OfficeScene';
 import { Notice, PanelTitle, cx, interactive, mutedCopy, noticeIcon } from '../ui';
-import { AlertCircle } from '../ui/icons';
+import { AlertCircle, Users } from '../ui/icons';
 import { Directory } from './Directory';
 import { OrgChart } from './OrgChart';
 import { buildOrgTree } from './org-tree';
@@ -26,7 +27,7 @@ export function PeoplePanel({snapshot,names,onSelect,initialTab}:{snapshot:Pick<
     choose(TABS[next][0]);document.getElementById(`${id}-${TABS[next][0]}`)?.focus();
   };
   return <div data-people>
-    <PanelTitle size="md" className="mb-2">People</PanelTitle>
+    <PanelHeader icon={<Users size={26}/>}>People</PanelHeader>
     <p className={mutedCopy}>{personas.length} employees across {departments} departments ({Object.values(DEPARTMENTS).sort((a,b)=>a.order-b.order).map(department=>department.label).join(', ')}). Select anyone to open their desk.</p>
     {tree.problems.length?<Notice className="mt-4" role="alert"><AlertCircle size={15} className={noticeIcon}/><span>{tree.problems.join(' ')}</span></Notice>:null}
     <div className="mt-5 flex gap-2" role="tablist" aria-label="People views">{TABS.map(([value,label],index)=><button key={value} type="button" role="tab" id={`${id}-${value}`} aria-controls={`${id}-${value}-panel`} aria-selected={tab===value} tabIndex={tab===value?0:-1} className={cx(interactive,'rounded-6 border border-drawer-line px-3 py-2 text-11 aria-selected:bg-roster-hover aria-selected:font-emphasis')} onClick={()=>choose(value)} onKeyDown={event=>keys(event,index)}>{label}</button>)}</div>

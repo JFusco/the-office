@@ -1,3 +1,8 @@
+import { knowledgeRoute } from '../../knowledge/routes';
+import { knowledgeOfficeState,knowledgePromptStore } from '../../knowledge/office-state-view';
+import { eventVisible } from '../../knowledge/events/visibility';
+import { retainedArtifactScope } from '../../knowledge/artifacts/retained-scope';
+import { knowledgeSessionVisibility } from '../../knowledge/sources/session-visibility';
 import { featureRoute } from '../../features/routes';
 import { previewTimeScope } from '../../time/time-scope';
 import { projectReadiness } from '../readiness';
@@ -15,7 +20,9 @@ import { json, fileResponse } from './responses';
 /** Read and write API routes other than office commands. */
 export async function apiRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
     const { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator } = context;
-    const features = url.pathname.startsWith('/api/features') ? await featureRoute(req, url, store, engine.features, new Map([...offices.entries].map(([id, entry]) => [id, entry.store]))) : undefined;
+    const knowledge = await knowledgeRoute(req, url, offices.sources, offices.stores(), project);
+    if (knowledge) return knowledge;
+    const features = url.pathname.startsWith('/api/features') ? await featureRoute(req, url, req.method==='GET'?knowledgePromptStore(store,offices.sources):store, engine.features, new Map([...offices.entries].map(([id, entry]) => [id, entry.store]))) : undefined;
     if (features) return features;
     if (url.pathname === '/api/service-health') {
         if (req.method !== 'GET')
@@ -36,13 +43,14 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         if (key && !validTicket(store.project, key))
             return json({ error: 'Invalid ticket key' }, 400);
         await offices.sessions.refresh();
-        return json(sanitizeObject(offices.sessions.forProject(store, key, url.searchParams.get('requestId') || '')));
+        return json(sanitizeObject(knowledgeSessionVisibility(offices.sources,project,offices.stores().values(),offices.sessions.forProject(store, key, url.searchParams.get('requestId') || ''))));
     }
     if (url.pathname === '/api/time') {
         const ticket = url.searchParams.get('ticket') || '';
         if (ticket && !validTicket(store.project, ticket))
             return json({ error: 'Invalid ticket key' }, 400);
-        return json(sanitizeObject({ summary: timeReport(store.state, ticket), workers: (store.state.workLog || []).filter(w => !ticket || w.ticket === ticket), builds: (store.state.ciHistory || []).filter(b => !ticket || b.linkedTickets?.includes(ticket)) }));
+        const scoped=knowledgeOfficeState(offices.sources,project,store.state);
+        return json(sanitizeObject({ summary: timeReport(scoped, ticket), workers: (scoped.workLog || []).filter(w => !ticket || w.ticket === ticket), builds: (store.state.ciHistory || []).filter(b => !ticket || b.linkedTickets?.includes(ticket)) }));
     }
     if (url.pathname === '/api/time/scope-preview') {
         if (req.method !== 'GET')
@@ -83,7 +91,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
                     }
                 };
                 const after = Number(req.headers.get('last-event-id') || 0);
-                for (const event of store.replay(after))
+                for (const event of store.replay(after).filter(event=>eventVisible(offices.sources,project,event)))
                     c.enqueue(new TextEncoder().encode(`id: ${event.id}\nevent: office-event\ndata: ${JSON.stringify(event)}\n\n`));
                 listener = send;
                 store.listeners.add(listener);
@@ -105,13 +113,13 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         const p = url.searchParams.get('path') || '';
         if (!containedFile(p, resolve(store.dataRoot, 'runs')))
             return json({ error: 'Artifact is not inside a recorded office run' }, 403);
+        const scope=retainedArtifactScope(store,offices.sources,p);if(!scope.allowed)return json({error:'Run artifact unavailable because source access changed'},403);
         if (!['.png', '.jpg', '.jpeg', '.webp', '.md', '.json', '.txt'].includes(extname(p)))
             return json({ error: 'Unsupported artifact type' }, 415);
-        return fileResponse(p, { 'Cache-Control': 'private, max-age=30', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+        return fileResponse(p, { 'Cache-Control': scope.private?'private, no-store':'private, max-age=30', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
     }
     if (url.pathname === '/api/messages') {
-        if (req.method === 'GET')
-            return json({ messages: store.state.messages, outbox: store.state.outbox });
+        if (req.method === 'GET') {const scoped=knowledgeOfficeState(offices.sources,project,store.state);return json({ messages: scoped.messages, outbox: scoped.outbox });}
         if (req.method !== 'POST')
             return json({ error: 'POST required' }, 405);
         if (Number(req.headers.get('content-length') || 0) > 30000)

@@ -10,6 +10,9 @@ import { goalNoticeAuthorized } from '../leadership/goal-notice-authorization';
 import { maintenanceNoticeAuthorized } from '../maintenance/brain/maintenance-notice-authorization';
 import { Effects } from '../store/effects';
 import { channelNoticeAuthorized } from './channel-notice';
+import { digestNoticeRequest } from '../knowledge/digests/outbound';
+import { outboundBody } from '../knowledge/digests/outbound-body';
+import { digest } from '../knowledge/slack-intake/config';
 export const SlackRequestSchema = z.object({ targetType: z.enum(['person', 'channel']), targetId: z.string().regex(/^[UCG][A-Z0-9]+$/), targetName: z.string().min(1), workspaceId: z.string().regex(/^T[A-Z0-9]+$/), text: z.string().min(1).max(5000) }).strict();
 export const SlackResultSchema = z.object({ channelId: z.string(), messageTs: z.string(), permalink: z.string(), detail: z.string() }).strict();
 export const SlackVerificationSchema = z.object({ found: z.boolean(), channelId: z.string(), messageTs: z.string(), permalink: z.string(), targetId: z.string(), workspaceId: z.string(), text: z.string(), detail: z.string() }).strict();
@@ -51,11 +54,17 @@ export class SlackMessages {
             throw new Error('Maintenance notice lacks current completion and recipient authorization');
         return this.deliver(requestId, request, { body: 'Joe asked on 2026-11-06 to be told when Brain maintenance completes, at the exact Slack recipient he authorized for goal-completion DMs. Send only this saved Morgan completion notice; independently verify the target before sending.', ticket: '', requestId });
     }
+    async sendKnowledgeNotification(requestId:string,input:z.infer<typeof SlackRequestSchema>) {
+        const request=SlackRequestSchema.parse(input),notice=this.store.state.coordination?.notices?.entries.find(n=>n.id===requestId),context=this.agents.knowledgeContext,effect=this.store.getEffect<{digestId:string;textSha256:string;workspaceId:string;channelId:string}>(`slack:${requestId}`);
+        const authorized=notice&&context&&digestNoticeRequest(context,this.store.project.id,notice,true);
+        if(!notice||notice.kind!=='knowledge-digest'||!authorized||JSON.stringify(request)!==JSON.stringify(authorized)||!effect||effect.operation!=='knowledge-digest-slack'||effect.status!=='dispatching'||effect.payload.digestId!==notice.digestId||effect.payload.textSha256!==digest(request.text)||effect.payload.workspaceId!==request.workspaceId||effect.payload.channelId!==request.targetId||notice.resolved?.targetId!==request.targetId||notice.resolved.workspaceId!==request.workspaceId)throw Error('Knowledge digest lacks current scoped notification authority');
+        return this.deliver(requestId,request,{body:'Joe enabled weekly knowledge digests for this exact independently verified channel. Send only the frozen saved digest once.',ticket:'',requestId},notice.digestId);
+    }
     private async deliver(requestId: string, request: z.infer<typeof SlackRequestSchema>, human: {
         body: string;
         ticket: string;
         requestId: string;
-    }) {
+    }, knowledgeDigestId?:string) {
         if (this.store.state.paused)
             throw new Error('Office paused before Slack delivery');
         this.store.state.slackDeliveries ??= [];
@@ -64,17 +73,17 @@ export class SlackMessages {
         if ((request.targetType === 'person') !== request.targetId.startsWith('U'))
             throw new Error('Slack recipient type does not match its ID');
         const now = new Date().toISOString();
-        const delivery: SlackDelivery = { ...request, id: crypto.randomUUID(), requestId, status: 'sending', channelId: '', messageTs: '', permalink: '', sessionId: '', createdAt: now, updatedAt: now, error: '' };
+        const delivery: SlackDelivery = { ...request,...(knowledgeDigestId?{text:'',knowledgeDigestId}:{}), id: crypto.randomUUID(), requestId, status: 'sending', channelId: '', messageTs: '', permalink: '', sessionId: '', createdAt: now, updatedAt: now, error: '' };
         this.store.state.slackDeliveries.push(delivery);
         this.store.emit('slack-sending', `Morgan is sending a Slack message to ${delivery.targetName}.`, 'pm', human.ticket);
         try {
-            const result = await this.agents.sendSlack(delivery, human);
-            Object.assign(delivery, result, { sessionId: this.store.state.agents.find(a => a.id === 'pm')?.sessionId || '', status: 'verifying', updatedAt: new Date().toISOString() });
+            const result = await this.agents.sendSlack(knowledgeDigestId?{...delivery,text:request.text}:delivery, human);
+            Object.assign(delivery, knowledgeDigestId?{channelId:result.channelId,messageTs:result.messageTs,permalink:result.permalink}:result, { sessionId: this.store.state.agents.find(a => a.id === 'pm')?.sessionId || '', status: 'verifying', updatedAt: new Date().toISOString() });
             this.store.emit('slack-verifying', 'Morgan is checking the sent message in Slack.', 'pm', human.ticket);
             await this.verify(delivery);
         }
         catch (e) {
-            delivery.error = sanitize(String(e));
+            delivery.error = knowledgeDigestId?'Knowledge digest send requires independent read-back.':sanitize(String(e));
             delivery.sessionId ||= this.store.state.agents.find(a => a.id === 'pm')?.sessionId || '';
             // A send that ended uncertain (for example, helpers outlived the sender)
             // gets one independent read-back. It is never resent.
@@ -86,7 +95,7 @@ export class SlackMessages {
                     return await this.verify(delivery);
                 }
                 catch (readback) {
-                    delivery.error = sanitize(`${String(e)} Automatic read-back: ${String(readback)}`); // The send error stays first for the outbox.
+                    delivery.error = knowledgeDigestId?'Knowledge digest send and automatic read-back were not confirmed.':sanitize(`${String(e)} Automatic read-back: ${String(readback)}`); // The send error stays first for the outbox.
                 }
             }
             delivery.status = 'uncertain';
@@ -97,12 +106,14 @@ export class SlackMessages {
         return delivery;
     }
     async verify(delivery: SlackDelivery) {
-        const result = await this.agents.verifySlack(delivery);
-        if (!result.found || result.targetId !== delivery.targetId || result.workspaceId !== delivery.workspaceId || comparableSlackText(result.text) !== comparableSlackText(delivery.text) || !slackMessageUrl(result.permalink, result.channelId, result.messageTs) || (delivery.channelId && result.channelId !== delivery.channelId) || (delivery.messageTs && result.messageTs !== delivery.messageTs) || (delivery.targetType === 'channel' && result.channelId !== delivery.targetId) || Number(result.messageTs) * 1000 < Date.parse(delivery.createdAt) - 5000)
+        const text=delivery.knowledgeDigestId?outboundBody(this.store,delivery.requestId):delivery.text;
+        if(text===undefined)throw Error('Private knowledge delivery proof unavailable');
+        const result = await this.agents.verifySlack(delivery.knowledgeDigestId?{...delivery,text}:delivery);
+        if (!result.found || result.targetId !== delivery.targetId || result.workspaceId !== delivery.workspaceId || comparableSlackText(result.text) !== comparableSlackText(text) || !slackMessageUrl(result.permalink, result.channelId, result.messageTs) || (delivery.channelId && result.channelId !== delivery.channelId) || (delivery.messageTs && result.messageTs !== delivery.messageTs) || (delivery.targetType === 'channel' && result.channelId !== delivery.targetId) || Number(result.messageTs) * 1000 < Date.parse(delivery.createdAt) - 5000)
             throw new Error('Slack read-back did not match the saved recipient, text, time, and message link');
         Object.assign(delivery, { channelId: result.channelId, messageTs: result.messageTs, permalink: result.permalink, status: 'confirmed', error: '', updatedAt: new Date().toISOString() });
         const effectId = `slack:${delivery.requestId}`;
-        if (['goal-completion-slack', 'maintenance-completion-slack'].includes(this.store.getEffect(effectId)?.operation || '') && this.store.getEffect(effectId)?.status === 'uncertain')
+        if (['goal-completion-slack', 'maintenance-completion-slack','knowledge-digest-slack'].includes(this.store.getEffect(effectId)?.operation || '') && this.store.getEffect(effectId)?.status === 'uncertain')
             await new Effects(this.store).reconcile(effectId, async () => ({ verified: true, receipt: delivery }));
         reconcileNoticeConfirmations(this.store);
         settleRequestedSlackReplacement(this.store, delivery);

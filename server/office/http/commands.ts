@@ -1,3 +1,6 @@
+import { sourceCommand } from '../../knowledge/sources/commands';
+import { reviewSourceWithdrawals } from '../../knowledge/sources/withdrawal-reviews';
+import { configureDigestDelivery } from '../../knowledge/digests/settings';
 import { retrySlackIntake } from '../../knowledge/slack-intake/schedule';
 import { promoteNoteLesson } from '../../knowledge/promote-note-lesson';
 import { supersedeSlackDelivery } from '../../conversations/slack/supersede-delivery';
@@ -31,13 +34,14 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, sourceId, source } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
-            case 'retry-slack-intake': return json(retrySlackIntake(store, messageId), 202);
+            case 'knowledge-source': {const result=sourceCommand(offices.sources,[...offices.entries.keys()],store.project.id,source);reviewSourceWithdrawals(offices.sources,offices.stores().values(),offices.control);return json(result,202);}
+            case 'retry-slack-intake': return json(retrySlackIntake(store, messageId, offices.sources, sourceId), 202);
             case 'promote-note-lesson': {
-                const id = promoteNoteLesson(offices.control, store, lessonPromotion);
+                const id = promoteNoteLesson(offices.control, store, lessonPromotion,offices.sources);
                 mirrorOfficeKnowledge(offices.control, offices.stores().values());
                 store.emit('office-knowledge-changed', 'Joe promoted a reviewed note to an active Office-wide lesson.', 'knowledge');
                 return json({ accepted: true, id }, 202);
@@ -107,6 +111,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'demote-lesson': demoteLesson(store, lessonId); break;
             case 'retire-lesson': retireLesson(store, lessonId); break;
             case 'configure-knowledge': configureKnowledge(store, knowledge); break;
+            case 'configure-knowledge-digest': configureDigestDelivery(store,knowledge); break;
             case 'configure-channel-notifications': configureChannelNotices(store, channel); break;
             case 'reactivate-lesson': reactivateLesson(store, lessonId); break;
             case 'decline-lesson-issue': declineLessonIssue(store, lessonId); break;
@@ -117,7 +122,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'accept-office-lesson':
             case 'decline-office-lesson':
             case 'retire-office-lesson':
-                if (action === 'retire-office-lesson') retireOfficeLesson(offices.control, lessonId); else decideOfficeProposal(offices.control, lessonId, action === 'accept-office-lesson');
+                if (action === 'retire-office-lesson') retireOfficeLesson(offices.control, lessonId); else decideOfficeProposal(offices.control, lessonId, action === 'accept-office-lesson',{registry:offices.sources,projectId:project});
                 mirrorOfficeKnowledge(offices.control, offices.stores().values());
                 store.emit('office-knowledge-changed', action === 'accept-office-lesson' ? 'Office-wide lesson accepted; every project now sees it.' : action === 'decline-office-lesson' ? 'Office-wide lesson proposal declined.' : 'Office-wide lesson retired.', 'knowledge');
                 break;

@@ -1,3 +1,4 @@
+import { knowledgePromptStore } from '../knowledge/office-state-view';
 import { harperHandoff } from '../knowledge/blocker-followups';
 import { featureDeliveryContext } from '../features/delivery-binding';
 import { REPAIR_DIAGNOSIS } from '../delivery/repairs/delivery-repairs';
@@ -54,25 +55,26 @@ export class Agents extends WorkerRuntime {
     }
     ctoContext: () => unknown = () => ({ projects: [{ project: this.store.project, goals: this.store.state.goals, notes: this.store.state.projectNotes }] });
     async sendSlack(delivery: SlackDelivery, human: Pick<TeamMessage, 'body' | 'ticket' | 'requestId'>) {
-        return this.run('pm', slackSendPrompt(this.store, delivery, human), SlackResultSchema, { readOnly: true, slackSend: true, ticket: human.ticket, stage: 'slack-send', requestId: human.requestId, timeout: 10 * 60 * 1000 });
+        return this.run('pm', slackSendPrompt(this.store, delivery, human), SlackResultSchema, { readOnly: true, privateKnowledge:delivery.knowledgeDigestId?false:undefined, slackSend: true, ticket: human.ticket, stage: 'slack-send', requestId: human.requestId, timeout: 10 * 60 * 1000 });
     }
     async verifySlack(delivery: SlackDelivery) {
-        return this.run('pm', slackVerifyPrompt(this.store, delivery), SlackVerificationSchema, { readOnly: true, stage: 'slack-verify', requestId: delivery.requestId, ticket: this.store.state.messages.find(m => m.id === delivery.requestId)?.ticket || '', timeout: 10 * 60 * 1000 });
+        return this.run('pm', slackVerifyPrompt(this.store, delivery), SlackVerificationSchema, { readOnly: true, privateKnowledge:delivery.knowledgeDigestId?false:undefined, stage: 'slack-verify', requestId: delivery.requestId, ticket: this.store.state.messages.find(m => m.id === delivery.requestId)?.ticket || '', timeout: 10 * 60 * 1000 });
     }
     async followup(role: Role, message: TeamMessage, brief = '') {
         if (harperHandoff(this.store, message)) return this.run('pm', message.body, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation-readback', requestId: message.requestId, effortKind: 'administrative', timeout: 15 * 60 * 1000 });
+        const promptStore=this.knowledgeContext?knowledgePromptStore(this.store,this.knowledgeContext.registry):this.store;
         const guidance = `\n${GOAL_REPORT_GUIDANCE}`;
         if (role === 'it')
-            return this.run('it', itChatPrompt(this.store, message, brief) + guidance, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
+            return this.run('it', itChatPrompt(promptStore, message, brief) + guidance, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
         if (role === 'knowledge')
-            return this.run('knowledge', knowledgeChatPrompt(this.store, message, brief), ConversationResultSchema, { cwd: harperFolder(this.store, 'chat'), readOnly: true, effortKind: 'administrative', ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
+            return this.run('knowledge', knowledgeChatPrompt(promptStore, message, brief), ConversationResultSchema, { cwd: harperFolder(this.store, 'chat'), readOnly: true, effortKind: 'administrative', ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
         if (role === 'cto')
-            return this.run('cto', ctoChatPrompt(this.store, message, goalReportContext(this.ctoContext(), message, this.store.project.id), brief) + guidance, ConversationResultSchema, { cwd: message.from === 'pm' ? this.store.project.repo : ROOT, readOnly: true, crossProjectRead: message.from !== 'pm', ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
+            return this.run('cto', ctoChatPrompt(promptStore, message, goalReportContext(this.ctoContext(), message, this.store.project.id), brief) + guidance, ConversationResultSchema, { cwd: message.from === 'pm' ? this.store.project.repo : ROOT, readOnly: true, crossProjectRead: message.from !== 'pm', ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
         if (this.store.project.provider === 'github')
-            return this.run(role, githubFollowupPrompt(this.store, role, message, brief) + guidance, ConversationResultSchema, { cwd: this.store.project.repo, ticket: message.ticket, stage: deferredPickup(this.store.state, message.ticket) ? 'deferred-conversation' : message.actionId ? 'conversation-readback' : 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, readOnly: !canFileGithubIssue(role, message, brief), effortKind: canFileGithubIssue(role, message, brief) || message.actionId.startsWith('message:') ? 'administrative' : undefined, timeout: 15 * 60 * 1000 });
+            return this.run(role, githubFollowupPrompt(promptStore, role, message, brief) + guidance, ConversationResultSchema, { cwd: this.store.project.repo, ticket: message.ticket, stage: deferredPickup(this.store.state, message.ticket) ? 'deferred-conversation' : message.actionId ? 'conversation-readback' : 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, readOnly: !canFileGithubIssue(role, message, brief), effortKind: canFileGithubIssue(role, message, brief) || message.actionId.startsWith('message:') ? 'administrative' : undefined, timeout: 15 * 60 * 1000 });
         const ticket = message.ticket ? this.store.ticket(message.ticket) : null;
-        const history = this.store.state.messages.filter(m => m.id !== message.id && (message.ticket ? m.ticket === message.ticket : !m.ticket)).slice(-24);
-        return this.run(role, cecChatPrompt(this.store, role, message, brief, ticket, history) + guidance, ConversationResultSchema, { ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, readOnly: role !== 'pm' || !ticket, timeout: 15 * 60 * 1000 });
+        const history = promptStore.state.messages.filter(m => m.id !== message.id && (message.ticket ? m.ticket === message.ticket : !m.ticket)).slice(-24);
+        return this.run(role, cecChatPrompt(promptStore, role, message, brief, ticket, history) + guidance, ConversationResultSchema, { ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, readOnly: role !== 'pm' || !ticket, timeout: 15 * 60 * 1000 });
     }
     async intake() {
         return this.run('pm', cecIntakePrompt(this.store), IntakeSchema, { readOnly: true, stage: 'intake', timeout: 15 * 60 * 1000 });

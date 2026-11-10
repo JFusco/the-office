@@ -20,7 +20,7 @@ function Evidence({ lesson }: { lesson: Lesson }) {
 
 function LessonCard({ lesson, actions, footer }: { lesson: Lesson; actions?: React.ReactNode; footer?: React.ReactNode }) {
   return <Card as="article">
-    <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier || 'guidance'} · revision {lesson.revision || 1}</Tag>{lesson.needsReview ? <Tag>needs review · still active</Tag> : null}{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}</div>
+    <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier || 'guidance'} · revision {lesson.revision || 1}</Tag>{!lesson.needsReview&&lesson.sourceReviewReason==='office-authored'?<Tag>Office-authored · not independent corroboration</Tag>:null}{lesson.needsReview ? <Tag>{lesson.sourceReviewReason==='source-changed'?'source changed · review needed':lesson.sourceReviewReason==='office-authored'?'Office-authored · review needed':'needs review · still active'}</Tag> : null}{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}</div>
     <strong className="text-12 leading-relaxed">{lesson.statement}</strong>
     {lesson.detail ? <p className={mutedCopy}>{lesson.detail}</p> : null}
     {lesson.paths.length ? <p className="text-10 leading-relaxed text-card-detail">Paths: {lesson.paths.join(', ')}</p> : null}
