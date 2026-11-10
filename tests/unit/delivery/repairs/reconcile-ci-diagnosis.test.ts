@@ -71,3 +71,25 @@ test('a native execution changed after accepted reconciliation invalidates the s
     writeFileSync(f.nativePath, readFileSync(f.nativePath, 'utf8') + '\n' + JSON.stringify({ type: 'event_msg', payload: { type: 'new-record' } }));
     await expect(reconcileCIDiagnosis(f.delivery, f.job, f.roots)).rejects.toThrow('evidence changed'); expect(f.runs()).toBe(1);
 });
+test('potential cache facts stay bound to the full audit and are rechecked before persistence and reuse', async () => {
+    const f = setup(), cache = { path: '/registered/gh/run-log-123-456.zip', sha256: 'a'.repeat(64), size: 64, runId: 123, createdAt: '2026-11-09T08:00:01Z', modifiedAt: '2026-11-09T08:00:01Z' };
+    const original = f.engine.agents.run;
+    f.engine.agents.run = async (role, prompt, schema, options) => {
+        expect(prompt).toContain('permitted ONLY in');
+        expect(prompt).toContain(cache.sha256); expect(prompt).toContain('facts alone never prove who wrote'); expect(prompt).toContain('Unlisted cache paths');
+        return original(role, prompt, schema, options);
+    };
+    const read = () => [cache];
+    expect(await reconcileCIDiagnosis(f.delivery, f.job, f.roots, read)).toBe(true);
+    const saved = JSON.parse(readFileSync(f.job.ciRecoveryNoWriteProof!.evidencePath, 'utf8')); expect(saved.localLogCaches).toEqual([cache]);
+    cache.sha256 = 'b'.repeat(64);
+    await expect(reconcileCIDiagnosis(f.delivery, f.job, f.roots, read)).rejects.toThrow('log-cache evidence changed');
+    expect(f.runs()).toBe(1); expect(f.calls).toHaveLength(0);
+});
+test('cache drift during a full audit never saves affirmative proof or settles the original attempt', async () => {
+    const f = setup(); let reads = 0;
+    const cache = { path: '/registered/gh/run-log-123-456.zip', sha256: 'a'.repeat(64), size: 64, runId: 123, createdAt: '2026-11-09T08:00:01Z', modifiedAt: '2026-11-09T08:00:01Z' };
+    const read = () => [{ ...cache, sha256: ++reads === 1 ? 'a'.repeat(64) : 'b'.repeat(64) }];
+    await expect(reconcileCIDiagnosis(f.delivery, f.job, f.roots, read)).rejects.toThrow('log-cache evidence changed during audit');
+    expect(f.job.ciRecoveryNoWriteProof).toBeUndefined(); expect(f.job.ciRecoveryAttemptAt).toBe('2026-11-09T08:00:00Z'); expect(f.calls).toHaveLength(0);
+});

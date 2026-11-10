@@ -1,4 +1,5 @@
 import { officeSource } from './office-source';
+import { launchPolicyFacts } from '../../workers/launch-policy';
 import { lifecycleFacts } from '../../workers/lifecycle/facts';
 import { readOwnedSessionArtifact } from '../../store/owned-artifact';
 import { workKey } from '../../../src/shared';
@@ -16,11 +17,12 @@ export function investigationEvidence(store: Store, entry: ITInvestigation) {
         if (!work) continue;
         evidence.push({ ref: `worker:${id}`, facts: { stage: work.stage, status: work.status, failure: work.failure, provider: work.provider, processId: work.processId, startedAt: work.startedAt, endedAt: work.endedAt, executionStatus: work.executionStatus } });
         if (!/^[a-zA-Z0-9-]+$/.test(id)) continue;
-        for (const name of ['error.json', 'execution-completion.json', 'process-lifecycle.json', ...(work.stage === 'slack-verify' ? ['result.json'] : [])]) {
+        for (const name of ['error.json', 'execution-completion.json', 'process-lifecycle.json', 'launch-policy.json', ...(work.stage === 'slack-verify' ? ['result.json'] : [])]) {
             try {
                 const file = readOwnedSessionArtifact(store.dataRoot, id, name, 16384);
                 if (!('text' in file)) continue;
                 const raw = JSON.parse(file.text), result = raw.result;
+                if (name === 'launch-policy.json') { const facts = launchPolicyFacts(raw, id, work.stage, work.provider); if (facts) evidence.push({ ref: `artifact:${id}/${name}`, facts: { sha256: file.sha256, ...facts } }); continue; }
                 if (name === 'process-lifecycle.json') { const facts = lifecycleFacts(raw); if (facts && facts.processGroup === work.processId) evidence.push({ ref: `artifact:${id}/${name}`, facts: { sha256: file.sha256, ...facts } }); continue; }
                 evidence.push({ ref: `artifact:${id}/${name}`, facts: { sha256: file.sha256, at: raw.at, error: typeof raw.error === 'string' ? raw.error.slice(0, 1000) : undefined, workerId: raw.workerId, resultSha256: raw.resultSha256, ...(result ? { found: result.found, channelId: result.channelId, messageTs: result.messageTs, permalink: result.permalink } : {}) } });
             } catch { /* Missing or unsafe artifacts remain missing, never an invented receipt. */ }

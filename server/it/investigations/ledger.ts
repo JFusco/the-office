@@ -1,4 +1,5 @@
 import { captureLearning } from '../../knowledge/learning-events';
+import { requeueInvestigationEvidence } from './requeue-evidence';
 import { supersedingDelivery } from '../../conversations/slack/supersession-proof';
 import { slackMessageUrl } from '../../../src/shared';
 import type { ITInvestigation } from '../../../src/contracts/it-investigations';
@@ -32,6 +33,7 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
         else entries.push({ id, source, status: 'queued', createdAt: now.toISOString(), updatedAt: now.toISOString(), attempts: 0, nextAt: '', lastError: '' });
     }
     for (const entry of entries) {
+        requeueInvestigationEvidence(store, entry);
         const resolution = investigationResolution(store, entry);
         if (resolution) {
             if (entry.status !== 'resolved') {

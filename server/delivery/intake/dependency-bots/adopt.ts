@@ -4,6 +4,8 @@ import { dependabotPR, inPickupLane, readRepo } from '../dependabot/qualify';
 import { ensureReviewCards, ensureTrackingIssue } from '../dependabot/tracking-issue';
 import { closesIssue, linkPR } from '../dependabot/link-pr';
 import { autoAdoptable, autoAdopts, waitsQuietly } from './auto-adopt';
+import { relinkPinCourier } from './relink-pin-courier';
+import { MISSING_NATIVE_LINK } from './resume-linked-delivery';
 import type { Execute } from '../../board/project-graphql';
 import type { Store } from '../../../store/store';
 import type { DependabotAdoption, PickupPolicy, TicketJob } from '../../../../src/shared';
@@ -103,8 +105,13 @@ async function reverify(store: Store, execute: Execute, records: DependabotAdopt
                 settle(store, record, 'blocked', `${bot.label} PR #${record.pr} no longer qualifies for adoption: ${refused}. Sam's bot-specific guidance is withdrawn.`, `${bot.id}-blocked`);
                 continue;
             }
-            if (!closesIssue(p.body || '', record.issue))
-                await linkPR(store, execute, record, { ...dependabotPR(p), bot: bot.id }, record.issue, headGuard(store, execute, p, bot, guard));
+            const lostLink = jobs.some(j => j.pr === record.pr && j.key === `GH-${record.issue}` && j.status === 'blocked' && j.detail === MISSING_NATIVE_LINK);
+            if (!closesIssue(p.body || '', record.issue) || bot.id === 'pin-courier' && lostLink) {
+                const pr = { ...dependabotPR(p), bot: bot.id }, writeGuard = headGuard(store, execute, p, bot, guard);
+                if (bot.id === 'pin-courier') await relinkPinCourier(store, execute, record, pr, jobs, writeGuard);
+                else await linkPR(store, execute, record, pr, record.issue, writeGuard);
+            }
+            delete record.relinkError;
         }
         catch (error) {
             const detail = `${bot.label} PR #${record.pr} could not be re-linked to #${record.issue}: ${String(error)}`;

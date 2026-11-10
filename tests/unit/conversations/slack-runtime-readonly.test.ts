@@ -1,17 +1,29 @@
 import {afterEach,expect,test} from 'vitest';
-import {mkdtempSync,readFileSync,rmSync,existsSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,existsSync,mkdirSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 import {z} from 'zod';
 import {Store} from '../../../server/store/store';
 import {projectById} from '../../../server/office/projects';
 import {WorkerRuntime} from '../../../server/workers/worker-runtime';
+import {coordination} from '../../../server/scheduling/coordination';
 import {command,CommandFailure,processGroupAlive} from '../../../server/workers/process';
 const schema=z.object({ok:z.boolean()}).strict();
 const stores:Store[]=[],paths:string[]=[];
 afterEach(()=>{for(const store of stores.splice(0))store.close();for(const path of paths.splice(0))rmSync(path,{recursive:true,force:true});});
 function fixture(){const path=mkdtempSync(resolve(tmpdir(),'office-slack-reader-'));paths.push(path);const store=new Store(':memory:',projectById('brain'),path);stores.push(store);return store;}
 function events(){return [{type:'thread.started',thread_id:crypto.randomUUID()},{type:'item.completed',item:{type:'agent_message',text:'{"ok":true}'}}];}
+test('actual private-candidate runtime binds the child environment and immutable launch receipt to the saved candidate',async()=>{
+ const store=fixture(),cwd=resolve(store.dataRoot,'ticket-work','job','ci-repair','candidate');mkdirSync(cwd,{recursive:true});
+ store.state.coordination=coordination();
+ store.state.coordination.jobs=[{id:'job',key:'GH-1',requestedAt:store.clock.now().toISOString(),status:'working',stage:'review',detail:'Synthetic candidate review',head:'a'.repeat(40),branch:'renovate/test',pr:1,prUrl:'https://github.com/JFusco/brain/pull/1',existingPR:true,worktree:cwd,steps:[],adoptedRepairCheckout:{id:'repair',worktree:cwd,head:'a'.repeat(40),branch:'renovate/test'}}];
+ let observed:Record<string,string>|undefined;const previous=process.env.NPM_CONFIG_WORKSPACE_DIR;
+ const execute:typeof command=async(_program,_args,options={})=>{observed=options.env;for(const event of events())options.onLine?.(JSON.stringify(event));return '';};
+ const runtime=new WorkerRuntime(store,execute);await runtime.run('pm','Synthetic candidate environment',schema,{cwd,readOnly:true,stage:'github-review',requestId:'job'});
+ expect(observed).toEqual({NPM_CONFIG_WORKSPACE_DIR:realpathSync(cwd)});expect(process.env.NPM_CONFIG_WORKSPACE_DIR).toBe(previous);
+ const worker=store.state.workLog!.at(-1)!;const receipt=JSON.parse(readFileSync(resolve(store.dataRoot,'sessions',worker.id,'launch-policy.json'),'utf8'));
+ expect(receipt).toMatchObject({workerId:worker.id,stage:'github-review',workspaceRoot:realpathSync(cwd),effective:{readOnly:true}});
+});
 test.each([
  ['slack-recipient',true,false,true],['slack-verify',true,false,true],
  ['slack-send',true,true,false],['slack-verify',true,true,false],['slack-recipient',true,true,false],
@@ -19,11 +31,17 @@ test.each([
  ['slack-verify',false,false,false],['slack-recipient',false,false,false],
  ['github-review',false,false,true],['enhance',false,false,false],
 ] as const)('actual runtime forwards effect disposition for %s / filesystemReadOnly=%s / send=%s',async(stage,readOnly,slackSend,expected)=>{
- const store=fixture();let observed:boolean|undefined;
- const execute:typeof command=async(_program,_args,options={})=>{observed=options.readOnly;for(const event of events())options.onLine?.(JSON.stringify(event));return '';};
+ const store=fixture();let observed:boolean|undefined;let cleanup:boolean|undefined;
+ const execute:typeof command=async(_program,_args,options={})=>{observed=options.readOnly;cleanup=options.terminateStragglers;for(const event of events())options.onLine?.(JSON.stringify(event));return '';};
  const runtime=new WorkerRuntime(store,execute);
  await expect(runtime.run('pm','Synthetic transport classification',schema,{stage,readOnly,slackSend})).resolves.toEqual({ok:true});
  expect(observed).toBe(expected);expect(runtime.active.size).toBe(0);expect(store.state.workLog?.at(-1)?.status).toBe('completed');
+ const worker=store.state.workLog!.at(-1)!;
+ const receipt=JSON.parse(readFileSync(resolve(store.dataRoot,'sessions',worker.id,'launch-policy.json'),'utf8'));
+ expect(receipt).toMatchObject({version:1,workerId:worker.id,stage,program:'codex',effective:{readOnly:observed,terminateStragglers:cleanup}});
+ if(stage.startsWith('slack-'))expect(receipt.effective.terminateStragglers).toBe(false);
+ if(slackSend)expect(receipt.profile.readOnly).toBe(true);
+ expect(JSON.stringify(receipt)).not.toMatch(/Synthetic transport|input|args|environment/);
 });
 /** Local Node fixture models a native CLI that emits its valid final answer and leaves a helper. */
 function helperProgram(ignoreTerm=false){

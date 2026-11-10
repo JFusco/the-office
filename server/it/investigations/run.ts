@@ -8,9 +8,9 @@ import { investigationReady } from './readiness';
 import { processGroupAlive } from '../../workers/process';
 import { syncInvestigations } from './ledger';
 import type { Store } from '../../store/store';
+import { INVESTIGATION_TIMEOUT, INVESTIGATION_ATTEMPTS } from './budget';
+export { INVESTIGATION_TIMEOUT, INVESTIGATION_ATTEMPTS } from './budget';
 
-export const INVESTIGATION_TIMEOUT = 3 * 60 * 1000;
-export const INVESTIGATION_ATTEMPTS = 3;
 export const InvestigationReport = z.object({ summary: z.string().min(1).max(1500), cause: z.enum(['process', 'authentication', 'provider', 'harness', 'unknown']), evidence: z.array(z.object({ ref: z.string().max(200), observation: z.string().min(1).max(800) }).strict()).min(1).max(8), recommendation: z.string().max(1500), blocker: z.string().max(1000) }).strict();
 export const SubprocessReport = InvestigationReport.extend({ officeFix: OfficeFixResult });
 export interface InvestigationOptions { readOnly: true; effortKind: 'administrative'; stage: 'it-investigation'; requestId: string; ticket: string; timeout: number }
@@ -40,6 +40,7 @@ export async function runInvestigation(store: Store, id: string, run: Investigat
         }
         const current = store.state.it?.investigations?.find(entry => entry.id === id);
         if (!current) return;
+        if (current.report) (current.diagnosisHistory ??= []).push({ supersededAt: store.clock.now().toISOString(), report: current.report, reportEvidence: current.reportEvidence || [] });
         current.reportEvidence = packet.evidence.flatMap(item => {
             const hash = (item.facts as { sha256?: unknown })?.sha256;
             return typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash) ? [{ ref: item.ref, sha256: hash }] : [];

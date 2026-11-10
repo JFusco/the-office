@@ -12,6 +12,8 @@ export interface ITInvestigation {
     lastError: string;
     /** Harness-captured hashes bind later review to the exact diagnosis inputs. */
     reportEvidence?: { ref: string; sha256: string }[];
+    evidenceRequeues?: { at: string; afterAttempt: number; evidence: { ref: string; sha256: string }[] }[];
+    diagnosisHistory?: { supersededAt: string; report: NonNullable<ITInvestigation['report']>; reportEvidence: { ref: string; sha256: string }[] }[];
     report?: { summary: string; cause: 'process' | 'authentication' | 'provider' | 'harness' | 'unknown'; evidence: { ref: string; observation: string }[]; recommendation: string; blocker: string; officeFix?: OfficeFix };
     resolution?: { kind?: 'confirmed' | 'superseded'; sourceId: string; at: string; receipt: string };
 }
