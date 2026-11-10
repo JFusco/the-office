@@ -50,8 +50,8 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
     };
     function stopFlight() { flight = undefined; dragging = true; controls.autoRotate = false; lastInteraction = previous; }
     function endInteraction() { dragging = false; lastInteraction = previous; }
-    function enter() { pointerInside = true; lastInteraction = previous; }
-    function leave() { pointerInside = false; hovered = false; visuals?.hover(''); lastInteraction = previous; controls.autoRotate = false; }
+    function enter() { pointerInside = true; graph.enablePointerInteraction(true); lastInteraction = previous; }
+    function leave() { pointerInside = false; graph.enablePointerInteraction(false); hovered = false; visuals?.hover(''); lastInteraction = previous; controls.autoRotate = false; }
     function visibility() {
         cancelAnimationFrame(frameId); previous = 0;
         if (document.hidden) graph.pauseAnimation(); else { graph.resumeAnimation(); frameId = requestAnimationFrame(frame); }
@@ -62,7 +62,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
             .nodeVisibility(raw => (raw as { visible: boolean }).visible)
             .nodeLabel('') // The canvas owns hover/selection captions; avoid a duplicate HTML tooltip.
             .linkColor(() => view?.focusId ? palette.brainFocusConnection : palette.brainConnection).linkOpacity(.5).linkWidth(.6)
-            .enableNodeDrag(false).showNavInfo(false).cooldownTicks(0)
+            .enableNodeDrag(false).enablePointerInteraction(false).showNavInfo(false).cooldownTicks(0)
             .onNodeClick(node => select(node as KnowledgeNode)).onNodeHover(node => { if (!pointerInside) return; hovered = !!node; lastInteraction = previous; controls.autoRotate = false; visuals!.hover(node?.id?.toString() || ''); });
         graph.cameraPosition({x: 0, y: 0, z: overviewDistance});
         controls.addEventListener('start', stopFlight);

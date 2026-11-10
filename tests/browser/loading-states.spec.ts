@@ -25,7 +25,11 @@ for (const [view, endpoint, label] of [
             }
             for (const reduced of ['system', 'office']) {
                 if (reduced === 'system') await page.emulateMedia({ reducedMotion: 'reduce' });
-                else { await page.emulateMedia({ reducedMotion: 'no-preference' }); await page.locator('html').evaluate(el => el.dataset.motion = 'reduced'); }
+                else {
+                    await page.emulateMedia({ reducedMotion: 'no-preference' }); await expect(page.locator('html')).toHaveAttribute('data-motion','full');
+                    expect((await request.post('/__fixture/preferences',{data:{reducedMotion:true}})).ok()).toBe(true);
+                    await expect(page.locator('html')).toHaveAttribute('data-motion','reduced');
+                }
                 for (const part of await status.locator('[data-office-loader] g, [data-office-loader] > circle:last-child').all()) await expect(part).toHaveCSS('animation-name', 'none');
             }
         } finally { release(); }

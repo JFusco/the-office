@@ -15,7 +15,7 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     const camera=new PerspectiveCamera(), controls={target:new Vector3(),autoRotate:false,addEventListener:vi.fn(),removeEventListener:vi.fn()}, renderer={setPixelRatio:vi.fn(),dispose:vi.fn(),forceContextLoss:vi.fn()};
     camera.position.set(0,0,300);
     const graph:any={renderer:()=>renderer,controls:()=>controls,scene:()=>({}),camera:()=>camera};
-    for(const name of ['backgroundColor','nodeThreeObject','nodeVisibility','nodeLabel','linkColor','linkOpacity','linkWidth','enableNodeDrag','showNavInfo','cooldownTicks','onNodeClick','onNodeHover','width','height','pauseAnimation','resumeAnimation','_destructor'])graph[name]=vi.fn(()=>graph);
+    for(const name of ['backgroundColor','nodeThreeObject','nodeVisibility','nodeLabel','linkColor','linkOpacity','linkWidth','enableNodeDrag','enablePointerInteraction','showNavInfo','cooldownTicks','onNodeClick','onNodeHover','width','height','pauseAnimation','resumeAnimation','_destructor'])graph[name]=vi.fn(()=>graph);
     graph.graphData=vi.fn((data?:typeof saved)=>data?(saved=data,graph):saved);
     graph.cameraPosition=vi.fn((position?:Vector3)=>position?graph:camera.position);
     state.graph=graph;
@@ -46,8 +46,9 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     const enter=addEventListener.mock.calls.find(call=>call[0]==='pointerenter')![1],leave=addEventListener.mock.calls.find(call=>call[0]==='pointerleave')![1];
     const hover=graph.onNodeHover.mock.calls[0][0];
     enter();hover({id:'note'});frame(32000);expect(controls.autoRotate).toBe(false);
-    leave();hover({id:'note'});frame(32001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
+    leave();expect(graph.enablePointerInteraction).toHaveBeenLastCalledWith(false);hover({id:'note'});frame(32001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
     expect(state.visuals.hover).toHaveBeenLastCalledWith('');
+    enter();expect(graph.enablePointerInteraction).toHaveBeenLastCalledWith(true);hover({id:'note'});expect(state.visuals.hover).toHaveBeenLastCalledWith('note');leave();
     runtime.update({data:focused.scene,focusId:'note',reduced:false});frame(36000);frame(36050);
     runtime.update({data:focused.scene,focusId:'note',reduced:false,paused:true});
     expect(graph.cameraPosition).toHaveBeenLastCalledWith({...original.position,z:original.position.z+focusDistance},original.position,0);
