@@ -589,7 +589,11 @@ test('actual draft stage publishes same ready PR then skips the preparation writ
  const a=conflictPreparationFixture();a.job.stage='draft';a.job.status='queued';a.store.state.workLog=[];a.job.steps.pop();
  a.store.state.tickets.push({key:a.job.key,summary:'Conflict fixture',url:a.issue.html_url,status:'open',stage:'review',activity:'waiting',results:{},findings:[],evidence:[],attempt:0,prId:a.job.pr}as any);
  a.run.mockImplementation(async role=>{expect(role).toBe('developer');return structuredClone(a.published)as any;});
- const originalExecute=a.execute.getMockImplementation()!;a.execute.mockImplementation(async(program,args)=>args[1]?.includes('issues/113/comments?')&&args.includes('--slurp')?JSON.stringify([[{body:'Office delivery '+a.job.id}]]):originalExecute(program,args));
+ const originalExecute=a.execute.getMockImplementation()!;a.execute.mockImplementation(async(program,args)=>{
+  if(program==='gh'&&args.join(' ')==='api user --method GET')return JSON.stringify({login:'JFusco'});
+  if(args[1]?.includes('issues/113/comments?')&&args.includes('--slurp'))return JSON.stringify([[{id:901,user:{login:'JFusco'},html_url:a.issue.html_url+'#issuecomment-901',body:`Office delivery ${a.job.id}: Draft PR ${a.job.prUrl} is linked to this issue. Sam will check PR readiness; maintainer merge and release gates still apply.`}]]);
+  return originalExecute(program,args);
+ });
  const claim=a.store.claimWork({projectId:a.store.project.id,kind:'delivery',id:a.job.id},'fixture','draft')!;
  await withAssignment(claim,'delivery',()=>a.delivery.step(a.job));
  expect(a.job.status,a.job.detail).toBe('queued');expect(a.job).toMatchObject({stage:'lead-pr',status:'queued',pr:120,head:a.newHead});expect(a.run).toHaveBeenCalledTimes(1);expect(a.store.state.workLog).toHaveLength(0);expect(a.job.steps.filter(s=>s.stage==='review')).toHaveLength(1);expect(a.job.steps.filter(s=>s.stage==='validate')).toHaveLength(1);expect(a.job.detail).toContain('no metadata writer');
