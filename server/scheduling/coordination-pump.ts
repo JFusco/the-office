@@ -1,5 +1,7 @@
 import { currentAssignment } from '../workers/assignment-context';
 import { handsOff } from '../delivery/harness/scope';
+import { holdAssessmentIntake } from '../features/handoff/intake-routing';
+import { closeIntakeEpisode } from '../features/handoff/intake-disposition';
 import { admit } from '../delivery/intake/admission';
 import { enqueueRequest } from './requests';
 import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey, observePrerequisites } from '../delivery/pipeline/dependencies';
@@ -112,6 +114,7 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
         const review = (!selected || selected.kind === 'intake') && this.state.listener.reviews.find(r => r.status === 'queued' && (!selected || r.id === selected.id));
         if (!review)
             return;
+        if (this.store.transaction(() => holdAssessmentIntake(this.store, review))) return;
         review.status = 'working';
         review.startedAt = new Date().toISOString();
         this.store.save();
@@ -126,6 +129,7 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
             if (review.workRequested === 'automatic' && (!this.pickup.enabled || (current.pickupStatus ?? current.status) !== this.pickup.status)) {
                 review.workRequested = undefined;
             }
+            if (this.store.transaction(() => holdAssessmentIntake(this.store, review))) return;
             if (HOLDS[review.key]) {
                 review.status = 'held';
                 review.detail = HOLDS[review.key];
@@ -141,7 +145,7 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
             if (handsOff(this.store)) {
                 const delivery = new GitHubDelivery(this.store, this.engine, this.execute);
                 await delivery.discover(assignments);
-                const outcome = admit(this, delivery, { key: review.key, workRequested: review.workRequested, prerequisites: review.prerequisiteError ? [] : review.prerequisites || [] }, new Date());
+                const outcome = admit(this, delivery, { key: review.key, workRequested: review.workRequested, prerequisites: review.prerequisiteError ? [] : review.prerequisites || [], featureBinding: review.featureBinding }, new Date());
                 Object.assign(review, review.prerequisiteError ? { status: 'held', detail: review.prerequisiteError, owner: '' } : outcome);
                 return;
             }
@@ -180,15 +184,17 @@ Joe authorized assignment investigation on 2026-10-28. You are Morgan, the sole 
                 enqueueRequest(this.store, 'reconcile-native-refresh', review.key, result.existingWork.id);
                 routed = true;
             }
+            if (this.store.transaction(() => holdAssessmentIntake(this.store, review))) return;
             if (!routed && review.workRequested && result.ownershipChecked && review.status === 'ready') {
                 if (this.store.project.provider === 'github')
-                    new GitHubDelivery(this.store, this.engine, this.execute).enqueue(review.key, 0, review.workRequested === 'automatic' ? this.pickup.status : undefined);
+                    this.store.transaction(() => { new GitHubDelivery(this.store, this.engine, this.execute).enqueue(review.key, 0, review.workRequested === 'automatic' ? this.pickup.status : undefined); closeIntakeEpisode(this.store, review.key); });
                 else {
                     const live = await this.engine.agents.readback(review.key);
                     if (live.blocker || live.existingOwner || live.existingPrId)
                         throw new Error(live.blocker || `Existing owner/PR: ${live.existingOwner || live.existingPrId}`);
+                    if (this.store.transaction(() => holdAssessmentIntake(this.store, review))) return;
                     Object.assign(own!, live);
-                    this.engine.requestDelivery(review.key, 'start-pilot', review.workRequested === 'manual' ? live.status : this.pickup.status);
+                    this.engine.requestDelivery(review.key, 'start-pilot', review.workRequested === 'manual' ? live.status : this.pickup.status, { binding: review.featureBinding, automatic: true });
                 }
             }
             review.detail = `${result.summary}\n${result.evidence.join('\n')}`;

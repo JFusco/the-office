@@ -44,7 +44,7 @@ test('recovery waits and harness questions withhold automatic delivery admission
  f.feature.publication=[{id:'0',key:'GH-1',url:'',approvalId:'approval',verified:true,queued:false,effects:[],fence:false}];
  f.store.state.coordination!.listener.assigned.push({key:'GH-1'} as any);
  const now=new Date('2026-11-10T12:00:00Z');f.store.clock={...f.store.clock,now:()=>now};
- const requestWork=vi.fn(),entry={store:f.store,engine:{},coordinator:{requestWork}} as any;
+ const requestWork=vi.fn((key,binding)=>{const row={id:'review',key,status:'queued',featureBinding:binding};f.store.state.coordination!.listener.reviews.push(row as any);return row;}),entry={store:f.store,engine:{},coordinator:{requestWork}} as any;
  const admission=()=>scheduledFeatures(entry).find(w=>w.stage==='feature-delivery-admission');
  f.store.transaction(()=>reserveReplacement(f.feature,'delivery','handoff',now));
  // Manual features keep their existing admission path.
@@ -60,6 +60,6 @@ test('recovery waits and harness questions withhold automatic delivery admission
  expect(before.claimEligible!()).toBe(false);await before.execute();expect(requestWork).not.toHaveBeenCalled();
  f.feature.rounds[0].resolvedAt=now.toISOString();
  const work=admission()!;expect(work.eligibility.state).toBe('runnable');expect(work.claimEligible!()).toBe(true);
- await work.execute();expect(requestWork.mock.calls).toEqual([['GH-1']]);
+ await work.execute();expect(requestWork).toHaveBeenCalledOnce();expect(requestWork.mock.calls[0][0]).toBe('GH-1');expect(f.feature.publication[0].handoff?.id).toBe('review');
  }finally{delete FEATURE_PLANNING.brain;f.close();}
 });

@@ -1,3 +1,5 @@
+import { observeAssessmentAssignments } from '../features/handoff/observe-assignments';
+import { holdAssessmentIntake } from '../features/handoff/intake-routing';
 import { handsOff } from '../delivery/harness/scope';
 import { reconcileMailbox } from '../cec/reconcile-mailbox';
 import { syncOutbox } from '../conversations/outbox';
@@ -44,6 +46,7 @@ export async function poll(this: Coordinator, now = new Date()) {
         // Date the completed provider read, before downstream delivery work can make it older.
         const observedAt = this.store.clock.now().toISOString();
         const previous = new Map(listener.assigned.map(i => [i.key, i]));
+        observeAssessmentAssignments(this.store, assigned, this.pickup, this.store.clock.now());
         if (this.store.project.provider === 'azure')
             reconcileMailbox(this.store.state, new Set(assigned.filter(issue => (issue.pickupStatus ?? issue.status) === this.pickup.status).map(issue => issue.key)));
         for (const issue of assigned) {
@@ -117,6 +120,7 @@ export async function poll(this: Coordinator, now = new Date()) {
             await delivery.observe();
             await observeGitHubMergeNotices(delivery);
         }
+        for (const review of listener.reviews) if (review.status === 'queued') holdAssessmentIntake(this.store, review);
         listener.assigned = assigned;
         listener.lastCheckedAt = observedAt;
         listener.error = '';

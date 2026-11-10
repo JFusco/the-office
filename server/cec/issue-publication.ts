@@ -104,7 +104,9 @@ export class JiraIssuePublisher implements FeaturePublisher {
         const raw = await this.issue(receipt.key), fields = raw.fields || raw;
         if (operation.kind === 'create' || operation.kind === 'update') {
             const p = Content.parse(operation.payload);
-            return JSON.stringify(this.content(raw)) === JSON.stringify({ summary: p.summary, description: p.description, labels: [...p.labels].sort() });
+            const matches = JSON.stringify(this.content(raw)) === JSON.stringify({ summary: p.summary, description: p.description, labels: [...p.labels].sort() });
+            if (matches) receipt.requirementPostimage = {target: CEC.site + '/browse/' + receipt.key, content: {summary: fields.summary, description: fields.description ?? null, labels: [...(fields.labels || [])].sort()}};
+            return matches;
         }
         if (operation.kind === 'assign') return fields.assignee?.accountId === Assignment.parse(operation.payload).assignee &&
             (await this.query('filter = ' + await this.boardFilter() + ' AND key = "' + keyOf(receipt.key) + '"')).length === 1;

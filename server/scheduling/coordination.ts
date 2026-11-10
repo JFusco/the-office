@@ -47,7 +47,7 @@ export class Coordinator {
     dependencyStores: () => DependencyStores = () => new Map([[this.store.project.id, this.store]]);
     get pickup(): PickupPolicy { return this.state.pickup ??= { enabled: true, status: this.store.project.provider === 'github' ? 'Ready' : 'To Do' }; }
     configurePickup(input: unknown) { void this.state; savePickup(this.store, input); }
-    requestWork(key: string) { return requestWork.call(this, key); }
+    requestWork(key: string, binding?: import('../../src/contracts/features').FeatureBinding) { return requestWork.call(this, key, binding); }
     enqueue(issue: AssignedIssue, workRequested?: 'automatic' | 'manual') {
         this.state.listener.reviews.push({ id: crypto.randomUUID(), key: issue.key, summary: issue.summary, url: issue.url, queuedAt: new Date().toISOString(), startedAt: '', endedAt: '', status: 'queued', detail: workRequested ? 'Queued for ownership check before team delivery.' : 'Waiting for Morgan to investigate.', owner: '', workRequested });
         this.store.emit('assignment-arrived', `${this.store.project.name} · ${issue.key}: ${workRequested ? 'work queued' : "assigned to Joe; queued for Morgan\'s report"}.`, 'pm', issue.key);
