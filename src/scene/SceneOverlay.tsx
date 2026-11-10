@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Html } from '@react-three/drei';
+import { useThree } from '@react-three/fiber';
 import { cx } from '../ui';
 
 const entranceDelayClasses = ['delay-0', 'delay-35', 'delay-70', 'delay-105', 'delay-140', 'delay-175', 'delay-210', 'delay-245', 'delay-280'];
@@ -16,6 +17,15 @@ export function overlayEntranceDelays(tops: number[]): number[] {
 
 /** Translate only the inner overlay; Drei keeps control of the world-position anchor. */
 export function SceneOverlay({ children, ...props }: ComponentProps<typeof Html>) {
+    const { gl } = useThree();
+    // Drei's default target changes when canvas events connect/disconnect. That
+    // recreates its React root on the same element before deferred cleanup finishes.
+    // Keep this canvas parent for the complete lifetime, including teardown.
+    const [portal] = useState(() => {
+        const current = gl.domElement.parentElement;
+        if (!current) throw new Error('Scene overlays require a mounted canvas');
+        return { current };
+    });
     const { active, revealed, travelling, reduced } = useContext(FloorVisibility);
     const ref = useRef<HTMLDivElement>(null), [ready, setReady] = useState(false), [delay, setDelay] = useState(0);
     useEffect(() => {
@@ -33,7 +43,7 @@ export function SceneOverlay({ children, ...props }: ComponentProps<typeof Html>
         return () => cancelAnimationFrame(frame);
     }, [active, revealed, reduced]);
     const shown = active && revealed && (reduced || ready);
-    return <Html {...props}><div ref={ref} data-scene-overlay data-floor-active={active} data-entrance-delay={reduced ? 0 : delay}
+    return <Html {...props} portal={props.portal ?? portal}><div ref={ref} data-scene-overlay data-floor-active={active} data-entrance-delay={reduced ? 0 : delay}
         inert={!shown || travelling}
         className={cx(shown && !reduced ? entranceDelayClasses[delay / 35] : 'delay-0', !active && 'hidden', shown ? 'visible opacity-100 translate-y-0 duration-420' : 'invisible opacity-0 -translate-y-1.5 duration-140', travelling && 'pointer-events-none', reduced ? 'transition-none translate-y-0' : 'transition-[opacity,translate,visibility] ease-scene-enter')}>{children}</div></Html>;
 }
