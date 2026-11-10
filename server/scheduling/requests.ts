@@ -28,6 +28,7 @@ import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import { TimeLedger } from '../time/time-ledger';
 import { fileLessonIssue } from '../knowledge/file-lesson-issue';
 import { command } from '../workers/process';
+import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
 const actions = new Set(['admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'file-lesson-issue']);
 export const deterministicActions = new Set(['admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'file-lesson-issue']);
 export function enqueueSourceAmendment(store: Store, input: unknown): HarnessRequest {
@@ -78,6 +79,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
     try {
         const delivery = new GitHubDelivery(store, engine);
         switch (request.action) {
+            case 'reconcile-pr-metadata': await reconcilePRMetadata(delivery, request); break;
             case 'reconcile-activation': await reconcileActivation(delivery,request.key,request.head); break;
             case 'correct-recovery-time': correctRecoveryClassification(store, request); break;
             case 'apply-time-scope': applyTimeScope(store, request); break;

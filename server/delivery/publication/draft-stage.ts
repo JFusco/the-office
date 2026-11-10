@@ -8,7 +8,7 @@ import type { StageResult, TicketJob } from '../../../src/shared';
 /** Model-free `draft`: publish the verified candidate and move its cards to In review. */
 export async function harnessDraft(delivery: GitHubDelivery, job: TicketJob, root: string): Promise<StageResult> {
     const { store, execute } = delivery;
-    const publication = await publishCandidate(store, execute, delivery.jobs, job, root);
+    const publication = await publishCandidate(store, execute, delivery.jobs, job, root, delivery);
     const head = job.head;
     const lane = await moveLane(store, execute, job, 'In review', () => assertMayMutate(store, delivery.jobs, job, head), publication.pr);
     const boardUrl = store.project.githubProject?.url || '';

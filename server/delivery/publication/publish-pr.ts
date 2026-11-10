@@ -4,6 +4,9 @@ import { assertMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { retryRead } from '../harness/read-retry';
 import { lintPRContent, prContent } from './pr-body';
+import { assertMetadataBinding, metadataAppliesToHead } from './metadata-context';
+import { publishMetadata } from './publish-metadata';
+import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
@@ -47,7 +50,14 @@ async function pushOnce(store: Store, execute: Execute, jobs: TicketJob[], job: 
  * Publishes the reviewed candidate: pushes once and opens one draft PR, or updates the
  * existing PR's branch with a descendant head. Never force-pushes or opens a second PR.
  */
-export async function publishCandidate(store: Store, execute: Execute, jobs: TicketJob[], job: TicketJob, root: string): Promise<Publication> {
+export async function publishCandidate(store: Store, execute: Execute, jobs: TicketJob[], job: TicketJob, root: string, delivery?: GitHubDelivery): Promise<Publication> {
+    // The existing-PR head update may not silently bypass an admitted metadata handoff.
+    const metadata = metadataAppliesToHead(job);
+    if (metadata) {
+        if (!delivery || delivery.store !== store || delivery.execute !== execute || delivery.jobs !== jobs)
+            throw new Error('Admitted metadata requires its actual delivery owner before publication');
+        assertMetadataBinding(delivery, job);
+    }
     const { repository, target } = store.project, issueNumber = Number(job.key.slice(3));
     const candidate: Candidate = { head: job.head, branch: job.branch, worktree: job.worktree };
     const { head, branch, worktree } = candidate;
@@ -68,6 +78,7 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
         const updated = await retryRead(async () => { const current = await api(`pulls/${job.pr}`); return current.head?.sha === head ? current : null; });
         if (!updated)
             throw new Error(`PR #${job.pr} head did not update to ${head}`);
+        if (metadata) await publishMetadata(delivery!, job);
         return { pr: job.pr, url: updated.html_url, pushed, created: false };
     }
     const list = async (state: string) => JSON.parse(await execute('gh', ['pr', 'list', '--repo', repository, '--head', branch, '--state', state, '--json', 'number,url,state,headRefOid,baseRefName,isDraft,closingIssuesReferences'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));

@@ -133,6 +133,7 @@ export interface WorkClaim {
 }
 export const workKey = (work: WorkRef) => `${work.projectId}:${work.kind}:${work.id}`;
 export interface HarnessRequest {
+    prMetadataRecovery?: import('./pr-metadata').PRMetadataRecoveryIntent;
     closeoutSupervisionProof?: { path: string; sha256: string };
     timeClassification?: { workIds: string[]; expectedSha256: string; reason: 'recovery-work-is-administrative' };
     timeScope?: { policy: 'model-work-v1'; expectedSha256: string };

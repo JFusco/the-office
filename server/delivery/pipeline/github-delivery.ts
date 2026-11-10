@@ -48,6 +48,7 @@ import { stagePrompt } from './stage-prompts';
 import { deliveryTask } from './delivery-task';
 import { acceptStageResult } from './accept-stage-result';
 import { runCIRepair } from '../repairs/run-ci-repair';
+import { assertMetadataBinding, metadataAppliesToHead } from '../publication/metadata-context';
 export function hasUncertainEffects(stage: string, result: StageResult) {
     return result.receipts.some(r => r.uncertain || !r.verified && !(['review', 'lead-pr'].includes(stage) && /^(?:get|read|query|inspect)\b/i.test(r.action)));
 }
@@ -205,7 +206,10 @@ export class GitHubDelivery {
             }
             const role: Role = stageRole(job.stage);
             if (job.stage === 'prepare-pr') {
+                if (metadataAppliesToHead(job)) assertMetadataBinding(this, job);
                 const current = await this.verifyPR(job);
+                if (metadataAppliesToHead(job) && (current.head.sha !== job.head || current.head.ref !== job.branch))
+                    throw new Error('Bound metadata head changed before preparation; no overwrite or worker');
                 job.head = current.head.sha;
                 job.branch = current.head.ref || job.branch;
                 await verifyInitialDraftConflictPreparation(this,job,current.draft===true);
