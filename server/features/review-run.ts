@@ -13,6 +13,10 @@ import { helperInstallation, readReview, type ReviewEvidence } from './review-ev
 import { manifestFromPlan } from './feature-schema';
 import { observeHelperGroups, stopHelperGroups } from './review-processes';
 import { featureById, reviewQuestions } from './commands';
+import { automaticEnabled } from './progression/policy';
+import { FEATURE_PLANNING } from '../office/config';
+import { requestReplan } from './progression/attempt-budget';
+import { recoveryQuestion } from './questions/recovery-question';
 
 export function importReview(store: Store, feature: Feature, evidence: ReviewEvidence) {
     feature = featureById(store, feature.id);
@@ -29,11 +33,15 @@ export function importReview(store: Store, feature: Feature, evidence: ReviewEvi
             feature.review!.acceptedArtifact = evidence.artifact; feature.review!.acceptedDigest = digest(evidence.plan);
             captureLearning(store, { kind: 'feature', id: feature.id }, feature.title, 'plan-review', feature.review!.run, evidence.plan, 'Independent feature plan review accepted.', 'work', true);
             feature.phase = 'approval'; feature.status = 'waiting'; feature.detail = 'Independent review is complete. Review the exact plan and ticket changes before approving.';
+            if (automaticEnabled(feature, FEATURE_PLANNING)) { feature.status = 'queued'; feature.enqueuedAt = now; feature.detail = 'Independent review is complete; policy authorization is queued.'; }
         } else if (evidence.status === 'needs_user') {
             feature.review!.pendingQuestions = evidence.findings.filter(f => f.disposition === 'PENDING_USER').map(f => ({ id: f.id, question: f.evidence, recommendation: f.correction_recommended, choices: ['Accept the recommendation', 'Keep the current requirement'] }));
             reviewQuestions(feature, now);
         } else if (evidence.status === 'ready') {
             feature.status = 'queued'; feature.enqueuedAt = now; feature.detail = 'Next independent review stage: ' + evidence.stage;
+        } else if (evidence.status === 'unresolved' && automaticEnabled(feature, FEATURE_PLANNING)) {
+            feature.conversation.push({ id: randomUUID(), role: 'review', text: JSON.stringify(evidence.findings), at: now });
+            if (!requestReplan(feature, `review:${evidence.run}:${evidence.revision}`, store.clock.now(), 'Independent review remains unresolved; Alex and Casey will revise using the retained findings.')) recoveryQuestion(feature, store.clock.now(), 'Independent review remains unresolved and the lifetime replan limit is reached.');
         } else { feature.status = 'blocked'; feature.detail = evidence.error || 'Review requires reconciliation: ' + evidence.status; }
         store.emit('feature-review-updated', feature.title + ': ' + feature.detail, 'lead');
     });
