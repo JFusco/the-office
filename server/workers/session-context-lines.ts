@@ -12,17 +12,18 @@ export interface SessionContextParser {
 // is folded a chunk at a time, never read into one larger transcript buffer.
 const MAX_RECORD_BYTES = 64 * 1024 * 1024;
 const CHUNK_BYTES = 64 * 1024;
-const MAX_SCAN_MS = 5000;
+export const MAX_CONTEXT_READ_MS = 5000;
+export class ContextReadChanged extends Error {}
 export const sameContextFile = (a: Stats, b: Stats) =>
     a.ino === b.ino && a.dev === b.dev && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 
 /** Complete strict JSONL coverage with bounded memory, work time and file identity. */
-export async function sessionContextLines(file: string, snapshot: Stats, parser: SessionContextParser): Promise<SessionContext> {
+export async function sessionContextLines(file: string, snapshot: Stats, parser: SessionContextParser, readDeadline = performance.now() + MAX_CONTEXT_READ_MS): Promise<SessionContext> {
     const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const deadline = performance.now() + MAX_SCAN_MS;
+    const deadline = Math.min(performance.now() + MAX_CONTEXT_READ_MS, readDeadline);
     const checkTime = () => { if (performance.now() > deadline) throw new Error('Session context scan exceeded its read deadline'); };
     try {
-        if (!sameContextFile(snapshot, await handle.stat())) throw new Error('Session context file changed before its read');
+        if (!sameContextFile(snapshot, await handle.stat())) throw new ContextReadChanged('Session context file changed before its read');
         const buffer = Buffer.alloc(CHUNK_BYTES), decoder = new StringDecoder('utf8');
         let position = 0, pieces: string[] = [], bytes = 0;
         const add = (text: string) => {
@@ -46,7 +47,7 @@ export async function sessionContextLines(file: string, snapshot: Stats, parser:
         }
         consume(decoder.end()); checkTime();
         parser.write(pieces.join('')); // Includes the final blank line, just like raw.split('\n').
-        if (!sameContextFile(snapshot, await handle.stat())) throw new Error('Session context file changed during its read');
+        if (!sameContextFile(snapshot, await handle.stat())) throw new ContextReadChanged('Session context file changed during its read');
         checkTime();
         return parser.finish();
     } finally { await handle.close(); }

@@ -67,15 +67,26 @@ test('one indivisible oversized record is refused under the original 64 MiB buff
     expect(finish).not.toHaveBeenCalled();
 });
 
+test('an expired shared read deadline rejects without finalizing the parser', async () => {
+    const directory = await root(), file = join(directory, 'deadline.jsonl'); await writeFile(file, meta + '\n' + start);
+    const finish = vi.fn(() => unknown);
+    await expect(sessionContextLines(file, await stat(file), { write: () => {}, finish }, performance.now() - 1)).rejects.toThrow('read deadline');
+    expect(finish).not.toHaveBeenCalled();
+});
+
 test('a changed open file cannot certify complete coverage or enter the derived-context cache', async () => {
     const directory = await root(), file = join(directory, 'changing.jsonl'); await writeFile(file, meta + '\n' + start);
     let change = true;
+    const finishes: ReturnType<typeof vi.fn>[] = [];
     const read = sessionContextFile(directory, sessionScope, (id, projects) => {
         const parser = sessionScopeParser(id, projects);
-        return { write(line) { parser.write(line); if (change) { change = false; appendFileSync(file, '\n' + call('gh pr view 222 --repo Joe/cms')); } }, finish: parser.finish };
+        const finish = vi.fn(parser.finish); finishes.push(finish);
+        return { write(line) { parser.write(line); if (change) { change = false; appendFileSync(file, '\n' + call('gh pr view 222 --repo Joe/cms')); } }, finish };
     });
-    await expect(read(file, 'loaded', projects)).rejects.toThrow('changed');
-    expect(await read(file, 'loaded', projects)).toMatchObject({ activity: 'active', scopes: [{ project: 'cms', prs: [222] }] });
+    const result = await read(file, 'loaded', projects);
+    expect(result).toMatchObject({ activity: 'active', scopes: [{ project: 'cms', prs: [222] }] });
+    expect(finishes).toHaveLength(2); expect(finishes[0]).not.toHaveBeenCalled(); expect(finishes[1]).toHaveBeenCalledTimes(1);
+    expect(await read(file, 'loaded', projects)).toBe(result); expect(finishes).toHaveLength(2);
 });
 
 test('path replacement and symlink escape fail even with a valid old descriptor and a streaming parser', async () => {
