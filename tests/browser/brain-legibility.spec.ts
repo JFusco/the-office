@@ -103,7 +103,7 @@ test('unformatted historical assignment and lookup entries retain every receipt 
     await lookup.getByText('Lookup receipt',{exact:true}).click();const retrieved=lookup.locator('li').filter({has:page.getByText(`Recorded reference: ${recorded!.id}`,{exact:true})});await expect(retrieved).toBeVisible();await expect(retrieved.getByText(`Version: ${recorded!.version}`,{exact:true})).toBeVisible();await expect(retrieved.getByText(`Excerpt SHA-256: ${recorded!.sha}`,{exact:true})).toBeVisible();
 });
 
-test('group and search context survive inspecting a record, with readable map captions',async({page})=>{
+test('group and search context survive inspecting a record, with a concise introduction above the map',async({page})=>{
     await page.route('**/api/knowledge/map?**',async route=>{const response=await route.fetch(),map=await response.json();await route.fulfill({response,json:{...map,nodes:[...map.nodes,...Array.from({length:100},(_,i)=>({id:`synthetic:${i}`,title:`Synthetic note ${i}`,kind:'technical',domains:['cms'],detail:'Synthetic group context fixture'}))]}});});
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
     const browser=page.getByRole('region',{name:'Map browser'});await browser.getByRole('button',{name:'CMS 100',exact:true}).click();
@@ -111,6 +111,7 @@ test('group and search context survive inspecting a record, with readable map ca
     const record=browser.getByRole('button',{name:/Synthetic note .* · technical/}).first(),name=await record.innerText();await record.click();
     await expect(page.getByRole('navigation',{name:'Map location'}).getByRole('button',{name:'CMS',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Back to map',exact:true}).click();await expect(browser).toContainText('2 / 3');await expect(browser.getByRole('button',{name,exact:true})).toBeVisible();
-    const caption=page.getByText('Drag to orbit and scroll to zoom.',{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
-    expect(bounds!.width).toBeLessThan(canvas!.width*.65);expect(await caption.evaluate(el=>getComputedStyle(el).maxWidth)).not.toBe('none');
+    const caption=page.getByText('See how notes, source evidence and team lessons connect.',{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
+    expect(bounds!.width).toBeLessThan(canvas!.width*.65);expect(bounds!.y+bounds!.height).toBeLessThan(canvas!.y);expect(await caption.evaluate(el=>getComputedStyle(el).maxWidth)).not.toBe('none');
+    await page.getByText('Controls and source details',{exact:true}).click();await expect(page.getByText('Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.',{exact:true})).toBeVisible();
 });
