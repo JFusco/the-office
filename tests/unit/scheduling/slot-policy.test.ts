@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { admitsWork, canDispatch, foreignWork } from '../../../server/scheduling/slot-policy';
+import { admitsWork, canDispatch, foreignWork, deliveryOccupied } from '../../../server/scheduling/slot-policy';
 import { officeCapacity } from '../../../server/office/projects';
 
 const slot = (role?: 'developer' | 'lead' | 'qa' | 'pm') => ({ role });
@@ -55,4 +55,13 @@ test('engine work outside the scheduler holds the office like the single lane di
     capacity.busy.add('a');
     expect(foreignWork(capacity)).toBe(false);
     expect(canDispatch({ projectId: 'b', slot: slot('pm') }, capacity, false)).toBe(false);
+});
+
+test('delivery occupancy observes single and concurrent modes without modifying reservations',()=>{
+ for(const limit of [1,3]){
+  const c=officeCapacity(limit);expect(deliveryOccupied(c,'brain',false)).toBe(false);expect(deliveryOccupied(c,'brain',true)).toBe(true);
+  c.active.set('developer',new AbortController());expect(deliveryOccupied(c,'brain',false)).toBe(true);expect(c.active.size).toBe(1);c.active.clear();
+  if(limit===1){c.lane='cec';expect(deliveryOccupied(c,'brain',false)).toBe(true);expect(c.lane).toBe('cec');}
+  else {c.slots.set('cec',{role:'developer',exclusive:false});expect(deliveryOccupied(c,'brain',false)).toBe(true);expect(c.slots.size).toBe(1);c.slots.clear();c.busy.add('cec');expect(deliveryOccupied(c,'brain',false)).toBe(true);expect(c.busy.size).toBe(1);}
+ }
 });

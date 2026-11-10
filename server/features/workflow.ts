@@ -1,3 +1,4 @@
+import { reconcilePublication } from './release/reconcile-publication';
 import type { Feature } from '../../src/contracts/features';
 import type { Store } from '../store/store';
 import type { WorkerRuntime } from '../workers/worker-runtime';
@@ -37,6 +38,11 @@ export class FeatureWorkflow {
     pause(id?: string) {
         this.review.pause(id);
         for (const [featureId, controller] of this.running) if (!id || id === featureId) controller.abort();
+    }
+    async reconcile(id: string) {
+        const feature = featureById(this.store,id);
+        try { await reconcilePublication(this.store,feature,this.publisher(feature)); }
+        catch(error) { this.store.transaction(()=>{const current=featureById(this.store,id);recoverFailure(this.store,current,error,'reconciliation:'+current.revision+':'+(current.recovery?.generation??0));}); }
     }
     async step(id: string) {
         let feature = featureById(this.store, id);

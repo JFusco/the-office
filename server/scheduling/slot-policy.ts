@@ -34,3 +34,9 @@ export function canDispatch(candidate: { projectId: string; slot?: WorkSlot }, c
     const role = candidate.slot.role;
     return !role || !capacity.active.has(role) && ![...capacity.slots.values()].some(slot => slot.role === role);
 }
+
+/** Observe whether an unslotted assessment could enter delivery, without reserving capacity. */
+export function deliveryOccupied(capacity: OfficeCapacity, projectId: string, stoppingDelivery: boolean): boolean {
+    if (stoppingDelivery) return true;
+    return capacity.limit <= 1 ? Boolean(capacity.lane) || capacity.active.size > 0 : !canDispatch({ projectId }, capacity, false);
+}

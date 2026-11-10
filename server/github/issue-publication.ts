@@ -83,7 +83,9 @@ export class GitHubIssuePublisher implements FeaturePublisher {
         if (issue.html_url !== receipt.url || issue.pull_request || issue.state !== 'open') return false;
         if (op.kind === 'create' || op.kind === 'update') {
             const expected = Content.parse(op.payload), actual = this.content(issue);
-            return actual.title === expected.title && actual.body === expected.body && same(actual.labels, [...expected.labels].sort()) && same(actual.assignees, [...expected.assignees].sort());
+            const matches = actual.title === expected.title && actual.body === expected.body && same(actual.labels, [...expected.labels].sort()) && same(actual.assignees, [...expected.assignees].sort());
+            if (matches) receipt.requirementPostimage = {target: this.store.project.repository + '#' + number(receipt.key), content: {summary: issue.title, description: issue.body || '', labels: actual.labels}};
+            return matches;
         }
         if (op.kind === 'assign') return same(this.content(issue).assignees, [...Assign.parse(op.payload).assignees].sort());
         const payload = Board.parse(op.payload), cards = await projectCards(this.store, this.execute, payload.projectId, [{ kind: 'Issue', number: Number(number(receipt.key)) }]);

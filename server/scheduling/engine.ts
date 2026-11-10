@@ -13,9 +13,11 @@ import { requestDelivery, drainDelivery, startPilot, enableNightly, dispatchNigh
 import { requestMaintenance, reconcileMaintenance, drainMaintenance } from '../maintenance/maintenance-dispatch';
 import { run } from '../cec/ticket-stage-runner';
 import { observe } from './provider-observation';
+import { captureTicketEvidence } from '../features/handoff/ticket-evidence';
 import { FeatureWorkflow } from '../features/workflow';
 export class Engine {
     features: FeatureWorkflow;
+    captureEvidence = captureTicketEvidence;
     slackIdentityContext: () => {
         targetId: string;
         workspaceId: string;
@@ -54,7 +56,7 @@ export class Engine {
     requestMail(scheduled = false) { return requestMail.call(this, scheduled); }
     async drainMail() { return drainMail.call(this); }
     async checkMail(scheduled = false) { return checkMail.call(this, scheduled); }
-    requestDelivery(key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string) { return requestDelivery.call(this, key, action, intakeStatus); }
+    requestDelivery(key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: import('../../src/contracts/features').FeatureBinding; automatic?: boolean }) { return requestDelivery.call(this, key, action, intakeStatus, routing); }
     async drainDelivery(selectedId?: string) { return drainDelivery.call(this, selectedId); }
     async startPilot(key: string, background = true, intakeStatus?: string) { return startPilot.call(this, key, background, intakeStatus); }
     enableNightly(authorization?: string) { return enableNightly.call(this, authorization); }

@@ -72,6 +72,8 @@ export interface ReadRetry {
     exhausted: boolean;
 }
 export interface AssignmentReview {
+    featureBinding?: import('./contracts/features').FeatureBinding;
+    assessmentHold?: {kind: 'planning'; featureId: string; reason: string} | {kind: 'assessing'; episodeId: string; deadline: string | null; reason: string};
     legacyDependencyReviewPending?: boolean;
     parentReviewId?: string;
     prerequisites?: Prerequisite[];
@@ -853,6 +855,7 @@ export function slackMessageUrl(url: string, channelId: string, messageTs: strin
     }
 }
 export interface DeliveryRequest {
+    featureBinding?: import('./contracts/features').FeatureBinding;
     id: string;
     key: string;
     action: 'start-pilot' | 'resume-ticket';
