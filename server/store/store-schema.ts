@@ -1,6 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 export function initializeStoreSchema(db: DatabaseSync): void {
     db.exec(`
+    CREATE TABLE IF NOT EXISTS feature_assessments (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, ticket_key TEXT NOT NULL, body TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS feature_assessment_ticket ON feature_assessments(project_id,ticket_key);
+    CREATE TABLE IF NOT EXISTS feature_evidence_captures (project_id TEXT NOT NULL,target TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(project_id,target));
     CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS attempts (id TEXT PRIMARY KEY, ticket TEXT NOT NULL, stage TEXT NOT NULL, status TEXT NOT NULL, session TEXT, body TEXT NOT NULL);

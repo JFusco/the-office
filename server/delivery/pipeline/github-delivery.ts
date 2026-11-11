@@ -1,3 +1,7 @@
+import { routeAutomationMerge } from '../readiness/automation-merge';
+import { stoppedBasePackageInstruction } from '../recovery/stopped-base-package';
+import { runStoppedBaseReview } from '../recovery/stopped-base-review';
+import { stoppedBaseNextStage } from '../recovery/stopped-base-gates';
 import { FreshMergeReview } from '../readiness/refresh-merge-review';
 import { assertFeatureGate } from '../../features/enrollment-gate';
 import { bindDelivery } from '../../features/delivery-binding';
@@ -15,7 +19,7 @@ import { runHarnessStage } from '../harness/run-harness-stage';
 import { dependabotReviewGuidance } from '../intake/dependabot/review-guidance';
 import { createCandidate } from '../candidate/create-candidate';
 import { moveLane } from '../board/move-lane';
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { BOARD_RULE, DECISION_RULE, conflictRefreshInstruction, implementInstruction } from '../harness/stage-instructions';
 import { REPAIR_DIAGNOSIS, verifyRepairCandidate } from '../repairs/delivery-repairs';
 import { amendmentIssueSha256, requireSourceAmendmentAcceptance } from '../recovery/source-amendment/source-amendment';
@@ -60,6 +64,7 @@ export function pendingPreparationCheck(f: StageResult['findings'][number], chec
     return false; // Unknown findings block this stage, regardless of narrative wording.
 }
 export function deliveryNextStage(job: TicketJob): TicketJob['stage'] {
+    const stopped = stoppedBaseNextStage(job); if (stopped) return stopped;
     const resumed = scopeRepairResumeNextStage(job); if (resumed) return resumed;
     if (job.implementationContinuation?.phase === 'acceptance' && ['review', 'validate'].includes(job.stage)) return job.stage === 'review' ? 'validate' : 'draft';
     if (job.sourceAmendment && ['implement', 'scope-repair', 'update-base', 'review', 'validate'].includes(job.stage)) {
@@ -83,11 +88,12 @@ export function closeoutReceipt(result: StageResult, action: string, issueUrl: s
 export class GitHubDelivery {
     constructor(public store: Store, public engine: Engine, public execute: typeof command = command) { }
     get jobs() { return this.store.state.coordination!.jobs ??= []; }
-    enqueue(key: string, pr = 0, automaticStatus?: string) {
+    enqueue(key: string, pr = 0, automaticStatus?: string, admission?: { kind: import('../../../src/contracts/work').DeliveryAdmission['kind']; reference: string }) {
         assertFeatureGate(this.store, key);
         if (this.jobs.some(j => j.key === key && j.status !== 'cancelled'))
             return;
         const job: TicketJob = { id: crypto.randomUUID(), key, requestedAt: new Date().toISOString(), status: 'queued', stage: pr ? 'prepare-pr' : 'implement', detail: pr ? 'Existing PR routed to Sam; no duplicate development.' : 'Waiting for the Office team.', head: '', worktree: '', branch: '', pr, automaticStatus, prUrl: pr ? `https://github.com/${this.store.project.repository}/pull/${pr}` : '', existingPR: !!pr, steps: [] };
+        if (admission) job.admission = { ...admission, projectId: this.store.project.id, jobId: job.id, key, at: job.requestedAt };
         job.improvementId = this.store.state.knowledge?.improvements?.find(item => item.providerId === key)?.id;
         this.jobs.push(job);
         this.store.emit('github-delivery-queued', `${key} queued for ${pr ? 'Lead PR review' : 'development'}.`, 'pm', key);
@@ -124,11 +130,14 @@ export class GitHubDelivery {
         const project = this.store.project, root = resolve(this.store.dataRoot, 'ticket-work', job.id);
         mkdirSync(root, { recursive: true });
         try {
+            assertDeliveryMayMutate(this.store, this.jobs, job, job.head);
             if (job.implementationContinuation && (this.store.state.paused || HOLDS[job.key])) throw new Error('Continuation is paused or held');
             if (handsOff(this.store) && HOLDS[job.key]) throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
             if(job.savedPrerequisiteHandoff&&!await requireSavedPrerequisites(this,job)){
                 job.status='queued';job.detail='Independent review waits for fresh verified prerequisite merge';return;
             }
+            if (await routeAutomationMerge(this, job)) return;
+            if (await runStoppedBaseReview(this, job)) return;
             await new ProjectProgress(this.store, this.execute).reconcile(job);
             const issue = await this.api(`issues/${Number(job.key.slice(3))}`);
             if (await retireUnstartedDelivery(this, job, issue)) return;
@@ -145,8 +154,11 @@ export class GitHubDelivery {
                     throw new Error('Automatic pickup rule or live board lane changed before implementation');
             }
             if (harnessDelivers(this.store, job) && job.stage === 'implement') {
-                await createCandidate(this.store, this.execute, job, issue);
-                await moveLane(this.store, this.execute, job, 'In progress', () => assertMayMutate(this.store, this.jobs, job, job.head));
+                const expectedHead = job.head;
+                const assertCurrent = () => assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
+                assertCurrent();
+                await createCandidate(this.store, this.execute, job, issue, assertCurrent);
+                await moveLane(this.store, this.execute, job, 'In progress', assertCurrent);
             }
             if (job.stage === 'update-base' && job.pr) {
                 const current = await this.verifyPR(job, true);
@@ -155,7 +167,7 @@ export class GitHubDelivery {
                     throw new Error('Published repair identity or draft state changed; reconcile before source work');
             }
             if (harnessDelivers(this.store, job) && job.stage === 'update-base')
-                await moveLane(this.store, this.execute, job, 'In progress', () => assertMayMutate(this.store, this.jobs, job, job.head));
+                await moveLane(this.store, this.execute, job, 'In progress', () => assertDeliveryMayMutate(this.store, this.jobs, job, job.head));
             if (job.stage === 'draft' && job.approach && !job.sourceAmendment) {
                 const next = nextJobStage({ ...job, stage: 'validate' });
                 if (next !== 'draft') {
@@ -238,12 +250,20 @@ export class GitHubDelivery {
                 instructions = conflictRefreshInstruction(project, job, root);
             instructions += `\n${scopeRepairResumeInstruction(this.store,job)}`;
             instructions += `\n${dependabotReviewGuidance(this.store, job)}`;
+            instructions += `\n${await stoppedBasePackageInstruction(this, job)}`;
             // The exceptional prepare-pr worker still owns its retarget/promotion steps.
             if (handsOff(this.store))
                 instructions += `\n${job.stage === 'prepare-pr' || !harnessDelivers(this.store, job) ? '' : BOARD_RULE}\n${DECISION_RULE}`;
             const candidateAtStart = JSON.stringify({ id: job.id, stage: job.stage, head: job.head, branch: job.branch, worktree: job.worktree });
+            const expectedHead = job.head;
             const harnessResult = await runHarnessStage(this, job, root, readyChecks);
+            if (!harnessResult) assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
             const result: StageResult = harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: 60 * 60 * 1000 });
+            try { assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead); }
+            catch (error) {
+                job.steps.push({ stage: 'superseded-stage-result', result: structuredClone(result) });
+                throw new Error('Delivery authority changed after execution; result retained for reconciliation', { cause: error });
+            }
             await acceptStageResult.call(this, { job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, issueSha256, candidateAtStart, technicalPhase });
         }
         catch (error) {

@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { z } from 'zod';
-import { knowledgeContext, SECTION_LIMIT } from '../../../server/knowledge/knowledge-context';
+import { selectLessons, SECTION_LIMIT } from '../../../server/knowledge/lesson-selection';
+const knowledgeContext = (store: Parameters<typeof selectLessons>[0], stage?: string) => selectLessons(store, { stage }).text;
 import { retireLesson } from '../../../server/knowledge/lesson-commands';
 import { WorkerRuntime } from '../../../server/workers/worker-runtime';
 import type { command } from '../../../server/workers/process';
@@ -88,7 +89,7 @@ test('a running Harper worker never makes its ticket look owned to delivery', as
     const { store } = setup();
     const worker = (role: 'knowledge' | 'developer') => ({ id: crypto.randomUUID(), role, status: 'running', ticket: 'GH-12', requestId: `job:${role}`, provider: 'codex', sessionId: '', task: 'x', stage: role === 'knowledge' ? 'retrospective' : 'github-implement' } as never);
     const execute: typeof command = async (program, args) => program === 'claude' ? '[]' : program === 'git' ? `${store.project.repo}/.git\n` : '';
-    const bridge = new SessionBridge(() => [store], execute, async () => [], async () => []);
+    const bridge = new SessionBridge(() => [store], execute, async () => [], async () => Object.assign([], { unaccounted: [] }));
     store.state.workLog = [worker('knowledge')];
     await bridge.refresh();
     expect(bridge.forProject(store, 'GH-12', 'other-job').ownership.status).toBe('clear');

@@ -75,7 +75,7 @@ async function adoptOne(store: Store, execute: Execute, records: DependabotAdopt
         if (!closesIssue(pr.body, issue.number))
             await linkPR(store, execute, record, pr, issue.number, writeGuard);
         await ensureReviewCards(store, execute, record, issue, pr.number, pickup.status, writeGuard);
-        settle(store, record, 'adopted', `${bot.label} PR #${pr.number} adopted through #${issue.number}; Sam reviews its exact head before the guarded merge.`, `${bot.id}-adopted`);
+        settle(store, record, 'adopted', `${bot.label} PR #${pr.number} adopted through #${issue.number}; required GitHub checks and repository rules govern its Office merge, without an added review or QA cycle.`, `${bot.id}-adopted`);
     }
     catch (error) {
         settle(store, record, 'blocked', `${bot.label} PR #${pr.number} adoption stopped: ${String(error)}`, `${bot.id}-blocked`);

@@ -30,9 +30,10 @@ async function readCandidate(execute: Execute, worktree: string) {
  * Creates (or verifiably reuses) the isolated worktree for this job before Alex starts.
  * Never resets, adopts an unrelated path, or reuses a dirty tree.
  */
-export async function createCandidate(store: Store, execute: Execute, job: TicketJob, issue: { number: number; title: string }): Promise<{ branch: string; worktree: string; base: string; reused: boolean }> {
+export async function createCandidate(store: Store, execute: Execute, job: TicketJob, issue: { number: number; title: string }, assertCurrent: () => void): Promise<{ branch: string; worktree: string; base: string; reused: boolean }> {
     const repo = store.project.repo, target = store.project.target;
     if (job.worktree && job.branch && !existsSync(job.worktree) && !job.head) {
+        assertCurrent();
         // Intent was saved but the worktree was never created; no implementation exists to lose.
         Object.assign(job, { branch: '', worktree: '', candidateBase: undefined });
     }
@@ -59,16 +60,27 @@ export async function createCandidate(store: Store, execute: Execute, job: Ticke
     const existingRef = (await execute('git', ['for-each-ref', '--format=%(objectname)', `refs/heads/${identity.branch}`], { cwd: repo, timeout: 30000, readOnly: true })).trim();
     if (existingRef)
         throw new Error(`Branch ${identity.branch} already exists; the harness will not adopt it`);
+    assertCurrent();
     // Durable intent precedes the local write so a crash leaves a recognizable, reusable candidate.
     Object.assign(job, { branch: identity.branch, worktree: identity.worktree, candidateBase: base });
     store.save();
+    assertCurrent();
     await execute('git', ['worktree', 'add', '-b', identity.branch, identity.worktree, base], { cwd: repo, timeout: 120000 });
     const created = await readCandidate(execute, identity.worktree);
     if (created.head !== base || created.branch !== identity.branch || created.dirty)
         throw new Error('Created candidate read-back does not match the fetched target');
     // Advisory: the developer can still install; a failed seed never blocks the candidate.
-    await installDependencies(execute, identity.worktree, { timeout: 10 * 60000 })
-        .catch(error => store.emit('candidate-seed-failed', `${job.key}: dependency install in ${identity.worktree} failed; the developer installs instead. ${String(error).slice(0, 400)}`, 'developer', job.key));
+    let authorityLost = false;
+    await installDependencies(execute, identity.worktree, {
+        timeout: 10 * 60000,
+        beforeInstall: () => {
+            try { assertCurrent(); }
+            catch (error) { authorityLost = true; throw error; }
+        },
+    }).catch(error => {
+        if (authorityLost) throw error;
+        store.emit('candidate-seed-failed', `${job.key}: dependency install in ${identity.worktree} failed; the developer installs instead. ${String(error).slice(0, 400)}`, 'developer', job.key);
+    });
     store.emit('candidate-created', `${job.key}: worktree ${identity.worktree} on ${identity.branch} from ${target} ${base.slice(0, 7)}.`, 'developer', job.key);
     return { ...identity, base, reused: false };
 }

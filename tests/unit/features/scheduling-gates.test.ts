@@ -1,3 +1,5 @@
+import {digest} from '../../../server/features/documents';
+import {handoffBinding} from '../../../server/features/release/handoff-readback';
 import {expect,test,vi} from 'vitest';
 import {gateFeatureWork} from '../../../server/features/scheduling-gates';
 import {fixture} from './test-store';
@@ -15,30 +17,51 @@ test('a claim rechecks enrollment after its queue projection',()=>{
 });
 function deliveryFeature(f: ReturnType<typeof fixture>, keys: string[]) {
  f.feature.phase='delivery'; f.feature.status='waiting';
- f.feature.approvals.push({id:'approval',featureRevision:1,manifest:{items:keys.map((key,i)=>({id:String(i),key,predecessor:''}))}} as any);
+ f.feature.plans=[{markdown:'plan',digest:digest('plan')}] as any;
+ const approval={id:'approval',featureRevision:1,planDigest:digest('plan'),manifest:{items:keys.map((key,i)=>({id:String(i),key,predecessor:''}))}};
+ f.feature.approvals.push({...approval,digest:digest(approval)} as any);
  f.feature.publication=keys.map((key,i)=>({id:String(i),key,url:'',approvalId:'approval',verified:true,queued:false,effects:[],fence:false}));
 }
-test('existing GitHub ownership completes handoff while another item is requested exactly once',async()=>{
+test('only matching immutable GitHub ownership completes handoff, and projection never mutates it',async()=>{
  const f=fixture();try{
   deliveryFeature(f,['GH-1','GH-2']);
-  f.store.state.coordination!.jobs!.push({id:'owner',key:'GH-1',status:'queued'} as any);
+  f.store.state.coordination!.jobs!.push({id:'owner',key:'GH-1',status:'queued',featureBinding:handoffBinding(f.feature,f.feature.publication[0])} as any);
   f.store.state.coordination!.listener.assigned.push({key:'GH-1'} as any,{key:'GH-2'} as any);
-  const requestWork=vi.fn(),entry={store:f.store,engine:{},coordinator:{requestWork}} as any;
+  const requestWork=vi.fn((key,binding)=>{const row={id:'review',key,status:'queued',featureBinding:binding};f.store.state.coordination!.listener.reviews.push(row as any);return row;});
+  const entry={store:f.store,engine:{},coordinator:{requestWork}} as any;
   const work=scheduledFeatures(entry).find(w=>w.stage==='feature-delivery-admission')!;
-  expect(f.feature.publication[0].queued).toBe(true);expect(work.eligibility.state).toBe('runnable');
-  await work.execute(); await work.execute();
-  expect(requestWork.mock.calls).toEqual([['GH-2']]);
-  expect(scheduledFeatures(entry).some(w=>w.stage==='feature-delivery-admission'&&w.eligibility.state==='runnable')).toBe(false);
+  expect(f.feature.publication[0].queued).toBe(false);await work.execute();expect(f.feature.publication[0].queued).toBe(true);
+  const next=scheduledFeatures(entry)[0];await next.execute();await next.execute();
+  expect(requestWork).toHaveBeenCalledOnce();expect(requestWork.mock.calls[0][0]).toBe('GH-2');expect(f.feature.publication[1].handoff?.id).toBe('review');
  }finally{f.close();}
 });
-test.each(['pilot','queued','working'])('CEC %s ownership is not queued again',owner=>{
+test('a waiting successor does not hide its reordered predecessor from admission',async()=>{
+ const f=fixture();try{
+  f.feature.phase='delivery';f.feature.status='waiting';
+  f.feature.plans=[{markdown:'plan',digest:digest('plan')}] as any;
+  const approval={id:'approval',featureRevision:1,planDigest:digest('plan'),manifest:{items:[{id:'B',key:'GH-2',predecessor:''},{id:'A',key:'GH-1',predecessor:'B'}]}};
+  f.feature.approvals.push({...approval,digest:digest(approval)} as any);
+  f.feature.publication=[{id:'A',key:'GH-1'},{id:'B',key:'GH-2'}].map(p=>({...p,url:'',approvalId:'approval',verified:true,queued:false,effects:[],fence:false}));
+  f.store.state.coordination!.listener.assigned.push({key:'GH-1'} as any,{key:'GH-2'} as any);
+  const requestWork=vi.fn((key,binding)=>{const row={id:'review',key,status:'queued',featureBinding:binding};f.store.state.coordination!.listener.reviews.push(row as any);return row;});
+  const entry={store:f.store,engine:{},coordinator:{requestWork}} as any;
+  const work=scheduledFeatures(entry)[0];
+  expect(work).toMatchObject({stage:'feature-delivery-admission',eligibility:{state:'runnable'}});expect(work.claimEligible!()).toBe(true);
+  await work.execute();await work.execute();
+  expect(requestWork).toHaveBeenCalledOnce();expect(requestWork.mock.calls[0][0]).toBe('GH-2');
+  const [a,b]=featureById(f.store,f.feature.id).publication;
+  expect(b).toMatchObject({queued:true,handoff:{itemId:'B',approvalId:'approval',kind:'review',id:'review'}});expect(a.queued).toBe(false);
+  expect(scheduledFeatures(entry)[0]).toMatchObject({stage:'feature-delivery',eligibility:{state:'waiting',reason:'Waiting for verified predecessor completion'}});
+ }finally{f.close();}
+});
+test.each(['pilot','queued','working'])('foreign CEC %s ownership never counts as an accepted feature handoff',async owner=>{
  const f=fixture('cec');try{
   deliveryFeature(f,['CEC-10']);
   f.store.state.tickets.push({key:'CEC-10',pilot:owner==='pilot'} as any);
   if(owner!=='pilot')f.store.state.deliveryQueue=[{key:'CEC-10',status:owner} as any];
   const work=scheduledFeatures({store:f.store,engine:{}} as any);
-  expect(f.feature.publication[0].queued).toBe(true);
-  expect(work.some(w=>w.eligibility.state==='runnable')).toBe(false);
+  expect(f.feature.publication[0].queued).toBe(false);await work[0].execute();
+  expect(featureById(f.store,f.feature.id).publication[0].queued).toBe(false);expect(featureById(f.store,f.feature.id).status).toBe('blocked');
  }finally{f.close();}
 });
 test('failed handoff persists a blocker instead of retrying every scheduler turn',async()=>{
@@ -72,7 +95,7 @@ function cecDelivery(f: ReturnType<typeof fixture>, readback: ReturnType<typeof 
  const ticket={key:'CEC-10',pilot:false,stage:'mailbox',activity:'waiting',blocker:'',assignee:CEC.account,boardMember:true,subtask:false,status:'Open',statusId:'1',type:'Build Task'} as any;
  f.store.state.tickets.push(ticket);
  const engine={store:f.store,busy:false,agents:{active:new Map(),readback},
-  requestDelivery:(key:string,action:any)=>requestDelivery.call(engine as any,key,action),
+  requestDelivery:(key:string,action:any,status?:string,routing?:any)=>requestDelivery.call(engine as any,key,action,status,routing),
   startPilot:(key:string)=>startPilot.call(engine as any,key,false)};
  return {ticket,engine};
 }

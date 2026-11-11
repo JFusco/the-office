@@ -1,3 +1,4 @@
+import { LoadingState } from '../../ui/LoadingState';
 import type { OfficeConfigSummary } from '../../shared';
 import { Button, Card, TextLink, errorText, mutedCopy } from '../../ui';
 
@@ -7,7 +8,7 @@ const footer = 'Effective configuration in use since startup. Edit office-config
 
 /** Read-only view of the effective office configuration. */
 export function OfficeConfigView({ state, onRetry }: { state: OfficeConfigState; onRetry: () => void }) {
-  if (state.status === 'loading') return <p className={mutedCopy} role="status">Loading the Office configuration…</p>;
+  if (state.status === 'loading') return <LoadingState className={mutedCopy} >Loading the Office configuration…</LoadingState>;
   if (state.status === 'error') return <div className="grid gap-3"><p className={errorText} role="alert">Office configuration is unavailable: {state.message.replace(/^(?:Error|TypeError):\s*/, '')}</p><Button className="justify-self-start" onClick={onRetry}>Retry</Button></div>;
   const { projects, cec, holds } = state.config;
   return <div className="grid gap-3" data-office-config>

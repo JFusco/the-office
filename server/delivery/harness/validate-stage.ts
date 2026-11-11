@@ -27,7 +27,7 @@ export function harnessChecks(project: OfficeProject, worktree: string): Check[]
 export function harnessValidationEligible(job: TicketJob): boolean {
     return job.approach?.validation === 'independent-checks' && !!job.worktree && /^[a-f0-9]{40}$/i.test(job.head) &&
         !job.repairCycle?.pendingFindingIds?.length && !job.sourceAmendment && !job.implementationContinuation && !job.discoveryRecovery &&
-        !job.implementationRecovery && !job.candidateRecovery && !job.savedPrerequisiteHandoff && !job.scopeRepairResumes?.length;
+        !job.stoppedBaseUpdate && !job.implementationRecovery && !job.candidateRecovery && !job.savedPrerequisiteHandoff && !job.scopeRepairResumes?.length;
 }
 
 /** A non-zero exit from the check itself; timeouts, signals and spawn errors are infrastructure. */

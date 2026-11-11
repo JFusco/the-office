@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { expect, test, vi } from 'vitest';
 import { addMetadataHumanInput, metadataFixture } from '../../../fixtures/pr-metadata';
 import { assessPRMetadata } from '../../../../server/delivery/publication/metadata-assessment';
@@ -57,7 +58,7 @@ test.each([false, true])('a completed metadata review accepts fresh same-head na
     const next = await acceptLead(f, leadResult(f));
     expect(f.record.review?.workerId).toBe(next.worker.id); expect(f.record.reviewedAfterStep).toBe(f.job.steps.length - 1);
     expect(f.record.reviewedAfterStep).toBeGreaterThan(priorIndex!);
-    await requireMetadataReview(f.delivery, f.job);
+    await claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job));
     expect(f.record.phase).toBe('done'); expect(f.writes.patches).toBe(1); expect(model).not.toHaveBeenCalled();
 });
 
@@ -76,12 +77,12 @@ test('a native provider wait keeps metadata proof pending while ordinary observa
     await acceptLead(f, waiting);
     expect(f.job).toMatchObject({ stage: 'lead-pr', status: 'watching' }); expect(f.job.parked).toBeUndefined();
     expect(f.record.phase).toBe('review'); expect(f.record.review).toBeUndefined(); expect(f.record.reviewedAfterStep).toBeUndefined();
-    await expect(requireMetadataReview(f.delivery, f.job)).rejects.toThrow('Fresh independent');
+    await expect(claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job))).rejects.toThrow('Fresh independent');
     complete = true;
     await f.delivery.observe();
     expect(f.job).toMatchObject({ stage: 'lead-pr', status: 'queued' });
     await acceptLead(f, leadResult(f));
-    expect(f.record.phase).toBe('done'); await requireMetadataReview(f.delivery, f.job);
+    expect(f.record.phase).toBe('done'); await claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job));
     expect(f.writes.patches).toBe(1); expect(model).not.toHaveBeenCalled(); expect(f.job.repairCycle).toBeUndefined();
 });
 
@@ -108,7 +109,7 @@ test('fresh native Lead review accepts later authenticated human input while ret
     addMetadataHumanInput(f);
     expect(deliveryInputSha256(f.store, f.job.key)).not.toBe(binding.inputSha256);
     await acceptLead(f, leadResult(f));
-    expect(f.record.phase).toBe('done'); await requireMetadataReview(f.delivery, f.job);
+    expect(f.record.phase).toBe('done'); await claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job));
     expect(f.record.binding).toEqual(binding); expect(f.writes.patches).toBe(1);
 });
 
@@ -131,7 +132,7 @@ test.each(['blocked', 'failed'] as const)('a native metadata-verifying %s verdic
     expect(ci).toHaveBeenCalledWith(f.job); expect(f.job.ciRepairs?.at(-1)?.phase).toBe('diagnose');
     expect(f.job.steps.at(-1)).toMatchObject({ workerId: native.worker.id, nativeResultSha256: native.resultSha256 });
     expect(f.record.phase).toBe('review'); expect(f.record.review).toBeUndefined();
-    await expect(requireMetadataReview(f.delivery, f.job)).rejects.toThrow('Fresh independent');
+    await expect(claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job))).rejects.toThrow('Fresh independent');
     expect(f.writes.patches).toBe(1); expect(model).not.toHaveBeenCalled();
 });
 
@@ -167,7 +168,7 @@ test.each([
     expect(f.job.steps.at(-1)).toMatchObject({ workerId: native.worker.id, nativeResultSha256: native.resultSha256 });
     expect(f.store.state.knowledge?.learningConsumed?.some(id => id.startsWith(`job:${f.job.id}:lead-pr:`))).toBe(true);
     expect(f.record).toEqual(history); expect(f.record.phase).toBe('review'); expect(f.record.review).toBeUndefined();
-    await expect(requireMetadataReview(f.delivery, f.job)).rejects.toThrow('Fresh independent');
+    await expect(claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job))).rejects.toThrow('Fresh independent');
     expect(f.store.getEffect(effectId)).toEqual(effect); expect(f.writes.patches).toBe(1); expect(model).not.toHaveBeenCalled();
 });
 
@@ -176,7 +177,7 @@ test.each(['review', 'done'] as const)('verified metadata in phase %s becomes re
     f.record.phase = phase; f.job.head = 'd'.repeat(40);
     const history = structuredClone(f.record);
     expect(metadataAppliesToHead(f.store, f.job)).toBe(false);
-    await requireMetadataReview(f.delivery, f.job);
+    await requireMetadataReview(f.delivery,f.job);
     expect(f.record).toEqual(history); expect(f.writes.patches).toBe(1);
     const effect = f.store.getEffect(`harness:${f.job.id}:pr-metadata:${f.record.id}`)!;
     f.store.putEffect({ ...effect, status: 'uncertain' });
@@ -200,12 +201,12 @@ test.each(['pr-metadata', 'source'] as const)('provider-wait CI diagnosis keeps 
         expect(prompt).not.toContain('pr-metadata (return');
         return { ...plan(kind), title: f.selected.title, body: f.selected.body } as any;
     });
-    await f.delivery.step(f.job);
+    await claimedDelivery(f.store,f.job,()=>f.delivery.step(f.job));
     expect(f.job.ciRepairs!.at(-1)?.phase).toBe(kind === 'pr-metadata' ? 'blocked' : 'apply');
     if (kind === 'pr-metadata') expect(f.job.detail).toContain('one-shot');
     expect(f.record).toEqual(history); expect(f.store.getEffect(id)).toEqual(effect);
     expect(f.writes.patches).toBe(1); expect(model).toHaveBeenCalledTimes(2);
-    await expect(requireMetadataReview(f.delivery, f.job)).rejects.toThrow('Fresh independent');
+    await expect(claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job))).rejects.toThrow('Fresh independent');
 });
 
 test.each(['permission', 'human-hold', 'scope', 'uncertain-effect', 'release'] as const)('metadata verification does not release a genuine %s gate', async kind => {
@@ -236,7 +237,7 @@ test('already-ready preparation consumes actual saved metadata instead of return
     const result = await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true));
     expect(result?.outcome).toBe('passed'); expect(f.writes.patches).toBe(1); expect(f.pr.body).toBe(f.selected.body);
     expect(f.record.phase).toBe('review'); expect(model).not.toHaveBeenCalled();
-    await expect(f.run(() => requireMetadataReview(f.delivery, f.job))).rejects.toThrow('Fresh independent');
+    await expect(f.run(() => claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job)))).rejects.toThrow('Fresh independent');
 });
 
 test('publication alone cannot merge; a new native Lead must explicitly verify the original metadata finding', async () => {
@@ -254,7 +255,7 @@ test('publication alone cannot merge; a new native Lead must explicitly verify t
     f.nativeAssessment(result, { stage: 'github-lead-pr', claim });
     await withAssignment(claim, 'delivery', () => acceptMetadataReview(f.delivery, f.job, result, before));
     expect(f.record.phase).toBe('done');
-    await withAssignment(claim, 'delivery', () => requireMetadataReview(f.delivery, f.job));
+    await withAssignment(claim, 'delivery', () => claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job)));
     f.pr.body += '\nNew human edit';
-    await expect(withAssignment(claim, 'delivery', () => requireMetadataReview(f.delivery, f.job))).rejects.toThrow('Reviewed metadata changed');
+    await expect(withAssignment(claim, 'delivery', () => claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job)))).rejects.toThrow('Reviewed metadata changed');
 });

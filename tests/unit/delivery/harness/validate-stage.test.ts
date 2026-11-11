@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
@@ -132,7 +133,7 @@ test('a passing harness validate advances to draft without a QA model and satisf
     const review: StageResult = { outcome: 'passed', summary: 'Reviewed', commit: HEAD, blocker: '', findings: [], receipts: [], evidence: [], worktree: job.worktree, branch: job.branch, prId: 0, previewUrl: '', qaRunDir: '', paidRuns: 0, approach: null, prerequisites: null, resolution: null };
     job.steps.push({ stage: 'review', result: review });
     f.engine.agents.run = (async (role: string) => { throw new Error(`No ${role} model expected`); }) as any;
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail ?? '').not.toContain('No qa model');
     expect(job.steps.at(-1)).toMatchObject({ stage: 'validate', result: { outcome: 'passed' } });
     expect(job.steps.at(-1)!.workerId).toBeUndefined();
@@ -144,7 +145,7 @@ test('a failing harness validate queues a bounded source repair carrying the fin
     const { f, job, setVerify } = setup();
     setVerify(async () => { throw new CommandFailure('pnpm exited 1: FAIL', 'other', true); });
     f.engine.agents.run = (async (role: string) => { throw new Error(`No ${role} model expected`); }) as any;
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.stage).toBe('update-base');
     expect(job.repairCycle?.pendingFindingIds).toEqual(['harness-check:verify:ci']);
     expect(basename(job.steps.at(-1)!.result.evidence[0].path)).toMatch(/^harness-validate-/);
@@ -167,7 +168,7 @@ test.each([false, true])('a skipped dependency install keeps Riley even with con
     expect(events(f, 'harness-checks-skipped')).toHaveLength(1);
     let qaCalls = 0;
     f.engine.agents.run = (async (role: string) => { expect(role).toBe('qa'); qaCalls++; throw new Error('Synthetic QA fallback'); }) as any;
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(qaCalls).toBe(1);
     expect(job.detail).toContain('Synthetic QA fallback');
     expect(job.stage).toBe('validate');
@@ -186,7 +187,7 @@ test.each(['dirty', 'head'] as const)('a timeout after changing candidate %s fai
     Object.assign(f.state.local, { head: HEAD, dirty: false });
     let qaCalls = 0;
     f.engine.agents.run = (async () => { qaCalls++; throw new Error('No QA fallback expected'); }) as any;
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(qaCalls).toBe(0);
     expect(job).toMatchObject({ status: 'blocked', stage: 'validate', detail: expect.stringContaining('changed or dirtied') });
     expect(job.repairCycle).toBeUndefined();
@@ -209,7 +210,7 @@ test.each(['preflight', 'probe'] as const)('pause during %s interrupts delivery 
         return value;
     }) as any;
     f.engine.agents.run = (async () => { qaCalls++; throw new Error('No QA fallback expected'); }) as any;
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job).toMatchObject({ status: 'interrupted', stage: 'validate' });
     expect(qaCalls).toBe(0);
     expect(installs).toBe(0);

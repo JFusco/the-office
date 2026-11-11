@@ -1,3 +1,5 @@
+import { pendingRounds } from './questions/pending-round';
+import { LoadingState } from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import { FileText } from '../ui/icons';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -33,10 +35,10 @@ export function FeatureWorkspace({ snapshot, initialId = '', sourceGoalId = '', 
             setFeatures(current => [...current.filter(f => f.id !== body.id), body]); setSelected(body.id); setCreating(false); return true;
         } catch (e) { setError(String(e)); return false; } finally { setBusy(false); }
     }
-    const round = feature?.rounds.at(-1), pending = round && !Object.keys(round.answers).length && round.questions.length > 0;
+    const round = feature && pendingRounds(feature)[0], pending = !!round;
     return <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-6 text-13 leading-relaxed max-tablet:grid-cols-[160px_minmax(0,1fr)] max-compact:block">
         <nav aria-label="Features" className="flex flex-col gap-2 max-compact:mb-5 max-compact:flex-row max-compact:overflow-x-auto"><Button disabled={busy || snapshot.mode === 'demo'} onClick={() => { setCreating(true); setSelected(''); }}>New feature</Button>
-            {features.map(f => <button className={interactive + " rounded-8 border border-drawer-line p-3 text-left aria-current:bg-roster-hover max-compact:min-w-36"} key={f.id} type="button" aria-current={selected === f.id ? 'page' : undefined} onClick={() => { setSelected(f.id); setCreating(false); }}><strong className="block">{f.title}</strong><span className="block">{f.paused ? 'Paused' : f.phase} · {f.status}</span>{f.rounds.at(-1)?.questions.some(q => !f.rounds.at(-1)!.answers[q.id]) && <small>Questions waiting</small>}</button>)}
+            {features.map(f => <button className={interactive + " rounded-8 border border-drawer-line p-3 text-left aria-current:bg-roster-hover max-compact:min-w-36"} key={f.id} type="button" aria-current={selected === f.id ? 'page' : undefined} onClick={() => { setSelected(f.id); setCreating(false); }}><strong className="block">{f.title}</strong><span className="block">{f.paused ? 'Paused' : f.phase} · {f.status}</span>{pendingRounds(f).length > 0 && <small>Questions waiting</small>}</button>)}
         </nav>
         {creating ? <form className="min-w-0" onSubmit={e => { e.preventDefault(); void send('create', { title, intent, sourceGoalId, sourceTicket }); }}><PanelHeader icon={<FileText size={26}/>}>Plan a feature with Casey</PanelHeader><p>Start with the problem you want solved. Casey will research the project and bring you the decisions.</p><label className="my-3 grid gap-2">Feature name<input className={field + " " + fieldFocus + " rounded-6 p-3"} required maxLength={200} value={title} onChange={e => setTitle(e.target.value)} /></label><label className="my-3 grid gap-2">What should this accomplish?<textarea className={field + " " + fieldFocus + " rounded-6 p-3"} required maxLength={20000} rows={7} value={intent} onChange={e => setIntent(e.target.value)} /></label><Button variant="primary" type="submit" disabled={busy}>Start discovery</Button></form> : feature ? <main className="min-w-0">
             <header><PanelHeader icon={<FileText size={26}/>}>{feature.title}</PanelHeader><ol className="flex list-none flex-wrap gap-3 p-0 capitalize" aria-label="Feature progress">{phases.map(phase => <li className="aria-current:border-b-2 aria-current:font-bold" key={phase} aria-current={feature.phase === phase ? 'step' : undefined}>{phase}</li>)}</ol><p role="status">{feature.detail}</p>
@@ -52,10 +54,10 @@ export function FeatureWorkspace({ snapshot, initialId = '', sourceGoalId = '', 
             }}>{name}</button>)}</div>
             <div className="mt-6 grid grid-cols-[minmax(260px,.9fr)_minmax(280px,1.1fr)] gap-6 max-tablet:block"><section id={panelId + "Conversationpanel"} role="tabpanel" aria-labelledby={panelId + "Conversation"} aria-label="Feature conversation" className={mobile === "Conversation" ? "min-w-0" : "min-w-0 max-tablet:hidden"}>
                 {feature.conversation.map(message => <article className="border-b border-drawer-line py-3" key={message.id}><strong>{message.role === 'human' ? 'You' : message.role === 'analyst' ? 'Casey' : message.role === 'developer' ? 'Alex' : 'Independent review'}</strong><p className="whitespace-pre-wrap break-words">{message.text}</p></article>)}
-                {pending && round && <QuestionRound key={project + feature.id + round.id} project={project} feature={feature.id} round={round} busy={busy || feature.paused} submit={answers => send('answer', { roundId: round.id, answers })} />}
+                {pending && round && <QuestionRound key={project + feature.id + round.id} project={project} feature={feature.id} round={round} busy={busy || feature.paused} submit={answers => send('answer', { roundId: round.id, answers, ...(round.reviewRun ? {reviewRun:round.reviewRun,reviewRevision:round.reviewRevision} : {}) })} act={input => send('harness-action', { roundId: round.id, ...input })} />}
                 <form onSubmit={async e => { e.preventDefault(); if (await send('revise', { instruction: revision })) setRevision(''); }}><label className="my-3 grid gap-2">Correct or add a decision<textarea className={field + " " + fieldFocus + " rounded-6 p-3"} required value={revision} maxLength={20000} rows={3} onChange={e => setRevision(e.target.value)} /></label><Button type="submit" disabled={busy || !revision.trim()}>Save decision & revise</Button></form>
             </section><div id={panelId + "Documentpanel"} role="tabpanel" aria-labelledby={panelId + "Document"} className={mobile === "Document" ? "min-w-0" : "min-w-0 max-tablet:hidden"}><FeatureDocuments key={feature.id} feature={feature} snapshot={snapshot} /></div></div>
         </main> : <p className="p-4 text-muted">Choose a feature or start discovery with Casey.</p>}
-        {error && <p role="alert" className="col-span-full text-tag-blocked-ink">{error}</p>}
+        {busy && <LoadingState className="col-span-full">Saving feature progress…</LoadingState>}{error && <p role="alert" className="col-span-full text-tag-blocked-ink">{error}</p>}
     </div>;
 }

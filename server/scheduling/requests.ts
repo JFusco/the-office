@@ -1,3 +1,7 @@
+import { admitGreen156 } from '../delivery/recovery/green156-admission';
+import { reconcileStoppedBaseHandoff } from '../delivery/recovery/stopped-base-review';
+import { reconcileStoppedBaseUpdate } from '../delivery/recovery/stopped-base-update';
+import { stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
 import { admitImprovement } from '../knowledge/admit-improvement';
 import { reconcileBoardPreflight } from '../delivery/recovery/board-preflight';
 import {hasSavedPrerequisiteResult,handoffSavedPrerequisites} from '../delivery/recovery/implementation/saved-prerequisite-handoff';
@@ -29,8 +33,8 @@ import { TimeLedger } from '../time/time-ledger';
 import { fileLessonIssue } from '../knowledge/file-lesson-issue';
 import { command } from '../workers/process';
 import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
-const actions = new Set(['admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'file-lesson-issue']);
-export const deterministicActions = new Set(['admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'file-lesson-issue']);
+const actions = new Set(['authorize-green-merge-156', 'admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'file-lesson-issue']);
+export const deterministicActions = new Set([ 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'file-lesson-issue']);
 export function enqueueSourceAmendment(store: Store, input: unknown): HarnessRequest {
     const authorization = validateAmendmentIntent(store, input);
     const prior = store.state.coordination!.requests?.find(request => request.action === 'authorize-source-amendment' && ['queued', 'working', 'completed'].includes(request.status) && JSON.stringify(request.sourceAmendment) === JSON.stringify(authorization));
@@ -50,7 +54,7 @@ export function enqueueRequest(store: Store, action: string, key = '', head = ''
         lane = 'operations';
     const requests = store.state.coordination!.requests ??= [];
     const pendingCleanup = store.state.coordination?.jobs?.some(job => job.key === key && job.closeoutRecovery?.status === 'cleanup-pending');
-    const completedIsDuplicate = action === 'reconcile-implementation' && !!head && !!store.state.coordination?.jobs?.some(job=>job.key===key&&job.savedPrerequisiteHandoff?.originalWorkId===head) || action === 'reconcile-activation' || action === 'reconcile-validation' || !!head && (['reconcile-preparation','reconcile-scope-repair'].includes(action) || action === 'reconcile-closeout' && !pendingCleanup);
+    const completedIsDuplicate = action === 'reconcile-base-update' && stoppedBaseUpdateResolved(store, { key, head }) || action === 'reconcile-implementation' && !!head && !!store.state.coordination?.jobs?.some(job=>job.key===key&&job.savedPrerequisiteHandoff?.originalWorkId===head) || action === 'reconcile-activation' || action === 'reconcile-validation' || !!head && (['reconcile-preparation','reconcile-scope-repair'].includes(action) || action === 'reconcile-closeout' && !pendingCleanup);
     const old = requests.find(request => request.action === action && request.key === key && request.head === head && (['queued', 'working'].includes(request.status) || completedIsDuplicate && request.status === 'completed'));
     if (old)
         return old;
@@ -189,7 +193,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                 await delivery.approveMerge(request.key, request.head);
                 break;
             case 'reconcile-review':
-                await delivery.reconcileReview(request.key,request.head);
+                if (!await reconcileStoppedBaseHandoff(delivery, request)) await delivery.reconcileReview(request.key,request.head);
                 break;
             case 'repair-pr-conflicts': {
                 const job = delivery.jobs.find(job => job.key === request.key && job.status !== 'cancelled');
@@ -197,13 +201,14 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                 await delivery.queueConflictRepair(request.key);
                 break;
             }
+            case 'authorize-green-merge-156': await admitGreen156(delivery, request); break;
             case 'reconcile-base-update':
                 if (!await reconcileBoardPreflight(delivery, request, async () => {
                     await coordinator.sessionBridge?.refresh();
                     const owner = coordinator.sessionBridge?.forProject(store, request.key, request.id);
                     if (!owner) throw new Error('Board-preflight ownership inventory is unavailable');
                     return owner;
-                })) await delivery.reconcileBaseUpdate(request.key);
+                }) && !await reconcileStoppedBaseUpdate(delivery, request)) await delivery.reconcileBaseUpdate(request.key);
                 break;
             case 'cleanup-merged-candidate':
             case 'reconcile-closeout': {

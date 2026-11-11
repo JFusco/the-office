@@ -72,6 +72,8 @@ export interface ReadRetry {
     exhausted: boolean;
 }
 export interface AssignmentReview {
+    featureBinding?: import('./contracts/features').FeatureBinding;
+    assessmentHold?: {kind: 'planning'; featureId: string; reason: string} | {kind: 'assessing'; episodeId: string; deadline: string | null; reason: string};
     legacyDependencyReviewPending?: boolean;
     parentReviewId?: string;
     prerequisites?: Prerequisite[];
@@ -156,11 +158,13 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    admission?: import('./contracts/work').DeliveryAdmission;
     improvementId?: string;
     featureBinding?: import('./contracts/features').FeatureBinding;
     featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };
     ciRepairs?: import('./contracts/ci-repair').CIRepair[];
     prMetadataRepair?: import('./contracts/pr-metadata').PRMetadataRepair;
+    stoppedBaseUpdate?: import('./contracts/stopped-base-update').StoppedBaseUpdate;
     adoptedRepairCheckout?: import('./contracts/ci-repair').RepairCheckout;
     initialDraftConflict?: Readonly<{ originalWorkId: string; head: string; pr: number; proofPath: string; proofSha256: string }>;
     scopeRepairResumes?: { intentId: string; originalWorkId: string; head: string; proofPath: string; proofSha256: string; checkpointSha256: string; findingIds: string[]; afterStep: number; at: string }[];
@@ -853,6 +857,7 @@ export function slackMessageUrl(url: string, channelId: string, messageTs: strin
     }
 }
 export interface DeliveryRequest {
+    featureBinding?: import('./contracts/features').FeatureBinding;
     id: string;
     key: string;
     action: 'start-pilot' | 'resume-ticket';

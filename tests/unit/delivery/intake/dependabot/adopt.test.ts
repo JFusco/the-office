@@ -1,6 +1,5 @@
+import { claimedDelivery } from '../../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../../support/fake-github';
 import { adoptDependabot } from '../../../../../server/delivery/intake/dependabot/adopt';
 import { trackingMarker } from '../../../../../server/delivery/intake/dependabot/tracking-issue';
@@ -38,27 +37,24 @@ test('discovery then routes the linked PR to the existing-PR flow, not new devel
     await f.delivery.discover([{ key: 'GH-5', summary: '', url: f.issueUrl, pickupStatus: 'In review' }] as any);
     expect(f.delivery.jobs).toMatchObject([{ key: 'GH-5', pr: 121, stage: 'prepare-pr', status: 'queued', existingPR: true }]);
 });
-test('the adopted PR runs prepare, Sam\'s exact-head review and reaches the guarded merge with one model call', async () => {
+test('the adopted PR runs prepare then reaches the guarded merge without a review or QA model call', async () => {
     const { f, adopt } = dependabot();
     f.store.state.coordination!.merges = { enabled: true, authorizedAt: '2026-10-28T00:00:00Z' };
     await adopt();
     await f.delivery.discover([{ key: 'GH-5', summary: '', url: f.issueUrl, pickupStatus: 'In review' }] as any);
-    const job = f.delivery.jobs[0], review = resolve(f.artifactRoot(job), 'lead.json');
-    writeFileSync(review, '{}');
+    const job = f.delivery.jobs[0];
     const roles: string[] = [];
-    f.engine.agents.run = (async (role: string, task: string) => {
+    f.engine.agents.run = (async (role: string) => {
         roles.push(role);
-        expect(task).toContain('DEPENDABOT ADOPTION: PR #121');
-        expect(task).toContain('commit-message and PR-body lint standards, so those standards are bypassed');
-        return { outcome: 'passed', summary: 'Dependency-only update is ready', commit: HEAD, blocker: '', findings: [], receipts: [], previewUrl: '', worktree: '', branch: job.branch, prId: 121, qaRunDir: '', paidRuns: 0,
-            evidence: [{ id: 'lead', kind: 'review', summary: 'Exact-head review', path: review, commit: HEAD, environment: 'Synthetic', url: '', observedAt: '' }] };
+        throw new Error(`Unexpected automation model call: ${role}`);
     }) as any;
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job).toMatchObject({ stage: 'lead-pr', status: 'queued', head: HEAD });
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'merge', status: 'queued', pr: 121 });
-    expect(roles).toEqual(['lead']);
+    expect(roles).toEqual([]);
+    expect(job.steps.some(step => ['review', 'validate', 'lead-pr'].includes(step.stage))).toBe(false);
     expect(f.state.cards.find(c => c.kind === 'PullRequest')?.status).toBe('review');
 });
 test('foreign commits, drafts, other targets and cards outside Ready are never adopted', async () => {

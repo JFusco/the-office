@@ -1,3 +1,4 @@
+import { processGroupAlive } from '../workers/process';
 import { recoverFeatures } from '../features/recovery';
 import { projectOutbox } from '../conversations/outbox';
 import { ROLE_NAMES, workKey, type EffectIntent } from '../../src/shared';
@@ -132,7 +133,7 @@ export function recover(this: Store): void  {
                 request.detail = 'Operation interrupted; original effects require read-back before another claim';
             }
         for (const claim of this.activeClaims())
-            this.finishClaim(claim.id, this.state.workLog?.some(work => work.status === 'stopping' && work.processId && (work.claimId ? work.claimId === claim.id : work.requestId === claim.work.id || claim.work.id === `ticket:${work.ticket}`)) ? 'stopping' : 'interrupted');
+            this.finishClaim(claim.id, claim.stoppingObservationError || claim.stoppingGroups?.some(processGroupAlive) || this.state.workLog?.some(work => work.status === 'stopping' && work.processId && (work.claimId ? work.claimId === claim.id : work.requestId === claim.work.id || claim.work.id === `ticket:${work.ticket}`)) ? 'stopping' : 'interrupted');
         for (const intent of this.state.coordination?.time?.publications || [])
             if (intent.status === 'dispatching')
                 intent.status = 'uncertain';

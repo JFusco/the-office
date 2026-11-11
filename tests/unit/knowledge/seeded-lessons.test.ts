@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
-import { knowledgeContext } from '../../../server/knowledge/knowledge-context';
+import { selectLessons } from '../../../server/knowledge/lesson-selection';
+const knowledgeContext = (store: Parameters<typeof selectLessons>[0], stage?: string) => selectLessons(store, { stage }).text;
 import { retireLesson } from '../../../server/knowledge/lesson-commands';
 import { seedProjectLessons } from '../../../server/knowledge/seeded-lessons';
 import { migrateSnapshot } from '../../../server/store/migrations';

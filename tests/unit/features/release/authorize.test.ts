@@ -28,3 +28,9 @@ test('repository drift spends exactly one lifetime replan',async()=>{
  expect(f.feature.lifetimeReplans).toBe(1);expect(f.feature.revision).toBe(2);expect(f.feature.releases!.filter(r=>r.outcome==='replan')).toHaveLength(1);
  }finally{f.close();}
 });
+test('nonterminal canonical review state is retained for exact recovery routing',async()=>{
+ const f=authorizationFixture();try{
+ const evidence={...(await f.inspect()),status:'needs_user',findings:[{id:'FIND-1',disposition:'PENDING_USER'}]};
+ await expect(authorizeFeature(f.store,f.feature.id,f.input,{kind:'human',actor:'Joe'},()=>{},async()=>{},undefined,async()=>evidence,f.compare)).rejects.toMatchObject({code:'review-state',evidence});expect(f.feature.approvals).toEqual([]);
+ }finally{f.close();}
+});

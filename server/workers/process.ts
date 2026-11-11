@@ -1,3 +1,4 @@
+import { inactivityWatch } from './inactivity-watch';
 import { probeProcessGroup } from './lifecycle/process-group';
 import { lifecycleRecorder } from './lifecycle/recorder';
 import type { LifecycleDiagnostic } from './lifecycle/contract';
@@ -40,7 +41,9 @@ export async function command(program: string, args: string[], options: {
     cwd?: string;
     /** Per-child overrides only; never change the service's process.env. */
     env?: Record<string, string>;
+    /** Zero disables the total deadline when a progress watchdog is supplied. */
     timeout?: number;
+    inactivityTimeout?: number;
     readOnly?: boolean;
     input?: string;
     onSpawn?: (pid: number) => void;
@@ -79,11 +82,13 @@ export async function command(program: string, args: string[], options: {
             failure = reason;
             terminate();
         };
-        const timer = setTimeout(() => stop(new CommandFailure(options.readOnly ? `${program} read timed out; saved observations retained; safe to retry the read` : `${program} timed out; previous action outcome must be reconciled`, options.readOnly ? 'transient-read' : 'uncertain-effect', true)), options.timeout ?? 45000);
+        const timer = options.timeout === 0 && options.inactivityTimeout ? undefined : setTimeout(() => stop(new CommandFailure(options.readOnly ? `${program} read timed out; saved observations retained; safe to retry the read` : `${program} timed out; previous action outcome must be reconciled`, options.readOnly ? 'transient-read' : 'uncertain-effect', true)), options.timeout ?? 45000);
+        const inactivity = inactivityWatch(options.inactivityTimeout, () => stop(new CommandFailure(`${program} stopped producing output; inspect the retained worker evidence`, options.readOnly ? 'transient-read' : 'uncertain-effect', true)));
         const abort = () => stop(new CommandFailure('Worker paused; reconcile any external effects before resuming', 'cancelled', true));
         options.signal?.addEventListener('abort', abort, { once: true });
         child.stdout.on('data', (data: Buffer) => {
             const s = data.toString();
+            inactivity.progress();
             options.onOutput?.('stdout', s);
             out += s;
             line += s;
@@ -99,6 +104,7 @@ export async function command(program: string, args: string[], options: {
         child.on('close', async (code, signal) => {
             lifecycle?.close(code, signal); if (line) lifecycle?.line(line);
             clearTimeout(timer);
+            inactivity.clear();
             // CLI helpers can finish just after their leader. Allow a bounded normal
             // shutdown before classifying a surviving writer as an uncertain effect.
             const grace = performance.now() + 1000;

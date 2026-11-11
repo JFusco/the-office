@@ -1,3 +1,4 @@
+import { stoppedBaseStageProof } from '../recovery/stopped-base-validation';
 import { captureLearning } from '../../knowledge/learning-events';
 import { acceptFeatureReview } from '../../features/stage-acceptance';
 import {completedExecution} from '../../workers/worker-completion';
@@ -51,6 +52,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
     }
     acceptFeatureReview(this.store, job, result, job.stage, beforeWorkers);
     let nativeProof: { workerId?: string; nativeResultSha256?: string; issueSha256?: string } = issueSha256 ? { issueSha256 } : {};
+    nativeProof = { ...nativeProof, ...stoppedBaseStageProof(this.store, job, result, beforeWorkers) };
     let continuationWorker: ReturnType<typeof continuationWorkerProof> | undefined;
     let reviewDiagnostics: ReturnType<typeof continuationReviewArtifacts> = [];
     if (continuation) {

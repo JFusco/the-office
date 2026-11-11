@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { Store } from '../../../server/store/store';
@@ -7,6 +7,15 @@ import { projectById } from '../../../server/office/projects';
 import { createFeature } from '../../../server/features/commands';
 import { beginReader } from '../../../server/features/reader-attempts';
 import { recoverFeatures } from '../../../server/features/recovery';
+test('invalid helper ownership evidence retains its claim without aborting other pump maintenance',()=>{
+ const root=mkdtempSync(resolve(tmpdir(),'office-invalid-helper-')),store=new Store(':memory:',projectById('brain'),root);
+ try{
+ const f=createFeature(store,{action:'create',requestId:'bad',title:'Bad receipt',intent:'Test'});f.phase='review';
+ f.review={run:root,attemptDir:root,processes:[]} as any;mkdirSync(resolve(root,'calls','001'),{recursive:true});writeFileSync(resolve(root,'calls','001','started.json'),'invalid');
+ const claim=store.claimWork({kind:'feature',projectId:'brain',id:f.id},'owner','feature-review')!;
+ expect(()=>recoverFeatures(store,false,()=>false)).not.toThrow();expect(store.activeClaims().find(c=>c.id===claim.id)).toMatchObject({status:'stopping'});expect(f.detail).toContain('process evidence');
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
 test('recovery waits for the old process and records one replacement without changing content revision', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'office-feature-recovery-')), store = new Store(':memory:', projectById('brain'), root);
     try {

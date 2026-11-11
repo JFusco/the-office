@@ -85,5 +85,5 @@ test('during the tour People only opens desks present in the sample snapshot', a
   }
 
   await page.getByRole('button', { name: 'Office settings', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: 'Settings', exact: true }).getByText('Turns M, O, C, P and 0 on or off. Escape always closes details.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Settings', exact: true }).getByText('Turns M, O, C, P, U and 0 on or off. Escape always closes details.', { exact: true })).toBeVisible();
 });

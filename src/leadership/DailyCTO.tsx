@@ -1,3 +1,4 @@
+import {LoadingMark} from '../ui/LoadingState';
 import { useState } from 'react';
 import type { DailyCTOReport, OfficeSnapshot } from '../shared';
 import { officeUrl } from '../shared';
@@ -20,7 +21,7 @@ export function DailyCTO({ snapshot }: { snapshot: OfficeSnapshot }) {
     <div className="flex flex-wrap items-center justify-between gap-2"><strong>Project review · {reportDate(item.date)}</strong><span className="text-12">{reviewStatus[item.status]}</span></div>
     {report?.id === item.id ? <div className="mt-4"><CTOReview report={report} currentGoals={snapshot.ctoGoals || snapshot.goals} /><Button className="mt-3" onClick={() => setReport(null)}>Close recap</Button></div> : <>
       {item.detail.length <= 1500 ? <ReviewText text={item.detail} /> : null}
-      <Button disabled={!!loading} aria-expanded={false} onClick={() => void load(item.id)}>{loading === item.id ? 'Loading recap…' : 'Read recap'}</Button>
+      <Button disabled={!!loading} aria-expanded={false} onClick={() => void load(item.id)}>{loading === item.id && <LoadingMark/>}{loading === item.id ? 'Loading recap…' : 'Read recap'}</Button>
     </>}
   </article>);
   return <Section><SectionTitle className="mb-4">Daily CTO review</SectionTitle><p className={mutedCopy}>Avery reviews every project Monday–Friday at 5 PM Eastern. Weekends are off.</p>

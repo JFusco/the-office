@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -67,19 +68,19 @@ test('the observer refreshes the conflicting job, which reaches the guarded merg
 
     await f.delivery.observe();
     expect(job).toMatchObject({ stage: 'update-base', status: 'queued' });
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'draft', status: 'queued', head: MERGED });
     expect(f.state.cards[0].status).toBe('progress');
     pr.mergeable = true;
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'prepare-pr', pr: 200 });
     expect(f.state.prs).toHaveLength(1);expect(pr.head.sha).toBe(MERGED);expect(f.state.cards[0].status).toBe('review');
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'lead-pr', status: 'queued' });
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'merge', status: 'queued', head: MERGED });
     expect(roles).toEqual(['developer', 'lead']);
@@ -108,9 +109,9 @@ async function conflictDuringReview(priorBaseUpdates = 0) {
         return result(job, MERGED, { outcome: 'blocked', blocker: 'Conflicts with main', findings: [{ id: 'merge-conflicts', summary: 'Conflicts', expected: '', actual: '', status: 'open', attempts: 0 }], evidence: [{ id: 'lead', kind: 'review', summary: 'Conflicting', path: review, commit: MERGED, environment: 'Synthetic', url: '', observedAt: '' }] });
     }) as any;
     await f.delivery.observe();
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     pr.mergeable = true;
-    for (const stage of ['draft', 'prepare-pr', 'lead-pr']) { expect(job.stage).toBe(stage);await f.delivery.step(job); }
+    for (const stage of ['draft', 'prepare-pr', 'lead-pr']) { expect(job.stage).toBe(stage);await claimedDelivery(f.store, job, () => f.delivery.step(job)); }
     return { f, job };
 }
 test('a conflict found during Sam\'s post-refresh readiness review refreshes again instead of taking the legacy repair route', async () => {

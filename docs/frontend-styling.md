@@ -12,6 +12,7 @@ The Office UI uses **Tailwind CSS 4** (`tailwindcss` and `@tailwindcss/vite`, pi
 | `src/tokens/layout.css` | 4px spacing base (`--spacing: 4px`), named shell/scene dimensions (`h-topbar`, `w-drawer`, `max-w-bubble` …) and breakpoints. |
 | `src/tokens/effects.css` | Radii, shadows (colors from tint tokens), blur, motion timing, animations, and the `reduce-motion:` variant. |
 | `src/tokens/scene-colors.ts` | Names the CSS tokens used by Three.js materials, lights and the canvas-drawn operations screen. |
+| `src/tokens/knowledge-layout.ts` | Reads fixed map spacing tokens once at renderer startup; resize uses measured panel geometry, with no per-frame CSS reads. |
 | `src/ui/` | Small shared pieces: `Button`, `IconButton`, `Tag`, `StatusDot`, `Select`, `TextLink`, `Notice`, `Section`, `PanelTitle`, `SectionTitle`, `Card`, `CheckField`, decorative icon wrappers, and shared class strings (`interactive`, `focusRing`, `field`, `checkbox`, and the settings compositions `inputField`, `selectField`, `fieldLabel`, …). |
 
 Utility tokens use `@theme`; values that should not generate utilities stay in `:root`. Import order in `style.css` is the ownership order.
@@ -25,7 +26,7 @@ Utility tokens use `@theme`; values that should not generate utilities stay in `
 - **Conditional classes:** choose between complete static strings (`selected?'bg-roster-hover':'border-transparent'`); never build class names from fragments.
 - **Interaction:** every enabled control uses `interactive` (or `field`/`checkbox`/`summary`): a hover change, `transition-colors` at the shared 150ms timing, and the 3px `focus-visible` ring. Scene labels use `interactiveScene` (a darker ring with 3:1 against the room) and dark surfaces use `interactiveOnDark`. Do not use `transition` or `transition-all`.
 - **Motion:** `reduce-motion:` applies under the OS preference *or* the Office "Reduced motion" setting (`data-motion="reduced"` on `<html>`). Motion animations also receive the `reduced` prop.
-- **Inline styles:** none in source. Motion writes transforms/opacity and Drei writes overlay positions inside their libraries; those are the only runtime styles.
+- **Inline styles:** none in source. Motion writes transforms/opacity and Drei writes overlay positions inside their libraries; Motion also binds the map reticle's projected CSS variables through `styleEffect`/MotionValues and disposes those bindings with the renderer. No project code writes DOM styles.
 - **Scene colors:** `sceneColors()` reads the CSS tokens once and caches them. Values are sRGB CSS colors, so three.js color management and the canvas texture's `SRGBColorSpace` behave as before. Never call it per frame.
 - **Semantics:** native buttons for actions, links for navigation, `details/summary` disclosures, labeled regions. The inspector, including Settings, is a named non-modal aside; help is a named non-modal dialog. Both take focus on open and return it on close; Settings returns focus to the gear. Icons are decorative (`aria-hidden`); status dots always pair with text.
 

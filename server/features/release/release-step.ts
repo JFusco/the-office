@@ -1,3 +1,4 @@
+import { authorizationEvidence } from './authorization-evidence';
 import type { Store } from '../../store/store';
 import type { FeatureManifest } from '../../../src/contracts/features';
 import { command } from '../../workers/process';
@@ -19,8 +20,11 @@ export async function releaseStep(store: Store, id: string, validate: (manifest:
         if (!claim || !store.activeClaims().some(c => c.id === claim.id && c.status === 'running') || current.paused || store.state.paused) throw new FeatureError('stale-command', 'Automatic release requires its current scheduler claim');
     };
     guard();
+    if (!authorizationEvidence(store, feature)) return;
+    const evidenceDigest = feature.evidence?.evidenceDigest;
+    const evidenceGuard = () => { guard(); if (featureById(store,id).evidence?.evidenceDigest !== evidenceDigest || !authorizationEvidence(store, featureById(store,id))) throw new FeatureError('stale-command', 'Provider evidence changed before authorization'); };
     const planDigest = feature.plans.at(-1)?.digest ?? '', manifestDigest = digest(feature.manifest);
     const requestId = 'policy-release:' + digest([id, feature.revision, feature.confirmedBrief, planDigest, manifestDigest, feature.review?.run, feature.review?.revision, policy.digest, feature.evidence?.evidenceDigest]);
     return authorizeFeature(store, id, { action: 'policy-release', requestId, expectedRevision: feature.revision, planDigest, manifestDigest },
-        { kind: 'policy', projectId: store.project.id, policyDigest: policy.digest, policyVersion: policy.version, ...(feature.evidence ? { evidenceDigest: feature.evidence.evidenceDigest } : {}) }, guard, validate, execute, inspect, compare);
+        { kind: 'policy', projectId: store.project.id, policyDigest: policy.digest, policyVersion: policy.version, ...(feature.evidence ? { evidenceDigest: feature.evidence.evidenceDigest } : {}) }, evidenceGuard, validate, execute, inspect, compare);
 }

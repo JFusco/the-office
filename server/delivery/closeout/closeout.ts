@@ -1,7 +1,7 @@
 import { moveLane } from '../board/move-lane';
 import { removeCandidate } from '../candidate/remove-candidate';
 import { recordCandidateCleanup } from '../candidate/cleanup-status';
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { harnessStageResult, receipt } from '../harness/stage-result';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -33,7 +33,7 @@ export async function harnessCloseout(delivery: GitHubDelivery, job: TicketJob, 
     if (!p.merged_at || !job.mergeCommit || p.merge_commit_sha !== job.mergeCommit)
         throw new Error('Merged PR and exact merge commit are unverified');
     const actions = await verifyMergeActions(delivery, job);
-    const head = job.head, guard = () => assertMayMutate(store, delivery.jobs, job, head);
+    const head = job.head, guard = () => assertDeliveryMayMutate(store, delivery.jobs, job, head);
     guard();
     const issueUrl = `https://github.com/${repository}/issues/${issueNumber}`;
     const issueClosed = async () => (await delivery.api(`issues/${issueNumber}`)).state === 'closed' ? { closed: true } : null;

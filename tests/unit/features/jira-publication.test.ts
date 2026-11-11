@@ -30,9 +30,9 @@ test.each([
   let writes=0;
   const p=new JiraFeaturePublisher(f.store,f.feature,async(_p,args,options)=>{
    if(options?.readOnly===false)writes++;
-   return JSON.stringify({data:args.includes('types')?[{name:'Build Task',hierarchyLevel:0,subtask:false}]:args.includes('create-metadata')?{fields:[]}:{fields:{summary:'Feature',description,labels:['keep']}}});
+   return JSON.stringify({data:args.includes('types')?[{name:'Build Task',hierarchyLevel:0,subtask:false}]:args.includes('create-metadata')?{fields:[]}:{key:'CEC-10',fields:{summary:'Feature',description,labels:['keep']}}});
   });
-  await expect(p.preflight({} as any,{kind:'update',payload:{space:'CEC',type:'Build Task',summary:'Feature',description:'Text',labels:['keep']},expected:{}} as any,'CEC-10')).rejects.toThrow('lossless update adapter');
+  await expect(p.preflight({} as any,{kind:'update',payload:{space:'CEC',type:'Build Task',summary:'Feature',description:'Text',labels:['keep']},expected:{summary:'Feature',description:'Text',labels:['keep']}} as any,'CEC-10')).rejects.toThrow('changed since approval preview');
   expect(writes).toBe(0);
  }finally{f.close();}
 });
@@ -41,7 +41,7 @@ test('plain Jira paragraphs may be updated while existing labels must survive va
   const marker='office-feature-'+f.feature.id+'-item-one';
   const p=new JiraFeaturePublisher(f.store,f.feature,async(_p,args)=>{
    const data=args.includes('scope')?{filter:{id:'53671'}}:args.includes('types')?[{name:'Build Task',hierarchyLevel:0,subtask:false}]:args.includes('create-metadata')?{fields:[]}:
-    {fields:{summary:'Feature',description:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Text'}]}]},labels:['keep']}};
+    {key:'CEC-10',fields:{summary:'Feature',description:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Text'}]}]},labels:['keep']}};
    return JSON.stringify({data});
   });
   const operation={id:'update',kind:'update',payload:{space:'CEC',type:'Build Task',summary:'Feature',description:marker,labels:['keep',marker]},expected:{summary:'Feature',description:'Text',labels:['keep']}} as any;

@@ -1,3 +1,4 @@
+import { assertStoppedBaseApproach } from '../recovery/stopped-base-gates';
 import { assertFeatureApproach } from '../../features/delivery-binding';
 import { needsDecision } from '../parking/needs-decision';
 import { z } from 'zod';
@@ -133,6 +134,7 @@ export function reviewInstructions(mode: WorkApproach['review'] = 'full') {
  * structured wait or decision (`needsDecision`), not a defect; every other earlier result keeps guarding. */
 export function recordJobApproach(job: TicketJob, approach: WorkApproach, role: Role, workerFailure = false, advisoryFindings = false, incoming?: StageResult) {
     const next = ApproachSchema.parse(approach), prior = job.approach;
+    assertStoppedBaseApproach(job, next);
     if (!(job.repairReason === 'conflicts' && job.approach?.review === 'none' && job.decisions?.some(d => d.stage === 'update-base' && d.role === 'pm' && JSON.stringify(d.approach) === JSON.stringify(job.approach)))) assertFeatureApproach(job, next);
     // A first focused review with independent checks is a choice, not a downgrade
     // from an invented full review. Skipping review/checks still retains guards.
@@ -167,6 +169,7 @@ export function nextJobStage(job: TicketJob): TicketJob['stage'] {
 // Joe explicitly authorized moving on after conflict repair without repeating
 // source review. Keep exact-head checks and every later provider/merge gate.
 export function acceptConflictRepair(job: TicketJob, result: StageResult, advisoryFindings = false) {
+    if (job.stoppedBaseUpdate) { assertStoppedBaseApproach(job, job.approach!); return; }
     if (job.repairReason !== 'conflicts' || result.outcome !== 'passed' || result.commit !== job.head || !result.evidence.some(e => e.kind === 'checks' && e.commit === job.head) || result.receipts.some(r => r.uncertain || !r.verified) || !advisoryFindings && result.findings.some(f => f.status === 'open' && f.id !== 'draft-blocks-merge'))
         throw new Error('A verified conflict repair with current-head checks is required');
     const reason = 'Joe requested no repeated source review after conflict repair. Retain prior review history and the repair’s passing exact-head developer checks; publication, readiness and merge gates still apply.';

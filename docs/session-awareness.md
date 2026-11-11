@@ -1,5 +1,15 @@
 # External session awareness
 
+Ordinary harness delivery for Brain and CMS Vocabulary uses the Office's registered admissions,
+current scheduler claims and explicit holds. A missing chat inventory remains an
+unavailable context source; it does not prevent an otherwise authorized delivery.
+Each scheduled write rechecks the exact persisted job or original recovery request,
+claim, stage and controls. Private candidate identity, provider head leases, source
+acceptance, independent review, QA and durable effect readback still apply. An
+interrupted original worker is never accepted or replayed because chat context is
+optional. Older native recovery workflows, CEC and native maintenance retain their existing
+ownership rules. Their historical proof formats are unchanged.
+
 The Office checks the shared Codex runtime, open Codex desktop/CLI rollout identities,
 Claude's live inventory and its own worker claims. A chat's starting directory alone
 does not describe all the repositories it is working in.

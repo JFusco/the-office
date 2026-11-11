@@ -1,3 +1,9 @@
+import { green156Admitted } from '../delivery/recovery/green156-evidence';
+import { requestPriority } from '../operations/request-priority';
+import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
+import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
+import { scheduledCaptures } from '../features/handoff/scheduled-captures';
+import { scheduledAssessments } from '../features/handoff/scheduled-assessments';
 import { scheduledSlackIntake } from '../knowledge/slack-intake/schedule';
 import { metadataRequestResolved } from '../delivery/recovery/pr-metadata-recovery';
 import { scheduledInvestigations } from '../it/investigations/scheduled';
@@ -70,7 +76,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     }
     for (const request of c.requests || [])
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)
-            add('reconciliation', request, request.action, request.requestedAt, request.action==='cleanup-merged-candidate'&&verifiedCloseoutCleanupRequest(store,request)?0:2, () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
+            add('reconciliation', request, request.action, request.requestedAt, requestPriority(request.action, request.action === 'cleanup-merged-candidate' && verifiedCloseoutCleanupRequest(store, request)), () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
                 requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') : null);
     // Applying the scope correction only rewrites the local ledger (publishing stays paused), so it may
     // run while the office is paused or draining: draining is how live work on affected tickets ends.
@@ -80,6 +86,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         if (request?.status === 'queued') item.eligibility = eligible('runnable', 'Ledger-only correction may run while paused');
     }
     if (lane === 'operations') {
+        items.push(...scheduledCaptures(entry, engine.captureEvidence));
         const publishingEnabled = store.project.provider === 'github' ? c.time?.githubField : !!c.time?.jiraActivatedAt && c.time.jiraEnabled !== false;
         // A pending day on a ticket with an unresolved publication waits, and does not block read-back.
         const pendingTime = c.time?.enabled && publishingEnabled && publishableEntry(c.time, store.project.provider, value => store.project.provider === 'github' || value.date < easternDay(now));
@@ -95,11 +102,11 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const costReadback = dueCostReadback(store, now);
         if (costReadback)
             add('reconciliation', { id: `cost-readback:${costReadback.key}`, status: 'queued' }, 'cost-readback', costReadback.updatedAt, 3, () => readBackCost(store, costReadback.key));
-        return withActiveClaims(store, lane, gateFeatureWork(store, items));
+        return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));
     }
     if (lane !== 'delivery')
-        return withActiveClaims(store, lane, gateFeatureWork(store, items));
-    items.push(...scheduledFeatures(entry));
+        return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));
+    items.push(...scheduledFeatures(entry), ...scheduledAssessments(entry, now));
     for (const job of c.jobs || []) {
         const validation = validatePrerequisites(job.prerequisites || [], { projectId: store.project.id, kind: 'delivery', id: job.id }, stores);
         const dependency = validation ? eligible('blocked', validation) : dependencyEligibility(job.prerequisites || [], stores, now);
@@ -156,7 +163,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     const mail = store.state.pendingMail;
     if (mail)
         add('mail', { id: mail.id || mail.requestedAt, status: 'queued' }, 'mailbox', mail.requestedAt, 3, () => engine.drainMail());
-    return withActiveClaims(store, lane, gateFeatureWork(store, items));
+    return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));
 }
 
 /** A persisted execution claim is authoritative while synthetic source rows change. */
@@ -188,6 +195,9 @@ function requestResolved(store: Store, request: import('../../src/shared').Harne
             step.result.outcome === 'passed' && step.result.receipts.some(receipt => ['native-checkpoint-readback', 'checkpoint-completion-readback'].includes(receipt.action) && receipt.verified && !receipt.uncertain));
     }
     if (!['blocked', 'interrupted'].includes(request.status)) return false;
+    if (request.action === 'reconcile-review' && stoppedBaseHandoffResolved(store,request)) return true;
+    if (request.action === 'authorize-green-merge-156') { const job = store.state.coordination?.jobs?.find(j => j.key === request.key); return !!job && job.stoppedBaseUpdate?.greenMerge?.requestId === request.id && green156Admitted(store, job); }
+    if (request.action === 'reconcile-base-update') return stoppedBaseReassessmentReady(store, request);
     if (request.action === 'reconcile-pr-metadata') return metadataRequestResolved(store, request);
     if (request.action === 'reconcile-closeout') return closeoutRequestResolved(store,request);
     if (request.action === 'reconcile-scope-repair') return scopeRepairRequestResolved(store,request);

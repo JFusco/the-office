@@ -1,3 +1,4 @@
+import {LoadingMark} from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import { panelMotion } from '../tokens/motion';
 import {MergeApproval} from '../work/MergeApproval';
@@ -14,7 +15,7 @@ import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react'
 import { SettingsPanel } from './settings/SettingsPanel';
 import type { OfficePreferencesController } from './settings/useOfficePreferences';
 import { motion, useIsPresent } from 'motion/react';
-import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullRequest, Inbox, LoaderCircle, X, AlertCircle, Camera, Clock3, Settings2, MessageCircle } from '../ui/icons';
+import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullRequest, Inbox, X, AlertCircle, Camera, Clock3, Settings2, MessageCircle } from '../ui/icons';
 import { Button, Card, Count, IconButton, Notice, PanelIcon, PanelTitle, Section, SectionTitle, StatusDot, Tag, TextLink, cx, envelopeCard, eyebrow, interactive, mutedCopy, noticeIcon } from '../ui';
 import { STAGES, STAGE_LABELS, ROLE_NAMES, PERSONAS, type OfficeSnapshot, type Ticket, type Evidence, type Role } from '../shared';
 import type { Selection } from '../scene/OfficeScene';
@@ -62,6 +63,7 @@ function TicketDetail({ticket:t,snapshot,act,onOpen}:{ticket:Ticket;snapshot:Off
     <TimeBook snapshot={snapshot} ticket={t.key}/>
   </>;
 }
+import { TicketPlanningAction } from '../features/questions/TicketPlanningAction';
 import { FeatureWorkspace } from '../features/FeatureWorkspace';
 export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,onSelect,onOpenBrain,act,busy,sendMessage,reduced,onOpenProject,preferences,osReduced=false,refresh,settingsReturn,drawerOpener,replacing}:{selection:Exclude<Selection,null>;snapshot:OfficeSnapshot;names?:Record<Role,string>;onClose:()=>void;onOpenBrain?:()=>void;onSelect:(s:Selection)=>void;act:(action:string,key?:string)=>void;busy:boolean;sendMessage:SendMessage;reduced:boolean;onOpenProject:(project:string,key:string)=>void;preferences?:OfficePreferencesController;osReduced?:boolean;refresh?:()=>Promise<void>;settingsReturn?:RefObject<HTMLElement|null>;drawerOpener?:MutableRefObject<HTMLElement|null>;replacing?:RefObject<boolean>}){
   const close=useRef<HTMLButtonElement>(null),ownOpener=useRef<HTMLElement|null>(null),opener=drawerOpener||ownOpener;
@@ -108,11 +110,11 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
       {selection.kind==='goals'?<Goals snapshot={snapshot} sendMessage={sendMessage} onDiscuss={()=>onSelect({kind:'cto-chat'})} onPlan={(project,goal)=>onOpenProject(project,'feature-goal:'+goal)}/>:null}
       {selection.kind==='cto-chat'?<><PanelHeader icon={<MessageCircle size={26}/>}>Chat with {ctoName}</PanelHeader><p className="text-11 leading-normal text-muted">Discuss any Office project and save goals or ideas in the existing panel. {pmName} brings delivery reports here.</p><Conversation snapshot={snapshot} names={names} sendMessage={sendMessage} role="cto" fill/></>:null}
       {selection.kind==='outbox'?<Outbox key={selection.id||'tray'} snapshot={snapshot} names={names} sendMessage={sendMessage} initialId={selection.id}/>:null}
-      {ticket?<><Button full className="mb-3" disabled={snapshot.mode==='demo'} onClick={()=>onSelect({kind:'features',sourceTicket:ticket.key})}>Plan a feature from this ticket</Button><Button full className="mb-6" onClick={()=>onSelect({kind:'chat',ticket:ticket.key})}>Discuss {ticket.key} with {pmName}</Button><TicketDetail ticket={ticket} snapshot={snapshot} act={act} onOpen={key=>onSelect({kind:'ticket',id:key})}/></>:null}
+      {ticket?<><TicketPlanningAction snapshot={snapshot} ticket={ticket.key} open={id=>onSelect(id?{kind:'features',id}:{kind:'features',sourceTicket:ticket.key})}/><Button full className="mb-6" onClick={()=>onSelect({kind:'chat',ticket:ticket.key})}>Discuss {ticket.key} with {pmName}</Button><TicketDetail ticket={ticket} snapshot={snapshot} act={act} onOpen={key=>onSelect({kind:'ticket',id:key})}/></>:null}
       {selection.kind==='pm-queue'?<PMQueue snapshot={snapshot} onOpen={onOpenProject}/>:null}
       {selection.kind==='mailbox'?<>
         <PanelHeader icon={<Inbox size={26}/>}>PM mailbox</PanelHeader><InboxQueue snapshot={snapshot} onOpen={key=>onSelect({kind:'ticket',id:key})}/><p className={cx(mutedCopy,'mt-4')}>{github?`GitHub issues for this project. Ask ${pmName} to draft or create an issue using GitHub Issue Creator, or coordinate the daily maintenance review.`:'The PM receives CEC parent tickets assigned to you in To Do or Open. Every ticket is checked before it reaches a desk.'}</p>
-        <Button variant="primary" full className="mt-5" disabled={busy||!!snapshot.pendingMail||snapshot.intake.status==='working'||snapshot.mode==='demo'||snapshot.paused} onClick={()=>act('check-mail')}>{snapshot.intake.status==='working'?<LoaderCircle size={16} className="animate-spin reduce-motion:animate-none"/>:<Inbox size={16}/>} {snapshot.pendingMail?'Mail check queued':'Check mail now'}</Button>
+        <Button variant="primary" full className="mt-5" disabled={busy||!!snapshot.pendingMail||snapshot.intake.status==='working'||snapshot.mode==='demo'||snapshot.paused} onClick={()=>act('check-mail')}>{snapshot.intake.status==='working'?<LoadingMark/>:<Inbox size={16}/>} {snapshot.pendingMail?'Mail check queued':'Check mail now'}</Button>
         <div className="mt-4 flex items-start gap-2 text-9 text-schedule"><Clock3 size={14}/><span>{snapshot.intake.schedule}<small className="mt-1 block text-8 leading-relaxed text-schedule-detail">{snapshot.intake.lastChecked?`Last checked ${new Date(snapshot.intake.lastChecked).toLocaleString()}`:'Mailbox has not been checked yet'}</small></span></div>
         {snapshot.intake.error?<Notice className="mt-5"><AlertCircle className={noticeIcon} size={17}/><span>{snapshot.intake.error}</span></Notice>:null}
         <Button full className="mt-5" disabled={!preferences?.preferences} onClick={()=>onSelect({kind:'settings'})}><Settings2 size={16}/> Project settings</Button>

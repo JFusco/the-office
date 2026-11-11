@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test, vi } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -27,7 +28,7 @@ async function fixture(prLane = 'review') {
         worktree: job.worktree, branch: job.branch, prId: 362, receipts: [], evidence: [], findings: [], previewUrl: '', qaRunDir: '', paidRuns: 0,
         resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [] } };
     job.steps.push({ stage: 'lead-pr', result });
-    await park(f.delivery, job, result);
+    await claimedDelivery(f.store, job, () => park(f.delivery, job, result));
     job.parked!.at = '2026-11-09T23:05:00Z';
     for (const update of job.boardUpdates!) update.at = '2026-11-09T23:06:00Z';
     research(f);
@@ -227,7 +228,7 @@ test.each([false, true])('new or changed research bypasses a reusable review exa
     x.job.lastPRFingerprint = JSON.stringify([...JSON.parse(x.job.lastPRFingerprint!).slice(0, 8), 'old-state', ...(priorResearch ? [deliveryResearchSha256(x.f.store, x.job.key)] : [])]);
     await x.f.delivery.observe();
     expect(x.job.reviewContext).toBeDefined();
-    await x.f.delivery.step(x.job);
+    await claimedDelivery(x.f.store,x.job,()=>x.f.delivery.step(x.job));
     expect(run).not.toHaveBeenCalled();
     expect(x.job.status).toBe('watching');
     if (priorResearch) x.f.store.state.messages[1].body += ' New material research.';
@@ -237,7 +238,7 @@ test.each([false, true])('new or changed research bypasses a reusable review exa
     expect(x.job.status).toBe('queued');
     expect(x.job.reviewContext).toBeUndefined();
     expect(x.job.steps[0].result).toBe(saved);
-    await x.f.delivery.step(x.job);
+    await claimedDelivery(x.f.store,x.job,()=>x.f.delivery.step(x.job));
     expect(run).toHaveBeenCalledExactlyOnceWith('lead', expect.stringContaining(body), expect.anything(), expect.objectContaining({ stage: 'github-lead-pr', readOnly: true }));
     expect(x.job.steps).toHaveLength(2);
     expect(x.job.steps.at(-1)!.result).toBe(fresh);
