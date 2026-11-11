@@ -1,3 +1,4 @@
+import { stoppedBaseUpdateUnresolved } from './stopped-base-update-recovery';
 import { savedAdmissionUnresolved } from '../delivery/recovery/implementation/saved-candidate-admission';
 import {artifact} from '../store/readback-evidence';
 import { repeatConflictRepairUnresolved } from '../delivery/repairs/conflict-chain';
@@ -33,7 +34,7 @@ export async function reconcileRecoveryLedger(context: ITContext): Promise<void>
                 current.add(id);followUps.push({id,owner:r.status==='needs-human'?'Morgan':'IT',detail:state.paused||state.draining?'Original readback waits for project controls; its consumed budget and queued intent remain unchanged.':budget.pending?'The exact original readback is queued or working; scheduler owns execution.':'The original activation/source-configuration readback remains unresolved; its consumed budget is retained.',nextAt:r.nextAt||undefined});continue;
             }
             const unresolvedDelivery = id.startsWith('native-delivery:') && !nativeDeliveryResolved(store, id, r.requestId);
-            if(r.status==='resolved'&&!unresolvedDelivery)continue;
+            if(r.status==='resolved'&&!unresolvedDelivery&&!stoppedBaseUpdateUnresolved(store,id))continue;
             const checkpointId = id.startsWith('checkpoint-readback:') ? id.slice(20) : id.startsWith('checkpoint:') ? id.slice(11) : null;
             const unresolvedCheckpoint = checkpointId !== null && state.coordination?.checkpoints.find(checkpoint => checkpoint.id === checkpointId)?.status !== 'completed';
             const unresolvedImplementation = (id.startsWith('implementation:') || id.startsWith('implementation-audit-binding:')) && state.coordination?.jobs?.some(job => job.id === id.split(':')[1] && job.stage === 'implement' && ['blocked', 'interrupted'].includes(job.status));
@@ -44,7 +45,7 @@ export async function reconcileRecoveryLedger(context: ITContext): Promise<void>
             const resumeRequest=resumeJob&&state.coordination?.requests?.find(request=>request.id===r.requestId&&request.action==='reconcile-scope-repair'&&request.key===resumeJob.key);
             const resumeApplied=!!resumeJob?.scopeRepairResumes?.some(proof=>{try{return proof.intentId===resumeRequest?.id&&proof.originalWorkId===resumeRequest.head&&artifact(store,proof.proofPath).sha256===proof.proofSha256;}catch{return false;}});
             const unresolvedResume=resumeJob&&!['completed','cancelled'].includes(resumeJob.status)&&!resumeApplied;
-            if (unresolvedCheckpoint || unresolvedDelivery || unresolvedImplementation || unresolvedValidation || unresolvedPreparation || unresolvedCore || unresolvedResume || savedAdmissionUnresolved(store,id) || repeatConflictRepairUnresolved(store,id) || completedConflictDraftUnresolved(store,id) || publishedDraftConflictUnresolved(store,id)) {
+            if (stoppedBaseUpdateUnresolved(store,id) || unresolvedCheckpoint || unresolvedDelivery || unresolvedImplementation || unresolvedValidation || unresolvedPreparation || unresolvedCore || unresolvedResume || savedAdmissionUnresolved(store,id) || repeatConflictRepairUnresolved(store,id) || completedConflictDraftUnresolved(store,id) || publishedDraftConflictUnresolved(store,id)) {
                 current.add(id);
                 const job = state.coordination?.jobs?.find(job => id.split(':').includes(job.id));
                 const checkpoint = checkpointId === null ? undefined : state.coordination?.checkpoints.find(checkpoint => checkpoint.id === checkpointId);

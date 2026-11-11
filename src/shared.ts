@@ -164,6 +164,7 @@ export interface TicketJob {
     featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };
     ciRepairs?: import('./contracts/ci-repair').CIRepair[];
     prMetadataRepair?: import('./contracts/pr-metadata').PRMetadataRepair;
+    stoppedBaseUpdate?: import('./contracts/stopped-base-update').StoppedBaseUpdate;
     adoptedRepairCheckout?: import('./contracts/ci-repair').RepairCheckout;
     initialDraftConflict?: Readonly<{ originalWorkId: string; head: string; pr: number; proofPath: string; proofSha256: string }>;
     scopeRepairResumes?: { intentId: string; originalWorkId: string; head: string; proofPath: string; proofSha256: string; checkpointSha256: string; findingIds: string[]; afterStep: number; at: string }[];

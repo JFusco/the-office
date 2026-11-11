@@ -1,3 +1,4 @@
+import { stoppedBaseHandoffResolved, stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
 import { scheduledCaptures } from '../features/handoff/scheduled-captures';
 import { scheduledAssessments } from '../features/handoff/scheduled-assessments';
@@ -192,6 +193,8 @@ function requestResolved(store: Store, request: import('../../src/shared').Harne
             step.result.outcome === 'passed' && step.result.receipts.some(receipt => ['native-checkpoint-readback', 'checkpoint-completion-readback'].includes(receipt.action) && receipt.verified && !receipt.uncertain));
     }
     if (!['blocked', 'interrupted'].includes(request.status)) return false;
+    if (request.action === 'reconcile-review' && stoppedBaseHandoffResolved(store,request)) return true;
+    if (request.action === 'reconcile-base-update') return stoppedBaseUpdateResolved(store, request);
     if (request.action === 'reconcile-pr-metadata') return metadataRequestResolved(store, request);
     if (request.action === 'reconcile-closeout') return closeoutRequestResolved(store,request);
     if (request.action === 'reconcile-scope-repair') return scopeRepairRequestResolved(store,request);

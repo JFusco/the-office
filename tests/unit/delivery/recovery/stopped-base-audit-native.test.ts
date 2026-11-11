@@ -37,6 +37,13 @@ test('binds the actual issued audit input and terminal result, retaining a negat
     expect(proof.file.path).toBe(f.path);
 });
 
+test('retains exact input binding when WorkerRuntime appends its capability and lesson briefing', () => {
+    const f = fixture();
+    f.records[1].payload.content[0].text += '\nEFFECT RECEIPTS: retained.\nDELIVERY OWNERSHIP: current registered claim.\nApplicable lesson.';
+    f.save();
+    expect(f.run().result).toEqual(f.result);
+});
+
 test.each(['session', 'cwd', 'input', 'duplicate-input', 'duplicate-marker', 'terminal', 'result', 'trailing-record', 'malformed-tail', 'duplicate-session'])
     ('refuses conflicting or incomplete audit completion for %s', change => {
         const f = fixture();

@@ -44,10 +44,11 @@ export function readStoppedBaseAuditNative(work: WorkTime, cwd: string, input: S
             if (!Array.isArray(record.payload.content)) throw new Error('Malformed stopped audit native input');
             return record.payload.content.map((part: { text?: string }) => part.text || '').join('');
         }).filter(text => text.includes(stoppedBaseAuditMarker));
-    // The marker and serialized input are an exact suffix of the issued task.
-    // A user message with another binding or a second audit task cannot be reused.
+    // WorkerRuntime adds its capability and lesson briefing after the issued task.
+    // Bind the exact JSON and its boundary while allowing that appended briefing.
     const expected = stoppedBaseAuditMarker + JSON.stringify(input);
-    if (messages.length !== 1 || !messages[0].endsWith(expected) || messages[0].split(stoppedBaseAuditMarker).length !== 2)
+    const task = messages[0] || '', start = task.indexOf(expected), tail = task.slice(start + expected.length);
+    if (messages.length !== 1 || start < 0 || task.split(stoppedBaseAuditMarker).length !== 2 || tail && !tail.startsWith('\n'))
         throw new Error('Original stopped audit issued input differs');
     const result = StoppedBaseAuditSchema.parse(JSON.parse(terminal.payload.last_agent_message));
     if (!isDeepStrictEqual(result, savedResult) || result.originalWorkId !== input.originalWorkId || result.nativeSha256 !== input.nativeSha256)

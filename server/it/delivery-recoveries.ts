@@ -1,3 +1,4 @@
+import { recoverStoppedBaseUpdates } from './stopped-base-update-recovery';
 import { handsOff } from '../delivery/harness/scope';
 import { deliveryIntakeBlocker } from '../delivery/harness/delivery-eligibility';
 import {savedActivationFailure,sourceConfigurationRecoveryTarget} from '../delivery/recovery/implementation/activation-recovery';
@@ -25,6 +26,7 @@ import type { ITContext } from './context';
 export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
     const { offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt, retainedPartials, retainedCloseouts, services, activationBudget, recover } = context;
     await recoverBoardPreflights(context);
+    await recoverStoppedBaseUpdates(context);
     await recoverPRMetadata(context);
     if (!state.paused) {
         if (offices.sessions) {

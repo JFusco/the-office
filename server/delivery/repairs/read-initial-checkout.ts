@@ -1,3 +1,4 @@
+import { stoppedBaseUpdateResolved } from '../recovery/stopped-base-disposition';
 import { lstatSync, readdirSync, realpathSync, readFileSync } from 'node:fs';
 import { resolve, dirname, basename } from 'node:path';
 import { ownedPath } from '../../store/readback-evidence';
@@ -9,7 +10,9 @@ import type { RepairCheckout } from '../../../src/contracts/ci-repair';
 /** Positive proof of a private clone whose initial checkout never populated files or an index. */
 export async function readInitialCheckout(store: Store, execute: typeof command, job: TicketJob, repair: RepairCheckout) {
     const path = repair.worktree, expected = resolve(store.dataRoot, 'ticket-work', job.id, `ci-${repair.id}`, 'candidate');
-    if (job.worktree || job.repairCycle || !/^[a-zA-Z0-9-]+$/.test(repair.id) || path !== expected || !repair.hooksPath) return null;
+    const stopped = job.stoppedBaseUpdate;
+    const handedOff = stopped?.phase === 'checkout' && stopped.checkout === repair && !!stopped.handoff && stopped.handoff.head === repair.head && stoppedBaseUpdateResolved(store, { key: job.key, head: stopped.originalWorkId });
+    if (job.worktree || job.repairCycle && !handedOff || !/^[a-zA-Z0-9-]+$/.test(repair.id) || path !== expected || !repair.hooksPath) return null;
     ownedPath(store, path);
     const empty = () => {
         const git = lstatSync(resolve(path, '.git'), { throwIfNoEntry: false });

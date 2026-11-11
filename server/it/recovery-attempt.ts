@@ -9,10 +9,17 @@ export async function recoverAttempt(context: ITContext, id: string, detail: str
         current.add(id);
         const r = it.recoveries[id] ??= { attempts: 0, nextAt: '', status: 'retrying', detail };
         r.detail = detail;
-        const auditBinding = id.startsWith('implementation-audit-binding:')||id.startsWith('saved-candidate-adoption:'), oneShot = auditBinding || id.startsWith('partial-local-cleanup:') || id.startsWith('post-conflict-draft:') || id.startsWith('initial-draft-conflict:') || id.startsWith('closeout-core:') || id.startsWith('scope-repair-resume:');
-        const originalBudget=activationBudget(id);
+        const auditBinding = id.startsWith('stopped-base-handoff:') || id.startsWith('implementation-audit-binding:')||id.startsWith('saved-candidate-adoption:'), oneShot = auditBinding || id.startsWith('partial-local-cleanup:') || id.startsWith('post-conflict-draft:') || id.startsWith('initial-draft-conflict:') || id.startsWith('closeout-core:') || id.startsWith('scope-repair-resume:');
+        const originalBudget=activationBudget(id), stoppedOriginal = id.startsWith('stopped-base-update:');
+        if(stoppedOriginal){
+            const [,jobId,workerId]=id.split(':'),job=state.coordination?.jobs?.find(j=>j.id===jobId);
+            const requests=state.coordination?.requests?.filter(q=>q.action==='reconcile-base-update'&&q.key===job?.key&&q.head===workerId)||[];
+            r.attempts=Math.max(r.attempts,new Set(requests.map(q=>q.id)).size);
+            const pending=requests.find(q=>['queued','working'].includes(q.status));
+            if(pending)r.requestId=pending.id;
+        }
         if(originalBudget)r.attempts=Math.max(r.attempts,new Set(originalBudget.requests.map(request=>request.id)).size);
-        if (r.status === 'resolved' && !oneShot && !originalBudget) {
+        if (r.status === 'resolved' && !oneShot && !originalBudget && !stoppedOriginal) {
             r.status = 'retrying';
             r.attempts = 0;
             r.nextAt = '';

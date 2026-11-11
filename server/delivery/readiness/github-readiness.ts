@@ -1,3 +1,4 @@
+import { assertStoppedBaseMergeReady } from '../recovery/stopped-base-validation';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { FreshMergeReview, refreshMergeReview } from './refresh-merge-review';
 import {currentMergeChecks} from './github-check-selection';
@@ -57,6 +58,7 @@ export async function verifyPR(this: GitHubDelivery, job: TicketJob, requireTarg
 }
 export async function merge(this: GitHubDelivery, job: TicketJob) {
     const expectedHead = job.head;
+    assertStoppedBaseMergeReady(this.store, job, expectedHead);
     assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
     if (this.store.state.paused || job.mergeApprovalRequired || job.mergeAuthorization && job.mergeAuthorization.head !== job.head || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
         throw new Error('Office merging is paused, disabled, or awaiting this PR’s approval');
@@ -125,6 +127,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
             await currentMergeChecks(this,job,current);
             if (await refreshMergeReview(this, job, current, true)) throw new FreshMergeReview(job.detail);
             assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
+            assertStoppedBaseMergeReady(this.store, job, expectedHead);
         },
         dispatch: async (value) => {
             job.mergeAttempt = { head: value.sha, at: this.store.clock.now().toISOString() };
@@ -147,6 +150,7 @@ export async function finishLeadReview(this: GitHubDelivery, job: TicketJob, res
     if (hasUncertainEffects('lead-pr', result))
         throw new Error('Uncertain review effects require reconciliation');
     const root = resolve(this.store.dataRoot, 'ticket-work', job.id), p = current || await this.verifyPR(job);
+    assertStoppedBaseMergeReady(this.store, job, p.head.sha);
     job.head = p.head.sha;
     if (result.commit === p.head.sha && result.evidence.length) {
         const path = resolve(root, `lead-review-${job.steps.length}-${crypto.randomUUID()}.json`);
