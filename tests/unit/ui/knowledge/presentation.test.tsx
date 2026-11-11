@@ -1,4 +1,6 @@
-import {test,expect} from 'vitest';
+vi.mock('../../../../src/knowledge/useKnowledgeView',()=>({useKnowledgeView:(_project:string,route:string)=>({data:route==='activity'?{events:[],supplied:4,retrieved:3,verified:2,limitations:[]}:null,error:'',refresh:()=>{},refreshing:false})}));
+import {Activity} from '../../../../src/knowledge/Activity';
+import {test,expect,vi} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {ActivityTimeline} from '../../../../src/knowledge/ActivityTimeline';
 import {KnowledgeReveal} from '../../../../src/knowledge/KnowledgeReveal';
@@ -9,4 +11,9 @@ test('groups dated history without dropping evidence actions or unknown applicat
 test('does not expose unloaded contents and names the current load operation',()=>{
     const loading=renderToStaticMarkup(<KnowledgeReveal ready={false} label="Loading activity…"><p>Private result</p></KnowledgeReveal>);expect(loading).not.toContain('Private result');expect(loading).toContain('Loading activity…');
     const ready=renderToStaticMarkup(<KnowledgeReveal ready label="Loading activity…"><p>Current result</p></KnowledgeReveal>);expect(ready).toContain('Current result');expect(ready).not.toContain('Loading activity…');
+});
+
+test('Activity distinguishes accepted evidence from independently proven application',()=>{
+ const html=renderToStaticMarkup(<Activity project="cec"/>);
+ expect(html).toContain('Accepted citations or confirmed procedures');expect(html).toContain('General application remains unknown.');expect(html).not.toContain('Application independently verified');
 });
