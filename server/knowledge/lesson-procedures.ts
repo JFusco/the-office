@@ -5,6 +5,6 @@ const INSTALLED = {
     'server/knowledge/improvement-intake-gate.ts#improvementIntakeGate': 'rule',
 } as const;
 export function installedLesson(lesson: Lesson): boolean {
-    return !['procedure', 'rule'].includes(lesson.tier || '') || !!lesson.implementationRef &&
+    return !['procedure', 'rule'].includes(lesson.tier) || !!lesson.implementationRef &&
         Object.hasOwn(INSTALLED, lesson.implementationRef) && INSTALLED[lesson.implementationRef as keyof typeof INSTALLED] === lesson.tier;
 }

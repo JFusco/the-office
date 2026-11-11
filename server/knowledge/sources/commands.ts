@@ -14,7 +14,10 @@ export function sourceCommand(registry: SourceRegistry, projectIds: string[], ac
     if (!projectIds.includes(actingProject)) throw Error('Unknown project');
     if (command.operation === 'add') {
         if (command.source.homeProjectId !== actingProject || !projectIds.includes(command.source.homeProjectId)) throw Error('Select the source home project before adding');
-        return { id: registry.create(command.source).id };
+        // Every configured project learns from a new source; one project can still unsubscribe itself afterwards.
+        const { id } = registry.create(command.source);
+        registry.transaction(() => { for (const projectId of projectIds) if (projectId !== actingProject) registry.subscribe(id, projectId, true); });
+        return { id };
     }
     const source = registry.get(command.id);
     if (!source || source.revision !== command.revision) throw Error('Source changed; reload before editing');

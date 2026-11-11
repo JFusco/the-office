@@ -11,7 +11,7 @@ import { knowledgeStore } from './knowledge-fixture';
 const cleanup: (() => void)[] = [];
 afterEach(() => { cleanup.splice(0).forEach(fn => fn()); vi.restoreAllMocks(); });
 function setup(projectId = 'brain') { const fixture = knowledgeStore(projectId); cleanup.push(fixture.close); return fixture; }
-const lesson = (overrides: Partial<Lesson> = {}): Lesson => ({ id: 'L-agents', scope: 'project', kind: 'convention', when: 'Fixture situation', check: 'Fixture check', statement: 'Regenerate the catalog with pnpm wiki before committing', detail: 'The verify check fails on drift.', stages: ['implement'], paths: [], status: 'active', evidence: [{ kind: 'pr', ref: 'pr:x:7', url: 'https://github.com/JFusco/brain/pull/7', detail: 'PR #7' }], sourceRetrospectiveId: 'x:completed', repositoryInstruction: { status: 'proposed' }, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', ...overrides });
+const lesson = (overrides: Partial<Lesson> = {}): Lesson => ({ id: 'L-agents', scope: 'project', tier: 'guidance', revision: 1, kind: 'convention', when: 'Fixture situation', check: 'Fixture check', statement: 'Regenerate the catalog with pnpm wiki before committing', detail: 'The verify check fails on drift.', stages: ['implement'], paths: [], status: 'active', evidence: [{ kind: 'pr', ref: 'pr:x:7', url: 'https://github.com/JFusco/brain/pull/7', detail: 'PR #7' }], sourceRetrospectiveId: 'x:completed', repositoryInstruction: { status: 'proposed' }, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', ...overrides });
 
 /** A fake gh: issue search, create and view against an in-memory list. */
 function fakeGh(options: { failCreate?: boolean } = {}) {

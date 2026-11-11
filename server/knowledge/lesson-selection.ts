@@ -46,7 +46,7 @@ export interface LessonSelection {
     selected: import('../../src/contracts/knowledge').LessonReference[];
     omitted: (import('../../src/contracts/knowledge').LessonReference & { reason: 'count-limit' | 'character-limit' })[];
 }
-const reference = (lesson: Lesson) => ({ scope: lesson.scope, id: lesson.id, revision: lesson.revision || 1 });
+const reference = (lesson: Lesson) => ({ scope: lesson.scope, id: lesson.id, revision: lesson.revision });
 const normalPath = (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
 export function selectLessons(store: Pick<Store, 'project' | 'state'>, input: { stage?: string; paths?: string[] }, registry?:SourceRegistry): LessonSelection {
     const bucket = lessonPurpose(input.stage, store.project.provider), knowledge = store.state.knowledge;

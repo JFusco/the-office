@@ -136,7 +136,6 @@ export class ControlStore {
     knowledge(): OfficeKnowledge {
         const row = this.statement('SELECT body FROM office_knowledge WHERE id=1').get() as { body: string } | undefined;
         const knowledge: OfficeKnowledge = row ? JSON.parse(row.body) : { proposals: [], lessons: [] };
-        for (const lesson of knowledge.lessons) { lesson.tier ??= 'guidance'; lesson.revision ??= 1; }
         return knowledge;
     }
     updateKnowledge<T>(mutate: (knowledge: OfficeKnowledge) => T): T {

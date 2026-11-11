@@ -57,7 +57,7 @@ export function retireOfficeLesson(control: OfficeKnowledgeStore, lessonId: unkn
         if (!lesson) throw new Error('Office lesson not found');
         if (lesson.status === 'retired') return;
         const now = control.clock.now().toISOString();
-        Object.assign(lesson, { revision: (lesson.revision || 1) + 1, status: 'retired', retiredAt: now, retiredBy: 'human', updatedAt: now } satisfies Partial<Lesson>);
+        Object.assign(lesson, { revision: lesson.revision + 1, status: 'retired', retiredAt: now, retiredBy: 'human', updatedAt: now } satisfies Partial<Lesson>);
     });
 }
 
