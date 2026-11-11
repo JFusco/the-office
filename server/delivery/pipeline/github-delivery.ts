@@ -1,3 +1,6 @@
+import { stoppedBasePackageInstruction } from '../recovery/stopped-base-package';
+import { runStoppedBaseReview } from '../recovery/stopped-base-review';
+import { stoppedBaseNextStage } from '../recovery/stopped-base-gates';
 import { FreshMergeReview } from '../readiness/refresh-merge-review';
 import { assertFeatureGate } from '../../features/enrollment-gate';
 import { bindDelivery } from '../../features/delivery-binding';
@@ -60,6 +63,7 @@ export function pendingPreparationCheck(f: StageResult['findings'][number], chec
     return false; // Unknown findings block this stage, regardless of narrative wording.
 }
 export function deliveryNextStage(job: TicketJob): TicketJob['stage'] {
+    const stopped = stoppedBaseNextStage(job); if (stopped) return stopped;
     const resumed = scopeRepairResumeNextStage(job); if (resumed) return resumed;
     if (job.implementationContinuation?.phase === 'acceptance' && ['review', 'validate'].includes(job.stage)) return job.stage === 'review' ? 'validate' : 'draft';
     if (job.sourceAmendment && ['implement', 'scope-repair', 'update-base', 'review', 'validate'].includes(job.stage)) {
@@ -131,6 +135,7 @@ export class GitHubDelivery {
             if(job.savedPrerequisiteHandoff&&!await requireSavedPrerequisites(this,job)){
                 job.status='queued';job.detail='Independent review waits for fresh verified prerequisite merge';return;
             }
+            if (await runStoppedBaseReview(this, job)) return;
             await new ProjectProgress(this.store, this.execute).reconcile(job);
             const issue = await this.api(`issues/${Number(job.key.slice(3))}`);
             if (await retireUnstartedDelivery(this, job, issue)) return;
@@ -243,6 +248,7 @@ export class GitHubDelivery {
                 instructions = conflictRefreshInstruction(project, job, root);
             instructions += `\n${scopeRepairResumeInstruction(this.store,job)}`;
             instructions += `\n${dependabotReviewGuidance(this.store, job)}`;
+            instructions += `\n${await stoppedBasePackageInstruction(this, job)}`;
             // The exceptional prepare-pr worker still owns its retarget/promotion steps.
             if (handsOff(this.store))
                 instructions += `\n${job.stage === 'prepare-pr' || !harnessDelivers(this.store, job) ? '' : BOARD_RULE}\n${DECISION_RULE}`;
