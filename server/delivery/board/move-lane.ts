@@ -1,4 +1,5 @@
 import { ProjectProgress } from './project-progress';
+import { initialManualStart } from './manual-start';
 import { cardStatus, projectCards, setCardStatus, statusField, type Execute, type StatusField } from './project-graphql';
 import type { Store } from '../../store/store';
 import type { BoardUpdate, TicketJob } from '../../../src/shared';
@@ -31,7 +32,8 @@ export async function moveLane(store: Store, execute: Execute, job: TicketJob, l
         const currentName = field.options.find(o => o.id === current)?.name?.trim().toLowerCase() || '';
         // Project automation adds new PR cards in its default lane; that is not a human decision.
         const prDefault = card.kind === 'PullRequest' && (!currentName || currentName === 'backlog');
-        if (!MOVABLE.has(currentName) && !prDefault)
+        const manualStart = card.kind === 'Issue' && currentName === 'backlog' && lane === 'In progress' && initialManualStart(store.project.id, job);
+        if (!MOVABLE.has(currentName) && !prDefault && !manualStart)
             throw new Error(`${card.kind} card is in "${currentName || 'no status'}", a human lane; the harness will not move it to ${option.name}`);
         guard();
         update.status = 'pending';
