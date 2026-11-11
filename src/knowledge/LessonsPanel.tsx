@@ -106,7 +106,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
     </Section> : null}
     <Section>
       <SectionTitle className="mb-2">Recent retrospectives</SectionTitle>
-      {view.recent.length ? view.recent.map(record => <p key={record.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{record.key} · {TRIGGER_LABEL[record.trigger]} · {when(record.at)}</span>{record.summary}<small className="block text-10 text-card-detail">{record.lessonIds.length} new {record.lessonIds.length === 1 ? 'lesson' : 'lessons'}</small></p>) : <p className={mutedCopy}>None yet.</p>}
+      {view.recent.length ? view.recent.map(record => <p key={record.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{record.key} · {TRIGGER_LABEL[record.trigger]} · {when(record.at)}</span>{record.summary}<small className="block text-10 text-card-detail">{record.lessonIds.length} {record.lessonIds.length === 1 ? 'lesson' : 'lessons'} added or changed</small></p>) : <p className={mutedCopy}>None yet.</p>}
       {view.retired.length ? <details className="my-4"><summary className={cx('cursor-pointer text-13 font-semibold', interactive)}>Retired lessons ({view.retired.length})</summary>{view.retired.map(lesson => <LessonCard key={lesson.id} lesson={lesson} footer={`Retired ${when(lesson.retiredAt || lesson.updatedAt)}`} />)}</details> : null}
     </Section>
   </Section>;

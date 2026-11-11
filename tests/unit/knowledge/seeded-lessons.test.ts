@@ -73,3 +73,14 @@ test('a lesson stored before the when/check shape is rewritten once by id; an un
     expect(current).toMatchObject({ when: 'Kept situation', statement: 'Kept action', check: 'Kept check' });
     expect(selectLessons(store, { stage: 'github-review' }).text).toContain('] Old action Reference:');
 });
+
+test('a seed stored before the when/check shape takes the seed\'s current wording', () => {
+    const store = setup('brain');
+    store.state.knowledge!.lessons = [{ ...learningLesson('seed:brain:dual-lockfile-verification', { statement: 'When a dependency change touches a lockfile, resolve and verify both lockfiles.', detail: 'Check: frozen installs pass.' }), when: undefined, check: undefined } as never];
+    migrateSnapshot(store.state, store.project);
+    expect(store.state.knowledge!.lessons).toHaveLength(1);
+    expect(store.state.knowledge!.lessons[0]).toMatchObject({ when: 'A dependency change touches a lockfile.',
+        statement: 'Resolve and verify both the root and web/brain lockfiles against their manifests, and trace any peer-dependency change to the caller.',
+        check: 'Frozen installs pass in both installation contexts and verify:ci passes on the current head.',
+        detail: 'On a conflict, re-resolve main\'s lockfiles against the PR manifests and verify the resulting commit independently.' });
+});

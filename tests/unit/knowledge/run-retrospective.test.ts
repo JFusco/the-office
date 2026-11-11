@@ -2,11 +2,12 @@ import { afterEach, expect, test } from 'vitest';
 import { runRetrospective, retryDelay, RETROSPECTIVE_TIMEOUT, type KnowledgeRunner } from '../../../server/knowledge/run-retrospective';
 import { scheduledRetrospectives } from '../../../server/knowledge/scheduled-retrospectives';
 import { acceptRetrospective } from '../../../server/knowledge/accept-retrospective';
-import { retrospectiveFacts, PACKET_LIMIT } from '../../../server/knowledge/retrospective-facts';
+import { retrospectiveFacts, PACKET_LIMIT, type RetrospectivePacket } from '../../../server/knowledge/retrospective-facts';
 import { jobSubject } from '../../../server/knowledge/retrospective-subject';
 import { completedId } from '../../../server/knowledge/retrospective-triggers';
 import type { RetrospectiveResult } from '../../../server/knowledge/retrospective-result';
-import { job, knowledgeStore, result } from './knowledge-fixture';
+import { SourceRegistry } from '../../../server/knowledge/sources/registry';
+import { job, knowledgeStore, learningLesson, result } from './knowledge-fixture';
 import { captureLearning } from '../../../server/knowledge/learning-events';
 import { maintainLearning } from '../../../server/knowledge/learning-maintenance';
 
@@ -51,6 +52,27 @@ test('a failed run waits with capped backoff instead of blocking, then a later s
     expect(knowledge.retrospectives).toHaveLength(1);
     expect(knowledge.lessons[0]).toMatchObject({ status: 'active', evidence: [{ ref: packetRef, kind: 'learning' }] });
     expect(scheduledRetrospectives(store, failing)).toEqual([]);
+});
+
+test('other projects\' lessons are trimmed to the packet budget instead of keeping the retrospective from Harper', async () => {
+    const { store, done } = setup(), other = knowledgeStore('cec'); cleanup.push(other.close);
+    for (let i = 0; i < 30; i++) other.store.state.knowledge!.lessons.push(learningLesson(`other-${i}`, { when: 'w'.repeat(300), statement: `${i} ${'s'.repeat(296)}`, createdAt: `2026-10-${String(i + 1).padStart(2, '0')}T00:00:00Z` }));
+    for (let i = 0; i < 20; i++) store.state.messages.push({ from: 'pm', to: 'developer', ticket: done.key, createdAt: '', body: 'm'.repeat(300) } as never);
+    captureLearning(store, { kind: 'job', id: done.id }, done.key, 'review', '0', done.steps[0].result, 'Accepted negative review', 'work', true);
+    maintainLearning(store);
+    const { id, opportunities } = store.state.knowledge!.pending[0], packetRef = opportunities![0].evidence[0].ref;
+    const context = { registry: new SourceRegistry(store.db, store.clock), stores: new Map([['brain', store], ['cec', other.store]]), brain: { snapshot: async () => '', search: async () => [], read: async () => ({ text: '', contentSha256: '' }) } };
+    let facts = '';
+    await runRetrospective(store, (async (prompt: string) => { facts = prompt.split('RETROSPECTIVE FACTS: ')[1]; return { summary: 'Reviewed.', lessons: [lesson('Regenerate the catalog before review', [packetRef])] }; }) as KnowledgeRunner, id, context);
+    expect(facts.length).toBeLessThanOrEqual(PACKET_LIMIT);
+    expect(Buffer.byteLength(facts)).toBeLessThanOrEqual(65536);
+    const packet = JSON.parse(facts) as RetrospectivePacket;
+    expect(packet.elsewhere!.length).toBeGreaterThan(0);
+    expect(packet.omitted.elsewhere).toBe(30 - packet.elsewhere!.length);
+    expect(packet.elsewhere![0].id).toBe('other-29'); // the newest are kept
+    expect(Object.keys(packet.catalog)).toContain(packetRef);
+    expect(store.state.knowledge!.consumed).toContain(id);
+    expect(store.state.knowledge!.lessons.at(-1)).toMatchObject({ statement: 'Regenerate the catalog before review' });
 });
 
 test('backoff doubles from five minutes to a six-hour cap and never exhausts', () => {

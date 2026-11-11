@@ -22,7 +22,6 @@ import { sourceCommand } from '../../server/knowledge/sources/commands';
 import { knowledgeRoute } from '../../server/knowledge/routes';
 import { IntakeLedger } from '../../server/knowledge/slack-intake/ledger';
 import type { Store } from '../../server/store/store';
-import type { BrainCaptureReceipt } from '../../server/knowledge/brain/reader';
 
 /** Synthetic registry and ledgers only: no project directory, scheduler, worker or provider. */
 export function brainFixture(published = false) {
@@ -33,9 +32,9 @@ export function brainFixture(published = false) {
     for(const store of stores.values()) mkdirSync(store.dataRoot,{recursive:true});
     registry.setMeta('cutover', { state: 'ready' });
     const tools = { channel: 'slack.slack_read_channel', thread: 'slack.slack_read_thread', search: 'slack.slack_search_public_and_private', file: 'slack.slack_read_file', canvas: 'slack.slack_read_canvas', lookup: 'slack.slack_search_channels' };
-    for (const [id, name, home, destination] of [['CCEC1', 'cec-team', 'cec', 'project-evidence'], ['CCEC2', 'cec-delivery', 'cec', 'project-evidence'], ['CTECH1', 'technical-learning', 'brain', 'technical-brain']] as const) {
-        const source = registry.create({ kind: 'slack', title: `#${name}`, homeProjectId: home, destination, cadence: home === 'brain' ? 'weekly' : 'daily',
-            authority: { workspace: 'https://synthetic-office.slack.com', appId: 'synthetic', tools, channels: [{ id, name }], publicHosts: ['www.sqlite.org'] }, ...(destination === 'technical-brain' ? { domains: ['tooling'] } : {}) });
+    for (const [id, name, home] of [['CCEC1', 'cec-team', 'cec'], ['CCEC2', 'cec-delivery', 'cec'], ['CTECH1', 'technical-learning', 'brain']] as const) {
+        const source = registry.create({ kind: 'slack', title: `#${name}`, homeProjectId: home, cadence: home === 'brain' ? 'weekly' : 'daily',
+            authority: { workspace: 'https://synthetic-office.slack.com', appId: 'synthetic', tools, channels: [{ id, name }], publicHosts: ['www.sqlite.org'] } });
         const ledger = new IntakeLedger(stores.get(home)!, source);
         ledger.put('unit', `${id}:1:v1`, { id: `${id}:1`, version: 'v1', observedAt: '2026-11-09T16:55:00Z' });
         ledger.put('admission', `${id}:1:v1`, { state: 'admitted' });
@@ -47,16 +46,7 @@ export function brainFixture(published = false) {
     }
     const revision='a'.repeat(40),notePath='knowledge/tooling/validation-guide.md';
     const noteText = ['---', 'title: Published validation guide', 'domain: tooling', 'reviewed_at: "2026-11-09"', 'status: current', 'versions: ["3.1"]', 'provenance: "' + 'Retained synthetic fixture evidence. '.repeat(14) + '"', '---', '# Published validation guide', '', 'Keep accepted validation receipts alongside project evidence. Verify the committed schema version before applying a mapping change.', '', '## What to do', '', '1. Check the installed version.', '2. Keep **accepted receipts** with the change.', '', '- [x] Schema version recorded', '- [ ] Provider acceptance verified', '', '```ts', 'const receipt = { accepted: true };', '```', '', '[Reference](https://example.test/validation)', '', 'Synthetic published-note fixture; no live Brain publication.'].join('\n');
-    const captures=new Map<string,BrainCaptureReceipt>();
-    if(published){
-        const source=registry.all().find(s=>s.destination==='technical-brain')!,ledger=new IntakeLedger(stores.get('brain')!,source);
-        for(let i=0;i<6;i++){
-            const id=`20000000-0000-4000-8000-${String(i).padStart(12,'0')}`,body='PRIVATE SYNTHETIC CAPTURE BODY';
-            ledger.put('proposal',id,{id,task:'fixture',domain:'tooling',body,hash:digest(body),units:['CTECH1:1:v1'],sourceVersions:['v1'],status:'captured',configHash:'',sourceId:source.id,sourceDigest:source.sourceDigest,receipt:{id:`candidate-${i}`}});
-            captures.set(id,{version:1,requestId:id,found:true,id:`candidate-${i}`,inputSha256:digest(body),domain:'tooling',currentStatus:i===5?'quarantined':'pending',disposition:i<2?{as:'accepted',at:'2026-11-09T17:00:00Z',pr:372,mergeCommit:revision}:i===2||i===4?{as:i===2?'rejected':'superseded',at:'2026-11-09T17:00:00Z'}:null,lineage:i===0?'mapped':'unknown',publications:i===0?[{path:notePath,commit:revision,contentSha256:digest(noteText)}]:[]});
-        }
-    }
-    const brain={captureReceipt:async(requestId:string)=>captures.get(requestId)||{version:1 as const,requestId,found:false},snapshot:async()=>{if(!published)throw Error('Synthetic technical service unavailable');return revision;},search:async()=>published?[{id:notePath,path:notePath,title:'Published validation guide',contentSha256:digest(noteText),limitations:['Synthetic committed-note fixture']}]:[],read:async(requested:string,path:string)=>{if(!published||requested!==revision||path!==notePath)throw Error('Unavailable');return {text:noteText,contentSha256:digest(noteText)};},graph:async(requested:string)=>{if(!published||requested!==revision)throw Error('Unavailable');return {version:1 as const,snapshot:revision,nodes:[{id:'knowledge/tooling/INDEX.md',title:'Technical knowledge',kind:'index',domains:['tooling']},{id:notePath,path:notePath,title:'Published validation guide',kind:'curated-note',domain:'tooling',sha256:digest(noteText),summary:'Verify schema versions and retain accepted receipts.'}],edges:[{source:'knowledge/tooling/INDEX.md',target:notePath,relation:'domain membership'}],truncated:false,nextCursor:null};}};
+    const brain={snapshot:async()=>{if(!published)throw Error('Synthetic technical service unavailable');return revision;},search:async()=>published?[{id:notePath,path:notePath,title:'Published validation guide',contentSha256:digest(noteText),limitations:['Synthetic committed-note fixture']}]:[],read:async(requested:string,path:string)=>{if(!published||requested!==revision||path!==notePath)throw Error('Unavailable');return {text:noteText,contentSha256:digest(noteText)};},graph:async(requested:string)=>{if(!published||requested!==revision)throw Error('Unavailable');return {version:1 as const,snapshot:revision,nodes:[{id:'knowledge/tooling/INDEX.md',title:'Technical knowledge',kind:'index',domains:['tooling']},{id:notePath,path:notePath,title:'Published validation guide',kind:'curated-note',domain:'tooling',sha256:digest(noteText),summary:'Verify schema versions and retain accepted receipts.'}],edges:[{source:'knowledge/tooling/INDEX.md',target:notePath,relation:'domain membership'}],truncated:false,nextCursor:null};}};
     const scan=async(text:string)=>({version:1 as const,inputSha256:digest(text),scannerVersion:'synthetic',policyVersion:'synthetic',clean:true,findings:[]});
     const context={registry,stores,brain,scan};
     // Exact receipt functions with synthetic content; no scheduled worker or live provider is claimed.

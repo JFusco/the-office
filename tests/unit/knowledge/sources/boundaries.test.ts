@@ -27,7 +27,7 @@ test('pause during acquisition retains a native observation without admission, f
         const run = (async (_p, _s, opts) => {
             opts.onIntakeLaunch?.(); opts.onIntakeEvent?.(event(f.ledger.get<ReadTask>('task', f.task.id)!, [{ ts: '100.000001', text: 'Retained report', reply_count: 1 }], true));
             f.registry.update(f.source.id, 1, s => { s.state = 'paused'; });
-            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Report' }], proposals: [] };
+            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Report' }] };
         }) as KnowledgeRunner;
         await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.all('observation')).toHaveLength(1); expect(f.ledger.all('task')).toHaveLength(1);

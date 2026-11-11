@@ -20,5 +20,5 @@ export function lessonSourceBindings(registry: SourceRegistry, project: string, 
 }
 
 export function exposureSourceVisible(registry:SourceRegistry,project:string,binding:import('../../../src/contracts/knowledge').KnowledgeSourceBinding):boolean {
-    return binding.approvedTextOnly?!!registry.get(binding.sourceId)&&registry.get(binding.sourceId)!.state!=='withdrawn':sourceVisible(registry,binding.sourceId,project,binding.unitId?'evidence':'metadata');
+    return binding.approvedTextOnly?!!registry.get(binding.sourceId)&&registry.get(binding.sourceId)!.state!=='withdrawn':sourceVisible(registry,binding.sourceId,project);
 }

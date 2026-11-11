@@ -17,7 +17,7 @@ export function sourceList(registry: SourceRegistry, stores: Map<string, Store>,
         const blockedClassifications=ledger?.columns<{state:string}>('classification-admission',['state']).filter(row=>row.state==='blocked').length||0;
         const scanGaps=[...(blockedUnits?[`${blockedUnits} source versions withheld by secret scanning`]:[]),...(blockedClassifications?[`${blockedClassifications} generated classifications withheld by secret scanning`]:[])];
         const links=s.kind==='link'?ledger?.columns<{state:string;reason:string|null;nextAt:string|null}>('link',['state','reason','nextAt'])||[]:[];
-        return { id: s.id, kind: s.kind, title: s.title, homeProjectId: s.homeProjectId, destination: s.destination, state: s.state, cadence: s.cadence, revision: s.revision,
+        return { id: s.id, kind: s.kind, title: s.title, homeProjectId: s.homeProjectId, state: s.state, cadence: s.cadence, revision: s.revision,
             createdAt: s.createdAt, updatedAt: s.updatedAt, subscriptions: registry.subscriptions(s.id), workspace: s.authority?.workspace, channelId: s.authority?.channels[0].id, channelName: s.authority?.channels[0].name, url: s.url,
             pending: tasks.filter(t => t.status === 'pending' || t.status === 'running').length+links.filter(l=>l.state==='pending').length, needsAttention: tasks.filter(t => t.status === 'needs-attention').length+links.filter(l=>l.state==='needs-attention').length,
             admitted: evidence.filter(u => ledger?.get<{state:string}>('admission',`${u.unitId}:${u.version}`)?.state === 'admitted').length,

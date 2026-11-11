@@ -5,12 +5,11 @@ import { sourceDigest, type KnowledgeSource } from './source-record';
 
 /** Collection policy belongs to the harness; only readAuthority enters the reader profile. */
 export type CollectionPolicy = SlackReadAuthority & {
-    sourceId: string; homeProjectId: string; destination: KnowledgeSource['destination']; sourceDigest: string; domains: string[];
+    sourceId: string; homeProjectId: string; sourceDigest: string;
 };
 export function collectionPolicy(source: KnowledgeSource): CollectionPolicy {
     if (source.kind !== 'slack' || sourceDigest(source) !== source.sourceDigest) throw Error('Invalid source authority digest');
-    return { ...SlackReadAuthority.parse(source.authority), sourceId: source.id, homeProjectId: source.homeProjectId,
-        destination: source.destination, sourceDigest: source.sourceDigest, domains: source.domains || [] };
+    return { ...SlackReadAuthority.parse(source.authority), sourceId: source.id, homeProjectId: source.homeProjectId, sourceDigest: source.sourceDigest };
 }
 export function readAuthority(policy: CollectionPolicy): SlackReadAuthority {
     const { workspace, appId, channels, tools, publicHosts } = policy;

@@ -9,6 +9,7 @@ import { isSlackIntake, assertSlackIntakeCapability } from './slack-intake-profi
 import { assertResearchCapability, researchRead, isPublicRetrieval } from './research-profile';
 import { retainLifecycle } from './lifecycle/retain';
 import { workerLaunchPolicy, retainLaunchPolicy } from './launch-policy';
+import { slackDesktopArguments } from './slack-desktop-tools';
 import { withIntakeLaunch } from './with-intake-launch';
 import { candidateWorkspaceEnvironment } from '../delivery/candidate/workspace-environment';
 import { recordWorkerFailure } from './record-failure';
@@ -193,6 +194,8 @@ export class WorkerRuntime {
                 this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.effort, requestedModel: route.model, requestedEffort: route.effort });
             }
             const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!, publicResearch, opts.stage === 'knowledge-slack-intake' ? opts.intakeConfig : undefined, !!opts.intakeProcessing);
+            const desktopArguments = slackDesktopArguments(claude ? 'claude' : 'codex', profile.name);
+            args.push(...desktopArguments);
             if (role === 'knowledge' && !publicResearch) args.push('-c', 'web_search="disabled"');
             if (!claude)
                 args.push('-');
@@ -205,7 +208,7 @@ export class WorkerRuntime {
             const assignment = claude ? `${task}\nIMPLEMENTER: Use the pinned Opus 5.5 model. Do not launch nested agent/model processes or switch models. Follow the same stage gates and scoped authorization. Use native git/Azure CLI and TWG commands as available; unavailable authentication or tools are blockers. Do not treat a provider failure as permission to replay an uncertain write. ${opts.readOnly ? 'This assignment is read-only: do not change files or external services.' : ''}` : task;
             const environment = candidateWorkspaceEnvironment(this.store.dataRoot, this.store.state.coordination?.jobs?.find(job => job.id === opts.requestId), opts.cwd || ROOT);
             const launchPolicy = workerLaunchPolicy(profile, opts.stage || 'assignment', !!opts.slackSend, privateIntake, handsOff(this.store));
-            if (!retainLaunchPolicy(dir, { version: 1, workerId: id, stage: opts.stage || 'assignment', program: claude ? 'claude' : 'codex', profile: { name: profile.name, readOnly: profile.readOnly }, effective: launchPolicy, workspaceRoot: environment?.NPM_CONFIG_WORKSPACE_DIR, at: this.store.clock.now().toISOString() }))
+            if (!retainLaunchPolicy(dir, { version: 1, workerId: id, stage: opts.stage || 'assignment', program: claude ? 'claude' : 'codex', profile: { name: profile.name, readOnly: profile.readOnly }, effective: launchPolicy, ...(desktopArguments.length ? { desktopToolsDisabled: true as const } : {}), workspaceRoot: environment?.NPM_CONFIG_WORKSPACE_DIR, at: this.store.clock.now().toISOString() }))
                 this.store.emit('worker-diagnostic-unavailable', 'Worker launch-policy diagnostic could not be retained; execution policy unchanged.', role, opts.ticket);
             if (privateIntake) assertIntakeBinding(this.store, opts.intakeBinding, opts.intakeConfig);
             if(!isolated&&this.knowledgeContext)assertBriefingScope(this.knowledgeContext,this.store.project.id,lessons,evidence);

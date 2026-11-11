@@ -1,7 +1,20 @@
 import { expect, test } from 'vitest';
 import { acceptRetrospective } from '../../../server/knowledge/accept-retrospective';
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
+import { decideOfficeProposal, proposeOfficeLessons } from '../../../server/knowledge/office-lessons';
+import { SourceRegistry } from '../../../server/knowledge/sources/registry';
+import { lessonVisible } from '../../../server/knowledge/sources/lesson-visibility';
+import { digest } from '../../../server/knowledge/slack-intake/config';
+import { ControlStore } from '../../../server/store/control-store';
 import { knowledgeStore, learningLesson } from './knowledge-fixture';
+
+/** A private source home in another project and granted to this one. */
+function privateSource(store: ReturnType<typeof knowledgeStore>['store'], registry = new SourceRegistry(store.db, store.clock)) {
+    const source = registry.create({ kind: 'artifact', title: 'Private', homeProjectId: 'cec' });
+    registry.subscribe(source.id, 'brain', true);
+    return { registry, source };
+}
+const cleanScan = (result: unknown) => ({ version: 1 as const, inputSha256: digest(JSON.stringify(result)), scannerVersion: 'fixture', policyVersion: 'fixture', clean: true, findings: [] });
 
 const catalog = { now: { kind: 'learning' as const, ref: 'now', url: '', detail: 'Current run' } };
 const proposal = (action: 'add' | 'update' | 'supersede' | 'share', targetId: string, statement: string) => ({ action, targetId, when: 'New situation', statement, check: 'New check', detail: 'Why', kind: 'process' as const, stages: ['review' as const], paths: [], evidenceIds: ['now'] });
@@ -44,4 +57,54 @@ test('a lesson learned again from another project is proposed office-wide instea
         expect(shared).toEqual([expect.objectContaining({ statement: 'Worded for every project', targetId: 'cec-lesson' })]);
         expect(k.retrospectives.at(-1)).toMatchObject({ id: 'r1', lessonIds: [] });
     } finally { close(); }
+});
+
+test('an update keeps the source dependencies of a proof it already holds and of the new copy', () => {
+    const { store, close } = knowledgeStore();
+    try {
+        const { registry, source: old } = privateSource(store), { source: fresh } = privateSource(store, registry), k = store.state.knowledge!;
+        k.lessons = [learningLesson('keep', { evidence: [{ kind: 'job', ref: 'job:1', url: '', detail: 'Job', sourceBindings: [{ sourceId: old.id }] }] })];
+        const result = { summary: 'Done', lessons: [{ ...proposal('update', 'keep', 'Sharper wording'), evidenceIds: ['job:1'] }] };
+        expect(acceptRetrospective(store, { id: 'r1', jobId: 'r1', key: 'GH-1', trigger: 'completed' }, { catalog: { 'job:1': { kind: 'job', ref: 'job:1', url: '', detail: 'Job', sourceBindings: [{ sourceId: fresh.id }] } } }, result, 'claim', cleanScan(result))).toEqual(['keep']);
+        const [lesson] = k.lessons;
+        expect(lesson).toMatchObject({ statement: 'Sharper wording', revision: 2 });
+        expect(lesson.evidence).toHaveLength(1);
+        expect(lesson.evidence[0].sourceBindings).toEqual([{ sourceId: old.id }, { sourceId: fresh.id }]);
+        expect(lessonVisible(registry, 'brain', lesson)).toBe(true);
+        registry.subscribe(fresh.id, 'brain', false);
+        expect(lessonVisible(registry, 'brain', lesson)).toBe(false);
+    } finally { close(); }
+});
+
+test('a share keeps its private proof for Joe; a failed filing leaves the retrospective pending, and the retry files once', () => {
+    const { store, close } = knowledgeStore(), office = new ControlStore(':memory:', store.clock);
+    try {
+        const { registry, source } = privateSource(store);
+        store.state.knowledge!.lessons = [];
+        const pending = { id: 'r1', jobId: 'r1', key: 'GH-1', trigger: 'completed' as const, createdAt: '', event: { stage: 'closeout', head: '', steps: 1, reason: '' }, attempts: 1, nextAt: '', lastError: '' };
+        store.state.knowledge!.pending.push(pending);
+        const packet = { catalog: { now: { kind: 'learning' as const, ref: 'now', url: '', detail: 'PRIVATE EXCERPT', sourceBindings: [{ sourceId: source.id }] } }, elsewhere: [{ project: 'cec', id: 'cec-lesson', when: 'There', statement: 'Same thing elsewhere' }] };
+        const result = { summary: 'Done', lessons: [proposal('share', 'cec-lesson', 'Worded for every project')] }, scan = cleanScan(result);
+        expect(() => acceptRetrospective(store, pending, packet, result, 'claim', scan, () => { throw Error('Office store unavailable'); })).toThrow('Office store unavailable');
+        const k = () => store.state.knowledge!;
+        expect(k().pending.map(entry => entry.id)).toEqual(['r1']);
+        expect(k().consumed).not.toContain('r1');
+        expect(k().retrospectives).toEqual([]);
+        const file = (lessons: Parameters<typeof proposeOfficeLessons>[3]) => proposeOfficeLessons(office, 'brain', 'r1', lessons);
+        expect(acceptRetrospective(store, pending, packet, result, 'claim', scan, file)).toEqual([]);
+        expect(acceptRetrospective(store, pending, packet, result, 'claim', scan, file)).toEqual([]);
+        expect(k().lessons).toEqual([]);
+        expect(k().retrospectives.map(record => record.id)).toEqual(['r1']);
+        const proposals = office.knowledge().proposals;
+        expect(proposals).toHaveLength(1);
+        expect(proposals[0].evidence).toEqual([{ kind: 'learning', ref: 'now', url: '', detail: 'Scoped evidence; exact excerpt retained in the private review packet', sourceBindings: [{ sourceId: source.id }] }]);
+        registry.subscribe(source.id, 'brain', false);
+        expect(() => decideOfficeProposal(office, proposals[0].id, true, { registry, projectId: 'brain' })).toThrow('current source scope');
+        registry.subscribe(source.id, 'brain', true);
+        decideOfficeProposal(office, proposals[0].id, true, { registry, projectId: 'brain' });
+        const [accepted] = office.knowledge().lessons;
+        expect(lessonVisible(registry, 'brain', accepted)).toBe(true);
+        registry.update(source.id, registry.get(source.id)!.revision, current => { current.state = 'withdrawn'; });
+        expect(lessonVisible(registry, 'brain', accepted)).toBe(false);
+    } finally { office.close(); close(); }
 });

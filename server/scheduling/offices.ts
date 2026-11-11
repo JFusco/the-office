@@ -18,7 +18,6 @@ import { reconcileAuthoredEvidence } from '../knowledge/digests/reconcile-author
 import { CommittedBrain } from '../knowledge/brain/reader';
 import { reconcileIntakeReports } from '../knowledge/slack-intake/report';
 import { SourceRegistry } from '../knowledge/sources/registry';
-import { migrateIntake } from '../knowledge/sources/migration';
 import { maintainLearning } from '../knowledge/learning-maintenance';
 import { scheduledResearch } from '../knowledge/weekly-research';
 import { queueImprovements } from '../knowledge/queue-improvements';
@@ -47,6 +46,7 @@ import { DELIVERY_CONCURRENCY } from '../office/config';
 import { mirrorOfficeKnowledge, proposeOfficeLessons } from '../knowledge/office-lessons';
 import { seedOfficeLessons } from '../knowledge/seeded-office-lessons';
 import { expireLessons, queueLessonIssueCheck } from '../knowledge/lesson-exits';
+import { retireBrainSources } from '../knowledge/sources/retire-brain-sources';
 export class Offices {
     capacity = officeCapacity(DELIVERY_CONCURRENCY);
     ctoCapacity = officeCapacity();
@@ -95,8 +95,9 @@ export class Offices {
             const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
-        const brain = this.entries.get('brain')?.store;
-        if (brain) { try { migrateIntake(this.sources, brain); } catch { /* Preparing cutover keeps all collection closed; UI surfaces its state. */ } }
+        retireBrainSources(this.sources,this.stores());
+        // The legacy cutover gate stays until its removal milestone; no migration remains to open it.
+        if(this.sources.meta<{state:string}>('cutover')?.state!=='ready')this.sources.setMeta('cutover',{state:'ready',sources:{}});
         recoverStoppedLaunches(this.sources,this.stores());
         for (const entry of this.entries.values()) {
             for(const runtime of [entry.engine.agents,entry.engine.knowledgeAgents,entry.engine.itAgents,entry.engine.ctoAgents])runtime.knowledgeContext={registry:this.sources,stores:this.stores(),brain:new CommittedBrain()};
