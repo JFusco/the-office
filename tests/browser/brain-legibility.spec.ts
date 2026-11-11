@@ -12,7 +12,7 @@ test('knowledge uses shared form spacing and safe formatted documents while reta
     });
     expect(spacing).toEqual({gap:8,token:'8px'});
     const note=page.getByRole('article').filter({has:page.getByRole('heading',{name:'Published validation guide',exact:true})});
-    await expect(note).toContainText('Keep accepted validation receipts'); await expect(note).not.toContainText('provenance:');
+    await expect(note).toContainText('Check the installed version.'); await expect(note).not.toContainText('provenance:');
     await note.getByRole('button',{name:'Inspect evidence'}).click();
     const reader=page.getByRole('region',{name:'Published technical note'});
     await expect(reader.getByRole('heading',{name:'What to do'})).toBeVisible();
