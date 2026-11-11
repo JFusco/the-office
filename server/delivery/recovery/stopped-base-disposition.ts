@@ -1,3 +1,4 @@
+import { green156Admitted } from './green156-evidence';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { artifact, digest, ownedPath } from '../../store/readback-evidence';
@@ -64,4 +65,10 @@ export function stoppedBaseHandoffResolved(store: Store, request: Pick<HarnessRe
             artifact(store,r.handoff.resultPath).sha256===r.handoff.resultSha256&&
             artifact(store,resolve(store.dataRoot,'sessions',worker.id,'execution-completion.json')).sha256===r.handoff.executionCompletionSha256;
     }catch{return false;}
+}
+
+/** Administrative abandonment is separate from a positive effects audit. */
+export function stoppedBaseReassessmentReady(store: Store, request: Pick<HarnessRequest, 'key' | 'head'>) {
+    const job = store.state.coordination?.jobs?.find(j => j.key === request.key && j.status !== 'cancelled');
+    return stoppedBaseUpdateResolved(store, request) || !!job && job.stoppedBaseUpdate?.originalWorkId === request.head && green156Admitted(store, job);
 }

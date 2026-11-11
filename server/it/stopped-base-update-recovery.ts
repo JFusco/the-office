@@ -1,6 +1,6 @@
 import { completedExecution } from '../workers/worker-completion';
 import { stoppedBaseUpdateCandidate } from '../delivery/recovery/stopped-base-update';
-import { stoppedBaseHandoffResolved, stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
+import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { assessDeliveryEligibility } from '../delivery/harness/delivery-authority';
 import { enqueueRequest } from '../scheduling/requests';
 import type { ITContext } from './context';
@@ -13,9 +13,9 @@ export async function recoverStoppedBaseUpdates(context: ITContext) {
         try { candidate = stoppedBaseUpdateCandidate(store, job); }
         catch (error) { followUps.push({ id: `stopped-base-update:${job.id}:unknown`, owner: 'Morgan', detail: String(error) }); continue; }
         if (!candidate) continue;
-        if (stoppedBaseUpdateResolved(store, { key: job.key, head: candidate.head })) {
+        if (stoppedBaseReassessmentReady(store, { key: job.key, head: candidate.head })) {
             const record = it.recoveries[candidate.id];
-            if (record) { record.status = 'resolved'; record.nextAt = ''; current.add(candidate.id); }
+            if (record) { record.status = 'resolved'; record.nextAt = ''; if (job.stoppedBaseUpdate?.greenMerge) record.detail = 'Joe authorized green-check merge without extra review/QA. Original negative audit, abandoned candidate and consumed budgets retained.'; current.add(candidate.id); }
             const r=job.stoppedBaseUpdate!;
             const workers=state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='stopped-base-update-handoff')||[];
             if(!state.paused&&!state.draining&&['blocked','interrupted'].includes(job.status)&&['lead','checkout'].includes(r.phase)&&workers.length===1&&completedExecution(store,workers[0]))
@@ -49,5 +49,5 @@ export function stoppedBaseUpdateUnresolved(store: ITContext['store'], id: strin
     }
     if (!id.startsWith('stopped-base-update:')) return false;
     const [, jobId, workerId] = id.split(':'), job = store.state.coordination?.jobs?.find(j => j.id === jobId);
-    return !job || !stoppedBaseUpdateResolved(store, { key: job.key, head: workerId });
+    return !job || !stoppedBaseReassessmentReady(store, { key: job.key, head: workerId });
 }

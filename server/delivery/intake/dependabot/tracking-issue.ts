@@ -34,10 +34,10 @@ export function trackingIssueBody(pr: DependabotPR): string {
     const wiki = pr.bot === 'wiki-sync';
     return [
         '## Summary', '', wiki ? `wiki-sync opened #${pr.number} (\`${pr.title}\`), a wiki reconciliation adopted under the project's automation policy.` : `${pr.bot === 'pin-courier' ? 'pin-courier' : 'Dependabot'} opened #${pr.number} (\`${pr.title}\`), a dependency update, and its card was moved to the pickup lane.`, '',
-        '## Context', '', wiki ? 'The wiki PR already contains the reconciliation; this issue tracks its review and delivery.' : 'The dependency PR already contains the implementation; this issue tracks its review and delivery.', '',
-        '## Details', '', `The Office adopts the existing PR instead of developing a duplicate: Sam reviews its exact head, and the guarded merge runs once its required checks pass. Merging #${pr.number} closes this issue.`, '',
-        '## Expected Outcome', '', wiki ? 'The existing wiki reconciliation is reviewed and delivered through the Office.' : 'The existing dependency update is reviewed and delivered through the Office.', '',
-        '**Acceptance Criteria**', '', wiki ? '- Review the exact wiki changes and retain required repository checks.' : '- Review the exact dependency changes and retain required repository checks.', '- Merge only the verified current head under the project merge policy.', '- Verify issue closure, board closeout and the configured Slack notification.', '',
+        '## Context', '', wiki ? 'The wiki PR already contains the reconciliation; this issue tracks its checks and delivery.' : 'The dependency PR already contains the implementation; this issue tracks its checks and delivery.', '',
+        '## Details', '', `The Office adopts the existing PR instead of developing a duplicate: the guarded merge runs once the exact head passes its required GitHub checks and repository rules, without an added review or QA cycle. Merging #${pr.number} closes this issue.`, '',
+        '## Expected Outcome', '', wiki ? 'The existing wiki reconciliation is delivered through the Office.' : 'The existing dependency update is delivered through the Office.', '',
+        '**Acceptance Criteria**', '', wiki ? '- Required GitHub checks pass for the exact wiki head; no additional Office review or QA cycle.' : '- Required GitHub checks pass for the exact dependency head; no additional Office review or QA cycle.', '- Merge only the verified current head under the project merge policy.', '- Verify issue closure, board closeout and the configured Slack notification.', '',
         '## Additional Notes', '', `Existing PR: ${pr.url}. No duplicate implementation is requested.`, '',
         trackingMarker(pr.number, pr.bot), '',
     ].join('\n');
@@ -63,7 +63,7 @@ export async function ensureTrackingIssue(store: Store, execute: Execute, record
 }
 
 /**
- * Puts the tracking issue's card and the PR's card in In review: the PR exists and Sam's review is next.
+ * Puts the tracking issue's card and the PR's card in In review: the published PR is awaiting required GitHub checks and guarded merge.
  * Project automation may already have added the issue card in its default lane.
  */
 export async function ensureReviewCards(store: Store, execute: Execute, record: { id: string }, issue: TrackingIssue, pr: number, pickupLane: string, guard: () => void | Promise<void>): Promise<void> {
