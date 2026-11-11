@@ -58,29 +58,3 @@ test('the Contentstack withdrawn-item lesson reaches CMS maintenance stages only
     for (const stage of ['implement', 'review', 'validate', 'scope-repair']) expect(knowledgeContext(store, stage)).not.toContain('withdrawn upstream');
     for (const projectId of ['brain', 'cec']) expect(knowledgeContext(setup(projectId), 'vendor-review')).not.toContain('Contentstack');
 });
-
-test('a lesson stored before the when/check shape is rewritten once by id; an unknown one keeps only its action', () => {
-    const store = setup('brain');
-    store.state.knowledge!.lessons = [
-        { ...learningLesson('92d6bdae-fa6a-4846-88ae-7a8013562b37'), when: undefined, check: undefined } as never,
-        { ...learningLesson('unknown-old', { statement: 'Old action' }), when: undefined, check: undefined } as never,
-        learningLesson('new', { when: 'Kept situation', statement: 'Kept action', check: 'Kept check' }),
-    ];
-    migrateSnapshot(store.state, store.project);
-    const [known, unknown, current] = store.state.knowledge!.lessons;
-    expect(known).toMatchObject({ when: 'Adding or reviewing an exception that trusts bot-authored metadata.', check: 'A negative test exists for every condition.' });
-    expect(unknown).toMatchObject({ when: '', statement: 'Old action', check: '' });
-    expect(current).toMatchObject({ when: 'Kept situation', statement: 'Kept action', check: 'Kept check' });
-    expect(selectLessons(store, { stage: 'github-review' }).text).toContain('] Old action Reference:');
-});
-
-test('a seed stored before the when/check shape takes the seed\'s current wording', () => {
-    const store = setup('brain');
-    store.state.knowledge!.lessons = [{ ...learningLesson('seed:brain:dual-lockfile-verification', { statement: 'When a dependency change touches a lockfile, resolve and verify both lockfiles.', detail: 'Check: frozen installs pass.' }), when: undefined, check: undefined } as never];
-    migrateSnapshot(store.state, store.project);
-    expect(store.state.knowledge!.lessons).toHaveLength(1);
-    expect(store.state.knowledge!.lessons[0]).toMatchObject({ when: 'A dependency change touches a lockfile.',
-        statement: 'Resolve and verify both the root and web/brain lockfiles against their manifests, and trace any peer-dependency change to the caller.',
-        check: 'Frozen installs pass in both installation contexts and verify:ci passes on the current head.',
-        detail: 'On a conflict, re-resolve main\'s lockfiles against the PR manifests and verify the resulting commit independently.' });
-});

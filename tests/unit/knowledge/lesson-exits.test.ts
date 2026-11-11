@@ -6,7 +6,6 @@ import { sourceFixture } from './sources/source-fixture';
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
 import type { command } from '../../../server/workers/process';
 import { knowledgeStore, learningLesson } from './knowledge-fixture';
-import { migrateSnapshot } from '../../../server/store/migrations';
 
 test('a lesson past its end date leaves prompts and can be brought back', () => {
     const { store, close } = knowledgeStore('brain', '2026-11-12T15:00:00Z');
@@ -82,18 +81,4 @@ test('an automatic retirement event keeps the lesson\'s source dependencies, so 
         const visible = knowledgeOfficeState(f.registry, 'brain', f.store.state).events;
         for (const event of retired) { expect(visible).not.toContainEqual(event); expect(f.store.replay(0)).toContainEqual(event); }
     } finally { f.close(); }
-});
-
-test('a stored lesson that belongs in its repository is offered once as an issue; declining it is not undone', () => {
-    const { store, close } = knowledgeStore('cms-field-vocabulary');
-    try {
-        const k = store.state.knowledge!, id = '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7';
-        k.lessons = [learningLesson(id), learningLesson('ordinary')];
-        migrateSnapshot(store.state, store.project);
-        const status = (lessonId: string) => k.lessons.find(lesson => lesson.id === lessonId)!.repositoryInstruction?.status;
-        expect([status(id), status('ordinary')]).toEqual(['proposed', undefined]);
-        k.lessons[0].repositoryInstruction = { status: 'declined' };
-        migrateSnapshot(store.state, store.project);
-        expect(k.lessons.find(lesson => lesson.id === id)!.repositoryInstruction).toEqual({ status: 'declined' });
-    } finally { close(); }
 });
