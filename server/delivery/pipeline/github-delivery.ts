@@ -1,3 +1,4 @@
+import { routeAutomationMerge } from '../readiness/automation-merge';
 import { stoppedBasePackageInstruction } from '../recovery/stopped-base-package';
 import { runStoppedBaseReview } from '../recovery/stopped-base-review';
 import { stoppedBaseNextStage } from '../recovery/stopped-base-gates';
@@ -135,6 +136,7 @@ export class GitHubDelivery {
             if(job.savedPrerequisiteHandoff&&!await requireSavedPrerequisites(this,job)){
                 job.status='queued';job.detail='Independent review waits for fresh verified prerequisite merge';return;
             }
+            if (await routeAutomationMerge(this, job)) return;
             if (await runStoppedBaseReview(this, job)) return;
             await new ProjectProgress(this.store, this.execute).reconcile(job);
             const issue = await this.api(`issues/${Number(job.key.slice(3))}`);

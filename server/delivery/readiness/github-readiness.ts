@@ -1,3 +1,6 @@
+import { automationMergePolicy } from './automation-merge';
+import { green156Admitted } from '../recovery/green156-evidence';
+import { assertAutomationEffects } from './automation-effects';
 import { assertStoppedBaseMergeReady } from '../recovery/stopped-base-validation';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { FreshMergeReview, refreshMergeReview } from './refresh-merge-review';
@@ -57,7 +60,8 @@ export async function verifyPR(this: GitHubDelivery, job: TicketJob, requireTarg
     return p;
 }
 export async function merge(this: GitHubDelivery, job: TicketJob) {
-    const expectedHead = job.head;
+    const expectedHead = job.head; let greenOnly = green156Admitted(this.store, job);
+    if (greenOnly) assertAutomationEffects(this.store, job);
     assertStoppedBaseMergeReady(this.store, job, expectedHead);
     assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
     if (this.store.state.paused || job.mergeApprovalRequired || job.mergeAuthorization && job.mergeAuthorization.head !== job.head || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
@@ -69,8 +73,10 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
     if (job.mergeAttempt || priorIntent && ['dispatching', 'uncertain', 'verified'].includes(priorIntent.status))
         throw new Error('Prior merge attempt needs read-back; it will not be repeated');
     const p = await this.verifyPR(job, true);
-    await requireMetadataReview(this, job);
-    if (await refreshMergeReview(this, job, p, true)) return;
+    greenOnly ||= !!await automationMergePolicy(this, job, p);
+    if (greenOnly) assertAutomationEffects(this.store, job);
+    if (!greenOnly) await requireMetadataReview(this, job);
+    if (!greenOnly && await refreshMergeReview(this, job, p, true)) return;
     const lead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
     // A Lead review of an older head never counts; the team's exact-head review does for hands-off jobs.
     const review = lead?.commit === job.head ? lead : teamReviewedHead(this.store, job) ?? lead;
@@ -80,7 +86,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
         job.status = 'watching';
         return;
     }
-    if (p.state !== 'open' || p.draft || !p.mergeable || p.head.sha !== job.head || review?.outcome !== 'passed' || review.commit !== p.head.sha || findingsBlock(this.store, review.findings, f => f.status === 'open' && !heldFindings.has(f.id)))
+    if (p.state !== 'open' || p.draft || !p.mergeable || p.head.sha !== job.head || !greenOnly && (review?.outcome !== 'passed' || review.commit !== p.head.sha || findingsBlock(this.store, review.findings, f => f.status === 'open' && !heldFindings.has(f.id))))
         throw new Error('PR readiness or reviewed commit changed; Sam must reassess');
     await currentMergeChecks(this,job,p);
     const query = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){headRefOid baseRefName mergeStateStatus reviewDecision reviewThreads(first:100){nodes{isResolved} pageInfo{hasNextPage}}}}}`;
@@ -121,11 +127,15 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
                 throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
             await requireSourceAmendmentAcceptance(this, job);
             const current = await this.verifyPR(job, true);
-            await requireMetadataReview(this, job);
+            if (!greenOnly) await requireMetadataReview(this, job);
             if (current.head.sha !== payload.sha || current.state !== 'open' || current.draft)
                 throw new Error('Merge candidate changed immediately before dispatch');
             await currentMergeChecks(this,job,current);
-            if (await refreshMergeReview(this, job, current, true)) throw new FreshMergeReview(job.detail);
+            if (greenOnly) {
+                if (!green156Admitted(this.store, job) && !await automationMergePolicy(this, job, current)) throw Error('Green-check merge policy changed');
+                assertAutomationEffects(this.store, job, true);
+            }
+            if (!greenOnly && await refreshMergeReview(this, job, current, true)) throw new FreshMergeReview(job.detail);
             assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
             assertStoppedBaseMergeReady(this.store, job, expectedHead);
         },
@@ -143,7 +153,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
     }
     job.mergeCommit = saved.merge_commit_sha;
     job.status = 'watching';
-    job.detail = 'Sam merged the reviewed PR. Morgan is watching merge Actions before closing out the board.';
+    job.detail = greenOnly ? 'Office merged this automation PR under Joe’s green-check direction; no extra review or local QA claimed. Watching merge Actions before closeout.' : 'Sam merged the reviewed PR. Morgan is watching merge Actions before closing out the board.';
     this.store.emit('github-merged', `${job.key}: PR #${job.pr} merged; watching Actions.`, 'lead', job.key);
 }
 export async function finishLeadReview(this: GitHubDelivery, job: TicketJob, result: StageResult, current?: any) {

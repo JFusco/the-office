@@ -1,3 +1,5 @@
+import { observeAutomationMerge } from '../readiness/automation-merge';
+import { green156Admitted } from '../recovery/green156-evidence';
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { refreshMergeReview } from '../readiness/refresh-merge-review';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
@@ -16,6 +18,7 @@ export async function observe(this: GitHubDelivery) {
     for (const job of this.jobs.filter(j => j.status === 'watching' || j.stage === 'merge' && ['blocked', 'interrupted'].includes(j.status))) {
         try {
             const p = await this.verifyPR(job);
+            if (job.stoppedBaseUpdate?.greenMerge && (!green156Admitted(this.store, job) || p.head.sha !== job.head)) throw Error('One-time #156 approval no longer matches this PR head');
             if (p.merged_at) {
                 job.status = 'watching';
                 job.mergeCommit = p.merge_commit_sha;
@@ -69,6 +72,7 @@ export async function observe(this: GitHubDelivery) {
                 job.detail = 'Merge attempt has not been confirmed; Morgan must reconcile before any further write.';
                 continue;
             }
+            if (await observeAutomationMerge(this, job, p)) continue;
             if (refreshConflicted(this.store, job, p))
                 continue;
             if(job.stage==='merge'&&['blocked','interrupted','watching'].includes(job.status)&&!job.mergeAttempt){if(!await refreshMergeReview(this,job,p))await resumeReviewedMerge(this,job,p);continue;}

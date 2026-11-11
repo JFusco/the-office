@@ -33,6 +33,7 @@ export interface StoppedBaseUpdate {
     preservedCandidate?: Pick<TicketJob, 'head' | 'branch' | 'worktree' | 'adoptedRepairCheckout' | 'repairCycle' |
         'approach' | 'decisions' | 'reviewContext' | 'reviewInputSha256' | 'lastPRFingerprint'>;
     disposition?: { path: string; sha256: string; at: string };
+    greenMerge?: { path: string; sha256: string; requestId: string; claimId: string; preservedCandidateSha256: string };
     handoffStarted?: { claimId: string; head: string; providerVersion: string; at: string };
     handoff?: {
         head: string;
