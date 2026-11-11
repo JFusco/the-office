@@ -1,3 +1,5 @@
+import { handsOff } from '../delivery/harness/scope';
+import { deliveryIntakeBlocker } from '../delivery/harness/delivery-eligibility';
 import {savedActivationFailure,sourceConfigurationRecoveryTarget} from '../delivery/recovery/implementation/activation-recovery';
 import { savedCandidateAdmission } from '../delivery/recovery/implementation/saved-candidate-admission';
 import {scopeRepairResumeCandidate} from '../delivery/recovery/scope-repair/scope-repair-resume';
@@ -28,14 +30,17 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
         if (offices.sessions) {
             let inventory = offices.sessions.forProject(store);
             if (!inventory.complete || !inventory.fresh)
-                await recover('session-visibility', 'Live Codex/Claude session inventory is incomplete.', async () => { await offices.sessions.refresh(); inventory = offices.sessions.forProject(store); return inventory.complete && inventory.fresh; }, 'Morgan investigates the failed session inventory source and its saved diagnostic. Session visibility is separate from login status; delivery ownership still requires complete live evidence.');
-            if (inventory.complete && inventory.fresh) {
+                await recover('session-visibility', 'Live Codex/Claude session inventory is incomplete.', async () => { await offices.sessions.refresh(); inventory = offices.sessions.forProject(store); return inventory.complete && inventory.fresh; }, store.project.id === 'brain' || store.project.id === 'cms-field-vocabulary'
+                    ? 'Morgan investigates the failed session inventory source and its saved diagnostic. Session visibility is separate from login status. Optional chat context is unavailable; Brain/CMS delivery still requires its registered authority and all current work/provider checks. Other workflows retain their existing checks.'
+                    : 'Morgan investigates the failed session inventory source and its saved diagnostic. Session visibility is separate from login status; delivery ownership still requires complete live evidence.');
+            if (handsOff(store) || inventory.complete && inventory.fresh) {
                 const latest = [...new Map((state.coordination?.listener.reviews || []).map(r => [r.key, r])).values()];
                 for (const r of latest) {
                     const assigned = state.coordination!.listener.assigned.find(i => i.key === r.key);
                     const pickup = state.coordination!.pickup?.status || (store.project.provider === 'github' ? 'Ready' : 'To Do');
                     if (HOLDS[r.key] || state.coordination!.pickup?.enabled === false && r.workRequested !== 'manual' || r.status !== 'blocked' || !/(?:session.*(?:visibility|inventory|read)|task.claim)/i.test(r.detail) || !/(?:unavailable|incomplete|missing|restore|not available|lacks)/i.test(r.detail) || !assigned || (assigned.pickupStatus ?? assigned.status) !== pickup || state.coordination!.jobs?.some(j => j.key === r.key && !['cancelled', 'completed'].includes(j.status)))
                         continue;
+                    if (handsOff(store) && deliveryIntakeBlocker(store,r.key)) continue;
                     if ((r.itRecoveryAttempts || 0) >= 3) {
                         followUps.push({ id: `ownership:${r.id}`, owner: 'Morgan', detail: `${r.key}: three IT ownership read-backs did not resolve the failure. Inspect the exact failed bridge source and saved intake sessions before another attempt.` });
                         continue;
@@ -46,8 +51,8 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                     r.retry.nextAt = '';
                     r.status = 'queued';
                     r.queuedAt = now.toISOString();
-                    r.detail = `Ellis verified current complete session visibility. Read-only ownership intake queued (${r.itRecoveryAttempts}/3); prior failure retained. Development still requires Morgan’s verified intake.`;
-                    actions.push(`${r.key}: complete live session visibility verified; ownership intake requeued for Morgan (${r.itRecoveryAttempts}/3). No development or provider write replayed.`);
+                    r.detail = `${handsOff(store) ? "Ellis verified existing claims and holds for the ticket; optional chat context remains separate." : "Ellis verified current complete session visibility."} Read-only ownership intake queued (${r.itRecoveryAttempts}/3); prior failure retained. Development still requires Morgan’s verified intake.`;
+                    actions.push(`${r.key}: ${handsOff(store) ? "registered claims/holds checked" : "complete live session visibility verified"}; ownership intake requeued for Morgan (${r.itRecoveryAttempts}/3). No development or provider write replayed.`);
                 }
             }
         }

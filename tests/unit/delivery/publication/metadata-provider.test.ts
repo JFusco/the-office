@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, HEAD, BASE, REPOSITORY } from '../support/fake-github';
 import { bindMetadata } from '../../../../server/delivery/publication/metadata-context';
@@ -24,16 +25,9 @@ test('native readback requires the unchanged bound PR and original open assigned
     expect(f.state.calls.some(c => /--method (POST|PATCH)/.test(c))).toBe(false);
 });
 
-test('live ownership must be fresh, complete, clear and bound to this exact issue', async () => {
-    const f = setup();
-    const owner = { complete: true, fresh: true, project: f.store.project.id, key: f.job.key, ownership: { status: 'clear' } };
-    f.delivery.execute = (async (program, args, options) => {
-        expect(program).toBe('curl'); expect(args.at(-1)).toContain(`requestId=${f.job.id}`); expect(options?.readOnly).toBe(true);
-        return JSON.stringify(owner);
-    }) as typeof f.delivery.execute;
-    await expect(metadataOwnership(f.delivery, f.job)).resolves.toBeUndefined();
-    owner.complete = false;
-    await expect(metadataOwnership(f.delivery, f.job)).rejects.toThrow('Fresh complete clear');
-    owner.complete = true; owner.key = 'GH-999';
-    await expect(metadataOwnership(f.delivery, f.job)).rejects.toThrow('Fresh complete clear');
+test('metadata uses its exact claim without depending on complete chat context', async () => {
+    const f = setup(); f.job.status='working'; f.job.stage='lead-pr';
+    await expect(metadataOwnership(f.delivery,f.job,false)).rejects.toThrow('scheduler claim');
+    await claimedDelivery(f.store,f.job,()=>metadataOwnership(f.delivery,f.job,false));
+    expect(f.state.calls.some(c=>c.startsWith('curl'))).toBe(false);
 });

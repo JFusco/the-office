@@ -1,4 +1,4 @@
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { activeEffectId, harnessEffect } from '../harness/effect';
 import { currentAssignment } from '../../workers/assignment-context';
 import { workKey, type TicketJob, type WorkClaim, type EffectIntent } from '../../../src/shared';
@@ -47,7 +47,7 @@ export async function linkDraftIssue(delivery: GitHubDelivery, job: TicketJob, i
     const number = Number(job.key.slice(3)), url = `https://github.com/${repository}/issues/${number}`, prUrl = `https://github.com/${repository}/pull/${job.pr}`;
     if (issue.number !== number || issue.html_url !== url || job.prUrl !== prUrl || !job.pr) throw new Error('Exact native issue/PR binding is required');
     const guard = () => {
-        assertMayMutate(store, delivery.jobs, job, identity.head);
+        assertDeliveryMayMutate(store, delivery.jobs, job, identity.head);
         if (JSON.stringify(identity) !== JSON.stringify({ id: job.id, key: job.key, pr: job.pr, head: job.head, branch: job.branch, worktree: job.worktree }))
             throw new Error('Draft comment identity changed');
     };

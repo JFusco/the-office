@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
 afterEach(cleanupFakes);
@@ -25,7 +26,7 @@ test('a published PR provider wait watches normally; release and actual human de
 test('parking asks once on the issue, moves the card to Block and keeps the job', async () => {
     const f = fakeGitHub(), job = f.candidate({ stage: 'review', status: 'working' });
     f.state.cards[0].status = 'progress';
-    await park(f.delivery, job, blocked('human-hold'));
+    await claimedDelivery(f.store,job,()=>park(f.delivery, job, blocked('human-hold')));
     expect(job).toMatchObject({ status: 'blocked', parked: { stage: 'review', published: true } });
     expect(f.state.comments).toHaveLength(1);
     expect(f.state.comments[0].body).toContain('Accept the new CMS 13 index identity?');
@@ -34,7 +35,7 @@ test('parking asks once on the issue, moves the card to Block and keeps the job'
 });
 test('moving the card back to Ready resumes the same job at its stage', async () => {
     const f = fakeGitHub(), job = f.candidate({ stage: 'review', status: 'working' });
-    await park(f.delivery, job, blocked('scope'));
+    await claimedDelivery(f.store,job,()=>park(f.delivery, job, blocked('scope')));
     const assigned = [{ key: 'GH-5', pickupStatus: 'Block' }] as any;
     expect(resumeParked(f.store, f.delivery.jobs, assigned, { enabled: true, status: 'Ready' }, new Map([[f.store.project.id, f.store]]), new Date())).toEqual([]);
     assigned[0].pickupStatus = 'Ready';
@@ -45,7 +46,7 @@ test('moving the card back to Ready resumes the same job at its stage', async ()
 });
 test('a parked job does not resume while pickup is disabled or before its decision was published', async () => {
     const f = fakeGitHub(), job = f.candidate({ stage: 'review', status: 'working' });
-    await park(f.delivery, job, blocked('human-hold'));
+    await claimedDelivery(f.store,job,()=>park(f.delivery, job, blocked('human-hold')));
     const assigned = [{ key: 'GH-5', pickupStatus: 'Ready' }] as any, stores = new Map([[f.store.project.id, f.store]]);
     expect(resumeParked(f.store, f.delivery.jobs, assigned, { enabled: false, status: 'Ready' }, stores, new Date())).toEqual([]);
     job.parked!.published = false;
@@ -58,7 +59,7 @@ test('a pause during parking stops the board write after the decision comment', 
     const original = f.execute;
     const execute = async (program: string, args: string[], options: any) => { const out = await original(program, args, options); if (args.includes('-f')) f.store.state.paused = true; return out; };
     (f.delivery as any).execute = execute;
-    await expect(park(f.delivery, job, blocked('human-hold'))).rejects.toThrow('paused');
+    await expect(claimedDelivery(f.store,job,()=>park(f.delivery, job, blocked('human-hold')))).rejects.toThrow('paused');
     expect(f.state.cards[0].status).toBe('progress');
     expect(job.parked?.published).toBe(false);
 });

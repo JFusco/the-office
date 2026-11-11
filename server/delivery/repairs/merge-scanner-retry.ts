@@ -5,7 +5,7 @@ import { isDeepStrictEqual, stripVTControlCharacters } from 'node:util';
 import { setTimeout as wait } from 'node:timers/promises';
 import { Effects } from '../../store/effects';
 import { containedFile } from '../../cec/workflow';
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { activeEffectId, harnessEffect } from '../harness/effect';
 import { handsOff } from '../harness/scope';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -97,7 +97,7 @@ export async function retryMergeScanner(delivery: GitHubDelivery, job: TicketJob
     } else {
         const head = job.head, record = structuredClone(r), merged = job.mergeCommit;
         const assertCurrent = () => {
-            assertMayMutate(store, delivery.jobs, job, head);
+            assertDeliveryMayMutate(store, delivery.jobs, job, head);
             if (store.state.draining || job.status !== 'working' || job.stage !== 'ci-recovery' || job.mergeScannerRetry !== r ||
                 job.mergeCommit !== merged || !isDeepStrictEqual(r, record)) throw new Error('Merge retry ownership changed');
         };

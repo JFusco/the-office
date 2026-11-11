@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, HEAD } from '../support/fake-github';
 import { park } from '../../../../server/delivery/parking/park';
@@ -23,7 +24,7 @@ async function parked(versions: string[], result = waiting()) {
         return base(program, args, options);
     };
     (f.delivery as any).execute = execute;
-    await park(f.delivery, job, result);
+    await claimedDelivery(f.store, job, () => park(f.delivery, job, result));
     return { f, job, execute: execute as any, npmCalls, publish: (next: string[]) => { published = next; } };
 }
 const T0 = new Date('2026-11-07T00:00:00Z'), later = (n: number) => new Date(T0.getTime() + n * RELEASE_CHECK_MS);

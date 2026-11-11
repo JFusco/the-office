@@ -1,7 +1,7 @@
 import { assertMetadataBinding } from './metadata-context';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
-import { currentAssignment } from '../../workers/assignment-context';
+import { requireDeliveryAuthority } from '../harness/delivery-authority';
 import { digest } from '../../store/readback-evidence';
 
 /** Current human/provider context is preserved separately from the PR body being repaired. */
@@ -32,12 +32,9 @@ export async function metadataProvider(delivery: GitHubDelivery, job: TicketJob)
 
 export async function metadataOwnership(delivery: GitHubDelivery, job: TicketJob, checkScope = true): Promise<void> {
     assertMetadataBinding(delivery, job);
-    const owner = JSON.parse(await delivery.execute('curl', ['--fail', '--silent', '--show-error',
-        `http://127.0.0.1:${process.env.OFFICE_PORT || 4318}/api/sessions?project=${encodeURIComponent(delivery.store.project.id)}&ticket=${encodeURIComponent(job.key)}&requestId=${encodeURIComponent(currentAssignment()?.claim.work.id || job.id)}`],
-        { cwd: delivery.store.project.repo, timeout: 60000, readOnly: true }));
-    assertMetadataBinding(delivery, job);
-    if (!owner.complete || !owner.fresh || owner.project !== delivery.store.project.id || owner.key !== job.key || owner.ownership?.status !== 'clear')
-        throw new Error('Fresh complete clear metadata ownership is required');
+    requireDeliveryAuthority(delivery.store, job);
     if (checkScope && job.prMetadataRepair!.scopeSha256 && digest(await metadataScope(delivery, job)) !== job.prMetadataRepair!.scopeSha256)
         throw new Error('Current metadata scope, labels or comments changed; fresh human/provider review is required');
+    assertMetadataBinding(delivery, job);
+    requireDeliveryAuthority(delivery.store, job);
 }

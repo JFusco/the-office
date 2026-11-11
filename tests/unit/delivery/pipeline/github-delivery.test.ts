@@ -1,3 +1,8 @@
+import * as harnessStage from '../../../../server/delivery/harness/run-harness-stage';
+import { assessDeliveryEligibility } from '../../../../server/delivery/harness/delivery-authority';
+import { cleanupFakes, fakeGitHub } from '../support/fake-github';
+import * as harnessScope from '../../../../server/delivery/harness/scope';
+import { registerDeliveryFixture, claimedDelivery } from '../../../fixtures/delivery-claim';
 import {workerProfile} from '../../../../server/workers/worker-profiles';
 import {pinLegacyRoute} from '../../../fixtures/legacy-route';
 import {digest} from '../../../../server/store/readback-evidence';
@@ -17,7 +22,7 @@ import { coordination } from '../../../../server/scheduling/coordination';
 import { GitHubDelivery, closeoutReceipt } from '../../../../server/delivery/pipeline/github-delivery';
 import type { EffectIntent, StageResult } from '../../../../src/shared';
 const roots: string[] = [], stores: Store[] = [];
-afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })); });
+afterEach(() => { vi.restoreAllMocks(); cleanupFakes(); stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })); });
 const head = 'a'.repeat(40), url = 'https://github.com/JFusco/brain/issues/999';
 function setup() {
     pinLegacyRoute(); // The Brain fixture exercises the legacy model-mechanics route.
@@ -1221,4 +1226,46 @@ test('draining during merge preflight cannot bypass changed acceptance, then obs
  expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
  expect(a.store.getEffect(a.job.mergeIntentId!)).toMatchObject({status:'rejected',dispatchedAt:''});
  a.store.state.draining=false;await a.delivery.observe();expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});expect(a.job.steps).toEqual(history);
+});
+
+test.each([false,true])('registered merge repeats its claim check after provider awaits (claim lost=%s)',async lost=>{
+ const a=setup();vi.spyOn(harnessScope,'handsOff').mockReturnValue(true);vi.spyOn(harnessScope,'harnessDelivers').mockReturnValue(true);registerDeliveryFixture(a.store,a.job);
+ Object.assign(a.job,{pr:700,prUrl:a.pr.html_url,head,stage:'merge',status:'working'});a.pr.draft=false;
+ a.store.state.coordination!.merges={enabled:true,authorizedAt:'human'};a.job.steps.push({stage:'lead-pr',result:a.result('review')});
+ const verify=a.delivery.verifyPR.bind(a.delivery);let reads=0;
+ a.delivery.verifyPR=async(...args)=>{const value=await verify(...args);if(++reads===2&&lost)for(const c of a.store.activeClaims())a.store.finishClaim(c.id,'stopping');return value;};
+ const merge=()=>claimedDelivery(a.store,a.job,()=>a.delivery.merge(a.job));
+ if(lost){await expect(merge()).rejects.toThrow('scheduler claim');expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);expect(a.store.getEffect(a.job.mergeIntentId!)?.dispatchedAt).toBeFalsy();}
+ else{await merge();expect(a.calls.filter(c=>c.includes('/merge --method PUT'))).toHaveLength(1);}
+});
+
+test.each(['worker', 'harness'] as const)('retains the completed %s result when the claim stops before acceptance', async execution => {
+    const f = fakeGitHub();
+    const job = f.candidate({ stage: execution === 'worker' ? 'implement' : 'validate', automaticStatus: undefined });
+    const result: StageResult = { outcome: 'passed', commit: job.head, summary: 'Completed before authority stopped', worktree: job.worktree, branch: job.branch,
+        evidence: [], findings: [], receipts: [{ id: 'retained', action: 'readback', target: job.key, verified: true, uncertain: false, detail: 'fixture' }],
+        previewUrl: '', prId: 0, qaRunDir: '', paidRuns: 0, blocker: '' };
+    let callsAtStop = -1;
+    const completed = () => {
+        callsAtStop = f.state.calls.length;
+        f.store.finishClaim(f.store.activeClaims()[0].id, 'stopping');
+        return result;
+    };
+    const worker = vi.spyOn(f.engine.agents, 'run').mockImplementation(async () => completed() as any);
+    const harness = vi.spyOn(harnessStage, 'runHarnessStage');
+    if (execution === 'harness') harness.mockImplementation(async () => completed());
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
+    expect(job).toMatchObject({ status: 'blocked', detail: expect.stringContaining('result retained for reconciliation') });
+    expect(job.steps.at(-1)).toEqual({ stage: 'superseded-stage-result', result });
+    expect(f.state.calls).toHaveLength(callsAtStop);
+    expect(worker).toHaveBeenCalledTimes(execution === 'worker' ? 1 : 0);
+    expect(harness).toHaveBeenCalledTimes(1);
+    job.status = 'queued';
+    expect(assessDeliveryEligibility(f.store, job)).toMatchObject({ eligible: false, blockers: ['Superseded stage result needs reconciliation'] });
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
+    expect(job).toMatchObject({ status: 'blocked', detail: expect.stringContaining('Superseded stage result needs reconciliation') });
+    expect(worker).toHaveBeenCalledTimes(execution === 'worker' ? 1 : 0);
+    expect(harness).toHaveBeenCalledTimes(1);
+    expect(f.state.calls).toHaveLength(callsAtStop);
+    expect(job.steps).toEqual([{ stage: 'superseded-stage-result', result }]);
 });

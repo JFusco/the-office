@@ -9,11 +9,11 @@ const snapshot=(jobs:any[])=>({project:{id:'brain'},tickets:[{key:'GH-263',summa
 const job={id:'j',key:'GH-263',status:'working',stage:'closeout',pr:269,detail:'Queued for review',updatedAt:'2026-10-28T18:35:00Z',steps:[]};
 const repairCycle={owner:'developer' as const,findingAttempts:{F1:1},attempts:1,pendingFindingIds:['F1'],sourceStage:'lead-pr',sourceHead:'a'.repeat(40),phase:'review' as const};
 test('completed source repair yields merge approval to the human and returns to ordinary scheduling priority',()=>{
- const candidate={...job,status:'watching',stage:'lead-pr',mergeApprovalRequired:true,repairReason:'source',repairCycle:{...repairCycle,phase:'verify',pendingFindingIds:[]}};
+ const candidate={...job,admission:{kind:'manual',projectId:'brain',jobId:job.id,key:job.key,reference:'isolated-original:'+job.id,at:job.updatedAt},status:'watching',stage:'lead-pr',mergeApprovalRequired:true,repairReason:'source',repairCycle:{...repairCycle,phase:'verify',pendingFindingIds:[]}};
  const row=ticketUpdates(snapshot([candidate]))[0];
  expect(row.next).toBe('You: approve this exact reviewed head.'); expect(row.next).not.toContain('Alex');
  expect(deliveryRepairProjection(candidate as any)).toBeUndefined();
- const store={project:{id:'brain',provider:'github'},state:{...initialSnapshot(),coordination:{...coordination(),jobs:[candidate]}},activeClaims:()=>[]};
+ const store={project:{id:'brain',provider:'github'},state:{...initialSnapshot(),coordination:{...coordination(),jobs:[candidate]}},activeClaims:()=>[],clock:{now:()=>new Date(job.updatedAt)}};
  const scheduled=scheduledWork({store,engine:{},conversations:{}} as any,new Map([['brain',store]]) as any);
  expect(scheduled.find(item=>item.work.kind==='delivery'&&item.work.id===candidate.id)?.rank).toBe(3);
 });
