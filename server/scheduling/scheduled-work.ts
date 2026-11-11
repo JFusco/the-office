@@ -1,3 +1,4 @@
+import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
 import { scheduledCaptures } from '../features/handoff/scheduled-captures';
 import { scheduledAssessments } from '../features/handoff/scheduled-assessments';
 import { scheduledSlackIntake } from '../knowledge/slack-intake/schedule';
@@ -98,10 +99,10 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const costReadback = dueCostReadback(store, now);
         if (costReadback)
             add('reconciliation', { id: `cost-readback:${costReadback.key}`, status: 'queued' }, 'cost-readback', costReadback.updatedAt, 3, () => readBackCost(store, costReadback.key));
-        return withActiveClaims(store, lane, gateFeatureWork(store, items));
+        return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));
     }
     if (lane !== 'delivery')
-        return withActiveClaims(store, lane, gateFeatureWork(store, items));
+        return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));
     items.push(...scheduledFeatures(entry), ...scheduledAssessments(entry, now, assessmentDiagnostic));
     for (const job of c.jobs || []) {
         const validation = validatePrerequisites(job.prerequisites || [], { projectId: store.project.id, kind: 'delivery', id: job.id }, stores);
@@ -159,7 +160,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     const mail = store.state.pendingMail;
     if (mail)
         add('mail', { id: mail.id || mail.requestedAt, status: 'queued' }, 'mailbox', mail.requestedAt, 3, () => engine.drainMail());
-    return withActiveClaims(store, lane, gateFeatureWork(store, items));
+    return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));
 }
 
 /** A persisted execution claim is authoritative while synthetic source rows change. */

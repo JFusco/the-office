@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { test, expect, vi } from 'vitest';
 import { writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -22,7 +23,7 @@ test.each(['none', 'clean', 'dirty', 'post-removal-failure'])('an advanced adopt
         const verify = f.delivery.verifyPR.bind(f.delivery); let reads = 0;
         f.job.status = 'working';
         f.delivery.verifyPR = async (...args) => { if (++reads === 3) throw new Error('Post-checkout provider read failed'); return verify(...args); };
-        await expect(f.delivery.queueSourceRepair(f.job, assessment(oldHead), f.artifactRoot)).rejects.toThrow('Post-checkout');
+        await expect(claimedDelivery(f.store, f.job, () => f.delivery.queueSourceRepair(f.job, assessment(oldHead), f.artifactRoot))).rejects.toThrow('Post-checkout');
         oldPath = f.job.adoptedRepairCheckout!.worktree!; oldId = f.job.adoptedRepairCheckout!.id;
         expect(f.job.worktree).toBe(''); expect(existsSync(oldPath)).toBe(true);
         let failAfterRemoval = retained === 'post-removal-failure';
@@ -48,7 +49,7 @@ test.each(['none', 'clean', 'dirty', 'post-removal-failure'])('an advanced adopt
     };
     await f.delivery.observe(); expect(f.job).toMatchObject({ stage: 'lead-pr', status: 'queued', head: oldHead });
     expect(f.job.lastPRFingerprint).toContain(newHead);
-    await f.delivery.step(f.job);
+    await claimedDelivery(f.store, f.job, () => f.delivery.step(f.job));
     expect(runs).toBe(1);
     if (retained === 'dirty' || retained === 'post-removal-failure') {
         expect(f.job).toMatchObject({ stage: 'lead-pr', status: 'blocked', head: newHead });
@@ -67,7 +68,7 @@ test.each(['none', 'clean', 'dirty', 'post-removal-failure'])('an advanced adopt
     expect(f.calls.some(c => c.args[0] === 'push' || c.args.includes('POST'))).toBe(false);
 });
 
-test.each(['cycle', 'attempt', 'uncertain', 'foreign-repo', 'branch', 'paused', 'draining'])('advanced adopted head preserves %s instead of rebinding ownership', kind => {
+test.each(['cycle', 'attempt', 'uncertain', 'foreign-repo', 'branch', 'paused', 'draining'])('advanced adopted head preserves %s instead of rebinding ownership', async kind => {
     const f = ciFixture(); f.job.existingPR = true; f.job.status = 'working'; f.pr.head.sha = newHead;
     if (kind === 'cycle') f.job.repairCycle = { phase: 'repair' } as any;
     if (kind === 'attempt') f.job.mergeAttempt = { head: oldHead, at: 'prior' };
@@ -76,7 +77,8 @@ test.each(['cycle', 'attempt', 'uncertain', 'foreign-repo', 'branch', 'paused', 
     if (kind === 'branch') f.pr.head.ref = 'another-branch';
     if (kind === 'paused') f.store.state.paused = true;
     if (kind === 'draining') f.store.state.draining = true;
-    expect(() => trackAdoptedReview(f.store, f.delivery.jobs, f.job, f.pr)).toThrow();
+    const message = kind === 'paused' ? 'Office paused before a harness write' : 'Advanced adopted PR requires an unowned, settled same-repository review identity';
+    await expect(claimedDelivery(f.store, f.job, async () => trackAdoptedReview(f.store, f.delivery.jobs, f.job, f.pr))).rejects.toThrow(message);
     expect(f.job.head).toBe(oldHead); expect(f.calls).toHaveLength(0);
 });
 test('an already handed-off candidate is never rebound to a bot update', () => {

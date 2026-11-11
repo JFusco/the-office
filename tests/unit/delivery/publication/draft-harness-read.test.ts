@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -35,7 +36,7 @@ test.each(['initial-publication', 'head-observation', 'acceptance-pr', 'acceptan
         }
         return original(program, args, options);
     };
-    await withAssignment(claim, 'delivery', () => f.delivery.step(f.job));
+    await withAssignment(claim, 'delivery', () => claimedDelivery(f.store, f.job, () => f.delivery.step(f.job)));
     expect(f.job.detail).not.toMatch(/Error/);
     expect(f.job).toMatchObject({ stage: 'prepare-pr', status: 'queued', head: HEAD, pr: 200 });
     expect(f.job.steps.map(step => step.stage)).toEqual(['draft']);
@@ -76,7 +77,7 @@ test('a first-publication lint failure retains its pre-PR original proof and a l
     f.engine.agents.run = async () => { throw new Error('Draft must run through the real harness'); };
     const claimA = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: job.id }, 'first-draft', 'draft')!;
     f.state.lintFails = true;
-    await withAssignment(claimA, 'delivery', () => f.delivery.step(job));
+    await withAssignment(claimA, 'delivery', () => claimedDelivery(f.store, job, () => f.delivery.step(job)));
     expect(job.status).toBe('blocked');
     expect(job.detail).toContain('lint:pr');
     expect(job.pr).toBe(0);
@@ -88,7 +89,7 @@ test('a first-publication lint failure retains its pre-PR original proof and a l
     const originalBytes = originalReads.map(row => readFileSync(resolve(root, `${row.id}.json`), 'utf8'));
     f.state.lintFails = false; job.status = 'queued';
     const claimB = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: job.id }, 'second-draft', 'draft')!;
-    await withAssignment(claimB, 'delivery', () => f.delivery.step(job));
+    await withAssignment(claimB, 'delivery', () => claimedDelivery(f.store, job, () => f.delivery.step(job)));
     expect(job).toMatchObject({ status: 'queued', stage: 'prepare-pr', pr: 200, head: HEAD });
     expect(job.steps.map(step => step.stage)).toEqual(['draft']);
     expect(f.state.calls.filter(call => call.startsWith('git push '))).toHaveLength(1);

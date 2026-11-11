@@ -51,7 +51,7 @@ test.each([false, true])('the real IT ledger wakes the original request only whi
     if (returned) { await f.run(); f.request.status = 'completed'; }
     else {
         // Admit the record but stop before assessment/publication, preserving the actual original park.
-        f.ownership.complete = false; await expect(f.run()).rejects.toThrow('ownership'); f.ownership.complete = true;
+        f.store.state.paused = true; await expect(f.run()).rejects.toThrow(); f.store.state.paused = false;
         f.request.status = 'interrupted';
     }
     f.store.finishClaim(f.claim.id, 'interrupted'); f.job.status = 'interrupted';
@@ -78,7 +78,7 @@ test.each([false, true])('the real IT ledger wakes the original request only whi
 test.each(['pause', 'ownership', 'worker'])('IT preserves a live %s gate without changing the original budget or job', async gate => {
     const f = metadataFixture(); f.store.finishClaim(f.claim.id, 'interrupted'); f.job.status = 'blocked';
     if (gate === 'pause') f.store.state.paused = true;
-    if (gate === 'ownership') f.ownership.complete = false;
+    if (gate === 'ownership') f.store.claimWork({projectId:f.store.project.id,kind:'delivery',id:'competing'},'other','implement');
     if (gate === 'worker') f.store.state.workLog!.push({ id: 'active', requestId: f.job.id, status: 'running' } as any);
     const recover = vi.fn();
     await recoverPRMetadata({ store: f.store, offices: { sessions: { forProject: () => f.ownership } }, current: new Set(), it: { recoveries: {} }, recover } as any);

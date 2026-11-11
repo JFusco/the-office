@@ -5,6 +5,14 @@ export interface WorkRef {
     kind: WorkKind;
     id: string;
 }
+export interface DeliveryAdmission {
+    kind: 'pickup' | 'manual' | 'linked-pr' | 'repair-followup';
+    projectId: string;
+    jobId: string;
+    key: string;
+    reference: string;
+    at: string;
+}
 export type CompletionCondition = 'issue-closed' | 'job-completed' | 'pr-merged';
 export interface DependencyObservation {
     target: WorkRef;

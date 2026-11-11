@@ -1,6 +1,6 @@
 import { moveLane } from '../board/move-lane';
 import { harnessStageResult, receipt } from '../harness/stage-result';
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { publishCandidate } from './publish-pr';
 import { readPublication } from './read-command';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -12,7 +12,7 @@ export async function harnessDraft(delivery: GitHubDelivery, job: TicketJob, roo
     await readPublication(store, execute, job, root, 'viewer');
     const publication = await publishCandidate(store, execute, delivery.jobs, job, root, delivery);
     const head = job.head;
-    const lane = await moveLane(store, execute, job, 'In review', () => assertMayMutate(store, delivery.jobs, job, head), publication.pr);
+    const lane = await moveLane(store, execute, job, 'In review', () => assertDeliveryMayMutate(store, delivery.jobs, job, head), publication.pr);
     const boardUrl = store.project.githubProject?.url || '';
     return harnessStageResult(job, root, {
         stage: 'draft', commit: job.head, prId: publication.pr,

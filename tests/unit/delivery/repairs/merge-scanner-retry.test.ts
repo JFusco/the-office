@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { recordOfficeMerge } from '../../../fixtures/office-merge';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -33,10 +34,10 @@ function setup() {
     return { ...f, run, jobs, runs, writes: () => writes, fail: (didLand: boolean) => { fail = true; landed = didLand; } };
 }
 test('positively evidenced post-merge gateway failure gets one durable failed-job retry', async () => {
-    const f = setup(); expect(await retryMergeScanner(f.delivery, f.job)).toBe(true);
+    const f = setup(); expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(true);
     expect(f.writes()).toBe(1); expect(f.job.status).toBe('watching'); expect(f.run.run_attempt).toBe(2);
     expect(f.job.mergeScannerRetry).toMatchObject({ runId: 20, attempt: 1, head: newHead });
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true); expect(f.writes()).toBe(1);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(true); expect(f.writes()).toBe(1);
 });
 test('delayed attempt visibility repeats only bounded GETs after one POST', async () => {
     const f = setup(), api = f.delivery.api; let reads = 0;
@@ -44,7 +45,7 @@ test('delayed attempt visibility repeats only bounded GETs after one POST', asyn
         if (path === 'actions/runs/20' && f.writes() && ++reads < 3) return { ...f.run, run_attempt: 1 };
         return api(path);
     };
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(true);
     expect(reads).toBe(3); expect(f.writes()).toBe(1); expect(f.job.status).toBe('watching');
 });
 test.each(['draining', 'replacement', 'head', 'record'])('final scanner preflight rechecks %s after the last provider read', async change => {
@@ -59,7 +60,7 @@ test.each(['draining', 'replacement', 'head', 'record'])('final scanner prefligh
         }
         return value;
     };
-    await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow();
+    await expect(claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).rejects.toThrow();
     expect(f.writes()).toBe(0);
     expect(f.store.getEffect(`harness:${f.job.id}:merge-scanner-retry:20`)).toMatchObject({ status: 'rejected', dispatchedAt: '' });
 });
@@ -69,13 +70,13 @@ test('unobserved accepted retry exhausts bounded reads and remains uncertain wit
         if (path === 'actions/runs/20' && f.writes()) { reads++; return { ...f.run, run_attempt: 1 }; }
         return api(path);
     };
-    await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow('read-back');
+    await expect(claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).rejects.toThrow('read-back');
     expect(reads).toBe(4); expect(f.writes()).toBe(1);
     expect(f.store.getEffect(`harness:${f.job.id}:merge-scanner-retry:20`)?.status).toBe('uncertain');
 });
 test('successful CI recovery reconciles the original uncertain retry before advancing closeout', async () => {
     const f = setup(); f.fail(true);
-    await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow('Lost response');
+    await expect(claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).rejects.toThrow('Lost response');
     f.run.status = 'completed'; f.run.conclusion = 'success';
     await f.delivery.recoverMergeCI(f.job);
     expect(f.store.getEffect(`harness:${f.job.id}:merge-scanner-retry:20`)).toMatchObject({ status: 'verified', receipt: { runId: 20, attempt: 2 } });
@@ -84,7 +85,7 @@ test('successful CI recovery reconciles the original uncertain retry before adva
 });
 test.each(['foreign-effect', 'foreign-run', 'changed-job'])('read-only retry reconciliation preserves %s without clearing uncertainty', async kind => {
     const f = setup(); f.fail(true);
-    await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow();
+    await expect(claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).rejects.toThrow();
     const id = `harness:${f.job.id}:merge-scanner-retry:20`;
     if (kind === 'foreign-effect') f.store.putEffect({ ...f.store.getEffect(id)!, target: 'https://github.com/other/repo/actions/runs/20' });
     if (kind === 'foreign-run') f.run.id = 21;
@@ -92,14 +93,14 @@ test.each(['foreign-effect', 'foreign-run', 'changed-job'])('read-only retry rec
         const api = f.delivery.api;
         f.delivery.api = async path => { const result = await api(path); if (path === 'actions/runs/20') f.job.mergeCommit = 'f'.repeat(40); return result; };
     }
-    await expect(reconcileMergeScannerRetry(f.delivery, f.job)).rejects.toThrow();
+    await expect(claimedDelivery(f.store, f.job, () => reconcileMergeScannerRetry(f.delivery, f.job))).rejects.toThrow();
     expect(f.store.getEffect(id)?.status).toBe('uncertain'); expect(f.writes()).toBe(1);
 });
 test.each([true, false])('lost retry response is read back, never resent (landed=%s)', async landed => {
     const f = setup(); f.fail(landed);
-    await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow('Lost response');
-    if (landed) expect(await retryMergeScanner(f.delivery, f.job)).toBe(true);
-    else await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow('will not be resent');
+    await expect(claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).rejects.toThrow('Lost response');
+    if (landed) expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(true);
+    else await expect(claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).rejects.toThrow('will not be resent');
     expect(f.writes()).toBe(1);
 });
 test.each(['release', 'PR-event', 'other-head', 'already-retried', 'other-step', 'other-failure'])('scanner retry excludes %s', async kind => {
@@ -110,7 +111,7 @@ test.each(['release', 'PR-event', 'other-head', 'already-retried', 'other-step',
     if (kind === 'already-retried') f.run.run_attempt = 2;
     if (kind === 'other-step') f.jobs[0].steps[0].name = 'Run tests';
     if (kind === 'other-failure') f.jobs.push({ ...f.jobs[0], id: 11, steps: [{ name: 'Run tests', conclusion: 'failure' }] });
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(false); expect(f.writes()).toBe(0);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(false); expect(f.writes()).toBe(0);
 });
 test('a deterministic scanner error is not retried', () => {
     const f = setup(); expect(transientScannerJobs(f.jobs, ['Error: HTTP 404 from github.com'])).toBe(false);
@@ -123,23 +124,23 @@ test.each(['blocked', 'interrupted'] as const)('operator recovery queues an inac
 });
 
 test.each(['success', 'failure'])('a completed bounded retry falls through to ordinary recovery (%s)', async conclusion => {
-    const f = setup(); await retryMergeScanner(f.delivery, f.job);
+    const f = setup(); await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job));
     f.run.status = 'completed'; f.run.conclusion = conclusion;
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(false); expect(f.writes()).toBe(1);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(false); expect(f.writes()).toBe(1);
 });
 test('another timed out workflow excludes the narrow scanner retry', async () => {
     const f = setup(); f.runs.push({ ...f.run, id: 21, conclusion: 'timed_out', path: '.github/workflows/other.yml' });
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(false); expect(f.writes()).toBe(0);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(false); expect(f.writes()).toBe(0);
 });
 test('a verified suffixed effect is recognized after an undispatched rejected preflight', async () => {
-    const f = setup(); await retryMergeScanner(f.delivery, f.job);
+    const f = setup(); await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job));
     const id = `harness:${f.job.id}:merge-scanner-retry:20`, effect = f.store.getEffect(id)!;
     f.store.putEffect({ ...effect, id: `${id}:retry-1` });
     f.store.putEffect({ ...effect, status: 'rejected', dispatchedAt: '' });
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true); expect(f.writes()).toBe(1);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(true); expect(f.writes()).toBe(1);
 });
 test('completed failed retry reaches ordinary PM diagnosis once, without another retry', async () => {
-    const f = setup(); await retryMergeScanner(f.delivery, f.job);
+    const f = setup(); await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job));
     f.run.status = 'completed'; f.run.conclusion = 'failure'; let diagnoses = 0;
     f.engine.agents.run = async () => { diagnoses++; return { outcome: 'needs-human', issue: 0, summary: 'Persistent failure needs diagnosis', receipts: [] } as any; };
     await expect(f.delivery.recoverMergeCI(f.job)).rejects.toThrow('Persistent failure');
@@ -147,7 +148,7 @@ test('completed failed retry reaches ordinary PM diagnosis once, without another
 });
 test('uncertain unlanded retries remain blocked across normal observation', async () => {
     const f = setup(); f.fail(false);
-    await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow();
+    await expect(claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).rejects.toThrow();
     f.job.status = 'blocked';
     const count = f.calls.length;
     await f.delivery.observe(); await f.delivery.observe();
@@ -156,7 +157,7 @@ test('uncertain unlanded retries remain blocked across normal observation', asyn
 });
 
 test('interrupted successful retry resumes normal observation and verified closeout without PM diagnosis', async () => {
-    const f = setup(); await retryMergeScanner(f.delivery, f.job);
+    const f = setup(); await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job));
     f.run.status = 'completed'; f.run.conclusion = 'success'; f.job.status = 'interrupted';
     recheckPR.call({ store: f.store, state: f.store.state.coordination } as any, f.job.key);
     let diagnoses = 0; f.engine.agents.run = async () => { diagnoses++; throw new Error('No diagnosis expected'); };
@@ -165,7 +166,7 @@ test('interrupted successful retry resumes normal observation and verified close
     await f.delivery.observe(); expect(f.job).toMatchObject({ stage: 'closeout', status: 'queued' });
 });
 test('successful scanner retry does not hide another failed exact-merge workflow', async () => {
-    const f = setup(); await retryMergeScanner(f.delivery, f.job);
+    const f = setup(); await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job));
     f.run.status = 'completed'; f.run.conclusion = 'success';
     f.runs.push({ ...f.run, id: 21, path: '.github/workflows/other.yml', conclusion: 'failure' });
     let diagnoses = 0; f.engine.agents.run = async () => { diagnoses++; return { outcome: 'needs-human', issue: 0, summary: 'Other workflow failed', receipts: [] } as any; };
@@ -181,7 +182,7 @@ test('green Actions cannot bypass an earlier unresolved PM issue/card recovery a
         return { outcome: 'needs-human', issue: 0, summary: 'Original issue/card effect is still uncertain', receipts: [] } as any;
     };
     f.job.status = 'blocked'; recheckPR.call({ store: f.store, state: f.store.state.coordination } as any, f.job.key);
-    await f.delivery.step(f.job);
+    await claimedDelivery(f.store, f.job, () => f.delivery.step(f.job));
     expect(reads).toBe(1); expect(f.writes()).toBe(0);
     expect(f.job).toMatchObject({ stage: 'ci-recovery', status: 'blocked', ciRecoveryAttemptAt: 'original-attempt' });
     expect(f.job.detail).toContain('still uncertain'); expect(f.job.mergeScannerRetry).toBeUndefined();
@@ -199,7 +200,7 @@ test('an interrupted original diagnosis reaches only the existing read-only issu
     const api = f.delivery.api;
     f.delivery.api = async path => path === 'issues/777' ? { number: 777, state: 'open', body: `Office CI recovery ${f.job.id} ${f.job.mergeCommit}`, assignees: [{ login: 'JFusco' }] } : api(path);
     f.job.status = 'blocked'; recheckPR.call({ store: f.store, state: f.store.state.coordination } as any, f.job.key);
-    await f.delivery.step(f.job);
+    await claimedDelivery(f.store, f.job, () => f.delivery.step(f.job));
     expect(reads).toBe(1); expect(f.writes()).toBe(0); expect(f.job.mergeScannerRetry).toBeUndefined();
     expect(f.job).toMatchObject({ stage: 'ci-recovery', status: 'watching', ciFollowupKey: 'GH-777' });
     expect(f.delivery.jobs.some(j => j.key === 'GH-777')).toBe(true);
@@ -208,20 +209,20 @@ test('an interrupted original diagnosis reaches only the existing read-only issu
 
 test('an externally merged PR without an Office merge attempt never gets a new scanner retry', async () => {
     const f = setup(); delete f.job.mergeAttempt;
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(false); expect(f.writes()).toBe(0);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(false); expect(f.writes()).toBe(0);
 });
 test('an orphaned pre-dispatch evidence artifact cannot permanently block a retry', async () => {
     const f = setup(), orphan = resolve(f.artifactRoot, 'merge-scanner-20.json');
     writeFileSync(orphan, 'Retained orphan evidence');
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(true);
     const path = f.job.mergeScannerRetry!.evidencePath;
     expect(path).not.toBe(orphan); expect(readFileSync(orphan, 'utf8')).toBe('Retained orphan evidence');
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(true);
     expect(f.job.mergeScannerRetry!.evidencePath).toBe(path); expect(f.writes()).toBe(1);
 });
 test('already dispatched uncertain scanner retry remains read-back only even if merge proof is unavailable', async () => {
     const f = setup(); f.fail(true);
-    await expect(retryMergeScanner(f.delivery, f.job)).rejects.toThrow('Lost response');
+    await expect(claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).rejects.toThrow('Lost response');
     delete f.job.mergeAttempt;
-    expect(await retryMergeScanner(f.delivery, f.job)).toBe(true); expect(f.writes()).toBe(1);
+    expect(await claimedDelivery(f.store, f.job, () => retryMergeScanner(f.delivery, f.job))).toBe(true); expect(f.writes()).toBe(1);
 });

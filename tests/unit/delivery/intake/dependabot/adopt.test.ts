@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -53,9 +54,9 @@ test('the adopted PR runs prepare, Sam\'s exact-head review and reaches the guar
         return { outcome: 'passed', summary: 'Dependency-only update is ready', commit: HEAD, blocker: '', findings: [], receipts: [], previewUrl: '', worktree: '', branch: job.branch, prId: 121, qaRunDir: '', paidRuns: 0,
             evidence: [{ id: 'lead', kind: 'review', summary: 'Exact-head review', path: review, commit: HEAD, environment: 'Synthetic', url: '', observedAt: '' }] };
     }) as any;
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job).toMatchObject({ stage: 'lead-pr', status: 'queued', head: HEAD });
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'merge', status: 'queued', pr: 121 });
     expect(roles).toEqual(['lead']);

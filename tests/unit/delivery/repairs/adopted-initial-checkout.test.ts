@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { test, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
@@ -39,7 +40,7 @@ test.each(['clone', 'config', 'user-file', 'index', 'advanced-head'])('a real in
         findings: [{ id: 'packed', summary: 'Mandatory checks missing', expected: 'Passing receipts', actual: 'No receipts', status: 'open', attempts: 0 }],
         resolution: { kind: 'source-repair', findingIds: ['packed'], evidenceIds: ['assessment'] },
         evidence: [{ id: 'assessment', kind: 'review', path, commit: head, summary: 'Synthetic assessment', environment: 'fixture', url: '', observedAt: '' }] };
-    await expect(f.delivery.queueSourceRepair(f.job, result, f.artifactRoot)).rejects.toThrow('paused');
+    await expect(claimedDelivery(f.store, f.job, () => f.delivery.queueSourceRepair(f.job, result, f.artifactRoot))).rejects.toThrow('paused');
     const retained = f.job.adoptedRepairCheckout!, candidate = retained.worktree!, id = retained.id;
     expect(git(candidate, ['rev-parse', 'HEAD'])).toBe(base); expect(f.job.worktree).toBe('');
     expect(f.calls.filter(c => c.args[0] === 'checkout')).toHaveLength(0);
@@ -50,17 +51,17 @@ test.each(['clone', 'config', 'user-file', 'index', 'advanced-head'])('a real in
     f.store.state.paused = false;
     if (phase === 'advanced-head') {
         git(origin, ['update-ref', 'refs/heads/renovate/fixture', future]);
-        f.pr.head.sha = future; trackAdoptedReview(f.store, f.delivery.jobs, f.job, f.pr);
+        f.pr.head.sha = future; await claimedDelivery(f.store,f.job,async()=>trackAdoptedReview(f.store, f.delivery.jobs, f.job, f.pr));
         result.commit = future; result.evidence[0].commit = future;
     }
     if (['user-file', 'index'].includes(phase)) {
-        await expect(f.delivery.queueSourceRepair(f.job, result, f.artifactRoot)).rejects.toThrow('dirty');
+        await expect(claimedDelivery(f.store, f.job, () => f.delivery.queueSourceRepair(f.job, result, f.artifactRoot))).rejects.toThrow('dirty');
         expect(f.job.worktree).toBe(''); expect(f.job.adoptedRepairCheckout?.id).toBe(id); expect(existsSync(candidate)).toBe(true);
         if (phase === 'user-file') expect(readFileSync(resolve(candidate, 'keep.txt'), 'utf8')).toBe('User work\n');
         if (phase === 'index') expect(git(candidate, ['ls-files', '--stage'])).toBe(index);
         expect(f.calls.filter(c => c.args[0] === 'checkout')).toHaveLength(0);
     } else {
-        expect(await f.delivery.queueSourceRepair(f.job, result, f.artifactRoot)).toBe(true);
+        expect(await claimedDelivery(f.store, f.job, () => f.delivery.queueSourceRepair(f.job, result, f.artifactRoot))).toBe(true);
         expect(f.job).toMatchObject({ stage: 'update-base', status: 'queued', head: f.pr.head.sha });
         expect(git(f.job.worktree, ['rev-parse', 'HEAD'])).toBe(f.pr.head.sha);
         if (phase !== 'advanced-head') expect(f.job.adoptedRepairCheckout?.id).toBe(id);
