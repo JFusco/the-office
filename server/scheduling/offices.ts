@@ -95,6 +95,8 @@ export class Offices {
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
         retireBrainSources(this.sources,this.stores());
+        // The legacy cutover gate stays until its removal milestone; no migration remains to open it.
+        if(this.sources.meta<{state:string}>('cutover')?.state!=='ready')this.sources.setMeta('cutover',{state:'ready',sources:{}});
         recoverStoppedLaunches(this.sources,this.stores());
         for (const entry of this.entries.values()) {
             for(const runtime of [entry.engine.agents,entry.engine.knowledgeAgents,entry.engine.itAgents,entry.engine.ctoAgents])runtime.knowledgeContext={registry:this.sources,stores:this.stores(),brain:new CommittedBrain()};

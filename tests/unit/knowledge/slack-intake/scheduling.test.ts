@@ -71,7 +71,7 @@ test('a continuation that always fails reaches needs-attention despite successfu
             opts.onIntakeLaunch?.(); const task = f.ledger.get<ReadTask>('task', f.task.id)!;
             if (task.cursor) throw Error('continuation failed');
             opts.onIntakeEvent?.(event(task, [{ ts: '100.000001', text: 'First page' }], true));
-            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Discussion only' }], proposals: [] };
+            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Discussion only' }] };
         }) as KnowledgeRunner;
         for (let i = 0; i < 5; i++) { await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan); await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan); f.advance(24 * 3600000); }
         expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ failures: 5, status: 'needs-attention', oldest: '0.000000', latest: '200.000000' });
