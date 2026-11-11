@@ -35,7 +35,7 @@ export async function admitPacked165(delivery: GitHubDelivery, request: HarnessR
     const next = packed165CandidateIdentity(job, request.id), before = await readPacked165Provider(delivery, job, next.branch, p);
     const root = resolve(store.dataRoot, 'ticket-work', job.id, `packed165-${request.id}`);
     const candidate = await withHarnessWork(delivery, job, 'developer', 'harness-packed165-forward-source',
-        control => makePacked165Candidate(delivery, job, request.id, root, control, guard, p));
+        control => makePacked165Candidate(delivery, job, request.id, root, control, guard, p, request));
     guard();
     const after = await readPacked165Provider(delivery, job, next.branch, p);
     if (after.fingerprint !== before.fingerprint) throw new Error('Provider assignment, board or baseline changed; preserve the fresh repair for read-back');

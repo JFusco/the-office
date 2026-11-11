@@ -24,7 +24,7 @@ vi.mock('../../../../server/delivery/recovery/packed165-policy', async original 
 
 export const fixtureSource = "const root = process.cwd();\nfunction run() {\n  const env = { ...process.env };\n  if (isolatedNpmCache) env.npm_config_cache = isolatedNpmCache;\n}\nconst consumer = { packageManager: 'pnpm@11.1.1', };\n";
 export const repairedHead = 'c'.repeat(40);
-export function packed165Fixture() {
+export function packed165Fixture(workspace = false) {
     const f = fakeGitHub(165), p = PACKED165;
     const job = f.candidate({ id: p.job, head: p.head, branch: p.branch, stage: 'draft', status: 'blocked',
         retry: { attempts: 2 } as any });
@@ -53,7 +53,9 @@ export function packed165Fixture() {
             }
             if (args[0] === 'worktree' && args[1] === 'add') {
                 nextBranch = args[3]; nextPath = args[4]; mkdirSync(resolve(nextPath, 'scripts'), { recursive: true });
-                writeFileSync(resolve(nextPath, 'package.json'), JSON.stringify({ scripts: { 'lint:pr': 'fixture' } })); return '';
+                writeFileSync(resolve(nextPath, 'package.json'), JSON.stringify({ scripts: { 'lint:pr': 'fixture' } }));
+                if (workspace) writeFileSync(resolve(nextPath, 'pnpm-workspace.yaml'), 'allowBuilds:\n  esbuild: true\n');
+                return '';
             }
             if (args[0] === 'commit') { committed = true; return ''; }
             if (args[0] === 'add') return '';
