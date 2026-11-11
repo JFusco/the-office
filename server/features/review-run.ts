@@ -1,3 +1,4 @@
+import { stopReview } from './stop-review';
 import { captureLearning } from '../knowledge/learning-events';
 import { selectLessons } from '../knowledge/lesson-selection';
 import { prepareExposure } from '../knowledge/lesson-exposure';
@@ -150,20 +151,8 @@ export class FeatureReviewRunner {
             importReview(this.store, feature, evidence);
         } finally {
             if (timer) clearInterval(timer);
-            let groups = observeHelperGroups(this.store, owned());
-            helperTelemetry(this.store, owned());
-            if (groups.length) {
-                stopHelperGroups(this.store, owned());
-                this.store.transaction(() => { const current = featureById(this.store, featureId); if (current.revision !== revision || current.review?.attemptDir !== attemptDir) return; current.status = 'blocked'; current.detail = 'Waiting for confirmed helper process termination before reconciliation.'; });
-            }
-            const stoppingAt = Date.now();
-            while (groups.length) {
-                stopHelperGroups(this.store, owned(), Date.now() - stoppingAt > 5000 ? 'SIGKILL' : 'SIGTERM');
-                await new Promise(resolve => setTimeout(resolve, 100));
-                groups = observeHelperGroups(this.store, owned());
-                helperTelemetry(this.store, owned());
-            }
-            this.active.delete(featureId);
+            try { try { helperTelemetry(this.store, owned()); } finally { await stopReview(this.store, owned); } }
+            finally { this.active.delete(featureId); }
         }
     }
 }

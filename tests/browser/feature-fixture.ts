@@ -11,15 +11,22 @@ export function featureFixture(snapshot: OfficeSnapshot, path: string, body?: Re
         features.push(feature); return feature;
     }
     const feature = features.find(f => f.id === id);
-    if (!feature || body.expectedRevision !== feature.revision) throw new Error('Feature revision changed');
+    if (!feature || body.expectedRevision !== feature.revision) throw Object.assign(new Error('Feature revision changed'),{code:'revision-change'});
     const doc = (markdown: string) => ({ id: randomUUID(), revision: feature.revision, digest: hash(markdown), markdown, path: '', createdAt: now });
     if (body.action === 'answer') {
-        const round = feature.rounds.at(-1)!;
-        if (round.id !== body.roundId) throw new Error('Round changed');
+        const round = feature.rounds.find(r=>r.id===body.roundId)!;
+        if (!round || round.revision!==feature.revision || Object.keys(round.answers).length) throw Object.assign(new Error('Round changed'),{code:'stale-round'});
+        if (round.author==='harness') throw Object.assign(new Error('Harness action required'),{code:'harness-action-required'});
         round.answers = body.answers; feature.revision++;
         feature.briefs.push(doc('Fixture brief: editors can find content. Acceptance: keyboard access and useful results.'));
         feature.conversation.push({ id: randomUUID(), role: 'human', text: Object.values(body.answers).join('\n'), at: now });
         feature.detail = 'Review the brief, then create the plan.';
+    }
+    if (body.action === 'harness-action') {
+        const round=feature.rounds.find(r=>r.id===body.roundId);
+        if(!round || round.author!=='harness' || round.resolvedAt)throw Object.assign(new Error('Round changed'),{code:'stale-round'});
+        if(body.operation==='note')(round.notes??=[]).push({id:randomUUID(),text:body.note,at:now});
+        else {if(!round.options?.some(o=>o.id===body.optionId))throw Object.assign(new Error('Action changed'),{code:'changed-precondition'});round.resolvedAt=now;round.appliedOptionId=body.optionId;}
     }
     if (body.action === 'create-plan') {
         feature.manifest = { provider: snapshot.project!.provider, destination: snapshot.project!.repository, items: [{ id: 'search', title: 'Implement editor search', key: '', action: 'create', predecessor: '', criteria: ['Editors can search content with a keyboard.'], operations: [{ id: 'create', kind: 'create', payload: { title: 'Implement editor search', body: 'Exact fixture ticket content' }, expected: {} }] }] };

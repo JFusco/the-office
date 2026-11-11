@@ -84,6 +84,7 @@ async function close() {
     await vite?.close();
     for (const { store } of offices.entries.values())
         store.close();
+    offices.dispose();
     offices.control.close();
     releaseLock();
     process.exit(0);

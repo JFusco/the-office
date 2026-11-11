@@ -1,3 +1,4 @@
+import { fixtureQuestions } from './question-fixture';
 import { brainFixture } from './brain-fixture';
 import { featureFixture } from './feature-fixture';
 // Isolated browser-test server: serves a built UI (static files) and answers the Office API
@@ -20,7 +21,7 @@ const streams=new Map<string,Set<ServerResponse>>();
 const types:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.json':'application/json'};
 const json=(res:ServerResponse,body:unknown,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(body));};
 let sequence=0;
-const snapshot=(project:string)=>{const s=state.snapshots[project];if(s){s.serverTime=new Date().toISOString();s.serviceInstanceId='fixture-service';s.snapshotSequence=++sequence;s.preferences={...state.preferences};}return s;};
+const snapshot=(project:string)=>{const s=state.snapshots[project];if(s){s.serverTime=new Date().toISOString();s.serviceInstanceId='fixture-service';s.snapshotSequence=++sequence;s.preferences={...state.preferences};s.featureQuestions=fixtureQuestions(Object.values(state.snapshots));}return s;};
 const WRITABLE=['quality','reducedMotion','keyboardShortcuts','deliveryToasts','coffeeBreaks'];
 // Merge writable preference fields; returns false for an unknown or empty patch, like the real route's 400.
 const mergePreferences=(patch:Record<string,unknown>)=>{const keys=Object.keys(patch||{});if(!keys.length||keys.some(k=>!WRITABLE.includes(k)))return false;state.preferences={...state.preferences,...patch,revision:state.preferences.revision+1};for(const project of streams.keys())push(project);return true;};
@@ -30,7 +31,7 @@ async function body(req:import('node:http').IncomingMessage){let text='';for awa
 createServer(async(req,res)=>{
   const url=new URL(req.url||'/',`http://127.0.0.1:${port}`),project=url.searchParams.get('project')||'cec';
   if(url.pathname==='/__fixture/reset'){state=createFixtureState();brain.close();brain=brainFixture();writes.length=0;return json(res,{reset:true});}
-  if(url.pathname==='/__fixture/snapshot'&&req.method==='POST'){const patch=await body(req) as any;Object.assign(state.snapshots[project],patch);if(url.searchParams.get('push')!=='0')push(project);return json(res,{ok:true});}
+  if(url.pathname==='/__fixture/snapshot'&&req.method==='POST'){const patch=await body(req) as any;Object.assign(state.snapshots[project],patch);if(url.searchParams.get('push')!=='0')for(const selected of streams.keys())push(selected);return json(res,{ok:true});}
   if(url.pathname==='/__fixture/technical'){brain.close();brain=brainFixture(true);return json(res,{syntheticPublished:true});}
   if(url.pathname==='/__fixture/writes')return json(res,writes);
   // Test seeding only: not recorded in writes, so no-write assertions stay meaningful.
@@ -55,7 +56,7 @@ createServer(async(req,res)=>{
     if(req.method==='POST'){
       const data=await body(req) as Record<string,any>;writes.push({at:new Date().toISOString(),method:'POST',path:`${url.pathname}${url.search}`,body:data});
       const s=state.snapshots[project];if(!s)return json(res,{error:'Unknown project'},409);
-      if(url.pathname.startsWith('/api/features')){try{const result=featureFixture(s,url.pathname,data);push(project);return json(res,result);}catch(error){return json(res,{error:String(error)},409);}}
+      if(url.pathname.startsWith('/api/features')){try{const result=featureFixture(s,url.pathname,data);for(const selected of streams.keys())push(selected);return json(res,result);}catch(error){return json(res,{error:String(error),code:(error as {code?:string}).code},409);}}
       if(url.pathname==='/api/commands'){
         if(data.action==='knowledge-source'){try{return json(res,brain.command(project,data.source),202);}catch(error){return json(res,{error:String(error)},400);}}
         if(data.action==='configure-knowledge-digest'){try{brain.configureDigest(project,data.knowledge);return json(res,{accepted:true},202);}catch(error){return json(res,{error:String(error)},400);}}

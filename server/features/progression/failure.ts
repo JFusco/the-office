@@ -3,7 +3,7 @@ import { CommandFailure } from '../../workers/process';
 import { EffectUncertainError } from '../../store/effects';
 import type { FeatureWait } from '../../../src/contracts/features';
 
-export type FeatureErrorCode = 'invalid-content' | 'unsupported' | 'ownership' | 'stale-command' | 'harness-action-required' | 'policy-disabled';
+export type FeatureErrorCode = 'source-unavailable' | 'review-state' | 'stale-round' | 'revision-change' | 'changed-precondition' | 'invalid-content' | 'unsupported' | 'ownership' | 'stale-command' | 'harness-action-required' | 'policy-disabled';
 export class FeatureError extends Error {
     constructor(public code: FeatureErrorCode, message: string) { super(message); }
 }
