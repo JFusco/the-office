@@ -12,11 +12,10 @@ import { IntakeLedger } from './ledger';
 import { initialize, refresh } from './windows';
 import { queueReconsideration } from './reconsider';
 import { runSlackLinks, type LinkRecord } from './read-links';
-import { captureProposal } from './capture-effect';
 import { runIntakeTask } from './run';
 import { readMethod } from './observations';
 import { lastFriday } from '../weekly-rollup';
-import { LIMITS, type Proposal, type ReadTask } from './contracts';
+import { LIMITS, type ReadTask } from './contracts';
 import { publicSourceWork } from '../sources/public-source';
 export { retrySlackIntake } from './retry';
 
@@ -24,20 +23,16 @@ function sourceWork(store: Store, run: KnowledgeRunner, now: Date, registry: Sou
     const policy = collectionPolicy(source), ledger = new IntakeLedger(store, source), budget = new IntakeBudget(registry);
     const allowed = () => collectionAllowed(registry, store, policy);
     const homeReady = () => !store.state.paused && !store.state.draining;
-    const item = (key: string, at: string, execute: () => Promise<unknown>, reason: string, ready = true, reconcile = false): ScheduledWork => ({
+    const item = (key: string, at: string, execute: () => Promise<unknown>, reason: string, ready = true): ScheduledWork => ({
         store, work: { projectId: store.project.id, kind: 'knowledge-slack-intake', id: `source:${source.id}` }, stage: 'knowledge-slack-intake', rank: 5, enqueuedAt: at,
-        eligibility: { state: (reconcile ? homeReady() : allowed()) ? ready ? 'runnable' : 'waiting' : 'blocked', reason, owner: 'Harper', nextCheckAt: ready?null:easternInstant(addDays(easternDay(now),1)).toISOString() },
+        eligibility: { state: allowed() ? ready ? 'runnable' : 'waiting' : 'blocked', reason, owner: 'Harper', nextCheckAt: ready?null:easternInstant(addDays(easternDay(now),1)).toISOString() },
         identity: () => JSON.stringify([key, registry.get(source.id)?.revision, ledger.revision(), allowed(), homeReady(), budget.used(),budget.limit(source.id)]),
-        claimEligible: () => ready && (reconcile ? homeReady() : allowed()),
+        claimEligible: () => ready && allowed(),
         execute: async () => { registry.setMeta(`rotation:${store.project.id}`, source.id); await execute(); },
     });
-    // Reconciliation has its own gate; withdrawal, pause, disabled learning and changed authority never permit redispatch.
-    const proposals = ledger.all<Proposal>('proposal');
-    const uncertain = proposals.find(p => p.status !== 'captured' && (!p.nextAt || Date.parse(p.nextAt) <= now.getTime()) && ['verified', 'dispatching', 'uncertain'].includes(store.getEffect(`slack-capture:${p.id}`)?.status || ''));
-    if (uncertain) return item(uncertain.id, now.toISOString(), () => captureProposal(store, policy, uncertain.id, registry), 'Reconciling an existing Brain receipt', true, true);
     if (!allowed()) return;
     const tasks = ledger.all<ReadTask>('task');
-    if (tasks.some(t => t.status !== 'complete' && (t.sourceDigest !== policy.sourceDigest || t.sourceId !== source.id || t.channel !== policy.channels[0].id)) || proposals.some(p => p.status === 'pending' && p.sourceDigest !== policy.sourceDigest)) {
+    if (tasks.some(t => t.status !== 'complete' && (t.sourceDigest !== policy.sourceDigest || t.sourceId !== source.id || t.channel !== policy.channels[0].id))) {
         const blocked = item('authority', now.toISOString(), async () => undefined, 'Retained source work needs authority reconciliation', false);
         blocked.eligibility.state = 'blocked';blocked.eligibility.nextCheckAt=null; return blocked;
     }
@@ -47,8 +42,6 @@ function sourceWork(store: Store, run: KnowledgeRunner, now: Date, registry: Sou
     }
     refresh(ledger, policy, now, source.cadence, source.refreshRequestedAt);
     if (source.refreshRequestedAt && ledger.get('meta', 'refresh-consumed') === source.refreshRequestedAt) registry.update(source.id, source.revision, s => { delete s.refreshRequestedAt; });
-    const capture = proposals.find(p => p.status === 'pending' && p.sourceDigest === policy.sourceDigest && (!p.nextAt || Date.parse(p.nextAt) <= now.getTime()));
-    if (capture && policy.destination === 'technical-brain') return item(capture.id, now.toISOString(), () => captureProposal(store, policy, capture.id, registry), 'Submitting curated technical evidence');
     queueReconsideration(ledger, policy, lastFriday(now), now.toISOString());
     const capacity = budget.used() < budget.limit(source.id);
     const links = ledger.all<LinkRecord>('link').filter(l => l.state === 'pending' && (!l.nextAt || Date.parse(l.nextAt) <= now.getTime()));

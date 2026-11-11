@@ -2,7 +2,6 @@ import { collectionPolicy } from '../../../../server/knowledge/sources/collectio
 import { expect, test, vi } from 'vitest';
 import { cleanScan, config, event, intakeFixture } from './fixture';
 import { IntakeLedger } from '../../../../server/knowledge/slack-intake/ledger';
-import { configDigest } from '../../../../server/knowledge/slack-intake/config';
 import { newTask } from '../../../../server/knowledge/slack-intake/collect';
 import { scheduledSlackIntake, retrySlackIntake } from '../../../../server/knowledge/slack-intake/schedule';
 import { runIntakeTask } from '../../../../server/knowledge/slack-intake/run';
@@ -16,7 +15,7 @@ test('continuing histories rotate through seven source streams with one Office a
     const f = intakeFixture();
     try {
         f.registry.update(f.source.id, 1, s => { s.state = 'paused'; });
-        const sources = Array.from({ length: 7 }, (_, i) => f.registry.create({ kind: 'slack', title: `Channel ${i + 1}`, homeProjectId: 'brain', destination: 'technical-brain', domains: config.domains,
+        const sources = Array.from({ length: 7 }, (_, i) => f.registry.create({ kind: 'slack', title: `Channel ${i + 1}`, homeProjectId: 'brain',
             authority: { ...f.source.authority!, channels: [{ id: `C${i + 1}`, name: `fixture-${i + 1}` }] } }));
         for (const source of sources) {
             const policy = collectionPolicy(source), ledger = new IntakeLedger(f.store, source), channel = policy.channels[0];
@@ -29,7 +28,7 @@ test('continuing histories rotate through seven source streams with one Office a
             opts.onIntakeLaunch?.(); const source = f.registry.get(opts.intakeBinding!.sourceId)!;
             const task = new IntakeLedger(f.store, source).all<ReadTask>('task').find(t => t.status === 'running')!;
             visited.push(task.channel); const page = event(task, [], true); page.item.result.structuredContent.response_metadata.next_cursor = `cursor-${visited.length}`;
-            opts.onIntakeEvent?.(page); return { units: [], proposals: [] };
+            opts.onIntakeEvent?.(page); return { units: [] };
         }) as KnowledgeRunner;
         const schedule = () => scheduledSlackIntake(f.store, run, f.store.clock.now(), f.registry, cleanScan);
         for (let i = 0; i < 8; i++) await schedule()[0].execute();
@@ -72,7 +71,7 @@ test('a continuation that always fails reaches needs-attention despite successfu
             opts.onIntakeLaunch?.(); const task = f.ledger.get<ReadTask>('task', f.task.id)!;
             if (task.cursor) throw Error('continuation failed');
             opts.onIntakeEvent?.(event(task, [{ ts: '100.000001', text: 'First page' }], true));
-            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Discussion only' }], proposals: [] };
+            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Discussion only' }] };
         }) as KnowledgeRunner;
         for (let i = 0; i < 5; i++) { await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan); await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan); f.advance(24 * 3600000); }
         expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ failures: 5, status: 'needs-attention', oldest: '0.000000', latest: '200.000000' });
@@ -84,16 +83,14 @@ test('records frozen under another configuration block intake with an explicit r
     const f = intakeFixture();
     try {
         progress(f);
-        f.ledger.put('proposal', 'stale', { id: 'stale', task: f.task.id, domain: 'tooling', body: 'b', hash: 'h', units: [], sourceVersions: [], status: 'pending', configHash: configDigest(config) });
-        f.registry.update(f.source.id, f.source.revision, s => { s.domains = ['tooling', 'other']; });
+        f.registry.update(f.source.id, f.source.revision, s => { s.authority = { ...s.authority!, publicHosts: [...s.authority!.publicHosts, 'example.org'] }; });
         for (let i = 0; i < 2; i++) {
             const items = scheduledSlackIntake(f.store, noRun, f.store.clock.now(), f.registry);
             expect(items).toHaveLength(1); expect(items[0].work.id).toBe(`source:${f.source.id}`);
             expect(items[0].eligibility).toMatchObject({ state: 'blocked' }); expect(items[0].eligibility.reason).toMatch(/authority reconciliation/);
             expect(items[0].claimEligible?.()).toBe(false); await items[0].execute();
         }
-        expect(f.ledger.get('proposal', 'stale')).toMatchObject({ status: 'pending' }); expect(f.ledger.get<ReadTask>('task', f.task.id)?.status).toBe('pending');
-        expect(f.store.getEffect('slack-capture:stale')).toBeUndefined();
+        expect(f.ledger.get<ReadTask>('task', f.task.id)?.status).toBe('pending');
     } finally { f.close(); }
 });
 test('an inventory rate limit backs off reply search on the shared method while channel reads stay eligible', async () => {

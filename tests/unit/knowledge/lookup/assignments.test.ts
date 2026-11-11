@@ -12,7 +12,7 @@ import { digest } from '../../../../server/knowledge/slack-intake/config';
 import type { WorkTime } from '../../../../src/shared';
 import { learningLesson } from '../knowledge-fixture';
 function fixture(service=new AssignmentLookups()) {
-    const f=intakeFixture('project-evidence'),id=randomUUID(),dir=resolve(f.store.dataRoot,'sessions',id);mkdirSync(dir,{recursive:true});
+    const f=intakeFixture(),id=randomUUID(),dir=resolve(f.store.dataRoot,'sessions',id);mkdirSync(dir,{recursive:true});
     const text='schema receipts must retain their version',ref=evidenceIdentity(f.source.id,'doc','v1');f.ledger.put('admission','doc:v1',{state:'admitted'});f.ledger.put('evidence',ref,{id:ref,sourceId:f.source.id,unitId:'doc',version:'v1',text,contentSha256:digest(text),url:'',observedAt:'now',readerVersion:'fixture',limitations:[]});
     f.store.state.workLog!.push({id,status:'running'} as WorkTime);
     let live=true,snapshots=0;const pins:string[]=[];

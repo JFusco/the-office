@@ -7,7 +7,7 @@ import { lookupSummaryVisible } from './lookup/summary-scope';
 import { outcomeVisible } from './outcomes/projection';
 export function knowledgeActivity(context: KnowledgeContext, project: string): KnowledgeActivityPage {
     const knowledge = context.stores.get(project)?.state.knowledge, events: KnowledgeActivityPage['events'] = [];
-    for (const evidence of evidenceRecords(context, project,true)) events.push({ id: evidence.id, at: evidence.observedAt, kind: 'admitted', title: context.registry.get(evidence.sourceId)!.title, detail: `Evidence ${evidence.unitId} · version ${evidence.version}` });
+    for (const evidence of evidenceRecords(context, project)) events.push({ id: evidence.id, at: evidence.observedAt, kind: 'admitted', title: context.registry.get(evidence.sourceId)!.title, detail: `Evidence ${evidence.unitId} · version ${evidence.version}` });
     const lessons = [...(knowledge?.lessons || []), ...(knowledge?.officeLessons || [])].filter(l => lessonVisible(context.registry,project,l));
     for (const l of lessons) events.push({ id: `lesson:${l.id}`, at: l.createdAt, kind: 'curated', title: l.statement, detail: `${l.scope} advisory lesson · ${l.status}${l.needsReview ? ' · source review needed' : ''}` });
     const exposures = (knowledge?.exposures || []).filter(e => e.dispatchedAt);

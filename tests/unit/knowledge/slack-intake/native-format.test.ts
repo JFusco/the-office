@@ -26,7 +26,7 @@ test('native seed pages omit zero oldest while preserving stored bounds, cursor 
             raw.item.result = envelope({ messages: 'Channel: #fixture-channel (C123)\n\n=== Message from Fixture at fixture ===\nMessage TS: 100.000001\nFixture discussion.\n',
                 pagination_info: calls.length === 1 ? 'There are more messages available. To view the next page, use cursor: `seed-next`\n' : 'There are no more messages available.\n' });
             opts.onIntakeEvent?.(raw);
-            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Fixture discussion only' }], proposals: [] };
+            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Fixture discussion only' }] };
         }) as KnowledgeRunner;
         await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
         expect(calls[0]).not.toHaveProperty('oldest');
@@ -48,38 +48,6 @@ test('native seed pages omit zero oldest while preserving stored bounds, cursor 
         }
         expect(f.ledger.all('observation')).toHaveLength(observations);
     } finally { f.close(); }
-});
-
-test('message proposals use every canonical permalink supplied by the read prompt before advancing a page', async () => {
-    for (const canonical of [false, true]) {
-        const f = intakeFixture();
-        try {
-            const stamps = ['100.000001', '101.000002'];
-            const run = (async (prompt, _schema, opts) => {
-                const prefix = /Canonical message permalink prefix: "([^"]+)"/.exec(prompt)?.[1];
-                expect(prefix).toBe('https://fixture.slack.com/archives/C123/p');
-                expect(prompt).toContain('preserve all six fractional digits');
-                expect(prompt).toContain('EVERY source id');
-                const raw = event(f.ledger.get<ReadTask>('task', f.task.id)!) as any;
-                raw.item.result = envelope({ messages: 'Channel: #fixture-channel (C123)\n\n' + stamps.map(stamp => `=== Message from Fixture at fixture ===\nMessage TS: ${stamp}\nA participant report.\n`).join('\n'),
-                    pagination_info: 'There are more messages available. To view the next page, use cursor: `next-page`\n' });
-                opts.onIntakeEvent?.(raw);
-                const links = stamps.map(stamp => `${canonical ? prefix : 'https://app.slack.com/archives/C123/p'}${stamp.replace('.', '')}`);
-                return { units: stamps.map(stamp => ({ id: `C123:${stamp}`, outcome: 'proposed', reason: '' })),
-                    proposals: [{ domain: 'tooling', body: `Participant report; not independently verified. Sources: ${links.join(' ')}`, units: stamps.map(stamp => `C123:${stamp}`) }] };
-            }) as KnowledgeRunner;
-            await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
-            const task = f.ledger.get<ReadTask>('task', f.task.id)!;
-            if (canonical) {
-                expect(task).toMatchObject({ status: 'pending', cursor: 'next-page', failures: 0, oldest: '0.000000', latest: '200.000000' });
-                expect(f.ledger.all('proposal')).toHaveLength(1);
-            } else {
-                expect(task.error).toContain('intake-provenance-missing');
-                expect(task.cursor).toBeUndefined();
-                expect(f.ledger.all('proposal')).toHaveLength(0);
-            }
-        } finally { f.close(); }
-    }
 });
 
 test('native text envelope labels excerpts and requires independent pagination evidence', () => {
@@ -111,7 +79,7 @@ test('thread continuation reads older batches without moving the lower bound pas
             expect(call.item.arguments.cursor).toBe('opaque-next');
             call.item.result = envelope({ messages: parent + replies(['20.000001', '30.000001']), pagination_info: 'There are no more messages in this thread.\n' });
             opts.onIntakeEvent?.(call);
-            return { units: ['10.000001', '20.000001', '30.000001'].map(s => ({ id: `C123:${s}`, outcome: 'no-reusable-lesson', reason: 'Fixture discussion only' })), proposals: [] };
+            return { units: ['10.000001', '20.000001', '30.000001'].map(s => ({ id: `C123:${s}`, outcome: 'no-reusable-lesson', reason: 'Fixture discussion only' })) };
         }) as KnowledgeRunner;
         await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'complete', oldest: '0.000000', latest: '200.000000' });
@@ -184,7 +152,7 @@ test.each(['no-reusable-lesson', 'deferred'] as const)('public reads are queued 
         f.ledger.put('channel', 'C123', { id: 'C123', seedUpperTs: '200.000000', enumerated: false, through: '200.000000', week: '2026-11-06' });
         await runIntakeTask(f.store, (async (_p, _s, opts) => {
             opts.onIntakeLaunch?.(); opts.onIntakeEvent?.(event(f.ledger.get<ReadTask>('task', f.task.id)!, [{ ts: '100.000001', text: `See ${url}` }]));
-            return { units: [{ id: 'C123:100.000001', outcome, reason: 'Fixture outcome' }], proposals: [] };
+            return { units: [{ id: 'C123:100.000001', outcome, reason: 'Fixture outcome' }] };
         }) as KnowledgeRunner, f.task.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.get<ReadTask>('task', f.task.id)?.status).toBe('complete');
         const projected = scheduledSlackIntake(f.store, noRun, f.store.clock.now(), f.registry, cleanScan)[0];

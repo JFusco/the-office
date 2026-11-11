@@ -3,7 +3,6 @@ import type { KnowledgeMap } from '../../../src/contracts/knowledge-views';
 import type { BrainGraph } from '../brain/reader';
 import { knowledgeMap } from './projection';
 import { knowledgeSnapshot } from '../knowledge-snapshot';
-import { publicationConnections } from './publications';
 
 function bounded(result:KnowledgeMap):KnowledgeMap {
     if(result.edges.length>1000){result.edges=result.edges.slice(0,1000);result.truncated=true;}
@@ -16,13 +15,9 @@ function bounded(result:KnowledgeMap):KnowledgeMap {
 export async function committedKnowledgeMap(context: KnowledgeContext, project: string, global = false): Promise<KnowledgeMap> {
     let page: BrainGraph | undefined;
     try { if(context.brain.graph)page=await context.brain.graph(await context.brain.snapshot()); } catch { /* Honest unavailable state retains scoped Office results. */ }
-    const publications=global?{nodes:[],edges:[],truncated:false}:await publicationConnections(context,project);
     const result = knowledgeMap(context, project, global);
-    const officeIds=new Set(result.nodes.map(n=>n.id));
-    const publicationEdges=publications.edges.filter(e=>officeIds.has(e.source));
-    result.nodes.push(...publications.nodes.filter(n=>publicationEdges.some(e=>e.target===n.id)));result.edges.push(...publicationEdges);result.truncated ||= publications.truncated;
     result.technicalStatus = page ? 'available' : 'unavailable';
-    result.limitations = ['Visual proximity has no routing authority. Older technical revisions are not linked to a newer displayed note.','Incorporation read-back is limited to four retained capture requests and four mapped notes per view. Unknown lineage remains unknown.'];
+    result.limitations = ['Visual proximity has no routing authority. Older technical revisions are not linked to a newer displayed note.'];
     if (!page) return bounded(result);
     result.snapshot = page.snapshot; result.truncated ||= page.truncated;
     const ids = new Map<string, string>();

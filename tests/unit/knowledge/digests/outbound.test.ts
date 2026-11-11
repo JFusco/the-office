@@ -17,7 +17,7 @@ import { independentDigestEvidence } from '../../../../server/knowledge/digests/
 import { digestKnowledge } from '../../../../server/knowledge/digests/private-body';
 import type { SourceUnit } from '../../../../server/knowledge/slack-intake/contracts';
 const settings={enabled:true,workspace:'https://fixture.slack.com',workspaceId:'T123',channelId:'C123',channelName:'team-learning'};
-function fixture(){const f=intakeFixture('project-evidence'),context={registry:f.registry,stores:new Map([['brain',f.store]]),brain:{snapshot:async()=>'',search:async()=>[],read:async()=>({text:'',contentSha256:''})}};
+function fixture(){const f=intakeFixture(),context={registry:f.registry,stores:new Map([['brain',f.store]]),brain:{snapshot:async()=>'',search:async()=>[],read:async()=>({text:'',contentSha256:''})}};
     const text='PRIVATE FROZEN DIGEST TEXT',id=evidenceIdentity(f.source.id,'doc','v1');f.ledger.put('admission','doc:v1',{state:'admitted',at:f.store.clock.now().toISOString()});f.ledger.put('evidence',id,{id,sourceId:f.source.id,unitId:'doc',version:'v1',text,contentSha256:digest(text),readerVersion:'fixture',url:'',limitations:[],observedAt:f.store.clock.now().toISOString()});
     const now=f.store.clock.now();f.store.state.knowledge!.rollups=[{id:'rollup',weekEnding:'2026-11-06',at:now.toISOString(),metrics:deliveryMetrics(f.store,new Date(now.getTime()-7*86400000),now),summary:'Accepted review',officeProposalIds:[]}];
     queueWeeklyDigest(context,'brain');return {...f,context,text};}
@@ -49,7 +49,7 @@ test('confirmed digests and identified reposts cannot become next-week findings 
  await sendDigestNotice(f.store,agents,notice,f.context);expect(f.store.getEffect(`slack:${notice.id}`)?.status).toBe('verified');
  const references=[] as import('../../../../src/contracts/knowledge-retrieval').KnowledgeReference[];
  for(const repost of [false,true]){
-  const unit:SourceUnit={id:`C123:${repost?repostTs:messageTs}`,channel:'C123',ts:repost?repostTs:messageTs,kind:'channel',resource:'',url:repost?'https://fixture.slack.com/archives/C123/p101000001':receipt.permalink,text:sentText,version:'v1',observedAt:f.store.clock.now().toISOString(),state:'admitted',requests:[],references:repost?[{kind:'internal',id:receipt.permalink}]:[],reason:'',attempt:''};
+  const unit:SourceUnit={id:`C123:${repost?repostTs:messageTs}`,channel:'C123',ts:repost?repostTs:messageTs,kind:'channel',resource:'',url:repost?'https://fixture.slack.com/archives/C123/p101000001':receipt.permalink,text:sentText,version:'v1',observedAt:f.store.clock.now().toISOString(),state:'admitted',references:repost?[{kind:'internal',id:receipt.permalink}]:[],reason:'',attempt:''};
   const id=evidenceIdentity(f.source.id,unit.id,unit.version);f.ledger.put('unit',`${unit.id}:v1`,unit);f.ledger.put('admission',`${unit.id}:v1`,{state:'admitted'});f.ledger.put('evidence',id,{id,sourceId:f.source.id,unitId:unit.id,version:unit.version,text:unit.text,contentSha256:digest(unit.text),observedAt:unit.observedAt,readerVersion:'fixture',url:unit.url,limitations:[]});references.push({id,kind:'source',sourceId:f.source.id,unitId:unit.id,version:'v1',contentSha256:digest(unit.text)});
  }
  // Freeze a review while the newly collected text is not yet reconciled as our own.

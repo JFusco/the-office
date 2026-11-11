@@ -9,9 +9,8 @@ import { scheduledSlackIntake, retrySlackIntake } from '../../../../server/knowl
 import { reconcileIntakeReports } from '../../../../server/knowledge/slack-intake/report';
 import { readIntakeReport } from './intake-report-fixture';
 import { runIntakeTask } from '../../../../server/knowledge/slack-intake/run';
-import { captureProposal } from '../../../../server/knowledge/slack-intake/capture-effect';
-import { CommandFailure, type command } from '../../../../server/workers/process';
-import type { Proposal, ReadTask, SourceUnit } from '../../../../server/knowledge/slack-intake/contracts';
+import { CommandFailure } from '../../../../server/workers/process';
+import type { ReadTask, SourceUnit } from '../../../../server/knowledge/slack-intake/contracts';
 
 test('public URLs reject private, signed, credentialed and unapproved destinations', () => {
     for (const url of ['http://www.sqlite.org', 'https://www.sqlite.org/?token=private', 'https://user:pass@www.sqlite.org/', 'https://127.0.0.1/', 'https://other.example/']) expect(publicUrl(url, config.publicHosts)).toBeUndefined();
@@ -65,14 +64,14 @@ test('the fifth launched public-read failure needs attention, is reported and re
     } finally { f.close(); }
 });
 const deferredUnit = (f: ReturnType<typeof intakeFixture>, references: SourceUnit['references']) => {
-    const unit: SourceUnit = { id: 'C123:100.000001', channel: 'C123', resource: '100.000001', kind: 'search', version: 'v1', text: 'Deferred source', url: 'https://fixture.slack.com/archives/C123/p100000001', ts: '100.000001', references, state: 'deferred', reason: 'needs public evidence', requests: [], observedAt: '', attempt: '', week: '2026-11-06' };
+    const unit: SourceUnit = { id: 'C123:100.000001', channel: 'C123', resource: '100.000001', kind: 'search', version: 'v1', text: 'Deferred source', url: 'https://fixture.slack.com/archives/C123/p100000001', ts: '100.000001', references, state: 'deferred', reason: 'needs public evidence', observedAt: '', attempt: '', week: '2026-11-06' };
     f.ledger.put('unit', 'C123:100.000001:v1', unit); return unit;
 };
 const classify = async (f: ReturnType<typeof intakeFixture>) => {
     const processing = f.ledger.all<ReadTask>('task').filter(t => t.processing?.length);
     expect(processing).toHaveLength(1);
     let prompt = '', processingFlag: boolean | undefined;
-    await runIntakeTask(f.store, (async (p, _s, opts) => { prompt = p; processingFlag = opts.intakeProcessing; return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Evidence limited' }], proposals: [] }; }) as KnowledgeRunner, processing[0].id, f.registry, f.source.id, cleanScan);
+    await runIntakeTask(f.store, (async (p, _s, opts) => { prompt = p; processingFlag = opts.intakeProcessing; return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'Evidence limited' }] }; }) as KnowledgeRunner, processing[0].id, f.registry, f.source.id, cleanScan);
     expect(processingFlag).toBe(true); expect(f.ledger.get<ReadTask>('task', processing[0].id)?.status).toBe('complete');
     return prompt;
 };
@@ -89,10 +88,10 @@ test('a terminal internal reference is an explicit unavailable note and does not
         expect(prompt).toContain('Public claim'); expect(prompt).toContain('internal-reference-not-dereferenced');
     } finally { f.close(); }
 });
-test.each(['proposed', 'no-reusable-lesson'] as const)('a duplicate queued reconsideration never reopens an accounted source version: %s', async outcome => {
+test.each(['evidence', 'no-reusable-lesson'] as const)('a duplicate queued reconsideration never reopens an accounted source version: %s', async outcome => {
     const f = intakeFixture();
     try {
-        const url = 'https://www.sqlite.org/docs.html', permalink = 'https://fixture.slack.com/archives/C123/p100000001', key = 'C123:100.000001:v1';
+        const url = 'https://www.sqlite.org/docs.html', key = 'C123:100.000001:v1';
         const link: LinkRecord = { url, source: key, state: 'read', week: '2026-11-06', depth: 0, result: [{ url, claim: 'First read' }] };
         putLink(f, url, link); deferredUnit(f, [{ kind: 'link', id: url }]);
         queueReconsideration(f.ledger, f.policy, '2026-11-06', 'now');
@@ -101,21 +100,13 @@ test.each(['proposed', 'no-reusable-lesson'] as const)('a duplicate queued recon
         queueReconsideration(f.ledger, f.policy, '2026-11-06', 'now');
         const [first, second] = f.ledger.all<ReadTask>('task').filter(t => t.processing?.length);
         expect(second).toBeDefined();
-        const classify = (result: 'proposed' | 'no-reusable-lesson') => (async () => ({ units: [{ id: 'C123:100.000001', outcome: result, reason: result === 'proposed' ? '' : 'Evidence limited' }],
-            proposals: result === 'proposed' ? [{ domain: 'tooling', units: ['C123:100.000001'], body: `Proposed practice. Source: ${permalink}` }] : [] })) as KnowledgeRunner;
-        let dispatches = 0;
-        const capture = async () => { for (const p of f.ledger.all<Proposal>('proposal')) await captureProposal(f.store, f.policy, p.id, f.registry, (async (_, args) => {
-            if (args.includes('--stdin')) dispatches++;
-            return JSON.stringify({ found: true, requestId: p.id, id: 'candidate', domain: p.domain, inputSha256: p.hash, status: 'pending' });
-        }) as typeof command); };
-        await runIntakeTask(f.store, classify(outcome), first.id, f.registry, f.source.id, cleanScan); await capture();
+        const classify = (result: 'evidence' | 'no-reusable-lesson') => (async () => ({ units: [{ id: 'C123:100.000001', outcome: result, reason: result === 'evidence' ? 'States a fact' : 'Evidence limited' }] })) as KnowledgeRunner;
+        await runIntakeTask(f.store, classify(outcome), first.id, f.registry, f.source.id, cleanScan);
         const settled = f.ledger.get<SourceUnit>('unit', key)!;
-        expect(settled.state).toBe(outcome === 'proposed' ? 'captured' : 'no-reusable-lesson');
-        await runIntakeTask(f.store, classify('proposed'), second.id, f.registry, f.source.id, cleanScan); await capture();
+        expect(settled.state).toBe(outcome === 'evidence' ? 'admitted' : 'no-reusable-lesson');
+        await runIntakeTask(f.store, classify(outcome === 'evidence' ? 'no-reusable-lesson' : 'evidence'), second.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.get<ReadTask>('task', second.id)?.status).toBe('complete');
-        expect(f.ledger.get<SourceUnit>('unit', key)).toMatchObject({ state: settled.state, requests: settled.requests });
-        expect(f.ledger.all('proposal')).toHaveLength(outcome === 'proposed' ? 1 : 0);
-        expect(dispatches).toBe(outcome === 'proposed' ? 1 : 0);
+        expect(f.ledger.get<SourceUnit>('unit', key)).toEqual(settled);
     } finally { f.close(); }
 });
 test('one-hop child evidence is awaited and then reaches the source reconsideration', async () => {
