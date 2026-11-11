@@ -1,5 +1,6 @@
 import { observeAutomationMerge } from '../readiness/automation-merge';
 import { green156Admitted } from '../recovery/green156-evidence';
+import { packed165Admitted } from '../recovery/packed165-evidence';
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { refreshMergeReview } from '../readiness/refresh-merge-review';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
@@ -19,6 +20,7 @@ export async function observe(this: GitHubDelivery) {
         try {
             const p = await this.verifyPR(job);
             if (job.stoppedBaseUpdate?.greenMerge && (!green156Admitted(this.store, job) || p.head.sha !== job.head)) throw Error('One-time #156 approval no longer matches this PR head');
+            if (job.packedPublicationRepair && (!packed165Admitted(this.store, job) || p.head.sha !== job.head || p.head.ref !== job.branch)) throw Error('One-time #165 approval no longer matches this PR');
             if (p.merged_at) {
                 job.status = 'watching';
                 job.mergeCommit = p.merge_commit_sha;

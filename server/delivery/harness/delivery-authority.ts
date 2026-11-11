@@ -70,7 +70,7 @@ export function assessDeliveryAuthority(store: Store, job: TicketJob, input: Del
         if (job.status !== 'working' || claim.stage !== job.stage || request) blockers.push('Scheduled delivery stage changed');
     } else if (!request || subject.request !== request || request.status !== 'working' || request.lane !== 'delivery' || request.action !== claim.stage)
         blockers.push('Exact working original recovery request is required');
-    else if (request.action !== 'reconcile-pr-metadata' && request.action !== 'authorize-green-merge-156' && !(request.action === 'reconcile-review' && job.stoppedBaseUpdate?.handoffStarted &&
+    else if (request.action !== 'reconcile-pr-metadata' && request.action !== 'authorize-green-merge-156' && request.action !== 'authorize-packed-repair-165' && !(request.action === 'reconcile-review' && job.stoppedBaseUpdate?.handoffStarted &&
         job.stage === 'lead-pr' && ['lead','checkout'].includes(job.stoppedBaseUpdate.phase) &&
         store.state.workLog?.filter(w => w.id === request.head && w.requestId === job.id && w.stage === 'stopped-base-update-handoff' &&
             w.claimId === job.stoppedBaseUpdate!.handoffStarted!.claimId).length === 1 &&

@@ -1,4 +1,5 @@
 import { enqueueGreen156 } from '../../delivery/recovery/green156-admission';
+import { enqueuePacked165 } from '../../delivery/recovery/packed165-intent';
 import { sourceCommand } from '../../knowledge/sources/commands';
 import { enqueueMetadataRecovery } from '../../delivery/recovery/pr-metadata-intent';
 import { reviewSourceWithdrawals } from '../../knowledge/sources/withdrawal-reviews';
@@ -173,6 +174,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'reconcile-activation':
             case 'reconcile-review': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
             case 'authorize-green-merge-156': return json({ accepted: true, id: enqueueGreen156(store, key, head || '').id }, 202);
+            case 'authorize-packed-repair-165': return json({ accepted: true, id: enqueuePacked165(store, key, head || '').id }, 202);
             case 'reconcile-base-update': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
             case 'reconcile-closeout': return json({ accepted: true, id: enqueueCloseoutReconciliation(store, key, head || '', closeoutSupervisionProof).id }, 202);
             case 'prepare-pr':

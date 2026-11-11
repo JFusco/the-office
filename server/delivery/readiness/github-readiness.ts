@@ -1,5 +1,6 @@
 import { automationMergePolicy } from './automation-merge';
 import { green156Admitted } from '../recovery/green156-evidence';
+import { packed165Admitted } from '../recovery/packed165-evidence';
 import { assertAutomationEffects } from './automation-effects';
 import { assertStoppedBaseMergeReady } from '../recovery/stopped-base-validation';
 import { assertDeliveryMayMutate } from '../harness/guards';
@@ -60,7 +61,7 @@ export async function verifyPR(this: GitHubDelivery, job: TicketJob, requireTarg
     return p;
 }
 export async function merge(this: GitHubDelivery, job: TicketJob) {
-    const expectedHead = job.head; let greenOnly = green156Admitted(this.store, job);
+    const expectedHead = job.head; let greenOnly = green156Admitted(this.store, job) || packed165Admitted(this.store, job);
     if (greenOnly) assertAutomationEffects(this.store, job);
     assertStoppedBaseMergeReady(this.store, job, expectedHead);
     assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
@@ -132,7 +133,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
                 throw new Error('Merge candidate changed immediately before dispatch');
             await currentMergeChecks(this,job,current);
             if (greenOnly) {
-                if (!green156Admitted(this.store, job) && !await automationMergePolicy(this, job, current)) throw Error('Green-check merge policy changed');
+                if (!green156Admitted(this.store, job) && !packed165Admitted(this.store, job) && !await automationMergePolicy(this, job, current)) throw Error('Green-check merge policy changed');
                 assertAutomationEffects(this.store, job, true);
             }
             if (!greenOnly && await refreshMergeReview(this, job, current, true)) throw new FreshMergeReview(job.detail);

@@ -16,14 +16,14 @@ export async function harnessPrepare(delivery: GitHubDelivery, job: TicketJob, r
     if (metadata) assertMetadataBinding(delivery, job);
     const p = await delivery.api(`pulls/${job.pr}`);
     if (p.state !== 'open' || p.base?.ref !== store.project.target) {
-        if (metadata) throw new Error('Admitted metadata cannot fall through to an unsupported preparation worker');
+        if (metadata || job.packedPublicationRepair) throw new Error('Admitted recovery cannot fall through to an unsupported preparation worker');
         return null;
     }
     const pages = JSON.parse(await execute('gh', ['api', `repos/${store.project.repository}/pulls?state=open&base=${encodeURIComponent(p.head.ref)}&per_page=100`, '--paginate', '--slurp'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
     if (!Array.isArray(pages) || pages.some(page => !Array.isArray(page)))
         throw new Error('Dependent PR coverage is incomplete');
     if (pages.flat().length) {
-        if (metadata) throw new Error('Dependent PRs block the admitted metadata preparation; no general worker');
+        if (metadata || job.packedPublicationRepair) throw new Error('Dependent PRs block the admitted preparation; no general worker');
         return null;
     }
     if (p.head?.sha !== job.head)
