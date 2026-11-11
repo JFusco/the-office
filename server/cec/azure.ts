@@ -7,6 +7,7 @@ import type { Store } from '../store/store';
 import { buildTiming, timelineTiming, rememberCi } from '../time/ci-timing';
 import { readAzurePRs } from './observed-prs';
 const base=['--organization',CEC.organization,'--project',CEC.project];
+const STAGING_SHELL_APP = 'ca-cos-conductor-shell-stg';
 async function readInPairs<T,R>(items:T[],read:(item:T)=>Promise<R>):Promise<R[]>{const out:R[]=[];for(let i=0;i<items.length;i+=2)out.push(...await Promise.all(items.slice(i,i+2).map(read)));return out;}
 export async function az<T>(args:string[],readOnly=false,timeout=55000):Promise<T>{
   const orgOnly=args[0]==='devops'||(args[0]==='repos'&&args[1]==='pr'&&args[2]==='policy');
@@ -54,11 +55,11 @@ export class AzureMonitor {
       let deployed=previous.deployed;
       let deploymentError='';
       try{
-        const appArgs=['--subscription','adcd54e8-229d-4a59-89ec-1713267e3ec9','--resource-group','Cumulative-OS','--name','ca-cumulative-os-shell'];
+        const appArgs=['--subscription','adcd54e8-229d-4a59-89ec-1713267e3ec9','--resource-group','Cumulative-OS','--name',STAGING_SHELL_APP];
         const app=JSON.parse(await command('az',['containerapp','show',...appArgs,'--query','{revision:properties.latestReadyRevisionName,latest:properties.latestRevisionName,fqdn:properties.configuration.ingress.fqdn,traffic:properties.configuration.ingress.traffic}','--output','json'],{timeout:55000}));
         const ready=JSON.parse(await command('az',['containerapp','revision','show',...appArgs,'--revision',app.revision,'--query','{containers:properties.template.containers[].{name:name,image:image},health:properties.healthState,running:properties.runningState}','--output','json'],{timeout:55000}));
         const serving=app.traffic?.some((t:any)=>t.weight===100&&(t.revisionName===app.revision||(t.latestRevision&&app.latest===app.revision)));
-        const image=ready.containers?.find((c:any)=>c.name==='ca-cumulative-os-shell')?.image||'';
+        const image=ready.containers?.find((c:any)=>c.name===STAGING_SHELL_APP)?.image||'';
         const buildId=Number(image.split(':').pop());
         let build=builds.find(b=>b.id===buildId);
         if(buildId&&!build){const raw=await az<any>(['pipelines','build','show','--id',String(buildId)]);build=await observeBuild(raw);builds.push(build);}
