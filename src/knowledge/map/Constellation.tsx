@@ -1,3 +1,4 @@
+import { motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import type { KnowledgeMap, KnowledgeNode } from '../../contracts/knowledge-views';
 import type { DisplayNode } from './display-scene';
@@ -25,5 +26,5 @@ export function Constellation({ data, onSelect, focusId, highlightId, reduced = 
         }).catch(() => { runtime.current?.dispose(); runtime.current = null; if (!disposed) setError('The 3D map is unavailable. Use the searchable connection list below.'); });
         return () => { disposed = true; runtime.current?.dispose(); runtime.current = null; };
     }, []);
-    return <div className="relative"><div ref={host} className="h-brain-canvas w-full" aria-hidden="true" data-brain-renderer/>{!ready && !error && <LoadingState panel className="absolute inset-0 bg-map-surface">Opening the knowledge map…</LoadingState>}<FocusOverlay node={data.nodes.find(n => n.id === focusId)} overlay={overlay}/>{error && <p role="status">{error}</p>}</div>;
+    return <div className="relative"><motion.div ref={host} className="h-brain-canvas w-full" initial={{opacity:0}} animate={{opacity:ready?1:0}} transition={{duration:reduced?0:.22}} aria-hidden="true" data-brain-renderer/>{!ready && !error && <LoadingState panel className="absolute inset-0 bg-map-surface">Opening the knowledge map…</LoadingState>}<FocusOverlay node={data.nodes.find(n => n.id === focusId)} overlay={overlay}/>{error && <p role="status">{error}</p>}</div>;
 }

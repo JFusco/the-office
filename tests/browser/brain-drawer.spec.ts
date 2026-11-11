@@ -38,7 +38,7 @@ for (const width of [1440, 390]) {
         const closeFrames = await closing;
         expect(closeFrames.some(frame => frame.x !== null && frame.x > bounds.x + 5)).toBe(true);
         expect(closeFrames.filter(frame => frame.x !== null && frame.x > bounds.x + 5).every(frame => frame.pointer === 'none')).toBe(true);
-        expect(closeFrames.at(-1)!.x).toBeNull();
+        await expect(drawer).toHaveCount(0);
         expect(closeFrames.every(frame => frame.canvases <= 1 && !(frame.x !== null && frame.room))).toBe(true);
         await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
         await expect(page.getByRole('button', { name: 'Brain', exact: true })).toBeFocused();

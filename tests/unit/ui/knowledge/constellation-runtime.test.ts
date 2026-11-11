@@ -28,7 +28,9 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     const map={nodes:[{id:'note',title:'Note',kind:'technical' as const,detail:''}],edges:[],truncated:false};
     const overview=displayScene(map,selection), focused=displayScene(map,{...selection,selected:'note'});
     runtime.update({data:overview.scene,reduced:false});const original=saved.nodes[0];
+    expect(graph.linkWidth).toHaveBeenLastCalledWith(.35);
     runtime.update({data:focused.scene,focusId:'note',reduced:false});expect(saved.nodes[0]).toBe(original);
+    expect(graph.linkWidth).toHaveBeenLastCalledWith(1.2);expect(graph.linkOpacity).toHaveBeenLastCalledWith(.9);
     frame(1);frame(knowledgeCameraDuration+1);
     // A stalled frame slows the flight rather than jumping straight to its end.
     expect(graph.cameraPosition.mock.calls.at(-1)![1]).not.toEqual(original.position);

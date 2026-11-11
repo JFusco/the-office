@@ -111,7 +111,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
             graph.width(container.clientWidth).height(container.clientHeight);
             if (overlay) {
                 const panel = container.closest('[data-brain-map-frame]')?.querySelector<HTMLElement>('[data-brain-list-frame]'), bounds=panel?.getBoundingClientRect();
-                overlayLayout = { ...spacing!, occupied: bounds && bounds.top<container.getBoundingClientRect().bottom ? bounds.width+spacing!.gap*2 : 0 };
+                overlayLayout = { ...spacing!, occupied: bounds && bounds.left<container.getBoundingClientRect().right && bounds.top<container.getBoundingClientRect().bottom ? bounds.width+spacing!.gap*2 : 0 };
             }
         };
         fit(); resize = new ResizeObserver(fit); resize.observe(container);
@@ -128,13 +128,16 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
                 const old = new Map(graph.graphData().nodes.map(n => [n.id, n]));
                 visuals!.retain(new Set(next.data.nodes.map(n => n.id)));
                 const nodes = next.data.nodes.map(n => Object.assign(old.get(n.id) || {}, n, { ...n.position, fx: n.position.x, fy: n.position.y, fz: n.position.z }));
-                graph.linkOpacity(next.focusId ? .45 : .22).linkWidth(0);
+                graph.linkOpacity(next.focusId ? .9 : .4).linkWidth(next.focusId ? 1.2 : .35);
                 graph.graphData({ nodes, links: next.data.edges.map(e => ({...e})) });
                 graph.nodeVisibility(raw => (raw as { visible: boolean }).visible);
             }
             if (focusId !== next.focusId || motionDisabled) {
                 const target = next.data.nodes.find(n => n.id === next.focusId)?.position;
-                const destination = cameraTarget(target, graph.cameraPosition(), controls.target);
+                const neighborIds=new Set(next.data.edges.filter(e=>e.source===next.focusId||e.target===next.focusId).map(e=>e.source===next.focusId?e.target:e.source));
+                const neighbors=next.data.nodes.filter(n=>neighborIds.has(n.id)).map(n=>n.position);
+                const camera=graph.camera() as PerspectiveCamera;
+                const destination = cameraTarget(target, graph.cameraPosition(), controls.target, neighbors, container.clientWidth/container.clientHeight, camera.fov);
                 // Library camera tweens finish the old flight on interruption. Own the interpolation
                 // so rapid selections and user orbit continue from the currently visible pose.
                 flight = next.reduced || next.paused ? undefined : {from:{position:{...graph.cameraPosition()},lookAt:{x:controls.target.x,y:controls.target.y,z:controls.target.z}},to:destination,elapsed:0};

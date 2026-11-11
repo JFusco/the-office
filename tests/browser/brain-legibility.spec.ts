@@ -12,7 +12,7 @@ test('knowledge uses shared form spacing and safe formatted documents while reta
     });
     expect(spacing).toEqual({gap:8,token:'8px'});
     const note=page.getByRole('article').filter({has:page.getByRole('heading',{name:'Published validation guide',exact:true})});
-    await expect(note).toContainText('Keep accepted validation receipts'); await expect(note).not.toContainText('provenance:');
+    await expect(note).toContainText('Check the installed version.'); await expect(note).not.toContainText('provenance:');
     await note.getByRole('button',{name:'Inspect evidence'}).click();
     const reader=page.getByRole('region',{name:'Published technical note'});
     await expect(reader.getByRole('heading',{name:'What to do'})).toBeVisible();
@@ -41,9 +41,9 @@ test('constellation keeps its renderer through selection, search and filters; la
     const canvas=page.locator('[data-brain-renderer] canvas'); await expect(canvas).toHaveCount(1);
     const original=await canvas.elementHandle(); expect(original).toBeTruthy();
     const dimensions=await canvas.boundingBox(),frame=(await page.locator('[data-brain-map-frame]').boundingBox())!,list=(await page.locator('[data-brain-list-frame]').boundingBox())!;
-    expect(dimensions!.width).toBeCloseTo(frame.width-2,0);expect(dimensions!.height).toBeGreaterThan(450);expect(dimensions!.height).toBeLessThanOrEqual(600);
-    expect(frame.width).toBeGreaterThan(list.width*3);expect(list.width).toBeCloseTo(300,0);
-    expect(list.x).toBeGreaterThan(frame.x+frame.width/2);expect(list.x+list.width).toBeLessThan(frame.x+frame.width);
+    expect(dimensions!.width).toBeCloseTo(frame.width-list.width-2,0);expect(dimensions!.height).toBeGreaterThan(450);expect(dimensions!.height).toBeLessThanOrEqual(600);
+    expect(frame.width).toBeGreaterThan(list.width*2);expect(list.width).toBeCloseTo(300,0);
+    expect(list.x).toBeGreaterThan(frame.x+frame.width/2);expect(list.x+list.width).toBeLessThanOrEqual(frame.x+frame.width);
     expect(list.y).toBeGreaterThan(frame.y);expect(list.y).toBeLessThan(frame.y+100);
     const scope=page.getByLabel('Map scope');
     expect(await scope.evaluate(el=>getComputedStyle(el).paddingInlineEnd)).toBe('38px');

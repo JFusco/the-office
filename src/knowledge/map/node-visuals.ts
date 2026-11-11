@@ -11,12 +11,13 @@ export function nodeVisuals(palette: SceneColors) {
     const marker = document.createElement('canvas'); marker.width = marker.height = 64;
     const markerContext = marker.getContext('2d'); if (!markerContext) throw new Error('Marker canvas unavailable');
     const gradient = markerContext.createRadialGradient(32,32,0,32,32,30);
-    gradient.addColorStop(0, palette.brainMarker); gradient.addColorStop(.1, palette.brainMarker);
-    gradient.addColorStop(.3, palette.brainMarkerDim);
+    gradient.addColorStop(0, palette.brainMarker); gradient.addColorStop(.22, palette.brainMarker);
+    gradient.addColorStop(.5, palette.brainMarkerDim);
     gradient.addColorStop(1, palette.brainMarkerClear);
     markerContext.fillStyle = gradient; markerContext.fillRect(0,0,64,64);
     const markerTexture = new CanvasTexture(marker);
     const colors = { project: new Color(palette.brainProject), source: new Color(palette.brainSource), evidence: new Color(palette.brainEvidence), lesson: new Color(palette.brainLesson), assignment: new Color(palette.brainFocused), technical: new Color(palette.brainClusterViolet) };
+    for(const color of Object.values(colors))color.lerp(new Color(palette.brainMarker),.4);
     const focusedColor = new Color(palette.brainFocused);
     const records = new Map<string, { node: DisplayNode; star: Sprite; label: Sprite; dispose(): void }>();
     let hovered = '';
@@ -35,10 +36,10 @@ export function nodeVisuals(palette: SceneColors) {
             star.userData.knowledgeId=node.id;
             const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 80;
             const context = canvas.getContext('2d'); if (!context) { starMaterial.dispose(); throw new Error('Label canvas unavailable'); }
-            context.font = '28px monospace'; context.fillStyle = palette.brainLabel; context.textAlign = 'center';
+            context.font = '32px monospace'; context.fillStyle = palette.brainLabel; context.textAlign = 'left';
             const characters = Array.from(node.title); let caption = node.title;
             while (characters.length && context.measureText(caption).width > canvas.width - 24) { characters.pop(); caption = characters.join('') + '…'; }
-            context.fillText(caption, 320, 45);
+            context.fillText(caption, 12, 45);
             const labelTexture = new CanvasTexture(canvas), labelMaterial = new SpriteMaterial({map: labelTexture, transparent: true, opacity: 0, depthWrite: false, depthTest: false});
             const label = new Sprite(labelMaterial); label.scale.set(100, 12.5, 1); label.position.y = 9; group.add(label);
             label.raycast = () => {}; // Invisible or visible captions never steal the marker's pointer target.
@@ -55,21 +56,21 @@ export function nodeVisuals(palette: SceneColors) {
                 const world = new Vector3(node.position.x, node.position.y, node.position.z);
                 const depth = world.clone().applyMatrix4(camera.matrixWorldInverse).z; if (depth >= 0) continue;
                 const scale = container.clientHeight / (2 * Math.tan(camera.fov * Math.PI / 360) * -depth);
-                const depthSize = Math.min(1.5, Math.max(.45, overviewDistance / -depth));
-                star.scale.setScalar((node.id === view.focusId ? 36 : active ? 24 : node.kind === 'project' ? 18 : (7 + stableHash(node.id) % 5) * depthSize) / scale);
+                const depthSize = Math.min(1.5, Math.max(.85, overviewDistance / -depth));
+                star.scale.setScalar((node.id === view.focusId ? 36 : active ? 24 : node.kind === 'project' ? 18 : (12 + stableHash(node.id) % 4) * depthSize) / scale);
                 label.scale.set(240 / scale, 30 / scale, 1); label.position.y = (active ? 30 : 18) / scale;
                 const landmark = node.kind === 'project' || node.kind === 'source' || node.technicalKind === 'index' || stableHash(node.id) % 31 === 0;
-                if (node.id === view.focusId || !active && (!landmark || view.focusId && !node.emphasized)) continue;
+                if (node.id === view.focusId || !active && ((view.focusId ? !node.emphasized : !landmark))) continue;
                 world.y += label.position.y;
                 const screen = world.project(camera), width = 240, height = 30;
-                rectangles.push({id: node.id, priority: node.id === hovered || node.id === view.highlightId ? 0 : node.id === view.focusId ? 1 : node.kind === 'project' ? 2 : 3, x: (screen.x + 1) * container.clientWidth / 2 - width / 2, y: (1 - screen.y) * container.clientHeight / 2 - height / 2, width, height});
+                rectangles.push({id: node.id, priority: node.id === hovered || node.id === view.highlightId ? 0 : node.id === view.focusId ? 1 : node.emphasized && view.focusId ? 2 : node.kind === 'project' ? 3 : 4, x: (screen.x + 1) * container.clientWidth / 2 - width / 2, y: (1 - screen.y) * container.clientHeight / 2 - height / 2, width, height});
             }
             const visible = visibleLabels(rectangles, container.clientWidth, container.clientHeight, view.focusId ? 8 : 12);
             const blend = view.reduced || view.paused ? 1 : 1 - Math.exp(-Math.min(delta, 50) / 100);
             for (const {node, star, label} of records.values()) {
                 const active = node.id === hovered || node.id === view.highlightId || node.id === view.focusId;
                 const material = star.material as SpriteMaterial, labelMaterial = label.material as SpriteMaterial;
-                const opacity = node.emphasized || active ? .95 : .18;
+                const opacity = node.emphasized || active ? 1 : .32;
                 material.opacity += (opacity - material.opacity) * blend;
                 material.color.copy(active ? focusedColor : colors[node.kind]);
                 labelMaterial.opacity += ((visible.has(node.id) ? 1 : 0) - labelMaterial.opacity) * blend;

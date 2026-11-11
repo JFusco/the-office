@@ -1,3 +1,4 @@
+import { knowledgeSection } from './presentation';
 import { useState } from 'react';
 import type { KnowledgeActivityPage } from '../contracts/knowledge-views';
 import { Button } from '../ui';
@@ -6,9 +7,9 @@ import { TechnicalDetail } from './TechnicalDetail';
 export function ActivityStatus({project,data}:{project:string;data:KnowledgeActivityPage}) {
     const [selected,setSelected]=useState('');
     const note=data.publications?.find(record=>record.id===selected);
-    return <section aria-label="Collection and publication status" className="my-5 grid gap-3">
-        <h3 className="font-heading text-18">Collection and publication</h3>
-        <p className="text-11 leading-body text-muted">Current persisted status is separate from the dated activity below. {data.publicationLimit}</p>
+    return <section aria-label="Collection and publication status" data-knowledge-section className={knowledgeSection+" grid gap-3"}>
+        <h3 className="font-heading text-18">Current collection and publication</h3>
+        <details className="text-12 text-muted"><summary>What these statuses mean</summary><p className="my-2 max-w-reading-copy">Current persisted status is separate from the dated activity below. {data.publicationLimit}</p></details>
         {data.intake?.length?<ul className="grid gap-3">{data.intake.map(record=><li key={record.id} className="rounded-7 border border-drawer-line bg-paper p-card-padding">
             <strong className="text-12">{record.source} · {record.kind} · {record.status}</strong>
             <p className="text-11 leading-body">{record.detail}</p>
