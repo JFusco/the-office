@@ -107,7 +107,7 @@ Save no source changes. Prior job/evidence: ${JSON.stringify(job)}.`, schema, { 
     if (issue.pull_request || issue.state !== 'open' || !issue.body?.includes(marker) || !issue.assignees?.some((a: any) => a.login === 'JFusco'))
         throw new Error('CI follow-up issue identity or assignment could not be verified');
     job.ciFollowupKey = `GH-${result.issue}`;
-    this.enqueue(job.ciFollowupKey);
+    this.enqueue(job.ciFollowupKey, 0, undefined, { kind: 'repair-followup', reference: job.id });
     job.status = 'watching';
     job.detail = `Morgan routed the original merge failure to ${job.ciFollowupKey}; the normal team will repair, review, verify and deliver it. Original failed checks remain evidence.`;
     this.store.emit('merge-ci-repair-queued', job.detail, 'pm', job.key);

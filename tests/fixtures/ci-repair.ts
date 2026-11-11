@@ -64,7 +64,7 @@ export function ciFixture() {
         throw new Error(`Unexpected fixture command: ${bin} ${args.join(' ')}`);
     });
     const delivery = new GitHubDelivery(store, engine, execute);
-    delivery.enqueue('GH-322', 323);
+    delivery.enqueue('GH-322', 323, undefined, { kind: 'linked-pr', reference: 'https://github.com/JFusco/brain/pull/323' });
     const job = delivery.jobs[0]; Object.assign(job, { head: oldHead, branch: pr.head.ref, status: 'watching', stage: 'lead-pr' });
     job.steps.push({ stage: 'lead-pr', result: { outcome: 'blocked', summary: 'CI failed', commit: oldHead, blocker: 'CI failed', evidence: [], findings: [], receipts: [], worktree: '', branch: pr.head.ref, prId: 323, previewUrl: '', qaRunDir: '', paidRuns: 0, approach: null, prerequisites: null } });
     const artifactRoot = resolve(root, 'ticket-work', job.id); mkdirSync(artifactRoot, { recursive: true });

@@ -1,3 +1,4 @@
+import {registerDeliveryFixture} from '../../fixtures/delivery-claim';
 import {TimeLedger} from '../../../server/time/time-ledger';
 import {FEATURE_PLANNING} from '../../../server/office/config';
 import {openAssessment,assessmentEpisode,closeAssessment} from '../../../server/features/handoff/disposition-store';
@@ -362,7 +363,7 @@ test('unchanged evidence capture owns only operations while spare delivery slots
  try {
   first=office.pump();await vi.waitFor(()=>expect(f.entry.store.activeClaims().some(c=>c.lane==='operations')).toBe(true));
   const deliveryClaim=occupied.entry.store.activeClaims()[0];expect(f.entry.store.activeClaims()).toHaveLength(1);expect(f.entry.store.activeClaims()[0].work).toMatchObject({kind:'reconciliation',id:'evidence-capture:'+target});
-  const job={id:'third-job',key:'GH-888',status:'queued',stage:'review',requestedAt:new Date().toISOString(),steps:[],prerequisites:[]} as any;third.store.state.coordination!.jobs!.push(job);third.coordinator!.pump=async()=>{job.status='working';await thirdHeld;job.status='completed';};
+  const job={id:'third-job',key:'GH-888',status:'queued',stage:'review',requestedAt:new Date().toISOString(),steps:[],prerequisites:[]} as any;registerDeliveryFixture(third.store,job);third.store.state.coordination!.jobs!.push(job);third.coordinator!.pump=async()=>{job.status='working';await thirdHeld;job.status='completed';};
   second=office.pump();await vi.waitFor(()=>expect(third.store.activeClaims()).toHaveLength(1));expect(office.capacity.slots.size).toBe(2);expect(occupied.entry.store.activeClaims()[0].id).toBe(deliveryClaim.id);
   releaseCapture();await vi.waitFor(()=>expect(captureRequest(f.entry.store,target)?.status).toBe('complete'));expect(f.run).not.toHaveBeenCalled();expect(f.entry.store.activeClaims().some(c=>c.work.kind==='assessment')).toBe(false);
  }finally{releaseCapture();releaseThird();occupied.release();await Promise.all([first,second]);delete FEATURE_PLANNING[f.entry.store.project.id];}

@@ -12,7 +12,7 @@ const major = (version: string | undefined) => version?.trim().match(/^(\d+)\./)
  * that would run (unless opted out for CI preparation). A failed or
  * timed-out install removes the partial `node_modules` and rethrows.
  */
-export async function installDependencies(execute: Execute, cwd: string, options: { timeout: number; signal?: AbortSignal; skipOnMajorMismatch?: boolean; onSpawn?: (pid: number) => void }): Promise<'installed' | 'skipped'> {
+export async function installDependencies(execute: Execute, cwd: string, options: { timeout: number; signal?: AbortSignal; skipOnMajorMismatch?: boolean; onSpawn?: (pid: number) => void; beforeInstall?: () => void }): Promise<'installed' | 'skipped'> {
     const path = resolve(cwd, 'package.json');
     const declared = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')).packageManager : undefined;
     if (typeof declared !== 'string' || !declared.startsWith('pnpm@'))
@@ -28,6 +28,7 @@ export async function installDependencies(execute: Execute, cwd: string, options
     }
     // A standalone nested clone must not install the enclosing Office workspace instead.
     const standalone = existsSync(resolve(cwd, 'pnpm-workspace.yaml')) ? [] : ['--ignore-workspace'];
+    options.beforeInstall?.();
     try {
         await execute('pnpm', ['install', '--frozen-lockfile', '--prod=false', ...standalone], { cwd, timeout: options.timeout, signal: options.signal, onSpawn: options.onSpawn });
     }

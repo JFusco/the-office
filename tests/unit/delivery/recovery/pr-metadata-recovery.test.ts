@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { expect, test, vi } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { addMetadataHumanInput, originalMetadataFixture as original } from '../../../fixtures/pr-metadata';
@@ -24,7 +25,7 @@ test('an exact original permission park completes one metadata assessment/PATCH 
     f.store.finishClaim(f.claim.id, 'completed'); f.request.status = 'completed'; f.job.status = 'working';
     f.state.comments.push({ id: 501, user: { login: 'JFusco' }, body: 'Review the published metadata in the current context.' });
     const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'recovered-prepare', 'prepare-pr')!;
-    const prepared = await withAssignment(claim, 'delivery', () => harnessPrepare(f.delivery, f.job, f.root, true));
+    const prepared = await withAssignment(claim, 'delivery', () => claimedDelivery(f.store, f.job, () => harnessPrepare(f.delivery, f.job, f.root, true)));
     expect(prepared?.outcome).toBe('passed'); expect(f.model).toHaveBeenCalledTimes(1); expect(f.writes.patches).toBe(1);
     expect(f.store.getEffect(effectId)).toEqual(effect); expect(r.original!.returnedEffects).toEqual(returns);
     expect(f.job.repairCycle).toEqual(cycle); expect(f.job.steps).toEqual(steps); expect(r.review).toBeUndefined();
@@ -35,7 +36,7 @@ test.each([true, false])('a rejected preflight retry with a lost metadata respon
     const f = original(), execute = f.delivery.execute; let rejected = false;
     f.delivery.execute = (async (program, args, options) => {
         const r = f.job.prMetadataRepair, id = r && `harness:${f.job.id}:pr-metadata:${r.id}`;
-        if (program === 'curl' && id && f.store.getEffect(id)?.status === 'prepared' && !rejected) {
+        if (program === 'pnpm' && args.includes('--version') && id && f.store.getEffect(id)?.status === 'prepared' && !rejected) {
             rejected = true; throw new Error('Synthetic metadata preflight rejection');
         }
         return execute(program, args, options);
@@ -88,7 +89,7 @@ test('an authenticated note after a rejected never-dispatched preflight still pr
     const f = original(), execute = f.delivery.execute;
     f.delivery.execute = (async (program, args, options) => {
         const r = f.job.prMetadataRepair;
-        if (program === 'curl' && r && f.store.getEffect(`harness:${f.job.id}:pr-metadata:${r.id}`)?.status === 'prepared')
+        if (program === 'pnpm' && args.includes('--version') && r && f.store.getEffect(`harness:${f.job.id}:pr-metadata:${r.id}`)?.status === 'prepared')
             throw new Error('Synthetic preflight rejection');
         return execute(program, args, options);
     }) as typeof execute;
@@ -121,15 +122,17 @@ test.each([true, false])('a partial original card return landed=%s never repeats
     expect(metadataRequestResolved(f.store, f.request)).toBe(landed);
 });
 
-test.each(['worker', 'proposal', 'head', 'park', 'claim', 'ownership'])('original recovery preserves identity and live gates: %s', async change => {
+test.each(['worker', 'proposal', 'head', 'park', 'claim', 'competing-claim'])('original recovery preserves identity and live gates: %s', async change => {
     const f = original();
     if (change === 'worker') f.source.worker.claimId = 'other';
     if (change === 'proposal') writeFileSync(f.intent.proposal.path, 'Unapproved changed proposal');
     if (change === 'head') f.job.head = 'f'.repeat(40);
     if (change === 'park') f.job.parked!.reason = 'A new human hold';
     if (change === 'claim') f.store.finishClaim(f.claim.id, 'interrupted');
-    if (change === 'ownership') f.ownership.complete = false;
+    if (change === 'competing-claim') f.store.claimWork({projectId:f.store.project.id,kind:'delivery',id:'unidentified-writer'},'other','implement');
     await expect(f.run()).rejects.toThrow();
     expect(f.model).not.toHaveBeenCalled(); expect(f.writes.patches).toBe(0); expect(f.job.parked).toBeDefined();
     expect(f.state.cards.map(c => c.status)).toEqual(['block', 'block']);
 });
+
+test('original metadata recovery does not require optional chat visibility',async()=>{const f=original();f.ownership.complete=false;f.ownership.fresh=false;f.ownership.ownership.status='unavailable';await f.run();expect(f.writes.patches).toBe(1);expect(f.job.status).toBe('queued');});

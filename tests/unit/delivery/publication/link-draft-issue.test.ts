@@ -1,6 +1,6 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub } from '../support/fake-github';
-import { publishCandidate } from '../../../../server/delivery/publication/publish-pr';
 import { linkDraftIssue } from '../../../../server/delivery/publication/link-draft-issue';
 import { workKey } from '../../../../src/shared';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -12,17 +12,20 @@ import { HOLDS } from '../../../../server/office/config';
 afterEach(cleanupFakes);
 
 async function fixture() {
-    const f = fakeGitHub(), job = f.candidate(), root = f.artifactRoot(job);
-    const pr = await publishCandidate(f.store, f.execute as any, f.delivery.jobs, job, root);
-    job.pr = pr.pr; job.prUrl = pr.url;
+    const f = fakeGitHub(), job = f.candidate({stage:'draft',status:'working'}), root = f.artifactRoot(job);
+    // Already-published provider state; publication has its own suite. The comment stage
+    // must not inherit a fictitious earlier Office draft claim with no comment receipt.
+    job.pr=200;job.prUrl='https://github.com/JFusco/cms-field-vocabulary/pull/200';
+    f.state.remote[job.branch]=job.head;
+    f.state.prs.push({number:job.pr,html_url:job.prUrl,state:'open',draft:true,title:'fix: restore release scans',body:'Closes #5',head:{sha:job.head,ref:job.branch},base:{ref:'main',sha:'b'.repeat(40),repo:{full_name:f.store.project.repository}},merged_at:null,merge_commit_sha:null,updated_at:'2026-10-31T12:00:00Z'});
     return { ...f, job, root };
 }
 const writes = (calls: string[]) => calls.filter(call => call.includes('/comments') && call.includes('--method POST'));
 
 test('ordinary draft comment uses one durable effect and current native link readback', async () => {
     const f = await fixture();
-    await linkDraftIssue(f.delivery, f.job, f.state.issue, f.root);
-    await linkDraftIssue(f.delivery, f.job, f.state.issue, f.root);
+    await claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root));
+    await claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root));
     expect(writes(f.state.calls)).toHaveLength(1);
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)).toMatchObject({ status: 'verified', payload: { issue: 5, pr: 200, author: 'JFusco' } });
 });
@@ -35,9 +38,9 @@ test('a landed comment with a lost response is reconciled, never sent twice', as
         if (args.includes('POST')) { posts++; throw new Error('gh: HTTP 499 after comment landed'); }
         return out;
     }) as typeof original;
-    await expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('499');
+    await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('499');
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)?.status).toBe('uncertain');
-    await linkDraftIssue(f.delivery, f.job, f.state.issue, f.root);
+    await claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root));
     expect(posts).toBe(1);
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)?.status).toBe('verified');
 });
@@ -49,8 +52,8 @@ test('an unobservable attempted comment stays uncertain with no second POST', as
         if (args.includes('POST')) { posts++; throw new Error('gh: HTTP 499'); }
         return original(program, args, options);
     }) as typeof original;
-    await expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('499');
-    await expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('will not be resent');
+    await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('499');
+    await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('will not be resent');
     expect(posts).toBe(1);
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)?.status).toBe('uncertain');
 });
@@ -59,16 +62,16 @@ test('an older unprotected draft claim cannot infer no write from a missing mark
     const f = await fixture();
     const claim = { id: 'legacy', stage: 'draft', status: 'interrupted' };
     f.store.db.prepare('INSERT INTO work_claims(id,work_key,status,body) VALUES(?,?,?,?)').run(claim.id, workKey({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }), claim.status, JSON.stringify(claim));
-    await expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('Earlier draft claim');
+    await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('Earlier draft claim');
     expect(writes(f.state.calls)).toHaveLength(0);
 });
 
 test('only a complete positive legacy comment with the native author, link and recorded head is adopted', async () => {
     const f = await fixture(), prefix = `Office delivery ${f.job.id}: Draft PR ${f.job.prUrl} is linked to this issue. `;
     f.state.comments.push({ id: 701, html_url: `${f.state.issue.html_url}#issuecomment-701`, user: { login: 'someone-else' }, body: `${prefix}Team-selected checks cover ${f.job.head}; the retained independent review and validation apply. Sam will check PR readiness; maintainer merge and release gates still apply.` });
-    await expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('identity/content');
+    await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('identity/content');
     f.state.comments[0].user.login = 'JFusco';
-    await linkDraftIssue(f.delivery, f.job, f.state.issue, f.root);
+    await claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root));
     expect(writes(f.state.calls)).toHaveLength(0);
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)?.status).toBe('verified');
 });
@@ -80,7 +83,7 @@ test('candidate drift during comment reads prevents the write', async () => {
         if (args[1] === 'user') f.job.head = 'c'.repeat(40);
         return result;
     }) as typeof original;
-    await expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('head changed');
+    await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('head changed');
     expect(writes(f.state.calls)).toHaveLength(0);
 });
 
@@ -94,7 +97,7 @@ test.each(['current', 'fixed-legacy', 'approach-legacy'])('complete %s comment i
     const f = await fixture(), before = structuredClone(f.job.steps);
     const middle = template === 'current' ? '' : `Team-selected checks cover ${f.job.head}; ${template === 'fixed-legacy' ? 'the retained independent review and validation apply.' : 'review=focused, validation=independent-checks. Scoped review and checks retained.'} `;
     f.state.comments.push(nativeComment(f, commentBody(f, middle)));
-    await linkDraftIssue(f.delivery, f.job, f.state.issue, f.root);
+    await claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root));
     expect(writes(f.state.calls)).toHaveLength(0);
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)?.status).toBe('verified');
     expect(f.job.steps).toEqual(before);
@@ -112,7 +115,7 @@ test.each(['truncated-legacy', 'missing-reason', 'unknown-review', 'wrong-link',
     if (scenario === 'wrong-author') comment.user.login = 'someone-else';
     if (scenario === 'wrong-url') comment.html_url = 'https://github.com/other/repo/issues/5#issuecomment-701';
     f.state.comments.push(comment);
-    await expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('identity/content');
+    await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('identity/content');
     expect(writes(f.state.calls)).toHaveLength(0);
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)).toBeUndefined();
 });
@@ -145,7 +148,7 @@ test.each([0, 2])('original protected failed read permits recovery with %i rejec
     f.job.repairCycle = { owner: 'developer', findingAttempts: { original: 2 }, attempts: 2, pendingFindingIds: ['original'], sourceStage: 'review', sourceHead: f.job.head, phase: 'repair' };
     const jobBefore = structuredClone(f.job);
     const current = f.store.claimWork(old.work, 'recovery-draft', 'draft')!;
-    await withAssignment(current, 'delivery', () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root));
+    await withAssignment(current, 'delivery', () => claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)));
     expect(writes(f.state.calls)).toHaveLength(1);
     expect(savedClaim(f, old.id)).toEqual(claimBefore);
     expect(savedRead(f, old.id)).toEqual(proof);
@@ -188,7 +191,7 @@ test.each(['claim', 'work', 'job', 'issue', 'pr', 'viewer-pr-missing', 'viewer-p
         f.store.db.prepare('DELETE FROM attempts WHERE id=?').run(record.id);
     if (mismatch === 'current-proof') await withAssignment(current, 'delivery', () => readPublication(f.store, f.execute as any, f.job, f.root, 'issue-links'));
     if (mismatch === 'terminated-backfill') await withAssignment(old, 'delivery', () => readPublication(f.store, f.execute as any, f.job, f.root, 'issue-links'));
-    await withAssignment(current, 'delivery', () => expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('Earlier draft claim'));
+    await withAssignment(current, 'delivery', () => expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('Earlier draft claim'));
     expect(writes(f.state.calls)).toHaveLength(0);
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)).toBeUndefined();
 });
@@ -200,11 +203,11 @@ test.each([true, false])('an earlier assigned uncertain comment reconciles only 
         if (args.includes('POST')) { posts++; if (landed) await original(program, args, options); throw new Error('Lost comment response'); }
         return original(program, args, options);
     };
-    await withAssignment(old, 'delivery', () => expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('Lost comment response'));
+    await withAssignment(old, 'delivery', () => expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('Lost comment response'));
     f.store.finishClaim(old.id, 'interrupted');
     const current = f.store.claimWork(old.work, 'recovery', 'draft')!;
-    if (landed) await withAssignment(current, 'delivery', () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root));
-    else await withAssignment(current, 'delivery', () => expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('will not be resent'));
+    if (landed) await withAssignment(current, 'delivery', () => claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)));
+    else await withAssignment(current, 'delivery', () => expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('will not be resent'));
     expect(posts).toBe(1);
     expect(f.store.getEffect(`harness:${f.job.id}:draft-link-comment:200`)?.status).toBe(landed ? 'verified' : 'uncertain');
 });
@@ -219,7 +222,7 @@ test.each(['dispatched-rejection', 'other-pr-uncertain', 'prepared'])('complete 
     f.store.putEffect(intent);
     f.store.finishClaim(old.id, 'completed');
     const current = f.store.claimWork(old.work, 'recovery', 'draft')!;
-    await withAssignment(current, 'delivery', () => expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('Earlier draft claim'));
+    await withAssignment(current, 'delivery', () => expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('Earlier draft claim'));
     expect(f.store.getEffect(intent.id)).toEqual(intent);
     expect(writes(f.state.calls)).toHaveLength(0);
 });
@@ -227,7 +230,7 @@ test.each(['dispatched-rejection', 'other-pr-uncertain', 'prepared'])('complete 
 test('a hold arriving during comment reads prevents dispatch', async () => {
     const f = await fixture(), original = f.delivery.execute;
     f.delivery.execute = async (program, args, options) => { const result = await original(program, args, options); if (args[1] === 'user') HOLDS[f.job.key] = 'Synthetic hold'; return result; };
-    try { await expect(linkDraftIssue(f.delivery, f.job, f.state.issue, f.root)).rejects.toThrow('held'); }
+    try { await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('held'); }
     finally { delete HOLDS[f.job.key]; }
     expect(writes(f.state.calls)).toHaveLength(0);
 });

@@ -1,3 +1,5 @@
+import { assessDeliveryEligibility } from '../delivery/harness/delivery-authority';
+import { handsOff } from '../delivery/harness/scope';
 import { HOLDS } from '../office/config';
 import { digest } from '../store/readback-evidence';
 import type { ITContext } from './context';
@@ -15,7 +17,8 @@ export async function recoverPRMetadata(context: ITContext): Promise<void> {
             store.activeClaims().some(c => c.work.kind === 'delivery' && c.work.id === job.id) ||
             store.state.workLog?.some(w => w.requestId === job.id && ['running', 'stopping'].includes(w.status))) continue;
         const owner = offices.sessions?.forProject(store, job.key);
-        if (!owner?.complete || !owner.fresh || owner.ownership?.status !== 'clear') continue;
+        const request = store.state.coordination?.requests?.find(q => q.id === r.original?.requestId);
+        if (handsOff(store) ? !assessDeliveryEligibility(store,job,{request}).eligible : !owner?.complete || !owner.fresh || owner.ownership?.status !== 'clear') continue;
         await recover(key, job.detail, async () => {
             if (job.parked) {
                 if (r.origin !== 'original-recovery') return false;

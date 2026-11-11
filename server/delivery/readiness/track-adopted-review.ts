@@ -1,4 +1,4 @@
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { harnessDelivers } from '../harness/scope';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
 import { workKey } from '../../../src/shared';
@@ -8,7 +8,7 @@ import type { TicketJob } from '../../../src/shared';
 /** Track a verified bot update before its new assessment; never rebind an owned candidate. */
 export function trackAdoptedReview(store: Store, jobs: TicketJob[], job: TicketJob, pr: any) {
     if (!harnessDelivers(store, job) || !job.existingPR || job.worktree || pr.head?.sha === job.head) return;
-    assertMayMutate(store, jobs, job, job.head);
+    assertDeliveryMayMutate(store, jobs, job, job.head);
     const merge = store.getEffect(job.mergeIntentId || `merge:${job.id}:${job.head}`);
     const unsettled = store.db.prepare("SELECT id FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain') LIMIT 1")
         .get(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }));

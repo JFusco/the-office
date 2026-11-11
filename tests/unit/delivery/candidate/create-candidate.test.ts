@@ -1,3 +1,5 @@
+import { claimedDelivery, registerDeliveryFixture } from '../../../fixtures/delivery-claim';
+import { assertDeliveryMayMutate } from '../../../../server/delivery/harness/guards';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
 afterEach(cleanupFakes);
@@ -13,7 +15,7 @@ test('creates the worktree from the fetched target and records identity before t
     const f = fakeGitHub();
     f.delivery.enqueue('GH-5', 0, 'Ready');
     const job = f.delivery.jobs[0];
-    const created = await createCandidate(f.store, f.execute as any, job, f.state.issue);
+    const created = await createCandidate(f.store, f.execute as any, job, f.state.issue, () => {});
     expect(created).toMatchObject({ base: BASE, reused: false, branch: 'codex/5-restore-release-scans' });
     expect(existsSync(created.worktree)).toBe(true);
     expect(job).toMatchObject({ branch: created.branch, worktree: created.worktree, candidateBase: BASE });
@@ -21,19 +23,19 @@ test('creates the worktree from the fetched target and records identity before t
 });
 test('reuses only its own clean candidate and refuses dirty or foreign state', async () => {
     const f = fakeGitHub(), job = f.candidate({ head: '' });
-    expect((await createCandidate(f.store, f.execute as any, job, f.state.issue)).reused).toBe(true);
+    expect((await createCandidate(f.store, f.execute as any, job, f.state.issue, () => {})).reused).toBe(true);
     f.state.local.dirty = true;
-    await expect(createCandidate(f.store, f.execute as any, job, f.state.issue)).rejects.toThrow('uncommitted');
+    await expect(createCandidate(f.store, f.execute as any, job, f.state.issue, () => {})).rejects.toThrow('uncommitted');
     f.state.local.dirty = false;
     f.state.local.branch = 'someone-else';
-    await expect(createCandidate(f.store, f.execute as any, job, f.state.issue)).rejects.toThrow('changed branch');
+    await expect(createCandidate(f.store, f.execute as any, job, f.state.issue, () => {})).rejects.toThrow('changed branch');
 });
 test('an existing path or branch is never adopted', async () => {
     const f = fakeGitHub();
     f.candidate({ head: '' });
     f.delivery.jobs[0].status = 'cancelled';
     f.delivery.enqueue('GH-5', 0, 'Ready');
-    await expect(createCandidate(f.store, f.execute as any, f.delivery.jobs.at(-1)!, f.state.issue)).rejects.toThrow('already exists');
+    await expect(createCandidate(f.store, f.execute as any, f.delivery.jobs.at(-1)!, f.state.issue, () => {})).rejects.toThrow('already exists');
 });
 test('a failed dependency seed is advisory and never blocks the new candidate', async () => {
     const f = fakeGitHub();
@@ -45,7 +47,7 @@ test('a failed dependency seed is advisory and never blocks the new candidate', 
         if (program === 'pnpm' && args[0] === 'install') throw new Error('registry unavailable');
         return result;
     };
-    const created = await createCandidate(f.store, execute as any, job, f.state.issue);
+    const created = await createCandidate(f.store, execute as any, job, f.state.issue, () => {});
     expect(created).toMatchObject({ reused: false, branch: 'codex/5-restore-release-scans' });
     expect(f.store.state.events.some(e => e.kind === 'candidate-seed-failed' && e.message.includes('registry unavailable'))).toBe(true);
     expect(f.store.state.events.some(e => e.kind === 'candidate-created')).toBe(true);
@@ -61,8 +63,36 @@ test('candidate seeding still skips a different pnpm major', async () => {
         if (program === 'git' && args[0] === 'worktree') writeFileSync(resolve(args[4], 'package.json'), JSON.stringify({ packageManager: 'pnpm@9.1.0' }));
         return result;
     };
-    const created = await createCandidate(f.store, execute as any, f.delivery.jobs[0], f.state.issue);
+    const created = await createCandidate(f.store, execute as any, f.delivery.jobs[0], f.state.issue, () => {});
     expect(created.reused).toBe(false);
     expect(calls).toEqual(['--version']);
     expect(f.store.state.events.some(e => e.kind === 'candidate-seed-failed')).toBe(false);
+});
+
+test.each(['branch-read', 'version-read', 'draining'] as const)('rechecks authority at the candidate write boundaries: %s', async boundary => {
+    const f = fakeGitHub();
+    f.delivery.enqueue('GH-5', 0, 'Ready');
+    const job = f.delivery.jobs[0];
+    registerDeliveryFixture(f.store, job);
+    const stop = () => f.store.finishClaim(f.store.activeClaims()[0].id, 'stopping');
+    const execute = async (program: string, args: string[], options: any) => {
+        if (program === 'pnpm' && args[0] === '--version') {
+            if (boundary === 'version-read') stop();
+            return '10.33.0\n';
+        }
+        const result = await f.execute(program, args, options);
+        if (args[0] === 'for-each-ref' && boundary === 'branch-read') stop();
+        if (args[0] === 'worktree') writeFileSync(resolve(args[4], 'package.json'), JSON.stringify({ packageManager: 'pnpm@10.33.0' }));
+        return result;
+    };
+    const run = claimedDelivery(f.store, job, async () => {
+        if (boundary === 'draining') f.store.state.draining = true;
+        return createCandidate(f.store, execute as any, job, f.state.issue, () => assertDeliveryMayMutate(f.store, f.delivery.jobs, job, ''));
+    });
+    if (boundary === 'draining') await expect(run).resolves.toMatchObject({ reused: false });
+    else await expect(run).rejects.toThrow('scheduler claim');
+    expect(f.state.calls.filter(c => c.startsWith('git worktree add'))).toHaveLength(boundary === 'branch-read' ? 0 : 1);
+    expect(f.state.calls.filter(c => c.startsWith('pnpm install'))).toHaveLength(boundary === 'draining' ? 1 : 0);
+    if (boundary === 'branch-read') expect(job.worktree).toBe('');
+    if (boundary === 'version-read') expect(existsSync(job.worktree)).toBe(true);
 });

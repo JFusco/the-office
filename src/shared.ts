@@ -158,6 +158,7 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    admission?: import('./contracts/work').DeliveryAdmission;
     improvementId?: string;
     featureBinding?: import('./contracts/features').FeatureBinding;
     featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };

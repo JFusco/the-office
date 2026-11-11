@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
 import { runHarnessStage } from '../../../../server/delivery/harness/run-harness-stage';
@@ -9,13 +10,13 @@ test('draft, prepare-pr and closeout run through GitHubDelivery.step with zero m
     let modelCalls = 0;
     f.engine.agents.run = async () => { modelCalls++; throw new Error('No model expected'); };
 
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'prepare-pr', status: 'queued', pr: 200 });
     expect(f.state.prs[0]).toMatchObject({ draft: true, head: { sha: HEAD } });
     expect(f.state.cards[0].status).toBe('review');
 
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'lead-pr', status: 'queued' });
     expect(f.state.prs[0].draft).toBe(false);
@@ -24,7 +25,7 @@ test('draft, prepare-pr and closeout run through GitHubDelivery.step with zero m
     Object.assign(f.state.prs[0], { state: 'closed', merged_at: '2026-10-31T13:00:00Z', merge_commit_sha: merge });
     f.state.runs = [{ name: 'Quality', head_sha: merge, event: 'push', head_branch: 'main', status: 'completed', conclusion: 'success' }];
     Object.assign(job, { stage: 'closeout', status: 'queued', mergeCommit: merge });
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).toContain('Done lane verified');
     expect(job.status).toBe('completed');
     expect(f.state.issue.state).toBe('closed');
@@ -35,15 +36,15 @@ test('draft, prepare-pr and closeout run through GitHubDelivery.step with zero m
 test('a stacked PR or one with dependents falls back to the guarded metadata worker', async () => {
     const f = fakeGitHub(), job = f.candidate({ stage: 'prepare-pr', pr: 200 });
     f.state.prs.push({ number: 200, html_url: 'u', state: 'open', draft: true, body: 'Closes #5', head: { sha: HEAD, ref: job.branch }, base: { ref: 'codex/parent', sha: BASE, repo: { full_name: 'JFusco/cms-field-vocabulary' } } });
-    expect(await runHarnessStage(f.delivery, job, f.artifactRoot(job), true)).toBeNull();
+    expect(await claimedDelivery(f.store, job, () => runHarnessStage(f.delivery, job, f.artifactRoot(job), true))).toBeNull();
     f.state.prs[0].base.ref = 'main';
     f.state.prs.push({ number: 201, html_url: 'u2', state: 'open', draft: true, head: { sha: 'c'.repeat(40), ref: 'child' }, base: { ref: job.branch, sha: HEAD, repo: { full_name: 'JFusco/cms-field-vocabulary' } } });
-    expect(await runHarnessStage(f.delivery, job, f.artifactRoot(job), true)).toBeNull();
+    expect(await claimedDelivery(f.store, job, () => runHarnessStage(f.delivery, job, f.artifactRoot(job), true))).toBeNull();
 });
 test('an unreviewed draft stays draft and still proceeds to read-only Lead assessment', async () => {
     const f = fakeGitHub(), job = f.candidate({ stage: 'prepare-pr', pr: 200 });
     f.state.prs.push({ number: 200, html_url: 'u', state: 'open', draft: true, body: 'Closes #5', head: { sha: HEAD, ref: job.branch }, base: { ref: 'main', sha: BASE, repo: { full_name: 'JFusco/cms-field-vocabulary' } } });
-    const result = await runHarnessStage(f.delivery, job, f.artifactRoot(job), false);
+    const result = await claimedDelivery(f.store, job, () => runHarnessStage(f.delivery, job, f.artifactRoot(job), false));
     expect(result?.summary).toContain('left as draft');
     expect(f.state.prs[0].draft).toBe(true);
 });
@@ -54,7 +55,7 @@ test('a team-reviewed head goes from preparation straight to the guarded merge, 
     job.steps.push({ stage: 'review', result: { outcome: 'passed', summary: 'Reviewed', commit: HEAD, blocker: '', evidence: [], findings: [], receipts: [], previewUrl: '', worktree: job.worktree, branch: job.branch, prId: 200, qaRunDir: '', paidRuns: 0 } });
     let modelCalls = 0;
     f.engine.agents.run = async () => { modelCalls++; throw new Error('No model expected'); };
-    await f.delivery.step(job);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
     expect(job.detail).not.toMatch(/Error/);
     expect(job).toMatchObject({ stage: 'merge', status: 'queued' });
     expect(modelCalls).toBe(0);

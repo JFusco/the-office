@@ -1,3 +1,4 @@
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { FreshMergeReview, refreshMergeReview } from './refresh-merge-review';
 import {currentMergeChecks} from './github-check-selection';
 import { teamReviewedHead } from './team-review';
@@ -55,6 +56,8 @@ export async function verifyPR(this: GitHubDelivery, job: TicketJob, requireTarg
     return p;
 }
 export async function merge(this: GitHubDelivery, job: TicketJob) {
+    const expectedHead = job.head;
+    assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
     if (this.store.state.paused || job.mergeApprovalRequired || job.mergeAuthorization && job.mergeAuthorization.head !== job.head || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
         throw new Error('Office merging is paused, disabled, or awaiting this PR’s approval');
     if (HOLDS[job.key])
@@ -121,6 +124,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
                 throw new Error('Merge candidate changed immediately before dispatch');
             await currentMergeChecks(this,job,current);
             if (await refreshMergeReview(this, job, current, true)) throw new FreshMergeReview(job.detail);
+            assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
         },
         dispatch: async (value) => {
             job.mergeAttempt = { head: value.sha, at: this.store.clock.now().toISOString() };

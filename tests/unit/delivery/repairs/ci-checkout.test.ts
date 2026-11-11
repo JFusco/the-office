@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { test, expect } from 'vitest';
 import { ciFixture, newHead } from '../../../fixtures/ci-repair';
 import { ciCheckout, verifyCIHooks } from '../../../../server/delivery/repairs/ci-checkout';
@@ -21,6 +22,6 @@ test('ordinary source publication also refuses disabled hooks before pushing the
     const f = ciFixture(); await f.delivery.queueCIRepair(f.job); const repair = f.job.ciRepairs![0];
     f.job.worktree = await ciCheckout(f.delivery, f.job, repair);
     f.job.head = newHead; f.setGitHead(newHead); repair.hooksPath = '/different/hooks';
-    await expect(publishCandidate(f.store, f.execute, f.delivery.jobs, f.job, f.artifactRoot)).rejects.toThrow('safeguards');
+    await expect(claimedDelivery(f.store, f.job, () => publishCandidate(f.store, f.execute, f.delivery.jobs, f.job, f.artifactRoot))).rejects.toThrow('safeguards');
     expect(f.calls.some(c => c.args[0] === 'push')).toBe(false);
 });
