@@ -15,7 +15,7 @@ export function officeSearch(context: KnowledgeContext, project: string, query: 
         const permitted = lessonForProject(context.registry, project, lesson), text = `${lesson.statement}\n${lesson.detail}`;
         const sourceBindings = lessonSourceBindings(context.registry,project,lesson);
         records.push({ reference: { id: `lesson:${lesson.scope}:${lesson.id}`, kind: 'lesson', lesson:{scope:lesson.scope,id:lesson.id,revision:lesson.revision||1}, sourceBindings, version: String(lesson.revision || 1), contentSha256: digest(text) }, title: lesson.statement,
-            excerpt: text, citation: permitted.evidence[0]?.url || '', scope: lesson.scope, limitations: ['Advisory guidance; verify against current evidence', ...(lesson.needsReview ? ['Source or recurrence review needed'] : [])] });
+            excerpt: text, citation: permitted.evidence[0]?.url || '', scope: lesson.scope, limitations: ['Advisory guidance; verify against current evidence', ...(lesson.needsReview ? ['Source review needed'] : [])] });
     }
     const terms = words(query);
     return records.map(hit => ({ hit, score: terms.reduce((n, word) => n + (hit.title.toLowerCase().includes(word) ? 4 : 0) + (hit.excerpt.toLowerCase().includes(word) ? 1 : 0), 0) }))

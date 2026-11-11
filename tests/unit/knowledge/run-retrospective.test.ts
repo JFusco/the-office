@@ -44,7 +44,7 @@ test('a failed run waits with capped backoff instead of blocking, then a later s
 
     advance(retryDelay(1));
     expect(scheduledRetrospectives(store, failing)[0].eligibility.state).toBe('runnable');
-    await runRetrospective(store, (async () => ({ summary: 'Catalog drift caused one repair.', lessons: [lesson('Regenerate the catalog before review', [packetRef, 'invented:ref'])], recurrences: [] })) as KnowledgeRunner, id);
+    await runRetrospective(store, (async () => ({ summary: 'Catalog drift caused one repair.', lessons: [lesson('Regenerate the catalog before review', [packetRef, 'invented:ref'])] })) as KnowledgeRunner, id);
     const knowledge = store.state.knowledge!;
     expect(knowledge.pending).toEqual([]);
     expect(knowledge.consumed).toContain(id);
@@ -62,7 +62,7 @@ test('acceptance is lenient: duplicates, retired repeats and unsupported proposa
     const { store, done, id } = setup();
     const packet = retrospectiveFacts(store, jobSubject(store, done), { id, trigger: 'completed', event: { stage: 'closeout', head: '', steps: 2, reason: '' } });
     const step = `step:${done.id}:1`;
-    store.state.knowledge!.lessons.push({ id: 'old', scope: 'project', recurrences: [], kind: 'pitfall', statement: 'Run the wiki build', detail: '', stages: ['any'], paths: [], status: 'retired', evidence: [], sourceRetrospectiveId: 'x', createdAt: '', updatedAt: '' });
+    store.state.knowledge!.lessons.push({ id: 'old', scope: 'project', kind: 'pitfall', statement: 'Run the wiki build', detail: '', stages: ['any'], paths: [], status: 'retired', evidence: [], sourceRetrospectiveId: 'x', createdAt: '', updatedAt: '' });
     acceptRetrospective(store, { id, jobId: done.id, key: done.key, trigger: 'completed' }, packet, { summary: 'Done.', lessons: [
         lesson('  run the WIKI   build ', [step]),          // repeats a retired lesson: stays retired
         lesson('Commit generated artifacts', [step]),
@@ -96,7 +96,7 @@ test('a retrospective for a job that is no longer retained completes without a m
     const { store, id } = setup();
     store.state.knowledge!.pending.push({ id: 'gone-job:parked:1', jobId: 'gone-job', key: 'GH-9', trigger: 'parked', createdAt: '', event: { stage: '', head: '', steps: 1, reason: '' }, attempts: 0, nextAt: '', lastError: '' });
     let calls = 0;
-    await runRetrospective(store, (async () => { calls++; return { summary: '', lessons: [], recurrences: [] }; }) as KnowledgeRunner, 'gone-job:parked:1');
+    await runRetrospective(store, (async () => { calls++; return { summary: '', lessons: [] }; }) as KnowledgeRunner, 'gone-job:parked:1');
     expect(calls).toBe(0);
     expect(store.state.knowledge!.consumed).toContain('gone-job:parked:1');
     expect(id).toBeTruthy();

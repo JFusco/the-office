@@ -12,7 +12,7 @@ const SEEDS: Record<string, Lesson[]> = {
         detail: 'Carried over from the GH-100 recovery guidance that was previously hardcoded in the scope-repair and saved-candidate assessment prompts.',
         stages: ['implement', 'review'], paths: [], status: 'active',
         evidence: [{ kind: 'ticket', ref: 'GH-100', url: 'https://github.com/JFusco/cms-field-vocabulary/issues/100', detail: 'Issue #100 saved-candidate recovery' }],
-        sourceRetrospectiveId: 'seed:the-office#58', recurrences: [], createdAt: SEEDED_AT, updatedAt: SEEDED_AT,
+        sourceRetrospectiveId: 'seed:the-office#58', createdAt: SEEDED_AT, updatedAt: SEEDED_AT,
     }, {
         id: 'seed:cms-field-vocabulary:contentstack-withdrawn-changelog-items', scope: 'project', tier: 'guidance', revision: 1, kind: 'process',
         statement: 'Contentstack changelog (contentstack.product-changelog-index): scan artifacts keep only RSS item links, not their text (cms-field-vocabulary#137). In vendor review, read item text from the registered RSS https://www.contentstack.com/api/docs/changelog/rss.xml with curl. Treat a scanned identity as withdrawn upstream only when the current RSS still lists items dated on or before its scan date and the identity is absent from both that RSS and https://www.contentstack.com/docs/changelog; then record it as withdrawn upstream with no retained official text and no profile impact claimed, and do not keep it as an open observation or block on retrieving it. An identity that merely aged out of the RSS window is not withdrawn: read it from the changelog page.',
@@ -22,14 +22,14 @@ const SEEDS: Record<string, Lesson[]> = {
             { kind: 'ticket', ref: 'GH-137', url: 'https://github.com/JFusco/cms-field-vocabulary/issues/137', detail: 'Issue #137 retain changelog item text' },
             { kind: 'maintenance', ref: '8a7f8a8e-47f7-4830-b18a-96520b689791', url: '', detail: 'Weekly vendor review of 2026-11-06 that held the withdrawn identity open; Nov 4 scan: https://github.com/JFusco/cms-field-vocabulary/actions/runs/41906470558' },
         ],
-        sourceRetrospectiveId: 'seed:cms-field-vocabulary#137', recurrences: [], createdAt: SEEDED_AT, updatedAt: SEEDED_AT,
+        sourceRetrospectiveId: 'seed:cms-field-vocabulary#137', createdAt: SEEDED_AT, updatedAt: SEEDED_AT,
     }, {
         id: 'seed:cms-field-vocabulary:wiki-only-package-checks', scope: 'project', tier: 'guidance', revision: 1, kind: 'process',
         statement: 'When a PR touches only wiki files, the Quality workflow runs a lightweight wiki check, so still collect release-preflight, verify:ci, test:packed and the pack dry-run at the reviewed commit.',
         detail: 'Check: a receipt exists for each command at the reviewed head. A green wiki-only Quality run is not full-suite evidence; size the source review to the actual diff.',
         stages: ['review', 'validate'], paths: ['.github/workflows/quality.yml', 'AGENTS.md', 'package.json'], status: 'active',
         evidence: [{ kind: 'artifact', ref: CONSOLIDATED, url: '', detail: 'Consolidates lessons 0d16b97c, df887f76 and 3309a0bd, approved by Joe on 2026-11-11' }],
-        sourceRetrospectiveId: CONSOLIDATED, recurrences: [], createdAt: CONSOLIDATED_AT, updatedAt: CONSOLIDATED_AT,
+        sourceRetrospectiveId: CONSOLIDATED, createdAt: CONSOLIDATED_AT, updatedAt: CONSOLIDATED_AT,
     }],
     brain: [{
         id: 'seed:brain:dual-lockfile-verification', scope: 'project', tier: 'guidance', revision: 1, kind: 'process',
@@ -37,7 +37,7 @@ const SEEDS: Record<string, Lesson[]> = {
         detail: 'Check: frozen installs pass in both installation contexts and verify:ci passes on the current head. On a conflict, re-resolve main\'s lockfiles against the PR manifests and verify the resulting commit independently.',
         stages: ['review', 'repair', 'validate'], paths: ['pnpm-lock.yaml', 'web/brain/pnpm-lock.yaml', 'package.json', 'web/brain/package.json'], status: 'active',
         evidence: [{ kind: 'artifact', ref: CONSOLIDATED, url: '', detail: 'Consolidates lessons 48802a32, e9502da0 and c1c78ef9, approved by Joe on 2026-11-11' }],
-        sourceRetrospectiveId: CONSOLIDATED, recurrences: [], createdAt: CONSOLIDATED_AT, updatedAt: CONSOLIDATED_AT,
+        sourceRetrospectiveId: CONSOLIDATED, createdAt: CONSOLIDATED_AT, updatedAt: CONSOLIDATED_AT,
     }],
 };
 

@@ -27,7 +27,7 @@ export function promoteNoteLesson(control: OfficeKnowledgeStore, store: Store, i
         const at = control.clock.now().toISOString(), ticket = store.state.tickets.find(ticket => ticket.key === note.ticket);
         knowledge.lessons.push({ id, scope: 'office',originProjectId:store.project.id, tier: 'guidance', revision: 1, kind: data.kind, statement: data.statement, detail: data.detail, stages: [...new Set(data.stages)], paths: [], status: 'active',
             evidence: [{ kind: 'artifact', ref: `project-note:${store.project.id}:${note.id}`, url: '', detail: 'Explicitly promoted by Joe from a reviewed project note',...(sourceBindings.length?{sourceBindings}: {}) }, ...(ticket ? [{ kind: 'ticket' as const, ref: ticket.key, url: ticket.url, detail: 'Source incident tracking issue' }] : [])],
-            sourceRetrospectiveId: id, recurrences: [], createdAt: at, updatedAt: at });
+            sourceRetrospectiveId: id, createdAt: at, updatedAt: at });
         return id;
     });
 }

@@ -17,7 +17,7 @@ export interface RetrospectivePacket {
     timing: unknown[];
     conversation: unknown[];
     notes: unknown[];
-    activeLessons: { scope?: 'project' | 'office'; revision?: number; id: string; statement: string; recurrences: number }[];
+    activeLessons: { scope?: 'project' | 'office'; revision?: number; id: string; statement: string }[];
     /** Only for a maintenance run: ledgers, harness error and saved artifacts. Bounded by construction. */
     maintenance?: MaintenancePacketSection;
     omitted: Record<string, number>;
@@ -56,7 +56,7 @@ export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pend
             ...(store.state.outbox || []).filter(item => item.ticket === job.key).slice(-ENTRIES).map(item => ({ outbox: item.title, status: item.status, detail: clip(item.detail, SHORT) })),
         ].slice(-ENTRIES),
         notes: store.state.projectNotes.filter(note => note.ticket === job.key).slice(-10).map(note => ({ summary: clip(note.summary, SHORT), detail: clip(note.detail, SHORT) })),
-        activeLessons: [...(store.state.knowledge?.lessons || []), ...(store.state.knowledge?.officeLessons || [])].filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ scope: lesson.scope, revision: lesson.revision || 1, id: lesson.id, statement: lesson.statement, recurrences: lesson.recurrences?.length || 0 })),
+        activeLessons: [...(store.state.knowledge?.lessons || []), ...(store.state.knowledge?.officeLessons || [])].filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ scope: lesson.scope, revision: lesson.revision || 1, id: lesson.id, statement: lesson.statement })),
         ...(job.maintenance ? { maintenance: maintenanceFacts(job, catalog) } : {}),
         omitted: {},
         catalog,

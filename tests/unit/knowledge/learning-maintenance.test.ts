@@ -26,7 +26,7 @@ test('a completed retrospective with the same ID never shadows the durable deliv
     try {
         const source = job({ status: 'completed', repairCycle: { attempts: 3 } as TicketJob['repairCycle'] }); store.state.coordination!.jobs!.push(source);
         maintainLearning(store);
-        await runRetrospective(store, (async () => ({ summary: 'Reviewed', lessons: [], recurrences: [] })) as KnowledgeRunner, completedId(source));
+        await runRetrospective(store, (async () => ({ summary: 'Reviewed', lessons: [] })) as KnowledgeRunner, completedId(source));
         expect(store.state.knowledge!.retrospectives.map(record => record.id)).toEqual([completedId(source)]);
         store.state.coordination!.jobs = [];
         expect(deliveryMetrics(store, new Date('2026-01-01'), new Date('2027-01-01'))).toMatchObject({ completed: 1, repairAttempts: 3 });

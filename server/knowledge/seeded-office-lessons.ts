@@ -5,7 +5,7 @@ import { CONSOLIDATED, CONSOLIDATED_AT } from './seeded-lessons';
 const seed = (id: string, kind: Lesson['kind'], stages: Lesson['stages'], statement: string, detail: string, merged: string): Lesson => ({
     id: `seed:office:${id}`, scope: 'office', tier: 'guidance', revision: 1, kind, statement, detail, stages, paths: [], status: 'active',
     evidence: [{ kind: 'artifact', ref: CONSOLIDATED, url: '', detail: `Consolidates lessons ${merged}, approved by Joe on 2026-11-11` }],
-    sourceRetrospectiveId: CONSOLIDATED, recurrences: [], createdAt: CONSOLIDATED_AT, updatedAt: CONSOLIDATED_AT,
+    sourceRetrospectiveId: CONSOLIDATED, createdAt: CONSOLIDATED_AT, updatedAt: CONSOLIDATED_AT,
 });
 
 /** Office lessons seeded by hand: the same lesson was learned separately in several projects. */

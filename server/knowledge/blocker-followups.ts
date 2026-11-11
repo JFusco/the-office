@@ -42,7 +42,6 @@ export function reconcileBlockerFollowups(store: Store): void {
             // IT recovery records are excluded: they repeat the same condition and taught one lesson in 29 retrospectives.
             if (item.history.length > 1 && disposition !== 'unknown' && source.kind !== 'recovery') captureLearning(store, source, key, 'recovery', fingerprint, { disposition, proof }, detail);
         }
-        // A source resolution does not prove the diagnostic nudge caused it. Procedure outcome stays unknown.
         return item;
     };
     for (const entry of store.state.it?.investigations || []) {
@@ -66,7 +65,6 @@ export function reconcileBlockerFollowups(store: Store): void {
         const item = observe({ kind: 'job', id: job.id }, job.key, detail, resolved ? job.status === 'cancelled' ? 'superseded' : 'confirmed' : blocked ? 'unresolved' : 'unknown', { status: blocked ? job.status : '', resolved }, { recoveryId: recovery?.[0], requestId: recovery?.[1].requestId, owner: 'Ellis' });
         if (!resolved && !recovery && !item.nudgeId && knowledge.enabled && !store.state.paused && !store.state.draining && !HOLDS[job.key]) {
             item.nudgeId = store.state.coordination?.requests?.find(request => request.action === 'check-it' && ['queued', 'working'].includes(request.status))?.id || enqueueRequest(store, 'check-it', '', '', 'it').id;
-            (knowledge.procedureUses ??= []).push({ id: `check-it:${item.id}`, operation: 'check-it', source: item.source, requestId: item.nudgeId, at: now, outcome: 'unknown' });
         }
     }
     for (const original of store.state.messages.filter(message => message.from === 'human' && ['failed', 'interrupted'].includes(message.status))) {
@@ -104,7 +102,6 @@ export function reconcileBlockerFollowups(store: Store): void {
     }
     for (const item of records) if (!observed.has(item.id)) {
         // Losing a record is not resolution. Preserve its earlier proof as history.
-        for (const use of knowledge.procedureUses || []) if (use.source.kind === item.source.kind && use.source.id === item.source.id) use.outcome = 'unknown';
         observe(item.source, item.key, 'Original source is no longer retained; outcome unknown.', 'unknown', { sourceMissing: true });
     }
     if (before !== JSON.stringify([knowledge.followups, store.state.messages.length])) store.save();

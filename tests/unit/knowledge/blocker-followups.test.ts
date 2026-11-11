@@ -44,7 +44,6 @@ test('Harper nudges IT once, never spends a recovery budget, and source disappea
         expect(store.state.coordination!.requests!.filter(item => item.action === 'check-it')).toHaveLength(1);
         const followup = store.state.knowledge!.followups!.find(item => item.source.kind === 'job')!;
         expect(followup.disposition).toBe('unresolved');
-        expect(store.state.knowledge!.procedureUses).toHaveLength(1);
         source.status = 'completed'; reconcileBlockerFollowups(store); expect(followup.disposition).toBe('confirmed');
         store.state.coordination!.jobs = []; reconcileBlockerFollowups(store); expect(followup.disposition).toBe('unknown');
     } finally { close(); }

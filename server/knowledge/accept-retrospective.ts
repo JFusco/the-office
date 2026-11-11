@@ -10,7 +10,7 @@ import { checkedReceipt, type ScanReceipt } from './sources/admission';
 export const RETROSPECTIVE_HISTORY = 100;
 export const normalizeStatement = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
-type Accepted = { improvements?: ImprovementProposal[] } & Pick<RetrospectiveResult, 'summary'> & { lessons: (Omit<RetrospectiveResult['lessons'][number], 'repositoryInstruction' | 'tier'> & { repositoryInstruction?: boolean; tier?: 'hypothesis' | 'guidance' })[]; recurrences?: { lessonId: string; detail: string; evidenceIds?: string[] }[] };
+type Accepted = { improvements?: ImprovementProposal[] } & Pick<RetrospectiveResult, 'summary'> & { lessons: (Omit<RetrospectiveResult['lessons'][number], 'repositoryInstruction' | 'tier'> & { repositoryInstruction?: boolean; tier?: 'hypothesis' | 'guidance' })[] };
 
 /**
  * Lenient, idempotent acceptance in one transaction. Duplicates and unsupported proposals are skipped,
@@ -32,20 +32,8 @@ export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospec
             const evidence = [...new Set(proposal.evidenceIds)].filter(id => Object.hasOwn(catalog, id)).map(id => catalog[id]);
             if (!statement || !evidence.length || sourceOnly&&!evidence.some(p=>p.kind==='source') || seen.has(key)) continue;
             seen.add(key);
-            added.push({ id: randomUUID(), scope: 'project', tier: proposal.tier || 'guidance', revision: 1, kind: proposal.kind, statement, detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], paths: proposal.paths.map(path => path.trim()).filter(Boolean), status: 'active', evidence: evidence.map(item => proofBindings(item).length?{...item,detail:'Scoped evidence; exact excerpt retained in the private review packet'}:{ ...item }), sourceSubject: pending.source || { kind: pending.subject || 'job', id: pending.jobId }, sourceRetrospectiveId: pending.id, recurrences: [],
+            added.push({ id: randomUUID(), scope: 'project', tier: proposal.tier || 'guidance', revision: 1, kind: proposal.kind, statement, detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], paths: proposal.paths.map(path => path.trim()).filter(Boolean), status: 'active', evidence: evidence.map(item => proofBindings(item).length?{...item,detail:'Scoped evidence; exact excerpt retained in the private review packet'}:{ ...item }), sourceSubject: pending.source || { kind: pending.subject || 'job', id: pending.jobId }, sourceRetrospectiveId: pending.id,
                 ...(github && proposal.repositoryInstruction ? { repositoryInstruction: { status: 'proposed' as const } } : {}), createdAt: now, updatedAt: now });
-        }
-        // A recurrence counts once per job or run, and never on the job the lesson was learned from.
-        for (const recurrence of sourceOnly?[]:result.recurrences || []) {
-            const lesson = [...knowledge.lessons, ...(knowledge.officeLessons || [])].find(item => item.id === recurrence.lessonId && item.status === 'active');
-            if (!lesson || (lesson.sourceSubject?.id || lesson.sourceRetrospectiveId.split(':')[0]) === pending.jobId || lesson.recurrences.some(item => item.subjectId === pending.jobId)) continue;
-            const evidence = (recurrence.evidenceIds || []).filter(id => Object.hasOwn(catalog, id)).map(id => catalog[id]);
-            if (!evidence.length) continue;
-            const observation = { evidence, revision: lesson.revision || 1, retrospectiveId: pending.id, subjectId: pending.jobId, subject: pending.source || { kind: pending.subject || 'job', id: pending.jobId }, detail: recurrence.detail.trim().slice(0, 300), at: pending.createdAt || now };
-            if (lesson.scope === 'office') {
-                const local = knowledge.officeRecurrences ??= [];
-                if (!local.some(item => item.id === lesson.id && item.subjectId === pending.jobId)) local.push({ ...observation, id: lesson.id, scope: lesson.scope });
-            } else { lesson.recurrences.push(observation); lesson.updatedAt = now; }
         }
         if(!sourceOnly)proposeImprovements(store, pending.source || { kind: pending.subject || 'job', id: pending.jobId }, result.improvements || [], catalog);
         knowledge.lessons.push(...added);

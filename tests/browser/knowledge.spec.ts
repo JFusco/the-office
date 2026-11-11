@@ -99,14 +99,14 @@ test('Harper shows active needs-review guidance, original failure history, uncer
     enabled: true, consumed: [], pending: [], retrospectives: [], lessons: [{ ...lesson('active-review', 'Keep the exact source receipt'), needsReview: true, tier: 'guidance', revision: 3 }],
     followups: [{ id: 'incident', source: { kind: 'message', id: 'original' }, key: 'GH-9', owner: 'Morgan', nextAction: 'Verify the original effect', disposition: 'unknown', history: [{ at, disposition: 'unresolved', fingerprint: 'old' }], evidence: [{ kind: 'learning', ref: 'source', url: '', detail: 'Original failure: response lost' }] }],
     improvements: [{ id: 'fix', change: 'Check the marker', status: 'uncertain', detail: 'The original create must not be resent' }],
-    rollups: [{ id: 'rollup:2026-11-06', weekEnding: '2026-11-06', summary: 'Observed activity; application unknown.', learning: { coverage: { status: 'partial', startedAt: '2026-11-03T12:00:00Z' }, assignments: 1, eligibleAssignments: 1, exposedAssignments: 1, eligiblePairs: 1, exposedPairs: 1, omittedPairs: 0, applicationUnknown: 1, resolved: 0, unresolved: 0, unknown: 1 }, ineffectiveLessonIds: [], officeProposalIds: [], at, researchId: 'research:2026-11-06', research: { status: 'unavailable', findings: [], sources: [], unavailable: ['Restricted hosted retrieval unavailable'] }, metrics: { completed: 0, parked: 0, repairAttempts: 0, reroutes: 0, ciRepairs: 0, medianBlockHours: null, lessonsAdded: 1, recurrences: 2 } }],
+    rollups: [{ id: 'rollup:2026-11-06', weekEnding: '2026-11-06', summary: 'Observed activity; application unknown.', learning: { coverage: { status: 'partial', startedAt: '2026-11-03T12:00:00Z' }, assignments: 1, eligibleAssignments: 1, exposedAssignments: 1, eligiblePairs: 1, exposedPairs: 1, omittedPairs: 0, applicationUnknown: 1, resolved: 0, unresolved: 0, unknown: 1 }, officeProposalIds: [], at, researchId: 'research:2026-11-06', research: { status: 'unavailable', findings: [], sources: [], unavailable: ['Restricted hosted retrieval unavailable'] }, metrics: { completed: 0, parked: 0, repairAttempts: 0, reroutes: 0, ciRepairs: 0, medianBlockHours: null, lessonsAdded: 1, recurrences: 2 } }],
   } } });
   await page.goto('/'); await page.getByLabel('Office project').selectOption('brain');
   await page.getByRole('button', { name: /^Visit Harper, / }).click();
   const drawer = page.getByRole('complementary', { name: 'Knowledge engineer' });
   await expect(drawer.getByText('needs review · still active')).toBeVisible();
   await expect(drawer.getByText('guidance · revision 3')).toBeVisible();
-  await expect(drawer.getByRole('button', { name: 'Keep lesson and start a new review interval: Keep the exact source receipt' })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Keep lesson after source review: Keep the exact source receipt' })).toBeVisible();
   await expect(drawer.getByRole('button', { name: 'Demote lesson to hypothesis: Keep the exact source receipt' })).toBeVisible();
   await expect(drawer.getByText('Partial learning coverage: recorded since 2026-11-03T12:00:00Z.')).toBeVisible();
   await expect(drawer.getByText('The original create must not be resent')).toBeVisible();

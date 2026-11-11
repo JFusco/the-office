@@ -35,7 +35,7 @@ export function configureKnowledge(store: Store, input: unknown): void {
     }, 'knowledge');
 }
 
-/** Puts a "not working" lesson back into prompts; a new review interval starts while recurrence evidence is retained. */
+/** Returns a retired lesson to prompts, or keeps one after its source review. */
 export function reactivateLesson(store: Store, lessonId: unknown): void {
     if (typeof lessonId !== 'string' || !lessonId) throw new Error('Lesson ID is required');
     const lesson = store.state.knowledge?.lessons.find(item => item.id === lessonId);

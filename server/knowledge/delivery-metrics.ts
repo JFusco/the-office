@@ -43,6 +43,5 @@ export function deliveryMetrics(store: Store, from: Date, to: Date, scoped=store
         retrospectives: all.filter(record => record.trigger !== 'learning' && (!record.subject || ['job', 'ticket', 'maintenance'].includes(record.subject))).length,
         lessonsAdded: lessons.filter(lesson => within(lesson.createdAt)).length,
         lessonsRetired: lessons.filter(lesson => within(lesson.retiredAt)).length,
-        recurrences: lessons.flatMap(lesson => lesson.recurrences || []).filter(recurrence => within(recurrence.at)).length,
     };
 }

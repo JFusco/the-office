@@ -5,7 +5,6 @@ export interface LessonsView {
     active: Lesson[];
     /** Active but report-only: lesson selection never supplies hypotheses to prompts. */
     hypotheses: Lesson[];
-    ineffective: Lesson[];
     retired: Lesson[];
     agentsSuggestions: Lesson[];
     officeProposals: OfficeProposal[];
@@ -24,7 +23,6 @@ export function lessonsView(knowledge: KnowledgeState | undefined, office?: Offi
         enabled: knowledge?.enabled ?? false,
         active: lessons.filter(lesson => lesson.status === 'active' && lesson.tier !== 'hypothesis').sort(newest(lesson => lesson.createdAt)),
         hypotheses: lessons.filter(lesson => lesson.status === 'active' && lesson.tier === 'hypothesis').sort(newest(lesson => lesson.updatedAt)),
-        ineffective: lessons.filter(lesson => lesson.status === 'ineffective').sort(newest(lesson => lesson.updatedAt)),
         retired: lessons.filter(lesson => lesson.status === 'retired').sort(newest(lesson => lesson.retiredAt || lesson.updatedAt)),
         agentsSuggestions: lessons.filter(lesson => lesson.status !== 'retired' && lesson.repositoryInstruction && lesson.repositoryInstruction.status !== 'declined').sort(newest(lesson => lesson.createdAt)),
         officeProposals: (office?.proposals || []).filter(proposal => proposal.status === 'proposed').sort(newest(proposal => proposal.createdAt)),
@@ -47,5 +45,4 @@ export const ROLLUP_ROWS: [string, (rollup: WeeklyRollup) => string][] = [
     ['CI repairs', rollup => String(rollup.metrics.ciRepairs)],
     ['Park to next claim hours (median)', rollup => rollup.metrics.medianBlockHours === null ? '—' : String(rollup.metrics.medianBlockHours)],
     ['Lessons added', rollup => String(rollup.metrics.lessonsAdded)],
-    ['Recurrences', rollup => String(rollup.metrics.recurrences)],
 ];

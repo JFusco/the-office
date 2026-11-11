@@ -17,8 +17,7 @@ afterEach(() => cleanup.splice(0).forEach(fn => fn()));
 // Friday 2026-11-06, 6:30 PM Eastern.
 function setup(start = '2026-11-06T23:30:00Z', projectId = 'brain') { const fixture = knowledgeStore(projectId, start); cleanup.push(fixture.close); return fixture; }
 function control(store: ReturnType<typeof setup>['store']) { const value = new ControlStore(':memory:', store.clock); cleanup.push(() => value.close()); return value; }
-const lesson = (id: string, overrides: Partial<Lesson> = {}): Lesson => ({ id, scope: 'project', kind: 'pitfall', statement: `Lesson ${id}`, detail: '', stages: ['any'], paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'source-job:completed', recurrences: [], createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', ...overrides });
-const accept = (store: ReturnType<typeof setup>['store'], subject: string, lessonId: string) => acceptRetrospective(store, { id: `${subject}:completed`, jobId: subject, key: 'GH-9', trigger: 'completed' }, { catalog: { current: { kind: 'learning', ref: 'current', url: '', detail: 'Current incident' } } }, { summary: 'Done', lessons: [], recurrences: [{ lessonId, evidenceIds: ['current'], detail: `Recurred in ${subject}` }] }, 'claim');
+const lesson = (id: string, overrides: Partial<Lesson> = {}): Lesson => ({ id, scope: 'project', kind: 'pitfall', statement: `Lesson ${id}`, detail: '', stages: ['any'], paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'source-job:completed', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', ...overrides });
 
 test('narrative retries and saved reports use the same frozen learning snapshot', async () => {
     const { store, advance } = setup();
@@ -42,43 +41,15 @@ test('narrative retries and saved reports use the same frozen learning snapshot'
     expect(JSON.stringify(k.rollups![0])).toBe(saved); expect(facts).toHaveLength(2);
 });
 
-test('a recurrence counts once per job and never on the job the lesson came from', () => {
+test('keeping or demoting guidance after a source review clears its outbox decision', () => {
     const { store } = setup();
-    store.state.knowledge!.lessons.push(lesson('L1'));
-    accept(store, 'source-job', 'L1');
-    accept(store, 'job-a', 'L1');
-    acceptRetrospective(store, { id: 'job-a:parked:2', jobId: 'job-a', key: 'GH-9', trigger: 'parked' }, { catalog: {} }, { summary: '', lessons: [], recurrences: [{ lessonId: 'L1', detail: 'again' }] }, 'claim');
-    accept(store, 'job-b', 'L1');
-    expect(store.state.knowledge!.lessons[0].recurrences.map(r => r.subjectId)).toEqual(['job-a', 'job-b']);
-});
-
-test('recurrences without recorded exposure do not deactivate guidance or claim failure', async () => {
-    const { store } = setup();
-    store.state.knowledge!.lessons.push(lesson('L1', { recurrences: [{ retrospectiveId: 'a', subjectId: 'a', detail: 'x', at: '2026-11-02T00:00:00Z' }, { retrospectiveId: 'b', subjectId: 'b', detail: 'y', at: '2026-11-04T00:00:00Z' }] }), lesson('L2', { recurrences: [{ retrospectiveId: 'a', subjectId: 'a', detail: 'same day', at: '2026-10-01T05:00:00Z' }, { retrospectiveId: 'c', subjectId: 'c', detail: 'z', at: '2026-11-04T00:00:00Z' }] }));
-    store.state.knowledge!.retrospectives.push({ id: 'job-a:completed', jobId: 'job-a', key: 'GH-1', trigger: 'completed', attemptId: '', summary: 'shipped', lessonIds: [], at: '2026-11-04T12:00:00Z', eventAt: '2026-11-04T12:00:00Z' });
-    let prompt = '';
-    await runRollup(store, (async (text: string) => { prompt = text; return { summary: 'A steady week.', officeProposals: [] }; }) as KnowledgeRunner, 'rollup:2026-11-06');
-    const [l1] = store.state.knowledge!.lessons;
-    expect(l1.status).toBe('active');
-    expect(prompt).toContain('"needsReview":[]');
-    expect(knowledgeContext(store, 'github-implement')).toContain('Lesson L1');
-    expect(knowledgeOutbox(store.state).map(item => item.id)).not.toContain('lesson-ineffective:L1');
-    expect(store.state.knowledge!.rollups).toMatchObject([{ id: 'rollup:2026-11-06', summary: 'A steady week.', ineffectiveLessonIds: [] }]);
-    reactivateLesson(store, 'L1');
-    expect(l1.status).toBe('active'); expect(l1.recurrences).toHaveLength(2);
-    expect(knowledgeContext(store, 'github-implement')).toContain('Lesson L1');
-});
-
-test('keeping or demoting needs-review guidance clears its outbox decision and keeps recurrence history', () => {
-    const { store } = setup();
-    const recurrences = [{ retrospectiveId: 'a', subjectId: 'a', detail: 'x', at: '2026-11-02T00:00:00Z' }, { retrospectiveId: 'b', subjectId: 'b', detail: 'y', at: '2026-11-04T00:00:00Z' }];
-    store.state.knowledge!.lessons.push(lesson('L1', { tier: 'guidance', revision: 2, needsReview: true, recurrences }), lesson('L2', { tier: 'guidance', revision: 2, needsReview: true, recurrences }));
+    store.state.knowledge!.lessons.push(lesson('L1', { tier: 'guidance', revision: 2, needsReview: true, sourceReviewReason: 'source-changed' }), lesson('L2', { tier: 'guidance', revision: 2, needsReview: true, sourceReviewReason: 'source-changed' }));
     expect(knowledgeOutbox(store.state).map(item => item.id)).toEqual(['lesson-review:L1', 'lesson-review:L2']);
     reactivateLesson(store, 'L1');
     demoteLesson(store, 'L2');
     const [l1, l2] = store.state.knowledge!.lessons;
-    expect(l1).toMatchObject({ status: 'active', tier: 'guidance', revision: 3, needsReview: false }); expect(l1.recurrences).toHaveLength(2);
-    expect(l2).toMatchObject({ tier: 'hypothesis', revision: 3, needsReview: false }); expect(l2.recurrences).toHaveLength(2);
+    expect(l1).toMatchObject({ status: 'active', tier: 'guidance', revision: 3, needsReview: false });
+    expect(l2).toMatchObject({ tier: 'hypothesis', revision: 3, needsReview: false });
     expect(knowledgeOutbox(store.state)).toEqual([]);
 });
 
@@ -144,12 +115,12 @@ test('office proposals wait for Joe, then reach every project\'s prompts through
 
 test('a retried roll-up preserves the original coverage and does not infer application', async () => {
     const { store, advance } = setup();
-    store.state.knowledge!.lessons.push(lesson('L1', { recurrences: [{ retrospectiveId: 'a', subjectId: 'a', detail: 'x', at: '2026-11-02T00:00:00Z' }, { retrospectiveId: 'b', subjectId: 'b', detail: 'y', at: '2026-11-04T00:00:00Z' }] }));
+    store.state.knowledge!.lessons.push(lesson('L1'));
     store.state.knowledge!.retrospectives.push({ id: 'j:completed', jobId: 'j', key: 'GH-1', trigger: 'completed', attemptId: '', summary: '', lessonIds: [], at: '2026-11-05T12:00:00Z', eventAt: '2026-11-05T12:00:00Z' });
     await runRollup(store, (async () => { throw new Error('overloaded'); }) as KnowledgeRunner, 'rollup:2026-11-06');
     advance(60 * 60000);
     let prompt = '';
     await runRollup(store, (async (text: string) => { prompt = text; return { summary: 'ok', officeProposals: [] }; }) as KnowledgeRunner, 'rollup:2026-11-06');
-    expect(prompt).toContain('"needsReview":[]');
-    expect(store.state.knowledge!.rollups![0].ineffectiveLessonIds).toEqual([]);
+    expect(prompt).not.toContain('needsReview');
+    expect(store.state.knowledge!.rollups![0].summary).toBe('ok');
 });
