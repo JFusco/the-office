@@ -1,6 +1,3 @@
-import { SlackIntakeStatus } from './SlackIntakeStatus';
-import { SlackSeedStatus } from './SlackSeedStatus';
-import { IntakeSummary } from './IntakeSummary';
 import { BlockerFollowups } from './BlockerFollowups';
 import { ResearchSummary } from './ResearchSummary';
 import { useId, useState } from 'react';
@@ -29,7 +26,7 @@ function LessonShape({ lesson }: { lesson: Pick<Lesson, 'when' | 'statement' | '
 
 function LessonCard({ lesson, actions, footer }: { lesson: Lesson; actions?: React.ReactNode; footer?: React.ReactNode }) {
   return <Card as="article">
-    <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier || 'guidance'} · revision {lesson.revision || 1}</Tag>{!lesson.needsReview&&lesson.sourceReviewReason==='office-authored'?<Tag>Office-authored · not independent corroboration</Tag>:null}{lesson.needsReview ? <Tag>{lesson.sourceReviewReason==='source-changed'?'source changed · review needed':lesson.sourceReviewReason==='office-authored'?'Office-authored · review needed':'source withdrawn · review needed'}</Tag> : null}{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}{lesson.supersedes ? <Tag>replaces an earlier lesson</Tag> : null}{lesson.supersededBy ? <Tag>replaced by a newer lesson</Tag> : null}{lesson.retiredBy === 'graduated' ? <Tag>graduated into the repository</Tag> : null}{lesson.retiredBy === 'expired' ? <Tag>expired</Tag> : null}{lesson.status === 'active' && lesson.validUntil ? <Tag>valid until {lesson.validUntil}</Tag> : null}</div>
+    <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier || 'guidance'} · revision {lesson.revision || 1}</Tag>{lesson.needsReview ? <Tag>{lesson.sourceReviewReason==='source-changed'?'source changed · review needed':'source withdrawn · review needed'}</Tag> : null}{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}{lesson.supersedes ? <Tag>replaces an earlier lesson</Tag> : null}{lesson.supersededBy ? <Tag>replaced by a newer lesson</Tag> : null}{lesson.retiredBy === 'graduated' ? <Tag>graduated into the repository</Tag> : null}{lesson.retiredBy === 'expired' ? <Tag>expired</Tag> : null}{lesson.status === 'active' && lesson.validUntil ? <Tag>valid until {lesson.validUntil}</Tag> : null}</div>
     <LessonShape lesson={lesson} />
     {lesson.detail ? <p className={mutedCopy}>{lesson.detail}</p> : null}
     {lesson.paths.length ? <p className="text-10 leading-relaxed text-card-detail">Paths: {lesson.paths.join(', ')}</p> : null}
@@ -49,8 +46,6 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
   return <Section data-lessons-panel>
     <SectionTitle className="mb-2">Lessons</SectionTitle>
     <p className={mutedCopy}>{harper} learns from accepted research, plans, reviews, implementation, delivery and orchestration, including successes and blockers. Relevant guidance is supplied automatically; that does not prove it was applied. Ellis owns supported recovery and Morgan handles missing decisions. Proven requirements belong in harness code or tests. Friday reports close at 17:00 Eastern, with bounded retries and targeted public research when available.</p>
-    <SlackIntakeStatus status={snapshot.knowledge?.slackIntake} />
-    <SlackSeedStatus seed={snapshot.knowledge?.slackSeed} />
     <form className="mt-5 grid gap-3" onSubmit={event => { event.preventDefault(); void save('configure-knowledge', { knowledge: { enabled } }).then(saved => { if (saved) setDraft(null); }); }}>
       <CheckField checked={enabled} disabled={disabled} onChange={event => setDraft(event.target.checked)}>Let {harper} write retrospectives for this project</CheckField>
       <Button type="submit" className="justify-self-start" disabled={disabled || draft === null || draft === view.enabled}>Save</Button>
@@ -91,7 +86,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
     <Section data-lessons-rollup>
       <SectionTitle className="mb-2">Weekly roll-up</SectionTitle>
       {view.rollups.length ? <>
-        <p className="text-11 leading-relaxed">{view.rollups[0].summary}</p><ResearchSummary rollup={view.rollups[0]} /><IntakeSummary rollup={view.rollups[0]} />
+        <p className="text-11 leading-relaxed">{view.rollups[0].summary}</p><ResearchSummary rollup={view.rollups[0]} />
         <div className="mt-3 overflow-x-auto"><table className="w-full text-10">
           <caption className="sr-only">Delivery metrics for the last {view.rollups.length} weeks</caption>
           <thead><tr><th scope="col" className="border-b border-row-rule py-1.5 pr-2 text-left font-semibold">Week ending</th>{view.rollups.map(rollup => <th key={rollup.id} scope="col" className="border-b border-row-rule py-1.5 pl-2 text-right font-semibold">{rollup.weekEnding.slice(5)}</th>)}</tr></thead>

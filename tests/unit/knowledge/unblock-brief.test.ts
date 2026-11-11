@@ -3,7 +3,7 @@ import { acceptRetrospective } from '../../../server/knowledge/accept-retrospect
 import { reconcileBlockerFollowups } from '../../../server/knowledge/blocker-followups';
 import { catalogLine } from '../../../server/knowledge/lookup/catalog-line';
 import { unblockBrief } from '../../../server/knowledge/unblock-brief';
-import { digest } from '../../../server/knowledge/slack-intake/config';
+import { digest } from '../../../server/knowledge/digest';
 import { job, knowledgeStore, learningLesson } from './knowledge-fixture';
 
 const unblock = { known: 'The live PR body fails lint:pr.', decision: 'A metadata-only blocker is not a source repair.', next: 'Morgan republishes the validated body.' };

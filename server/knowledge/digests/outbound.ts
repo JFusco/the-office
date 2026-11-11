@@ -4,7 +4,7 @@ import { noticeState } from '../../conversations/notifications';
 import { digestKnowledge } from './private-body';
 import { knowledgeScopeRevision } from '../knowledge-snapshot';
 import { retainOutboundBody,outboundBody } from './outbound-body';
-import { digest } from '../slack-intake/config';
+import { digest } from '../digest';
 import type { Store } from '../../store/store';
 
 /** Queue metadata only; the frozen message stays in a private home-owned table. */

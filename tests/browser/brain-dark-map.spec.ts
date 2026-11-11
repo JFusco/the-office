@@ -54,7 +54,7 @@ test('dark constellation glides between real graph identities and preserves a si
 test('action buttons and button links share geometry, hover and focus across knowledge screens', async ({ page }) => {
     await crowdedMap(page); await page.goto('/');
     await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    const controls = [page.getByRole('button', { name: 'Refresh sources', exact: true }), page.getByRole('button', { name: 'Add a source', exact: true }),
+    const controls = [page.getByRole('button', { name: 'Refresh sources', exact: true }), page.getByRole('button', { name: 'Add a public link', exact: true }),
         page.getByRole('button', { name: 'Upload a document', exact: true }), page.getByRole('button', { name: 'Return to office', exact: true }),
         page.getByRole('link', { name: /^Open board:/ }), ...['Sources', 'Library', 'Map', 'Activity'].map(name => page.getByRole('button', { name, exact: true }))];
     const expected = await style(controls[0]);

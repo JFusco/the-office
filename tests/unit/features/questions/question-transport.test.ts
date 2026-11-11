@@ -1,13 +1,13 @@
 import {expect,test} from 'vitest';
 import {fixture} from '../test-store';
-import {intakeFixture} from '../../knowledge/slack-intake/fixture';
+import {sourceFixture} from '../../knowledge/sources/source-fixture';
 import {apiRoute} from '../../../../server/office/http/api-routes';
 import {pendingQuestions} from '../../../../server/features/questions/pending-questions';
 import {QuestionNotifications} from '../../../../server/features/questions/question-notifications';
 import {createFeature} from '../../../../server/features/commands';
 import {recoveryQuestion} from '../../../../server/features/questions/recovery-question';
 test('project A SSE receives project B question changes and cancel unsubscribes',async()=>{
- const a=fixture('cec'),b=intakeFixture();const projectStores=[a.store,b.store];let sequence=0;
+ const a=fixture('cec'),b=sourceFixture();const projectStores=[a.store,b.store];let sequence=0;
  const projection=()=>pendingQuestions(projectStores,b.registry,{brain:{progression:'automatic'}}),events=new QuestionNotifications(projection);events.observe(projectStores);
  try{
  const context={store:a.store,project:'cec',offices:{sources:b.registry,stores:()=>new Map(projectStores.map(s=>[s.project.id,s])),preferences:{subscribe:()=>()=>{}},questionEvents:()=>events},snapshot:()=>({project:a.store.project,featureQuestions:projection(),snapshotSequence:++sequence})} as any;

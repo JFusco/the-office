@@ -5,7 +5,7 @@ import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../del
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
 import { scheduledCaptures } from '../features/handoff/scheduled-captures';
 import { scheduledAssessments } from '../features/handoff/scheduled-assessments';
-import { scheduledSlackIntake } from '../knowledge/slack-intake/schedule';
+import { scheduledSources } from '../knowledge/sources/schedule';
 import { metadataRequestResolved } from '../delivery/recovery/pr-metadata-recovery';
 import { scheduledInvestigations } from '../it/investigations/scheduled';
 import { scheduledFeatures } from '../features/scheduled-features';
@@ -73,7 +73,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     if (lane === 'it') items.push(...scheduledInvestigations(store, (prompt, schema, options) => engine.itAgents.run('it', prompt, schema, options), now));
     if (lane === 'knowledge') {
         const run: import('../knowledge/run-retrospective').KnowledgeRunner = (prompt, schema, opts) => engine.knowledgeAgents.run('knowledge', prompt, schema, opts);
-        return withActiveClaims(store, lane, [...items, ...scheduledRetrospectives(store, run, now,knowledge.context,knowledge.propose), ...scheduledRollup(store, run, now, knowledge), ...scheduledSlackIntake(store, run, now, knowledge.sources)]);
+        return withActiveClaims(store, lane, [...items, ...scheduledRetrospectives(store, run, now,knowledge.context,knowledge.propose), ...scheduledRollup(store, run, now, knowledge), ...scheduledSources(store, run, now, knowledge.sources)]);
     }
     for (const request of c.requests || [])
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)

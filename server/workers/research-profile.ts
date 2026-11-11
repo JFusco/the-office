@@ -22,4 +22,4 @@ export function researchRead(event: any): { url: string; receipt: string } | und
     return { url: action.url, receipt: item.id };
 }
 
-export const isPublicRetrieval = (stage?: string): boolean => stage === "knowledge-research" || stage === "knowledge-slack-links";
+export const isPublicRetrieval = (stage?: string): boolean => stage === "knowledge-research" || stage === "knowledge-source-read";

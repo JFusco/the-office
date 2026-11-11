@@ -3,27 +3,27 @@ import type { KnowledgeRunner } from '../run-retrospective';
 import type { KnowledgeSource } from './source-record';
 import type { SourceRegistry } from './registry';
 import { collectionAllowed } from './collection-policy';
-import { IntakeLedger } from '../slack-intake/ledger';
-import { runSlackLinks,linkKey,type LinkRecord } from '../slack-intake/read-links';
+import { SourceLedger } from './ledger';
+import { runPublicReads,linkKey,type LinkRecord } from './public-reader';
 import { admitUnits,type SecretScanner } from './admission';
-import { digest } from '../slack-intake/config';
-import type { SourceUnit } from '../slack-intake/contracts';
+import { digest } from '../digest';
+import type { SourceUnit } from './source-unit';
 import { evidenceIdentity,type EvidenceRecord } from './evidence-record';
 import { ResearchResult } from '../weekly-research';
-/** Existing public reader, private scanning and admission; never a technical capture route. */
+/** Reads a registered public page through the isolated reader, then scans and admits its claims privately. */
 export async function collectPublicSource(store:Store,run:KnowledgeRunner,registry:SourceRegistry,source:KnowledgeSource,url:string,period:string,root:string,scan:SecretScanner):Promise<void> {
-    const ledger=new IntakeLedger(store,source),links=ledger.all<LinkRecord>('link').filter(l=>l.source===root),allowed=()=>collectionAllowed(registry,store,{sourceId:source.id,sourceDigest:source.sourceDigest});
+    const ledger=new SourceLedger(store,source),links=ledger.all<LinkRecord>('link').filter(l=>l.source===root),allowed=()=>collectionAllowed(registry,store,{sourceId:source.id,sourceDigest:source.sourceDigest});
     if(!allowed())return;registry.setMeta(`rotation:${store.project.id}`,source.id);
     if(!links.length)ledger.put('link',linkKey(root,url),{url,source:root,week:period,depth:0,state:'pending',failures:0,nextAt:''} satisfies LinkRecord);
     const due=ledger.all<LinkRecord>('link').filter(l=>l.source===root&&l.state==='pending'&&(!l.nextAt||Date.parse(l.nextAt)<=store.clock.now().getTime()));
-    if(due.length)await runSlackLinks(store,{sourceId:source.id,homeProjectId:store.project.id,sourceDigest:source.sourceDigest,publicHosts:[new URL(url).hostname]},run,due,`source:${source.id}`,registry,scan);
+    if(due.length)await runPublicReads(store,{sourceId:source.id,homeProjectId:store.project.id,sourceDigest:source.sourceDigest,publicHosts:[new URL(url).hostname]},run,due,`source:${source.id}`,registry,scan);
     if(!allowed())return;
     const collected=ledger.all<LinkRecord>('link').filter(l=>l.source===root);
     for(const link of collected.filter(l=>l.state==='read')){
         const sources=ResearchResult.shape.sources.parse(link.result).filter(r=>r.url===link.url&&r.readEvidence.startsWith('native-read:'));
         if(!sources.length)continue;
         const text=JSON.stringify(sources.map(({readEvidence,retrievedAt,...record})=>{void readEvidence;void retrievedAt;return record;})),version=digest(text),unitId=`public:${link.url}`;
-        const unit:SourceUnit={id:unitId,channel:'',resource:link.url,kind:'public-link',version,text,url:link.url,state:'pending',references:[],reason:'',attempt:'',observedAt:store.clock.now().toISOString()};
+        const unit:SourceUnit={id:unitId,resource:link.url,kind:'public-link',version,text,url:link.url,state:'pending',reason:'',observedAt:store.clock.now().toISOString()};
         ledger.put('unit',`${unitId}:${version}`,unit);
         await admitUnits(ledger,[unit],scan,allowed);
         if(ledger.get<{state:string}>('admission',`${unitId}:${version}`)?.state!=='admitted'){

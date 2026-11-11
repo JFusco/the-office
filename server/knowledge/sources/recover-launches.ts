@@ -11,7 +11,7 @@ export function recoverStoppedLaunches(registry:SourceRegistry,stores:Map<string
         const source=registry.get(row.source_id),store=source&&stores.get(source.homeProjectId);if(!source||!store)continue;
         const requestId=`source:${source.id}`;
         if(store.activeClaims().some(claim=>claim.work.id===requestId))continue;
-        const work=store.state.workLog?.filter(work=>work.requestId===requestId&&work.stage?.startsWith('knowledge-slack-')).at(-1);
+        const work=store.state.workLog?.filter(work=>work.requestId===requestId&&work.stage==='knowledge-source-read').at(-1);
         if(work&&(['running','stopping'].includes(work.status)||work.status==='interrupted'&&work.processId&&alive(work.processId)))continue;
         if(budget.settleOrphan(row.attempt))changed++;
     }

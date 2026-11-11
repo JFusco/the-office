@@ -1,7 +1,7 @@
 import type { KnowledgeContext } from './context';
 import type { KnowledgeAssignment } from '../../src/contracts/knowledge-assignment';
 import { readOwnedSessionArtifact } from '../store/owned-artifact';
-import { digest } from './slack-intake/config';
+import { digest } from './digest';
 import { knowledgeSnapshot } from './knowledge-snapshot';
 import { referenceVisible } from './lookup/reference-scope';
 import { decodeLookupJournal } from './lookup/receipts';

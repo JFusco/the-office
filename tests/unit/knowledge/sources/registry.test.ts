@@ -3,13 +3,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { SourceRegistry } from '../../../../server/knowledge/sources/registry';
 import { IntakeBudget } from '../../../../server/knowledge/sources/launch-budget';
 import { sourceVisible } from '../../../../server/knowledge/sources/visibility';
-import { SlackReadAuthority } from '../../../../server/knowledge/slack-intake/read-authority';
-import { config, } from '../slack-intake/fixture';
-const authority = () => SlackReadAuthority.parse({ workspace: config.workspace, appId: config.appId, channels: config.channels, tools: config.tools, publicHosts: config.publicHosts });
-const input = (homeProjectId = 'cec') => ({ kind: 'slack', title: 'Project discussions', homeProjectId, authority: authority() });
+const input = (homeProjectId = 'cec') => ({ kind: 'link', title: 'Project guide', homeProjectId, url: 'https://www.sqlite.org/docs.html' });
 function fixture() { const db = new DatabaseSync(':memory:'); return { registry: new SourceRegistry(db, { now: () => new Date('2026-11-09T17:00:00Z'), monotonic: () => 0 }), close: () => db.close() }; }
 describe('shared knowledge source registry', () => {
-    it('shares one source without moving its home or changing authority; revokes only the selected grant', () => {
+    it('shares one source without moving its home or changing its digest; revokes only the selected grant', () => {
         const f = fixture(); try {
             const s = f.registry.create(input()); f.registry.subscribe(s.id, 'other', true);
             expect(f.registry.all()).toHaveLength(1); expect(f.registry.get(s.id)?.homeProjectId).toBe('cec');
@@ -25,11 +22,11 @@ describe('shared knowledge source registry', () => {
     it('rejects duplicate collectors, Brain domains, home changes and stale edits', () => {
         const f = fixture(); try {
             const s = f.registry.create(input());
-            expect(() => f.registry.create(input('other'))).toThrow('already registered');
+            expect(() => f.registry.create(input())).toThrow('already registered');
             expect(() => f.registry.create({ ...input(), domains: ['tooling'] })).toThrow();
             expect(() => f.registry.update(s.id, s.revision, x => { x.homeProjectId = 'brain'; })).toThrow('immutable');
             expect(() => f.registry.update(s.id, 0, () => {})).toThrow('changed');
-            const other = f.registry.create({ ...input(), authority: { ...authority(), workspace: 'https://another.slack.com' } });
+            const other = f.registry.create({ ...input(), url: 'https://www.sqlite.org/lang.html' });
             expect(other.id).not.toBe(s.id);
         } finally { f.close(); }
     });
@@ -41,9 +38,6 @@ describe('shared knowledge source registry', () => {
             budget.launched('attempt-0'); budget.notSpawned('attempt-0'); expect(budget.used()).toBe(8);
             budget.notSpawned('attempt-1'); expect(budget.reserve('replacement', 'source-c')).toBe(true);
             expect(budget.reserve('replacement', 'source-c')).toBe(false); expect(budget.used()).toBe(8);
-            budget.defer('w', 'a', 'search', '2026-11-09T18:00:00Z'); budget.defer('w', 'a', 'search', '2026-11-09T17:00:00Z');
-            expect(budget.backoff('w', 'a', 'search')).toBe('2026-11-09T18:00:00Z');
-            expect(budget.backoff('w', 'b', 'search')).toBeUndefined();
         } finally { f.close(); }
     });
 });

@@ -3,13 +3,13 @@ import { knowledgeStore, learningLesson } from '../knowledge-fixture';
 import { SourceRegistry } from '../../../../server/knowledge/sources/registry';
 import { committedKnowledgeMap } from '../../../../server/knowledge/map/committed-map';
 import { evidenceIdentity } from '../../../../server/knowledge/sources/evidence-record';
-import { IntakeLedger } from '../../../../server/knowledge/slack-intake/ledger';
-import { digest } from '../../../../server/knowledge/slack-intake/config';
+import { SourceLedger } from '../../../../server/knowledge/sources/ledger';
+import { digest } from '../../../../server/knowledge/digest';
 import type { BrainReader } from '../../../../server/knowledge/brain/reader';
 
 it('keeps published IDs stable, pins usage to its exact revision and excludes private work from the global map',async()=>{
     const f=knowledgeStore();try{
-        const store=f.store,registry=new SourceRegistry(store.db),source=registry.create({kind:'artifact',title:'PRIVATE CHANNEL',homeProjectId:'brain'}),ledger=new IntakeLedger(store,source);
+        const store=f.store,registry=new SourceRegistry(store.db),source=registry.create({kind:'artifact',title:'PRIVATE CHANNEL',homeProjectId:'brain'}),ledger=new SourceLedger(store,source);
         const id=evidenceIdentity(source.id,'doc','v1');ledger.put('admission','doc:v1',{state:'admitted'});ledger.put('evidence',id,{id,sourceId:source.id,unitId:'doc',version:'v1',text:'PRIVATE EVIDENCE',url:'',contentSha256:digest('PRIVATE EVIDENCE'),readerVersion:'fixture',limitations:[]});
         store.state.knowledge!.lessons.push(learningLesson('private',{statement:'PRIVATE GUIDANCE'}));store.state.knowledge!.officeLessons=[learningLesson('approved',{scope:'office',statement:'Approved Office guidance'})];
         let snapshot='a'.repeat(40);const path='knowledge/tooling/guide.md',hash=digest('Published guide');
