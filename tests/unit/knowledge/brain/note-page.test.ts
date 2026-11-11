@@ -1,7 +1,7 @@
 import { expect,it } from 'vitest';
 import { committedNotePage } from '../../../../server/knowledge/brain/note-page';
 import { CommittedBrain,type BrainReader } from '../../../../server/knowledge/brain/reader';
-import { digest } from '../../../../server/knowledge/slack-intake/config';
+import { digest } from '../../../../server/knowledge/digest';
 
 it('reads selected committed sections without splitting Unicode or accepting a changed hash',async()=>{
     const snapshot='a'.repeat(40),path='knowledge/tooling/guide.md',text='x'.repeat(8191)+'🧠'+' saved committed content',hash=digest(text),calls:string[]=[];

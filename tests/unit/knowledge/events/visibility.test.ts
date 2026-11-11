@@ -1,9 +1,9 @@
 import { expect,test } from 'vitest';
-import { intakeFixture } from '../slack-intake/fixture';
+import { sourceFixture } from '../sources/source-fixture';
 import { knowledgeOfficeState } from '../../../../server/knowledge/office-state-view';
 import { apiRoute } from '../../../../server/office/http/api-routes';
 
-test('events inherit lookup dependencies and ordinary SSE hides revoked copies while retaining audit bytes',async()=>{const f=intakeFixture();try{
+test('events inherit lookup dependencies and ordinary SSE hides revoked copies while retaining audit bytes',async()=>{const f=sourceFixture();try{
     f.store.state.knowledge!.exposures=[{id:'attempt',stage:'conversation',at:'now',dispatchedAt:'now',digest:'hash',eligible:[],selected:[],omitted:[]}];
     f.store.state.knowledge!.lookups=[{id:'attempt',records:[{selected:[],sourceBindings:[{sourceId:f.source.id}]}]} as never];f.store.state.workLog!.push({id:'attempt',requestId:'human-request',role:'pm',ticket:''} as never);
     const event=f.store.emit('model-result','SYNTHETIC PRIVATE EVENT','pm');expect(event.sourceBindings).toEqual([{sourceId:f.source.id}]);expect(knowledgeOfficeState(f.registry,'brain',f.store.state).events).toContainEqual(event);

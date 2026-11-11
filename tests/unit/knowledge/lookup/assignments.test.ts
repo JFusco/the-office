@@ -6,13 +6,13 @@ import { AssignmentLookups } from '../../../../server/knowledge/lookup/assignmen
 import { decodeLookupJournal } from '../../../../server/knowledge/lookup/receipts';
 const readLookupJournal=(dir:string,summary:Parameters<typeof decodeLookupJournal>[1])=>decodeLookupJournal(readFileSync(resolve(dir,'lookups.jsonl'),'utf8'),summary);
 import { knowledgeSnapshot } from '../../../../server/knowledge/knowledge-snapshot';
-import { intakeFixture } from '../slack-intake/fixture';
+import { sourceFixture } from '../sources/source-fixture';
 import { evidenceIdentity } from '../../../../server/knowledge/sources/evidence-record';
-import { digest } from '../../../../server/knowledge/slack-intake/config';
+import { digest } from '../../../../server/knowledge/digest';
 import type { WorkTime } from '../../../../src/shared';
 import { learningLesson } from '../knowledge-fixture';
 function fixture(service=new AssignmentLookups()) {
-    const f=intakeFixture(),id=randomUUID(),dir=resolve(f.store.dataRoot,'sessions',id);mkdirSync(dir,{recursive:true});
+    const f=sourceFixture(),id=randomUUID(),dir=resolve(f.store.dataRoot,'sessions',id);mkdirSync(dir,{recursive:true});
     const text='schema receipts must retain their version',ref=evidenceIdentity(f.source.id,'doc','v1');f.ledger.put('admission','doc:v1',{state:'admitted'});f.ledger.put('evidence',ref,{id:ref,sourceId:f.source.id,unitId:'doc',version:'v1',text,contentSha256:digest(text),url:'',observedAt:'now',readerVersion:'fixture',limitations:[]});
     f.store.state.workLog!.push({id,status:'running'} as WorkTime);
     let live=true,snapshots=0;const pins:string[]=[];

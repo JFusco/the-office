@@ -1,10 +1,10 @@
 import {expect,test} from 'vitest';
-import {intakeFixture} from '../../knowledge/slack-intake/fixture';
+import {sourceFixture} from '../../knowledge/sources/source-fixture';
 import {createFeature} from '../../../../server/features/commands';
 import {pendingQuestions} from '../../../../server/features/questions/pending-questions';
 import {recoveryQuestion} from '../../../../server/features/questions/recovery-question';
 test('office-wide projection authorizes first and exposes no executable descriptors or retained notes',()=>{
- const f=intakeFixture();try{
+ const f=sourceFixture();try{
  const feature=createFeature(f.store,{action:'create',requestId:'one',title:'Question',intent:'Scope'});recoveryQuestion(feature,new Date(),'Private question');
  feature.rounds[0].notes=[{id:'secret',text:'private note',at:'now'}];
  const config={brain:{progression:'automatic' as const}};

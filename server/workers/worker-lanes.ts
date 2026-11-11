@@ -7,7 +7,7 @@ export function assertWorkerLane(role: Role, stage: string, readOnly: boolean, a
         throw new Error('CTO capacity is reserved for read-only advice and daily assessment');
     if (role === 'it' && (!readOnly || !['conversation', 'it-investigation'].includes(stage)))
         throw new Error('IT capacity is reserved for read-only operational assessment');
-    if (role === 'knowledge' && (!readOnly || !['retrospective', 'knowledge-rollup', 'knowledge-research', 'knowledge-slack-intake', 'knowledge-slack-links', 'conversation'].includes(stage)))
+    if (role === 'knowledge' && (!readOnly || !['retrospective', 'knowledge-rollup', 'knowledge-research', 'knowledge-source-read', 'conversation'].includes(stage)))
         throw new Error('Knowledge capacity is reserved for read-only retrospectives, roll-ups and chat');
     if (!assignment) return;
     const expected = role === 'cto' ? 'cto' : role === 'it' ? 'it' : role === 'knowledge' ? 'knowledge' : 'delivery';
@@ -15,6 +15,6 @@ export function assertWorkerLane(role: Role, stage: string, readOnly: boolean, a
         throw new Error('Worker role does not belong to the claimed execution lane');
     if (['cto', 'it'].includes(role) && !['conversation', 'daily-cto'].includes(assignment.claim.work.kind))
         throw new Error('Leadership cannot claim ticket execution work');
-    if (role === 'knowledge' && !['retrospective', 'knowledge-rollup', 'knowledge-research', 'knowledge-slack-intake', 'knowledge-slack-links', 'conversation'].includes(assignment.claim.work.kind))
+    if (role === 'knowledge' && !['retrospective', 'knowledge-rollup', 'knowledge-research', 'knowledge-source', 'conversation'].includes(assignment.claim.work.kind))
         throw new Error('Knowledge capacity can only claim retrospectives, roll-ups and chat');
 }

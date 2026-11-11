@@ -3,11 +3,10 @@ import type { KnowledgeDigest,KnowledgeDigestDetail } from '../../src/contracts/
 import { knowledgeSnapshot } from './knowledge-snapshot';
 import { officeSearch } from './retrieval';
 import { sourceVisible } from './sources/visibility';
-import { digest } from './slack-intake/config';
+import { digest } from './digest';
 import { knowledgeCitation } from './outcomes/citation';
 import { evidenceRecords } from './sources/evidence-read';
 import { prepareDigestBodies,retainDigestBody } from './digests/private-body';
-import { independentDigestEvidence } from './digests/independent-evidence';
 
 /** One frozen internal review for Morgan after each rollup. No outbound Slack authority is implied. */
 export function queueWeeklyDigest(context:KnowledgeContext,project:string):KnowledgeDigestDetail|undefined {
@@ -21,7 +20,7 @@ export function queueWeeklyDigest(context:KnowledgeContext,project:string):Knowl
     const sources=context.registry.all().filter(s=>sourceVisible(context.registry,s.id,project));
     const reported=new Set((knowledge.digests||[]).flatMap(d=>d.evidence.map(knowledgeCitation)));
     const acquired=new Set(evidenceRecords(context,project).filter(r=>(r.admittedAt||r.observedAt)<=to).map(r=>r.id));
-    const candidates=officeSearch(context,project,'',1000).filter(hit=>independentDigestEvidence(context,project,[hit.reference])&&!reported.has(knowledgeCitation(hit.reference))&&(hit.reference.kind==='source'?acquired.has(hit.reference.id):[...scoped.lessons,...(scoped.officeLessons||[])].some(l=>l.id===hit.reference.lesson?.id&&l.scope===hit.reference.lesson.scope&&l.updatedAt<=to)));
+    const candidates=officeSearch(context,project,'',1000).filter(hit=>!reported.has(knowledgeCitation(hit.reference))&&(hit.reference.kind==='source'?acquired.has(hit.reference.id):[...scoped.lessons,...(scoped.officeLessons||[])].some(l=>l.id===hit.reference.lesson?.id&&l.scope===hit.reference.lesson.scope&&l.updatedAt<=to)));
     // Search is shared with employees; digest text, including all labels and links, has a separate fixed bound.
     const evidence:KnowledgeDigest['evidence']=[],lessons:KnowledgeDigest['lessons']=[],sourceBindings:KnowledgeDigest['sourceBindings']=sources.map(s=>({sourceId:s.id}));
     const lines=[`${store.project.name} · weekly knowledge review · ${rollup.weekEnding}`,`Window: ${from} to ${to}`,`${sources.length} permitted source(s); ${sources.filter(s=>s.state==='paused').length} paused.`,
@@ -36,7 +35,6 @@ export function queueWeeklyDigest(context:KnowledgeContext,project:string):Knowl
     if(evidenceRecords(context,project).some(r=>!r.admittedAt))lines.push('Some historical evidence lacks an admission timestamp; its retained acquisition time bounds this review.');
     const gaps=sources.filter(s=>s.kind!=='artifact'&&s.state!=='active');if(gaps.length)lines.push(`Collection gaps: ${gaps.slice(0,10).map(s=>`${s.title} (${s.state})`).join('; ')}.`);
     if(rollup.unavailable)lines.push('Harper’s weekly narrative was unavailable; deterministic records remain available.');
-    if(rollup.intake?.outstanding||rollup.intake?.coverageGaps)lines.push(`Slack intake: ${rollup.intake.outstanding} outstanding; ${rollup.intake.coverageGaps||0} coverage gaps. ${rollup.intake.reasons.slice(0,3).join('; ')}`.slice(0,500));
     const followups=(scoped.followups||[]).filter(f=>!['confirmed','superseded'].includes(f.disposition)).slice(0,5);
     if(followups.length)lines.push('Follow-ups: '+followups.map(f=>`${f.owner}: ${f.nextAction.slice(0,150)}`).join('; '));else lines.push('No unresolved follow-ups recorded in this scope.');
     const text=lines.join('\n').slice(0,6000),record:KnowledgeDigest={id,projectId:project,weekEnding:rollup.weekEnding,at:store.clock.now().toISOString(),from,to,sha256:digest(text),messageId:id,evidence,lessons,sourceBindings,followupIds:followups.map(f=>f.id)};

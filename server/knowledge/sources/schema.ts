@@ -6,6 +6,5 @@ export function sourceSchema(db: DatabaseSync): void {
         CREATE TABLE IF NOT EXISTS knowledge_source_meta (id TEXT PRIMARY KEY, body TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS knowledge_launches (attempt TEXT PRIMARY KEY, day TEXT NOT NULL, source_id TEXT NOT NULL, state TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS knowledge_launch_day ON knowledge_launches(day);
-        CREATE TABLE IF NOT EXISTS knowledge_backoff (id TEXT PRIMARY KEY, until_at TEXT NOT NULL);
     `);
 }

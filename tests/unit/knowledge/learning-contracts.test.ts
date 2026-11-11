@@ -24,7 +24,7 @@ test('model cannot promote procedure/rule authority or provide executable fields
 test('migration drops recurrence grading from lessons, office mirrors and a pending roll-up, keeps source reviews, and is idempotent', () => {
     const { store, close } = knowledgeStore();
     try {
-        const k = store.state.knowledge!, reasons = ['source-changed', 'source-withdrawn', 'office-authored'] as const;
+        const k = store.state.knowledge!, reasons = ['source-changed', 'source-withdrawn'] as const;
         k.lessons = [learningLesson('graded', { needsReview: true }), ...reasons.map(reason => learningLesson(reason, { needsReview: true, sourceReviewReason: reason }))];
         k.officeLessons = [{ ...learningLesson('office', { scope: 'office' }), recurrences: [{ detail: 'x' }] } as never];
         k.rollupRetry = { id: 'rollup:2026-11-06', attempts: 1, nextAt: '', lastError: '', flaggedLessonIds: ['graded'], metrics: { completed: 1, recurrences: 2 }, learning: { assignments: 1, applicationUnknown: 1, procedureConfirmed: 0, procedureFailed: 0, procedureUnknown: 0 } } as never;

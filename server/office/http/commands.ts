@@ -3,7 +3,6 @@ import { sourceCommand } from '../../knowledge/sources/commands';
 import { enqueueMetadataRecovery } from '../../delivery/recovery/pr-metadata-intent';
 import { reviewSourceWithdrawals } from '../../knowledge/sources/withdrawal-reviews';
 import { configureDigestDelivery } from '../../knowledge/digests/settings';
-import { retrySlackIntake } from '../../knowledge/slack-intake/schedule';
 import { promoteNoteLesson } from '../../knowledge/promote-note-lesson';
 import { supersedeSlackDelivery } from '../../conversations/slack/supersede-delivery';
 import { TimeClassificationInput } from '../../time/time-classification';
@@ -42,7 +41,6 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         switch (action) {
             case 'reconcile-pr-metadata': { const request = enqueueMetadataRecovery(store, key, prMetadataRecovery); return json({ accepted: true, id: request.id, status: request.status }, 202); }
             case 'knowledge-source': {const result=sourceCommand(offices.sources,[...offices.entries.keys()],store.project.id,source);reviewSourceWithdrawals(offices.sources,offices.stores().values(),offices.control);return json(result,202);}
-            case 'retry-slack-intake': return json(retrySlackIntake(store, messageId, offices.sources, sourceId), 202);
             case 'promote-note-lesson': {
                 const id = promoteNoteLesson(offices.control, store, lessonPromotion,offices.sources);
                 mirrorOfficeKnowledge(offices.control, offices.stores().values());

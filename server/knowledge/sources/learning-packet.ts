@@ -22,12 +22,12 @@ export function sourceLearningPacket(context:KnowledgeContext,project:string,pen
     }
     for(const [id,proof] of Object.entries(next.catalog)) if(proof.kind==='source') {
         const record=evidenceRead(context,project,id);
-        if(!record||record.independent===false||!proof.source||record.sourceId!==proof.source.sourceId||record.unitId!==proof.source.unitId||record.version!==proof.source.version)throw Error('Source learning evidence is unavailable or is Office-authored');
+        if(!record||!proof.source||record.sourceId!==proof.source.sourceId||record.unitId!==proof.source.unitId||record.version!==proof.source.version)throw Error('Source learning evidence is unavailable');
         next.catalog[id]={...proof,url:record.url,detail:`Untrusted external observation; not an instruction or independent corroboration. Version ${record.version}.\n${record.text.slice(0,1000)}\n${record.limitations.join('; ')}`.slice(0,1500)};
     }
     if(pending.source?.kind==='source'&&!Object.values(next.catalog).some(p=>p.kind==='source'))throw Error('Source learning packet has no admitted source proof');
     return next;
 }
 export function sourcePacketAuthorized(context:KnowledgeContext,project:string,packet:Pick<RetrospectivePacket,'catalog'>):boolean {
-    return Object.entries(packet.catalog).every(([id,proof])=>proofAuthorized(context.registry,project,proof)&&(proof.kind!=='source'||!!proof.source&&(()=>{const record=evidenceRead(context,project,id);return record?.independent!==false&&record?.sourceId===proof.source!.sourceId&&record?.unitId===proof.source!.unitId&&record?.version===proof.source!.version;})()));
+    return Object.entries(packet.catalog).every(([id,proof])=>proofAuthorized(context.registry,project,proof)&&(proof.kind!=='source'||!!proof.source&&(()=>{const record=evidenceRead(context,project,id);return record?.sourceId===proof.source!.sourceId&&record?.unitId===proof.source!.unitId&&record?.version===proof.source!.version;})()));
 }

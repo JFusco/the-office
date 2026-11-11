@@ -14,13 +14,13 @@ import { mkdtempSync,rmSync,mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { extractDocument } from '../../server/knowledge/artifacts/extraction';
-import { digest } from '../../server/knowledge/slack-intake/config';
+import { digest } from '../../server/knowledge/digest';
 import { evidenceIdentity } from '../../server/knowledge/sources/evidence-record';
 import { DatabaseSync } from 'node:sqlite';
 import { SourceRegistry } from '../../server/knowledge/sources/registry';
 import { sourceCommand } from '../../server/knowledge/sources/commands';
 import { knowledgeRoute } from '../../server/knowledge/routes';
-import { IntakeLedger } from '../../server/knowledge/slack-intake/ledger';
+import { SourceLedger } from '../../server/knowledge/sources/ledger';
 import type { Store } from '../../server/store/store';
 
 /** Synthetic registry and ledgers only: no project directory, scheduler, worker or provider. */
@@ -30,18 +30,16 @@ export function brainFixture(published = false) {
     const clock = { now: () => new Date('2026-11-09T17:00:00Z'), monotonic: () => 0 }, registry = new SourceRegistry(database(), clock);
     const stores = new Map(['cec', 'brain', 'cms-field-vocabulary'].map(id => [id, { db: database(), dataRoot:join(dataRoot,id), project: { id,name:id==='cec'?'CEC':id==='brain'?'Brain':'CMS Field Vocabulary' }, state: { tickets:[],messages:[],projectNotes:[],knowledge: { enabled:true,consumed:[],pending:[],retrospectives:[],lessons: [], officeLessons: [], exposures: [] } }, clock, save:()=>{},transaction:<T>(fn:()=>T)=>fn(),emit:()=>{},activeClaims:()=>[] } as unknown as Store]));
     for(const store of stores.values()) mkdirSync(store.dataRoot,{recursive:true});
-    registry.setMeta('cutover', { state: 'ready' });
-    const tools = { channel: 'slack.slack_read_channel', thread: 'slack.slack_read_thread', search: 'slack.slack_search_public_and_private', file: 'slack.slack_read_file', canvas: 'slack.slack_read_canvas', lookup: 'slack.slack_search_channels' };
-    for (const [id, name, home] of [['CCEC1', 'cec-team', 'cec'], ['CCEC2', 'cec-delivery', 'cec'], ['CTECH1', 'technical-learning', 'brain']] as const) {
-        const source = registry.create({ kind: 'slack', title: `#${name}`, homeProjectId: home, cadence: home === 'brain' ? 'weekly' : 'daily',
-            authority: { workspace: 'https://synthetic-office.slack.com', appId: 'synthetic', tools, channels: [{ id, name }], publicHosts: ['www.sqlite.org'] } });
-        const ledger = new IntakeLedger(stores.get(home)!, source);
+    for (const [id, title, home] of [['cec-team', 'CEC team guide', 'cec'], ['cec-delivery', 'CEC delivery guide', 'cec'], ['technical-learning', 'Technical learning guide', 'brain']] as const) {
+        const url = `https://www.sqlite.org/${id}.html`;
+        const source = registry.create({ kind: 'link', title, homeProjectId: home, cadence: home === 'brain' ? 'weekly' : 'daily', url });
+        const ledger = new SourceLedger(stores.get(home)!, source);
         ledger.put('unit', `${id}:1:v1`, { id: `${id}:1`, version: 'v1', observedAt: '2026-11-09T16:55:00Z' });
         ledger.put('admission', `${id}:1:v1`, { state: 'admitted' });
         const text = 'Confirm the schema version before changing the migration mapping. Keep the accepted validation receipt with the project evidence.';
         const evidenceId = evidenceIdentity(source.id, `${id}:1`, 'v1');
-        ledger.put('evidence', evidenceId, { id: evidenceId, sourceId: source.id, unitId: `${id}:1`, version: 'v1', text, contentSha256: digest(text), url: 'https://synthetic-office.slack.com/archives/' + id + '/p1', observedAt: '2026-11-09T16:55:00Z', readerVersion: 'synthetic-fixture-v1', limitations: ['Synthetic browser fixture; no live collection'] });
-        if (id === 'CCEC1') stores.get(home)!.state.knowledge!.lessons.push({ id: 'fixture-lesson', scope: 'project', tier: 'guidance', revision: 1, kind: 'pitfall', when: 'Fixture situation', check: 'Fixture check', statement: 'Confirm schema versions before mapping changes', detail: 'Retain the accepted validation receipt alongside the mapping evidence.', stages: ['implement'], paths: [], status: 'active', evidence: [{ kind: 'source', ref: evidenceId, url: '', detail: 'Synthetic source citation', source: { sourceId: source.id, unitId: `${id}:1`, version: 'v1' } }], sourceRetrospectiveId: 'fixture-retrospective', createdAt: '2026-11-09T16:58:00Z', updatedAt: '2026-11-09T16:58:00Z' });
+        ledger.put('evidence', evidenceId, { id: evidenceId, sourceId: source.id, unitId: `${id}:1`, version: 'v1', text, contentSha256: digest(text), url, observedAt: '2026-11-09T16:55:00Z', readerVersion: 'synthetic-fixture-v1', limitations: ['Synthetic browser fixture; no live collection'] });
+        if (id === 'cec-team') stores.get(home)!.state.knowledge!.lessons.push({ id: 'fixture-lesson', scope: 'project', tier: 'guidance', revision: 1, kind: 'pitfall', when: 'Fixture situation', check: 'Fixture check', statement: 'Confirm schema versions before mapping changes', detail: 'Retain the accepted validation receipt alongside the mapping evidence.', stages: ['implement'], paths: [], status: 'active', evidence: [{ kind: 'source', ref: evidenceId, url: '', detail: 'Synthetic source citation', source: { sourceId: source.id, unitId: `${id}:1`, version: 'v1' } }], sourceRetrospectiveId: 'fixture-retrospective', createdAt: '2026-11-09T16:58:00Z', updatedAt: '2026-11-09T16:58:00Z' });
         if (home === 'brain') registry.subscribe(source.id, 'cec', true);
     }
     const revision='a'.repeat(40),notePath='knowledge/tooling/validation-guide.md';

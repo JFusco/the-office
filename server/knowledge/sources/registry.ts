@@ -3,7 +3,6 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Clock } from '../../office/clock';
 import { systemClock } from '../../office/clock';
 import type { SourceSubscription } from '../../../src/contracts/knowledge-sources';
-import { SlackReadAuthority } from '../slack-intake/read-authority';
 import { sourceSchema } from './schema';
 import { SourceInput, sourceDigest, sourceIdentity, type KnowledgeSource } from './source-record';
 
@@ -63,10 +62,6 @@ export class SourceRegistry {
             .map(r => ({ projectId: r.project_id, active: !!r.active, revision: r.revision, updatedAt: r.updated_at }));
     }
     authorized(id: string, project: string): boolean { return this.subscriptions(id).some(s => s.projectId === project && s.active); }
-    authority(id: string): { source: KnowledgeSource; authority: SlackReadAuthority } {
-        const source = this.get(id); if (!source || source.kind !== 'slack') throw Error('Unknown Slack source');
-        return { source, authority: SlackReadAuthority.parse(source.authority) };
-    }
     meta<T>(id: string): T | undefined {
         const row = this.db.prepare('SELECT body FROM knowledge_source_meta WHERE id=?').get(id) as { body: string } | undefined;
         return row && JSON.parse(row.body);

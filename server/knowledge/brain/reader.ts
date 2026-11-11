@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { command } from '../../workers/process';
-import { digest } from '../slack-intake/config';
+import { digest } from '../digest';
 import { projectById } from '../../office/projects';
 const sha = z.string().regex(/^[a-f0-9]{40}$/), hash = z.string().regex(/^[a-f0-9]{64}$/);
 const Note = z.object({ id: z.string(), path: z.string(), title: z.string(), contentSha256: hash, summary: z.string().optional(), citations: z.array(z.unknown()).optional(), versions: z.array(z.string()).optional(), freshness: z.unknown().optional(), applicability: z.string().optional(), limitations: z.array(z.string()).optional() });

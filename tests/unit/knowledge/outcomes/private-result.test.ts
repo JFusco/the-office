@@ -4,7 +4,7 @@ import { SourceRegistry } from '../../../../server/knowledge/sources/registry';
 import { captureLearning } from '../../../../server/knowledge/learning-events';
 import { readAcceptedResult } from '../../../../server/knowledge/outcomes/private-result';
 import { runRetrospective, type KnowledgeRunner } from '../../../../server/knowledge/run-retrospective';
-import { digest } from '../../../../server/knowledge/slack-intake/config';
+import { digest } from '../../../../server/knowledge/digest';
 import { selectLessons } from '../../../../server/knowledge/lesson-selection';
 import { knowledgeSnapshot } from '../../../../server/knowledge/knowledge-snapshot';
 

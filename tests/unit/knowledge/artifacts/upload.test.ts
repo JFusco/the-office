@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { SourceRegistry } from '../../../../server/knowledge/sources/registry';
 import { uploadArtifact } from '../../../../server/knowledge/artifacts/upload';
 import { evidenceRecords } from '../../../../server/knowledge/sources/evidence-read';
-import { digest } from '../../../../server/knowledge/slack-intake/config';
+import { digest } from '../../../../server/knowledge/digest';
 import type { Store } from '../../../../server/store/store';
 const cleanup:(()=>void)[]=[];afterEach(()=>cleanup.splice(0).forEach(f=>f()));
 function fixture(){const db=new DatabaseSync(':memory:'),dataRoot=mkdtempSync(join(tmpdir(),'brain-upload-')),registry=new SourceRegistry(db),source=registry.create({kind:'artifact',title:'Project handbook',homeProjectId:'cec'});const store={db,dataRoot,project:{id:'cec'},clock:{now:()=>new Date()},state:{}} as unknown as Store;cleanup.push(()=>{db.close();rmSync(dataRoot,{recursive:true,force:true});});return {source,context:{registry,stores:new Map([['cec',store]]),brain:{snapshot:async()=>'',search:async()=>[],read:async()=>({text:'',contentSha256:''})}}};}
