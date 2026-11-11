@@ -53,7 +53,7 @@ test('synthetic fixture: published technical notes and global scope share the Of
     await expect(page.getByRole('region',{name:'Published technical note'})).toContainText('Synthetic published-note fixture');
     await page.screenshot({path:`${artifacts}/office-brain-02-published-note.synthetic.png`,fullPage:true});
 });
-test('synthetic fixture: Harper adds and shares one source through the registry', async ({ page }, testInfo) => {
+test('synthetic fixture: a new source reaches every project, and Harper re-shares it after an unsubscribe', async ({ page }, testInfo) => {
     testInfo.annotations.push({ type: 'evidence', description: 'Synthetic fixture; no live collection or providers' });
     mkdirSync(artifacts, { recursive: true });
     await page.goto('/');
@@ -68,6 +68,8 @@ test('synthetic fixture: Harper adds and shares one source through the registry'
     await page.getByRole('button', { name: 'Add public source', exact: true }).click();
     const source = page.getByRole('article', { name: 'CEC discovery guide', exact: true });
     await expect(source).toBeVisible();
+    await expect(source.getByRole('button', { name: 'Share with a project' })).toHaveCount(0);
+    await source.getByRole('button', { name: 'Unsubscribe Brain from CEC discovery guide' }).click();
     await source.getByRole('button', { name: 'Share with a project' }).click();
     await source.getByLabel('Project to share with').selectOption('brain');
     await source.getByRole('button', { name: 'Share source', exact: true }).click();
