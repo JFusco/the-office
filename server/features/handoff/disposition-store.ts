@@ -4,7 +4,6 @@ import type { Store } from '../../store/store';
 import { FEATURE_PLANNING } from '../../office/config';
 import { featurePolicy } from '../progression/policy';
 
-export const ASSESSMENT_DEADLINE_MS = 10 * 60_000;
 export type AssessmentOutcome = 'ordinary-by-release' | 'ordinary-by-model' | 'ordinary-by-rule' | 'ordinary-by-start' | 'ordinary-by-admission' | 'ordinary-by-deadline' | 'ordinary-by-unavailable' | 'planning-enrolled' | 'departed';
 export interface AssessmentResult {
  disposition: 'ordinary' | 'planning'; rationale: string; requirements: string[]; acceptanceCriteria: string[]; settledDecisions: string[]; openQuestions: string[];
@@ -42,23 +41,4 @@ export function closeAssessment(store: Store, episode: AssessmentEpisode, outcom
  if(episode.closedAt)return;
  episode.closedAt=now.toISOString();episode.outcome=outcome;episode.reason=reason;
  episode.disposition=outcome==='planning-enrolled'?'planning':outcome==='ordinary-by-unavailable'?'unavailable':'ordinary';saveAssessment(store,episode);
-}
-export function assessmentExpired(episode: AssessmentEpisode, now: Date) {
- return !!episode.eligibleAt && now.getTime()-Date.parse(episode.eligibleAt)>=ASSESSMENT_DEADLINE_MS;
-}
-export type DeadlineQueueObservation = (episode: AssessmentEpisode) => { wait?: string; outranked?: boolean };
-/** No claims or capacity mutation. Cancellation is invoked after the terminal commit by the caller. */
-export function progressAssessmentDeadlines(store: Store, now: Date, capacityObservation:(projectId:string)=>boolean, queueObservation:DeadlineQueueObservation): AssessmentEpisode[] {
- if(!assessmentEnabled(store)) return [];
- const due=assessmentEpisodes(store).filter(e=>!e.closedAt&&assessmentExpired(e,now));
- const closed:AssessmentEpisode[]=[];
- for(const episode of due) {
-  let reason=episode.reason;
-  if(!episode.startedAt) {
-   const observed=queueObservation(episode);
-   reason=observed.wait || (capacityObservation(store.project.id)?'assessment not started: delivery lane occupied':observed.outranked?'assessment not started: outranked by queued delivery work':'assessment not started: deadline reached before dispatch');
-  }
-  store.transaction(()=>{const current=assessmentEpisode(store,episode.id);if(!current||current.closedAt||!assessmentExpired(current,now))return;closeAssessment(store,current,'ordinary-by-deadline',now,reason);closed.push(current);store.emit('assessment-deadline',current.key+': '+reason,'pm',current.key);});
- }
- return closed;
 }

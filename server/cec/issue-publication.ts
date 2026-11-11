@@ -1,3 +1,5 @@
+import { jiraRecord } from './jira-record';
+import { descriptionPreimage, publicationDescription } from './publication-description';
 import { FeatureError } from '../features/progression/failure';
 import { z } from 'zod';
 import type { FeatureManifest, FeatureManifestItem, FeatureOperation } from '../../src/contracts/features';
@@ -13,16 +15,12 @@ const Assignment = z.object({ assignee: z.string().min(1) }).strict();
 const Transition = z.object({ id: z.string().min(1), status: z.string().min(1) }).strict();
 const keyOf = (key: string) => { if (!/^CEC-[1-9][0-9]*$/.test(key)) throw new Error('Invalid CEC ticket identity'); return key; };
 export const jiraText = (value: any): string => typeof value === 'string' ? value : value?.type === 'text' ? value.text : value?.type === 'hardBreak' ? '\n' : Array.isArray(value?.content) ? value.content.map(jiraText).join(value.type === 'doc' ? '\n' : '') : '';
-function plainDescription(value: any): boolean {
-    return value == null || typeof value === 'string' || typeof value === 'object' && ['doc', 'paragraph', 'text', 'hardBreak'].includes(value.type) &&
-        (!value.marks || Array.isArray(value.marks) && value.marks.length === 0) && (!value.content || Array.isArray(value.content) && value.content.every(plainDescription));
-}
 export class JiraIssuePublisher implements FeaturePublisher {
     constructor(private store: Store, private provenance: { id: string; sourceTicket?: string; marker(itemId: string): string }, private execute: typeof command = command) {}
     private async call(args: string[], readOnly = true) { return unpack(await this.execute('twg', ['jira', ...args, '--site', CEC.site, '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 })); }
-    private async issue(key: string) { const raw = await this.call(['workitem', 'get', keyOf(key)]); return raw.workItem || raw.issue || raw; }
+    private async issue(key: string) { const raw = await this.call(['workitem', 'get', keyOf(key)]); return jiraRecord(raw, key); }
     private receipt(raw: any): PublicationReceipt { return { key: keyOf(raw.key), url: raw.url || CEC.site + '/browse/' + raw.key }; }
-    private content(raw: any) { const fields = raw.fields || raw; return { summary: fields.summary, description: jiraText(fields.description), labels: [...(fields.labels || [])].sort() }; }
+    private content(raw: any) { const fields = raw.fields || raw; return { summary: fields.summary, description: descriptionPreimage(fields.description, jiraText), labels: [...(fields.labels || [])].sort() }; }
     private async boardFilter() {
         const raw = await this.call(['board', 'scope', 'query', '--id', String(CEC.board), '--project', 'CEC']);
         const board = raw.boards?.[0] || raw.board || raw;
@@ -59,7 +57,7 @@ export class JiraIssuePublisher implements FeaturePublisher {
         const metadata = await this.metadata(preferred.name);
         const filter = await this.boardFilter(), existing = this.provenance.sourceTicket ? await this.issue(this.provenance.sourceTicket) : null;
         return JSON.stringify({ provider: 'azure', destination: this.store.project.repository, featureId: this.provenance.id, assignee: CEC.account, boardFilter: filter, types, recommendedType: preferred.name, metadata, existing,
-            contract: 'Manifest items use stable id,title,key(empty for create),action,predecessor,criteria,operations. create/update payload is {space:"CEC",type:verified issue type name,summary,description,labels:[]}; include the displayed provenance line office-feature-FEATURE_ID-item-ITEM_ID in description and that exact marker as a label. update.expected is observed {summary,description,labels}. assign payload is {assignee:verified Office account}. transition payload {id,status} may only use discovered transitions, with expected {status:observed source status}. Do not invent workflow IDs or required metadata. New tickets retain initial status; their default assignment is guarded until identity is mapped. Every operation has id,kind,payload,expected.' });
+            contract: 'Manifest items use stable id,title,key(empty for create),action,predecessor,criteria,operations. create/update payload is {space:"CEC",type:verified issue type name,summary,description,labels:[]}; include the displayed provenance line office-feature-FEATURE_ID-item-ITEM_ID in description and that exact marker as a label. update.expected is observed {summary,description,labels}, retaining the complete raw ADF description for rich documents. An update appends the approved description text to that rich document while preserving its existing nodes. For plain descriptions it replaces the text. assign payload is {assignee:verified Office account}. transition payload {id,status} may only use discovered transitions, with expected {status:observed source status}. Do not invent workflow IDs or required metadata. New tickets retain initial status; their default assignment is guarded until identity is mapped. Every operation has id,kind,payload,expected.' });
     }
     async validate(manifest: FeatureManifest) {
         if (manifest.provider !== 'azure' || manifest.destination !== this.store.project.repository) throw new FeatureError('invalid-content', 'Wrong CEC publication destination');
@@ -78,7 +76,7 @@ export class JiraIssuePublisher implements FeaturePublisher {
             const payload = Content.parse(operation.payload);
             await this.metadata(payload.type);
             const current = await this.issue(key), fields = current.fields || current;
-            if (!plainDescription(fields.description)) throw new FeatureError('unsupported', 'Rich Jira content requires a lossless update adapter');
+            publicationDescription(payload.description, operation.expected.description);
             if ((fields.labels || []).some((label: string) => !payload.labels.includes(label))) throw new FeatureError('invalid-content', 'CEC update must preserve existing labels');
             if (JSON.stringify(this.content(current)) !== JSON.stringify(operation.expected)) throw new Error('CEC ticket content changed since approval preview');
         } else if (operation.kind === 'assign') {
@@ -95,17 +93,18 @@ export class JiraIssuePublisher implements FeaturePublisher {
         let args: string[];
         if (operation.kind === 'create' || operation.kind === 'update') {
             const p = Content.parse(operation.payload);
-            args = ['workitem', operation.kind, ...(operation.kind === 'create' ? ['--space', p.space, '--type', p.type] : ['--id', keyOf(key)]), '--summary', p.summary, '--description', p.description, '--description-format', 'plain', '--labels', p.labels.join(',')];
+            const description = operation.kind === 'update' ? publicationDescription(p.description, operation.expected.description) : p.description;
+            args = ['workitem', operation.kind, ...(operation.kind === 'create' ? ['--space', p.space, '--type', p.type] : ['--id', keyOf(key)]), '--summary', p.summary, ...(typeof description === 'string' ? ['--description', description, '--description-format', 'plain'] : ['--fields-json', JSON.stringify({description})]), '--labels', p.labels.join(',')];
         } else if (operation.kind === 'assign') args = ['workitem', 'update', '--id', keyOf(key), '--assignee', Assignment.parse(operation.payload).assignee];
         else args = ['workitem', 'transition', '--id', keyOf(key), '--transition-id', Transition.parse(operation.payload).id];
-        const raw = await this.call(args, false), record = raw.workItem || raw.issue || raw;
+        const raw = await this.call(args, false), record = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw.workItem || raw.issue || raw;
         return this.receipt(record.key ? record : await this.issue(key));
     }
     async verify(receipt: PublicationReceipt, operation: FeatureOperation) {
         const raw = await this.issue(receipt.key), fields = raw.fields || raw;
         if (operation.kind === 'create' || operation.kind === 'update') {
             const p = Content.parse(operation.payload);
-            const matches = JSON.stringify(this.content(raw)) === JSON.stringify({ summary: p.summary, description: p.description, labels: [...p.labels].sort() });
+            const matches = JSON.stringify(this.content(raw)) === JSON.stringify({ summary: p.summary, description: operation.kind === 'update' ? publicationDescription(p.description, operation.expected.description) : p.description, labels: [...p.labels].sort() });
             if (matches) receipt.requirementPostimage = {target: CEC.site + '/browse/' + receipt.key, content: {summary: fields.summary, description: fields.description ?? null, labels: [...(fields.labels || [])].sort()}};
             return matches;
         }

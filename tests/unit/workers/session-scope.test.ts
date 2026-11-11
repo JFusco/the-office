@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { sessionScope } from '../../../server/workers/session-scope';
+import { CEC } from '../../../server/office/config';
 const projects = [{ id: 'cms', repo: '/projects/cms', repository: 'Joe/cms' }, { id: 'brain', repo: '/projects/brain', repository: 'Joe/brain' }];
 const row = (type: string, payload: unknown) => JSON.stringify({ type, timestamp: '2026-11-08T19:34:03Z', payload });
 const meta = row('session_meta', { id: 'outside' });
@@ -45,6 +46,31 @@ test('later follow-ups retain cross-project conversation and decisions without r
             { role: 'user', text: 'Check after Monday’s run.' },
         ],
     } });
+});
+test('exact configured-site TWG commands bind CEC tickets as commands; other sites and returned URLs do not', () => {
+    const cec = [{ id: 'cec', repo: '/projects/cec', repository: 'Org/cec-repo', provider: 'azure' as const }];
+    const scopes = (...rows: string[]) => sessionScope([meta, start, ...rows].join('\n'), 'outside', cec).scopes;
+    expect(scopes(call(`twg jira workitem update --id CEC-154 --site ${CEC.site} -o json`))).toMatchObject([
+        { project: 'cec', issues: [154], prs: [], evidence: [{ kind: 'command', issue: 154 }] }]);
+    expect(scopes(call(`twg jira workitem get CEC-155 --site ${CEC.site}`))).toMatchObject([{ project: 'cec', issues: [155] }]);
+    expect(scopes(call('twg jira workitem update --id CEC-154 --site https://elsewhere.invalid'))).toEqual([]);
+    const returned = scopes(row('response_item', { type: 'function_call_output', output: `Updated ${CEC.site}/browse/CEC-154 with twg jira workitem update --id CEC-154 --site ${CEC.site}` }));
+    expect(returned).toMatchObject([{ project: 'cec', issues: [154] }]);
+    expect(returned[0].evidence.map(evidence => evidence.kind)).toEqual(['reference']);
+    expect(sessionScope([meta, start, call(`twg jira workitem update --id CEC-154 --site ${CEC.site}`)].join('\n'), 'outside', projects).scopes).toEqual([]);
+});
+test('configured-site host variants are commands; a site-less command is only a reference for its exact key', () => {
+    const cec = [{ id: 'cec', repo: '/projects/cec', repository: 'Org/cec-repo', provider: 'azure' as const }];
+    const host = new URL(CEC.site).host;
+    const evidence = (...rows: string[]) => sessionScope([meta, start, ...rows].join('\n'), 'outside', cec).scopes.flatMap(scope => scope.evidence.map(e => [e.kind, e.issue]));
+    for (const site of [host, `https://${host}/`, `"https://${host}/"`, host.toUpperCase()])
+        expect(evidence(call(`twg jira workitem update --id CEC-154 --site ${site}`))).toEqual([['command', 154]]);
+    expect(evidence(call(`twg jira workitem update --id CEC-154 --site='${host}' -o json`))).toEqual([['command', 154]]);
+    expect(evidence(call('twg jira workitem update --id CEC-154 -o json'))).toEqual([['reference', 154]]);
+    expect(evidence(call(`twg jira workitem update --id CEC-154 --site https://${host}.elsewhere.invalid`))).toEqual([]);
+    expect(evidence(call(`twg jira workitem update --id CEC-154 --site elsewhere.invalid`))).toEqual([]);
+    expect(evidence(row('response_item', { type: 'function_call_output', output: `Ran twg jira workitem update --id CEC-154 --site ${host}` }))).toEqual([]);
+    expect(evidence(row('response_item', { type: 'function_call_output', output: `${CEC.site}/browse/CEC-154` }))).toEqual([['reference', 154]]);
 });
 test('missing/wrong identity and partial records cannot establish complete session coverage', () => {
     expect(() => sessionScope(start, 'outside', projects)).toThrow('identity');

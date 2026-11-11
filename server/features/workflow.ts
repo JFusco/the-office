@@ -64,7 +64,7 @@ export class FeatureWorkflow {
             if (feature.revision !== revision || feature.paused || this.store.state.paused) return;
             const attempt = beginReader(this.store, feature), baseline = feature.baseline!;
             attemptId = attempt.id;
-            const options = { cwd: baseline.path, readOnly: true, stage: attempt.stage, requestId: feature.id, enqueuedAt: feature.enqueuedAt, featureContext: { id: feature.id, revision: feature.revision, attemptId: attempt.id, baseline } };
+            const options = { timeout: 0, inactivityTimeout: 45 * 60_000, cwd: baseline.path, readOnly: true, stage: attempt.stage, requestId: feature.id, enqueuedAt: feature.enqueuedAt, featureContext: { id: feature.id, revision: feature.revision, attemptId: attempt.id, baseline } };
             const context = attempt.stage === 'feature-plan' ? await this.publisher(feature).context() : '';
             feature = featureById(this.store, id);
             if (feature.revision !== revision || feature.paused || this.store.state.paused || feature.activeAttempt !== attemptId) throw new Error('Feature reader changed before dispatch');

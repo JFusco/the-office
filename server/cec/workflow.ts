@@ -1,3 +1,4 @@
+import { applyIntakeObservation } from './intake-observation';
 import { externalPlanGap } from '../features/cec-plan-gate';
 import { MISSING_INTAKE, reconcileMailbox } from './reconcile-mailbox';
 import { existsSync, realpathSync, readFileSync } from 'node:fs';
@@ -35,7 +36,7 @@ export function ingest(state: OfficeSnapshot, incoming: Ticket[], now = new Date
             continue;
         keys.add(raw.key);
         if (existing) {
-            Object.assign(existing, { summary: raw.summary, status: raw.status, statusId: raw.statusId, assignee: raw.assignee, updated: raw.updated, observedAt: now });
+            applyIntakeObservation(existing, raw, now);
             if (existing.stage === 'mailbox' && existing.activity === 'idle' && existing.blocker === MISSING_INTAKE)
                 Object.assign(existing, { activity: 'waiting', blocker: '' });
             continue;

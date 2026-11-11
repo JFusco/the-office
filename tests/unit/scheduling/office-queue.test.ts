@@ -6,6 +6,7 @@ import {blankEvidence} from '../../../server/features/handoff/evidence-contract'
 import {storeEvidence} from '../../../server/features/handoff/evidence-artifacts';
 import {captureRequest,requestCapture} from '../../../server/features/handoff/capture-store';
 import {holdAssessmentIntake} from '../../../server/features/handoff/intake-routing';
+import {closeIntakeEpisode} from '../../../server/features/handoff/intake-disposition';
 import { Coordinator } from '../../../server/scheduling/coordination';
 import { initializeLanes } from '../../fixtures/scheduler';
 import { enqueueRequest } from '../../../server/scheduling/requests';
@@ -325,7 +326,7 @@ function occupyDelivery(office: Offices) {
  entry.store.state.coordination!.jobs!.push(job);entry.coordinator!.pump=async()=>{job.status='working';await stopped;job.status='completed';job.stage='closeout';};
  return {entry,release};
 }
-test.each([1,3])('deadline closes while delivery remains occupied at limit %s without releasing its claim',async limit=>{
+test.each([1,3])('queued assessment survives ten minutes of occupied delivery at limit %s',async limit=>{
  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));
  const office=offices(limit),occupied=occupyDelivery(office),f=planningFixture(office);let pending:Promise<void>|undefined;
  try {
@@ -333,11 +334,12 @@ test.each([1,3])('deadline closes while delivery remains occupied at limit %s wi
   pending=office.pump();await vi.waitFor(()=>expect(captureRequest(f.entry.store,'assessment:'+f.episode.id)?.status).toBe('complete'));
   expect(f.run).not.toHaveBeenCalled();const claim=occupied.entry.store.activeClaims()[0];expect(claim.work.id).toBe('occupying-job');
   vi.setSystemTime(new Date('2026-11-10T12:10:00Z'));await office.pump();
-  expect(assessmentEpisode(f.entry.store,f.episode.id)).toMatchObject({outcome:'ordinary-by-deadline',reason:'assessment not started: delivery lane occupied'});
+  expect(assessmentEpisode(f.entry.store,f.episode.id)?.closedAt).toBeUndefined();
   expect(f.run).not.toHaveBeenCalled();expect(ordinary).toBe(0);expect(occupied.entry.store.activeClaims()[0].id).toBe(claim.id);
   expect(limit===1?office.capacity.lane:office.capacity.slots.has('cec')).toBe(limit===1?'cec':true);
-  occupied.release();await pending;await office.pump();expect(ordinary).toBe(1);expect(f.run).not.toHaveBeenCalled();
-  await office.pump();expect(assessmentEpisode(f.entry.store,f.episode.id)?.outcome).toBe('ordinary-by-deadline');
+  occupied.release();await pending;await office.pump();await office.pump();
+  expect(f.run).toHaveBeenCalledTimes(1);expect(assessmentEpisode(f.entry.store,f.episode.id)?.outcome).toBe('ordinary-by-model');
+  await office.pump();expect(ordinary).toBe(1);
  } finally {occupied.release();await pending;delete FEATURE_PLANNING[f.entry.store.project.id];vi.useRealTimers();}
 });
 test.each([1,3])('Morgan uses a real exclusive delivery claim after occupying work drains at limit %s',async limit=>{
@@ -382,34 +384,46 @@ test('operations FIFO places a new refresh behind already queued time publicatio
   expect(assessmentEpisode(f.entry.store,f.episode.id)?.outcome).toBe('ordinary-by-model');expect(f.run).not.toHaveBeenCalled();
  }finally{delete FEATURE_PLANNING[f.entry.store.project.id];vi.useRealTimers();}
 });
-test('free-capacity deadline records actual queue precedence; disabled pumping leaves assessment state unchanged',async()=>{
+test('queued assessment survives higher priority work; disabled pumping leaves assessment state unchanged',async()=>{
  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));const office=offices(),f=planningFixture(office);
  try {
   await office.pump();const priority=enqueueRequest(f.entry.store,'reconcile-review','GH-123');
   const projection=office.projection.bind(office);office.projection=(entry,lane='delivery')=>projection(entry,lane).map(item=>item.work.id===priority.id?{...item,execute:async()=>{priority.status='completed';}}:item);
   vi.setSystemTime(new Date('2026-11-10T12:10:00Z'));await office.pump();
-  expect(assessmentEpisode(f.entry.store,f.episode.id)).toMatchObject({outcome:'ordinary-by-deadline',reason:'assessment not started: outranked by queued delivery work'});expect(f.run).not.toHaveBeenCalled();
+  expect(assessmentEpisode(f.entry.store,f.episode.id)?.closedAt).toBeUndefined();expect(f.run).not.toHaveBeenCalled();
   const before=f.entry.store.db.prepare('SELECT body FROM feature_assessments').all();delete FEATURE_PLANNING[f.entry.store.project.id];f.review.status='cancelled';await office.pump();expect(f.entry.store.db.prepare('SELECT body FROM feature_assessments').all()).toEqual(before);
  }finally{delete FEATURE_PLANNING[f.entry.store.project.id];vi.useRealTimers();}
 });
-test('the real deadline pump cancels its running Morgan attempt while retaining the claim until settlement',async()=>{
+test('the real pump keeps Morgan running beyond ten minutes until its result settles',async()=>{
  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));const office=offices(),f=planningFixture(office),controller=new AbortController();let finish!:(v:any)=>void,pending:Promise<void>|undefined;
  try {
   await office.pump();f.entry.engine.agents.run=vi.fn(()=>{f.entry.engine.agents.active.set('pm',controller);return new Promise(resolve=>{finish=resolve}).finally(()=>f.entry.engine.agents.active.delete('pm'));}) as any;
   pending=office.pump();await vi.waitFor(()=>expect(finish).toBeDefined());const claim=f.entry.store.activeClaims().find(c=>c.work.kind==='assessment')!;
-  vi.setSystemTime(new Date('2026-11-10T12:10:00Z'));await office.pump();expect(controller.signal.aborted).toBe(true);expect(f.entry.store.activeClaims().some(c=>c.id===claim.id)).toBe(true);expect(office.capacity.lane).toBe(f.entry.store.project.id);
-  finish({disposition:'planning',rationale:'Late',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;
-  expect(assessmentEpisode(f.entry.store,f.episode.id)?.outcome).toBe('ordinary-by-deadline');expect(f.entry.store.state.features).toHaveLength(0);
+  vi.setSystemTime(new Date('2026-11-10T12:10:00Z'));await office.pump();expect(controller.signal.aborted).toBe(false);expect(f.entry.store.activeClaims().some(c=>c.id===claim.id)).toBe(true);expect(office.capacity.lane).toBe(f.entry.store.project.id);
+  finish({disposition:'ordinary',rationale:'Completed working assessment',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;
+  expect(assessmentEpisode(f.entry.store,f.episode.id)?.outcome).toBe('ordinary-by-model');expect(f.entry.store.state.features).toHaveLength(0);
  }finally{finish?.({disposition:'ordinary',rationale:'Cleanup',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;delete FEATURE_PLANNING[f.entry.store.project.id];vi.useRealTimers();}
 });
-test.each([true,false])('stopping process cleanup precedes deadline occupancy observation (alive=%s)',async alive=>{
+test('explicit Start aborts running Morgan through the real pump while its claim and delivery lane remain until settlement',async()=>{
+ const office=offices(),f=planningFixture(office),controller=new AbortController();let finish!:(v:any)=>void,pending:Promise<void>|undefined;
+ try {
+  await office.pump();f.entry.engine.agents.run=vi.fn(()=>{f.entry.engine.agents.active.set('pm',controller);return new Promise(resolve=>{finish=resolve}).finally(()=>f.entry.engine.agents.active.delete('pm'));}) as any;
+  pending=office.pump();await vi.waitFor(()=>expect(finish).toBeDefined());const claim=f.entry.store.activeClaims().find(c=>c.work.kind==='assessment')!;
+  f.entry.coordinator!.pump=async()=>{f.review.status='ready';};
+  f.entry.store.transaction(()=>closeIntakeEpisode(f.entry.store,'GH-999',true));
+  await office.pump();expect(controller.signal.aborted).toBe(true);expect(f.entry.store.activeClaims().some(c=>c.id===claim.id)).toBe(true);expect(office.capacity.lane).toBe(f.entry.store.project.id);
+  finish({disposition:'planning',rationale:'Late',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;
+  expect(f.entry.store.activeClaims().some(c=>c.id===claim.id)).toBe(false);expect(assessmentEpisode(f.entry.store,f.episode.id)?.outcome).toBe('ordinary-by-start');expect(f.entry.store.state.features||[]).toHaveLength(0);
+ }finally{finish?.({disposition:'ordinary',rationale:'Cleanup',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;delete FEATURE_PLANNING[f.entry.store.project.id];}
+});
+test.each([true,false])('stopping process cleanup preserves pending assessment and lane ownership (alive=%s)',async alive=>{
  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));const office=offices(),f=planningFixture(office),other=office.get('cec').store;
  try {
   await office.pump();const claim=other.claimWork({projectId:'cec',kind:'delivery',id:'stopped'},'scheduler','implement')!;
   (other.state.workLog??=[]).push({id:'stopped-work',status:'stopping',processId:999997,role:'developer',requestId:'stopped',claimId:claim.id,elapsedMs:0} as any);
   vi.spyOn(process,'kill').mockImplementation(()=>{if(alive)return true;throw Object.assign(new Error('Gone'),{code:'ESRCH'});});
   f.entry.coordinator!.pump=async()=>{f.review.status='ready';};vi.setSystemTime(new Date('2026-11-10T12:10:00Z'));await office.pump();
-  expect(assessmentEpisode(f.entry.store,f.episode.id)?.reason).toBe(alive?'assessment not started: delivery lane occupied':'assessment not started: deadline reached before dispatch');expect(other.activeClaims().some(c=>c.id===claim.id)).toBe(alive);expect(f.run).not.toHaveBeenCalled();
+  expect(assessmentEpisode(f.entry.store,f.episode.id)?.closedAt).toBeUndefined();expect(other.activeClaims().some(c=>c.id===claim.id)).toBe(alive);expect(f.run).not.toHaveBeenCalled();
  }finally{delete FEATURE_PLANNING[f.entry.store.project.id];vi.useRealTimers();}
 });
 test('bounded helper stopping claim remains a delivery blocker until its group is absent',async()=>{

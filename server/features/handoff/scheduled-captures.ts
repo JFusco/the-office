@@ -45,6 +45,8 @@ export function scheduledCaptures({store}:OfficeEntry,capture:typeof captureTick
       if(signal.disposition==='ordinary')closeAssessment(store,episode,'ordinary-by-rule');
       else if(active){episode.featureId=active.id;closeAssessment(store,episode,'planning-enrolled');}
      }
+     // Unchanged evidence validates Morgan's deferred ordinary result; a planning result enrolls through assessPlanning.
+     if(!changed&&!episode.closedAt&&episode.decidedBy==='pm'&&episode.result?.disposition==='ordinary'&&episode.policyDigest===policy.digest)closeAssessment(store,episode,'ordinary-by-model');
      if(!episode.closedAt)saveAssessment(store,episode);
     }
     refreshFeatureEvidence(store, request.target, result.reference, result.evidence);

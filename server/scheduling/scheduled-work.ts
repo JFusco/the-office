@@ -1,3 +1,4 @@
+import { requestPriority } from '../operations/request-priority';
 import { stoppedBaseHandoffResolved, stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
 import { scheduledCaptures } from '../features/handoff/scheduled-captures';
@@ -42,7 +43,7 @@ const eligible = (state: WorkEligibility['state'], reason: string, owner = 'Morg
 /** One projection drives dispatch, queue counts, owner labels and next actions. */
 /** Office-level inputs to Harper's lane: Avery's review status and the office proposal store. */
 export interface KnowledgeOptions extends RollupHooks { context?:import('../knowledge/context').KnowledgeContext; sources?: import('../knowledge/sources/registry').SourceRegistry; dailyStatus?: (date: string) => string | undefined }
-export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery', knowledge: KnowledgeOptions = {}, assessmentDiagnostic = false): ScheduledWork[] {
+export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery', knowledge: KnowledgeOptions = {}): ScheduledWork[] {
     const { store, engine, conversations, coordinator } = entry;
     const items: ScheduledWork[] = [], c = store.state.coordination!;
     const add = (kind: WorkKind, record: {
@@ -74,7 +75,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     }
     for (const request of c.requests || [])
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)
-            add('reconciliation', request, request.action, request.requestedAt, request.action==='cleanup-merged-candidate'&&verifiedCloseoutCleanupRequest(store,request)?0:2, () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
+            add('reconciliation', request, request.action, request.requestedAt, requestPriority(request.action, request.action === 'cleanup-merged-candidate' && verifiedCloseoutCleanupRequest(store, request)), () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
                 requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') : null);
     // Applying the scope correction only rewrites the local ledger (publishing stays paused), so it may
     // run while the office is paused or draining: draining is how live work on affected tickets ends.
@@ -104,7 +105,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     }
     if (lane !== 'delivery')
         return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));
-    items.push(...scheduledFeatures(entry), ...scheduledAssessments(entry, now, assessmentDiagnostic));
+    items.push(...scheduledFeatures(entry), ...scheduledAssessments(entry, now));
     for (const job of c.jobs || []) {
         const validation = validatePrerequisites(job.prerequisites || [], { projectId: store.project.id, kind: 'delivery', id: job.id }, stores);
         const dependency = validation ? eligible('blocked', validation) : dependencyEligibility(job.prerequisites || [], stores, now);

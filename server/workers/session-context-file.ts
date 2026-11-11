@@ -3,7 +3,7 @@ import { sep } from 'node:path';
 import type { OfficeProject } from '../../src/shared';
 import type { SessionContext } from './session-scope';
 import { ContextReadChanged, MAX_CONTEXT_READ_MS, sameContextFile, sessionContextLines, type SessionContextParser } from './session-context-lines';
-export type ContextProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'>;
+export type ContextProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>>;
 export type ContextReader = (path: string, id: string, projects: ContextProject[]) => Promise<SessionContext>;
 
 /** Cache derived context, never transcripts; changed files, identities or project bindings invalidate it. */

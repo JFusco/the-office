@@ -10,7 +10,8 @@ export function requestAssessment(store:Store,key:string) {
     if(!validTicket(store.project,key))throw new FeatureError('invalid-content','Invalid ticket identity');
     return store.transaction(()=>{
         const feature=enrolled(store,key)?.feature;if(feature)return {featureId:feature.id};
-        let episode=latestAssessment(store,key);if(episode?.closedAt)return {episodeId:episode.id,outcome:episode.outcome};
+        let episode=latestAssessment(store,key);if(episode?.closedAt&&episode.outcome!=='ordinary-by-deadline')return {episodeId:episode.id,outcome:episode.outcome};
+        if(episode?.outcome==='ordinary-by-deadline'){assertEnrollable(store,key);episode=undefined;}
         const issue=store.state.coordination?.listener.assigned?.find(i=>i.key===key);
         const ticket=store.state.tickets.find(t=>t.key===key);
         if(!issue&&!ticket)throw new FeatureError('invalid-content','Ticket must be visible in this project before assessment');

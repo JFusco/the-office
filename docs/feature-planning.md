@@ -30,9 +30,9 @@ Capture reads descriptions, comments, direct children and attachment references 
 
 Active feature ownership, an explicit Start, existing delivery/adopted PR ownership and the Epic decomposition restriction precede label rules and Morgan's assessment. Explicit Start on an unenrolled ticket retains ordinary delivery. Ordinary delivery still follows its existing conditional planning, review and validation policies.
 
-Assessment episodes have durable terminal outcomes. The ten-minute deadline starts once the existing pickup rule first becomes eligible and does not reset on refresh or restart. A deadline or exhausted unavailable assessment fails open to ordinary delivery; late model results cannot override Start, fail-open or an enrolled feature. A new lifecycle requires departure/re-entry or completion plus fresh ownership checks.
+Assessment episodes have durable terminal outcomes. Queue time and active assessment duration have no fixed cutoff. Morgan may continue while producing output. Forty-five minutes without stdout activity triggers worker recovery through the existing bounded retry path. Exhausted unavailable assessments fail open to ordinary delivery. Late model results cannot override Start, fail-open or an enrolled feature. Historical deadline outcomes are retained and an explicit assessment request can create a fresh episode after ownership checks.
 
-Deterministic capture uses the existing operations lane. Morgan uses the shared delivery runtime and runs exclusively, including when delivery concurrency is three. The deadline is evaluated by the normal pump independently of worker capacity. No extra worker lane or increased delivery limit is introduced.
+Deterministic capture uses the existing operations lane. Morgan uses the shared delivery runtime and runs exclusively, including when delivery concurrency is three. Recurring provider observations share FIFO priority with evidence capture so repeated refreshes cannot overtake an older capture. Worker capacity is preserved.
 
 ## Questions for you
 
@@ -73,3 +73,9 @@ Read back the evidence chain from assessment through answers, accepted plan, com
 Do not flatten rich content or force an unsupported Epic through publication. A missing lossless rich-content adapter or unsupported decomposition is a visible capability question. Live acceptance remains incomplete until the evidence chain reaches a matching delivery run, PR and verified staging result with CEC-155/156, comments and attachments preserved. Acceptance also stays incomplete while any required evidence or staging identity remains unresolved. Production release remains separate.
 
 The original feature planning implementation and its review history are recorded in [the original plan](plans/feature-planning.md).
+
+Rich Jira source descriptions retain their original ADF nodes. The approved plan text is appended to the document through native raw-ADF field publication. Approval preimages and read-back include the full rich structure, so changes to marks and attributes invalidate the pending write.
+
+Codex ownership coverage uses the live runtime when available together with the native process inventory. An absent runtime socket is covered only when every inventoried Codex process holds a transcript with verified session metadata or is a running Office worker, and every loaded session has explicit current-turn activity. A live runtime read is complete only with the same full process accounting; its known status resolves only its own session identity, and unknown native activity keeps coverage unavailable. Failed, timed-out or unknown process reads keep ownership unavailable. An active current-turn `twg jira workitem` command on the configured CEC site, given as its URL or bare host, is ticket ownership evidence. A command without `--site` makes its exact ticket uncertain; returned Jira URLs are references only.
+
+Explicit Start, departure, a superseded evidence generation or a policy change cancels a running Morgan attempt. Its claim and delivery capacity remain held until the process has stopped. A Morgan result that completes while evidence capture is pending is retained. Unchanged evidence then finalizes it without another Morgan run, and changed evidence invalidates it.
