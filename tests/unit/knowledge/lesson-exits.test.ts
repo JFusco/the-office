@@ -1,0 +1,99 @@
+import { expect, test } from 'vitest';
+import { expireLessons, graduateLessons, queueLessonIssueCheck } from '../../../server/knowledge/lesson-exits';
+import { reactivateLesson, retireLesson } from '../../../server/knowledge/lesson-commands';
+import { knowledgeOfficeState } from '../../../server/knowledge/office-state-view';
+import { intakeFixture } from './slack-intake/fixture';
+import { selectLessons } from '../../../server/knowledge/lesson-selection';
+import type { command } from '../../../server/workers/process';
+import { knowledgeStore, learningLesson } from './knowledge-fixture';
+import { migrateSnapshot } from '../../../server/store/migrations';
+
+test('a lesson past its end date leaves prompts and can be brought back', () => {
+    const { store, close } = knowledgeStore('brain', '2026-11-12T15:00:00Z');
+    try {
+        store.state.knowledge!.lessons = [learningLesson('past', { validUntil: '2026-11-11' }), learningLesson('today', { validUntil: '2026-11-12' }), learningLesson('open')];
+        expireLessons(store); expireLessons(store);
+        expect(store.state.knowledge!.lessons.map(lesson => [lesson.id, lesson.status, lesson.retiredBy])).toEqual([['past', 'retired', 'expired'], ['today', 'active', undefined], ['open', 'active', undefined]]);
+        expect(selectLessons(store, { stage: 'github-review' }).selected.map(ref => ref.id).sort()).toEqual(['open', 'today']);
+        reactivateLesson(store, 'past');
+        expect(store.state.knowledge!.lessons[0]).toMatchObject({ status: 'active' });
+        expireLessons(store);
+        expect(store.state.knowledge!.lessons[0]).toMatchObject({ status: 'active' });
+    } finally { close(); }
+});
+
+test('a lesson graduates only when its filed issue closed as completed, checked once a day', async () => {
+    const { store, close, advance } = knowledgeStore('brain', '2026-11-12T15:00:00Z');
+    try {
+        const filed = (id: string) => learningLesson(id, { repositoryInstruction: { status: 'filed', issueUrl: `https://github.com/JFusco/brain/issues/${id}`, filedAt: '' } });
+        // '5' was kept after a source review before its issue closed; that must not stop it graduating.
+        store.state.knowledge!.lessons = [filed('1'), filed('2'), filed('3'), filed('4'), { ...filed('5'), reactivatedAt: '2026-11-09T00:00:00Z' }, learningLesson('unfiled', { repositoryInstruction: { status: 'proposed' } })];
+        const done = '{"state":"CLOSED","stateReason":"COMPLETED","closedAt":"2026-11-10T00:00:00Z"}';
+        const states: Record<string, string> = { 1: done, 5: done, 2: '{"state":"CLOSED","stateReason":"NOT_PLANNED"}', 3: '{"state":"OPEN","stateReason":""}' };
+        const reads: string[] = [];
+        const execute = (async (_file: string, args: string[]) => { reads.push(args[2]); const id = args[2].split('/').pop()!; if (!states[id]) throw new Error('gh unavailable'); return states[id]; }) as unknown as typeof command;
+        await graduateLessons(store, execute);
+        expect(reads).toHaveLength(5);
+        expect(store.state.knowledge!.lessons.map(lesson => [lesson.id, lesson.status, lesson.retiredBy])).toEqual([['1', 'retired', 'graduated'], ['2', 'active', undefined], ['3', 'active', undefined], ['4', 'active', undefined], ['5', 'retired', 'graduated'], ['unfiled', 'active', undefined]]);
+        reactivateLesson(store, '1');
+        await graduateLessons(store, execute);
+        expect(store.state.knowledge!.lessons[0]).toMatchObject({ status: 'active' });
+
+        const queued = () => store.state.coordination!.requests!.filter(request => request.action === 'check-lesson-issues').length;
+        queueLessonIssueCheck(store); queueLessonIssueCheck(store); expect(queued()).toBe(1);
+        for (const request of store.state.coordination!.requests!) request.status = 'completed';
+        advance(24 * 3600000); queueLessonIssueCheck(store); expect(queued()).toBe(2);
+        for (const lesson of store.state.knowledge!.lessons) delete lesson.repositoryInstruction;
+        for (const request of store.state.coordination!.requests!) request.status = 'completed';
+        advance(24 * 3600000); queueLessonIssueCheck(store); expect(queued()).toBe(2);
+    } finally { close(); }
+});
+
+test('graduation applies to the current record after the provider read and never overrides Joe', async () => {
+    const { store, close } = knowledgeStore('brain', '2026-11-12T15:00:00Z');
+    try {
+        const filed = (id: string) => learningLesson(id, { repositoryInstruction: { status: 'filed', issueUrl: `https://github.com/JFusco/brain/issues/${id}`, filedAt: '' } });
+        store.state.knowledge!.lessons = [filed('human'), filed('cloned')];
+        const execute = (async (_file: string, args: string[]) => {
+            if (args[2].endsWith('/human')) retireLesson(store, 'human');
+            else store.state.knowledge!.lessons = structuredClone(store.state.knowledge!.lessons); // a rollback replaces state
+            return '{"state":"CLOSED","stateReason":"COMPLETED","closedAt":"2026-11-10T00:00:00Z"}';
+        }) as unknown as typeof command;
+        await graduateLessons(store, execute);
+        expect(store.state.knowledge!.lessons.map(lesson => [lesson.id, lesson.status, lesson.retiredBy])).toEqual([['human', 'retired', 'human'], ['cloned', 'retired', 'graduated']]);
+        const graduated = store.state.events.filter(event => event.kind === 'lesson-retired' && event.message.includes('graduated'));
+        expect(graduated).toHaveLength(1);
+        expect(graduated[0].message).toContain('Guidance cloned');
+    } finally { close(); }
+});
+
+test('an automatic retirement event keeps the lesson\'s source dependencies, so revoking access hides it', async () => {
+    const f = intakeFixture();
+    try {
+        const evidence = [{ kind: 'source' as const, ref: 'source:unit', url: '', detail: 'Scoped evidence', source: { sourceId: f.source.id, unitId: 'unit', version: 'v1' } }, { kind: 'learning' as const, ref: 'learning:derived', url: '', detail: 'Scoped evidence', sourceBindings: [{ sourceId: f.source.id }] }];
+        f.store.state.knowledge!.lessons = [learningLesson('expiring', { evidence, validUntil: '2026-11-05' }), learningLesson('graduating', { evidence, repositoryInstruction: { status: 'filed', issueUrl: 'https://github.com/JFusco/brain/issues/9', filedAt: '' } })];
+        expireLessons(f.store);
+        await graduateLessons(f.store, (async () => '{"state":"CLOSED","stateReason":"COMPLETED","closedAt":"2026-11-10T00:00:00Z"}') as unknown as typeof command);
+        const retired = f.store.state.events.filter(event => event.kind === 'lesson-retired');
+        expect(retired).toHaveLength(2);
+        for (const event of retired) expect(event.sourceBindings).toEqual(expect.arrayContaining([{ sourceId: f.source.id, unitId: 'unit', version: 'v1' }, { sourceId: f.source.id }]));
+        expect(knowledgeOfficeState(f.registry, 'brain', f.store.state).events).toEqual(expect.arrayContaining(retired));
+        f.registry.subscribe(f.source.id, 'brain', false);
+        const visible = knowledgeOfficeState(f.registry, 'brain', f.store.state).events;
+        for (const event of retired) { expect(visible).not.toContainEqual(event); expect(f.store.replay(0)).toContainEqual(event); }
+    } finally { f.close(); }
+});
+
+test('a stored lesson that belongs in its repository is offered once as an issue; declining it is not undone', () => {
+    const { store, close } = knowledgeStore('cms-field-vocabulary');
+    try {
+        const k = store.state.knowledge!, id = '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7';
+        k.lessons = [learningLesson(id), learningLesson('ordinary')];
+        migrateSnapshot(store.state, store.project);
+        const status = (lessonId: string) => k.lessons.find(lesson => lesson.id === lessonId)!.repositoryInstruction?.status;
+        expect([status(id), status('ordinary')]).toEqual(['proposed', undefined]);
+        k.lessons[0].repositoryInstruction = { status: 'declined' };
+        migrateSnapshot(store.state, store.project);
+        expect(k.lessons.find(lesson => lesson.id === id)!.repositoryInstruction).toEqual({ status: 'declined' });
+    } finally { close(); }
+});

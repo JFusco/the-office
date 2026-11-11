@@ -45,6 +45,7 @@ import { PROJECTS, officeCapacity, projectById, projectData } from '../office/pr
 import { DELIVERY_CONCURRENCY } from '../office/config';
 import { mirrorOfficeKnowledge, proposeOfficeLessons } from '../knowledge/office-lessons';
 import { seedOfficeLessons } from '../knowledge/seeded-office-lessons';
+import { expireLessons, queueLessonIssueCheck } from '../knowledge/lesson-exits';
 import { retireBrainSources } from '../knowledge/sources/retire-brain-sources';
 export class Offices {
     capacity = officeCapacity(DELIVERY_CONCURRENCY);
@@ -156,7 +157,7 @@ export class Offices {
                 if (sourceId && this.sources.get(sourceId)?.state !== 'active') engine.knowledgeAgents.pause();
                 reconcileIntakeReports(store, this.sources);
             } catch { /* Invalid private intake state must not block other Office work. */ }
-            recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); }
+            recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); expireLessons(store); queueLessonIssueCheck(store); }
         reconcileAuthoredEvidence({registry:this.sources,stores:this.stores(),brain:new CommittedBrain()});
         reviewSourceWithdrawals(this.sources,this.stores().values(),this.control);
         fanoutSourceLearning({registry:this.sources,stores:this.stores(),brain:new CommittedBrain()});

@@ -38,8 +38,12 @@ const REWRITES: Record<string, Rewrite> = {
     'operator-note:brain:bda4a39e-08f4-4915-9d02-469aef33b122': { when: 'A send or other external write has an uncertain outcome.', statement: 'Never replay it. Clear its alert only after read-back confirms the original, or an explicitly authorized, linked replacement is verified.', check: 'A read-back receipt of the original exists, or the replacement is linked and the original uncertainty is kept in the audit.' },
 };
 
+/** Lessons that belong in their repository (a rule, a check or a runbook): offered to Joe once as an issue to file. */
+const REPOSITORY_ISSUES = new Set(['c966f100-92f3-4f51-ae40-8b7ae8ad37cc', '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7']);
+
 /** Fills the shape for a stored lesson; a stored seed takes its seed's wording. Unknown older lessons keep their statement with an empty `when` and `check`. */
 export function rewriteLesson(lesson: Lesson): void {
+    if (REPOSITORY_ISSUES.has(lesson.id) && lesson.status === 'active' && !lesson.repositoryInstruction) lesson.repositoryInstruction = { status: 'proposed' };
     if (typeof lesson.when === 'string' && typeof lesson.check === 'string') return;
     const seed = projectSeed(lesson.id) || officeSeed(lesson.id);
     const { detail, ...shape }: Rewrite = REWRITES[lesson.id] || (seed ? { when: seed.when, statement: seed.statement, check: seed.check, detail: seed.detail } : { when: '', statement: lesson.statement, check: '' });

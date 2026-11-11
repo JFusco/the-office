@@ -11,7 +11,7 @@ import { curateLesson } from './curate-lesson';
 export const RETROSPECTIVE_HISTORY = 100;
 export const normalizeStatement = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
-type Accepted = { improvements?: ImprovementProposal[] } & Pick<RetrospectiveResult, 'summary'> & { lessons: (Omit<RetrospectiveResult['lessons'][number], 'repositoryInstruction' | 'tier' | 'action' | 'targetId'> & { repositoryInstruction?: boolean; tier?: 'hypothesis' | 'guidance'; action?: RetrospectiveResult['lessons'][number]['action']; targetId?: string })[] };
+type Accepted = { improvements?: ImprovementProposal[] } & Pick<RetrospectiveResult, 'summary'> & { lessons: (Omit<RetrospectiveResult['lessons'][number], 'repositoryInstruction' | 'tier' | 'action' | 'targetId' | 'validUntil'> & { repositoryInstruction?: boolean; tier?: 'hypothesis' | 'guidance'; validUntil?: string; action?: RetrospectiveResult['lessons'][number]['action']; targetId?: string })[] };
 /** A proposal to share, with the evidence the harness resolved for it; the Office proposal keeps those proofs. */
 type Shared = Accepted['lessons'][number] & { evidence: LessonEvidence[] };
 
@@ -39,7 +39,7 @@ export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospec
             const action = sourceOnly ? 'add' : proposal.action || 'add';
             if (!statement || !evidence.length || sourceOnly&&!evidence.some(p=>p.kind==='source') || action !== 'update' && seen.has(key)) continue;
             const lesson: Lesson = { id: randomUUID(), scope: 'project', tier: proposal.tier || 'guidance', revision: 1, kind: proposal.kind, when: proposal.when.trim(), statement, check: proposal.check.trim(), detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], paths: proposal.paths.map(path => path.trim()).filter(Boolean), status: 'active', evidence: evidence.map(item => proofBindings(item).length?{...item,detail:'Scoped evidence; exact excerpt retained in the private review packet'}:{ ...item }), sourceSubject: pending.source || { kind: pending.subject || 'job', id: pending.jobId }, sourceRetrospectiveId: pending.id,
-                ...(github && proposal.repositoryInstruction ? { repositoryInstruction: { status: 'proposed' as const } } : {}), createdAt: now, updatedAt: now };
+                ...(github && proposal.repositoryInstruction ? { repositoryInstruction: { status: 'proposed' as const } } : {}), ...(proposal.validUntil ? { validUntil: proposal.validUntil } : {}), createdAt: now, updatedAt: now };
             const outcome = curateLesson(knowledge, lesson, action, proposal.targetId || '', elsewhere, now);
             if (outcome === 'skipped') continue;
             seen.add(key);
