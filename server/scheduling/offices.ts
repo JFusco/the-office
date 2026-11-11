@@ -45,6 +45,7 @@ import { Conversations } from '../conversations/conversations';
 import { PROJECTS, officeCapacity, projectById, projectData } from '../office/projects';
 import { DELIVERY_CONCURRENCY } from '../office/config';
 import { mirrorOfficeKnowledge, proposeOfficeLessons } from '../knowledge/office-lessons';
+import { seedOfficeLessons } from '../knowledge/seeded-office-lessons';
 export class Offices {
     capacity = officeCapacity(DELIVERY_CONCURRENCY);
     ctoCapacity = officeCapacity();
@@ -118,6 +119,7 @@ export class Offices {
         }
         this.dailyCTO.recover();
         reviewSourceWithdrawals(this.sources,this.stores().values(),this.control);
+        seedOfficeLessons(this.control);
         mirrorOfficeKnowledge(this.control, this.stores().values());
     }
     reconcileConversation(project: string, id: string, replacementProject: string, replacementId: string) {

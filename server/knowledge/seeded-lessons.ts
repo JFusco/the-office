@@ -1,6 +1,8 @@
 import type { KnowledgeState, Lesson } from '../../src/shared';
 
 const SEEDED_AT = '2026-11-06T00:00:00.000Z';
+/** The reviewed merge of duplicate lessons found by the 2026-11-11 knowledge audit. */
+export const CONSOLIDATED = 'seed:knowledge-audit-2026-11-11', CONSOLIDATED_AT = '2026-11-11T00:00:00.000Z';
 
 /** Project lessons seeded by hand: guidance that predates Harper (the-office#58) or covers history Harper baselined without a retrospective. */
 const SEEDS: Record<string, Lesson[]> = {
@@ -21,6 +23,21 @@ const SEEDS: Record<string, Lesson[]> = {
             { kind: 'maintenance', ref: '8a7f8a8e-47f7-4830-b18a-96520b689791', url: '', detail: 'Weekly vendor review of 2026-11-06 that held the withdrawn identity open; Nov 4 scan: https://github.com/JFusco/cms-field-vocabulary/actions/runs/41906470558' },
         ],
         sourceRetrospectiveId: 'seed:cms-field-vocabulary#137', recurrences: [], createdAt: SEEDED_AT, updatedAt: SEEDED_AT,
+    }, {
+        id: 'seed:cms-field-vocabulary:wiki-only-package-checks', scope: 'project', tier: 'guidance', revision: 1, kind: 'process',
+        statement: 'When a PR touches only wiki files, the Quality workflow runs a lightweight wiki check, so still collect release-preflight, verify:ci, test:packed and the pack dry-run at the reviewed commit.',
+        detail: 'Check: a receipt exists for each command at the reviewed head. A green wiki-only Quality run is not full-suite evidence; size the source review to the actual diff.',
+        stages: ['review', 'validate'], paths: ['.github/workflows/quality.yml', 'AGENTS.md', 'package.json'], status: 'active',
+        evidence: [{ kind: 'artifact', ref: CONSOLIDATED, url: '', detail: 'Consolidates lessons 0d16b97c, df887f76 and 3309a0bd, approved by Joe on 2026-11-11' }],
+        sourceRetrospectiveId: CONSOLIDATED, recurrences: [], createdAt: CONSOLIDATED_AT, updatedAt: CONSOLIDATED_AT,
+    }],
+    brain: [{
+        id: 'seed:brain:dual-lockfile-verification', scope: 'project', tier: 'guidance', revision: 1, kind: 'process',
+        statement: 'When a dependency change touches a lockfile, resolve and verify both the root and web/brain lockfiles against their manifests, and trace any peer-dependency change to the caller.',
+        detail: 'Check: frozen installs pass in both installation contexts and verify:ci passes on the current head. On a conflict, re-resolve main\'s lockfiles against the PR manifests and verify the resulting commit independently.',
+        stages: ['review', 'repair', 'validate'], paths: ['pnpm-lock.yaml', 'web/brain/pnpm-lock.yaml', 'package.json', 'web/brain/package.json'], status: 'active',
+        evidence: [{ kind: 'artifact', ref: CONSOLIDATED, url: '', detail: 'Consolidates lessons 48802a32, e9502da0 and c1c78ef9, approved by Joe on 2026-11-11' }],
+        sourceRetrospectiveId: CONSOLIDATED, recurrences: [], createdAt: CONSOLIDATED_AT, updatedAt: CONSOLIDATED_AT,
     }],
 };
 
