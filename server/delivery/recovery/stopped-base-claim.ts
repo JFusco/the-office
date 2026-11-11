@@ -13,7 +13,7 @@ export function stoppedBaseClaim(store: Store, job: TicketJob, request: HarnessR
     const blockers = eligibility.blockers.filter(reason => reason !== 'Office is draining');
     if (store.project.id !== 'cms-field-vocabulary' || !job.existingPR || job.prerequisites?.length ||
         !claim || assignment.lane !== 'delivery' || claim.lane !== 'delivery' || claim.status !== 'running' ||
-        claim.stage !== 'reconcile-base-update' || claim.work.projectId !== store.project.id ||
+        !['reconcile-base-update', 'authorize-green-merge-156'].includes(claim.stage) || claim.work.projectId !== store.project.id ||
         claim.work.kind !== 'reconciliation' || claim.work.id !== request.id ||
         !store.activeClaims().some(saved => isDeepStrictEqual(saved, claim)) ||
         store.state.coordination?.requests?.find(saved => saved.id === request.id) !== request ||

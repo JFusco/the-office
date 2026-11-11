@@ -1,3 +1,4 @@
+import { green156Admitted } from './green156-evidence';
 import { assertStoppedBaseApproach } from './stopped-base-gates';
 export { assertStoppedBaseApproach, stoppedBaseNextStage } from './stopped-base-gates';
 import { dirname } from 'node:path';
@@ -55,6 +56,7 @@ export function assertStoppedBaseValidation(store: Store, job: TicketJob, result
 
 /** Saved-review and approval fast paths still require actual fresh source/QA acceptance. */
 export function assertStoppedBaseMergeReady(store: Store, job: TicketJob, head: string) {
+    if (head === job.head && green156Admitted(store, job)) return;
     if (!job.stoppedBaseUpdate) return;
     assertStoppedBaseApproach(job, job.approach!);
     const review = job.steps.filter(s => s.stage === 'review').at(-1), qa = job.steps.filter(s => s.stage === 'validate').at(-1);

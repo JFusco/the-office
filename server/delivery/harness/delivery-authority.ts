@@ -1,4 +1,4 @@
-import { stoppedBaseUpdateResolved } from '../recovery/stopped-base-disposition';
+import { stoppedBaseReassessmentReady } from '../recovery/stopped-base-disposition';
 import { isDeepStrictEqual } from 'node:util';
 import { HOLDS } from '../../office/config';
 import { currentAssignment } from '../../workers/assignment-context';
@@ -42,7 +42,7 @@ export function assessDeliveryEligibility(store: Store, job: TicketJob, input: D
     const recovery = request && resolveDeliveryWork(store, { projectId: store.project.id, kind: 'reconciliation', id: request.id });
     if (!recovery || recovery.kind !== 'job' || recovery.job !== job) {
         if (store.state.workLog?.some(w => w.requestId === job.id && ['github-implement', 'github-update-base', 'github-scope-repair'].includes(w.stage) &&
-            ['interrupted', 'failed'].includes(w.status) && w.failure?.dispatched !== false && !job.steps.some(s => s.workerId === w.id) && !(w.id === job.stoppedBaseUpdate?.originalWorkId && stoppedBaseUpdateResolved(store, { key: job.key, head: w.id })))) blockers.push('Original incomplete worker needs readback');
+            ['interrupted', 'failed'].includes(w.status) && w.failure?.dispatched !== false && !job.steps.some(s => s.workerId === w.id) && !(w.id === job.stoppedBaseUpdate?.originalWorkId && stoppedBaseReassessmentReady(store, { key: job.key, head: w.id })))) blockers.push('Original incomplete worker needs readback');
     }
     if (job.steps.at(-1)?.stage === 'superseded-stage-result') blockers.push('Superseded stage result needs reconciliation');
     blockers.push(...conflicts);
@@ -70,11 +70,11 @@ export function assessDeliveryAuthority(store: Store, job: TicketJob, input: Del
         if (job.status !== 'working' || claim.stage !== job.stage || request) blockers.push('Scheduled delivery stage changed');
     } else if (!request || subject.request !== request || request.status !== 'working' || request.lane !== 'delivery' || request.action !== claim.stage)
         blockers.push('Exact working original recovery request is required');
-    else if (request.action !== 'reconcile-pr-metadata' && !(request.action === 'reconcile-review' && job.stoppedBaseUpdate?.handoffStarted &&
+    else if (request.action !== 'reconcile-pr-metadata' && request.action !== 'authorize-green-merge-156' && !(request.action === 'reconcile-review' && job.stoppedBaseUpdate?.handoffStarted &&
         job.stage === 'lead-pr' && ['lead','checkout'].includes(job.stoppedBaseUpdate.phase) &&
         store.state.workLog?.filter(w => w.id === request.head && w.requestId === job.id && w.stage === 'stopped-base-update-handoff' &&
             w.claimId === job.stoppedBaseUpdate!.handoffStarted!.claimId).length === 1 &&
-        stoppedBaseUpdateResolved(store, {key:job.key,head:job.stoppedBaseUpdate.originalWorkId})) && !(store.project.id === 'cms-field-vocabulary' && request.action === 'reconcile-base-update' &&
+        stoppedBaseReassessmentReady(store, {key:job.key,head:job.stoppedBaseUpdate.originalWorkId})) && !(store.project.id === 'cms-field-vocabulary' && request.action === 'reconcile-base-update' &&
         job.stoppedBaseUpdate?.originalWorkId === request.head && job.stoppedBaseUpdate.phase === 'audit' &&
         job.stoppedBaseUpdate.audit.state === 'dispatched' && job.stoppedBaseUpdate.audit.requestId === request.id &&
         job.stoppedBaseUpdate.audit.claimId === claim.id)) blockers.push('This recovery retains its existing native ownership checks');

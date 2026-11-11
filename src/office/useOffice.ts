@@ -85,10 +85,16 @@ export function useOffice() {
         const connect = () => {
             if (!mounted || current.current !== project)
                 return;
-            invalidate();
             visible.current = !document.hidden;
-            if (!navigator.onLine || !visible.current)
+            if (!navigator.onLine || !visible.current) {
+                invalidate();
                 return;
+            }
+            // Focus/pageshow can arrive together while the existing stream is healthy or opening.
+            // Preserve that connection and its accepted snapshot instead of flashing RECONNECTING.
+            if (stream && stream.readyState !== EventSource.CLOSED)
+                return;
+            invalidate();
             const epoch = generation.current;
             const connection = new EventSource(officeUrl('/api/events', project));
             stream = connection;
@@ -116,6 +122,7 @@ export function useOffice() {
             void refresh();
         };
         const offline = () => invalidate();
+        const clockGap = () => { invalidate(); connect(); };
         const visibility = () => {
             visible.current = !document.hidden;
             if (visible.current)
@@ -126,7 +133,7 @@ export function useOffice() {
         document.addEventListener('visibilitychange', visibility);
         window.addEventListener('pageshow', connect);
         window.addEventListener('focus', connect);
-        window.addEventListener('office-clock-gap', connect);
+        window.addEventListener('office-clock-gap', clockGap);
         window.addEventListener('offline', offline);
         window.addEventListener('online', connect);
         connect();
@@ -136,7 +143,7 @@ export function useOffice() {
             document.removeEventListener('visibilitychange', visibility);
             window.removeEventListener('pageshow', connect);
             window.removeEventListener('focus', connect);
-            window.removeEventListener('office-clock-gap', connect);
+            window.removeEventListener('office-clock-gap', clockGap);
             window.removeEventListener('offline', offline);
             window.removeEventListener('online', connect);
         };
