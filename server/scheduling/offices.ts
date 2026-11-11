@@ -18,7 +18,6 @@ import { reconcileAuthoredEvidence } from '../knowledge/digests/reconcile-author
 import { CommittedBrain } from '../knowledge/brain/reader';
 import { reconcileIntakeReports } from '../knowledge/slack-intake/report';
 import { SourceRegistry } from '../knowledge/sources/registry';
-import { migrateIntake } from '../knowledge/sources/migration';
 import { maintainLearning } from '../knowledge/learning-maintenance';
 import { scheduledResearch } from '../knowledge/weekly-research';
 import { queueImprovements } from '../knowledge/queue-improvements';
@@ -94,8 +93,6 @@ export class Offices {
             const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
-        const brain = this.entries.get('brain')?.store;
-        if (brain) { try { migrateIntake(this.sources, brain); } catch { /* Preparing cutover keeps all collection closed; UI surfaces its state. */ } }
         recoverStoppedLaunches(this.sources,this.stores());
         for (const entry of this.entries.values()) {
             for(const runtime of [entry.engine.agents,entry.engine.knowledgeAgents,entry.engine.itAgents,entry.engine.ctoAgents])runtime.knowledgeContext={registry:this.sources,stores:this.stores(),brain:new CommittedBrain()};

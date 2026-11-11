@@ -44,7 +44,7 @@ export function observeRead(event: any, config: SlackReadAuthority, task: ReadTa
     } else if (task.kind === 'inventory') {
         if (result.format !== 'slack-text-v1' || !Array.isArray(result.resources)) throw new ReadUnavailable('inventory-evidence-unavailable');
         cursor = result.response_metadata.next_cursor; complete = !result.has_more;
-        units = result.resources.map((resource: any) => ({ id: `inventory:${task.channel}:${resource.id}`, channel: task.channel, resource: resource.id, kind: 'inventory', version: digest(resource.text), text: resource.text, url: resource.url, evidence: 'formatted-excerpt', references: [{ kind: 'canvas', id: resource.id }], state: 'no-reusable-lesson', reason: 'inventory-only; canvas body queued separately', requests: [], observedAt: at, attempt: task.attempt }));
+        units = result.resources.map((resource: any) => ({ id: `inventory:${task.channel}:${resource.id}`, channel: task.channel, resource: resource.id, kind: 'inventory', version: digest(resource.text), text: resource.text, url: resource.url, evidence: 'formatted-excerpt', references: [{ kind: 'canvas', id: resource.id }], state: 'no-reusable-lesson', reason: 'inventory-only; canvas body queued separately', observedAt: at, attempt: task.attempt }));
     } else if (['channel', 'thread', 'search'].includes(task.kind)) {
         const page = Page.safeParse(result);
         if (!page.success || page.data.channel !== task.channel || page.data.truncated !== false && page.data.format !== 'slack-text-v1') throw new ReadUnavailable('page-evidence-unavailable');
@@ -57,13 +57,13 @@ export function observeRead(event: any, config: SlackReadAuthority, task: ReadTa
             return { evidence: result.format === 'slack-text-v1' ? 'formatted-excerpt' : 'structured', id: `${task.channel}:${message.ts}`, channel: task.channel, resource: message.ts, kind: task.kind, version: digest(JSON.stringify(message)), text: message.text,
                 url: `${config.workspace.replace(/\/$/, '')}/archives/${task.channel}/p${message.ts.replace('.', '')}`, ts: message.ts, parent,
                 replies: message.reply_count || 0, latestReply: message.latest_reply, references: (message.files || []).map(file => ({ kind: 'file' as const, id: file.id })),
-                state: 'pending', reason: '', requests: [], observedAt: at, attempt: task.attempt };
+                state: 'pending', reason: '', observedAt: at, attempt: task.attempt };
         });
     } else {
         const key = task.kind === 'file' ? 'file_id' : 'canvas_id';
         if (task.kind === 'file' && (typeof result.size !== 'number' || result.size > 10000000)) throw new ReadUnavailable('file-size-unavailable');
         if (args[key] !== task.resource || result.id !== task.resource || typeof result.text !== 'string' || (result.truncated !== false && result.format !== 'slack-text-v1') || typeof result.version !== 'string') throw new ReadUnavailable('resource-evidence-unavailable');
-        units = [{ id: `${task.kind}:${task.resource}`, channel: task.channel, resource: task.resource, kind: task.kind, version: result.version, text: result.text, url: task.sourceUrl || '', evidence: result.format === 'slack-text-v1' ? 'formatted-excerpt' : 'structured', references: [], state: result.unavailable ? 'inaccessible' : 'pending', reason: result.unavailable || '', requests: [], observedAt: at, attempt: task.attempt }];
+        units = [{ id: `${task.kind}:${task.resource}`, channel: task.channel, resource: task.resource, kind: task.kind, version: result.version, text: result.text, url: task.sourceUrl || '', evidence: result.format === 'slack-text-v1' ? 'formatted-excerpt' : 'structured', references: [], state: result.unavailable ? 'inaccessible' : 'pending', reason: result.unavailable || '', observedAt: at, attempt: task.attempt }];
     }
     for (const unit of units) {
         for (const match of unit.text.matchAll(/https:\/\/[^\s<>"\]|)]+/g)) {

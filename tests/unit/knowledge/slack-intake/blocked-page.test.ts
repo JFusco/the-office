@@ -11,7 +11,7 @@ import { sourceList } from '../../../../server/knowledge/sources/projection';
 const scan=async(text:string)=>({...await cleanScan(text),...(text.includes('SYNTHETIC_WITHHELD')?{clean:false,findings:[{rule:'fixture',line:1,endLine:1}]}:{})});
 it.each([false,true])('settles a page while withholding unsafe unit or generated text (generated contamination: %s)',async generatedOnly=>{
  const f=intakeFixture();try{
-  const source=f.registry.create({kind:'slack',title:'Project stream',homeProjectId:'brain',destination:'project-evidence',authority:{...authority,channels:[{id:'C456',name:'project-stream'}]}}),policy=collectionPolicy(source),ledger=new IntakeLedger(f.store,source);
+  const source=f.registry.create({kind:'slack',title:'Project stream',homeProjectId:'brain',authority:{...authority,channels:[{id:'C456',name:'project-stream'}]}}),policy=collectionPolicy(source),ledger=new IntakeLedger(f.store,source);
   const task=newTask(policy,'C456','channel','','0.000000','200.000000','2026-11-06',f.store.clock.now().toISOString());ledger.put('task',task.id,task);ledger.put('identity','C456',{sourceDigest:source.sourceDigest});
   const run=(async(_prompt,_schema,options)=>{options?.onIntakeLaunch?.();options?.onIntakeEvent?.(event(ledger.get<ReadTask>('task',task.id)!,[{ts:'100.000001',text:'Clean project observation'},{ts:'100.000002',text:generatedOnly?'Another clean observation':'SYNTHETIC_WITHHELD'}]));return {units:[{id:'C456:100.000001',outcome:'evidence',reason:generatedOnly?'SYNTHETIC_WITHHELD':'Clean'},{id:'C456:100.000002',outcome:'evidence',reason:generatedOnly?'Clean':'SYNTHETIC_WITHHELD'}]};}) as KnowledgeRunner;
   await runIntakeTask(f.store,run,task.id,f.registry,source.id,scan);

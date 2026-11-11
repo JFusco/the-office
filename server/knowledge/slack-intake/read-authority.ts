@@ -15,7 +15,7 @@ export function validateSlackFields(c: Fields, ctx: z.RefinementCtx): void {
     for (const [key, suffix] of Object.entries(expected)) if (!new RegExp('(^|[./_])' + suffix + '$').test(c.tools[key as keyof typeof c.tools]) || !/^[a-zA-Z0-9_/.-]+$/.test(c.tools[key as keyof typeof c.tools])) ctx.addIssue({ code: 'custom', message: 'Unsupported intake tool' });
 }
 
-/** Read authority contains no lifecycle, destination or technical Brain domains. */
+/** Read authority contains no lifecycle. */
 export const SlackReadAuthority = z.object({
     workspace: SlackWorkspace, appId: SlackAppId, channels: z.array(SlackChannel).length(1), tools: SlackTools, publicHosts: PublicHosts,
 }).strict().superRefine(validateSlackFields);

@@ -61,7 +61,6 @@ export function queueReconsideration(ledger: IntakeLedger, config: CollectionPol
     if (ledger.get<string>('meta', 'reconsidered') === `deferred-v2:${ledger.revision()}`) return;
     const tasks = ledger.all<ReadTask>('task'), index = referenceIndex(ledger, resourceUnits(ledger), tasks);
     for (const unit of ledger.where<SourceUnit>('unit', '$.state', 'deferred')) {
-        if (unit.requests.length) continue;
         const references = readyReferences(ledger, unit, index); if (!references) continue;
         if (Buffer.byteLength(JSON.stringify([unit, references])) > LIMITS.text) continue;
         const identity = digest(JSON.stringify([unit.id, unit.version, references]));

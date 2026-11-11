@@ -22,12 +22,12 @@ describe('shared knowledge source registry', () => {
             expect(sourceVisible(f.registry, s.id, 'cec')).toBe(false);
         } finally { f.close(); }
     });
-    it('rejects duplicate collectors, project-to-Brain conversion and stale edits', () => {
+    it('rejects duplicate collectors, Brain domains, home changes and stale edits', () => {
         const f = fixture(); try {
             const s = f.registry.create(input());
             expect(() => f.registry.create(input('other'))).toThrow('already registered');
             expect(() => f.registry.create({ ...input(), domains: ['tooling'] })).toThrow();
-            expect(() => f.registry.update(s.id, s.revision, x => { x.destination = 'technical-brain'; x.homeProjectId = 'brain'; x.domains = ['tooling']; })).toThrow('immutable');
+            expect(() => f.registry.update(s.id, s.revision, x => { x.homeProjectId = 'brain'; })).toThrow('immutable');
             expect(() => f.registry.update(s.id, 0, () => {})).toThrow('changed');
             const other = f.registry.create({ ...input(), authority: { ...authority(), workspace: 'https://another.slack.com' } });
             expect(other.id).not.toBe(s.id);

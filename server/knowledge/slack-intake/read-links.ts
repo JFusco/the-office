@@ -18,7 +18,7 @@ const LinkResult = ResearchResult.extend({ references: z.array(z.object({ from: 
 /** `children`: accepted one-hop references read on behalf of the same source. */
 export interface LinkRecord { url: string; source: string; state: 'pending' | 'read' | 'deferred' | 'needs-attention'; week: string; depth: number; reason?: string; result?: unknown; failures?: number; nextAt?: string; children?: string[] }
 export const linkKey = (source: string, url: string) => JSON.stringify([source, url]);
-export type PublicReadPolicy=Pick<CollectionPolicy,'sourceId'|'sourceDigest'|'homeProjectId'|'destination'|'publicHosts'>;
+export type PublicReadPolicy=Pick<CollectionPolicy,'sourceId'|'sourceDigest'|'homeProjectId'|'publicHosts'>;
 export async function runSlackLinks(store: Store, config: PublicReadPolicy, run: KnowledgeRunner, links: LinkRecord[], requestId: string, registry: SourceRegistry, scan: SecretScanner = scanText): Promise<void> {
     const source = registry.get(config.sourceId);
     if (!source || !collectionAllowed(registry, store, config)) return;

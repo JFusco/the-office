@@ -13,11 +13,10 @@ import { admitUnits, checkedReceipt, scanText, type SecretScanner } from '../sou
 import { acceptEvidence, EvidenceResult } from '../sources/project-evidence';
 import { admittedResult } from '../sources/admitted-result';
 import { IntakeLedger } from './ledger';
-import { LIMITS, IntakeResult, type Observation, type ReadTask, type SourceUnit } from './contracts';
+import { LIMITS, type Observation, type ReadTask, type SourceUnit } from './contracts';
 import { observeRead, readArguments, readMethod } from './observations';
 import { recordObservation, settlePage } from './collect';
-import { acceptProposals } from './proposals';
-import { annotateAuthoredUnits,independentIntakeResult } from '../digests/intake-authorship';
+import { annotateAuthoredUnits } from '../digests/intake-authorship';
 import { CommandFailure } from '../../workers/process';
 export { readArguments } from './observations';
 export async function runIntakeTask(store: Store, run: KnowledgeRunner, id: string, registry: SourceRegistry, sourceId: string, scan: SecretScanner = scanText): Promise<void> {
@@ -36,13 +35,12 @@ export async function runIntakeTask(store: Store, run: KnowledgeRunner, id: stri
     const accept = async (result: unknown, units: SourceUnit[]) => {
         annotateAuthoredUnits(ledger,registry,config.workspace,units);
         await admitUnits(ledger, units, scan, () => collectionAllowed(registry, store, config));
-        const admitted=admittedResult(ledger,config,result,units);
+        const admitted=admittedResult(ledger,result,units);
         const receipt = checkedReceipt(JSON.stringify(admitted.result), await scan(JSON.stringify(admitted.result)));
         ledger.put('classification-admission',task.attempt,{taskId:task.id,sourceId:config.sourceId,state:receipt.clean?'admitted':'blocked',receipt,at:store.clock.now().toISOString()});
-        if(!receipt.clean){const deferred=admitted.units.map(unit=>({id:unit.id,outcome:'deferred' as const,reason:'Generated classification withheld by secret scanning; native evidence remains independently unverified'}));admitted.result=config.destination==='technical-brain'?{units:deferred,proposals:[]}:{units:deferred};}
+        if(!receipt.clean){const deferred=admitted.units.map(unit=>({id:unit.id,outcome:'deferred' as const,reason:'Generated classification withheld by secret scanning; native evidence remains independently unverified'}));admitted.result={units:deferred};}
         if (!collectionAllowed(registry, store, config)) throw Error('intake-authority-changed-after-read');
-        if (config.destination === 'technical-brain') acceptProposals(ledger, config, task, independentIntakeResult(IntakeResult.parse(admitted.result),admitted.units), admitted.units);
-        else {const parsed=EvidenceResult.parse(admitted.result);acceptEvidence(ledger, config, task, {...parsed,units:parsed.units.map(u=>admitted.units.some(unit=>unit.id===u.id&&unit.authorship)?{...u,outcome:'no-reusable-lesson',reason:'Confirmed Office-authored digest or identified repost; not independent corroboration'}:u)}, admitted.units);}
+        const parsed=EvidenceResult.parse(admitted.result);acceptEvidence(ledger, config, task, {...parsed,units:parsed.units.map(u=>admitted.units.some(unit=>unit.id===u.id&&unit.authorship)?{...u,outcome:'no-reusable-lesson',reason:'Confirmed Office-authored digest or identified repost; not independent corroboration'}:u)}, admitted.units);
     };
     try {
         task.nextAt = new Date(store.clock.now().getTime() + LIMITS.timeout + retryDelay(task.failures + 1)).toISOString(); ledger.put('task',id,task);
@@ -54,7 +52,7 @@ export async function runIntakeTask(store: Store, run: KnowledgeRunner, id: stri
             if(!processing.length){const current=ledger.get<ReadTask>('task',id)!;current.status='complete';current.attempt='';current.ownerClaim='';ledger.put('task',id,current);return;}
         }
         const prompt=intakePrompt(ledger,config,task,processing);
-        const result = await run<unknown>(prompt, config.destination === 'technical-brain' ? IntakeResult : EvidenceResult, { readOnly: true, effortKind: 'administrative', stage: 'knowledge-slack-intake', cwd, requestId: `source:${sourceId}`, ticket: '', enqueuedAt: task.createdAt, timeout: LIMITS.timeout, intakeConfig: readAuthority(config), intakeBinding: { registry, sourceId, sourceDigest: config.sourceDigest, homeProjectId: store.project.id, taskId: id, attempt: task.attempt }, intakeProcessing: !!task.processing,
+        const result = await run<unknown>(prompt, EvidenceResult, { readOnly: true, effortKind: 'administrative', stage: 'knowledge-slack-intake', cwd, requestId: `source:${sourceId}`, ticket: '', enqueuedAt: task.createdAt, timeout: LIMITS.timeout, intakeConfig: readAuthority(config), intakeBinding: { registry, sourceId, sourceDigest: config.sourceDigest, homeProjectId: store.project.id, taskId: id, attempt: task.attempt }, intakeProcessing: !!task.processing,
             // Charge the actual launch to its own Eastern day, not the day the attempt was claimed.
             onIntakeLaunch: () => { launched = true; budget.launched(task.attempt); }, onIntakeNotSpawned: () => { if (!launched) budget.notSpawned(task.attempt); },
             onIntakeEvent: event => {
@@ -68,8 +66,8 @@ export async function runIntakeTask(store: Store, run: KnowledgeRunner, id: stri
                 recordObservation(ledger, id, observation); observations.push(observation);
             } });
         if (task.processing) {
-            // Only a still-deferred, unrequested version reopens; a stale duplicate task never resets a settled outcome.
-            ledger.transaction(() => { for (const key of task.processing!) { const unit = ledger.get<SourceUnit>('unit', key); if (unit?.state === 'deferred' && !unit.requests.length) { unit.state = 'pending'; ledger.put('unit', key, unit); } } });
+            // Only a still-deferred version reopens; a stale duplicate task never resets a settled outcome.
+            ledger.transaction(() => { for (const key of task.processing!) { const unit = ledger.get<SourceUnit>('unit', key); if (unit?.state === 'deferred') { unit.state = 'pending'; ledger.put('unit', key, unit); } } });
             await accept(result, processing);
             const current = ledger.get<ReadTask>('task', id)!; current.status = 'complete'; current.attempt = ''; current.ownerClaim = ''; ledger.put('task', id, current); return;
         }

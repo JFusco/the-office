@@ -9,7 +9,7 @@ import type { KnowledgeRunner } from '../../../../server/knowledge/run-retrospec
 afterEach(()=>vi.restoreAllMocks());
 it.each(['scanner','paused'])('releases a processing reservation when %s prevents worker launch',async failure=>{
  const f=intakeFixture();try{
-    const unit:SourceUnit={id:'C123:1',version:'v1',channel:'C123',resource:'',kind:'channel',text:'Synthetic evidence',url:'',references:[],state:'deferred',reason:'',requests:[],observedAt:f.store.clock.now().toISOString(),attempt:'prior'};
+    const unit:SourceUnit={id:'C123:1',version:'v1',channel:'C123',resource:'',kind:'channel',text:'Synthetic evidence',url:'',references:[],state:'deferred',reason:'',observedAt:f.store.clock.now().toISOString(),attempt:'prior'};
     const key=`${unit.id}:${unit.version}`;f.ledger.put('unit',key,unit);f.task.processing=[key];f.ledger.put('task',f.task.id,f.task);
     const run=vi.fn();const scan=async(text:string)=>{if(failure==='scanner')throw Error('scanner unavailable');const source=f.registry.get(f.source.id)!;f.registry.update(source.id,source.revision,s=>{s.state='paused';});return cleanScan(text);};
     await runIntakeTask(f.store,run as KnowledgeRunner,f.task.id,f.registry,f.source.id,scan);
