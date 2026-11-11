@@ -18,6 +18,8 @@ export const RetrospectiveResultSchema = z.object({
         paths: z.array(z.string().max(300)).max(12),
         evidenceIds: z.array(z.string().max(300)).max(5),
         repositoryInstruction: z.boolean(),
+        /** Only for a lesson tied to a ticket, version or temporary condition: its last valid day. */
+        validUntil: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/).default(''),
         /** Harper's curation decision; the harness applies it. `targetId` names the existing lesson for every action but `add`. */
         action: z.enum(['add', 'update', 'supersede', 'share']).default('add'),
         targetId: z.string().max(100).default(''),

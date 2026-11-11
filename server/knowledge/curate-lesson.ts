@@ -15,8 +15,8 @@ export function curateLesson(knowledge: KnowledgeState, proposed: Lesson, action
     const target = knowledge.lessons.find(lesson => lesson.id === targetId && lesson.status === 'active');
     if (!target) return 'skipped';
     if (action === 'update') {
-        const { when, statement, check, detail, kind, stages, paths } = proposed;
-        Object.assign(target, { when, statement, check, detail, kind, stages, paths, revision: (target.revision || 1) + 1, updatedAt: now,
+        const { when, statement, check, detail, kind, stages, paths, validUntil } = proposed;
+        Object.assign(target, { when, statement, check, detail, kind, stages, paths, validUntil, revision: (target.revision || 1) + 1, updatedAt: now,
             evidence: [...target.evidence, ...proposed.evidence.filter(proof => !target.evidence.some(known => known.ref === proof.ref))] });
         return 'updated';
     }

@@ -49,7 +49,9 @@ export interface Lesson {
     createdAt: string;
     updatedAt: string;
     retiredAt?: string;
-    retiredBy?: 'human' | 'harper';
+    retiredBy?: 'human' | 'harper' | 'expired' | 'graduated';
+    /** Last day (YYYY-MM-DD, Eastern) a lesson tied to a ticket, version or temporary condition applies. */
+    validUntil?: string;
     /** Set when Harper replaced this lesson; the replacement carries `supersedes`. */
     supersededBy?: string;
     supersedes?: string;
@@ -183,6 +185,8 @@ export interface KnowledgeState {
     slackSeed?: SlackSeedProgress;
 
     learningStartedAt?: string;
+    /** Eastern day of the last queued read-back of lesson issues. */
+    issueCheckDay?: string;
     exposures?: LessonExposure[];
     lookups?: import('./knowledge-lookups').KnowledgeLookupSummary[];
     outcomes?: import('./knowledge-outcomes').KnowledgeOutcome[];
