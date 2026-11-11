@@ -1,3 +1,4 @@
+import { admitGreen156 } from '../delivery/recovery/green156-admission';
 import { reconcileStoppedBaseHandoff } from '../delivery/recovery/stopped-base-review';
 import { reconcileStoppedBaseUpdate } from '../delivery/recovery/stopped-base-update';
 import { stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
@@ -32,8 +33,8 @@ import { TimeLedger } from '../time/time-ledger';
 import { fileLessonIssue } from '../knowledge/file-lesson-issue';
 import { command } from '../workers/process';
 import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
-const actions = new Set(['admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'file-lesson-issue']);
-export const deterministicActions = new Set(['admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'file-lesson-issue']);
+const actions = new Set(['authorize-green-merge-156', 'admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'file-lesson-issue']);
+export const deterministicActions = new Set([ 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'file-lesson-issue']);
 export function enqueueSourceAmendment(store: Store, input: unknown): HarnessRequest {
     const authorization = validateAmendmentIntent(store, input);
     const prior = store.state.coordination!.requests?.find(request => request.action === 'authorize-source-amendment' && ['queued', 'working', 'completed'].includes(request.status) && JSON.stringify(request.sourceAmendment) === JSON.stringify(authorization));
@@ -200,6 +201,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                 await delivery.queueConflictRepair(request.key);
                 break;
             }
+            case 'authorize-green-merge-156': await admitGreen156(delivery, request); break;
             case 'reconcile-base-update':
                 if (!await reconcileBoardPreflight(delivery, request, async () => {
                     await coordinator.sessionBridge?.refresh();

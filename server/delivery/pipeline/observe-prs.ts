@@ -1,3 +1,7 @@
+import { automationMergePolicy } from '../readiness/automation-merge';
+import { green156Admitted } from '../recovery/green156-evidence';
+import { assertAutomationEffects } from '../readiness/automation-effects';
+import { currentMergeChecks } from '../readiness/github-check-selection';
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { refreshMergeReview } from '../readiness/refresh-merge-review';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
@@ -16,6 +20,7 @@ export async function observe(this: GitHubDelivery) {
     for (const job of this.jobs.filter(j => j.status === 'watching' || j.stage === 'merge' && ['blocked', 'interrupted'].includes(j.status))) {
         try {
             const p = await this.verifyPR(job);
+            if (job.stoppedBaseUpdate?.greenMerge && (!green156Admitted(this.store, job) || p.head.sha !== job.head)) throw Error('One-time #156 approval no longer matches this PR head');
             if (p.merged_at) {
                 job.status = 'watching';
                 job.mergeCommit = p.merge_commit_sha;
@@ -67,6 +72,13 @@ export async function observe(this: GitHubDelivery) {
             }
             if (job.mergeAttempt) {
                 job.detail = 'Merge attempt has not been confirmed; Morgan must reconcile before any further write.';
+                continue;
+            }
+            if (job.stoppedBaseUpdate?.greenMerge || await automationMergePolicy(this, job, p)) {
+                if (p.state !== 'open' || p.draft || p.mergeable !== true) throw Error('Automation PR waits for GitHub merge readiness');
+                assertAutomationEffects(this.store, job);
+                await currentMergeChecks(this, job, p);
+                job.stage = 'merge'; job.status = 'queued'; job.detail = 'Current-head GitHub checks passed; Office merge queued under Joe’s no-extra-review/QA direction.';
                 continue;
             }
             if (refreshConflicted(this.store, job, p))
