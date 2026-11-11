@@ -1,5 +1,4 @@
 import { maintainAssessmentWork } from '../features/handoff/maintenance';
-import { deliveryOccupied } from './slot-policy';
 import { reconcileStoppingClaims } from './stopping-claims';
 import { offerOrdinaryRelease } from '../features/questions/release-ordinary';
 import { pendingQuestions } from '../features/questions/pending-questions';
@@ -193,8 +192,7 @@ export class Offices {
         };
         // Independent lanes are reserved synchronously before any model is invoked.
         const stopping = (lane: import('../../src/shared').ExecutionLane) => entries.some(entry => entry.store.activeClaims().some(claim => claim.status === 'stopping' && (claim.lane || 'delivery') === lane) || entry.store.state.workLog?.some(work => work.status === 'stopping' && (work.lane || (work.role === 'cto' ? 'cto' : work.role === 'it' ? 'it' : work.role === 'knowledge' ? 'knowledge' : 'delivery')) === lane));
-        const stoppingDelivery = stopping('delivery');
-        for (const entry of entries) maintainAssessmentWork(entry, projectId => deliveryOccupied(this.capacity, projectId, stoppingDelivery), () => scheduledWork(entry, this.stores(), entry.store.clock.now(), 'delivery', {}, true));
+        for (const entry of entries) maintainAssessmentWork(entry);
         await Promise.allSettled([stopping('cto') ? Promise.resolve() : this.ctoScheduler.pump(queues('cto')), stopping('it') ? Promise.resolve() : this.itScheduler.pump(queues('it')), this.operationsScheduler.pump(queues('operations')), stopping('knowledge') ? Promise.resolve() : this.knowledgeScheduler.pump(queues('knowledge')), stopping('delivery') ? Promise.resolve() : this.scheduler.pump(queues('delivery'))]);
     }
 }

@@ -16,10 +16,10 @@ test('enrollment commits once while its own namespaced assessment claim remains 
  enrollFromAssessment(f.store,e.id,e.generation,{status:'clear',reason:''},'Duplicate');expect(f.store.state.features!.filter(f=>f.sourceTicket==='GH-1')).toHaveLength(1);expect(assessmentEpisode(f.store,e.id)!.outcome).toBe('planning-enrolled');
  }finally{f.close();}
 });
-test('Start, deadline, stale generations and unknown ownership cannot create a feature',()=>{
+test('Start, retained deadline decisions, stale generations and unknown ownership cannot create a feature',()=>{
  for(const reason of ['start','deadline','generation','unknown']){
  const f=handoffFixture();try{const e=planning(f);
- if(reason==='start')closeAssessment(f.store,e,'ordinary-by-start');if(reason==='deadline')f.advance(600000);
+ if(reason==='start')closeAssessment(f.store,e,'ordinary-by-start');if(reason==='deadline')closeAssessment(f.store,e,'ordinary-by-deadline');
  const feature=enrollFromAssessment(f.store,e.id,reason==='generation'?e.generation+1:e.generation,{status:reason==='unknown'?'unknown':'clear',reason:'Unknown ownership'},'Feature');
  expect(feature).toBeUndefined();expect(f.store.state.features!.filter(f=>f.sourceTicket==='GH-1')).toHaveLength(0);
  }finally{f.close();}

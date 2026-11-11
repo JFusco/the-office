@@ -1,6 +1,22 @@
 import {expect,test,vi} from 'vitest';
 import {jiraEvidence} from '../../../../server/features/handoff/jira-evidence';
 import {handoffFixture} from './fixture';
+test('native v2 comment pagination retains top-level metadata even for a short first page', async () => {
+ const f=handoffFixture();try{
+ const cursors:string[]=[];
+ const execute=async(_program:string,args:string[])=>{
+  if(args.includes('get'))return JSON.stringify({data:[{key:'CEC-154',summary:'Feature'}]});
+  if(args.includes('comment')){
+   const after=args.includes('--after')?args[args.indexOf('--after')+1]:'';cursors.push(after);
+   return JSON.stringify({data:[{id:after?'second':'first',body:'Preserved comment'}],pageInfo:{hasNextPage:!after,nextCursor:after?null:'next'}});
+  }
+  return JSON.stringify({data:[]});
+ };
+ const evidence=await jiraEvidence({...f.store.project,provider:'azure'},'CEC-154',{execute,signal:new AbortController().signal,directory:f.root,download:async()=>{}});
+ expect(cursors).toEqual(['','next']);expect(evidence.comments.map(comment=>comment.id)).toEqual(['first','second']);
+ expect(evidence.coverage.comments.state).toBe('complete');
+ }finally{f.close();}
+});
 test.each(['object', 'array'])('Jira preserves ADF, comments and direct children from a %s issue response', async (shape) => {
  const f=handoffFixture();try{
  const description={type:'doc',content:[{type:'heading',attrs:{level:2},content:[{type:'text',text:'Structure'}]}]};

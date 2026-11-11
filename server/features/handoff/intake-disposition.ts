@@ -2,7 +2,7 @@ import type { Store } from '../../store/store';
 import type { FeatureBinding } from '../../../src/contracts/features';
 import { enrolled, currentApproval } from '../enrollment-gate';
 import { approvedDelivery } from '../delivery-binding';
-import { assessmentEnabled, latestAssessment, openAssessment, closeAssessment, ASSESSMENT_DEADLINE_MS } from './disposition-store';
+import { assessmentEnabled, latestAssessment, openAssessment, closeAssessment } from './disposition-store';
 import { requestCapture } from './capture-store';
 export type IntakeDisposition={kind:'proceed'}|{kind:'planning';featureId:string;reason:string}|{kind:'assessing';episodeId:string;deadline:string|null;reason:string};
 export function intakeDisposition(store:Store,key:string,binding?:FeatureBinding):IntakeDisposition {
@@ -12,7 +12,7 @@ export function intakeDisposition(store:Store,key:string,binding?:FeatureBinding
  let episode=latestAssessment(store,key);
  if(!episode){store.transaction(()=>{episode=latestAssessment(store,key)||openAssessment(store,key,store.state.tickets.find(t=>t.key===key)?.updated||'',true);requestCapture(store,'assessment:'+episode.id,key,'observation',episode.providerVersion);});}
  if(episode!.closedAt)return {kind:'proceed'};
- return {kind:'assessing',episodeId:episode!.id,deadline:episode!.eligibleAt?new Date(Date.parse(episode!.eligibleAt)+ASSESSMENT_DEADLINE_MS).toISOString():null,reason:'Morgan is assessing whether this ticket needs a feature plan'};
+ return {kind:'assessing',episodeId:episode!.id,deadline:null,reason:'Morgan is assessing whether this ticket needs a feature plan'};
 }
 /** Caller commits this with the accepted Start/enqueue, never before validation. */
 export function closeIntakeEpisode(store:Store,key:string,manual=false) {

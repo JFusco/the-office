@@ -1,3 +1,4 @@
+import { completeSessionCoverage } from './session-coverage';
 import WebSocket from 'ws';
 import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -69,7 +70,7 @@ async function desktopSessions(execute:typeof command){
  // Open-file identities select the live sessions whose context is inspected.
  // A descriptor alone establishes a loaded identity, not an active turn.
  const raw=await execute('lsof',['-nP','-c','codex','-Fpn'],{timeout:10000});
- const files=openRollouts(raw),db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
+ const files=[...new Map(openRollouts(raw).map(file=>[file.path,file])).values()],db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
  try{return files.map(({path})=>loadedCodexSession(db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?').get(path))).filter((s):s is LiveSession=>!!s);}finally{db.close();}
 }
 export class SessionBridge {
@@ -82,8 +83,10 @@ export class SessionBridge {
  private async read(){
   const projects=this.stores().map(s=>s.project);
   const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions).then(sessions=>this.claudeContext(sessions,projects)),this.desktop(this.execute).then(sessions=>this.context(sessions,projects))]);
+  const coverageComplete=completeSessionCoverage(results);
   const names=['Codex live runtime','Claude live sessions','Codex desktop/CLI session identities'];
   const sources=results.map((r,i)=>({name:names[i],ok:r.status==='fulfilled',detail:r.status==='fulfilled'?(i===2?'Loaded identities, current-turn ownership and retained conversation evidence are visible across repositories; missing turn activity remains unknown.':'Live inventory connected.'):`Session inventory could not complete${/timed? out|timeout/i.test(String(r.reason))?' within its read deadline':''}. Ownership remains unverified; this does not establish a login failure.`}));
+  if(coverageComplete&&results[0].status==='rejected')sources[0].detail='The runtime socket is absent. Live Codex process identities and explicit current-turn events supply coverage.';
   const sessions=new Map<string,LiveSession>();
   // Runtime status beats a descriptor; an idle runtime cannot erase a positively active turn in another client.
   for(const r of [results[2],results[0],results[1]])if(r.status==='fulfilled')for(const s of r.value){const id=`${s.provider}:${s.id}`,prior=sessions.get(id);sessions.set(id,{...prior,...s,...(prior&&['active','waiting'].includes(prior.status)&&s.status==='idle'?{status:prior.status,source:prior.source,context:prior.context||s.context}:{})});}
@@ -91,7 +94,7 @@ export class SessionBridge {
   const stores=this.stores();const directories=[...new Set([...sessions.values()].map(s=>s.cwd).concat(stores.map(s=>s.project.repo)))];
   const commons=new Map<string,string>();await Promise.all(directories.map(async cwd=>{try{commons.set(cwd,(await this.execute('git',['rev-parse','--path-format=absolute','--git-common-dir'],{cwd,timeout:5000})).trim());}catch{/* A non-repository chat has no repository identity. */}}));
   for(const s of sessions.values()){const common=commons.get(s.cwd);s.project=stores.find(store=>resolve(s.cwd)===resolve(store.project.repo)||!!common&&common===commons.get(store.project.repo))?.project.id;}
-  const now=Date.now();return this.current={observedAt:new Date(now).toISOString(),expiresAt:new Date(now+45000).toISOString(),complete:sources.every(s=>s.ok),sources,sessions:[...sessions.values()]};
+  const now=Date.now();return this.current={observedAt:new Date(now).toISOString(),expiresAt:new Date(now+45000).toISOString(),complete:coverageComplete,sources,sessions:[...sessions.values()]};
  }
  forProject(store:Store,key='',requestId=''){
   const now=Date.now(),fresh=now<=Date.parse(this.current.expiresAt);

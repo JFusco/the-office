@@ -1,20 +1,15 @@
 import { failEvidenceCapture } from './capture-failure';
 import { resumeAssessmentIntake } from './intake-routing';
 import type { OfficeEntry } from '../../scheduling/scheduled-work';
-import type { ScheduledWork } from '../../scheduling/scheduler';
-import { assessmentEnabled, assessmentEpisodes, saveAssessment, closeAssessment, progressAssessmentDeadlines } from './disposition-store';
+import { assessmentEnabled, assessmentEpisodes, saveAssessment, closeAssessment } from './disposition-store';
 import { captureRequests } from './capture-store';
 import { maintainCaptureRequests, capturesEnabled, captureAllowed } from './scheduled-captures';
-import { cancelObsoleteAssessment } from './planning-assessment';
-import { deadlineQueueObservation } from './scheduled-assessments';
 
 /** Runs after stopped-process cleanup. Never releases a worker claim or reserves capacity. */
-export function maintainAssessmentWork(entry: OfficeEntry, occupied: (projectId: string) => boolean, projection: () => ScheduledWork[]) {
+export function maintainAssessmentWork(entry: OfficeEntry) {
     const { store } = entry;
     if (!capturesEnabled(store)) return;
     const now = store.clock.now();
-    const closed = progressAssessmentDeadlines(store, now, occupied, deadlineQueueObservation(entry, now, projection));
-    closed.forEach(episode => cancelObsoleteAssessment(store, episode));
     store.transaction(() => {
         for (const capture of captureRequests(store)) {
             if (!captureAllowed(store,capture.target) || capture.status !== 'working' || store.activeClaims().some(c => c.work.id === 'evidence-capture:' + capture.target)) continue;
