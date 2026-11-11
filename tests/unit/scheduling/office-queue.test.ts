@@ -411,3 +411,60 @@ test.each([true,false])('stopping process cleanup precedes deadline occupancy ob
   expect(assessmentEpisode(f.entry.store,f.episode.id)?.reason).toBe(alive?'assessment not started: delivery lane occupied':'assessment not started: deadline reached before dispatch');expect(other.activeClaims().some(c=>c.id===claim.id)).toBe(alive);expect(f.run).not.toHaveBeenCalled();
  }finally{delete FEATURE_PLANNING[f.entry.store.project.id];vi.useRealTimers();}
 });
+test('bounded helper stopping claim remains a delivery blocker until its group is absent',async()=>{
+ const office=offices(3),entry=office.get('cec');let alive=true;
+ vi.spyOn(process,'kill').mockImplementation(()=>{if(alive)return true;throw Object.assign(new Error('gone'),{code:'ESRCH'});});
+ const claim=entry.store.claimWork({kind:'feature',projectId:'cec',id:'feature-owner'},'fixture','feature-review')!;
+ retainStoppingClaim(entry.store,claim,[4242]);
+ const message=office.get('cms-field-vocabulary').conversations.enqueue({id:crypto.randomUUID(),body:'wait for termination'});let calls=0;office.get('cms-field-vocabulary').engine.agents.followup=async()=>{calls++;return reply;};
+ await office.pump();expect(calls).toBe(0);expect(entry.store.activeClaims()[0].status).toBe('stopping');
+ alive=false;await office.pump();expect(calls).toBe(1);expect(entry.store.activeClaims()).toEqual([]);expect(message.status).toBe('answered');
+ office.dispose();
+});
+test('a malformed saved question round leaves other questions, snapshots and dispatch available', async () => {
+    const office = offices();
+    const entry = office.get('cec');
+    const other = office.get('cms-field-vocabulary');
+    const projectId = entry.store.project.id;
+    FEATURE_PLANNING[projectId] = { progression: 'automatic' };
+    try {
+        const malformed = createFeature(entry.store, {
+            action: 'create', requestId: 'malformed', title: 'Legacy round', intent: 'Synthetic',
+        });
+        malformed.status = 'waiting';
+        malformed.rounds.push({
+            id: 'legacy', revision: malformed.revision, author: 'product',
+            createdAt: new Date().toISOString(), answers: {},
+            questions: [{ id: 'q', question: 'No recommendation?' } as any],
+        });
+
+        const valid = createFeature(entry.store, {
+            action: 'create', requestId: 'valid', title: 'Current round', intent: 'Synthetic',
+        });
+        valid.status = 'waiting';
+        valid.rounds.push({
+            id: 'current', revision: valid.revision, author: 'product',
+            createdAt: new Date().toISOString(), answers: {},
+            questions: [{ id: 'q', question: 'Which option?', recommendation: 'First', choices: ['First', 'Second'] }],
+        });
+
+        const questions = office.questions();
+        expect(questions.map(({ featureId, roundId }) => ({ featureId, roundId })))
+            .toEqual([{ featureId: valid.id, roundId: 'current' }]);
+        expect(office.snapshot('cec').featureQuestions).toEqual(questions);
+        expect(office.snapshot('cms-field-vocabulary').featureQuestions).toEqual(questions);
+        expect(() => office.questionEvents()).not.toThrow();
+
+        const message = other.conversations.enqueue({ id: crypto.randomUUID(), body: 'unrelated' });
+        let calls = 0;
+        other.engine.agents.followup = async () => { calls++; return reply; };
+        await expect(office.pump()).resolves.toBeUndefined();
+        expect(calls).toBe(1);
+        expect(message.status).toBe('answered');
+    } finally {
+        delete FEATURE_PLANNING[projectId];
+        office.dispose();
+    }
+});
+import {retainStoppingClaim} from '../../../server/scheduling/stopping-claims';
+import {createFeature} from '../../../server/features/commands';

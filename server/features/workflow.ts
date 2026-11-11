@@ -1,3 +1,4 @@
+import { readEvidence } from './handoff/evidence-artifacts';
 import { reconcilePublication } from './release/reconcile-publication';
 import type { Feature } from '../../src/contracts/features';
 import type { Store } from '../store/store';
@@ -6,9 +7,10 @@ import { command } from '../workers/process';
 import { createFeature, commandFeature, featureById } from './commands';
 import { prepareBaseline } from './planning-baseline';
 import { beginReader, acceptReader } from './reader-attempts';
-import { DiscoverySchema, PlanSchema } from './feature-schema';
+import { RawDiscoverySchema, RawPlanSchema } from './feature-schema';
 import { discoveryPrompt, planPrompt } from './discovery-prompts';
-import { FeatureReviewRunner } from './review-run';
+import { ReviewStateError } from './review-state-error';
+import { FeatureReviewRunner, importReview } from './review-run';
 import { approveFeature } from './approval';
 import { publishFeature, type FeaturePublisher } from './publication';
 import { GitHubFeaturePublisher } from './github-publication';
@@ -26,13 +28,16 @@ export class FeatureWorkflow {
         private publisher: (feature: Feature) => FeaturePublisher = feature => store.project.provider === 'github' ? new GitHubFeaturePublisher(store, feature, execute) : new JiraFeaturePublisher(store, feature, execute)) {
         this.review = new FeatureReviewRunner(store, execute);
     }
+    ownership: (key: string) => Promise<import('./questions/release-ordinary').QuestionOwnership> = async () => ({status:'unknown',reason:'Current ownership is unavailable'});
     create(raw: unknown) { return createFeature(this.store, raw); }
-    async change(id: string, raw: unknown) {
+    async change(id: string, raw: unknown, authorize: () => void = () => {}) {
         const feature = featureById(this.store, id);
         const action = (raw as { action?: string })?.action;
         if (action === 'approve') return approveFeature(this.store, id, raw, manifest => this.publisher(feature).validate(manifest), this.execute);
-        const result = commandFeature(this.store, id, raw);
-        if (action === 'pause' || action === 'revise') this.pause(id);
+        const owner = action === 'harness-action' && (raw as {operation?:string;optionId?:string}).operation === 'apply' && feature.rounds.some(r=>r.options?.some(o=>o.id===(raw as {optionId?:string}).optionId&&o.action==='release-to-ordinary')) ? await this.ownership(feature.sourceTicket) : undefined;
+        authorize();
+        const result = commandFeature(this.store, id, raw, owner);
+        if (action === 'pause' || action === 'revise' || result.paused) this.pause(id);
         return result;
     }
     pause(id?: string) {
@@ -65,8 +70,8 @@ export class FeatureWorkflow {
             if (feature.revision !== revision || feature.paused || this.store.state.paused || feature.activeAttempt !== attemptId) throw new Error('Feature reader changed before dispatch');
             const role = attempt.stage === 'feature-plan' ? 'developer' : 'analyst', prior = this.workers.active.get(role);
             const pending = attempt.stage === 'feature-plan'
-                ? this.workers.run('developer', planPrompt(feature, context), PlanSchema, options)
-                : this.workers.run('analyst', discoveryPrompt(feature), DiscoverySchema, options);
+                ? this.workers.run('developer', planPrompt(feature, context), RawPlanSchema, options)
+                : this.workers.run('analyst', discoveryPrompt(feature, feature.evidence && feature.sourceTicket ? readEvidence(this.store, feature.sourceTicket, feature.evidence) : undefined), RawDiscoverySchema, options);
             const controller = this.workers.active.get(role);
             if (controller && controller !== prior) this.running.set(id, controller);
             const output = await pending;
@@ -80,6 +85,7 @@ export class FeatureWorkflow {
                 const current = featureById(this.store, id), attempt = current.attempts.find(a => a.id === attemptId);
                 if (attempt?.status === 'working') { attempt.status = current.paused || this.store.state.paused ? 'interrupted' : 'failed'; attempt.endedAt = this.store.clock.now().toISOString(); }
                 if (current.revision !== revision) return;
+                if (error instanceof ReviewStateError && current.review?.run === error.evidence.run) { current.phase='review'; importReview(this.store,current,error.evidence); return; }
                 if (recoverFailure(this.store, current, error, attemptId || `${revision}:${current.phase}:${current.recovery?.generation ?? 0}`)) return;
                 current.status = 'blocked'; current.detail = String(error);
                 this.store.emit('feature-blocked', current.title + ': ' + current.detail, 'analyst');

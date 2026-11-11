@@ -31,9 +31,9 @@ export function deliveryPreflight(store: Store, feature: Feature, item: FeatureP
     } else {
         const ticket = state.tickets.find(t => t.key === item.key);
         if (!ticket) return wait('Waiting for the source ticket in the mailbox');
+        if (ticket.type === 'Epic' || ticket.subtask) return {kind: 'conflict', reason: 'This issue type requires supported decomposition before implementation'};
         const reason = eligibility(ticket) || ticket.blocker;
         if (reason) return wait(reason);
-        if (ticket.type === 'Epic') return {kind: 'conflict', reason: 'An Epic requires supported decomposition before implementation'};
         if (ticket.stage !== 'mailbox') return wait('Existing delivery requires its resume path');
     }
     return {kind: 'ready', reason: 'Ready for the existing guarded intake path'};

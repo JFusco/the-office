@@ -5,7 +5,7 @@ import { FEATURE_PLANNING } from '../../office/config';
 import { featurePolicy } from '../progression/policy';
 
 export const ASSESSMENT_DEADLINE_MS = 10 * 60_000;
-export type AssessmentOutcome = 'ordinary-by-model' | 'ordinary-by-rule' | 'ordinary-by-start' | 'ordinary-by-admission' | 'ordinary-by-deadline' | 'ordinary-by-unavailable' | 'planning-enrolled' | 'departed';
+export type AssessmentOutcome = 'ordinary-by-release' | 'ordinary-by-model' | 'ordinary-by-rule' | 'ordinary-by-start' | 'ordinary-by-admission' | 'ordinary-by-deadline' | 'ordinary-by-unavailable' | 'planning-enrolled' | 'departed';
 export interface AssessmentResult {
  disposition: 'ordinary' | 'planning'; rationale: string; requirements: string[]; acceptanceCriteria: string[]; settledDecisions: string[]; openQuestions: string[];
  imageObservations: { evidenceId: string; observation: string }[];

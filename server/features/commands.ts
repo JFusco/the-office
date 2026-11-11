@@ -1,3 +1,6 @@
+import { applyHarnessAction } from './questions/harness-action';
+import type { QuestionOwnership } from './questions/release-ordinary';
+import { pendingRound } from './questions/pending-round';
 import { reviseLineage } from './revise-lineage';
 import { randomUUID } from 'node:crypto';
 import type { Feature } from '../../src/contracts/features';
@@ -9,6 +12,7 @@ import { assertEnrollable } from './enrollment-gate';
 import { FEATURE_PLANNING } from '../office/config';
 import { featurePolicy } from './progression/policy';
 import { pendingRounds, roundAuthor } from './questions/pending-round';
+import { normalizeRound } from './questions/normalize-round';
 import { FeatureError } from './progression/failure';
 
 export function featureById(store: Store, id: string): Feature {
@@ -25,7 +29,7 @@ export function reviewQuestions(feature: Feature, now: string) {
     const remaining = questions.filter(q => !answers[q.id]);
     review.pendingDecision = undefined;
     if (remaining.length) {
-        if (!rounds.some(r => r.questions.some(q => !r.answers[q.id]))) feature.rounds.push({ id: randomUUID(), author: 'review', revision: feature.revision, reviewRun: review.run, reviewRevision: review.revision, createdAt: now, answers: {}, questions: remaining.slice(0, 3) });
+        if (!rounds.some(r => r.questions.some(q => !r.answers[q.id]))) feature.rounds.push({ id: randomUUID(), author: 'review', revision: feature.revision, reviewRun: review.run, reviewRevision: review.revision, createdAt: now, answers: {}, questions: normalizeRound(remaining.slice(0, 3)) });
         feature.status = 'waiting'; feature.detail = 'The independent review needs your product decision.';
     } else if (questions.length) {
         review.pendingDecision = JSON.stringify(Object.fromEntries(questions.map(q => [q.id, answers[q.id]])));
@@ -39,7 +43,7 @@ export function mutation<T>(store: Store, feature: Feature, requestId: string, e
             if (prior.digest !== hash) throw new Error('Request ID belongs to different content');
             return undefined;
         }
-        if (feature.revision !== expected) throw new Error('Feature changed; reload before submitting');
+        if (feature.revision !== expected) throw new FeatureError('revision-change', 'Feature changed; reload before submitting');
         if (feature.status === 'working' && !['pause', 'revise'].includes((input as {action?: string}).action || ''))
             throw new Error('Feature assignment is still running');
         const result = apply();
@@ -76,30 +80,32 @@ export function createFeature(store: Store, raw: unknown): Feature {
         return feature;
     });
 }
-export function commandFeature(store: Store, id: string, raw: unknown): Feature {
+export function commandFeature(store: Store, id: string, raw: unknown, ownership?: QuestionOwnership): Feature {
     const input = FeatureCommandSchema.parse(raw), feature = featureById(store, id);
     if (input.action === 'create' || input.action === 'approve') throw new Error('Command requires its dedicated operation');
     mutation(store, feature, input.requestId, input.expectedRevision, input, () => {
         const now = store.clock.now().toISOString();
+        if (input.action === 'harness-action') { applyHarnessAction(store, feature, input.operation === 'apply' ? {roundId:input.roundId,operation:'apply',optionId:input.optionId!} : {roundId:input.roundId,operation:'note',note:input.note!}, ownership); return; }
         if (input.action === 'pause') { feature.paused = true; feature.detail = 'Feature paused; active delivery keeps its existing ownership.'; return; }
         if (input.action === 'resume') { feature.paused = false; if (feature.status === 'blocked') feature.status = 'queued'; feature.enqueuedAt = now; return; }
         if (input.action === 'reconcile') { if (feature.status !== 'blocked') throw new Error('Only blocked feature work needs reconciliation'); if (feature.review) feature.review.pendingRecovery = true; feature.status = 'queued'; feature.enqueuedAt = now; return; }
         if (input.action === 'answer') {
             const round = feature.rounds.find(r => r.id === input.roundId);
             if (round && roundAuthor(round) === 'harness') throw new FeatureError('harness-action-required', 'Harness rounds require a harness action; product answers cannot execute recovery');
-            if (!round || round.id !== input.roundId || round.revision !== feature.revision || Object.keys(round.answers).length) throw new Error('Question round is no longer current');
+            if (!round || !pendingRound(feature, round) || Object.keys(round.answers).length) throw new FeatureError('stale-round', 'Question round is no longer current');
+            if (input.reviewRun !== undefined && input.reviewRun !== round.reviewRun || input.reviewRevision !== undefined && input.reviewRevision !== round.reviewRevision) throw new FeatureError('stale-round', 'Review identity changed');
             if (Object.keys(input.answers).length !== round.questions.length || round.questions.some(q => !input.answers[q.id]) || Object.keys(input.answers).some(id => !round.questions.some(q => q.id === id))) throw new Error('Answer every question in the displayed round');
             round.answers = input.answers;
             feature.conversation.push({ id: randomUUID(), role: 'human', text: round.questions.map(q => q.question + '\n' + input.answers[q.id]).join('\n\n'), at: now });
             if (round.reviewRevision !== undefined) {
-                if (!feature.review || feature.review.run !== round.reviewRun || feature.review.revision !== round.reviewRevision) throw new Error('Review decision is stale');
+                if (!feature.review || feature.review.run !== round.reviewRun || feature.review.revision !== round.reviewRevision) throw new FeatureError('stale-round', 'Review decision is stale');
                 feature.phase = 'review'; reviewQuestions(feature, now); return;
             } else { feature.revision++; feature.phase = 'discovery'; }
         }
         if (input.action === 'create-plan') {
             const brief = feature.briefs.at(-1);
             if (feature.phase !== 'discovery' || pendingRounds(feature).length || !brief || brief.digest !== input.briefDigest) throw new Error('Confirm the current brief after answering material questions');
-            feature.confirmedBrief = brief.digest; feature.phase = 'plan';
+            feature.confirmedBrief = brief.digest; feature.briefAuthority = { kind: 'human', actor: 'Joe' }; feature.phase = 'plan';
         }
         if (input.action === 'revise') {
             reviseLineage(feature);

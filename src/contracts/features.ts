@@ -7,7 +7,7 @@ export interface FeatureQuestion { id: string; question: string; recommendation:
 export type FeatureRoundAuthor = 'product' | 'review' | 'harness';
 export type FeatureHarnessAction = 'retry' | 'release-to-ordinary' | 'pause';
 export interface FeatureHarnessOption extends FeatureOption { action: FeatureHarnessAction; target: string; preconditionsDigest: string }
-export interface FeatureRound { id: string; revision: number; questions: FeatureQuestion[]; answers: Record<string, string>; createdAt: string; reviewRevision?: number; reviewRun?: string; author?: FeatureRoundAuthor; options?: FeatureHarnessOption[]; notes?: { id: string; text: string; at: string }[]; resolvedAt?: string }
+export interface FeatureRound { id: string; revision: number; questions: FeatureQuestion[]; answers: Record<string, string>; createdAt: string; reviewRevision?: number; reviewRun?: string; author?: FeatureRoundAuthor; options?: FeatureHarnessOption[]; notes?: { id: string; text: string; at: string }[]; resolvedAt?: string; appliedOptionId?: string }
 export type FeatureProgression = 'manual' | 'automatic';
 export type FeatureWait = 'policy' | 'pause' | 'questions' | 'provider' | 'processes' | 'fence' | 'capacity' | 'prerequisites' | 'retry';
 export interface FeatureRecovery {
@@ -19,7 +19,7 @@ export interface FeatureHandoff { episodeId: string; key: string; assessmentId: 
 export interface FeatureRelease { id: string; revision: number; at: string; outcome: 'authorized' | 'replan' | 'ordinary'; detail: string }
 export interface FeaturePolicyAuthority { kind: 'policy'; projectId: string; policyDigest: string; policyVersion: string; evidenceDigest?: string }
 export type FeatureAuthority = { kind: 'human'; actor: 'Joe' } | FeaturePolicyAuthority;
-export interface FeatureQuestionProjection { projectId: string; projectName: string; ticket?: string; featureId: string; title: string; asker: FeatureRoundAuthor; revision: number; roundId: string; createdAt: string; questions: FeatureQuestion[]; options?: FeatureOption[] }
+export interface FeatureQuestionProjection { projectId: string; projectName: string; ticket?: string; featureId: string; title: string; asker: FeatureRoundAuthor; revision: number; roundId: string; createdAt: string; reviewRun?: string; reviewRevision?: number; questions: FeatureQuestion[]; options?: FeatureOption[] }
 export interface FeaturePlanningActivation { assessment: boolean; progression: FeatureProgression; policyDigest: string }
 export interface FeatureBaseline { repository: string; remote?: string; ref: string; sha: string; path: string; files: Record<string, { digest: string; mode: number }>; scope: string[] }
 export interface FeatureOperation {
@@ -62,7 +62,7 @@ export interface Feature {
     conversation: { id: string; role: 'human' | 'analyst' | 'developer' | 'review' | 'pm' | 'harness'; text: string; at: string }[];
     baseline?: FeatureBaseline; baselineHistory?: FeatureBaseline[]; manifest?: FeatureManifest; review?: FeatureReview;
     approvals: FeatureApproval[]; publication: FeaturePublicationItem[]; attempts: FeatureAttempt[];
-    activeAttempt?: string; confirmedBrief?: string; timing: QueueTiming[];
+    activeAttempt?: string; confirmedBrief?: string; briefAuthority?: FeatureAuthority; releasedAt?: string; releasedSourceTicket?: string; timing: QueueTiming[];
     requests: Record<string, { digest: string; resultRevision: number; response?: string }>;
     reviewHistory: FeatureReview[];
 }
