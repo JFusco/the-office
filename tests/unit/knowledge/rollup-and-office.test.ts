@@ -16,7 +16,7 @@ afterEach(() => cleanup.splice(0).forEach(fn => fn()));
 // Friday 2026-11-06, 6:30 PM Eastern.
 function setup(start = '2026-11-06T23:30:00Z', projectId = 'brain') { const fixture = knowledgeStore(projectId, start); cleanup.push(fixture.close); return fixture; }
 function control(store: ReturnType<typeof setup>['store']) { const value = new ControlStore(':memory:', store.clock); cleanup.push(() => value.close()); return value; }
-const lesson = (id: string, overrides: Partial<Lesson> = {}): Lesson => ({ id, scope: 'project', kind: 'pitfall', when: 'Fixture situation', check: 'Fixture check', statement: `Lesson ${id}`, detail: '', stages: ['any'], paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'source-job:completed', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', ...overrides });
+const lesson = (id: string, overrides: Partial<Lesson> = {}): Lesson => ({ id, scope: 'project', tier: 'guidance', revision: 1, kind: 'pitfall', when: 'Fixture situation', check: 'Fixture check', statement: `Lesson ${id}`, detail: '', stages: ['any'], paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'source-job:completed', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', ...overrides });
 
 test('narrative retries and saved reports use the same frozen learning snapshot', async () => {
     const { store, advance } = setup();

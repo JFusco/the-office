@@ -59,7 +59,7 @@ export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pend
             ...(store.state.outbox || []).filter(item => item.ticket === job.key).slice(-ENTRIES).map(item => ({ outbox: item.title, status: item.status, detail: clip(item.detail, SHORT) })),
         ].slice(-ENTRIES),
         notes: store.state.projectNotes.filter(note => note.ticket === job.key).slice(-10).map(note => ({ summary: clip(note.summary, SHORT), detail: clip(note.detail, SHORT) })),
-        activeLessons: [...(store.state.knowledge?.lessons || []), ...(store.state.knowledge?.officeLessons || [])].filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ scope: lesson.scope, revision: lesson.revision || 1, id: lesson.id, when: lesson.when, statement: lesson.statement, check: lesson.check, stages: lesson.stages })),
+        activeLessons: [...(store.state.knowledge?.lessons || []), ...(store.state.knowledge?.officeLessons || [])].filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ scope: lesson.scope, revision: lesson.revision, id: lesson.id, when: lesson.when, statement: lesson.statement, check: lesson.check, stages: lesson.stages })),
         ...(job.maintenance ? { maintenance: maintenanceFacts(job, catalog) } : {}),
         omitted: {},
         catalog,

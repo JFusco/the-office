@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { lessonsView } from '../../../src/knowledge/lessons-view';
 import type { KnowledgeState, Lesson } from '../../../src/shared';
 
-const lesson = (id: string, status: Lesson['status'], createdAt: string, retiredAt?: string): Lesson => ({ id, scope: 'project', kind: 'tooling', when: 'Fixture situation', check: 'Fixture check', statement: id, detail: '', stages: ['any'], paths: [], status, evidence: [], sourceRetrospectiveId: '', createdAt, updatedAt: createdAt, retiredAt });
+const lesson = (id: string, status: Lesson['status'], createdAt: string, retiredAt?: string): Lesson => ({ id, scope: 'project', tier: 'guidance', revision: 1, kind: 'tooling', when: 'Fixture situation', check: 'Fixture check', statement: id, detail: '', stages: ['any'], paths: [], status, evidence: [], sourceRetrospectiveId: '', createdAt, updatedAt: createdAt, retiredAt });
 
 test('groups lessons newest first, keeps ten recent retrospectives and orders retries by age', () => {
     const knowledge: KnowledgeState = { enabled: true, consumed: [], lessons: [lesson('a', 'active', '2026-11-01'), lesson('b', 'active', '2026-11-03'), lesson('c', 'retired', '2026-10-01', '2026-11-04')],

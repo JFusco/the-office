@@ -27,11 +27,11 @@ export function curateLesson(knowledge: KnowledgeState, proposed: Lesson, action
     if (!target) return 'skipped';
     if (action === 'update') {
         const { when, statement, check, detail, kind, stages, paths, validUntil } = proposed;
-        Object.assign(target, { when, statement, check, detail, kind, stages, paths, validUntil, revision: (target.revision || 1) + 1, updatedAt: now,
+        Object.assign(target, { when, statement, check, detail, kind, stages, paths, validUntil, revision: target.revision + 1, updatedAt: now,
             evidence: mergeEvidence(target.evidence, proposed.evidence) });
         return 'updated';
     }
-    Object.assign(target, { status: 'retired', retiredAt: now, retiredBy: 'harper', supersededBy: proposed.id, revision: (target.revision || 1) + 1, updatedAt: now });
+    Object.assign(target, { status: 'retired', retiredAt: now, retiredBy: 'harper', supersededBy: proposed.id, revision: target.revision + 1, updatedAt: now });
     knowledge.lessons.push({ ...proposed, supersedes: target.id });
     return 'superseded';
 }

@@ -23,9 +23,8 @@ export interface RepositoryInstruction {
 export type LessonTier = 'hypothesis' | 'guidance' | 'procedure' | 'rule';
 export interface Lesson {
     originProjectId?:string;
-    /** Absent only in legacy snapshots; normalized to guidance/revision 1. */
-    tier?: LessonTier;
-    revision?: number;
+    tier: LessonTier;
+    revision: number;
     needsReview?: boolean;
     sourceReviewReason?: 'source-changed' | 'source-withdrawn';
     sourceSubject?: LearningSubject;

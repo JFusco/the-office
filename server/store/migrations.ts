@@ -38,9 +38,7 @@ export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject, n
     knowledge.rollups ??= [];
     knowledge.officeLessons ??= [];
     knowledge.officeProposals ??= [];
-    for (const lesson of knowledge.lessons) lesson.scope ??= 'project';
     seedProjectLessons(knowledge, project.id);
-    for (const lesson of [...knowledge.lessons, ...(knowledge.officeLessons || [])]) { lesson.tier ??= 'guidance'; lesson.revision ??= 1; }
     knowledge.learningStartedAt ??= now;
     knowledge.baselines = [...new Set([...knowledge.baselines, ...LEARNING_BASELINES])];
     knowledge.learningConsumed ??= [];
