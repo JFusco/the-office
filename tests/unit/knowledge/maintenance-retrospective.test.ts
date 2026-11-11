@@ -39,7 +39,7 @@ function seedRun(store: ReturnType<typeof setup>['store'], run: MaintenanceRun) 
     return run;
 }
 let sequence = 0;
-const lesson = (statement: string, stages: Lesson['stages']): Lesson => ({ id: `lesson-${++sequence}`, scope: 'project', kind: 'process', when: 'Fixture situation', check: 'Fixture check', statement, detail: '', stages, paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'r', createdAt: '2026-11-01T00:00:00Z', updatedAt: '' });
+const lesson = (statement: string, stages: Lesson['stages']): Lesson => ({ id: `lesson-${++sequence}`, scope: 'project', tier: 'guidance', revision: 1, kind: 'process', when: 'Fixture situation', check: 'Fixture check', statement, detail: '', stages, paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'r', createdAt: '2026-11-01T00:00:00Z', updatedAt: '' });
 
 test('a blocked run is one runnable retrospective, keyed by its step count; a completed run is another; consumed ids never repeat', () => {
     const { store } = setup();

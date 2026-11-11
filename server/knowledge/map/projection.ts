@@ -18,7 +18,7 @@ export function knowledgeMap(context: KnowledgeContext, project: string,global =
     const knowledge = knowledgeSnapshot(context.registry,project,context.stores.get(project)?.state.knowledge);
     const lessons = [...(global?[]:knowledge?.lessons || []), ...(knowledge?.officeLessons || [])].filter(l => l.status === 'active' && lessonVisible(context.registry, project, l)).slice(0, 100);
     for (const lesson of lessons) {
-        const id = `lesson:${lesson.scope}:${lesson.id}`; nodes.push({ id, title: lesson.statement, kind: 'lesson',scope:lesson.scope, detail: `${lesson.detail}\n\nRevision ${lesson.revision||1} · ${lesson.scope} · ${lesson.tier || 'guidance'}${lesson.needsReview ? ' · review needed' : ''}` });
+        const id = `lesson:${lesson.scope}:${lesson.id}`; nodes.push({ id, title: lesson.statement, kind: 'lesson',scope:lesson.scope, detail: `${lesson.detail}\n\nRevision ${lesson.revision} · ${lesson.scope} · ${lesson.tier}${lesson.needsReview ? ' · review needed' : ''}` });
         for (const proof of lesson.evidence) if (evidence.some(e => e.id === proof.ref)) edges.push({ source: id, target: proof.ref, kind: 'citation' });
         if(global)edges.push({source:'office:knowledge',target:id,kind:'promotion'});
     }

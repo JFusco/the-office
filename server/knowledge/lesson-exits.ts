@@ -11,7 +11,7 @@ function retire(store: Store, lessonId: string, eligible: (lesson: Lesson) => bo
     if (!lesson || !eligible(lesson)) return;
     store.transition('lesson-retired', `Lesson ${reason}: ${lesson.statement}`, () => {
         const now = store.clock.now().toISOString();
-        Object.assign(lesson, { revision: (lesson.revision || 1) + 1, status: 'retired', retiredAt: now, retiredBy, updatedAt: now });
+        Object.assign(lesson, { revision: lesson.revision + 1, status: 'retired', retiredAt: now, retiredBy, updatedAt: now });
     }, 'knowledge', undefined, lesson.evidence.flatMap(proofBindings));
 }
 

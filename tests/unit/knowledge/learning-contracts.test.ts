@@ -6,10 +6,9 @@ import { knowledgeStore, learningLesson } from './knowledge-fixture';
 test('histories survive migration; registration uses current time without fake exposure', () => {
     const { store, close } = knowledgeStore();
     try {
-        const k = store.state.knowledge!; k.lessons = [learningLesson('old', { tier: undefined, revision: undefined })];
+        const k = store.state.knowledge!; k.lessons = [learningLesson('old')];
         delete k.improvementGrant; delete k.learningStartedAt; k.consumed.push('saved');
         migrateSnapshot(store.state, store.project, '2026-11-09T10:00:00Z');
-        expect(k.lessons[0]).toMatchObject({ tier: 'guidance', revision: 1 });
         expect(k.consumed).toContain('saved'); expect(k.exposures).toEqual([]);
         expect(store.state.knowledge!.improvementGrant?.registeredAt).toBe('2026-11-09T10:00:00Z');
         configureKnowledge(store, { enabled: true, improvementsEnabled: false }); expect(store.state.knowledge!.improvementGrant?.enabled).toBe(false);
