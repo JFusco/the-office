@@ -1,5 +1,6 @@
 /** One human-approved forward-only repair; original attempt remains retained, never relabeled success. */
 export interface PackedPublicationRepair {
+    draftLinkContinuation?: { at: string; originalDetail: string; proofPath: string; proofSha256: string };
     requestId: string;
     claimId: string;
     proofPath: string;

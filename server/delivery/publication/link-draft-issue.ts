@@ -9,6 +9,7 @@ import { readBoundedNoFollowSync } from '../../store/owned-artifact';
 import type { Store } from '../../store/store';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { publicationReadArgs, readPublication } from './read-command';
+import { draftReadHeadMatches } from './draft-read-head';
 
 /** Trust only the ledger written during the original live assignment, matched byte for byte
  * to its owned artifact. Neither current source/revision nor a newly supplied file proves history. */
@@ -27,7 +28,7 @@ function protectedOriginalClaim(store: Store, job: TicketJob, root: string, clai
             const proof = JSON.parse(record.body);
             return proof.protocol === 'draft-publication-read-v1' && /^[a-f0-9]{64}$/.test(proof.revision) &&
                 proof.repository === store.project.repository && proof.jobId === job.id && proof.key === job.key &&
-                proof.issue === Number(job.key.slice(3)) && (proof.pr === job.pr || proof.read === 'viewer' && proof.pr === 0) && proof.head === job.head &&
+                proof.issue === Number(job.key.slice(3)) && (proof.pr === job.pr || proof.read === 'viewer' && proof.pr === 0) && draftReadHeadMatches(store, job, claim, proof) &&
                 proof.lane === 'delivery' && isDeepStrictEqual(proof.claim, { ...claim, status: 'running', endedAt: '' }) &&
                 proof.program === 'gh' && proof.readOnly === true &&
                 isDeepStrictEqual(proof.args, publicationReadArgs(proof.repository, proof.read, proof.read === 'issue-comments' ? proof.issue : proof.pr)) &&
@@ -38,6 +39,22 @@ function protectedOriginalClaim(store: Store, job: TicketJob, root: string, clai
                 (proof.attempts.length === 1 || /^http-(?:408|429|499|502|503|504)$/.test(proof.attempts[0].outcome));
         } catch { return false; }
     });
+}
+
+/** All former draft claims need their original live read ledger; no current observation can backfill one. */
+export function assertDraftClaimHistory(store: Store, job: TicketJob, root: string, current?: string) {
+    const claims = store.db.prepare('SELECT body FROM work_claims WHERE work_key=?').all(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id })) as { body: string }[];
+    const prefix = `harness:${job.id}:draft-link-comment:`;
+    const history = store.db.prepare('SELECT body FROM effects WHERE substr(id,1,?)=?').all(prefix.length, prefix) as { body: string }[];
+    const neverDispatched = history.every(row => {
+        const intent: EffectIntent = JSON.parse(row.body);
+        return intent.status === 'rejected' && intent.dispatchedAt === '' && intent.operation === 'github-issue-comment' &&
+            isDeepStrictEqual(intent.work, { projectId: store.project.id, kind: 'delivery', id: job.id }) && intent.attemptId === job.id;
+    });
+    if (!neverDispatched || claims.some(row => {
+        const claim: WorkClaim = JSON.parse(row.body);
+        return claim.id !== current && claim.stage === 'draft' && !protectedOriginalClaim(store, job, root, claim);
+    })) throw new Error('Earlier draft claim has no certain comment receipt; read back its original execution before another write');
 }
 
 /** One issue-link comment per original job/issue/PR. Historical uncertain writers are never replayed. */
@@ -82,20 +99,7 @@ export async function linkDraftIssue(delivery: GitHubDelivery, job: TicketJob, i
     const existing = await findComment();
     if (prior?.status === 'verified' && !existing) throw new Error('Previously verified draft comment is no longer observable');
     if (!existing && (!prior || prior.status === 'prepared')) {
-        const current = currentAssignment()?.claim.id;
-        const claims = store.db.prepare('SELECT body FROM work_claims WHERE work_key=?').all(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id })) as { body: string }[];
-        const prefix = `harness:${job.id}:draft-link-comment:`;
-        const history = store.db.prepare('SELECT body FROM effects WHERE substr(id,1,?)=?').all(prefix.length, prefix) as { body: string }[];
-        const neverDispatched = history.every(row => {
-            const intent: EffectIntent = JSON.parse(row.body);
-            return intent.status === 'rejected' && intent.dispatchedAt === '' && intent.operation === 'github-issue-comment' &&
-                isDeepStrictEqual(intent.work, { projectId: store.project.id, kind: 'delivery', id: job.id }) && intent.attemptId === job.id;
-        });
-        if (!neverDispatched || claims.some(row => {
-            const claim: WorkClaim = JSON.parse(row.body);
-            return claim.id !== current && claim.stage === 'draft' && !protectedOriginalClaim(store, job, root, claim);
-        }))
-            throw new Error('Earlier draft claim has no certain comment receipt; read back its original execution before another write');
+        assertDraftClaimHistory(store, job, root, currentAssignment()?.claim.id);
     }
     await harnessEffect(store, job, { key, operation: 'github-issue-comment', target: url, payload, guard,
         dispatch: async () => {
