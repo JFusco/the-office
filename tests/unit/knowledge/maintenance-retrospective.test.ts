@@ -39,7 +39,7 @@ function seedRun(store: ReturnType<typeof setup>['store'], run: MaintenanceRun) 
     return run;
 }
 let sequence = 0;
-const lesson = (statement: string, stages: Lesson['stages']): Lesson => ({ id: `lesson-${++sequence}`, scope: 'project', recurrences: [], kind: 'process', statement, detail: '', stages, paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'r', createdAt: '2026-11-01T00:00:00Z', updatedAt: '' });
+const lesson = (statement: string, stages: Lesson['stages']): Lesson => ({ id: `lesson-${++sequence}`, scope: 'project', kind: 'process', when: 'Fixture situation', check: 'Fixture check', statement, detail: '', stages, paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'r', createdAt: '2026-11-01T00:00:00Z', updatedAt: '' });
 
 test('a blocked run is one runnable retrospective, keyed by its step count; a completed run is another; consumed ids never repeat', () => {
     const { store } = setup();
@@ -112,7 +112,7 @@ test('the packet carries each step, the ledgers, the harness error and the saved
     expect(prompt).toContain('CMS maintenance run');
     expect(prompt).toContain('MAINTENANCE FOCUS');
     expect(prompt).toContain('evidence gap');
-    expect(prompt).toContain('repeat of an active lesson');
+    expect(prompt).toContain('Do not restate an active lesson');
     expect(prompt).toContain('what Morgan should do differently');
     expect(prompt).toContain('intake|implement|review|validate|repair|maintenance|any');
 });
@@ -150,7 +150,7 @@ test("Harper's accepted maintenance lesson reaches the next vendor review and fo
     maintainLearning(store);
     const batch = store.state.knowledge!.pending[0], id = batch.id, evidenceRef = batch.opportunities![0].evidence[0].ref;
     const prompts: string[] = [];
-    const harper: KnowledgeRunner = (async (prompt: string) => { prompts.push(prompt); return { summary: 'The vendor review blocked on a refused fetch.', lessons: [{ statement: 'Read the saved scan artifact before fetching a vendor changelog', detail: 'WebFetch is refused with 403 by this vendor.', kind: 'process', stages: ['maintenance'], paths: [], evidenceIds: [evidenceRef], repositoryInstruction: false }], recurrences: [] }; }) as KnowledgeRunner;
+    const harper: KnowledgeRunner = (async (prompt: string) => { prompts.push(prompt); return { summary: 'The vendor review blocked on a refused fetch.', lessons: [{ when: 'Fixture situation', check: 'Fixture check', statement: 'Read the saved scan artifact before fetching a vendor changelog', detail: 'WebFetch is refused with 403 by this vendor.', kind: 'process', stages: ['maintenance'], paths: [], evidenceIds: [evidenceRef], repositoryInstruction: false }] }; }) as KnowledgeRunner;
     await runRetrospective(store, harper, id);
     expect(prompts).toHaveLength(1);
     const knowledge = store.state.knowledge!;

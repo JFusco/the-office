@@ -15,15 +15,6 @@ export interface LessonEvidence {
     url: string;
     detail: string;
 }
-export interface LessonRecurrence {
-    retrospectiveId: string;
-    subjectId: string;
-    detail: string;
-    at: string;
-    evidence?: LessonEvidence[];
-    revision?: number;
-    subject?: LearningSubject;
-}
 export interface RepositoryInstruction {
     status: 'proposed' | 'filed' | 'declined';
     issueUrl?: string;
@@ -42,20 +33,26 @@ export interface Lesson {
     id: string;
     scope: 'project' | 'office';
     kind: LessonKind;
+    /** The situation in which the lesson applies, named by stage and what the worker is about to do. */
+    when: string;
+    /** The action, one imperative sentence. */
     statement: string;
+    /** How to tell the action worked. */
+    check: string;
     detail: string;
     stages: LessonStage[];
     paths: string[];
-    /** `ineffective`: recurred at least twice after it was learned; kept out of prompts until reactivated. */
-    status: 'active' | 'retired' | 'ineffective';
+    status: 'active' | 'retired';
     evidence: LessonEvidence[];
     sourceRetrospectiveId: string;
-    recurrences: LessonRecurrence[];
     repositoryInstruction?: RepositoryInstruction;
     createdAt: string;
     updatedAt: string;
     retiredAt?: string;
-    retiredBy?: 'human';
+    retiredBy?: 'human' | 'harper';
+    /** Set when Harper replaced this lesson; the replacement carries `supersedes`. */
+    supersededBy?: string;
+    supersedes?: string;
     reactivatedAt?: string;
 }
 /** `blocked`: a CMS maintenance run stopped on a blocker (the maintenance analogue of a Block park). */
@@ -120,7 +117,6 @@ export interface DeliveryMetrics {
     retrospectives: number;
     lessonsAdded: number;
     lessonsRetired: number;
-    recurrences: number;
 }
 export interface WeeklyRollup {
     intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; outstanding: number; coverageGaps?:number; reasons: string[] };
@@ -132,7 +128,6 @@ export interface WeeklyRollup {
     weekEnding: string;
     metrics: DeliveryMetrics;
     summary: string;
-    ineffectiveLessonIds: string[];
     officeProposalIds: string[];
     at: string;
 }
@@ -143,8 +138,6 @@ export interface KnowledgeRetry {
     attempts: number;
     nextAt: string;
     lastError: string;
-    /** Lessons this roll-up already marked not working, kept for its retries. */
-    flaggedLessonIds?: string[];
 }
 export interface OfficeProposal {
     evidence?: LessonEvidence[];
@@ -152,7 +145,9 @@ export interface OfficeProposal {
     projectId: string;
     rollupId: string;
     kind: LessonKind;
+    when: string;
     statement: string;
+    check: string;
     detail: string;
     stages: LessonStage[];
     status: 'proposed' | 'accepted' | 'declined';
@@ -198,8 +193,6 @@ export interface KnowledgeState {
     research?: WeeklyResearch[];
     deliveryEvents?: RetrospectiveRecord[];
     expiredPackets?: string[];
-    officeRecurrences?: (LessonRecurrence & LessonReference)[];
-    procedureUses?: { id: string; operation: 'check-it'; source: LearningSubject; requestId: string; at: string; outcome: 'confirmed' | 'failed' | 'unknown' }[];
 
     enabled: boolean;
     /** Trigger ids already handled (or baselined); never trimmed with the display history. */
@@ -240,7 +233,7 @@ export interface LearningMetrics {
     coverage?: { status: 'complete' | 'partial' | 'unavailable'; startedAt: string | null };
     assignments: number; eligibleAssignments: number; exposedAssignments: number;
     eligiblePairs: number; exposedPairs: number; omittedPairs: number;
-    applicationUnknown: number; procedureConfirmed?: number; procedureFailed?: number; procedureUnknown?: number; superseded?: number; resolved: number; unresolved: number; unknown: number;
+    superseded?: number; resolved: number; unresolved: number; unknown: number;
 }
 export interface BlockerFollowup {
     id: string; source: LearningSubject; fingerprint: string; key: string;

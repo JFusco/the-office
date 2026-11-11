@@ -24,11 +24,11 @@ test('needs-review guidance offers keep, demote and retire; ordinary active guid
         f.store.state.knowledge!.lessons = [learningLesson('L1', { statement: 'Flagged guidance', needsReview: true }), learningLesson('L2', { statement: 'Steady guidance' })];
         const snapshot = { knowledge: f.store.state.knowledge, project: { id: 'brain', provider: 'github' }, agents: [], mode: 'live' } as never;
         const html = renderToStaticMarkup(createElement(LessonsPanel, { snapshot }));
-        expect(html).toContain('aria-label="Keep lesson and start a new review interval: Flagged guidance"');
+        expect(html).toContain('aria-label="Keep lesson after source review: Flagged guidance"');
         expect(html).toContain('aria-label="Demote lesson to hypothesis: Flagged guidance"');
         expect(html).toContain('aria-label="Retire lesson: Flagged guidance"');
         expect(html).toContain('aria-label="Retire lesson: Steady guidance"');
-        expect(html).not.toContain('Keep lesson and start a new review interval: Steady guidance');
+        expect(html).not.toContain('Keep lesson after source review: Steady guidance');
         expect(html).not.toContain('Demote lesson to hypothesis: Steady guidance');
     } finally { f.close(); }
 });

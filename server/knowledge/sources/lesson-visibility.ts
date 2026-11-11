@@ -12,7 +12,7 @@ export function lessonVisible(registry: SourceRegistry, project: string, lesson:
 }
 export function lessonForProject(registry: SourceRegistry, project: string, lesson: Lesson): Lesson {
     const foreign=lesson.scope==='office'&&lesson.originProjectId!==project;
-    return { ...lesson, evidence: lesson.evidence.filter(proof => foreign ? proof.kind==='source'&&sourceProofVisible(registry,project,proof) : sourceProofVisible(registry,project,proof)),...(foreign?{sourceRetrospectiveId:'',sourceSubject:undefined,recurrences:[],repositoryInstruction:undefined}:{}) };
+    return { ...lesson, evidence: lesson.evidence.filter(proof => foreign ? proof.kind==='source'&&sourceProofVisible(registry,project,proof) : sourceProofVisible(registry,project,proof)),...(foreign?{sourceRetrospectiveId:'',sourceSubject:undefined,repositoryInstruction:undefined}:{}) };
 }
 
 export function lessonSourceBindings(registry: SourceRegistry, project: string, lesson: Lesson): import('../../../src/contracts/knowledge').KnowledgeSourceBinding[] {

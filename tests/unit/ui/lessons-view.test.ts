@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { lessonsView } from '../../../src/knowledge/lessons-view';
 import type { KnowledgeState, Lesson } from '../../../src/shared';
 
-const lesson = (id: string, status: Lesson['status'], createdAt: string, retiredAt?: string): Lesson => ({ id, scope: 'project', recurrences: [], kind: 'tooling', statement: id, detail: '', stages: ['any'], paths: [], status, evidence: [], sourceRetrospectiveId: '', createdAt, updatedAt: createdAt, retiredAt });
+const lesson = (id: string, status: Lesson['status'], createdAt: string, retiredAt?: string): Lesson => ({ id, scope: 'project', kind: 'tooling', when: 'Fixture situation', check: 'Fixture check', statement: id, detail: '', stages: ['any'], paths: [], status, evidence: [], sourceRetrospectiveId: '', createdAt, updatedAt: createdAt, retiredAt });
 
 test('groups lessons newest first, keeps ten recent retrospectives and orders retries by age', () => {
     const knowledge: KnowledgeState = { enabled: true, consumed: [], lessons: [lesson('a', 'active', '2026-11-01'), lesson('b', 'active', '2026-11-03'), lesson('c', 'retired', '2026-10-01', '2026-11-04')],
@@ -16,14 +16,13 @@ test('groups lessons newest first, keeps ten recent retrospectives and orders re
     expect(lessonsView(undefined)).toMatchObject({ enabled: false, active: [], retired: [], recent: [], pending: [] });
 });
 
-test('groups not-working lessons, AGENTS.md suggestions, office knowledge and the latest four roll-ups', () => {
-    const rollup = (week: string) => ({ id: `rollup:${week}`, weekEnding: week, summary: week, ineffectiveLessonIds: [], officeProposalIds: [], at: week, metrics: {} as any });
+test('groups AGENTS.md suggestions, office knowledge and the latest four roll-ups', () => {
+    const rollup = (week: string) => ({ id: `rollup:${week}`, weekEnding: week, summary: week, officeProposalIds: [], at: week, metrics: {} as any });
     const knowledge: KnowledgeState = { enabled: true, consumed: [], pending: [], retrospectives: [],
-        lessons: [lesson('i', 'ineffective', '2026-11-01'), { ...lesson('s', 'active', '2026-11-02'), repositoryInstruction: { status: 'proposed' } }, { ...lesson('d', 'active', '2026-11-03'), repositoryInstruction: { status: 'declined' } }],
+        lessons: [{ ...lesson('s', 'active', '2026-11-02'), repositoryInstruction: { status: 'proposed' } }, { ...lesson('d', 'active', '2026-11-03'), repositoryInstruction: { status: 'declined' } }],
         rollups: ['2026-10-09', '2026-10-16', '2026-10-23', '2026-10-30', '2026-11-06'].map(rollup), rollupRetry: { id: 'rollup:x', attempts: 1, nextAt: '', lastError: 'overloaded' } };
-    const office = { proposals: [{ id: 'p', projectId: 'brain', rollupId: 'r', kind: 'process' as const, statement: 'Run it', detail: '', stages: ['any' as const], status: 'proposed' as const, createdAt: '2026-11-06' }, { id: 'q', projectId: 'brain', rollupId: 'r', kind: 'process' as const, statement: 'Old', detail: '', stages: ['any' as const], status: 'declined' as const, createdAt: '2026-11-01' }], lessons: [{ ...lesson('o', 'active', '2026-11-05'), scope: 'office' as const }] };
+    const office = { proposals: [{ id: 'p', projectId: 'brain', rollupId: 'r', kind: 'process' as const, when: 'Fixture situation', check: 'Fixture check', statement: 'Run it', detail: '', stages: ['any' as const], status: 'proposed' as const, createdAt: '2026-11-06' }, { id: 'q', projectId: 'brain', rollupId: 'r', kind: 'process' as const, when: 'Fixture situation', check: 'Fixture check', statement: 'Old', detail: '', stages: ['any' as const], status: 'declined' as const, createdAt: '2026-11-01' }], lessons: [{ ...lesson('o', 'active', '2026-11-05'), scope: 'office' as const }] };
     const view = lessonsView(knowledge, office);
-    expect(view.ineffective.map(l => l.id)).toEqual(['i']);
     expect(view.agentsSuggestions.map(l => l.id)).toEqual(['s']);
     expect(view.officeProposals.map(p => p.id)).toEqual(['p']);
     expect(view.officeLessons.map(l => l.id)).toEqual(['o']);

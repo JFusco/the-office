@@ -2,11 +2,12 @@ import { afterEach, expect, test } from 'vitest';
 import { runRetrospective, retryDelay, RETROSPECTIVE_TIMEOUT, type KnowledgeRunner } from '../../../server/knowledge/run-retrospective';
 import { scheduledRetrospectives } from '../../../server/knowledge/scheduled-retrospectives';
 import { acceptRetrospective } from '../../../server/knowledge/accept-retrospective';
-import { retrospectiveFacts, PACKET_LIMIT } from '../../../server/knowledge/retrospective-facts';
+import { retrospectiveFacts, PACKET_LIMIT, type RetrospectivePacket } from '../../../server/knowledge/retrospective-facts';
 import { jobSubject } from '../../../server/knowledge/retrospective-subject';
 import { completedId } from '../../../server/knowledge/retrospective-triggers';
 import type { RetrospectiveResult } from '../../../server/knowledge/retrospective-result';
-import { job, knowledgeStore, result } from './knowledge-fixture';
+import { SourceRegistry } from '../../../server/knowledge/sources/registry';
+import { job, knowledgeStore, learningLesson, result } from './knowledge-fixture';
 import { captureLearning } from '../../../server/knowledge/learning-events';
 import { maintainLearning } from '../../../server/knowledge/learning-maintenance';
 
@@ -21,7 +22,7 @@ function setup() {
     fixture.store.state.coordination!.jobs!.push(done);
     return { ...fixture, done, id: completedId(done) };
 }
-const lesson = (statement: string, evidenceIds: string[]): RetrospectiveResult['lessons'][number] => ({ tier: 'guidance', statement, detail: 'Why it matters', kind: 'pitfall', stages: ['implement'], paths: ['scripts/wiki'], evidenceIds, repositoryInstruction: false });
+const lesson = (statement: string, evidenceIds: string[]): RetrospectiveResult['lessons'][number] => ({ tier: 'guidance', when: 'Fixture situation', check: 'Fixture check', statement, detail: 'Why it matters', kind: 'pitfall', stages: ['implement'], paths: ['scripts/wiki'], evidenceIds, repositoryInstruction: false, action: 'add', targetId: '' });
 
 test('a failed run waits with capped backoff instead of blocking, then a later success consumes the trigger', async () => {
     const { store, advance, done } = setup();
@@ -44,13 +45,34 @@ test('a failed run waits with capped backoff instead of blocking, then a later s
 
     advance(retryDelay(1));
     expect(scheduledRetrospectives(store, failing)[0].eligibility.state).toBe('runnable');
-    await runRetrospective(store, (async () => ({ summary: 'Catalog drift caused one repair.', lessons: [lesson('Regenerate the catalog before review', [packetRef, 'invented:ref'])], recurrences: [] })) as KnowledgeRunner, id);
+    await runRetrospective(store, (async () => ({ summary: 'Catalog drift caused one repair.', lessons: [lesson('Regenerate the catalog before review', [packetRef, 'invented:ref'])] })) as KnowledgeRunner, id);
     const knowledge = store.state.knowledge!;
     expect(knowledge.pending).toEqual([]);
     expect(knowledge.consumed).toContain(id);
     expect(knowledge.retrospectives).toHaveLength(1);
     expect(knowledge.lessons[0]).toMatchObject({ status: 'active', evidence: [{ ref: packetRef, kind: 'learning' }] });
     expect(scheduledRetrospectives(store, failing)).toEqual([]);
+});
+
+test('other projects\' lessons are trimmed to the packet budget instead of keeping the retrospective from Harper', async () => {
+    const { store, done } = setup(), other = knowledgeStore('cec'); cleanup.push(other.close);
+    for (let i = 0; i < 30; i++) other.store.state.knowledge!.lessons.push(learningLesson(`other-${i}`, { when: 'w'.repeat(300), statement: `${i} ${'s'.repeat(296)}`, createdAt: `2026-10-${String(i + 1).padStart(2, '0')}T00:00:00Z` }));
+    for (let i = 0; i < 20; i++) store.state.messages.push({ from: 'pm', to: 'developer', ticket: done.key, createdAt: '', body: 'm'.repeat(300) } as never);
+    captureLearning(store, { kind: 'job', id: done.id }, done.key, 'review', '0', done.steps[0].result, 'Accepted negative review', 'work', true);
+    maintainLearning(store);
+    const { id, opportunities } = store.state.knowledge!.pending[0], packetRef = opportunities![0].evidence[0].ref;
+    const context = { registry: new SourceRegistry(store.db, store.clock), stores: new Map([['brain', store], ['cec', other.store]]), brain: { snapshot: async () => '', search: async () => [], read: async () => ({ text: '', contentSha256: '' }) } };
+    let facts = '';
+    await runRetrospective(store, (async (prompt: string) => { facts = prompt.split('RETROSPECTIVE FACTS: ')[1]; return { summary: 'Reviewed.', lessons: [lesson('Regenerate the catalog before review', [packetRef])] }; }) as KnowledgeRunner, id, context);
+    expect(facts.length).toBeLessThanOrEqual(PACKET_LIMIT);
+    expect(Buffer.byteLength(facts)).toBeLessThanOrEqual(65536);
+    const packet = JSON.parse(facts) as RetrospectivePacket;
+    expect(packet.elsewhere!.length).toBeGreaterThan(0);
+    expect(packet.omitted.elsewhere).toBe(30 - packet.elsewhere!.length);
+    expect(packet.elsewhere![0].id).toBe('other-29'); // the newest are kept
+    expect(Object.keys(packet.catalog)).toContain(packetRef);
+    expect(store.state.knowledge!.consumed).toContain(id);
+    expect(store.state.knowledge!.lessons.at(-1)).toMatchObject({ statement: 'Regenerate the catalog before review' });
 });
 
 test('backoff doubles from five minutes to a six-hour cap and never exhausts', () => {
@@ -62,7 +84,7 @@ test('acceptance is lenient: duplicates, retired repeats and unsupported proposa
     const { store, done, id } = setup();
     const packet = retrospectiveFacts(store, jobSubject(store, done), { id, trigger: 'completed', event: { stage: 'closeout', head: '', steps: 2, reason: '' } });
     const step = `step:${done.id}:1`;
-    store.state.knowledge!.lessons.push({ id: 'old', scope: 'project', recurrences: [], kind: 'pitfall', statement: 'Run the wiki build', detail: '', stages: ['any'], paths: [], status: 'retired', evidence: [], sourceRetrospectiveId: 'x', createdAt: '', updatedAt: '' });
+    store.state.knowledge!.lessons.push({ id: 'old', scope: 'project', kind: 'pitfall', when: 'Fixture situation', check: 'Fixture check', statement: 'Run the wiki build', detail: '', stages: ['any'], paths: [], status: 'retired', evidence: [], sourceRetrospectiveId: 'x', createdAt: '', updatedAt: '' });
     acceptRetrospective(store, { id, jobId: done.id, key: done.key, trigger: 'completed' }, packet, { summary: 'Done.', lessons: [
         lesson('  run the WIKI   build ', [step]),          // repeats a retired lesson: stays retired
         lesson('Commit generated artifacts', [step]),
@@ -96,7 +118,7 @@ test('a retrospective for a job that is no longer retained completes without a m
     const { store, id } = setup();
     store.state.knowledge!.pending.push({ id: 'gone-job:parked:1', jobId: 'gone-job', key: 'GH-9', trigger: 'parked', createdAt: '', event: { stage: '', head: '', steps: 1, reason: '' }, attempts: 0, nextAt: '', lastError: '' });
     let calls = 0;
-    await runRetrospective(store, (async () => { calls++; return { summary: '', lessons: [], recurrences: [] }; }) as KnowledgeRunner, 'gone-job:parked:1');
+    await runRetrospective(store, (async () => { calls++; return { summary: '', lessons: [] }; }) as KnowledgeRunner, 'gone-job:parked:1');
     expect(calls).toBe(0);
     expect(store.state.knowledge!.consumed).toContain('gone-job:parked:1');
     expect(id).toBeTruthy();

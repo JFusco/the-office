@@ -4,6 +4,8 @@ import { PROJECTS } from '../office/projects';
 import { visibleTicketTriggerIds, visibleTriggerIds } from '../knowledge/retrospective-triggers';
 import { visibleMaintenanceTriggerIds } from '../knowledge/maintenance-triggers';
 import { seedProjectLessons } from '../knowledge/seeded-lessons';
+import { dropLessonGrading } from '../knowledge/drop-lesson-grading';
+import { rewriteLesson } from '../knowledge/lesson-rewrites';
 export const STATE_VERSION = 1;
 export function resolveProjectLabel(label: string): OfficeProject | undefined {
     const value = label.trim().toLowerCase();
@@ -38,9 +40,10 @@ export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject, n
     knowledge.rollups ??= [];
     knowledge.officeLessons ??= [];
     knowledge.officeProposals ??= [];
-    for (const lesson of knowledge.lessons) { lesson.scope ??= 'project'; lesson.recurrences ??= []; }
+    for (const lesson of knowledge.lessons) lesson.scope ??= 'project';
+    dropLessonGrading(knowledge);
     seedProjectLessons(knowledge, project.id);
-    for (const lesson of [...knowledge.lessons, ...(knowledge.officeLessons || [])]) { lesson.tier ??= 'guidance'; lesson.revision ??= 1; }
+    for (const lesson of [...knowledge.lessons, ...(knowledge.officeLessons || [])]) { lesson.tier ??= 'guidance'; lesson.revision ??= 1; rewriteLesson(lesson); }
     knowledge.learningStartedAt ??= now;
     knowledge.baselines = [...new Set([...knowledge.baselines, ...LEARNING_BASELINES])];
     knowledge.learningConsumed ??= [];

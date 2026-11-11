@@ -68,14 +68,14 @@ createServer(async(req,res)=>{
         if(data.action==='configure-knowledge'&&s.knowledge)s.knowledge={...s.knowledge,enabled:!!data.knowledge?.enabled};
         if(data.action==='retire-lesson'&&s.knowledge)s.knowledge={...s.knowledge,lessons:s.knowledge.lessons.map(l=>l.id===data.lessonId?{...l,status:'retired' as const,retiredAt:new Date().toISOString(),retiredBy:'human' as const}:l)};
         const lessons=(map:(l:import('../../src/shared').Lesson)=>import('../../src/shared').Lesson)=>{if(s.knowledge)s.knowledge={...s.knowledge,lessons:s.knowledge.lessons.map(l=>l.id===data.lessonId?map(l):l)};};
-        if(data.action==='reactivate-lesson')lessons(l=>({...l,status:'active',recurrences:[],reactivatedAt:new Date().toISOString()}));
+        if(data.action==='reactivate-lesson')lessons(l=>({...l,status:'active',reactivatedAt:new Date().toISOString()}));
         if(data.action==='decline-lesson-issue')lessons(l=>({...l,repositoryInstruction:{status:'declined'}}));
         if(data.action==='file-lesson-issue')lessons(l=>({...l,repositoryInstruction:{status:'filed',issueUrl:'https://github.com/JFusco/brain/issues/999',filedAt:new Date().toISOString()}}));
         if(['accept-office-lesson','decline-office-lesson','retire-office-lesson'].includes(data.action)){
           // Office-wide: the fixture keeps one copy and stamps it onto every project, like the control store.
           const office=s.officeKnowledge||{proposals:[],lessons:[]},at=new Date().toISOString(),proposal=office.proposals.find(p=>p.id===data.lessonId);
           if(data.action==='retire-office-lesson')office.lessons=office.lessons.map(l=>l.id===data.lessonId?{...l,status:'retired' as const,retiredAt:at}:l);
-          else if(proposal){proposal.status=data.action==='accept-office-lesson'?'accepted':'declined';proposal.decidedAt=at;if(proposal.status==='accepted')office.lessons.push({id:proposal.id,scope:'office',kind:proposal.kind,statement:proposal.statement,detail:proposal.detail,stages:proposal.stages,paths:[],status:'active',evidence:[],sourceRetrospectiveId:proposal.rollupId,recurrences:[],createdAt:at,updatedAt:at});}
+          else if(proposal){proposal.status=data.action==='accept-office-lesson'?'accepted':'declined';proposal.decidedAt=at;if(proposal.status==='accepted')office.lessons.push({id:proposal.id,scope:'office',kind:proposal.kind,when: 'Fixture situation', check: 'Fixture check', statement:proposal.statement,detail:proposal.detail,stages:proposal.stages,paths:[],status:'active',evidence:[],sourceRetrospectiveId:proposal.rollupId,createdAt:at,updatedAt:at});}
           for(const other of Object.values(state.snapshots))other.officeKnowledge=structuredClone(office);
         }
         if(data.action==='configure-channel-notifications')c.notices={policy:{...c.notices!.policy,channel:{...data.channel,enabledAt:data.channel.enabled?new Date().toISOString():'',version:crypto.randomUUID()}},entries:c.notices!.entries};

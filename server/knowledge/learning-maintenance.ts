@@ -43,8 +43,7 @@ export function expireLearningPackets(store: Store): void {
     const followups = (knowledge.followups || []).filter(item => item.disposition !== 'confirmed'), improvements = (knowledge.improvements || []).filter(item => item.status !== 'closed');
     const retained = new Set([
         ...knowledge.pending.map(item => item.id),
-        ...lessons.flatMap(item => [item.sourceRetrospectiveId, ...(item.recurrences || []).map(recurrence => recurrence.retrospectiveId)]),
-        ...(knowledge.officeRecurrences || []).map(item => item.retrospectiveId),
+        ...lessons.map(item => item.sourceRetrospectiveId),
     ].map(learningDigest));
     // Unresolved subjects retain every packet naming them, even if no lesson was produced.
     const unresolved = new Set(followups.map(item => item.source.id));

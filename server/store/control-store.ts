@@ -8,6 +8,8 @@ import type { DailyCTOReport, DailyCTOSummary, OfficeKnowledge } from '../../src
 import { sanitizeObject } from '../office/security';
 import { applyConnectionSettings, closeConnection, optimizeOnOpen } from './connection-settings';
 import { statementCache } from './statement-cache';
+import { rewriteLesson } from '../knowledge/lesson-rewrites';
+import { dropLessonGradingFields } from '../knowledge/drop-lesson-grading';
 export interface CTOConfiguration {
     enabled: boolean;
     activatedAt: string;
@@ -136,7 +138,7 @@ export class ControlStore {
     knowledge(): OfficeKnowledge {
         const row = this.statement('SELECT body FROM office_knowledge WHERE id=1').get() as { body: string } | undefined;
         const knowledge: OfficeKnowledge = row ? JSON.parse(row.body) : { proposals: [], lessons: [] };
-        for (const lesson of knowledge.lessons) { lesson.tier ??= 'guidance'; lesson.revision ??= 1; }
+        for (const lesson of knowledge.lessons) { lesson.tier ??= 'guidance'; lesson.revision ??= 1; dropLessonGradingFields(lesson); rewriteLesson(lesson); }
         return knowledge;
     }
     updateKnowledge<T>(mutate: (knowledge: OfficeKnowledge) => T): T {

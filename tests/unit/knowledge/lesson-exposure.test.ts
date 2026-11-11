@@ -13,7 +13,7 @@ test('prepared handoff is immutable and does not count until provider dispatch; 
         const metrics = () => learningMetrics(store.state.knowledge!, '2026-01', '2027-01');
         expect(metrics().assignments).toBe(0);
         dispatchExposure(store, 'assignment'); dispatchExposure(store, 'assignment');
-        expect(metrics()).toMatchObject({ assignments: 1, exposedPairs: 1, applicationUnknown: 1 });
+        expect(metrics()).toMatchObject({ assignments: 1, exposedPairs: 1 });
         expect(readFileSync(`${store.dataRoot}/lessons.json`, 'utf8')).toBe(initial);
         expect(JSON.parse(initial).selected).toEqual([{ scope: 'project', id: 'L1', revision: 1 }]);
     } finally { close(); }

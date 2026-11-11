@@ -18,14 +18,22 @@ function Evidence({ lesson }: { lesson: Lesson }) {
   return lesson.evidence.length ? <ul className="flex flex-col gap-1 text-10">{lesson.evidence.map(item => <li key={item.ref}>{/^https:\/\//.test(item.url) ? <TextLink href={item.url} target="_blank" rel="noreferrer">{item.detail}<ExternalLink size={11} /></TextLink> : <span>{item.detail}</span>}</li>)}</ul> : null;
 }
 
+/** The situation, the action and its check, in the order a teammate needs them. Older lessons may carry only the action. */
+function LessonShape({ lesson }: { lesson: Pick<Lesson, 'when' | 'statement' | 'check'> }) {
+  return <dl className="grid gap-1 text-12 leading-relaxed" data-lesson-shape>
+    {lesson.when ? <div><dt className="inline font-emphasis text-card-detail">When </dt><dd className="inline">{lesson.when}</dd></div> : null}
+    <div><dt className="inline font-emphasis text-card-detail">Do </dt><dd className="inline font-emphasis">{lesson.statement}</dd></div>
+    {lesson.check ? <div><dt className="inline font-emphasis text-card-detail">Check </dt><dd className="inline">{lesson.check}</dd></div> : null}
+  </dl>;
+}
+
 function LessonCard({ lesson, actions, footer }: { lesson: Lesson; actions?: React.ReactNode; footer?: React.ReactNode }) {
   return <Card as="article">
-    <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier || 'guidance'} · revision {lesson.revision || 1}</Tag>{!lesson.needsReview&&lesson.sourceReviewReason==='office-authored'?<Tag>Office-authored · not independent corroboration</Tag>:null}{lesson.needsReview ? <Tag>{lesson.sourceReviewReason==='source-changed'?'source changed · review needed':lesson.sourceReviewReason==='office-authored'?'Office-authored · review needed':'needs review · still active'}</Tag> : null}{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}</div>
-    <strong className="text-12 leading-relaxed">{lesson.statement}</strong>
+    <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier || 'guidance'} · revision {lesson.revision || 1}</Tag>{!lesson.needsReview&&lesson.sourceReviewReason==='office-authored'?<Tag>Office-authored · not independent corroboration</Tag>:null}{lesson.needsReview ? <Tag>{lesson.sourceReviewReason==='source-changed'?'source changed · review needed':lesson.sourceReviewReason==='office-authored'?'Office-authored · review needed':'source withdrawn · review needed'}</Tag> : null}{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}{lesson.supersedes ? <Tag>replaces an earlier lesson</Tag> : null}{lesson.supersededBy ? <Tag>replaced by a newer lesson</Tag> : null}</div>
+    <LessonShape lesson={lesson} />
     {lesson.detail ? <p className={mutedCopy}>{lesson.detail}</p> : null}
     {lesson.paths.length ? <p className="text-10 leading-relaxed text-card-detail">Paths: {lesson.paths.join(', ')}</p> : null}
     <Evidence lesson={lesson} />
-    {lesson.recurrences?.length ? <p className="text-10 leading-relaxed text-card-detail">Recurred {lesson.recurrences.length} {lesson.recurrences.length === 1 ? 'time' : 'times'}: {lesson.recurrences.map(item => item.detail).filter(Boolean).join(' · ')}</p> : null}
     {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
     {footer ? <small className="text-10 text-card-detail">{footer}</small> : null}
   </Card>;
@@ -50,20 +58,15 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
     <SaveFeedback message={message} error={error} pending={pending} />
     <Section>
       <SectionTitle id={headingId} tabIndex={-1} className="mb-2">Active lessons <Count>{view.active.length}</Count></SectionTitle>
-      <p className={cx(mutedCopy, 'mb-2')}>Each stage receives up to 20 relevant lessons within a fixed context budget, ranked by stage, path and scope. Retire any that no longer hold.</p>
+      <p className={cx(mutedCopy, 'mb-2')}>Each stage receives up to 10 relevant lessons within a fixed context budget, ranked by stage, path and scope. Retire any that no longer hold.</p>
       {view.active.length ? view.active.map(lesson => <LessonCard key={lesson.id} lesson={lesson} actions={<>
-        {lesson.needsReview ? <Button disabled={disabled} onClick={() => act('reactivate-lesson', lesson.id)} aria-label={`Keep lesson and start a new review interval: ${lesson.statement}`}>Keep and start a new review interval</Button> : null}
+        {lesson.needsReview ? <Button disabled={disabled} onClick={() => act('reactivate-lesson', lesson.id)} aria-label={`Keep lesson after source review: ${lesson.statement}`}>Keep after source review</Button> : null}
         {lesson.needsReview && (lesson.tier || 'guidance') === 'guidance' ? <Button disabled={disabled} onClick={() => act('demote-lesson', lesson.id)} aria-label={`Demote lesson to hypothesis: ${lesson.statement}`}>Demote to hypothesis</Button> : null}
         <Button disabled={disabled} onClick={() => act('retire-lesson', lesson.id)} aria-label={`Retire lesson: ${lesson.statement}`}>Retire</Button></>} />) : <p className={mutedCopy}>No lessons yet. They appear after {harper}'s first retrospective.</p>}
     </Section>
     {view.hypotheses.length ? <Section data-lessons-hypotheses>
       <SectionTitle className="mb-2">Hypotheses (reports only; not supplied to prompts) <Count>{view.hypotheses.length}</Count></SectionTitle>
       {view.hypotheses.map(lesson => <LessonCard key={lesson.id} lesson={lesson} actions={<Button disabled={disabled} onClick={() => act('retire-lesson', lesson.id)} aria-label={`Retire lesson: ${lesson.statement}`}>Retire</Button>} />)}
-    </Section> : null}
-    {view.ineffective.length ? <Section data-lessons-ineffective>
-      <SectionTitle className="mb-2">Legacy inactive guidance <Count>{view.ineffective.length}</Count></SectionTitle>
-      <p className={cx(mutedCopy, 'mb-2')}>These legacy entries remain inactive until an explicit decision. Recurrence alone does not establish failure. Reactivate or retire them as appropriate.</p>
-      {view.ineffective.map(lesson => <LessonCard key={lesson.id} lesson={lesson} actions={<><Button disabled={disabled} onClick={() => act('reactivate-lesson', lesson.id)} aria-label={`Reactivate lesson: ${lesson.statement}`}>Reactivate</Button><Button disabled={disabled} onClick={() => act('retire-lesson', lesson.id)} aria-label={`Retire lesson: ${lesson.statement}`}>Retire</Button></>} />)}
     </Section> : null}
     {view.agentsSuggestions.length ? <Section data-lessons-agents>
       <SectionTitle className="mb-2">Durable improvement suggestions <Count>{view.agentsSuggestions.filter(lesson => lesson.repositoryInstruction?.status === 'proposed').length}</Count></SectionTitle>
@@ -77,7 +80,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
       <p className={cx(mutedCopy, 'mb-2')}>Shared by every project. {harper} proposes them from the weekly roll-ups; nothing becomes office-wide until you accept it.</p>
       {view.officeProposals.map(proposal => <Card as="article" key={proposal.id}>
         <div className="flex flex-wrap items-center gap-1.5"><Tag>proposed</Tag><Tag>{proposal.kind}</Tag><span className={cx(eyebrow, 'text-9')}>from {proposal.projectId}</span></div>
-        <strong className="text-12 leading-relaxed">{proposal.statement}</strong>
+        <LessonShape lesson={proposal} />
         {proposal.detail ? <p className={mutedCopy}>{proposal.detail}</p> : null}
         <div className="flex flex-wrap gap-2"><Button variant="primary" disabled={disabled} onClick={() => act('accept-office-lesson', proposal.id)} aria-label={`Accept office-wide lesson: ${proposal.statement}`}>Accept</Button><Button disabled={disabled} onClick={() => act('decline-office-lesson', proposal.id)} aria-label={`Decline office-wide lesson: ${proposal.statement}`}>Decline</Button></div>
       </Card>)}
@@ -103,7 +106,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
     </Section> : null}
     <Section>
       <SectionTitle className="mb-2">Recent retrospectives</SectionTitle>
-      {view.recent.length ? view.recent.map(record => <p key={record.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{record.key} · {TRIGGER_LABEL[record.trigger]} · {when(record.at)}</span>{record.summary}<small className="block text-10 text-card-detail">{record.lessonIds.length} new {record.lessonIds.length === 1 ? 'lesson' : 'lessons'}</small></p>) : <p className={mutedCopy}>None yet.</p>}
+      {view.recent.length ? view.recent.map(record => <p key={record.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{record.key} · {TRIGGER_LABEL[record.trigger]} · {when(record.at)}</span>{record.summary}<small className="block text-10 text-card-detail">{record.lessonIds.length} {record.lessonIds.length === 1 ? 'lesson' : 'lessons'} added or changed</small></p>) : <p className={mutedCopy}>None yet.</p>}
       {view.retired.length ? <details className="my-4"><summary className={cx('cursor-pointer text-13 font-semibold', interactive)}>Retired lessons ({view.retired.length})</summary>{view.retired.map(lesson => <LessonCard key={lesson.id} lesson={lesson} footer={`Retired ${when(lesson.retiredAt || lesson.updatedAt)}`} />)}</details> : null}
     </Section>
   </Section>;

@@ -24,7 +24,7 @@ it('retains exact source-derived accepted work privately and carries its scope t
         const scans: string[] = [], context = { registry, stores: new Map([['cec', store]]), brain: { snapshot: async () => '', search: async () => [], read: async () => ({ text: '', contentSha256: '' }) }, scan: async (text: string) => { scans.push(text); return { version: 1 as const, inputSha256: digest(text), scannerVersion: 'injected', policyVersion: 'injected', clean: true, findings: [] }; } };
         const runner = (async (prompt: string) => {
             expect(prompt).toContain('PRIVATE ACCEPTED TEXT');
-            return { summary: 'PRIVATE DERIVED SUMMARY', lessons: [{ statement: 'Derived advisory guidance', detail: 'Private derivation', kind: 'pitfall', stages: ['any'], paths: [], evidenceIds: ['job:scoped-work'], repositoryInstruction: false }], recurrences: [] };
+            return { summary: 'PRIVATE DERIVED SUMMARY', lessons: [{ when: 'Fixture situation', check: 'Fixture check', statement: 'Derived advisory guidance', detail: 'Private derivation', kind: 'pitfall', stages: ['any'], paths: [], evidenceIds: ['job:scoped-work'], repositoryInstruction: false }] };
         }) as KnowledgeRunner;
         await runRetrospective(store, runner, pending.id, context);
         expect(scans).toHaveLength(2);
