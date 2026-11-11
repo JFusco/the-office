@@ -49,7 +49,10 @@ export interface Lesson {
     createdAt: string;
     updatedAt: string;
     retiredAt?: string;
-    retiredBy?: 'human';
+    retiredBy?: 'human' | 'harper';
+    /** Set when Harper replaced this lesson; the replacement carries `supersedes`. */
+    supersededBy?: string;
+    supersedes?: string;
     reactivatedAt?: string;
 }
 /** `blocked`: a CMS maintenance run stopped on a blocker (the maintenance analogue of a Block park). */

@@ -18,6 +18,9 @@ export const RetrospectiveResultSchema = z.object({
         paths: z.array(z.string().max(300)).max(12),
         evidenceIds: z.array(z.string().max(300)).max(5),
         repositoryInstruction: z.boolean(),
+        /** Harper's curation decision; the harness applies it. `targetId` names the existing lesson for every action but `add`. */
+        action: z.enum(['add', 'update', 'supersede', 'share']).default('add'),
+        targetId: z.string().max(100).default(''),
     }).strict()).max(5),
     improvements: z.array(z.object({ destination: z.enum(['project', 'office']).default('project'), cause: z.string().min(1).max(300), change: z.string().min(1).max(1500), regression: z.string().min(1).max(1500), acceptance: z.array(z.string().max(500)).min(1).max(8), evidenceIds: z.array(z.string().max(300)).min(1).max(5) }).strict()).max(3).default([]),
 }).strict();

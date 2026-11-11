@@ -18,6 +18,8 @@ export interface RetrospectivePacket {
     conversation: unknown[];
     notes: unknown[];
     activeLessons: { scope?: 'project' | 'office'; revision?: number; id: string; when: string; statement: string; check: string; stages: string[] }[];
+    /** Active lessons in the Office's other projects, so the same lesson is shared instead of learned twice. */
+    elsewhere?: { project: string; id: string; when: string; statement: string }[];
     /** Only for a maintenance run: ledgers, harness error and saved artifacts. Bounded by construction. */
     maintenance?: MaintenancePacketSection;
     omitted: Record<string, number>;

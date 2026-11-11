@@ -20,6 +20,7 @@ import { retrospectivePrompt } from './retrospective-prompt';
 import { RetrospectiveResultSchema } from './retrospective-result';
 import { findSubject } from './retrospective-subject';
 import { terminalCandidates, triggerJobId } from './retrospective-triggers';
+import { otherProjectLessons } from './other-project-lessons';
 
 export const RETROSPECTIVE_TIMEOUT = 20 * 60 * 1000;
 const FIRST_DELAY = 5 * 60 * 1000, MAX_DELAY = 6 * 60 * 60 * 1000;
@@ -39,7 +40,7 @@ export function harperFolder(store: Store, name: string): string {
 
 /** Runs one retrospective. Any failure keeps the occurrence pending with a later retry time.
  * Administrative effort: Harper's time never adds to a ticket's published hours. */
-export async function runRetrospective(store: Store, run: KnowledgeRunner, id: string, context?:KnowledgeContext): Promise<void> {
+export async function runRetrospective(store: Store, run: KnowledgeRunner, id: string, context?:KnowledgeContext, propose?: (store: Store, sourceId: string, proposals: Parameters<NonNullable<Parameters<typeof acceptRetrospective>[6]>>[0]) => unknown): Promise<void> {
     const knowledge = store.state.knowledge;
     if (!knowledge || !knowledge.enabled || store.state.paused || store.state.draining || knowledge.consumed.includes(id)) return;
     let pending = knowledge.pending.find(entry => entry.id === id);
@@ -71,7 +72,7 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
     const attempts = pending.attempts;
     try {
         const folder = harperFolder(store, learningDigest(id));
-        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!);return context?sourceLearningPacket(context,store.project.id,pending!,facts):facts;});
+        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!);if(context)facts.elsewhere=otherProjectLessons(context,store.project.id);return context?sourceLearningPacket(context,store.project.id,pending!,facts):facts;});
         const scoped = catalogBindings(packet.catalog).length > 0;
         if(scoped&&(!context||!sourcePacketAuthorized(context,store.project.id,packet)))throw Error('Source learning evidence revoked before dispatch');
         if (scoped) await scanCuration(store, id, 'input', JSON.stringify(packet), context?.scan);
@@ -79,7 +80,7 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
         const result = RetrospectiveResultSchema.parse(await run(retrospectivePrompt(packet, store.project.repo), RetrospectiveResultSchema, { readOnly: true, effortKind: 'administrative', stage: 'retrospective', requestId: id, ticket: subject.key, cwd: harperFolder(store, learningDigest(id)), enqueuedAt: pending.createdAt, timeout: RETROSPECTIVE_TIMEOUT }));
         const scan = scoped ? await scanCuration(store, id, 'output', JSON.stringify(result), context?.scan) : undefined;
         if(context&&!sourcePacketAuthorized(context,store.project.id,packet))throw Error('Source learning evidence revoked before acceptance');
-        acceptRetrospective(store, pending, packet, result, currentAssignment()?.claim.id || randomUUID(), scan);
+        acceptRetrospective(store, pending, packet, result, currentAssignment()?.claim.id || randomUUID(), scan, propose && (lessons => propose(store, id, lessons)));
     }
     catch (error) {
         // A rolled-back transaction replaces state objects; update whatever entry is current now.

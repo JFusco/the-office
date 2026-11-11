@@ -44,7 +44,7 @@ export function decideOfficeProposal(control: OfficeKnowledgeStore, proposalId: 
         proposal.status = accept ? 'accepted' : 'declined';
         proposal.decidedAt = now;
         if (accept) knowledge.lessons.push({ id: proposal.id, scope: 'office', originProjectId:proposal.projectId, tier: 'guidance', revision: 1, kind: proposal.kind, when: proposal.when, statement: proposal.statement, check: proposal.check, detail: proposal.detail, stages: proposal.stages, paths: [], status: 'active',
-            evidence: [...(proposal.evidence || []), { kind: 'rollup', ref: `${proposal.projectId}:${proposal.rollupId}`, url: '', detail: `Proposed by Harper from ${proposal.projectId}, ${proposal.rollupId.replace('rollup:', 'week ending ')}` }],
+            evidence: [...(proposal.evidence || []), { kind: 'rollup', ref: `${proposal.projectId}:${proposal.rollupId}`, url: '', detail: `Proposed by Harper from ${proposal.projectId}, ${proposal.rollupId.startsWith('rollup:') ? proposal.rollupId.replace('rollup:', 'week ending ') : 'a retrospective that learned it again'}` }],
             sourceRetrospectiveId: proposal.rollupId, createdAt: now, updatedAt: now });
     });
 }

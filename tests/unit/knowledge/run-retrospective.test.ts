@@ -21,7 +21,7 @@ function setup() {
     fixture.store.state.coordination!.jobs!.push(done);
     return { ...fixture, done, id: completedId(done) };
 }
-const lesson = (statement: string, evidenceIds: string[]): RetrospectiveResult['lessons'][number] => ({ tier: 'guidance', when: 'Fixture situation', check: 'Fixture check', statement, detail: 'Why it matters', kind: 'pitfall', stages: ['implement'], paths: ['scripts/wiki'], evidenceIds, repositoryInstruction: false });
+const lesson = (statement: string, evidenceIds: string[]): RetrospectiveResult['lessons'][number] => ({ tier: 'guidance', when: 'Fixture situation', check: 'Fixture check', statement, detail: 'Why it matters', kind: 'pitfall', stages: ['implement'], paths: ['scripts/wiki'], evidenceIds, repositoryInstruction: false, action: 'add', targetId: '' });
 
 test('a failed run waits with capped backoff instead of blocking, then a later success consumes the trigger', async () => {
     const { store, advance, done } = setup();
