@@ -4,7 +4,7 @@ import type { KnowledgeContext } from './context';
 import { proofBindings } from './sources/proof-scope';
 import { scanCuration } from './sources/curation-scan';
 import { learningMetrics } from './learning-metrics';
-import type { Lesson, WorkEligibility } from '../../src/shared';
+import type { WorkEligibility } from '../../src/shared';
 import { addDays, easternDay, easternInstant } from '../office/clock';
 import type { ScheduledWork } from '../scheduling/scheduler';
 import type { Store } from '../store/store';

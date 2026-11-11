@@ -138,7 +138,6 @@ export interface KnowledgeRetry {
     attempts: number;
     nextAt: string;
     lastError: string;
-    /** Lessons this roll-up already marked not working, kept for its retries. */
 }
 export interface OfficeProposal {
     evidence?: LessonEvidence[];

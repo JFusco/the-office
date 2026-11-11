@@ -1,4 +1,6 @@
 import type { Lesson } from '../../src/shared';
+import { projectSeed } from './seeded-lessons';
+import { officeSeed } from './seeded-office-lessons';
 
 type Rewrite = Pick<Lesson, 'when' | 'statement' | 'check'> & { detail?: string };
 
@@ -21,7 +23,6 @@ const REWRITES: Record<string, Rewrite> = {
     // CMS field vocabulary
     '0a893505-3150-4def-a4c3-bd398dc43f9d': { when: 'Reviewing existing RSS entries in a source scan.', statement: 'Compare the retained item text across scan artifacts.', check: 'A text-only edit is detected even when the identity fingerprint is unchanged.' },
     '55267fc1-fc05-458e-9fc3-89679311d7e0': { when: 'Adding observation-only retention settings to a source.', statement: 'Keep them outside `extract` and exclude retained text from lock entries.', check: 'The source-lock digest is unchanged.' },
-    'seed:cms-field-vocabulary:contentstack-withdrawn-changelog-items': { when: 'A scanned Contentstack changelog identity cannot be found during vendor review.', statement: 'Read the item text from the registered RSS feed; record the identity as withdrawn upstream only when the current feed still lists items dated on or before its scan date and the identity is absent from both the feed and the changelog page.', check: 'An identity that only aged out of the feed window was read from the changelog page instead, and a withdrawn one is recorded with no retained text and no profile impact claimed.', detail: 'Scan artifacts keep only RSS item links (cms-field-vocabulary#137). Feed: https://www.contentstack.com/api/docs/changelog/rss.xml; changelog: https://www.contentstack.com/docs/changelog.' },
     'f134f463-46bd-41a0-b961-1a2a9b98b4ad': { when: 'A ticket depends on a stable release of an upstream package.', statement: 'Check both the official releases and the npm dist-tags before implementation starts.', check: 'A stable version, not a prerelease, is cited.' },
     '116eb153-a54f-4123-a0e3-45716672208c': { when: 'Upstream documentation pages disagree with each other.', statement: 'Resolve the claim against the pinned release changelog and the shipped implementation, and disclose the conflict beside the claim.', check: 'The profile cites the changelog or source file, and the conflict is stated.' },
     '9556fc69-a2f1-4130-886a-9e83246d7b7b': { when: 'Moving a profile to a new pinned SDK revision.', statement: 'Recheck every documentation path and extraction locator at that revision.', check: 'Each path returns 200 at the pinned revision and each locator extracts its tokens.' },
@@ -37,9 +38,10 @@ const REWRITES: Record<string, Rewrite> = {
     'operator-note:brain:bda4a39e-08f4-4915-9d02-469aef33b122': { when: 'A send or other external write has an uncertain outcome.', statement: 'Never replay it. Clear its alert only after read-back confirms the original, or an explicitly authorized, linked replacement is verified.', check: 'A read-back receipt of the original exists, or the replacement is linked and the original uncertainty is kept in the audit.' },
 };
 
-/** Fills the shape for a stored lesson. Unknown older lessons keep their statement with an empty `when` and `check`. */
+/** Fills the shape for a stored lesson; a stored seed takes its seed's wording. Unknown older lessons keep their statement with an empty `when` and `check`. */
 export function rewriteLesson(lesson: Lesson): void {
     if (typeof lesson.when === 'string' && typeof lesson.check === 'string') return;
-    const { detail, ...shape } = REWRITES[lesson.id] || { when: '', statement: lesson.statement, check: '' };
+    const seed = projectSeed(lesson.id) || officeSeed(lesson.id);
+    const { detail, ...shape }: Rewrite = REWRITES[lesson.id] || (seed ? { when: seed.when, statement: seed.statement, check: seed.check, detail: seed.detail } : { when: '', statement: lesson.statement, check: '' });
     Object.assign(lesson, shape, detail ? { detail } : {});
 }

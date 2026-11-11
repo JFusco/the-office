@@ -1,7 +1,18 @@
-import type { KnowledgeState, Lesson } from '../../src/shared';
+import type { KnowledgeSourceBinding, KnowledgeState, Lesson, LessonEvidence } from '../../src/contracts/knowledge';
+import { proofBindings } from './sources/proof-scope';
 
-export type CurationAction = 'add' | 'update' | 'supersede' | 'share';
-export type Curation = 'added' | 'updated' | 'superseded' | 'shared' | 'skipped';
+type CurationAction = 'add' | 'update' | 'supersede' | 'share';
+type Curation = 'added' | 'updated' | 'superseded' | 'shared' | 'skipped';
+
+/** New proofs join the target's. A proof already held keeps every source dependency either copy carries. */
+function mergeEvidence(known: LessonEvidence[], proposed: LessonEvidence[]): LessonEvidence[] {
+    const key = (binding: KnowledgeSourceBinding) => JSON.stringify(binding);
+    return [...known.map(proof => {
+        const held = new Set(proofBindings(proof).map(key)), added: KnowledgeSourceBinding[] = [];
+        for (const binding of proposed.filter(next => next.ref === proof.ref).flatMap(proofBindings)) if (!held.has(key(binding))) { held.add(key(binding)); added.push(binding); }
+        return added.length ? { ...proof, sourceBindings: [...(proof.sourceBindings || []), ...added] } : proof;
+    }), ...proposed.filter(proof => !known.some(item => item.ref === proof.ref))];
+}
 
 /**
  * Applies Harper's decision about one proposed lesson. Harper decides; this is the only code that changes the set.
@@ -17,7 +28,7 @@ export function curateLesson(knowledge: KnowledgeState, proposed: Lesson, action
     if (action === 'update') {
         const { when, statement, check, detail, kind, stages, paths } = proposed;
         Object.assign(target, { when, statement, check, detail, kind, stages, paths, revision: (target.revision || 1) + 1, updatedAt: now,
-            evidence: [...target.evidence, ...proposed.evidence.filter(proof => !target.evidence.some(known => known.ref === proof.ref))] });
+            evidence: mergeEvidence(target.evidence, proposed.evidence) });
         return 'updated';
     }
     Object.assign(target, { status: 'retired', retiredAt: now, retiredBy: 'harper', supersededBy: proposed.id, revision: (target.revision || 1) + 1, updatedAt: now });

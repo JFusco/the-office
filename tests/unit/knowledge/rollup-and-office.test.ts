@@ -1,5 +1,4 @@
 import { afterEach, expect, test } from 'vitest';
-import { acceptRetrospective } from '../../../server/knowledge/accept-retrospective';
 import { deliveryMetrics } from '../../../server/knowledge/delivery-metrics';
 import { lastFriday, rollupDue, runRollup, scheduledRollup } from '../../../server/knowledge/weekly-rollup';
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
