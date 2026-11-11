@@ -18,10 +18,19 @@ function Evidence({ lesson }: { lesson: Lesson }) {
   return lesson.evidence.length ? <ul className="flex flex-col gap-1 text-10">{lesson.evidence.map(item => <li key={item.ref}>{/^https:\/\//.test(item.url) ? <TextLink href={item.url} target="_blank" rel="noreferrer">{item.detail}<ExternalLink size={11} /></TextLink> : <span>{item.detail}</span>}</li>)}</ul> : null;
 }
 
+/** The situation, the action and its check, in the order a teammate needs them. Older lessons may carry only the action. */
+function LessonShape({ lesson }: { lesson: Pick<Lesson, 'when' | 'statement' | 'check'> }) {
+  return <dl className="grid gap-1 text-12 leading-relaxed" data-lesson-shape>
+    {lesson.when ? <div><dt className="inline font-emphasis text-card-detail">When </dt><dd className="inline">{lesson.when}</dd></div> : null}
+    <div><dt className="inline font-emphasis text-card-detail">Do </dt><dd className="inline font-emphasis">{lesson.statement}</dd></div>
+    {lesson.check ? <div><dt className="inline font-emphasis text-card-detail">Check </dt><dd className="inline">{lesson.check}</dd></div> : null}
+  </dl>;
+}
+
 function LessonCard({ lesson, actions, footer }: { lesson: Lesson; actions?: React.ReactNode; footer?: React.ReactNode }) {
   return <Card as="article">
     <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier || 'guidance'} · revision {lesson.revision || 1}</Tag>{!lesson.needsReview&&lesson.sourceReviewReason==='office-authored'?<Tag>Office-authored · not independent corroboration</Tag>:null}{lesson.needsReview ? <Tag>{lesson.sourceReviewReason==='source-changed'?'source changed · review needed':lesson.sourceReviewReason==='office-authored'?'Office-authored · review needed':'source withdrawn · review needed'}</Tag> : null}{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}</div>
-    <strong className="text-12 leading-relaxed">{lesson.statement}</strong>
+    <LessonShape lesson={lesson} />
     {lesson.detail ? <p className={mutedCopy}>{lesson.detail}</p> : null}
     {lesson.paths.length ? <p className="text-10 leading-relaxed text-card-detail">Paths: {lesson.paths.join(', ')}</p> : null}
     <Evidence lesson={lesson} />
@@ -71,7 +80,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
       <p className={cx(mutedCopy, 'mb-2')}>Shared by every project. {harper} proposes them from the weekly roll-ups; nothing becomes office-wide until you accept it.</p>
       {view.officeProposals.map(proposal => <Card as="article" key={proposal.id}>
         <div className="flex flex-wrap items-center gap-1.5"><Tag>proposed</Tag><Tag>{proposal.kind}</Tag><span className={cx(eyebrow, 'text-9')}>from {proposal.projectId}</span></div>
-        <strong className="text-12 leading-relaxed">{proposal.statement}</strong>
+        <LessonShape lesson={proposal} />
         {proposal.detail ? <p className={mutedCopy}>{proposal.detail}</p> : null}
         <div className="flex flex-wrap gap-2"><Button variant="primary" disabled={disabled} onClick={() => act('accept-office-lesson', proposal.id)} aria-label={`Accept office-wide lesson: ${proposal.statement}`}>Accept</Button><Button disabled={disabled} onClick={() => act('decline-office-lesson', proposal.id)} aria-label={`Decline office-wide lesson: ${proposal.statement}`}>Decline</Button></div>
       </Card>)}

@@ -21,7 +21,7 @@ function setup() {
     fixture.store.state.coordination!.jobs!.push(done);
     return { ...fixture, done, id: completedId(done) };
 }
-const lesson = (statement: string, evidenceIds: string[]): RetrospectiveResult['lessons'][number] => ({ tier: 'guidance', statement, detail: 'Why it matters', kind: 'pitfall', stages: ['implement'], paths: ['scripts/wiki'], evidenceIds, repositoryInstruction: false });
+const lesson = (statement: string, evidenceIds: string[]): RetrospectiveResult['lessons'][number] => ({ tier: 'guidance', when: 'Fixture situation', check: 'Fixture check', statement, detail: 'Why it matters', kind: 'pitfall', stages: ['implement'], paths: ['scripts/wiki'], evidenceIds, repositoryInstruction: false });
 
 test('a failed run waits with capped backoff instead of blocking, then a later success consumes the trigger', async () => {
     const { store, advance, done } = setup();
@@ -62,7 +62,7 @@ test('acceptance is lenient: duplicates, retired repeats and unsupported proposa
     const { store, done, id } = setup();
     const packet = retrospectiveFacts(store, jobSubject(store, done), { id, trigger: 'completed', event: { stage: 'closeout', head: '', steps: 2, reason: '' } });
     const step = `step:${done.id}:1`;
-    store.state.knowledge!.lessons.push({ id: 'old', scope: 'project', kind: 'pitfall', statement: 'Run the wiki build', detail: '', stages: ['any'], paths: [], status: 'retired', evidence: [], sourceRetrospectiveId: 'x', createdAt: '', updatedAt: '' });
+    store.state.knowledge!.lessons.push({ id: 'old', scope: 'project', kind: 'pitfall', when: 'Fixture situation', check: 'Fixture check', statement: 'Run the wiki build', detail: '', stages: ['any'], paths: [], status: 'retired', evidence: [], sourceRetrospectiveId: 'x', createdAt: '', updatedAt: '' });
     acceptRetrospective(store, { id, jobId: done.id, key: done.key, trigger: 'completed' }, packet, { summary: 'Done.', lessons: [
         lesson('  run the WIKI   build ', [step]),          // repeats a retired lesson: stays retired
         lesson('Commit generated artifacts', [step]),

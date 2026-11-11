@@ -21,9 +21,9 @@ test('three consolidated office lessons are seeded once and reach only their sta
     expect(lessons.map(lesson => lesson.id)).toEqual(['seed:office:recovery-acceptance-is-not-proof', 'seed:office:reuse-review-for-unchanged-head', 'seed:office:subprocess-fix-needs-launch-evidence']);
     expect(lessons.every(lesson => lesson.scope === 'office' && lesson.status === 'active' && !lesson.stages.includes('any') && lesson.evidence.length === 1)).toBe(true);
     mirrorOfficeKnowledge(office, [store]);
-    expect(selectLessons(store, { stage: 'github-review' }).text).toContain('reuse the saved review only if the head SHA');
+    expect(selectLessons(store, { stage: 'github-review' }).text).toContain('When: Reviewing or merging a PR that was reviewed earlier. Do: Reuse the saved review only if the head SHA');
     expect(selectLessons(store, { stage: 'github-review' }).text).not.toContain('subprocess');
-    expect(selectLessons(store, { stage: 'github-ci-recovery' }).text).toContain('report access as unknown');
+    expect(selectLessons(store, { stage: 'github-ci-recovery' }).text).toContain('Do: Report access as unknown until a fresh project-scoped read succeeds. Check:');
     expect(selectLessons(store, { stage: 'slack-send' }).text).toBe('');
 });
 

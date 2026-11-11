@@ -4,7 +4,7 @@ const knowledgeContext = (store: Parameters<typeof selectLessons>[0], stage?: st
 import { retireLesson } from '../../../server/knowledge/lesson-commands';
 import { seedProjectLessons } from '../../../server/knowledge/seeded-lessons';
 import { migrateSnapshot } from '../../../server/store/migrations';
-import { knowledgeStore } from './knowledge-fixture';
+import { knowledgeStore, learningLesson } from './knowledge-fixture';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).forEach(fn => fn()));
@@ -53,8 +53,23 @@ test('the Contentstack withdrawn-item lesson reaches CMS maintenance stages only
     expect(seeded[0].evidence[1]).toMatchObject({ kind: 'maintenance', ref: '8a7f8a8e-47f7-4830-b18a-96520b689791', url: '' });
     for (const stage of ['vendor-review', 'follow-up', 'proposal', 'proposal-plan', 'browser-verification']) {
         const section = knowledgeContext(store, stage);
-        for (const text of ['record it as withdrawn upstream', 'still lists items dated on or before its scan date', 'merely aged out of the RSS window is not withdrawn', 'cms-field-vocabulary/issues/137']) expect(section).toContain(text);
+        for (const text of ['record the identity as withdrawn upstream only when', 'still lists items dated on or before its scan date', 'only aged out of the feed window was read from the changelog page', 'cms-field-vocabulary/issues/137']) expect(section).toContain(text);
     }
     for (const stage of ['implement', 'review', 'validate', 'scope-repair']) expect(knowledgeContext(store, stage)).not.toContain('withdrawn upstream');
     for (const projectId of ['brain', 'cec']) expect(knowledgeContext(setup(projectId), 'vendor-review')).not.toContain('Contentstack');
+});
+
+test('a lesson stored before the when/check shape is rewritten once by id; an unknown one keeps only its action', () => {
+    const store = setup('brain');
+    store.state.knowledge!.lessons = [
+        { ...learningLesson('92d6bdae-fa6a-4846-88ae-7a8013562b37'), when: undefined, check: undefined } as never,
+        { ...learningLesson('unknown-old', { statement: 'Old action' }), when: undefined, check: undefined } as never,
+        learningLesson('new', { when: 'Kept situation', statement: 'Kept action', check: 'Kept check' }),
+    ];
+    migrateSnapshot(store.state, store.project);
+    const [known, unknown, current] = store.state.knowledge!.lessons;
+    expect(known).toMatchObject({ when: 'Adding or reviewing an exception that trusts bot-authored metadata.', check: 'A negative test exists for every condition.' });
+    expect(unknown).toMatchObject({ when: '', statement: 'Old action', check: '' });
+    expect(current).toMatchObject({ when: 'Kept situation', statement: 'Kept action', check: 'Kept check' });
+    expect(selectLessons(store, { stage: 'github-review' }).text).toContain('] Old action Reference:');
 });

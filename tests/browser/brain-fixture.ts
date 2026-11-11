@@ -42,7 +42,7 @@ export function brainFixture(published = false) {
         const text = 'Confirm the schema version before changing the migration mapping. Keep the accepted validation receipt with the project evidence.';
         const evidenceId = evidenceIdentity(source.id, `${id}:1`, 'v1');
         ledger.put('evidence', evidenceId, { id: evidenceId, sourceId: source.id, unitId: `${id}:1`, version: 'v1', text, contentSha256: digest(text), url: 'https://synthetic-office.slack.com/archives/' + id + '/p1', observedAt: '2026-11-09T16:55:00Z', readerVersion: 'synthetic-fixture-v1', limitations: ['Synthetic browser fixture; no live collection'] });
-        if (id === 'CCEC1') stores.get(home)!.state.knowledge!.lessons.push({ id: 'fixture-lesson', scope: 'project', tier: 'guidance', revision: 1, kind: 'pitfall', statement: 'Confirm schema versions before mapping changes', detail: 'Retain the accepted validation receipt alongside the mapping evidence.', stages: ['implement'], paths: [], status: 'active', evidence: [{ kind: 'source', ref: evidenceId, url: '', detail: 'Synthetic source citation', source: { sourceId: source.id, unitId: `${id}:1`, version: 'v1' } }], sourceRetrospectiveId: 'fixture-retrospective', createdAt: '2026-11-09T16:58:00Z', updatedAt: '2026-11-09T16:58:00Z' });
+        if (id === 'CCEC1') stores.get(home)!.state.knowledge!.lessons.push({ id: 'fixture-lesson', scope: 'project', tier: 'guidance', revision: 1, kind: 'pitfall', when: 'Fixture situation', check: 'Fixture check', statement: 'Confirm schema versions before mapping changes', detail: 'Retain the accepted validation receipt alongside the mapping evidence.', stages: ['implement'], paths: [], status: 'active', evidence: [{ kind: 'source', ref: evidenceId, url: '', detail: 'Synthetic source citation', source: { sourceId: source.id, unitId: `${id}:1`, version: 'v1' } }], sourceRetrospectiveId: 'fixture-retrospective', createdAt: '2026-11-09T16:58:00Z', updatedAt: '2026-11-09T16:58:00Z' });
         if (home === 'brain') registry.subscribe(source.id, 'cec', true);
     }
     const revision='a'.repeat(40),notePath='knowledge/tooling/validation-guide.md';
@@ -75,7 +75,7 @@ export function brainFixture(published = false) {
             fanoutSourceLearning(context);const store=stores.get(project)!;
             for(const pending of store.state.knowledge!.pending.filter(p=>p.source?.kind==='source'&&p.source.id===url.pathname.split('/')[4])) {
                 const refs=pending.opportunities!.flatMap(o=>o.evidence.map(e=>e.ref));
-                await runRetrospective(store,(async()=>({summary:'Synthetic accepted source curation',lessons:[{statement:'Keep validation receipts with project evidence',detail:'Retain the accepted receipt before changing project mappings.',kind:'process',stages:['implement'],paths:[],evidenceIds:refs.slice(0,5),repositoryInstruction:false}]})) as KnowledgeRunner,pending.id,context);
+                await runRetrospective(store,(async()=>({summary:'Synthetic accepted source curation',lessons:[{when: 'Fixture situation', check: 'Fixture check', statement:'Keep validation receipts with project evidence',detail:'Retain the accepted receipt before changing project mappings.',kind:'process',stages:['implement'],paths:[],evidenceIds:refs.slice(0,5),repositoryInstruction:false}]})) as KnowledgeRunner,pending.id,context);
             }
         }
         return response;

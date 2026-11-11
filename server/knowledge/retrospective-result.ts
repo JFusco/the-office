@@ -9,7 +9,9 @@ export const RetrospectiveResultSchema = z.object({
     summary: z.string().trim().min(1).max(1500),
     lessons: z.array(z.object({
         tier: z.enum(['hypothesis', 'guidance']).default('guidance'),
+        when: z.string().trim().min(1).max(300),
         statement: z.string().trim().min(1).max(300),
+        check: z.string().trim().min(1).max(300),
         detail: z.string().max(1500),
         kind: Kind,
         stages: z.array(Stage).max(6),
@@ -25,7 +27,9 @@ export type RetrospectiveResult = z.infer<typeof RetrospectiveResultSchema>;
 export const RollupResultSchema = z.object({
     summary: z.string().trim().min(1).max(2000),
     officeProposals: z.array(z.object({
+        when: z.string().trim().min(1).max(300),
         statement: z.string().trim().min(1).max(300),
+        check: z.string().trim().min(1).max(300),
         detail: z.string().max(1500),
         kind: Kind,
         stages: z.array(Stage).max(6),

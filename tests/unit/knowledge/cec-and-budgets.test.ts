@@ -42,7 +42,7 @@ test('a completed CEC pilot run learns from accepted results and retains Jira an
     maintainLearning(store);
     const batch = store.state.knowledge!.pending[0], evidenceRef = batch.opportunities![0].evidence[0].ref;
     let prompt = '';
-    const run = (async (text: string) => { prompt = text; return { summary: 'QA caught a focus ring gap.', lessons: [{ statement: 'Check focus rings on new controls before QA', detail: '', kind: 'pitfall', stages: ['implement'], paths: [], evidenceIds: [evidenceRef], repositoryInstruction: true }] }; }) as KnowledgeRunner;
+    const run = (async (text: string) => { prompt = text; return { summary: 'QA caught a focus ring gap.', lessons: [{ when: 'Fixture situation', check: 'Fixture check', statement: 'Check focus rings on new controls before QA', detail: '', kind: 'pitfall', stages: ['implement'], paths: [], evidenceIds: [evidenceRef], repositoryInstruction: true }] }; }) as KnowledgeRunner;
     await runRetrospective(store, run, batch.id);
     expect(prompt).toContain('a Jira/Azure ticket');
     const knowledge = store.state.knowledge!;

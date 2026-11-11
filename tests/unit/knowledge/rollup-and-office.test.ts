@@ -17,7 +17,7 @@ afterEach(() => cleanup.splice(0).forEach(fn => fn()));
 // Friday 2026-11-06, 6:30 PM Eastern.
 function setup(start = '2026-11-06T23:30:00Z', projectId = 'brain') { const fixture = knowledgeStore(projectId, start); cleanup.push(fixture.close); return fixture; }
 function control(store: ReturnType<typeof setup>['store']) { const value = new ControlStore(':memory:', store.clock); cleanup.push(() => value.close()); return value; }
-const lesson = (id: string, overrides: Partial<Lesson> = {}): Lesson => ({ id, scope: 'project', kind: 'pitfall', statement: `Lesson ${id}`, detail: '', stages: ['any'], paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'source-job:completed', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', ...overrides });
+const lesson = (id: string, overrides: Partial<Lesson> = {}): Lesson => ({ id, scope: 'project', kind: 'pitfall', when: 'Fixture situation', check: 'Fixture check', statement: `Lesson ${id}`, detail: '', stages: ['any'], paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'source-job:completed', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', ...overrides });
 
 test('narrative retries and saved reports use the same frozen learning snapshot', async () => {
     const { store, advance } = setup();
@@ -96,8 +96,8 @@ test('office proposals wait for Joe, then reach every project\'s prompts through
     const { store } = setup();
     const other = knowledgeStore('cms-field-vocabulary'); cleanup.push(other.close);
     const office = control(store);
-    const proposal = { statement: 'Run the wiki build before every review', detail: 'Two projects drifted.', kind: 'process' as const, stages: ['review' as const] };
-    const ids = proposeOfficeLessons(office, 'brain', 'rollup:2026-11-06', [proposal, { ...proposal, statement: '  run the WIKI build before every review ' }]);
+    const proposal = { when: 'Fixture situation', check: 'Fixture check', statement: 'Run the wiki build before every review', detail: 'Two projects drifted.', kind: 'process' as const, stages: ['review' as const] };
+    const ids = proposeOfficeLessons(office, 'brain', 'rollup:2026-11-06', [proposal, { ...proposal, when: 'Fixture situation', check: 'Fixture check', statement: '  run the WIKI build before every review ' }]);
     expect(ids).toHaveLength(1);
     expect(proposeOfficeLessons(office, 'cms-field-vocabulary', 'rollup:2026-11-06', [proposal])).toEqual([]); // already proposed
     mirrorOfficeKnowledge(office, [store, other.store]);
@@ -106,7 +106,7 @@ test('office proposals wait for Joe, then reach every project\'s prompts through
     expect(knowledgeContext(store, 'github-review')).not.toContain('wiki build');
     decideOfficeProposal(office, ids[0], true);
     mirrorOfficeKnowledge(office, [store, other.store]);
-    expect(knowledgeContext(other.store, 'github-lead-pr')).toContain('[office · process · review] Run the wiki build before every review');
+    expect(knowledgeContext(other.store, 'github-lead-pr')).toContain('[office · process · review] When: Fixture situation Do: Run the wiki build before every review Check: Fixture check');
     expect(knowledgeOutbox(store.state)).toEqual([]);
     retireOfficeLesson(office, ids[0]);
     mirrorOfficeKnowledge(office, [store, other.store]);

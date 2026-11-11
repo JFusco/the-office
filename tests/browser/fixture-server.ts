@@ -75,7 +75,7 @@ createServer(async(req,res)=>{
           // Office-wide: the fixture keeps one copy and stamps it onto every project, like the control store.
           const office=s.officeKnowledge||{proposals:[],lessons:[]},at=new Date().toISOString(),proposal=office.proposals.find(p=>p.id===data.lessonId);
           if(data.action==='retire-office-lesson')office.lessons=office.lessons.map(l=>l.id===data.lessonId?{...l,status:'retired' as const,retiredAt:at}:l);
-          else if(proposal){proposal.status=data.action==='accept-office-lesson'?'accepted':'declined';proposal.decidedAt=at;if(proposal.status==='accepted')office.lessons.push({id:proposal.id,scope:'office',kind:proposal.kind,statement:proposal.statement,detail:proposal.detail,stages:proposal.stages,paths:[],status:'active',evidence:[],sourceRetrospectiveId:proposal.rollupId,createdAt:at,updatedAt:at});}
+          else if(proposal){proposal.status=data.action==='accept-office-lesson'?'accepted':'declined';proposal.decidedAt=at;if(proposal.status==='accepted')office.lessons.push({id:proposal.id,scope:'office',kind:proposal.kind,when: 'Fixture situation', check: 'Fixture check', statement:proposal.statement,detail:proposal.detail,stages:proposal.stages,paths:[],status:'active',evidence:[],sourceRetrospectiveId:proposal.rollupId,createdAt:at,updatedAt:at});}
           for(const other of Object.values(state.snapshots))other.officeKnowledge=structuredClone(office);
         }
         if(data.action==='configure-channel-notifications')c.notices={policy:{...c.notices!.policy,channel:{...data.channel,enabledAt:data.channel.enabled?new Date().toISOString():'',version:crypto.randomUUID()}},entries:c.notices!.entries};

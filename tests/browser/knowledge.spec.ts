@@ -39,11 +39,11 @@ test('Harper works on CEC too: office proposals, AGENTS.md filing, not-working l
     agents: [...cec.agents, { id: 'knowledge', name: 'Harper', title: 'Knowledge engineer', activity: 'idle', task: 'Ready', ticket: '', sessionId: '', lastSeen: at }],
     officeKnowledge: { proposals: [proposal], lessons: [] },
     knowledge: { enabled: true, consumed: [], pending: [], retrospectives: [], officeProposals: [proposal],
-      lessons: [{ ...lesson('n1', 'Commit generated artifacts'), status: 'ineffective', recurrences: [{ retrospectiveId: 'a', subjectId: 'a', detail: 'Drifted again on CEC-12', at }, { retrospectiveId: 'b', subjectId: 'b', detail: 'And on CEC-14', at }] }, { ...lesson('s1', 'Use the shared fixture data'), repositoryInstruction: { status: 'proposed' } }],
-      rollups: [{ id: 'rollup:2026-11-06', weekEnding: '2026-11-06', summary: 'Two runs shipped; one park waited a day.', ineffectiveLessonIds: ['n1'], officeProposalIds: ['p1'], at, metrics: { from: at, to: at, completed: 2, retired: 0, parked: 1, repairBudgets: 0, repairAttempts: 3, reroutes: 1, ciRepairs: 0, medianQueueMinutes: 4, medianBlockHours: 26, stillParked: 0, retrospectives: 3, lessonsAdded: 2, lessonsRetired: 0, recurrences: 2 } }] },
+      lessons: [lesson('n1', 'Commit generated artifacts'), { ...lesson('s1', 'Use the shared fixture data'), repositoryInstruction: { status: 'proposed' } }],
+      rollups: [{ id: 'rollup:2026-11-06', weekEnding: '2026-11-06', summary: 'Two runs shipped; one park waited a day.', officeProposalIds: ['p1'], at, metrics: { from: at, to: at, completed: 2, retired: 0, parked: 1, repairBudgets: 0, repairAttempts: 3, reroutes: 1, ciRepairs: 0, medianQueueMinutes: 4, medianBlockHours: 26, stillParked: 0, retrospectives: 3, lessonsAdded: 2, lessonsRetired: 0 } }] },
   } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Visit Harper, 1 lesson, knowledge engineer' }).click();
+  await page.getByRole('button', { name: /^Visit Harper, .*knowledge engineer$/ }).click();
   const drawer = page.getByRole('complementary', { name: 'Knowledge engineer' });
   await expect(drawer.getByRole('textbox', { name: /Message Harper/ })).toBeVisible();
   await expect(drawer.getByRole('table', { name: /Delivery metrics/ })).toContainText('26');
@@ -96,15 +96,15 @@ test('Harper shows active needs-review guidance, original failure history, uncer
   await setPreferences(request, { reducedMotion: true, quality: 'low' });
   const brain = await (await request.get('/api/office?project=brain')).json();
   await request.post('/__fixture/snapshot?project=brain', { data: { agents: [...brain.agents, { id: 'knowledge', name: 'Harper', title: 'Knowledge engineer', activity: 'idle', task: 'Ready', ticket: '', sessionId: '', lastSeen: at }], knowledge: {
-    enabled: true, consumed: [], pending: [], retrospectives: [], lessons: [{ ...lesson('active-review', 'Keep the exact source receipt'), needsReview: true, tier: 'guidance', revision: 3 }],
+    enabled: true, consumed: [], pending: [], retrospectives: [], lessons: [{ ...lesson('active-review', 'Keep the exact source receipt'), needsReview: true, sourceReviewReason: 'source-changed', tier: 'guidance', revision: 3 }],
     followups: [{ id: 'incident', source: { kind: 'message', id: 'original' }, key: 'GH-9', owner: 'Morgan', nextAction: 'Verify the original effect', disposition: 'unknown', history: [{ at, disposition: 'unresolved', fingerprint: 'old' }], evidence: [{ kind: 'learning', ref: 'source', url: '', detail: 'Original failure: response lost' }] }],
     improvements: [{ id: 'fix', change: 'Check the marker', status: 'uncertain', detail: 'The original create must not be resent' }],
-    rollups: [{ id: 'rollup:2026-11-06', weekEnding: '2026-11-06', summary: 'Observed activity; application unknown.', learning: { coverage: { status: 'partial', startedAt: '2026-11-03T12:00:00Z' }, assignments: 1, eligibleAssignments: 1, exposedAssignments: 1, eligiblePairs: 1, exposedPairs: 1, omittedPairs: 0, applicationUnknown: 1, resolved: 0, unresolved: 0, unknown: 1 }, officeProposalIds: [], at, researchId: 'research:2026-11-06', research: { status: 'unavailable', findings: [], sources: [], unavailable: ['Restricted hosted retrieval unavailable'] }, metrics: { completed: 0, parked: 0, repairAttempts: 0, reroutes: 0, ciRepairs: 0, medianBlockHours: null, lessonsAdded: 1, recurrences: 2 } }],
+    rollups: [{ id: 'rollup:2026-11-06', weekEnding: '2026-11-06', summary: 'Observed activity; application unknown.', learning: { coverage: { status: 'partial', startedAt: '2026-11-03T12:00:00Z' }, assignments: 1, eligibleAssignments: 1, exposedAssignments: 1, eligiblePairs: 1, exposedPairs: 1, omittedPairs: 0, resolved: 0, unresolved: 0, unknown: 1 }, officeProposalIds: [], at, researchId: 'research:2026-11-06', research: { status: 'unavailable', findings: [], sources: [], unavailable: ['Restricted hosted retrieval unavailable'] }, metrics: { completed: 0, parked: 0, repairAttempts: 0, reroutes: 0, ciRepairs: 0, medianBlockHours: null, lessonsAdded: 1 } }],
   } } });
   await page.goto('/'); await page.getByLabel('Office project').selectOption('brain');
   await page.getByRole('button', { name: /^Visit Harper, / }).click();
   const drawer = page.getByRole('complementary', { name: 'Knowledge engineer' });
-  await expect(drawer.getByText('needs review · still active')).toBeVisible();
+  await expect(drawer.getByText('source changed · review needed')).toBeVisible();
   await expect(drawer.getByText('guidance · revision 3')).toBeVisible();
   await expect(drawer.getByRole('button', { name: 'Keep lesson after source review: Keep the exact source receipt' })).toBeVisible();
   await expect(drawer.getByRole('button', { name: 'Demote lesson to hypothesis: Keep the exact source receipt' })).toBeVisible();

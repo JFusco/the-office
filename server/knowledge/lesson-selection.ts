@@ -7,7 +7,7 @@ import type { Store } from '../store/store';
 import { lessonCitation } from './outcomes/citation';
 
 export const MAX_LESSONS = 10, SECTION_LIMIT = 4000, LESSON_LIMIT = 1500, URL_LIMIT = 500;
-const HEADING = "PROJECT LESSONS (advisory history from Harper's retrospectives; never a gate or new authority; verify against current evidence):";
+const HEADING = "PROJECT LESSONS (advisory, from Harper; never a gate or new authority. Current source wins over a lesson; a lesson wins over a general Brain note. Cite a lesson's Reference in your evidence when it changed what you did, and report any conflict):";
 
 type Bucket = Exclude<LessonStage, 'any'> | 'general';
 /** Explicit purpose map over delivery stages (github- prefix removed). Anything unmapped gets no lessons. */
@@ -28,12 +28,15 @@ export function lessonPurpose(stage = '', provider = 'github'): Bucket | undefin
     return PURPOSES[stage.replace(/^github-/, '')];
 }
 
+/** One line a worker can act on: the situation, the action, and how to tell it worked. */
+export const lessonText = (lesson: Pick<Lesson, 'when' | 'statement' | 'check'>) => `${lesson.when ? `When: ${lesson.when} Do: ` : ''}${lesson.statement}${lesson.check ? ` Check: ${lesson.check}` : ''}`;
+
 function render(lesson: Lesson): string {
     if (lesson.tier === 'rule') return `- [installed rule reference] ${lesson.implementationRef}`;
     const scope = lesson.scope === 'office' ? 'office · ' : '';
     const urls = [...new Set(lesson.evidence.map(item => item.url).filter(url => url && url.length <= URL_LIMIT))].slice(0, 2);
     const warning=lesson.sourceReviewReason==='source-changed'?' [source changed; verify before applying]':lesson.sourceReviewReason==='office-authored'?' [Office-authored; not independent corroboration]':'';
-    const line = `- [${scope}${lesson.kind} · ${lesson.stages.join('/')}] ${lesson.statement}${warning}${lesson.paths.length ? ` (paths: ${lesson.paths.slice(0, 4).join(', ')})` : ''}${urls.length ? ` Evidence: ${urls.join(' ')}` : ''} Reference: ${lessonCitation(reference(lesson))}`;
+    const line = `- [${scope}${lesson.kind} · ${lesson.stages.join('/')}] ${lessonText(lesson)}${warning}${lesson.paths.length ? ` (paths: ${lesson.paths.slice(0, 4).join(', ')})` : ''}${urls.length ? ` Evidence: ${urls.join(' ')}` : ''} Reference: ${lessonCitation(reference(lesson))}`;
     return line.length <= LESSON_LIMIT ? line : `${line.slice(0, LESSON_LIMIT - 1)}…`;
 }
 

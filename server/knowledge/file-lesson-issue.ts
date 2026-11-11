@@ -2,12 +2,13 @@ import { Effects } from '../store/effects';
 import type { command } from '../workers/process';
 import type { Lesson } from '../../src/shared';
 import type { Store } from '../store/store';
+import { lessonText } from './lesson-selection';
 
 export const lessonIssueMarker = (lesson: Pick<Lesson, 'id'>) => `Office lesson ${lesson.id}`;
 
 export function lessonIssueBody(store: Store, lesson: Lesson): string {
     const evidence = lesson.evidence.filter(item => /^https:\/\//.test(item.url)).map(item => `- [${item.detail}](${item.url})`).join('\n') || '- Recorded in the Office Lessons panel';
-    return `## Summary\nPromote this ${lesson.kind} into the appropriate repository documentation, regression test, or harness check after inspecting existing guidance.\n\n> ${lesson.statement}\n\n## Why\n${lesson.detail || 'Harper found it in an Office delivery retrospective.'}\n\n## Evidence\n${evidence}\n\n## Acceptance\n- Choose and justify documentation, test, or harness enforcement based on the evidence.\n- Consolidate duplicate guidance; use AGENTS.md only for durable repository conventions and navigation.\n- Report instruction-file line counts; 200 lines is a review guideline.\n- Verify behavior with the applicable focused checks.\n\n${lessonIssueMarker(lesson)} · proposed by Harper (Office knowledge engineer) for ${store.project.name}; filed after Joe's approval.`;
+    return `## Summary\nPromote this ${lesson.kind} into the appropriate repository documentation, regression test, or harness check after inspecting existing guidance.\n\n> ${lessonText(lesson)}\n\n## Why\n${lesson.detail || 'Harper found it in an Office delivery retrospective.'}\n\n## Evidence\n${evidence}\n\n## Acceptance\n- Choose and justify documentation, test, or harness enforcement based on the evidence.\n- Consolidate duplicate guidance; use AGENTS.md only for durable repository conventions and navigation.\n- Report instruction-file line counts; 200 lines is a review guideline.\n- Verify behavior with the applicable focused checks.\n\n${lessonIssueMarker(lesson)} · proposed by Harper (Office knowledge engineer) for ${store.project.name}; filed after Joe's approval.`;
 }
 
 /**

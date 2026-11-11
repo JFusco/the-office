@@ -25,7 +25,7 @@ export function proposeOfficeLessons(control: OfficeKnowledgeStore, projectId: s
             if (!key || seen.has(key)) continue;
             seen.add(key);
             const id = randomUUID();
-            knowledge.proposals.push({ evidence: (proposal.evidenceIds || []).filter(id => Object.hasOwn(evidence, id)).map(id => structuredClone(evidence[id])), id, projectId, rollupId, kind: proposal.kind, statement: proposal.statement.trim(), detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], status: 'proposed', createdAt: now.toISOString() });
+            knowledge.proposals.push({ evidence: (proposal.evidenceIds || []).filter(id => Object.hasOwn(evidence, id)).map(id => structuredClone(evidence[id])), id, projectId, rollupId, kind: proposal.kind, when: proposal.when.trim(), statement: proposal.statement.trim(), check: proposal.check.trim(), detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], status: 'proposed', createdAt: now.toISOString() });
             ids.push(id);
         }
         return ids;
@@ -43,7 +43,7 @@ export function decideOfficeProposal(control: OfficeKnowledgeStore, proposalId: 
         const now = control.clock.now().toISOString();
         proposal.status = accept ? 'accepted' : 'declined';
         proposal.decidedAt = now;
-        if (accept) knowledge.lessons.push({ id: proposal.id, scope: 'office', originProjectId:proposal.projectId, tier: 'guidance', revision: 1, kind: proposal.kind, statement: proposal.statement, detail: proposal.detail, stages: proposal.stages, paths: [], status: 'active',
+        if (accept) knowledge.lessons.push({ id: proposal.id, scope: 'office', originProjectId:proposal.projectId, tier: 'guidance', revision: 1, kind: proposal.kind, when: proposal.when, statement: proposal.statement, check: proposal.check, detail: proposal.detail, stages: proposal.stages, paths: [], status: 'active',
             evidence: [...(proposal.evidence || []), { kind: 'rollup', ref: `${proposal.projectId}:${proposal.rollupId}`, url: '', detail: `Proposed by Harper from ${proposal.projectId}, ${proposal.rollupId.replace('rollup:', 'week ending ')}` }],
             sourceRetrospectiveId: proposal.rollupId, createdAt: now, updatedAt: now });
     });

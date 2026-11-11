@@ -33,7 +33,12 @@ export interface Lesson {
     id: string;
     scope: 'project' | 'office';
     kind: LessonKind;
+    /** The situation in which the lesson applies, named by stage and what the worker is about to do. */
+    when: string;
+    /** The action, one imperative sentence. */
     statement: string;
+    /** How to tell the action worked. */
+    check: string;
     detail: string;
     stages: LessonStage[];
     paths: string[];
@@ -138,7 +143,9 @@ export interface OfficeProposal {
     projectId: string;
     rollupId: string;
     kind: LessonKind;
+    when: string;
     statement: string;
+    check: string;
     detail: string;
     stages: LessonStage[];
     status: 'proposed' | 'accepted' | 'declined';

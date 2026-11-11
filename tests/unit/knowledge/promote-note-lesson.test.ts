@@ -11,7 +11,7 @@ function fixture() {
     const id = crypto.randomUUID(), requestId = crypto.randomUUID();
     f.store.state.messages.push({ id: requestId, requestId, from: 'human', to: 'pm', ticket: 'GH-350', body: 'Investigate and retain lesson', status: 'answered', createdAt: '', sessionId: '', recheck: false, error: '', recipients: [], receipts: [], actionId: '' });
     f.store.state.projectNotes.push({ id, requestId, ticket: 'GH-350', summary: 'Harper reviewed lesson', detail: 'Keep uncertainty until verified.', createdAt: '2026-11-08T14:00:00Z' });
-    const input = { noteId: id, statement: 'Never replay an uncertain send; require independent read-back.', detail: 'Provider completion and cleanup are separate from external delivery.', kind: 'process', stages: ['any'] };
+    const input = { noteId: id, when: 'Fixture situation', check: 'Fixture check', statement: 'Never replay an uncertain send; require independent read-back.', detail: 'Provider completion and cleanup are separate from external delivery.', kind: 'process', stages: ['any'] };
     return { ...f, office, input };
 }
 test('explicit note promotion is idempotent, retains provenance and reaches operational prompts in every project', () => {

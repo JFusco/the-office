@@ -13,7 +13,7 @@ test('only owner-accepted content can support lessons; archived steps, findings 
         raw.catalog['artifact:source:unaccepted.json'] = { kind: 'artifact', ref: 'artifact:source:unaccepted.json', url: '', detail: '/unaccepted.json' };
         raw.catalog['finding:source:0:F1'] = { kind: 'finding', ref: 'finding:source:0:F1', url: '', detail: 'Unaccepted finding' };
         const packet = appendLearningFacts(raw, pending);
-        const proposal = (statement: string, ref: string) => ({ kind: 'process' as const, statement, detail: '', stages: ['any' as const], paths: [], evidenceIds: [ref] });
+        const proposal = (statement: string, ref: string) => ({ kind: 'process' as const, when: 'Fixture situation', check: 'Fixture check', statement, detail: '', stages: ['any' as const], paths: [], evidenceIds: [ref] });
         acceptRetrospective(f.store, pending, packet, { summary: 'Accepted review', lessons: [proposal('Bad step', 'step:source:0'), proposal('Bad file', 'artifact:source:unaccepted.json'), proposal('Bad finding', 'finding:source:0:F1'), proposal('Supported lesson', 'accepted-review')] }, 'attempt');
         expect(f.store.state.knowledge!.lessons.map(lesson => lesson.statement)).toEqual(['Supported lesson']);
         expect(JSON.stringify(packet)).not.toContain('Unaccepted claim');
