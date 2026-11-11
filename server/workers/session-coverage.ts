@@ -18,3 +18,18 @@ export function completeSessionCoverage(results: PromiseSettledResult<LiveSessio
     const resolved = new Set(native.value.map(session => session.id));
     return desktop.value.every(session => knownActivity(session) || resolved.has(session.id));
 }
+
+/** Count-only desktop causes of incomplete coverage; never session IDs, commands or transcript text. */
+export function desktopCoverageGap(results: PromiseSettledResult<LiveSession[]>[]): string | undefined {
+    const [native, , desktop] = results;
+    if (desktop.status !== 'fulfilled') return;
+    const unaccounted = (desktop.value as LiveSession[] & Partial<Pick<DesktopSessions, 'unaccounted'>>).unaccounted;
+    // Only a known native status resolves its own identity.
+    const resolved = new Set(native.status === 'fulfilled' ? native.value.filter(session => session.status !== 'loaded').map(session => session.id) : []);
+    const unknown = desktop.value.filter(session => !knownActivity(session) && !resolved.has(session.id)).length;
+    const causes: string[] = [];
+    if (!Array.isArray(unaccounted)) causes.push('the Codex process accounting report is missing');
+    else if (unaccounted.length) causes.push(`${unaccounted.length} Codex process${unaccounted.length === 1 ? ' is' : 'es are'} not accounted for by a verified session or running Office worker`);
+    if (unknown) causes.push(`${unknown} loaded session${unknown === 1 ? ' has' : 's have'} unknown current-turn activity`);
+    return causes.length ? `Coverage is incomplete: ${causes.join('; ')}. Ownership remains unavailable.` : undefined;
+}

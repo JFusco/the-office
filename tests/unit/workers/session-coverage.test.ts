@@ -79,15 +79,15 @@ const shared: LiveSession = { id: 'shared', provider: 'codex', cwd: '/unrelated'
 const descriptor: LiveSession = { ...shared, status: 'loaded', source: 'descriptor', context: { activity: 'unknown', scopes: [], userMessages: [] } };
 const accounted = (sessions: LiveSession[], unaccounted: number[] = []) => Object.assign(sessions, { unaccounted });
 test.each([
-    ['an unaccounted PID', [shared], accounted([], [202]), false],
-    ['a missing accounting report', [shared], [], false],
-    ['an unknown desktop-only session', [shared], accounted([{ ...descriptor, id: 'desktop-only' }]), false],
-    ['unrelated unknown native activity', [{ ...shared, id: 'other', status: 'loaded' }], accounted([]), false],
-    ['unknown activity on both matching identities', [{ ...shared, status: 'loaded' }], accounted([descriptor]), false],
-    ['known idle native activity for the matching identity', [shared], accounted([descriptor]), true],
-    ['known active native activity for the matching identity', [{ ...shared, status: 'active' }], accounted([descriptor]), true],
-    ['known waiting native activity for the matching identity', [{ ...shared, status: 'waiting' }], accounted([descriptor]), true],
-] as [string, LiveSession[], LiveSession[], boolean][])('a fulfilled native inventory with %s', async (_case, native, desktop, complete) => {
+    ['an unaccounted PID', [shared], accounted([], [202]), false, '1 Codex process is not accounted for'],
+    ['a missing accounting report', [shared], [], false, 'accounting report is missing'],
+    ['an unknown desktop-only session', [shared], accounted([{ ...descriptor, id: 'desktop-only' }]), false, '1 loaded session has unknown current-turn activity'],
+    ['unrelated unknown native activity', [{ ...shared, id: 'other', status: 'loaded' }], accounted([]), false, 'Loaded identities'],
+    ['unknown activity on both matching identities', [{ ...shared, status: 'loaded' }], accounted([descriptor]), false, '1 loaded session has unknown current-turn activity'],
+    ['known idle native activity for the matching identity', [shared], accounted([descriptor]), true, 'Loaded identities'],
+    ['known active native activity for the matching identity', [{ ...shared, status: 'active' }], accounted([descriptor]), true, 'Loaded identities'],
+    ['known waiting native activity for the matching identity', [{ ...shared, status: 'waiting' }], accounted([descriptor]), true, 'Loaded identities'],
+] as [string, LiveSession[], LiveSession[], boolean, string][])('a fulfilled native inventory with %s', async (_case, native, desktop, complete, cause) => {
     const fixture = knowledgeStore('cec');
     try {
         const execute = async (program: string) => program === 'claude' ? '[]' : '/unrelated/.git';
@@ -95,6 +95,10 @@ test.each([
         await bridge.refresh();
         expect(bridge.current.complete).toBe(complete);
         expect(bridge.forProject(fixture.store, 'CEC-154').ownership.status).toBe(complete ? 'clear' : 'unavailable');
+        // The desktop source explains its own incomplete cause by count only, never identities.
+        expect(bridge.current.sources[2]).toMatchObject({ ok: true });
+        expect(bridge.current.sources[2].detail).toContain(cause);
+        expect(bridge.current.sources[2].detail).not.toContain('desktop-only');
     } finally { fixture.close(); }
 });
 

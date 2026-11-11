@@ -1,4 +1,4 @@
-import { completeSessionCoverage } from './session-coverage';
+import { completeSessionCoverage, desktopCoverageGap } from './session-coverage';
 import { accountCodexProcesses, type DesktopSessions } from './codex-process-inventory';
 import WebSocket from 'ws';
 import {homedir} from 'node:os';
@@ -90,6 +90,7 @@ export class SessionBridge {
   const coverageComplete=completeSessionCoverage(results);
   const names=['Codex live runtime','Claude live sessions','Codex desktop/CLI session identities'];
   const sources=results.map((r,i)=>({name:names[i],ok:r.status==='fulfilled',detail:r.status==='fulfilled'?(i===2?'Loaded identities, current-turn ownership and retained conversation evidence are visible across repositories; missing turn activity remains unknown.':'Live inventory connected.'):`Session inventory could not complete${/timed? out|timeout/i.test(String(r.reason))?' within its read deadline':''}. Ownership remains unverified; this does not establish a login failure.`}));
+  const gap=coverageComplete?undefined:desktopCoverageGap(results);if(gap)sources[2].detail=gap;
   if(coverageComplete&&results[0].status==='rejected')sources[0].detail='The runtime socket is absent. Live Codex process identities and explicit current-turn events supply coverage.';
   const sessions=new Map<string,LiveSession>();
   // Runtime status beats a descriptor; an idle runtime cannot erase a positively active turn in another client.
