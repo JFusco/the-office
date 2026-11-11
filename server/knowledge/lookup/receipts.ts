@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto';
 import type { Store } from '../../store/store';
 import type { LearningSubject,KnowledgeSourceBinding } from '../../../src/contracts/knowledge';
 import type { KnowledgeLookupResponse,KnowledgeLookupSummary } from '../../../src/contracts/knowledge-lookups';
-import { readBoundedNoFollowSync } from '../../store/owned-artifact';
 
 export interface LookupJournal { append(query:string,response:KnowledgeLookupResponse,sourceBindings?:KnowledgeSourceBinding[]):void; finish():void }
 /** Append exact bytes before the response can leave the harness. Never modifies lessons.json. */
@@ -24,11 +23,6 @@ export function lookupJournal(store:Store,dir:string,id:string,stage:string,subj
 }
 
 /** The bounded immutable log is checked against its metadata digest before historical delivery. */
-export function readLookupJournal(dir:string,summary:KnowledgeLookupSummary):{query:string;response:KnowledgeLookupResponse}[] {
-    const file=readBoundedNoFollowSync(resolve(dir,'lookups.jsonl'),655360);
-    if(!('text' in file)||file.sha256!==summary.digest)throw Error('Lookup log is unavailable');
-    return decodeLookupJournal(file.text,summary);
-}
 export function decodeLookupJournal(text:string,summary:KnowledgeLookupSummary):{query:string;response:KnowledgeLookupResponse}[] {
     if(Buffer.byteLength(text)>655360||createHash('sha256').update(text).digest('hex')!==summary.digest)throw Error('Lookup log is unavailable');
     const rows=text.trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));

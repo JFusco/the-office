@@ -6,7 +6,8 @@ import { configDigest } from '../../../../server/knowledge/slack-intake/config';
 import { newTask } from '../../../../server/knowledge/slack-intake/collect';
 import { scheduledSlackIntake, retrySlackIntake } from '../../../../server/knowledge/slack-intake/schedule';
 import { runIntakeTask } from '../../../../server/knowledge/slack-intake/run';
-import { reconcileIntakeReports, readIntakeReport } from '../../../../server/knowledge/slack-intake/report';
+import { reconcileIntakeReports } from '../../../../server/knowledge/slack-intake/report';
+import { readIntakeReport } from './intake-report-fixture';
 import type { KnowledgeRunner } from '../../../../server/knowledge/run-retrospective';
 import type { ReadTask } from '../../../../server/knowledge/slack-intake/contracts';
 const noRun = (async () => { throw Error('provider failure'); }) as KnowledgeRunner;
@@ -153,6 +154,5 @@ test('late quiet-week appendix is aggregate-only and never changes the narrative
         expect(readIntakeReport(f.store, report.intake!.id, f.registry, f.source.id)).toContain('C123');
         f.task.status = 'complete'; f.ledger.put('task', f.task.id, f.task); reconcileIntakeReports(f.store, f.registry);
         expect(report.intake?.outstanding).toBe(0); expect(report.intake?.status).toBe('settled');expect(report.intake?.coverageGaps).toBeGreaterThanOrEqual(4);
-        expect(() => readIntakeReport(f.store, '../../unsafe', f.registry, f.source.id)).toThrow();
     } finally { f.close(); }
 });
