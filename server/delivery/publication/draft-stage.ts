@@ -3,6 +3,7 @@ import { harnessStageResult, receipt } from '../harness/stage-result';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { publishCandidate } from './publish-pr';
 import { readPublication } from './read-command';
+import { packed165Admitted } from '../recovery/packed165-evidence';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
@@ -10,7 +11,8 @@ import type { StageResult, TicketJob } from '../../../src/shared';
 export async function harnessDraft(delivery: GitHubDelivery, job: TicketJob, root: string): Promise<StageResult> {
     const { store, execute } = delivery;
     await readPublication(store, execute, job, root, 'viewer');
-    const publication = await publishCandidate(store, execute, delivery.jobs, job, root, delivery);
+    if (job.packedPublicationRepair && !packed165Admitted(store, job)) throw new Error('Approved #165 publication evidence changed');
+    const publication = await publishCandidate(store, execute, delivery.jobs, job, job.packedPublicationRepair?.contentRoot || root, delivery);
     const head = job.head;
     const lane = await moveLane(store, execute, job, 'In review', () => assertDeliveryMayMutate(store, delivery.jobs, job, head), publication.pr);
     const boardUrl = store.project.githubProject?.url || '';

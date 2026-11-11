@@ -220,7 +220,7 @@ export class GitHubDelivery {
             if (job.stage === 'prepare-pr') {
                 if (metadataAppliesToHead(this.store, job)) assertMetadataBinding(this, job);
                 const current = await this.verifyPR(job);
-                if (metadataAppliesToHead(this.store, job) && (current.head.sha !== job.head || current.head.ref !== job.branch))
+                if ((metadataAppliesToHead(this.store, job) || job.packedPublicationRepair) && (current.head.sha !== job.head || current.head.ref !== job.branch))
                     throw new Error('Bound metadata head changed before preparation; no overwrite or worker');
                 job.head = current.head.sha;
                 job.branch = current.head.ref || job.branch;

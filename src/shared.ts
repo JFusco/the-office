@@ -158,6 +158,7 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    packedPublicationRepair?: import('./contracts/packed-publication-repair').PackedPublicationRepair;
     admission?: import('./contracts/work').DeliveryAdmission;
     improvementId?: string;
     featureBinding?: import('./contracts/features').FeatureBinding;

@@ -3,6 +3,7 @@ import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 import { harnessDelivers } from './scope';
 import { requireDeliveryAuthority } from './delivery-authority';
+import { packed165Admitted } from '../recovery/packed165-evidence';
 
 /** Checked before a harness stage starts and again immediately before every external write. */
 export function assertMayMutate(store: Store, jobs: TicketJob[], job: TicketJob, expectedHead: string): void {
@@ -14,6 +15,8 @@ export function assertMayMutate(store: Store, jobs: TicketJob[], job: TicketJob,
         throw new Error('Delivery job identity changed before a harness write');
     if (expectedHead && job.head !== expectedHead)
         throw new Error('Candidate head changed before a harness write');
+    if (job.packedPublicationRepair && !packed165Admitted(store, job))
+        throw new Error('The exact approved #165 repair binding changed');
 }
 
 /** Scheduled ticket writes need their own claim. Polling/cleanup retain the guard above. */

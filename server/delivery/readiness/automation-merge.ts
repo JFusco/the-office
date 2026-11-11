@@ -3,6 +3,7 @@ import { pinCourier } from '../intake/dependency-bots/pin-courier';
 import { wikiSync } from '../intake/dependency-bots/wiki-sync';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { green156Admitted } from '../recovery/green156-evidence';
+import { packed165Admitted } from '../recovery/packed165-evidence';
 import { assessDeliveryEligibility } from '../harness/delivery-authority';
 import { assertAutomationEffects } from './automation-effects';
 import { currentMergeChecks } from './github-check-selection';
@@ -28,7 +29,19 @@ export async function automationMergePolicy(delivery: GitHubDelivery, job: Ticke
 
 /** Already implemented automation goes directly to the ordinary hosted-check merge gate. No model verdict is created. */
 export async function routeAutomationMerge(delivery: GitHubDelivery, job: TicketJob) {
-    if (job.stage !== 'lead-pr' || !job.existingPR) return false;
+    if (job.stage !== 'lead-pr') return false;
+    if (job.packedPublicationRepair) {
+        if (!packed165Admitted(delivery.store, job)) throw Error('One-time #165 repair approval changed');
+        const pr = await delivery.verifyPR(job, true);
+        if (pr.head?.sha !== job.head || pr.head?.ref !== job.branch || pr.state !== 'open' || pr.draft) throw Error('Approved #165 PR identity changed');
+        assertDeliveryMayMutate(delivery.store, delivery.jobs, job, job.head);
+        assertAutomationEffects(delivery.store, job);
+        job.stage = 'merge'; job.status = 'queued';
+        job.detail = 'Joe’s approved #165 repair goes directly to required current-head GitHub checks and merge rules; original failure retained.';
+        delivery.store.emit('packed165-merge-queued', job.detail, 'pm', job.key);
+        return true;
+    }
+    if (!job.existingPR) return false;
     const head = job.head, pr = await delivery.verifyPR(job, true);
     // A new published head is accepted only by the existing bot identity/commit qualification.
     const candidate = { ...job, head: pr.head.sha };
@@ -45,8 +58,9 @@ export async function routeAutomationMerge(delivery: GitHubDelivery, job: Ticket
 
 /** A bot's own rebase is requalified and checked on its new head, without falling back to a model cycle. */
 export async function observeAutomationMerge(delivery: GitHubDelivery, job: TicketJob, pr: any) {
-    const oneTime = green156Admitted(delivery.store, job);
-    if (oneTime && pr.head?.sha !== job.head) throw Error('One-time #156 approval does not cover a changed head');
+    const oneTime = green156Admitted(delivery.store, job) || packed165Admitted(delivery.store, job);
+    if (job.packedPublicationRepair && !packed165Admitted(delivery.store, job)) throw Error('One-time #165 repair binding changed');
+    if (oneTime && pr.head?.sha !== job.head) throw Error('One-time approval does not cover a changed head');
     if (!oneTime && !await automationMergePolicy(delivery, { ...job, head: pr.head?.sha }, pr)) return false;
     if (pr.state !== 'open' || pr.draft || pr.mergeable !== true) throw Error('Automation PR waits for GitHub merge readiness');
     assertAutomationEffects(delivery.store, job);
