@@ -1,4 +1,4 @@
-import { selectLessons } from './lesson-selection';
+import { clearUnblockBrief } from './unblock-brief';
 import type { BlockerFollowup, LearningSubject, TeamMessage } from '../../src/shared';
 import type { Store } from '../store/store';
 import { enqueueRequest } from '../scheduling/requests';
@@ -35,8 +35,8 @@ export function reconcileBlockerFollowups(store: Store): void {
         if (!item) { item = { id, source, key, fingerprint: '', owner: 'Morgan', nextAction: detail, evidence: [], disposition, createdAt: now, updatedAt: now, history: [] }; records.push(item); }
         if (item.fingerprint !== fingerprint) {
             item.history.push({ at: now, disposition, fingerprint, detail }); item.updatedAt = now;
-            Object.assign(item, { fingerprint, disposition, nextAction: detail, lessonRefs: selectLessons(store, { stage: 'repair' }).selected, ...refs });
-            if (disposition === 'confirmed') item.resolvedAt = now; else delete item.resolvedAt;
+            Object.assign(item, { fingerprint, disposition, nextAction: detail, ...refs });
+            if (disposition === 'confirmed') { item.resolvedAt = now; clearUnblockBrief(knowledge, source); } else delete item.resolvedAt;
             item.evidence = [{ kind: 'learning', ref: id, url: '', detail: JSON.stringify(proof).slice(0, 1500) }];
             // Initial unresolved inventory is baselined; subsequent material changes are learning. An unknown outcome proves nothing.
             // IT recovery records are excluded: they repeat the same condition and taught one lesson in 29 retrospectives.

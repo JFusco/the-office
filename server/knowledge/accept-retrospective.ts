@@ -7,11 +7,14 @@ import type { RetrospectiveResult } from './retrospective-result';
 import { catalogBindings, proofBindings } from './sources/proof-scope';
 import { checkedReceipt, type ScanReceipt } from './sources/admission';
 import { curateLesson } from './curate-lesson';
+import { saveUnblockBrief } from './unblock-brief';
+
+const BLOCKED = new Set<PendingRetrospective['trigger']>(['parked', 'blocked', 'repair-budget']);
 
 export const RETROSPECTIVE_HISTORY = 100;
 export const normalizeStatement = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
-type Accepted = { improvements?: ImprovementProposal[] } & Pick<RetrospectiveResult, 'summary'> & { lessons: (Omit<RetrospectiveResult['lessons'][number], 'repositoryInstruction' | 'tier' | 'action' | 'targetId' | 'validUntil'> & { repositoryInstruction?: boolean; tier?: 'hypothesis' | 'guidance'; validUntil?: string; action?: RetrospectiveResult['lessons'][number]['action']; targetId?: string })[] };
+type Accepted = { improvements?: ImprovementProposal[]; unblock?: RetrospectiveResult['unblock'] } & Pick<RetrospectiveResult, 'summary'> & { lessons: (Omit<RetrospectiveResult['lessons'][number], 'repositoryInstruction' | 'tier' | 'action' | 'targetId' | 'validUntil'> & { repositoryInstruction?: boolean; tier?: 'hypothesis' | 'guidance'; validUntil?: string; action?: RetrospectiveResult['lessons'][number]['action']; targetId?: string })[] };
 
 /**
  * Lenient, idempotent acceptance in one transaction. Duplicates and unsupported proposals are skipped,
@@ -44,6 +47,8 @@ export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospec
             if (outcome === 'shared') shared.push(proposal);
             else changed.push(outcome === 'updated' ? proposal.targetId! : lesson.id);
         }
+        // A brief is kept only from evidence every reader of this project may see.
+        if (result.unblock && !bindings.length && BLOCKED.has(pending.trigger)) saveUnblockBrief(knowledge, { kind: pending.subject || 'job', id: pending.jobId }, { ...result.unblock, at: now, retrospectiveId: pending.id });
         if(!sourceOnly)proposeImprovements(store, pending.source || { kind: pending.subject || 'job', id: pending.jobId }, result.improvements || [], catalog);
         knowledge.retrospectives.push({ sourceBindings: bindings.length ? bindings : undefined, source: pending.source, eventIds: pending.eventIds, id: pending.id, jobId: pending.jobId, key: pending.key, trigger: pending.trigger, subject: pending.subject || 'job', eventAt: pending.createdAt, attemptId, summary: result.summary.trim(), lessonIds: changed, at: now });
         knowledge.retrospectives = knowledge.retrospectives.slice(-RETROSPECTIVE_HISTORY);

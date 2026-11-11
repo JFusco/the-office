@@ -24,6 +24,8 @@ export const RetrospectiveResultSchema = z.object({
         action: z.enum(['add', 'update', 'supersede', 'share']).default('add'),
         targetId: z.string().max(100).default(''),
     }).strict()).max(5),
+    /** Only when the work is parked or blocked: what a teammate needs to get it moving again. */
+    unblock: z.object({ known: z.string().trim().min(1).max(600), decision: z.string().trim().min(1).max(400), next: z.string().trim().min(1).max(400) }).strict().nullable().default(null),
     improvements: z.array(z.object({ destination: z.enum(['project', 'office']).default('project'), cause: z.string().min(1).max(300), change: z.string().min(1).max(1500), regression: z.string().min(1).max(1500), acceptance: z.array(z.string().max(500)).min(1).max(8), evidenceIds: z.array(z.string().max(300)).min(1).max(5) }).strict()).max(3).default([]),
 }).strict();
 export type RetrospectiveResult = z.infer<typeof RetrospectiveResultSchema>;

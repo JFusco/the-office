@@ -194,6 +194,8 @@ export interface KnowledgeState {
     learningConsumed?: string[];
     learningAttempts?: Record<string, number>;
     followups?: BlockerFollowup[];
+    /** Harper's brief per blocked subject (`kind:id`), shown first when that work is dispatched again. */
+    unblockBriefs?: Record<string, { known: string; decision: string; next: string; at: string; retrospectiveId: string }>;
     improvements?: KnowledgeImprovement[];
     improvementGrant?: ImprovementGrant;
     research?: WeeklyResearch[];
@@ -243,7 +245,6 @@ export interface LearningMetrics {
 }
 export interface BlockerFollowup {
     id: string; source: LearningSubject; fingerprint: string; key: string;
-    lessonRefs?: LessonReference[];
     owner: 'Ellis' | 'Morgan'; nextAction: string; evidence: LessonEvidence[];
     recoveryId?: string; investigationId?: string; requestId?: string; nudgeId?: string;
     improvementId?: string; handoffId?: string; handoffIds?: string[];
