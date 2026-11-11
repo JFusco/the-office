@@ -5,7 +5,7 @@ import { sourceSeedProgress,type SourceSeedRows } from '../sources/seed-progress
 import { sourceLaunchLimit } from '../sources/seed-budget';
 import type { SeedBudget } from '../sources/seed-budget';
 import type { SlackSeedProgress } from '../../../src/contracts/knowledge';
-import { mkdirSync, renameSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Store } from '../../store/store';
 import { IntakeLedger } from './ledger';
@@ -13,7 +13,6 @@ import type { LinkRecord } from './read-links';
 import { digest, privateFile } from './config';
 import { collectionPolicy, type CollectionPolicy } from '../sources/collection-policy';
 import type { SourceRegistry } from '../sources/registry';
-import { sourceVisible } from '../sources/visibility';
 import type { Proposal, ReadTask, SourceUnit } from './contracts';
 export interface IntakeSummary { id: string; week: string; status: 'partial' | 'settled'; reads: number; captures: number; duplicates: number; quarantines: number; outstanding: number; coverageGaps:number; reasons: string[] }
 const byWeek = <T>(rows: T[], week: (row: T) => string | undefined) => {
@@ -79,10 +78,4 @@ function writeReports(store:Store,ledger:IntakeLedger,config:CollectionPolicy,se
         summaries.push(summary);
     }
     return summaries;
-}
-export function readIntakeReport(store: Store, id: string, registry: SourceRegistry, sourceId: string): string {
-    const source = registry.get(sourceId);
-    if (!source || source.homeProjectId !== store.project.id || !sourceVisible(registry, sourceId, store.project.id)) throw Error('Source report unavailable');
-    if (!/^intake-\d{4}-\d{2}-\d{2}$/.test(id)) throw Error('Invalid intake report identity');
-    return readFileSync(privateFile(store, `sources/${sourceId}/reports/${id}.json`), 'utf8');
 }

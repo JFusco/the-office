@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
-import { runRetrospective, retryDelay, RETROSPECTIVE_TIMEOUT, type RetrospectiveRunner } from '../../../server/knowledge/run-retrospective';
+import { runRetrospective, retryDelay, RETROSPECTIVE_TIMEOUT, type KnowledgeRunner } from '../../../server/knowledge/run-retrospective';
 import { scheduledRetrospectives } from '../../../server/knowledge/scheduled-retrospectives';
 import { acceptRetrospective } from '../../../server/knowledge/accept-retrospective';
 import { retrospectiveFacts, PACKET_LIMIT } from '../../../server/knowledge/retrospective-facts';
@@ -30,7 +30,7 @@ test('a failed run waits with capped backoff instead of blocking, then a later s
     const id = store.state.knowledge!.pending[0].id;
     const packetRef = store.state.knowledge!.pending[0].opportunities![0].evidence[0].ref;
     let provisional = '';
-    const failing = (async () => { provisional = store.state.knowledge!.pending[0].nextAt; throw new Error('provider overloaded'); }) as RetrospectiveRunner;
+    const failing = (async () => { provisional = store.state.knowledge!.pending[0].nextAt; throw new Error('provider overloaded'); }) as KnowledgeRunner;
     await runRetrospective(store, failing, id);
     const pending = store.state.knowledge!.pending[0];
     // The deadline was persisted before awaiting, so a crash mid-run cannot relaunch immediately.
@@ -44,7 +44,7 @@ test('a failed run waits with capped backoff instead of blocking, then a later s
 
     advance(retryDelay(1));
     expect(scheduledRetrospectives(store, failing)[0].eligibility.state).toBe('runnable');
-    await runRetrospective(store, (async () => ({ summary: 'Catalog drift caused one repair.', lessons: [lesson('Regenerate the catalog before review', [packetRef, 'invented:ref'])], recurrences: [] })) as RetrospectiveRunner, id);
+    await runRetrospective(store, (async () => ({ summary: 'Catalog drift caused one repair.', lessons: [lesson('Regenerate the catalog before review', [packetRef, 'invented:ref'])], recurrences: [] })) as KnowledgeRunner, id);
     const knowledge = store.state.knowledge!;
     expect(knowledge.pending).toEqual([]);
     expect(knowledge.consumed).toContain(id);
@@ -96,7 +96,7 @@ test('a retrospective for a job that is no longer retained completes without a m
     const { store, id } = setup();
     store.state.knowledge!.pending.push({ id: 'gone-job:parked:1', jobId: 'gone-job', key: 'GH-9', trigger: 'parked', createdAt: '', event: { stage: '', head: '', steps: 1, reason: '' }, attempts: 0, nextAt: '', lastError: '' });
     let calls = 0;
-    await runRetrospective(store, (async () => { calls++; return { summary: '', lessons: [], recurrences: [] }; }) as RetrospectiveRunner, 'gone-job:parked:1');
+    await runRetrospective(store, (async () => { calls++; return { summary: '', lessons: [], recurrences: [] }; }) as KnowledgeRunner, 'gone-job:parked:1');
     expect(calls).toBe(0);
     expect(store.state.knowledge!.consumed).toContain('gone-job:parked:1');
     expect(id).toBeTruthy();

@@ -32,9 +32,6 @@ export function rollupDue(store: Store, now: Date, dailyStatus?: (date: string) 
     return now >= easternInstant(friday, 17) && (reviewed || now >= easternInstant(friday, 18)) ? id : undefined;
 }
 
-/** Legacy API; recurrence alone never establishes ineffective guidance. */
-export function ineffectiveLessons(_lessons: Lesson[]): Lesson[] { return []; }
-
 function rollupPrompt(store: Store, weekEnding: string, metrics: ReturnType<typeof deliveryMetrics>, flagged: Lesson[], learning: ReturnType<typeof learningMetrics>,knowledge=store.state.knowledge!): string {
     const from = Date.parse(metrics.from);
     return `Harper weekly roll-up · ${store.project.name} · week ending ${weekEnding}

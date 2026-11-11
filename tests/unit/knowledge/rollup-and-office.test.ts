@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from 'vitest';
 import { acceptRetrospective } from '../../../server/knowledge/accept-retrospective';
 import { deliveryMetrics } from '../../../server/knowledge/delivery-metrics';
-import { ineffectiveLessons, lastFriday, rollupDue, runRollup, scheduledRollup } from '../../../server/knowledge/weekly-rollup';
-import { knowledgeContext } from '../../../server/knowledge/knowledge-context';
+import { lastFriday, rollupDue, runRollup, scheduledRollup } from '../../../server/knowledge/weekly-rollup';
+import { selectLessons } from '../../../server/knowledge/lesson-selection';
+const knowledgeContext = (store: Parameters<typeof selectLessons>[0], stage?: string) => selectLessons(store, { stage }).text;
 import { knowledgeOutbox } from '../../../server/knowledge/knowledge-outbox';
 import { demoteLesson, reactivateLesson } from '../../../server/knowledge/lesson-commands';
 import { decideOfficeProposal, mirrorOfficeKnowledge, proposeOfficeLessons, retireOfficeLesson } from '../../../server/knowledge/office-lessons';
@@ -54,7 +55,6 @@ test('a recurrence counts once per job and never on the job the lesson came from
 test('recurrences without recorded exposure do not deactivate guidance or claim failure', async () => {
     const { store } = setup();
     store.state.knowledge!.lessons.push(lesson('L1', { recurrences: [{ retrospectiveId: 'a', subjectId: 'a', detail: 'x', at: '2026-11-02T00:00:00Z' }, { retrospectiveId: 'b', subjectId: 'b', detail: 'y', at: '2026-11-04T00:00:00Z' }] }), lesson('L2', { recurrences: [{ retrospectiveId: 'a', subjectId: 'a', detail: 'same day', at: '2026-10-01T05:00:00Z' }, { retrospectiveId: 'c', subjectId: 'c', detail: 'z', at: '2026-11-04T00:00:00Z' }] }));
-    expect(ineffectiveLessons(store.state.knowledge!.lessons).map(l => l.id)).toEqual([]);
     store.state.knowledge!.retrospectives.push({ id: 'job-a:completed', jobId: 'job-a', key: 'GH-1', trigger: 'completed', attemptId: '', summary: 'shipped', lessonIds: [], at: '2026-11-04T12:00:00Z', eventAt: '2026-11-04T12:00:00Z' });
     let prompt = '';
     await runRollup(store, (async (text: string) => { prompt = text; return { summary: 'A steady week.', officeProposals: [] }; }) as KnowledgeRunner, 'rollup:2026-11-06');
