@@ -1,4 +1,5 @@
 import { admitGreen156 } from '../delivery/recovery/green156-admission';
+import { admitPacked165 } from '../delivery/recovery/packed165-admission';
 import { reconcileStoppedBaseHandoff } from '../delivery/recovery/stopped-base-review';
 import { reconcileStoppedBaseUpdate } from '../delivery/recovery/stopped-base-update';
 import { stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
@@ -204,6 +205,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                 break;
             }
             case 'authorize-green-merge-156': await admitGreen156(delivery, request); break;
+            case 'authorize-packed-repair-165': await admitPacked165(delivery, request); break;
             case 'reconcile-base-update':
                 if (!await reconcileBoardPreflight(delivery, request, async () => {
                     await coordinator.sessionBridge?.refresh();

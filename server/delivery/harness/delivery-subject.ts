@@ -1,6 +1,7 @@
 import type { Store } from '../../store/store';
 import type { HarnessRequest, TicketJob, WorkRef } from '../../../src/shared';
 import { digest } from '../../store/readback-evidence';
+import { PACKED165 } from '../recovery/packed165-policy';
 
 const accounting = new Set(['reconcile-time', 'reconcile-cost', 'apply-time-scope', 'correct-recovery-time']);
 const nonDelivery = new Set(['refresh', 'poll', 'observe-dependencies', 'check-it', 'retry-checkpoint', 'reconcile-maintenance',
@@ -20,7 +21,7 @@ export function resolveDeliveryWork(store: Store, work: WorkRef): DeliverySubjec
         const request = registered[0];
         if (accounting.has(request.action) || nonDelivery.has(request.action)) return { kind: 'unrelated' };
         // Non-delivery request kinds keep their own scheduling and permission contracts.
-        if (!['reconcile-pr-metadata', 'reconcile-base-update', 'authorize-green-merge-156', 'authorize-source-amendment', 'adopt-candidate', ...originalReads].includes(request.action))
+        if (!['reconcile-pr-metadata', 'reconcile-base-update', 'authorize-green-merge-156', PACKED165.action, 'authorize-source-amendment', 'adopt-candidate', ...originalReads].includes(request.action))
             return jobs.some(j => j.key === request.key && j.status !== 'cancelled')
                 ? { kind: 'unresolved', reason: 'Legacy or unknown same-ticket operation retains its own recovery gate' } : { kind: 'unrelated' };
         if (work.kind !== 'reconciliation') return { kind: 'unresolved', reason: 'Delivery request claimed under another work kind' };
@@ -36,6 +37,9 @@ export function resolveDeliveryWork(store: Store, work: WorkRef): DeliverySubjec
                     digest(r.proposal) === digest(p.proposal) && digest(r.authorization) === digest(p.authorization)
                     : job.parked?.at === p.parkAt && digest(job.parked) === p.parkSha256);
         }
+        else if (request.action === PACKED165.action) bound = store.project.id === PACKED165.project && store.project.repository === PACKED165.repository &&
+            job.id === PACKED165.job && job.key === PACKED165.key && request.head === PACKED165.head &&
+            (job.head === PACKED165.head || job.packedPublicationRepair?.original.head === PACKED165.head);
         else if (request.action === 'authorize-green-merge-156') bound = request.head === job.stoppedBaseUpdate?.originalWorkId && original.length === 1 && original[0].stage === 'github-update-base' && original[0].status === 'interrupted' && !original[0].executionStatus;
         else if (request.action === 'reconcile-base-update') bound =
             request.head === job.head && !!job.head && !!job.boardUpdates?.some(u => u.head === request.head && u.stage === 'update-base') ||

@@ -1,4 +1,5 @@
 import { green156Admitted } from '../delivery/recovery/green156-evidence';
+import { packed165Admitted } from '../delivery/recovery/packed165-evidence';
 import { requestPriority } from '../operations/request-priority';
 import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
@@ -197,6 +198,7 @@ function requestResolved(store: Store, request: import('../../src/shared').Harne
     if (!['blocked', 'interrupted'].includes(request.status)) return false;
     if (request.action === 'reconcile-review' && stoppedBaseHandoffResolved(store,request)) return true;
     if (request.action === 'authorize-green-merge-156') { const job = store.state.coordination?.jobs?.find(j => j.key === request.key); return !!job && job.stoppedBaseUpdate?.greenMerge?.requestId === request.id && green156Admitted(store, job); }
+    if (request.action === 'authorize-packed-repair-165') { const job = store.state.coordination?.jobs?.find(j => j.key === request.key && j.packedPublicationRepair?.requestId === request.id); return !!job && packed165Admitted(store, job); }
     if (request.action === 'reconcile-base-update') return stoppedBaseReassessmentReady(store, request);
     if (request.action === 'reconcile-pr-metadata') return metadataRequestResolved(store, request);
     if (request.action === 'reconcile-closeout') return closeoutRequestResolved(store,request);

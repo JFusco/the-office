@@ -1,0 +1,50 @@
+import { afterEach, expect, test } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { packed165Fixture, repairedHead, fixtureSource } from '../support/packed165';
+import { cleanupFakes } from '../support/fake-github';
+import { packed165Admitted } from '../../../../server/delivery/recovery/packed165-evidence';
+import { PACKED165 } from '../../../../server/delivery/recovery/packed165-policy';
+import { HOLDS } from '../../../../server/office/config';
+import { digest } from '../../../../server/store/readback-evidence';
+import { withAssignment } from '../../../../server/workers/assignment-context';
+
+afterEach(() => { delete HOLDS['GH-165']; cleanupFakes(); });
+test('one distinct native source revision preserves original candidate, uncertain Effect, accepted stages and consumed budgets', async () => {
+    const f = packed165Fixture(), steps = structuredClone(f.job.steps), retry = structuredClone(f.job.retry);
+    await f.run(); const commands = f.state.calls.length; await f.run();
+    expect(f.state.calls.length).toBe(commands);
+    expect(f.job).toMatchObject({ stage: 'draft', status: 'queued', head: repairedHead, approach: { review: 'none', validation: 'developer-checks' } });
+    expect(f.job.steps).toEqual(steps); expect(f.job.retry).toEqual(retry);
+    expect(f.store.getEffect(f.effect.id)).toEqual(f.effect);
+    expect(readFileSync(resolve(f.old.worktree, 'scripts/verify-packed-consumer.mjs'), 'utf8')).toBe(fixtureSource);
+    expect(readFileSync(resolve(f.job.worktree, 'scripts/verify-packed-consumer.mjs'), 'utf8')).toBe(f.patch.source);
+    expect(f.job.branch).toBe(f.old.branch + '-pnpm-' + f.request.id.slice(0, 8));
+    expect(f.job.packedPublicationRepair!.original).toEqual(f.old);
+    expect(packed165Admitted(f.store, f.job)).toBe(true);
+    expect(f.enqueue()).toBe(f.request); expect(f.store.state.coordination!.requests).toHaveLength(1);
+    expect(f.engine.agents.active.size).toBe(0);
+    expect(f.state.calls.some(c => /git push|gh pr create/.test(c))).toBe(false);
+});
+test.each(['hold', 'paused', 'writer', 'claim', 'other-effect', 'changed-effect', 'accepted-review', 'new-head', 'capacity'])('%s blocks the exact repair before source work', async scenario => {
+    const f = packed165Fixture();
+    if (scenario === 'hold') HOLDS[f.job.key] = 'Hold';
+    if (scenario === 'paused') f.store.state.paused = true;
+    if (scenario === 'writer') (f.store.state.workLog ??= []).push({ id: 'writer', requestId: f.job.id, status: 'running' } as any);
+    if (scenario === 'claim') f.store.finishClaim(f.claim.id, 'completed');
+    if (scenario === 'other-effect') f.store.db.prepare('INSERT INTO effects(id,work_key,status,body) VALUES(?,?,?,?)').run('other', `${PACKED165.project}:delivery:${f.job.id}`, 'uncertain', JSON.stringify({ id: 'other', status: 'uncertain' }));
+    if (scenario === 'changed-effect') f.store.db.prepare('UPDATE effects SET body=? WHERE id=?').run(JSON.stringify({ ...f.effect, error: 'changed' }), f.effect.id);
+    if (scenario === 'accepted-review') f.job.steps[0].result.outcome = 'blocked';
+    if (scenario === 'new-head') f.job.head = 'd'.repeat(40);
+    if (scenario === 'capacity') f.engine.agents.active.set('developer', new AbortController());
+    await expect(f.run()).rejects.toThrow();
+    expect(f.job.packedPublicationRepair).toBeUndefined();
+    expect(f.state.calls.some(c => /worktree add/.test(c))).toBe(false);
+});
+test('a claimed repair can finish its owned stage while draining, but a later unrelated claim cannot admit it', async () => {
+    const f = packed165Fixture(); f.store.state.draining = true;
+    await f.run(); expect(packed165Admitted(f.store, f.job)).toBe(true);
+    expect(digest(f.store.getEffect(f.effect.id))).toBe(PACKED165.effectSha256);
+    const other = { ...f.request, id: 'other-request' };
+    await expect(withAssignment(f.claim, 'delivery', async () => { const { admitPacked165 } = await import('../../../../server/delivery/recovery/packed165-admission'); await admitPacked165(f.delivery, other); })).rejects.toThrow('original admission');
+});
