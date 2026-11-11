@@ -1,3 +1,4 @@
+import { assertDeliveryMayMutate } from '../harness/guards';
 import {command} from '../../workers/process';
 import type {Store} from '../../store/store';
 import type {TicketJob,BoardUpdate} from '../../../src/shared';
@@ -21,6 +22,7 @@ export class ProjectProgress {
  async reviewStarted(job:TicketJob){
   const config=this.store.project.githubProject;if(!config)return;
   if(job.status!=='working'||!['review','lead-pr'].includes(job.stage))throw new Error('A claimed active review is required before moving its board card');
+  const head=job.head, guard=()=>assertDeliveryMayMutate(this.store,this.store.state.coordination?.jobs||[],job,head);guard();
   await this.reconcile(job);
   const data=await this.graphql(`query($owner:String!,$number:Int!){user(login:$owner){projectV2(number:$number){id fields(first:100){nodes{... on ProjectV2SingleSelectField{id name options{id name}}} pageInfo{hasNextPage}}}}}`,{owner:config.owner,number:config.number});
   const project=data.user?.projectV2,fields=project?.fields.nodes.filter((f:any)=>f?.name==='Status');
@@ -40,6 +42,7 @@ export class ProjectProgress {
   const update:BoardUpdate={stage:job.stage,head:job.head,project:project.id,item:item.id,field:field.id,option:options[0].id,target:options[0].name,at:new Date().toISOString(),status:'verified',detail:'In review lane already verified.'};
   const current=await this.value(item.id,field.id),currentLane=field.options.find((o:any)=>o.id===current)?.name?.toLowerCase();
   if(!['ready','in progress','in review'].includes(currentLane||''))throw new Error('Current board lane is deferred, done or unclassified; preserve the human lane before review');
+  guard();
   if(current!==update.option){
    update.status='pending';update.detail='Board review transition started; outcome requires read-back.';(job.boardUpdates??=[]).push(update);this.store.save();
    try{

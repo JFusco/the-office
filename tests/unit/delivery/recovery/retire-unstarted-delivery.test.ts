@@ -8,6 +8,7 @@ import { coordination } from '../../../../server/scheduling/coordination';
 import { GitHubDelivery } from '../../../../server/delivery/pipeline/github-delivery';
 import { retireInactiveDeliveries, retireUnstartedDelivery } from '../../../../server/delivery/recovery/retire-unstarted-delivery';
 import { ticketUpdates } from '../../../../src/work/TeamUpdates';
+import { claimedDelivery, registerDeliveryFixture } from '../../../fixtures/delivery-claim';
 import { workKey, type TicketJob } from '../../../../src/shared';
 
 const stores: Store[] = [], roots: string[] = [];
@@ -90,7 +91,8 @@ test.each(['head', 'worktree', 'steps', 'worker', 'effect', 'claim', 'board', 'm
     });
 test('a claimed stage retires a closed issue before starting a worker', async () => {
     const a = fixture();
-    await a.delivery.step(a.job);
+    registerDeliveryFixture(a.store, a.job);
+    await claimedDelivery(a.store, a.job, () => a.delivery.step(a.job));
     expect(a.job.status).toBe('cancelled');
     expect(a.execute).toHaveBeenCalledTimes(1);
 });

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { containedFile } from '../../cec/workflow';
 import { deliveryInputSha256 } from '../../github/github-context';
 import { currentAssignment } from '../../workers/assignment-context';
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { harnessDelivers } from '../harness/scope';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
 import { repairFindingIds, verifyRepairCandidate } from './delivery-repairs';
@@ -27,7 +27,7 @@ export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: Tick
     const input = deliveryInputSha256(store, job.key), head = job.head, branch = job.branch, prId = job.pr;
     let candidate = job.adoptedRepairCheckout;
     const assertCurrent = () => {
-        assertMayMutate(store, delivery.jobs, job, head);
+        assertDeliveryMayMutate(store, delivery.jobs, job, head);
         if (store.state.draining || job.stage !== 'lead-pr' || job.status !== 'working' || job.branch !== branch || job.pr !== prId || job.adoptedRepairCheckout !== candidate || job.mergeAttempt || job.mergeIntentId || job.mergeApprovalRequired ||
             job.prerequisites?.length || deliveryInputSha256(store, job.key) !== input ||
             job.steps.some(s => hasUncertainEffects(s.stage, s.result)) ||
@@ -40,11 +40,7 @@ export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: Tick
         if (p.state !== 'open' || p.merged_at || p.draft || p.head.sha !== head || p.head.ref !== job.branch ||
             p.head.repo?.full_name !== store.project.repository || p.head.ref === store.project.target || conflict && p.mergeable !== false)
             throw new Error('Adopted repair requires the unchanged same-repository PR and reported conflict');
-        const ownership = JSON.parse(await delivery.execute('curl', ['--fail', '--silent', '--show-error',
-            `http://127.0.0.1:${process.env.OFFICE_PORT || 4318}/api/sessions?project=${encodeURIComponent(store.project.id)}&ticket=${encodeURIComponent(job.key)}&requestId=${encodeURIComponent(job.id)}`], { readOnly: true, timeout: 60000 }));
-        if (!ownership.complete || !ownership.fresh || ownership.project !== store.project.id || ownership.key !== job.key || ownership.ownership?.status !== 'clear')
-            throw new Error('Adopted repair waits for fresh clear exact-issue ownership');
-        assertCurrent();
+    assertCurrent();
         return p;
     };
     const provider = await guard();

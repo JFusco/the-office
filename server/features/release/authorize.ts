@@ -1,3 +1,5 @@
+import { FeatureError } from '../progression/failure';
+import { ReviewStateError } from '../review-state-error';
 import { assertRetainedItems } from './retained-items';
 import { pendingRounds } from '../questions/pending-round';
 import { automaticFeature } from '../progression/policy';
@@ -28,18 +30,19 @@ export async function authorizeFeature(store: Store, id: string, input: Authoriz
     if (feature.review?.pendingDecision || pendingRounds(feature).length) throw new Error('Resolve pending decisions before approval');
     artifactPath(store, feature, plan.id); artifactPath(store, feature, brief.id);
     const manifest = manifestFromPlan(plan.markdown);
-    if (digest(manifest) !== input.manifestDigest) throw new Error('Stored plan and ticket preview differ');
+    if (digest(manifest) !== input.manifestDigest) throw new FeatureError('invalid-content', 'Stored plan and ticket preview differ');
     assertRetainedItems(feature, manifest);
     assertFeatureDependencyOrder(store, feature, manifest);
-    if (feature.sourceTicket && !manifest.items.some(item => item.key === feature.sourceTicket)) throw new Error('The enrolled source ticket must be retained in the approved breakdown');
+    if (feature.sourceTicket && !manifest.items.some(item => item.key === feature.sourceTicket)) throw new FeatureError('invalid-content', 'The enrolled source ticket must be retained in the approved breakdown');
     for (const mapped of feature.publication) {
         const intent = mapped.createIntent ? store.getEffect<any>(mapped.createIntent) : undefined;
         const next = manifest.items.find(i => i.id === mapped.id)?.operations.find(o => o.kind === 'create');
-        if (intent && next && digest(intent.payload.operation.payload) !== digest(next.payload) && !(intent.status === 'rejected' && !intent.dispatchedAt && intent.payload.operation.id !== next.id)) throw new Error('Retain the original create payload; propose a separate reviewed update for changed content');
+        if (intent && next && digest(intent.payload.operation.payload) !== digest(next.payload) && !(intent.status === 'rejected' && !intent.dispatchedAt && intent.payload.operation.id !== next.id)) throw new FeatureError('invalid-content', 'Retain the original create payload; propose a separate reviewed update for changed content');
     }
     const identity = approvalIdentity(feature);
     const review = await inspect(feature, execute);
-    if (review.status !== 'complete' || !review.researchDigest || review.revision !== feature.review?.revision || digest(review.plan) !== plan.digest || review.fingerprint !== feature.review?.fingerprint || review.run !== feature.review?.run) throw new Error('Independent review evidence is not current');
+    if (review.run === feature.review?.run && review.status !== 'complete') throw new ReviewStateError(review);
+    if (review.status !== 'complete' || !review.researchDigest || review.revision !== feature.review?.revision || digest(review.plan) !== plan.digest || review.fingerprint !== feature.review?.fingerprint || review.run !== feature.review?.run) throw new FeatureError('unsupported', 'Independent review evidence is not current');
     let source: { observedSha: string; comparisonDigest: string };
     try { source = await compare(store, feature.baseline, execute); }
     catch (error) {

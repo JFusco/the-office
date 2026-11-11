@@ -21,8 +21,8 @@ export function refreshFeatureEvidence(store: Store, target: string, reference: 
             const drift = requirementDrift(before, evidence, effects, started, store.project.repository);
             if (drift.kind === 'unavailable') throw new Error(drift.reason);
             if (drift.kind === 'changed' && !requestReplan(feature, 'evidence:' + previous.evidenceDigest + ':' + reference.evidenceDigest, store.clock.now(), drift.reason)) {
-                recoveryQuestion(feature, store.clock.now(), 'The lifetime replan budget is exhausted. ' + drift.reason);
                 const budget = stageBudget(feature, feature.phase); budget.wait = 'questions'; budget.nextAt = null;
+                recoveryQuestion(feature, store.clock.now(), 'The lifetime replan budget is exhausted. ' + drift.reason);
             }
         }
         feature.evidence = reference;

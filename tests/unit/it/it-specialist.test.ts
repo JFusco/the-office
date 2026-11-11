@@ -9,7 +9,7 @@ function setup() {
     const state = initialSnapshot();
     state.project = projectById('brain');
     state.coordination = coordination();
-    const store = { state, project: state.project, clock: { now: () => new Date() }, save: vi.fn(), emit: vi.fn() };
+    const store = { state, project: state.project, clock: { now: () => new Date() }, activeClaims: () => [], save: vi.fn(), emit: vi.fn() };
     const coordinator = { poll: vi.fn(async () => { }), retryCheckpoint: vi.fn() }, engine = { observe: vi.fn(async () => { }) };
     const offices = { entries: new Map([['brain', { store, engine, coordinator }]]) };
     const health = { report: vi.fn(async () => ({ checkedAt: '', context: '', services: [{ id: 'github', name: 'GitHub', status: 'connected', detail: 'Verified', checkedAt: '' }] })) };
@@ -108,6 +108,19 @@ test('IT restores only eligible Ready ownership reads, with a three-attempt cap 
     expect(r.status).toBe('blocked');
     expect(a.state.coordination!.listener.reviews[1].status).toBe('blocked');
     expect(a.state.it!.reports.at(-1)!.followUps.some(f => f.owner === 'Morgan')).toBe(true);
+});
+test.each(['cec', 'brain', 'cms-field-vocabulary'])('%s session visibility follow-up preserves its ownership requirement', async project => {
+    const a = setup();
+    a.store.project = a.state.project = projectById(project);
+    (a.it as any).offices.sessions = { forProject: () => ({ complete: false, fresh: false }), refresh: vi.fn() };
+    for (const ms of [0, 60000, 180000, 600000]) await a.it.tick(new Date(1793221200000 + ms), true);
+    const followUp = a.state.it!.reports.at(-1)!.followUps.find(f => f.id === 'session-visibility')!;
+    expect(followUp.owner).toBe('Morgan');
+    if (project === 'cec') {
+        expect(followUp.detail).toContain('delivery ownership still requires complete live evidence');
+        expect(followUp.detail).not.toContain('Optional chat context');
+    } else expect(followUp.detail).toContain('Optional chat context is unavailable');
+    expect(a.state.it!.recoveries['session-visibility'].attempts).toBe(3);
 });
 test('IT queues read-only closeout reconciliation only after the shared worker is free', async () => {
     const a = setup(), job: any = { id: 'done', key: 'GH-255', stage: 'closeout', status: 'blocked', detail: 'Effect needs read-back', steps: [{ stage: 'closeout', result: { outcome: 'passed' } }] };

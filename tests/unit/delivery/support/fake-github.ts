@@ -126,7 +126,7 @@ export function fakeGitHub(issueNumber = 5) {
     const root_ = (job: TicketJob) => { const dir = resolve(store.dataRoot, 'ticket-work', job.id); mkdirSync(dir, { recursive: true }); return dir; };
     /** A reviewed local candidate ready to publish. */
     function candidate(overrides: Partial<TicketJob> = {}): TicketJob {
-        delivery.enqueue(`GH-${issueNumber}`, 0, 'Ready');
+        delivery.enqueue(`GH-${issueNumber}`, 0, 'Ready', { kind: 'pickup', reference: `fixture:GH-${issueNumber}:Ready` });
         const job = delivery.jobs.at(-1)!;
         const worktree = resolve(root, 'cms-field-vocabulary-worktrees', `${issueNumber}-restore-release-scans`);
         mkdirSync(worktree, { recursive: true });

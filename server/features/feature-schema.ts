@@ -1,3 +1,4 @@
+import { FeatureError } from './progression/failure';
 import { z } from 'zod';
 
 const text = z.string().trim().min(1);
@@ -22,11 +23,17 @@ export const ManifestSchema = z.object({
         if (item.action === 'update' && !item.key || item.action === 'create' && (item.key || item.operations.filter(op => op.kind === 'create').length !== 1)) ctx.addIssue({ code: 'custom', message: 'Create/update identity is inconsistent', path: ['items', index] });
     }
 });
-export const DiscoverySchema = z.object({ summary: text, brief: text, questions: z.array(z.object({ question: text, recommendation: text, choices: z.array(text).max(4) }).strict()).max(3), ready: z.boolean() }).strict();
-export const PlanSchema = z.object({ summary: text, markdown: text, scope: z.array(text).min(1), questions: z.array(z.object({ question: text, recommendation: text, choices: z.array(text).max(4) }).strict()).max(3) }).strict();
+const RawQuestionSchema = z.object({ id: text.optional(), question: text, recommendation: z.string().max(10000), choices: z.array(z.string().max(10000)).max(32).optional(), options: z.array(z.object({ id: text.optional(), label: z.string().max(10000), tradeoff: z.string().max(10000).optional() }).strict()).max(32).optional(), recommendedOptionId: text.optional() }).strict();
+const QuestionSchema = z.object({ id: text, question: text, recommendation: z.string(), choices: z.array(text).max(4), options: z.array(z.object({ id: text, label: text, tradeoff: z.string() }).strict()).max(4), recommendedOptionId: text.optional() }).strict();
+export const RawDiscoverySchema = z.object({ summary: text, brief: text, questions: z.array(RawQuestionSchema).max(3), ready: z.boolean() }).strict();
+export const RawPlanSchema = z.object({ summary: text, markdown: text, scope: z.array(text).min(1), questions: z.array(RawQuestionSchema).max(3) }).strict();
+export const DiscoverySchema = RawDiscoverySchema.extend({ questions: z.array(QuestionSchema).max(3) });
+export const PlanSchema = RawPlanSchema.extend({ questions: z.array(QuestionSchema).max(3) });
+const HarnessCommand = z.object({ action: z.literal('harness-action'), requestId: text, expectedRevision: z.number().int().positive(), roundId: text, operation: z.enum(['apply','note']), optionId: text.optional(), note: text.max(10000).optional() }).strict().superRefine((input,ctx)=>{if(input.operation==='apply' ? !input.optionId || input.note!==undefined : !input.note || input.optionId!==undefined)ctx.addIssue({code:'custom',message:'Apply requires an option ID; note requires only note text'});});
 export const FeatureCommandSchema = z.discriminatedUnion('action', [
+    HarnessCommand,
     z.object({ action: z.literal('create'), requestId: text, title: text.max(200), intent: text.max(20000), sourceGoalId: z.string().default(''), sourceTicket: z.string().default('') }).strict(),
-    z.object({ action: z.literal('answer'), requestId: text, expectedRevision: z.number().int().positive(), roundId: text, answers: z.record(z.string(), text.max(10000)) }).strict(),
+    z.object({ action: z.literal('answer'), requestId: text, expectedRevision: z.number().int().positive(), roundId: text, reviewRun: text.optional(), reviewRevision: z.number().int().nonnegative().optional(), answers: z.record(z.string(), text.max(10000)) }).strict(),
     z.object({ action: z.literal('create-plan'), requestId: text, expectedRevision: z.number().int().positive(), briefDigest: text }).strict(),
     z.object({ action: z.literal('revise'), requestId: text, expectedRevision: z.number().int().positive(), instruction: text.max(20000) }).strict(),
     z.object({ action: z.literal('approve'), requestId: text, expectedRevision: z.number().int().positive(), planDigest: text, manifestDigest: text }).strict(),
@@ -34,6 +41,6 @@ export const FeatureCommandSchema = z.discriminatedUnion('action', [
 ]);
 export function manifestFromPlan(markdown: string) {
     const matches = [...markdown.matchAll(/```feature-manifest\s*\n([\s\S]*?)\n```/g)];
-    if (matches.length !== 1) throw new Error('Plan must contain exactly one feature-manifest block');
-    return ManifestSchema.parse(JSON.parse(matches[0][1]));
+    if (matches.length !== 1) throw new FeatureError('invalid-content', 'Plan must contain exactly one feature-manifest block');
+    try { return ManifestSchema.parse(JSON.parse(matches[0][1])); } catch(error) { throw new FeatureError('invalid-content', 'Correct the feature manifest: ' + String(error)); }
 }

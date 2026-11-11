@@ -37,15 +37,11 @@ test('a saved assessment flag without bound native worker and digest proof is re
     expect(() => savedMetadataAssessment(f.delivery, f.job)).toThrow('digest-bound');
 });
 
-test('incomplete live ownership stops before workspace preparation and model dispatch', async () => {
-    const f = setup(), run = vi.spyOn(f.engine.agents, 'run');
-    f.job.stage = 'prepare-pr'; f.job.status = 'working';
-    const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'fixture', 'prepare-pr')!;
-    f.delivery.execute = (async (program: string) => {
-        expect(program).toBe('curl');
-        return JSON.stringify({ project: f.store.project.id, key: f.job.key, complete: false, fresh: true, ownership: { status: 'unavailable' } });
-    }) as typeof f.delivery.execute;
-    await expect(withAssignment(claim, 'delivery', () => assessPRMetadata(f.delivery, f.job, f.root))).rejects.toThrow('Fresh complete clear');
-    expect(run).not.toHaveBeenCalled();
-    expect(f.job.prMetadataRepair!.assessmentStartedAt).toBeUndefined();
+test('a stopped claim blocks workspace preparation and model dispatch', async () => {
+    const f=setup(),run=vi.spyOn(f.engine.agents,'run');f.job.stage='prepare-pr';f.job.status='working';
+    const claim=f.store.claimWork({projectId:f.store.project.id,kind:'delivery',id:f.job.id},'fixture','prepare-pr')!;
+    f.store.finishClaim(claim.id,'stopping');
+    f.delivery.execute=vi.fn(async()=>{throw Error('No provider/workspace call expected');}) as typeof f.delivery.execute;
+    await expect(withAssignment(claim,'delivery',()=>assessPRMetadata(f.delivery,f.job,f.root))).rejects.toThrow('scheduler claim');
+    expect(run).not.toHaveBeenCalled();expect(f.delivery.execute).not.toHaveBeenCalled();expect(f.job.prMetadataRepair!.assessmentStartedAt).toBeUndefined();
 });

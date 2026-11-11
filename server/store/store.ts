@@ -37,6 +37,7 @@ export class Store {
     db: DatabaseSync;
     state: OfficeSnapshot;
     listeners = new Set<(event: OfficeEvent) => void>();
+    commitListeners = new Set<() => void>();
     private transactionDepth = 0;
     private pendingEvents: OfficeEvent[] = [];
     private statement: (sql: string) => StatementSync;
@@ -95,6 +96,7 @@ export class Store {
             this.transactionDepth = 0;
             this.pendingEvents = [];
         }
+        for (const listener of this.commitListeners) { try { listener(); } catch { this.commitListeners.delete(listener); } }
         // A failed SSE subscriber must not undo or misreport an already committed result.
         for (const event of events)
             for (const callback of this.listeners) {

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { completedExecution, offlineNativeEvidence } from '../../workers/worker-completion';
 import { artifact, digest } from '../../store/readback-evidence';
 import { continuationWorkerProof, assertContinuationWorker } from '../recovery/implementation/continuation-evidence';
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { containedFile } from '../../cec/workflow';
 import { currentAssignment } from '../../workers/assignment-context';
 import { ghLogCacheEvidence } from './gh-log-cache-evidence';
@@ -42,7 +42,7 @@ export async function reconcileCIDiagnosis(delivery: GitHubDelivery, job: Ticket
     }
     const native = offlineNativeEvidence(store, writer, store.project.repo, roots), root = resolve(store.dataRoot, 'ticket-work', job.id), logCaches = readCaches(job, writer);
     const assertCurrent = () => {
-        assertMayMutate(store, delivery.jobs, job, head);
+        assertDeliveryMayMutate(store, delivery.jobs, job, head);
         if (store.state.draining || job.status !== 'working' || job.stage !== 'ci-recovery' || job.mergeCommit !== merged ||
             job.ciRecoveryAttemptAt !== attemptAt || job.ciFollowupKey) throw new Error('Original CI diagnosis reconciliation changed');
     };

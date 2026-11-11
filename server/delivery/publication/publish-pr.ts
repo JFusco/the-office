@@ -1,6 +1,6 @@
 import { verifyRepairCandidate } from '../repairs/delivery-repairs';
 import { verifyCIHooks } from '../repairs/ci-checkout';
-import { assertMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { retryRead } from '../harness/read-retry';
 import { lintPRContent, prContent } from './pr-body';
@@ -19,7 +19,7 @@ type Candidate = Readonly<{ head: string; branch: string; worktree: string }>;
 
 /** Identity captured when publication starts; every write is checked against it, not the live job. */
 function assertCandidate(store: Store, jobs: TicketJob[], job: TicketJob, candidate: Candidate): void {
-    assertMayMutate(store, jobs, job, candidate.head);
+    assertDeliveryMayMutate(store, jobs, job, candidate.head);
     if (job.branch !== candidate.branch || job.worktree !== candidate.worktree)
         throw new Error('Candidate branch or worktree changed before a harness write');
 }

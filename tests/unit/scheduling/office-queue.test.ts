@@ -1,3 +1,4 @@
+import {registerDeliveryFixture} from '../../fixtures/delivery-claim';
 import {TimeLedger} from '../../../server/time/time-ledger';
 import {FEATURE_PLANNING} from '../../../server/office/config';
 import {openAssessment,assessmentEpisode,closeAssessment} from '../../../server/features/handoff/disposition-store';
@@ -361,7 +362,7 @@ test('unchanged evidence capture owns only operations while spare delivery slots
  try {
   first=office.pump();await vi.waitFor(()=>expect(f.entry.store.activeClaims().some(c=>c.lane==='operations')).toBe(true));
   const deliveryClaim=occupied.entry.store.activeClaims()[0];expect(f.entry.store.activeClaims()).toHaveLength(1);expect(f.entry.store.activeClaims()[0].work).toMatchObject({kind:'reconciliation',id:'evidence-capture:'+target});
-  const job={id:'third-job',key:'GH-888',status:'queued',stage:'review',requestedAt:new Date().toISOString(),steps:[],prerequisites:[]} as any;third.store.state.coordination!.jobs!.push(job);third.coordinator!.pump=async()=>{job.status='working';await thirdHeld;job.status='completed';};
+  const job={id:'third-job',key:'GH-888',status:'queued',stage:'review',requestedAt:new Date().toISOString(),steps:[],prerequisites:[]} as any;registerDeliveryFixture(third.store,job);third.store.state.coordination!.jobs!.push(job);third.coordinator!.pump=async()=>{job.status='working';await thirdHeld;job.status='completed';};
   second=office.pump();await vi.waitFor(()=>expect(third.store.activeClaims()).toHaveLength(1));expect(office.capacity.slots.size).toBe(2);expect(occupied.entry.store.activeClaims()[0].id).toBe(deliveryClaim.id);
   releaseCapture();await vi.waitFor(()=>expect(captureRequest(f.entry.store,target)?.status).toBe('complete'));expect(f.run).not.toHaveBeenCalled();expect(f.entry.store.activeClaims().some(c=>c.work.kind==='assessment')).toBe(false);
  }finally{releaseCapture();releaseThird();occupied.release();await Promise.all([first,second]);delete FEATURE_PLANNING[f.entry.store.project.id];}
@@ -411,3 +412,60 @@ test.each([true,false])('stopping process cleanup precedes deadline occupancy ob
   expect(assessmentEpisode(f.entry.store,f.episode.id)?.reason).toBe(alive?'assessment not started: delivery lane occupied':'assessment not started: deadline reached before dispatch');expect(other.activeClaims().some(c=>c.id===claim.id)).toBe(alive);expect(f.run).not.toHaveBeenCalled();
  }finally{delete FEATURE_PLANNING[f.entry.store.project.id];vi.useRealTimers();}
 });
+test('bounded helper stopping claim remains a delivery blocker until its group is absent',async()=>{
+ const office=offices(3),entry=office.get('cec');let alive=true;
+ vi.spyOn(process,'kill').mockImplementation(()=>{if(alive)return true;throw Object.assign(new Error('gone'),{code:'ESRCH'});});
+ const claim=entry.store.claimWork({kind:'feature',projectId:'cec',id:'feature-owner'},'fixture','feature-review')!;
+ retainStoppingClaim(entry.store,claim,[4242]);
+ const message=office.get('cms-field-vocabulary').conversations.enqueue({id:crypto.randomUUID(),body:'wait for termination'});let calls=0;office.get('cms-field-vocabulary').engine.agents.followup=async()=>{calls++;return reply;};
+ await office.pump();expect(calls).toBe(0);expect(entry.store.activeClaims()[0].status).toBe('stopping');
+ alive=false;await office.pump();expect(calls).toBe(1);expect(entry.store.activeClaims()).toEqual([]);expect(message.status).toBe('answered');
+ office.dispose();
+});
+test('a malformed saved question round leaves other questions, snapshots and dispatch available', async () => {
+    const office = offices();
+    const entry = office.get('cec');
+    const other = office.get('cms-field-vocabulary');
+    const projectId = entry.store.project.id;
+    FEATURE_PLANNING[projectId] = { progression: 'automatic' };
+    try {
+        const malformed = createFeature(entry.store, {
+            action: 'create', requestId: 'malformed', title: 'Legacy round', intent: 'Synthetic',
+        });
+        malformed.status = 'waiting';
+        malformed.rounds.push({
+            id: 'legacy', revision: malformed.revision, author: 'product',
+            createdAt: new Date().toISOString(), answers: {},
+            questions: [{ id: 'q', question: 'No recommendation?' } as any],
+        });
+
+        const valid = createFeature(entry.store, {
+            action: 'create', requestId: 'valid', title: 'Current round', intent: 'Synthetic',
+        });
+        valid.status = 'waiting';
+        valid.rounds.push({
+            id: 'current', revision: valid.revision, author: 'product',
+            createdAt: new Date().toISOString(), answers: {},
+            questions: [{ id: 'q', question: 'Which option?', recommendation: 'First', choices: ['First', 'Second'] }],
+        });
+
+        const questions = office.questions();
+        expect(questions.map(({ featureId, roundId }) => ({ featureId, roundId })))
+            .toEqual([{ featureId: valid.id, roundId: 'current' }]);
+        expect(office.snapshot('cec').featureQuestions).toEqual(questions);
+        expect(office.snapshot('cms-field-vocabulary').featureQuestions).toEqual(questions);
+        expect(() => office.questionEvents()).not.toThrow();
+
+        const message = other.conversations.enqueue({ id: crypto.randomUUID(), body: 'unrelated' });
+        let calls = 0;
+        other.engine.agents.followup = async () => { calls++; return reply; };
+        await expect(office.pump()).resolves.toBeUndefined();
+        expect(calls).toBe(1);
+        expect(message.status).toBe('answered');
+    } finally {
+        delete FEATURE_PLANNING[projectId];
+        office.dispose();
+    }
+});
+import {retainStoppingClaim} from '../../../server/scheduling/stopping-claims';
+import {createFeature} from '../../../server/features/commands';

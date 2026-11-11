@@ -1,3 +1,4 @@
+import { FeatureError } from './progression/failure';
 import type { Feature, FeatureManifest } from '../../src/contracts/features';
 import type { WorkRef } from '../../src/shared';
 import { workKey } from '../../src/shared';
@@ -25,7 +26,7 @@ export function assertFeatureDependencyOrder(store: Store, feature: Feature, man
     for (const [from, to] of featureDependencyEdges(store, feature, manifest)) edge(from, workKey(to));
     const active = new Set<string>(), done = new Set<string>();
     const visit = (node: string): void => {
-        if (active.has(node)) throw new Error('Feature order creates a prerequisite cycle');
+        if (active.has(node)) throw new FeatureError('invalid-content', 'Feature order creates a prerequisite cycle');
         if (done.has(node)) return;
         active.add(node); for (const next of graph.get(node) || []) visit(next); active.delete(node); done.add(node);
     };

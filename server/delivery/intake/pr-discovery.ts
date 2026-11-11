@@ -21,7 +21,7 @@ export async function discover(this: GitHubDelivery, assigned: AssignedIssue[]) 
             const directive = new RegExp(`(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+#${Number(issue.key.slice(3))}(?![0-9])`, 'i');
             if (!links.closingIssuesReferences?.some((i: any) => i.url === issue.url) && !directive.test(p.body || ''))
                 continue;
-            this.enqueue(issue.key, pr.number);
+            this.enqueue(issue.key, pr.number, undefined, { kind: 'linked-pr', reference: `https://github.com/${this.store.project.repository}/pull/${pr.number}` });
             const job = this.jobs.find(j => j.key === issue.key && j.status !== 'cancelled')!;
             job.existingPR = true;
             const routingBug = job.stage === 'lead-pr' && job.status === 'blocked' && job.detail === 'Error: PR repository or target does not match this project';
@@ -81,6 +81,6 @@ export async function routeExisting(this: GitHubDelivery, key: string, pr: numbe
     }
     if (p.state !== 'open' || p.merged_at)
         return false;
-    this.enqueue(key, pr);
+    this.enqueue(key, pr, undefined, { kind: 'linked-pr', reference: `https://github.com/${this.store.project.repository}/pull/${pr}` });
     return true;
 }

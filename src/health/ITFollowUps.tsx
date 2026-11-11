@@ -9,7 +9,7 @@ export function ITFollowUps({ it, followUps }: { it: ITState; followUps: ITFollo
     const view = itFollowUpView(it, followUps);
     return <>
         {view.current.map(followUp => {
-            const copy = sessionVisibilityCopy(followUp);
+            const copy = sessionVisibilityCopy(followUp, it.projectId);
             return <article className={card} key={followUp.id}>
                 <strong>{copy?.title || `Next owner: ${followUp.owner}`}</strong>
                 <p>{copy?.explanation || followUp.detail}</p>

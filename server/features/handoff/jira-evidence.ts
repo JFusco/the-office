@@ -6,8 +6,15 @@ export async function jiraEvidence(project:OfficeProject,key:string,context:Evid
  if(project.provider!=='azure'||!/^CEC-[1-9]\d*$/.test(key))throw new Error('Invalid project-qualified Jira issue');
  const evidence=blankEvidence(project.id,key,'azure',CEC.site+'/browse/'+key);
  const call=async(args:string[])=>unpack(await context.execute('twg',['jira','workitem',...args,'--site',CEC.site,'-o','json','--output-summary','none'],{readOnly:true,timeout:EVIDENCE_LIMITS.commandMs,signal:context.signal}));
- try{const data=await call(['get',key,'--full']);const raw=data.workItem||data.issue||data;
-  if(raw.key!==key)throw new Error('Jira issue identity mismatch');const fields=raw.fields||raw;
+ try {
+  const data = await call(['get', key, '--full']);
+  let raw = data.workItem || data.issue || data;
+  if (Array.isArray(raw)) {
+   if (raw.length !== 1) throw new Error('Jira single-issue read did not return exactly one record');
+   [raw] = raw;
+  }
+  if (raw?.key !== key) throw new Error('Jira issue identity mismatch');
+  const fields = raw.fields || raw;
   if(typeof fields.summary!=='string')throw new Error('Jira summary is missing');
   evidence.summary=fields.summary;evidence.description=fields.description??null;evidence.labels=fields.labels||[];evidence.type=fields.issuetype?.name||fields.issueType?.name||raw.issueType?.name||'';
   evidence.links=fields.issuelinks||fields.issueLinks||[];evidence.remoteLinks=raw.remoteLinks||fields.remoteLinks||[];evidence.coverage.issue={state:'complete'};evidence.coverage.remoteLinks=Array.isArray(raw.remoteLinks||fields.remoteLinks)?{state:'complete'}:{state:'unreadable',detail:'Full issue response did not include remote-link metadata; linked services were not crawled'};

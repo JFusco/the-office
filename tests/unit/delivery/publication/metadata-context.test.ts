@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -53,7 +54,7 @@ test.each(['absent', 'prepared', 'rejected', 'foreign-job', 'foreign-binding', '
 });
 
 test.each(['prepared', 'rejected', 'dispatching', 'uncertain', 'dispatched-rejection', 'wrong-operation', 'wrong-job', 'wrong-kind', 'wrong-head'])('metadata binding fences merge intent state: %s', async state => {
-    const f = metadataFixture(); await f.run(() => harnessPrepare(f.delivery, f.job, f.root, true));
+    const f = metadataFixture(); await f.run(() => claimedDelivery(f.store, f.job, () => harnessPrepare(f.delivery, f.job, f.root, true)));
     f.store.finishClaim(f.claim.id, 'completed'); f.job.stage = 'lead-pr';
     const leadClaim = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'lead-fixture', 'lead-pr')!;
     const result: StageResult = { outcome: 'passed', commit: f.job.head, prId: f.job.pr, branch: f.job.branch, worktree: f.job.worktree,
@@ -82,7 +83,7 @@ test('legacy recovery records never make an admitted job eligible for a general 
     f.job.candidateRecovery = { head: HEAD, findingIds: [], summary: 'Legacy source gate' };
     expect(() => assertMetadataBinding(f.delivery, f.job)).toThrow('changed');
     f.job.stage = 'prepare-pr';
-    await expect(runHarnessStage(f.delivery, f.job, f.artifactRoot(f.job), true)).rejects.toThrow('cannot fall through');
+    await expect(claimedDelivery(f.store, f.job, () => runHarnessStage(f.delivery, f.job, f.artifactRoot(f.job), true))).rejects.toThrow('cannot fall through');
     expect(f.state.calls).toHaveLength(0);
 });
 

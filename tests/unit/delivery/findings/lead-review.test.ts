@@ -1,3 +1,4 @@
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -17,14 +18,14 @@ function reviewed() {
 }
 test('a passed Lead review with an informational open finding queues the merge', async () => {
     const { f, job, result } = reviewed();
-    await f.delivery.finishLeadReview(job, result);
+    await claimedDelivery(f.store, job, () => f.delivery.finishLeadReview(job, result));
     expect(job).toMatchObject({ stage: 'merge', status: 'queued' });
 });
 test('HOLDS stop the merge before any write', async () => {
     const { f, job, result } = reviewed();
-    await f.delivery.finishLeadReview(job, result);
+    await claimedDelivery(f.store, job, () => f.delivery.finishLeadReview(job, result));
     HOLDS['GH-5'] = 'Synthetic hold';
-    try { await expect(f.delivery.merge(job)).rejects.toThrow('held'); }
+    try { await expect(claimedDelivery(f.store, job, () => f.delivery.merge(job))).rejects.toThrow('held'); }
     finally { delete HOLDS['GH-5']; }
     expect(f.state.calls.some(c => c.includes('/merge'))).toBe(false);
 });

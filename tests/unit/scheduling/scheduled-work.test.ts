@@ -1,3 +1,4 @@
+import { registerDeliveryFixture } from '../../fixtures/delivery-claim';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -85,6 +86,7 @@ test('verified merged cleanup is selected before continuations; unknown cleanup 
     const a=fixture('cms-field-vocabulary'),c=a.store.state.coordination!;
     c.requests=[{id:'cleanup',action:'cleanup-merged-candidate',key:'GH-20',head:'original',lane:'delivery',requestedAt:'2026-10-29T21:00:00Z',status:'queued',detail:''},{id:'ordinary-recovery',action:'reconcile-implementation',key:'GH-21',head:'other',lane:'delivery',requestedAt:'2026-10-29T19:00:00Z',status:'queued',detail:''}];
     c.jobs=[{id:'continuing-source',key:'GH-22',stage:'update-base',status:'queued',repairReason:'conflicts',requestedAt:'2026-10-29T20:00:00Z',steps:[]}as any];
+    registerDeliveryFixture(a.store,c.jobs![0]);
     const verified=vi.spyOn(closeoutEvidence,'verifiedCloseoutCleanupRequest').mockReturnValue(true);
     expect(a.project().find(item=>item.work.id==='ordinary-recovery')?.rank).toBe(2);
     expect(selectWork(a.project(),0)?.work.id).toBe('cleanup');

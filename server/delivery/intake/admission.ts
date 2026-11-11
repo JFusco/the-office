@@ -3,6 +3,7 @@ import type { FeatureBinding } from '../../../src/contracts/features';
 import { captureLearning } from '../../knowledge/learning-events';
 import { featureGate } from '../../features/enrollment-gate';
 import { HOLDS } from '../../office/config';
+import { deliveryIntakeBlocker } from '../harness/delivery-eligibility';
 import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../pipeline/dependencies';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { Store } from '../../store/store';
@@ -31,6 +32,8 @@ export function admit(context: IntakeContext, delivery: GitHubDelivery, input: {
         return { status: 'owned', detail: 'Existing Office delivery owns this ticket.', owner: pilot.runId };
     if (!input.workRequested)
         return { status: 'held', detail: `${input.key} is not in ${context.pickup.status}; waiting for the pickup lane or an explicit Start.`, owner: '' };
+    const ownership = deliveryIntakeBlocker(store, input.key);
+    if (ownership) return { status: 'held', detail: ownership, owner: '' };
     if (input.prerequisites.length) {
         const invalid = validatePrerequisites(input.prerequisites, { projectId: store.project.id, kind: 'issue', id: input.key.replace(/^GH-/, '') }, context.dependencyStores());
         if (invalid)
@@ -39,7 +42,8 @@ export function admit(context: IntakeContext, delivery: GitHubDelivery, input: {
         if (waiting)
             return { status: 'held', detail: waiting.reason, owner: '' };
     }
-    store.transaction(() => { delivery.enqueue(input.key, 0, input.workRequested === 'automatic' ? context.pickup.status : undefined); closeIntakeEpisode(store, input.key); });
+    store.transaction(() => { delivery.enqueue(input.key, 0, input.workRequested === 'automatic' ? context.pickup.status : undefined,
+        { kind: input.workRequested === 'automatic' ? 'pickup' : 'manual', reference: `${input.workRequested}:${input.key}:${now.toISOString()}` }); closeIntakeEpisode(store, input.key); });
     const queued = state.jobs!.find(candidate => candidate.key === input.key && candidate.status !== 'cancelled')!;
     if (input.prerequisites.length)
         queued.prerequisites = input.prerequisites;
