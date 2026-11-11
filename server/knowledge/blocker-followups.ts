@@ -26,7 +26,7 @@ function handoff(store: Store, item: BlockerFollowup, original?: TeamMessage) {
 export function reconcileBlockerFollowups(store: Store): void {
     const knowledge = store.state.knowledge;
     if (!knowledge) return;
-    const before = JSON.stringify([knowledge.followups, store.state.messages.length]), now = store.clock.now().toISOString();
+    const before = JSON.stringify([knowledge.followups, knowledge.unblockBriefs, store.state.messages.length]), now = store.clock.now().toISOString();
     const records = knowledge.followups ??= [], observed = new Set<string>();
     const observe = (source: LearningSubject, key: string, detail: string, disposition: BlockerFollowup['disposition'], proof: unknown, refs: Partial<BlockerFollowup> = {}) => {
         const id = `${source.kind}:${source.id}`, fingerprint = learningDigest([disposition, proof, detail]);
@@ -36,12 +36,14 @@ export function reconcileBlockerFollowups(store: Store): void {
         if (item.fingerprint !== fingerprint) {
             item.history.push({ at: now, disposition, fingerprint, detail }); item.updatedAt = now;
             Object.assign(item, { fingerprint, disposition, nextAction: detail, ...refs });
-            if (disposition === 'confirmed') { item.resolvedAt = now; clearUnblockBrief(knowledge, source); } else delete item.resolvedAt;
+            if (disposition === 'confirmed') item.resolvedAt = now; else delete item.resolvedAt;
             item.evidence = [{ kind: 'learning', ref: id, url: '', detail: JSON.stringify(proof).slice(0, 1500) }];
             // Initial unresolved inventory is baselined; subsequent material changes are learning. An unknown outcome proves nothing.
             // IT recovery records are excluded: they repeat the same condition and taught one lesson in 29 retrospectives.
             if (item.history.length > 1 && disposition !== 'unknown' && source.kind !== 'recovery') captureLearning(store, source, key, 'recovery', fingerprint, { disposition, proof }, detail);
         }
+        // Checked every pass: a retrospective accepted after confirmation may still write a brief.
+        if (item.disposition === 'confirmed') clearUnblockBrief(knowledge, source);
         return item;
     };
     for (const entry of store.state.it?.investigations || []) {
@@ -104,5 +106,5 @@ export function reconcileBlockerFollowups(store: Store): void {
         // Losing a record is not resolution. Preserve its earlier proof as history.
         observe(item.source, item.key, 'Original source is no longer retained; outcome unknown.', 'unknown', { sourceMissing: true });
     }
-    if (before !== JSON.stringify([knowledge.followups, store.state.messages.length])) store.save();
+    if (before !== JSON.stringify([knowledge.followups, knowledge.unblockBriefs, store.state.messages.length])) store.save();
 }
