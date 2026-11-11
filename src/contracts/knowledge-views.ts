@@ -2,5 +2,5 @@ export interface KnowledgeNode { id: string; title: string; kind: 'project' | 's
 export interface KnowledgeEdge { source: string; target: string; kind: 'subscription' | 'provenance' | 'citation' | 'supplied' | 'retrieved' | 'verified' | 'publication' | 'promotion'; relation?:string }
 export interface KnowledgeMap { nodes: KnowledgeNode[]; edges: KnowledgeEdge[]; truncated: boolean; snapshot?:string; technicalStatus?:'available'|'unavailable'; limitations?:string[] }
 export interface KnowledgeActivity { id: string; at: string; kind: 'admitted' | 'curated' | 'supplied' | 'retrieved' | 'verified' | 'followup'; title: string; detail: string; assignmentId?:string;digestId?:string }
-export interface KnowledgeIntakeStatus {id:string;source:string;kind:'collection'|'capture';status:string;detail:string;queuedAt?:string;requestId?:string}
-export interface KnowledgeActivityPage { events: KnowledgeActivity[]; truncated: boolean; supplied: number; retrieved: number | null; verified: number | null; limitations: string[];intake?:KnowledgeIntakeStatus[];publications?:{id:string;title:string;reference:import('./knowledge-retrieval').KnowledgeReference;evidenceCount:number}[];publicationLimit?:string }
+export interface KnowledgeIntakeStatus {id:string;source:string;kind:'collection';status:string;detail:string;queuedAt?:string}
+export interface KnowledgeActivityPage { events: KnowledgeActivity[]; truncated: boolean; supplied: number; retrieved: number | null; verified: number | null; limitations: string[];intake?:KnowledgeIntakeStatus[] }

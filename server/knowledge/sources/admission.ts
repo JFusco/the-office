@@ -33,7 +33,7 @@ export async function admitUnits(ledger: IntakeLedger, units: SourceUnit[], scan
             if (!allowed) throw Error('Source authority changed before admission');
             if (!receipt.clean) {
                 const retained=ledger.get<SourceUnit>('unit',key);
-                if(retained&&!retained.requests?.length&&retained.state!=='captured')ledger.put('unit',key,{...retained,state:'inaccessible',reason:'secret-scan-blocked'});
+                if(retained)ledger.put('unit',key,{...retained,state:'inaccessible',reason:'secret-scan-blocked'});
                 continue;
             }
             retainEvidence(ledger, unit);

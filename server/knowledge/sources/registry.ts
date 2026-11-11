@@ -44,11 +44,11 @@ export class SourceRegistry {
     update(id: string, revision: number, change: (s: KnowledgeSource) => void): KnowledgeSource {
         return this.transaction(() => {
             const source = this.get(id); if (!source || source.revision !== revision) throw Error('Source changed; reload before editing');
-            const home = source.homeProjectId, destination = source.destination, identity = sourceIdentity(source);
+            const home = source.homeProjectId, identity = sourceIdentity(source);
             change(source);
             const { id: _id, state: _state, revision: _revision, sourceDigest: _digest, createdAt: _created, updatedAt: _updated, refreshRequestedAt: _refresh, ...input } = source;
             SourceInput.parse(input);
-            if (source.id !== id || source.homeProjectId !== home || source.destination !== destination || sourceIdentity(source) !== identity) throw Error('Source identity, home and destination are immutable');
+            if (source.id !== id || source.homeProjectId !== home || sourceIdentity(source) !== identity) throw Error('Source identity and home are immutable');
             source.revision++; source.updatedAt = this.clock.now().toISOString(); source.sourceDigest = sourceDigest(source);
             this.db.prepare('UPDATE knowledge_sources SET revision=?,body=? WHERE id=?').run(source.revision, JSON.stringify(source), id);
             return source;

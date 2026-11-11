@@ -16,14 +16,14 @@ export async function collectPublicSource(store:Store,run:KnowledgeRunner,regist
     if(!allowed())return;registry.setMeta(`rotation:${store.project.id}`,source.id);
     if(!links.length)ledger.put('link',linkKey(root,url),{url,source:root,week:period,depth:0,state:'pending',failures:0,nextAt:''} satisfies LinkRecord);
     const due=ledger.all<LinkRecord>('link').filter(l=>l.source===root&&l.state==='pending'&&(!l.nextAt||Date.parse(l.nextAt)<=store.clock.now().getTime()));
-    if(due.length)await runSlackLinks(store,{sourceId:source.id,homeProjectId:store.project.id,sourceDigest:source.sourceDigest,destination:'project-evidence',publicHosts:[new URL(url).hostname]},run,due,`source:${source.id}`,registry,scan);
+    if(due.length)await runSlackLinks(store,{sourceId:source.id,homeProjectId:store.project.id,sourceDigest:source.sourceDigest,publicHosts:[new URL(url).hostname]},run,due,`source:${source.id}`,registry,scan);
     if(!allowed())return;
     const collected=ledger.all<LinkRecord>('link').filter(l=>l.source===root);
     for(const link of collected.filter(l=>l.state==='read')){
         const sources=ResearchResult.shape.sources.parse(link.result).filter(r=>r.url===link.url&&r.readEvidence.startsWith('native-read:'));
         if(!sources.length)continue;
         const text=JSON.stringify(sources.map(({readEvidence,retrievedAt,...record})=>{void readEvidence;void retrievedAt;return record;})),version=digest(text),unitId=`public:${link.url}`;
-        const unit:SourceUnit={id:unitId,channel:'',resource:link.url,kind:'public-link',version,text,url:link.url,state:'pending',requests:[],references:[],reason:'',attempt:'',observedAt:store.clock.now().toISOString()};
+        const unit:SourceUnit={id:unitId,channel:'',resource:link.url,kind:'public-link',version,text,url:link.url,state:'pending',references:[],reason:'',attempt:'',observedAt:store.clock.now().toISOString()};
         ledger.put('unit',`${unitId}:${version}`,unit);
         await admitUnits(ledger,[unit],scan,allowed);
         if(ledger.get<{state:string}>('admission',`${unitId}:${version}`)?.state!=='admitted'){

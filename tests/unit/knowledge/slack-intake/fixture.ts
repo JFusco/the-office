@@ -17,13 +17,13 @@ export const config: Config = {
 };
 export const authority = { workspace: config.workspace, appId: config.appId, channels: config.channels, tools: config.tools, publicHosts: config.publicHosts };
 export const cleanScan = async (text: string) => ({ version: 1 as const, inputSha256: digest(text), scannerVersion: 'synthetic', policyVersion: 'fixture-v1', clean: true, findings: [] });
-export function intakeFixture(destination:'technical-brain'|'project-evidence'='technical-brain') {
+export function intakeFixture() {
     const f = knowledgeStore('brain', '2026-11-06T23:00:00Z'); f.store.state.knowledge!.enabled = true;
     mkdirSync(resolve(f.store.dataRoot, 'slack-intake'), { mode: 0o700 });
     const configure = (value: Config = config) => writeFileSync(resolve(f.store.dataRoot, 'slack-intake/config.json'), JSON.stringify(value), { mode: 0o600 });
     configure();
     const db = new DatabaseSync(':memory:'), registry = new SourceRegistry(db, f.store.clock);
-    const source = registry.create({ kind: 'slack', title: 'Fixture', homeProjectId: 'brain', destination, cadence: 'weekly', ...(destination==='technical-brain'?{domains:config.domains}:{}), authority });
+    const source = registry.create({ kind: 'slack', title: 'Fixture', homeProjectId: 'brain', cadence: 'weekly', authority });
     registry.setMeta('cutover', { state: 'ready' });
     const policy = collectionPolicy(source), budget = new IntakeBudget(registry);
     const ledger = new IntakeLedger(f.store, source), task = newTask(policy, 'C123', 'channel', '', '0.000000', '200.000000', '2026-11-06', f.store.clock.now().toISOString());

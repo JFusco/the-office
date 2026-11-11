@@ -3,10 +3,9 @@ import type { IntakeLedger } from '../slack-intake/ledger';
 import type { ReadTask, SourceUnit } from '../slack-intake/contracts';
 import type { CollectionPolicy } from './collection-policy';
 
-/** Project readers cannot express a technical domain or a Brain capture body. */
 export const EvidenceResult = z.object({ units: z.array(z.object({ id: z.string(), outcome: z.enum(['evidence', 'no-reusable-lesson', 'deferred', 'inaccessible', 'error']), reason: z.string().max(500) }).strict()) }).strict();
 export function acceptEvidence(ledger: IntakeLedger, policy: CollectionPolicy, task: ReadTask, value: unknown, observed: SourceUnit[]): void {
-    if (policy.destination !== 'project-evidence' || ledger.source?.id !== policy.sourceId || task.sourceId !== policy.sourceId || task.sourceDigest !== policy.sourceDigest) throw Error('Project evidence authority mismatch');
+    if (ledger.source?.id !== policy.sourceId || task.sourceId !== policy.sourceId || task.sourceDigest !== policy.sourceDigest) throw Error('Project evidence authority mismatch');
     const result = EvidenceResult.parse(value), returned = new Map(observed.map(u => [u.id, u]));
     const outcomes = new Map(result.units.map(u => [u.id, u]));
     const pending = observed.filter(u => ledger.get<SourceUnit>('unit', `${u.id}:${u.version}`)?.state === 'pending');
