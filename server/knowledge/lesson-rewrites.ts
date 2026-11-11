@@ -39,7 +39,7 @@ const REWRITES: Record<string, Rewrite> = {
 };
 
 /** Lessons that belong in their repository (a rule, a check or a runbook): offered to Joe once as an issue to file. */
-const REPOSITORY_ISSUES = new Set(['c966f100-92f3-4f51-ae40-8b7ae8ad37cc', '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7', 'seed:cms-field-vocabulary:contentstack-withdrawn-changelog-items']);
+const REPOSITORY_ISSUES = new Set(['c966f100-92f3-4f51-ae40-8b7ae8ad37cc', '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7']);
 
 /** Fills the shape for a stored lesson; a stored seed takes its seed's wording. Unknown older lessons keep their statement with an empty `when` and `check`. */
 export function rewriteLesson(lesson: Lesson): void {
