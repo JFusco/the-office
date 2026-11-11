@@ -6,6 +6,14 @@ const artifacts='/private/tmp/office-knowledge-ui-evidence/browser';
 for(const width of [1440,390])test(`shared alignment, bounded inputs, Slack routing and Activity hierarchy at ${width}px`,async({page})=>{
     await page.setViewportSize({width,height:1000});await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();
     const source=page.getByRole('article',{name:'#cec-team',exact:true});await expect(source.locator('[data-source-feed]')).toContainText('Feeds project evidence → CEC');
+    await page.getByRole('button',{name:'Add a source',exact:true}).click();
+    const channelForm=page.getByRole('form',{name:'Add a Slack channel',exact:true});
+    for(const [label,max] of [['Channel ID',240],['Channel name',360]] as const)expect((await channelForm.getByLabel(label,{exact:true}).boundingBox())!.width).toBeLessThanOrEqual(max+1);
+    await channelForm.getByRole('button',{name:'Cancel',exact:true}).click();
+    await page.getByRole('button',{name:'Add a public link',exact:true}).click();
+    const publicForm=page.getByRole('form',{name:'Add a public source',exact:true});
+    for(const [label,max] of [['Source title',360],['Public HTTPS URL',480]] as const)expect((await publicForm.getByLabel(label,{exact:true}).boundingBox())!.width).toBeLessThanOrEqual(max+1);
+    await publicForm.getByRole('button',{name:'Cancel',exact:true}).click();
     const lefts:number[]=[];
     for(const name of ['Sources','Library','Map','Activity']){
         await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name,exact:true}).click();
