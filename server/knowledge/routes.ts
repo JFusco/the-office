@@ -42,14 +42,7 @@ export async function knowledgeRoute(req: Request, url: URL, registry: SourceReg
     if (url.pathname === '/api/knowledge/sources') {
         const after = url.searchParams.get('after') || '';
         if (after && !/^[a-f0-9-]{36}$/.test(after)) return json({ error: 'Invalid source page' }, 400);
-        const connections = new Map<string, { id: string; workspace: string; appId: string; tools: Record<string, string>; publicHosts: string[] }>();
-        // Operator connection choices expose no credentials, channel names or source content.
-        for (const s of registry.all()) if (s.authority) {
-            const { workspace, appId, tools, publicHosts } = s.authority;
-            connections.set(JSON.stringify([workspace, appId]), { id: s.id, workspace, appId, tools, publicHosts });
-        }
-        return new Response(JSON.stringify({ ...sourceList(registry, stores, project, after), connections: [...connections.values()],
-            cutover: registry.meta<{ state: string }>('cutover')?.state || 'not-ready' }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' } });
+        return privateJson(sourceList(registry, stores, project, after));
     }
     return json({ error: 'Unknown knowledge route' }, 404);
 }

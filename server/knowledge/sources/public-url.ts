@@ -1,4 +1,4 @@
-/** Shared allowlist policy for configured public sources and Slack's public references. */
+/** Allowlist policy for registered public sources and the links found on their pages. */
 export function publicUrl(raw: string, hosts: string[]): string | undefined {
     try {
         const url = new URL(raw);

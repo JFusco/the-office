@@ -2,11 +2,10 @@ import { expect, test } from 'vitest';
 import { expireLessons, graduateLessons, queueLessonIssueCheck } from '../../../server/knowledge/lesson-exits';
 import { reactivateLesson, retireLesson } from '../../../server/knowledge/lesson-commands';
 import { knowledgeOfficeState } from '../../../server/knowledge/office-state-view';
-import { intakeFixture } from './slack-intake/fixture';
+import { sourceFixture } from './sources/source-fixture';
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
 import type { command } from '../../../server/workers/process';
 import { knowledgeStore, learningLesson } from './knowledge-fixture';
-import { migrateSnapshot } from '../../../server/store/migrations';
 
 test('a lesson past its end date leaves prompts and can be brought back', () => {
     const { store, close } = knowledgeStore('brain', '2026-11-12T15:00:00Z');
@@ -68,7 +67,7 @@ test('graduation applies to the current record after the provider read and never
 });
 
 test('an automatic retirement event keeps the lesson\'s source dependencies, so revoking access hides it', async () => {
-    const f = intakeFixture();
+    const f = sourceFixture();
     try {
         const evidence = [{ kind: 'source' as const, ref: 'source:unit', url: '', detail: 'Scoped evidence', source: { sourceId: f.source.id, unitId: 'unit', version: 'v1' } }, { kind: 'learning' as const, ref: 'learning:derived', url: '', detail: 'Scoped evidence', sourceBindings: [{ sourceId: f.source.id }] }];
         f.store.state.knowledge!.lessons = [learningLesson('expiring', { evidence, validUntil: '2026-11-05' }), learningLesson('graduating', { evidence, repositoryInstruction: { status: 'filed', issueUrl: 'https://github.com/JFusco/brain/issues/9', filedAt: '' } })];
@@ -82,18 +81,4 @@ test('an automatic retirement event keeps the lesson\'s source dependencies, so 
         const visible = knowledgeOfficeState(f.registry, 'brain', f.store.state).events;
         for (const event of retired) { expect(visible).not.toContainEqual(event); expect(f.store.replay(0)).toContainEqual(event); }
     } finally { f.close(); }
-});
-
-test('a stored lesson that belongs in its repository is offered once as an issue; declining it is not undone', () => {
-    const { store, close } = knowledgeStore('cms-field-vocabulary');
-    try {
-        const k = store.state.knowledge!, id = '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7';
-        k.lessons = [learningLesson(id), learningLesson('ordinary')];
-        migrateSnapshot(store.state, store.project);
-        const status = (lessonId: string) => k.lessons.find(lesson => lesson.id === lessonId)!.repositoryInstruction?.status;
-        expect([status(id), status('ordinary')]).toEqual(['proposed', undefined]);
-        k.lessons[0].repositoryInstruction = { status: 'declined' };
-        migrateSnapshot(store.state, store.project);
-        expect(k.lessons.find(lesson => lesson.id === id)!.repositoryInstruction).toEqual({ status: 'declined' });
-    } finally { close(); }
 });

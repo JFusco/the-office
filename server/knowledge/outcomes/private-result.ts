@@ -1,6 +1,6 @@
 import type { KnowledgeSourceBinding, LearningSubject, LessonEvidence } from '../../../src/contracts/knowledge';
 import type { Store } from '../../store/store';
-import { digest } from '../slack-intake/config';
+import { digest } from '../digest';
 import { exposureBindings,requestSourceBindings } from '../lookup/exposure-bindings';
 
 /** Potential quotation is scoped by every supplied/retrieved source, regardless of application claims. */

@@ -1,18 +1,19 @@
-import { sourceLaunchLimit } from './seed-budget';
 import { easternDay } from '../../office/clock';
 import type { SourceRegistry } from './registry';
+/** Reader launches per Eastern day, shared by every source in the Office. */
+const DAILY_LAUNCHES = 8;
 export class IntakeBudget {
     constructor(private registry: SourceRegistry) {}
     used(day = easternDay(this.registry.clock.now())): number {
         // Unlaunched reservations survive midnight and crashes conservatively.
         return Number((this.registry.db.prepare("SELECT count(*) AS total FROM knowledge_launches WHERE (day=? AND state IN ('launched','uncertain')) OR state='reserved'").get(day) as { total: number }).total);
     }
-    limit(sourceId:string):number { return sourceLaunchLimit(this.registry,sourceId); }
+    limit():number { return DAILY_LAUNCHES; }
     reserve(attempt: string, sourceId: string): boolean {
         return this.registry.transaction(() => {
             const prior = this.registry.db.prepare('SELECT state FROM knowledge_launches WHERE attempt=?').get(attempt);
             if (prior) return false;
-            const day = easternDay(this.registry.clock.now()); if (this.used(day) >= this.limit(sourceId)) return false;
+            const day = easternDay(this.registry.clock.now()); if (this.used(day) >= this.limit()) return false;
             this.registry.db.prepare("INSERT INTO knowledge_launches VALUES(?,?,?,'reserved')").run(attempt, day, sourceId); return true;
         });
     }
@@ -30,11 +31,5 @@ export class IntakeBudget {
             if(day!==row.day)this.registry.db.prepare("INSERT OR IGNORE INTO knowledge_launches VALUES(?,?,?,'uncertain')").run(`uncertain-recovery:${attempt}:${day}`,day,row.source_id);
             this.registry.setMeta(`launch-recovery:${attempt}`,{reservationDay:row.day,settledDay:day,additionalConservativeCharge:day!==row.day});return true;
         });
-    }
-    backoff(workspace: string, appId: string, method: string): string | undefined {
-        return (this.registry.db.prepare('SELECT until_at FROM knowledge_backoff WHERE id=?').get(JSON.stringify([workspace, appId, method])) as { until_at: string } | undefined)?.until_at;
-    }
-    defer(workspace: string, appId: string, method: string, until: string): void {
-        this.registry.db.prepare('INSERT INTO knowledge_backoff VALUES(?,?) ON CONFLICT(id) DO UPDATE SET until_at=max(knowledge_backoff.until_at,excluded.until_at)').run(JSON.stringify([workspace, appId, method]), until);
     }
 }

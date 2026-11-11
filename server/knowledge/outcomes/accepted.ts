@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { Store } from '../../store/store';
 import type { LearningSubject } from '../../../src/contracts/knowledge';
 import { readOwnedSessionArtifact } from '../../store/owned-artifact';
-import { digest } from '../slack-intake/config';
+import { digest } from '../digest';
 import { lessonCitation,knowledgeCitation } from './citation';
 
 const stageName=(value:string)=>value.replace(/^github-/,'');

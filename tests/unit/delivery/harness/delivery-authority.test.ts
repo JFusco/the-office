@@ -36,7 +36,7 @@ test('missing admission, stale persisted claim, foreign lane, wrong stage and su
     expect(f.run(() => assessDeliveryAuthority(f.store, f.job, { context: { project: 'brain', key: f.job.key, complete: true, fresh: true } }).authorized)).toBe(false);
     f.store.finishClaim(f.claim.id, 'completed'); expect(f.run(() => assessDeliveryAuthority(f.store, f.job).authorized)).toBe(false);
 });
-test.each(['daily-cto', 'knowledge-rollup', 'knowledge-research', 'knowledge-slack-intake', 'retrospective', 'conversation', 'feature', 'maintenance', 'checkpoint', 'notice', 'intake', 'continuation', 'mail'] as WorkKind[])
+test.each(['daily-cto', 'knowledge-rollup', 'knowledge-research', 'knowledge-source', 'retrospective', 'conversation', 'feature', 'maintenance', 'checkpoint', 'notice', 'intake', 'continuation', 'mail'] as WorkKind[])
     ('unrelated %s work does not become a delivery conflict (plan FIND-013)', kind => {
         const f = fixture(); f.store.claimWork({ projectId: f.store.project.id, kind, id: 'unrelated' }, 'other', 'other', 'knowledge');
         expect(f.run(() => assessDeliveryAuthority(f.store, f.job).authorized)).toBe(true);

@@ -4,7 +4,7 @@ import { selectLessons } from '../../../server/knowledge/lesson-selection';
 import { decideOfficeProposal, proposeOfficeLessons } from '../../../server/knowledge/office-lessons';
 import { SourceRegistry } from '../../../server/knowledge/sources/registry';
 import { lessonVisible } from '../../../server/knowledge/sources/lesson-visibility';
-import { digest } from '../../../server/knowledge/slack-intake/config';
+import { digest } from '../../../server/knowledge/digest';
 import { ControlStore } from '../../../server/store/control-store';
 import { knowledgeStore, learningLesson } from './knowledge-fixture';
 

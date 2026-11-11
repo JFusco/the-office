@@ -4,7 +4,7 @@ import { sourceVisible } from './sources/visibility';
 import { lessonVisible,lessonForProject,exposureSourceVisible } from './sources/lesson-visibility';
 import { lookupSummaryVisible,publicLookupSummary } from './lookup/summary-scope';
 import { outcomeVisible,publicOutcome } from './outcomes/projection';
-import { digest } from './slack-intake/config';
+import { digest } from './digest';
 import { proofAuthorized,proofBindings } from './sources/proof-scope';
 import { publicReference } from './lookup/public-reference';
 /** Recheck frozen prompt permissions after an asynchronous model call. */

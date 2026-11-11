@@ -30,8 +30,6 @@ const SEEDS: Lesson[] = [
         '751cff5e, eb675173 and 26f24c93'),
 ];
 
-/** The current seed with this id, so a copy stored before a rewrite of its wording can take the new wording. */
-export const officeSeed = (id: string) => SEEDS.find(seed => seed.id === id);
 
 /** Adds each seed once, keyed by id in any status, so a retired seed stays retired. */
 export function seedOfficeLessons(control: Pick<OfficeKnowledgeStore, 'knowledge' | 'updateKnowledge'>): void {

@@ -1,5 +1,5 @@
 import type { Store } from '../../store/store';
-import { digest } from '../slack-intake/config';
+import { digest } from '../digest';
 export function retainOutboundBody(store:Store,id:string,text:string):string {
     if(!text.trim()||text.length>5000)throw Error('Invalid outbound knowledge body');
     store.db.exec('CREATE TABLE IF NOT EXISTS knowledge_outbound_bodies(id TEXT PRIMARY KEY,sha256 TEXT NOT NULL,body TEXT NOT NULL)');

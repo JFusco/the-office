@@ -35,7 +35,7 @@ function render(lesson: Lesson): string {
     if (lesson.tier === 'rule') return `- [installed rule reference] ${lesson.implementationRef}`;
     const scope = lesson.scope === 'office' ? 'office · ' : '';
     const urls = [...new Set(lesson.evidence.map(item => item.url).filter(url => url && url.length <= URL_LIMIT))].slice(0, 2);
-    const warning=lesson.sourceReviewReason==='source-changed'?' [source changed; verify before applying]':lesson.sourceReviewReason==='office-authored'?' [Office-authored; not independent corroboration]':'';
+    const warning=lesson.sourceReviewReason==='source-changed'?' [source changed; verify before applying]':'';
     const line = `- [${scope}${lesson.kind} · ${lesson.stages.join('/')}] ${lessonText(lesson)}${warning}${lesson.paths.length ? ` (paths: ${lesson.paths.slice(0, 4).join(', ')})` : ''}${urls.length ? ` Evidence: ${urls.join(' ')}` : ''} Reference: ${lessonCitation(reference(lesson))}`;
     return line.length <= LESSON_LIMIT ? line : `${line.slice(0, LESSON_LIMIT - 1)}…`;
 }
@@ -56,7 +56,7 @@ export function selectLessons(store: Pick<Store, 'project' | 'state'>, input: { 
     const boost = (lesson: Lesson) => lesson.paths.some(path => paths.some(file => file === normalPath(path) || file.startsWith(normalPath(path) + '/'))) ? 1 : 0;
     const specific = (lesson: Lesson) => bucket !== 'general' && lesson.stages.includes(bucket) ? 1 : 0;
     const matching = [...knowledge.lessons, ...(knowledge.officeLessons || [])].filter(lesson => (registry?lessonVisible(registry,store.project.id,lesson):!lesson.evidence.some(p=>proofBindings(p).length))&&lesson.status === 'active'
-        && lesson.tier !== 'hypothesis' && !(lesson.sourceReviewReason==='office-authored'&&lesson.needsReview) && installedLesson(lesson)
+        && lesson.tier !== 'hypothesis' && installedLesson(lesson)
         && (lesson.stages.includes('any') || specific(lesson)))
         .sort((a, b) => specific(b) - specific(a) || boost(b) - boost(a) || Number(a.scope === 'office') - Number(b.scope === 'office') || b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
     const lines = [HEADING];

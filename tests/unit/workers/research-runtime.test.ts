@@ -1,4 +1,4 @@
-import { intakeFixture } from '../knowledge/slack-intake/fixture';
+import { sourceFixture } from '../knowledge/sources/source-fixture';
 import { learningLesson } from '../knowledge/knowledge-fixture';
 import { expect, test } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
@@ -10,9 +10,9 @@ import { WorkerRuntime } from '../../../server/workers/worker-runtime';
 import { RESEARCH_CODEX_VERSION, RESEARCH_DISABLED_FEATURES } from '../../../server/workers/research-profile';
 import { ResearchResult } from '../../../server/knowledge/weekly-research';
 
-test.each(['knowledge-research', 'knowledge-slack-links'])('public runtime isolation and native receipts: %s', async stage => {
+test.each(['knowledge-research', 'knowledge-source-read'])('public runtime isolation and native receipts: %s', async stage => {
     const root = mkdtempSync(resolve(tmpdir(), 'office-research-runtime-')), cwd = resolve(root, 'public'); mkdirSync(cwd);
-    const f=intakeFixture(),store=f.store;store.state.knowledge!.lessons.push(learningLesson('private',{statement:'PRIVATE LESSON MUST NOT REACH PUBLIC RESEARCH'}));
+    const f=sourceFixture(),store=f.store;store.state.knowledge!.lessons.push(learningLesson('private',{statement:'PRIVATE LESSON MUST NOT REACH PUBLIC RESEARCH'}));
     const url = 'https://www.sqlite.org/lang_transaction.html', task = 'Read the public SQLite transaction documentation.';
     let dispatched = 0;
     try {
@@ -33,7 +33,7 @@ test.each(['knowledge-research', 'knowledge-slack-links'])('public runtime isola
             return events.map(event => JSON.stringify(event)).join('\n');
         });
         let knowledgeReads=0;runtime.knowledgeContext={registry:f.registry,stores:new Map([['brain',store]]),brain:{snapshot:async()=>{knowledgeReads++;throw Error('Must not retrieve');},search:async()=>[],read:async()=>({text:'PRIVATE SOURCE',contentSha256:''})}};
-        const result = await runtime.run('knowledge', task, ResearchResult, { stage, readOnly: true, cwd, requestId: 'research-fixture',...(stage==='knowledge-slack-links'?{intakeBinding:{registry:f.registry,sourceId:f.source.id,sourceDigest:f.source.sourceDigest,homeProjectId:'brain',attempt:'public-fixture'}}:{}) });
+        const result = await runtime.run('knowledge', task, ResearchResult, { stage, readOnly: true, cwd, requestId: 'research-fixture',...(stage==='knowledge-source-read'?{intakeBinding:{registry:f.registry,sourceId:f.source.id,sourceDigest:f.source.sourceDigest,homeProjectId:'brain',attempt:'public-fixture'}}:{}) });
         expect(knowledgeReads).toBe(0);expect(dispatched).toBe(1); expect(result.sources.map(source => source.readEvidence)).toEqual(['native-read:page-1', '']);
     } finally { f.close(); rmSync(root, { recursive: true, force: true }); }
 });

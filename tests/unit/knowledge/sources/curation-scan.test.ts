@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { knowledgeStore } from '../knowledge-fixture';
 import { scanCuration } from '../../../../server/knowledge/sources/curation-scan';
-import { digest } from '../../../../server/knowledge/slack-intake/config';
+import { digest } from '../../../../server/knowledge/digest';
 import { acceptRetrospective } from '../../../../server/knowledge/accept-retrospective';
 
 it('records value-free blocked receipts and rejects missing or differently bound curation scans', async () => {

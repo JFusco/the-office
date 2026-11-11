@@ -48,7 +48,7 @@ test('header controls share compact tokens and subscription chip actions remain 
         expect(bounds.every((r,i)=>r.x>=0&&r.right<=width&&(!i||r.x>=bounds[i-1].right-.5))).toBe(true);
     }
     await page.setViewportSize({width:1440,height:1000});await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();
-    const remove=page.getByRole('button',{name:'Unsubscribe CEC from #cec-team',exact:true});await expect(remove).toBeVisible();
+    const remove=page.getByRole('button',{name:'Unsubscribe CEC from CEC team guide',exact:true});await expect(remove).toBeVisible();
     expect(await remove.evaluate(el=>el.parentElement!.getBoundingClientRect().height)).toBeLessThanOrEqual(32);
     await page.keyboard.press('Tab');await remove.focus();await expect(remove).toBeFocused();expect(await remove.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('solid');
 });

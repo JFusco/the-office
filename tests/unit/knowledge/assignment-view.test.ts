@@ -2,15 +2,15 @@ import { test,expect } from 'vitest';
 import { mkdirSync,readFileSync,writeFileSync,symlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { intakeFixture } from './slack-intake/fixture';
+import { sourceFixture } from './sources/source-fixture';
 import { prepareExposure,dispatchExposure } from '../../../server/knowledge/lesson-exposure';
 import { assignmentKnowledge } from '../../../server/knowledge/assignment-view';
 import { taskBriefing } from '../../../server/knowledge/task-briefing';
 import { evidenceIdentity } from '../../../server/knowledge/sources/evidence-record';
-import { digest } from '../../../server/knowledge/slack-intake/config';
+import { digest } from '../../../server/knowledge/digest';
 import { lookupJournal } from '../../../server/knowledge/lookup/receipts';
 async function fixture(){
-    const f=intakeFixture(),id=randomUUID(),dir=resolve(f.store.dataRoot,'sessions',id);mkdirSync(dir,{recursive:true});
+    const f=sourceFixture(),id=randomUUID(),dir=resolve(f.store.dataRoot,'sessions',id);mkdirSync(dir,{recursive:true});
     const text='Schema receipts version one',ref=evidenceIdentity(f.source.id,'doc','v1');f.ledger.put('admission','doc:v1',{state:'admitted'});f.ledger.put('evidence',ref,{id:ref,sourceId:f.source.id,unitId:'doc',version:'v1',text,contentSha256:digest(text),url:'',observedAt:'now',readerVersion:'fixture',limitations:[]});
     const context={registry:f.registry,stores:new Map([['brain',f.store]]),brain:{snapshot:async()=>'a'.repeat(40),search:async()=>[],read:async()=>({text:'',contentSha256:''})}},evidence=await taskBriefing(context,'brain','implement','Schema');
     prepareExposure(f.store,dir,id,'implement',{text:'',selected:[],eligible:[],omitted:[]},undefined,evidence);dispatchExposure(f.store,id);

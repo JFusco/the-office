@@ -1,5 +1,5 @@
 import type { BrainReader } from './reader';
-import { digest } from '../slack-intake/config';
+import { digest } from '../digest';
 /** Each section is verified against the selected committed bytes, never the live working tree. */
 export async function committedNotePage(brain: BrainReader, snapshot: string, path: string, sha256: string, offset = 0) {
     if(!/^[a-f0-9]{40}$/.test(snapshot)||!/^knowledge\/[a-zA-Z0-9_/-]+\.md$/.test(path)||path.split('/').includes('..')||path.length>500||!/^[a-f0-9]{64}$/.test(sha256)||!Number.isSafeInteger(offset)||offset<0) return;

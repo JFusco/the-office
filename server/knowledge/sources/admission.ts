@@ -1,8 +1,8 @@
 import { retainEvidence } from './evidence-record';
 import { z } from 'zod';
-import { digest } from '../slack-intake/config';
-import type { IntakeLedger } from '../slack-intake/ledger';
-import type { SourceUnit } from '../slack-intake/contracts';
+import { digest } from '../digest';
+import type { SourceLedger } from './ledger';
+import type { SourceUnit } from './source-unit';
 import { command } from '../../workers/process';
 import { projectById } from '../../office/projects';
 
@@ -23,13 +23,13 @@ export function checkedReceipt(text: string, result: unknown): z.infer<typeof Sc
     return receipt;
 }
 /** Raw acquisition is retained privately; only verified clean bytes enter downstream evidence. */
-export async function admitUnits(ledger: IntakeLedger, units: SourceUnit[], scan: SecretScanner, eligible = () => true): Promise<void> {
+export async function admitUnits(ledger: SourceLedger, units: SourceUnit[], scan: SecretScanner, eligible = () => true): Promise<void> {
     for (const unit of units) {
         const key = `${unit.id}:${unit.version}`;
         try {
             const receipt = checkedReceipt(unit.text, await scan(unit.text));
             const allowed = eligible();
-            ledger.put('admission', key, { sourceId: ledger.source?.id, unit: key, version: unit.version, receipt, state: !allowed ? 'held' : receipt.clean ? 'admitted' : 'blocked', at: ledger.store.clock.now().toISOString(), readerVersion: 'slack-native-v1' });
+            ledger.put('admission', key, { sourceId: ledger.source.id, unit: key, version: unit.version, receipt, state: !allowed ? 'held' : receipt.clean ? 'admitted' : 'blocked', at: ledger.store.clock.now().toISOString() });
             if (!allowed) throw Error('Source authority changed before admission');
             if (!receipt.clean) {
                 const retained=ledger.get<SourceUnit>('unit',key);
@@ -38,7 +38,7 @@ export async function admitUnits(ledger: IntakeLedger, units: SourceUnit[], scan
             }
             retainEvidence(ledger, unit);
         } catch (error) {
-            if (!ledger.get('admission', key)) ledger.put('admission', key, { sourceId: ledger.source?.id, unit: key, state: 'scan-unavailable', at: ledger.store.clock.now().toISOString() });
+            if (!ledger.get('admission', key)) ledger.put('admission', key, { sourceId: ledger.source.id, unit: key, state: 'scan-unavailable', at: ledger.store.clock.now().toISOString() });
             throw error;
         }
     }

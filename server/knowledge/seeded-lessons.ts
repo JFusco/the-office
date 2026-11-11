@@ -48,8 +48,6 @@ const SEEDS: Record<string, Lesson[]> = {
     }],
 };
 
-/** The current seed with this id, so a copy stored before a rewrite of its wording can take the new wording. */
-export const projectSeed = (id: string) => Object.values(SEEDS).flat().find(seed => seed.id === id);
 
 /** Adds each seed once, keyed by id in any status, so a retired seed stays retired. */
 export function seedProjectLessons(knowledge: KnowledgeState, projectId: string): void {

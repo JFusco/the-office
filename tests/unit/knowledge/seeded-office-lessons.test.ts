@@ -27,19 +27,6 @@ test('three consolidated office lessons are seeded once and reach only their sta
     expect(selectLessons(store, { stage: 'slack-send' }).text).toBe('');
 });
 
-test('an office seed stored before the when/check shape takes its current wording and loses recurrence history in every mirror', () => {
-    const { store, office } = setup();
-    office.updateKnowledge(knowledge => { knowledge.lessons.push({ id: 'seed:office:reuse-review-for-unchanged-head', scope: 'office', tier: 'guidance', revision: 1, kind: 'process', stages: ['review'], paths: [], status: 'active', evidence: [], sourceRetrospectiveId: 'seed', createdAt: '', updatedAt: '',
-        statement: 'When reviewing or merging a PR that was reviewed earlier, reuse the saved review only if the head SHA is unchanged.', detail: 'Check: both values match the reviewed ones.', recurrences: [{ detail: 'Recurred' }] } as never); });
-    const [lesson] = office.knowledge().lessons;
-    expect(lesson).toMatchObject({ when: 'Reviewing or merging a PR that was reviewed earlier.', check: 'Both values match the reviewed ones.',
-        statement: 'Reuse the saved review only if the head SHA and changed-file list are unchanged, and re-read mergeability, checks, threads and holds from the provider.' });
-    expect(lesson).not.toHaveProperty('recurrences');
-    mirrorOfficeKnowledge(office, [store]);
-    expect(store.state.knowledge!.officeLessons).toHaveLength(1);
-    expect(store.state.knowledge!.officeLessons![0]).not.toHaveProperty('recurrences');
-});
-
 test('a retired office seed stays retired', () => {
     const { office } = setup();
     seedOfficeLessons(office);

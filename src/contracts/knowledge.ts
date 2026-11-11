@@ -27,7 +27,7 @@ export interface Lesson {
     tier?: LessonTier;
     revision?: number;
     needsReview?: boolean;
-    sourceReviewReason?: 'source-changed' | 'source-withdrawn' | 'office-authored';
+    sourceReviewReason?: 'source-changed' | 'source-withdrawn';
     sourceSubject?: LearningSubject;
     implementationRef?: string;
     id: string;
@@ -121,7 +121,6 @@ export interface DeliveryMetrics {
     lessonsRetired: number;
 }
 export interface WeeklyRollup {
-    intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; outstanding: number; coverageGaps?:number; reasons: string[] };
     learning?: LearningMetrics;
     researchId?: string;
     research?: WeeklyResearch;
@@ -162,25 +161,8 @@ export interface OfficeKnowledge {
     proposals: OfficeProposal[];
     lessons: Lesson[];
 }
-export interface SlackSeedProgress {
-    status: 'seeding' | 'needs-attention' | 'complete-with-gaps';
-    channelsTotal: number; channelsEnumerated: number; pendingReads: number;
-    unresolvedSources: number; coverageGaps: number; dailyLimit: number; completedAt?: string;
-}
-/** Deterministic, aggregate-only operational status, independent of latched historical completion. */
-export interface SlackIntakeStatus {
-    activity: 'reading' | 'classifying' | 'reading-references' | 'working' | 'stopping' | 'queued' | 'waiting-budget' | 'waiting-retry' | 'waiting' | 'caught-up' | 'paused' | 'disabled' | 'needs-attention';
-    configuration: 'valid' | 'missing' | 'invalid' | 'changed';
-    enabled: boolean; paused: boolean; draining: boolean; needsAttention: boolean;
-    completedReads: number; pendingReads: number; failedReads: number; retryingReads: number;
-    observedSources: number; unresolvedSources: number; sourceErrors: number;
-    day: string; launches: number; dailyLimit: number; changedAt: string;
-    activeSince?: string; nextAttemptAt?: string; lastReadAt?: string;
-}
 export interface KnowledgeState {
     digestDelivery?:import('./knowledge-digests').KnowledgeDigestDelivery;
-    slackIntake?: SlackIntakeStatus;
-    slackSeed?: SlackSeedProgress;
 
     learningStartedAt?: string;
     /** Eastern day of the last queued read-back of lesson issues. */

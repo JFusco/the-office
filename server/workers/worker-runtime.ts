@@ -4,8 +4,6 @@ import { assignmentLookups } from '../knowledge/lookup/assignments';
 import { assertIntakeBinding } from '../knowledge/sources/execution-binding';
 import { assertRetainedDispatchScope } from '../knowledge/sources/dispatch-scope';
 import { assertDigestDispatch } from '../knowledge/digests/dispatch-scope';
-import { SlackReadAuthority } from '../knowledge/slack-intake/read-authority';
-import { isSlackIntake, assertSlackIntakeCapability } from './slack-intake-profile';
 import { assertResearchCapability, researchRead, isPublicRetrieval } from './research-profile';
 import { retainLifecycle } from './lifecycle/retain';
 import { workerLaunchPolicy, retainLaunchPolicy } from './launch-policy';
@@ -61,10 +59,6 @@ export class WorkerRuntime {
             this.active = capacity.active;
     }
     async run<T>(role: Role, task: string, schema: z.ZodType<T>, opts: {
-        intakeConfig?: import('../knowledge/slack-intake/read-authority').SlackReadAuthority;
-        /** Classification of collected evidence: no app or tool capability at all. */
-        intakeProcessing?: boolean;
-        onIntakeEvent?: (event: unknown) => void;
         onIntakeLaunch?: () => void;
         onIntakeNotSpawned?: () => void;
         intakeBinding?: import('../knowledge/sources/execution-binding').IntakeBinding;
@@ -95,12 +89,10 @@ export class WorkerRuntime {
         } | undefined : undefined;
         const queueTiming: import('../../src/shared').QueueTiming | undefined = queueRow ? JSON.parse(queueRow.body) : undefined;
         if (opts.featureContext && (!opts.readOnly || opts.cwd !== opts.featureContext.baseline.path || opts.featureContext.baseline.repository !== this.store.project.repository)) throw new Error('Feature context must use its recorded read-only baseline');
-        const publicResearch = isPublicRetrieval(opts.stage), privateIntake = isSlackIntake(opts.stage), isolated = publicResearch || privateIntake;
+        const publicResearch = isPublicRetrieval(opts.stage), privateIntake = opts.stage === 'knowledge-source-read', isolated = publicResearch || privateIntake;
         if (privateIntake && (!opts.readOnly || role !== 'knowledge' || !opts.cwd || opts.ticket)) throw Error('Intake requires an isolated read-only Harper assignment');
-        if (opts.stage === 'knowledge-slack-intake' && (!opts.intakeConfig || !opts.onIntakeEvent)) throw Error('Intake capability and observations are required');
         try {
-            if (opts.stage === 'knowledge-slack-intake') opts.intakeConfig = SlackReadAuthority.parse(opts.intakeConfig);
-            if (privateIntake) assertIntakeBinding(this.store, opts.intakeBinding, opts.intakeConfig);
+            if (privateIntake) assertIntakeBinding(this.store, opts.intakeBinding);
         } catch(error) { opts.onIntakeNotSpawned?.();throw error; }
         if (publicResearch && (role !== 'knowledge' || !opts.readOnly || !opts.cwd)) throw new Error('Research requires Harper and an isolated read-only working directory');
         const publicTask = task;
@@ -170,7 +162,6 @@ export class WorkerRuntime {
         let session = '';
         let lastActivity = 0;
         let lastSummary = '';
-        let observationError: unknown;
         let lookup: {close():void}|undefined;
         const progress = (tool: {
             name?: string;
@@ -191,14 +182,13 @@ export class WorkerRuntime {
                 if(evidence.text)task+=`\n${evidence.text}`;
                 prepareExposure(this.store,dir,id,opts.stage||'assignment',lessons,assignmentSubject(this.store,opts.requestId,opts.ticket,opts.featureContext?.id),evidence);
             }
-            if (privateIntake && !publicResearch) { await assertSlackIntakeCapability(this.execute, opts.cwd!, opts.intakeConfig!); task = publicTask; }
             if (publicResearch) { await assertResearchCapability(this.execute, opts.cwd!); task = publicTask; }
             const route = claude ? null : await resolveModelRoute(role, LOCAL_BINDINGS.models, () => command('python3', [`${SKILLS.qa}/scripts/qa_harness.py`, 'model-policy']));
             if (route) {
                 this.store.agent(role, { model: route.model, effort: route.effort });
                 this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.effort, requestedModel: route.model, requestedEffort: route.effort });
             }
-            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!, publicResearch, opts.stage === 'knowledge-slack-intake' ? opts.intakeConfig : undefined, !!opts.intakeProcessing);
+            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!, publicResearch);
             const desktopArguments = slackDesktopArguments(claude ? 'claude' : 'codex', profile.name);
             args.push(...desktopArguments);
             if (role === 'knowledge' && !publicResearch) args.push('-c', 'web_search="disabled"');
@@ -215,7 +205,7 @@ export class WorkerRuntime {
             const launchPolicy = workerLaunchPolicy(profile, opts.stage || 'assignment', !!opts.slackSend, privateIntake, handsOff(this.store));
             if (!retainLaunchPolicy(dir, { version: 1, workerId: id, stage: opts.stage || 'assignment', program: claude ? 'claude' : 'codex', profile: { name: profile.name, readOnly: profile.readOnly }, effective: launchPolicy, ...(desktopArguments.length ? { desktopToolsDisabled: true as const } : {}), workspaceRoot: environment?.NPM_CONFIG_WORKSPACE_DIR, at: this.store.clock.now().toISOString() }))
                 this.store.emit('worker-diagnostic-unavailable', 'Worker launch-policy diagnostic could not be retained; execution policy unchanged.', role, opts.ticket);
-            if (privateIntake) assertIntakeBinding(this.store, opts.intakeBinding, opts.intakeConfig);
+            if (privateIntake) assertIntakeBinding(this.store, opts.intakeBinding);
             if(!isolated&&this.knowledgeContext)assertBriefingScope(this.knowledgeContext,this.store.project.id,lessons,evidence);
             if (!isolated && this.knowledgeContext) assertRetainedDispatchScope(this.store, this.knowledgeContext.registry, opts.requestId, opts.ticket, opts.featureContext?.id);
             assertDigestDispatch(this.store,this.knowledgeContext,opts.requestId,opts.stage);
@@ -226,7 +216,6 @@ EXECUTION: Filesystem remains read-only. The sole permitted external mutation is
 READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may require network access outside the default sandbox. Use the normal per-command approval request for the exact read command and endpoint; automatic review handles that request. Do not change sandbox/configuration, enable unrestricted access, write files, or request a mutation during this read-only assignment. A rejected approval remains a blocker. Do not repeat denied provider operations or request broader permissions. ${opts.stage === 'github-lead-pr' ? 'For GitHub readiness, use the verified native policy packet in this handoff. When it proves the target is unprotected and no rulesets exist, an earlier connector denial for the unused administrative protection endpoint is retained as a diagnostic; it does not invalidate the successful permitted policy reads. Missing required policy evidence still blocks.' : 'A provider permission denial remains a blocker.'}` : assignment, timeout: opts.timeout ?? 45 * 60 * 1000, inactivityTimeout: opts.inactivityTimeout, signal: controller.signal, onLifecycle: diagnostic => { if (!retainLifecycle(dir, diagnostic)) this.store.emit('worker-diagnostic-unavailable', 'Worker lifecycle diagnostic could not be retained; execution outcome unchanged.', role, opts.ticket); }, onStragglersTerminated: group => this.store.emit('activity', `Stopped leftover helper processes (group ${group}) after a clean exit.`, role, opts.ticket), onSpawn: pid => { opts.onIntakeLaunch?.(); this.store.checkpointWork(id, this.store.clock.monotonic() - started, { processId: pid }); }, onLine: line => {
                     try {
                         const e = JSON.parse(line);
-                        if (opts.onIntakeEvent) { try { opts.onIntakeEvent(e); } catch (error) { observationError = error; controller.abort(); } }
                         if (e.type === 'turn.started' || e.type === 'assistant') dispatchExposure(this.store, id);
                         if (claude) {
                             stream.consume(e);
@@ -263,7 +252,6 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
                 this.store.emit('worker-output-recovered', 'Saved completed result recovered after an output limit; no work replayed.', role, opts.ticket);
                 return '';
             });
-            if (observationError) throw Error('intake-observation-invalid');
             let payload: unknown;
             if (claude) {
                 if (!stream.result)
@@ -328,9 +316,8 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
                 workStatus = 'interrupted';
             this.store.agent(role, { lastOutcome: { ticket: opts.ticket || '', summary: privateIntake ? 'Learning intake unavailable; private diagnostic retained.' : shortSummary(String(error)), status: workStatus, at: new Date().toISOString() } });
             writeFileSync(resolve(dir, 'error.json'), JSON.stringify({ session: session || (claude ? id : ''), provider: claude ? 'claude' : 'codex', model: claude ? DEVELOPER_MODEL : null, error: sanitize(String(error)), at: new Date().toISOString() }, null, 2), { mode: 0o600 });
-            // Private intake exposes only sanitized metadata: operator cancellation (pause/disable abort) versus
-            // an observation-triggered abort or provider failure, and whether the process was dispatched.
-            if (privateIntake) throw new CommandFailure('intake-worker-unavailable', observationError ? 'invalid-output' : controller.signal.aborted ? 'cancelled' : error instanceof CommandFailure ? error.category : 'other', error instanceof CommandFailure ? error.dispatched : false);
+            // A source read exposes only sanitized metadata: operator cancellation versus provider failure, and whether the process was dispatched.
+            if (privateIntake) throw new CommandFailure('intake-worker-unavailable', controller.signal.aborted ? 'cancelled' : error instanceof CommandFailure ? error.category : 'other', error instanceof CommandFailure ? error.dispatched : false);
             throw error;
         }
         finally {
