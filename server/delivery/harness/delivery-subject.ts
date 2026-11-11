@@ -36,7 +36,9 @@ export function resolveDeliveryWork(store: Store, work: WorkRef): DeliverySubjec
                     digest(r.proposal) === digest(p.proposal) && digest(r.authorization) === digest(p.authorization)
                     : job.parked?.at === p.parkAt && digest(job.parked) === p.parkSha256);
         }
-        else if (request.action === 'reconcile-base-update') bound = request.head === job.head && !!job.head && !!job.boardUpdates?.some(u => u.head === request.head && u.stage === 'update-base');
+        else if (request.action === 'reconcile-base-update') bound =
+            request.head === job.head && !!job.head && !!job.boardUpdates?.some(u => u.head === request.head && u.stage === 'update-base') ||
+            original.length === 1 && original[0].stage === 'github-update-base' && original[0].status === 'interrupted' && !original[0].executionStatus;
         else if (request.action === 'authorize-source-amendment') bound = request.sourceAmendment?.projectId === store.project.id && request.sourceAmendment.jobId === job.id && request.sourceAmendment.originalHead === request.head;
         else if (request.action === 'adopt-candidate') {
             const candidates = job.steps.map(s => s.result).filter(r => r.commit && r.worktree && r.branch);

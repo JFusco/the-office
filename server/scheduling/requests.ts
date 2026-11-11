@@ -1,3 +1,6 @@
+import { reconcileStoppedBaseHandoff } from '../delivery/recovery/stopped-base-review';
+import { reconcileStoppedBaseUpdate } from '../delivery/recovery/stopped-base-update';
+import { stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
 import { admitImprovement } from '../knowledge/admit-improvement';
 import { reconcileBoardPreflight } from '../delivery/recovery/board-preflight';
 import {hasSavedPrerequisiteResult,handoffSavedPrerequisites} from '../delivery/recovery/implementation/saved-prerequisite-handoff';
@@ -50,7 +53,7 @@ export function enqueueRequest(store: Store, action: string, key = '', head = ''
         lane = 'operations';
     const requests = store.state.coordination!.requests ??= [];
     const pendingCleanup = store.state.coordination?.jobs?.some(job => job.key === key && job.closeoutRecovery?.status === 'cleanup-pending');
-    const completedIsDuplicate = action === 'reconcile-implementation' && !!head && !!store.state.coordination?.jobs?.some(job=>job.key===key&&job.savedPrerequisiteHandoff?.originalWorkId===head) || action === 'reconcile-activation' || action === 'reconcile-validation' || !!head && (['reconcile-preparation','reconcile-scope-repair'].includes(action) || action === 'reconcile-closeout' && !pendingCleanup);
+    const completedIsDuplicate = action === 'reconcile-base-update' && stoppedBaseUpdateResolved(store, { key, head }) || action === 'reconcile-implementation' && !!head && !!store.state.coordination?.jobs?.some(job=>job.key===key&&job.savedPrerequisiteHandoff?.originalWorkId===head) || action === 'reconcile-activation' || action === 'reconcile-validation' || !!head && (['reconcile-preparation','reconcile-scope-repair'].includes(action) || action === 'reconcile-closeout' && !pendingCleanup);
     const old = requests.find(request => request.action === action && request.key === key && request.head === head && (['queued', 'working'].includes(request.status) || completedIsDuplicate && request.status === 'completed'));
     if (old)
         return old;
@@ -189,7 +192,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                 await delivery.approveMerge(request.key, request.head);
                 break;
             case 'reconcile-review':
-                await delivery.reconcileReview(request.key,request.head);
+                if (!await reconcileStoppedBaseHandoff(delivery, request)) await delivery.reconcileReview(request.key,request.head);
                 break;
             case 'repair-pr-conflicts': {
                 const job = delivery.jobs.find(job => job.key === request.key && job.status !== 'cancelled');
@@ -203,7 +206,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                     const owner = coordinator.sessionBridge?.forProject(store, request.key, request.id);
                     if (!owner) throw new Error('Board-preflight ownership inventory is unavailable');
                     return owner;
-                })) await delivery.reconcileBaseUpdate(request.key);
+                }) && !await reconcileStoppedBaseUpdate(delivery, request)) await delivery.reconcileBaseUpdate(request.key);
                 break;
             case 'cleanup-merged-candidate':
             case 'reconcile-closeout': {
