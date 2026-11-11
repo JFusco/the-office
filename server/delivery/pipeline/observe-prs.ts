@@ -1,7 +1,5 @@
-import { automationMergePolicy } from '../readiness/automation-merge';
+import { observeAutomationMerge } from '../readiness/automation-merge';
 import { green156Admitted } from '../recovery/green156-evidence';
-import { assertAutomationEffects } from '../readiness/automation-effects';
-import { currentMergeChecks } from '../readiness/github-check-selection';
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { refreshMergeReview } from '../readiness/refresh-merge-review';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
@@ -74,13 +72,7 @@ export async function observe(this: GitHubDelivery) {
                 job.detail = 'Merge attempt has not been confirmed; Morgan must reconcile before any further write.';
                 continue;
             }
-            if (job.stoppedBaseUpdate?.greenMerge || await automationMergePolicy(this, job, p)) {
-                if (p.state !== 'open' || p.draft || p.mergeable !== true) throw Error('Automation PR waits for GitHub merge readiness');
-                assertAutomationEffects(this.store, job);
-                await currentMergeChecks(this, job, p);
-                job.stage = 'merge'; job.status = 'queued'; job.detail = 'Current-head GitHub checks passed; Office merge queued under Joe’s no-extra-review/QA direction.';
-                continue;
-            }
+            if (await observeAutomationMerge(this, job, p)) continue;
             if (refreshConflicted(this.store, job, p))
                 continue;
             if(job.stage==='merge'&&['blocked','interrupted','watching'].includes(job.status)&&!job.mergeAttempt){if(!await refreshMergeReview(this,job,p))await resumeReviewedMerge(this,job,p);continue;}
