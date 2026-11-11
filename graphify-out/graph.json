@@ -41984,7 +41984,7 @@
       "label": "tourStages",
       "file_type": "code",
       "source_file": "src/office/useOffice.ts",
-      "source_location": "L172",
+      "source_location": "L179",
       "_origin": "ast",
       "id": "src_office_useoffice_tourstages",
       "community": 24,
@@ -41995,7 +41995,7 @@
       "label": "demoSnapshot()",
       "file_type": "code",
       "source_file": "src/office/useOffice.ts",
-      "source_location": "L173",
+      "source_location": "L180",
       "_callable": true,
       "_origin": "ast",
       "id": "src_office_useoffice_demosnapshot",
@@ -250357,7 +250357,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/office/useOffice.ts",
-      "source_location": "L173",
+      "source_location": "L180",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_office_useoffice",
@@ -250368,7 +250368,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/office/useOffice.ts",
-      "source_location": "L172",
+      "source_location": "L179",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_office_useoffice",
@@ -261396,5 +261396,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "c5cc698f523f445211db9ee47c1ea418d7c8db69"
+  "built_at_commit": "ed848a4e43148d5a751870332c91ca4ae9d606e0"
 }
