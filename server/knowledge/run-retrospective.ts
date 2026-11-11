@@ -29,8 +29,6 @@ export const retryDelay = (attempts: number) => Math.min(MAX_DELAY, FIRST_DELAY 
 export interface KnowledgeRunOptions { readOnly: true; effortKind: 'administrative'; stage: 'retrospective' | 'knowledge-rollup' | 'knowledge-research' | 'knowledge-slack-intake' | 'knowledge-slack-links'; intakeConfig?: import('./slack-intake/read-authority').SlackReadAuthority; intakeProcessing?: boolean; onIntakeEvent?: (event: unknown) => void; onIntakeLaunch?: () => void; onIntakeNotSpawned?: () => void; intakeBinding?: import('./sources/execution-binding').IntakeBinding; requestId: string; ticket: string; cwd: string; enqueuedAt: string; timeout: number }
 /** Harper's model call, injected so tests never reach a provider. */
 export type KnowledgeRunner = <T>(prompt: string, schema: z.ZodType<T>, opts: KnowledgeRunOptions) => Promise<T>;
-/** @deprecated name kept for slice 1 callers. */
-export type RetrospectiveRunner = KnowledgeRunner;
 
 /** Harper works outside every repository, so session inventory never mistakes Harper for a ticket owner. */
 export function harperFolder(store: Store, name: string): string {

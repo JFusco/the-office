@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { maintainLearning, expireLearningPackets, LEARNING_BASELINES } from '../../../server/knowledge/learning-maintenance';
 import { captureLearning, learningDigest } from '../../../server/knowledge/learning-events';
 import { deliveryMetrics } from '../../../server/knowledge/delivery-metrics';
-import { runRetrospective, type RetrospectiveRunner } from '../../../server/knowledge/run-retrospective';
+import { runRetrospective, type KnowledgeRunner } from '../../../server/knowledge/run-retrospective';
 import { completedId } from '../../../server/knowledge/retrospective-triggers';
 import type { TicketJob } from '../../../src/shared';
 import { job, knowledgeStore, learningLesson } from './knowledge-fixture';
@@ -26,7 +26,7 @@ test('a completed retrospective with the same ID never shadows the durable deliv
     try {
         const source = job({ status: 'completed', repairCycle: { attempts: 3 } as TicketJob['repairCycle'] }); store.state.coordination!.jobs!.push(source);
         maintainLearning(store);
-        await runRetrospective(store, (async () => ({ summary: 'Reviewed', lessons: [], recurrences: [] })) as RetrospectiveRunner, completedId(source));
+        await runRetrospective(store, (async () => ({ summary: 'Reviewed', lessons: [], recurrences: [] })) as KnowledgeRunner, completedId(source));
         expect(store.state.knowledge!.retrospectives.map(record => record.id)).toEqual([completedId(source)]);
         store.state.coordination!.jobs = [];
         expect(deliveryMetrics(store, new Date('2026-01-01'), new Date('2027-01-01'))).toMatchObject({ completed: 1, repairAttempts: 3 });
