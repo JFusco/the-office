@@ -1,5 +1,6 @@
 import { admitGreen156 } from '../delivery/recovery/green156-admission';
 import { admitPacked165 } from '../delivery/recovery/packed165-admission';
+import { beginPacked165Setup, packed165SetupReady } from '../delivery/recovery/packed165-setup-continuation';
 import { reconcileStoppedBaseHandoff } from '../delivery/recovery/stopped-base-review';
 import { reconcileStoppedBaseUpdate } from '../delivery/recovery/stopped-base-update';
 import { stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
@@ -78,7 +79,8 @@ export function enqueueCloseoutReconciliation(store:Store,key:string,head:string
  return store.transaction(()=>{const request=enqueueRequest(store,'reconcile-closeout',key,head);if(descriptor)request.closeoutSupervisionProof=descriptor;store.save();return request;});
 }
 export async function executeRequest(store: Store, engine: Engine, coordinator: Coordinator, request: HarnessRequest, checkIT?: () => Promise<void>): Promise<void> {
-    if (request.status !== 'queued')
+    if (packed165SetupReady(store, request)) beginPacked165Setup(store, request);
+    else if (request.status !== 'queued')
         return;
     request.status = 'working';
     store.save();

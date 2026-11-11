@@ -1,5 +1,6 @@
 import { green156Admitted } from '../delivery/recovery/green156-evidence';
 import { packed165Admitted } from '../delivery/recovery/packed165-evidence';
+import { packed165SetupReady } from '../delivery/recovery/packed165-setup-continuation';
 import { requestPriority } from '../operations/request-priority';
 import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
@@ -78,7 +79,8 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     for (const request of c.requests || [])
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)
             add('reconciliation', request, request.action, request.requestedAt, requestPriority(request.action, request.action === 'cleanup-merged-candidate' && verifiedCloseoutCleanupRequest(store, request)), () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
-                requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') : null);
+                requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') :
+                    packed165SetupReady(store, request) ? eligible('runnable', 'One bounded #165 setup read-back is eligible; source continuation remains gated') : null);
     // Applying the scope correction only rewrites the local ledger (publishing stays paused), so it may
     // run while the office is paused or draining: draining is how live work on affected tickets ends.
     for (const item of items) if (item.stage === 'apply-time-scope' && (store.state.paused || store.state.draining)) {
