@@ -45,6 +45,7 @@ import { PROJECTS, officeCapacity, projectById, projectData } from '../office/pr
 import { DELIVERY_CONCURRENCY } from '../office/config';
 import { mirrorOfficeKnowledge, proposeOfficeLessons } from '../knowledge/office-lessons';
 import { seedOfficeLessons } from '../knowledge/seeded-office-lessons';
+import { retireBrainSources } from '../knowledge/sources/retire-brain-sources';
 export class Offices {
     capacity = officeCapacity(DELIVERY_CONCURRENCY);
     ctoCapacity = officeCapacity();
@@ -93,6 +94,7 @@ export class Offices {
             const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
+        retireBrainSources(this.sources,this.stores());
         recoverStoppedLaunches(this.sources,this.stores());
         for (const entry of this.entries.values()) {
             for(const runtime of [entry.engine.agents,entry.engine.knowledgeAgents,entry.engine.itAgents,entry.engine.ctoAgents])runtime.knowledgeContext={registry:this.sources,stores:this.stores(),brain:new CommittedBrain()};
