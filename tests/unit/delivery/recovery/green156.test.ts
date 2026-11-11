@@ -9,11 +9,19 @@ import { assertStoppedBaseMergeReady } from '../../../../server/delivery/recover
 import { stoppedBaseUpdateUnresolved } from '../../../../server/it/stopped-base-update-recovery';
 import { withAssignment } from '../../../../server/workers/assignment-context';
 import { HOLDS } from '../../../../server/office/config';
+import { deterministicActions } from '../../../../server/scheduling/requests';
+import { scheduledWork } from '../../../../server/scheduling/scheduled-work';
 
 vi.mock('../../../../server/delivery/recovery/green156-authorization', async original => ({ GREEN156: {
     ...(await original<typeof import('../../../../server/delivery/recovery/green156-authorization')>()).GREEN156,
     audit: '26fa7fa7122b63c8db4b57a3f126c98fa0a3fbdcbd0dd815c86cc2917eb70584' } }));
 afterEach(() => { delete HOLDS['GH-159']; cleanupFakes(); });
+test('the one-time administrative request retains the existing delivery claim lane', () => {
+    const f = green156Fixture(), entry = { store: f.store, engine: f.engine, conversations: {} as any };
+    expect(deterministicActions.has(f.request.action)).toBe(false);
+    expect(scheduledWork(entry, new Map(), new Date(), 'delivery').some(w => w.work.id === f.request.id)).toBe(true);
+    expect(scheduledWork(entry, new Map(), new Date(), 'operations').some(w => w.work.id === f.request.id)).toBe(false);
+});
 test('one exact-head green-only admission preserves the negative audit, abandoned candidate and budgets without manufacturing review or QA', async () => {
     const f = green156Fixture(), audit = structuredClone(f.job.stoppedBaseUpdate!.audit), old = f.job.worktree;
     const bytes = readFileSync(audit.completion!.resultPath, 'utf8');
