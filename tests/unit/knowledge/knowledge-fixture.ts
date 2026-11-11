@@ -5,6 +5,7 @@ import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { coordination } from '../../../server/scheduling/coordination';
 import type { MaintenanceResult, MaintenanceRun, StageResult, TicketJob } from '../../../src/shared';
+import { CONSOLIDATED } from '../../../server/knowledge/seeded-lessons';
 
 /** Isolated store with a mutable clock; never touches live data or providers. */
 export function knowledgeStore(projectId = 'brain', start = '2026-11-06T15:00:00Z') {
@@ -14,6 +15,8 @@ export function knowledgeStore(projectId = 'brain', start = '2026-11-06T15:00:00
     const store = new Store(':memory:', projectById(projectId), root, clock);
     store.state.coordination = coordination();
     store.state.coordination.jobs = [];
+    // Lessons consolidated by the 2026-11-11 audit are seeded per project; tests that need them call seedProjectLessons.
+    if (store.state.knowledge) store.state.knowledge.lessons = store.state.knowledge.lessons.filter(lesson => lesson.sourceRetrospectiveId !== CONSOLIDATED);
     return { store, advance: (ms: number) => { at += ms; }, close: () => { store.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
