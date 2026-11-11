@@ -1,6 +1,7 @@
 import { observeAutomationMerge } from '../readiness/automation-merge';
 import { green156Admitted } from '../recovery/green156-evidence';
 import { packed165Admitted } from '../recovery/packed165-evidence';
+import { resumePacked165DraftLink } from '../recovery/packed165-draft-link';
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { refreshMergeReview } from '../readiness/refresh-merge-review';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
@@ -16,6 +17,7 @@ export async function observe(this: GitHubDelivery) {
     await retireInactiveDeliveries(this);
     await retireExternalDeliveries(this);
     await resumeProviderReviews(this);
+    await resumePacked165DraftLink(this);
     for (const job of this.jobs.filter(j => j.status === 'watching' || j.stage === 'merge' && ['blocked', 'interrupted'].includes(j.status))) {
         try {
             const p = await this.verifyPR(job);
