@@ -48,6 +48,11 @@ Claude tool results and API-history blobs cannot masquerade as new human decisio
 or new tool executions. Unchanged files reuse a derived context index so idle chats
 do not require repeated full transcript scans.
 
+A forked Claude transcript may begin with copied parent records before its own
+native identity records. The child index excludes that parent conversation and
+ownership scope. A child that has not sent a message yet can still bind through
+its native metadata; a foreign identity after that boundary fails the read.
+
 When Joe merges an existing PR and completes its linked issue elsewhere, ordinary
 read-only handoffs retire through positive provider read-back. A stopped CI source
 repair can also retire once its workers finished, its writes and board moves are

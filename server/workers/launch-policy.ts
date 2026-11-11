@@ -11,7 +11,7 @@ export function workerLaunchPolicy(profile: ReturnType<typeof workerProfile>, st
 
 const LaunchPolicy = z.object({ version: z.literal(1), workerId: z.string().min(1).max(80), stage: z.string().max(100), program: z.enum(['codex', 'claude']),
     profile: z.object({ name: z.string().max(40), readOnly: z.boolean() }).strict(),
-    effective: z.object({ readOnly: z.boolean(), terminateStragglers: z.boolean() }).strict(), workspaceRoot: z.string().max(5000).optional(), at: z.iso.datetime() }).strict();
+    effective: z.object({ readOnly: z.boolean(), terminateStragglers: z.boolean() }).strict(), desktopToolsDisabled: z.literal(true).optional(), workspaceRoot: z.string().max(5000).optional(), at: z.iso.datetime() }).strict();
 export type LaunchPolicyReceipt = z.infer<typeof LaunchPolicy>;
 
 /** Immutable diagnostics only; this is never completion or proof of an external effect. */

@@ -1,4 +1,5 @@
 import { hasUncertainEffects } from '../pipeline/github-delivery';
+import { initialManualStart } from '../board/manual-start';
 import { assertMayMutate } from '../harness/guards';
 import { removeCandidate } from '../candidate/remove-candidate';
 import { recordCandidateCleanup } from '../candidate/cleanup-status';
@@ -20,7 +21,7 @@ export async function retireBacklogged(store: Store, execute: typeof command, jo
     for (const job of jobs.filter(job => job.candidateCleanup?.status === 'pending' && job.status !== 'completed' && (!STOPPED.includes(job.status) || !backlog(job))))
         delete job.candidateCleanup;
     for (const job of jobs.filter(job => STOPPED.includes(job.status))) {
-        if (!backlog(job) || needsReconciliation(store, job))
+        if (!backlog(job) || initialManualStart(store.project.id, job) || needsReconciliation(store, job))
             continue;
         const head = job.head;
         // Cleanup awaits Git and GitHub; a job requeued meanwhile is no longer this decision's to retire.

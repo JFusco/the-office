@@ -17,5 +17,7 @@ test('effective policy is immutable private metadata, never a prompt, command or
         for (const [id, stage, provider] of [['other', 'slack-send', 'codex'], ['sender', 'slack-verify', 'codex'], ['sender', 'slack-send', 'claude']])
             expect(launchPolicyFacts(receipt, id, stage, provider)).toBeUndefined();
         expect(launchPolicyFacts({ ...receipt, input: 'PRIVATE_PROMPT' }, 'sender', 'slack-send', 'codex')).toBeUndefined();
+        expect(launchPolicyFacts({ ...receipt, desktopToolsDisabled: true }, 'sender', 'slack-send', 'codex')).toEqual({ ...receipt, desktopToolsDisabled: true });
+        expect(launchPolicyFacts({ ...receipt, desktopToolsDisabled: false }, 'sender', 'slack-send', 'codex')).toBeUndefined();
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
