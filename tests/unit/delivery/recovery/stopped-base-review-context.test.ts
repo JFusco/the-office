@@ -33,3 +33,16 @@ test.each(['native','scope','provider','disposition','effects'])('material %s dr
     if(kind==='effects')f.store.db.prepare('INSERT INTO effects(id,work_key,status,body) VALUES(?,?,?,?)').run('new-effect',`cms-field-vocabulary:delivery:${f.job.id}`,'verified',JSON.stringify({id:'new-effect'}));
     await expect(f.run()).rejects.toThrow();expect(f.state.calls).toEqual([]);
 });
+
+test('the handoff native hash remains required on every before-checkout freshness assertion', async () => {
+    const f = fixture(), root = f.artifactRoot(f.job), nativePath = resolve(root, 'handoff-native.jsonl'), resultPath = resolve(root, 'handoff-result.json');
+    writeFileSync(nativePath, 'Captured handoff native bytes'); writeFileSync(resultPath, '{}');
+    f.job.stoppedBaseUpdate!.handoff = { head: 'b'.repeat(40), providerVersion: 'provider', workerId: 'handoff', resultPath,
+        resultSha256: artifact(f.store, resultPath).sha256, executionCompletionSha256: 'a'.repeat(64),
+        nativePath, nativeSha256: artifact(f.store, nativePath).sha256 };
+    const current = await f.run();
+    writeFileSync(nativePath, 'Changed handoff native bytes');
+    expect(current.assertCurrent).toThrow('Stopped-base handoff artifacts changed');
+    await expect(f.run()).rejects.toThrow('Stopped-base handoff artifacts changed');
+    expect(f.state.calls).toEqual([]);
+});

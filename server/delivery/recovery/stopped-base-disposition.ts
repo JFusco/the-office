@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { artifact, digest, ownedPath, rootArtifact } from '../../store/readback-evidence';
+import { resolve } from 'node:path';
+import { artifact, digest, ownedPath } from '../../store/readback-evidence';
 import { assertStoppedBaseAudit, type StoppedBaseAuditInput } from './stopped-base-audit';
 import { completedExecution } from '../../workers/worker-completion';
 import type { Store } from '../../store/store';
@@ -54,10 +54,14 @@ export function stoppedBaseHandoffResolved(store: Store, request: Pick<HarnessRe
         job.head!==r.handoff.head||job.worktree!==r.checkout.worktree||job.branch!==r.checkout.branch||
         !stoppedBaseUpdateResolved(store,{key:job.key,head:r.originalWorkId}))return false;
     try{
+        const workers=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='stopped-base-update-handoff')||[],worker=workers[0];
+        if(workers.length!==1||worker.id!==r.handoff.workerId||!r.handoffStarted?.claimId||worker.claimId!==r.handoffStarted.claimId||
+            worker.role!=='lead'||worker.provider!=='codex'||
+            r.handoff.resultPath!==resolve(store.dataRoot,'sessions',worker.id,'result.json')||!completedExecution(store,worker))return false;
         const file=artifact(store,r.candidateBinding.path),value=JSON.parse(readFileSync(file.path,'utf8'));
         return file.sha256===r.candidateBinding.sha256&&value.originalWorkId===r.originalWorkId&&value.handoffWorkerId===r.handoff.workerId&&
             value.handoffResultSha256===r.handoff.resultSha256&&value.checkoutSha256===digest(r.checkout)&&
             artifact(store,r.handoff.resultPath).sha256===r.handoff.resultSha256&&
-            rootArtifact(dirname(r.handoff.nativePath),r.handoff.nativePath).sha256===r.handoff.nativeSha256;
+            artifact(store,resolve(store.dataRoot,'sessions',worker.id,'execution-completion.json')).sha256===r.handoff.executionCompletionSha256;
     }catch{return false;}
 }

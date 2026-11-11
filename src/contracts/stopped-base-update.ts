@@ -40,6 +40,7 @@ export interface StoppedBaseUpdate {
         workerId: string;
         resultPath: string;
         resultSha256: string;
+        executionCompletionSha256: string;
         nativePath: string;
         nativeSha256: string;
     };

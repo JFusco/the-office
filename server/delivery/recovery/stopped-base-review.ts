@@ -31,8 +31,10 @@ export async function runStoppedBaseReview(delivery: GitHubDelivery, job: Ticket
         throw new Error('Reconcile the single started handoff from its real native completion; no second reader');
     const proof = continuationWorkerProof(store, job, worker, true, cwd), result = ResultSchema.parse(proof.result);
     const native = continuationNativeReview(store, worker, result), resultFile = artifact(store, resolve(store.dataRoot, 'sessions', worker.id, 'result.json'));
+    const executionCompletion = artifact(store, resolve(store.dataRoot, 'sessions', worker.id, 'execution-completion.json'));
     r.handoff = { head: result.commit, providerVersion: r.handoffStarted.providerVersion, workerId: worker.id,
-        resultPath: resultFile.path, resultSha256: resultFile.sha256, nativePath: native.file.path, nativeSha256: native.file.sha256 }; store.save();
+        resultPath: resultFile.path, resultSha256: resultFile.sha256, executionCompletionSha256: executionCompletion.sha256,
+        nativePath: native.file.path, nativeSha256: native.file.sha256 }; store.save();
     if (r.handoffStarted.head !== head || r.handoffStarted.providerVersion !== current.provider.version || result.outcome !== 'passed' ||
         result.commit !== head || result.prId !== job.pr || result.worktree !== cwd || result.branch !== current.provider.pr.branch || result.paidRuns !== 0 ||
         result.receipts.some(receipt => !receipt.verified || receipt.uncertain) || !result.evidence.length ||
