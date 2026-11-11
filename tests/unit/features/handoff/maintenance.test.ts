@@ -30,3 +30,9 @@ test('restart recovery preserves live claims and spends one recovery observation
  f.advance(10000);maintainAssessmentWork(entry);expect(assessmentEpisode(f.store,e.id)?.nextAt).toBe(due);
  }finally{f.close();}
 });
+test('a pump with nothing to recover or requeue never rewrites the project state',()=>{
+ const f=handoffFixture();try{
+ const save=vi.spyOn(f.store,'save');maintainAssessmentWork({store:f.store} as any);maintainAssessmentWork({store:f.store} as any);
+ expect(save).not.toHaveBeenCalled();
+ }finally{f.close();}
+});
