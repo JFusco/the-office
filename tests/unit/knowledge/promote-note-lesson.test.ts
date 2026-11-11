@@ -2,7 +2,8 @@ import { afterEach, expect, test } from 'vitest';
 import { ControlStore } from '../../../server/store/control-store';
 import { promoteNoteLesson } from '../../../server/knowledge/promote-note-lesson';
 import { mirrorOfficeKnowledge, retireOfficeLesson } from '../../../server/knowledge/office-lessons';
-import { knowledgeContext } from '../../../server/knowledge/knowledge-context';
+import { selectLessons } from '../../../server/knowledge/lesson-selection';
+const knowledgeContext = (store: Parameters<typeof selectLessons>[0], stage?: string) => selectLessons(store, { stage }).text;
 import { knowledgeStore } from './knowledge-fixture';
 const clean: (() => void)[] = []; afterEach(() => clean.splice(0).forEach(fn => fn()));
 function fixture() {

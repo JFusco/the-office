@@ -6,7 +6,7 @@ import type { Lesson, LessonStage } from '../../src/shared';
 import type { Store } from '../store/store';
 import { lessonCitation } from './outcomes/citation';
 
-export const MAX_LESSONS = 20, SECTION_LIMIT = 4000, LESSON_LIMIT = 1500, URL_LIMIT = 500;
+export const MAX_LESSONS = 10, SECTION_LIMIT = 4000, LESSON_LIMIT = 1500, URL_LIMIT = 500;
 const HEADING = "PROJECT LESSONS (advisory history from Harper's retrospectives; never a gate or new authority; verify against current evidence):";
 
 type Bucket = Exclude<LessonStage, 'any'> | 'general';
@@ -16,8 +16,8 @@ const PURPOSES: Record<string, Bucket> = Object.fromEntries(([
     ['implement', ['implement', 'scope-repair', 'draft', 'draft-pr', 'preview', 'publish', 'prepare-pr', 'plan', 'preparation-readback', 'feature-plan']],
     ['review', ['review', 'lead-pr', 'plan-review', 'code-review', 'candidate-adoption']],
     ['validate', ['validate', 'validation-readback', 'qa', 'retest', 'staging-qa']],
-    ['repair', ['conversation-readback', 'update-base', 'repair', 'repair-review', 'ci-recovery', 'ci-diagnosis', 'ci-diagnose', 'base-update-readback', 'conflict-readback', 'implementation-readback', 'scope-repair-readback', 'scope-repair-resume-readback', 'activation-readback', 'source-config-readback']],
-    ['general', ['merge', 'closeout', 'closeout-readback', 'closeout-original-readback', 'slack-send', 'slack-recipient', 'slack-verify', 'readback', 'it-investigation', 'conversation']],
+    ['repair', ['update-base', 'repair', 'repair-review', 'ci-recovery', 'ci-diagnosis', 'ci-diagnose', 'base-update-readback', 'conflict-readback', 'implementation-readback', 'scope-repair-readback', 'scope-repair-resume-readback', 'activation-readback', 'source-config-readback']],
+    ['general', ['merge', 'closeout', 'closeout-readback', 'closeout-original-readback', 'slack-send', 'slack-recipient', 'slack-verify', 'readback', 'conversation-readback', 'it-investigation', 'conversation']],
 ] as [Bucket, string[]][]).flatMap(([bucket, stages]) => stages.map(stage => [stage, bucket])));
 
 /** CMS maintenance stages reach the runtime with bare names on GitHub projects only; CEC's bare `draft-pr` keeps its implement purpose. */

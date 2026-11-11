@@ -6,7 +6,8 @@ import { publicUrl, runSlackLinks, type LinkRecord } from '../../../../server/kn
 import type { KnowledgeRunner } from '../../../../server/knowledge/run-retrospective';
 import { queueReconsideration, readyReferences } from '../../../../server/knowledge/slack-intake/reconsider';
 import { scheduledSlackIntake, retrySlackIntake } from '../../../../server/knowledge/slack-intake/schedule';
-import { reconcileIntakeReports, readIntakeReport } from '../../../../server/knowledge/slack-intake/report';
+import { reconcileIntakeReports } from '../../../../server/knowledge/slack-intake/report';
+import { readIntakeReport } from './intake-report-fixture';
 import { runIntakeTask } from '../../../../server/knowledge/slack-intake/run';
 import { captureProposal } from '../../../../server/knowledge/slack-intake/capture-effect';
 import { CommandFailure, type command } from '../../../../server/workers/process';
