@@ -7,11 +7,14 @@ import type { RetrospectiveResult } from './retrospective-result';
 import { catalogBindings, proofBindings } from './sources/proof-scope';
 import { checkedReceipt, type ScanReceipt } from './sources/admission';
 import { curateLesson } from './curate-lesson';
+import { saveUnblockBrief } from './unblock-brief';
+
+const BLOCKED = new Set<PendingRetrospective['trigger']>(['parked', 'blocked', 'repair-budget']);
 
 export const RETROSPECTIVE_HISTORY = 100;
 export const normalizeStatement = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
-type Accepted = { improvements?: ImprovementProposal[] } & Pick<RetrospectiveResult, 'summary'> & { lessons: (Omit<RetrospectiveResult['lessons'][number], 'repositoryInstruction' | 'tier' | 'action' | 'targetId' | 'validUntil'> & { repositoryInstruction?: boolean; tier?: 'hypothesis' | 'guidance'; validUntil?: string; action?: RetrospectiveResult['lessons'][number]['action']; targetId?: string })[] };
+type Accepted = { improvements?: ImprovementProposal[]; unblock?: RetrospectiveResult['unblock'] } & Pick<RetrospectiveResult, 'summary'> & { lessons: (Omit<RetrospectiveResult['lessons'][number], 'repositoryInstruction' | 'tier' | 'action' | 'targetId' | 'validUntil'> & { repositoryInstruction?: boolean; tier?: 'hypothesis' | 'guidance'; validUntil?: string; action?: RetrospectiveResult['lessons'][number]['action']; targetId?: string })[] };
 /** A proposal to share, with the evidence the harness resolved for it; the Office proposal keeps those proofs. */
 type Shared = Accepted['lessons'][number] & { evidence: LessonEvidence[] };
 
@@ -46,6 +49,8 @@ export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospec
             if (outcome === 'shared') shared.push({ ...proposal, evidence: lesson.evidence });
             else changed.push(outcome === 'updated' ? proposal.targetId! : lesson.id);
         }
+        // A brief is kept only from evidence every reader of this project may see.
+        if (result.unblock && !bindings.length && BLOCKED.has(pending.trigger)) saveUnblockBrief(knowledge, { kind: pending.subject || 'job', id: pending.jobId }, { ...result.unblock, at: now, retrospectiveId: pending.id });
         if(!sourceOnly)proposeImprovements(store, pending.source || { kind: pending.subject || 'job', id: pending.jobId }, result.improvements || [], catalog);
         // Filed before completion: a failed filing rolls this acceptance back to retry, and Office proposals deduplicate.
         if (shared.length) share?.(shared);
