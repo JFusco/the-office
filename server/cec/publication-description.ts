@@ -2,7 +2,8 @@ import { FeatureError } from '../features/progression/failure';
 
 function plain(value: any): boolean {
     return value == null || typeof value === 'string' || ['doc', 'paragraph', 'text', 'hardBreak'].includes(value.type) &&
-        (!value.marks || value.marks.length === 0) && (!value.content || value.content.every(plain));
+        (!value.marks || value.marks.length === 0) && (!value.attrs || Object.keys(value.attrs).length === 0) &&
+        (!value.content || value.content.every(plain));
 }
 
 /** Keep rich ADF in the approval preimage, including marks, attributes and media. */

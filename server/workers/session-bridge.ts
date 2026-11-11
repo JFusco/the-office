@@ -1,4 +1,5 @@
 import { completeSessionCoverage } from './session-coverage';
+import { accountCodexProcesses, type DesktopSessions } from './codex-process-inventory';
 import WebSocket from 'ws';
 import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -66,23 +67,26 @@ export function loadedCodexSession(t:any):LiveSession|null{
  if(guardianReview(t.thread_source,t.source))return null;
  return {id:t.id,provider:'codex',cwd:t.cwd,title:String(t.name||t.title||'Codex session').split('\n')[0].slice(0,160),branch:t.git_branch||'',status:'loaded',source:'Live Codex process; turn activity not exposed',...(t.rollout_path?{rolloutPath:t.rollout_path}:{})};
 }
-async function desktopSessions(execute:typeof command){
+async function desktopSessions(execute:typeof command,workers:ReadonlySet<number>=new Set()):Promise<DesktopSessions>{
  // Open-file identities select the live sessions whose context is inspected.
  // A descriptor alone establishes a loaded identity, not an active turn.
  const raw=await execute('lsof',['-nP','-c','codex','-Fpn'],{timeout:10000});
- const files=[...new Map(openRollouts(raw).map(file=>[file.path,file])).values()],db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
- try{return files.map(({path})=>loadedCodexSession(db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?').get(path))).filter((s):s is LiveSession=>!!s);}finally{db.close();}
+ const db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
+ try{const lookup=db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?');return accountCodexProcesses(raw,path=>loadedCodexSession(lookup.get(path)),workers);}finally{db.close();}
 }
 export class SessionBridge {
  current:SessionInventory={observedAt:'',expiresAt:'',sessions:[],sources:[],complete:false};polling?:Promise<SessionInventory>;
- constructor(private stores:()=>Store[],private execute:typeof command=command,private native=codexSessions,private desktop=desktopSessions,private context=codexSessionContext,private claudeContext=claudeSessionContext){}
+ constructor(private stores:()=>Store[],private execute:typeof command=command,private native=codexSessions,private desktop:(execute:typeof command,workers:ReadonlySet<number>)=>Promise<LiveSession[]>=desktopSessions,private context=codexSessionContext,private claudeContext=claudeSessionContext){}
  async refresh(){
   if(this.polling)return this.polling;
   this.polling=this.read();try{return await this.polling;}finally{this.polling=undefined;}
  }
  private async read(){
   const projects=this.stores().map(s=>s.project);
-  const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions).then(sessions=>this.claudeContext(sessions,projects)),this.desktop(this.execute).then(sessions=>this.context(sessions,projects))]);
+  const workers=new Set(this.stores().flatMap(s=>(s.state.workLog||[]).filter(w=>w.status==='running'&&w.processId).map(w=>w.processId!)));
+  // Context enrichment returns a new array, so the process accounting report is carried across it.
+  const desktop=this.desktop(this.execute,workers).then(async sessions=>Object.assign(await this.context(sessions,projects),{unaccounted:(sessions as LiveSession[]&Partial<Pick<DesktopSessions,'unaccounted'>>).unaccounted}));
+  const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions).then(sessions=>this.claudeContext(sessions,projects)),desktop]);
   const coverageComplete=completeSessionCoverage(results);
   const names=['Codex live runtime','Claude live sessions','Codex desktop/CLI session identities'];
   const sources=results.map((r,i)=>({name:names[i],ok:r.status==='fulfilled',detail:r.status==='fulfilled'?(i===2?'Loaded identities, current-turn ownership and retained conversation evidence are visible across repositories; missing turn activity remains unknown.':'Live inventory connected.'):`Session inventory could not complete${/timed? out|timeout/i.test(String(r.reason))?' within its read deadline':''}. Ownership remains unverified; this does not establish a login failure.`}));

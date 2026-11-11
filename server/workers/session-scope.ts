@@ -1,4 +1,5 @@
 import type { OfficeProject } from '../../src/shared';
+import { CEC } from '../office/config';
 import { retainSessionMessage, type SessionConversation } from './session-conversation';
 
 export interface SessionScope {
@@ -14,16 +15,35 @@ export interface SessionContext {
     conversation?: SessionConversation;
 }
 const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+type ScopeProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>>;
+
+/** The configured site may be written as its https URL or bare host, with an optional trailing slash. */
+const siteHost = (value: string) => value.replace(/[\\"']/g, '').toLowerCase().replace(/^https:\/\//, '').replace(/\/+$/, '');
+
+/** Exact CEC ticket keys named by native TWG work-item commands. A configured --site makes them commands;
+ * a missing --site leaves the destination unproven, so they are references. Another site yields nothing. */
+function jiraCommandIssues(text: string): { commands: number[]; references: number[] } {
+    const commands: number[] = [], references: number[] = [], configured = siteHost(CEC.site);
+    for (const command of text.matchAll(/(?<![\w.-])twg\s+jira\s+workitem\b[^;\n|&]*/gi)) {
+        const site = command[0].match(/--site(?:=|\s+)[\\"']*([^\s;|&\\"',})\]]+)/i)?.[1];
+        // An unexpanded shell value is as unproven as a missing site.
+        const list = !site || site.includes('$') ? references : siteHost(site) === configured ? commands : undefined;
+        if (!list) continue;
+        for (const key of command[0].matchAll(/(?<![\w-])CEC-(\d+)(?![\w-])/g))
+            if (!list.includes(Number(key[1]))) list.push(Number(key[1]));
+    }
+    return { commands, references: references.filter(number => !commands.includes(number)) };
+}
 
 /** Index explicit references; returned URLs provide context, never action ownership or permission. */
-export function sessionScope(raw: string, sessionId: string, projects: Pick<OfficeProject, 'id' | 'repo' | 'repository'>[]): SessionContext {
+export function sessionScope(raw: string, sessionId: string, projects: ScopeProject[]): SessionContext {
     const parser = sessionScopeParser(sessionId, projects);
     for (const line of raw.split('\n')) parser.write(line);
     return parser.finish();
 }
 
 /** The same strict record fold supports bounded complete-file reads without retaining transcripts. */
-export function sessionScopeParser(sessionId: string, projects: Pick<OfficeProject, 'id' | 'repo' | 'repository'>[]) {
+export function sessionScopeParser(sessionId: string, projects: ScopeProject[]) {
     let ordinal = -1;
     let identity = '', header = false, historyStart = 0, activity: SessionContext['activity'] = 'unknown';
     const scopes = new Map<string, SessionScope>(), userMessages: SessionContext['userMessages'] = [];
@@ -62,7 +82,10 @@ export function sessionScopeParser(sessionId: string, projects: Pick<OfficeProje
         }
         for (const project of projects) {
             const repo = escaped(project.repository), path = escaped(project.repo);
-            if (!new RegExp(`(?:(?<![\\w.-])${repo}(?![\\w.-])|${path}(?=[/\\s'"\\\\]|$))`, 'i').test(text)) continue;
+            // A current-turn TWG command binds a CEC ticket to the Jira project even from a chat rooted elsewhere.
+            const jira = call && project.provider === 'azure' ? jiraCommandIssues(text) : { commands: [], references: [] };
+            const browse = project.provider === 'azure' ? [...text.matchAll(new RegExp(`${escaped(CEC.site)}/browse/CEC-(\\d+)(?![\\w-])`, 'gi'))] : [];
+            if (!jira.commands.length && !jira.references.length && !browse.length &&!new RegExp(`(?:(?<![\\w.-])${repo}(?![\\w.-])|${path}(?=[/\\s'"\\\\]|$))`, 'i').test(text)) continue;
             conversationProjects.add(project.id);
             const scope = scopes.get(project.id) || { project: project.id, issues: [], prs: [], evidence: [] };
             // Canonical URLs and REST paths bind the number to this repository.
@@ -78,6 +101,20 @@ export function sessionScopeParser(sessionId: string, projects: Pick<OfficeProje
                 const list = ref[1] === 'issue' ? scope.issues : scope.prs, number = Number(ref[2]);
                 if (!list.includes(number)) list.push(number);
                 scope.evidence.push({ at: row.timestamp || '', reference: `gh ${ref[1]} ${number} --repo ${project.repository}`, kind: 'command', ...(ref[1] === 'issue' ? { issue: number } : { pr: number }) });
+            }
+            // Jira browse URLs are references; only an exact configured-site TWG command is command evidence.
+            for (const ref of browse) {
+                const number = Number(ref[1]);
+                if (!scope.issues.includes(number)) scope.issues.push(number);
+                scope.evidence.push({ at: row.timestamp || '', reference: ref[0], kind: 'reference', issue: number });
+            }
+            for (const number of jira.references) {
+                if (!scope.issues.includes(number)) scope.issues.push(number);
+                scope.evidence.push({ at: row.timestamp || '', reference: `twg jira workitem CEC-${number} (no --site)`, kind: 'reference', issue: number });
+            }
+            for (const number of jira.commands) {
+                if (!scope.issues.includes(number)) scope.issues.push(number);
+                scope.evidence.push({ at: row.timestamp || '', reference: `twg jira workitem CEC-${number} --site ${CEC.site}`, kind: 'command', issue: number });
             }
             scope.evidence = scope.evidence.slice(-8);
             scopes.set(project.id, scope);

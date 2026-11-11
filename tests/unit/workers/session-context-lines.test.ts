@@ -39,7 +39,7 @@ test('a chat over 64 MiB retains complete early context and only the final turn 
     expect(raw).not.toHaveBeenCalled();
     const stores = projects.map(project => ({ project, state: { workLog: [], coordination: { jobs: project.id === 'cms' ? [{ key: 'GH-159', pr: 222, status: 'blocked' }] : [] } } } as unknown as Store));
     const execute = vi.fn(async (program: string, _args: string[], options?: { cwd?: string }) => program === 'claude' ? '[]' : options?.cwd || '/elsewhere');
-    const bridge = new SessionBridge(() => stores, execute, async () => [], async () => [{ id: 'loaded', provider: 'codex', cwd: '/elsewhere', title: 'Loaded chat', branch: '', status: 'loaded', source: 'fixture descriptor', rolloutPath: file }],
+    const bridge = new SessionBridge(() => stores, execute, async () => [], async () => Object.assign([{ id: 'loaded', provider: 'codex' as const, cwd: '/elsewhere', title: 'Loaded chat', branch: '', status: 'loaded' as const, source: 'fixture descriptor', rolloutPath: file }], { unaccounted: [] }),
         (sessions, projects) => codexSessionContext(sessions, projects, read), async sessions => sessions);
     await bridge.refresh();
     expect(bridge.forProject(stores[0], 'GH-111')).toMatchObject({ complete: true, fresh: true, ownership: { status: 'clear' } });

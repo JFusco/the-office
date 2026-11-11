@@ -32,7 +32,7 @@ test.each([
    if(options?.readOnly===false)writes++;
    return JSON.stringify({data:args.includes('types')?[{name:'Build Task',hierarchyLevel:0,subtask:false}]:args.includes('create-metadata')?{fields:[]}:{key:'CEC-10',fields:{summary:'Feature',description,labels:['keep']}}});
   });
-  await expect(p.preflight({} as any,{kind:'update',payload:{space:'CEC',type:'Build Task',summary:'Feature',description:'Text',labels:['keep']},expected:{}} as any,'CEC-10')).rejects.toThrow('changed since approval preview');
+  await expect(p.preflight({} as any,{kind:'update',payload:{space:'CEC',type:'Build Task',summary:'Feature',description:'Text',labels:['keep']},expected:{summary:'Feature',description:'Text',labels:['keep']}} as any,'CEC-10')).rejects.toThrow('changed since approval preview');
   expect(writes).toBe(0);
  }finally{f.close();}
 });

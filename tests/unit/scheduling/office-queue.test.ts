@@ -6,6 +6,7 @@ import {blankEvidence} from '../../../server/features/handoff/evidence-contract'
 import {storeEvidence} from '../../../server/features/handoff/evidence-artifacts';
 import {captureRequest,requestCapture} from '../../../server/features/handoff/capture-store';
 import {holdAssessmentIntake} from '../../../server/features/handoff/intake-routing';
+import {closeIntakeEpisode} from '../../../server/features/handoff/intake-disposition';
 import { Coordinator } from '../../../server/scheduling/coordination';
 import { initializeLanes } from '../../fixtures/scheduler';
 import { enqueueRequest } from '../../../server/scheduling/requests';
@@ -402,6 +403,18 @@ test('the real pump keeps Morgan running beyond ten minutes until its result set
   finish({disposition:'ordinary',rationale:'Completed working assessment',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;
   expect(assessmentEpisode(f.entry.store,f.episode.id)?.outcome).toBe('ordinary-by-model');expect(f.entry.store.state.features).toHaveLength(0);
  }finally{finish?.({disposition:'ordinary',rationale:'Cleanup',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;delete FEATURE_PLANNING[f.entry.store.project.id];vi.useRealTimers();}
+});
+test('explicit Start aborts running Morgan through the real pump while its claim and delivery lane remain until settlement',async()=>{
+ const office=offices(),f=planningFixture(office),controller=new AbortController();let finish!:(v:any)=>void,pending:Promise<void>|undefined;
+ try {
+  await office.pump();f.entry.engine.agents.run=vi.fn(()=>{f.entry.engine.agents.active.set('pm',controller);return new Promise(resolve=>{finish=resolve}).finally(()=>f.entry.engine.agents.active.delete('pm'));}) as any;
+  pending=office.pump();await vi.waitFor(()=>expect(finish).toBeDefined());const claim=f.entry.store.activeClaims().find(c=>c.work.kind==='assessment')!;
+  f.entry.coordinator!.pump=async()=>{f.review.status='ready';};
+  f.entry.store.transaction(()=>closeIntakeEpisode(f.entry.store,'GH-999',true));
+  await office.pump();expect(controller.signal.aborted).toBe(true);expect(f.entry.store.activeClaims().some(c=>c.id===claim.id)).toBe(true);expect(office.capacity.lane).toBe(f.entry.store.project.id);
+  finish({disposition:'planning',rationale:'Late',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;
+  expect(f.entry.store.activeClaims().some(c=>c.id===claim.id)).toBe(false);expect(assessmentEpisode(f.entry.store,f.episode.id)?.outcome).toBe('ordinary-by-start');expect(f.entry.store.state.features||[]).toHaveLength(0);
+ }finally{finish?.({disposition:'ordinary',rationale:'Cleanup',requirements:[],acceptanceCriteria:[],settledDecisions:[],openQuestions:[],imageObservations:[]});await pending;delete FEATURE_PLANNING[f.entry.store.project.id];}
 });
 test.each([true,false])('stopping process cleanup preserves pending assessment and lane ownership (alive=%s)',async alive=>{
  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));const office=offices(),f=planningFixture(office),other=office.get('cec').store;

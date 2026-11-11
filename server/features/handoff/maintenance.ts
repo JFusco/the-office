@@ -4,10 +4,12 @@ import type { OfficeEntry } from '../../scheduling/scheduled-work';
 import { assessmentEnabled, assessmentEpisodes, saveAssessment, closeAssessment } from './disposition-store';
 import { captureRequests } from './capture-store';
 import { maintainCaptureRequests, capturesEnabled, captureAllowed } from './scheduled-captures';
+import { cancelObsoleteAssessments } from './planning-assessment';
 
 /** Runs after stopped-process cleanup. Never releases a worker claim or reserves capacity. */
 export function maintainAssessmentWork(entry: OfficeEntry) {
     const { store } = entry;
+    cancelObsoleteAssessments(store);
     if (!capturesEnabled(store)) return;
     const now = store.clock.now();
     store.transaction(() => {

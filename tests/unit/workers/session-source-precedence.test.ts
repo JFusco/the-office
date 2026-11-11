@@ -9,7 +9,7 @@ test('duplicate Claude identities preserve the active client context when anothe
         activity: session.status === 'idle' ? 'idle' : 'active', userMessages: [],
         scopes: [{ project: 'brain', issues: [session.status === 'idle' ? 999 : 352], prs: [], evidence: [{ kind: 'command', issue: session.status === 'idle' ? 999 : 352, at: '', reference: 'test' }] }],
     } }));
-    const bridge = new SessionBridge(() => [store], execute, async () => [], async () => [], undefined, context);
+    const bridge = new SessionBridge(() => [store], execute, async () => [], async () => Object.assign([], { unaccounted: [] }), undefined, context);
     await bridge.refresh();
     expect(bridge.forProject(store, 'GH-352').ownership.status).toBe('owned');
     expect(bridge.forProject(store, 'GH-999').ownership.status).toBe('clear');

@@ -7,6 +7,8 @@ import {join} from 'node:path';
 import {codexSessions,claudeSessions,guardianReview,loadedCodexSession,openRollouts,SessionBridge} from '../../../server/workers/session-bridge';
 import {sessionScope} from '../../../server/workers/session-scope';
 const cleanup:(()=>void)[]=[];afterEach(()=>cleanup.splice(0).forEach(f=>f()));
+/** Injected desktop inventories carry the explicit process accounting report that coverage requires. */
+const accounted=(sessions:any[]=[])=>Object.assign(sessions,{unaccounted:[] as number[]});
 test('retained conversation exposes an outside chat to both projects without claiming historical issues',()=>{
  const stores:any[]=['brain','cms'].map(id=>({project:{id,repo:'/'+id,repository:'Joe/'+id},state:{workLog:[]}}));
  const row=(type:string,payload:unknown)=>JSON.stringify({type,payload});
@@ -50,8 +52,8 @@ test('missing provider visibility fails closed, excludes the current worker and 
  const store:any={project:{id:'brain',repo:'/brain'},state:{workLog:[{status:'running',sessionId:'self',id:'s',provider:'codex',requestId:'review',ticket:'GH-255',task:'Investigating'}]}};
  const execute:any=async(bin:string,_args:string[],opts:any)=>bin==='claude'?'[]':opts.cwd==='/brain'||opts.cwd==='/tmp/worktree'?'/brain/.git':'/other/.git';
  const native=async()=>[{id:'outside',provider:'codex' as const,cwd:'/tmp/worktree',title:'GH-255',branch:'issue-255',status:'active' as const,source:'test'}];
- const bridge=new SessionBridge(()=>[store],execute,native,async()=>[]);await bridge.refresh();const view=bridge.forProject(store,'GH-255','review');expect(view.complete).toBe(true);expect(view.sessions.map(s=>s.id)).toEqual(['outside']);
- const broken=new SessionBridge(()=>[store],execute,async()=>{throw Error('offline');},async()=>[]);await broken.refresh();expect(broken.forProject(store).complete).toBe(false);expect(broken.current.sources[0].ok).toBe(false);
+ const bridge=new SessionBridge(()=>[store],execute,native,async()=>accounted());await bridge.refresh();const view=bridge.forProject(store,'GH-255','review');expect(view.complete).toBe(true);expect(view.sessions.map(s=>s.id)).toEqual(['outside']);
+ const broken=new SessionBridge(()=>[store],execute,async()=>{throw Error('offline');},async()=>accounted());await broken.refresh();expect(broken.forProject(store).complete).toBe(false);expect(broken.current.sources[0].ok).toBe(false);
  bridge.current.expiresAt='2000-01-01T00:00:00Z';expect(bridge.forProject(store).fresh).toBe(false);
 });
 test('ownership is exact-project and exact-issue; unrelated loaded chats and the current reviewer are not competing owners',()=>{
@@ -71,13 +73,13 @@ test('an idle shared runtime cannot erase a positively active desktop turn for t
  const base={id:'outside',provider:'codex' as const,cwd:'/preset',title:'Rollout',branch:'main',source:'test'};
  const desktop={...base,status:'active' as const,context:{activity:'active' as const,scopes:[{project:'brain',issues:[255],prs:[],evidence:[{at:'',reference:'repos/Joe/brain/issues/255',kind:'command' as const,issue:255}]}],userMessages:[]}};
  const execute:any=async(program:string)=>program==='claude'?'[]':'/test/.git';
- const bridge=new SessionBridge(()=>[store],execute,async()=>[{...base,status:'idle'}],async()=>[desktop]);
- await bridge.refresh();expect(bridge.forProject(store,'GH-255').ownership.status).toBe('owned');
+ const bridge=new SessionBridge(()=>[store],execute,async()=>[{...base,status:'idle'}],async()=>accounted([desktop]));
+ await bridge.refresh();expect(bridge.current.complete).toBe(true);expect(bridge.forProject(store,'GH-255').ownership.status).toBe('owned');
 });
 test('Claude cross-repository scope and decisions reach the same project ownership packet',async()=>{
  const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
  const execute:any=async(program:string)=>program==='claude'?JSON.stringify([{sessionId:'live',cwd:'/preset',status:'working'}]):'/test/.git';
  const context:any=async(sessions:any[])=>sessions.map(s=>({...s,context:{activity:'active',scopes:[{project:'brain',issues:[352],prs:[],evidence:[{at:'',reference:'repos/Joe/brain/issues/352',kind:'command',issue:352}]}],userMessages:[{at:'',text:'Keep the approved rollout boundaries.'}]}}));
- const bridge=new SessionBridge(()=>[store],execute,async()=>[],async()=>[],undefined,context);await bridge.refresh();
+ const bridge=new SessionBridge(()=>[store],execute,async()=>[],async()=>accounted(),undefined,context);await bridge.refresh();
  const view=bridge.forProject(store,'GH-352');expect(view.complete).toBe(true);expect(view.ownership.status).toBe('owned');expect(view.sessions[0].provider).toBe('claude');expect(view.sessions[0].context?.userMessages[0].text).toContain('boundaries');
 });
