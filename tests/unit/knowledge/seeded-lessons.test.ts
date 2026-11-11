@@ -4,7 +4,7 @@ const knowledgeContext = (store: Parameters<typeof selectLessons>[0], stage?: st
 import { retireLesson } from '../../../server/knowledge/lesson-commands';
 import { seedProjectLessons } from '../../../server/knowledge/seeded-lessons';
 import { migrateSnapshot } from '../../../server/store/migrations';
-import { knowledgeStore, learningLesson } from './knowledge-fixture';
+import { knowledgeStore } from './knowledge-fixture';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).forEach(fn => fn()));

@@ -2,7 +2,6 @@ import { test, expect } from 'vitest';
 import { RetrospectiveResultSchema } from '../../../server/knowledge/retrospective-result';
 import { migrateSnapshot } from '../../../server/store/migrations';
 import { configureKnowledge } from '../../../server/knowledge/lesson-commands';
-import { knowledgeOutbox } from '../../../server/knowledge/knowledge-outbox';
 import { knowledgeStore, learningLesson } from './knowledge-fixture';
 test('histories survive migration; registration uses current time without fake exposure', () => {
     const { store, close } = knowledgeStore();
