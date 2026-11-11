@@ -12,7 +12,12 @@ export function maintainAssessmentWork(entry: OfficeEntry) {
     cancelObsoleteAssessments(store);
     if (!capturesEnabled(store)) return;
     const now = store.clock.now();
-    store.transaction(() => {
+    const claims = store.activeClaims();
+    const captures = captureRequests(store).filter(capture => captureAllowed(store,capture.target) && capture.status === 'working' && !claims.some(c => c.work.id === 'evidence-capture:' + capture.target));
+    const episodes = (assessmentEnabled(store) ? assessmentEpisodes(store) : []).filter(episode => !episode.closedAt && !episode.result && episode.attemptId && episode.recoveredAttemptId !== episode.attemptId && !claims.some(c => c.work.kind === 'assessment' && c.work.id === 'assessment:' + episode.id));
+    // A transaction rewrites the whole project state, and this runs on every pump: open one only for work.
+    // Inside it, re-read both lists: capture recovery can close an episode, so episodes are read after it.
+    if (captures.length || episodes.length) store.transaction(() => {
         for (const capture of captureRequests(store)) {
             if (!captureAllowed(store,capture.target) || capture.status !== 'working' || store.activeClaims().some(c => c.work.id === 'evidence-capture:' + capture.target)) continue;
             failEvidenceCapture(store,capture,'Evidence capture interrupted before completion');
@@ -28,6 +33,6 @@ export function maintainAssessmentWork(entry: OfficeEntry) {
             }
         }
     });
-    store.transaction(() => resumeAssessmentIntake(store));
+    if (store.state.coordination?.listener.reviews.some(review => review.status === 'held' && review.assessmentHold)) store.transaction(() => resumeAssessmentIntake(store));
     maintainCaptureRequests(store, now);
 }

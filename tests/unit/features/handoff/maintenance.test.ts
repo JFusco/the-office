@@ -5,6 +5,7 @@ import {assessPlanning} from '../../../../server/features/handoff/planning-asses
 import {closeIntakeEpisode} from '../../../../server/features/handoff/intake-disposition';
 import {storeEvidence} from '../../../../server/features/handoff/evidence-artifacts';
 import {blankEvidence} from '../../../../server/features/handoff/evidence-contract';
+import {saveCaptureRequest} from '../../../../server/features/handoff/capture-store';
 import {handoffFixture} from './fixture';
 test.each(['start','generation','current'] as const)('maintenance aborts only an obsolete running Morgan attempt and never releases its claim (%s)',async reason=>{
  const f=handoffFixture();try{
@@ -28,5 +29,20 @@ test('restart recovery preserves live claims and spends one recovery observation
  maintainAssessmentWork(entry);expect(assessmentEpisode(f.store,e.id)?.nextAt).toBeUndefined();
  f.store.finishClaim(claim.id,'interrupted');maintainAssessmentWork(entry);const due=assessmentEpisode(f.store,e.id)?.nextAt;expect(due).toBe('2026-11-10T12:00:30.000Z');
  f.advance(10000);maintainAssessmentWork(entry);expect(assessmentEpisode(f.store,e.id)?.nextAt).toBe(due);
+ }finally{f.close();}
+});
+test('an exhausted capture recovery closes its episode and the same pump never reopens it',()=>{
+ const f=handoffFixture();try{
+ const e=openAssessment(f.store,'GH-1','v1',true);Object.assign(e,{attemptId:'attempt',attempts:1,startedAt:f.store.clock.now().toISOString()});saveAssessment(f.store,e);
+ const at=f.store.clock.now().toISOString();saveCaptureRequest(f.store,{target:'assessment:'+e.id,key:'GH-1',generation:1,enqueuedAt:at,dueAt:at,status:'working',attempts:3,requestedFor:'periodic',providerVersion:'v1'});
+ maintainAssessmentWork({store:f.store} as any);
+ const closed=assessmentEpisode(f.store,e.id)!;
+ expect(closed.closedAt).toBeDefined();expect(closed.outcome).toBe('ordinary-by-unavailable');expect(closed.reason).toBe('Evidence capture interrupted before completion');expect(closed.nextAt).toBeUndefined();
+ }finally{f.close();}
+});
+test('a pump with nothing to recover or requeue never rewrites the project state',()=>{
+ const f=handoffFixture();try{
+ const save=vi.spyOn(f.store,'save');maintainAssessmentWork({store:f.store} as any);maintainAssessmentWork({store:f.store} as any);
+ expect(save).not.toHaveBeenCalled();
  }finally{f.close();}
 });
