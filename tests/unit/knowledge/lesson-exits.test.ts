@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { expireLessons, graduateLessons, queueLessonIssueCheck } from '../../../server/knowledge/lesson-exits';
 import { reactivateLesson, retireLesson } from '../../../server/knowledge/lesson-commands';
 import { knowledgeOfficeState } from '../../../server/knowledge/office-state-view';
-import { intakeFixture } from './slack-intake/fixture';
+import { sourceFixture } from './sources/source-fixture';
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
 import type { command } from '../../../server/workers/process';
 import { knowledgeStore, learningLesson } from './knowledge-fixture';
@@ -68,7 +68,7 @@ test('graduation applies to the current record after the provider read and never
 });
 
 test('an automatic retirement event keeps the lesson\'s source dependencies, so revoking access hides it', async () => {
-    const f = intakeFixture();
+    const f = sourceFixture();
     try {
         const evidence = [{ kind: 'source' as const, ref: 'source:unit', url: '', detail: 'Scoped evidence', source: { sourceId: f.source.id, unitId: 'unit', version: 'v1' } }, { kind: 'learning' as const, ref: 'learning:derived', url: '', detail: 'Scoped evidence', sourceBindings: [{ sourceId: f.source.id }] }];
         f.store.state.knowledge!.lessons = [learningLesson('expiring', { evidence, validUntil: '2026-11-05' }), learningLesson('graduating', { evidence, repositoryInstruction: { status: 'filed', issueUrl: 'https://github.com/JFusco/brain/issues/9', filedAt: '' } })];
