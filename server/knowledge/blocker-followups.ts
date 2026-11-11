@@ -39,7 +39,8 @@ export function reconcileBlockerFollowups(store: Store): void {
             if (disposition === 'confirmed') item.resolvedAt = now; else delete item.resolvedAt;
             item.evidence = [{ kind: 'learning', ref: id, url: '', detail: JSON.stringify(proof).slice(0, 1500) }];
             // Initial unresolved inventory is baselined; subsequent material changes are learning. An unknown outcome proves nothing.
-            if (item.history.length > 1 && disposition !== 'unknown') captureLearning(store, source, key, 'recovery', fingerprint, { disposition, proof }, detail);
+            // IT recovery records are excluded: they repeat the same condition and taught one lesson in 29 retrospectives.
+            if (item.history.length > 1 && disposition !== 'unknown' && source.kind !== 'recovery') captureLearning(store, source, key, 'recovery', fingerprint, { disposition, proof }, detail);
         }
         // A source resolution does not prove the diagnostic nudge caused it. Procedure outcome stays unknown.
         return item;
