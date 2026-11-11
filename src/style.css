@@ -4,7 +4,6 @@
 @import './tokens/typography.css';
 @import './tokens/layout.css';
 @import './tokens/effects.css';
-@import './knowledge/knowledge.css';
 
 /*
   Document defaults only. Component presentation lives in Tailwind utilities.

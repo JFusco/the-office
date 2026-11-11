@@ -12,8 +12,8 @@ export function MapNodePanel({ project, node, data, onSelect }: { project: strin
     useEffect(() => { focusInspectorHeading(heading.current); }, [node.id]);
     const {edges:connections,neighbors,missing}=connectionSummary(data,node.id);
     return <section aria-label="Selected node" className="min-w-0 wrap-anywhere">
-        <Tag>{node.kind}</Tag><h3 ref={heading} tabIndex={-1} className="my-3 break-words font-mono text-13 text-map-ink">{node.title}</h3>
-        <p className="my-3 whitespace-pre-wrap font-mono text-11 leading-relaxed">{node.detail.replace(/\nPublished technical revision [a-f0-9]{40}$/, '')}</p>
+        <Tag>{node.kind}</Tag><h3 ref={heading} tabIndex={-1} className="my-3 break-words font-heading text-16 text-map-ink">{node.title}</h3>
+        <p className="my-3 whitespace-pre-wrap text-13 leading-relaxed">{node.detail.replace(/\nPublished technical revision [a-f0-9]{40}$/, '')}</p>
         {node.kind === 'evidence' && node.knowledgeReference && <EvidenceDetail autoFocus={false} key={node.id} project={project} hit={{ reference: node.knowledgeReference, title: node.title, excerpt: '', citation: '', scope: 'project', limitations: [] }}/>}
         {node.kind === 'technical' && node.knowledgeReference && <TechnicalDetail autoFocus={false} key={node.id} project={project} reference={node.knowledgeReference} title={node.title}/>}
         {node.kind === 'assignment' && node.reference && <AssignmentKnowledge autoFocus={false} key={node.id} project={project} id={node.reference}/>}

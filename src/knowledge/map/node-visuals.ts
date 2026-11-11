@@ -36,7 +36,7 @@ export function nodeVisuals(palette: SceneColors) {
             star.userData.knowledgeId=node.id;
             const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 80;
             const context = canvas.getContext('2d'); if (!context) { starMaterial.dispose(); throw new Error('Label canvas unavailable'); }
-            context.font = '28px monospace'; context.fillStyle = palette.brainLabel; context.textAlign = 'left';
+            context.font = '32px monospace'; context.fillStyle = palette.brainLabel; context.textAlign = 'left';
             const characters = Array.from(node.title); let caption = node.title;
             while (characters.length && context.measureText(caption).width > canvas.width - 24) { characters.pop(); caption = characters.join('') + '…'; }
             context.fillText(caption, 12, 45);
