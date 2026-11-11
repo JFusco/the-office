@@ -9,6 +9,7 @@ import { FEATURE_PLANNING } from '../office/config';
 import { reserveReplacement, stageBudget } from './progression/attempt-budget';
 import { recoveryQuestion } from './questions/recovery-question';
 import { wakeFeature } from './progression/wake';
+import {retainStoppingClaim} from '../scheduling/stopping-claims';
 
 /** Called at startup and after stopping work is reconciled; never retries ordinary failures. */
 export function recoverFeatures(store: Store, startup = false, alive = processGroupAlive) {
@@ -22,8 +23,19 @@ export function recoverFeatures(store: Store, startup = false, alive = processGr
             });
         }
         const owners = [feature, ...feature.reviewHistory.map(review => ({ ...feature, review }))];
-        for (const owner of owners) helperTelemetry(store, owner, alive);
-        const groups = owners.flatMap(owner => observeHelperGroups(store, owner, alive));
+        let groups:number[];
+        try {
+            for (const owner of owners) helperTelemetry(store, owner, alive);
+            groups = owners.flatMap(owner => observeHelperGroups(store, owner, alive));
+        } catch(error) {
+            store.transaction(()=>{
+                const known=owners.flatMap(owner=>owner.review?.processes||[]).filter(pid=>Number.isSafeInteger(pid)&&pid>1&&alive(pid));
+                for(const claim of store.activeClaims().filter(c=>c.work.kind==='feature'&&c.work.id===feature.id))retainStoppingClaim(store,claim,known,String(error));
+                feature.status=automaticFeature(feature)?'waiting':'blocked';feature.detail='Helper process evidence needs reconciliation: '+String(error);
+                if(automaticFeature(feature)){const budget=stageBudget(feature,feature.phase);budget.wait='processes';budget.nextAt=null;}
+            });
+            continue;
+        }
         const workers = store.state.workLog?.filter(w => w.requestId === feature.id && ['running', 'stopping'].includes(w.status)) || [];
         if (groups.length || workers.some(w => w.processId && alive(w.processId))) continue;
         wakeFeature(store, feature, true);

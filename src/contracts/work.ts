@@ -130,6 +130,8 @@ export interface SchedulerState {
 }
 export type ExecutionLane = 'delivery' | 'cto' | 'it' | 'operations' | 'knowledge';
 export interface WorkClaim {
+    stoppingGroups?: number[];
+    stoppingObservationError?: string;
     lane?: ExecutionLane;
     id: string;
     work: WorkRef;

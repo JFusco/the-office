@@ -1,3 +1,4 @@
+import { releaseOrRetain } from './stopping-claims';
 import { randomUUID } from 'node:crypto';
 import type { ProgressionItem, QueueTiming, ExecutionLane } from '../../src/shared';
 import { withAssignment } from '../workers/assignment-context';
@@ -98,7 +99,7 @@ export class Scheduler {
     }
     private async dispatch(store: Store, items: ScheduledWork[], item: ScheduledWork, index: number, count: number, release: () => void): Promise<void> {
         const scheduling = this.state(store);
-        let claim: ReturnType<Store['claimWork']>;
+        let claim: ReturnType<Store['claimWork']> = null;
         try {
             const expected = item.identity();
             claim = store.transaction(() => item.claimEligible && !item.claimEligible() ? null : store.claimWork(item.work, this.owner, item.stage, this.lane));
@@ -136,14 +137,14 @@ export class Scheduler {
             finally {
                 store.transaction(() => {
                     item.afterStage?.();
-                    store.finishClaim(claim!.id, 'completed');
+                    if (!store.activeClaims().some(c => c.id === claim!.id && c.status === 'stopping')) store.finishClaim(claim!.id, 'completed');
                     scheduling.lastProgressAt = this.clock.now().toISOString();
                     store.save();
                 });
             }
         }
         finally {
-            release();
+            releaseOrRetain(store, claim?.id, release);
         }
     }
 }

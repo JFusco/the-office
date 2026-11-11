@@ -11,7 +11,7 @@ export function failEvidenceCapture(store: Store, request: CaptureRequest, error
     for (const feature of store.state.features || []) {
         const target = feature.handoff ? 'assessment:' + feature.handoff.episodeId : 'feature:' + feature.id;
         if (target !== request.target || feature.phase === 'complete') continue;
-        recoveryQuestion(feature, store.clock.now(), 'Provider evidence capture exhausted its recovery budget: ' + String(error));
         const budget = stageBudget(feature, feature.phase); budget.wait = 'questions'; budget.nextAt = null;
+        recoveryQuestion(feature, store.clock.now(), 'Provider evidence capture exhausted its recovery budget: ' + String(error), false, 'capture:' + request.target);
     }
 }

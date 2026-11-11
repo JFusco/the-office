@@ -1,5 +1,11 @@
 import { maintainAssessmentWork } from '../features/handoff/maintenance';
 import { deliveryOccupied } from './slot-policy';
+import { reconcileStoppingClaims } from './stopping-claims';
+import { offerOrdinaryRelease } from '../features/questions/release-ordinary';
+import { pendingQuestions } from '../features/questions/pending-questions';
+import { QuestionNotifications } from '../features/questions/question-notifications';
+import { featurePolicy } from '../features/progression/policy';
+import { FEATURE_PLANNING } from '../office/config';
 import { knowledgeSessionVisibility } from '../knowledge/sources/session-visibility';
 import { leadershipEntries,leadershipContext } from '../knowledge/leadership-context';
 import { knowledgeOfficeState,knowledgeEntries } from '../knowledge/office-state-view';
@@ -71,6 +77,14 @@ export class Offices {
         conversations: Conversations;
         coordinator?: Coordinator;
     }>();
+    private questionNotifications?: QuestionNotifications;
+    questions() { return pendingQuestions(this.stores().values(), this.sources); }
+    questionEvents() {
+        this.questionNotifications ??= new QuestionNotifications(() => this.questions());
+        this.questionNotifications.observe(this.stores().values());
+        return this.questionNotifications;
+    }
+    dispose() { this.questionNotifications?.dispose(); }
     constructor() {
         this.control.recover();
         for (const project of PROJECTS) {
@@ -91,6 +105,7 @@ export class Offices {
                     throw new Error('Goal has no unique owning store');
                 return owners[0].conversations;
             };
+            entry.engine.features.ownership = async key => { await this.sessions.refresh(); const owner=this.sessions.forProject(entry.store,key).ownership; return {status:owner.status==='clear'?'clear':owner.status==='owned'?'owned':'unknown',reason:owner.detail}; };
             entry.coordinator!.sessionBridge = this.sessions;
             entry.coordinator!.dependencyStores = () => this.stores();
             entry.engine.slackIdentityContext = () => [...this.entries.values()].flatMap(({ store }) => (store.state.slackDeliveries || []).filter(d => d.status === 'confirmed' && d.targetType === 'person').map(d => ({ targetId: d.targetId, workspaceId: d.workspaceId, permalink: d.permalink, confirmedAt: d.updatedAt }))).slice(-20);
@@ -126,9 +141,10 @@ export class Offices {
                 needsYou: projectOutbox(entry.store.state).filter(o => o.status === 'open').length };
         });
     }
-    snapshot(id = PROJECTS[0].id) { const scoped=knowledgeOfficeState(this.sources,id,this.get(id).store.state);return { ...scoped, knowledge:knowledgeSnapshot(this.sources,id,this.get(id).store.state.knowledge), slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(scoped), dailyCTO: this.control.summaries(), officeKnowledge: officeKnowledgeSnapshot(this.sources,id,this.control.knowledge?.()), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: knowledgeSessionVisibility(this.sources,id,this.stores().values(),this.sessions.forProject(this.get(id).store)), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: leadershipEntries([...this.entries.values()],this.sources).flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: knowledgeEntries([...this.entries.values()],this.sources).flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
+    snapshot(id = PROJECTS[0].id) { const scoped=knowledgeOfficeState(this.sources,id,this.get(id).store.state);return { ...scoped, featureQuestions: this.questions(), featurePlanning: { assessment: featurePolicy(id, FEATURE_PLANNING).assessment.enabled, progression: featurePolicy(id, FEATURE_PLANNING).progression, policyDigest: featurePolicy(id, FEATURE_PLANNING).digest }, knowledge:knowledgeSnapshot(this.sources,id,this.get(id).store.state.knowledge), slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(scoped), dailyCTO: this.control.summaries(), officeKnowledge: officeKnowledgeSnapshot(this.sources,id,this.control.knowledge?.()), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: knowledgeSessionVisibility(this.sources,id,this.stores().values(),this.sessions.forProject(this.get(id).store)), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: leadershipEntries([...this.entries.values()],this.sources).flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: knowledgeEntries([...this.entries.values()],this.sources).flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
     async tick(now = new Date()) { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); }
     async pump() {
+        try { this.questionEvents().refresh(); } catch { /* A malformed persisted round only delays question notifications. */ }
         recoverStoppedLaunches(this.sources,this.stores());
         for (const { store, engine } of this.entries.values()) {
             try {
@@ -156,12 +172,16 @@ export class Offices {
                             store.finishWork(work.id, 'interrupted', work.elapsedMs);
                             for (const claim of store.activeClaims().filter(claim => work.claimId ? claim.id === work.claimId : claim.work.id === work.requestId || claim.work.id === `ticket:${work.ticket}`)) {
                                 const owns = (other: typeof work) => other.claimId ? other.claimId === claim.id : other.requestId === claim.work.id || claim.work.id === `ticket:${other.ticket}`;
-                                if (!store.state.workLog?.some(other => other.id !== work.id && owns(other) && ['running', 'stopping'].includes(other.status)))
+                                if (!claim.stoppingObservationError && !claim.stoppingGroups?.length && !store.state.workLog?.some(other => other.id !== work.id && owns(other) && ['running', 'stopping'].includes(other.status)))
                                     store.finishClaim(claim.id, 'interrupted');
                             }
                         }
                     }
                 }
+        for (const {store} of this.entries.values()) {
+            reconcileStoppingClaims(store);
+            for (const feature of store.state.features || []) { const owner=this.sessions.forProject(store,feature.sourceTicket).ownership; offerOrdinaryRelease(store,feature,{status:owner.status==='clear'?'clear':owner.status==='owned'?'owned':'unknown',reason:owner.detail}); }
+        }
         const entries = [...this.entries.values()];
         const queues = (lane: string) => {
             const queues = entries.map(entry => ({ store: entry.store, items: this.projection(entry, lane) }));
@@ -172,7 +192,7 @@ export class Offices {
             return queues;
         };
         // Independent lanes are reserved synchronously before any model is invoked.
-        const stopping = (lane: import('../../src/shared').ExecutionLane) => entries.some(entry => entry.store.state.workLog?.some(work => work.status === 'stopping' && (work.lane || (work.role === 'cto' ? 'cto' : work.role === 'it' ? 'it' : work.role === 'knowledge' ? 'knowledge' : 'delivery')) === lane));
+        const stopping = (lane: import('../../src/shared').ExecutionLane) => entries.some(entry => entry.store.activeClaims().some(claim => claim.status === 'stopping' && (claim.lane || 'delivery') === lane) || entry.store.state.workLog?.some(work => work.status === 'stopping' && (work.lane || (work.role === 'cto' ? 'cto' : work.role === 'it' ? 'it' : work.role === 'knowledge' ? 'knowledge' : 'delivery')) === lane));
         const stoppingDelivery = stopping('delivery');
         for (const entry of entries) maintainAssessmentWork(entry, projectId => deliveryOccupied(this.capacity, projectId, stoppingDelivery), () => scheduledWork(entry, this.stores(), entry.store.clock.now(), 'delivery', {}, true));
         await Promise.allSettled([stopping('cto') ? Promise.resolve() : this.ctoScheduler.pump(queues('cto')), stopping('it') ? Promise.resolve() : this.itScheduler.pump(queues('it')), this.operationsScheduler.pump(queues('operations')), stopping('knowledge') ? Promise.resolve() : this.knowledgeScheduler.pump(queues('knowledge')), stopping('delivery') ? Promise.resolve() : this.scheduler.pump(queues('delivery'))]);

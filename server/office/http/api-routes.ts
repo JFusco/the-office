@@ -1,4 +1,6 @@
 import { knowledgeRoute } from '../../knowledge/routes';
+import { serviceBusy } from '../service-busy';
+import { assertQuestionVisibility, assertAssessmentVisibility } from '../../features/questions/command-visibility';
 import { knowledgeOfficeState,knowledgePromptStore } from '../../knowledge/office-state-view';
 import { eventVisible } from '../../knowledge/events/visibility';
 import { retainedArtifactScope } from '../../knowledge/artifacts/retained-scope';
@@ -22,7 +24,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
     const { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator } = context;
     const knowledge = await knowledgeRoute(req, url, offices.sources, offices.stores(), project);
     if (knowledge) return knowledge;
-    const features = url.pathname.startsWith('/api/features') ? await featureRoute(req, url, req.method==='GET'?knowledgePromptStore(store,offices.sources):store, engine.features, new Map([...offices.entries].map(([id, entry]) => [id, entry.store]))) : undefined;
+    const features = url.pathname.startsWith('/api/features') ? await featureRoute(req, url, req.method==='GET'?knowledgePromptStore(store,offices.sources):store, engine.features, new Map([...offices.entries].map(([id, entry]) => [id, entry.store])), id => assertQuestionVisibility(store,offices.sources,id,url.searchParams.get('officeWide')==='1'), key => assertAssessmentVisibility(store,offices.sources,key)) : undefined;
     if (features) return features;
     if (url.pathname === '/api/service-health') {
         if (req.method !== 'GET')
@@ -36,7 +38,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
     if (url.pathname === '/api/projects')
         return json({ projects: offices.summaries() });
     if (url.pathname === '/api/health')
-        return json({ ok: true, loadedHash: loadedRevision.hash, serviceInstanceId: offices.serviceInstanceId, startedAt: store.state.startedAt, readiness: [...offices.entries.values()].map(entry => projectReadiness(entry, offices.projection(entry), Date.now(), offices.sessions.forProject(entry.store))), dailyCTO: offices.control.summaries()[0] || null, mode: store.state.paused ? 'paused' : 'running', pid: process.pid, uptime: process.uptime(), busy: offices.capacity.slots.size > 0 || [...offices.entries.values()].some(e => e.engine.busy || e.engine.agents.active.size || e.engine.ctoAgents.active.size || e.engine.itAgents.active.size || e.engine.knowledgeAgents.active.size || e.coordinator?.polling), projects: [...offices.entries.values()].map(e => ({ id: e.store.project.id, busy: e.engine.busy, workers: e.store.state.workLog?.filter(w => w.status === 'running').length || 0, polling: !!e.coordinator?.polling })) });
+        return json({ ok: true, loadedHash: loadedRevision.hash, serviceInstanceId: offices.serviceInstanceId, startedAt: store.state.startedAt, readiness: [...offices.entries.values()].map(entry => projectReadiness(entry, offices.projection(entry), Date.now(), offices.sessions.forProject(entry.store))), dailyCTO: offices.control.summaries()[0] || null, mode: store.state.paused ? 'paused' : 'running', pid: process.pid, uptime: process.uptime(), busy: serviceBusy(offices.capacity,offices.entries.values()), projects: [...offices.entries.values()].map(e => ({ id: e.store.project.id, busy: e.engine.busy, workers: e.store.state.workLog?.filter(w => w.status === 'running').length || 0, polling: !!e.coordinator?.polling })) });
     if (url.pathname === '/api/office')
         return json(snapshot(project));
     if (url.pathname === '/api/sessions') {
@@ -83,7 +85,8 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         let timer: ReturnType<typeof setInterval>;
         let listener: () => void;
         let unsubscribePreferences = () => { };
-        const stop = () => { clearInterval(timer); store.listeners.delete(listener); unsubscribePreferences(); };
+        let unsubscribeQuestions = () => { };
+        const stop = () => { clearInterval(timer); store.listeners.delete(listener); unsubscribePreferences(); unsubscribeQuestions(); };
         const stream = new ReadableStream({ start(c) {
                 const send = () => {
                     try {
@@ -100,6 +103,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
                 store.listeners.add(listener);
                 // Preferences are office-wide: every project's stream receives a write immediately.
                 unsubscribePreferences = offices.preferences.subscribe(() => send());
+                unsubscribeQuestions = offices.questionEvents().subscribe(() => send());
                 send();
                 timer = setInterval(send, 10000);
                 req.signal.addEventListener('abort', () => {
