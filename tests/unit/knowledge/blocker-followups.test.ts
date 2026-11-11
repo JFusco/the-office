@@ -91,3 +91,15 @@ test('unsupported publication routes a positively bound read-only handoff once p
         expect(harperHandoff(store, { ...store.state.messages[0], id: 'forged' })).toBe(false);
     } finally { close(); }
 });
+test('an IT recovery changing state is tracked as a follow-up but never queues a retrospective', () => {
+    const { store, close } = knowledgeStore();
+    try {
+        store.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], investigations: [], recoveries: { 'probe:azure': { attempts: 1, nextAt: '', status: 'retrying', detail: 'Probe timed out' } } };
+        reconcileBlockerFollowups(store);
+        store.state.it.recoveries['probe:azure'].status = 'needs-human'; reconcileBlockerFollowups(store);
+        const followup = store.state.knowledge!.followups!.find(item => item.source.kind === 'recovery')!;
+        expect(followup.history).toHaveLength(2);
+        expect(store.state.knowledge!.pending).toEqual([]);
+        expect(store.state.knowledge!.learningConsumed || []).toEqual([]);
+    } finally { close(); }
+});
