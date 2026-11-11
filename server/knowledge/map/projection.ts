@@ -10,10 +10,10 @@ export function knowledgeMap(context: KnowledgeContext, project: string,global =
     const nodes: KnowledgeMap['nodes'] = [{ id: global?'office:knowledge':`project:${project}`, title: global?'Office knowledge':project, kind: 'project',scope:global?'office':'project', detail: global?'Approved Office guidance and published technical knowledge':'Current project scope' }], edges: KnowledgeMap['edges'] = [];
     const sources = global?[]:context.registry.all().filter(s => sourceVisible(context.registry, s.id, project)).slice(0, 100);
     for (const source of sources) {
-        nodes.push({ id: `stream:${source.id}`, title: source.title, kind: 'source',scope:'project', detail: `${source.destination} · ${source.state} · home ${source.homeProjectId}` });
+        nodes.push({ id: `stream:${source.id}`, title: source.title, kind: 'source',scope:'project', detail: `${source.state} · home ${source.homeProjectId}` });
         edges.push({ source: `project:${project}`, target: `stream:${source.id}`, kind: 'subscription' });
     }
-    const records = global?[]:evidenceRecords(context, project,true), evidence = records.filter(r => sources.some(s => s.id === r.sourceId)).slice(0, 200);
+    const records = global?[]:evidenceRecords(context, project), evidence = records.filter(r => sources.some(s => s.id === r.sourceId)).slice(0, 200);
     for (const r of evidence) { nodes.push({ id: r.id, title: evidenceTitle(r.text, sources.find(s => s.id === r.sourceId)!.title, r.readerVersion === 'public-claims-v1' || r.unitId.startsWith('public:')), kind: 'evidence',scope:'project', detail: `Source record ${r.unitId}\nVersion ${r.version} · ${r.readerVersion}`, reference: r.id,knowledgeReference:{id:r.id,kind:'source',sourceId:r.sourceId,unitId:r.unitId,version:r.version,contentSha256:r.contentSha256} }); edges.push({ source: `stream:${r.sourceId}`, target: r.id, kind: 'provenance' }); }
     const knowledge = knowledgeSnapshot(context.registry,project,context.stores.get(project)?.state.knowledge);
     const lessons = [...(global?[]:knowledge?.lessons || []), ...(knowledge?.officeLessons || [])].filter(l => l.status === 'active' && lessonVisible(context.registry, project, l)).slice(0, 100);

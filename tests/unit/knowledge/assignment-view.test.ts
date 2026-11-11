@@ -10,7 +10,7 @@ import { evidenceIdentity } from '../../../server/knowledge/sources/evidence-rec
 import { digest } from '../../../server/knowledge/slack-intake/config';
 import { lookupJournal } from '../../../server/knowledge/lookup/receipts';
 async function fixture(){
-    const f=intakeFixture('project-evidence'),id=randomUUID(),dir=resolve(f.store.dataRoot,'sessions',id);mkdirSync(dir,{recursive:true});
+    const f=intakeFixture(),id=randomUUID(),dir=resolve(f.store.dataRoot,'sessions',id);mkdirSync(dir,{recursive:true});
     const text='Schema receipts version one',ref=evidenceIdentity(f.source.id,'doc','v1');f.ledger.put('admission','doc:v1',{state:'admitted'});f.ledger.put('evidence',ref,{id:ref,sourceId:f.source.id,unitId:'doc',version:'v1',text,contentSha256:digest(text),url:'',observedAt:'now',readerVersion:'fixture',limitations:[]});
     const context={registry:f.registry,stores:new Map([['brain',f.store]]),brain:{snapshot:async()=>'a'.repeat(40),search:async()=>[],read:async()=>({text:'',contentSha256:''})}},evidence=await taskBriefing(context,'brain','implement','Schema');
     prepareExposure(f.store,dir,id,'implement',{text:'',selected:[],eligible:[],omitted:[]},undefined,evidence);dispatchExposure(f.store,id);

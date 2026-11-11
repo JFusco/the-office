@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import { learningMetrics } from '../../../server/knowledge/learning-metrics';
-import { knowledgeStore, learningLesson } from './knowledge-fixture';
+import { knowledgeStore } from './knowledge-fixture';
 test('activation distinguishes unavailable, partial and complete weekly coverage', () => {
     const f = knowledgeStore();
     try {

@@ -111,3 +111,7 @@ Ellis projects current IT follow-ups from the latest local work state on every s
 The IT panel separates an unavailable active-session check from unresolved shutdown investigations of earlier worker runs. Those investigations show their own last-update dates and diagnosis counts, with the original technical reports expandable. A new IT check does not refresh an old diagnosis or settle its cause; delivery status remains a separate check.
 
 Dependabot, Renovate (pin-courier), and canonical wiki automation PRs use the existing bot identity and content qualification, then go directly to required current-head GitHub checks and repository merge rules. Office adds no model review or local QA cycle for these PRs. Holds, competing work, uncertain writes and normal post-merge Actions and queue closeout remain enforced.
+
+An explicit **Start** also authorizes a new issue's first Backlog → In progress transition. That permission is bound to the admitted job and ends after its first board transition or source work. Automatic pickup cannot use it; Block, Done and a later human return to Backlog remain protected.
+
+Native Codex Slack workers disable unused desktop/browser tools per child while retaining connected Slack tools. This does not change saved settings, writer uncertainty, process-group settlement or independent message verification. Original failures remain historical evidence.

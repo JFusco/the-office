@@ -35,3 +35,20 @@ test('Claude retains prior decisions and project visibility after a brief new pr
         ],
     } });
 });
+
+
+test('forked Claude history never imports the parent conversation or active commands', () => {
+    const parent = [row('user', 'Edit https://github.com/Joe/brain/issues/352', { sessionId: 'parent' }),
+        row('assistant', [{ type: 'tool_use', name: 'Bash', input: { command: 'gh pr merge 354 --repo Joe/brain' } }], { sessionId: 'parent' })];
+    const boundary = JSON.stringify({ type: 'custom-title', sessionId: 'live', customTitle: 'Forked chat' });
+    const idle = claudeSessionScope([...parent, boundary].join('\n'), 'live', projects);
+    expect(idle).toMatchObject({ scopes: [], userMessages: [], conversation: { projects: [], messages: [] } });
+    const active = claudeSessionScope([...parent, boundary, row('user', 'Read https://github.com/Joe/cms/issues/142')].join('\n'), 'live', projects);
+    expect(active.scopes).toMatchObject([{ project: 'cms', issues: [142] }]);
+    expect(active.conversation?.projects).toEqual(['cms']);
+});
+
+test('a foreign identity after Claude child binding remains an error', () => {
+    const boundary = JSON.stringify({ type: 'custom-title', sessionId: 'live' });
+    expect(() => claudeSessionScope([boundary, row('user', 'wrong', { sessionId: 'other' })].join('\n'), 'live', projects)).toThrow('identity');
+});

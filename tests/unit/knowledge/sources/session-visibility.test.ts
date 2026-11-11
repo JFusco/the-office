@@ -1,7 +1,7 @@
 import { expect,test } from 'vitest';
 import { intakeFixture } from '../slack-intake/fixture';
 import { knowledgeSessionVisibility } from '../../../../server/knowledge/sources/session-visibility';
-test('source denial withholds worker context without changing ownership, and sharing a stream does not share task history',()=>{const f=intakeFixture('project-evidence');try{
+test('source denial withholds worker context without changing ownership, and sharing a stream does not share task history',()=>{const f=intakeFixture();try{
     f.store.state.knowledge!.exposures=[{id:'attempt',stage:'review',at:'now',dispatchedAt:'now',digest:'hash',eligible:[],selected:[],omitted:[],sourceBindings:[{sourceId:f.source.id}]}];f.store.state.workLog!.push({id:'attempt',requestId:'request',sessionId:'native',role:'lead'} as never);
     const view={sessions:[{id:'native',title:'PRIVATE WORKER TITLE',context:{conversation:{text:'PRIVATE CONTENT'}},rolloutPath:'/private/provider-log',status:'active'}],ownership:{status:'owned',matches:[{id:'native',title:'PRIVATE WORKER TITLE',status:'active'}]}} as any;
     expect(knowledgeSessionVisibility(f.registry,'brain',[f.store],view).sessions[0].context).toBeDefined();

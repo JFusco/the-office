@@ -1,6 +1,8 @@
 import type { Lesson } from '../../src/shared';
+import { projectSeed } from './seeded-lessons';
+import { officeSeed } from './seeded-office-lessons';
 
-type Rewrite = Pick<Lesson, 'when' | 'statement' | 'check'> & { detail?: string; /** Belongs in the repository: offered to Joe as an issue to file. */ suggest?: true };
+type Rewrite = Pick<Lesson, 'when' | 'statement' | 'check'> & { detail?: string };
 
 /**
  * One-time rewrite of the lessons stored before lessons had a `when` and a `check`, approved after the
@@ -13,7 +15,7 @@ const REWRITES: Record<string, Rewrite> = {
     '3f6cb4be-7d7f-441d-b879-7393f56881b6': { when: 'The skill validator fails on a skill file.', statement: 'Run the validator on the unchanged baseline before altering invocation-policy fields.', check: 'The failure is shown to be new; a failure present on both versions is left alone.' },
     '92d6bdae-fa6a-4846-88ae-7a8013562b37': { when: 'Adding or reviewing an exception that trusts bot-authored metadata.', statement: 'Test each authentication condition on its own, including wrong login, wrong base repository and empty repository context.', check: 'A negative test exists for every condition.' },
     '27f430fb-d93f-4250-83b3-cbe312895197': { when: 'Reviewing a delivery journal.', statement: 'Reconcile it against the final diff and the checks that actually ran, and keep implemented, deferred and unverified outcomes separate.', check: 'Every claim in the journal maps to a diff hunk or a check receipt.' },
-    'c966f100-92f3-4f51-ae40-8b7ae8ad37cc': { when: 'Submitting nightly knowledge changes that include archived plans.', statement: 'Search the generated plan archives, as well as the knowledge prose, for private absolute paths.', check: 'No path under .state/ or a home directory appears in the diff.', suggest: true, detail: 'Independent review found a private .state/nightly path in an archived plan and required its removal before publication.' },
+    'c966f100-92f3-4f51-ae40-8b7ae8ad37cc': { when: 'Submitting nightly knowledge changes that include archived plans.', statement: 'Search the generated plan archives, as well as the knowledge prose, for private absolute paths.', check: 'No path under .state/ or a home directory appears in the diff.', detail: 'Independent review found a private .state/nightly path in an archived plan and required its removal before publication.' },
     'e93cfb80-bdb6-4a88-840d-f19dce521259': { when: 'Reviewing an update that replaces action tags with commit SHAs.', statement: 'Verify each unique SHA against the official upstream tag and inspect every replacement, including disabled workflows.', check: 'Each SHA is matched to a tag, and the replacement count equals the diff.' },
     '2a875dfc-2c42-4070-9f93-1fcdb9535fc5': { when: 'Installing dependencies inside a Brain worktree that sits under the Office checkout.', statement: 'Check pnpm\'s effective workspace root before installing.', check: 'The reported workspace root is the worktree, and the Office lockfile and node_modules are untouched.' },
     'd21ef455-3216-4bd2-9e14-3d7599761d22': { when: 'A dependency PR carries a manual repair commit.', statement: 'Read Renovate\'s edited-branch warning before requesting a rebase.', check: 'The repair commit is still present after any refresh.' },
@@ -21,13 +23,12 @@ const REWRITES: Record<string, Rewrite> = {
     // CMS field vocabulary
     '0a893505-3150-4def-a4c3-bd398dc43f9d': { when: 'Reviewing existing RSS entries in a source scan.', statement: 'Compare the retained item text across scan artifacts.', check: 'A text-only edit is detected even when the identity fingerprint is unchanged.' },
     '55267fc1-fc05-458e-9fc3-89679311d7e0': { when: 'Adding observation-only retention settings to a source.', statement: 'Keep them outside `extract` and exclude retained text from lock entries.', check: 'The source-lock digest is unchanged.' },
-    'seed:cms-field-vocabulary:contentstack-withdrawn-changelog-items': { when: 'A scanned Contentstack changelog identity cannot be found during vendor review.', statement: 'Read the item text from the registered RSS feed; record the identity as withdrawn upstream only when the current feed still lists items dated on or before its scan date and the identity is absent from both the feed and the changelog page.', check: 'An identity that only aged out of the feed window was read from the changelog page instead, and a withdrawn one is recorded with no retained text and no profile impact claimed.', suggest: true, detail: 'Scan artifacts keep only RSS item links (cms-field-vocabulary#137). Feed: https://www.contentstack.com/api/docs/changelog/rss.xml; changelog: https://www.contentstack.com/docs/changelog.' },
     'f134f463-46bd-41a0-b961-1a2a9b98b4ad': { when: 'A ticket depends on a stable release of an upstream package.', statement: 'Check both the official releases and the npm dist-tags before implementation starts.', check: 'A stable version, not a prerelease, is cited.' },
     '116eb153-a54f-4123-a0e3-45716672208c': { when: 'Upstream documentation pages disagree with each other.', statement: 'Resolve the claim against the pinned release changelog and the shipped implementation, and disclose the conflict beside the claim.', check: 'The profile cites the changelog or source file, and the conflict is stated.' },
     '9556fc69-a2f1-4130-886a-9e83246d7b7b': { when: 'Moving a profile to a new pinned SDK revision.', statement: 'Recheck every documentation path and extraction locator at that revision.', check: 'Each path returns 200 at the pinned revision and each locator extracts its tokens.' },
     'f14dfbb5-f37a-4006-9a26-43973b8ed769': { when: 'More than one actor may be repairing the same PR.', statement: 'Agree who owns the repair and re-read the remote head before publishing; reconcile unexpected commits before adopting or replacing them.', check: 'The local repair fast-forwards onto the remote head.' },
     'b5594ae0-9316-4312-8ba3-28342bc90d06': { when: 'A Release workflow run reports success.', statement: 'Read its logs and conditional step results before treating it as publication or notification evidence.', check: 'The publish and notify steps show as executed, not skipped.', detail: 'Both Release runs succeeded without publishing; the registry and notification steps were skipped.' },
-    '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7': { when: 'Running the packed-consumer check.', statement: 'Run verify:ci before test:packed.', check: 'dist exists before the pack; test:packed passes on the unchanged commit.', suggest: true, detail: 'test:packed runs npm pack with --ignore-scripts, which bypasses prepack, so it needs freshly built dist files.' },
+    '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7': { when: 'Running the packed-consumer check.', statement: 'Run verify:ci before test:packed.', check: 'dist exists before the pack; test:packed passes on the unchanged commit.', detail: 'test:packed runs npm pack with --ignore-scripts, which bypasses prepack, so it needs freshly built dist files.' },
     '1262828a-a9e3-4154-9022-49cfbc8cd08b': { when: 'A dependency update changes engines.node.', statement: 'Compare the new range with the consumer compatibility range in the README.', check: 'The two ranges agree, or the narrowing is called out as a compatibility change.' },
     'a67032d2-3bde-41a7-948e-6b7c2acd653c': { when: 'test:packed fails in an Office worktree.', statement: 'Check for an inherited NPM_CONFIG_WORKSPACE_DIR before attributing the failure to package code, and keep both receipts.', check: 'The command passes with the variable unset and no source change.' },
     '819217a2-c5f4-468c-82d2-df0dc101fa78': { when: 'A PR has been published or prepared.', statement: 'Run lint:pr against the published PR body itself.', check: 'The live body passes; head read-back and non-draft status are not accepted as proof.' },
@@ -37,9 +38,14 @@ const REWRITES: Record<string, Rewrite> = {
     'operator-note:brain:bda4a39e-08f4-4915-9d02-469aef33b122': { when: 'A send or other external write has an uncertain outcome.', statement: 'Never replay it. Clear its alert only after read-back confirms the original, or an explicitly authorized, linked replacement is verified.', check: 'A read-back receipt of the original exists, or the replacement is linked and the original uncertainty is kept in the audit.' },
 };
 
-/** Fills the shape for a stored lesson. Unknown older lessons keep their statement with an empty `when` and `check`. */
+/** Lessons that belong in their repository (a rule, a check or a runbook): offered to Joe once as an issue to file. */
+const REPOSITORY_ISSUES = new Set(['c966f100-92f3-4f51-ae40-8b7ae8ad37cc', '53b8a7c6-c5a0-40a9-b60b-99fc5800b4c7', 'seed:cms-field-vocabulary:contentstack-withdrawn-changelog-items']);
+
+/** Fills the shape for a stored lesson; a stored seed takes its seed's wording. Unknown older lessons keep their statement with an empty `when` and `check`. */
 export function rewriteLesson(lesson: Lesson): void {
+    if (REPOSITORY_ISSUES.has(lesson.id) && lesson.status === 'active' && !lesson.repositoryInstruction) lesson.repositoryInstruction = { status: 'proposed' };
     if (typeof lesson.when === 'string' && typeof lesson.check === 'string') return;
-    const { detail, suggest, ...shape } = REWRITES[lesson.id] || { when: '', statement: lesson.statement, check: '' };
-    Object.assign(lesson, shape, detail ? { detail } : {}, suggest && !lesson.repositoryInstruction ? { repositoryInstruction: { status: 'proposed' } } : {});
+    const seed = projectSeed(lesson.id) || officeSeed(lesson.id);
+    const { detail, ...shape }: Rewrite = REWRITES[lesson.id] || (seed ? { when: seed.when, statement: seed.statement, check: seed.check, detail: seed.detail } : { when: '', statement: lesson.statement, check: '' });
+    Object.assign(lesson, shape, detail ? { detail } : {});
 }

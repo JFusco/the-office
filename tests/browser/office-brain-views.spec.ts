@@ -24,7 +24,7 @@ test('synthetic Library, Map and Activity preserve Office navigation and scoped 
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     await nav.getByRole('button',{name:'Activity',exact:true}).click(); await expect(page.locator('[data-brain-renderer]')).toHaveCount(0);
     await expect(page.getByRole('heading',{name:'Activity',exact:true})).toBeVisible();
-    await expect(page.getByRole('region',{name:'Collection and publication status'})).toContainText('Capture alone does not prove publication');
+    await expect(page.getByRole('region',{name:'Collection status'})).toContainText('Current collection');
     await expect(page.getByRole('list',{name:'Learning timeline'})).toContainText('admitted');
     await page.screenshot({path:`${artifacts}/office-brain-04-activity.synthetic.png`,fullPage:true});
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);

@@ -14,7 +14,7 @@ export function assertIntakeBinding(store: Store, binding: IntakeBinding | undef
     const source = binding.registry.get(binding.sourceId);
     if (!source || source.homeProjectId !== binding.homeProjectId || source.sourceDigest !== binding.sourceDigest) throw Error('intake-binding-source');
     if(source.kind==='link'){
-        if(authority||binding.taskId||source.destination!=='project-evidence'||!source.url||!publicUrl(source.url,[new URL(source.url).hostname])||!collectionAllowed(binding.registry,store,{sourceId:source.id,sourceDigest:source.sourceDigest}))throw Error('public-source-binding');
+        if(authority||binding.taskId||!source.url||!publicUrl(source.url,[new URL(source.url).hostname])||!collectionAllowed(binding.registry,store,{sourceId:source.id,sourceDigest:source.sourceDigest}))throw Error('public-source-binding');
         const budget=new IntakeBudget(binding.registry);if(budget.used()>budget.limit(source.id))throw Error('intake-binding-launch-allowance');return;
     }
     const policy = collectionPolicy(source);

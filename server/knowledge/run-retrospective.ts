@@ -20,7 +20,7 @@ import { retrospectivePrompt } from './retrospective-prompt';
 import { RetrospectiveResultSchema } from './retrospective-result';
 import { findSubject } from './retrospective-subject';
 import { terminalCandidates, triggerJobId } from './retrospective-triggers';
-import { otherProjectLessons } from './other-project-lessons';
+import { otherProjectLessons, withElsewhere } from './other-project-lessons';
 
 export const RETROSPECTIVE_TIMEOUT = 20 * 60 * 1000;
 const FIRST_DELAY = 5 * 60 * 1000, MAX_DELAY = 6 * 60 * 60 * 1000;
@@ -72,7 +72,7 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
     const attempts = pending.attempts;
     try {
         const folder = harperFolder(store, learningDigest(id));
-        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!);if(context)facts.elsewhere=otherProjectLessons(context,store.project.id);return context?sourceLearningPacket(context,store.project.id,pending!,facts):facts;});
+        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!);return context?withElsewhere(facts,otherProjectLessons(context,store.project.id),next=>sourceLearningPacket(context,store.project.id,pending!,next)):facts;});
         const scoped = catalogBindings(packet.catalog).length > 0;
         if(scoped&&(!context||!sourcePacketAuthorized(context,store.project.id,packet)))throw Error('Source learning evidence revoked before dispatch');
         if (scoped) await scanCuration(store, id, 'input', JSON.stringify(packet), context?.scan);

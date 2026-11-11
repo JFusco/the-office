@@ -31,8 +31,8 @@ test.each([
  ['slack-verify',false,false,false],['slack-recipient',false,false,false],
  ['github-review',false,false,true],['enhance',false,false,false],
 ] as const)('actual runtime forwards effect disposition for %s / filesystemReadOnly=%s / send=%s',async(stage,readOnly,slackSend,expected)=>{
- const store=fixture();let observed:boolean|undefined;let cleanup:boolean|undefined;
- const execute:typeof command=async(_program,_args,options={})=>{observed=options.readOnly;cleanup=options.terminateStragglers;for(const event of events())options.onLine?.(JSON.stringify(event));return '';};
+ const store=fixture();let observed:boolean|undefined;let cleanup:boolean|undefined;let launchArgs:string[]=[];
+ const execute:typeof command=async(_program,_args,options={})=>{launchArgs=_args;observed=options.readOnly;cleanup=options.terminateStragglers;for(const event of events())options.onLine?.(JSON.stringify(event));return '';};
  const runtime=new WorkerRuntime(store,execute);
  await expect(runtime.run('pm','Synthetic transport classification',schema,{stage,readOnly,slackSend})).resolves.toEqual({ok:true});
  expect(observed).toBe(expected);expect(runtime.active.size).toBe(0);expect(store.state.workLog?.at(-1)?.status).toBe('completed');
@@ -40,6 +40,13 @@ test.each([
  const receipt=JSON.parse(readFileSync(resolve(store.dataRoot,'sessions',worker.id,'launch-policy.json'),'utf8'));
  expect(receipt).toMatchObject({version:1,workerId:worker.id,stage,program:'codex',effective:{readOnly:observed,terminateStragglers:cleanup}});
  if(stage.startsWith('slack-'))expect(receipt.effective.terminateStragglers).toBe(false);
+ const desktopDisabled=stage.startsWith('slack-')||slackSend;
+ expect(receipt.desktopToolsDisabled).toBe(desktopDisabled?true:undefined);
+ for(const feature of ['computer_use','browser_use','browser_use_external','in_app_browser']){
+  expect(launchArgs.includes(`features.${feature}=false`)).toBe(desktopDisabled);
+  if(desktopDisabled)expect(launchArgs[launchArgs.indexOf(`features.${feature}=false`)-1]).toBe('-c');
+ }
+ expect(launchArgs).not.toContain('features.apps=false');expect(launchArgs).not.toContain('features.code_mode_host=false');
  if(slackSend)expect(receipt.profile.readOnly).toBe(true);
  expect(JSON.stringify(receipt)).not.toMatch(/Synthetic transport|input|args|environment/);
 });

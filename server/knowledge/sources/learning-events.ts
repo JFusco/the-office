@@ -7,7 +7,7 @@ import { sourceVisible } from './visibility';
 export function fanoutSourceLearning(context:KnowledgeContext,limit=50):number {
     let delivered=0;
     for(const source of context.registry.all()) {
-        if(source.destination!=='project-evidence'||source.state==='withdrawn')continue;
+        if(source.state==='withdrawn')continue;
         const home=context.stores.get(source.homeProjectId);if(!home)continue;const ledger=new IntakeLedger(home,source);
         const records=ledger.all<EvidenceRecord>('evidence').filter(record=>ledger.get<{state:string}>('admission',`${record.unitId}:${record.version}`)?.state==='admitted'),latest=new Map(records.map(r=>[r.unitId,r.version]));
         for(const record of records) {

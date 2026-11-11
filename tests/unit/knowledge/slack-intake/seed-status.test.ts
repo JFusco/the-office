@@ -12,7 +12,7 @@ import { linkKey } from '../../../../server/knowledge/slack-intake/read-links';
 import { scheduledSlackIntake } from '../../../../server/knowledge/slack-intake/schedule';
 import { queueReconsideration } from '../../../../server/knowledge/slack-intake/reconsider';
 import type { LinkRecord } from '../../../../server/knowledge/slack-intake/read-links';
-import type { ReadTask, SourceUnit, Proposal } from '../../../../server/knowledge/slack-intake/contracts';
+import type { ReadTask, SourceUnit } from '../../../../server/knowledge/slack-intake/contracts';
 import type { KnowledgeRunner } from '../../../../server/knowledge/run-retrospective';
 import { SlackSeedStatus } from '../../../../src/knowledge/SlackSeedStatus';
 const configured = { ...config, seedLaunchesPerDay: 32 };
@@ -26,7 +26,7 @@ function finishedReads(f: ReturnType<typeof intakeFixture>) {
         const t = newTask(f.policy, 'C123', kind, '', oldest, latest, '2026-11-06', 'now'); t.status = 'complete'; f.ledger.put('task', t.id, t);
     }
 }
-const unit = (state: SourceUnit['state']): SourceUnit => ({ id: 'fixture', kind: 'file', resource: 'F123', channel: 'C123', text: 'Private fixture body', version: 'v1', url: 'https://fixture.slack.com/files/F123', references: [], state, reason: 'fixture', requests: [], observedAt: 'now', attempt: 'fixture', week: '2026-11-06' });
+const unit = (state: SourceUnit['state']): SourceUnit => ({ id: 'fixture', kind: 'file', resource: 'F123', channel: 'C123', text: 'Private fixture body', version: 'v1', url: 'https://fixture.slack.com/files/F123', references: [], state, reason: 'fixture', observedAt: 'now', attempt: 'fixture', week: '2026-11-06' });
 
 test('seed progress exists without a rollup and queued catch-up cannot imply completion', () => {
     const f = intakeFixture();
@@ -57,18 +57,17 @@ test('terminal coverage gaps permit one durable completion, unaffected by weekly
         expect(f.ledger.all('seed-completion')).toHaveLength(1);
         expect(f.store.state.events.filter(e => e.kind === 'slack-seed-complete')).toHaveLength(1);
         const html = renderToStaticMarkup(createElement(SlackSeedStatus, { seed: complete }));
-        expect(html).toContain('Complete with coverage gaps'); expect(html).toContain('Weekly incremental intake continues');
+        expect(html).toContain('Complete with coverage gaps'); expect(html).toContain('Incremental intake continues');
         expect(JSON.stringify(complete) + html).not.toMatch(/C123|fixture.slack.com|Private fixture body/);
     } finally { f.close(); }
 });
-test('unresolved sources, exhausted reads, and uncertain or invalid capture receipts cannot complete a seed', () => {
-    for (const blocker of ['source', 'read', 'capture', 'invalid-receipt'] as const) {
+test('unresolved sources and exhausted reads cannot complete a seed', () => {
+    for (const blocker of ['source', 'read'] as const) {
         const f = intakeFixture();
         try {
             finishedReads(f);
             if (blocker === 'source') f.ledger.put('unit', 'fixture:v1', unit('deferred'));
             if (blocker === 'read') { const t = { ...f.task, status: 'needs-attention' as const }; f.ledger.put('task', t.id, t); }
-            if (blocker === 'capture' || blocker === 'invalid-receipt') f.ledger.put('proposal', 'p', { id: 'p', task: f.task.id, domain: 'tooling', body: 'private', hash: 'hash', units: [], sourceVersions: [], status: blocker === 'capture' ? 'unresolved' : 'captured', configHash: configDigest(configured),sourceId:f.source.id,sourceDigest:f.source.sourceDigest } satisfies Proposal);
             reconcileIntakeReports(f.store,f.registry);
             expect(f.store.state.knowledge!.slackSeed?.status).toBe('needs-attention'); expect(f.ledger.all('seed-completion')).toHaveLength(0);
             expect(f.budget.limit(f.source.id)).toBe(32);
@@ -120,7 +119,7 @@ test('missing native-window proof or changed authority never reuses a completion
         finishedReads(f); f.ledger.put('task', f.task.id, { ...f.task, latest: '900000.000000' }); reconcileIntakeReports(f.store,f.registry);
         expect(f.store.state.knowledge!.slackSeed?.status).toBe('seeding');
         f.ledger.put('task', f.task.id, f.task); reconcileIntakeReports(f.store,f.registry); expect(f.budget.limit(f.source.id)).toBe(8);
-        f.registry.update(f.source.id,f.source.revision,s=>{s.domains=['tooling','security'];}); reconcileIntakeReports(f.store,f.registry);
+        f.registry.update(f.source.id,f.source.revision,s=>{s.authority={...s.authority!,publicHosts:[...s.authority!.publicHosts,'example.org']};}); reconcileIntakeReports(f.store,f.registry);
         expect(f.store.state.knowledge!.slackSeed?.status).not.toBe('complete-with-gaps'); expect(f.budget.limit(f.source.id)).toBe(8);
     } finally { f.close(); }
 });
@@ -131,7 +130,7 @@ test('approved seed allowance preserves source authority and existing daily coun
         expect(() => IntakeConfig.parse({ ...configured, seedLaunchesPerDay: 33 })).toThrow();
         configureSeed(f); f.ledger.put('channel', 'C123', { id: 'C123', seedUpperTs: '200.000000', enumerated: false, through: '200.000000', week: '2026-11-06' });
         setLaunches(f,8);
-        const run = (async (_p, _s, opts) => { opts.onIntakeLaunch?.(); const task = f.ledger.get<ReadTask>('task', f.task.id)!; opts.onIntakeEvent?.(event(task)); return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'fixture' }], proposals: [] }; }) as KnowledgeRunner;
+        const run = (async (_p, _s, opts) => { opts.onIntakeLaunch?.(); const task = f.ledger.get<ReadTask>('task', f.task.id)!; opts.onIntakeEvent?.(event(task)); return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'fixture' }] }; }) as KnowledgeRunner;
         await scheduledSlackIntake(f.store, run, f.store.clock.now(),f.registry,cleanScan)[0].execute();
         expect(f.budget.used()).toBe(9);
         // An unfinished inventory gives the scheduler work whose allowance it must fence.

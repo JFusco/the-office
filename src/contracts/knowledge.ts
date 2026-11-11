@@ -121,7 +121,7 @@ export interface DeliveryMetrics {
     lessonsRetired: number;
 }
 export interface WeeklyRollup {
-    intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; captures: number; duplicates: number; quarantines: number; outstanding: number; coverageGaps?:number; reasons: string[] };
+    intake?: { id: string; week: string; status: 'partial' | 'settled'; reads: number; outstanding: number; coverageGaps?:number; reasons: string[] };
     learning?: LearningMetrics;
     researchId?: string;
     research?: WeeklyResearch;
@@ -140,7 +140,6 @@ export interface KnowledgeRetry {
     attempts: number;
     nextAt: string;
     lastError: string;
-    /** Lessons this roll-up already marked not working, kept for its retries. */
 }
 export interface OfficeProposal {
     evidence?: LessonEvidence[];
@@ -165,19 +164,18 @@ export interface OfficeKnowledge {
 }
 export interface SlackSeedProgress {
     status: 'seeding' | 'needs-attention' | 'complete-with-gaps';
-    channelsTotal: number; channelsEnumerated: number; pendingReads: number; pendingCaptures: number;
+    channelsTotal: number; channelsEnumerated: number; pendingReads: number;
     unresolvedSources: number; coverageGaps: number; dailyLimit: number; completedAt?: string;
 }
 /** Deterministic, aggregate-only operational status, independent of latched historical completion. */
 export interface SlackIntakeStatus {
-    activity: 'reading' | 'classifying' | 'reading-references' | 'capturing' | 'working' | 'stopping' | 'queued' | 'waiting-budget' | 'waiting-retry' | 'waiting' | 'caught-up' | 'paused' | 'disabled' | 'needs-attention';
+    activity: 'reading' | 'classifying' | 'reading-references' | 'working' | 'stopping' | 'queued' | 'waiting-budget' | 'waiting-retry' | 'waiting' | 'caught-up' | 'paused' | 'disabled' | 'needs-attention';
     configuration: 'valid' | 'missing' | 'invalid' | 'changed';
     enabled: boolean; paused: boolean; draining: boolean; needsAttention: boolean;
     completedReads: number; pendingReads: number; failedReads: number; retryingReads: number;
-    verifiedCaptures: number; duplicates: number; quarantines: number; pendingCaptures: number; uncertainCaptures: number;
     observedSources: number; unresolvedSources: number; sourceErrors: number;
     day: string; launches: number; dailyLimit: number; changedAt: string;
-    activeSince?: string; nextAttemptAt?: string; lastCaptureAt?: string; lastReadAt?: string;
+    activeSince?: string; nextAttemptAt?: string; lastReadAt?: string;
 }
 export interface KnowledgeState {
     digestDelivery?:import('./knowledge-digests').KnowledgeDigestDelivery;

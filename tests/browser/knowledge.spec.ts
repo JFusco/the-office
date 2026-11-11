@@ -31,7 +31,7 @@ test('Harper opens from the dock, retires a lesson with focus kept, and saves th
   await expect(save).toBeDisabled();
 });
 
-test('Harper works on CEC too: office proposals, AGENTS.md filing, not-working lessons and the weekly roll-up', async ({ page, request }) => {
+test('Harper works on CEC too: office proposals, AGENTS.md filing and the weekly roll-up', async ({ page, request }) => {
   await setPreferences(request, { reducedMotion: true, quality: 'low' });
   const cec = await (await request.get('/api/office')).json();
   const proposal = { id: 'p1', projectId: 'cec', rollupId: 'rollup:2026-11-06', kind: 'process', statement: 'Run the wiki build before every review', detail: 'Two projects drifted.', stages: ['review'], status: 'proposed', createdAt: at };
@@ -59,7 +59,6 @@ test('Harper works on CEC too: office proposals, AGENTS.md filing, not-working l
   await drawer.getByRole('button', { name: 'Decline AGENTS.md suggestion: Use the shared fixture data' }).click();
   await expect(drawer.getByRole('button', { name: /^Decline AGENTS.md suggestion/ })).toHaveCount(0);
 
-  await drawer.getByRole('button', { name: 'Reactivate lesson: Commit generated artifacts' }).click();
   await expect(drawer.getByRole('button', { name: 'Retire lesson: Commit generated artifacts' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Visit Harper, 2 lessons, knowledge engineer' })).toBeVisible();
 });

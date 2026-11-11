@@ -1,5 +1,4 @@
 import { afterEach, expect, test } from 'vitest';
-import { acceptRetrospective } from '../../../server/knowledge/accept-retrospective';
 import { deliveryMetrics } from '../../../server/knowledge/delivery-metrics';
 import { lastFriday, rollupDue, runRollup, scheduledRollup } from '../../../server/knowledge/weekly-rollup';
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
@@ -102,7 +101,7 @@ test('office proposals wait for Joe, then reach every project\'s prompts through
     expect(proposeOfficeLessons(office, 'cms-field-vocabulary', 'rollup:2026-11-06', [proposal])).toEqual([]); // already proposed
     mirrorOfficeKnowledge(office, [store, other.store]);
     expect(knowledgeOutbox(store.state).map(item => item.id)).toEqual([`office-lesson:${ids[0]}`]);
-    expect(knowledgeOutbox(other.store.state)).toEqual([]);
+    expect(knowledgeOutbox(other.store.state).filter(item => item.id.startsWith('office-lesson:'))).toEqual([]);
     expect(knowledgeContext(store, 'github-review')).not.toContain('wiki build');
     decideOfficeProposal(office, ids[0], true);
     mirrorOfficeKnowledge(office, [store, other.store]);

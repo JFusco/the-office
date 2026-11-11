@@ -13,7 +13,7 @@ const MAX=10_000_000;
 /** Stream only to a generated private home path; no client path is ever accepted. */
 export async function uploadArtifact(context:KnowledgeContext,project:string,sourceId:string,request:Request,extract:Extractor=extractDocument,scan:SecretScanner=scanText) {
     const source=context.registry.get(sourceId),home=source&&context.stores.get(source.homeProjectId);
-    if(!source||!home||source.kind!=='artifact'||source.destination!=='project-evidence'||source.state!=='active'||!sourceVisible(context.registry,sourceId,project))throw Error('Artifact source unavailable in this scope');
+    if(!source||!home||source.kind!=='artifact'||source.state!=='active'||!sourceVisible(context.registry,sourceId,project))throw Error('Artifact source unavailable in this scope');
     const eligible=()=>{const current=context.registry.get(sourceId);return current?.state==='active'&&current.sourceDigest===source.sourceDigest&&sourceVisible(context.registry,sourceId,project);};
     const ledger=new IntakeLedger(home,source), id=randomUUID(), path=privateFile(home,`sources/${sourceId}/artifacts/${id}/original`);
     const type=(request.headers.get('content-type')||'').split(';')[0].toLowerCase();

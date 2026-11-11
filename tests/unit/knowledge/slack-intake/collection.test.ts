@@ -4,7 +4,7 @@ import { IntakeConfig, configDigest, readConfig } from '../../../../server/knowl
 import { compareTs, overlapTs } from '../../../../server/knowledge/slack-intake/timestamps';
 import { observeRead } from '../../../../server/knowledge/slack-intake/observations';
 import { newTask, recordObservation, settlePage } from '../../../../server/knowledge/slack-intake/collect';
-import { acceptProposals } from '../../../../server/knowledge/slack-intake/proposals';
+import { acceptEvidence } from '../../../../server/knowledge/sources/project-evidence';
 import { runIntakeTask } from '../../../../server/knowledge/slack-intake/run';
 import { IntakeLedger } from '../../../../server/knowledge/slack-intake/ledger';
 import { intakeStatusMetrics } from '../../../../server/knowledge/slack-intake/status-metrics';
@@ -40,24 +40,24 @@ test('unrecognized envelopes, invented references and incomplete pagination neve
         expect(() => observeRead(truncated, config, f.task, 'now')).toThrow(/page-evidence/);
         f.task.status = 'running'; f.task.attempt = 'a'; f.ledger.put('task', f.task.id, f.task);
         const o = observeRead(event(f.task), config, f.task, 'now')!; recordObservation(f.ledger, f.task.id, o);
-        expect(() => acceptProposals(f.ledger, f.policy, f.task, { units: [], proposals: [] }, o.units)).toThrow(/coverage/);
-        expect(() => acceptProposals(f.ledger, f.policy, f.task, { units: [{ id: 'made-up', outcome: 'no-reusable-lesson', reason: 'none' }], proposals: [] }, o.units)).toThrow(/coverage/);
-        expect(f.ledger.all('proposal')).toEqual([]);
+        expect(() => acceptEvidence(f.ledger, f.policy, f.task, { units: [] }, o.units)).toThrow(/coverage/);
+        expect(() => acceptEvidence(f.ledger, f.policy, f.task, { units: [{ id: 'made-up', outcome: 'no-reusable-lesson', reason: 'none' }] }, o.units)).toThrow(/coverage/);
+        expect(f.ledger.all<SourceUnit>('unit').map(u => u.state)).toEqual(['pending']);
     } finally { f.close(); }
 });
-test('one observed page creates source-bound proposals, and unchanged rereads do not create new requests', async () => {
+test('one observed page admits source-bound evidence, and unchanged rereads do not create new records', async () => {
     const f = intakeFixture();
     try {
         const run = (async (_prompt, _schema, opts) => {
             opts.onIntakeLaunch?.(); const task = f.ledger.get<ReadTask>('task', f.task.id)!;
             opts.onIntakeEvent?.(event(task));
-            return { units: [{ id: 'C123:100.000001', outcome: 'proposed', reason: '' }], proposals: [{ domain: 'tooling', units: ['C123:100.000001'], body: 'Proposed practice: use a narrow fixture. Source: https://fixture.slack.com/archives/C123/p100000001' }] };
+            return { units: [{ id: 'C123:100.000001', outcome: 'evidence', reason: 'States a fixture configuration fact' }] };
         }) as KnowledgeRunner;
         await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.get<ReadTask>('task', f.task.id)?.status).toBe('complete');
-        expect(f.ledger.all('proposal')).toHaveLength(1); expect(f.budget.used('2026-11-06')).toBe(1);
-        expect(f.ledger.all<SourceUnit>('unit')[0].requests).toHaveLength(1);
-        await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan); expect(f.ledger.all('proposal')).toHaveLength(1);
+        expect(f.ledger.all('evidence')).toHaveLength(1); expect(f.budget.used('2026-11-06')).toBe(1);
+        expect(f.ledger.all<SourceUnit>('unit').map(u => u.state)).toEqual(['admitted']);
+        await runIntakeTask(f.store, run, f.task.id, f.registry, f.source.id, cleanScan); expect(f.ledger.all('evidence')).toHaveLength(1); expect(f.ledger.all('unit')).toHaveLength(1);
         expect(readConfig(f.store)?.enabled).toBe(true);
     } finally { f.close(); }
 });
@@ -84,15 +84,14 @@ test('a malformed URL token in source text never fails the page or reaches the p
         expect(f.ledger.all('unit')).toHaveLength(1); expect(f.ledger.all('link')).toEqual([]);
     } finally { f.close(); }
 });
-test('a thread read reclassifies its re-versioned parent, and replayed accounted pages create no new proposal', async () => {
+test('a thread read reclassifies its re-versioned parent, and replayed accounted pages are not reclassified', async () => {
     const f = intakeFixture();
     try {
         const prompts: string[] = [];
-        const reply = (messages: ({ ts: string; text: string } & Record<string, unknown>)[], outcome: 'proposed' | 'no-reusable-lesson') => (async (prompt, _schema, opts) => {
+        const reply = (messages: ({ ts: string; text: string } & Record<string, unknown>)[], outcome: 'evidence' | 'no-reusable-lesson') => (async (prompt, _schema, opts) => {
             prompts.push(prompt); const task = f.ledger.all<ReadTask>('task').find(t => t.status === 'running')!;
             opts.onIntakeEvent?.(event(task, messages));
-            return { units: messages.map(m => ({ id: `C123:${m.ts}`, outcome, reason: outcome === 'proposed' ? '' : 'Discussion only' })),
-                proposals: outcome === 'proposed' ? [{ domain: 'tooling', units: messages.map(m => `C123:${m.ts}`), body: `Practice. Sources: ${messages.map(m => `https://fixture.slack.com/archives/C123/p${m.ts.replace('.', '')}`).join(' ')}` }] : [] };
+            return { units: messages.map(m => ({ id: `C123:${m.ts}`, outcome, reason: outcome === 'evidence' ? 'States a fact' : 'Discussion only' })) };
         }) as KnowledgeRunner;
         await runIntakeTask(f.store, reply([{ ts: '100.000001', text: 'Parent', reply_count: 2 }], 'no-reusable-lesson'), f.task.id, f.registry, f.source.id, cleanScan);
         const thread = f.ledger.all<ReadTask>('task').find(t => t.kind === 'thread')!;
@@ -101,11 +100,11 @@ test('a thread read reclassifies its re-versioned parent, and replayed accounted
         expect(f.ledger.get<ReadTask>('task', thread.id)).toMatchObject({ status: 'complete', failures: 0 });
         expect(f.ledger.all<SourceUnit>('unit').filter(u => u.id === 'C123:100.000001').map(u => u.state)).toEqual(['no-reusable-lesson', 'no-reusable-lesson']);
         expect(prompts.every(p => !p.includes('already-accounted identities'))).toBe(true);
-        for (let i = 0; i < 201; i++) f.ledger.put('unit', `later-${i}`, { id: `C123:later-${i}`, channel: 'C123', state: 'no-reusable-lesson', requests: [] });
+        for (let i = 0; i < 201; i++) f.ledger.put('unit', `later-${i}`, { id: `C123:later-${i}`, channel: 'C123', state: 'no-reusable-lesson' });
         const replay = { ...f.task, id: f.ledger.id(), status: 'pending' as const, attempt: '' }; f.ledger.put('task', replay.id, replay);
-        await runIntakeTask(f.store, reply([{ ts: '100.000001', text: 'Parent', reply_count: 2 }], 'proposed'), replay.id, f.registry, f.source.id, cleanScan);
+        await runIntakeTask(f.store, reply([{ ts: '100.000001', text: 'Parent', reply_count: 2 }], 'evidence'), replay.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.get<ReadTask>('task', replay.id)).toMatchObject({ status: 'complete', failures: 0 });
-        expect(f.ledger.all('proposal')).toEqual([]);
+        expect(f.ledger.all<SourceUnit>('unit').filter(u => u.id === 'C123:100.000001').map(u => u.state)).toEqual(['no-reusable-lesson', 'no-reusable-lesson']);
     } finally { f.close(); }
 });
 test('operator cancellation keeps the cursor and allowance; a genuine provider failure is charged', async () => {
@@ -122,7 +121,7 @@ test('operator cancellation keeps the cursor and allowance; a genuine provider f
         expect(failed).toMatchObject({ status: 'pending', failures: 1 }); expect(failed.cursor).toBeUndefined();
     } finally { f.close(); }
 });
-test('identity lookup asks for empty arrays, records identity from native evidence, and still rejects invented units', async () => {
+test('identity lookup asks for an empty units array, records identity from native evidence, and still rejects invented units', async () => {
     const f = intakeFixture();
     try {
         f.store.db.prepare("DELETE FROM slack_intake WHERE kind=?").run(`${f.source.id}:identity`);
@@ -135,7 +134,7 @@ test('identity lookup asks for empty arrays, records identity from native eviden
             const raw = event(f.ledger.all<ReadTask>('task').find(t => t.status === 'running')!) as any;
             raw.item.result = { content: [{ type: 'text', text: JSON.stringify(body) }], structured_content: null };
             opts.onIntakeEvent?.(raw);
-            return { units, proposals: [] };
+            return { units };
         }) as KnowledgeRunner;
         const invented = lookup();
         await runIntakeTask(f.store, reply([{ id: 'channel:C123', outcome: 'no-reusable-lesson', reason: 'channel metadata only' }]), invented.id, f.registry, f.source.id, cleanScan);
@@ -143,10 +142,9 @@ test('identity lookup asks for empty arrays, records identity from native eviden
         expect(f.ledger.get('identity', 'C123')).toBeUndefined();
         const valid = lookup();
         await runIntakeTask(f.store, reply([]), valid.id, f.registry, f.source.id, cleanScan);
-        expect(prompts[1]).toContain('This is a channel identity lookup: return empty units and proposals arrays; the harness alone validates channel metadata.');
+        expect(prompts[1]).toContain('This is a channel identity lookup: return an empty units array; the harness alone validates channel metadata.');
         expect(f.ledger.get<ReadTask>('task', valid.id)?.status).toBe('complete');
         expect(f.ledger.get('identity', 'C123')).toMatchObject({ sourceDigest: f.policy.sourceDigest, sourceId: f.source.id });
-        expect(f.ledger.all('proposal')).toEqual([]);
     } finally { f.close(); }
 });
 test('a launch that crosses Eastern midnight is charged to the new day', async () => {
@@ -158,52 +156,26 @@ test('a launch that crosses Eastern midnight is charged to the new day', async (
     } finally { f.close(); }
 });
 
-test('resource proposals receive the canonical permalink while reconstructed aliases remain rejected', async () => {
-    const f = intakeFixture();
-    try {
-        const canonical = 'https://fixture.slack.com/docs/T123/F123';
-        f.task.kind = 'canvas'; f.task.resource = 'F123'; f.task.sourceUrl = canonical;
-        f.ledger.put('task', f.task.id, f.task);
-        let promptRead = '';
-        const run = (usePrompt: boolean) => (async (prompt, _schema, opts) => {
-            promptRead = prompt;
-            const task = f.ledger.get<ReadTask>('task', f.task.id)!;
-            const raw = event(task) as any;
-            raw.item.result = { content: [{ type: 'text', text: JSON.stringify({ canvas_id: 'F123', markdown_content: '# Fixture\nA proposed practice.', section_id_mapping: {} }) }], structured_content: null };
-            opts.onIntakeEvent?.(raw);
-            const supplied = /Canonical source permalink: ("[^"]+")/.exec(prompt);
-            const url = usePrompt && supplied ? JSON.parse(supplied[1]) : 'https://fixture.slack.com/docs/F123';
-            return { units: [{ id: 'canvas:F123', outcome: 'proposed', reason: '' }], proposals: [{ domain: 'tooling', units: ['canvas:F123'], body: `Proposed practice. Participant report, not verified vendor guidance. Source: ${url}` }] };
-        }) as KnowledgeRunner;
-        await runIntakeTask(f.store, run(false), f.task.id, f.registry, f.source.id, cleanScan);
-        expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'pending', failures: 1, error: 'Error: intake-provenance-missing' });
-        expect(f.ledger.all('proposal')).toEqual([]);
-        f.advance(5 * 60 * 1000);
-        await runIntakeTask(f.store, run(true), f.task.id, f.registry, f.source.id, cleanScan);
-        expect(promptRead).toContain(`Canonical source permalink: ${JSON.stringify(canonical)}`);
-        expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'complete' });
-        expect(f.ledger.all<{ body: string }>('proposal')).toHaveLength(1);
-        expect(f.ledger.all<{ body: string }>('proposal')[0].body).toContain(canonical);
-    } finally { f.close(); }
-});
 test('a canvas linked from a channel message is read under its own permalink, never the message permalink', async () => {
     const f = intakeFixture();
     try {
-        const canonical = 'https://fixture.slack.com/docs/T123/F123', permalink = 'https://fixture.slack.com/archives/C123/p100000001';
+        const canonical = 'https://fixture.slack.com/docs/T123/F123';
         f.task.status = 'running'; f.task.attempt = 'a'; f.ledger.put('task', f.task.id, f.task);
         const o = observeRead(event(f.task, [{ ts: '100.000001', text: `See ${canonical}` }]), config, f.task, 'now')!;
         recordObservation(f.ledger, f.task.id, o); settlePage(f.ledger, f.policy, f.task, o);
         const canvas = f.ledger.all<ReadTask>('task').find(t => t.kind === 'canvas')!;
         expect(canvas).toMatchObject({ resource: 'F123', sourceUrl: canonical, status: 'pending' });
-        const run = (async (_prompt, _schema, opts) => {
+        let promptRead = '';
+        const run = (async (prompt, _schema, opts) => {
+            promptRead = prompt;
             const raw = event(f.ledger.get<ReadTask>('task', canvas.id)!) as any;
             raw.item.result = { content: [{ type: 'text', text: JSON.stringify({ canvas_id: 'F123', markdown_content: '# Fixture\nA proposed practice.', section_id_mapping: {} }) }], structured_content: null };
             opts.onIntakeEvent?.(raw);
-            return { units: [{ id: 'canvas:F123', outcome: 'proposed', reason: '' }], proposals: [{ domain: 'tooling', units: ['canvas:F123'], body: `Proposed practice. Source: ${permalink}` }] };
+            return { units: [{ id: 'canvas:F123', outcome: 'evidence', reason: 'States a fact' }] };
         }) as KnowledgeRunner;
         await runIntakeTask(f.store, run, canvas.id, f.registry, f.source.id, cleanScan);
-        expect(f.ledger.get<ReadTask>('task', canvas.id)).toMatchObject({ status: 'pending', failures: 1, error: 'Error: intake-provenance-missing' });
-        expect(f.ledger.all('proposal')).toEqual([]);
+        expect(f.ledger.get<ReadTask>('task', canvas.id)).toMatchObject({ status: 'complete', failures: 0 });
+        expect(f.ledger.all<SourceUnit>('unit').find(u => u.id === 'canvas:F123')).toMatchObject({ state: 'admitted', url: canonical });
     } finally { f.close(); }
 });
 
@@ -225,7 +197,7 @@ test('a verified partial-page recovery clears the current error while retaining 
         f.task.cursor = 'previous'; f.task.failures = 2; f.task.error = 'old read failure'; f.task.nextAt = f.store.clock.now().toISOString(); f.ledger.put('task', f.task.id, f.task);
         const success = (async (_prompt, _schema, opts) => {
             opts.onIntakeLaunch?.(); opts.onIntakeEvent?.(event(f.ledger.get<ReadTask>('task', f.task.id)!, undefined, true));
-            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'fixture' }], proposals: [] };
+            return { units: [{ id: 'C123:100.000001', outcome: 'no-reusable-lesson', reason: 'fixture' }] };
         }) as KnowledgeRunner;
         await runIntakeTask(f.store, success, f.task.id, f.registry, f.source.id, cleanScan);
         expect(f.ledger.get<ReadTask>('task', f.task.id)).toMatchObject({ status: 'pending', failures: 2, error: '', nextAt: '', cursor: 'transient-cursor' });
