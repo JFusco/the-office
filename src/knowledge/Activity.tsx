@@ -1,20 +1,30 @@
-import { LoadingState } from '../ui/LoadingState';
+import { KnowledgeReveal } from './KnowledgeReveal';
 import { DigestDetail } from './DigestDetail';
 import { DigestSettings } from './DigestSettings';
 import { PanelHeader } from '../ui/PanelHeader';
 import { ChartColumn } from '../ui/icons';
-import { mutedCopy } from '../ui';
+import { Button, mutedCopy } from '../ui';
 import type { KnowledgeActivityPage } from '../contracts/knowledge-views';
 import { useKnowledgeView } from './useKnowledgeView';
 import { useState } from 'react';
-import { Button } from '../ui';
 import { AssignmentKnowledge } from './AssignmentKnowledge';
 import { ActivityStatus } from './ActivityStatus';
 import { CaptureReviews } from './CaptureReviews';
+import { ActivityTimeline } from './ActivityTimeline';
 export function Activity({ project }: { project: string }) {
-    const { data,error,refresh } = useKnowledgeView<KnowledgeActivityPage>(project,'activity');
-    const [selected,setSelected]=useState(''),[digest,setDigest]=useState('');
-    return <section aria-labelledby="activity-heading"><PanelHeader id="activity-heading" icon={<ChartColumn size={26}/>}>Activity</PanelHeader><p className={mutedCopy}>Trace admitted evidence, Harper’s curation and knowledge supplied to employee work.</p><DigestSettings project={project}/><Button className="my-4" onClick={()=>{setSelected('');setDigest('');refresh();}}>Refresh activity</Button>
-        {error && <p role="alert">{error}</p>}{!data && !error && <LoadingState panel>Loading learning activity…</LoadingState>}{data && <><dl className="my-section-gap grid grid-cols-3 gap-4">{[['Supplied',data.supplied],['Retrieved',data.retrieved],['Verified',data.verified]].map(([label,value]) => <div key={label} className="rounded-7 border border-drawer-line bg-paper p-card-padding"><dt className="text-11 text-muted">{label}</dt><dd className="mt-2 font-heading text-22">{value ?? 'Unavailable'}</dd></div>)}</dl><div className="my-5 text-11 leading-body text-muted">{data.limitations.map(x => <p key={x}>{x}</p>)}</div><CaptureReviews key={`captures:${project}`} project={project}/><ActivityStatus key={project} project={project} data={data}/>{digest&&<DigestDetail key={digest} project={project} id={digest}/>}{selected&&<AssignmentKnowledge key={selected} project={project} id={selected}/>}<ol aria-label="Learning timeline" className="grid gap-3">{data.events.map(event => <li key={event.id} className="rounded-7 border border-drawer-line bg-paper p-card-padding"><div className="flex justify-between gap-4 text-10 text-muted"><span>{event.kind}</span><time dateTime={event.at}>{new Date(event.at).toLocaleString()}</time></div><h3 className="my-2 text-15 font-heading">{event.title}</h3><p className="text-12 leading-body">{event.detail}</p>{event.assignmentId&&<Button className="mt-3" onClick={()=>{setDigest('');setSelected(event.assignmentId!);}}>Inspect assignment knowledge</Button>}{event.digestId&&<Button className="mt-3" onClick={()=>{setSelected('');setDigest(event.digestId!);}}>Inspect weekly review</Button>}</li>)}</ol>{data.truncated && <p role="status">Only the latest 50 permitted events are shown.</p>}{!data.events.length && <p>No recorded activity in this project scope.</p>}</>}
+    const { data,error,refresh,refreshing } = useKnowledgeView<KnowledgeActivityPage>(project,'activity');
+    const [selected,setSelected]=useState(''),[digest,setDigest]=useState(''),[settings,setSettings]=useState(false);
+    return <section aria-labelledby="activity-heading">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-section-gap"><div><PanelHeader id="activity-heading" icon={<ChartColumn size={26}/>}>Activity</PanelHeader><p className="max-w-reading-copy text-14 leading-relaxed text-muted">Follow evidence collection, curation and knowledge used by the team.</p></div><div className="flex flex-wrap gap-control-gap"><Button disabled={refreshing} onClick={()=>{setSelected('');setDigest('');refresh();}}>Refresh activity</Button><Button aria-expanded={settings} aria-controls="activity-settings" onClick={()=>setSettings(v=>!v)}>Activity settings</Button></div></div>
+        <div id="activity-settings" hidden={!settings}><DigestSettings project={project}/></div>
+        {error&&<p role="alert">{error}</p>}{refreshing&&<p role="status">Updating activity…</p>}
+        <KnowledgeReveal ready={!!data||!!error} label="Loading learning activity…">{data&&<>
+            <section className="knowledge-section" aria-labelledby="activity-summary"><h3 id="activity-summary">Knowledge use</h3><p className="text-12 text-muted">Recorded assignment totals in this project scope. Supplied knowledge is not proof it was used.</p><dl className="mt-4 grid grid-cols-3 gap-4 max-compact:grid-cols-1">{[['Supplied',data.supplied,'Included in an assignment'],['Retrieved',data.retrieved,'Explicitly looked up'],['Verified',data.verified,'Application independently verified']].map(([label,value,detail])=><div key={String(label)} className="border-l-2 border-section-rule pl-4"><dt className="text-12 font-emphasis">{label}</dt><dd><strong className="my-2 block font-heading text-26">{value??'Unavailable'}</strong><p className="text-12 text-muted">{detail}</p></dd></div>)}</dl></section>
+            <ActivityStatus key={project} project={project} data={data}/>
+            <div className="knowledge-section"><CaptureReviews key={`captures:${project}`} project={project}/></div>
+            {digest&&<DigestDetail key={digest} project={project} id={digest}/>}{selected&&<AssignmentKnowledge key={selected} project={project} id={selected}/>}
+            <ActivityTimeline events={data.events} onAssignment={id=>{setDigest('');setSelected(id);}} onDigest={id=>{setSelected('');setDigest(id);}}/>
+            <details className="text-12 text-muted"><summary>Activity coverage and counting</summary>{data.limitations.map(x=><p className="my-2 max-w-reading-copy" key={x}>{x}</p>)}{data.truncated&&<p>Only the latest 50 permitted events are shown.</p>}</details>
+        </>}</KnowledgeReveal>
     </section>;
 }

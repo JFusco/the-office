@@ -15,6 +15,7 @@ test('synthetic fixture: public links use the project Sources screen',async({pag
 test('synthetic fixture: optional Slack digest settings are separate and off by default',async({page,request},testInfo)=>{
     testInfo.annotations.push({type:'evidence',description:'Synthetic settings persistence only; no Slack lookup or send'});
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Activity',exact:true}).click();
+    await page.getByRole('button',{name:'Activity settings',exact:true}).click();
     await page.getByText('Optional weekly Slack digest',{exact:true}).click();
     await expect(page.getByRole('checkbox',{name:'Enable future weekly Slack digests'})).not.toBeChecked();
     await page.getByLabel('Workspace URL',{exact:true}).fill('https://synthetic-office.slack.com');await page.getByLabel('Workspace ID',{exact:true}).fill('TSYNTHETIC');

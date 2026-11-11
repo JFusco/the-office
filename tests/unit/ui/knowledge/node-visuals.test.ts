@@ -23,13 +23,13 @@ it('keeps landmark labels sparse, labels individual nodes on interaction and rel
         expect(groups[8].children[1].visible).toBe(true);
         nodes.forEach((node,i)=>{node.emphasized=i<2;}); // Selected node and a connected neighbor.
         visuals.update({data:{nodes,edges:[],truncated:false},reduced:true,focusId:'n0'},camera,{clientWidth:1200,clientHeight:800} as HTMLElement,16);
-        expect(groups.filter(g=>g.children[1].visible)).toHaveLength(0);
-        expect(groups[0].children[1].visible).toBe(false);expect(groups[1].children[1].visible).toBe(false);
-        expect((groups[0].children[0] as any).material.opacity).toBeCloseTo(.95);expect((groups[2].children[0] as any).material.opacity).toBeCloseTo(.18);
+        expect(groups.filter(g=>g.children[1].visible)).toHaveLength(1);
+        expect(groups[0].children[1].visible).toBe(false);expect(groups[1].children[1].visible).toBe(true);
+        expect((groups[0].children[0] as any).material.opacity).toBeCloseTo(1);expect((groups[2].children[0] as any).material.opacity).toBeCloseTo(.32);
         visuals.hover('n1');visuals.update({...overview,focusId:'n0'},camera,container,16);
         expect(groups[1].children[1].visible).toBe(true);expect(groups[0].children[1].visible).toBe(false);
         visuals.hover('');visuals.update({...overview,focusId:'n0'},camera,container,16);
-        expect(groups[0].children[1].visible).toBe(false);expect(groups[1].children[1].visible).toBe(false);
+        expect(groups[0].children[1].visible).toBe(false);expect(groups[1].children[1].visible).toBe(true);
         groups[0].updateMatrixWorld(true);
         const ray=new Raycaster(new Vector3(0,groups[0].children[1].position.y,300),new Vector3(0,0,-1));ray.camera=camera;
         expect(ray.intersectObject(groups[0],true)).toEqual([]);

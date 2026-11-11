@@ -70,9 +70,18 @@ it('preserves group page and search context when the selected record needs no fi
     expect(selectRecord({...selection,query:'Guide',page:1},member)).toMatchObject({query:'Guide',page:1});
 });
 
-it('counts connected records in the current view distinctly, excluding filtered neighbors',()=>{
+it('reveals all loaded saved neighbors on selection without changing the filters',()=>{
     const map:KnowledgeMap={...data,edges:[...data.edges,{source:'note:1',target:'note:2',kind:'citation'},{source:'note:1',target:'attempt',kind:'supplied'}]};
     const view=displayScene(map,{...selection,selected:'note:1'});
-    expect(view.neighborCount).toBe(1);expect(view.scene.edges).toHaveLength(2);
+    expect(view.neighborCount).toBe(2);expect(view.revealedCount).toBe(1);expect(view.scene.edges).toHaveLength(3);expect(view.scene.nodes.find(n=>n.id==='attempt')?.visible).toBe(true);
     expect(displayScene(map,{...selection,selected:'note:1',activity:true}).neighborCount).toBe(2);
+});
+
+it('fits every saved neighbor inside both camera axes while preserving node positions',()=>{
+    const focus={x:0,y:0,z:0},neighbors=[{x:-240,y:120,z:60},{x:180,y:-140,z:-80}];
+    const pose=cameraTarget(focus,{x:0,y:0,z:300},focus,neighbors,.65,50);
+    const distance=Math.hypot(pose.position.x-pose.lookAt.x,pose.position.y-pose.lookAt.y,pose.position.z-pose.lookAt.z);
+    const angle=Math.atan(Math.tan(25*Math.PI/180)*.65);
+    for(const point of [focus,...neighbors])expect(Math.hypot(point.x-pose.lookAt.x,point.y-pose.lookAt.y,point.z-pose.lookAt.z)).toBeLessThan(distance*Math.sin(angle));
+    expect(focus).toEqual({x:0,y:0,z:0});expect(neighbors[0]).toEqual({x:-240,y:120,z:60});
 });

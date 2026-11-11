@@ -1,5 +1,6 @@
 import type { KnowledgeMap, KnowledgeNode } from '../../contracts/knowledge-views';
 import { knowledgeGroups } from './grouping';
+import { connectionSummary } from './connection-summary';
 import { stablePosition } from './layout';
 
 export interface DisplayNode extends KnowledgeNode { visible: boolean; emphasized: boolean; position: { x: number; y: number; z: number } }
@@ -23,19 +24,22 @@ export function displayScene(data: KnowledgeMap, selection: MapSelection) {
     const pages = Math.max(1, Math.ceil(total / pageSize)), page = Math.min(Math.max(0, selection.page), pages - 1);
     const pageGroups = groups.slice(page * 12, (page + 1) * 12), pageNodes = members.slice(page * 40, (page + 1) * 40);
     const browsingNodes = !!group || !!query;
-    const neighborIds = [...new Set(data.edges.filter(e => e.source === selected?.id || e.target === selected?.id).map(e => e.source === selected?.id ? e.target : e.source))];
+    const connections=connectionSummary(data,selected?.id||'');
+    const neighborIds=connections.neighbors.map(n=>n.id);
     const eligibleIds = new Set(eligible.map(n => n.id));
     const visibleIds = new Set((browsingNodes ? members : eligible).map(n => n.id));
-    const neighborCount = neighborIds.filter(id => eligibleIds.has(id)).length;
+    const neighborCount = neighborIds.length;
+    const revealedCount=neighborIds.filter(id=>!eligibleIds.has(id)).length;
+    const selectedIds=new Set(selected?[selected.id,...neighborIds]:[]);
     const emphasizedIds = new Set(selected ? [selected.id, ...neighborIds] : []);
     // Keep every entity at its original stable coordinates while the camera flies to it.
     // Filters change visibility, never graph identity or routing.
     const nodes: DisplayNode[] = data.nodes.map(n => ({ ...n,
-        visible: selected ? eligibleIds.has(n.id) : visibleIds.has(n.id),
+        visible: selected ? eligibleIds.has(n.id)||selectedIds.has(n.id) : visibleIds.has(n.id),
         emphasized: selected ? emphasizedIds.has(n.id) : true,
         position: n.kind === 'project' ? {x: 0, y: 0, z: 0} : stablePosition(n.id, n.kind, sectors),
     }));
-    const edges = data.edges.filter(e => (selected ? (e.source === selected.id || e.target === selected.id) && eligibleIds.has(e.source) && eligibleIds.has(e.target) : visibleIds.has(e.source) && visibleIds.has(e.target)));
+    const edges = data.edges.filter(e => (selected ? (e.source === selected.id || e.target === selected.id) && selectedIds.has(e.source) && selectedIds.has(e.target) : visibleIds.has(e.source) && visibleIds.has(e.target)));
 
-    return { groups, group, selected, pageGroups, pageNodes, page, pages, total, neighborCount, browsingNodes, scene: { ...data, nodes, edges } };
+    return { groups, group, selected, pageGroups, pageNodes, page, pages, total, neighborCount, revealedCount, browsingNodes, scene: { ...data, nodes, edges } };
 }
