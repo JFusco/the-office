@@ -101,7 +101,7 @@ test('office proposals wait for Joe, then reach every project\'s prompts through
     expect(proposeOfficeLessons(office, 'cms-field-vocabulary', 'rollup:2026-11-06', [proposal])).toEqual([]); // already proposed
     mirrorOfficeKnowledge(office, [store, other.store]);
     expect(knowledgeOutbox(store.state).map(item => item.id)).toEqual([`office-lesson:${ids[0]}`]);
-    expect(knowledgeOutbox(other.store.state).filter(item => item.id.startsWith('office-lesson:'))).toEqual([]);
+    expect(knowledgeOutbox(other.store.state)).toEqual([]);
     expect(knowledgeContext(store, 'github-review')).not.toContain('wiki build');
     decideOfficeProposal(office, ids[0], true);
     mirrorOfficeKnowledge(office, [store, other.store]);
