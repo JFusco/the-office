@@ -24,5 +24,6 @@ test('a refresh that fails after the limit is not an unhandled rejection', async
     const late = new Promise<never>((_, reject) => { fail = reject; });
     const wait = refreshWithin({ refresh: () => late }, 10);
     await vi.advanceTimersByTimeAsync(10); await wait;
-    fail(new Error('late')); await expect(late).rejects.toThrow('late');
+    // No handler of our own: only refreshWithin's race may observe `late`, so vitest fails the run if it does not.
+    vi.useRealTimers(); fail(new Error('late')); await new Promise(resolve => setImmediate(resolve));
 });
