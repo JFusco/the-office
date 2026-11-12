@@ -8,7 +8,7 @@ Harper (the `knowledge` role) owns what the Office has learned. She reflects on 
 WORK   accepted stage results (delivery, CEC, maintenance, feature readers and plan reviews,
        IT investigations and resolutions, admission), completed, cancelled and parked work,
        exhausted repair budgets, blocked or completed maintenance runs, material changes in a blocker
-       follow-up (IT recovery records are excluded), new evidence from a subscribed source
+       follow-up (IT recovery records are excluded)
   v
 HARPER REFLECTS   events for one subject collect in an open batch; once a retrospective
                   starts, later events form the next batch
@@ -83,7 +83,7 @@ The Office reads Brain (`brain/reader.ts`, a read-only CLI transport) and never 
 
 ## Sources
 
-Two kinds: a public **link** (read on a daily, weekly or manual cadence) and an uploaded **artifact**. A new source is shared with every configured project; a project can unsubscribe itself. Evidence is Office-private. Withdrawing a source marks the lessons that depend on it for Joe's review. There is no Slack channel intake.
+Link and upload sources are being removed. Nothing can be added or refreshed any more: there is no source command, upload route, scheduled read or Sources screen. Evidence already retained is still read and stays Office-private until the registry and the source-scoping code are removed in the next change. There is no Slack channel intake.
 
 ## What Joe decides
 

@@ -5,13 +5,8 @@ const artifacts='/private/tmp/office-knowledge-ui-evidence/browser';
 
 for(const width of [1440,390])test(`shared alignment, bounded inputs, Slack routing and Activity hierarchy at ${width}px`,async({page})=>{
     await page.setViewportSize({width,height:1000});await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();
-    const source=page.getByRole('article',{name:'CEC team guide',exact:true});await expect(source.locator('[data-source-feed]')).toContainText('Feeds project evidence → CEC');
-    await page.getByRole('button',{name:'Add a public link',exact:true}).click();
-    const publicForm=page.getByRole('form',{name:'Add a public source',exact:true});
-    for(const [label,max] of [['Source title',360],['Public HTTPS URL',480]] as const)expect((await publicForm.getByLabel(label,{exact:true}).boundingBox())!.width).toBeLessThanOrEqual(max+1);
-    await publicForm.getByRole('button',{name:'Cancel',exact:true}).click();
     const lefts:number[]=[];
-    for(const name of ['Sources','Library','Map','Activity']){
+    for(const name of ['Library','Map','Activity']){
         await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name,exact:true}).click();
         const heading=page.getByRole('heading',{name,exact:true});await expect(heading).toBeVisible();lefts.push((await heading.boundingBox())!.x);
         expect(await page.locator('[data-brain-content]').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);

@@ -38,7 +38,7 @@ test('assignment evidence uses dark surfaces and stays within the inspector', as
     expect((await new AxeBuilder({page}).include('[data-brain-list-frame]').analyze()).violations).toEqual([]);
 });
 
-test('header controls share compact tokens and subscription chip actions remain small',async({page})=>{
+test('header controls share compact tokens',async({page})=>{
     for(const width of [320,390]) {
         await page.setViewportSize({width,height:844});await page.goto('/');
         const select=page.getByRole('combobox',{name:'Office project'});await expect(select).toBeVisible();
@@ -47,8 +47,4 @@ test('header controls share compact tokens and subscription chip actions remain 
         const bounds=await page.locator('header').locator('a,button,select').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {x:r.x,right:r.right,width:r.width};}).filter(r=>r.width>0).sort((a,b)=>a.x-b.x));
         expect(bounds.every((r,i)=>r.x>=0&&r.right<=width&&(!i||r.x>=bounds[i-1].right-.5))).toBe(true);
     }
-    await page.setViewportSize({width:1440,height:1000});await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();
-    const remove=page.getByRole('button',{name:'Unsubscribe CEC from CEC team guide',exact:true});await expect(remove).toBeVisible();
-    expect(await remove.evaluate(el=>el.parentElement!.getBoundingClientRect().height)).toBeLessThanOrEqual(32);
-    await page.keyboard.press('Tab');await remove.focus();await expect(remove).toBeFocused();expect(await remove.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('solid');
 });

@@ -9,9 +9,7 @@ import { knowledgeSessionVisibility } from '../knowledge/sources/session-visibil
 import { leadershipEntries,leadershipContext } from '../knowledge/leadership-context';
 import { knowledgeOfficeState,knowledgeEntries } from '../knowledge/office-state-view';
 import { knowledgeSnapshot,officeKnowledgeSnapshot } from '../knowledge/knowledge-snapshot';
-import { fanoutSourceLearning } from '../knowledge/sources/learning-events';
 import { reviewSourceWithdrawals } from '../knowledge/sources/withdrawal-reviews';
-import { recoverStoppedLaunches } from '../knowledge/sources/recover-launches';
 import { queueWeeklyDigest } from '../knowledge/weekly-digest';
 import { queueOutboundDigests } from '../knowledge/digests/outbound';
 import { CommittedBrain } from '../knowledge/brain/reader';
@@ -65,7 +63,7 @@ export class Offices {
     projection(entry: typeof this.entries extends Map<string, infer E> ? E : never, lane = 'delivery') { return scheduledWork(entry, this.stores(), entry.store.clock.now(), lane, lane === 'knowledge' ? this.knowledgeOptions() : {}); }
     /** Harper's weekly roll-up waits for Avery's review and files office-wide proposals in the control store. */
     knowledgeOptions() {
-        return { context:{registry:this.sources,stores:this.stores(),brain:new CommittedBrain()}, sources: this.sources, dailyStatus: (date: string) => this.control.forDate?.(date)?.status,
+        return { context:{registry:this.sources,stores:this.stores(),brain:new CommittedBrain()}, dailyStatus: (date: string) => this.control.forDate?.(date)?.status,
             propose: (store: Store, rollupId: string, proposals: Parameters<typeof proposeOfficeLessons>[3]) => { const ids = proposeOfficeLessons(this.control, store.project.id, rollupId, proposals, Object.fromEntries((knowledgeSnapshot(this.sources,store.project.id,store.state.knowledge)?.lessons || []).flatMap(lesson => lesson.evidence).map(proof => [proof.ref, proof]))); mirrorOfficeKnowledge(this.control, this.stores().values()); return ids; } };
     }
     sessions = new SessionBridge(() => [...this.entries.values()].map(e => e.store));
@@ -92,7 +90,6 @@ export class Offices {
             const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
-        recoverStoppedLaunches(this.sources,this.stores());
         for (const entry of this.entries.values()) {
             for(const runtime of [entry.engine.agents,entry.engine.knowledgeAgents,entry.engine.itAgents,entry.engine.ctoAgents])runtime.knowledgeContext={registry:this.sources,stores:this.stores(),brain:new CommittedBrain()};
             entry.conversations.goalOffice = id => {
@@ -142,17 +139,9 @@ export class Offices {
     async tick(now = new Date()) { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); }
     async pump() {
         try { this.questionEvents().refresh(); } catch { /* A malformed persisted round only delays question notifications. */ }
-        recoverStoppedLaunches(this.sources,this.stores());
-        for (const { store, engine } of this.entries.values()) {
-            try {
-                // A source that stops being active revokes its running read.
-                const running = store.state.workLog?.find(w => w.status === 'running' && w.stage === 'knowledge-source-read');
-                const sourceId = running?.requestId?.startsWith('source:') ? running.requestId.slice(7) : undefined;
-                if (sourceId && this.sources.get(sourceId)?.state !== 'active') engine.knowledgeAgents.pause();
-            } catch { /* Invalid private source state must not block other Office work. */ }
+        for (const { store } of this.entries.values()) {
             recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); expireLessons(store); queueLessonIssueCheck(store); }
         reviewSourceWithdrawals(this.sources,this.stores().values(),this.control);
-        fanoutSourceLearning({registry:this.sources,stores:this.stores(),brain:new CommittedBrain()});
         for(const project of this.entries.keys()){const context={registry:this.sources,stores:this.stores(),brain:new CommittedBrain()};queueWeeklyDigest(context,project);queueOutboundDigests(context,project);}
         // Runs finished outside a worker (restart recovery, dead process) get their accounting here; async, never awaited.
         for (const { store } of this.entries.values()) void reconcileUncapturedRuns(store).catch(() => { /* reported per run */ });

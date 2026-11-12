@@ -52,13 +52,13 @@ test('all knowledge screens share the content width; map frames and checkbox sta
     await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
     const nav = page.getByRole('navigation', { name: 'Brain views' });
     const widths: number[] = [];
-    for (const name of ['Sources', 'Library', 'Map', 'Activity']) {
+    for (const name of ['Library', 'Map', 'Activity']) {
         await nav.getByRole('button', { name, exact: true }).click();
         await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
         widths.push((await page.locator('[data-brain-content]').boundingBox())!.width);
         await expect(page.getByRole('main')).toHaveCount(1);
     }
-    expect(widths).toEqual([1280, 1280, 1280, 1280]);
+    expect(widths).toEqual([1280, 1280, 1280]);
     await nav.getByRole('button', { name: 'Map', exact: true }).click();
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
     const borderColor = await page.evaluate(() => {
@@ -104,7 +104,7 @@ for (const width of [1440, 390]) {
     test(`project-switch loading covers and disables the knowledge drawer at ${width}px`, async ({ page }) => {
         await page.setViewportSize({ width, height: 1000 });
         await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-        await expect(page.getByRole('heading', { name: 'Sources', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Library', exact: true })).toBeVisible();
         let release!: () => void;
         const gate = new Promise<void>(resolve => { release = resolve; });
         await page.route(/\/api\/(office|events)\?project=brain/, async route => { await gate; await route.continue(); });
@@ -142,7 +142,7 @@ test('a late Inspector exit cannot restore the room underneath Brain', async ({ 
     await page.getByRole('button', { name: 'People', exact: true }).click();
     await expect(page.getByRole('complementary', { name: 'People', exact: true })).toBeVisible();
     await page.keyboard.press('Escape'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Sources', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Library', exact: true })).toBeVisible();
     await expect(page.locator('[data-scene-label="room"]')).toHaveCount(0);
     await expect(page.locator('canvas')).toHaveCount(0);
     await page.getByRole('button', { name: 'Map', exact: true }).click();
@@ -182,11 +182,4 @@ test('the activity checkbox reflows at narrow widths and large text', async ({ p
         return { right: bounds.right, contentRight: content.getBoundingClientRect().right, fits: text.scrollWidth <= text.clientWidth, height: text.getBoundingClientRect().height };
     });
     expect(label.right).toBeLessThanOrEqual(label.contentRight); expect(label.fits).toBe(true); expect(label.height).toBeGreaterThan(30);
-});
-
-test('the source checkbox uses the same small text token as its source count', async ({ page }) => {
-    await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    const count = page.getByText(/^\d+ sources in this view$/); await expect(count).toBeVisible();
-    const countSize = await count.evaluate(el => getComputedStyle(el).fontSize);
-    expect(await page.getByRole('checkbox', { name: 'Show removed and withdrawn' }).evaluate(el => getComputedStyle(el.closest('label')!).fontSize)).toBe(countSize);
 });
