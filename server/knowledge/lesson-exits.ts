@@ -18,7 +18,7 @@ function retire(store: Store, lessonId: string, eligible: (lesson: Lesson) => bo
 const expiring = (today: string) => (lesson: Lesson) => lesson.status === 'active' && !!lesson.validUntil && lesson.validUntil < today
     && !(lesson.reactivatedAt && easternDay(new Date(lesson.reactivatedAt)) > lesson.validUntil);
 
-/** Filed, and not brought back by Joe after its issue closed. A keep-after-source-review before the close does not block graduation. */
+/** Filed, and not brought back by Joe after its issue closed. */
 const graduating = (url: string, closedAt = '') => (lesson: Lesson) => lesson.status === 'active' && lesson.repositoryInstruction?.status === 'filed' && lesson.repositoryInstruction.issueUrl === url
     && !(closedAt && lesson.reactivatedAt && lesson.reactivatedAt > closedAt);
 

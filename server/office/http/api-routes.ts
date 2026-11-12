@@ -1,7 +1,6 @@
 import { knowledgeRoute } from '../../knowledge/routes';
 import { serviceBusy } from '../service-busy';
 import { assertQuestionVisibility } from '../../features/questions/command-visibility';
-import { knowledgePromptStore } from '../../knowledge/office-state-view';
 import { featureRoute } from '../../features/routes';
 import { previewTimeScope } from '../../time/time-scope';
 import { projectReadiness } from '../readiness';
@@ -21,7 +20,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
     const { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator } = context;
     const knowledge = await knowledgeRoute(req, url, offices.stores(), project);
     if (knowledge) return knowledge;
-    const features = url.pathname.startsWith('/api/features') ? await featureRoute(req, url, req.method==='GET'?knowledgePromptStore(store):store, engine.features, new Map([...offices.entries].map(([id, entry]) => [id, entry.store])), id => assertQuestionVisibility(store,id,url.searchParams.get('officeWide')==='1')) : undefined;
+    const features = url.pathname.startsWith('/api/features') ? await featureRoute(req, url, store, engine.features, new Map([...offices.entries].map(([id, entry]) => [id, entry.store])), id => assertQuestionVisibility(store,id,url.searchParams.get('officeWide')==='1')) : undefined;
     if (features) return features;
     if (url.pathname === '/api/service-health') {
         if (req.method !== 'GET')

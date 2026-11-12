@@ -296,7 +296,6 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
                 workStatus = 'interrupted';
             this.store.agent(role, { lastOutcome: { ticket: opts.ticket || '', summary: shortSummary(String(error)), status: workStatus, at: new Date().toISOString() } });
             writeFileSync(resolve(dir, 'error.json'), JSON.stringify({ session: session || (claude ? id : ''), provider: claude ? 'claude' : 'codex', model: claude ? DEVELOPER_MODEL : null, error: sanitize(String(error)), at: new Date().toISOString() }, null, 2), { mode: 0o600 });
-            // A source read exposes only sanitized metadata: operator cancellation versus provider failure, and whether the process was dispatched.
             throw error;
         }
         finally {
