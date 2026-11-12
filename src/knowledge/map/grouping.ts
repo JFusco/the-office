@@ -12,7 +12,7 @@ export function knowledgeGroups(nodes: KnowledgeNode[]): KnowledgeGroup[] {
         const domains = node.kind === 'technical' ? [...new Set((node.domains || []).map(d => d.split('/')[0]).filter(Boolean))].sort() : [];
         const memberships: [string, string][] = node.kind === 'technical' ? domains.length ? domains.map(d => [`technical:${d}`, title(d)]) : [['technical:other', 'Technical knowledge']]
             : node.kind === 'lesson' ? [[`lesson:${node.scope || 'project'}`, node.scope === 'office' ? 'Office guidance' : 'Project lessons']]
-            : [[node.kind, { source: 'Project sources', evidence: 'Source evidence', assignment: 'Employee activity' }[node.kind]]];
+            : [[node.kind, 'Employee activity']];
         for (const [id, name] of memberships) {
             if (!groups.has(id)) groups.set(id, { id, title: name, kind: node.kind, members: [] });
             groups.get(id)!.members.push(node);

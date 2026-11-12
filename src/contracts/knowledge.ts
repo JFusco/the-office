@@ -5,12 +5,8 @@ export type LessonStage = 'intake' | 'implement' | 'review' | 'validate' | 'repa
 export const LESSON_KINDS: readonly LessonKind[] = ['convention', 'pitfall', 'process', 'tooling'];
 export const LESSON_STAGES: readonly LessonStage[] = ['intake', 'implement', 'review', 'validate', 'repair', 'maintenance', 'any'];
 export interface LessonEvidence {
-    /** Original private-source dependencies survive accepted-work and lesson derivation. */
-    sourceBindings?: KnowledgeSourceBinding[];
-    acceptedResult?: { id: string; sha256: string };
     /** `maintenance`: a CMS maintenance run; `artifact`: a file the run saved under its artifact root. */
-    kind: 'job' | 'ticket' | 'maintenance' | 'pr' | 'step' | 'finding' | 'artifact' | 'rollup' | 'learning' | 'source';
-    source?: { sourceId: string; unitId: string; version: string };
+    kind: 'job' | 'ticket' | 'maintenance' | 'pr' | 'step' | 'finding' | 'artifact' | 'rollup' | 'learning';
     ref: string;
     url: string;
     detail: string;
@@ -25,8 +21,6 @@ export interface Lesson {
     originProjectId?:string;
     tier: LessonTier;
     revision: number;
-    needsReview?: boolean;
-    sourceReviewReason?: 'source-changed' | 'source-withdrawn';
     sourceSubject?: LearningSubject;
     implementationRef?: string;
     id: string;
@@ -58,7 +52,7 @@ export interface Lesson {
 }
 /** `blocked`: a CMS maintenance run stopped on a blocker (the maintenance analogue of a Block park). */
 export type RetrospectiveTrigger = 'completed' | 'parked' | 'retired' | 'repair-budget' | 'blocked' | 'learning';
-export type RetrospectiveSubjectKind = 'job' | 'ticket' | 'maintenance' | 'feature' | 'investigation' | 'recovery' | 'orchestration' | 'message' | 'source';
+export type RetrospectiveSubjectKind = 'job' | 'ticket' | 'maintenance' | 'feature' | 'investigation' | 'recovery' | 'orchestration' | 'message';
 /** What happened at the moment of the trigger; kept because the job may change afterwards. */
 export interface RetrospectiveEvent {
     stage: string;
@@ -87,7 +81,6 @@ export interface PendingRetrospective {
     lastError: string;
 }
 export interface RetrospectiveRecord {
-    sourceBindings?: KnowledgeSourceBinding[];
     delivery?: { repairAttempts: number; reroutes: number; ciRepairs: number; timing: import('../shared').QueueTiming[] };
     source?: LearningSubject;
     eventIds?: string[];
@@ -205,9 +198,7 @@ export interface LearningOpportunity {
     origin: 'work' | 'harper'; phaseBoundary: boolean;
 }
 export interface LessonReference { scope: 'project' | 'office'; id: string; revision: number }
-export interface KnowledgeSourceBinding { sourceId:string;unitId?:string;version?:string;approvedTextOnly?:boolean }
 export interface LessonExposure {
-    sourceBindings?:KnowledgeSourceBinding[];
     evidence?:{reference:import('./knowledge-retrieval').KnowledgeReference;excerptSha256:string}[];
     evidenceDigest?:string; brainSnapshot?:string|null; suppliedTextSha256?:string;
     id: string; subject?: LearningSubject; stage: string; at: string; dispatchedAt?: string;

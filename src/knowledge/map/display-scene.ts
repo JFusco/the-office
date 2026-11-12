@@ -5,7 +5,7 @@ import { stablePosition } from './layout';
 
 export interface DisplayNode extends KnowledgeNode { visible: boolean; emphasized: boolean; position: { x: number; y: number; z: number } }
 export interface MapSelection { group: string; selected: string; query: string; filter: 'all' | KnowledgeNode['kind']; activity: boolean; page: number }
-const sectors = ['project', 'source', 'evidence', 'lesson', 'assignment', 'technical'];
+const sectors = ['project', 'lesson', 'assignment', 'technical'];
 /** Following an explicit saved connection widens display filters to reveal its target. */
 export function selectRecord(prior: MapSelection, node: KnowledgeNode): MapSelection {
     const widen = (prior.filter !== 'all' && prior.filter !== node.kind) || (node.kind === 'assignment' && !prior.activity && prior.filter !== 'assignment');

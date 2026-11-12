@@ -1,6 +1,4 @@
-import type { SourceRegistry } from './sources/registry';
-import { lessonVisible,lessonForProject,lessonSourceBindings } from './sources/lesson-visibility';
-import { proofBindings } from './sources/proof-scope';
+import { lessonForProject } from './lesson-for-project';
 import { installedLesson } from './lesson-procedures';
 import type { Lesson, LessonStage } from '../../src/shared';
 import type { Store } from '../store/store';
@@ -35,37 +33,35 @@ function render(lesson: Lesson): string {
     if (lesson.tier === 'rule') return `- [installed rule reference] ${lesson.implementationRef}`;
     const scope = lesson.scope === 'office' ? 'office · ' : '';
     const urls = [...new Set(lesson.evidence.map(item => item.url).filter(url => url && url.length <= URL_LIMIT))].slice(0, 2);
-    const warning=lesson.sourceReviewReason==='source-changed'?' [source changed; verify before applying]':'';
-    const line = `- [${scope}${lesson.kind} · ${lesson.stages.join('/')}] ${lessonText(lesson)}${warning}${lesson.paths.length ? ` (paths: ${lesson.paths.slice(0, 4).join(', ')})` : ''}${urls.length ? ` Evidence: ${urls.join(' ')}` : ''} Reference: ${lessonCitation(reference(lesson))}`;
+    const line = `- [${scope}${lesson.kind} · ${lesson.stages.join('/')}] ${lessonText(lesson)}${lesson.paths.length ? ` (paths: ${lesson.paths.slice(0, 4).join(', ')})` : ''}${urls.length ? ` Evidence: ${urls.join(' ')}` : ''} Reference: ${lessonCitation(reference(lesson))}`;
     return line.length <= LESSON_LIMIT ? line : `${line.slice(0, LESSON_LIMIT - 1)}…`;
 }
 
 export interface LessonSelection {
-    sourceBindings?:import('../../src/contracts/knowledge').KnowledgeSourceBinding[];
     text: string; eligible: import('../../src/contracts/knowledge').LessonReference[];
     selected: import('../../src/contracts/knowledge').LessonReference[];
     omitted: (import('../../src/contracts/knowledge').LessonReference & { reason: 'count-limit' | 'character-limit' })[];
 }
 const reference = (lesson: Lesson) => ({ scope: lesson.scope, id: lesson.id, revision: lesson.revision });
 const normalPath = (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
-export function selectLessons(store: Pick<Store, 'project' | 'state'>, input: { stage?: string; paths?: string[] }, registry?:SourceRegistry): LessonSelection {
+export function selectLessons(store: Pick<Store, 'project' | 'state'>, input: { stage?: string; paths?: string[] }): LessonSelection {
     const bucket = lessonPurpose(input.stage, store.project.provider), knowledge = store.state.knowledge;
     const result: LessonSelection = { text: '', eligible: [], selected: [], omitted: [] };
     if (!bucket || !knowledge) return result;
     const paths = (input.paths || []).map(normalPath);
     const boost = (lesson: Lesson) => lesson.paths.some(path => paths.some(file => file === normalPath(path) || file.startsWith(normalPath(path) + '/'))) ? 1 : 0;
     const specific = (lesson: Lesson) => bucket !== 'general' && lesson.stages.includes(bucket) ? 1 : 0;
-    const matching = [...knowledge.lessons, ...(knowledge.officeLessons || [])].filter(lesson => (registry?lessonVisible(registry,store.project.id,lesson):!lesson.evidence.some(p=>proofBindings(p).length))&&lesson.status === 'active'
+    const matching = [...knowledge.lessons, ...(knowledge.officeLessons || [])].filter(lesson => lesson.status === 'active'
         && lesson.tier !== 'hypothesis' && installedLesson(lesson)
         && (lesson.stages.includes('any') || specific(lesson)))
         .sort((a, b) => specific(b) - specific(a) || boost(b) - boost(a) || Number(a.scope === 'office') - Number(b.scope === 'office') || b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
     const lines = [HEADING];
     for (const lesson of matching) {
-        const ref = reference(lesson), line = render(registry?lessonForProject(registry,store.project.id,lesson):lesson);
+        const ref = reference(lesson), line = render(lessonForProject(store.project.id,lesson));
         result.eligible.push(ref);
         const reason = result.selected.length >= MAX_LESSONS ? 'count-limit' : [...lines, line].join('\n').length > SECTION_LIMIT ? 'character-limit' : undefined;
         if (reason) result.omitted.push({ ...ref, reason });
-        else { result.selected.push(ref); lines.push(line); if(registry)(result.sourceBindings??=[]).push(...lessonSourceBindings(registry,store.project.id,lesson)); }
+        else { result.selected.push(ref); lines.push(line); }
     }
     result.text = result.selected.length ? lines.join('\n') : '';
     return result;

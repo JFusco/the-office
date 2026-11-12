@@ -73,11 +73,11 @@ test('map labels do not steal marker clicks and explicit connections reveal filt
     await page.mouse.click(box.x+box.width/2,box.y+box.height/2);await expect(page.getByRole('region',{name:'Selected node'})).toBeVisible();
     await page.getByRole('combobox',{name:'Show',exact:true}).selectOption('lesson');
     await page.getByLabel('Find a node').fill('schema');await page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true}).click();
-    await page.getByRole('region',{name:'Selected node'}).getByRole('button',{name:/^citation ·/}).first().click();
-    await expect(page.getByRole('region',{name:'Selected evidence'})).toBeVisible();await expect(page.getByRole('combobox',{name:'Show',exact:true})).toHaveValue('all');
+    await page.getByRole('region',{name:'Selected node'}).getByRole('button',{name:/^supplied ·/}).first().click();
+    await expect(page.getByRole('region',{name:'Assignment knowledge',exact:true})).toBeVisible();await expect(page.getByRole('combobox',{name:'Show',exact:true})).toHaveValue('all');
     const selected=page.getByRole('region',{name:'Selected node'});
-    await expect(selected.locator(':scope > h3')).toHaveText(/^CEC team guide · Confirm the schema version/);
-    await expect(selected).toContainText('Source record cec-team:1');
+    await expect(selected.locator(':scope > h3')).toHaveText('implement assignment');
+    await expect(selected).toContainText('Recorded knowledge exposure.');
     const activity=page.getByRole('checkbox',{name:'Include employee activity'});await expect(activity).toHaveClass(/accent-checkbox/);await activity.focus();await expect(activity).toBeFocused();
 });
 
@@ -117,7 +117,7 @@ test('group and search context survive inspecting a record, with a concise intro
     const record=browser.getByRole('button',{name:/Synthetic note .* · technical/}).first(),name=await record.innerText();await record.click();
     await expect(page.getByRole('navigation',{name:'Map location'}).getByRole('button',{name:'CMS',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Back to map',exact:true}).click();await expect(browser).toContainText('2 / 3');await expect(browser.getByRole('button',{name,exact:true})).toBeVisible();
-    const caption=page.getByText('See how notes, source evidence and team lessons connect.',{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
+    const caption=page.getByText('See how notes and team lessons connect.',{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
     expect(bounds!.width).toBeLessThan((await page.locator('[data-brain-content]').boundingBox())!.width*.65);expect(bounds!.y+bounds!.height).toBeLessThan(canvas!.y);expect(await caption.evaluate(el=>getComputedStyle(el).maxWidth)).not.toBe('none');
     await page.getByText('Controls and source details',{exact:true}).click();await expect(page.getByText('Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.',{exact:true})).toBeVisible();
 });

@@ -6,7 +6,8 @@ for (const width of [1024, 1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
         await page.getByRole('button', { name: 'Map', exact: true }).click();
-        await page.getByRole('button', { name: 'Project · cec', exact: true }).click();
+        await page.getByLabel('Find a node').fill('schema');
+        await page.getByRole('button', { name: 'Confirm schema versions before mapping changes · lesson', exact: true }).click();
         const heading = page.getByRole('region', { name: 'Selected node', exact: true }).locator(':scope > h3');
         await expect(heading).toBeFocused(); await expect(heading).toBeInViewport();
         if (width > 1000) {

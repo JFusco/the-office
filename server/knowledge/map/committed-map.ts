@@ -29,7 +29,7 @@ export async function committedKnowledgeMap(context: KnowledgeContext, project: 
     }
     for(const edge of page.edges)if(ids.has(edge.source)&&ids.has(edge.target))result.edges.push({source:ids.get(edge.source)!,target:ids.get(edge.target)!,kind:'publication',relation:edge.relation});
     if(!global) {
-        const knowledge=knowledgeSnapshot(context.registry,project,context.stores.get(project)?.state.knowledge);
+        const knowledge=knowledgeSnapshot(project,context.stores.get(project)?.state.knowledge);
         const connect=(assignment:string,reference:import('../../../src/contracts/knowledge-retrieval').KnowledgeReference,kind:'supplied'|'retrieved'|'verified')=>{
             const node=result.nodes.find(n=>n.kind==='technical'&&n.knowledgeReference?.id===reference.id&&n.knowledgeReference.contentSha256===reference.contentSha256);
             if(node&&result.nodes.some(n=>n.id===assignment)&&!result.edges.some(e=>e.source===assignment&&e.target===node.id&&e.kind===kind))result.edges.push({source:assignment,target:node.id,kind});

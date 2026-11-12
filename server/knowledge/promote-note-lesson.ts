@@ -3,19 +3,14 @@ import { LESSON_KINDS, LESSON_STAGES } from '../../src/contracts/knowledge';
 import { normalizeStatement } from './accept-retrospective';
 import type { OfficeKnowledgeStore } from './office-lessons';
 import type { Store } from '../store/store';
-import type { SourceRegistry } from './sources/registry';
-import { requestSourceBindings } from './lookup/exposure-bindings';
-import { exposureSourceVisible } from './sources/lesson-visibility';
 
 const Input = z.object({ noteId: z.string().uuid(), when: z.string().trim().min(1).max(300), statement: z.string().trim().min(12).max(300), check: z.string().trim().min(1).max(300), detail: z.string().trim().min(1).max(1500),
     kind: z.enum(LESSON_KINDS as ['convention', 'pitfall', 'process', 'tooling']), stages: z.array(z.enum(LESSON_STAGES as ['intake', 'implement', 'review', 'validate', 'repair', 'maintenance', 'any'])).min(1).max(7) }).strict();
 
 /** Explicit operator promotion of a reviewed saved note; chat/model outputs cannot activate lessons. */
-export function promoteNoteLesson(control: OfficeKnowledgeStore, store: Store, input: unknown,registry?:SourceRegistry): string {
+export function promoteNoteLesson(control: OfficeKnowledgeStore, store: Store, input: unknown): string {
     const data = Input.parse(input), note = store.state.projectNotes.find(note => note.id === data.noteId);
     if (!note || !store.state.messages.some(message => message.id === note.requestId && message.from === 'human' && message.status === 'answered')) throw new Error('A saved note from a completed human request is required');
-    const sourceBindings=requestSourceBindings(store.state,note.requestId);
-    if(sourceBindings.length&&(!registry||sourceBindings.some(b=>!exposureSourceVisible(registry,store.project.id,b))))throw Error('The reviewed note is unavailable because source access changed');
     const id = `operator-note:${store.project.id}:${note.id}`;
     return control.updateKnowledge(knowledge => {
         const old = knowledge.lessons.find(lesson => lesson.id === id);
@@ -26,7 +21,7 @@ export function promoteNoteLesson(control: OfficeKnowledgeStore, store: Store, i
         if (knowledge.lessons.some(lesson => lesson.status === 'active' && normalizeStatement(lesson.statement) === normalizeStatement(data.statement))) throw new Error('An equivalent active Office lesson already exists');
         const at = control.clock.now().toISOString(), ticket = store.state.tickets.find(ticket => ticket.key === note.ticket);
         knowledge.lessons.push({ id, scope: 'office',originProjectId:store.project.id, tier: 'guidance', revision: 1, kind: data.kind, when: data.when, statement: data.statement, check: data.check, detail: data.detail, stages: [...new Set(data.stages)], paths: [], status: 'active',
-            evidence: [{ kind: 'artifact', ref: `project-note:${store.project.id}:${note.id}`, url: '', detail: 'Explicitly promoted by Joe from a reviewed project note',...(sourceBindings.length?{sourceBindings}: {}) }, ...(ticket ? [{ kind: 'ticket' as const, ref: ticket.key, url: ticket.url, detail: 'Source incident tracking issue' }] : [])],
+            evidence: [{ kind: 'artifact', ref: `project-note:${store.project.id}:${note.id}`, url: '', detail: 'Explicitly promoted by Joe from a reviewed project note' }, ...(ticket ? [{ kind: 'ticket' as const, ref: ticket.key, url: ticket.url, detail: 'Source incident tracking issue' }] : [])],
             sourceRetrospectiveId: id, createdAt: at, updatedAt: at });
         return id;
     });

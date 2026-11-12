@@ -1,5 +1,5 @@
-export interface KnowledgeNode { id: string; title: string; kind: 'project' | 'source' | 'evidence' | 'lesson' | 'assignment' | 'technical'; detail: string; reference?: string;scope?:'project'|'office'|'technical';knowledgeReference?:import('./knowledge-retrieval').KnowledgeReference;technicalKind?:string;domains?:string[] }
-export interface KnowledgeEdge { source: string; target: string; kind: 'subscription' | 'provenance' | 'citation' | 'supplied' | 'retrieved' | 'verified' | 'publication' | 'promotion'; relation?:string }
+export interface KnowledgeNode { id: string; title: string; kind: 'project' | 'lesson' | 'assignment' | 'technical'; detail: string; reference?: string;scope?:'project'|'office'|'technical';knowledgeReference?:import('./knowledge-retrieval').KnowledgeReference;technicalKind?:string;domains?:string[] }
+export interface KnowledgeEdge { source: string; target: string; kind: 'supplied' | 'retrieved' | 'verified' | 'publication' | 'promotion'; relation?:string }
 export interface KnowledgeMap { nodes: KnowledgeNode[]; edges: KnowledgeEdge[]; truncated: boolean; snapshot?:string; technicalStatus?:'available'|'unavailable'; limitations?:string[] }
-export interface KnowledgeActivity { id: string; at: string; kind: 'admitted' | 'curated' | 'supplied' | 'retrieved' | 'verified'; title: string; detail: string; assignmentId?:string }
+export interface KnowledgeActivity { id: string; at: string; kind: 'curated' | 'supplied' | 'retrieved' | 'verified'; title: string; detail: string; assignmentId?:string }
 export interface KnowledgeActivityPage { events: KnowledgeActivity[]; truncated: boolean; supplied: number; retrieved: number | null; verified: number | null; limitations: string[] }

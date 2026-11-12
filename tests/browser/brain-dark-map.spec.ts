@@ -8,7 +8,7 @@ async function crowdedMap(page: Page) {
     await page.route('**/api/knowledge/map?**', async route => {
         const response = await route.fetch(), map = await response.json(), project = map.nodes.find((n: {kind: string}) => n.kind === 'project');
         const notes = Array.from({ length: 480 }, (_, i) => ({ id: `preview:${i}`, kind: 'technical', title: `Preview note ${i}`, detail: 'Synthetic motion and visual qualification fixture.', domains: ['tooling'] }));
-        await route.fulfill({ response, json: { ...map, nodes: [...map.nodes, ...notes], edges: [...map.edges, ...notes.map(n => ({source: project.id, target: n.id, kind: 'citation'}))] } });
+        await route.fulfill({ response, json: { ...map, nodes: [...map.nodes, ...notes], edges: [...map.edges, ...notes.map(n => ({source: project.id, target: n.id, kind: 'publication'}))] } });
     });
 }
 async function style(control: Locator) {

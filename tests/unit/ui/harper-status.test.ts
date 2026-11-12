@@ -18,20 +18,6 @@ test('weekly status labels partial coverage and never displays unavailable zeros
         expect(render('2026-11-06', '2026-11-13')).not.toContain('Partial learning coverage');
     } finally { f.close(); }
 });
-test('needs-review guidance offers keep, demote and retire; ordinary active guidance offers only retire', () => {
-    const f = knowledgeStore();
-    try {
-        f.store.state.knowledge!.lessons = [learningLesson('L1', { statement: 'Flagged guidance', needsReview: true }), learningLesson('L2', { statement: 'Steady guidance' })];
-        const snapshot = { knowledge: f.store.state.knowledge, project: { id: 'brain', provider: 'github' }, agents: [], mode: 'live' } as never;
-        const html = renderToStaticMarkup(createElement(LessonsPanel, { snapshot }));
-        expect(html).toContain('aria-label="Keep lesson after source review: Flagged guidance"');
-        expect(html).toContain('aria-label="Demote lesson to hypothesis: Flagged guidance"');
-        expect(html).toContain('aria-label="Retire lesson: Flagged guidance"');
-        expect(html).toContain('aria-label="Retire lesson: Steady guidance"');
-        expect(html).not.toContain('Keep lesson after source review: Steady guidance');
-        expect(html).not.toContain('Demote lesson to hypothesis: Steady guidance');
-    } finally { f.close(); }
-});
 test('a demoted hypothesis leaves the active count and is listed as report-only with its retire action', () => {
     const f = knowledgeStore();
     try {

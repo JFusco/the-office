@@ -15,7 +15,7 @@ test('the reticle follows the same camera projection and hides unavailable or of
 });
 
 test('the decorative focus tag escapes the record title and stays hidden until projected', () => {
-    const html = renderToStaticMarkup(createElement(FocusOverlay, { node: { id: 'n', title: '<source>', kind: 'source', detail: '' }, overlay: { current: null } }));
+    const html = renderToStaticMarkup(createElement(FocusOverlay, { node: { id: 'n', title: '<source>', kind: 'technical', detail: '' }, overlay: { current: null } }));
     expect(html).toContain('&lt;source&gt;'); expect(html).toContain('hidden=""'); expect(html).toContain('aria-hidden="true"'); expect(html).toContain('pointer-events-none');
 });
 
@@ -31,5 +31,5 @@ test('the depth field stays deterministic and distributes a single record type a
     const quadrants = new Set(points.map(p => `${Math.sign(p.x)},${Math.sign(p.y)}`));
     expect(quadrants.size).toBe(4); expect(Math.max(...points.map(p => p.z)) - Math.min(...points.map(p => p.z))).toBeGreaterThan(100);
     expect(stablePosition('note:10', 'technical', ['technical'])).toEqual(points[10]);
-    expect(stablePosition('note:10', 'technical', ['technical', 'source'])).toEqual(points[10]);
+    expect(stablePosition('note:10', 'technical', ['technical', 'lesson'])).toEqual(points[10]);
 });

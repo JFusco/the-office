@@ -26,7 +26,7 @@ function LessonShape({ lesson }: { lesson: Pick<Lesson, 'when' | 'statement' | '
 
 function LessonCard({ lesson, actions, footer }: { lesson: Lesson; actions?: React.ReactNode; footer?: React.ReactNode }) {
   return <Card as="article">
-    <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier} · revision {lesson.revision}</Tag>{lesson.needsReview ? <Tag>{lesson.sourceReviewReason==='source-changed'?'source changed · review needed':'source withdrawn · review needed'}</Tag> : null}{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}{lesson.supersedes ? <Tag>replaces an earlier lesson</Tag> : null}{lesson.supersededBy ? <Tag>replaced by a newer lesson</Tag> : null}{lesson.retiredBy === 'graduated' ? <Tag>graduated into the repository</Tag> : null}{lesson.retiredBy === 'expired' ? <Tag>expired</Tag> : null}{lesson.status === 'active' && lesson.validUntil ? <Tag>valid until {lesson.validUntil}</Tag> : null}</div>
+    <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier} · revision {lesson.revision}</Tag>{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}{lesson.supersedes ? <Tag>replaces an earlier lesson</Tag> : null}{lesson.supersededBy ? <Tag>replaced by a newer lesson</Tag> : null}{lesson.retiredBy === 'graduated' ? <Tag>graduated into the repository</Tag> : null}{lesson.retiredBy === 'expired' ? <Tag>expired</Tag> : null}{lesson.status === 'active' && lesson.validUntil ? <Tag>valid until {lesson.validUntil}</Tag> : null}</div>
     <LessonShape lesson={lesson} />
     {lesson.detail ? <p className={mutedCopy}>{lesson.detail}</p> : null}
     {lesson.paths.length ? <p className="text-10 leading-relaxed text-card-detail">Paths: {lesson.paths.join(', ')}</p> : null}
@@ -55,8 +55,6 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
       <SectionTitle id={headingId} tabIndex={-1} className="mb-2">Active lessons <Count>{view.active.length}</Count></SectionTitle>
       <p className={cx(mutedCopy, 'mb-2')}>Each stage receives up to 10 relevant lessons within a fixed context budget, ranked by stage, path and scope. Retire any that no longer hold.</p>
       {view.active.length ? view.active.map(lesson => <LessonCard key={lesson.id} lesson={lesson} actions={<>
-        {lesson.needsReview ? <Button disabled={disabled} onClick={() => act('reactivate-lesson', lesson.id)} aria-label={`Keep lesson after source review: ${lesson.statement}`}>Keep after source review</Button> : null}
-        {lesson.needsReview && lesson.tier === 'guidance' ? <Button disabled={disabled} onClick={() => act('demote-lesson', lesson.id)} aria-label={`Demote lesson to hypothesis: ${lesson.statement}`}>Demote to hypothesis</Button> : null}
         <Button disabled={disabled} onClick={() => act('retire-lesson', lesson.id)} aria-label={`Retire lesson: ${lesson.statement}`}>Retire</Button></>} />) : <p className={mutedCopy}>No lessons yet. They appear after {harper}'s first retrospective.</p>}
     </Section>
     {view.hypotheses.length ? <Section data-lessons-hypotheses>

@@ -3,7 +3,6 @@ import { acceptRetrospective } from '../../../server/knowledge/accept-retrospect
 import { reconcileBlockerFollowups } from '../../../server/knowledge/blocker-followups';
 import { catalogLine } from '../../../server/knowledge/lookup/catalog-line';
 import { unblockBrief } from '../../../server/knowledge/unblock-brief';
-import { digest } from '../../../server/knowledge/digest';
 import { job, knowledgeStore, learningLesson } from './knowledge-fixture';
 
 const unblock = { known: 'The live PR body fails lint:pr.', decision: 'A metadata-only blocker is not a source repair.', next: 'Morgan republishes the validated body.' };
@@ -27,18 +26,6 @@ test('a parked run stores Harper\'s brief for that subject; it is shown until th
         expect(unblockBrief(k, { kind: 'job', id: blocked.id })).not.toBe('');
         blocked.status = 'completed'; reconcileBlockerFollowups(store);
         expect(unblockBrief(k, { kind: 'job', id: blocked.id })).toBe('');
-    } finally { close(); }
-});
-
-test('a brief built from source-scoped evidence is not kept', () => {
-    const { store, close } = knowledgeStore();
-    try {
-        const scoped = { src: { kind: 'source' as const, ref: 'src', url: '', detail: 'x', source: { sourceId: 's', unitId: 'u', version: 'v' }, sourceBindings: [{ sourceId: 's', unitId: 'u', version: 'v' }] } };
-        const result = { summary: 'Done', lessons: [], unblock };
-        const scan = { version: 1 as const, inputSha256: digest(JSON.stringify(result)), scannerVersion: 't', policyVersion: 't', clean: true, findings: [] };
-        acceptRetrospective(store, { id: 'r', jobId: 'j', key: 'GH-1', trigger: 'parked' }, { catalog: scoped }, result, 'claim', scan);
-        expect(store.state.knowledge!.retrospectives.some(record => record.id === 'r')).toBe(true);
-        expect(store.state.knowledge!.unblockBriefs).toBeUndefined();
     } finally { close(); }
 });
 
@@ -67,11 +54,6 @@ test('the catalog line names lessons that were not supplied and stays quiet abou
         const line = catalogLine(k, { selected: [{ scope: 'project', id: 'given', revision: 1 }] });
         expect(line).toContain('1 more lesson for other stages, for example: Reviewing a lockfile change');
         for (const absent of ['Supplied situation', 'Unverified idea', 'Retired situation']) expect(line).not.toContain(absent);
-        const binding = { sourceId: 's', unitId: 'u', version: 'v' };
-        k.lessons.push(learningLesson('bound', { when: 'Source-bound situation', evidence: [{ kind: 'source', ref: 'src', url: '', detail: 'x', sourceBindings: [binding] }] }), learningLesson('sourced', { when: 'Sourced situation', evidence: [{ kind: 'source', ref: 'src', url: '', detail: 'x', source: binding }] }));
-        const scopedLine = catalogLine(k, { selected: [{ scope: 'project', id: 'given', revision: 1 }] });
-        expect(scopedLine).toContain('1 more lesson for other stages');
-        for (const absent of ['Source-bound situation', 'Sourced situation']) expect(scopedLine).not.toContain(absent);
         expect(catalogLine(undefined, { selected: [] })).toBe('ALSO AVAILABLE BY LOOKUP: Brain technology notes (frameworks and CMS platforms).');
     } finally { close(); }
 });

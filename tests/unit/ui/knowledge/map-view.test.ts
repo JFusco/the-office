@@ -71,7 +71,7 @@ it('preserves group page and search context when the selected record needs no fi
 });
 
 it('reveals all loaded saved neighbors on selection without changing the filters',()=>{
-    const map:KnowledgeMap={...data,edges:[...data.edges,{source:'note:1',target:'note:2',kind:'citation'},{source:'note:1',target:'attempt',kind:'supplied'}]};
+    const map:KnowledgeMap={...data,edges:[...data.edges,{source:'note:1',target:'note:2',kind:'verified'},{source:'note:1',target:'attempt',kind:'supplied'}]};
     const view=displayScene(map,{...selection,selected:'note:1'});
     expect(view.neighborCount).toBe(2);expect(view.revealedCount).toBe(1);expect(view.scene.edges).toHaveLength(3);expect(view.scene.nodes.find(n=>n.id==='attempt')?.visible).toBe(true);
     expect(displayScene(map,{...selection,selected:'note:1',activity:true}).neighborCount).toBe(2);

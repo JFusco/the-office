@@ -17,7 +17,7 @@ import { validTicket } from '../projects';
 import { CEC } from '../config';
 import type { ServiceContext, RequestContext } from './context';
 import { json } from './responses';
-import { configureKnowledge, declineLessonIssue, demoteLesson, reactivateLesson, retireLesson } from '../../knowledge/lesson-commands';
+import { configureKnowledge, declineLessonIssue, reactivateLesson, retireLesson } from '../../knowledge/lesson-commands';
 import { decideOfficeProposal, mirrorOfficeKnowledge, retireOfficeLesson } from '../../knowledge/office-lessons';
 import { configureChannelNotices } from '../../conversations/channel-notice';
 import { requeueWaitedImplement } from '../../delivery/recovery/implementation/requeue-waited-implement';
@@ -39,7 +39,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         switch (action) {
             case 'reconcile-pr-metadata': { const request = enqueueMetadataRecovery(store, key, prMetadataRecovery); return json({ accepted: true, id: request.id, status: request.status }, 202); }
             case 'promote-note-lesson': {
-                const id = promoteNoteLesson(offices.control, store, lessonPromotion,offices.sources);
+                const id = promoteNoteLesson(offices.control, store, lessonPromotion);
                 mirrorOfficeKnowledge(offices.control, offices.stores().values());
                 store.emit('office-knowledge-changed', 'Joe promoted a reviewed note to an active Office-wide lesson.', 'knowledge');
                 return json({ accepted: true, id }, 202);
@@ -106,7 +106,6 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 store.emit('merge-policy', merges.enabled ? 'Sam may merge linked issue PRs after current-head review and required checks, then Morgan closes out the issue and board.' : 'Automatic PR merging disabled.', 'pm');
                 break;
             }
-            case 'demote-lesson': demoteLesson(store, lessonId); break;
             case 'retire-lesson': retireLesson(store, lessonId); break;
             case 'configure-knowledge': configureKnowledge(store, knowledge); break;
             case 'configure-channel-notifications': configureChannelNotices(store, channel); break;
@@ -119,7 +118,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'accept-office-lesson':
             case 'decline-office-lesson':
             case 'retire-office-lesson':
-                if (action === 'retire-office-lesson') retireOfficeLesson(offices.control, lessonId); else decideOfficeProposal(offices.control, lessonId, action === 'accept-office-lesson',{registry:offices.sources,projectId:project});
+                if (action === 'retire-office-lesson') retireOfficeLesson(offices.control, lessonId); else decideOfficeProposal(offices.control, lessonId, action === 'accept-office-lesson', project);
                 mirrorOfficeKnowledge(offices.control, offices.stores().values());
                 store.emit('office-knowledge-changed', action === 'accept-office-lesson' ? 'Office-wide lesson accepted; every project now sees it.' : action === 'decline-office-lesson' ? 'Office-wide lesson proposal declined.' : 'Office-wide lesson retired.', 'knowledge');
                 break;

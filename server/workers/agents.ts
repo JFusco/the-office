@@ -62,7 +62,7 @@ export class Agents extends WorkerRuntime {
     }
     async followup(role: Role, message: TeamMessage, brief = '') {
         if (harperHandoff(this.store, message)) return this.run('pm', message.body, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation-readback', requestId: message.requestId, effortKind: 'administrative', timeout: 15 * 60 * 1000 });
-        const promptStore=this.knowledgeContext?knowledgePromptStore(this.store,this.knowledgeContext.registry):this.store;
+        const promptStore=knowledgePromptStore(this.store);
         const guidance = `\n${GOAL_REPORT_GUIDANCE}`;
         if (role === 'it')
             return this.run('it', itChatPrompt(promptStore, message, brief) + guidance, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });

@@ -1,8 +1,5 @@
 import type { KnowledgeContext } from './context';
 import { blockingTrigger } from './blocking-trigger';
-import { sourceLearningPacket,sourcePacketAuthorized } from './sources/learning-packet';
-import { catalogBindings } from './sources/proof-scope';
-import { scanCuration } from './sources/curation-scan';
 import { freezeLearningPacket } from './learning-packet';
 import { recordTrigger } from './record-trigger';
 import { appendLearningFacts } from './learning-facts';
@@ -28,7 +25,7 @@ const FIRST_DELAY = 5 * 60 * 1000, MAX_DELAY = 6 * 60 * 60 * 1000;
 /** Capped exponential backoff; each batch has at most five total attempts. */
 export const retryDelay = (attempts: number) => Math.min(MAX_DELAY, FIRST_DELAY * 2 ** Math.max(0, attempts - 1));
 
-export interface KnowledgeRunOptions { readOnly: true; effortKind: 'administrative'; stage: 'retrospective' | 'knowledge-rollup' | 'knowledge-research' | 'knowledge-source-read'; onIntakeLaunch?: () => void; onIntakeNotSpawned?: () => void; intakeBinding?: import('./sources/execution-binding').IntakeBinding; requestId: string; ticket: string; cwd: string; enqueuedAt: string; timeout: number }
+export interface KnowledgeRunOptions { readOnly: true; effortKind: 'administrative'; stage: 'retrospective' | 'knowledge-rollup' | 'knowledge-research'; requestId: string; ticket: string; cwd: string; enqueuedAt: string; timeout: number }
 /** Harper's model call, injected so tests never reach a provider. */
 export type KnowledgeRunner = <T>(prompt: string, schema: z.ZodType<T>, opts: KnowledgeRunOptions) => Promise<T>;
 
@@ -41,7 +38,7 @@ export function harperFolder(store: Store, name: string): string {
 
 /** Runs one retrospective. Any failure keeps the occurrence pending with a later retry time.
  * Administrative effort: Harper's time never adds to a ticket's published hours. */
-export async function runRetrospective(store: Store, run: KnowledgeRunner, id: string, context?:KnowledgeContext, propose?: (store: Store, sourceId: string, proposals: Parameters<NonNullable<Parameters<typeof acceptRetrospective>[6]>>[0]) => unknown): Promise<void> {
+export async function runRetrospective(store: Store, run: KnowledgeRunner, id: string, context?:KnowledgeContext, propose?: (store: Store, sourceId: string, proposals: Parameters<NonNullable<Parameters<typeof acceptRetrospective>[5]>>[0]) => unknown): Promise<void> {
     const knowledge = store.state.knowledge;
     if (!knowledge || !knowledge.enabled || store.state.paused || store.state.draining || knowledge.consumed.includes(id)) return;
     let pending = knowledge.pending.find(entry => entry.id === id);
@@ -75,15 +72,9 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
     const attempts = pending.attempts;
     try {
         const folder = harperFolder(store, learningDigest(id));
-        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!);return context?withElsewhere(facts,otherProjectLessons(context,store.project.id),next=>sourceLearningPacket(context,store.project.id,pending!,next)):facts;});
-        const scoped = catalogBindings(packet.catalog).length > 0;
-        if(scoped&&(!context||!sourcePacketAuthorized(context,store.project.id,packet)))throw Error('Source learning evidence revoked before dispatch');
-        if (scoped) await scanCuration(store, id, 'input', JSON.stringify(packet), context?.scan);
-        if(context&&!sourcePacketAuthorized(context,store.project.id,packet))throw Error('Source learning evidence revoked before dispatch');
+        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!);return context?withElsewhere(facts,otherProjectLessons(context,store.project.id)):facts;});
         const result = RetrospectiveResultSchema.parse(await run(retrospectivePrompt(packet, store.project.repo), RetrospectiveResultSchema, { readOnly: true, effortKind: 'administrative', stage: 'retrospective', requestId: id, ticket: subject.key, cwd: harperFolder(store, learningDigest(id)), enqueuedAt: pending.createdAt, timeout: RETROSPECTIVE_TIMEOUT }));
-        const scan = scoped ? await scanCuration(store, id, 'output', JSON.stringify(result), context?.scan) : undefined;
-        if(context&&!sourcePacketAuthorized(context,store.project.id,packet))throw Error('Source learning evidence revoked before acceptance');
-        acceptRetrospective(store, pending, packet, result, currentAssignment()?.claim.id || randomUUID(), scan, propose && (lessons => propose(store, id, lessons)));
+        acceptRetrospective(store, pending, packet, result, currentAssignment()?.claim.id || randomUUID(), propose && (lessons => propose(store, id, lessons)));
     }
     catch (error) {
         // A rolled-back transaction replaces state objects; update whatever entry is current now.

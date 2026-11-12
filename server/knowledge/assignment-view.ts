@@ -10,7 +10,7 @@ import { decodeLookupJournal } from './lookup/receipts';
 export function assignmentKnowledge(context:KnowledgeContext,project:string,id:string,index?:number):KnowledgeAssignment|undefined {
     if(!/^[a-f0-9-]{36}$/.test(id))return;
     const store=context.stores.get(project);if(!store)return;
-    const scoped=knowledgeSnapshot(context.registry,project,store.state.knowledge),exposure=scoped?.exposures?.find(e=>e.id===id&&e.dispatchedAt);
+    const scoped=knowledgeSnapshot(project,store.state.knowledge),exposure=scoped?.exposures?.find(e=>e.id===id&&e.dispatchedAt);
     if(!exposure)return;
     const file=readOwnedSessionArtifact(store.dataRoot,id,'lessons.json',65536);if(!('text' in file))return;
     try {
@@ -29,7 +29,7 @@ export function assignmentKnowledge(context:KnowledgeContext,project:string,id:s
             }catch{lookupRecordingUnavailable=true;}
         }
         // Supply the dispatch metadata separately from the immutable pre-dispatch file.
-        const result={id,stage:exposure.stage,supplied:{...supplied,sourceBindings:exposure.sourceBindings,eligible:exposure.eligible,omitted:exposure.omitted,dispatchedAt:exposure.dispatchedAt},lookups,lookup,...(lookupRecordingUnavailable?{lookupRecordingUnavailable:true}:{}),outcomes:(scoped?.outcomes||[]).filter(r=>r.assignmentId===id)};
+        const result={id,stage:exposure.stage,supplied:{...supplied,eligible:exposure.eligible,omitted:exposure.omitted,dispatchedAt:exposure.dispatchedAt},lookups,lookup,...(lookupRecordingUnavailable?{lookupRecordingUnavailable:true}:{}),outcomes:(scoped?.outcomes||[]).filter(r=>r.assignmentId===id)};
         return Buffer.byteLength(JSON.stringify(result))<=65536?result:undefined;
     }catch{return;}
 }

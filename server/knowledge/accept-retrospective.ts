@@ -4,8 +4,6 @@ import type { Lesson, LessonEvidence, PendingRetrospective } from '../../src/sha
 import type { Store } from '../store/store';
 import type { RetrospectivePacket } from './retrospective-facts';
 import type { RetrospectiveResult } from './retrospective-result';
-import { catalogBindings, proofBindings } from './sources/proof-scope';
-import { checkedReceipt, type ScanReceipt } from './sources/admission';
 import { curateLesson } from './curate-lesson';
 import { saveUnblockBrief } from './unblock-brief';
 import { blockingTrigger } from './blocking-trigger';
@@ -22,10 +20,8 @@ type Shared = Accepted['lessons'][number] & { evidence: LessonEvidence[] };
  * Lenient, idempotent acceptance in one transaction. Duplicates and unsupported proposals are skipped,
  * never fatal: the retrospective completes and its trigger is consumed even with zero new lessons.
  */
-export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospective, 'id' | 'jobId' | 'key' | 'trigger'> & Partial<Pick<PendingRetrospective, 'subject' | 'createdAt' | 'source' | 'eventIds'>>, packet: Pick<RetrospectivePacket, 'catalog' | 'elsewhere'>, result: Accepted, attemptId: string, scan?: import('zod').infer<typeof ScanReceipt>, share?: (lessons: Shared[]) => void): string[] {
-    const bindings = catalogBindings(packet.catalog);
-    if (bindings.length && (!scan || !checkedReceipt(JSON.stringify(result), scan).clean)) throw Error('Generated learning requires a clean bound scan receipt');
-    const catalog = Object.fromEntries(Object.entries(packet.catalog).map(([id, proof]) => [id, proofBindings(proof).length ? { ...proof, detail: 'Scoped evidence; exact excerpt retained in the private review packet' } : { ...proof }]));
+export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospective, 'id' | 'jobId' | 'key' | 'trigger'> & Partial<Pick<PendingRetrospective, 'subject' | 'createdAt' | 'source' | 'eventIds'>>, packet: Pick<RetrospectivePacket, 'catalog' | 'elsewhere'>, result: Accepted, attemptId: string, share?: (lessons: Shared[]) => void): string[] {
+    const catalog = Object.fromEntries(Object.entries(packet.catalog).map(([id, proof]) => [id, { ...proof }]));
     const elsewhere = new Set((packet.elsewhere || []).map(lesson => lesson.id));
     return store.transaction(() => {
         const knowledge = store.state.knowledge!;
@@ -33,15 +29,13 @@ export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospec
         const now = store.clock.now().toISOString(), changed: string[] = [], shared: Shared[] = [];
         // An exact restatement of a project lesson (retired ones included) or an office lesson is never added again.
         const seen = new Set([...knowledge.lessons, ...(knowledge.officeLessons || [])].map(lesson => normalizeStatement(lesson.statement)));
-        const sourceOnly=pending.source?.kind==='source'||pending.subject==='source';
-        const github = store.project.provider === 'github'&&!sourceOnly;
+        const github = store.project.provider === 'github';
         for (const proposal of result.lessons) {
-            if(sourceOnly&&proposal.evidenceIds.some(id=>!Object.hasOwn(catalog,id)))continue;
             const statement = proposal.statement.trim(), key = normalizeStatement(statement);
             const evidence = [...new Set(proposal.evidenceIds)].filter(id => Object.hasOwn(catalog, id)).map(id => catalog[id]);
-            const action = sourceOnly ? 'add' : proposal.action || 'add';
-            if (!statement || !evidence.length || sourceOnly&&!evidence.some(p=>p.kind==='source') || action !== 'update' && seen.has(key)) continue;
-            const lesson: Lesson = { id: randomUUID(), scope: 'project', tier: proposal.tier || 'guidance', revision: 1, kind: proposal.kind, when: proposal.when.trim(), statement, check: proposal.check.trim(), detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], paths: proposal.paths.map(path => path.trim()).filter(Boolean), status: 'active', evidence: evidence.map(item => proofBindings(item).length?{...item,detail:'Scoped evidence; exact excerpt retained in the private review packet'}:{ ...item }), sourceSubject: pending.source || { kind: pending.subject || 'job', id: pending.jobId }, sourceRetrospectiveId: pending.id,
+            const action = proposal.action || 'add';
+            if (!statement || !evidence.length || action !== 'update' && seen.has(key)) continue;
+            const lesson: Lesson = { id: randomUUID(), scope: 'project', tier: proposal.tier || 'guidance', revision: 1, kind: proposal.kind, when: proposal.when.trim(), statement, check: proposal.check.trim(), detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], paths: proposal.paths.map(path => path.trim()).filter(Boolean), status: 'active', evidence: evidence.map(item => ({ ...item })), sourceSubject: pending.source || { kind: pending.subject || 'job', id: pending.jobId }, sourceRetrospectiveId: pending.id,
                 ...(github && proposal.repositoryInstruction ? { repositoryInstruction: { status: 'proposed' as const } } : {}), ...(proposal.validUntil ? { validUntil: proposal.validUntil } : {}), createdAt: now, updatedAt: now };
             const outcome = curateLesson(knowledge, lesson, action, proposal.targetId || '', elsewhere, now);
             if (outcome === 'skipped') continue;
@@ -49,12 +43,11 @@ export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospec
             if (outcome === 'shared') shared.push({ ...proposal, evidence: lesson.evidence });
             else changed.push(outcome === 'updated' ? proposal.targetId! : lesson.id);
         }
-        // A brief is kept only from evidence every reader of this project may see.
-        if (result.unblock && !bindings.length && blockingTrigger(pending)) saveUnblockBrief(knowledge, { kind: pending.subject || 'job', id: pending.jobId }, { ...result.unblock, at: now, retrospectiveId: pending.id });
-        if(!sourceOnly)proposeImprovements(store, pending.source || { kind: pending.subject || 'job', id: pending.jobId }, result.improvements || [], catalog);
+        if (result.unblock && blockingTrigger(pending)) saveUnblockBrief(knowledge, { kind: pending.subject || 'job', id: pending.jobId }, { ...result.unblock, at: now, retrospectiveId: pending.id });
+        proposeImprovements(store, pending.source || { kind: pending.subject || 'job', id: pending.jobId }, result.improvements || [], catalog);
         // Filed before completion: a failed filing rolls this acceptance back to retry, and Office proposals deduplicate.
         if (shared.length) share?.(shared);
-        knowledge.retrospectives.push({ sourceBindings: bindings.length ? bindings : undefined, source: pending.source, eventIds: pending.eventIds, id: pending.id, jobId: pending.jobId, key: pending.key, trigger: pending.trigger, subject: pending.subject || 'job', eventAt: pending.createdAt, attemptId, summary: result.summary.trim(), lessonIds: changed, at: now });
+        knowledge.retrospectives.push({ source: pending.source, eventIds: pending.eventIds, id: pending.id, jobId: pending.jobId, key: pending.key, trigger: pending.trigger, subject: pending.subject || 'job', eventAt: pending.createdAt, attemptId, summary: result.summary.trim(), lessonIds: changed, at: now });
         knowledge.retrospectives = knowledge.retrospectives.slice(-RETROSPECTIVE_HISTORY);
         knowledge.consumed.push(pending.id);
         knowledge.pending = knowledge.pending.filter(entry => entry.id !== pending.id);

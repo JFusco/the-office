@@ -1,38 +1,19 @@
 import type { KnowledgeState,OfficeKnowledge } from '../../src/contracts/knowledge';
-import type { SourceRegistry } from './sources/registry';
-import { sourceVisible } from './sources/visibility';
-import { lessonVisible,lessonForProject,exposureSourceVisible } from './sources/lesson-visibility';
-import { lookupSummaryVisible,publicLookupSummary } from './lookup/summary-scope';
-import { outcomeVisible,publicOutcome } from './outcomes/projection';
-import { digest } from './digest';
-import { proofAuthorized,proofBindings } from './sources/proof-scope';
-import { publicReference } from './lookup/public-reference';
-/** Recheck frozen prompt permissions after an asynchronous model call. */
-export function knowledgeScopeRevision(registry:SourceRegistry,project:string,knowledge:KnowledgeState|undefined):string {
-    const dependencies=new Set([...(knowledge?.lessons||[]),...(knowledge?.officeLessons||[])].flatMap(l=>l.evidence.flatMap(proofBindings).map(b=>b.sourceId)));
-    return digest(JSON.stringify(registry.all().filter(s=>dependencies.has(s.id)||registry.subscriptions(s.id).some(g=>g.projectId===project)).map(s=>[s.id,s.state,registry.subscriptions(s.id).filter(g=>g.projectId===project)])));
-}
-/** Ordinary snapshots cannot bypass a revoked grant through a retained lesson, packet or mirror. */
-export function knowledgeSnapshot(registry:SourceRegistry,project:string,knowledge:KnowledgeState|undefined):KnowledgeState|undefined {
+import { lessonForProject } from './lesson-for-project';
+
+/** The project's view of its knowledge. Other projects' office lessons arrive as approved text, and history that names a lesson the project no longer holds is left out. */
+export function knowledgeSnapshot(project:string,knowledge:KnowledgeState|undefined):KnowledgeState|undefined {
     if(!knowledge)return;
-    const allowed=(id:string)=>sourceVisible(registry,id,project);
-    const permittedLessons=[...knowledge.lessons,...(knowledge.officeLessons||[])].filter(l=>lessonVisible(registry,project,l));
-    const scopeChanged=registry.all().some(s=>registry.subscriptions(s.id).some(g=>g.projectId===project&&(!g.active||s.state==='withdrawn')));
-    const lost=scopeChanged||permittedLessons.length!==knowledge.lessons.length+(knowledge.officeLessons?.length||0);
-    const proofsAllowed=(proofs:import('../../src/contracts/knowledge').LessonEvidence[])=>proofs.every(proof=>proofAuthorized(registry,project,proof));
-    const sourceRecord=(r:{source?:{kind:string;id:string}})=>r.source?.kind!=='source'||allowed(r.source.id);
-    return {...knowledge,lessons:knowledge.lessons.filter(l=>lessonVisible(registry,project,l)).map(l=>lessonForProject(registry,project,l)),officeLessons:knowledge.officeLessons?.filter(l=>lessonVisible(registry,project,l)).map(l=>lessonForProject(registry,project,l)),
-        lookups:knowledge.lookups?.filter(s=>lookupSummaryVisible(registry,project,s,permittedLessons)).map(publicLookupSummary),
-        outcomes:knowledge.outcomes?.filter(s=>outcomeVisible(registry,project,s,permittedLessons)).map(publicOutcome),
-        pending:knowledge.pending.filter(sourceRecord).map(p=>({...p,opportunities:p.opportunities?.filter(e=>proofsAllowed(e.evidence))})),
-        retrospectives:knowledge.retrospectives.filter(r=>sourceRecord(r)&&(r.sourceBindings||[]).every(b=>exposureSourceVisible(registry,project,b))),deliveryEvents:knowledge.deliveryEvents?.filter(sourceRecord),
-        followups:knowledge.followups?.filter(f=>proofsAllowed(f.evidence)),improvements:knowledge.improvements?.filter(i=>proofsAllowed(i.evidence)),
-        exposures:knowledge.exposures?.filter(e=>(e.sourceBindings||[]).every(b=>exposureSourceVisible(registry,project,b))&&e.selected.every(r=>permittedLessons.some(l=>l.id===r.id&&l.scope===r.scope))&&(e.evidence||[]).every(p=>p.reference.kind!=='source'||!!p.reference.sourceId&&sourceVisible(registry,p.reference.sourceId,project))).map(e=>({...e,sourceBindings:e.sourceBindings?.filter(b=>allowed(b.sourceId)),eligible:e.eligible.filter(r=>permittedLessons.some(l=>l.id===r.id&&l.scope===r.scope)),omitted:e.omitted.filter(r=>permittedLessons.some(l=>l.id===r.id&&l.scope===r.scope)),evidence:e.evidence?.map(s=>({...s,reference:publicReference(s.reference)}))})),
-        officeProposals:knowledge.officeProposals?.filter(p=>p.projectId===project&&proofsAllowed(p.evidence||[])),
-        ...(lost?{rollups:knowledge.rollups?.map(r=>({...r,summary:'Historical summary withheld because source access changed.'})),rollupRetry:undefined}:{}),
+    const lessons=[...knowledge.lessons,...(knowledge.officeLessons||[])],held=(r:{id:string;scope:string})=>lessons.some(l=>l.id===r.id&&l.scope===r.scope);
+    const heldReference=(r:import('../../src/contracts/knowledge-retrieval').KnowledgeReference)=>r.kind!=='lesson'||!!r.lesson&&held(r.lesson);
+    return {...knowledge,lessons:knowledge.lessons.map(l=>lessonForProject(project,l)),officeLessons:knowledge.officeLessons?.map(l=>lessonForProject(project,l)),
+        lookups:knowledge.lookups?.filter(s=>s.records.every(r=>r.selected.every(({reference})=>heldReference(reference)))),
+        outcomes:knowledge.outcomes?.filter(o=>o.lessons.every(held)&&o.evidence.every(heldReference)),
+        exposures:knowledge.exposures?.filter(e=>e.selected.every(held)).map(e=>({...e,eligible:e.eligible.filter(held),omitted:e.omitted.filter(held)})),
+        officeProposals:knowledge.officeProposals?.filter(p=>p.projectId===project),
     };
 }
-export function officeKnowledgeSnapshot(registry:SourceRegistry,project:string,knowledge:OfficeKnowledge|undefined):OfficeKnowledge|undefined {
+export function officeKnowledgeSnapshot(project:string,knowledge:OfficeKnowledge|undefined):OfficeKnowledge|undefined {
     if(!knowledge)return;
-    return {...knowledge,proposals:knowledge.proposals.filter(p=>p.projectId===project&&(p.evidence||[]).every(proof=>proofAuthorized(registry,project,proof))).map(p=>({...p,evidence:p.evidence?.filter(proof=>proofAuthorized(registry,project,proof))})),lessons:knowledge.lessons.filter(l=>lessonVisible(registry,project,l)).map(l=>lessonForProject(registry,project,l))};
+    return {...knowledge,proposals:knowledge.proposals.filter(p=>p.projectId===project),lessons:knowledge.lessons.map(l=>lessonForProject(project,l))};
 }

@@ -3,23 +3,22 @@ import type { Store } from '../store/store';
 import type { command } from '../workers/process';
 import { easternDay } from '../office/clock';
 import { enqueueRequest } from '../scheduling/requests';
-import { proofBindings } from './sources/proof-scope';
 
-/** Retires the current record, if it still qualifies; the event keeps the lesson's source dependencies. */
+/** Retires the current record, if it still qualifies. */
 function retire(store: Store, lessonId: string, eligible: (lesson: Lesson) => boolean, retiredBy: 'expired' | 'graduated', reason: string): void {
     const lesson = store.state.knowledge?.lessons.find(item => item.id === lessonId);
     if (!lesson || !eligible(lesson)) return;
     store.transition('lesson-retired', `Lesson ${reason}: ${lesson.statement}`, () => {
         const now = store.clock.now().toISOString();
         Object.assign(lesson, { revision: lesson.revision + 1, status: 'retired', retiredAt: now, retiredBy, updatedAt: now });
-    }, 'knowledge', undefined, lesson.evidence.flatMap(proofBindings));
+    }, 'knowledge');
 }
 
 /** Past its end date and not brought back by Joe after that date. */
 const expiring = (today: string) => (lesson: Lesson) => lesson.status === 'active' && !!lesson.validUntil && lesson.validUntil < today
     && !(lesson.reactivatedAt && easternDay(new Date(lesson.reactivatedAt)) > lesson.validUntil);
 
-/** Filed, and not brought back by Joe after its issue closed. A keep-after-source-review before the close does not block graduation. */
+/** Filed, and not brought back by Joe after its issue closed. */
 const graduating = (url: string, closedAt = '') => (lesson: Lesson) => lesson.status === 'active' && lesson.repositoryInstruction?.status === 'filed' && lesson.repositoryInstruction.issueUrl === url
     && !(closedAt && lesson.reactivatedAt && lesson.reactivatedAt > closedAt);
 

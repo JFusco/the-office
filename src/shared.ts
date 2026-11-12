@@ -646,7 +646,6 @@ export interface Ticket {
     resolvedDecision?: { marker: string; reason: string; status: string; at: string };
 }
 export interface OfficeEvent {
-    sourceBindings?:import('./contracts/knowledge').KnowledgeSourceBinding[];
     id: number;
     at: string;
     kind: string;
