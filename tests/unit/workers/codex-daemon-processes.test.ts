@@ -11,10 +11,18 @@ const directory = (files: Record<string, string>) => {
     for (const [name, body] of Object.entries(files)) writeFileSync(join(root, name), body);
     return root;
 };
+const record = (pid: unknown, processStartTime = 'Fri Oct  9 16:27:57 2026') => JSON.stringify({ pid, processStartTime });
+const live = new Map([[25572, 'Fri Oct 9 16:27:57 2026'], [25592, 'Fri Oct 9 16:27:58 2026']]);
 
-test("names the daemon and updater processes Codex registered, and nothing from a missing or malformed record", () => {
-    expect(codexDaemonProcesses(directory({ 'daemon.pid': '{"pid":25572,"processStartTime":"x"}', 'daemon-updater.pid': '{"pid":25592}' }))).toEqual([25572, 25592]);
-    expect(codexDaemonProcesses(directory({ 'daemon.pid': 'not json', 'daemon-updater.pid': '{"pid":"7"}' }))).toEqual([]);
-    expect(codexDaemonProcesses(directory({ 'daemon.pid': '{"pid":-1}' }))).toEqual([]);
-    expect(codexDaemonProcesses(join(tmpdir(), 'codex-daemon-absent'))).toEqual([]);
+test('names a registered daemon process only when the live process started at the recorded time', () => {
+    const both = directory({ 'daemon.pid': record(25572), 'daemon-updater.pid': record(25592, 'Fri Oct  9 16:27:58 2026') });
+    expect(codexDaemonProcesses(live, both)).toEqual([25572, 25592]);
+    // A stale record whose process ID a later process reused names nothing.
+    expect(codexDaemonProcesses(new Map([[25572, 'Thu Nov 12 09:44:08 2026']]), both)).toEqual([]);
+    expect(codexDaemonProcesses(new Map(), both)).toEqual([]);
+});
+test('a missing or malformed record names nothing', () => {
+    expect(codexDaemonProcesses(live, directory({ 'daemon.pid': 'not json', 'daemon-updater.pid': record('25592') }))).toEqual([]);
+    expect(codexDaemonProcesses(live, directory({ 'daemon.pid': JSON.stringify({ pid: 25572 }) }))).toEqual([]);
+    expect(codexDaemonProcesses(live, join(tmpdir(), 'codex-daemon-absent'))).toEqual([]);
 });

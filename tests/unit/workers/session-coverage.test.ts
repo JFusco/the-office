@@ -81,8 +81,8 @@ const accounted = (sessions: LiveSession[], unaccounted: number[] = []) => Objec
 test.each([
     ['an unaccounted PID', [shared], accounted([], [202]), false, '1 Codex process is not accounted for'],
     ['a missing accounting report', [shared], [], false, 'accounting report is missing'],
-    ["only Codex's registered daemon unaccounted", [shared], Object.assign(accounted([], [301, 302]), { daemon: [301, 302] }), true, 'Loaded identities'],
-    ['a stranger beside the registered daemon', [shared], Object.assign(accounted([], [301, 303]), { daemon: [301] }), false, '1 Codex process is not accounted for'],
+    ["only Codex's registered daemon unaccounted", [shared], Object.assign(accounted([], [301, 302]), { besideRuntime: [] }), true, 'Loaded identities'],
+    ['a stranger beside the registered daemon', [shared], Object.assign(accounted([], [301, 303]), { besideRuntime: [303] }), false, '1 Codex process is not accounted for'],
     ['an unknown desktop-only session', [shared], accounted([{ ...descriptor, id: 'desktop-only' }]), false, '1 loaded session has unknown current-turn activity'],
     ['unrelated unknown native activity', [{ ...shared, id: 'other', status: 'loaded' }], accounted([]), false, 'Loaded identities'],
     ['unknown activity on both matching identities', [{ ...shared, status: 'loaded' }], accounted([descriptor]), false, '1 loaded session has unknown current-turn activity'],
@@ -132,7 +132,7 @@ test("the daemon's processes stay unaccounted when the runtime they host does no
     try {
         const execute = async (program: string) => program === 'claude' ? '[]' : '/unrelated/.git';
         const absent = Object.assign(new Error('absent'), { code: 'ENOENT' });
-        const bridge = new SessionBridge(() => [fixture.store], execute as any, async () => { throw absent; }, async () => Object.assign(accounted([], [301]), { daemon: [301] }));
+        const bridge = new SessionBridge(() => [fixture.store], execute as any, async () => { throw absent; }, async () => Object.assign(accounted([], [301]), { besideRuntime: [] }));
         await bridge.refresh();
         expect(bridge.current.complete).toBe(false);
         expect(bridge.current.sources[2].detail).toContain('1 Codex process is not accounted for');

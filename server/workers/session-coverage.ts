@@ -4,11 +4,11 @@ import type { DesktopSessions } from './codex-process-inventory';
 const knownActivity = (session: LiveSession) =>
     session.context?.activity !== undefined && session.context.activity !== 'unknown' && session.status !== 'loaded';
 
-type Report = LiveSession[] & Partial<Pick<DesktopSessions, 'unaccounted' | 'daemon'>>;
-/** Codex's own daemon processes are explained only while the runtime they host answers; a missing report stays missing. */
+type Report = LiveSession[] & Partial<Pick<DesktopSessions, 'unaccounted' | 'besideRuntime'>>;
+/** Codex's own daemon and its helpers are explained only while the runtime it hosts answers; a missing report stays missing. */
 function unexplained(native: PromiseSettledResult<LiveSession[]>, desktop: Report): number[] | undefined {
     if (!Array.isArray(desktop.unaccounted)) return;
-    return native.status === 'fulfilled' ? desktop.unaccounted.filter(pid => !desktop.daemon?.includes(pid)) : desktop.unaccounted;
+    return native.status === 'fulfilled' && Array.isArray(desktop.besideRuntime) ? desktop.besideRuntime : desktop.unaccounted;
 }
 
 /** Coverage requires every Codex PID accounted for and known current-turn activity for every loaded session. */
