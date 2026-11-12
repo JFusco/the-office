@@ -78,7 +78,8 @@ export async function pump(this: Conversations, id?: string) {
         this.record(answer);
         if (message.to === 'cto' && answer.recipients.some(r => r !== 'pm'))
             throw new Error('CTO Office direction must go through Morgan');
-        if (reply.receipts.some(r => !r.verified || r.uncertain))
+        // Harper's diagnosis hand-off runs read-only, so an unverified receipt there is a read that failed, not a write to reconcile.
+        if (!(harperHandoff(this.store, message) && message.actionId.startsWith('harper:')) && reply.receipts.some(r => !r.verified || r.uncertain))
             throw new Error('A ticket update could not be verified. Read back the saved session before another instruction; the update will not be replayed.');
         this.saveGoals(reply.goalChanges, message.to, message.id);
         if (reply.pickupChange) {

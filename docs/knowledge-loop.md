@@ -77,6 +77,10 @@ The retrospective a park, block or exhausted repair budget already triggers may 
 
 A worker that is unsure, or about to block, queries `GET /api/knowledge/lookup` with its per-attempt capability. Results are advisory observations, never instructions. A worker cites the reference it used in its evidence; that citation is recorded as plain history.
 
+**Asking Harper** (`conversations/knowledge-conversations.ts`)
+
+Only Joe can ask Harper a question, in Harper's chat. Letting Morgan forward a teammate's question to Harper is not built: no conversation so far has needed more than the supplied lessons, the unblock brief and the lookup. Revisit it if Morgan's replies show questions about past blockers or lessons that a lookup could not answer.
+
 ## External Brain
 
 The Office reads Brain (`brain/reader.ts`, a read-only CLI transport) and never writes to it. The Brain repository is still an ordinary delivery project; that is repository work, not a knowledge write.
