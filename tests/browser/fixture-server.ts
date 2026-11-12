@@ -58,7 +58,6 @@ createServer(async(req,res)=>{
       const s=state.snapshots[project];if(!s)return json(res,{error:'Unknown project'},409);
       if(url.pathname.startsWith('/api/features')){try{const result=featureFixture(s,url.pathname,data);for(const selected of streams.keys())push(selected);return json(res,result);}catch(error){return json(res,{error:String(error),code:(error as {code?:string}).code},409);}}
       if(url.pathname==='/api/commands'){
-        if(data.action==='knowledge-source'){try{return json(res,brain.command(project,data.source),202);}catch(error){return json(res,{error:String(error)},400);}}
         if(data.action==='configure-knowledge-digest'){try{brain.configureDigest(project,data.knowledge);return json(res,{accepted:true},202);}catch(error){return json(res,{error:String(error)},400);}}
         const c=s.coordination!;
         if(data.action==='configure-pickup')c.pickup={...c.pickup!,...data.pickup};

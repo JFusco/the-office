@@ -1,8 +1,6 @@
 import { enqueueGreen156 } from '../../delivery/recovery/green156-admission';
 import { enqueuePacked165 } from '../../delivery/recovery/packed165-intent';
-import { sourceCommand } from '../../knowledge/sources/commands';
 import { enqueueMetadataRecovery } from '../../delivery/recovery/pr-metadata-intent';
-import { reviewSourceWithdrawals } from '../../knowledge/sources/withdrawal-reviews';
 import { configureDigestDelivery } from '../../knowledge/digests/settings';
 import { promoteNoteLesson } from '../../knowledge/promote-note-lesson';
 import { supersedeSlackDelivery } from '../../conversations/slack/supersede-delivery';
@@ -36,12 +34,11 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, source, prMetadataRecovery } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
             case 'reconcile-pr-metadata': { const request = enqueueMetadataRecovery(store, key, prMetadataRecovery); return json({ accepted: true, id: request.id, status: request.status }, 202); }
-            case 'knowledge-source': {const result=sourceCommand(offices.sources,[...offices.entries.keys()],store.project.id,source);reviewSourceWithdrawals(offices.sources,offices.stores().values(),offices.control);return json(result,202);}
             case 'promote-note-lesson': {
                 const id = promoteNoteLesson(offices.control, store, lessonPromotion,offices.sources);
                 mirrorOfficeKnowledge(offices.control, offices.stores().values());
