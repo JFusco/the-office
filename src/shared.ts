@@ -333,9 +333,6 @@ export type MergeNotice = NoticeEntry & ({ kind?: 'merge'; prUrl: string; mergeC
     /** One DM per completed maintenance run, to the recipient Joe verified for goal-completion DMs. */
     kind: 'maintenance'; runId: string; policyVersion: string;
     prUrl?: never; mergeCommit?: never; channel?: never; channelVersion?: never;
-} | {
-    kind:'knowledge-digest';digestId:string;policyVersion:string;textSha256:string;sourceScopeRevision:string;workspaceOrigin:string;
-    prUrl?:never;mergeCommit?:never;channel?:never;channelVersion?:never;
 });
 export interface TimeEntry {
     revision?: number;
@@ -828,7 +825,6 @@ export interface TeamMessage {
     question?: string;
 }
 export interface SlackDelivery {
-    knowledgeDigestId?:string;
     supersededBy?: import('./contracts/slack-supersession').SlackSupersession;
     supersessionHistory?: import('./contracts/slack-supersession').SlackSupersession[];
     supersession?: import('./contracts/slack-supersession').SlackSupersessionView;

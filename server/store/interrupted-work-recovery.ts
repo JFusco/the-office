@@ -6,7 +6,6 @@ import { durationLabel } from '../../src/timing/timing';
 import type { Store } from './store';
 import { goalNoticeNeverDispatched } from '../leadership/goal-notice-authorization';
 import { maintenanceNoticeNeverDispatched } from '../maintenance/brain/maintenance-notice-authorization';
-import { digestNoticeNeverDispatched } from '../knowledge/digests/outbound';
 
 export function recover(this: Store): void  {
     this.transaction(() => {
@@ -19,7 +18,7 @@ export function recover(this: Store): void  {
             }
         for (const n of coordination?.notices?.entries || [])
             if (n.status === 'working') {
-                if (goalNoticeNeverDispatched(this, n) || maintenanceNoticeNeverDispatched(this, n) || digestNoticeNeverDispatched(this,n)) { n.status = 'queued'; n.detail = 'Recovered before any Slack attempt; notification remains queued.'; continue; }
+                if (goalNoticeNeverDispatched(this, n) || maintenanceNoticeNeverDispatched(this, n)) { n.status = 'queued'; n.detail = 'Recovered before any Slack attempt; notification remains queued.'; continue; }
                 n.status = 'uncertain';
                 n.detail = 'Notice interrupted; read back any saved Slack delivery before continuing. No automatic resend.';
             }

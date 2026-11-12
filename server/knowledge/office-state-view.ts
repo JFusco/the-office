@@ -4,13 +4,11 @@ import type { SourceRegistry } from './sources/registry';
 import { knowledgeSnapshot } from './knowledge-snapshot';
 import { revokedSubjects,deniedAssignments } from './sources/retained-scope';
 import { eventVisible } from './events/visibility';
-/** Retained replies and notes inherit their original assignment/digest scope. Audit state stays intact. */
+/** Retained replies and notes inherit their original assignment scope. Audit state stays intact. */
 export function knowledgeOfficeState(registry:SourceRegistry,project:string,state:OfficeSnapshot,officeWide = false):OfficeSnapshot {
     const knowledge=knowledgeSnapshot(registry,project,state.knowledge),allowed=new Set(knowledge?.exposures?.map(e=>e.id)||[]),blocked=new Set<string>();
     const deniedAttempts = new Set(deniedAssignments(registry,project,state,officeWide));
     for(const e of state.knowledge?.exposures||[])if(!allowed.has(e.id)||deniedAttempts.has(e.id)){const work=state.workLog?.find(w=>w.id===e.id);if(work?.requestId)blocked.add(work.requestId);}
-    const digests=new Set(knowledge?.digests?.map(d=>d.id)||[]);
-    for(const d of state.knowledge?.digests||[])if(!digests.has(d.id)||officeWide&&d.sourceBindings.some(b=>!b.approvedTextOnly))blocked.add(d.messageId);
     const subjects=revokedSubjects(registry,project,state,officeWide),denied=(kind:string,id:string)=>subjects.some(s=>s.kind===kind&&s.id===id);
     const tickets=new Set([...(state.coordination?.jobs||[]).filter(j=>denied('job',j.id)).map(j=>j.key),...state.tickets.filter(t=>denied('ticket',t.runId)).map(t=>t.key)]);
     for(const work of state.workLog||[])if(subjects.some(s=>s.id===work.requestId||`ticket:${s.id}`===work.requestId)||work.ticket&&tickets.has(work.ticket))if(work.requestId)blocked.add(work.requestId);

@@ -6,7 +6,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {ActivityTimeline} from '../../../../src/knowledge/ActivityTimeline';
 import {KnowledgeReveal} from '../../../../src/knowledge/KnowledgeReveal';
 test('groups dated history without dropping evidence actions or unknown application wording',()=>{
-    const html=renderToStaticMarkup(createElement(ActivityTimeline,{events:[{id:'a',at:'2026-11-11T12:00:00Z',kind:'supplied',title:'Assignment',detail:'Application unknown',assignmentId:'x'},{id:'b',at:'2026-11-11T13:00:00Z',kind:'curated',title:'Lesson',detail:'Retained'}],onAssignment:()=>{},onDigest:()=>{}}));
+    const html=renderToStaticMarkup(createElement(ActivityTimeline,{events:[{id:'a',at:'2026-11-11T12:00:00Z',kind:'supplied',title:'Assignment',detail:'Application unknown',assignmentId:'x'},{id:'b',at:'2026-11-11T13:00:00Z',kind:'curated',title:'Lesson',detail:'Retained'}],onAssignment:()=>{}}));
     expect(html.match(/<time /g)).toHaveLength(2);expect(html).toContain('Application unknown');expect(html).toContain('Inspect assignment knowledge');expect(html.match(/November 11, 2026/g)).toHaveLength(1);
 });
 test('does not expose unloaded contents and names the current load operation',()=>{

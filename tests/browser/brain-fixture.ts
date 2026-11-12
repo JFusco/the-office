@@ -1,7 +1,5 @@
 import { writeFileSync } from 'node:fs';
 import { captureLearning } from '../../server/knowledge/learning-events';
-import { configureDigestDelivery } from '../../server/knowledge/digests/settings';
-import { queueWeeklyDigest } from '../../server/knowledge/weekly-digest';
 import { deliveryMetrics } from '../../server/knowledge/delivery-metrics';
 import { prepareExposure,dispatchExposure } from '../../server/knowledge/lesson-exposure';
 import { selectLessons } from '../../server/knowledge/lesson-selection';
@@ -50,10 +48,10 @@ export function brainFixture(published = false) {
     const journal=lookupJournal(assignmentStore,assignmentDir,assignmentId,'implement');journal.append('schema validation receipts',{assignment:assignmentId,index:1,at:clock.now().toISOString(),outcome:'served',...supplied,textSha256:digest(supplied.text)});journal.finish();
     const accepted={outcome:'passed',summary:'Synthetic accepted migration validation',evidence:[{id:supplied.selected[0].reference.id,kind:'checks',summary:'Synthetic accepted outcome cites the observed schema evidence',path:'synthetic/validation.txt',commit:'a'.repeat(40),environment:'synthetic',url:'',observedAt:clock.now().toISOString()}]};
     writeFileSync(join(assignmentDir,'result.json'),JSON.stringify({result:accepted}),{mode:0o600});assignmentStore.state.workLog=[{id:assignmentId,requestId:'fixture-work',stage:'implement',status:'completed',executionStatus:'completed'} as import('../../src/shared').WorkTime];captureLearning(assignmentStore,{kind:'job',id:'fixture-work'},'GH-1','implement','synthetic',accepted,accepted.summary,'work',true);
-    assignmentStore.state.knowledge!.rollups=[{id:'rollup:2026-11-06',weekEnding:'2026-11-06',at:clock.now().toISOString(),metrics:deliveryMetrics(assignmentStore,new Date('2026-11-02T17:00:00Z'),clock.now()),summary:'Synthetic accepted weekly review',officeProposalIds:[]}];queueWeeklyDigest(context,'cec');
+    assignmentStore.state.knowledge!.rollups=[{id:'rollup:2026-11-06',weekEnding:'2026-11-06',at:clock.now().toISOString(),metrics:deliveryMetrics(assignmentStore,new Date('2026-11-02T17:00:00Z'),clock.now()),summary:'Synthetic accepted weekly review',officeProposalIds:[]}];
 
     return { close: () => { databases.forEach(db => db.close());rmSync(dataRoot,{recursive:true,force:true}); }, read: async(url: URL, project: string, request = new Request(url)) => {
         const response=await knowledgeRoute(request,url,registry,stores,project,brain);
         return response;
-    },configureDigest:(project:string,value:unknown)=>configureDigestDelivery(stores.get(project)!,value) };
+    } };
 }

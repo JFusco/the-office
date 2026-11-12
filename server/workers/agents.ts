@@ -55,10 +55,10 @@ export class Agents extends WorkerRuntime {
     }
     ctoContext: () => unknown = () => ({ projects: [{ project: this.store.project, goals: this.store.state.goals, notes: this.store.state.projectNotes }] });
     async sendSlack(delivery: SlackDelivery, human: Pick<TeamMessage, 'body' | 'ticket' | 'requestId'>) {
-        return this.run('pm', slackSendPrompt(this.store, delivery, human), SlackResultSchema, { readOnly: true, privateKnowledge:delivery.knowledgeDigestId?false:undefined, slackSend: true, ticket: human.ticket, stage: 'slack-send', requestId: human.requestId, timeout: 10 * 60 * 1000 });
+        return this.run('pm', slackSendPrompt(this.store, delivery, human), SlackResultSchema, { readOnly: true, slackSend: true, ticket: human.ticket, stage: 'slack-send', requestId: human.requestId, timeout: 10 * 60 * 1000 });
     }
     async verifySlack(delivery: SlackDelivery) {
-        return this.run('pm', slackVerifyPrompt(this.store, delivery), SlackVerificationSchema, { readOnly: true, privateKnowledge:delivery.knowledgeDigestId?false:undefined, stage: 'slack-verify', requestId: delivery.requestId, ticket: this.store.state.messages.find(m => m.id === delivery.requestId)?.ticket || '', timeout: 10 * 60 * 1000 });
+        return this.run('pm', slackVerifyPrompt(this.store, delivery), SlackVerificationSchema, { readOnly: true, stage: 'slack-verify', requestId: delivery.requestId, ticket: this.store.state.messages.find(m => m.id === delivery.requestId)?.ticket || '', timeout: 10 * 60 * 1000 });
     }
     async followup(role: Role, message: TeamMessage, brief = '') {
         if (harperHandoff(this.store, message)) return this.run('pm', message.body, ConversationResultSchema, { readOnly: true, ticket: message.ticket, stage: 'conversation-readback', requestId: message.requestId, effortKind: 'administrative', timeout: 15 * 60 * 1000 });
