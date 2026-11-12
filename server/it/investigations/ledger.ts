@@ -5,6 +5,8 @@ import { slackMessageUrl } from '../../../src/shared';
 import type { ITInvestigation } from '../../../src/contracts/it-investigations';
 import { completedExecution } from '../../workers/worker-completion';
 import { investigationCandidates, investigationId } from './candidates';
+import { notifyHelperResolution } from './notify-helper-survivor';
+import { retriedReadResolution } from './retried-read';
 import type { Store } from '../../store/store';
 
 /** These saved receipts are populated by existing read-back contracts, never by Ellis's verdict. */
@@ -16,8 +18,10 @@ export function investigationResolution(store: Store, entry: ITInvestigation) {
         const replacement = original && supersedingDelivery(store.state, original);
         return replacement ? { sourceId: replacement.id, receipt: replacement.permalink, kind: 'superseded' as const } : undefined;
     }
-    // Delivery recovery does not prove that the subprocess defect was fixed.
-    if (entry.source.failureKind === 'surviving-subprocesses') return;
+    // Delivery recovery alone does not prove the subprocess defect; only the known notify helper explains it.
+    if (entry.source.failureKind === 'surviving-subprocesses') return notifyHelperResolution(store, entry);
+    const retried = retriedReadResolution(store, entry);
+    if (retried) return retried;
     const recovery = store.state.workLog?.find(work => work.originalId === entry.source.id && work.requestId === entry.source.requestId && work.status === 'completed' && completedExecution(store, work));
     return recovery ? { kind: 'confirmed' as const, sourceId: recovery.id, receipt: `sessions/${recovery.id}/execution-completion.json` } : undefined;
 }
