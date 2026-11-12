@@ -19,6 +19,13 @@ test('a later completed attempt of the same read at the same stage settles a tra
         expect(entry).toMatchObject({ status: 'resolved', resolution: { sourceId: 'retry', receipt: 'worker:retry' } });
     } finally { f.close(); }
 });
+test('a later completed read of another ticket does not settle a failure that recorded no request', () => {
+    const f = readFixture(); try {
+        Object.assign(f.worker, { requestId: '', stage: 'readback' });
+        f.store.state.workLog!.push({ ...later, requestId: '', stage: 'readback', ticket: 'GH-351' } as never); syncInvestigations(f.store);
+        expect(f.store.state.it!.investigations![0].status).not.toBe('resolved');
+    } finally { f.close(); }
+});
 test.each([
     ['it started before the failure', { startedAt: '2026-11-08T01:00:00Z' }],
     ['it belongs to another request', { requestId: 'other' }],

@@ -9,7 +9,8 @@ export const NOTIFY_HELPER = 'SkyComputerUseClient';
 
 /**
  * A surviving-subprocess failure is explained when the worker's own lifecycle record shows that only the notify
- * helper was left in its process group at exit, and every Slack delivery of that request was read back confirmed.
+ * helper was left in its process group at exit and at termination, and every Slack delivery of that request was read
+ * back confirmed with a valid message URL.
  * Any other survivor, an unreadable or truncated record, or an unconfirmed delivery keeps the investigation open.
  */
 export function notifyHelperResolution(store: Store, entry: ITInvestigation) {
@@ -21,10 +22,13 @@ export function notifyHelperResolution(store: Store, entry: ITInvestigation) {
     let parsed: ReturnType<typeof LifecycleDiagnostic.safeParse>;
     try { parsed = LifecycleDiagnostic.safeParse(JSON.parse(file.text)); } catch { return; }
     if (!parsed.success || parsed.data.processGroup !== work.processId) return;
+    // The exit snapshot must show the helper; the term snapshots, taken after the grace period, may show it or nothing.
     const exit = parsed.data.snapshots.find(snapshot => snapshot.phase === 'exit');
-    if (exit?.status !== 'observed' || exit.truncated || !exit.members.length || exit.members.some(member => member.executable !== NOTIFY_HELPER)) return;
+    const after = parsed.data.snapshots.filter(snapshot => snapshot.phase === 'exit' || snapshot.phase === 'term');
+    if (!exit?.members.length || after.some(snapshot => snapshot.status !== 'observed' || snapshot.truncated || snapshot.members.some(member => member.executable !== NOTIFY_HELPER))) return;
     const deliveries = store.state.slackDeliveries?.filter(delivery => delivery.requestId === entry.source.requestId) || [];
-    const confirmed = deliveries.find(delivery => delivery.status === 'confirmed' && slackMessageUrl(delivery.permalink, delivery.channelId, delivery.messageTs));
-    if (!confirmed || deliveries.some(delivery => delivery.status !== 'confirmed')) return;
+    const proven = (delivery: typeof deliveries[number]) => delivery.status === 'confirmed' && !!slackMessageUrl(delivery.permalink, delivery.channelId, delivery.messageTs);
+    const confirmed = deliveries.find(proven);
+    if (!confirmed || !deliveries.every(proven)) return;
     return { kind: 'confirmed' as const, sourceId: confirmed.id, receipt: confirmed.permalink };
 }
