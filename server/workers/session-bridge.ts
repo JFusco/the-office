@@ -1,6 +1,7 @@
 import { completeSessionCoverage, desktopCoverageGap } from './session-coverage';
 import { accountCodexProcesses, type DesktopSessions } from './codex-process-inventory';
 import { processTable } from './process-table';
+import { idleExecServers } from './idle-exec-servers';
 import { codexDaemonProcesses } from './codex-daemon-processes';
 import WebSocket from 'ws';
 import {homedir} from 'node:os';
@@ -75,8 +76,8 @@ async function desktopSessions(execute:typeof command,workers:ReadonlySet<number
  const raw=await execute('lsof',['-nP','-c','codex','-Fpn'],{timeout:10000});
  const db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
  // Parentage explains the helpers a known host starts; without the process table every helper and the daemon stay unaccounted.
- const {parents,started}=await execute('ps',['-axo','pid=,ppid=,lstart='],{timeout:10000}).then(processTable,()=>processTable(''));
- try{const lookup=db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?');return accountCodexProcesses(raw,path=>loadedCodexSession(lookup.get(path)),workers,parents,codexDaemonProcesses(started));}finally{db.close();}
+ const table=await execute('ps',['-axo','pid=,ppid=,lstart=,command='],{timeout:10000}).then(processTable,()=>processTable(''));
+ try{const lookup=db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?');return accountCodexProcesses(raw,path=>loadedCodexSession(lookup.get(path)),workers,table.parents,codexDaemonProcesses(table.started),idleExecServers(table));}finally{db.close();}
 }
 export class SessionBridge {
  current:SessionInventory={observedAt:'',expiresAt:'',sessions:[],sources:[],complete:false};polling?:Promise<SessionInventory>;
