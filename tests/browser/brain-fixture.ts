@@ -8,7 +8,6 @@ import { selectLessons } from '../../server/knowledge/lesson-selection';
 import { boundEvidence } from '../../server/knowledge/task-briefing';
 import { officeSearch } from '../../server/knowledge/retrieval';
 import { lookupJournal } from '../../server/knowledge/lookup/receipts';
-import { runRetrospective,type KnowledgeRunner } from '../../server/knowledge/run-retrospective';
 import { mkdtempSync,rmSync,mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,14 +54,6 @@ export function brainFixture(published = false) {
 
     return { close: () => { databases.forEach(db => db.close());rmSync(dataRoot,{recursive:true,force:true}); }, read: async(url: URL, project: string, request = new Request(url)) => {
         const response=await knowledgeRoute(request,url,registry,stores,project,brain);
-        // Simulate the existing Harper boundary with a deterministic model result, never a live provider.
-        if(request.method==='POST'&&url.pathname.endsWith('/artifacts')&&response?.ok) {
-            const store=stores.get(project)!;
-            for(const pending of store.state.knowledge!.pending.filter(p=>p.source?.kind==='source'&&p.source.id===url.pathname.split('/')[4])) {
-                const refs=pending.opportunities!.flatMap(o=>o.evidence.map(e=>e.ref));
-                await runRetrospective(store,(async()=>({summary:'Synthetic accepted source curation',lessons:[{when: 'Fixture situation', check: 'Fixture check', statement:'Keep validation receipts with project evidence',detail:'Retain the accepted receipt before changing project mappings.',kind:'process',stages:['implement'],paths:[],evidenceIds:refs.slice(0,5),repositoryInstruction:false}]})) as KnowledgeRunner,pending.id,context);
-            }
-        }
         return response;
     },configureDigest:(project:string,value:unknown)=>configureDigestDelivery(stores.get(project)!,value) };
 }

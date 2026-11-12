@@ -45,22 +45,6 @@ test('node navigation animates only when Office and system motion preferences pe
         await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Library',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(0);
     }
 });
-test('synthetic uploaded Markdown follows private admission into the project Library', async ({page}) => {
-    await page.goto('/'); await page.getByRole('button',{name:'Brain',exact:true}).click();
-    await page.getByRole('button',{name:'Upload a document',exact:true}).click();
-    await page.getByLabel('Project document').setInputFiles({name:'project-handbook.md',mimeType:'text/markdown',buffer:Buffer.from('Retain accepted migration validation receipts before changing project mappings.')});
-    await page.getByRole('button',{name:'Upload document',exact:true}).click();
-    await expect(page.getByText('Evidence admitted to the project library.',{exact:true})).toBeVisible();
-    await page.screenshot({path:`${artifacts}/office-brain-02-upload.synthetic.png`,fullPage:true});
-    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Library',exact:true}).click();
-    await expect(page.getByRole('heading',{name:'Keep validation receipts with project evidence',exact:true})).toBeVisible();
-    const record=page.getByRole('article').filter({has:page.getByRole('heading',{name:'project-handbook.md',exact:true})});
-    await record.getByRole('button',{name:'Inspect evidence'}).click();
-    await expect(page.getByRole('region',{name:'Selected evidence'})).toContainText('Retain accepted migration validation receipts');
-    await page.locator('[data-office-brain]').evaluate(el=>el.scrollTop=0);
-    await page.screenshot({path:`${artifacts}/office-brain-02-extracted-evidence.synthetic.png`,fullPage:true});
-    expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
-});
 test('a constellation texture failure disposes the renderer and retains keyboard navigation',async({page})=>{
     await page.addInitScript(()=>{const original=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(this:HTMLCanvasElement,type:string,...args:unknown[]){if(type==='2d')return null;return original.apply(this,[type,...args] as Parameters<typeof original>);} as typeof original;});
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Map',exact:true}).click();

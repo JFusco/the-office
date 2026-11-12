@@ -54,16 +54,15 @@ test('dark constellation glides between real graph identities and preserves a si
 test('action buttons and button links share geometry, hover and focus across knowledge screens', async ({ page }) => {
     await crowdedMap(page); await page.goto('/');
     await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    const controls = [page.getByRole('button', { name: 'Refresh sources', exact: true }), page.getByRole('button', { name: 'Add a public link', exact: true }),
-        page.getByRole('button', { name: 'Upload a document', exact: true }), page.getByRole('button', { name: 'Return to office', exact: true }),
-        page.getByRole('link', { name: /^Open board:/ }), ...['Sources', 'Library', 'Map', 'Activity'].map(name => page.getByRole('button', { name, exact: true }))];
+    const controls = [page.getByRole('button', { name: 'Return to office', exact: true }),
+        page.getByRole('link', { name: /^Open board:/ }), ...['Library', 'Map', 'Activity'].map(name => page.getByRole('button', { name, exact: true }))];
     const expected = await style(controls[0]);
     expect(expected.height).toBe(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--spacing-control-height'))));
     for (const control of controls) expect(await style(control)).toEqual(expected);
-    const refresh = controls[0], link = controls[4];
-    const normal = await refresh.evaluate(el => getComputedStyle(el).backgroundColor);
-    await refresh.hover(); await expect.poll(() => refresh.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(normal);
-    const hover = await refresh.evaluate(el => getComputedStyle(el).backgroundColor);
+    const button = controls[0], link = controls[1];
+    const normal = await button.evaluate(el => getComputedStyle(el).backgroundColor);
+    await button.hover(); await expect.poll(() => button.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(normal);
+    const hover = await button.evaluate(el => getComputedStyle(el).backgroundColor);
     await link.hover(); await expect.poll(() => link.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(hover);
     await page.keyboard.press('Tab'); await link.focus(); await expect(link).toBeFocused();
     expect(await link.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid');

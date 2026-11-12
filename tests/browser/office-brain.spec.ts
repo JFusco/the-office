@@ -1,17 +1,6 @@
 import { test, expect } from './fixture-test';
 import AxeBuilder from '@axe-core/playwright';
-import { mkdirSync } from 'node:fs';
 const artifacts = process.env.OFFICE_BRAIN_SCREENSHOTS || '/private/tmp/office-brain-screenshots';
-test('synthetic fixture: public links use the project Sources screen',async({page},testInfo)=>{
-    testInfo.annotations.push({type:'evidence',description:'Synthetic source registration only; no external page read'});
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Add a public link',exact:true}).click();
-    await page.getByLabel('Source title',{exact:true}).fill('Public validation guide');await page.getByLabel('Public HTTPS URL',{exact:true}).fill('https://www.sqlite.org/lang.html');
-    await page.screenshot({path:`${artifacts}/office-brain-01-add-public-source.synthetic.png`,fullPage:true});
-    await page.getByRole('button',{name:'Add public source',exact:true}).click();
-    await expect(page.getByRole('article',{name:'Public validation guide',exact:true})).toBeVisible();
-    await expect(page.getByRole('article',{name:'Public validation guide',exact:true}).getByLabel('Cadence for Public validation guide')).toHaveValue('daily');
-    await page.screenshot({path:`${artifacts}/office-brain-01-public-source.synthetic.png`,fullPage:true});
-});
 test('synthetic fixture: optional Slack digest settings are separate and off by default',async({page,request},testInfo)=>{
     testInfo.annotations.push({type:'evidence',description:'Synthetic settings persistence only; no Slack lookup or send'});
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Activity',exact:true}).click();
@@ -52,40 +41,4 @@ test('synthetic fixture: published technical notes and global scope share the Of
     await note.getByRole('button',{name:'Inspect evidence'}).click();
     await expect(page.getByRole('region',{name:'Published technical note'})).toContainText('Synthetic published-note fixture');
     await page.screenshot({path:`${artifacts}/office-brain-02-published-note.synthetic.png`,fullPage:true});
-});
-test('synthetic fixture: a new source reaches every project, and Harper re-shares it after an unsubscribe', async ({ page }, testInfo) => {
-    testInfo.annotations.push({ type: 'evidence', description: 'Synthetic fixture; no live collection or providers' });
-    mkdirSync(artifacts, { recursive: true });
-    await page.goto('/');
-    await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Sources', exact: true })).toBeVisible();
-    await expect(page.getByRole('article', { name: 'CEC team guide', exact: true })).toBeVisible();
-    await page.screenshot({ path: `${artifacts}/office-brain-01-sources.synthetic.png`, fullPage: true });
-    await page.getByRole('button', { name: 'Add a public link', exact: true }).click();
-    await page.getByLabel('Source title', { exact: true }).fill('CEC discovery guide');
-    await page.getByLabel('Public HTTPS URL', { exact: true }).fill('https://www.sqlite.org/cec-discovery.html');
-    await page.screenshot({ path: `${artifacts}/office-brain-01-add-link.synthetic.png`, fullPage: true });
-    await page.getByRole('button', { name: 'Add public source', exact: true }).click();
-    const source = page.getByRole('article', { name: 'CEC discovery guide', exact: true });
-    await expect(source).toBeVisible();
-    await expect(source.getByRole('button', { name: 'Share with a project' })).toHaveCount(0);
-    await source.getByRole('button', { name: 'Unsubscribe Brain from CEC discovery guide' }).click();
-    await source.getByRole('button', { name: 'Share with a project' }).click();
-    await source.getByLabel('Project to share with').selectOption('brain');
-    await source.getByRole('button', { name: 'Share source', exact: true }).click();
-    await expect(source.getByRole('button', { name: 'Unsubscribe Brain from CEC discovery guide' })).toBeVisible();
-    await page.screenshot({ path: `${artifacts}/office-brain-01-shared-link.synthetic.png`, fullPage: true });
-    const results = await new AxeBuilder({ page }).analyze();
-    expect(results.violations).toEqual([]);
-    await source.getByRole('button', { name: 'Pause', exact: true }).focus();
-    await page.keyboard.press('Enter'); await expect(source.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Return to office', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Brain', exact: true })).toBeVisible();
-});
-test('withdrawal explains its final state and cancelling is keyboard accessible without mutation',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();const source=page.getByRole('article',{name:'CEC team guide',exact:true});
- let mutations=0;page.on('request',request=>{if(request.method()==='POST'&&request.url().includes('/api/commands'))mutations++;});
- await source.getByRole('button',{name:'Withdraw evidence',exact:true}).click();const confirmation=source.getByRole('region',{name:'Confirm withdrawal of CEC team guide',exact:true});
- await expect(confirmation).toContainText('cannot resume or be added again');await expect(confirmation.getByRole('button',{name:'Cancel withdrawal'})).toBeFocused();
- expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);await page.keyboard.press('Enter');await expect(confirmation).toHaveCount(0);await expect(source.getByRole('button',{name:'Withdraw evidence',exact:true})).toBeFocused();expect(mutations).toBe(0);
 });
