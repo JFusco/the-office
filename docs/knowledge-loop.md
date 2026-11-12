@@ -8,7 +8,7 @@ Harper (the `knowledge` role) owns what the Office has learned. She reflects on 
 WORK   accepted stage results (delivery, CEC, maintenance, feature readers and plan reviews,
        IT investigations and resolutions, admission), completed, cancelled and parked work,
        exhausted repair budgets, blocked or completed maintenance runs, material changes in a blocker
-       follow-up (IT recovery records are excluded), new evidence from a subscribed source
+       follow-up (IT recovery records are excluded)
   v
 HARPER REFLECTS   events for one subject collect in an open batch; once a retrospective
                   starts, later events form the next batch
