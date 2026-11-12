@@ -5,6 +5,7 @@ import { assertResearchCapability, researchRead, isPublicRetrieval } from './res
 import { retainLifecycle } from './lifecycle/retain';
 import { workerLaunchPolicy, retainLaunchPolicy } from './launch-policy';
 import { slackDesktopArguments } from './slack-desktop-tools';
+import { codexNotifyArguments } from './codex-notify';
 import { candidateWorkspaceEnvironment } from '../delivery/candidate/workspace-environment';
 import { recordWorkerFailure } from './record-failure';
 import { deferredPickup } from '../../src/work/pickup-state';
@@ -176,6 +177,7 @@ export class WorkerRuntime {
             const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!, isolated);
             const desktopArguments = slackDesktopArguments(claude ? 'claude' : 'codex', profile.name);
             args.push(...desktopArguments);
+            args.push(...codexNotifyArguments(claude ? 'claude' : 'codex'));
             if (role === 'knowledge' && !isolated) args.push('-c', 'web_search="disabled"');
             if (!claude)
                 args.push('-');
