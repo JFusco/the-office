@@ -1,5 +1,6 @@
 import { completeSessionCoverage, desktopCoverageGap } from './session-coverage';
-import { accountCodexProcesses, type DesktopSessions } from './codex-process-inventory';
+import { accountCodexProcesses, processParents, type DesktopSessions } from './codex-process-inventory';
+import { codexDaemonProcesses } from './codex-daemon-processes';
 import WebSocket from 'ws';
 import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -72,7 +73,9 @@ async function desktopSessions(execute:typeof command,workers:ReadonlySet<number
  // A descriptor alone establishes a loaded identity, not an active turn.
  const raw=await execute('lsof',['-nP','-c','codex','-Fpn'],{timeout:10000});
  const db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
- try{const lookup=db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?');return accountCodexProcesses(raw,path=>loadedCodexSession(lookup.get(path)),workers);}finally{db.close();}
+ // Parentage explains the helpers a known session host starts; without it every helper stays unaccounted.
+ const parents=await execute('ps',['-axo','pid=,ppid='],{timeout:10000}).then(processParents,()=>new Map<number,number>());
+ try{const lookup=db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?');return Object.assign(accountCodexProcesses(raw,path=>loadedCodexSession(lookup.get(path)),workers,parents),{daemon:codexDaemonProcesses()});}finally{db.close();}
 }
 export class SessionBridge {
  current:SessionInventory={observedAt:'',expiresAt:'',sessions:[],sources:[],complete:false};polling?:Promise<SessionInventory>;
@@ -85,7 +88,7 @@ export class SessionBridge {
   const projects=this.stores().map(s=>s.project);
   const workers=new Set(this.stores().flatMap(s=>(s.state.workLog||[]).filter(w=>w.status==='running'&&w.processId).map(w=>w.processId!)));
   // Context enrichment returns a new array, so the process accounting report is carried across it.
-  const desktop=this.desktop(this.execute,workers).then(async sessions=>Object.assign(await this.context(sessions,projects),{unaccounted:(sessions as LiveSession[]&Partial<Pick<DesktopSessions,'unaccounted'>>).unaccounted}));
+  const desktop=this.desktop(this.execute,workers).then(async sessions=>Object.assign(await this.context(sessions,projects),(({unaccounted,daemon})=>({unaccounted,daemon}))(sessions as LiveSession[]&Partial<Pick<DesktopSessions,'unaccounted'|'daemon'>>)));
   const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions).then(sessions=>this.claudeContext(sessions,projects)),desktop]);
   const coverageComplete=completeSessionCoverage(results);
   const names=['Codex live runtime','Claude live sessions','Codex desktop/CLI session identities'];
