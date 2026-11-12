@@ -7,7 +7,12 @@ const date = (value: string) => Number.isFinite(Date.parse(value)) ? new Date(va
 
 export function ITFollowUps({ it, followUps }: { it: ITState; followUps: ITFollowUp[] }) {
     const view = itFollowUpView(it, followUps);
+    const retired = it.investigations?.filter(entry => entry.retirement) || [];
     return <>
+        {retired.length ? <details className={card} data-retired-investigations><summary className={summary}>{retired.length} historical warnings acknowledged by Joe</summary>
+            <p>Retired as incomplete history. Their causes remain unresolved; no fix or successful original outcome is claimed.</p>
+            {retired.map(entry => <article key={entry.id} className="mt-2"><strong>{entry.source.ticket || entry.source.id.slice(0, 8)}</strong><p>{entry.retirement!.reason}</p><p>{entry.attempts} diagnosis attempts retained. Original status: {entry.status}.</p></article>)}
+        </details> : null}
         {view.current.map(followUp => {
             const copy = sessionVisibilityCopy(followUp, it.projectId);
             return <article className={card} key={followUp.id}>

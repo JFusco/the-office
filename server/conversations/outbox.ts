@@ -41,7 +41,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         if (t.status === 'uncertain')
             item(`time:${t.id}`, `Reconcile ${t.key} hours`, t.detail, 'pm', t.key, t.url);
     for (const c of state.coordination?.checkpoints || [])
-        if (['blocked', 'interrupted'].includes(c.status) && (c.repairResume?.needsFollowup || !state.maintenance?.runs.some(r => r.id === c.runId && (r.blockerFollowup || r.readbackRetry && !r.readbackRetry.exhausted && ['blocked', 'interrupted'].includes(r.status)))))
+        if (!state.maintenance?.runs.some(run => run.id === c.runId && run.retirement) && ['blocked', 'interrupted'].includes(c.status) && (c.repairResume?.needsFollowup || !state.maintenance?.runs.some(r => r.id === c.runId && (r.blockerFollowup || r.readbackRetry && !r.readbackRetry.exhausted && ['blocked', 'interrupted'].includes(r.status)))))
             if (!checkpointSuperseded(state, c) && !checkpointHasMaintenanceAlert(state, c))
                 item(`checkpoint:${c.id}`, 'Daily checkpoint needs follow-up', c.detail, 'pm');
     for (const a of state.coordination?.adoptions || [])
@@ -112,6 +112,11 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
             item(`message:${d.requestId}`, 'Read back a Slack delivery', `Message to ${d.targetName} could not be confirmed. ${d.error} Reply here to read it back; the office will not resend it.`, 'pm', state.messages.find(m => m.id === d.requestId)?.ticket || state.coordination?.notices?.entries.find(n => n.id === d.requestId)?.key || '');
     for (const old of outbox)
         if (!current.has(old.id) && old.status !== 'resolved') {
+            const retired = state.maintenance?.runs.find(run => run.retirement && (old.id === `maintenance:${run.id}` || old.id === `checkpoint:${run.checkpointId}`));
+            if (retired?.retirement) {
+                old.title = 'Maintenance retired as incomplete history';
+                old.detail = `${retired.retirement.reason} Original run remains ${retired.status}; no completion or retry was claimed. Original error: ${retired.error}`;
+            }
             old.status = 'resolved';
             old.updatedAt = now;
         }

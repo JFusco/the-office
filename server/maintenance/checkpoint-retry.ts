@@ -7,7 +7,7 @@ export async function resumeRepairedMaintenance(this: Coordinator, now = new Dat
     if (this.store.project.id !== 'brain' || !this.state.enabled || this.store.state.paused || this.pickup.enabled === false)
         return;
     const maintenance = this.store.state.maintenance;
-    if (maintenance?.runs.some(r => ['queued', 'working'].includes(r.status) || ['blocked', 'interrupted'].includes(r.status) && !maintenanceSuperseded({ maintenance }, r)))
+    if (maintenance?.runs.some(r => ['queued', 'working'].includes(r.status) || !r.retirement && ['blocked', 'interrupted'].includes(r.status) && !maintenanceSuperseded({ maintenance }, r)))
         return;
     for (const checkpoint of this.state.checkpoints) {
         if (checkpoint.status !== 'blocked' || checkpoint.repairResume?.needsFollowup || checkpoint.repairResume?.nextCheckAt && Date.parse(checkpoint.repairResume.nextCheckAt) > now.getTime())

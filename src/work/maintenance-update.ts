@@ -8,7 +8,7 @@ export function maintenanceUpdate(snapshot:OfficeSnapshot){
  const run=snapshot.maintenance?.runs.at(-1);
  // Only a verified Brain run reports its outcome; gate refusals (`skipped: …`) did no work and CMS runs keep their existing view.
  const completed=run?.status==='completed'&&run.stage==='brain-completed';
- if(!run||!completed&&!ACTIVE.includes(run.status))return undefined;
+ if(!run||run.retirement||!completed&&!ACTIVE.includes(run.status))return undefined;
  // Completion renames the stage, and checkpoint read-backs may append later steps: the outcome lives on the Brain run step.
  const outcome=completed?run.steps.filter(step=>step.stage==='brain-maintenance').at(-1):run.steps.at(-1);
  const key=maintenanceIssue(completed?{...run,stage:'brain-maintenance'}:run,snapshot.project?.repository||'');

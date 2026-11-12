@@ -1,3 +1,4 @@
+import { retireIncompleteHistory } from '../operations/retire-history';
 import { admitGreen156 } from '../delivery/recovery/green156-admission';
 import { admitPacked165 } from '../delivery/recovery/packed165-admission';
 import { beginPacked165Setup, packed165SetupReady } from '../delivery/recovery/packed165-setup-continuation';
@@ -37,7 +38,7 @@ import { graduateLessons } from '../knowledge/lesson-exits';
 import { command } from '../workers/process';
 import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
 const actions = new Set(['authorize-green-merge-156', 'admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'check-lesson-issues', 'file-lesson-issue']);
-export const deterministicActions = new Set([ 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'check-lesson-issues', 'file-lesson-issue']);
+export const deterministicActions = new Set([ 'retire-incomplete-history', 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'check-lesson-issues', 'file-lesson-issue']);
 export function enqueueSourceAmendment(store: Store, input: unknown): HarnessRequest {
     const authorization = validateAmendmentIntent(store, input);
     const prior = store.state.coordination!.requests?.find(request => request.action === 'authorize-source-amendment' && ['queued', 'working', 'completed'].includes(request.status) && JSON.stringify(request.sourceAmendment) === JSON.stringify(authorization));
@@ -87,6 +88,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
     try {
         const delivery = new GitHubDelivery(store, engine);
         switch (request.action) {
+            case 'retire-incomplete-history': retireIncompleteHistory(store, request); break;
             case 'reconcile-pr-metadata': await reconcilePRMetadata(delivery, request); break;
             case 'reconcile-activation': await reconcileActivation(delivery,request.key,request.head); break;
             case 'correct-recovery-time': correctRecoveryClassification(store, request); break;

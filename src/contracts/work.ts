@@ -143,6 +143,7 @@ export interface WorkClaim {
 }
 export const workKey = (work: WorkRef) => `${work.projectId}:${work.kind}:${work.id}`;
 export interface HarnessRequest {
+    historyRetirement?: import('./history-retirement').HistoryRetirementIntent;
     packed165SetupContinuation?: { attemptedAt: string; originalFailure: string; workerId: string; workSha256: string; intentSha256: string };
     prMetadataRecovery?: import('./pr-metadata').PRMetadataRecoveryIntent;
     closeoutSupervisionProof?: { path: string; sha256: string };

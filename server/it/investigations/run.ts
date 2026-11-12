@@ -20,7 +20,7 @@ export type InvestigationRunner = <T>(prompt: string, schema: z.ZodType<T>, opti
 export async function runInvestigation(store: Store, id: string, run: InvestigationRunner, alive = processGroupAlive): Promise<void> {
     syncInvestigations(store);
     const entry = store.state.it?.investigations?.find(entry => entry.id === id), now = store.clock.now();
-    if (!entry || !['queued', 'working'].includes(entry.status) || entry.attempts >= INVESTIGATION_ATTEMPTS || entry.nextAt && Date.parse(entry.nextAt) > now.getTime() || !investigationReady(store, entry, alive)) return;
+    if (!entry || entry.retirement || !['queued', 'working'].includes(entry.status) || entry.attempts >= INVESTIGATION_ATTEMPTS || entry.nextAt && Date.parse(entry.nextAt) > now.getTime() || !investigationReady(store, entry, alive)) return;
     const ownWorkers = store.state.workLog?.filter(work => work.requestId === id) || [];
     if (ownWorkers.some(work => !work.processId || ['running', 'stopping'].includes(work.status) || alive(work.processId))) return;
     entry.attempts++; entry.status = 'working'; entry.updatedAt = now.toISOString();

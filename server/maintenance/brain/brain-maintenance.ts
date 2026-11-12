@@ -28,7 +28,7 @@ export class BrainMaintenance extends GitHubMaintenance {
         const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly: false, stage: 'brain-maintenance', error: '', steps: [], ...(supersedes.length ? { supersedes } : {}) };
         state.runs.push(run);
         // The new run re-observes everything, so the superseded runs' automatic read-back must not later re-queue their checkpoints.
-        for (const prior of state.runs.filter(r => supersedes.includes(r.id)))
+        for (const prior of state.runs.filter(r => !r.retirement && supersedes.includes(r.id)))
             prior.readbackRetry = { ...(prior.readbackRetry ?? { attempts: 0, history: [] }), nextAt: '', exhausted: true, history: [...(prior.readbackRetry?.history ?? []), { at: now.toISOString(), detail: `Superseded by scheduled run ${run.id}; automatic read-back stopped.` }] };
         this.store.emit('maintenance-queued', 'Brain maintenance queued for the shared office desks.', 'pm');
         return run;
