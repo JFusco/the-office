@@ -71,7 +71,7 @@ There is no age-based retirement and no recurrence review. Joe can reactivate an
 
 **At a block** (`unblock-brief.ts`, `blocker-followups.ts`)
 
-The retrospective a park, block or exhausted repair budget already triggers may save an unblock brief for that subject: what is known, the decision, the next step. It is kept only when Harper returns one and the packet holds no source-scoped evidence. A park or exhausted budget that arrives while an open learning batch exists for the same subject is merged into that batch and gets no brief (`record-trigger.ts`). It shows on the blocker follow-up and sits immediately after the assignment line when the work resumes. It is cleared once the follow-up confirms resolution.
+The retrospective a park, block or exhausted repair budget already triggers may save an unblock brief for that subject: what is known, the decision, the next step. It is kept only when Harper returns one and the packet holds no source-scoped evidence. A block that arrives while an open learning batch exists for the same subject is merged into that batch, which is then marked as blocked and owes the brief (`record-trigger.ts`, `blocking-trigger.ts`). Blocked retrospectives run ahead of routine ones and are neither held by nor counted against the limit of 8 retrospectives per project per day (`scheduled-retrospectives.ts`, `run-retrospective.ts`). It shows on the blocker follow-up and sits immediately after the assignment line when the work resumes. It is cleared once the follow-up confirms resolution.
 
 **On lookup** (`lookup/`)
 

@@ -1,4 +1,5 @@
 import type { KnowledgeContext } from './context';
+import { blockingTrigger } from './blocking-trigger';
 import { sourceLearningPacket,sourcePacketAuthorized } from './sources/learning-packet';
 import { catalogBindings } from './sources/proof-scope';
 import { scanCuration } from './sources/curation-scan';
@@ -60,9 +61,11 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
     }
     const day = easternDay(started);
     const daily = knowledge.learningAttempts ??= {};
-    if ((daily[day] || 0) >= 8) return;
+    // A blocked subject is neither held by the daily limit nor counted against it: its brief is owed now.
+    const blocked = !!blockingTrigger(pending);
+    if (!blocked && (daily[day] || 0) >= 8) return;
     if (pending.attempts >= 5) { acceptRetrospective(store, pending, { catalog: {} }, { summary: 'Learning unavailable after five attempts.', lessons: [] }, randomUUID()); return; }
-    daily[day] = (daily[day] || 0) + 1;
+    if (!blocked) daily[day] = (daily[day] || 0) + 1;
     pending.frozen = true;
     pending.attempts++;
     // Provisional deadline before awaiting: a crash mid-run still waits instead of relaunching at once.

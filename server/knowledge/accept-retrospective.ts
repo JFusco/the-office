@@ -8,8 +8,8 @@ import { catalogBindings, proofBindings } from './sources/proof-scope';
 import { checkedReceipt, type ScanReceipt } from './sources/admission';
 import { curateLesson } from './curate-lesson';
 import { saveUnblockBrief } from './unblock-brief';
+import { blockingTrigger } from './blocking-trigger';
 
-const BLOCKED = new Set<PendingRetrospective['trigger']>(['parked', 'blocked', 'repair-budget']);
 
 export const RETROSPECTIVE_HISTORY = 100;
 export const normalizeStatement = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -50,7 +50,7 @@ export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospec
             else changed.push(outcome === 'updated' ? proposal.targetId! : lesson.id);
         }
         // A brief is kept only from evidence every reader of this project may see.
-        if (result.unblock && !bindings.length && BLOCKED.has(pending.trigger)) saveUnblockBrief(knowledge, { kind: pending.subject || 'job', id: pending.jobId }, { ...result.unblock, at: now, retrospectiveId: pending.id });
+        if (result.unblock && !bindings.length && blockingTrigger(pending)) saveUnblockBrief(knowledge, { kind: pending.subject || 'job', id: pending.jobId }, { ...result.unblock, at: now, retrospectiveId: pending.id });
         if(!sourceOnly)proposeImprovements(store, pending.source || { kind: pending.subject || 'job', id: pending.jobId }, result.improvements || [], catalog);
         // Filed before completion: a failed filing rolls this acceptance back to retry, and Office proposals deduplicate.
         if (shared.length) share?.(shared);

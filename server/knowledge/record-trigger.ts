@@ -1,6 +1,7 @@
 import type { PendingRetrospective, RetrospectiveSubjectKind, RetrospectiveTrigger, Ticket, TicketJob } from '../../src/shared';
 import type { Store } from '../store/store';
 import { ciBudgetId, parkedId, repairBudgetId, ticketParkedId } from './retrospective-triggers';
+import { isBlocking } from './blocking-trigger';
 
 const clip = (text: string, limit = 500) => text.length <= limit ? text : `${text.slice(0, limit)}…`;
 
@@ -24,6 +25,7 @@ export function recordTrigger(store: Store, entry: { id: string; jobId: string; 
     const batch = knowledge.pending.find(item => item.trigger === 'learning' && !item.frozen && item.source?.kind === subject.kind && item.source.id === subject.id);
     if (batch) {
         batch.eventIds!.push(entry.id); batch.nextAt = '';
+        if (isBlocking(entry.trigger)) batch.blockedBy = entry.trigger;
         batch.event = { ...entry.event, reason: clip(entry.event.reason) };
         knowledge.consumed.push(entry.id);
         return;

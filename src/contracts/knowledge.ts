@@ -77,6 +77,8 @@ export interface PendingRetrospective {
     jobId: string;
     key: string;
     trigger: RetrospectiveTrigger;
+    /** Set when a learning batch absorbed a park, block or exhausted repair budget; the batch then owes an unblock brief. */
+    blockedBy?: 'parked' | 'blocked' | 'repair-budget';
     subject?: RetrospectiveSubjectKind;
     createdAt: string;
     event: RetrospectiveEvent;
