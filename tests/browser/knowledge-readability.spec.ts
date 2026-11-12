@@ -22,20 +22,20 @@ test('selecting a node shows its persisted cross-filter neighbors, bright edges 
     await page.setViewportSize({width:1440,height:1000});
     await page.route('**/api/knowledge/map?**',route=>route.fulfill({json:{nodes:[
         {id:'lesson-selected',kind:'lesson',title:'Connection example',detail:'Selected record'},
-        {id:'evidence-neighbor',kind:'evidence',title:'Connected evidence',detail:'Saved source evidence'},
+        {id:'note-neighbor',kind:'technical',title:'Connected note',detail:'Saved technical note'},
         {id:'assignment-neighbor',kind:'assignment',title:'Connected assignment',detail:'Saved assignment'},
         {id:'isolated',kind:'lesson',title:'Isolated record',detail:'No saved relationships in this partial fixture'}],
-        edges:[{source:'lesson-selected',target:'evidence-neighbor',kind:'citation'},{source:'assignment-neighbor',target:'lesson-selected',kind:'supplied'},{source:'lesson-selected',target:'not-loaded',kind:'provenance'}],truncated:true}}));
+        edges:[{source:'lesson-selected',target:'note-neighbor',kind:'promotion'},{source:'assignment-neighbor',target:'lesson-selected',kind:'supplied'},{source:'lesson-selected',target:'not-loaded',kind:'verified'}],truncated:true}}));
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
     await page.getByRole('combobox',{name:'Show',exact:true}).selectOption('lesson');await page.getByLabel('Find a node').fill('Connection example');
     await page.getByRole('button',{name:'Connection example · lesson',exact:true}).click();
     const panel=page.getByRole('region',{name:'Selected node'});await expect(panel).toContainText('Saved connections · 2 records');await expect(panel).toContainText('1 connected record(s) are not loaded');
-    await expect(panel.getByRole('button',{name:'citation · Connected evidence',exact:true})).toBeVisible();await expect(panel.getByRole('button',{name:'supplied · Connected assignment',exact:true})).toBeVisible();
+    await expect(panel.getByRole('button',{name:'promotion · Connected note',exact:true})).toBeVisible();await expect(panel.getByRole('button',{name:'supplied · Connected assignment',exact:true})).toBeVisible();
     await expect(page.getByText('Showing 2 connected record(s) outside the display filters. Back restores the filtered view.',{exact:true})).toBeVisible();
     const canvas=page.locator('[data-brain-renderer] canvas');await expect(canvas).toHaveCount(1);const original=await canvas.elementHandle();
     await canvas.scrollIntoViewIfNeeded();mkdirSync(artifacts,{recursive:true});await page.screenshot({path:`${artifacts}/selected-connections.png`});
     const frame=(await canvas.boundingBox())!,aside=(await page.locator('[data-brain-list-frame]').boundingBox())!;expect(frame.x+frame.width).toBeLessThanOrEqual(aside.x+1);
-    await panel.getByRole('button',{name:'citation · Connected evidence',exact:true}).click();await expect(panel.locator(':scope > h3')).toHaveText('Connected evidence');
+    await panel.getByRole('button',{name:'promotion · Connected note',exact:true}).click();await expect(panel.locator(':scope > h3')).toHaveText('Connected note');
     expect(await canvas.evaluate((el,before)=>el===before,original)).toBe(true);
     await page.getByRole('button',{name:'Constellation overview',exact:true}).click();await page.getByLabel('Find a node').fill('Isolated');await page.getByRole('button',{name:'Isolated record · lesson',exact:true}).click();
     await expect(panel).toContainText('No saved connections in the loaded map.');await expect(panel).toContainText('Missing connections do not establish that this record is isolated.');

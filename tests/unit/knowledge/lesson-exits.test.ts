@@ -1,8 +1,6 @@
 import { expect, test } from 'vitest';
 import { expireLessons, graduateLessons, queueLessonIssueCheck } from '../../../server/knowledge/lesson-exits';
 import { reactivateLesson, retireLesson } from '../../../server/knowledge/lesson-commands';
-import { knowledgeOfficeState } from '../../../server/knowledge/office-state-view';
-import { sourceFixture } from './sources/source-fixture';
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
 import type { command } from '../../../server/workers/process';
 import { knowledgeStore, learningLesson } from './knowledge-fixture';
@@ -25,7 +23,7 @@ test('a lesson graduates only when its filed issue closed as completed, checked 
     const { store, close, advance } = knowledgeStore('brain', '2026-11-12T15:00:00Z');
     try {
         const filed = (id: string) => learningLesson(id, { repositoryInstruction: { status: 'filed', issueUrl: `https://github.com/JFusco/brain/issues/${id}`, filedAt: '' } });
-        // '5' was kept after a source review before its issue closed; that must not stop it graduating.
+        // '5' was reactivated before its issue closed; that must not stop it graduating.
         store.state.knowledge!.lessons = [filed('1'), filed('2'), filed('3'), filed('4'), { ...filed('5'), reactivatedAt: '2026-11-09T00:00:00Z' }, learningLesson('unfiled', { repositoryInstruction: { status: 'proposed' } })];
         const done = '{"state":"CLOSED","stateReason":"COMPLETED","closedAt":"2026-11-10T00:00:00Z"}';
         const states: Record<string, string> = { 1: done, 5: done, 2: '{"state":"CLOSED","stateReason":"NOT_PLANNED"}', 3: '{"state":"OPEN","stateReason":""}' };
@@ -64,21 +62,4 @@ test('graduation applies to the current record after the provider read and never
         expect(graduated).toHaveLength(1);
         expect(graduated[0].message).toContain('Guidance cloned');
     } finally { close(); }
-});
-
-test('an automatic retirement event keeps the lesson\'s source dependencies, so revoking access hides it', async () => {
-    const f = sourceFixture();
-    try {
-        const evidence = [{ kind: 'source' as const, ref: 'source:unit', url: '', detail: 'Scoped evidence', source: { sourceId: f.source.id, unitId: 'unit', version: 'v1' } }, { kind: 'learning' as const, ref: 'learning:derived', url: '', detail: 'Scoped evidence', sourceBindings: [{ sourceId: f.source.id }] }];
-        f.store.state.knowledge!.lessons = [learningLesson('expiring', { evidence, validUntil: '2026-11-05' }), learningLesson('graduating', { evidence, repositoryInstruction: { status: 'filed', issueUrl: 'https://github.com/JFusco/brain/issues/9', filedAt: '' } })];
-        expireLessons(f.store);
-        await graduateLessons(f.store, (async () => '{"state":"CLOSED","stateReason":"COMPLETED","closedAt":"2026-11-10T00:00:00Z"}') as unknown as typeof command);
-        const retired = f.store.state.events.filter(event => event.kind === 'lesson-retired');
-        expect(retired).toHaveLength(2);
-        for (const event of retired) expect(event.sourceBindings).toEqual(expect.arrayContaining([{ sourceId: f.source.id, unitId: 'unit', version: 'v1' }, { sourceId: f.source.id }]));
-        expect(knowledgeOfficeState(f.registry, 'brain', f.store.state).events).toEqual(expect.arrayContaining(retired));
-        f.registry.subscribe(f.source.id, 'brain', false);
-        const visible = knowledgeOfficeState(f.registry, 'brain', f.store.state).events;
-        for (const event of retired) { expect(visible).not.toContainEqual(event); expect(f.store.replay(0)).toContainEqual(event); }
-    } finally { f.close(); }
 });

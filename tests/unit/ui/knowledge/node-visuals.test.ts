@@ -8,7 +8,7 @@ it('keeps landmark labels sparse, labels individual nodes on interaction and rel
     try{
         const palette=Object.fromEntries(Object.keys(SCENE_COLOR_TOKENS).map(k=>[k,'#fff'])) as SceneColors;
         const visuals=nodeVisuals(palette), camera=new PerspectiveCamera(50,2,.1,1000);camera.position.z=300;camera.lookAt(0,0,0);
-        const nodes=Array.from({length:20},(_,i)=>({id:`n${i}`,title:`Guide ${i}`,kind:i===0?'project' as const:i===19?'source' as const:'technical' as const,technicalKind:i===10?'index':undefined,detail:'',visible:true,emphasized:true,position:{x:i===10?-150:i===19?150:i*5,y:0,z:0}}));
+        const nodes=Array.from({length:20},(_,i)=>({id:`n${i}`,title:`Guide ${i}`,kind:i===0?'project' as const:'technical' as const,technicalKind:i===10||i===19?'index':undefined,detail:'',visible:true,emphasized:true,position:{x:i===10?-150:i===19?150:i*5,y:0,z:0}}));
         const groups=nodes.map(node=>visuals.create(node));
         const overview={data:{nodes,edges:[],truncated:false},reduced:true};
         const container={clientWidth:1200,clientHeight:800} as HTMLElement;

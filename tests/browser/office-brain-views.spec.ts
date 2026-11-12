@@ -8,8 +8,6 @@ test('synthetic Library, Map and Activity preserve Office navigation and scoped 
     await nav.getByRole('button',{name:'Library',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Library',exact:true})).toBeVisible();
     await expect(page.getByRole('heading',{name:'Confirm schema versions before mapping changes'})).toBeVisible();
-    await page.getByRole('button',{name:'Inspect evidence'}).first().click();
-    await expect(page.getByRole('region',{name:'Selected evidence'})).toContainText('Confirm the schema version');
     await page.screenshot({path:`${artifacts}/office-brain-02-library.synthetic.png`,fullPage:true});
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     await nav.getByRole('button',{name:'Map',exact:true}).click();
@@ -17,14 +15,14 @@ test('synthetic Library, Map and Activity preserve Office navigation and scoped 
     await expect(page.locator('canvas')).toHaveCount(1);
     await page.screenshot({path:`${artifacts}/office-brain-03-map-overview.synthetic.png`,fullPage:true});
     await page.getByLabel('Find a node').fill('schema'); await page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true}).click();
-    await expect(page.getByRole('region',{name:'Selected node'})).toContainText('citation');
+    await expect(page.getByRole('region',{name:'Selected node'})).toContainText('supplied');
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
     await expect(page.getByRole('button',{name:'Constellation overview',exact:true})).toBeVisible();
     await page.screenshot({path:`${artifacts}/office-brain-03-map.synthetic.png`,fullPage:true});
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     await nav.getByRole('button',{name:'Activity',exact:true}).click(); await expect(page.locator('[data-brain-renderer]')).toHaveCount(0);
     await expect(page.getByRole('heading',{name:'Activity',exact:true})).toBeVisible();
-    await expect(page.getByRole('list',{name:'Learning timeline'})).toContainText('admitted');
+    await expect(page.getByRole('list',{name:'Learning timeline'})).toContainText('curated');
     await page.screenshot({path:`${artifacts}/office-brain-04-activity.synthetic.png`,fullPage:true});
     expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     for(let n=0;n<3;n++) { await nav.getByRole('button',{name:'Map',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(1); await nav.getByRole('button',{name:'Library',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(0); }
@@ -54,7 +52,7 @@ test('a constellation texture failure disposes the renderer and retains keyboard
 
 test('synthetic Activity opens immutable supplied knowledge and recorded lookup pages',async({page})=>{
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Activity',exact:true}).click();
-    await page.getByRole('button',{name:'Inspect assignment knowledge',exact:true}).first().click();const detail=page.getByRole('region',{name:'Assignment knowledge',exact:true});await expect(detail).toContainText('Supplied at dispatch');await expect(detail).toContainText('Confirm the schema version');await detail.getByRole('button',{name:'Lookup 1 · served',exact:true}).click();await expect(page.getByRole('region',{name:'Selected lookup',exact:true})).toContainText('schema validation receipts');await page.locator('[data-office-brain]').evaluate(el=>el.scrollTop=0);await page.screenshot({path:`${artifacts}/office-brain-04-assignment-knowledge.synthetic.png`,fullPage:true});await expect(detail).toContainText('Accepted outcome citations');await expect(detail).toContainText('Accepted result SHA-256');await page.getByRole('region',{name:'Selected lookup',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:`${artifacts}/office-brain-04-lookup-outcome.synthetic.png`,fullPage:true});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+    await page.getByRole('button',{name:'Inspect assignment knowledge',exact:true}).first().click();const detail=page.getByRole('region',{name:'Assignment knowledge',exact:true});await expect(detail).toContainText('Supplied at dispatch');await expect(detail).toContainText('Confirm schema versions');await detail.getByRole('button',{name:'Lookup 1 · served',exact:true}).click();await expect(page.getByRole('region',{name:'Selected lookup',exact:true})).toContainText('schema validation receipts');await page.locator('[data-office-brain]').evaluate(el=>el.scrollTop=0);await page.screenshot({path:`${artifacts}/office-brain-04-assignment-knowledge.synthetic.png`,fullPage:true});await expect(detail).toContainText('Accepted outcome citations');await expect(detail).toContainText('Accepted result SHA-256');await page.getByRole('region',{name:'Selected lookup',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:`${artifacts}/office-brain-04-lookup-outcome.synthetic.png`,fullPage:true});expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
 });
 
 test('synthetic assignment with no lookups retains an accessible and honest empty state',async({page},testInfo)=>{

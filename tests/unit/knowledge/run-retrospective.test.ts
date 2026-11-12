@@ -6,7 +6,6 @@ import { retrospectiveFacts, PACKET_LIMIT, type RetrospectivePacket } from '../.
 import { jobSubject } from '../../../server/knowledge/retrospective-subject';
 import { completedId } from '../../../server/knowledge/retrospective-triggers';
 import type { RetrospectiveResult } from '../../../server/knowledge/retrospective-result';
-import { SourceRegistry } from '../../../server/knowledge/sources/registry';
 import { job, knowledgeStore, learningLesson, result } from './knowledge-fixture';
 import { captureLearning } from '../../../server/knowledge/learning-events';
 import { maintainLearning } from '../../../server/knowledge/learning-maintenance';
@@ -61,7 +60,7 @@ test('other projects\' lessons are trimmed to the packet budget instead of keepi
     captureLearning(store, { kind: 'job', id: done.id }, done.key, 'review', '0', done.steps[0].result, 'Accepted negative review', 'work', true);
     maintainLearning(store);
     const { id, opportunities } = store.state.knowledge!.pending[0], packetRef = opportunities![0].evidence[0].ref;
-    const context = { registry: new SourceRegistry(store.db, store.clock), stores: new Map([['brain', store], ['cec', other.store]]), brain: { snapshot: async () => '', search: async () => [], read: async () => ({ text: '', contentSha256: '' }) } };
+    const context = { stores: new Map([['brain', store], ['cec', other.store]]), brain: { snapshot: async () => '', search: async () => [], read: async () => ({ text: '', contentSha256: '' }) } };
     let facts = '';
     await runRetrospective(store, (async (prompt: string) => { facts = prompt.split('RETROSPECTIVE FACTS: ')[1]; return { summary: 'Reviewed.', lessons: [lesson('Regenerate the catalog before review', [packetRef])] }; }) as KnowledgeRunner, id, context);
     expect(facts.length).toBeLessThanOrEqual(PACKET_LIMIT);

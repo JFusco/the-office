@@ -1,5 +1,4 @@
-import { sourceFixture } from '../knowledge/sources/source-fixture';
-import { learningLesson } from '../knowledge/knowledge-fixture';
+import { knowledgeStore, learningLesson } from '../knowledge/knowledge-fixture';
 import { expect, test } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,9 +9,9 @@ import { WorkerRuntime } from '../../../server/workers/worker-runtime';
 import { RESEARCH_CODEX_VERSION, RESEARCH_DISABLED_FEATURES } from '../../../server/workers/research-profile';
 import { ResearchResult } from '../../../server/knowledge/weekly-research';
 
-test.each(['knowledge-research', 'knowledge-source-read'])('public runtime isolation and native receipts: %s', async stage => {
+test('public research runs isolated from knowledge and keeps only native read receipts', async () => {
     const root = mkdtempSync(resolve(tmpdir(), 'office-research-runtime-')), cwd = resolve(root, 'public'); mkdirSync(cwd);
-    const f=sourceFixture(),store=f.store;store.state.knowledge!.lessons.push(learningLesson('private',{statement:'PRIVATE LESSON MUST NOT REACH PUBLIC RESEARCH'}));
+    const f=knowledgeStore('brain','2026-11-06T23:00:00Z'),store=f.store;store.state.knowledge!.enabled=true;store.state.knowledge!.lessons.push(learningLesson('private',{statement:'PRIVATE LESSON MUST NOT REACH PUBLIC RESEARCH'}));
     const url = 'https://www.sqlite.org/lang_transaction.html', task = 'Read the public SQLite transaction documentation.';
     let dispatched = 0;
     try {
@@ -32,8 +31,8 @@ test.each(['knowledge-research', 'knowledge-source-read'])('public runtime isola
             for (const event of events) options?.onLine?.(JSON.stringify(event));
             return events.map(event => JSON.stringify(event)).join('\n');
         });
-        let knowledgeReads=0;runtime.knowledgeContext={registry:f.registry,stores:new Map([['brain',store]]),brain:{snapshot:async()=>{knowledgeReads++;throw Error('Must not retrieve');},search:async()=>[],read:async()=>({text:'PRIVATE SOURCE',contentSha256:''})}};
-        const result = await runtime.run('knowledge', task, ResearchResult, { stage, readOnly: true, cwd, requestId: 'research-fixture',...(stage==='knowledge-source-read'?{intakeBinding:{registry:f.registry,sourceId:f.source.id,sourceDigest:f.source.sourceDigest,homeProjectId:'brain',attempt:'public-fixture'}}:{}) });
+        let knowledgeReads=0;runtime.knowledgeContext={stores:new Map([['brain',store]]),brain:{snapshot:async()=>{knowledgeReads++;throw Error('Must not retrieve');},search:async()=>[],read:async()=>({text:'PRIVATE SOURCE',contentSha256:''})}};
+        const result = await runtime.run('knowledge', task, ResearchResult, { stage: 'knowledge-research', readOnly: true, cwd, requestId: 'research-fixture' });
         expect(knowledgeReads).toBe(0);expect(dispatched).toBe(1); expect(result.sources.map(source => source.readEvidence)).toEqual(['native-read:page-1', '']);
     } finally { f.close(); rmSync(root, { recursive: true, force: true }); }
 });

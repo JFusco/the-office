@@ -4,7 +4,6 @@ import { lastFriday, rollupDue, runRollup, scheduledRollup } from '../../../serv
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
 const knowledgeContext = (store: Parameters<typeof selectLessons>[0], stage?: string) => selectLessons(store, { stage }).text;
 import { knowledgeOutbox } from '../../../server/knowledge/knowledge-outbox';
-import { demoteLesson, reactivateLesson } from '../../../server/knowledge/lesson-commands';
 import { decideOfficeProposal, mirrorOfficeKnowledge, proposeOfficeLessons, retireOfficeLesson } from '../../../server/knowledge/office-lessons';
 import { ControlStore } from '../../../server/store/control-store';
 import type { KnowledgeRunner } from '../../../server/knowledge/run-retrospective';
@@ -38,18 +37,6 @@ test('narrative retries and saved reports use the same frozen learning snapshot'
     k.learningStartedAt = '2026-11-07T00:00:00Z';
     await runRollup(store, runner, 'rollup:2026-11-06');
     expect(JSON.stringify(k.rollups![0])).toBe(saved); expect(facts).toHaveLength(2);
-});
-
-test('keeping or demoting guidance after a source review clears its outbox decision', () => {
-    const { store } = setup();
-    store.state.knowledge!.lessons.push(lesson('L1', { tier: 'guidance', revision: 2, needsReview: true, sourceReviewReason: 'source-changed' }), lesson('L2', { tier: 'guidance', revision: 2, needsReview: true, sourceReviewReason: 'source-changed' }));
-    expect(knowledgeOutbox(store.state).map(item => item.id)).toEqual(['lesson-review:L1', 'lesson-review:L2']);
-    reactivateLesson(store, 'L1');
-    demoteLesson(store, 'L2');
-    const [l1, l2] = store.state.knowledge!.lessons;
-    expect(l1).toMatchObject({ status: 'active', tier: 'guidance', revision: 3, needsReview: false });
-    expect(l2).toMatchObject({ tier: 'hypothesis', revision: 3, needsReview: false });
-    expect(knowledgeOutbox(store.state)).toEqual([]);
 });
 
 test('the roll-up is due after Avery\'s Friday review or 6 PM, once per week, and quiet weeks need no model call', async () => {
@@ -120,6 +107,5 @@ test('a retried roll-up preserves the original coverage and does not infer appli
     advance(60 * 60000);
     let prompt = '';
     await runRollup(store, (async (text: string) => { prompt = text; return { summary: 'ok', officeProposals: [] }; }) as KnowledgeRunner, 'rollup:2026-11-06');
-    expect(prompt).not.toContain('needsReview');
     expect(store.state.knowledge!.rollups![0].summary).toBe('ok');
 });

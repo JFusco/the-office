@@ -2,14 +2,6 @@ import { expect, test } from 'vitest';
 import { featureRoute } from '../../../server/features/routes';
 import { document } from '../../../server/features/documents';
 import { fixture } from './test-store';
-import {FeatureError} from '../../../server/features/progression/failure';
-test('assessment authorizes the source before episode or capture mutation',async()=>{
- const f=fixture();try{
- const url=new URL('http://local/api/features/assess');
- const response=await featureRoute(new Request(url,{method:'POST',body:JSON.stringify({key:'GH-1',requestId:'assessment'})}),url,f.store,{} as any,undefined,undefined,()=>{throw new FeatureError('source-unavailable','revoked');});
- expect(response!.status).toBe(409);expect(await response!.json()).toMatchObject({code:'source-unavailable'});
- }finally{f.close();}
-});
 test('artifact reads require registered identity in the owning project and reject arbitrary paths', async()=>{
  const f=fixture();try {
   const doc=document(f.store,f.feature,'Complete plan'); f.feature.plans.push(doc);

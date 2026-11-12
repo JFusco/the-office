@@ -4,10 +4,10 @@ import { knowledgeStore, learningLesson } from './knowledge-fixture';
 test('stage and path relevance rank ahead of recency; hypotheses and uninstalled procedures stay out', () => {
     const { store, close } = knowledgeStore();
     try {
-        store.state.knowledge!.lessons = [learningLesson('any', { stages: ['any'] }), learningLesson('new', { createdAt: '2026-11-07' }), learningLesson('path', { paths: ['server\\knowledge'] }), learningLesson('idea', { tier: 'hypothesis' }), learningLesson('uninstalled', { tier: 'procedure' }), learningLesson('needs-review', { needsReview: true })];
+        store.state.knowledge!.lessons = [learningLesson('any', { stages: ['any'] }), learningLesson('new', { createdAt: '2026-11-07' }), learningLesson('path', { paths: ['server\\knowledge'] }), learningLesson('idea', { tier: 'hypothesis' }), learningLesson('uninstalled', { tier: 'procedure' })];
         const selected = selectLessons(store, { stage: 'github-review', paths: ['server/knowledge/foo.ts'] });
         expect(selected.selected[0].id).toBe('path');
-        expect(selected.selected.map(item => item.id)).toEqual(['path', 'new', 'needs-review', 'any']);
+        expect(selected.selected.map(item => item.id)).toEqual(['path', 'new', 'any']);
         expect(selectLessons(store, { stage: 'knowledge-research' }).text).toBe('');
     } finally { close(); }
 });
