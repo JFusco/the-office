@@ -10,7 +10,6 @@ import { goalNoticeAuthorized } from '../leadership/goal-notice-authorization';
 import { maintenanceNoticeAuthorized } from '../maintenance/brain/maintenance-notice-authorization';
 import { Effects } from '../store/effects';
 import { channelNoticeAuthorized } from './channel-notice';
-import { digest } from '../knowledge/digest';
 export const SlackRequestSchema = z.object({ targetType: z.enum(['person', 'channel']), targetId: z.string().regex(/^[UCG][A-Z0-9]+$/), targetName: z.string().min(1), workspaceId: z.string().regex(/^T[A-Z0-9]+$/), text: z.string().min(1).max(5000) }).strict();
 export const SlackResultSchema = z.object({ channelId: z.string(), messageTs: z.string(), permalink: z.string(), detail: z.string() }).strict();
 export const SlackVerificationSchema = z.object({ found: z.boolean(), channelId: z.string(), messageTs: z.string(), permalink: z.string(), targetId: z.string(), workspaceId: z.string(), text: z.string(), detail: z.string() }).strict();

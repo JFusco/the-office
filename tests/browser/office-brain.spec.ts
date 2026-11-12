@@ -1,21 +1,6 @@
 import { test, expect } from './fixture-test';
 import AxeBuilder from '@axe-core/playwright';
 const artifacts = process.env.OFFICE_BRAIN_SCREENSHOTS || '/private/tmp/office-brain-screenshots';
-test('synthetic fixture: optional Slack digest settings are separate and off by default',async({page,request},testInfo)=>{
-    testInfo.annotations.push({type:'evidence',description:'Synthetic settings persistence only; no Slack lookup or send'});
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Activity',exact:true}).click();
-    await page.getByRole('button',{name:'Activity settings',exact:true}).click();
-    await page.getByText('Optional weekly Slack digest',{exact:true}).click();
-    await expect(page.getByRole('checkbox',{name:'Enable future weekly Slack digests'})).not.toBeChecked();
-    await page.getByLabel('Workspace URL',{exact:true}).fill('https://synthetic-office.slack.com');await page.getByLabel('Workspace ID',{exact:true}).fill('TSYNTHETIC');
-    await page.getByLabel('Digest channel ID',{exact:true}).fill('CCEC1');await page.getByLabel('Digest channel name',{exact:true}).fill('cec-team');
-    await page.getByRole('checkbox',{name:'Enable future weekly Slack digests'}).check();await page.getByRole('button',{name:'Save digest settings'}).click();
-    await expect(page.getByText('Future weekly reviews may be sent after channel verification.',{exact:true})).toBeVisible();
-    const saved=await request.get('/api/knowledge/digest-settings?project=cec');expect((await saved.json()).enabled).toBe(true);
-    const other=await request.get('/api/knowledge/digest-settings?project=brain');expect((await other.json()).enabled).toBe(false);
-    await page.screenshot({path:`${artifacts}/office-brain-04-digest-settings.synthetic.png`,fullPage:true});
-    const results=await new AxeBuilder({page}).include('[data-office-brain]').analyze();expect(results.violations).toEqual([]);
-});
 test('synthetic fixture: published technical notes and global scope share the Office map',async({page,request},testInfo)=>{
     testInfo.annotations.push({type:'evidence',description:'Synthetic committed-note fixture; no live Brain publication'});
     await request.post('/__fixture/technical');
