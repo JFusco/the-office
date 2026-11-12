@@ -6,7 +6,7 @@ import { acceptRetrospective } from '../../../server/knowledge/accept-retrospect
 import { retrospectiveFacts } from '../../../server/knowledge/retrospective-facts';
 import { jobSubject } from '../../../server/knowledge/retrospective-subject';
 import { unblockBrief } from '../../../server/knowledge/unblock-brief';
-import type { KnowledgeRunner } from '../../../server/knowledge/run-retrospective';
+import { runRetrospective, type KnowledgeRunner } from '../../../server/knowledge/run-retrospective';
 import { job, knowledgeStore, result } from './knowledge-fixture';
 
 const never = (async () => ({})) as KnowledgeRunner;
@@ -42,5 +42,21 @@ test('blocked work runs before routine learning and is not held by the daily lim
         expect(find(routine.id).claimEligible!()).toBe(false);
         expect(find(parked.id)).toMatchObject({ rank: 2, eligibility: { state: 'runnable' } });
         expect(find(parked.id).claimEligible!()).toBe(true);
+    } finally { close(); }
+});
+
+test('a blocked retrospective runs at the daily limit, saves its brief and is not counted', async () => {
+    const { store, close } = knowledgeStore();
+    try {
+        const k = store.state.knowledge!, parked = job({ status: 'blocked' });
+        store.state.coordination!.jobs!.push(parked);
+        recordTrigger(store, { id: `${parked.id}:parked:1`, jobId: parked.id, key: parked.key, trigger: 'parked', event });
+        k.learningAttempts = { '2026-11-06': 8 };
+        let calls = 0;
+        const run = (async () => { calls++; return { summary: 'Blocked on the PR body.', lessons: [], unblock }; }) as KnowledgeRunner;
+        await runRetrospective(store, run, `${parked.id}:parked:1`);
+        expect(calls).toBe(1);
+        expect(unblockBrief(store.state.knowledge!, { kind: 'job', id: parked.id })).toContain(`Next: ${unblock.next}`);
+        expect(store.state.knowledge!.learningAttempts!['2026-11-06']).toBe(8);
     } finally { close(); }
 });
