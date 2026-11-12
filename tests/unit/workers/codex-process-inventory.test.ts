@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { accountCodexProcesses, codexProcessInventory, processTable } from '../../../server/workers/codex-process-inventory';
+import { accountCodexProcesses, codexProcessInventory } from '../../../server/workers/codex-process-inventory';
 import { loadedCodexSession } from '../../../server/workers/session-bridge';
 
 const rollout = '/home/test/.codex/sessions/2026/11/rollout-a.jsonl';
@@ -27,8 +27,7 @@ test('only a running Office worker identity accounts for a descriptorless PID; m
 
 test('a helper is accounted for through any ancestor that is, and a stranger is not', () => {
     // 52 holds the transcript; 53 is its child, 55 its grandchild through 54, which is not a Codex process; 56 descends from launchd.
-    const { parents, started } = processTable(' 52     1 Thu Nov 12 09:44:08 2026\n 53    52 Thu Nov 12 09:44:09 2026\n 54    52\n 55    54\n 56     1\nnoise\n 57 57');
-    expect(started.get(52)).toBe('Thu Nov 12 09:44:08 2026');
+    const parents = new Map([[52, 1], [53, 52], [54, 52], [55, 54], [56, 1], [57, 57]]);
     expect(accountCodexProcesses(`p52\nn${rollout}\np53\np55\np56\np57`, load, new Set(), parents).unaccounted).toEqual([56, 57]);
     expect(accountCodexProcesses('p61\np62', load, new Set([61]), new Map([[62, 61]])).unaccounted).toEqual([]);
     expect(accountCodexProcesses(`p52\nn${rollout}\np53`, load, new Set()).unaccounted).toEqual([53]);

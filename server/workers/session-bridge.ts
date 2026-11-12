@@ -1,5 +1,6 @@
 import { completeSessionCoverage, desktopCoverageGap } from './session-coverage';
-import { accountCodexProcesses, processTable, type DesktopSessions } from './codex-process-inventory';
+import { accountCodexProcesses, type DesktopSessions } from './codex-process-inventory';
+import { processTable } from './process-table';
 import { codexDaemonProcesses } from './codex-daemon-processes';
 import WebSocket from 'ws';
 import {homedir} from 'node:os';
