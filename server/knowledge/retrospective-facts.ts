@@ -1,4 +1,5 @@
 import type { LessonEvidence, PendingRetrospective } from '../../src/shared';
+import { blockingTrigger } from './blocking-trigger';
 import type { KnowledgeSourceBinding } from '../../src/contracts/knowledge';
 import type { Store } from '../store/store';
 import type { RetrospectiveSubject } from './retrospective-subject';
@@ -29,7 +30,7 @@ export interface RetrospectivePacket {
 }
 
 /** Bounded, read-only facts about one finished job, CEC run or maintenance run, frozen for the duration of a retrospective. */
-export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pending: Pick<PendingRetrospective, 'id' | 'trigger' | 'event'>): RetrospectivePacket {
+export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pending: Pick<PendingRetrospective, 'id' | 'trigger' | 'blockedBy' | 'event'>): RetrospectivePacket {
     const { issueUrl, prUrl } = job, link = prUrl || issueUrl;
     const catalog: Record<string, LessonEvidence> = Object.create(null);
     catalog[`${job.kind}:${job.id}`] = { kind: ['job', 'ticket', 'maintenance'].includes(job.kind) ? job.kind as 'job' | 'ticket' | 'maintenance' : 'learning', ref: `${job.kind}:${job.id}`, url: issueUrl, detail: clip(`${job.key} · ${job.status} at ${job.stage}`, SHORT) };
@@ -48,7 +49,7 @@ export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pend
         return { ref, index, stage: step.stage, outcome: result.outcome, summary: clip(result.summary), blocker: clip(result.blocker), commit: result.commit, resolution: result.resolution ? { kind: result.resolution.kind, findingIds: result.resolution.findingIds.slice(0, ENTRIES) } : null, findings, receipts: (result.receipts || []).length, evidence: (result.evidence || []).length };
     });
     const packet: RetrospectivePacket = {
-        trigger: { id: pending.id, kind: pending.trigger, event: pending.event },
+        trigger: { id: pending.id, kind: blockingTrigger(pending) ?? pending.trigger, event: pending.event },
         job: { kind: job.kind, id: job.id, key: job.key, status: job.status, stage: job.stage, issueUrl, pr: job.pr, prUrl, head: job.head, reroutes: job.reroutes, repairAttempts: job.repairCycle?.attempts || 0, detail: clip(job.detail), approach: job.approach ? { ...job.approach, checks: job.approach.checks.slice(0, ENTRIES).map(check => clip(check, SHORT)), reason: clip(job.approach.reason) } : null },
         steps,
         decisions: job.decisions.slice(-10).map(decision => ({ role: decision.role, stage: decision.stage, at: decision.at, plan: decision.approach.plan, review: decision.approach.review, validation: decision.approach.validation, reason: clip(decision.approach.reason, SHORT) })),
