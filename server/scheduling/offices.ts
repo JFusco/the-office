@@ -9,9 +9,6 @@ import { knowledgeSessionVisibility } from '../knowledge/sources/session-visibil
 import { leadershipEntries,leadershipContext } from '../knowledge/leadership-context';
 import { knowledgeOfficeState,knowledgeEntries } from '../knowledge/office-state-view';
 import { knowledgeSnapshot,officeKnowledgeSnapshot } from '../knowledge/knowledge-snapshot';
-import { reviewSourceWithdrawals } from '../knowledge/sources/withdrawal-reviews';
-import { queueWeeklyDigest } from '../knowledge/weekly-digest';
-import { queueOutboundDigests } from '../knowledge/digests/outbound';
 import { CommittedBrain } from '../knowledge/brain/reader';
 import { SourceRegistry } from '../knowledge/sources/registry';
 import { maintainLearning } from '../knowledge/learning-maintenance';
@@ -111,7 +108,6 @@ export class Offices {
             entry.engine.ctoAgents.ctoContext = () => leadershipContext([...this.entries.values()],this.sources,entry.store.project.name);
         }
         this.dailyCTO.recover();
-        reviewSourceWithdrawals(this.sources,this.stores().values(),this.control);
         seedOfficeLessons(this.control);
         mirrorOfficeKnowledge(this.control, this.stores().values());
     }
@@ -141,8 +137,6 @@ export class Offices {
         try { this.questionEvents().refresh(); } catch { /* A malformed persisted round only delays question notifications. */ }
         for (const { store } of this.entries.values()) {
             recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); expireLessons(store); queueLessonIssueCheck(store); }
-        reviewSourceWithdrawals(this.sources,this.stores().values(),this.control);
-        for(const project of this.entries.keys()){const context={registry:this.sources,stores:this.stores(),brain:new CommittedBrain()};queueWeeklyDigest(context,project);queueOutboundDigests(context,project);}
         // Runs finished outside a worker (restart recovery, dead process) get their accounting here; async, never awaited.
         for (const { store } of this.entries.values()) void reconcileUncapturedRuns(store).catch(() => { /* reported per run */ });
         for (const { store } of this.entries.values())

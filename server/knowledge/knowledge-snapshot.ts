@@ -24,7 +24,6 @@ export function knowledgeSnapshot(registry:SourceRegistry,project:string,knowled
     return {...knowledge,lessons:knowledge.lessons.filter(l=>lessonVisible(registry,project,l)).map(l=>lessonForProject(registry,project,l)),officeLessons:knowledge.officeLessons?.filter(l=>lessonVisible(registry,project,l)).map(l=>lessonForProject(registry,project,l)),
         lookups:knowledge.lookups?.filter(s=>lookupSummaryVisible(registry,project,s,permittedLessons)).map(publicLookupSummary),
         outcomes:knowledge.outcomes?.filter(s=>outcomeVisible(registry,project,s,permittedLessons)).map(publicOutcome),
-        digests:knowledge.digests?.filter(s=>outcomeVisible(registry,project,s,permittedLessons)).map(s=>({...s,sourceBindings:[],evidence:s.evidence.map(r=>{const {sourceBindings,...reference}=r;void sourceBindings;return reference;})})),
         pending:knowledge.pending.filter(sourceRecord).map(p=>({...p,opportunities:p.opportunities?.filter(e=>proofsAllowed(e.evidence))})),
         retrospectives:knowledge.retrospectives.filter(r=>sourceRecord(r)&&(r.sourceBindings||[]).every(b=>exposureSourceVisible(registry,project,b))),deliveryEvents:knowledge.deliveryEvents?.filter(sourceRecord),
         followups:knowledge.followups?.filter(f=>proofsAllowed(f.evidence)),improvements:knowledge.improvements?.filter(i=>proofsAllowed(i.evidence)),

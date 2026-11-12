@@ -1,7 +1,6 @@
 import { enqueueGreen156 } from '../../delivery/recovery/green156-admission';
 import { enqueuePacked165 } from '../../delivery/recovery/packed165-intent';
 import { enqueueMetadataRecovery } from '../../delivery/recovery/pr-metadata-intent';
-import { configureDigestDelivery } from '../../knowledge/digests/settings';
 import { promoteNoteLesson } from '../../knowledge/promote-note-lesson';
 import { supersedeSlackDelivery } from '../../conversations/slack/supersede-delivery';
 import { TimeClassificationInput } from '../../time/time-classification';
@@ -110,7 +109,6 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'demote-lesson': demoteLesson(store, lessonId); break;
             case 'retire-lesson': retireLesson(store, lessonId); break;
             case 'configure-knowledge': configureKnowledge(store, knowledge); break;
-            case 'configure-knowledge-digest': configureDigestDelivery(store,knowledge); break;
             case 'configure-channel-notifications': configureChannelNotices(store, channel); break;
             case 'reactivate-lesson': reactivateLesson(store, lessonId); break;
             case 'decline-lesson-issue': declineLessonIssue(store, lessonId); break;

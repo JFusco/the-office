@@ -163,7 +163,6 @@ export interface OfficeKnowledge {
     lessons: Lesson[];
 }
 export interface KnowledgeState {
-    digestDelivery?:import('./knowledge-digests').KnowledgeDigestDelivery;
 
     learningStartedAt?: string;
     /** Eastern day of the last queued read-back of lesson issues. */
@@ -171,7 +170,6 @@ export interface KnowledgeState {
     exposures?: LessonExposure[];
     lookups?: import('./knowledge-lookups').KnowledgeLookupSummary[];
     outcomes?: import('./knowledge-outcomes').KnowledgeOutcome[];
-    digests?: import('./knowledge-digests').KnowledgeDigest[];
     learningConsumed?: string[];
     learningAttempts?: Record<string, number>;
     followups?: BlockerFollowup[];

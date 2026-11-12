@@ -11,7 +11,7 @@ import { captureLearning, learningDigest } from './learning-events';
 
 /** Positive binding, not a prose tag, grants only read-only diagnosis. */
 export function harperHandoff(store: Store, message: TeamMessage): boolean {
-    return message.from === 'knowledge' && message.to === 'pm' && (!!store.state.knowledge?.followups?.some(item => (item.handoffId === message.id || item.handoffIds?.includes(message.id)))||!!store.state.knowledge?.digests?.some(item=>item.messageId===message.id));
+    return message.from === 'knowledge' && message.to === 'pm' && (!!store.state.knowledge?.followups?.some(item => (item.handoffId === message.id || item.handoffIds?.includes(message.id))));
 }
 function handoff(store: Store, item: BlockerFollowup, original?: TeamMessage) {
     const id = `harper-followup:${item.id}:${learningDigest(item.nextAction)}`;

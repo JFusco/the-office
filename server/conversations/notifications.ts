@@ -8,7 +8,6 @@ import { sendGoalNotice } from '../leadership/send-goal-notice';
 import { sendMaintenanceNotice } from '../maintenance/brain/send-maintenance-notice';
 import { channelNoticeAuthorized, queueChannelNotice } from './channel-notice';
 import { shippedSummary, type MergedPR } from './merge-summary';
-import { sendDigestNotice } from '../knowledge/digests/send-notice';
 export const NoticeSettings = z.object({ enabled: z.boolean(), recipients: z.enum(['assignee', 'reporter', 'both']), workspace: z.string().trim().min(1).max(100), mappings: z.string().max(6000) }).strict();
 const Identity = z.object({ found: z.boolean(), targetId: z.string(), targetName: z.string(), workspaceId: z.string(), evidence: z.array(z.string()), blocker: z.string() }).strict();
 export function noticeState(store: Store) { return store.state.coordination!.notices ??= { policy: { enabled: false, recipients: 'both', workspace: 'Verndale', mappings: '', enabledAt: '' }, entries: [] }; }
@@ -87,7 +86,6 @@ export class MergeNotifications {
             return;
         if (notice.kind === 'goal') return sendGoalNotice(this.store, this.engine.agents, notice);
         if (notice.kind === 'maintenance') return sendMaintenanceNotice(this.store, this.engine.agents, notice);
-        if (notice.kind === 'knowledge-digest') return sendDigestNotice(this.store,this.engine.agents,notice,this.engine.agents.knowledgeContext);
         if (notice.channel) return this.postToChannel(notice);
         if (!policy.enabled) {
             notice.status = 'cancelled';
