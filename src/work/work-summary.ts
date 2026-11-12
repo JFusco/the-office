@@ -14,6 +14,12 @@ export function shortSummary(text: string = '', limit = 240) {
     return clean.slice(0, end > limit / 2 ? end : limit - 1) + '…';
 }
 export function actionSummary(id: string) {
+    if (id.startsWith('lesson-issue:'))
+        return 'Read the lesson below, then approve filing an improvement issue or decline the suggestion.';
+    if (id.startsWith('office-lesson:'))
+        return 'Read the proposed lesson below, then accept it for all projects or decline it.';
+    if (id.startsWith('maintenance:'))
+        return 'Morgan must reconcile the original run. A reply alone does not finish maintenance or clear missing evidence.';
     if (id === 'it-followup')
         return 'Follow Ellis’s specific steps below, then open Service health and select Check IT again.';
     if (id.startsWith('checkpoint:'))
