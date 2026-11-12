@@ -14,7 +14,7 @@ HARPER REFLECTS   events for one subject collect in an open batch; once a retros
                   starts, later events form the next batch
   proposes lessons (when / do / check / why) and, for blocked work, may propose an unblock brief
   v
-HARPER CURATES    per proposal: add | update | supersede | share (source-only learning: add)
+HARPER CURATES    per proposal: add | update | supersede | share
   the harness applies the decision (curate-lesson.ts)
   v
 LESSONS           project lessons in each project store; office lessons in the control store,
@@ -35,13 +35,13 @@ HARPER TEACHES    at dispatch, at a block, and on lookup
 | `detail` | Why, in a sentence |
 | `stages`, `paths` | Where it applies; stages filter, paths only rank; never wording |
 | `validUntil` | Only for a lesson tied to a ticket, version or temporary condition |
-| `tier`, `revision` | `hypothesis`, `guidance`, `procedure` or `rule`; curation, tier and status changes raise the revision, review flags and repository-issue state do not |
+| `tier`, `revision` | `hypothesis`, `guidance`, `procedure` or `rule`; curation, tier and status changes raise the revision; repository-issue state does not |
 
 A lesson states a rule and a check. It does not narrate an incident, name a teammate or cite a run-specific path.
 
 ## Curation
 
-Harper's retrospective result names one action per proposed lesson (`server/knowledge/retrospective-result.ts`). For a retrospective on source evidence alone, every proposal is an add (`accept-retrospective.ts`):
+Harper's retrospective result names one action per proposed lesson (`server/knowledge/retrospective-result.ts`). The harness applies it (`accept-retrospective.ts`):
 
 - **add**: a new project lesson.
 - **update**: edit an active project lesson in place; new evidence joins the old.
@@ -66,12 +66,12 @@ There is no age-based retirement and no recurrence review. Joe can reactivate an
 **At dispatch** (`lesson-selection.ts`, `task-briefing.ts`, `workers/worker-runtime.ts`)
 
 - `PROJECT LESSONS`: at most 10 active, non-hypothesis lessons for this stage (stage-specific first, then those matching these paths), within 4,000 characters. Guidance renders `When: … Do: … Check: …` where those fields are present; an installed rule appears only as a reference to its implementation. Precedence is stated in the heading: current source beats a lesson, and a lesson beats a general Brain note.
-- `SOURCE EVIDENCE`: bounded excerpts from the Office's sources and from Brain. A Brain note contributes its "What to do" section when it has one.
-- The lookup instruction and one `ALSO AVAILABLE BY LOOKUP` line naming what was not supplied. Lessons derived from a private source are never named in that line.
+- `SOURCE EVIDENCE`: bounded excerpts from Brain notes. A note contributes its "What to do" section when it has one.
+- The lookup instruction and one `ALSO AVAILABLE BY LOOKUP` line naming what was not supplied.
 
 **At a block** (`unblock-brief.ts`, `blocker-followups.ts`)
 
-The retrospective a park, block or exhausted repair budget already triggers may save an unblock brief for that subject: what is known, the decision, the next step. It is kept only when Harper returns one and the packet holds no source-scoped evidence. A block that arrives while an open learning batch exists for the same subject is merged into that batch, which is then marked as blocked and owes the brief (`record-trigger.ts`, `blocking-trigger.ts`). Blocked retrospectives run ahead of routine ones and are neither held by nor counted against the limit of 8 retrospectives per project per day (`scheduled-retrospectives.ts`, `run-retrospective.ts`). It shows on the blocker follow-up and sits immediately after the assignment line when the work resumes. It is cleared once the follow-up confirms resolution.
+The retrospective a park, block or exhausted repair budget already triggers may save an unblock brief for that subject: what is known, the decision, the next step. It is kept only when Harper returns one. A block that arrives while an open learning batch exists for the same subject is merged into that batch, which is then marked as blocked and owes the brief (`record-trigger.ts`, `blocking-trigger.ts`). Blocked retrospectives run ahead of routine ones and are neither held by nor counted against the limit of 8 retrospectives per project per day (`scheduled-retrospectives.ts`, `run-retrospective.ts`). It shows on the blocker follow-up and sits immediately after the assignment line when the work resumes. It is cleared once the follow-up confirms resolution.
 
 **On lookup** (`lookup/`)
 
@@ -83,12 +83,11 @@ The Office reads Brain (`brain/reader.ts`, a read-only CLI transport) and never 
 
 ## Sources
 
-Link and upload sources are being removed. Nothing can be added or refreshed any more: there is no source command, upload route, scheduled read or Sources screen. Evidence already retained is still read and stays Office-private until the registry and the source-scoping code are removed in the next change. There is no Slack channel intake.
+The Office has no link, upload or Slack channel sources. Its knowledge is Harper's lessons and what it reads from Brain.
 
 ## What Joe decides
 
-Harper's outbox (`knowledge-outbox.ts`) holds three kinds of item, each cleared in the Lessons panel:
+Harper's outbox (`knowledge-outbox.ts`) holds two kinds of item, each cleared in the Lessons panel:
 
 - an office-wide lesson to accept or decline;
-- a lesson that belongs in its repository, to file as an issue or decline;
-- a lesson whose source changed or was withdrawn, to keep, hold as a hypothesis or retire.
+- a lesson that belongs in its repository, to file as an issue or decline.
