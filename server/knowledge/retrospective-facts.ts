@@ -1,6 +1,5 @@
 import type { LessonEvidence, PendingRetrospective } from '../../src/shared';
 import { blockingTrigger } from './blocking-trigger';
-import type { KnowledgeSourceBinding } from '../../src/contracts/knowledge';
 import type { Store } from '../store/store';
 import type { RetrospectiveSubject } from './retrospective-subject';
 import { maintenanceFacts, type MaintenancePacketSection } from './maintenance-facts';
@@ -21,7 +20,7 @@ export interface RetrospectivePacket {
     notes: unknown[];
     activeLessons: { scope?: 'project' | 'office'; revision?: number; id: string; when: string; statement: string; check: string; stages: string[] }[];
     /** Active lessons in the Office's other projects, so the same lesson is shared instead of learned twice. */
-    elsewhere?: { project: string; id: string; when: string; statement: string; sourceBindings?: KnowledgeSourceBinding[] }[];
+    elsewhere?: { project: string; id: string; when: string; statement: string }[];
     /** Only for a maintenance run: ledgers, harness error and saved artifacts. Bounded by construction. */
     maintenance?: MaintenancePacketSection;
     omitted: Record<string, number>;

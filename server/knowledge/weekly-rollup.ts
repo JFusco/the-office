@@ -1,8 +1,5 @@
 import { expireLearningPackets } from './learning-maintenance';
-import { knowledgeSnapshot,knowledgeScopeRevision } from './knowledge-snapshot';
-import type { KnowledgeContext } from './context';
-import { proofBindings } from './sources/proof-scope';
-import { scanCuration } from './sources/curation-scan';
+import { knowledgeSnapshot } from './knowledge-snapshot';
 import { learningMetrics } from './learning-metrics';
 import type { WorkEligibility } from '../../src/shared';
 import { addDays, easternDay, easternInstant } from '../office/clock';
@@ -51,7 +48,6 @@ FACTS: ${JSON.stringify({
 }
 
 export interface RollupHooks {
-    context?:KnowledgeContext;
     /** Persists office-wide proposals (control store) and returns their ids. */
     propose?: (store: Store, rollupId: string, proposals: RollupResult['officeProposals']) => string[];
 }
@@ -61,8 +57,7 @@ export async function runRollup(store: Store, run: KnowledgeRunner, id: string, 
     const knowledge = store.state.knowledge;
     if (!knowledge || knowledge.rollups?.some(rollup => rollup.id === id)) return;
     const weekEnding = id.slice('rollup:'.length), now = store.clock.now();
-    const scoped=hooks.context?knowledgeSnapshot(hooks.context.registry,store.project.id,knowledge)!:knowledge;
-    const scopeRevision=hooks.context?knowledgeScopeRevision(hooks.context.registry,store.project.id,knowledge):'';
+    const scoped=knowledgeSnapshot(store.project.id,knowledge)!;
     // Friday 5 PM to Friday 5 PM Eastern: contiguous weeks, so nothing after the review falls between two roll-ups.
     expireLearningPackets(store);
     const metrics = knowledge.rollupRetry?.id === id && scoped.rollupRetry?.metrics || deliveryMetrics(store, easternInstant(addDays(weekEnding, -7), 17), easternInstant(weekEnding, 17),scoped);
@@ -90,13 +85,8 @@ export async function runRollup(store: Store, run: KnowledgeRunner, id: string, 
     knowledge.rollupRetry = retry;
     store.save();
     try {
-        const prompt=rollupPrompt(store,weekEnding,metrics,activity,scoped),sourceBacked=[...scoped.lessons,...(scoped.officeLessons||[])].some(l=>l.evidence.some(p=>proofBindings(p).length))||scoped.retrospectives.some(r=>r.sourceBindings?.length);
-        if(sourceBacked&&!hooks.context)throw Error('Source-backed weekly review requires current knowledge scope');
-        if(sourceBacked)await scanCuration(store,id,'input',prompt,hooks.context?.scan);
-        if(hooks.context&&scopeRevision!==knowledgeScopeRevision(hooks.context.registry,store.project.id,store.state.knowledge))throw Error('Weekly knowledge scope changed during input scanning');
+        const prompt=rollupPrompt(store,weekEnding,metrics,activity,scoped);
         const result = RollupResultSchema.parse(await run(prompt, RollupResultSchema, { readOnly: true, effortKind: 'administrative', stage: 'knowledge-rollup', requestId: `${store.project.id}:${id}`, ticket: '', cwd: harperFolder(store, 'rollups'), enqueuedAt: easternInstant(weekEnding, 17).toISOString(), timeout: RETROSPECTIVE_TIMEOUT }));
-        if(sourceBacked)await scanCuration(store,id,'output',JSON.stringify(result),hooks.context?.scan);
-        if(hooks.context&&scopeRevision!==knowledgeScopeRevision(hooks.context.registry,store.project.id,store.state.knowledge))throw Error('Knowledge scope changed during the weekly rollup; retained output cannot be delivered');
         const proposalIds = hooks.propose?.(store, id, result.officeProposals) || [];
         store.transaction(() => {
             const current = store.state.knowledge!;

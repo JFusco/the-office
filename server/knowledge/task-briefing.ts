@@ -1,8 +1,6 @@
 import type { KnowledgeContext } from './context';
 import type { KnowledgeHit,KnowledgeReference,KnowledgeSearch } from '../../src/contracts/knowledge-retrieval';
 import type { LessonSelection } from './lesson-selection';
-import { lessonVisible,exposureSourceVisible } from './sources/lesson-visibility';
-import { evidenceRead } from './sources/evidence-read';
 import { retrieve } from './retrieval';
 import { digest } from './digest';
 import { knowledgeCitation } from './outcomes/citation';
@@ -22,12 +20,10 @@ export function boundEvidence(result:KnowledgeSearch):EvidenceSelection {
     return {text:selected.length?lines.join('\n'):'',selected,snapshot:result.snapshot,technicalStatus:result.technicalStatus};
 }
 export async function taskBriefing(context:KnowledgeContext,project:string,stage:string,task:string,paths:string[]=[]):Promise<EvidenceSelection>{
-    return boundEvidence(await retrieve(context,project,`${stage} ${task.split('\n')[0].slice(0,400)} ${paths.join(' ')}`.slice(0,2000),{officeKind:'source'}));
+    return boundEvidence(await retrieve(context,project,`${stage} ${task.split('\n')[0].slice(0,400)} ${paths.join(' ')}`.slice(0,2000),{technicalOnly:true}));
 }
-/** Called again after provider probes, immediately before dispatch; a retained manifest cannot grant access. */
-export function assertBriefingScope(context:KnowledgeContext,project:string,lessons:LessonSelection,evidence:EvidenceSelection):void {
-    if((lessons.sourceBindings||[]).some(b=>!exposureSourceVisible(context.registry,project,b)))throw Error('Lesson source scope changed before dispatch');
+/** Called again after provider probes, immediately before dispatch: every selected lesson must still be held. */
+export function assertBriefingScope(context:KnowledgeContext,project:string,lessons:LessonSelection):void {
     const knowledge=context.stores.get(project)?.state.knowledge;
-    for(const ref of lessons.selected){const lesson=[...(knowledge?.lessons||[]),...(knowledge?.officeLessons||[])].find(l=>l.id===ref.id&&l.scope===ref.scope);if(!lesson||!lessonVisible(context.registry,project,lesson))throw Error('Knowledge briefing scope changed before dispatch');}
-    for(const {reference} of evidence.selected)if(reference.kind==='source'){const record=evidenceRead(context,project,reference.id);if(!record||record.contentSha256!==reference.contentSha256||record.version!==reference.version)throw Error('Source evidence scope changed before dispatch');}
+    for(const ref of lessons.selected)if(![...(knowledge?.lessons||[]),...(knowledge?.officeLessons||[])].some(l=>l.id===ref.id&&l.scope===ref.scope))throw Error('Knowledge briefing scope changed before dispatch');
 }

@@ -4,9 +4,9 @@ import { z } from 'zod';
 import type { workerProfile } from './worker-profiles';
 
 /** Filesystem capability and external-write disposition are different policies. */
-export function workerLaunchPolicy(profile: ReturnType<typeof workerProfile>, stage: string, slackSend: boolean, privateIntake: boolean, handsOff: boolean) {
+export function workerLaunchPolicy(profile: ReturnType<typeof workerProfile>, stage: string, slackSend: boolean, handsOff: boolean) {
     return { readOnly: profile.name === 'reader' || profile.name === 'slack-native' && profile.readOnly && !slackSend && ['slack-recipient', 'slack-verify'].includes(stage),
-        terminateStragglers: privateIntake || handsOff && profile.name !== 'slack-native' };
+        terminateStragglers: handsOff && profile.name !== 'slack-native' };
 }
 
 const LaunchPolicy = z.object({ version: z.literal(1), workerId: z.string().min(1).max(80), stage: z.string().max(100), program: z.enum(['codex', 'claude']),

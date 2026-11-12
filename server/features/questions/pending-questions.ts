@@ -1,18 +1,16 @@
 import type { FeatureQuestionProjection } from '../../../src/contracts/features';
 import type { Store } from '../../store/store';
-import type { SourceRegistry } from '../../knowledge/sources/registry';
-import { knowledgeOfficeState } from '../../knowledge/office-state-view';
 import { FEATURE_PLANNING } from '../../office/config';
 import { featurePolicy, type FeaturePlanningBindings } from '../progression/policy';
 import { pendingRounds, roundAuthor } from './pending-round';
 import { normalizeQuestion } from '../../../src/features/questions/normalize-question';
-/** Authorization precedes selection. Never expose persisted answers or executable descriptors. */
-export function pendingQuestions(stores: Iterable<Store>, sources: SourceRegistry, bindings: FeaturePlanningBindings = FEATURE_PLANNING): FeatureQuestionProjection[] {
+/** Never expose persisted answers or executable descriptors. */
+export function pendingQuestions(stores: Iterable<Store>, bindings: FeaturePlanningBindings = FEATURE_PLANNING): FeatureQuestionProjection[] {
     const result: FeatureQuestionProjection[] = [];
     for (const store of stores) {
         const policy = featurePolicy(store.project.id, bindings);
         if (!policy.assessment.enabled && policy.progression !== 'automatic') continue;
-        const state = knowledgeOfficeState(sources, store.project.id, store.state, true);
+        const state = store.state;
         if (state.paused) continue;
         for (const feature of state.features || []) {
             if (feature.paused || feature.status !== 'waiting') continue;

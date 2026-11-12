@@ -5,12 +5,10 @@ import { pendingQuestions } from '../features/questions/pending-questions';
 import { QuestionNotifications } from '../features/questions/question-notifications';
 import { featurePolicy } from '../features/progression/policy';
 import { FEATURE_PLANNING } from '../office/config';
-import { knowledgeSessionVisibility } from '../knowledge/sources/session-visibility';
-import { leadershipEntries,leadershipContext } from '../knowledge/leadership-context';
+import { leadershipContext } from '../knowledge/leadership-context';
 import { knowledgeOfficeState,knowledgeEntries } from '../knowledge/office-state-view';
 import { knowledgeSnapshot,officeKnowledgeSnapshot } from '../knowledge/knowledge-snapshot';
 import { CommittedBrain } from '../knowledge/brain/reader';
-import { SourceRegistry } from '../knowledge/sources/registry';
 import { maintainLearning } from '../knowledge/learning-maintenance';
 import { scheduledResearch } from '../knowledge/weekly-research';
 import { queueImprovements } from '../knowledge/queue-improvements';
@@ -51,17 +49,16 @@ export class Offices {
     knowledgeScheduler = new Scheduler(this.knowledgeCapacity, systemClock, 'knowledge');
     operationsScheduler = new Scheduler(this.operationsCapacity, systemClock, 'operations');
     control = new ControlStore();
-    sources = new SourceRegistry(this.control.db);
     preferences = new PreferencesStore(this.control.db);
-    dailyCTO = new DailyCTO(this.control, () => [...this.entries.values()], () => leadershipEntries([...this.entries.values()],this.sources));
+    dailyCTO = new DailyCTO(this.control, () => [...this.entries.values()], () => knowledgeEntries([...this.entries.values()]));
     serviceInstanceId = randomUUID();
     snapshotSequence = 0;
     stores() { return new Map([...this.entries].map(([id, entry]) => [id, entry.store])); }
     projection(entry: typeof this.entries extends Map<string, infer E> ? E : never, lane = 'delivery') { return scheduledWork(entry, this.stores(), entry.store.clock.now(), lane, lane === 'knowledge' ? this.knowledgeOptions() : {}); }
     /** Harper's weekly roll-up waits for Avery's review and files office-wide proposals in the control store. */
     knowledgeOptions() {
-        return { context:{registry:this.sources,stores:this.stores(),brain:new CommittedBrain()}, dailyStatus: (date: string) => this.control.forDate?.(date)?.status,
-            propose: (store: Store, rollupId: string, proposals: Parameters<typeof proposeOfficeLessons>[3]) => { const ids = proposeOfficeLessons(this.control, store.project.id, rollupId, proposals, Object.fromEntries((knowledgeSnapshot(this.sources,store.project.id,store.state.knowledge)?.lessons || []).flatMap(lesson => lesson.evidence).map(proof => [proof.ref, proof]))); mirrorOfficeKnowledge(this.control, this.stores().values()); return ids; } };
+        return { context:{stores:this.stores(),brain:new CommittedBrain()}, dailyStatus: (date: string) => this.control.forDate?.(date)?.status,
+            propose: (store: Store, rollupId: string, proposals: Parameters<typeof proposeOfficeLessons>[3]) => { const ids = proposeOfficeLessons(this.control, store.project.id, rollupId, proposals, Object.fromEntries((knowledgeSnapshot(store.project.id,store.state.knowledge)?.lessons || []).flatMap(lesson => lesson.evidence).map(proof => [proof.ref, proof]))); mirrorOfficeKnowledge(this.control, this.stores().values()); return ids; } };
     }
     sessions = new SessionBridge(() => [...this.entries.values()].map(e => e.store));
     entries = new Map<string, {
@@ -71,7 +68,7 @@ export class Offices {
         coordinator?: Coordinator;
     }>();
     private questionNotifications?: QuestionNotifications;
-    questions() { return pendingQuestions(this.stores().values(), this.sources); }
+    questions() { return pendingQuestions(this.stores().values()); }
     questionEvents() {
         this.questionNotifications ??= new QuestionNotifications(() => this.questions());
         this.questionNotifications.observe(this.stores().values());
@@ -88,7 +85,7 @@ export class Offices {
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
         }
         for (const entry of this.entries.values()) {
-            for(const runtime of [entry.engine.agents,entry.engine.knowledgeAgents,entry.engine.itAgents,entry.engine.ctoAgents])runtime.knowledgeContext={registry:this.sources,stores:this.stores(),brain:new CommittedBrain()};
+            for(const runtime of [entry.engine.agents,entry.engine.knowledgeAgents,entry.engine.itAgents,entry.engine.ctoAgents])runtime.knowledgeContext={stores:this.stores(),brain:new CommittedBrain()};
             entry.conversations.goalOffice = id => {
                 const owners = [...this.entries.values()].filter(item => item.store.state.goals?.some(goal => goal.id === id));
                 if (owners.length !== 1)
@@ -105,7 +102,7 @@ export class Offices {
                     throw new Error('Project is not configured for this Office');
                 return target.conversations;
             };
-            entry.engine.ctoAgents.ctoContext = () => leadershipContext([...this.entries.values()],this.sources,entry.store.project.name);
+            entry.engine.ctoAgents.ctoContext = () => leadershipContext([...this.entries.values()],entry.store.project.name);
         }
         this.dailyCTO.recover();
         seedOfficeLessons(this.control);
@@ -131,7 +128,7 @@ export class Offices {
                 needsYou: projectOutbox(entry.store.state).filter(o => o.status === 'open').length };
         });
     }
-    snapshot(id = PROJECTS[0].id) { const scoped=knowledgeOfficeState(this.sources,id,this.get(id).store.state);return { ...scoped, featureQuestions: this.questions(), featurePlanning: { assessment: featurePolicy(id, FEATURE_PLANNING).assessment.enabled, progression: featurePolicy(id, FEATURE_PLANNING).progression, policyDigest: featurePolicy(id, FEATURE_PLANNING).digest }, knowledge:knowledgeSnapshot(this.sources,id,this.get(id).store.state.knowledge), slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(scoped), dailyCTO: this.control.summaries(), officeKnowledge: officeKnowledgeSnapshot(this.sources,id,this.control.knowledge?.()), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: knowledgeSessionVisibility(this.sources,id,this.stores().values(),this.sessions.forProject(this.get(id).store)), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: leadershipEntries([...this.entries.values()],this.sources).flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: knowledgeEntries([...this.entries.values()],this.sources).flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
+    snapshot(id = PROJECTS[0].id) { const scoped=knowledgeOfficeState(id,this.get(id).store.state);return { ...scoped, featureQuestions: this.questions(), featurePlanning: { assessment: featurePolicy(id, FEATURE_PLANNING).assessment.enabled, progression: featurePolicy(id, FEATURE_PLANNING).progression, policyDigest: featurePolicy(id, FEATURE_PLANNING).digest }, slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(scoped), dailyCTO: this.control.summaries(), officeKnowledge: officeKnowledgeSnapshot(id,this.control.knowledge?.()), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
     async tick(now = new Date()) { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); }
     async pump() {
         try { this.questionEvents().refresh(); } catch { /* A malformed persisted round only delays question notifications. */ }

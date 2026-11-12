@@ -5,7 +5,6 @@ export function knowledgeOutbox(state: OfficeSnapshot): { id: string; title: str
     const knowledge = state.knowledge;
     if (!knowledge) return [];
     return [
-        ...knowledge.lessons.filter(lesson => lesson.status === 'active' && lesson.needsReview).map(lesson => ({ id: `lesson-review:${lesson.id}`, title: 'Guidance needs a source review', detail: `${lesson.statement}\nIts source changed, was withdrawn or was written by the Office. Keep it, hold it as a hypothesis or retire it in Harper's Lessons panel.` })),
         ...knowledge.lessons.filter(lesson => lesson.status !== 'retired' && lesson.repositoryInstruction?.status === 'proposed').map(lesson => ({ id: `lesson-issue:${lesson.id}`, title: 'Harper suggests a durable team improvement', detail: `${lesson.statement}\nFile it as a GitHub issue or decline it in Harper's Lessons panel.` })),
         ...(knowledge.officeProposals || []).filter(proposal => proposal.status === 'proposed').map(proposal => ({ id: `office-lesson:${proposal.id}`, title: 'Harper proposes an office-wide lesson', detail: `${proposal.statement}\nAccept it for every project or decline it in Harper's Lessons panel.` })),
     ];

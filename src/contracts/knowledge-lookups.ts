@@ -10,5 +10,5 @@ export interface KnowledgeLookupResponse {
 export interface KnowledgeLookupSummary {
     recordingUnavailable?:boolean;
     id: string; stage: string; subject?: LearningSubject; at: string; endedAt?: string;
-    count: number; digest: string; records: (Omit<KnowledgeLookupResponse, 'text'> & {sourceBindings?:import('./knowledge').KnowledgeSourceBinding[]})[];
+    count: number; digest: string; records: Omit<KnowledgeLookupResponse, 'text'>[];
 }

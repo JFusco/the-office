@@ -8,7 +8,6 @@ import { boundEvidence } from '../task-briefing';
 import { referenceVisible } from './reference-scope';
 import { lookupJournal,type LookupJournal } from './receipts';
 import { lookupInstructions } from './instructions';
-import { publicReference } from './public-reference';
 
 interface Binding {
     id:string; tokenHash:Buffer; context:KnowledgeContext; store:Store; claimId?:string;
@@ -38,7 +37,6 @@ export class AssignmentLookups {
         if(binding.count>=20)return json({error:'Assignment lookup limit reached'},429);
         // Reserve synchronously before the first await: parallel requests cannot exceed the limit.
         const index=++binding.count,project=binding.store.project.id;
-        let sourceBindings:import('../../../src/contracts/knowledge').KnowledgeSourceBinding[]=[];
         let response:KnowledgeLookupResponse={assignment:binding.id,index,at:binding.store.clock.now().toISOString(),outcome:'unavailable',text:'',textSha256:'',selected:[],snapshot:binding.snapshot,technicalStatus:'unavailable'};
         try {
             // A missing initial snapshot stays unavailable; lookups must never silently repin to HEAD.
@@ -46,15 +44,12 @@ export class AssignmentLookups {
             const context=binding.snapshot?binding.context:{...binding.context,brain:{snapshot:unavailable,search:unavailable,read:unavailable}};
             const evidence=boundEvidence(await retrieve(context,project,query,{snapshot:binding.snapshot||undefined}));
             if(!this.live(binding))return json({error:'Knowledge lookup expired'},404);
-            if(evidence.selected.every(s=>referenceVisible(binding.context,project,s.reference))){
-                sourceBindings=evidence.selected.flatMap(s=>s.reference.sourceBindings||[]);
-                response={...response,...evidence,selected:evidence.selected.map(s=>({...s,reference:publicReference(s.reference)})),outcome:evidence.selected.length?'served':'unavailable'};
-            }
+            if(evidence.selected.every(s=>referenceVisible(binding.context,project,s.reference)))response={...response,...evidence,outcome:evidence.selected.length?'served':'unavailable'};
         } catch { /* Fail closed without exposing provider or filesystem diagnostics. */ }
         if(!this.live(binding))return json({error:'Knowledge lookup expired'},404);
         response.textSha256=createHash('sha256').update(response.text).digest('hex');
-        if(Buffer.byteLength(JSON.stringify(response))>16384){response={...response,outcome:'unavailable',text:'',textSha256:createHash('sha256').update('').digest('hex'),selected:[]};sourceBindings=[];}
-        try { binding.journal.append(query,response,sourceBindings); }
+        if(Buffer.byteLength(JSON.stringify(response))>16384)response={...response,outcome:'unavailable',text:'',textSha256:createHash('sha256').update('').digest('hex'),selected:[]};
+        try { binding.journal.append(query,response); }
         catch { binding.closed=true;this.bindings.delete(binding.id);return json({error:'Knowledge lookup recording unavailable'},503); }
         return json(response);
     }

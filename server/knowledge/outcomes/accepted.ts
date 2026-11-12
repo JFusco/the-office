@@ -17,7 +17,7 @@ function citations(result:Record<string,unknown>):Set<string> {
 }
 /** Called only from the existing domain acceptance seam, never from worker completion or ingestion. */
 export function recordAcceptedKnowledge(store:Store,subject:LearningSubject,stage:string,eventId:string,value:unknown):void {
-    if(!value||typeof value!=='object'||!('outcome' in value)||value.outcome!=='passed'||subject.kind==='source')return;
+    if(!value||typeof value!=='object'||!('outcome' in value)||value.outcome!=='passed')return;
     const knowledge=store.state.knowledge;if(!knowledge)return;
     const tokens=citations(value as Record<string,unknown>);if(!tokens.size)return;
     for(const exposure of knowledge.exposures||[]) {
@@ -31,7 +31,6 @@ export function recordAcceptedKnowledge(store:Store,subject:LearningSubject,stag
         const evidence=[...new Map(references.filter(r=>tokens.has(knowledgeCitation(r))).map(r=>[knowledgeCitation(r),r])).values()];
         const lessons=exposure.selected.filter(r=>tokens.has(lessonCitation(r)));
         if(!lessons.length&&!evidence.length)continue;
-        const sourceBindings=[...(exposure.sourceBindings||[]),...(lookup?.records||[]).flatMap(r=>r.sourceBindings||[])];
-        (knowledge.outcomes??=[]).push({id,eventId,assignmentId:exposure.id,subject,stage,at:store.clock.now().toISOString(),resultSha256:digest(JSON.stringify(value)),lessons,evidence,sourceBindings});
+        (knowledge.outcomes??=[]).push({id,eventId,assignmentId:exposure.id,subject,stage,at:store.clock.now().toISOString(),resultSha256:digest(JSON.stringify(value)),lessons,evidence});
     }
 }

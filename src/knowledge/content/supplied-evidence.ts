@@ -12,7 +12,7 @@ export async function suppliedEvidence(text: string, selected: readonly Supplied
     if (headerEnd < 0 || !text.startsWith('SOURCE EVIDENCE') || text.slice(0, headerEnd).includes('\n') || selected.length > 8) return [];
     let cursor = headerEnd + 2;
     for (const [index, { reference, excerptSha256 }] of selected.entries()) {
-        const scope = reference.kind === 'brain' ? 'technical' : reference.kind === 'source' ? 'project' : reference.lesson?.scope;
+        const scope = reference.kind === 'brain' ? 'technical' : reference.lesson?.scope;
         const identity = reference.kind === 'lesson' && reference.lesson ? `lesson:${reference.lesson.scope}:${reference.lesson.id}@${reference.lesson.revision}` : reference.id;
         const marker = `[${scope} · ${identity}] `;
         if (!scope || !/^[a-f0-9]{64}$/.test(excerptSha256) || !text.startsWith(marker, cursor)) return [];

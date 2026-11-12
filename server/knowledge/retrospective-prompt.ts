@@ -1,7 +1,7 @@
 import { LESSON_STAGES } from '../../src/contracts/knowledge';
 import type { RetrospectivePacket } from './retrospective-facts';
 
-const SUBJECT = { source: 'accepted external source observation', feature: 'feature discovery or plan', investigation: 'IT investigation', recovery: 'recovery', orchestration: 'orchestration decision', message: 'Office message', job: 'job', ticket: 'run (a Jira/Azure ticket)', maintenance: 'CMS maintenance run (a scheduled follow-up and, on weekly days, a read-only vendor review that can lead to proposal and verification stages)' } as const;
+const SUBJECT = { feature: 'feature discovery or plan', investigation: 'IT investigation', recovery: 'recovery', orchestration: 'orchestration decision', message: 'Office message', job: 'job', ticket: 'run (a Jira/Azure ticket)', maintenance: 'CMS maintenance run (a scheduled follow-up and, on weekly days, a read-only vendor review that can lead to proposal and verification stages)' } as const;
 
 /** What a blocked or finished maintenance run must answer; Morgan (pm) runs follow-up and vendor review. */
 const MAINTENANCE_FOCUS = `MAINTENANCE FOCUS: Name the exact evidence gap that caused a block (which source, fetch, artifact or field was missing, refused or changed upstream), citing catalog refs for the step and any saved artifact. Do not restate an active lesson. State what Morgan should do differently on the next run so the stage returns evidenced candidates instead of blocking (for example an alternative source, a saved artifact to read first, or a narrower claim). Lessons for these stages use stage "maintenance". Saved artifacts live under maintenance.artifactsRoot; read them by absolute path when a lesson depends on their content.`;

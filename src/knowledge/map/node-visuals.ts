@@ -16,7 +16,7 @@ export function nodeVisuals(palette: SceneColors) {
     gradient.addColorStop(1, palette.brainMarkerClear);
     markerContext.fillStyle = gradient; markerContext.fillRect(0,0,64,64);
     const markerTexture = new CanvasTexture(marker);
-    const colors = { project: new Color(palette.brainProject), source: new Color(palette.brainSource), evidence: new Color(palette.brainEvidence), lesson: new Color(palette.brainLesson), assignment: new Color(palette.brainFocused), technical: new Color(palette.brainClusterViolet) };
+    const colors = { project: new Color(palette.brainProject), lesson: new Color(palette.brainLesson), assignment: new Color(palette.brainFocused), technical: new Color(palette.brainClusterViolet) };
     for(const color of Object.values(colors))color.lerp(new Color(palette.brainMarker),.4);
     const focusedColor = new Color(palette.brainFocused);
     const records = new Map<string, { node: DisplayNode; star: Sprite; label: Sprite; dispose(): void }>();
@@ -59,7 +59,7 @@ export function nodeVisuals(palette: SceneColors) {
                 const depthSize = Math.min(1.5, Math.max(.85, overviewDistance / -depth));
                 star.scale.setScalar((node.id === view.focusId ? 36 : active ? 24 : node.kind === 'project' ? 18 : (12 + stableHash(node.id) % 4) * depthSize) / scale);
                 label.scale.set(240 / scale, 30 / scale, 1); label.position.y = (active ? 30 : 18) / scale;
-                const landmark = node.kind === 'project' || node.kind === 'source' || node.technicalKind === 'index' || stableHash(node.id) % 31 === 0;
+                const landmark = node.kind === 'project' || node.technicalKind === 'index' || stableHash(node.id) % 31 === 0;
                 if (node.id === view.focusId || !active && ((view.focusId ? !node.emphasized : !landmark))) continue;
                 world.y += label.position.y;
                 const screen = world.project(camera), width = 240, height = 30;

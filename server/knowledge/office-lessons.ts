@@ -3,8 +3,6 @@ import type { Lesson, OfficeKnowledge } from '../../src/shared';
 import type { Store } from '../store/store';
 import { normalizeStatement } from './accept-retrospective';
 import type { RollupResult } from './retrospective-result';
-import type { SourceRegistry } from './sources/registry';
-import { proofAuthorized,proofBindings } from './sources/proof-scope';
 
 /** The control store surface this module needs; tests pass an in-memory stand-in. */
 export interface OfficeKnowledgeStore {
@@ -34,12 +32,12 @@ export function proposeOfficeLessons(control: OfficeKnowledgeStore, projectId: s
 }
 
 /** Accepting turns the proposal into an active office lesson that every project's prompts include. */
-export function decideOfficeProposal(control: OfficeKnowledgeStore, proposalId: unknown, accept: boolean,scope?:{registry:SourceRegistry;projectId:string}): void {
+export function decideOfficeProposal(control: OfficeKnowledgeStore, proposalId: unknown, accept: boolean, projectId?: string): void {
     if (typeof proposalId !== 'string' || !proposalId) throw new Error('Proposal ID is required');
     control.updateKnowledge(knowledge => {
         const proposal = knowledge.proposals.find(item => item.id === proposalId);
         if (!proposal) throw new Error('Office proposal not found');
-        if(accept&&(scope&&proposal.projectId!==scope.projectId||(proposal.evidence||[]).some(p=>proofBindings(p).length&&(!scope||!proofAuthorized(scope.registry,scope.projectId,p)))))throw Error('Office proposal is unavailable in the current source scope');
+        if(accept&&projectId&&proposal.projectId!==projectId)throw Error('Office proposal belongs to another project');
         if (proposal.status !== 'proposed') return;
         const now = control.clock.now().toISOString();
         proposal.status = accept ? 'accepted' : 'declined';
