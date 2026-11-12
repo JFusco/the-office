@@ -24,3 +24,18 @@ test('only a running Office worker identity accounts for a descriptorless PID; m
     expect(() => accountCodexProcesses(`p41\nn${rollout}`, () => loadedCodexSession(undefined), new Set())).toThrow('no metadata');
     expect(() => codexProcessInventory('pnot-a-pid')).toThrow('malformed');
 });
+
+test('a helper is accounted for through any ancestor that is, and a stranger is not', () => {
+    // 52 holds the transcript; 53 is its child, 55 its grandchild through 54, which is not a Codex process; 56 descends from launchd.
+    const parents = new Map([[52, 1], [53, 52], [54, 52], [55, 54], [56, 1], [57, 57]]);
+    expect(accountCodexProcesses(`p52\nn${rollout}\np53\np55\np56\np57`, load, new Set(), parents).unaccounted).toEqual([56, 57]);
+    expect(accountCodexProcesses('p61\np62', load, new Set([61]), new Map([[62, 61]])).unaccounted).toEqual([]);
+    expect(accountCodexProcesses(`p52\nn${rollout}\np53`, load, new Set()).unaccounted).toEqual([53]);
+});
+
+test("the daemon and its helpers are explained only in the list used while the runtime answers", () => {
+    // 71 is the registered daemon, 72 its helper, 73 a stranger.
+    const report = accountCodexProcesses('p71\np72\np73', load, new Set(), new Map([[71, 1], [72, 71], [73, 1]]), [71]);
+    expect(report.unaccounted).toEqual([71, 72, 73]);
+    expect(report.besideRuntime).toEqual([73]);
+});
