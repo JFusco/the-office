@@ -6,6 +6,7 @@ export function OutboxMaintenanceStatus({ snapshot, actionId }: { snapshot: Offi
     if (!actionId.startsWith('maintenance:')) return null;
     const run = snapshot.maintenance?.runs.find(item => item.id === actionId.slice('maintenance:'.length));
     if (!run) return null;
+    if (run.retirement) return <div data-outbox-maintenance-status><p className="text-13 font-semibold">Retired as incomplete history</p><p className={mutedCopy}>{run.retirement.reason} Original status: {run.status}. This run was not completed or retried.</p></div>;
     const missingOwnership = run.error.includes('incomplete-live-session-inventory');
     const missingOutput = run.error.includes('missing-persisted-command-output');
     return <div className="grid gap-2" data-outbox-maintenance-status>

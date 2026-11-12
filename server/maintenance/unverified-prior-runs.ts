@@ -10,7 +10,7 @@ import type { MaintenanceRun } from '../../src/shared';
 export function supersedablePriorRuns(store: Pick<Store, 'project'>, runs: MaintenanceRun[], scheduled: boolean): string[] | null {
     const unverified = runs.filter(run => ['blocked', 'interrupted'].includes(run.status));
     if (!unverified.length) return [];
-    if (!scheduled || !handsOff(store)) return null;
+    if (unverified.some(run => !run.retirement) && (!scheduled || !handsOff(store))) return null;
     // A run an earlier run already superseded is not superseded again; it stays with that earlier record.
     const claimed = new Set(runs.flatMap(run => run.supersedes || []));
     return unverified.filter(run => !claimed.has(run.id)).map(run => run.id);

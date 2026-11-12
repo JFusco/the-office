@@ -61,7 +61,7 @@ export class GitHubMaintenance {
     }
     async reconcile(id: string) {
         const run = this.store.state.maintenance?.runs.find(r => r.id === id);
-        if (!run || !['blocked', 'interrupted'].includes(run.status))
+        if (!run || run.retirement || !['blocked', 'interrupted'].includes(run.status))
             throw new Error('No interrupted maintenance run matches this request');
         const original = prepareMaintenanceReadback(this.store, run);
         original.assertClaimed();

@@ -35,7 +35,7 @@ export async function tick(this: Coordinator, now = new Date()) {
     }
     if (this.store.project.id === 'brain')
         for (const run of this.store.state.maintenance?.runs || [])
-            if (['blocked', 'interrupted'].includes(run.status) && !run.readbackRetry) {
+            if (!run.retirement && ['blocked', 'interrupted'].includes(run.status) && !run.readbackRetry) {
                 run.readbackRetry = { attempts: 0, nextAt: now.toISOString(), history: [], exhausted: false };
                 this.store.emit('maintenance-recovery-queued', 'Morgan will reconcile the failed maintenance automatically before a native-gated retry.', 'pm');
             }

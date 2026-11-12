@@ -3,7 +3,7 @@ import { maintenanceSuperseded } from './superseded';
 import { repeatedVendorReviewBlock } from './repeated-vendor-block';
 
 export function maintenanceNeedsFollowup(state: OfficeSnapshot, run: MaintenanceRun): boolean {
-    return ['blocked', 'interrupted'].includes(run.status) &&
+    return !run.retirement && ['blocked', 'interrupted'].includes(run.status) &&
         (!run.readbackRetry || !!run.readbackRetry.exhausted) && !maintenanceSuperseded(state, run);
 }
 

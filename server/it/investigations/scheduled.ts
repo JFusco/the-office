@@ -7,7 +7,7 @@ import type { WorkEligibility } from '../../../src/shared';
 
 /** Pure queue projection plus a synchronous source/process fence immediately before claim. */
 export function scheduledInvestigations(store: Store, run: InvestigationRunner, now = store.clock.now(), alive = processGroupAlive): ScheduledWork[] {
-    return (store.state.it?.investigations || []).map(entry => {
+    return (store.state.it?.investigations || []).filter(entry => !entry.retirement).map(entry => {
         const ready = () => investigationReady(store, entry, alive) && !(store.state.workLog || []).some(work => work.requestId === entry.id && (!work.processId || ['running', 'stopping'].includes(work.status) || alive(work.processId)));
         const due = () => ['queued', 'working'].includes(entry.status) && entry.attempts < INVESTIGATION_ATTEMPTS && (!entry.nextAt || Date.parse(entry.nextAt) <= store.clock.now().getTime()) && ready();
         const exhausted = entry.attempts >= INVESTIGATION_ATTEMPTS && (entry.status !== 'working' || !!entry.nextAt && Date.parse(entry.nextAt) <= now.getTime());

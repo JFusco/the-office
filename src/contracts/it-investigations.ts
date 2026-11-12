@@ -2,6 +2,7 @@ export type OfficeFix = { status: 'proposed'; title: string; changes: { sourceRe
 
 /** Local operational diagnosis. A model finding never settles the original effect. */
 export interface ITInvestigation {
+    retirement?: import('./history-retirement').HistoryRetirement;
     id: string;
     source: { kind: 'slack' | 'worker'; id: string; requestId: string; ticket: string; failureKind: string; workerIds: string[] };
     status: 'queued' | 'working' | 'diagnosed' | 'blocked' | 'resolved';

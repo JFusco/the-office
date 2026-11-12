@@ -477,6 +477,7 @@ export interface MaintenanceResult {
     }[];
 }
 export interface MaintenanceRun {
+    retirement?: import('./contracts/history-retirement').HistoryRetirement;
     /** Earlier blocked/interrupted runs this scheduled run proceeded past (their history is retained). */
     supersedes?: string[];
     originalIssue?: string;
