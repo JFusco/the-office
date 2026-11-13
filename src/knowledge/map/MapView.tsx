@@ -1,4 +1,4 @@
-import { KnowledgeReveal } from '../KnowledgeReveal';
+import { KnowledgeMotion, KnowledgeReveal } from '../KnowledgeReveal';
 import { useMemo, useState } from 'react';
 import { PanelHeader } from '../../ui/PanelHeader';
 import { Brain, Pause, Play } from '../../ui/icons';
@@ -27,7 +27,8 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
     return <section aria-labelledby="map-heading">
         <PanelHeader id="map-heading" icon={<Brain size={26}/>}>Map</PanelHeader>
         <p className={cx(mutedCopy, "max-w-reading-copy")}>See how the team's lessons and work connect. Brain notes are an external, read-only reference; include them to see where they touch Office work. Hover or select a node to explore.</p>
-        <div className={cx(mapTheme,"mt-section-gap rounded-7 border border-map-line bg-map-surface p-card-padding")}>
+        {/* Pause stills the map's entry animations too: the reveal through the motion context, CSS entries through data-motion. */}
+        <KnowledgeMotion.Provider value={reduced || paused}><div data-motion={paused && !reduced ? 'reduced' : undefined} className={cx(mapTheme,"mt-section-gap rounded-7 border border-map-line bg-map-surface p-card-padding")}>
         <div className="mb-section-gap flex flex-wrap items-end gap-control-gap">
             <label className={cx(fieldLabel, 'min-w-0 max-w-full')}><span>Map scope</span><Select className={selectField} value={scope} onChange={event => { setSelection(keep); setScope(event.target.value); }}><option value="project">This project and Office-wide lessons</option><option value="global">Global · approved Office-wide lessons</option></Select></label>
             <label className={fieldLabel}><span>Show</span><Select className={selectField} value={selection.filter} onChange={event => setSelection({ ...keep(selection), filter: event.target.value as MapSelection['filter'] })}>{Object.entries(filterNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select></label>
@@ -54,7 +55,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
                     <span>{scope === 'global' ? 'Global scope' : project} / scoped</span>
                 </div>
                 </div><aside className="min-w-0 max-h-brain-canvas overflow-y-auto border-l border-secondary-line bg-map-panel p-card-padding max-tablet:max-h-none max-tablet:border-l-0 max-tablet:border-t" data-brain-list-frame>
-                    {view.selected ? <><Button className="mb-3" onClick={()=>setSelection(prior=>({...prior,selected:''}))}>Back to map</Button>{view.revealedCount>0&&<p role="status" className="mb-4 text-12">Showing {view.revealedCount} connected record(s) outside the display filters. Back restores the filtered view.</p>}<div key={view.selected.id} className={knowledgeEnter}><MapNodePanel project={project} node={view.selected} data={data} onSelect={selectNode}/></div></> : <MapBrowser key={`${view.group?.id || ''}:${view.page}`} view={view} onGroup={selectGroup} onNode={selectNode} onHighlight={setHighlight} onPage={page => setSelection(prior => ({ ...prior, page }))}/>}
+                    {view.selected ? <><Button className="mb-3" onClick={()=>setSelection(prior=>({...prior,selected:''}))}>Back to map</Button>{view.revealedCount>0&&<p role="status" className="mb-4 text-12">Showing {view.revealedCount} connected record(s) outside the display filters. Back restores the filtered view.</p>}<div key={view.selected.id} className={knowledgeEnter}><MapNodePanel project={project} node={view.selected} data={data} onSelect={selectNode}/></div></> : <MapBrowser view={view} onGroup={selectGroup} onNode={selectNode} onHighlight={setHighlight} onPage={page => setSelection(prior => ({ ...prior, page }))}/>}
                 </aside>
             </div>
             <p role="status" className="sr-only">{view.selected ? `Selected ${view.selected.title}. Its saved connections are available in the map panel.` : 'Browse a group or search for a record.'}</p>
@@ -66,6 +67,6 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
                 ].map(([label, value]) => <div key={label} className="rounded-3 border border-map-line bg-map-panel p-card-padding"><dt className="font-mono text-9 uppercase tracking-label text-map-muted">{label}</dt><dd className="mt-2 font-mono text-23 text-map-accent">{value}</dd></div>)}
             </dl>
         </>}
-        </KnowledgeReveal></div>
+        </KnowledgeReveal></div></KnowledgeMotion.Provider>
     </section>;
 }

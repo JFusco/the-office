@@ -32,14 +32,20 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     expect(graph.linkWidth).toHaveBeenLastCalledWith(.35);
     runtime.update({data:focused.scene,focusId:'note',reduced:false});expect(saved.nodes[0]).toBe(original);
     expect(graph.linkWidth).toHaveBeenLastCalledWith(1.2);expect(graph.linkOpacity).toHaveBeenLastCalledWith(.9);
+    const ambient=()=>state.visuals.update.mock.calls.at(-1)![4] as number;
     frame(1);frame(knowledgeCameraDuration+1);
     // A stalled frame slows the flight rather than jumping straight to its end.
     expect(graph.cameraPosition.mock.calls.at(-1)![1]).not.toEqual(original.position);
-    for(let i=1;i<=Math.ceil(knowledgeCameraDuration/16);i++)frame(knowledgeCameraDuration+1+i*16);
+    // The camera moves through a flight while drift, twinkle and dust stand still; they resume once it lands.
+    const flying=ambient(),pose=graph.cameraPosition.mock.calls.at(-1)![0];
+    frame(knowledgeCameraDuration+17);expect(graph.cameraPosition.mock.calls.at(-1)![0]).not.toEqual(pose);
+    expect(ambient()).toBe(flying);expect(state.atmosphere.update).toHaveBeenLastCalledWith(flying,true,expect.any(Number));
+    for(let i=2;i<=Math.ceil(knowledgeCameraDuration/16);i++)frame(knowledgeCameraDuration+1+i*16);
     expect(graph.cameraPosition).toHaveBeenLastCalledWith(expect.any(Object),original.position,0);
+    expect(ambient()).toBeGreaterThan(flying);
     runtime.update({data:overview.scene,reduced:true});expect(graph.cameraPosition).toHaveBeenLastCalledWith({x:0,y:0,z:overviewDistance},{x:0,y:0,z:0},0);
     frame(10000);expect(controls.autoRotate).toBe(false);
-    const ambient=()=>state.visuals.update.mock.calls.at(-1)![4] as number,still=ambient();frame(10016);expect(ambient()).toBe(still); // reduced: nothing drifts
+    const still=ambient();frame(10016);expect(ambient()).toBe(still); // reduced: nothing drifts
     expect(state.atmosphere.update).toHaveBeenLastCalledWith(still,false,1);
     runtime.update({data:overview.scene,reduced:false});frame(14000);expect(controls.autoRotate).toBe(true);
     expect(ambient()).toBeGreaterThan(still);

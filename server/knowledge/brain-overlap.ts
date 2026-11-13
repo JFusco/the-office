@@ -37,8 +37,11 @@ export function withBrainOverlap(packet: RetrospectivePacket, overlap: BrainOver
         const next = structuredClone(packet);
         next.brain = { snapshot: overlap.snapshot, notes: overlap.notes.slice(0, kept) };
         if (kept < overlap.notes.length) next.omitted.brain = overlap.notes.length - kept;
-        const text = JSON.stringify(next);
-        if (text.length <= PACKET_LIMIT && Buffer.byteLength(text) <= 65536) return next;
+        if (fits(next)) return next;
     }
-    return { ...packet, omitted: { ...packet.omitted, brain: overlap.notes.length } };
+    // Optional metadata never invalidates accepted evidence: the marker is recorded only when it still fits.
+    const omitted = { ...packet, omitted: { ...packet.omitted, brain: overlap.notes.length } };
+    return fits(omitted) ? omitted : packet;
 }
+
+const fits = (packet: RetrospectivePacket) => { const text = JSON.stringify(packet); return text.length <= PACKET_LIMIT && Buffer.byteLength(text) <= 65536; };

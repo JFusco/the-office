@@ -77,6 +77,9 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
         const folder = harperFolder(store, learningDigest(id));
         // Read Brain before freezing; a frozen retry reuses its saved packet and never reads Brain again.
         const overlap = context && !pending.packetDigest ? await brainOverlap(context, store.project.id, brainOverlapQuery(subject, pending)) : undefined;
+        // A transaction rolled back during the Brain read replaces state objects; bind the packet to the current entry.
+        pending = store.state.knowledge?.pending.find(entry => entry.id === id);
+        if (!pending) return;
         const packet = freezeLearningPacket(store, pending, folder, () => {const facts=withDemand(appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!),demandFacts(store.state.knowledge,subject,summary=>missedQueries(store.dataRoot,summary)));return withBrainOverlap(context?withElsewhere(facts,otherProjectLessons(context,store.project.id)):facts,overlap);});
         const result = RetrospectiveResultSchema.parse(await run(retrospectivePrompt(packet, store.project.repo), RetrospectiveResultSchema, { readOnly: true, effortKind: 'administrative', stage: 'retrospective', requestId: id, ticket: subject.key, cwd: harperFolder(store, learningDigest(id)), enqueuedAt: pending.createdAt, timeout: RETROSPECTIVE_TIMEOUT }));
         acceptRetrospective(store, pending, packet, result, currentAssignment()?.claim.id || randomUUID(), propose && (lessons => propose(store, id, lessons)));

@@ -66,9 +66,23 @@ test('notes are trimmed from the tail to fit the packet, and the omission is rec
     expect(JSON.stringify(next).length).toBeLessThanOrEqual(PACKET_LIMIT);
     expect(next.brain!.notes.length + next.omitted.brain).toBe(5);
     expect(next.brain!.notes[0].path).toBe('knowledge/n0.md');
-    const full = withBrainOverlap({ omitted: {}, catalog: {}, filler: 'f'.repeat(PACKET_LIMIT) } as unknown as RetrospectivePacket, overlap);
-    expect(full.brain).toBeUndefined();
-    expect(full.omitted.brain).toBe(5);
+});
+
+test('a packet already at either limit is returned unchanged; the omission is recorded only when it fits', () => {
+    const shape = (filler: string) => ({ omitted: {}, catalog: {}, filler }) as unknown as RetrospectivePacket;
+    const overlap = { snapshot: SNAPSHOT, notes: Array.from({ length: 5 }, (_, i) => ({ path: `knowledge/n${i}.md`, title: `T${i}`, summary: 's'.repeat(60) })) };
+    const base = JSON.stringify(shape('')).length, wide = Math.floor((65536 - base) / 3);
+    // At 24,000 characters, and at 65,536 bytes through three-byte characters well under the character limit.
+    const atChars = shape('f'.repeat(PACKET_LIMIT - base)), atBytes = shape('€'.repeat(wide) + 'f'.repeat(65536 - base - wide * 3));
+    for (const packet of [atChars, atBytes]) {
+        const text = JSON.stringify(packet);
+        expect(Math.max(text.length - PACKET_LIMIT, Buffer.byteLength(text) - 65536)).toBe(0);
+        expect(withBrainOverlap(packet, overlap)).toBe(packet);
+    }
+    const marked = withBrainOverlap(shape('f'.repeat(PACKET_LIMIT - base - 20)), overlap), text = JSON.stringify(marked);
+    expect(marked.brain).toBeUndefined();
+    expect(marked.omitted.brain).toBe(5);
+    expect(text.length).toBeLessThanOrEqual(PACKET_LIMIT); expect(Buffer.byteLength(text)).toBeLessThanOrEqual(65536);
 });
 
 test('Harper receives related Brain notes as context she cannot cite, and is told not to restate them', async () => {
@@ -101,6 +115,20 @@ test('a retry reuses the frozen packet and never reads Brain again', async () =>
     await runRetrospective(store, capture(seen), id, context);
     expect(calls.length).toBe(before);
     expect((JSON.parse(seen.facts) as RetrospectivePacket).brain?.notes.length).toBe(2);
+});
+
+test('a rollback while Brain is read cannot unbind the frozen packet from its retrospective', async () => {
+    const { store, id } = setup(), { reader } = brain();
+    // Any failed transaction on this store during the read replaces every state object, including the pending entry.
+    const rolledBack: BrainReader = { ...reader, snapshot: async () => { try { store.transaction(() => { throw new Error('rolled back'); }); } catch { /* restored */ } return reader.snapshot(); } };
+    const context = { stores: new Map([['brain', store]]), brain: rolledBack };
+    await runRetrospective(store, (async () => { throw new Error('model unavailable'); }) as KnowledgeRunner, id, context);
+    const pending = store.state.knowledge!.pending.find(entry => entry.id === id)!;
+    expect(pending.packetDigest).toBeTruthy();
+    expect(pending.lastError).toBe('model unavailable');
+    pending.nextAt = '';
+    await runRetrospective(store, capture({ facts: '', prompt: '' }), id, context);
+    expect(store.state.knowledge!.consumed).toContain(id);
 });
 
 test('the retrospective prompt carries the overlap rule only when the packet has Brain notes', () => {

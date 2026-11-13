@@ -63,8 +63,8 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         if(pointerInside&&hoverId){ray.setFromCamera(pointer,graph.camera() as PerspectiveCamera);hovered=!!visuals?.hit(hoverId,ray);}else hovered=false;
         visuals?.hover(hovered?hoverId:'');renderer.domElement.classList.toggle('clickable',hovered);
         controls.autoRotate = !!view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId && now - lastInteraction > knowledgeOrbitIdle;
-        // Ambient motion follows the same rules as the idle orbit, minus the idle wait: never reduced, paused, hovered or dragged.
-        if (view && !view.reduced && !view.paused && !dragging && !hovered && !view.highlightId) ambient += Math.max(0, Math.min(delta, knowledgeMaxFrameStep)) / 1000;
+        // Ambient motion follows the same rules as the idle orbit, minus the idle wait: never reduced, paused, in flight, hovered or dragged.
+        if (view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId) ambient += Math.max(0, Math.min(delta, knowledgeMaxFrameStep)) / 1000;
         atmosphere?.update(ambient, !!view?.focusId, view?.reduced || view?.paused ? 1 : 1 - Math.exp(-Math.min(delta, 50) / 260));
         visuals?.update(view, graph.camera() as PerspectiveCamera, container, delta, ambient);
         annotation?.render(focusOverlayPosition(view?.data.nodes.find(n => n.id === view?.focusId), graph.camera() as PerspectiveCamera, container.clientWidth, container.clientHeight, overlayLayout));
