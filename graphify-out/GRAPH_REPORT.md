@@ -1,7 +1,7 @@
 # Graph Report - office-cec-readback-nov13  (2026-11-13)
 
 ## Corpus Check
-- 743 files · ~306,337 words
+- 743 files · ~306,427 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ed5fcc4b`
+- Built from commit: `412b2303`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -590,7 +590,7 @@ Nodes (3): compare(), highestStableAtLeast(), parts()
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Store` connect `Store` to `github-delivery.ts`, `source-amendment.ts`, `agents.ts`, `dependency-bots/adopt.ts`, `recovery/stopped-base-update.ts`, `enrollment-gate.ts`, `features/workflow.ts`, `activation-recovery.ts`, `artifact`, `cec/issue-publication.ts`, `session-bridge.ts`, `closeout-recovery.ts`, `features.ts`, `conversations/conversations.ts`, `github-readiness.ts`, `requests.ts`, `reader.ts`, `App.tsx`, `Effects`, `digest`, `.transaction`, `accept-stage-result.ts`, `ref_zod`, `run.ts`, `run-retrospective.ts`, `knowledge.ts`, `record-trigger.ts`, `publish-pr.ts`, `remove-candidate.ts`, `ticket-stage-runner.ts`, `conversations/slack.ts`, `retire-history.ts`, `coordination.ts`, `assignments.ts`, `security.ts`, `dependencies.ts`, `.emit`, `cost-ledger.ts`, `github/issue-publication.ts`, `lesson-selection.ts`, `weekly-rollup.ts`, `ticket-evidence.ts`, `run-accounting.ts`, `.save`, `Coordinator`, `time-scope.ts`, `scheduled-features.ts`, `admit-improvement.ts`, `sanitize`, `daily-cto.ts`, `store.ts`, `assignment-poll.ts`, `create-candidate.ts`, `scheduled-work.ts`, `jira-time.ts`, `retrospective-subject.ts`, `blocker-followups.ts`, `goal-reporting.ts`, `scheduler.ts`, `workKey`, `Agents`, `.getEffect`, `engine.ts`, `learning-events.ts`, `office-lessons.ts`, `run-evidence.ts`, `it-specialist.ts`, `evidence.ts`, `requeue-waited-implement.ts`, `delivery-task.ts`?**
-  _High betweenness centrality (0.102) - this node is a cross-community bridge._
+  _High betweenness centrality (0.101) - this node is a cross-community bridge._
 - **Why does `command()` connect `Store` to `github-delivery.ts`, `source-amendment.ts`, `agents.ts`, `features/workflow.ts`, `artifact`, `cec/issue-publication.ts`, `session-bridge.ts`, `closeout-recovery.ts`, `github-readiness.ts`, `requests.ts`, `reader.ts`, `digest`, `.transaction`, `ref_zod`, `publish-pr.ts`, `remove-candidate.ts`, `ticket-stage-runner.ts`, `coordination.ts`, `security.ts`, `dependencies.ts`, `service-health.ts`, `contract.ts`, `cost-ledger.ts`, `github/issue-publication.ts`, `lesson-selection.ts`, `weekly-rollup.ts`, `ticket-evidence.ts`, `.save`, `Engine`, `assignment-poll.ts`, `create-candidate.ts`, `scheduled-work.ts`, `jira-time.ts`, `goal-reporting.ts`, `.getEffect`, `engine.ts`, `install-service.mjs`?**
   _High betweenness centrality (0.021) - this node is a cross-community bridge._
 - **Why does `ControlStore` connect `daily-cto.ts` to `store.ts`, `office-lessons.ts`, `.transaction`?**
