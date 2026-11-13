@@ -9,9 +9,9 @@ import { readAzurePRs } from './observed-prs';
 const base=['--organization',CEC.organization,'--project',CEC.project];
 const STAGING_SHELL_APP = 'ca-cos-conductor-shell-stg';
 async function readInPairs<T,R>(items:T[],read:(item:T)=>Promise<R>):Promise<R[]>{const out:R[]=[];for(let i=0;i<items.length;i+=2)out.push(...await Promise.all(items.slice(i,i+2).map(read)));return out;}
-export async function az<T>(args:string[],readOnly=false,timeout=55000):Promise<T>{
+export async function az<T>(args:string[],readOnly=false,timeout=55000,execute:typeof command=command):Promise<T>{
   const orgOnly=args[0]==='devops'||(args[0]==='repos'&&args[1]==='pr'&&args[2]==='policy');
-  return JSON.parse(await command('az',[...args,...(orgOnly?['--organization',CEC.organization]:base),'--output','json'],{timeout,readOnly}));
+  return JSON.parse(await execute('az',[...args,...(orgOnly?['--organization',CEC.organization]:base),'--output','json'],{timeout,readOnly}));
 }
 export function prUrl(id:number){return `${CEC.organization}/${CEC.project}/_git/${CEC.repository}/pullrequest/${id}`;}
 export function buildUrl(id:number){return `${CEC.organization}/${CEC.project}/_build/results?buildId=${id}`;}
