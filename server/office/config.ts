@@ -1,13 +1,13 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { localBindings } from './local-config';
+import { localBindings, type CECBinding } from './local-config';
 export const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const DATA = resolve(process.env.OFFICE_DATA_ROOT || resolve(ROOT, '.local'));
 export const LOCAL_BINDINGS = localBindings(DATA);
 export const FEATURE_PLANNING = LOCAL_BINDINGS.featurePlanning || {};
 // Examples are inert until configured; existing installations use private bindings.
-export const CEC = LOCAL_BINDINGS.cec || {
+export const CEC: CECBinding = LOCAL_BINDINGS.cec || {
     site: 'https://example.atlassian.net', cloudId: 'configure-locally', board: 0,
     account: 'office-account', repo: resolve(homedir(), 'Projects/example-project'),
     organization: 'https://dev.azure.com/example', project: 'example',

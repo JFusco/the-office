@@ -27,6 +27,14 @@ pnpm dev
 
 The service binds to localhost on port 4318. Project, repository, base, and provider bindings stay fixed for each assignment. Switching the visible project changes the view; it does not change a worker's authority.
 
+CEC can explicitly use an assigned-issue project list after its board is removed. Set
+`cec.intakeListUrl` to the same-site `/jira/software/c/projects/CEC/list?jql=…` URL
+whose query selects `project = CEC AND assignee = <configured account>` ordered by
+`cf[<field ID>] ASC` or `DESC`. Office validates that scope, uses paginated JQL reads,
+and shows the list link. Omit this setting to retain board/filter/backlog reads.
+There is no automatic fallback after a board access error. Parent-only pickup,
+exact status, holds, competing ownership and provider read-back gates still apply.
+
 ## Orchestration and recovery
 
 Every asynchronous command saves durable intent before execution. The scheduler claims one stage, rechecks its identity and authority, and releases the delivery lane between stages. Projects rotate fairly, blocked queue heads are skipped, and an eligible background notice is serviced by its fourth project claim opportunity. Verified closeout and repair continuations retain priority.

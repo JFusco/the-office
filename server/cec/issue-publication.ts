@@ -1,4 +1,5 @@
 import { jiraRecord } from './jira-record';
+import { intakeJql, intakeLocation } from './intake-scope';
 import { descriptionPreimage, publicationDescription } from './publication-description';
 import { FeatureError } from '../features/progression/failure';
 import { z } from 'zod';
@@ -28,6 +29,7 @@ export class JiraIssuePublisher implements FeaturePublisher {
         if (!id || !/^\d+$/.test(String(id))) throw new Error('Board filter metadata is unavailable; approval requires verified membership rules');
         return String(id);
     }
+    private membershipJql() { return intakeJql(CEC, () => this.boardFilter()); }
     private async query(jql: string) {
         const data = await this.call(['workitem', 'query', '--jql', jql, '--first', '100', '--fields', 'summary,description,labels,assignee,status']);
         if (!Array.isArray(data.issues)) throw new Error('Jira query coverage is unavailable');
@@ -55,13 +57,13 @@ export class JiraIssuePublisher implements FeaturePublisher {
         const types = await this.types(), preferred = types.find(t => t.name === 'Build Task') || types[0];
         if (!preferred) throw new FeatureError('unsupported', 'No supported CEC base issue type');
         const metadata = await this.metadata(preferred.name);
-        const filter = await this.boardFilter(), existing = this.provenance.sourceTicket ? await this.issue(this.provenance.sourceTicket) : null;
-        return JSON.stringify({ provider: 'azure', destination: this.store.project.repository, featureId: this.provenance.id, assignee: CEC.account, boardFilter: filter, types, recommendedType: preferred.name, metadata, existing,
+        const scope = await this.membershipJql(), existing = this.provenance.sourceTicket ? await this.issue(this.provenance.sourceTicket) : null;
+        return JSON.stringify({ provider: 'azure', destination: this.store.project.repository, featureId: this.provenance.id, assignee: CEC.account, intake: intakeLocation(CEC), membershipJql: scope, types, recommendedType: preferred.name, metadata, existing,
             contract: 'Manifest items use stable id,title,key(empty for create),action,predecessor,criteria,operations. create/update payload is {space:"CEC",type:verified issue type name,summary,description,labels:[]}; include the displayed provenance line office-feature-FEATURE_ID-item-ITEM_ID in description and that exact marker as a label. update.expected is observed {summary,description,labels}, retaining the complete raw ADF description for rich documents. An update appends the approved description text to that rich document while preserving its existing nodes. For plain descriptions it replaces the text. assign payload is {assignee:verified Office account}. transition payload {id,status} may only use discovered transitions, with expected {status:observed source status}. Do not invent workflow IDs or required metadata. New tickets retain initial status; their default assignment is guarded until identity is mapped. Every operation has id,kind,payload,expected.' });
     }
     async validate(manifest: FeatureManifest) {
         if (manifest.provider !== 'azure' || manifest.destination !== this.store.project.repository) throw new FeatureError('invalid-content', 'Wrong CEC publication destination');
-        await this.boardFilter();
+        await this.membershipJql();
         for (const item of manifest.items) {
             const content = item.operations.find(o => ['create', 'update'].includes(o.kind)), marker = this.provenance.marker(item.id);
             if (!content || !Content.parse(content.payload).description.includes(marker) || !Content.parse(content.payload).labels.includes(marker)) throw new FeatureError('invalid-content', 'CEC preview needs its stable provenance text and label');
@@ -109,7 +111,7 @@ export class JiraIssuePublisher implements FeaturePublisher {
             return matches;
         }
         if (operation.kind === 'assign') return fields.assignee?.accountId === Assignment.parse(operation.payload).assignee &&
-            (await this.query('filter = ' + await this.boardFilter() + ' AND key = "' + keyOf(receipt.key) + '"')).length === 1;
+            (await this.query('(' + await this.membershipJql() + ') AND key = "' + keyOf(receipt.key) + '"')).length === 1;
         return fields.status?.name === Transition.parse(operation.payload).status;
     }
     async verifyFinal(item: FeatureManifestItem, receipt: PublicationReceipt) {
