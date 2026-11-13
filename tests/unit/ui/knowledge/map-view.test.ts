@@ -39,6 +39,17 @@ it('hides Brain notes until they are included, filtered for, or reached through 
     expect(selectRecord(hidden, data.nodes[1])).toMatchObject({selected: 'note:0', technical: true, activity: false});
     expect(selectRecord(hidden, data.nodes[0])).toEqual({...hidden, selected: 'project'});
 });
+it('places Brain notes by top-level domain, matching their browse group', () => {
+    const map = (cms: [string, string]): KnowledgeMap => ({truncated: false, edges: [], nodes: [
+        {id: 'project', kind: 'project', title: 'CEC', detail: ''},
+        {id: 'a', kind: 'technical', domains: [cms[0]], title: 'A', detail: ''},
+        {id: 'b', kind: 'technical', domains: [cms[1]], title: 'B', detail: ''},
+        {id: 't', kind: 'technical', domains: ['tooling'], title: 'T', detail: ''},
+    ]});
+    const nested = displayScene(map(['cms/a', 'cms/b']), selection), flat = displayScene(map(['cms', 'cms']), selection);
+    expect(nested.scene.nodes.map(n => n.position)).toEqual(flat.scene.nodes.map(n => n.position));
+    for (const view of [nested, flat]) expect(view.groups.filter(g => g.id.startsWith('technical:cms')).map(g => [g.id, g.members.map(n => n.id)])).toEqual([['technical:cms', ['a', 'b']]]);
+});
 it('labels a bounded collision-free subset with hover/focus priority and stable ordering', () => {
     const boxes = [{id:'ordinary',priority:2,x:20,y:20,width:80,height:10},{id:'focused',priority:0,x:30,y:20,width:80,height:10},{id:'separate',priority:2,x:20,y:70,width:80,height:10},{id:'offscreen',priority:0,x:900,y:0,width:80,height:10}];
     expect([...visibleLabels(boxes, 500, 200)]).toEqual(['focused', 'separate']);

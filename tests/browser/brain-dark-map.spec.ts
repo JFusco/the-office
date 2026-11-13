@@ -86,6 +86,18 @@ test('action buttons and button links share geometry, hover and focus across kno
     expect(await previous.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(before);
 });
 
+test('Refresh map keeps the viewer\'s Brain-note opt-in', async ({ page }) => {
+    await crowdedMap(page); await page.goto('/');
+    await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    const brain = page.getByLabel('Include Brain notes (external, read-only)'); await brain.check();
+    const browser = page.getByRole('region', { name: 'Map browser' });
+    await expect(browser.getByRole('button', { name: 'Tooling 480', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Refresh map', exact: true }).click();
+    await expect(brain).toBeChecked();
+    await expect(browser.getByRole('button', { name: 'Tooling 480', exact: true })).toBeVisible();
+});
+
 test('Pause stills the map content entry animations and resuming restores them', async ({ page, request }) => {
     await motionOn(page, request);
     let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });

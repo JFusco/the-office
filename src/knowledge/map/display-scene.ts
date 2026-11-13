@@ -36,11 +36,13 @@ export function displayScene(data: KnowledgeMap, selection: MapSelection) {
     const emphasizedIds = new Set(selected ? [selected.id, ...neighborIds] : []);
     // Keep every entity at its original stable coordinates while the camera flies to it.
     // Filters change visibility, never graph identity or routing.
-    const domains = [...new Set(data.nodes.flatMap(n => n.kind === 'technical' && n.domains?.length ? [n.domains[0]] : []))].sort();
+    // Clusters key on the top-level domain, like the browse groups, so 'cms/a' and 'cms/b' share one cluster.
+    const domainOf = (n: KnowledgeNode) => n.domains?.[0]?.split('/')[0] || '';
+    const domains = [...new Set(data.nodes.flatMap(n => n.kind === 'technical' && domainOf(n) ? [domainOf(n)] : []))].sort();
     const nodes: DisplayNode[] = data.nodes.map(n => ({ ...n,
         visible: selected ? eligibleIds.has(n.id)||selectedIds.has(n.id) : visibleIds.has(n.id),
         emphasized: selected ? emphasizedIds.has(n.id) : true,
-        position: n.kind === 'project' ? {x: 0, y: 0, z: 0} : stablePosition(n.id, n.kind, n.domains?.[0], domains),
+        position: n.kind === 'project' ? {x: 0, y: 0, z: 0} : stablePosition(n.id, n.kind, domainOf(n), domains),
     }));
     const edges = data.edges.filter(e => (selected ? (e.source === selected.id || e.target === selected.id) && selectedIds.has(e.source) && selectedIds.has(e.target) : visibleIds.has(e.source) && visibleIds.has(e.target)));
 
