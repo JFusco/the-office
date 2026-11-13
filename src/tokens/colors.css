@@ -1038,6 +1038,23 @@
   --scene-brain-marker: #fff;
   --scene-brain-marker-dim: rgba(255, 255, 255, .3);
   --scene-brain-marker-clear: rgba(255, 255, 255, 0);
+  /* Node kinds: a warm sun, two lesson scopes, employee work, and external Brain notes. */
+  --scene-brain-sun: #ffe3b0;
+  --scene-brain-office-lesson: #c8b4ff;
+  --scene-brain-assignment: #ffb38a;
+  --scene-brain-note: #6fa6dc;
+  --scene-brain-index: #a1efe0;
+  /* Decorative atmosphere, after Brain's own viewer; it never enters the knowledge graph. */
+  --scene-brain-distant-blue: #91b6dd;
+  --scene-brain-distant-warm: #f3dbb8;
+  --scene-brain-dust-blue: #8fbee8;
+  --scene-brain-dust-warm: #e8d3b9;
+  --scene-brain-cluster-blue: #a0dffe;
+  --scene-brain-cluster-lilac: #c3b5f5;
+  --scene-brain-nebula-blue: #466ca7;
+  --scene-brain-nebula-violet: #71548f;
+  --scene-brain-core: #fff0d5;
+  --scene-brain-halo: #8dbbe4;
 }
 
 /* The knowledge graph is a scoped dark surface; control geometry/interaction stays shared. */

@@ -16,8 +16,11 @@ export function nodeVisuals(palette: SceneColors) {
     gradient.addColorStop(1, palette.brainMarkerClear);
     markerContext.fillStyle = gradient; markerContext.fillRect(0,0,64,64);
     const markerTexture = new CanvasTexture(marker);
-    const colors = { project: new Color(palette.brainProject), lesson: new Color(palette.brainLesson), assignment: new Color(palette.brainFocused), technical: new Color(palette.brainClusterViolet) };
-    for(const color of Object.values(colors))color.lerp(new Color(palette.brainMarker),.4);
+    // One hue per kind, so the sun, the two lesson scopes, employee work and external Brain notes read apart.
+    const colors = { sun: new Color(palette.brainSun), lesson: new Color(palette.brainLesson), office: new Color(palette.brainOfficeLesson), assignment: new Color(palette.brainAssignment), note: new Color(palette.brainNote), index: new Color(palette.brainIndex) };
+    const colorOf = (node: DisplayNode) => node.kind === 'project' ? colors.sun : node.kind === 'lesson' ? node.scope === 'office' ? colors.office : colors.lesson : node.kind === 'assignment' ? colors.assignment : node.technicalKind === 'index' ? colors.index : colors.note;
+    /** Screen size before depth: lessons are the bodies that matter here, Brain notes the distant field. */
+    const sizeOf = (node: DisplayNode) => node.kind === 'project' ? 26 : node.kind === 'lesson' ? 22 + stableHash(node.id) % 4 : node.kind === 'assignment' ? 16 : node.technicalKind === 'index' ? 16 : 11 + stableHash(node.id) % 3;
     const focusedColor = new Color(palette.brainFocused);
     const records = new Map<string, { node: DisplayNode; star: Sprite; label: Sprite; dispose(): void }>();
     let hovered = '';
@@ -31,7 +34,8 @@ export function nodeVisuals(palette: SceneColors) {
         retain(ids: Set<string>) { for (const [id, record] of records) if (!ids.has(id)) { record.dispose(); records.delete(id); } },
         create(node: DisplayNode) {
             records.get(node.id)?.dispose();
-            const group = new Group(), starMaterial = new SpriteMaterial({map: markerTexture, color: colors[node.kind], transparent: true, opacity: .95, depthWrite: false});
+            // Opacity starts at 0 and eases in on the first frames, so the map never pops in; reduced motion snaps.
+            const group = new Group(), starMaterial = new SpriteMaterial({map: markerTexture, color: colorOf(node), transparent: true, opacity: 0, depthWrite: false});
             const star = new Sprite(starMaterial); star.scale.setScalar(node.kind === 'project' ? 12 : 7); group.add(star);
             star.userData.knowledgeId=node.id;
             const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 80;
@@ -46,7 +50,8 @@ export function nodeVisuals(palette: SceneColors) {
             records.set(node.id, {node, star, label, dispose() {starMaterial.dispose(); labelMaterial.dispose(); labelTexture.dispose();}});
             return group;
         },
-        update(view: ConstellationView | undefined, camera: PerspectiveCamera, container: HTMLElement, delta: number) {
+        /** `time` is the runtime's ambient clock in seconds; it only advances while motion is allowed. */
+        update(view: ConstellationView | undefined, camera: PerspectiveCamera, container: HTMLElement, delta: number, time = 0) {
             if (!view) return;
             camera.updateMatrixWorld();
             const rectangles: LabelRectangle[] = [];
@@ -57,7 +62,10 @@ export function nodeVisuals(palette: SceneColors) {
                 const depth = world.clone().applyMatrix4(camera.matrixWorldInverse).z; if (depth >= 0) continue;
                 const scale = container.clientHeight / (2 * Math.tan(camera.fov * Math.PI / 360) * -depth);
                 const depthSize = Math.min(1.5, Math.max(.85, overviewDistance / -depth));
-                star.scale.setScalar((node.id === view.focusId ? 36 : active ? 24 : node.kind === 'project' ? 18 : (12 + stableHash(node.id) % 4) * depthSize) / scale);
+                star.scale.setScalar((node.id === view.focusId ? 36 : active ? 24 : node.kind === 'project' ? sizeOf(node) : sizeOf(node) * depthSize) / scale);
+                // A slow drift of the marker only: links, labels, camera targets and the focus overlay keep the stable position.
+                const phase = stableHash(node.id) % 6283 / 1000, still = node.id === view.focusId || node.kind === 'project';
+                star.position.set(still ? 0 : (Math.sin(time * .3 + phase) - Math.sin(phase)) * 1.1, still ? 0 : (Math.cos(time * .24 + phase) - Math.cos(phase)) * 1.1, 0);
                 label.scale.set(240 / scale, 30 / scale, 1); label.position.y = (active ? 30 : 18) / scale;
                 const landmark = node.kind === 'project' || node.technicalKind === 'index' || stableHash(node.id) % 31 === 0;
                 if (node.id === view.focusId || !active && ((view.focusId ? !node.emphasized : !landmark))) continue;
@@ -70,9 +78,10 @@ export function nodeVisuals(palette: SceneColors) {
             for (const {node, star, label} of records.values()) {
                 const active = node.id === hovered || node.id === view.highlightId || node.id === view.focusId;
                 const material = star.material as SpriteMaterial, labelMaterial = label.material as SpriteMaterial;
-                const opacity = node.emphasized || active ? 1 : .32;
+                const twinkle = active || !time ? 1 : .86 + .14 * Math.sin(time * (.6 + stableHash(node.id) % 7 / 10) + stableHash(node.id) % 6283 / 1000);
+                const opacity = (node.emphasized || active ? 1 : .32) * twinkle;
                 material.opacity += (opacity - material.opacity) * blend;
-                material.color.copy(active ? focusedColor : colors[node.kind]);
+                material.color.copy(active ? focusedColor : colorOf(node));
                 labelMaterial.opacity += ((visible.has(node.id) ? 1 : 0) - labelMaterial.opacity) * blend;
                 label.visible = labelMaterial.opacity > .01;
             }

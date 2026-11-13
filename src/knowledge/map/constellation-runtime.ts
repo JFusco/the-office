@@ -8,6 +8,7 @@ import { knowledgeCameraDuration, knowledgeMaxFrameStep, knowledgeOrbitIdle, kno
 import type { KnowledgeNode } from '../../contracts/knowledge-views';
 import type { ConstellationView } from './Constellation';
 import { nodeVisuals } from './node-visuals';
+import { mapAtmosphere } from './atmosphere';
 import { cameraTarget, overviewDistance } from './camera-target';
 import { flightPose, type CameraPose } from './camera-flight';
 import { focusOverlayPosition, type FocusOverlayLayout } from './focus-overlay-position';
@@ -24,7 +25,9 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
     let cleaned = false, frameId = 0, previous = 0, view: ConstellationView | undefined, focusId: string | undefined;
     let dragging = false, hovered = false, pointerInside = false, lastInteraction = 0;
     let flight: { from: CameraPose; to: CameraPose; elapsed: number } | undefined;
-    let visuals: ReturnType<typeof nodeVisuals> | undefined, resize: ResizeObserver | undefined;
+    let visuals: ReturnType<typeof nodeVisuals> | undefined, atmosphere: ReturnType<typeof mapAtmosphere> | undefined, resize: ResizeObserver | undefined;
+    /** Seconds of ambient motion (drift, twinkle, orbiting dust). It stands still whenever motion is not allowed. */
+    let ambient = 0;
     let overlayLayout: FocusOverlayLayout | undefined;
     const ray=new Raycaster(), pointer=new Vector2();
     let annotation: ReturnType<typeof focusOverlayMotion>|undefined;
@@ -44,7 +47,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         container.removeEventListener('pointercancel', cancelTap, true);
         annotation?.dispose();
         if (overlay) overlay.hidden = true;
-        graph.pauseAnimation(); graph._destructor(); visuals?.dispose(); renderer.dispose(); renderer.forceContextLoss(); container.replaceChildren();
+        graph.pauseAnimation(); atmosphere?.dispose(); graph._destructor(); visuals?.dispose(); renderer.dispose(); renderer.forceContextLoss(); container.replaceChildren();
     };
     const frame = (now: number) => {
         if (cleaned || document.hidden) return;
@@ -60,7 +63,10 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         if(pointerInside&&hoverId){ray.setFromCamera(pointer,graph.camera() as PerspectiveCamera);hovered=!!visuals?.hit(hoverId,ray);}else hovered=false;
         visuals?.hover(hovered?hoverId:'');renderer.domElement.classList.toggle('clickable',hovered);
         controls.autoRotate = !!view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId && now - lastInteraction > knowledgeOrbitIdle;
-        visuals?.update(view, graph.camera() as PerspectiveCamera, container, delta);
+        // Ambient motion follows the same rules as the idle orbit, minus the idle wait: never reduced, paused, hovered or dragged.
+        if (view && !view.reduced && !view.paused && !dragging && !hovered && !view.highlightId) ambient += Math.max(0, Math.min(delta, knowledgeMaxFrameStep)) / 1000;
+        atmosphere?.update(ambient, !!view?.focusId, view?.reduced || view?.paused ? 1 : 1 - Math.exp(-Math.min(delta, 50) / 260));
+        visuals?.update(view, graph.camera() as PerspectiveCamera, container, delta, ambient);
         annotation?.render(focusOverlayPosition(view?.data.nodes.find(n => n.id === view?.focusId), graph.camera() as PerspectiveCamera, container.clientWidth, container.clientHeight, overlayLayout));
         frameId = requestAnimationFrame(frame);
     };
@@ -92,6 +98,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
     try {
         annotation=focusOverlayMotion(overlay);
         visuals = nodeVisuals(palette);
+        atmosphere = mapAtmosphere(graph.scene(), palette);
         graph.backgroundColor(palette.brainBackground).nodeThreeObject(raw => visuals!.create(raw as never))
             .nodeVisibility(raw => (raw as { visible: boolean }).visible)
             .nodeLabel('') // The canvas owns hover/selection captions; avoid a duplicate HTML tooltip.

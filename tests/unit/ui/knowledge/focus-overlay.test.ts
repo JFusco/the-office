@@ -4,7 +4,7 @@ import { PerspectiveCamera } from 'three';
 import { expect, test } from 'vitest';
 import { FocusOverlay } from '../../../../src/knowledge/map/FocusOverlay';
 import { focusOverlayPosition } from '../../../../src/knowledge/map/focus-overlay-position';
-import { stablePosition } from '../../../../src/knowledge/map/layout';
+import { domainAnchor, stablePosition } from '../../../../src/knowledge/map/layout';
 
 test('the reticle follows the same camera projection and hides unavailable or off-screen nodes', () => {
     const camera = new PerspectiveCamera(50, 2, .1, 1000); camera.position.z = 360; camera.lookAt(0, 0, 0);
@@ -26,10 +26,20 @@ test('the focus tag flips left when the floating inspector leaves too little roo
 
 });
 
-test('the depth field stays deterministic and distributes a single record type across the whole map', () => {
-    const points = Array.from({ length: 200 }, (_, i) => stablePosition(`note:${i}`, 'technical', ['technical']));
-    const quadrants = new Set(points.map(p => `${Math.sign(p.x)},${Math.sign(p.y)}`));
-    expect(quadrants.size).toBe(4); expect(Math.max(...points.map(p => p.z)) - Math.min(...points.map(p => p.z))).toBeGreaterThan(100);
-    expect(stablePosition('note:10', 'technical', ['technical'])).toEqual(points[10]);
-    expect(stablePosition('note:10', 'technical', ['technical', 'lesson'])).toEqual(points[10]);
+test('lessons orbit close to the project, assignments ring them and each Brain domain clusters on the rim', () => {
+    const radius = (p: { x: number; y: number; z: number }) => Math.hypot(p.x, p.y, p.z);
+    const lessons = Array.from({ length: 200 }, (_, i) => stablePosition(`lesson:${i}`, 'lesson'));
+    const work = Array.from({ length: 100 }, (_, i) => stablePosition(`attempt:${i}`, 'assignment'));
+    expect(Math.max(...lessons.map(radius))).toBeLessThan(90);
+    expect(new Set(lessons.map(p => `${Math.sign(p.x)},${Math.sign(p.y)}`)).size).toBe(4);
+    expect(Math.min(...work.map(p => Math.hypot(p.x, p.y / .6)))).toBeGreaterThan(Math.max(...lessons.map(p => Math.hypot(p.x, p.y / .6))));
+    const domains = ['cms', 'tooling'], centre = (domain: string) => domainAnchor(domain, domains);
+    for (const domain of domains) {
+        const notes = Array.from({ length: 60 }, (_, i) => stablePosition(`note:${domain}:${i}`, 'technical', domain, domains)), anchor = centre(domain);
+        const median = notes.map(p => Math.hypot(p.x - anchor.x, p.y - anchor.y, p.z - anchor.z)).sort((a, b) => a - b)[30];
+        expect(median).toBeLessThan(25);
+    }
+    expect(Math.hypot(centre('cms').x - centre('tooling').x, centre('cms').y - centre('tooling').y)).toBeGreaterThan(100);
+    expect(stablePosition('note:10', 'technical', 'cms', domains)).toEqual(stablePosition('note:10', 'technical', 'cms', domains));
+    expect(stablePosition('lesson:10', 'lesson')).toEqual(lessons[10]);
 });
