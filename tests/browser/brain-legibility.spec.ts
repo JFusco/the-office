@@ -48,6 +48,7 @@ test('constellation keeps its renderer through selection, search and filters; la
     const scope=page.getByLabel('Map scope');
     expect(await scope.evaluate(el=>getComputedStyle(el).paddingInlineEnd)).toBe('38px');
     const inset=await scope.evaluate(el=>{const svg=el.parentElement!.querySelector('svg')!; return el.getBoundingClientRect().right-svg.getBoundingClientRect().right;});expect(inset).toBe(12);
+    await page.getByLabel('Include Brain notes (external, read-only)').check();
     await page.getByLabel('Find a node').fill('Synthetic guide 12');
     await page.getByRole('button',{name:'Synthetic guide 12 · technical',exact:true}).click();
     await expect(page.getByRole('region',{name:'Selected node'})).toContainText('Synthetic crowded-map legibility fixture');
@@ -111,13 +112,13 @@ test('unformatted historical assignment and lookup entries still list their sour
 
 test('group and search context survive inspecting a record, with a concise introduction above the map',async({page})=>{
     await page.route('**/api/knowledge/map?**',async route=>{const response=await route.fetch(),map=await response.json();await route.fulfill({response,json:{...map,nodes:[...map.nodes,...Array.from({length:100},(_,i)=>({id:`synthetic:${i}`,title:`Synthetic note ${i}`,kind:'technical',domains:['cms'],detail:'Synthetic group context fixture'}))]}});});
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
+    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();await page.getByLabel('Include Brain notes (external, read-only)').check();
     const browser=page.getByRole('region',{name:'Map browser'});await browser.getByRole('button',{name:'CMS 100',exact:true}).click();
     await browser.getByRole('button',{name:'Next records',exact:true}).click();await expect(browser).toContainText('2 / 3');
     const record=browser.getByRole('button',{name:/Synthetic note .* · technical/}).first(),name=await record.innerText();await record.click();
     await expect(page.getByRole('navigation',{name:'Map location'}).getByRole('button',{name:'CMS',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Back to map',exact:true}).click();await expect(browser).toContainText('2 / 3');await expect(browser.getByRole('button',{name,exact:true})).toBeVisible();
-    const caption=page.getByText('See how notes and team lessons connect.',{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
+    const caption=page.getByText("See how the team's lessons and work connect.",{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
     expect(bounds!.width).toBeLessThan((await page.locator('[data-brain-content]').boundingBox())!.width*.65);expect(bounds!.y+bounds!.height).toBeLessThan(canvas!.y);expect(await caption.evaluate(el=>getComputedStyle(el).maxWidth)).not.toBe('none');
     await page.getByText('Controls and source details',{exact:true}).click();await expect(page.getByText('Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.',{exact:true})).toBeVisible();
 });

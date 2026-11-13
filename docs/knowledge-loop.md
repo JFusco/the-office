@@ -61,7 +61,9 @@ Office lessons change only through Joe. Harper proposes them (from a `share` or 
 | Expired | The day after `validUntil` | `lesson-exits.ts` |
 | Retired | Joe retires it | `lesson-commands.ts`, `office-lessons.ts` |
 
-There is no age-based retirement and no recurrence review. Joe can reactivate any retired project lesson; a retired office lesson stays retired.
+The Lessons view is the first view of the Knowledge workspace. A retired project lesson shows a Reactivate button unless it was superseded: its replacement is the current version, and the harness refuses to reactivate it (`lesson-commands.ts`).
+
+There is no age-based retirement and no recurrence review. Joe can reactivate any retired project lesson that was not superseded; a retired office lesson stays retired.
 
 ## Teaching
 
@@ -99,7 +101,7 @@ The Office has no link, upload or Slack channel sources. Its knowledge is Harper
 
 ## What Joe decides
 
-Harper's outbox (`knowledge-outbox.ts`) holds two kinds of item, each cleared in the Lessons panel:
+Harper's outbox (`knowledge-outbox.ts`) holds two kinds of item, each cleared in the Outbox or the Lessons panel:
 
 - an office-wide lesson to accept or decline;
 - a lesson that belongs in its repository, to file as an issue or decline.

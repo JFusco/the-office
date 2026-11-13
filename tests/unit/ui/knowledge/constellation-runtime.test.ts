@@ -24,7 +24,7 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{frame=callback;return 1;}));vi.stubGlobal('cancelAnimationFrame',vi.fn());
     const addEventListener=vi.fn(),removeEventListener=vi.fn();
     const container={replaceChildren:vi.fn(),addEventListener,removeEventListener,getBoundingClientRect:()=>({left:0,top:0,width:1200,height:800}),clientWidth:1200,clientHeight:800} as unknown as HTMLElement;
-    const select=vi.fn(),runtime=createConstellation(container,select), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,page:0};
+    const select=vi.fn(),runtime=createConstellation(container,select), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,technical:true,page:0};
     const map={nodes:[{id:'note',title:'Note',kind:'technical' as const,detail:''}],edges:[],truncated:false};
     const overview=displayScene(map,selection), focused=displayScene(map,{...selection,selected:'note'});
     runtime.update({data:overview.scene,reduced:false});const original=saved.nodes[0];

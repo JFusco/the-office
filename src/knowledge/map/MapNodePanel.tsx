@@ -20,7 +20,7 @@ export function MapNodePanel({ project, node, data, onSelect }: { project: strin
         {(data.truncated||missing.length>0)&&<p className="my-3 text-12 text-map-muted">This map is partial{missing.length?`; ${missing.length} connected record(s) are not loaded`:''}. Missing connections do not establish that this record is isolated. Use Library search for more records.</p>}
         <ul className="my-3 grid gap-control-gap text-12">{connections.map(edge => {
             const other = data.nodes.find(n => n.id === (edge.source === node.id ? edge.target : edge.source));
-            return other && <li key={`${edge.source}:${edge.target}:${edge.kind}:${edge.relation || ''}`}><Button layout="row" className="w-full" onClick={() => onSelect(other)}>{edge.relation || edge.kind} · {other.title}</Button></li>;
+            return other && <li key={`${edge.source}:${edge.target}:${edge.kind}:${edge.relation || ''}`}><Button layout="row" className="w-full" onClick={() => onSelect(other)}>{edge.relation || (edge.kind === 'verified' ? 'cited' : edge.kind)} · {other.title}</Button></li>;
         })}</ul>
     </section>;
 }

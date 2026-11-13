@@ -66,7 +66,7 @@ createServer(async(req,res)=>{
         if(data.action==='configure-knowledge'&&s.knowledge)s.knowledge={...s.knowledge,enabled:!!data.knowledge?.enabled};
         if(data.action==='retire-lesson'&&s.knowledge)s.knowledge={...s.knowledge,lessons:s.knowledge.lessons.map(l=>l.id===data.lessonId?{...l,status:'retired' as const,retiredAt:new Date().toISOString(),retiredBy:'human' as const}:l)};
         const lessons=(map:(l:import('../../src/shared').Lesson)=>import('../../src/shared').Lesson)=>{if(s.knowledge)s.knowledge={...s.knowledge,lessons:s.knowledge.lessons.map(l=>l.id===data.lessonId?map(l):l)};};
-        if(data.action==='reactivate-lesson')lessons(l=>({...l,status:'active',reactivatedAt:new Date().toISOString()}));
+        if(data.action==='reactivate-lesson')lessons(l=>l.supersededBy?l:({...l,status:'active',reactivatedAt:new Date().toISOString(),retiredAt:undefined,retiredBy:undefined}));
         if(data.action==='decline-lesson-issue')lessons(l=>({...l,repositoryInstruction:{status:'declined'}}));
         if(data.action==='file-lesson-issue')lessons(l=>({...l,repositoryInstruction:{status:'filed',issueUrl:'https://github.com/JFusco/brain/issues/999',filedAt:new Date().toISOString()}}));
         if(['accept-office-lesson','decline-office-lesson','retire-office-lesson'].includes(data.action)){

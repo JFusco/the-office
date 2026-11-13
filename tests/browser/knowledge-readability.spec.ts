@@ -6,7 +6,7 @@ const artifacts='/private/tmp/office-knowledge-ui-evidence/browser';
 for(const width of [1440,390])test(`shared alignment, bounded inputs, Slack routing and Activity hierarchy at ${width}px`,async({page})=>{
     await page.setViewportSize({width,height:1000});await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();
     const lefts:number[]=[];
-    for(const name of ['Library','Map','Activity']){
+    for(const name of ['Lessons','Library','Map','Activity']){
         await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name,exact:true}).click();
         const heading=page.getByRole('heading',{name,exact:true});await expect(heading).toBeVisible();lefts.push((await heading.boundingBox())!.x);
         expect(await page.locator('[data-brain-content]').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);

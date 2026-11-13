@@ -5,6 +5,10 @@ const artifacts = '/private/tmp/office-brain-screenshots';
 test('synthetic Library, Map and Activity preserve Office navigation and scoped records', async ({ page }) => {
     mkdirSync(artifacts,{ recursive:true }); await page.goto('/'); await page.getByRole('button',{name:'Brain',exact:true}).click();
     const nav = page.getByRole('navigation',{name:'Brain views'});
+    // Lessons is the first view: Harper's curated lessons, before any external Brain search.
+    await expect(page.getByRole('heading',{name:'Lessons',exact:true})).toBeVisible();
+    await expect(page.locator('[data-office-brain] [data-lessons-panel]')).toBeVisible();
+    expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
     await nav.getByRole('button',{name:'Library',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Library',exact:true})).toBeVisible();
     await expect(page.getByRole('heading',{name:'Confirm schema versions before mapping changes'})).toBeVisible();

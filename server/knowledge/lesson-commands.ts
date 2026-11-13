@@ -34,12 +34,14 @@ export function configureKnowledge(store: Store, input: unknown): void {
     }, 'knowledge');
 }
 
-/** Returns a retired lesson to prompts. */
+/** Returns a retired lesson to prompts. A superseded lesson stays retired: its replacement is the current version,
+ * and two versions are never both active. */
 export function reactivateLesson(store: Store, lessonId: unknown): void {
     if (typeof lessonId !== 'string' || !lessonId) throw new Error('Lesson ID is required');
     const lesson = store.state.knowledge?.lessons.find(item => item.id === lessonId);
     if (!lesson) throw new Error('Lesson not found in this project');
     if (lesson.status === 'active') return;
+    if (lesson.supersededBy) throw new Error('A superseded lesson cannot be reactivated; retire or edit its replacement instead');
     store.transition('lesson-reactivated', `Lesson reactivated: ${lesson.statement}`, () => {
         const now = store.clock.now().toISOString();
         Object.assign(lesson, { revision: lesson.revision + 1, status: 'active', reactivatedAt: now, updatedAt: now, retiredAt: undefined, retiredBy: undefined });

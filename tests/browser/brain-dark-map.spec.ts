@@ -55,7 +55,7 @@ test('action buttons and button links share geometry, hover and focus across kno
     await crowdedMap(page); await page.goto('/');
     await page.getByRole('button', { name: 'Brain', exact: true }).click();
     const controls = [page.getByRole('button', { name: 'Return to office', exact: true }),
-        page.getByRole('link', { name: /^Open board:/ }), ...['Library', 'Map', 'Activity'].map(name => page.getByRole('button', { name, exact: true }))];
+        page.getByRole('link', { name: /^Open board:/ }), ...['Lessons', 'Library', 'Map', 'Activity'].map(name => page.getByRole('button', { name, exact: true }))];
     const expected = await style(controls[0]);
     expect(expected.height).toBe(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--spacing-control-height'))));
     for (const control of controls) expect(await style(control)).toEqual(expected);
@@ -66,7 +66,7 @@ test('action buttons and button links share geometry, hover and focus across kno
     await link.hover(); await expect.poll(() => link.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(hover);
     await page.keyboard.press('Tab'); await link.focus(); await expect(link).toBeFocused();
     expect(await link.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid');
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Map', exact: true }).click(); await page.getByLabel('Include Brain notes (external, read-only)').check();
     await page.getByRole('button', { name: 'Tooling 480', exact: true }).click();
     const previous = page.getByRole('button', { name: 'Previous records', exact: true }); await expect(previous).toBeDisabled();
     const before = await previous.evaluate(el => getComputedStyle(el).backgroundColor); await previous.hover();

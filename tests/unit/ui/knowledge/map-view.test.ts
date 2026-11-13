@@ -4,7 +4,8 @@ import { visibleLabels } from '../../../../src/knowledge/map/label-visibility';
 import { cameraTarget, focusDistance, overviewDistance } from '../../../../src/knowledge/map/camera-target';
 import { flightPose } from '../../../../src/knowledge/map/camera-flight';
 import type { KnowledgeMap } from '../../../../src/contracts/knowledge-views';
-const selection: MapSelection = {group: '', selected: '', query: '', filter: 'all', activity: false, page: 0};
+// Brain notes are opt-in on the map; these navigation tests opt in, and the opt-in itself is tested below.
+const selection: MapSelection = {group: '', selected: '', query: '', filter: 'all', activity: false, technical: true, page: 0};
 const data: KnowledgeMap = {truncated: false, nodes: [
     {id: 'project', kind: 'project', title: 'CEC', detail: ''},
     ...Array.from({length: 85}, (_,i) => ({id: `note:${i}`, kind: 'technical' as const, domains: ['cms/contentstack', 'tooling'], title: `Guide ${i}`, detail: ''})),
@@ -27,6 +28,16 @@ it('keeps the original real-node constellation and stable coordinates through na
     expect(displayScene(data, {...selection, query: 'unmatched'})).toMatchObject({browsingNodes: true, total: 0, pageNodes: []});
     expect(displayScene(data, {...selection, group: 'technical:cms', page: 999}).pageNodes).toHaveLength(5);
     expect(displayScene(data, {...selection, activity: true}).scene.nodes.find(n=>n.id==='attempt')?.visible).toBe(true);
+});
+it('hides Brain notes until they are included, filtered for, or reached through a saved connection', () => {
+    const hidden = {...selection, technical: false};
+    const overview = displayScene(data, hidden);
+    expect(overview.scene.nodes.filter(n => n.visible).map(n => n.id)).toEqual(['project']);
+    expect(overview.groups.some(g => g.id.startsWith('technical:'))).toBe(false);
+    expect(displayScene(data, {...hidden, query: 'Guide 1'}).total).toBe(0);
+    expect(displayScene(data, {...hidden, filter: 'technical'}).scene.nodes.find(n => n.id === 'note:1')?.visible).toBe(true);
+    expect(selectRecord(hidden, data.nodes[1])).toMatchObject({selected: 'note:0', technical: true, activity: false});
+    expect(selectRecord(hidden, data.nodes[0])).toEqual({...hidden, selected: 'project'});
 });
 it('labels a bounded collision-free subset with hover/focus priority and stable ordering', () => {
     const boxes = [{id:'ordinary',priority:2,x:20,y:20,width:80,height:10},{id:'focused',priority:0,x:30,y:20,width:80,height:10},{id:'separate',priority:2,x:20,y:70,width:80,height:10},{id:'offscreen',priority:0,x:900,y:0,width:80,height:10}];

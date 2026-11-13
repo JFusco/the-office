@@ -7,6 +7,7 @@ test('synthetic fixture: published technical notes and global scope share the Of
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();
     await page.getByRole('button',{name:'Map',exact:true}).click();
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
+    await page.getByLabel('Include Brain notes (external, read-only)').check();
     await page.getByLabel('Find a node').fill('Published validation guide');
     await page.getByRole('button',{name:'Published validation guide · technical',exact:true}).click();
     await expect(page.getByRole('region',{name:'Published technical note'})).toContainText('Verify the committed schema version');

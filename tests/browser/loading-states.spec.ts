@@ -13,7 +13,7 @@ for (const [view, endpoint, label] of [
         await page.route(`**/api/knowledge/${endpoint}?**`, async route => { await gate; await route.continue(); });
         try {
             await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-            if (view !== 'Library') await page.getByRole('button', { name: view, exact: true }).click();
+            await page.getByRole('button', { name: view, exact: true }).click();
             const status = page.getByRole('status').filter({ hasText: label }); await expect(status).toBeVisible();
             const orbit = status.locator('[data-office-loader] g').first();
             const before = await orbit.evaluate(el => getComputedStyle(el).transform);
