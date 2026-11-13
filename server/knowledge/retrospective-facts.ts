@@ -1,8 +1,9 @@
-import type { LessonEvidence, PendingRetrospective } from '../../src/shared';
+import type { Lesson, LessonEvidence, PendingRetrospective } from '../../src/shared';
 import { blockingTrigger } from './blocking-trigger';
 import type { Store } from '../store/store';
 import type { RetrospectiveSubject } from './retrospective-subject';
 import { maintenanceFacts, type MaintenancePacketSection } from './maintenance-facts';
+import type { DemandSection } from './demand-facts';
 
 /** Initial engineering defaults, not measured optima. Mirrors the clipping in leadership/fact-bounds.ts. */
 export const PACKET_LIMIT = 24000;
@@ -18,11 +19,13 @@ export interface RetrospectivePacket {
     timing: unknown[];
     conversation: unknown[];
     notes: unknown[];
-    activeLessons: { scope?: 'project' | 'office'; revision?: number; id: string; when: string; statement: string; check: string; stages: string[] }[];
+    activeLessons: { scope?: 'project' | 'office'; tier?: Lesson['tier']; revision?: number; id: string; when: string; statement: string; check: string; stages: string[] }[];
     /** Active lessons in the Office's other projects, so the same lesson is shared instead of learned twice. */
     elsewhere?: { project: string; id: string; when: string; statement: string }[];
     /** Only for a maintenance run: ledgers, harness error and saved artifacts. Bounded by construction. */
     maintenance?: MaintenancePacketSection;
+    /** What the harness supplied to this subject's assignments, what was cited and what was looked up. Budgeted by `withDemand`. */
+    demand?: DemandSection;
     omitted: Record<string, number>;
     /** Harness-owned evidence references. The model cites refs; URLs are never model-supplied. */
     catalog: Record<string, LessonEvidence>;
@@ -59,7 +62,7 @@ export function retrospectiveFacts(store: Store, job: RetrospectiveSubject, pend
             ...(store.state.outbox || []).filter(item => item.ticket === job.key).slice(-ENTRIES).map(item => ({ outbox: item.title, status: item.status, detail: clip(item.detail, SHORT) })),
         ].slice(-ENTRIES),
         notes: store.state.projectNotes.filter(note => note.ticket === job.key).slice(-10).map(note => ({ summary: clip(note.summary, SHORT), detail: clip(note.detail, SHORT) })),
-        activeLessons: [...(store.state.knowledge?.lessons || []), ...(store.state.knowledge?.officeLessons || [])].filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ scope: lesson.scope, revision: lesson.revision, id: lesson.id, when: lesson.when, statement: lesson.statement, check: lesson.check, stages: lesson.stages })),
+        activeLessons: [...(store.state.knowledge?.lessons || []), ...(store.state.knowledge?.officeLessons || [])].filter(lesson => lesson.status === 'active').slice(-ENTRIES).map(lesson => ({ scope: lesson.scope, tier: lesson.tier, revision: lesson.revision, id: lesson.id, when: lesson.when, statement: lesson.statement, check: lesson.check, stages: lesson.stages })),
         ...(job.maintenance ? { maintenance: maintenanceFacts(job, catalog) } : {}),
         omitted: {},
         catalog,

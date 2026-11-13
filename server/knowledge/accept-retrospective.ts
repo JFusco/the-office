@@ -34,7 +34,9 @@ export function acceptRetrospective(store: Store, pending: Pick<PendingRetrospec
             const statement = proposal.statement.trim(), key = normalizeStatement(statement);
             const evidence = [...new Set(proposal.evidenceIds)].filter(id => Object.hasOwn(catalog, id)).map(id => catalog[id]);
             const action = proposal.action || 'add';
-            if (!statement || !evidence.length || action !== 'update' && seen.has(key)) continue;
+            // Promotion: a confirmed hypothesis may be superseded at guidance with its wording unchanged.
+            const promotes = action === 'supersede' && (proposal.tier || 'guidance') === 'guidance' && knowledge.lessons.some(lesson => lesson.id === proposal.targetId && lesson.status === 'active' && lesson.tier === 'hypothesis' && normalizeStatement(lesson.statement) === key);
+            if (!statement || !evidence.length || action !== 'update' && seen.has(key) && !promotes) continue;
             const lesson: Lesson = { id: randomUUID(), scope: 'project', tier: proposal.tier || 'guidance', revision: 1, kind: proposal.kind, when: proposal.when.trim(), statement, check: proposal.check.trim(), detail: proposal.detail.trim(), stages: proposal.stages.length ? [...new Set(proposal.stages)] : ['any'], paths: proposal.paths.map(path => path.trim()).filter(Boolean), status: 'active', evidence: evidence.map(item => ({ ...item })), sourceSubject: pending.source || { kind: pending.subject || 'job', id: pending.jobId }, sourceRetrospectiveId: pending.id,
                 ...(github && proposal.repositoryInstruction ? { repositoryInstruction: { status: 'proposed' as const } } : {}), ...(proposal.validUntil ? { validUntil: proposal.validUntil } : {}), createdAt: now, updatedAt: now };
             const outcome = curateLesson(knowledge, lesson, action, proposal.targetId || '', elsewhere, now);

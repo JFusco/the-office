@@ -19,13 +19,15 @@ import { RetrospectiveResultSchema } from './retrospective-result';
 import { findSubject } from './retrospective-subject';
 import { terminalCandidates, triggerJobId } from './retrospective-triggers';
 import { otherProjectLessons, withElsewhere } from './other-project-lessons';
+import { demandFacts, withDemand } from './demand-facts';
+import { missedQueries } from './lookup/missed-queries';
 
 export const RETROSPECTIVE_TIMEOUT = 20 * 60 * 1000;
 const FIRST_DELAY = 5 * 60 * 1000, MAX_DELAY = 6 * 60 * 60 * 1000;
 /** Capped exponential backoff; each batch has at most five total attempts. */
 export const retryDelay = (attempts: number) => Math.min(MAX_DELAY, FIRST_DELAY * 2 ** Math.max(0, attempts - 1));
 
-export interface KnowledgeRunOptions { readOnly: true; effortKind: 'administrative'; stage: 'retrospective' | 'knowledge-rollup' | 'knowledge-research'; requestId: string; ticket: string; cwd: string; enqueuedAt: string; timeout: number }
+export interface KnowledgeRunOptions { readOnly: true; effortKind: 'administrative'; stage: 'retrospective' | 'knowledge-rollup'; requestId: string; ticket: string; cwd: string; enqueuedAt: string; timeout: number }
 /** Harper's model call, injected so tests never reach a provider. */
 export type KnowledgeRunner = <T>(prompt: string, schema: z.ZodType<T>, opts: KnowledgeRunOptions) => Promise<T>;
 
@@ -72,7 +74,7 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
     const attempts = pending.attempts;
     try {
         const folder = harperFolder(store, learningDigest(id));
-        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!);return context?withElsewhere(facts,otherProjectLessons(context,store.project.id)):facts;});
+        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=withDemand(appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!),demandFacts(store.state.knowledge,subject,summary=>missedQueries(store.dataRoot,summary)));return context?withElsewhere(facts,otherProjectLessons(context,store.project.id)):facts;});
         const result = RetrospectiveResultSchema.parse(await run(retrospectivePrompt(packet, store.project.repo), RetrospectiveResultSchema, { readOnly: true, effortKind: 'administrative', stage: 'retrospective', requestId: id, ticket: subject.key, cwd: harperFolder(store, learningDigest(id)), enqueuedAt: pending.createdAt, timeout: RETROSPECTIVE_TIMEOUT }));
         acceptRetrospective(store, pending, packet, result, currentAssignment()?.claim.id || randomUUID(), propose && (lessons => propose(store, id, lessons)));
     }

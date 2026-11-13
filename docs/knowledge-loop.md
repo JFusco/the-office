@@ -12,6 +12,8 @@ WORK   accepted stage results (delivery, CEC, maintenance, feature readers and p
   v
 HARPER REFLECTS   events for one subject collect in an open batch; once a retrospective
                   starts, later events form the next batch
+  her packet also lists what the harness supplied to that work, what accepted results cited
+  and what teammates looked up (history, never a score)
   proposes lessons (when / do / check / why) and, for blocked work, may propose an unblock brief
   v
 HARPER CURATES    per proposal: add | update | supersede | share
@@ -35,7 +37,7 @@ HARPER TEACHES    at dispatch, at a block, and on lookup
 | `detail` | Why, in a sentence |
 | `stages`, `paths` | Where it applies; stages filter, paths only rank; never wording |
 | `validUntil` | Only for a lesson tied to a ticket, version or temporary condition |
-| `tier`, `revision` | `hypothesis`, `guidance`, `procedure` or `rule`; curation, tier and status changes raise the revision; repository-issue state does not |
+| `tier`, `revision` | `hypothesis`, `guidance`, `procedure` or `rule`; curation, tier and status changes raise the revision; repository-issue state does not. A hypothesis is never supplied; Harper promotes one by superseding it at `guidance`, and an update keeps its tier |
 
 A lesson states a rule and a check. It does not narrate an incident, name a teammate or cite a run-specific path.
 
@@ -76,6 +78,10 @@ The retrospective a park, block or exhausted repair budget already triggers may 
 **On lookup** (`lookup/`)
 
 A worker that is unsure, or about to block, queries `GET /api/knowledge/lookup` with its per-attempt capability. Results are advisory observations, never instructions. A worker cites the reference it used in its evidence; that citation is recorded as plain history.
+
+**Back to Harper** (`demand-facts.ts`, `lookup/missed-queries.ts`)
+
+A retrospective for a job, ticket, feature or maintenance run carries a bounded `demand` section built from the newest 12 briefed assignments for that subject: lessons supplied and omitted for space, references cited by accepted results, Brain notes supplied, retrieved and cited, lookup counts, and up to five lookup queries that returned nothing. Query text is read from the assignment's digest-checked private log, redacted and clipped to 200 characters; it is untrusted, is never added to the evidence catalog and so cannot support a lesson. The section is capped at 3,000 characters and trimmed to fit the packet, unanswered queries first and then the tails of the other lists; a packet with no room carries no section, and the omission is recorded where that still fits. Investigation, recovery and orchestration subjects have no briefed assignments recorded under them and so no section.
 
 **Asking Harper** (`conversations/knowledge-conversations.ts`)
 
