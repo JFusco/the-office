@@ -31,7 +31,13 @@ export function sessionContextFile(root: string, parse: (raw: string, id: string
             } catch (error) {
                 // An active chat can append during a read. Discard the entire derived
                 // context and try once from a fresh snapshot, within the original deadline.
-                // Replacements, malformed records and continuing churn stay unavailable.
+                // A snapshot ending mid-record can fail parsing before the normal final
+                // stat check. Classify that changed snapshot before deciding whether to retry.
+                const current = await realpath(path), after = await stat(current);
+                if (current !== original || after.ino !== identity.ino || after.dev !== identity.dev)
+                    throw new Error('Session context file identity changed during its read');
+                if (!sameContextFile(info, after)) error = new ContextReadChanged('Session context file changed during its read');
+                // Stable malformed records, replacements and continuing churn stay unavailable.
                 if (!(error instanceof ContextReadChanged) || attempt !== 0 || performance.now() >= deadline) throw error;
             }
         }
