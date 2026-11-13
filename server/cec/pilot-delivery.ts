@@ -10,6 +10,7 @@ import { Agents } from '../workers/agents';
 import { DATA, CEC, HOLDS, LEGACY_AUTOMATION } from '../office/config';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
+import { recoverSavedPlan } from './recover-saved-plan';
 
 export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean }) {
     return this.store.transaction(() => {
@@ -186,6 +187,8 @@ export async function resume(this: Engine, key: string, background = true) {
         throw new Error(live.blocker || HOLDS[key] || 'Ownership/eligibility requires attention');
     if (live.existingPrId && live.existingPrId !== t.prId)
         throw new Error('A different PR exists; resolve duplicate work before resuming');
+    assertFeatureGate(this.store, key);
+    recoverSavedPlan(this.store, t, DATA);
     if (/interrupted|timed out|uncertain|reconcil/i.test(t.blocker) || t.results[t.stage]?.receipts.some(x => x.uncertain)) {
         const observed = await this.agents.reconcile(t);
         const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));

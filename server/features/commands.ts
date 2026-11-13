@@ -14,6 +14,7 @@ import { featurePolicy } from './progression/policy';
 import { pendingRounds, roundAuthor } from './questions/pending-round';
 import { normalizeRound } from './questions/normalize-round';
 import { FeatureError } from './progression/failure';
+import { automaticIntakeWait } from './handoff/intake-eligibility';
 
 export function featureById(store: Store, id: string): Feature {
     const feature = store.state.features?.find(f => f.id === id && f.projectId === store.project.id);
@@ -84,6 +85,9 @@ export function commandFeature(store: Store, id: string, raw: unknown, ownership
     const input = FeatureCommandSchema.parse(raw), feature = featureById(store, id);
     if (input.action === 'create' || input.action === 'approve') throw new Error('Command requires its dedicated operation');
     mutation(store, feature, input.requestId, input.expectedRevision, input, () => {
+        const wait = automaticIntakeWait(store, feature);
+        const harmless = input.action === 'pause' || input.action === 'harness-action' && (input.operation === 'note' || feature.rounds.some(round => round.options?.some(option => option.id === input.optionId && ['pause', 'release-to-ordinary'].includes(option.action))));
+        if (wait && !harmless) throw new Error(wait + '; refresh the ticket before answering or starting more planning');
         const now = store.clock.now().toISOString();
         if (input.action === 'harness-action') { applyHarnessAction(store, feature, input.operation === 'apply' ? {roundId:input.roundId,operation:'apply',optionId:input.optionId!} : {roundId:input.roundId,operation:'note',note:input.note!}, ownership); return; }
         if (input.action === 'pause') { feature.paused = true; feature.detail = 'Feature paused; active delivery keeps its existing ownership.'; return; }

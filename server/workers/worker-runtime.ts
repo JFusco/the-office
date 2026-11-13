@@ -42,6 +42,7 @@ import { personaContext } from './persona-context';
 import { handsOff, harnessDelivers } from '../delivery/harness/scope';
 import { unblockBrief } from '../knowledge/unblock-brief';
 import { catalogLine } from '../knowledge/lookup/catalog-line';
+import { persistReaderAnalysis } from './reader-analysis';
 export class WorkerRuntime {
     knowledgeContext?:import('../knowledge/context').KnowledgeContext;
     active = new Map<Role, AbortController>();
@@ -260,13 +261,7 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
             }
             const result = schema.parse(sanitizeObject(payload));
             if (profile.name === 'reader' && result && typeof result === 'object' && 'evidence' in result && Array.isArray((result as any).evidence) && 'summary' in result) {
-                const outputRoot = opts.artifactsRoot || dir;
-                mkdirSync(outputRoot, { recursive: true, mode: 0o700 });
-                const resultPath = resolve(outputRoot, `${id}-analysis.md`);
-                writeFileSync(resultPath, String((result as any).summary), { mode: 0o600 });
-                for (const evidence of (result as any).evidence)
-                    if (evidence && typeof evidence === 'object' && evidence.kind === 'review' && !evidence.path)
-                        evidence.path = resultPath;
+                persistReaderAnalysis(id, opts.stage || '', opts.artifactsRoot || dir, result as any, this.store.clock.now().toISOString());
             }
             const measured = this.store.state.workLog?.find(work => work.id === id);
             writeFileSync(resolve(dir, 'model-settings.json'), JSON.stringify({ requestedModel: measured?.requestedModel ?? null, requestedEffort: measured?.requestedEffort ?? null, observedModel: measured?.observedModel ?? null, observedEffort: measured?.observedEffort ?? null, providerModelUsage: claude ? stream.result?.modelUsage || null : null, observedAssistantModels: claude ? [...stream.models] : null, detail: claude ? 'Requested settings and actual assistant identity recorded separately from provider aggregate helper usage.' : 'Unexposed native default or observed settings remain unknown.' }), { mode: 0o600 });

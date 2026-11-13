@@ -6,6 +6,7 @@ import {blankEvidence} from '../../../../server/features/handoff/evidence-contra
 import {handoffFixture} from './fixture';
 test('evidence wait and backoff gate claims while queue age does not expire work',()=>{
  const f=handoffFixture();try{
+ f.store.state.coordination!.listener.assigned=[{key:'GH-1',status:'OPEN',pickupStatus:'Ready'} as any];
  const e=openAssessment(f.store,'GH-1','v1',true),entry={store:f.store,engine:{},coordinator:{}} as any;
  expect(scheduledAssessments(entry)[0].claimEligible!()).toBe(false);
  e.evidence=storeEvidence(f.store,blankEvidence('brain','GH-1','github','JFusco/brain#1'));saveAssessment(f.store,e);
@@ -13,5 +14,14 @@ test('evidence wait and backoff gate claims while queue age does not expire work
  f.advance(60*60_000);expect(item.claimEligible!()).toBe(true);
  e.nextAt=new Date(f.store.clock.now().getTime()+30_000).toISOString();saveAssessment(f.store,e);
  expect(item.claimEligible!()).toBe(false);f.advance(30_000);expect(item.claimEligible!()).toBe(true);
+ }finally{f.close();}
+});
+
+test('Backlog assessment is visible but neither scheduled nor claimable until Ready',()=>{
+ const f=handoffFixture();try{
+ const issue={key:'GH-1',status:'OPEN',pickupStatus:'Backlog'} as any;f.store.state.coordination!.listener.assigned=[issue];
+ const e=openAssessment(f.store,'GH-1','v1',true);e.evidence=storeEvidence(f.store,blankEvidence('brain','GH-1','github','repo#1'));saveAssessment(f.store,e);
+ const entry={store:f.store,engine:{},coordinator:{}} as any,item=scheduledAssessments(entry)[0];expect(item.eligibility.state).toBe('waiting');expect(item.claimEligible!()).toBe(false);
+ issue.pickupStatus='Ready';expect(item.claimEligible!()).toBe(true);
  }finally{f.close();}
 });

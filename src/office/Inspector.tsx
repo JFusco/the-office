@@ -1,3 +1,4 @@
+import { Outbox } from '../conversations/Outbox';
 import { withoutIdentifiers } from './without-identifiers';
 import {LoadingMark} from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
@@ -20,7 +21,7 @@ import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullReque
 import { Button, Card, Count, IconButton, Notice, PanelIcon, PanelTitle, Section, SectionTitle, StatusDot, Tag, TextLink, cx, envelopeCard, eyebrow, interactive, mutedCopy, noticeIcon } from '../ui';
 import { STAGES, STAGE_LABELS, ROLE_NAMES, PERSONAS, type OfficeSnapshot, type Ticket, type Evidence, type Role } from '../shared';
 import type { Selection } from '../scene/OfficeScene';
-import { Conversation, Outbox, type SendMessage } from '../conversations/Conversation';
+import { Conversation, type SendMessage } from '../conversations/Conversation';
 import { Goals } from '../leadership/Goals';
 import { ApproachSummary } from '../work/ApproachSummary';
 import { GitHubPanel } from '../work/GitHubPanel';
