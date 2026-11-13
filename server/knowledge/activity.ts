@@ -11,5 +11,5 @@ export function knowledgeActivity(context: KnowledgeContext, project: string): K
     const outcomes=(knowledge?.outcomes||[]).filter(s=>supplied.some(e=>e.id===s.assignmentId));
     for(const r of outcomes)events.push({id:r.id,assignmentId:r.assignmentId,at:r.at,kind:'verified',title:`${r.stage} accepted outcome citation`,detail:`Accepted outcome cites ${r.lessons.length} exact lesson revisions and ${r.evidence.length} supplied or retrieved evidence identities. General application remains unknown.`});
     return { events: events.sort((a,b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id)).slice(0,50), truncated: events.length > 50, supplied: supplied.length, retrieved: lookups.length, verified: outcomes.length,
-        limitations: ['Latest 50 events.', 'Supplied and retrieved knowledge do not prove application. Verified means an accepted outcome citation. General application remains unknown.'] };
+        limitations: ['Latest 50 events.', 'Supplied and retrieved knowledge do not prove application. Cited means an accepted result named the lesson or note; it is history, not a grade. General application remains unknown.'] };
 }

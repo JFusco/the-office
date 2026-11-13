@@ -22,6 +22,11 @@ test('Harper opens from the dock, retires a lesson with focus kept, and saves th
   await expect(drawer.getByRole('heading', { name: /Active lessons/ })).toBeFocused();
   await expect(drawer.getByText('Retired lessons (1)')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Visit Harper, 1 lesson, knowledge engineer' })).toBeVisible();
+  await drawer.getByText('Retired lessons (1)').click();
+  await expect(drawer.getByText('retired by you')).toBeVisible();
+  await drawer.getByRole('button', { name: 'Reactivate lesson: Retry the flaky link check once' }).click();
+  await expect(drawer.getByRole('heading', { name: /Active lessons/ })).toContainText('2');
+  await expect(page.getByRole('button', { name: 'Visit Harper, 2 lessons, knowledge engineer' })).toBeVisible();
 
   const save = drawer.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();

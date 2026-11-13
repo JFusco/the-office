@@ -1,4 +1,5 @@
 import { test, expect, type Page } from './fixture-test';
+import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
 
@@ -52,13 +53,13 @@ test('all knowledge screens share the content width; map frames and checkbox sta
     await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
     const nav = page.getByRole('navigation', { name: 'Brain views' });
     const widths: number[] = [];
-    for (const name of ['Library', 'Map', 'Activity']) {
+    for (const name of ['Lessons', 'Library', 'Map', 'Activity']) {
         await nav.getByRole('button', { name, exact: true }).click();
         await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
         widths.push((await page.locator('[data-brain-content]').boundingBox())!.width);
         await expect(page.getByRole('main')).toHaveCount(1);
     }
-    expect(widths).toEqual([1280, 1280, 1280]);
+    expect(widths).toEqual([1280, 1280, 1280, 1280]);
     await nav.getByRole('button', { name: 'Map', exact: true }).click();
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
     const borderColor = await page.evaluate(() => {
@@ -74,7 +75,7 @@ test('all knowledge screens share the content width; map frames and checkbox sta
         await page.locator('[data-brain-map-frame]').scrollIntoViewIfNeeded();
         await page.screenshot({ path: `${artifacts}/map-drawer.synthetic.png` });
     }
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await entriesSettled(page);expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.setViewportSize({ width: 390, height: 844 });
     const activity = page.getByRole('checkbox', { name: 'Include employee activity' });
     const label = await activity.evaluate(el => { const r = el.closest('label')!.getBoundingClientRect(); const text = el.nextElementSibling!.getBoundingClientRect(); return { width: r.width, textHeight: text.height, scroll: document.querySelector('[data-office-brain]')!.scrollWidth, client: document.querySelector('[data-office-brain]')!.clientWidth }; });
@@ -104,7 +105,7 @@ for (const width of [1440, 390]) {
     test(`project-switch loading covers and disables the knowledge drawer at ${width}px`, async ({ page }) => {
         await page.setViewportSize({ width, height: 1000 });
         await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-        await expect(page.getByRole('heading', { name: 'Library', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Lessons', exact: true })).toBeVisible();
         let release!: () => void;
         const gate = new Promise<void>(resolve => { release = resolve; });
         await page.route(/\/api\/(office|events)\?project=brain/, async route => { await gate; await route.continue(); });
@@ -142,7 +143,7 @@ test('a late Inspector exit cannot restore the room underneath Brain', async ({ 
     await page.getByRole('button', { name: 'People', exact: true }).click();
     await expect(page.getByRole('complementary', { name: 'People', exact: true })).toBeVisible();
     await page.keyboard.press('Escape'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Library', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Lessons', exact: true })).toBeVisible();
     await expect(page.locator('[data-scene-label="room"]')).toHaveCount(0);
     await expect(page.locator('canvas')).toHaveCount(0);
     await page.getByRole('button', { name: 'Map', exact: true }).click();

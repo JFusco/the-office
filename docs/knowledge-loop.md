@@ -61,7 +61,9 @@ Office lessons change only through Joe. Harper proposes them (from a `share` or 
 | Expired | The day after `validUntil` | `lesson-exits.ts` |
 | Retired | Joe retires it | `lesson-commands.ts`, `office-lessons.ts` |
 
-There is no age-based retirement and no recurrence review. Joe can reactivate any retired project lesson; a retired office lesson stays retired.
+The Lessons view is the first view of the Knowledge workspace. A retired project lesson shows a Reactivate button unless it was superseded: its replacement is the current version, and the harness refuses to reactivate it (`lesson-commands.ts`).
+
+There is no age-based retirement and no recurrence review. Joe can reactivate any retired project lesson that was not superseded; a retired office lesson stays retired.
 
 ## Teaching
 
@@ -91,13 +93,15 @@ Only Joe can ask Harper a question, in Harper's chat. Letting Morgan forward a t
 
 The Office reads Brain (`brain/reader.ts`, a read-only CLI transport) and never writes to it. The Brain repository is still an ordinary delivery project; that is repository work, not a knowledge write.
 
+Office lessons hold only what this Office knows: a project's repository, harness and process, or the Office itself. General framework, CMS, tooling and platform guidance belongs in Brain, which teammates already receive at dispatch and by lookup. Before a retrospective's packet is frozen, the harness searches Brain for the subject and adds up to five related notes (path, title, a short summary) as a bounded `brain` section (`brain-overlap.ts`). Harper is told not to propose a lesson that only restates one, and to say in her summary when a note is wrong or missing something. The notes are never catalog evidence, so no lesson can cite one. When Brain is unavailable the section is left out and the retrospective runs as before; a frozen retry reuses its packet and does not read Brain again. The weekly roll-up carries the same rule for office-wide proposals. `pnpm office audit-lessons --project <id>` lists active lessons that have Brain notes on the same topic, for Joe to judge; it changes nothing.
+
 ## Sources
 
 The Office has no link, upload or Slack channel sources. Its knowledge is Harper's lessons and what it reads from Brain.
 
 ## What Joe decides
 
-Harper's outbox (`knowledge-outbox.ts`) holds two kinds of item, each cleared in the Lessons panel:
+Harper's outbox (`knowledge-outbox.ts`) holds two kinds of item, each cleared in the Outbox or the Lessons panel:
 
 - an office-wide lesson to accept or decline;
 - a lesson that belongs in its repository, to file as an issue or decline.

@@ -4,6 +4,7 @@ const state = vi.hoisted(()=>({ graph: null as any,build:vi.fn(), visuals: {crea
 vi.mock('3d-force-graph', ()=>({ default: class { constructor(){state.build();return state.graph;} } }));
 vi.mock('../../../../src/tokens/scene-colors',()=>({sceneColors:()=>({brainBackground:'paper',brainFocusConnection:'ink'})}));
 vi.mock('../../../../src/knowledge/map/node-visuals',()=>({nodeVisuals:()=>state.visuals}));
+vi.mock('../../../../src/knowledge/map/atmosphere',()=>({mapAtmosphere:()=>state.atmosphere}));
 import { createConstellation } from '../../../../src/knowledge/map/constellation-runtime';
 import { displayScene, type MapSelection } from '../../../../src/knowledge/map/display-scene';
 import { knowledgeCameraDuration, knowledgeOrbitIdle } from '../../../../src/tokens/motion';
@@ -24,22 +25,32 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{frame=callback;return 1;}));vi.stubGlobal('cancelAnimationFrame',vi.fn());
     const addEventListener=vi.fn(),removeEventListener=vi.fn();
     const container={replaceChildren:vi.fn(),addEventListener,removeEventListener,getBoundingClientRect:()=>({left:0,top:0,width:1200,height:800}),clientWidth:1200,clientHeight:800} as unknown as HTMLElement;
-    const select=vi.fn(),runtime=createConstellation(container,select), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,page:0};
+    const select=vi.fn(),runtime=createConstellation(container,select), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,technical:true,page:0};
     const map={nodes:[{id:'note',title:'Note',kind:'technical' as const,detail:''}],edges:[],truncated:false};
     const overview=displayScene(map,selection), focused=displayScene(map,{...selection,selected:'note'});
     runtime.update({data:overview.scene,reduced:false});const original=saved.nodes[0];
     expect(graph.linkWidth).toHaveBeenLastCalledWith(.35);
     runtime.update({data:focused.scene,focusId:'note',reduced:false});expect(saved.nodes[0]).toBe(original);
     expect(graph.linkWidth).toHaveBeenLastCalledWith(1.2);expect(graph.linkOpacity).toHaveBeenLastCalledWith(.9);
+    const ambient=()=>state.visuals.update.mock.calls.at(-1)![4] as number;
     frame(1);frame(knowledgeCameraDuration+1);
     // A stalled frame slows the flight rather than jumping straight to its end.
     expect(graph.cameraPosition.mock.calls.at(-1)![1]).not.toEqual(original.position);
-    for(let i=1;i<=Math.ceil(knowledgeCameraDuration/16);i++)frame(knowledgeCameraDuration+1+i*16);
+    // The camera moves through a flight while drift, twinkle and dust stand still; they resume once it lands.
+    const flying=ambient(),pose=graph.cameraPosition.mock.calls.at(-1)![0];
+    frame(knowledgeCameraDuration+17);expect(graph.cameraPosition.mock.calls.at(-1)![0]).not.toEqual(pose);
+    expect(ambient()).toBe(flying);expect(state.atmosphere.update).toHaveBeenLastCalledWith(flying,true,expect.any(Number));
+    for(let i=2;i<=Math.ceil(knowledgeCameraDuration/16);i++)frame(knowledgeCameraDuration+1+i*16);
     expect(graph.cameraPosition).toHaveBeenLastCalledWith(expect.any(Object),original.position,0);
+    expect(ambient()).toBeGreaterThan(flying);
     runtime.update({data:overview.scene,reduced:true});expect(graph.cameraPosition).toHaveBeenLastCalledWith({x:0,y:0,z:overviewDistance},{x:0,y:0,z:0},0);
     frame(10000);expect(controls.autoRotate).toBe(false);
+    const still=ambient();frame(10016);expect(ambient()).toBe(still); // reduced: nothing drifts
+    expect(state.atmosphere.update).toHaveBeenLastCalledWith(still,false,1);
     runtime.update({data:overview.scene,reduced:false});frame(14000);expect(controls.autoRotate).toBe(true);
+    expect(ambient()).toBeGreaterThan(still);
     runtime.update({data:overview.scene,reduced:false,paused:true});frame(18000);expect(controls.autoRotate).toBe(false);
+    const paused=ambient();frame(18000.5);expect(ambient()).toBe(paused);
     runtime.update({data:overview.scene,reduced:false,paused:false});frame(18001);expect(controls.autoRotate).toBe(false);
     frame(18001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
     const start=controls.addEventListener.mock.calls.find(call=>call[0]==='start')![1],end=controls.addEventListener.mock.calls.find(call=>call[0]==='end')![1];
@@ -63,7 +74,7 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     down(touch);down({...touch,pointerId:5});up({...touch,pointerId:5});up(touch);expect(select).toHaveBeenCalledOnce();
     down(touch);cancel();up(touch);expect(select).toHaveBeenCalledOnce();
     expect(renderer.dispose).not.toHaveBeenCalled();expect(renderer.setPixelRatio).toHaveBeenCalledWith(2);
-    runtime.dispose();runtime.dispose();expect(graph._destructor).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce();expect(renderer.forceContextLoss).toHaveBeenCalledOnce();expect(container.replaceChildren).toHaveBeenCalledOnce();
+    runtime.dispose();runtime.dispose();expect(graph._destructor).toHaveBeenCalledOnce();expect(state.atmosphere.dispose).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce();expect(renderer.forceContextLoss).toHaveBeenCalledOnce();expect(container.replaceChildren).toHaveBeenCalledOnce();
     expect(controls.removeEventListener).toHaveBeenCalledWith('start',start);expect(controls.removeEventListener).toHaveBeenCalledWith('end',end);
     expect(removeEventListener).toHaveBeenCalledWith('pointerenter',enter);expect(removeEventListener).toHaveBeenCalledWith('pointerleave',leave);expect(removeEventListener).toHaveBeenCalledWith('pointermove',expect.any(Function),true);
 });

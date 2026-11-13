@@ -16,5 +16,5 @@ test('does not expose unloaded contents and names the current load operation',()
 
 test('Activity distinguishes accepted evidence from independently proven application',()=>{
  const html=renderToStaticMarkup(createElement(Activity,{project:'cec'}));
- expect(html).toContain('Accepted citations or confirmed procedures');expect(html).toContain('General application remains unknown.');expect(html).not.toContain('Application independently verified');
+ expect(html).toContain('Cited by an accepted result');expect(html).toContain('General application remains unknown.');expect(html).not.toContain('Application independently verified');
 });

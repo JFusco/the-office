@@ -11,3 +11,8 @@ export async function setPreferences(request:APIRequestContext,patch:OfficePrefe
   const response=await request.post('/__fixture/preferences',{data:patch});
   if(!response.ok())throw new Error(`Fixture preferences were rejected: ${response.status()}`);
 }
+/** Waits until finite entry animations (fades and slides) have finished, so an accessibility scan never measures
+ * text mid-fade. Endless animations, such as the loader's spin, are ignored. */
+export async function entriesSettled(page:import('@playwright/test').Page){
+  await page.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState!=='running'||animation.effect?.getComputedTiming().endTime===Infinity));
+}

@@ -63,3 +63,12 @@ test('graduation applies to the current record after the provider read and never
         expect(graduated[0].message).toContain('Guidance cloned');
     } finally { close(); }
 });
+
+test('a superseded lesson cannot be reactivated, so two versions are never both active', () => {
+    const { store, close } = knowledgeStore('brain', '2026-11-12T15:00:00Z');
+    try {
+        store.state.knowledge!.lessons = [learningLesson('old', { status: 'retired', retiredBy: 'harper', supersededBy: 'new' }), learningLesson('new', { supersedes: 'old' })];
+        expect(() => reactivateLesson(store, 'old')).toThrow('superseded');
+        expect(store.state.knowledge!.lessons.map(lesson => lesson.status)).toEqual(['retired', 'active']);
+    } finally { close(); }
+});
