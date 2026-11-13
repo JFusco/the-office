@@ -14,7 +14,10 @@ export function OutboxQuestionRound({ round, disabled, refresh }: { round: Featu
             if (pending.current?.content !== content) pending.current = { content, id: crypto.randomUUID() };
             const response = await fetch(questionUrl(round), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, requestId: pending.current.id }) });
             const body = await response.json();
-            if (!response.ok) throw new Error(body.error || 'Answer not confirmed');
+            if (!response.ok) {
+                if (['stale-round', 'revision-change', 'changed-precondition', 'source-unavailable'].includes(body.code)) await refresh?.();
+                throw new Error(body.error || 'Answer not confirmed');
+            }
             pending.current = null; await refresh?.(); return true;
         } catch (error) { setError(String(error)); return false; }
         finally { lock.current = false; setBusy(false); }

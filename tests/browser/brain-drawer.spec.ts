@@ -80,7 +80,8 @@ test('all knowledge screens share the content width; map frames and checkbox sta
     const activity = page.getByRole('checkbox', { name: 'Include employee activity' });
     const label = await activity.evaluate(el => { const r = el.closest('label')!.getBoundingClientRect(); const text = el.nextElementSibling!.getBoundingClientRect(); return { width: r.width, textHeight: text.height, scroll: document.querySelector('[data-office-brain]')!.scrollWidth, client: document.querySelector('[data-office-brain]')!.clientWidth }; });
     expect(label.width).toBeLessThan(342); expect(label.textHeight).toBeLessThan(24); expect(label.scroll).toBe(label.client);
-    await activity.focus(); await page.keyboard.press('Space'); await expect(activity).toBeChecked();
+    // Employee activity starts on: every recorded project link starts at an assignment.
+    await expect(activity).toBeChecked(); await activity.focus(); await page.keyboard.press('Space'); await expect(activity).not.toBeChecked();
     if (artifacts) await page.screenshot({ path: `${artifacts}/map-drawer-mobile.synthetic.png` });
     await page.keyboard.press('Escape'); await expect(page.locator('[data-brain-drawer]')).toHaveCount(0);
 });

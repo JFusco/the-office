@@ -16,12 +16,15 @@ test('automatic Backlog handoff stays out of questions and claims, and stale ans
         expect(automaticIntakeWait(f.store, f.feature)).toContain('Ready');
         expect(pendingQuestions([f.store], { brain: { progression: 'automatic' } })).toEqual([]);
         expect(() => commandFeature(f.store, f.feature.id, { action: 'answer', requestId: 'stale', expectedRevision: 1, roundId: 'round', answers: { q: 'A' } })).toThrow('intake');
-        expect(JSON.stringify(f.feature)).toBe(raw);
-        f.feature.status = 'queued';
+        try { commandFeature(f.store, f.feature.id, { action: 'answer', requestId: 'stale', expectedRevision: 1, roundId: 'round', answers: { q: 'A' } }); } catch (error) { expect(error).toMatchObject({ code: 'changed-precondition' }); }
+        const current = f.store.state.features![0];
+        expect(JSON.stringify(current)).toBe(raw);
+        current.status = 'queued';
         const scheduled = scheduledFeatures({ store: f.store, engine: {} } as any)[0]; expect(scheduled.eligibility.state).toBe('waiting'); expect(scheduled.claimEligible!()).toBe(false);
         const run = vi.fn(); await new FeatureWorkflow(f.store, { run, active: new Map() } as any).step(f.feature.id); expect(run).not.toHaveBeenCalled();
         f.store.state.coordination!.listener.assigned[0].pickupStatus = 'Ready';
-        expect(automaticIntakeWait(f.store, f.feature)).toBe(''); f.feature.status = 'waiting';
+        expect(scheduled.claimEligible!()).toBe(true);
+        expect(automaticIntakeWait(f.store, current)).toBe(''); current.status = 'waiting';
         expect(pendingQuestions([f.store], { brain: { progression: 'automatic' } })).toHaveLength(1);
     } finally { f.close(); }
 });

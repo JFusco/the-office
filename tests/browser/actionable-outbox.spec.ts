@@ -25,6 +25,7 @@ test('product question opens from outbox with recommendation first, three choice
     feature.rounds[0].questions = [{ id: 'q', question: 'How should revised prose be applied?', recommendation: 'Review proposed changes', options: [{ id: 'auto', label: 'Replace automatically', tradeoff: 'Fewer clicks' }, { id: 'review', label: 'Review proposed changes', tradeoff: 'Keep editorial control' }, { id: 'keep', label: 'Keep saved text', tradeoff: 'No prose update' }], choices: [], recommendedOptionId: 'review' }];
     await request.post('/__fixture/snapshot?project=cec', { data: { features: [feature], outbox: [], featurePlanning: { assessment: true, progression: 'automatic', policyDigest: 'fixture' } } });
     await page.goto('/'); const dialog = page.locator('dialog[data-office-question-dialog]'); await expect(dialog).toBeVisible(); await page.keyboard.press('Escape'); await expect(dialog).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Your outbox, 1 needs you', exact: true })).toBeVisible();
     await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.locator('[data-outbox-question]').click();
     const section = page.getByRole('region', { name: 'Question round' });
     await expect(section.getByRole('radio')).toHaveCount(3); await expect(section.getByRole('radio').first()).toHaveAccessibleName(/Review proposed changes.*Recommended/);
@@ -51,4 +52,15 @@ test('Avery input failure offers original-message recovery instead of a duplicat
     const followup = page.locator('[data-cto-input-followup]'); await expect(followup).toContainText('Your message was retained');
     await followup.getByRole('button', { name: 'Recover original message' }).click(); await expect(followup.getByRole('alert')).toContainText('do not send your original message again');
     await expect(followup.getByRole('button', { name: 'Recovery requested — check status' })).toBeDisabled(); expect(posts).toBe(1);
+});
+
+test('a stale outbox answer refreshes its question without losing the typed draft or submitting again', async ({ page, request }) => {
+    const feature = await (await request.post('/api/features?project=cec', { data: { action: 'create', title: 'Changed intake', intent: 'Synthetic stale answer' } })).json();
+    await request.post('/__fixture/snapshot?project=cec', { data: { features: [feature], outbox: [], featurePlanning: { assessment: true, progression: 'automatic', policyDigest: 'fixture' } } });
+    await page.goto('/'); const dialog = page.locator('dialog[data-office-question-dialog]'); await expect(dialog).toBeVisible(); await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.locator('[data-outbox-question]').click();
+    const form = page.getByRole('region', { name: 'Question round' }); await form.getByLabel('Your answer', { exact: true }).fill('Keep the authored Page Fields.');
+    let posts = 0; await page.route(`**/api/features/${feature.id}?project=cec&officeWide=1`, async route => { posts++; feature.paused = true; await request.post('/__fixture/snapshot?project=cec', { data: { features: [feature] } }); await route.fulfill({ status: 409, json: { code: 'changed-precondition', error: 'Ticket left Ready intake' } }); });
+    await form.getByRole('button', { name: 'Send answers', exact: true }).click(); await expect(form).toHaveCount(0);
+    expect(await page.evaluate(() => Object.values(localStorage).includes('Keep the authored Page Fields.'))).toBe(true); expect(posts).toBe(1);
 });

@@ -87,7 +87,7 @@ export function commandFeature(store: Store, id: string, raw: unknown, ownership
     mutation(store, feature, input.requestId, input.expectedRevision, input, () => {
         const wait = automaticIntakeWait(store, feature);
         const harmless = input.action === 'pause' || input.action === 'harness-action' && (input.operation === 'note' || feature.rounds.some(round => round.options?.some(option => option.id === input.optionId && ['pause', 'release-to-ordinary'].includes(option.action))));
-        if (wait && !harmless) throw new Error(wait + '; refresh the ticket before answering or starting more planning');
+        if (wait && !harmless) throw new FeatureError('changed-precondition', wait + '; refresh the ticket before answering or starting more planning');
         const now = store.clock.now().toISOString();
         if (input.action === 'harness-action') { applyHarnessAction(store, feature, input.operation === 'apply' ? {roundId:input.roundId,operation:'apply',optionId:input.optionId!} : {roundId:input.roundId,operation:'note',note:input.note!}, ownership); return; }
         if (input.action === 'pause') { feature.paused = true; feature.detail = 'Feature paused; active delivery keeps its existing ownership.'; return; }
