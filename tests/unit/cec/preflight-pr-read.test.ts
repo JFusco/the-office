@@ -10,13 +10,14 @@ test('native reader keeps active PRs beyond recent history and proves complete p
     const calls: string[][] = [];
     const rows = await preflightPRs(async args => {
         calls.push(args);
+        if (args[2] === 'show') return pr(Number(args[4]));
         if (args.includes('all')) return [{ ...pr(900), status: 'completed' }];
         return args.at(-1) === '0' ? Array.from({ length: 100 }, (_, i) => pr(i + 1)) : [pr(101)];
     });
     expect(rows).toHaveLength(101);
     expect(rows.at(-1)?.id).toBe(101);
-    expect(calls.at(-1)).toContain('100');
-    expect(calls.every(args => args.slice(0, 3).join(' ') === 'repos pr list')).toBe(true);
+    expect(calls.filter(args => args[2] === 'list').at(-1)).toContain('100');
+    expect(calls.filter(args => args[2] === 'show')).toHaveLength(101);
 });
 test.each([
     { repository: { id: 'foreign', name: CEC.repository } },
@@ -28,7 +29,7 @@ test.each([
     await expect(preflightPRs(async args => args.includes('all') ? [] : [{ ...pr(), ...patch }])).rejects.toThrow('incomplete');
 });
 test.each([null, undefined, ''])('a legitimately empty PR description remains readable (%s)', async description => {
-    const rows = await preflightPRs(async args => args.includes('all') ? [] : [{ ...pr(), description }]);
+    const rows = await preflightPRs(async args => args[2] === 'show' ? { ...pr(), description } : args.includes('all') ? [] : [{ ...pr(), description }]);
     expect(rows[0].description).toBe('');
 });
 test('read-only model receives bound native evidence, and successful assessment is fenced by another complete read', async () => {
@@ -40,8 +41,8 @@ test('read-only model receives bound native evidence, and successful assessment 
             expect(task).toContain('"completeActivePRCoverage":true');
             expect(task).toContain('Current session visibility');
             return { blocker: '', existingPrId: 1 };
-        }, async args => { reads++; return args.includes('all') ? [] : [pr()]; });
-        expect(result.existingPrId).toBe(1); expect(models).toBe(1); expect(reads).toBe(4);
+        }, async args => { reads++; return args[2] === 'show' ? pr() : args.includes('all') ? [] : [pr()]; });
+        expect(result.existingPrId).toBe(1); expect(models).toBe(1); expect(reads).toBe(6);
         const dir = resolve(f.store.dataRoot, 'preflight-reads', readdirSync(resolve(f.store.dataRoot, 'preflight-reads'))[0]);
         expect(JSON.parse(readFileSync(resolve(dir, 'before.json'), 'utf8')).repositoryId).toBe(CEC.repositoryId);
         expect(JSON.parse(readFileSync(resolve(dir, 'after.json'), 'utf8')).prs[0].commit).toBe('a'.repeat(40));
@@ -51,10 +52,29 @@ test('changed PR head after the model blocks admission and retains both observat
     const f = knowledgeStore('cec'); let calls = 0;
     try {
         await expect(withCECPreflightPRs(f.store, 'readback', 'CEC-900', 'Read', async () => ({ blocker: '' }), async args => {
-            calls++; return args.includes('all') ? [] : [pr(1, (calls < 3 ? 'a' : 'b').repeat(40))];
+            calls++; const row=pr(1, (calls <= 3 ? 'a' : 'b').repeat(40));return args[2] === 'show' ? row : args.includes('all') ? [] : [row];
         })).rejects.toThrow('changed during readback');
         const dir = resolve(f.store.dataRoot, 'preflight-reads', readdirSync(resolve(f.store.dataRoot, 'preflight-reads'))[0]);
         expect(readdirSync(dir).sort()).toEqual(['after.json', 'before.json', 'intent.json']);
+    } finally { f.close(); }
+});
+test('full description changes after the model block admission even when the PR head stays unchanged', async () => {
+    const f = knowledgeStore('cec'); let details = 0;
+    try {
+        await expect(withCECPreflightPRs(f.store, 'readback', 'CEC-900', 'Read', async task => {
+            expect(task).toContain('CEC-900 appears beyond the abbreviated list body');
+            return { blocker: '' };
+        }, async args => args[2] === 'show' ? { ...pr(), description: ++details === 1 ? 'x'.repeat(400)+'CEC-900 appears beyond the abbreviated list body' : 'Changed body' } : args.includes('all') ? [] : [pr()])).rejects.toThrow('changed during readback');
+    } finally { f.close(); }
+});
+test('a missing full PR read stops before any model attempt', async () => {
+    const f = knowledgeStore('cec'); let models = 0;
+    try {
+        await expect(withCECPreflightPRs(f.store, 'readback', 'CEC-900', 'Read', async () => { models++; return {}; }, async args => {
+            if(args[2] === 'show') throw new Error('PR detail unavailable');
+            return args.includes('all') ? [] : [pr()];
+        })).rejects.toThrow('PR detail unavailable');
+        expect(models).toBe(0);
     } finally { f.close(); }
 });
 test('unknown session ownership remains blocked, with no extra model or provider retry', async () => {

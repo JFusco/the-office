@@ -5,30 +5,24 @@ import { CEC } from '../office/config';
 import { sanitizeObject } from '../office/security';
 import { currentAssignment } from '../workers/assignment-context';
 import type { Store } from '../store/store';
-import { az, prUrl } from './azure';
+import { az } from './azure';
 import { readAzurePRs } from './observed-prs';
+import { fullActivePRs, type PRRead } from './preflight-pr-details';
 
-type Read = (args: string[]) => Promise<any[]>;
-const nativeRead: Read = args => az<any[]>(args, true);
+const nativeRead: PRRead = args => az(args, true);
 /** Reuses the monitor's complete active-PR pagination, outside a model's read-only sandbox. */
-export async function preflightPRs(read: Read = nativeRead) {
-    const rows = await readAzurePRs(CEC.repository, read);
-    return rows.filter(row => row.status === 'active').map(row => {
-        if (row.repository?.id !== CEC.repositoryId || row.repository?.name !== CEC.repository ||
-            typeof row.title !== 'string' || typeof row.isDraft !== 'boolean' ||
-            typeof row.sourceRefName !== 'string' || !row.sourceRefName.startsWith('refs/heads/') ||
-            typeof row.targetRefName !== 'string' || !row.targetRefName.startsWith('refs/heads/') ||
-            !/^[a-f0-9]{40}$/.test(row.lastMergeSourceCommit?.commitId || '') ||
-            row.description != null && typeof row.description !== 'string')
-            throw new Error('CEC native PR identity or head coverage is incomplete; no absence or dispatch authorized');
-        return sanitizeObject({ id: row.pullRequestId, title: row.title, draft: row.isDraft, source: row.sourceRefName,
-            target: row.targetRefName, commit: row.lastMergeSourceCommit.commitId, description: row.description || '', url: prUrl(row.pullRequestId) });
-    }).sort((a, b) => a.id - b.id);
+export async function preflightPRs(read: PRRead = nativeRead) {
+    const rows = await readAzurePRs(CEC.repository, async args => {
+        const result = await read(args);
+        if (!Array.isArray(result)) throw new Error('CEC native PR list coverage is incomplete');
+        return result;
+    });
+    return fullActivePRs(rows.filter(row => row.status === 'active'), read);
 }
 
 /** The model decides relatedness and ownership; native reads fence its PR observation before admission. */
 export async function withCECPreflightPRs<T>(store: Store, stage: string | undefined, key: string | undefined,
-    task: string, run: (task: string) => Promise<T>, read: Read = nativeRead): Promise<T> {
+    task: string, run: (task: string) => Promise<T>, read: PRRead = nativeRead): Promise<T> {
     if (store.project.id !== 'cec' || store.project.provider !== 'azure' || !['readback', 'assignment-review'].includes(stage || '')) return run(task);
     if (store.project.repo !== CEC.repo || store.project.repository !== CEC.repository || !/^CEC-[1-9][0-9]*$/.test(key || ''))
         throw new Error('CEC preflight provider binding changed');
