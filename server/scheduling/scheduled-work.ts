@@ -35,13 +35,23 @@ import { easternDay } from '../office/clock';
 import { withAmendmentOwnership } from '../delivery/recovery/source-amendment/source-amendment';
 import { scheduledRetrospectives } from '../knowledge/scheduled-retrospectives';
 import { scheduledRollup, type RollupHooks } from '../knowledge/weekly-rollup';
+import { stoppedReason } from './stopped-reason';
 export interface OfficeEntry {
     store: Store;
     engine: Engine;
     conversations: Conversations;
     coordinator?: Coordinator;
 }
-const eligible = (state: WorkEligibility['state'], reason: string, owner = 'Morgan'): WorkEligibility => ({ state, reason, owner, nextCheckAt: null });
+const eligible = (state: WorkEligibility['state'], reason: string, owner = 'Morgan', cause?: WorkEligibility['cause']): WorkEligibility => ({ state, reason, owner, nextCheckAt: null, ...(cause ? { cause } : {}) });
+/** A record's own status, with stopped records explained by their saved error or detail (see stopped-reason.ts). */
+const recordEligibility = (status: string, record: { detail?: unknown; error?: unknown }): WorkEligibility => {
+    if (status === 'queued') return eligible('runnable', 'Ready for scheduler claim');
+    if (status === 'working') return eligible('running', 'Work is working');
+    if (['completed', 'cancelled', 'answered', 'sent', 'reconciled', 'ready'].includes(status)) return eligible('terminal', `Work is ${status}`);
+    if (['watching', 'held'].includes(status)) return eligible('waiting', `Work is ${status}`);
+    const stopped = stoppedReason(status, record);
+    return eligible('blocked', stopped.reason, 'Morgan', stopped.cause);
+};
 /** One projection drives dispatch, queue counts, owner labels and next actions. */
 /** Office-level inputs to Harper's lane: Avery's review status and the office proposal store. */
 export interface KnowledgeOptions extends RollupHooks { context?:import('../knowledge/context').KnowledgeContext; dailyStatus?: (date: string) => string | undefined }
@@ -53,13 +63,15 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         status: string;
         timing?: import('../../src/shared').QueueTiming[];
         stageEnqueuedAt?: string;
+        detail?: unknown;
+        error?: unknown;
     }, stage: string, at: string, rank: number, execute: () => Promise<unknown>, condition?: WorkEligibility | null, timing?: ScheduledWork['timing']) => {
         const status = record.status;
         items.push({ store, work: { projectId: store.project.id, kind, id: record.id }, stage, rank, enqueuedAt: record.stageEnqueuedAt || at, afterStage: () => {
                 if (record.status === 'queued')
                     record.stageEnqueuedAt = store.clock.now().toISOString();
             }, timing, saveTiming: measurement => (record.timing ??= []).push(measurement),
-            eligibility: store.state.paused || store.state.draining ? eligible('blocked', store.state.draining ? 'Office is draining' : 'Project is paused') : condition || eligible(status === 'queued' ? 'runnable' : status === 'working' ? 'running' : ['completed', 'cancelled', 'answered', 'sent', 'reconciled', 'ready'].includes(status) ? 'terminal' : ['watching', 'held'].includes(status) ? 'waiting' : 'blocked', status === 'queued' ? 'Ready for scheduler claim' : `Work is ${status}`),
+            eligibility: store.state.paused || store.state.draining ? eligible('blocked', store.state.draining ? 'Office is draining' : 'Project is paused', 'Morgan', 'paused') : condition || recordEligibility(status, record),
             identity: () => JSON.stringify([record.status, stage, 'head' in record ? record.head : null, 'stage' in record ? record.stage : null]), execute });
     };
     for (const message of store.state.messages.filter(message => ['human', 'cto', 'it', 'pm', 'knowledge'].includes(message.from))) {
@@ -111,7 +123,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     items.push(...scheduledFeatures(entry), ...scheduledAssessments(entry, now));
     for (const job of c.jobs || []) {
         const validation = validatePrerequisites(job.prerequisites || [], { projectId: store.project.id, kind: 'delivery', id: job.id }, stores);
-        const dependency = validation ? eligible('blocked', validation) : dependencyEligibility(job.prerequisites || [], stores, now);
+        const dependency = validation ? eligible('blocked', validation, 'Morgan', 'dependency') : dependencyEligibility(job.prerequisites || [], stores, now);
         const repair=deliveryRepairProjection(job),retryAt=repair&&'retryAt' in repair?repair.retryAt:undefined;
         const timeWait=job.status==='queued'&&retryAt&&Date.parse(retryAt)>now.getTime()?{...eligible('waiting',repair?.next||'Recorded source retry backoff is active',repair?.owner||'Alex'),nextCheckAt:retryAt}:null;
         add('delivery', job, job.stage, job.requestedAt, job.stage === 'closeout' && !!job.mergeCommit ? 0 : deliveryRepairProjection(job)?.rank || (job.repairReason && job.repairReason !== 'source' || (job.prerequisites?.length && !dependency) ? 1 : 3), () => withAmendmentOwnership(async () => {
@@ -123,14 +135,14 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         items.at(-1)!.slot = deliverySlot(job);
     }
     for (const review of [...new Map(c.listener.reviews.map(review => [review.key, review])).values()].filter(review => !(c.jobs || []).some(job => job.key === review.key && job.status !== 'cancelled')))
-        add('intake', review, 'assignment-review', review.queuedAt, 3, () => coordinator!.pump({ kind: 'intake', id: review.id }), review.prerequisiteError ? eligible('blocked', review.prerequisiteError) : ['owned', 'held'].includes(review.status) && deferredPickup(store.state, review.key) ? eligible('waiting', 'Backlog assignment is deferred until its pickup lane or an explicit Start') : null, review.timing);
+        add('intake', review, 'assignment-review', review.queuedAt, 3, () => coordinator!.pump({ kind: 'intake', id: review.id }), review.prerequisiteError ? eligible('blocked', review.prerequisiteError, 'Morgan', 'dependency') : ['owned', 'held'].includes(review.status) && deferredPickup(store.state, review.key) ? eligible('waiting', 'Backlog assignment is deferred until its pickup lane or an explicit Start') : null, review.timing);
     for (const checkpoint of c.checkpoints.filter(checkpoint => !store.state.maintenance?.runs.some(run => run.id === checkpoint.runId && run.retirement)))
         add('checkpoint', checkpoint, 'checkpoint', checkpoint.requestedAt, 3, () => coordinator!.pump({ kind: 'checkpoint', id: checkpoint.id }), checkpoint.retryAt && Date.parse(checkpoint.retryAt) > now.getTime() ? eligible('waiting', 'Native retry backoff is active') : null);
     for (const run of store.state.maintenance?.runs || []) {
         if (run.retirement) continue;
         add('maintenance', run, run.stage, run.requestedAt, 3, () => engine.drainMaintenance(run.id), null, run.timing);
         if (run.blockerFollowup)
-            add('continuation', { id: run.id, status: run.blockerFollowup.status }, 'repair-followup', run.requestedAt, 1, () => coordinator!.pump({ kind: 'followup', id: run.id }));
+            add('continuation', { id: run.id, status: run.blockerFollowup.status, detail: run.blockerFollowup.detail }, 'repair-followup', run.requestedAt, 1, () => coordinator!.pump({ kind: 'followup', id: run.id }));
         if (run.readbackRetry && ['blocked', 'interrupted'].includes(run.status) && !run.readbackRetry.exhausted)
             add('reconciliation', { id: `recovery:${run.id}`, status: 'queued' }, 'maintenance-readback', run.requestedAt, 2, () => coordinator!.pump({ kind: 'recovery', id: run.id }), run.readbackRetry.nextAt && Date.parse(run.readbackRetry.nextAt) > now.getTime() ? eligible('waiting', 'Read retry backoff is active') : null);
     }

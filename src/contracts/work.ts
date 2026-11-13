@@ -30,11 +30,14 @@ export interface Prerequisite {
     observedAt: string;
 }
 export type EligibilityState = 'running' | 'runnable' | 'waiting' | 'blocked' | 'terminal';
+/** Why blocked work is not running. Absent on other states; blocked work without one needs a decision. */
+export type BlockedCause = 'needs-decision' | 'failed' | 'interrupted' | 'unconfirmed' | 'dependency' | 'paused';
 export interface WorkEligibility {
     state: EligibilityState;
     reason: string;
     owner: string;
     nextCheckAt: string | null;
+    cause?: BlockedCause;
 }
 export interface QueueTiming {
     stage?: string;
