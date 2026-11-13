@@ -52,6 +52,6 @@ test.each(['unassigned', 'paused', 'prerequisite', 'stopping', 'foreign-head', '
 
 test('draining lets the existing claim finish and unrelated knowledge work supplies no delivery conflict', () => {
     const f = fixture(); f.store.state.draining = true;
-    f.store.claimWork({ projectId: f.store.project.id, kind: 'knowledge-research', id: 'knowledge-record' }, 'fixture', 'knowledge-research', 'knowledge');
+    f.store.claimWork({ projectId: f.store.project.id, kind: 'knowledge-rollup', id: 'knowledge-record' }, 'fixture', 'knowledge-rollup', 'knowledge');
     expect(f.run().id).toBe(f.claim.id);
 });

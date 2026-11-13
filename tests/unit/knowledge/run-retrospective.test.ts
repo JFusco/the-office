@@ -74,6 +74,46 @@ test('other projects\' lessons are trimmed to the packet budget instead of keepi
     expect(store.state.knowledge!.lessons.at(-1)).toMatchObject({ statement: 'Regenerate the catalog before review' });
 });
 
+test('Harper sees what the work was supplied and looked up, and which active lessons are hypotheses', async () => {
+    const { store, done } = setup(), knowledge = store.state.knowledge!;
+    knowledge.lessons.push(learningLesson('supplied', { statement: 'Regenerate the catalog' }), learningLesson('unproven', { tier: 'hypothesis' }));
+    knowledge.exposures = [{ id: 'assignment-1', subject: { kind: 'job', id: done.id }, stage: 'implement', at: '2026-11-06T10:00:00Z', dispatchedAt: '2026-11-06T10:00:01Z', digest: '', eligible: [], selected: [{ scope: 'project', id: 'supplied', revision: 1 }], omitted: [] }];
+    knowledge.lookups = [{ id: 'assignment-1', stage: 'implement', subject: { kind: 'job', id: done.id }, at: '2026-11-06T10:05:00Z', count: 1, digest: '', records: [{ assignment: 'assignment-1', index: 1, at: '', outcome: 'served', textSha256: '', selected: [], snapshot: null, technicalStatus: 'available' }] }];
+    captureLearning(store, { kind: 'job', id: done.id }, done.key, 'review', '0', done.steps[0].result, 'Accepted negative review', 'work', true);
+    maintainLearning(store);
+    let prompt = '';
+    await runRetrospective(store, (async (text: string) => { prompt = text; return { summary: 'Reviewed.', lessons: [] }; }) as KnowledgeRunner, knowledge.pending[0].id);
+    const packet = JSON.parse(prompt.split('RETROSPECTIVE FACTS: ')[1]) as RetrospectivePacket;
+    expect(packet.demand).toMatchObject({ assignments: 1, supplied: [{ id: 'supplied', statement: 'Regenerate the catalog', assignments: 1 }], lookups: { made: 1, served: 1, unanswered: 0 }, unanswered: [] });
+    expect(packet.activeLessons.find(entry => entry.id === 'unproven')).toMatchObject({ tier: 'hypothesis' });
+    expect(prompt).toContain('It is history, not a score');
+    expect(prompt).toContain('supersede it with tier guidance');
+    expect(prompt.length - prompt.indexOf('RETROSPECTIVE FACTS: ')).toBeLessThanOrEqual(PACKET_LIMIT + 'RETROSPECTIVE FACTS: '.length);
+});
+
+test('a subject with no briefed assignment gets no demand section or demand instructions', async () => {
+    const { store, done } = setup();
+    captureLearning(store, { kind: 'job', id: done.id }, done.key, 'review', '0', done.steps[0].result, 'Accepted negative review', 'work', true);
+    maintainLearning(store);
+    let prompt = '';
+    await runRetrospective(store, (async (text: string) => { prompt = text; return { summary: 'Reviewed.', lessons: [] }; }) as KnowledgeRunner, store.state.knowledge!.pending[0].id);
+    expect(JSON.parse(prompt.split('RETROSPECTIVE FACTS: ')[1]).demand).toBeUndefined();
+    expect(prompt).not.toContain('It is history, not a score');
+});
+
+test('a confirmed hypothesis is promoted by superseding it at guidance, even with its wording unchanged', () => {
+    const { store, id, done } = setup(), knowledge = store.state.knowledge!;
+    knowledge.lessons.push(learningLesson('unproven', { tier: 'hypothesis', statement: 'Regenerate the catalog before review' }), learningLesson('settled', { statement: 'Keep the receipt' }));
+    const proof = { [`job:${done.id}`]: { kind: 'job' as const, ref: `job:${done.id}`, url: '', detail: '' } };
+    acceptRetrospective(store, { id, jobId: done.id, key: done.key, trigger: 'completed' }, { catalog: proof }, { summary: 'Confirmed.', lessons: [
+        { ...lesson('Regenerate the catalog before review', [`job:${done.id}`]), action: 'supersede', targetId: 'unproven' },
+        { ...lesson('Keep the receipt', [`job:${done.id}`]), action: 'supersede', targetId: 'settled' },
+    ] }, 'attempt');
+    expect(knowledge.lessons.find(entry => entry.id === 'unproven')).toMatchObject({ status: 'retired', retiredBy: 'harper' });
+    expect(knowledge.lessons.find(entry => entry.supersedes === 'unproven')).toMatchObject({ tier: 'guidance', status: 'active' });
+    expect(knowledge.lessons.find(entry => entry.id === 'settled')).toMatchObject({ status: 'active' }); // restating guidance is still skipped
+});
+
 test('backoff doubles from five minutes to a six-hour cap and never exhausts', () => {
     expect([1, 2, 3].map(retryDelay)).toEqual([300000, 600000, 1200000]);
     expect(retryDelay(50)).toBe(6 * 3600000);

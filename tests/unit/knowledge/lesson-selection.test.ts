@@ -8,7 +8,7 @@ test('stage and path relevance rank ahead of recency; hypotheses and uninstalled
         const selected = selectLessons(store, { stage: 'github-review', paths: ['server/knowledge/foo.ts'] });
         expect(selected.selected[0].id).toBe('path');
         expect(selected.selected.map(item => item.id)).toEqual(['path', 'new', 'any']);
-        expect(selectLessons(store, { stage: 'knowledge-research' }).text).toBe('');
+        expect(selectLessons(store, { stage: 'knowledge-rollup' }).text).toBe('');
     } finally { close(); }
 });
 test('every eligible pair is either supplied whole or explicitly omitted by its budget', () => {

@@ -1,6 +1,6 @@
 import { LessonCard, LessonShape } from './LessonCard';
 import { BlockerFollowups } from './BlockerFollowups';
-import { ResearchSummary } from './ResearchSummary';
+import { LearningCoverage } from './LearningCoverage';
 import { useId, useState } from 'react';
 import type { OfficeSnapshot } from '../shared';
 import { ExternalLink } from '../ui/icons';
@@ -21,7 +21,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
   const act = (action: string, lessonId: string) => void save(action, { lessonId }).then(saved => { if (saved) document.getElementById(headingId)?.focus(); });
   return <Section data-lessons-panel>
     <SectionTitle className="mb-2">Lessons</SectionTitle>
-    <p className={mutedCopy}>{harper} learns from accepted research, plans, reviews, implementation, delivery and orchestration, including successes and blockers. Relevant guidance is supplied automatically; that does not prove it was applied. Ellis owns supported recovery and Morgan handles missing decisions. Proven requirements belong in harness code or tests. Friday reports close at 17:00 Eastern, with bounded retries and targeted public research when available.</p>
+    <p className={mutedCopy}>{harper} learns from accepted research, plans, reviews, implementation, delivery and orchestration, including successes and blockers. Relevant guidance is supplied automatically; that does not prove it was applied. Ellis owns supported recovery and Morgan handles missing decisions. Proven requirements belong in harness code or tests. Friday reports close at 17:00 Eastern, with bounded retries.</p>
     <form className="mt-5 grid gap-3" onSubmit={event => { event.preventDefault(); void save('configure-knowledge', { knowledge: { enabled } }).then(saved => { if (saved) setDraft(null); }); }}>
       <CheckField checked={enabled} disabled={disabled} onChange={event => setDraft(event.target.checked)}>Let {harper} write retrospectives for this project</CheckField>
       <Button type="submit" className="justify-self-start" disabled={disabled || draft === null || draft === view.enabled}>Save</Button>
@@ -60,7 +60,7 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
     <Section data-lessons-rollup>
       <SectionTitle className="mb-2">Weekly roll-up</SectionTitle>
       {view.rollups.length ? <>
-        <p className="text-11 leading-relaxed">{view.rollups[0].summary}</p><ResearchSummary rollup={view.rollups[0]} />
+        <p className="text-11 leading-relaxed">{view.rollups[0].summary}</p><LearningCoverage rollup={view.rollups[0]} />
         <div className="mt-3 overflow-x-auto"><table className="w-full text-10">
           <caption className="sr-only">Delivery metrics for the last {view.rollups.length} weeks</caption>
           <thead><tr><th scope="col" className="border-b border-row-rule py-1.5 pr-2 text-left font-semibold">Week ending</th>{view.rollups.map(rollup => <th key={rollup.id} scope="col" className="border-b border-row-rule py-1.5 pl-2 text-right font-semibold">{rollup.weekEnding.slice(5)}</th>)}</tr></thead>
