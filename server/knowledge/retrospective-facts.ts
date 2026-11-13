@@ -26,6 +26,8 @@ export interface RetrospectivePacket {
     maintenance?: MaintenancePacketSection;
     /** What the harness supplied to this subject's assignments, what was cited and what was looked up. Budgeted by `withDemand`. */
     demand?: DemandSection;
+    /** General Brain notes related to this work, so a lesson never restates one. Never catalog evidence. */
+    brain?: { snapshot: string; notes: { path: string; title: string; summary: string }[] };
     omitted: Record<string, number>;
     /** Harness-owned evidence references. The model cites refs; URLs are never model-supplied. */
     catalog: Record<string, LessonEvidence>;

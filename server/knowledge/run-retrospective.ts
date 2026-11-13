@@ -20,6 +20,7 @@ import { findSubject } from './retrospective-subject';
 import { terminalCandidates, triggerJobId } from './retrospective-triggers';
 import { otherProjectLessons, withElsewhere } from './other-project-lessons';
 import { demandFacts, withDemand } from './demand-facts';
+import { brainOverlap, brainOverlapQuery, withBrainOverlap } from './brain-overlap';
 import { missedQueries } from './lookup/missed-queries';
 
 export const RETROSPECTIVE_TIMEOUT = 20 * 60 * 1000;
@@ -74,7 +75,9 @@ export async function runRetrospective(store: Store, run: KnowledgeRunner, id: s
     const attempts = pending.attempts;
     try {
         const folder = harperFolder(store, learningDigest(id));
-        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=withDemand(appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!),demandFacts(store.state.knowledge,subject,summary=>missedQueries(store.dataRoot,summary)));return context?withElsewhere(facts,otherProjectLessons(context,store.project.id)):facts;});
+        // Read Brain before freezing; a frozen retry reuses its saved packet and never reads Brain again.
+        const overlap = context && !pending.packetDigest ? await brainOverlap(context, store.project.id, brainOverlapQuery(subject, pending)) : undefined;
+        const packet = freezeLearningPacket(store, pending, folder, () => {const facts=withDemand(appendLearningFacts(retrospectiveFacts(store, subject, pending!), pending!),demandFacts(store.state.knowledge,subject,summary=>missedQueries(store.dataRoot,summary)));return withBrainOverlap(context?withElsewhere(facts,otherProjectLessons(context,store.project.id)):facts,overlap);});
         const result = RetrospectiveResultSchema.parse(await run(retrospectivePrompt(packet, store.project.repo), RetrospectiveResultSchema, { readOnly: true, effortKind: 'administrative', stage: 'retrospective', requestId: id, ticket: subject.key, cwd: harperFolder(store, learningDigest(id)), enqueuedAt: pending.createdAt, timeout: RETROSPECTIVE_TIMEOUT }));
         acceptRetrospective(store, pending, packet, result, currentAssignment()?.claim.id || randomUUID(), propose && (lessons => propose(store, id, lessons)));
     }

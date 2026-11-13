@@ -91,6 +91,8 @@ Only Joe can ask Harper a question, in Harper's chat. Letting Morgan forward a t
 
 The Office reads Brain (`brain/reader.ts`, a read-only CLI transport) and never writes to it. The Brain repository is still an ordinary delivery project; that is repository work, not a knowledge write.
 
+Office lessons hold only what this Office knows: a project's repository, harness and process, or the Office itself. General framework, CMS, tooling and platform guidance belongs in Brain, which teammates already receive at dispatch and by lookup. Before a retrospective's packet is frozen, the harness searches Brain for the subject and adds up to five related notes (path, title, a short summary) as a bounded `brain` section (`brain-overlap.ts`). Harper is told not to propose a lesson that only restates one, and to say in her summary when a note is wrong or missing something. The notes are never catalog evidence, so no lesson can cite one. When Brain is unavailable the section is left out and the retrospective runs as before; a frozen retry reuses its packet and does not read Brain again. The weekly roll-up carries the same rule for office-wide proposals. `pnpm office audit-lessons --project <id>` lists active lessons that have Brain notes on the same topic, for Joe to judge; it changes nothing.
+
 ## Sources
 
 The Office has no link, upload or Slack channel sources. Its knowledge is Harper's lessons and what it reads from Brain.
