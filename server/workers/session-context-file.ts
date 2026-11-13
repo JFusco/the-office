@@ -3,6 +3,7 @@ import { sep } from 'node:path';
 import type { OfficeProject } from '../../src/shared';
 import type { SessionContext } from './session-scope';
 import { ContextReadChanged, MAX_CONTEXT_READ_MS, sameContextFile, sessionContextLines, type SessionContextParser } from './session-context-lines';
+import { withSessionContextSnapshot } from './session-context-snapshot';
 export type ContextProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>>;
 export type ContextReader = (path: string, id: string, projects: ContextProject[]) => Promise<SessionContext>;
 
@@ -23,8 +24,16 @@ export function sessionContextFile(root: string, parse: (raw: string, id: string
             const prior = cache.get(file);
             if (prior?.version === version) return prior.context;
             try {
-                const context = createParser ? await sessionContextLines(file, info, createParser(id, projects), deadline) : parse(await readFile(file, 'utf8'), id, projects);
-                if (await realpath(path) !== file || !sameContextFile(info, await stat(file))) throw new ContextReadChanged('Session context file changed during its read');
+                const context = createParser
+                    ? await withSessionContextSnapshot(file, info, deadline, (snapshot, captured) =>
+                        sessionContextLines(snapshot, captured, createParser(id, projects), deadline))
+                    : parse(await readFile(file, 'utf8'), id, projects);
+                const current = await realpath(path), after = await stat(current);
+                if (current !== original || after.ino !== identity.ino || after.dev !== identity.dev)
+                    throw new Error('Session context file identity changed during its read');
+                // Streaming reads certify the stable captured version. Later appends
+                // invalidate its cache key on the next refresh, not that earlier observation.
+                if (!createParser && !sameContextFile(info, after)) throw new ContextReadChanged('Session context file changed during its read');
                 if (cache.size >= 1000) cache.clear();
                 cache.set(file, { version, context });
                 return context;

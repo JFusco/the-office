@@ -88,6 +88,8 @@ export class SessionBridge {
   this.polling=this.read();try{return await this.polling;}finally{this.polling=undefined;}
  }
  private async read(){
+  // Freshness starts before any native read or immutable context capture, never after parsing.
+  const observed=Date.now();
   const projects=this.stores().map(s=>s.project);
   const workers=new Set(this.stores().flatMap(s=>(s.state.workLog||[]).filter(w=>w.status==='running'&&w.processId).map(w=>w.processId!)));
   // Context enrichment returns a new array, so the process accounting report is carried across it.
@@ -105,7 +107,7 @@ export class SessionBridge {
   const stores=this.stores();const directories=[...new Set([...sessions.values()].map(s=>s.cwd).concat(stores.map(s=>s.project.repo)))];
   const commons=new Map<string,string>();await Promise.all(directories.map(async cwd=>{try{commons.set(cwd,(await this.execute('git',['rev-parse','--path-format=absolute','--git-common-dir'],{cwd,timeout:5000})).trim());}catch{/* A non-repository chat has no repository identity. */}}));
   for(const s of sessions.values()){const common=commons.get(s.cwd);s.project=stores.find(store=>resolve(s.cwd)===resolve(store.project.repo)||!!common&&common===commons.get(store.project.repo))?.project.id;}
-  const now=Date.now();return this.current={observedAt:new Date(now).toISOString(),expiresAt:new Date(now+45000).toISOString(),complete:coverageComplete,sources,sessions:[...sessions.values()]};
+  return this.current={observedAt:new Date(observed).toISOString(),expiresAt:new Date(observed+45000).toISOString(),complete:coverageComplete,sources,sessions:[...sessions.values()]};
  }
  forProject(store:Store,key='',requestId=''){
   const now=Date.now(),fresh=now<=Date.parse(this.current.expiresAt);

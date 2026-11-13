@@ -1,5 +1,5 @@
 import { constants, type Stats } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { open, type FileHandle } from 'node:fs/promises';
 import { StringDecoder } from 'node:string_decoder';
 import type { SessionContext } from './session-scope';
 
@@ -18,8 +18,8 @@ export const sameContextFile = (a: Stats, b: Stats) =>
     a.ino === b.ino && a.dev === b.dev && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 
 /** Complete strict JSONL coverage with bounded memory, work time and file identity. */
-export async function sessionContextLines(file: string, snapshot: Stats, parser: SessionContextParser, readDeadline = performance.now() + MAX_CONTEXT_READ_MS): Promise<SessionContext> {
-    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+export async function sessionContextLines(file: string | FileHandle, snapshot: Stats, parser: SessionContextParser, readDeadline = performance.now() + MAX_CONTEXT_READ_MS): Promise<SessionContext> {
+    const handle = typeof file === 'string' ? await open(file, constants.O_RDONLY | constants.O_NOFOLLOW) : file;
     const deadline = Math.min(performance.now() + MAX_CONTEXT_READ_MS, readDeadline);
     const checkTime = () => { if (performance.now() > deadline) throw new Error('Session context scan exceeded its read deadline'); };
     try {
@@ -50,5 +50,5 @@ export async function sessionContextLines(file: string, snapshot: Stats, parser:
         if (!sameContextFile(snapshot, await handle.stat())) throw new ContextReadChanged('Session context file changed during its read');
         checkTime();
         return parser.finish();
-    } finally { await handle.close(); }
+    } finally { if (typeof file === 'string') await handle.close(); }
 }
