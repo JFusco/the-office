@@ -62,13 +62,13 @@ export function dependencyEligibility(dependencies: Prerequisite[], stores: Depe
     for (const dependency of dependencies) {
         const store = stores.get(dependency.target.projectId);
         if (!store)
-            return { state: 'blocked', reason: 'Prerequisite project is unavailable', owner: 'Morgan', nextCheckAt: null };
+            return { state: 'blocked', reason: 'Prerequisite project is unavailable', owner: 'Morgan', nextCheckAt: null, cause: 'dependency' };
         if (dependency.condition === 'job-completed') {
             const record = dependency.target.kind === 'maintenance'
                 ? store.state.maintenance?.runs.find(run => run.id === dependency.target.id)
                 : store.state.coordination?.jobs?.find(job => job.id === dependency.target.id || job.key === dependency.target.id);
             if (!record)
-                return { state: 'blocked', reason: 'Referenced prerequisite does not exist', owner: 'Morgan', nextCheckAt: null };
+                return { state: 'blocked', reason: 'Referenced prerequisite does not exist', owner: 'Morgan', nextCheckAt: null, cause: 'dependency' };
             if (record.status === 'completed')
                 continue;
             return { state: 'waiting', reason: `Waiting for verified completion of ${dependency.target.id}`, owner: 'Morgan', nextCheckAt: new Date(now.getTime() + 60000).toISOString() };
@@ -77,7 +77,7 @@ export function dependencyEligibility(dependencies: Prerequisite[], stores: Depe
         if (!observed || now.getTime() - Date.parse(observed.observedAt) > 150000)
             return { state: 'waiting', reason: 'Prerequisite needs a fresh provider observation', owner: 'Morgan', nextCheckAt: now.toISOString() };
         if (observed.error || !observed.exists)
-            return { state: 'blocked', reason: observed.error || 'Prerequisite target was not verified', owner: 'Morgan', nextCheckAt: null };
+            return { state: 'blocked', reason: observed.error || 'Prerequisite target was not verified', owner: 'Morgan', nextCheckAt: null, cause: 'dependency' };
         if (!observed.complete)
             return { state: 'waiting', reason: `Waiting for ${dependency.condition}: ${dependency.target.id}`, owner: 'Morgan', nextCheckAt: new Date(now.getTime() + 60000).toISOString() };
     }
