@@ -21,7 +21,7 @@ export function EvidencePacket({ text, selected = empty }: { text: string; selec
             const href = readableHref(card.citation);
             return <article key={card.reference.id} className="rounded-7 border border-drawer-line bg-drawer p-4">
                 <Tag>{card.scope} evidence</Tag><h5 className="mt-3 font-heading text-15">{card.title}</h5>
-                <KnowledgeDocument text={card.excerpt} baseUrl={baseUrl} original={false} details={<p>Recorded reference: {card.reference.id}<br/>Excerpt SHA-256: {selected.find(r => r.reference.id === card.reference.id)?.excerptSha256}</p>}/>
+                <KnowledgeDocument text={card.excerpt} baseUrl={baseUrl} original={false} details={card.reference.path ? <p>{card.reference.path}</p> : undefined}/>
                 {href ? <a href={href} target="_blank" rel="noreferrer" className="mt-3 inline-block text-11 text-link underline">Source citation</a> : <p className="mt-3 break-words text-11 text-muted">{card.reference.path || 'Private project evidence'}</p>}
                 {card.limitations && <p className="mt-3 text-11 text-muted">{card.limitations}</p>}
             </article>;

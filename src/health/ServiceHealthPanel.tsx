@@ -1,3 +1,4 @@
+import { withoutIdentifiers } from '../office/without-identifiers';
 import {LoadingMark,LoadingState} from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import {useEffect,useState} from 'react';
@@ -33,7 +34,7 @@ export function ServiceHealthPanel({project='cec',liveIT,onChat}:{project?:strin
  },[refresh,project]);
  useEffect(()=>{if(loading)return;const timer=setTimeout(()=>setRefresh(n=>n+1),60000);return()=>clearTimeout(timer);},[loading,project,refresh]);
  async function checkIT(){setLoading(true);setError('');try{const response=await fetch(`/api/commands?project=${encodeURIComponent(project)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'check-it'})});if(!response.ok)throw new Error('IT check could not finish; refresh health to read the current state.');setRefresh(n=>n+1);}catch(e){setError(String(e));setLoading(false);}}
- function followUp(f:ITFollowUp){return <p className={next} key={f.id}><b>Next owner: {f.owner}</b><br/>{f.detail}</p>;}
+ function followUp(f:ITFollowUp){return <p className={next} key={f.id}><b>Next owner: {f.owner}</b><br/>{withoutIdentifiers(f.detail)}</p>;}
  return <><PanelHeader icon={<HeartPulse size={26}/>}>Service health</PanelHeader><p className={mutedCopy}>Login checks, assignment polling, confirmed Slack activity, and public provider status. Each uses its own evidence and timestamp.</p>
   <div className="mt-5 flex flex-wrap gap-2">{onChat?<Button onClick={onChat}>Chat with Ellis</Button>:null}
   <Button disabled={loading} onClick={()=>setRefresh(n=>n+1)}>{loading?<LoadingMark/>:<RefreshCw size={14}/>}{loading?'Checking connections…':'Refresh health'}</Button></div>
@@ -44,7 +45,7 @@ export function ServiceHealthPanel({project='cec',liveIT,onChat}:{project?:strin
    const optional=item.projectId==='brain'||item.projectId==='cms-field-vocabulary';
    const fresh=optional?'Session context fresh':'Ownership inventory fresh';
    const stale=optional?'Session context unavailable or stale':'Ownership inventory needs refresh';
-   return <article key={item.projectId} className="my-3 text-12"><strong>{item.projectId} · {item.stall?'Dispatch needs attention':item.stopping.length?'Stopping workers':item.ownershipFresh?fresh:stale}</strong><p>{item.runnable} ready · {item.running} running · {item.waiting} waiting · {item.blocked} blocked · {item.publishingBacklog} time entries awaiting publication</p><p className={mutedCopy}>Provider observation: {item.providerAgeMs===null?'unavailable':`${Math.floor(item.providerAgeMs/1000)}s old`}. {optional?'Session context checked':'Ownership checked'}: {item.ownershipObservedAt?new Date(item.ownershipObservedAt).toLocaleString():'unavailable'}.</p></article>;})}<p className={mutedCopy}>Daily CTO review: {report.dailyCTO?`${report.dailyCTO.date} · ${report.dailyCTO.status}`:'No report collected yet'}. Loaded revision: <code>{report.loadedHash?.slice(0,12)||'unavailable'}</code>.</p></Section>:null}
+   return <article key={item.projectId} className="my-3 text-12"><strong>{item.projectId} · {item.stall?'Dispatch needs attention':item.stopping.length?'Stopping workers':item.ownershipFresh?fresh:stale}</strong><p>{item.runnable} ready · {item.running} running · {item.waiting} waiting · {item.blocked} blocked · {item.publishingBacklog} time entries awaiting publication</p><p className={mutedCopy}>Provider observation: {item.providerAgeMs===null?'unavailable':`${Math.floor(item.providerAgeMs/1000)}s old`}. {optional?'Session context checked':'Ownership checked'}: {item.ownershipObservedAt?new Date(item.ownershipObservedAt).toLocaleString():'unavailable'}.</p></article>;})}<p className={mutedCopy}>Daily CTO review: {report.dailyCTO?`${report.dailyCTO.date} · ${report.dailyCTO.status}`:'No report collected yet'}. </p></Section>:null}
   {it?<section className="my-4.5 rounded-14 border border-it-line border-t-section-rule bg-it p-4" aria-label="Ellis IT specialist"><SectionTitle className="mb-4 justify-between gap-2.5">Ellis · IT specialist <Tag>{itLabel}</Tag></SectionTitle>
    <p className="leading-body">{!diagnostics.fresh?'Current IT diagnostics need a fresh check. Earlier findings remain in report history; their current status is unverified.':human?`${human} confirmed access follow-up${human===1?' needs':'s need'} your help.`:followUps.length?'Ellis and Morgan own the remaining checks. No login action is requested from you.':'No current IT follow-up.'}</p>
    <Button className="mt-5" disabled={loading} onClick={()=>void checkIT()}>Check IT again</Button>

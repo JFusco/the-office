@@ -93,7 +93,7 @@ test('failed lazy knowledge chunk retains the Office shell and room camera',asyn
     await expect.poll(async()=>{const after=await positions();return after.length===before.length && after.every((r,i)=>Math.abs(r.x-before[i].x)<3&&Math.abs(r.y-before[i].y)<3);}).toBe(true);
 });
 
-test('unformatted historical assignment and lookup entries retain every receipt identity',async({page})=>{
+test('unformatted historical assignment and lookup entries still list their sources, without receipt identities',async({page})=>{
     let recorded:{id:string;version?:string;sha:string}|undefined;
     await page.route('**/api/knowledge/assignment?**',async route=>{
         const response=await route.fetch(),data=await response.json(),entry=data.supplied.evidence[0];
@@ -104,9 +104,9 @@ test('unformatted historical assignment and lookup entries retain every receipt 
     });
     await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Activity',exact:true}).click();await page.getByRole('button',{name:'Inspect assignment knowledge'}).first().click();
     const detail=page.getByRole('region',{name:'Assignment knowledge',exact:true});await expect(detail).toContainText('Some excerpts could not be formatted');
-    await detail.getByText('Assignment receipt',{exact:true}).click();const supplied=detail.locator('li').filter({has:page.getByText(`Recorded reference: ${recorded!.id}`,{exact:true})});await expect(supplied).toBeVisible();await expect(supplied.getByText(`Version: ${recorded!.version}`,{exact:true})).toBeVisible();await expect(supplied.getByText(`Excerpt SHA-256: ${recorded!.sha}`,{exact:true})).toBeVisible();
+    await detail.getByText('Supplied sources',{exact:true}).click();const supplied=detail.locator('details[open] li').first();await expect(supplied).toContainText(/lesson, revision \d+|Brain note: |Recorded source/);await expect(supplied).not.toContainText(recorded!.id);await expect(detail).not.toContainText(recorded!.sha);
     await detail.getByRole('button',{name:'Lookup 1 · served',exact:true}).click();const lookup=page.getByRole('region',{name:'Selected lookup',exact:true});await expect(lookup).toContainText('Some excerpts could not be formatted');
-    await lookup.getByText('Lookup receipt',{exact:true}).click();const retrieved=lookup.locator('li').filter({has:page.getByText(`Recorded reference: ${recorded!.id}`,{exact:true})});await expect(retrieved).toBeVisible();await expect(retrieved.getByText(`Version: ${recorded!.version}`,{exact:true})).toBeVisible();await expect(retrieved.getByText(`Excerpt SHA-256: ${recorded!.sha}`,{exact:true})).toBeVisible();
+    await lookup.getByText('Lookup sources',{exact:true}).click();const retrieved=lookup.locator('details[open] li').first();await expect(retrieved).toContainText(/lesson, revision \d+|Brain note: |Recorded source/);await expect(retrieved).not.toContainText(recorded!.id);await expect(lookup).not.toContainText(recorded!.sha);
 });
 
 test('group and search context survive inspecting a record, with a concise introduction above the map',async({page})=>{

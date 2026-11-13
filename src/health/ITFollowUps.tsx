@@ -1,3 +1,4 @@
+import { withoutIdentifiers } from '../office/without-identifiers';
 import type { ITFollowUp, ITState } from '../shared';
 import { mutedCopy, summary } from '../ui';
 import { itFollowUpView, sessionVisibilityCopy } from './it-follow-up-view';
@@ -11,7 +12,7 @@ export function ITFollowUps({ it, followUps }: { it: ITState; followUps: ITFollo
     return <>
         {retired.length ? <details className={card} data-retired-investigations><summary className={summary}>{retired.length} historical warnings acknowledged by Joe</summary>
             <p>Retired as incomplete history. Their causes remain unresolved; no fix or successful original outcome is claimed.</p>
-            {retired.map(entry => <article key={entry.id} className="mt-2"><strong>{entry.source.ticket || entry.source.id.slice(0, 8)}</strong><p>{entry.retirement!.reason}</p><p>{entry.attempts} diagnosis attempts retained. Original status: {entry.status}.</p></article>)}
+            {retired.map(entry => <article key={entry.id} className="mt-2"><strong>{entry.source.ticket || 'Worker shutdown'}</strong><p>{entry.retirement!.reason}</p><p>{entry.attempts} diagnosis attempts retained. Original status: {entry.status}.</p></article>)}
         </details> : null}
         {view.current.map(followUp => {
             const copy = sessionVisibilityCopy(followUp, it.projectId);
@@ -27,11 +28,11 @@ export function ITFollowUps({ it, followUps }: { it: ITState; followUps: ITFollo
             <p className="mt-2">No action is requested from you. These cases retain their original reports and attempt limits.</p>
             <details className="mt-2"><summary className={summary}>View investigation records</summary>
                 {view.investigations.map(({ followUp, entry }) => <article className="mt-3 border-t border-it-rule pt-3" key={entry.id}>
-                    <strong>{entry.source.ticket || `Worker ${entry.source.id.slice(0, 8)}`} · shutdown investigation</strong>
+                    <strong>{entry.source.ticket || 'Worker'} · shutdown investigation</strong>
                     <p>Needs more evidence · Owner: {followUp.owner}</p>
                     <p className={mutedCopy}>Investigation updated: {date(entry.updatedAt)}. {entry.attempts} of 3 diagnosis attempts used.</p>
                     <p className="mt-2">Next: Morgan reviews the saved evidence with the maintainers before a fix or further diagnosis.</p>
-                    <details className="mt-2"><summary className={summary}>Original diagnostic · {entry.source.id.slice(0, 8)}</summary><p>{followUp.detail}</p></details>
+                    <details className="mt-2"><summary className={summary}>Original diagnostic</summary><p>{withoutIdentifiers(followUp.detail)}</p></details>
                 </article>)}
             </details>
         </section> : null}

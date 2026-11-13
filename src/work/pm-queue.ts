@@ -1,7 +1,11 @@
+import { subjectLabel, withoutIdentifiers } from '../office/without-identifiers';
 import type { OfficeSnapshot, AssignmentReview } from '../shared';
 import { deliveryLabel, shortSummary, readinessWait, maintenanceIssue, parkedProviderWait } from './work-summary';
 export function prerequisiteKeys(review: AssignmentReview) {
-    return [...new Set((review.prerequisites || []).map(dependency => dependency.target.kind === 'issue' && /^\d+$/.test(dependency.target.id) ? `GH-${dependency.target.id}` : dependency.target.id))];
+    const targets = new Map((review.prerequisites || []).map(dependency => [`${dependency.target.kind}:${dependency.target.id}`, dependency.target]));
+    const labels = [...targets.values()].map(target => target.kind === 'issue' && /^\d+$/.test(target.id) ? `GH-${target.id}` : target.kind === 'pr' && /^\d+$/.test(target.id) ? `PR #${target.id}` : subjectLabel(target.id, target.kind));
+    // Distinct prerequisites that share a label (two deliveries without ticket keys) stay countable.
+    return [...new Set(labels)].map(label => { const count = labels.filter(item => item === label).length; return count > 1 ? `${label} ×${count}` : label; });
 }
 export interface PMQueueItem {
     id: string;
@@ -70,7 +74,7 @@ export function pmQueueItems(snapshot: OfficeSnapshot) {
         if (['blocked', 'waiting'].includes(item.eligibility.state)) {
             const job = kind === 'delivery' ? jobs.get(`${row.project}:${row.key}`)?.job : undefined;
             const blocker = job && ['blocked', 'interrupted'].includes(job.status) ? job.parked?.reason || job.detail : row.detail;
-            row.detail = `${blocker || item.eligibility.reason}\n${item.eligibility.reason}. Next owner: ${item.eligibility.owner}`;
+            row.detail = withoutIdentifiers(`${blocker || item.eligibility.reason}\n${item.eligibility.reason}. Next owner: ${item.eligibility.owner}`);
         }
     }
     return rows.sort((a, b) => rank[a.group] - rank[b.group] || (a.at || '').localeCompare(b.at || ''));

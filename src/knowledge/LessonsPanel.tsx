@@ -1,3 +1,4 @@
+import { subjectLabel, withoutIdentifiers } from '../office/without-identifiers';
 import { LessonCard, LessonShape } from './LessonCard';
 import { BlockerFollowups } from './BlockerFollowups';
 import { LearningCoverage } from './LearningCoverage';
@@ -71,11 +72,11 @@ export function LessonsPanel({ snapshot, refresh }: { snapshot: OfficeSnapshot; 
     </Section>
     {view.pending.length ? <Section>
       <SectionTitle className="mb-2">Queued retrospectives <Count>{view.pending.length}</Count></SectionTitle>
-      {view.pending.map(entry => <p key={entry.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{entry.key} · {TRIGGER_LABEL[entry.trigger]}</span>{entry.attempts ? `Attempt ${entry.attempts}${entry.nextAt ? ` · next try ${when(entry.nextAt)}` : ''}` : `Waiting for ${harper}`}{entry.lastError ? <small className="block text-10 text-card-detail wrap-anywhere">Last attempt: {entry.lastError}</small> : null}</p>)}
+      {view.pending.map(entry => <p key={entry.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{subjectLabel(entry.key, entry.source?.kind || entry.subject)} · {TRIGGER_LABEL[entry.trigger]}</span>{entry.attempts ? `Attempt ${entry.attempts}${entry.nextAt ? ` · next try ${when(entry.nextAt)}` : ''}` : `Waiting for ${harper}`}{entry.lastError ? <small className="block text-10 text-card-detail wrap-anywhere">Last attempt: {withoutIdentifiers(entry.lastError)}</small> : null}</p>)}
     </Section> : null}
     <Section>
       <SectionTitle className="mb-2">Recent retrospectives</SectionTitle>
-      {view.recent.length ? view.recent.map(record => <p key={record.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{record.key} · {TRIGGER_LABEL[record.trigger]} · {when(record.at)}</span>{record.summary}<small className="block text-10 text-card-detail">{record.lessonIds.length} {record.lessonIds.length === 1 ? 'lesson' : 'lessons'} added or changed</small></p>) : <p className={mutedCopy}>None yet.</p>}
+      {view.recent.length ? view.recent.map(record => <p key={record.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{subjectLabel(record.key, record.source?.kind || record.subject)} · {TRIGGER_LABEL[record.trigger]} · {when(record.at)}</span>{withoutIdentifiers(record.summary)}<small className="block text-10 text-card-detail">{record.lessonIds.length} {record.lessonIds.length === 1 ? 'lesson' : 'lessons'} added or changed</small></p>) : <p className={mutedCopy}>None yet.</p>}
       {view.retired.length ? <details className="my-4"><summary className={cx('cursor-pointer text-13 font-semibold', interactive)}>Retired lessons ({view.retired.length})</summary>{view.retired.map(lesson => <LessonCard key={lesson.id} lesson={lesson} footer={`Retired ${when(lesson.retiredAt || lesson.updatedAt)}`} />)}</details> : null}
     </Section>
   </Section>;

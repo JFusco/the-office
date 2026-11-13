@@ -37,7 +37,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
         {data && view && <>
             <div className="my-4 flex flex-wrap items-center justify-between gap-3 text-11 text-muted">
                 <p>{data.nodes.length} loaded records · {data.edges.length} saved connections</p>
-                <details className="max-w-reading-copy text-11 text-muted"><summary className={summary}>Controls and source details</summary><div className="mt-3 grid gap-3 leading-relaxed"><p>Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.</p><p>Lines show saved relationships. Grouping and placement do not determine knowledge routing.</p>{data.snapshot && <p className="break-all">Technical revision {data.snapshot}</p>}</div></details>
+                <details className="max-w-reading-copy text-11 text-muted"><summary className={summary}>Controls and source details</summary><div className="mt-3 grid gap-3 leading-relaxed"><p>Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.</p><p>Lines show saved relationships. Grouping and placement do not determine knowledge routing.</p></div></details>
                 {(selection.selected || selection.group || selection.query) && <Button onClick={() => { setHighlight(''); setSelection(prior => ({ ...initial, filter: prior.filter, activity: prior.activity })); }}>Constellation overview</Button>}
             </div>
             {data.technicalStatus === 'unavailable' && <p role="status" className="my-3 max-w-reading-copy text-11 leading-relaxed text-muted">Published technical Brain is unavailable. Permitted Office connections remain available.</p>}
