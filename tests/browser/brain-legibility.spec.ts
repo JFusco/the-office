@@ -1,4 +1,5 @@
 import {test, expect} from './fixture-test';
+import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 
 test('knowledge uses shared form spacing and safe formatted documents while retaining exact history', async ({page, request})=>{
@@ -27,7 +28,7 @@ test('knowledge uses shared form spacing and safe formatted documents while reta
     await expect(assignment.locator('pre')).not.toBeVisible();
     await assignment.getByText('Exact supplied text',{exact:true}).click();
     await expect(assignment.locator('pre')).toContainText('provenance:');
-    expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
+    await entriesSettled(page);expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
 });
 
 test('constellation keeps its renderer through selection, search and filters; labels and controls stay legible', async ({page,request})=>{
@@ -57,7 +58,7 @@ test('constellation keeps its renderer through selection, search and filters; la
     await page.getByLabel('Find a node').fill('unmatched-record'); await expect(page.getByRole('region',{name:'Map browser'})).toContainText('No matching records');
     expect(await canvas.evaluate((el,before)=>el===before,original)).toBe(true);
     await page.getByRole('combobox',{name:'Show',exact:true}).selectOption('technical');expect(await canvas.evaluate((el,before)=>el===before,original)).toBe(true);
-    expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
+    await entriesSettled(page);expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
 });
 
 test('map labels do not steal marker clicks and explicit connections reveal filtered targets',async({page})=>{

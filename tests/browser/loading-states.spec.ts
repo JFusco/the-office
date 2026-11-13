@@ -1,4 +1,5 @@
 import { test, expect } from './fixture-test';
+import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
 
@@ -18,7 +19,7 @@ for (const [view, endpoint, label] of [
             const orbit = status.locator('[data-office-loader] g').first();
             const before = await orbit.evaluate(el => getComputedStyle(el).transform);
             await expect.poll(() => orbit.evaluate(el => getComputedStyle(el).transform)).not.toBe(before);
-            expect((await new AxeBuilder({ page }).include('[data-brain-drawer]').analyze()).violations).toEqual([]);
+            await entriesSettled(page);expect((await new AxeBuilder({ page }).include('[data-brain-drawer]').analyze()).violations).toEqual([]);
             if (process.env.OFFICE_DRAWER_SCREENSHOTS) {
                 mkdirSync(process.env.OFFICE_DRAWER_SCREENSHOTS, { recursive: true });
                 await page.screenshot({ path: `${process.env.OFFICE_DRAWER_SCREENSHOTS}/loading-${view.toLowerCase()}.synthetic.png` });

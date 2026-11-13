@@ -1,4 +1,5 @@
 import { test, expect, type Page } from './fixture-test';
+import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
 
@@ -74,7 +75,7 @@ test('all knowledge screens share the content width; map frames and checkbox sta
         await page.locator('[data-brain-map-frame]').scrollIntoViewIfNeeded();
         await page.screenshot({ path: `${artifacts}/map-drawer.synthetic.png` });
     }
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await entriesSettled(page);expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.setViewportSize({ width: 390, height: 844 });
     const activity = page.getByRole('checkbox', { name: 'Include employee activity' });
     const label = await activity.evaluate(el => { const r = el.closest('label')!.getBoundingClientRect(); const text = el.nextElementSibling!.getBoundingClientRect(); return { width: r.width, textHeight: text.height, scroll: document.querySelector('[data-office-brain]')!.scrollWidth, client: document.querySelector('[data-office-brain]')!.clientWidth }; });

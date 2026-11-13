@@ -1,4 +1,5 @@
 import { test, expect } from './fixture-test';
+import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 const artifacts = process.env.OFFICE_BRAIN_SCREENSHOTS || '/private/tmp/office-brain-screenshots';
 test('synthetic fixture: published technical notes and global scope share the Office map',async({page,request},testInfo)=>{
@@ -21,7 +22,7 @@ test('synthetic fixture: published technical notes and global scope share the Of
     await expect(page.getByRole('button',{name:'implement assignment · assignment',exact:true})).toHaveCount(0);
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
     await page.screenshot({path:`${artifacts}/office-brain-03-global.synthetic.png`,fullPage:true});
-    const results=await new AxeBuilder({page}).include('[data-office-brain]').analyze();expect(results.violations).toEqual([]);
+    await entriesSettled(page);const results=await new AxeBuilder({page}).include('[data-office-brain]').analyze();expect(results.violations).toEqual([]);
     await page.getByRole('button',{name:'Library',exact:true}).click();
     const note=page.getByRole('article').filter({has:page.getByRole('heading',{name:'Published validation guide',exact:true})});
     await note.getByRole('button',{name:'Inspect evidence'}).click();

@@ -1,4 +1,5 @@
 import {test,expect} from './fixture-test';
+import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 import {mkdirSync} from 'node:fs';
 const artifacts='/private/tmp/office-knowledge-ui-evidence/browser';
@@ -14,7 +15,7 @@ for(const width of [1440,390])test(`shared alignment, bounded inputs, Slack rout
     expect(Math.max(...lefts)-Math.min(...lefts)).toBeLessThan(1);
     await expect(page.getByRole('heading',{name:'Knowledge use',exact:true})).toBeVisible();
     const history=page.getByRole('region',{name:'Recent history'});await expect(history.getByRole('list',{name:'Learning timeline'})).toBeVisible();
-    expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
+    await entriesSettled(page);expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
     mkdirSync(artifacts,{recursive:true});await page.screenshot({path:`${artifacts}/activity-${width}.png`});
 });
 

@@ -1,4 +1,5 @@
 import { test, expect } from './fixture-test';
+import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 
 for (const width of [1024, 1440, 390]) {
@@ -36,7 +37,7 @@ test('assignment evidence uses dark surfaces and stays within the inspector', as
     expect(await card.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe(await panel.evaluate(el=>{const p=document.createElement('span');p.style.color='var(--color-map-panel)';el.append(p);const color=getComputedStyle(p).color;p.remove();return color;}));
     expect(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
     await expect(page.getByRole('region',{name:'Selected node'}).locator(':scope > h3')).toBeFocused();
-    expect((await new AxeBuilder({page}).include('[data-brain-list-frame]').analyze()).violations).toEqual([]);
+    await entriesSettled(page);expect((await new AxeBuilder({page}).include('[data-brain-list-frame]').analyze()).violations).toEqual([]);
 });
 
 test('header controls share compact tokens',async({page})=>{
