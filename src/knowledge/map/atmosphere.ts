@@ -47,10 +47,10 @@ export function mapAtmosphere(scene: Scene, palette: SceneColors) {
         const color = new Color(i % 7 ? palette.brainDistantBlue : palette.brainDistantWarm); starColors.push(color.r, color.g, color.b);
     }
     // Point sizes are tuned for the map's ~500px canvas; Brain's full-screen viewer can use smaller ones.
-    points(stars, starColors, 4.2, .9);
+    points(stars, starColors, 6.2, 1);
 
     for (let i = 0; i < ATMOSPHERE.nebulae; i++) {
-        const angle = i * 2.399, cloud = glow(i % 2 ? palette.brainNebulaBlue : palette.brainNebulaViolet, .14, 120, 88);
+        const angle = i * 2.399, cloud = glow(i % 2 ? palette.brainNebulaBlue : palette.brainNebulaViolet, .3, 120, 88);
         cloud.position.set(Math.cos(angle) * 110, Math.sin(angle) * 75, -60 + i % 3 * 30);
     }
 
@@ -64,9 +64,9 @@ export function mapAtmosphere(scene: Scene, palette: SceneColors) {
         const color = new Color(cluster < 0 ? i % 5 ? palette.brainDustBlue : palette.brainDustWarm : cluster % 2 ? palette.brainClusterBlue : palette.brainClusterLilac);
         dustColors.push(color.r, color.g, color.b);
     }
-    const galaxy = points(dust, dustColors, 3.4, .8);
+    const galaxy = points(dust, dustColors, 4.8, 1);
     const lights = Array.from({ length: ATMOSPHERE.systems }, (_, i) => glow(i % 2 ? palette.brainClusterBlue : palette.brainClusterLilac, .22, 5 + i % 3));
-    glow(palette.brainHalo, .2, 70); glow(palette.brainCore, .6, 16);
+    glow(palette.brainHalo, .34, 70); glow(palette.brainCore, .6, 16);
 
     // Everything starts transparent and eases in with the first frames, like the nodes.
     let disposed = false, dimmed = 0;

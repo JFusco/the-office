@@ -27,7 +27,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
     let flight: { from: CameraPose; to: CameraPose; elapsed: number } | undefined;
     let visuals: ReturnType<typeof nodeVisuals> | undefined, atmosphere: ReturnType<typeof mapAtmosphere> | undefined, resize: ResizeObserver | undefined;
     /** Seconds of ambient motion (drift, twinkle, orbiting dust). It stands still whenever motion is not allowed. */
-    let ambient = 0;
+    let ambient = 0, moving = false, particles = 0;
     let overlayLayout: FocusOverlayLayout | undefined;
     const ray=new Raycaster(), pointer=new Vector2();
     let annotation: ReturnType<typeof focusOverlayMotion>|undefined;
@@ -64,7 +64,9 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         visuals?.hover(hovered?hoverId:'');renderer.domElement.classList.toggle('clickable',hovered);
         controls.autoRotate = !!view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId && now - lastInteraction > knowledgeOrbitIdle;
         // Ambient motion follows the same rules as the idle orbit, minus the idle wait: never reduced, paused, in flight, hovered or dragged.
-        if (view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId) ambient += Math.max(0, Math.min(delta, knowledgeMaxFrameStep)) / 1000;
+        // Link particles share the rule: the library reads their speed every frame, so 0 holds them in place.
+        moving = !!view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId;
+        if (moving) ambient += Math.max(0, Math.min(delta, knowledgeMaxFrameStep)) / 1000;
         atmosphere?.update(ambient, !!view?.focusId, view?.reduced || view?.paused ? 1 : 1 - Math.exp(-Math.min(delta, 50) / 260));
         visuals?.update(view, graph.camera() as PerspectiveCamera, container, delta, ambient);
         annotation?.render(focusOverlayPosition(view?.data.nodes.find(n => n.id === view?.focusId), graph.camera() as PerspectiveCamera, container.clientWidth, container.clientHeight, overlayLayout));
@@ -103,6 +105,10 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
             .nodeVisibility(raw => (raw as { visible: boolean }).visible)
             .nodeLabel('') // The canvas owns hover/selection captions; avoid a duplicate HTML tooltip.
             .linkColor(() => view?.focusId ? palette.brainFocusConnection : palette.brainConnection).linkOpacity(.5).linkWidth(.6)
+            // One particle travels each recorded link, like Brain's viewer; three along a focused node's links.
+            // Brain's .85 suits its ~3-unit stars; these stars are ~22 units, so the particle scales up with them.
+            .linkDirectionalParticles(0).linkDirectionalParticleWidth(2.4).linkDirectionalParticleColor(() => palette.brainParticle)
+            .linkDirectionalParticleSpeed(() => moving ? .004 : 0)
             .enableNodeDrag(false).showNavInfo(false).cooldownTicks(0)
             .onNodeClick((node,event) => { if(!['touch','pen'].includes((event as PointerEvent).pointerType))select(node as KnowledgeNode); }).onNodeHover(node => { hoverId=node?.id?.toString()||'';if(!pointerInside)return;lastInteraction=previous;controls.autoRotate=false; });
         graph.cameraPosition({x: 0, y: 0, z: overviewDistance});
@@ -131,14 +137,19 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
             if (dataChanged || next.highlightId !== view?.highlightId || next.paused !== view?.paused) lastInteraction = previous;
             view = next;
             controls.autoRotate = false;
+            // The library steps particles before this runtime's frame, so stop them now rather than one frame late.
+            if (next.reduced || next.paused || next.highlightId) moving = false;
             if (dataChanged) {
                 const old = new Map(graph.graphData().nodes.map(n => [n.id, n]));
                 visuals!.retain(new Set(next.data.nodes.map(n => n.id)));
                 const nodes = next.data.nodes.map(n => Object.assign(old.get(n.id) || {}, n, { ...n.position, fx: n.position.x, fy: n.position.y, fz: n.position.z }));
-                graph.linkOpacity(next.focusId ? .9 : .4).linkWidth(next.focusId ? 1.2 : .35);
+                graph.linkOpacity(next.focusId ? .9 : .4).linkWidth(next.focusId ? 1.2 : .6);
                 graph.graphData({ nodes, links: next.data.edges.map(e => ({...e})) });
                 graph.nodeVisibility(raw => (raw as { visible: boolean }).visible);
             }
+            // Reduced motion draws no particles at all; the count changes only when it must, since each change rebuilds them.
+            const count = next.reduced ? 0 : next.focusId ? 3 : 1;
+            if (count !== particles) { particles = count; graph.linkDirectionalParticles(count); }
             if (focusId !== next.focusId || motionDisabled) {
                 const target = next.data.nodes.find(n => n.id === next.focusId)?.position;
                 const neighborIds=new Set(next.data.edges.filter(e=>e.source===next.focusId||e.target===next.focusId).map(e=>e.source===next.focusId?e.target:e.source));
@@ -148,6 +159,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
                 // Library camera tweens finish the old flight on interruption. Own the interpolation
                 // so rapid selections and user orbit continue from the currently visible pose.
                 flight = next.reduced || next.paused ? undefined : {from:{position:{...graph.cameraPosition()},lookAt:{x:controls.target.x,y:controls.target.y,z:controls.target.z}},to:destination,elapsed:0};
+                if (flight) moving = false;
                 if (next.reduced || next.paused) graph.cameraPosition(destination.position, destination.lookAt, 0);
                 focusId = next.focusId;
             }

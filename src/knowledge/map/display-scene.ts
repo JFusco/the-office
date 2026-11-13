@@ -4,8 +4,10 @@ import { connectionSummary } from './connection-summary';
 import { stablePosition } from './layout';
 
 export interface DisplayNode extends KnowledgeNode { visible: boolean; emphasized: boolean; position: { x: number; y: number; z: number } }
-/** `activity` and `technical` opt employee assignments and external Brain notes into the map; both start off. */
+/** `activity` and `technical` opt employee assignments and external Brain notes into the map. */
 export interface MapSelection { group: string; selected: string; query: string; filter: 'all' | KnowledgeNode['kind']; activity: boolean; technical: boolean; page: number }
+/** Employee activity starts on, because every recorded project link starts at an assignment; Brain notes start off. */
+export const initialSelection: MapSelection = { group: '', selected: '', query: '', filter: 'all', activity: true, technical: false, page: 0 };
 /** Assignments and Brain notes are shown only when opted in or filtered for. */
 const included = (selection: MapSelection, kind: KnowledgeNode['kind']) => kind === 'assignment' ? selection.activity || selection.filter === 'assignment' : kind === 'technical' ? selection.technical || selection.filter === 'technical' : true;
 /** Following an explicit saved connection widens display filters to reveal its target. */

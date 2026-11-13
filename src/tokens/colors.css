@@ -1055,6 +1055,7 @@
   --scene-brain-nebula-violet: #71548f;
   --scene-brain-core: #fff0d5;
   --scene-brain-halo: #8dbbe4;
+  --scene-brain-particle: #d3f4ff;
 }
 
 /* The knowledge graph is a scoped dark surface; control geometry/interaction stays shared. */

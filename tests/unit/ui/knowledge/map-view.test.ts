@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { displayScene, selectRecord, type MapSelection } from '../../../../src/knowledge/map/display-scene';
+import { displayScene, initialSelection, selectRecord, type MapSelection } from '../../../../src/knowledge/map/display-scene';
 import { visibleLabels } from '../../../../src/knowledge/map/label-visibility';
 import { cameraTarget, focusDistance, overviewDistance } from '../../../../src/knowledge/map/camera-target';
 import { flightPose } from '../../../../src/knowledge/map/camera-flight';
@@ -106,4 +106,13 @@ it('fits every saved neighbor inside both camera axes while preserving node posi
     const angle=Math.atan(Math.tan(25*Math.PI/180)*.65);
     for(const point of [focus,...neighbors])expect(Math.hypot(point.x-pose.lookAt.x,point.y-pose.lookAt.y,point.z-pose.lookAt.z)).toBeLessThan(distance*Math.sin(angle));
     expect(focus).toEqual({x:0,y:0,z:0});expect(neighbors[0]).toEqual({x:-240,y:120,z:60});
+});
+
+it('the default view draws recorded links: assignments start on, Brain notes start off', () => {
+    expect(initialSelection).toMatchObject({activity: true, technical: false});
+    const project: KnowledgeMap = {truncated: false, nodes: [
+        {id: 'project', kind: 'project', title: 'CEC', detail: ''}, {id: 'lesson', kind: 'lesson', title: 'Pin the router', detail: ''},
+        {id: 'attempt', kind: 'assignment', title: 'Employee attempt', detail: ''}, {id: 'note:1', kind: 'technical', title: 'A', detail: ''}, {id: 'note:2', kind: 'technical', title: 'B', detail: ''},
+    ], edges: [{source: 'attempt', target: 'lesson', kind: 'supplied'}, {source: 'note:1', target: 'note:2', kind: 'publication'}]};
+    expect(displayScene(project, initialSelection).scene.edges).toEqual([{source: 'attempt', target: 'lesson', kind: 'supplied'}]);
 });
