@@ -5,7 +5,7 @@ description: Use the shared Graphify code map to trace current source relationsh
 
 # Graphify code map
 
-Use Graphify 0.9.36 from the repository root. The shared map is in
+Use Graphify 0.9.70 from the repository root. The shared map is in
 `graphify-out/`; `.graphifyignore` limits it to maintained `server/`, `src/` and
 `scripts/` code. The map is orientation, not runtime proof, and it does not
 replace the design notes in `docs/` or the boundaries in `AGENTS.md`.
