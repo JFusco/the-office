@@ -6,8 +6,9 @@ import { parkedProviderWait, readinessNeedsFollowup, readinessWait } from '../..
 import { HOLDS } from '../office/config';
 import { knowledgeOutbox } from '../knowledge/knowledge-outbox';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
+import { ctoInputRecovered } from './cto-input-resolution';
 export function conversationResolved(state: OfficeSnapshot, message: TeamMessage): boolean {
-    return !!message.resolvedBy || state.messages.some(reply => reply.actionId === `message:${message.id}` && reply.from === 'pm' && reply.status === 'answered' &&
+    return !!message.resolvedBy || ctoInputRecovered(state, message) || state.messages.some(reply => reply.actionId === `message:${message.id}` && reply.from === 'pm' && reply.status === 'answered' &&
         reply.receipts.every(receipt => receipt.verified && !receipt.uncertain) &&
         reply.receipts.some(receipt => receipt.action === 'conversation-readback' && receipt.target === message.id && receipt.verified && !receipt.uncertain));
 }
@@ -68,7 +69,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
             item(`maintenance:${run.id}`, `Read back ${state.project?.name || 'project'} maintenance`, `${run.stage}: ${run.error}`, 'pm');
     for (const t of state.tickets) {
         if (t.activity === 'blocked' && t.blocker)
-            item(`ticket:${t.key}:${t.stage}`, `${t.key} needs your help`, t.blocker, STAGE_ROLE[t.stage], t.key, t.url);
+            item(`ticket:${t.key}:${t.stage}`, t.stage === 'plan' && (t.blocker === 'Saved implementation plan is required' || t.savedPlanRecoveryFailure) ? `${t.key} needs Office follow-up` : `${t.key} needs your help`, t.blocker, STAGE_ROLE[t.stage], t.key, t.url);
         if (t.stage === 'ready-for-staging' && t.results['ready-for-staging']?.outcome === 'passed') {
             const pr = state.azure.prs.find(p => p.id === t.prId);
             if (pr?.status === 'completed') {
@@ -104,8 +105,10 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         const reconciledSlackReadback = /Slack delivery could not be confirmed|Slack read-back did not match/.test(m.error) && slackRequestSettled(state, m.actionId.startsWith('message:') ? m.actionId.slice(8) : m.id);
         if (m.question && !deferredPickup(state, m.ticket) && !state.messages.some(reply => reply.from === 'human' && reply.actionId === `question:${m.id}` && reply.status === 'answered'))
             item(`question:${m.id}`, `${m.from === 'human' ? 'Morgan' : ROLE_NAMES[m.from]} has a question`, m.question, m.from === 'human' ? 'pm' : m.from, m.ticket);
-        if (m.from === 'human' && !conversationResolved(state, m) && !reconciledSlackReadback && ['failed', 'interrupted'].includes(m.status))
-            item(`message:${m.id}`, 'Follow up on an interrupted conversation', m.error || 'The team could not complete this reply.', 'pm', m.ticket);
+        if (m.from === 'human' && !conversationResolved(state, m) && !reconciledSlackReadback && ['failed', 'interrupted'].includes(m.status)) {
+            const ctoInput = m.to === 'cto' && m.error.includes('"input_error_code":"input_too_large"');
+            item(`message:${m.id}`, ctoInput ? 'Avery’s reply needs Office recovery' : 'Follow up on an interrupted conversation', ctoInput ? 'Your message is saved. Avery’s Office context exceeded the input limit; open this item to recover the original request safely.' : m.error || 'The team could not complete this reply.', ctoInput ? 'cto' : 'pm', m.ticket);
+        }
     }
     for (const d of state.slackDeliveries || [])
         if (d.status === 'uncertain' && !supersedingDelivery(state, d))

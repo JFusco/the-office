@@ -597,6 +597,8 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    savedPlanRecoveryFailure?: { at: string; detail: string };
+    savedPlanRecovery?: { workerId: string; resultPath: string; resultSha256: string; analysisPath: string; analysisSha256: string; at: string };
     improvementId?: string;
     featureBinding?: import('./contracts/features').FeatureBinding;
     featureFloor?: { review: 'focused' | 'full'; validation?: WorkApproach['validation']; checks?: string[] };
@@ -798,6 +800,7 @@ export interface HumanAction {
     updatedAt: string;
 }
 export interface TeamMessage {
+    inputRecovery?: { originalMessageId: string; workerId: string; originalSha256: string; artifacts: { path: string; sha256: string }[] };
     slackReplacement?: import('./contracts/slack-supersession').SlackReplacementRequest;
     goalEvidenceReturn?: { requestId: string; answerId: string };
     goalEvidenceRequest?: { reviewId: string; projectId: string; goalIds: string[]; goals: { goalId: string; expectedUpdatedAt: string }[]; fingerprint: string };

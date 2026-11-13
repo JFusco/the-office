@@ -7,7 +7,8 @@ import { command } from '../workers/process';
 import { createFeature, commandFeature, featureById } from './commands';
 import { prepareBaseline } from './planning-baseline';
 import { beginReader, acceptReader } from './reader-attempts';
-import { RawDiscoverySchema, RawPlanSchema } from './feature-schema';
+import { FreshDiscoverySchema, FreshPlanSchema } from './feature-schema';
+import { automaticIntakeWait } from './handoff/intake-eligibility';
 import { discoveryPrompt, planPrompt } from './discovery-prompts';
 import { ReviewStateError } from './review-state-error';
 import { FeatureReviewRunner, importReview } from './review-run';
@@ -51,7 +52,7 @@ export class FeatureWorkflow {
     }
     async step(id: string) {
         let feature = featureById(this.store, id);
-        if (feature.paused || this.store.state.paused || feature.status !== 'queued') return;
+        if (feature.paused || this.store.state.paused || feature.status !== 'queued' || automaticIntakeWait(this.store, feature)) return;
         const revision = feature.revision;
         let attemptId: string | undefined;
         try {
@@ -70,8 +71,8 @@ export class FeatureWorkflow {
             if (feature.revision !== revision || feature.paused || this.store.state.paused || feature.activeAttempt !== attemptId) throw new Error('Feature reader changed before dispatch');
             const role = attempt.stage === 'feature-plan' ? 'developer' : 'analyst', prior = this.workers.active.get(role);
             const pending = attempt.stage === 'feature-plan'
-                ? this.workers.run('developer', planPrompt(feature, context), RawPlanSchema, options)
-                : this.workers.run('analyst', discoveryPrompt(feature, feature.evidence && feature.sourceTicket ? readEvidence(this.store, feature.sourceTicket, feature.evidence) : undefined), RawDiscoverySchema, options);
+                ? this.workers.run('developer', planPrompt(feature, context), FreshPlanSchema, options)
+                : this.workers.run('analyst', discoveryPrompt(feature, feature.evidence && feature.sourceTicket ? readEvidence(this.store, feature.sourceTicket, feature.evidence) : undefined), FreshDiscoverySchema, options);
             const controller = this.workers.active.get(role);
             if (controller && controller !== prior) this.running.set(id, controller);
             const output = await pending;

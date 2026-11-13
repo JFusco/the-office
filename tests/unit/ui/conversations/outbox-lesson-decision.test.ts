@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, test } from 'vitest';
 import { OutboxMaintenanceStatus } from '../../../../src/conversations/OutboxMaintenanceStatus';
 import { recommendedReply } from '../../../../src/conversations/recommended-reply';
-import { Outbox } from '../../../../src/conversations/Conversation';
+import { Outbox } from '../../../../src/conversations/Outbox';
 import { OutboxLessonDecision } from '../../../../src/conversations/OutboxLessonDecision';
 import { lessonDecisionState, readLessonDecision } from '../../../../src/conversations/lesson-decision-state';
 import { initialSnapshot } from '../../../../server/store/store';

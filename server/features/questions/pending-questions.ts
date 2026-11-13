@@ -4,6 +4,7 @@ import { FEATURE_PLANNING } from '../../office/config';
 import { featurePolicy, type FeaturePlanningBindings } from '../progression/policy';
 import { pendingRounds, roundAuthor } from './pending-round';
 import { normalizeQuestion } from '../../../src/features/questions/normalize-question';
+import { automaticIntakeWait } from '../handoff/intake-eligibility';
 /** Never expose persisted answers or executable descriptors. */
 export function pendingQuestions(stores: Iterable<Store>, bindings: FeaturePlanningBindings = FEATURE_PLANNING): FeatureQuestionProjection[] {
     const result: FeatureQuestionProjection[] = [];
@@ -13,7 +14,7 @@ export function pendingQuestions(stores: Iterable<Store>, bindings: FeaturePlann
         const state = store.state;
         if (state.paused) continue;
         for (const feature of state.features || []) {
-            if (feature.paused || feature.status !== 'waiting') continue;
+            if (feature.paused || feature.status !== 'waiting' || automaticIntakeWait(store, feature)) continue;
             for (const round of pendingRounds(feature)) {
                 try {
                     const questions = round.questions.map(question => normalizeQuestion(question, question.id));

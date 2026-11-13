@@ -22,6 +22,8 @@ import { configureKnowledge, declineLessonIssue, reactivateLesson, retireLesson 
 import { decideOfficeProposal, mirrorOfficeKnowledge, retireOfficeLesson } from '../../knowledge/office-lessons';
 import { configureChannelNotices } from '../../conversations/channel-notice';
 import { requeueWaitedImplement } from '../../delivery/recovery/implementation/requeue-waited-implement';
+import { recoverCTOInput } from '../../conversations/recover-cto-input';
+import { DATA } from '../config';
 
 /** POST /api/commands: operator and harness commands for one project. */
 export async function commandRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
@@ -38,6 +40,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
+            case 'recover-cto-input': return json(recoverCTOInput(store, messageId, DATA), 202);
             case 'retire-incomplete-history': return json({ accepted: true, id: enqueueHistoryRetirement(store, historyRetirement).id }, 202);
             case 'reconcile-pr-metadata': { const request = enqueueMetadataRecovery(store, key, prMetadataRecovery); return json({ accepted: true, id: request.id, status: request.status }, 202); }
             case 'promote-note-lesson': {

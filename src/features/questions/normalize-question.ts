@@ -1,11 +1,11 @@
 import type { FeatureOption, FeatureQuestion } from '../../contracts/features';
 export interface RawQuestion {
-    id?: string;
+    id?: string | null;
     question: string;
     recommendation: string;
-    choices?: string[];
-    options?: { id?: string; label: string; tradeoff?: string }[];
-    recommendedOptionId?: string;
+    choices?: string[] | null;
+    options?: { id?: string | null; label: string; tradeoff?: string | null }[] | null;
+    recommendedOptionId?: string | null;
 }
 const folded = (value: string) => value.trim().normalize('NFKC').toLocaleLowerCase('en-US');
 function optionId(label: string) {
@@ -33,9 +33,8 @@ export function normalizeQuestion(raw: RawQuestion, id: string): FeatureQuestion
         while (options.some(o => o.id === recommended!.id)) recommended.id += '-collision';
         options.push(recommended);
     }
-    let retained = options.slice(0, 4);
-    if (recommended && !retained.includes(recommended)) retained = [...retained.slice(0, 3), recommended];
-    if (retained.length < 2) retained = [];
-    return {id: raw.id || id, question: raw.question.trim(), recommendation, choices: retained.map(o => o.label), options: retained,
-        ...(recommended && retained.includes(recommended) ? {recommendedOptionId: recommended.id} : {})};
+    const retained = (recommended ? [recommended, ...options.filter(option => option !== recommended)] : options).slice(0, 3);
+    const choices = retained.length < 2 ? [] : retained;
+    return {id: raw.id || id, question: raw.question.trim(), recommendation, choices: choices.map(o => o.label), options: choices,
+        ...(recommended && choices.includes(recommended) ? {recommendedOptionId: recommended.id} : {})};
 }

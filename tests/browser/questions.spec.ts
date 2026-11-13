@@ -79,3 +79,11 @@ test('an inline round arriving in the Features drawer keeps typing focus; Next m
  await expect(drawer.getByRole('heading',{name:'Inline question 2?'})).toBeFocused();
  await expect(page.getByRole('button',{name:/^Questions for you/})).toHaveCount(0);
 });
+
+test('default CEC answer keeps the same durable request identity after a lost response',async({page,request})=>{
+ await seed(request,'cec','Lost answer',false,1);const attempts:any[]=[];
+ await page.route('**/api/features/*?project=cec&officeWide=1',async route=>{attempts.push(route.request().postDataJSON());if(attempts.length===1)await route.abort();else await route.fulfill({status:200,json:{accepted:true}});});
+ await page.goto('/');const dialog=page.locator('dialog[data-office-question-dialog]');await expect(dialog).toBeVisible();
+ await dialog.getByLabel('Your answer',{exact:true}).fill('Keep authored edits.');await dialog.getByRole('button',{name:'Send answers',exact:true}).click();await expect(dialog.getByRole('alert')).toBeVisible();
+ await dialog.getByRole('button',{name:'Send answers',exact:true}).click();await expect(dialog).toBeHidden();expect(attempts).toHaveLength(2);expect(attempts[1]).toEqual(attempts[0]);
+});

@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import type {FeatureQuestionProjection} from '../../contracts/features';
-import {officeUrl} from '../../shared';
+import {questionUrl} from './question-url';
 import {Button} from '../../ui';
 import {Dialog} from '../../ui/Dialog';
 import {QuestionStepper} from './QuestionStepper';
@@ -13,17 +13,21 @@ export function QuestionDialogHost({rounds=[],active,slot,suspended,refresh}:{ro
     const control=useRef<HTMLButtonElement>(null),[suppressed,setSuppressed]=useState(readSuppressed),[current,setCurrent]=useState<FeatureQuestionProjection>(),[list,setList]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
     const live=current&&rounds.find(r=>questionKey(r)===questionKey(current)&&r.revision===current.revision);
     const allowed=useRef(false);allowed.current=!suspended&&!!live;
+    const pending=useRef<{content:string;id:string}|null>(null);
     useEffect(()=>{if(suspended){setCurrent(undefined);return;}setCurrent(previous=>nextQuestion(rounds,suppressed,previous));},[rounds,suspended,suppressed]);
     function suppress(round:FeatureQuestionProjection){setSuppressed(old=>{const value=new Set(old);value.add(questionKey(round));try{localStorage.setItem(suppressedKey,JSON.stringify([...value].slice(-200)));}catch{/* In-memory Later still works. */}return value;});setCurrent(undefined);setError('');}
     async function send(action:string,values:Record<string,unknown>){
         if(!live||!allowed.current||busy)return false;
         const target=live;setBusy(true);setError('');
         try{
-            const url=officeUrl('/api/features/'+encodeURIComponent(target.featureId),target.projectId)+'&officeWide=1';
-            const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,requestId:crypto.randomUUID(),expectedRevision:target.revision,roundId:target.roundId,...values})});
+            const url=questionUrl(target);
+            const payload={action,expectedRevision:target.revision,roundId:target.roundId,...values},content=JSON.stringify({url,payload});
+            if(pending.current?.content!==content)pending.current={content,id:crypto.randomUUID()};
+            const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,requestId:pending.current.id})});
             const body=await response.json();
             if(!response.ok){if(['stale-round','revision-change','changed-precondition','source-unavailable'].includes(body.code)){setCurrent(undefined);refresh();}throw new Error(body.error||'Unable to save this response');}
             if(action==='answer'||values.operation==='apply')suppress(target);
+            pending.current=null;
             refresh();return true;
         }catch(e){setError(String(e));return false;}finally{setBusy(false);}
     }
