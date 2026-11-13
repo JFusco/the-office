@@ -1,4 +1,6 @@
 import { knowledgePromptStore } from '../knowledge/office-state-view';
+import { withCECPreflightPRs } from '../cec/preflight-pr-read';
+import { az } from '../cec/azure';
 import { harperHandoff } from '../knowledge/blocker-followups';
 import { featureDeliveryContext } from '../features/delivery-binding';
 import { REPAIR_DIAGNOSIS } from '../delivery/repairs/delivery-repairs';
@@ -50,8 +52,9 @@ const ReadbackSchema = z.object({ key: z.string(), assignee: z.string(), subtask
 export class Agents extends WorkerRuntime {
     override async run<T>(role: Role, task: string, schema: z.ZodType<T>, opts: Parameters<WorkerRuntime['run']>[3] = {}): Promise<T> {
         // Native workers receive one strict object schema; legacy parsing is only for saved results.
-        return super.run(role, Object.is(schema, ResultSchema) ? `${task}\n${handsOff(this.store) ? HANDS_OFF_RESOLUTION_GUIDANCE : RESOLUTION_GUIDANCE}` : task,
-            Object.is(schema, ResultSchema) ? CurrentResultSchema as unknown as z.ZodType<T> : schema, opts);
+        return withCECPreflightPRs(this.store, opts.stage, opts.ticket, task, framed => super.run(role,
+            Object.is(schema, ResultSchema) ? `${framed}\n${handsOff(this.store) ? HANDS_OFF_RESOLUTION_GUIDANCE : RESOLUTION_GUIDANCE}` : framed,
+            Object.is(schema, ResultSchema) ? CurrentResultSchema as unknown as z.ZodType<T> : schema, opts), args => az(args, true, 55000, this.execute));
     }
     ctoContext: () => unknown = () => ({ projects: [{ project: this.store.project, goals: this.store.state.goals, notes: this.store.state.projectNotes }] });
     async sendSlack(delivery: SlackDelivery, human: Pick<TeamMessage, 'body' | 'ticket' | 'requestId'>) {
