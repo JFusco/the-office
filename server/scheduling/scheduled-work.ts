@@ -36,6 +36,9 @@ import { withAmendmentOwnership } from '../delivery/recovery/source-amendment/so
 import { scheduledRetrospectives } from '../knowledge/scheduled-retrospectives';
 import { scheduledRollup, type RollupHooks } from '../knowledge/weekly-rollup';
 import { stoppedReason } from './stopped-reason';
+import { closedTicketRequest, retiredFollowup, supersededCheckpoint, supersededRun, touchesUnsettled, type UnsettledEffects } from '../operations/stale-records';
+import { unsettledEffects } from '../operations/unsettled-effects';
+import type { WorkRef } from '../../src/contracts/work';
 export interface OfficeEntry {
     store: Store;
     engine: Engine;
@@ -58,6 +61,14 @@ export interface KnowledgeOptions extends RollupHooks { context?:import('../know
 export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now = new Date(), lane = 'delivery', knowledge: KnowledgeOptions = {}): ScheduledWork[] {
     const { store, engine, conversations, coordinator } = entry;
     const items: ScheduledWork[] = [], c = store.state.coordination!;
+    // Stale records the operations rules retired read as terminal history, their saved status untouched. A record
+    // linked to a write that is still dispatching or uncertain stays stopped: only read-back settles it.
+    let unsettled: UnsettledEffects | undefined;
+    const history = (reason: string | undefined, ...refs: [WorkRef['kind'], string][]): WorkEligibility | null => {
+        if (!reason) return null;
+        unsettled ??= unsettledEffects(store);
+        return touchesUnsettled(unsettled, refs.map(([kind, id]) => ({ projectId: store.project.id, kind, id }))) ? null : eligible('terminal', reason);
+    };
     const add = (kind: WorkKind, record: {
         id: string;
         status: string;
@@ -80,7 +91,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const original = message.from === 'human' ? message : message.from === 'it' && message.actionId.startsWith('message:')
             ? store.state.messages.find(original => original.id === message.actionId.slice(8)) : undefined;
         add('conversation', message, `conversation:${message.to}`, message.createdAt, 3, () => message.to === 'cto' ? conversations.pumpCTO() : message.to === 'it' ? conversations.pumpIT() : message.to === 'knowledge' ? conversations.pumpKnowledge() : conversations.pump(message.id),
-            ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained') : null);
+            ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained') : history(retiredFollowup(message, store.state.messages), ['conversation', message.id]));
     }
     if (lane === 'it') items.push(...scheduledInvestigations(store, (prompt, schema, options) => engine.itAgents.run('it', prompt, schema, options), now));
     if (lane === 'knowledge') {
@@ -91,7 +102,10 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)
             add('reconciliation', request, request.action, request.requestedAt, requestPriority(request.action, request.action === 'cleanup-merged-candidate' && verifiedCloseoutCleanupRequest(store, request)), () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
                 requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') :
-                    packed165SetupReady(store, request) ? eligible('runnable', 'One bounded #165 setup read-back is eligible; source continuation remains gated') : null);
+                    packed165SetupReady(store, request) ? eligible('runnable', 'One bounded #165 setup read-back is eligible; source continuation remains gated') :
+                    // Native closeout writes are keyed to the GitHub issue under the native run id (request.head) as attempt.
+                    history(closedTicketRequest(request, store.state.tickets), ['reconciliation', request.id], ...(c.jobs || []).filter(job => job.key === request.key).map(job => ['delivery', job.id] as [WorkRef['kind'], string]),
+                        ...(/^GH-\d+$/.test(request.key) ? [['issue', request.key.slice(3)] as [WorkRef['kind'], string]] : []), ...(request.head ? [['reconciliation', request.head] as [WorkRef['kind'], string]] : [])));
     // Applying the scope correction only rewrites the local ledger (publishing stays paused), so it may
     // run while the office is paused or draining: draining is how live work on affected tickets ends.
     for (const item of items) if (item.stage === 'apply-time-scope' && (store.state.paused || store.state.draining)) {
@@ -137,10 +151,10 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     for (const review of [...new Map(c.listener.reviews.map(review => [review.key, review])).values()].filter(review => !(c.jobs || []).some(job => job.key === review.key && job.status !== 'cancelled')))
         add('intake', review, 'assignment-review', review.queuedAt, 3, () => coordinator!.pump({ kind: 'intake', id: review.id }), review.prerequisiteError ? eligible('blocked', review.prerequisiteError, 'Morgan', 'dependency') : ['owned', 'held'].includes(review.status) && deferredPickup(store.state, review.key) ? eligible('waiting', 'Backlog assignment is deferred until its pickup lane or an explicit Start') : null, review.timing);
     for (const checkpoint of c.checkpoints.filter(checkpoint => !store.state.maintenance?.runs.some(run => run.id === checkpoint.runId && run.retirement)))
-        add('checkpoint', checkpoint, 'checkpoint', checkpoint.requestedAt, 3, () => coordinator!.pump({ kind: 'checkpoint', id: checkpoint.id }), checkpoint.retryAt && Date.parse(checkpoint.retryAt) > now.getTime() ? eligible('waiting', 'Native retry backoff is active') : null);
+        add('checkpoint', checkpoint, 'checkpoint', checkpoint.requestedAt, 3, () => coordinator!.pump({ kind: 'checkpoint', id: checkpoint.id }), checkpoint.retryAt && Date.parse(checkpoint.retryAt) > now.getTime() ? eligible('waiting', 'Native retry backoff is active') : history(supersededCheckpoint(checkpoint, c.checkpoints), ['checkpoint', checkpoint.id], ['maintenance', checkpoint.runId]));
     for (const run of store.state.maintenance?.runs || []) {
         if (run.retirement) continue;
-        add('maintenance', run, run.stage, run.requestedAt, 3, () => engine.drainMaintenance(run.id), null, run.timing);
+        add('maintenance', run, run.stage, run.requestedAt, 3, () => engine.drainMaintenance(run.id), history(supersededRun(run, store.state.maintenance!.runs), ['maintenance', run.id]), run.timing);
         if (run.blockerFollowup)
             add('continuation', { id: run.id, status: run.blockerFollowup.status, detail: run.blockerFollowup.detail }, 'repair-followup', run.requestedAt, 1, () => coordinator!.pump({ kind: 'followup', id: run.id }));
         if (run.readbackRetry && ['blocked', 'interrupted'].includes(run.status) && !run.readbackRetry.exhausted)

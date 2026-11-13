@@ -218,3 +218,42 @@ test('a blocked repair follow-up explains itself with its own saved detail and l
     expect(item.eligibility).toMatchObject({state:'blocked',cause:'needs-decision',reason:'Blocked, needs a decision: Source repair routing needs read-back'});
     expect(JSON.stringify(store.state.maintenance.runs)).toBe(before);
 });
+
+test('stale records leave the stopped count as history while their saved status is untouched', () => {
+    const {store,entry,project}=fixture();
+    store.state.tickets=[{key:'GH-310',status:'closed'} as any];
+    const request:any={id:'stale',action:'reconcile-native-delivery',key:'GH-310',head:'h',lane:'delivery',requestedAt:'2026-11-03T00:00:00Z',status:'blocked',detail:'Native report must identify this publication'};
+    store.state.coordination!.requests=[request];
+    store.state.coordination!.checkpoints=[{id:'cp-old',date:'2026-11-10',status:'blocked',requestedAt:'2026-11-10T22:00:00Z',runId:'',detail:'x'} as any,{id:'cp-new',date:'2026-11-12',status:'completed',requestedAt:'2026-11-12T22:00:00Z',runId:'',detail:''} as any];
+    store.state.messages.push({id:'harper',requestId:'harper',actionId:'harper:item',from:'knowledge',to:'pm',status:'failed',createdAt:'2026-11-12T00:00:00Z',body:'b',error:'Error: Harper follow-up authorizes read-only diagnosis only',receipts:[]} as any);
+    const items=project(),find=(id:string)=>items.find(item=>item.work.id===id)!.eligibility;
+    expect(find('stale')).toMatchObject({state:'terminal',reason:expect.stringMatching(/^Superseded: GH-310 is closed/)});
+    expect(find('cp-old').state).toBe('terminal');expect(find('cp-new').state).toBe('terminal');
+    expect(find('harper')).toMatchObject({state:'terminal',reason:expect.stringMatching(/Advisory follow-up failed/)});
+    expect(projectReadiness(entry,items).blocked).toBe(0);
+    expect(request.status).toBe('blocked');expect(store.state.coordination!.checkpoints[0].status).toBe('blocked');
+});
+
+test('a stale record linked to an unsettled write stays stopped until read-back settles it', () => {
+    const {store,entry,project}=fixture();
+    store.state.tickets=[{key:'GH-310',status:'closed'} as any];
+    store.state.coordination!.jobs=[{id:'job-310',key:'GH-310',status:'completed',stage:'closeout',steps:[],requestedAt:'2026-11-01T00:00:00Z'} as any];
+    store.state.coordination!.requests=[{id:'stale',action:'reconcile-native-delivery',key:'GH-310',head:'h',lane:'delivery',requestedAt:'2026-11-03T00:00:00Z',status:'blocked',detail:'x'} as any];
+    store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e1',`${store.project.id}:delivery:job-310`,'uncertain',JSON.stringify({attemptId:'job-310'}));
+    expect(project().find(item=>item.work.id==='stale')!.eligibility).toMatchObject({state:'blocked',cause:'needs-decision'});
+    store.db.prepare("UPDATE effects SET status='verified' WHERE id='e1'").run();
+    expect(project().find(item=>item.work.id==='stale')!.eligibility.state).toBe('terminal');
+    expect(projectReadiness(entry,project()).blocked).toBe(0);
+});
+
+test('a stale request stays stopped while a native closeout write on its issue or under its native run is unsettled', () => {
+    const {store,project}=fixture(),state=()=>project().find(item=>item.work.id==='stale')!.eligibility.state;
+    store.state.tickets=[{key:'GH-310',status:'closed'} as any];
+    store.state.coordination!.requests=[{id:'stale',action:'reconcile-native-delivery',key:'GH-310',head:'run-a',lane:'delivery',requestedAt:'2026-11-03T00:00:00Z',status:'blocked',detail:'x'} as any];
+    store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e1',`${store.project.id}:issue:310`,'uncertain',JSON.stringify({attemptId:'run-a'}));
+    expect(state()).toBe('blocked');
+    store.db.prepare("UPDATE effects SET status='verified' WHERE id='e1'").run();
+    expect(state()).toBe('terminal');
+    store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e2',`${store.project.id}:issue:999`,'dispatching',JSON.stringify({attemptId:'run-a'}));
+    expect(state()).toBe('blocked');
+});
