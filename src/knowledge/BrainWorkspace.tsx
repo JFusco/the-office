@@ -1,4 +1,4 @@
-import { knowledgePage } from './presentation';
+import { knowledgeEnter, knowledgePage } from './presentation';
 import { KnowledgeMotion } from './KnowledgeReveal';
 import type { OfficeSnapshot } from '../shared';
 import { Library } from './Library';
@@ -19,6 +19,6 @@ export default function BrainWorkspace({ project, onClose, reduced = true,snapsh
             <nav className="flex flex-wrap gap-control-gap" aria-label="Brain views">{['Lessons','Library','Map','Activity'].map(name => <Button key={name} aria-current={view === name ? 'page' : undefined} onClick={() => setView(name)}>{name}</Button>)}</nav>
             <Button onClick={onClose}>Return to office <ArrowRight size={14}/></Button>
         </div></div>
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-gutter:stable]" data-office-brain><div className={"mx-auto w-full max-w-brain-content p-panel-padding " + knowledgePage} data-brain-content>{view === 'Lessons' ? <LessonsView key={project} project={project} snapshot={snapshot} refresh={refresh}/> : view === 'Library' ? <Library key={project} project={project}/> : view === 'Map' ? <MapView key={project} project={project} reduced={reduced}/> : <Activity key={project} project={project}/>}</div></div>
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-gutter:stable]" data-office-brain><div key={view} className={"mx-auto w-full max-w-brain-content p-panel-padding " + knowledgePage + ' ' + knowledgeEnter} data-brain-content>{view === 'Lessons' ? <LessonsView key={project} project={project} snapshot={snapshot} refresh={refresh}/> : view === 'Library' ? <Library key={project} project={project}/> : view === 'Map' ? <MapView key={project} project={project} reduced={reduced}/> : <Activity key={project} project={project}/>}</div></div>
     </div></KnowledgeMotion.Provider>;
 }

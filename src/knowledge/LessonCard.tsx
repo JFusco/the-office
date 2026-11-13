@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { Lesson } from '../shared';
 import { ExternalLink } from '../ui/icons';
 import { Card, Tag, TextLink, mutedCopy } from '../ui';
+import { knowledgeEnter } from './presentation';
 
 function Evidence({ lesson }: { lesson: Lesson }) {
   return lesson.evidence.length ? <ul className="flex flex-col gap-1 text-10">{lesson.evidence.map(item => <li key={item.ref}>{/^https:\/\//.test(item.url) ? <TextLink href={item.url} target="_blank" rel="noreferrer">{item.detail}<ExternalLink size={11} /></TextLink> : <span>{item.detail}</span>}</li>)}</ul> : null;
@@ -17,7 +18,7 @@ export function LessonShape({ lesson }: { lesson: Pick<Lesson, 'when' | 'stateme
 }
 
 export function LessonCard({ lesson, actions, footer }: { lesson: Lesson; actions?: ReactNode; footer?: ReactNode }) {
-  return <Card as="article">
+  return <Card as="article" className={knowledgeEnter}>
     <div className="flex flex-wrap items-center gap-1.5"><Tag>{lesson.kind}</Tag><Tag>{lesson.tier} · revision {lesson.revision}</Tag>{lesson.stages.map(stage => <Tag key={stage}>{stage}</Tag>)}{lesson.scope === 'office' ? <Tag>office-wide</Tag> : null}{lesson.supersedes ? <Tag>replaces an earlier lesson</Tag> : null}{lesson.supersededBy ? <Tag>replaced by a newer lesson</Tag> : null}{lesson.status === 'retired' && lesson.retiredBy === 'human' ? <Tag>retired by you</Tag> : null}{lesson.retiredBy === 'graduated' ? <Tag>graduated into the repository</Tag> : null}{lesson.retiredBy === 'expired' ? <Tag>expired</Tag> : null}{lesson.status === 'active' && lesson.validUntil ? <Tag>valid until {lesson.validUntil}</Tag> : null}</div>
     <LessonShape lesson={lesson} />
     {lesson.detail ? <p className={mutedCopy}>{lesson.detail}</p> : null}

@@ -9,6 +9,7 @@ import { Constellation } from './Constellation';
 import { displayScene, type MapSelection, selectRecord } from './display-scene';
 import { MapNodePanel } from './MapNodePanel';
 import { MapBrowser } from './MapBrowser';
+import { knowledgeEnter } from '../presentation';
 
 const mapTheme = 'text-map-ink [--color-drawer:var(--color-map-panel)] [--color-paper:var(--color-map-panel)] [--color-ink:var(--color-map-ink)] [--color-muted:var(--color-map-muted)] [--color-secondary:var(--color-map-panel)] [--color-secondary-hover:var(--color-map-hover)] [--color-secondary-line:var(--color-map-line)] [--color-control-hover-line:var(--color-map-accent)] [--color-roster-hover:var(--color-map-hover)] [--color-field-line:var(--color-map-hairline)] [--color-field-hover:var(--color-map-accent)] [--color-focus:var(--color-map-accent)] [--color-link:var(--color-map-accent)] [--color-select-chevron:var(--color-map-muted)] [--color-drawer-line:var(--color-map-line)] [--color-drawer-rule:var(--color-map-line)] [--color-section-rule:var(--color-map-line)] [--color-tag:var(--color-map-panel)] [--color-tag-line:var(--color-map-line)] [--color-tag-ink:var(--color-map-muted)]';
 
@@ -53,7 +54,7 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
                     <span>{scope === 'global' ? 'Global scope' : project} / scoped</span>
                 </div>
                 </div><aside className="min-w-0 max-h-brain-canvas overflow-y-auto border-l border-secondary-line bg-map-panel p-card-padding max-tablet:max-h-none max-tablet:border-l-0 max-tablet:border-t" data-brain-list-frame>
-                    {view.selected ? <><Button className="mb-3" onClick={()=>setSelection(prior=>({...prior,selected:''}))}>Back to map</Button>{view.revealedCount>0&&<p role="status" className="mb-4 text-12">Showing {view.revealedCount} connected record(s) outside the display filters. Back restores the filtered view.</p>}<MapNodePanel project={project} node={view.selected} data={data} onSelect={selectNode}/></> : <MapBrowser view={view} onGroup={selectGroup} onNode={selectNode} onHighlight={setHighlight} onPage={page => setSelection(prior => ({ ...prior, page }))}/>}
+                    {view.selected ? <><Button className="mb-3" onClick={()=>setSelection(prior=>({...prior,selected:''}))}>Back to map</Button>{view.revealedCount>0&&<p role="status" className="mb-4 text-12">Showing {view.revealedCount} connected record(s) outside the display filters. Back restores the filtered view.</p>}<div key={view.selected.id} className={knowledgeEnter}><MapNodePanel project={project} node={view.selected} data={data} onSelect={selectNode}/></div></> : <MapBrowser key={`${view.group?.id || ''}:${view.page}`} view={view} onGroup={selectGroup} onNode={selectNode} onHighlight={setHighlight} onPage={page => setSelection(prior => ({ ...prior, page }))}/>}
                 </aside>
             </div>
             <p role="status" className="sr-only">{view.selected ? `Selected ${view.selected.title}. Its saved connections are available in the map panel.` : 'Browse a group or search for a record.'}</p>
