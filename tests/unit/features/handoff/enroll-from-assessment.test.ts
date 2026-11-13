@@ -5,6 +5,7 @@ import {storeEvidence} from '../../../../server/features/handoff/evidence-artifa
 import {blankEvidence} from '../../../../server/features/handoff/evidence-contract';
 import {handoffFixture} from './fixture';
 function planning(f:ReturnType<typeof handoffFixture>){
+ f.store.state.coordination!.listener.assigned=[{key:'GH-1',status:'OPEN',pickupStatus:'Ready'} as any];
  const episode=openAssessment(f.store,'GH-1','v1',true),evidence=blankEvidence('brain','GH-1','github','repo#1');
  episode.evidence=storeEvidence(f.store,evidence);episode.result={disposition:'planning',rationale:'Clarify requirements',requirements:['Preserve data'],acceptanceCriteria:['No lost edits'],settledDecisions:[],openQuestions:[],imageObservations:[]};saveAssessment(f.store,episode);return episode;
 }

@@ -10,6 +10,7 @@ const result=(disposition:'ordinary'|'planning')=>({disposition,rationale:'Asses
 const clear=async()=>({status:'clear' as const,reason:''});
 function captured(description='Requirements'){const evidence=blankEvidence('brain','GH-1','github','JFusco/brain#1');evidence.summary='Feature';evidence.description=description;evidence.coverage={issue:{state:'complete'},comments:{state:'complete'},children:{state:'complete'}};return evidence;}
 function claimed(f:ReturnType<typeof handoffFixture>){
+ f.store.state.coordination!.listener.assigned=[{key:'GH-1',status:'OPEN',pickupStatus:'Ready'} as any];
  const e=openAssessment(f.store,'GH-1','v1',true);e.evidence=storeEvidence(f.store,captured());saveAssessment(f.store,e);
  f.store.claimWork({projectId:'brain',kind:'assessment',id:'assessment:'+e.id},'scheduler','planning-assessment');return e;
 }

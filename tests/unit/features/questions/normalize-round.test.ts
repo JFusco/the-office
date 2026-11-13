@@ -11,7 +11,7 @@ test('raw worker schemas retain five choices and unmatched recommendations until
  expect(RawPlanSchema.parse({summary:'s',markdown:'m',scope:['app.ts'],questions:[question]}).questions).toHaveLength(1);
  f.feature.baseline={repository:f.store.project.repository,path:f.root,ref:'main',sha:'a',scope:[],files:{}};
  expect(acceptReader(f.store,f.feature,beginReader(f.store,f.feature),output)).toBe(true);
- const q=f.feature.rounds[0].questions[0];expect(q.options?.map(o=>o.label)).toEqual(['A','B','C','F']);expect(q.recommendedOptionId).toBe(q.options?.[3].id);
+ const q=f.feature.rounds[0].questions[0];expect(q.options?.map(o=>o.label)).toEqual(['F','A','B']);expect(q.recommendedOptionId).toBe(q.options?.[0].id);
  expect(normalizeRound([{...q,id:'FIND-001'}])[0].id).toBe('FIND-001');
  expect(()=>normalizeRound(Array(4).fill(question))).toThrow();
  }finally{f.close();}
@@ -19,7 +19,7 @@ test('raw worker schemas retain five choices and unmatched recommendations until
 test('fewer than two distinct choices retain free text; structured recommendation IDs survive normalization',()=>{
  expect(normalizeRound([{question:'Why?',recommendation:'A',choices:['A',' a ']}])[0].options).toEqual([]);
  const q=normalizeRound([{id:'saved',question:'Choose',recommendation:'Reason',options:[{id:'x',label:'X',tradeoff:'one'},{id:'y',label:'Y',tradeoff:'two'}],recommendedOptionId:'y'}])[0];
- expect(q.id).toBe('saved');expect(q.recommendedOptionId).toBe(q.options![1].id);expect(q.options![1].tradeoff).toBe('two');
+ expect(q.id).toBe('saved');expect(q.recommendedOptionId).toBe(q.options![0].id);expect(q.options![0].tradeoff).toBe('two');
 });
 test('duplicate worker question IDs persist as distinct IDs and the whole round can be answered',()=>{
  const f=fixture();try{

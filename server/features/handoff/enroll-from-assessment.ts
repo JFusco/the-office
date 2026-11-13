@@ -6,12 +6,14 @@ import { enrolled, assertEnrollable } from '../enrollment-gate';
 import { captureRequest } from './capture-store';
 import { FeatureError } from '../progression/failure';
 import { assessmentEpisode, closeAssessment, saveAssessment } from './disposition-store';
+import { automaticTicketIntakeWait } from './intake-eligibility';
 
 /** The only automatic enrollment site. Async observations must precede this transaction. */
 export function enrollFromAssessment(store:Store,id:string,generation:number,ownership:{status:'clear'|'owned'|'unknown';reason:string},title:string) {
  return store.transaction(()=>{
   const episode=assessmentEpisode(store,id),policy=featurePolicy(store.project.id,FEATURE_PLANNING);
   if(['queued','working'].includes(captureRequest(store,'assessment:'+id)?.status||'')||!policy.assessment.enabled||!episode||episode.projectId!==store.project.id||episode.closedAt||episode.generation!==generation||!episode.evidence||!episode.result||episode.result.disposition!=='planning'||episode.policyDigest!==policy.digest)return;
+  if(automaticTicketIntakeWait(store,episode.key))return;
   const existing=enrolled(store,episode.key);
   if(existing){episode.featureId=existing.feature.id;closeAssessment(store,episode,'planning-enrolled');return existing.feature;}
   if(ownership.status==='unknown'){episode.reason=ownership.reason||'Waiting for current ownership evidence';episode.nextAt=new Date(store.clock.now().getTime()+60_000).toISOString();saveAssessment(store,episode);return;}

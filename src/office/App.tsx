@@ -142,7 +142,7 @@ export default function App(){
   function openProjectTicket(target:string,key:string){if(key.startsWith('feature-goal:')||key.startsWith('feature:'))goToFloor('delivery');setSelection(null);setPendingTicket({project:target,key});selectProject(target);}
   const pmRows=live?pmQueueItems(live):[],pmCount=pmRows.filter(r=>r.group==='active'||r.group==='queued').length,pmStopped=pmRows.filter(r=>r.group==='stopped').length;
   const projectQueue=pmRows.filter(row=>row.project===project),projectStopped=projectQueue.filter(row=>row.group==='stopped').length,projectWaiting=projectQueue.filter(row=>row.group==='waiting').length;
-  const needsYou=snapshot?.outbox.filter(a=>a.status==='open').length||0;
+  const needsYou=(snapshot?.outbox.filter(a=>a.status==='open').length||0)+(snapshot?.featureQuestions?.filter(round=>round.projectId===snapshot.project?.id).length||0);
   const board=live?.project?.board||(live?.project?.githubProject?{name:`${live.project.name} GitHub board`,url:live.project.githubProject.url}:undefined);
   const connection=tour?'demo':stale?'offline':'live';
   const itStatus=!snapshot?.it?.checkedAt||now-Date.parse(snapshot.it.checkedAt)>150000?'disconnected':snapshot.it.status==='retrying'?'working':snapshot.it.status==='needs-attention'?'blocked':'idle';

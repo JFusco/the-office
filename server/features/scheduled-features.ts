@@ -13,12 +13,14 @@ import { featureById } from './commands';
 import { automaticFeature, automaticEnabled } from './progression/policy';
 import { FEATURE_PLANNING } from '../office/config';
 import { recoveryHeld } from './progression/wake';
+import { automaticIntakeWait } from './handoff/intake-eligibility';
 export function scheduledFeatures({ store, engine, coordinator }: OfficeEntry): ScheduledWork[] {
     return (store.state.features || []).flatMap(feature => {
         if (feature.phase === 'complete') return [];
         const policyWait = automaticFeature(feature) && !automaticEnabled(feature, FEATURE_PLANNING);
         const revision = feature.revision;
         const reconcile = automaticFeature(feature) && uncertainPublications(store,feature).length > 0;
+        const intakeWait = !reconcile && automaticIntakeWait(store, feature);
         const reconcileWait = reconcile && (pendingRounds(feature,'harness').length > 0 || !!feature.recovery?.nextAt && Date.parse(feature.recovery.nextAt)>store.clock.now().getTime());
         const approval = !reconcile && !recoveryHeld(feature) && feature.phase === 'delivery' && feature.status === 'waiting' ? currentApproval(feature) : undefined;
         // A waiting item must not hide a later admissible one, such as its own reordered predecessor.
@@ -31,10 +33,11 @@ export function scheduledFeatures({ store, engine, coordinator }: OfficeEntry): 
         const pending = admissible;
         const stage = reconcile ? 'feature-publication-readback' : pending ? 'feature-delivery-admission' : 'feature-' + feature.phase;
         return [{ store, work: { projectId: store.project.id, kind: 'feature' as const, id: feature.id }, stage, rank: 3, enqueuedAt: feature.enqueuedAt, timing: feature.timing,
-            eligibility: { state: policyWait || store.state.paused || feature.paused || reconcileWait ? 'waiting' : reconcile ? 'runnable' : feature.status === 'queued' || pending ? 'runnable' : feature.status === 'working' ? 'running' : feature.status === 'blocked' ? 'blocked' : 'waiting', reason: policyWait ? 'Waiting for automatic feature policy activation' : preflight?.reason || feature.detail, owner: feature.phase === 'plan' ? 'Alex' : feature.phase === 'delivery' ? 'Morgan' : 'Casey', nextCheckAt: feature.recovery?.nextAt ?? null },
+            eligibility: { state: policyWait || intakeWait || store.state.paused || feature.paused || reconcileWait ? 'waiting' : reconcile ? 'runnable' : feature.status === 'queued' || pending ? 'runnable' : feature.status === 'working' ? 'running' : feature.status === 'blocked' ? 'blocked' : 'waiting', reason: intakeWait || (policyWait ? 'Waiting for automatic feature policy activation' : preflight?.reason || feature.detail), owner: feature.phase === 'plan' ? 'Alex' : feature.phase === 'delivery' ? 'Morgan' : 'Casey', nextCheckAt: feature.recovery?.nextAt ?? null },
             identity: () => JSON.stringify([feature.revision, feature.phase, feature.status, feature.paused, feature.activeAttempt, pending?.id, currentApproval(feature)?.id, pending?.handoff, feature.recovery?.generation]),
             claimEligible: () => {
                 const current = featureById(store, feature.id), item = current.publication.find(p => p.id === pending?.id);
+                if (!reconcile && automaticIntakeWait(store, current)) return false;
                 return (!automaticFeature(current) || automaticEnabled(current, FEATURE_PLANNING)) && ![current, ...current.reviewHistory.map(review => ({ ...current, review }))].some(owner => observeHelperGroups(store, owner).length) && !current.paused && !store.state.paused && current.revision === revision &&
                     (reconcile ? uncertainPublications(store,current).length>0 && !pendingRounds(current,'harness').length && (!current.recovery?.nextAt || Date.parse(current.recovery.nextAt)<=store.clock.now().getTime()) : pending ? !recoveryHeld(current) && current.phase === 'delivery' && current.status === 'waiting' && !!currentApproval(current) && !!item?.verified && !item.queued && featureGate(store, item.key).allowed : current.status === 'queued');
             },

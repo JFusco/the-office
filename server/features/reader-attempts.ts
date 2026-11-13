@@ -33,7 +33,8 @@ export function acceptReader(store: Store, feature: Feature, attempt: FeatureAtt
         attempt = feature.attempts.find(a => a.id === attempt.id)!;
         if (!attempt) return false;
         if (feature.activeAttempt !== attempt.id || attempt.status !== 'working' || feature.revision !== attempt.revision || feature.baseline?.sha !== attempt.baselineSha || feature.paused || store.state.paused) return false;
-        const raw = attempt.stage === 'feature-plan' ? RawPlanSchema.parse(output) : RawDiscoverySchema.parse(output);
+        const compatible = JSON.parse(JSON.stringify(output, (_key, value) => value === null ? undefined : value));
+        const raw = attempt.stage === 'feature-plan' ? RawPlanSchema.parse(compatible) : RawDiscoverySchema.parse(compatible);
         const normalized = { ...raw, questions: normalizeRound(raw.questions) };
         const result = attempt.stage === 'feature-plan' ? PlanSchema.parse(normalized) : DiscoverySchema.parse(normalized);
         if ('ready' in result && !result.ready && !result.questions.length) throw new FeatureError('invalid-content', 'Unready discovery must identify the unresolved product decisions');

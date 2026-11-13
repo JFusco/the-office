@@ -169,7 +169,7 @@ function Mailbox({snapshot,onSelect,reduced,pmName}:{snapshot:OfficeSnapshot;onS
 }
 const mailLabel=cx('rounded-6 bg-mail-label px-2.5 py-2 text-left whitespace-nowrap text-mail-label-ink shadow-mail-label hover:border-mail-label-hover-line hover:bg-mail-label-hover',sceneLabel);
 function HumanOutbox({snapshot,onSelect}:{snapshot:OfficeSnapshot;onSelect:()=>void}){
-  const count=snapshot.outbox.filter(a=>a.status==='open').length,c=sceneColors();
+  const count=snapshot.outbox.filter(a=>a.status==='open').length+(snapshot.featureQuestions?.filter(round=>round.projectId===snapshot.project?.id).length||0),c=sceneColors();
   return <group position={[-.3,0,5.7]} onClick={e=>{e.stopPropagation();onSelect();}}>
     <Box pos={[0,.6,0]} size={[1.4,1.2,.75]} color={c.outboxBase}/>
     <Box pos={[0,1.24,0]} size={[1.65,.09,1]} color={c.outboxTop}/>
