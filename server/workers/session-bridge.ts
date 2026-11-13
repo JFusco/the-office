@@ -1,4 +1,5 @@
 import { completeSessionCoverage, desktopCoverageGap } from './session-coverage';
+import { sessionInventoryFailureDetail } from './session-inventory-failure';
 import { accountCodexProcesses, type DesktopSessions } from './codex-process-inventory';
 import { processTable } from './process-table';
 import { idleExecServers } from './idle-exec-servers';
@@ -94,7 +95,7 @@ export class SessionBridge {
   const results=await Promise.allSettled([this.native(),this.execute('claude',['agents','--json','--all'],{timeout:60000,readOnly:true}).then(claudeSessions).then(sessions=>this.claudeContext(sessions,projects)),desktop]);
   const coverageComplete=completeSessionCoverage(results);
   const names=['Codex live runtime','Claude live sessions','Codex desktop/CLI session identities'];
-  const sources=results.map((r,i)=>({name:names[i],ok:r.status==='fulfilled',detail:r.status==='fulfilled'?(i===2?'Loaded identities, current-turn ownership and retained conversation evidence are visible across repositories; missing turn activity remains unknown.':'Live inventory connected.'):`Session inventory could not complete${/timed? out|timeout/i.test(String(r.reason))?' within its read deadline':''}. Ownership remains unverified; this does not establish a login failure.`}));
+  const sources=results.map((r,i)=>({name:names[i],ok:r.status==='fulfilled',detail:r.status==='fulfilled'?(i===2?'Loaded identities, current-turn ownership and retained conversation evidence are visible across repositories; missing turn activity remains unknown.':'Live inventory connected.'):sessionInventoryFailureDetail(r.reason)}));
   const gap=coverageComplete?undefined:desktopCoverageGap(results);if(gap)sources[2].detail=gap;
   if(coverageComplete&&results[0].status==='rejected')sources[0].detail='The runtime socket is absent. Live Codex process identities and explicit current-turn events supply coverage.';
   const sessions=new Map<string,LiveSession>();

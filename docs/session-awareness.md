@@ -39,8 +39,15 @@ excluded. Conversation text is untrusted context and never grants harness permis
 or replaces live issue/PR read-back, configured holds or structured prerequisites.
 The bridge never messages, resumes or interrupts another session.
 
-Reads stay within the local Codex session directory and are bounded at 64 MiB per
-loaded rollout. Unreadable, mismatched or incomplete context makes coverage unavailable;
+Reads stay within the local Codex session directory. JSONL is streamed with a
+64 MiB bound per record and one shared read deadline, rather than buffered as a
+whole transcript. If an append changes the snapshot while parsing an incomplete
+record, the reader discards that attempt and makes its existing single fresh-snapshot
+retry. The same file identity and complete current-turn records are still required.
+Stable malformed records, replacements and continuing churn remain unavailable.
+Source status uses fixed failure categories without exposing native stderr, chat
+text or session paths; those categories diagnose a read failure and never clear ownership.
+Unreadable, mismatched or incomplete context makes coverage unavailable;
 it cannot produce a clear ownership verdict. This does not provide universal visibility
 into remote clients or historical chats. Claude's native inventory supplies activity;
 its exact session ID selects the local transcript, including after a checkout moves.

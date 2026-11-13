@@ -55,3 +55,19 @@ test('an unchanged malformed record is never classified as a read race', async (
     const parse = vi.fn((raw: string) => { JSON.parse(raw); return context; }), read = sessionContextFile(directory, parse);
     await expect(read(path, 'live', [])).rejects.toThrow(SyntaxError); expect(parse).toHaveBeenCalledTimes(1);
 });
+
+test('replacement during a parse failure is refused without rebinding to the new file', async () => {
+    const directory = await root(), path = join(directory, 'live.jsonl'), replacement = join(directory, 'next.jsonl');
+    await writeFile(path, '{partial'); await writeFile(replacement, 'replacement');
+    const parse = vi.fn(() => { renameSync(replacement, path); throw new SyntaxError('partial'); });
+    await expect(sessionContextFile(directory, parse)(path, 'live', [])).rejects.toThrow('identity changed');
+    expect(parse).toHaveBeenCalledTimes(1);
+});
+
+test('appending unrelated bytes cannot make a persistently malformed record complete', async () => {
+    const directory = await root(), path = join(directory, 'live.jsonl'); await writeFile(path, '{broken\n');
+    const parse = vi.fn(() => { appendFileSync(path, '\n'); throw new SyntaxError('broken'); });
+    const read = sessionContextFile(directory, parse);
+    await expect(read(path, 'live', [])).rejects.toThrow('changed during'); expect(parse).toHaveBeenCalledTimes(2);
+    await expect(read(path, 'live', [])).rejects.toThrow('changed during'); expect(parse).toHaveBeenCalledTimes(4);
+});
