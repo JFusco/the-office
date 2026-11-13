@@ -116,8 +116,6 @@ export interface DeliveryMetrics {
 }
 export interface WeeklyRollup {
     learning?: LearningMetrics;
-    researchId?: string;
-    research?: WeeklyResearch;
     unavailable?: string;
     id: string;
     weekEnding: string;
@@ -151,7 +149,6 @@ export interface OfficeProposal {
 }
 /** Office-wide knowledge kept in the control store; each project holds a read-only mirror. */
 export interface OfficeKnowledge {
-    research?: Record<string, WeeklyResearch>;
     proposals: OfficeProposal[];
     lessons: Lesson[];
 }
@@ -170,7 +167,6 @@ export interface KnowledgeState {
     unblockBriefs?: Record<string, { known: string; decision: string; next: string; at: string; retrospectiveId: string }>;
     improvements?: KnowledgeImprovement[];
     improvementGrant?: ImprovementGrant;
-    research?: WeeklyResearch[];
     deliveryEvents?: RetrospectiveRecord[];
     expiredPackets?: string[];
 
@@ -237,16 +233,4 @@ export interface KnowledgeImprovement {
     /** Unsuccessful admission or reconciliation attempts; drives the retry backoff. */
     reconcileAttempts?: number;
     providerId?: string; url?: string; effectIds: string[]; detail: string; createdAt: string;
-}
-export interface ResearchTopic { id: string; question: string; technology: string; version: string }
-export interface ResearchSource {
-    topicId?: string; applicability?: 'unknown'; contradictions?: string;
-    url: string; retrievedAt: string; version: string; primary: boolean;
-    readEvidence: string; claim: string;
-}
-export interface WeeklyResearch {
-    id: string; topics: ResearchTopic[]; host: string; attempts: number;
-    status: 'pending' | 'running' | 'completed' | 'partial' | 'unavailable';
-    inputDigest: string; attemptId?: string; nextAt: string; startedAt?: string; finishedAt?: string;
-    sources: ResearchSource[]; findings: string[]; unavailable: string[];
 }

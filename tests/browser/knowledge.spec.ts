@@ -91,14 +91,14 @@ test('merge posts can go to a Slack channel and tag people by member ID', async 
   await expect.poll(async () => (await (await request.get('/api/office')).json()).coordination.notices.policy.channel).toMatchObject({ enabled: true, channelId: 'C0DELIVER', channelName: 'delivery', workspaceId: 'T09KF5BJR', mentionIds: ['U111AAA', 'U222BBB'] });
 });
 
-test('Harper shows active guidance, original failure history, uncertain publication and unavailable research', async ({ page, request }) => {
+test('Harper shows active guidance, original failure history, uncertain publication and learning coverage', async ({ page, request }) => {
   await setPreferences(request, { reducedMotion: true, quality: 'low' });
   const brain = await (await request.get('/api/office?project=brain')).json();
   await request.post('/__fixture/snapshot?project=brain', { data: { agents: [...brain.agents, { id: 'knowledge', name: 'Harper', title: 'Knowledge engineer', activity: 'idle', task: 'Ready', ticket: '', sessionId: '', lastSeen: at }], knowledge: {
     enabled: true, consumed: [], pending: [], retrospectives: [], lessons: [{ ...lesson('active-review', 'Keep the exact source receipt'), tier: 'guidance', revision: 3 }],
     followups: [{ id: 'incident', source: { kind: 'message', id: 'original' }, key: 'GH-9', owner: 'Morgan', nextAction: 'Verify the original effect', disposition: 'unknown', history: [{ at, disposition: 'unresolved', fingerprint: 'old' }], evidence: [{ kind: 'learning', ref: 'source', url: '', detail: 'Original failure: response lost' }] }],
     improvements: [{ id: 'fix', change: 'Check the marker', status: 'uncertain', detail: 'The original create must not be resent' }],
-    rollups: [{ id: 'rollup:2026-11-06', weekEnding: '2026-11-06', summary: 'Observed activity; application unknown.', learning: { coverage: { status: 'partial', startedAt: '2026-11-03T12:00:00Z' }, assignments: 1, eligibleAssignments: 1, exposedAssignments: 1, eligiblePairs: 1, exposedPairs: 1, omittedPairs: 0, resolved: 0, unresolved: 0, unknown: 1 }, officeProposalIds: [], at, researchId: 'research:2026-11-06', research: { status: 'unavailable', findings: [], sources: [], unavailable: ['Restricted hosted retrieval unavailable'] }, metrics: { completed: 0, parked: 0, repairAttempts: 0, reroutes: 0, ciRepairs: 0, medianBlockHours: null, lessonsAdded: 1 } }],
+    rollups: [{ id: 'rollup:2026-11-06', weekEnding: '2026-11-06', summary: 'Observed activity; application unknown.', learning: { coverage: { status: 'partial', startedAt: '2026-11-03T12:00:00Z' }, assignments: 1, eligibleAssignments: 1, exposedAssignments: 1, eligiblePairs: 1, exposedPairs: 1, omittedPairs: 0, resolved: 0, unresolved: 0, unknown: 1 }, officeProposalIds: [], at, metrics: { completed: 0, parked: 0, repairAttempts: 0, reroutes: 0, ciRepairs: 0, medianBlockHours: null, lessonsAdded: 1 } }],
   } } });
   await page.goto('/'); await page.getByLabel('Office project').selectOption('brain');
   await page.getByRole('button', { name: /^Visit Harper, / }).click();
@@ -108,5 +108,4 @@ test('Harper shows active guidance, original failure history, uncertain publicat
   await expect(drawer.getByText('The original create must not be resent')).toBeVisible();
   await drawer.getByText('Original history (1)').click();
   await expect(drawer.getByText('Original failure: response lost')).toBeVisible();
-  await expect(drawer.getByText('Restricted hosted retrieval unavailable')).toBeVisible();
 });

@@ -10,7 +10,6 @@ import { knowledgeOfficeState,knowledgeEntries } from '../knowledge/office-state
 import { knowledgeSnapshot,officeKnowledgeSnapshot } from '../knowledge/knowledge-snapshot';
 import { CommittedBrain } from '../knowledge/brain/reader';
 import { maintainLearning } from '../knowledge/learning-maintenance';
-import { scheduledResearch } from '../knowledge/weekly-research';
 import { queueImprovements } from '../knowledge/queue-improvements';
 import { reconcileBlockerFollowups } from '../knowledge/blocker-followups';
 import { projectSlackDeliveries } from '../conversations/slack/project-deliveries';
@@ -160,7 +159,6 @@ export class Offices {
         const entries = [...this.entries.values()];
         const queues = (lane: string) => {
             const queues = entries.map(entry => ({ store: entry.store, items: this.projection(entry, lane) }));
-            if (lane === 'knowledge') for (const item of scheduledResearch(this.control, entries.map(entry => entry.store), store => (prompt, schema, opts) => this.entries.get(store.project.id)!.engine.knowledgeAgents.run('knowledge', prompt, schema, opts), new Date())) queues.find(queue => queue.store === item.store)?.items.push(item);
             const report = lane === 'cto' ? this.dailyCTO.pending() : undefined;
             if (report && queues[0])
                 queues[0].items.push({ store: entries[0].store, work: { projectId: entries[0].store.project.id, kind: 'daily-cto', id: report.id }, stage: 'daily-cto', rank: 3, enqueuedAt: report.collectedAt, eligibility: { state: 'runnable', reason: 'Daily all-project assessment is due', owner: 'Avery', nextCheckAt: null }, identity: () => String(this.control.get(report.id)?.revision), execute: () => this.dailyCTO.pump(report), allowPaused: true });

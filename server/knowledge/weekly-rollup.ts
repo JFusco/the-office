@@ -66,7 +66,7 @@ export async function runRollup(store: Store, run: KnowledgeRunner, id: string, 
     if (!activity.assignments && !knowledge.retrospectives.some(record => record.trigger === 'learning' && (record.eventAt || record.at) >= metrics.from && (record.eventAt || record.at) < metrics.to) && !metrics.completed && !metrics.parked && !metrics.retrospectives && !metrics.lessonsAdded && metrics.medianQueueMinutes === null) {
         store.transaction(() => {
             const current = store.state.knowledge!;
-            (current.rollups ??= []).push({ id, weekEnding, metrics, learning: activity, researchId: `research:${weekEnding}`, summary: 'No delivery activity this week.', officeProposalIds: [], at: now.toISOString() });
+            (current.rollups ??= []).push({ id, weekEnding, metrics, learning: activity, summary: 'No delivery activity this week.', officeProposalIds: [], at: now.toISOString() });
             current.rollups = current.rollups.slice(-ROLLUP_HISTORY);
             if (current.rollupRetry?.id === id) delete current.rollupRetry;
             store.emit('knowledge-rollup', `Harper's weekly roll-up for ${weekEnding}: no delivery activity.`, 'knowledge');
@@ -76,7 +76,7 @@ export async function runRollup(store: Store, run: KnowledgeRunner, id: string, 
     const retry = knowledge.rollupRetry?.id === id ? knowledge.rollupRetry : { id, attempts: 0, nextAt: '', lastError: '' };
     retry.metrics ??= metrics; retry.learning ??= activity;
     if (retry.attempts >= 5) {
-        (knowledge.rollups ??= []).push({ id, weekEnding, metrics, learning: activity, researchId: `research:${weekEnding}`, summary: 'Narrative unavailable after five attempts. Deterministic metrics retained.', unavailable: retry.lastError || 'Final attempt interrupted', officeProposalIds: [], at: now.toISOString() });
+        (knowledge.rollups ??= []).push({ id, weekEnding, metrics, learning: activity, summary: 'Narrative unavailable after five attempts. Deterministic metrics retained.', unavailable: retry.lastError || 'Final attempt interrupted', officeProposalIds: [], at: now.toISOString() });
         knowledge.rollups = knowledge.rollups.slice(-ROLLUP_HISTORY); delete knowledge.rollupRetry; store.save(); return;
     }
     retry.attempts++;
@@ -91,7 +91,7 @@ export async function runRollup(store: Store, run: KnowledgeRunner, id: string, 
         store.transaction(() => {
             const current = store.state.knowledge!;
             if (current.rollups?.some(rollup => rollup.id === id)) return;
-            (current.rollups ??= []).push({ id, weekEnding, metrics, learning: activity, researchId: `research:${weekEnding}`, summary: result.summary.trim(), officeProposalIds: proposalIds, at: store.clock.now().toISOString() });
+            (current.rollups ??= []).push({ id, weekEnding, metrics, learning: activity, summary: result.summary.trim(), officeProposalIds: proposalIds, at: store.clock.now().toISOString() });
             current.rollups = current.rollups.slice(-ROLLUP_HISTORY);
             delete current.rollupRetry;
             store.emit('knowledge-rollup', `Harper's weekly roll-up for ${weekEnding}: ${metrics.completed} completed, ${metrics.parked} parked, ${metrics.repairAttempts} repair rounds.`, 'knowledge');
@@ -103,7 +103,7 @@ export async function runRollup(store: Store, run: KnowledgeRunner, id: string, 
             current.lastError = String(error instanceof Error ? error.message : error).slice(0, 500);
             current.nextAt = new Date(store.clock.now().getTime() + retryDelay(current.attempts)).toISOString();
             if (current.attempts >= 5) {
-                (store.state.knowledge!.rollups ??= []).push({ id, weekEnding, metrics: current.metrics || metrics, summary: 'Narrative unavailable after five attempts. Deterministic metrics retained.', unavailable: current.lastError, officeProposalIds: [], at: store.clock.now().toISOString(), learning: activity, researchId: `research:${weekEnding}` });
+                (store.state.knowledge!.rollups ??= []).push({ id, weekEnding, metrics: current.metrics || metrics, summary: 'Narrative unavailable after five attempts. Deterministic metrics retained.', unavailable: current.lastError, officeProposalIds: [], at: store.clock.now().toISOString(), learning: activity });
                 store.state.knowledge!.rollups = store.state.knowledge!.rollups!.slice(-ROLLUP_HISTORY);
                 delete store.state.knowledge!.rollupRetry;
             }

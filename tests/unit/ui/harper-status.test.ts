@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { test, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { BlockerFollowups } from '../../../src/knowledge/BlockerFollowups';
-import { ResearchSummary } from '../../../src/knowledge/ResearchSummary';
+import { LearningCoverage } from '../../../src/knowledge/LearningCoverage';
 import { LessonsPanel } from '../../../src/knowledge/LessonsPanel';
 import { knowledgeStore, learningLesson } from '../knowledge/knowledge-fixture';
 import { learningMetrics } from '../../../server/knowledge/learning-metrics';
@@ -10,7 +10,7 @@ test('weekly status labels partial coverage and never displays unavailable zeros
     const f = knowledgeStore();
     try {
         const k = f.store.state.knowledge!; k.learningStartedAt = '2026-11-03T12:00:00Z';
-        const render = (from: string, to: string) => renderToStaticMarkup(createElement(ResearchSummary, { rollup: { learning: learningMetrics(k, from, to) } as never }));
+        const render = (from: string, to: string) => renderToStaticMarkup(createElement(LearningCoverage, { rollup: { learning: learningMetrics(k, from, to) } as never }));
         const unavailable = render('2026-10-23', '2026-10-30');
         expect(unavailable).toContain('Learning coverage unavailable'); expect(unavailable).not.toContain('Recorded assignments:');
         const partial = render('2026-10-30', '2026-11-06');
@@ -38,6 +38,6 @@ test('blockers preserve source disposition and uncertain publication; legacy rep
         f.store.state.knowledge!.improvements = [{ id: 'fix', change: 'Fix marker', status: 'uncertain', detail: 'No resend' } as never];
         const html = renderToStaticMarkup(createElement(BlockerFollowups, { knowledge: f.store.state.knowledge }));
         expect(html).toContain('Original response lost'); expect(html).toContain('unknown'); expect(html).toContain('uncertain'); expect(html).not.toContain('<button');
-        expect(renderToStaticMarkup(createElement(ResearchSummary, { rollup: {} as never }))).toContain('Legacy report: exposure coverage unavailable');
+        expect(renderToStaticMarkup(createElement(LearningCoverage, { rollup: {} as never }))).toContain('Legacy report: exposure coverage unavailable');
     } finally { f.close(); }
 });
