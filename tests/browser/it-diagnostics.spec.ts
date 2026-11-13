@@ -23,7 +23,7 @@ test('IT separates current session access from retained shutdown investigations 
  const updated=await page.evaluate(v=>new Date(v).toLocaleString(),cases[0].updatedAt);
  await expect(current.getByText(`Investigation updated: ${updated}.`,{exact:false})).toBeVisible();
  await expect(current.getByText(/3 of 3 diagnosis attempts used/)).toHaveCount(3);
- await current.getByText('Original diagnostic · worker-1',{exact:true}).first().click();
+ await current.getByText('Original diagnostic',{exact:true}).first().click();
  await expect(current.getByText('Original technical diagnostic for GH-145',{exact:true})).toBeVisible();
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:evidence('it-investigations-clear-mobile.png'),fullPage:true});expect(checks).toBe(0);

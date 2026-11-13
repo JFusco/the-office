@@ -1,3 +1,4 @@
+import { withoutIdentifiers } from '../office/without-identifiers';
 import { deliveryRepairProjection } from './delivery-repair-projection';
 import type { OfficeSnapshot, TicketJob, MaintenanceRun } from '../shared';
 // A URL may hold balanced parentheses; it never swallows wrapping quotes, backticks, brackets or trailing punctuation.
@@ -7,7 +8,7 @@ const BARE_URL = new RegExp('<?' + URL_BODY + '>?', 'g');
 // Keep the saved record intact; only shorten its presentation.
 export function shortSummary(text: string = '', limit = 240) {
     const first = text.split('\n').find(s => s.trim())?.trim() || 'No update yet.';
-    const clean = first.replace(MD_LINK, '$1').replace(BARE_URL, 'linked record').replace(/\b[a-f0-9]{40}\b/gi, 'the reviewed commit');
+    const clean = withoutIdentifiers(first.replace(MD_LINK, '$1').replace(BARE_URL, 'linked record')) || 'No update yet.';
     if (clean.length <= limit)
         return clean;
     const end = clean.slice(0, limit - 1).lastIndexOf(' ');

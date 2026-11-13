@@ -17,7 +17,7 @@ test('living office renders, opens contextual rooms and supports keyboard naviga
   await page.keyboard.press('Escape');await page.getByRole('button',{name:'Visit Riley, QA'}).click();
   await expect(page.getByRole('heading',{name:'Riley',exact:true})).toBeVisible();
   const qa=(await(await page.request.get('/api/office')).json()).agents.find((a:any)=>a.id==='qa');
-  await expect(page.locator('[data-panel-foot]')).toContainText(qa.sessionId||'No session running');
+  await expect(page.locator('[data-panel-foot]')).toContainText(qa.sessionId?'Session running':'No session running');
   expect(errors).toEqual([]);
 });
 test('explicit tour is local, animated, and cannot execute real ticket actions',async({page})=>{

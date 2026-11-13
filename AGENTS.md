@@ -104,7 +104,7 @@ src/
 
 Use the repository-local [Graphify skill](.agents/skills/graphify/SKILL.md) for the
 shared code map of `server/`, `src/` and `scripts/`. Exact behavior comes from source;
-rationale comes from `docs/` and this file. Use Graphify 0.9.36. After cloning, run
+rationale comes from `docs/` and this file. Use Graphify 0.9.70. After cloning, run
 `pnpm install` (activates Husky) and `graphify hook install` for the native Git refresh
 hooks and the local `graph.json` merge driver. Hooks skip linked worktrees, including
 the harness's delivery worktrees; refresh the canonical map from the primary checkout.
