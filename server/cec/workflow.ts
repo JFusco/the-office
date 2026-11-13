@@ -15,7 +15,7 @@ export function eligibility(t: Pick<Ticket, 'key' | 'assignee' | 'subtask' | 'bo
     if (t.subtask)
         return 'Subtasks are excluded';
     if (!t.boardMember)
-        return 'Not in CEC board 9121';
+        return CEC.intakeListUrl ? 'Not in the configured CEC project list' : `Not in CEC board ${CEC.board}`;
     if (allowedStatus) {
         if (t.status !== allowedStatus || !t.statusId)
             return 'Ticket left the authorized intake status';

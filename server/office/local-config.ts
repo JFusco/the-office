@@ -1,4 +1,5 @@
 import { AUTO_ADOPT_BOTS } from '../delivery/intake/dependency-bots/auto-adopt';
+import { projectListScope } from '../cec/intake-scope';
 import { assertFeaturePlanningConfig, type FeaturePlanningBindings } from '../features/progression/policy';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -10,6 +11,8 @@ export interface CECBinding {
     site: string;
     cloudId: string;
     board: number;
+    /** Explicit replacement for a removed Jira board; no automatic fallback. */
+    intakeListUrl?: string;
     account: string;
     repo: string;
     organization: string;
@@ -40,6 +43,7 @@ export function localBindings(dataRoot: string): LocalBindings {
         throw new Error('Local project bindings are incomplete or duplicated');
     if (config.cec && (typeof config.cec.board !== 'number' || ['site', 'cloudId', 'account', 'repo', 'organization', 'project', 'repository', 'repositoryId', 'target'].some(key => typeof config.cec![key as keyof CECBinding] !== 'string' || !config.cec![key as keyof CECBinding])))
         throw new Error('Local Jira/Azure binding is incomplete');
+    if (config.cec) projectListScope(config.cec);
     for (const project of config.projects || [])
         if (project.checks !== undefined && (!Array.isArray(project.checks) || !project.checks.length || project.checks.length > 8 || project.checks.some(check => !check || typeof check.name !== 'string' || !/^[\w:.-]{1,60}$/.test(check.name) || !Array.isArray(check.command) || !check.command.length || check.command.some(part => typeof part !== 'string' || !part) || check.timeoutMs !== undefined && (!Number.isInteger(check.timeoutMs) || check.timeoutMs < 1000 || check.timeoutMs > 60 * 60000))))
             throw new Error('Project checks must be named argv commands with an optional timeout');

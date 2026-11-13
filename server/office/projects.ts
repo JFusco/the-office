@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { DATA, CEC, LOCAL_BINDINGS } from './config';
+import { intakeLocation } from '../cec/intake-scope';
 import type { OfficeProject, Role } from '../../src/shared';
 /** Use the validated CEC fallback for its canonical explicit project too. Empty overrides remain explicit. */
 export function withCECGoalEvidence(project: OfficeProject, binding: { repo: string; repository: string; goalEvidencePaths?: string[] }): OfficeProject {
@@ -8,10 +9,10 @@ export function withCECGoalEvidence(project: OfficeProject, binding: { repo: str
     return { ...project, goalEvidencePaths: [...binding.goalEvidencePaths] };
 }
 export const PROJECTS: OfficeProject[] = (LOCAL_BINDINGS.projects || [
-    { id: 'cec', name: 'CEC', provider: 'azure', repo: CEC.repo, repository: CEC.repository, target: CEC.target, board: { name: 'CEC Jira board', url: `${CEC.site}/secure/RapidBoard.jspa?rapidView=${CEC.board}` } },
+    { id: 'cec', name: 'CEC', provider: 'azure', repo: CEC.repo, repository: CEC.repository, target: CEC.target, board: intakeLocation(CEC) },
     { id: 'brain', name: 'Brain', provider: 'github', repo: '/Users/joe.fusco/Projects/brain', repository: 'JFusco/brain', target: 'main', githubProject: { owner: 'JFusco', number: 8, url: 'https://github.com/users/JFusco/projects/8' } },
     { id: 'cms-field-vocabulary', name: 'CMS field vocabulary', provider: 'github', repo: '/Users/joe.fusco/Projects/cms-field-vocabulary', repository: 'JFusco/cms-field-vocabulary', target: 'main', githubProject: { owner: 'JFusco', number: 6, url: 'https://github.com/users/JFusco/projects/6' } },
-]).map(project => withCECGoalEvidence(project, CEC));
+]).map(project => withCECGoalEvidence(project.id === 'cec' && project.provider === 'azure' && CEC.intakeListUrl ? { ...project, board: intakeLocation(CEC) } : project, CEC));
 export function projectById(id = 'cec'): OfficeProject {
     const project = PROJECTS.find(p => p.id === id);
     if (!project)
