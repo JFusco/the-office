@@ -74,7 +74,7 @@ test('an expired shared read deadline rejects without finalizing the parser', as
     expect(finish).not.toHaveBeenCalled();
 });
 
-test('a changed open file cannot certify complete coverage or enter the derived-context cache', async () => {
+test('appends during the JSON fold leave the captured observation valid and invalidate the next cache lookup', async () => {
     const directory = await root(), file = join(directory, 'changing.jsonl'); await writeFile(file, meta + '\n' + start);
     let change = true;
     const finishes: ReturnType<typeof vi.fn>[] = [];
@@ -84,9 +84,12 @@ test('a changed open file cannot certify complete coverage or enter the derived-
         return { write(line) { parser.write(line); if (change) { change = false; appendFileSync(file, '\n' + call('gh pr view 222 --repo Joe/cms')); } }, finish };
     });
     const result = await read(file, 'loaded', projects);
-    expect(result).toMatchObject({ activity: 'active', scopes: [{ project: 'cms', prs: [222] }] });
-    expect(finishes).toHaveLength(2); expect(finishes[0]).not.toHaveBeenCalled(); expect(finishes[1]).toHaveBeenCalledTimes(1);
-    expect(await read(file, 'loaded', projects)).toBe(result); expect(finishes).toHaveLength(2);
+    expect(result).toMatchObject({ activity: 'active', scopes: [] });
+    expect(finishes).toHaveLength(1); expect(finishes[0]).toHaveBeenCalledTimes(1);
+    const newer = await read(file, 'loaded', projects);
+    expect(newer).toMatchObject({ activity: 'active', scopes: [{ project: 'cms', prs: [222] }] });
+    expect(newer).not.toBe(result); expect(finishes).toHaveLength(2);
+    expect(await read(file, 'loaded', projects)).toBe(newer); expect(finishes).toHaveLength(2);
 });
 
 test('a record completed during parsing uses one fresh complete snapshot instead of treating the partial boundary as permanent corruption', async () => {

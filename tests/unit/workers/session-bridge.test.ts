@@ -1,4 +1,4 @@
-import {afterEach,expect,test} from 'vitest';
+import {afterEach,expect,test,vi} from 'vitest';
 import {createServer} from 'node:http';
 import {WebSocketServer} from 'ws';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -9,6 +9,18 @@ import {sessionScope} from '../../../server/workers/session-scope';
 const cleanup:(()=>void)[]=[];afterEach(()=>cleanup.splice(0).forEach(f=>f()));
 /** Injected desktop inventories carry the explicit process accounting report that coverage requires. */
 const accounted=(sessions:any[]=[])=>Object.assign(sessions,{unaccounted:[] as number[]});
+test('a slow inventory expires from its observation start rather than gaining freshness after parsing',async()=>{
+ const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
+ const start=Date.parse('2026-11-13T19:00:00Z');let now=start;
+ const clock=vi.spyOn(Date,'now').mockImplementation(()=>now);
+ try{
+  const execute:any=async(program:string)=>program==='claude'?'[]':'/brain/.git';
+  const bridge=new SessionBridge(()=>[store],execute,async()=>[],async()=>accounted(),async sessions=>{now+=46000;return sessions;});
+  await bridge.refresh();
+  expect(bridge.current.observedAt).toBe(new Date(start).toISOString());
+  expect(bridge.forProject(store,'GH-1')).toMatchObject({fresh:false,complete:false,ownership:{status:'unavailable'}});
+ }finally{clock.mockRestore();}
+});
 test('retained conversation exposes an outside chat to both projects without claiming historical issues',()=>{
  const stores:any[]=['brain','cms'].map(id=>({project:{id,repo:'/'+id,repository:'Joe/'+id},state:{workLog:[]}}));
  const row=(type:string,payload:unknown)=>JSON.stringify({type,payload});

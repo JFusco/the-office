@@ -41,10 +41,16 @@ The bridge never messages, resumes or interrupts another session.
 
 Reads stay within the local Codex session directory. JSONL is streamed with a
 64 MiB bound per record and one shared read deadline, rather than buffered as a
-whole transcript. If an append changes the snapshot while parsing an incomplete
-record, the reader discards that attempt and makes its existing single fresh-snapshot
-retry. The same file identity and complete current-turn records are still required.
-Stable malformed records, replacements and continuing churn remain unavailable.
+whole transcript. The reader first captures one complete, metadata-stable file
+version into a private, immediately unlinked descriptor, then parses that immutable
+version. The descriptor closes on success or failure; no named transcript is retained.
+An append during capture discards the attempt and permits one fresh capture within
+the original five-second deadline. Appends after capture belong to the next
+observation and invalidate the derived cache key; they do not invalidate the earlier
+complete observation. Inventory freshness starts before the native reads and capture,
+so parsing never grants an old snapshot a new freshness window. The same loaded
+identity and complete current-turn records are required. Stable malformed records,
+replacements, expired observations and continuing capture-time churn stay unavailable.
 Source status uses fixed failure categories without exposing native stderr, chat
 text or session paths; those categories diagnose a read failure and never clear ownership.
 Unreadable, mismatched or incomplete context makes coverage unavailable;
