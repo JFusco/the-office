@@ -7,6 +7,7 @@ import { HOLDS } from '../office/config';
 import { knowledgeOutbox } from '../knowledge/knowledge-outbox';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
 import { ctoInputRecovered } from './cto-input-resolution';
+import { isSavedPlanFollowup } from '../../src/conversations/saved-plan-followup';
 export function conversationResolved(state: OfficeSnapshot, message: TeamMessage): boolean {
     return !!message.resolvedBy || ctoInputRecovered(state, message) || state.messages.some(reply => reply.actionId === `message:${message.id}` && reply.from === 'pm' && reply.status === 'answered' &&
         reply.receipts.every(receipt => receipt.verified && !receipt.uncertain) &&
@@ -69,7 +70,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
             item(`maintenance:${run.id}`, `Read back ${state.project?.name || 'project'} maintenance`, `${run.stage}: ${run.error}`, 'pm');
     for (const t of state.tickets) {
         if (t.activity === 'blocked' && t.blocker)
-            item(`ticket:${t.key}:${t.stage}`, t.stage === 'plan' && (t.blocker === 'Saved implementation plan is required' || t.savedPlanRecoveryFailure) ? `${t.key} needs Office follow-up` : `${t.key} needs your help`, t.blocker, STAGE_ROLE[t.stage], t.key, t.url);
+            item(`ticket:${t.key}:${t.stage}`, isSavedPlanFollowup(t) ? `${t.key} needs Office follow-up` : `${t.key} needs your help`, t.blocker, STAGE_ROLE[t.stage], t.key, t.url);
         if (t.stage === 'ready-for-staging' && t.results['ready-for-staging']?.outcome === 'passed') {
             const pr = state.azure.prs.find(p => p.id === t.prId);
             if (pr?.status === 'completed') {

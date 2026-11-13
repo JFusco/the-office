@@ -19,7 +19,8 @@ export function OutboxSavedPlan({ snapshot, ticket, refresh }: { snapshot: Offic
         <p className="font-semibold">Office needs to reconnect the saved plan</p>
         <p className={mutedCopy}>Alex returned the plan. The Office could not attach its saved evidence to this ticket. No product answer or approval is needed from you.</p>
         <details><summary>Read Alex’s saved plan</summary><p className="whitespace-pre-wrap text-13">{ticket.results.plan?.summary}</p></details>
-        <p className={mutedCopy}>Reconciliation checks the original worker and saved plan, then continues through the selected delivery gates, including independent review when required. It does not rerun Alex’s planning or mark the ticket complete.</p>
+        <p className={mutedCopy}>Office first checks that it is safe to continue, then verifies the original worker and saved plan. The selected delivery gates still apply, including independent review when required. It does not rerun Alex’s planning or mark the ticket complete.</p>
+        {ticket.blocker !== 'Saved implementation plan is required' && !ticket.savedPlanRecoveryFailure ? <p role="status" className={mutedCopy}>The last safety check could not finish. Office must recheck current ownership before reconnecting the plan.</p> : null}
         {ticket.savedPlanRecoveryFailure ? <p role="status">{ticket.savedPlanRecoveryFailure.detail}</p> : null}
         <Button variant="primary" disabled={!!ticket.savedPlanRecoveryFailure || !!request || submitted || snapshot.paused || snapshot.mode === 'demo'} onClick={() => void reconcile()}>{request || submitted ? 'Reconciliation requested — check status' : 'Reconcile saved plan'}</Button>
         {error ? <p role="alert">{error}</p> : null}

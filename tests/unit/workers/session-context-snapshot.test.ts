@@ -6,6 +6,10 @@ import { join } from 'node:path';
 import { withSessionContextSnapshot } from '../../../server/workers/session-context-snapshot';
 import { sessionContextLines } from '../../../server/workers/session-context-lines';
 
+// These cases exercise the unchanged strict portable path, including refusal
+// when byte-by-byte capture races a writer. Native-clone behavior has real OS tests.
+vi.mock('../../../server/workers/session-context-clone', () => ({ captureSessionContextClone: async () => false }));
+
 vi.mock('node:fs/promises', async importOriginal => {
     const original = await importOriginal<typeof import('node:fs/promises')>();
     return { ...original, open: vi.fn(original.open) };
