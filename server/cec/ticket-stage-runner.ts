@@ -8,6 +8,7 @@ import { resolve } from 'node:path';
 import { recordApproach, reroute, missingApproachStage, stageNeeded } from '../delivery/pipeline/approach';
 import { correlatedBuild } from './azure';
 import { DATA } from '../office/config';
+import { verifiedTransition } from './transition-readback';
 import { advance, resultGate, qaEvidenceGap, publicationEvidenceGap } from './workflow';
 import { parkDecision } from './parking/park-ticket';
 import { parksInJira } from './parking/parks-in-jira';
@@ -65,10 +66,10 @@ export async function run(this: Engine, key: string) {
             const attemptId = this.store.begin(t, stage);
             const transition = ({ understand: 'In Progress', 'code-review': 'Code Review', 'repair-review': 'Code Review', qa: 'QA', retest: 'QA', preview: 'Ready for QA' } as Partial<Record<Stage, string>>)[stage];
             if (transition) {
-                const update = await this.agents.transition(t, transition);
+                const update = await this.jira.verifyStatus(t, transition, await this.agents.transition(t, transition));
                 (t.progressUpdates ??= []).push({ stage, target: transition, at: new Date().toISOString(), result: update });
                 this.store.save();
-                if (update.outcome !== 'passed' || update.receipts.some(r => !r.verified || r.uncertain) || transition === 'Code Review' && !update.receipts.some(r => r.action === 'jira-transition' && r.verified && !r.uncertain)) {
+                if (!verifiedTransition(update)) {
                     t.activity = 'blocked';
                     t.blocker = update.blocker || 'PM transition could not be verified';
                     this.store.emit('transition-blocked', t.blocker, 'pm', key);

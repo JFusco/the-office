@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { Store } from '../../../server/store/store';
 import { Engine } from '../../../server/scheduling/engine';
 import { CEC, DATA } from '../../../server/office/config';
+import { JiraOperations } from '../../../server/cec/jira-operations';
 import type { Stage, StageResult, Ticket, Evidence } from '../../../src/shared';
 const cleanup: string[] = [];
 const stores: Store[] = [];
@@ -101,6 +102,22 @@ test('review cannot start when its Jira status transition lacks verified read-ba
     expect(reviews).toBe(0);
     expect(t.activity).toBe('blocked');
     expect(t.progressUpdates?.at(-1)?.target).toBe('Code Review');
+});
+test('an already-Code-Review PM receipt advances only after native readback, without a repeated transition', async () => {
+    const { store, t, engine, artifactRoot } = setup(); t.stage = 'repair-review';
+    const old = output({ commit: sha, receipts: [{ id: 'read-only', action: 'jira-read-only', target: t.key,
+        verified: true, uncertain: false, detail: 'Already at the requested status; no write' }] });
+    engine.agents.transition = async () => old;
+    let nativeReads = 0, reviews = 0;
+    engine.jira = new JiraOperations(store, (async (_program: string, args: string[], options: { readOnly?: boolean }) => {
+        nativeReads++; expect(args.slice(0, 4)).toEqual(['jira', 'workitem', 'get', t.key]); expect(options?.readOnly).toBe(true);
+        return JSON.stringify({ data: [{ key: t.key, status: { name: 'Code Review', id: '10104' },
+            assignee: { accountId: CEC.account }, issuetype: { name: 'Improvement', subtask: false }, updated: 'unchanged' }] });
+    }) as any);
+    engine.agents.stage = async () => { reviews++; return output({ commit: sha, evidence: [proof(artifactRoot, 'review', sha)] }); };
+    await engine.run(t.key);
+    expect(nativeReads).toBe(2); expect(reviews).toBe(1); expect(t.activity).not.toBe('blocked');
+    expect(t.progressUpdates?.at(-1)?.result.receipts).toHaveLength(2); expect(old.receipts).toHaveLength(1);
 });
 test('QA validates candidate evidence before publishing a passed outcome', async () => {
     const { store, t, engine } = setup();
