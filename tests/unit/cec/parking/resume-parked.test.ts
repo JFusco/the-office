@@ -30,7 +30,7 @@ test('stays parked while Blocked, waits on any other status, and resumes once wh
     expect(t.blocker).not.toMatch(/interrupted|timed out|uncertain|reconcil/i);
     await poll();
     expect(resumed).toEqual(['CEC-900']);
-    expect(jira.writes()).toBe(2);
+    expect(jira.writes()).toBe(1);
 });
 
 test('a reassigned ticket is not resumed even when moved back', async () => {
@@ -73,6 +73,7 @@ test('a lost transition response is confirmed by read-back, then the comment is 
 test('a lost comment response is confirmed by read-back and never reposted', async () => {
     const { store, clock } = cecStore(), t = ticket('In Progress'), jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
     store.state.tickets = [t];
+    jira.faults.omitInlineComment = true; // Legacy/provider-missing inline comment still uses one durable standalone comment.
     jira.faults.loseCommentResponse = true;
     await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('scope'));
     jira.faults.loseCommentResponse = false;
@@ -118,6 +119,7 @@ test('a park interrupted before its transition was recorded is completed by the 
 test('a comment refused after Blocked landed keeps the park and retries the comment as a fresh intent', async () => {
     const { store, clock } = cecStore(), t = ticket('In Progress'), jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
     store.state.tickets = [t];
+    jira.faults.omitInlineComment = true; // Retained legacy transition had no inline comment.
     jira.faults.afterTransition = () => { store.state.paused = true; };
     await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('scope'));
     expect(jira.state['CEC-900'].status).toBe('Blocked');
@@ -136,6 +138,7 @@ test('a comment refused after Blocked landed keeps the park and retries the comm
 test('a reassignment after Blocked landed keeps watching without commenting on someone else\'s ticket', async () => {
     const { store, clock } = cecStore(), t = ticket('In Progress'), jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
     store.state.tickets = [t];
+    jira.faults.omitInlineComment = true; // Legacy parking before the inline-comment correction.
     jira.faults.loseTransitionResponse = true;
     await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('scope'));
     jira.faults.loseTransitionResponse = false;

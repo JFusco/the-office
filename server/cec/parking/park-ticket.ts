@@ -11,7 +11,7 @@ export const parkEffectIds = (marker: string, commentAttempt = 0) => ({ transiti
 const effectFields = (store: Store, t: Ticket) => ({ work: { projectId: store.project.id, kind: 'delivery' as const, id: t.key }, attemptId: t.parked!.marker.slice(MARKER.length), target: t.key, authorization: t.runId });
 
 /**
- * Moves the ticket to Jira Blocked, then posts one decision comment naming the status to return it to.
+ * Moves the ticket to Jira Blocked with its decision comment attached to the transition.
  * The transition goes first so a lost transition response is the only write since preflight and its
  * read-back is decisive. Both writes are durable effects: verified once, reconciled by read-back, never resent.
  */
@@ -33,24 +33,30 @@ export async function parkTicket(store: Store, execute: Execute, t: Ticket, stag
 /** The single Blocked transition for this parking; its identity comes only from the saved park record. */
 export async function moveToBlocked(store: Store, execute: Execute, t: Ticket): Promise<void> {
     const { marker, fromStatus } = t.parked!;
-    await new Effects(store).execute({ id: parkEffectIds(marker).transition, ...effectFields(store, t), operation: 'jira-transition', payload: { to: BLOCKED }, expectedState: { assignee: CEC.account, from: fromStatus },
+    const comment = decisionComment(t);
+    await new Effects(store).execute({ id: parkEffectIds(marker).transition, ...effectFields(store, t), operation: 'jira-transition', payload: { to: BLOCKED, comment }, expectedState: { assignee: CEC.account, from: fromStatus },
         preflight: async () => {
             const current = await readIssue(execute, t.key);
             if (current.assignee !== CEC.account || current.status !== fromStatus)
                 throw new Error('Jira assignee or status changed before parking');
         },
-        dispatch: async () => jira(execute, ['transition', '--id', t.key, '--transition-id', BLOCKED], false),
+        dispatch: async () => jira(execute, ['transition', '--id', t.key, '--transition-id', BLOCKED, '--transition-comment', comment, '--transition-comment-format', 'plain'], false),
         verify: async () => {
             const current = await readIssue(execute, t.key);
             return current.status === BLOCKED && current.assignee === CEC.account;
         } });
 }
 
+function decisionComment(t: Ticket): string {
+    const { marker, reason, stage, fromStatus } = t.parked!;
+    return `${marker}: ${reason}\n\nThe Office paused this ticket at ${STAGE_LABELS[stage]}. Move it back to ${fromStatus} to resume from the same stage.`;
+}
+
 /** One decision comment per parking, naming the status that resumes the ticket. */
 export async function commentDecision(store: Store, execute: Execute, t: Ticket): Promise<void> {
-    const { marker, reason, stage, fromStatus, commentAttempt } = t.parked!;
+    const { marker, commentAttempt } = t.parked!;
     if (await findComment(execute, t.key, marker)) return;
-    const text = `${marker}: ${reason}\n\nThe Office paused this ticket at ${STAGE_LABELS[stage]}. Move it back to ${fromStatus} to resume from the same stage.`;
+    const text = decisionComment(t);
     await new Effects(store).execute({ id: parkEffectIds(marker, commentAttempt).comment, ...effectFields(store, t), operation: 'jira-comment', payload: { marker }, expectedState: { assignee: CEC.account, status: BLOCKED },
         preflight: async () => {
             const current = await readIssue(execute, t.key);

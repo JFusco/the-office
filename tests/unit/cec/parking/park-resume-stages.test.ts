@@ -49,6 +49,6 @@ for (const [stage, status] of [['implement', 'In Progress'], ['code-review', 'Co
         await engine.run(t.key);
         expect(stages).toEqual([stage, stage]);
         expect(live.commit).toBe('a'.repeat(40));
-        expect(jira.writes()).toBe(2);
+        expect(jira.writes()).toBe(1);
     });
 }
