@@ -22,7 +22,7 @@ export const sameContextFile = (a: Stats, b: Stats) =>
 /** Complete strict JSONL coverage with bounded memory, work time and file identity. */
 export async function sessionContextLines(file: string | FileHandle, snapshot: Stats, parser: SessionContextParser,
     readDeadline = performance.now() + MAX_CONTEXT_READ_MS,
-    continuation?: { previous?: SessionContextCheckpoint; captured: (value: SessionContextCheckpoint) => void }): Promise<SessionContext> {
+    continuation?: { previous?: SessionContextCheckpoint; captured: (value: SessionContextCheckpoint) => void; progress?: (value: SessionContextCheckpoint) => void }): Promise<SessionContext> {
     const handle = typeof file === 'string' ? await open(file, constants.O_RDONLY | constants.O_NOFOLLOW) : file;
     const deadline = Math.min(performance.now() + MAX_CONTEXT_READ_MS, readDeadline);
     const checkTime = () => { if (performance.now() > deadline) throw new Error('Session context scan exceeded its read deadline'); };
@@ -32,6 +32,7 @@ export async function sessionContextLines(file: string | FileHandle, snapshot: S
         parser = prefix.parser;
         const buffer = Buffer.alloc(CHUNK_BYTES), decoder = new StringDecoder('utf8');
         let position = prefix.offset, offset = position, pieces: string[] = [], bytes = 0;
+        let progressAt = prefix.hashedBytes;
         const add = (text: string) => {
             bytes += Buffer.byteLength(text);
             if (bytes > MAX_RECORD_BYTES) throw new Error('Session context record coverage is unavailable');
@@ -57,6 +58,14 @@ export async function sessionContextLines(file: string | FileHandle, snapshot: S
             const newline = chunk.lastIndexOf(10);
             if (newline !== -1) offset = position + newline + 1;
             position += bytesRead; consume(decoder.write(chunk));
+            // Retain only a derived fold at a completed chunk boundary. A later
+            // read must hash this entire prefix again before using that state.
+            if (continuation?.progress && prefix.hash && parser.fork && position - progressAt >= 16 * 1024 * 1024) {
+                checkTime();
+                continuation.progress({ parser: parser.fork(), offset, bytes: position, digest: prefix.hash.copy().digest('hex') });
+                progressAt = position;
+                checkTime();
+            }
         }
         consume(decoder.end()); checkTime();
         // A final blank/unterminated line is provisional. Continue later from

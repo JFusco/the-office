@@ -14,7 +14,7 @@ export type ContextReader = (path: string, id: string, projects: ContextProject[
 export function sessionContextFile(root: string, parse: (raw: string, id: string, projects: ContextProject[]) => SessionContext,
     createParser?: (id: string, projects: ContextProject[]) => SessionContextParser): ContextReader {
     const cache = new Map<string, { version: string; binding: string; ino: number; dev: number;
-        context: SessionContext; checkpoint?: SessionContextCheckpoint }>();
+        context?: SessionContext; checkpoint?: SessionContextCheckpoint }>();
     return async (path, id, projects) => {
         const [directory, original] = await Promise.all([realpath(root), realpath(path)]), identity = await stat(original);
         const started = performance.now(), deadline = started + MAX_CONTEXT_READ_MS, loopStarted = performance.eventLoopUtilization();
@@ -27,8 +27,9 @@ export function sessionContextFile(root: string, parse: (raw: string, id: string
             const version = JSON.stringify([id, info.dev, info.ino, info.size, info.mtimeMs, info.ctimeMs, projects]);
             const binding = JSON.stringify([id, projects]);
             const prior = cache.get(file);
-            if (prior?.version === version) return prior.context;
+            if (prior?.version === version && prior.context) return prior.context;
             let phase: ContextReadPhase = 'snapshot', phaseStarted = performance.now();
+            let progress: SessionContextCheckpoint | undefined;
             try {
                 let checkpoint: SessionContextCheckpoint | undefined;
                 const context = createParser
@@ -37,6 +38,7 @@ export function sessionContextFile(root: string, parse: (raw: string, id: string
                         return sessionContextLines(snapshot, captured, createParser(id, projects), deadline, {
                             previous: prior?.binding === binding && prior.ino === info.ino && prior.dev === info.dev ? prior.checkpoint : undefined,
                             captured: value => { checkpoint = value; },
+                            progress: value => { progress = value; },
                         });
                     })
                     : parse(await readFile(file, 'utf8'), id, projects);
@@ -55,9 +57,17 @@ export function sessionContextFile(root: string, parse: (raw: string, id: string
                 // context and try once from a fresh snapshot, within the original deadline.
                 // A snapshot ending mid-record can fail parsing before the normal final
                 // stat check. Classify that changed snapshot before deciding whether to retry.
+                const timedOut = error instanceof Error && error.message === 'Session context scan exceeded its read deadline';
                 const current = await realpath(path), after = await stat(current);
                 if (current !== original || after.ino !== identity.ino || after.dev !== identity.dev)
                     throw new Error('Session context file identity changed during its read');
+                // A timeout remains unavailable. Retain only derived parser progress,
+                // never a successful observation, transcript or live file handle.
+                // Its prefix must match a fresh capture before the next fold uses it.
+                if (timedOut && progress) {
+                    if (cache.size >= 1000) cache.clear();
+                    cache.set(file, { version: '', binding, ino: info.ino, dev: info.dev, checkpoint: progress });
+                }
                 if (!sameContextFile(info, after)) error = new ContextReadChanged('Session context file changed during its read');
                 // Stable malformed records, replacements and continuing churn stay unavailable.
                 if (!(error instanceof ContextReadChanged) || attempt !== 0 || performance.now() >= deadline) {

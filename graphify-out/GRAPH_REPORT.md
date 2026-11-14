@@ -1,7 +1,7 @@
-# Graph Report - office-context-snapshot-direct-nov14  (2026-11-14)
+# Graph Report - office-context-fold-throughput-nov14  (2026-11-14)
 
 ## Corpus Check
-- 790 files · ~323,742 words
+- 790 files · ~323,896 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `01d2bfa9`
+- Built from commit: `5cd926d1`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
