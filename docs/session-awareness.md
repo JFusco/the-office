@@ -59,7 +59,15 @@ into remote clients or historical chats. Claude's native inventory supplies acti
 its exact session ID selects the local transcript, including after a checkout moves.
 Claude tool results and API-history blobs cannot masquerade as new human decisions
 or new tool executions. Unchanged files reuse a derived context index so idle chats
-do not require repeated full transcript scans.
+do not require repeated full transcript scans. Growing Codex chats also retain a
+derived parser checkpoint before the final blank or unterminated record. The next
+immutable capture hashes every previously observed byte before using that checkpoint;
+only a matching prefix with the same session, file identity and project bindings
+can continue from it. Changed prefixes and truncated files receive a complete fold.
+The final record is always reparsed, so an append cannot turn a malformed or partial
+record into accepted coverage. Checkpoints contain derived context and a digest,
+never transcript bytes or file descriptors. Hashing and parsing share the unchanged
+five-second deadline; failure never publishes a partial checkpoint or clears ownership.
 
 A forked Claude transcript may begin with copied parent records before its own
 native identity records. The child index excludes that parent conversation and
