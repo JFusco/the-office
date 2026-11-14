@@ -68,15 +68,20 @@ test('human outbox and PM conversation are accessible and preserve ticket contex
   const writes:any[]=[];
   await page.route('**/api/office',route=>{state.snapshotSequence++;return route.fulfill({json:state});});
   await page.route('**/api/events',route=>route.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
-  await page.route('**/api/messages',async route=>{const data=route.request().postDataJSON();writes.push(data);state.messages.push({...data,requestId:data.id,from:'human',to:'pm',status:'queued',createdAt:state.serverTime,sessionId:'',recipients:[],receipts:[],error:''});await route.fulfill({status:202,json:{accepted:true,id:data.id}});});
+  await page.route('**/api/messages',async route=>{const data=route.request().postDataJSON();writes.push(data);state.messages.push({...data,requestId:data.id,from:'human',to:data.role,status:'queued',createdAt:state.serverTime,sessionId:'',recipients:[],receipts:[],error:''});await route.fulfill({status:202,json:{accepted:true,id:data.id}});});
   await page.goto('/');await page.getByRole('button',{name:/^Open your outbox,/}).click();
   await expect(page.getByRole('complementary',{name:'Your outbox'})).toBeVisible();await page.getByRole('button',{name:/CEC-999 needs your help/}).click();
-  await page.getByRole('textbox',{name:'Message Morgan'}).fill('Synthetic test reply: please recheck access.');await page.getByRole('button',{name:'Send & recheck',exact:true}).click();
-  await expect(page.getByText('Queued · waiting for a free desk')).toBeVisible();expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({role:'pm',ticket:'CEC-999',actionId:'ticket:CEC-999:qa',recheck:true});
+  await page.getByRole('textbox',{name:'Your reply to Riley'}).fill('Synthetic test reply: please recheck access.');await page.getByRole('button',{name:'Send & recheck',exact:true}).click();
+  await expect(page.getByText('Queued · waiting for a free desk')).toBeVisible();expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({role:'qa',ticket:'CEC-999',actionId:'ticket:CEC-999:qa',recheck:true});
+  // Outbox replies go to the item's displayed owner (#188), so the reply is threaded with Riley, not Morgan.
+  await expect(page.getByRole('region',{name:'Conversation with Riley'}).getByText('Synthetic test reply: please recheck access.',{exact:true})).toBeVisible();
   await expect(page.getByText('Needs follow-up',{exact:true})).toBeVisible();await page.screenshot({path:evidence('office-outbox-fixture.png')});
   await page.keyboard.press('Escape');await page.keyboard.press('c');await expect(page.getByRole('heading',{name:'Chat with Morgan',exact:true})).toBeVisible();
-  await page.getByLabel('Conversation topic',{exact:true}).selectOption('CEC-999');await expect(page.getByText('Synthetic test reply: please recheck access.',{exact:true})).toBeVisible();
-  await page.getByRole('textbox',{name:'Message Morgan'}).fill('Please tell QA about this requirement.');await page.getByRole('button',{name:'Send message',exact:true}).click();expect(writes).toHaveLength(2);expect(writes[1]).toMatchObject({ticket:'CEC-999',actionId:'',recheck:false});
+  await page.getByLabel('Conversation topic',{exact:true}).selectOption('CEC-999');
+  await page.getByRole('textbox',{name:'Message Morgan'}).fill('Please tell QA about this requirement.');await page.getByRole('button',{name:'Send message',exact:true}).click();
+  // Morgan's CEC-999 thread holds the ticket's PM messages; the reply to Riley stays in Riley's thread.
+  const morgan=page.getByRole('log',{name:'Team conversation'});await expect(morgan.getByText('Please tell QA about this requirement.',{exact:true})).toBeVisible();
+  await expect(morgan.getByText('Synthetic test reply: please recheck access.',{exact:true})).toHaveCount(0);expect(writes).toHaveLength(2);expect(writes[1]).toMatchObject({role:'pm',ticket:'CEC-999',actionId:'',recheck:false});
 });
 test('chat stays usable on a narrow screen and in the illustrative tour',async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto('/');await page.getByRole('button',{name:'Chat with Morgan',exact:true}).click();await expect(page.getByRole('textbox',{name:'Message Morgan'})).toBeInViewport();
