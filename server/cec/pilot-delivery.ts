@@ -12,6 +12,8 @@ import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
 import { recoverSavedPlan } from './recover-saved-plan';
 import { continueImplementation } from './implementation-continuation/continue';
+import { parkingUnconfirmed } from './parking/park-ticket';
+import { reconcileRejectedParking } from './parking/rejected-transition';
 
 export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean }) {
     return this.store.transaction(() => {
@@ -181,6 +183,8 @@ export async function resume(this: Engine, key: string, background = true) {
     this.busy = true;
     let live: Awaited<ReturnType<Agents['readback']>>;
     try {
+        if (t.parked && parkingUnconfirmed(this.store, t))
+            await reconcileRejectedParking(this.store, this.jira.execute, t);
         live = await this.agents.readback(key);
     }
     finally {

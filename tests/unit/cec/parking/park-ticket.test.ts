@@ -14,7 +14,7 @@ test('only structured decisions without an uncertain write park in Jira', () => 
     expect(parksInJira(decision('scope', { receipts: [{ id: 'x', action: 'jira-update', target: 'CEC-900', verified: false, uncertain: true, detail: '' }] }))).toBe(false);
 });
 
-test('parks once: Blocked first, then one comment naming the status that resumes it', async () => {
+test('parks once with an inline decision comment and no duplicate standalone comment', async () => {
     const { store } = cecStore(), t = ticket('Code Review'), jira = fakeJira({ 'CEC-900': { status: 'Code Review' } });
     store.state.tickets = [t];
     await parkTicket(store, jira.execute, t, 'code-review', 'attempt-1', decision('human-hold'));
@@ -24,9 +24,10 @@ test('parks once: Blocked first, then one comment naming the status that resumes
     expect(jira.state['CEC-900'].comments[0].body).toContain('Move it back to Code Review to resume');
     expect(t.parked).toMatchObject({ stage: 'code-review', fromStatus: 'Code Review', published: true });
     expect(t).toMatchObject({ activity: 'blocked', status: 'Blocked' });
-    expect(jira.calls.findIndex(args => args[2] === 'transition')).toBeLessThan(jira.calls.findIndex(args => args[3] === 'create'));
+    expect(jira.calls.find(args => args[2] === 'transition')).toEqual(expect.arrayContaining(['--transition-comment-format', 'plain', '--transition-comment']));
+    expect(jira.calls.some(args => args[3] === 'create')).toBe(false);
     await parkTicket(store, jira.execute, t, 'code-review', 'attempt-1', decision('human-hold')).catch(() => undefined);
-    expect(jira.writes()).toBe(2);
+    expect(jira.writes()).toBe(1);
 });
 
 test('a reassigned or already Blocked ticket is never written', async () => {
@@ -41,13 +42,13 @@ test('a reassigned or already Blocked ticket is never written', async () => {
     }
 });
 
-test('a lost transition response leaves the Office block, posts no comment and is never resent', async () => {
+test('a lost transition response leaves the Office block, retains its atomic comment and is never resent', async () => {
     const { store } = cecStore(), t = ticket(), jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
     store.state.tickets = [t];
     jira.faults.loseTransitionResponse = true;
     await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('provider-wait'));
     expect(t).toMatchObject({ activity: 'blocked', parked: { published: false } });
-    expect(jira.state['CEC-900'].comments).toHaveLength(0);
+    expect(jira.state['CEC-900'].comments).toHaveLength(1);
     await expect(parkTicket(store, jira.execute, t, 'implement', 'attempt-1', decision('provider-wait'))).rejects.toThrow();
     expect(jira.calls.filter(args => args[2] === 'transition')).toHaveLength(1);
 });

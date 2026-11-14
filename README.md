@@ -62,6 +62,22 @@ Office verifies the same issue and unchanged metadata through two native read-on
 reads before accepting that handoff. An uncertain write, changed assignment or
 conflicting status stays blocked; an already-satisfied status needs no repeated transition.
 
+Jira Blocked parking attaches the decision comment to the transition, including workflows
+that require a comment on that screen. A retained commentless transition rejected with
+Jira's explicit HTTP 400 comment validation stays blocked until a selected-ticket Resume
+independently binds its preceding verified QA comment, complete status history and stable
+issue metadata. Only that rejected effect is retired as rejected, with its original error,
+dispatch time and counters preserved. It is never marked successful or resent. Missing
+evidence and other uncertain writes remain blocked; normal ownership and QA still apply.
+
+Browser-selected QA verifies a real run-owned target and native browser binding, rather
+than treating an HTTP login redirect as a completed setup. A human sign-in request must
+identify a visible browser window, its title, URL and button, with a live owned preview
+and cleanup handoff. Project SSO callback origins and human port guidance take precedence
+over choosing a free arbitrary port. Access-blocked same-head QA follows its existing
+harness run and supported intake/session recovery; no other profile's state is reused.
+Checks-only validation retains its existing path without starting a browser.
+
 A pull request Joe merges himself settles its Office handoff once provider reads verify the merged PR and completed issue. The harness retires read-only handoffs and finished CI repairs, retaining local repair worktrees and history. Unfinished workers, uncertain writes or board moves, merges in flight and recovery work still block retirement. Merges by anyone else keep the strict external read-back. [External session awareness](docs/session-awareness.md) connects loaded Codex and live Claude chats to work across repositories and supplies recent user context without granting harness permission. The CMS vendor review reads official sources through the repository's registered locators with curl inside each source's allowed hosts, not WebFetch, which some vendors bot-block; paths under the retired `dev-team` installation resolve to `the-office`.
 
 Stage capability records distinguish verified reader profiles from retained native Jira, QA, Brain, and provider workflows. Native stages remain in place until their restricted adapter passes capability parity. The command registry validates explicit check definitions and scoped subprocesses. It is available for adapter cutovers; retained native implementation stages still use their native command tools.
