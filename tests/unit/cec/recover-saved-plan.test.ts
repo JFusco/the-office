@@ -36,6 +36,16 @@ test('reconnects exact existing plan once, preserving all counters/raw artifacts
         expect(recoverSavedPlan(f.store, f.t, f.root, () => false)).toBe(false);
     } finally { f.close(); }
 });
+test('an earlier live read-back failure does not erase the original missing-plan recovery class', () => {
+    const f = fixture(); try {
+        f.t.blocker = 'Error: session inventory changed during provider read-back; no dispatch occurred';
+        const before = readFileSync(resolve(f.dir, 'result.json')), attempts = structuredClone(f.t.repairAttempts);
+        expect(recoverSavedPlan(f.store, f.t, f.root, () => false)).toBe(true);
+        expect(f.t.stage).toBe('plan-review'); expect(f.t.savedPlanRecovery?.workerId).toBe('worker');
+        expect(f.t.repairAttempts).toEqual(attempts); expect(f.t.attempt).toBe(1);
+        expect(readFileSync(resolve(f.dir, 'result.json'))).toEqual(before);
+    } finally { f.close(); }
+});
 test.each(['live-group', 'wrong-text', 'result-tamper', 'symlink', 'failed-result', 'candidate', 'uncertain-receipt', 'wrong-assignment'])('refuses %s without clearing the blocker or rerunning a worker', reason => {
     const f = fixture(); try {
         if (reason === 'wrong-text') writeFileSync(f.analysis, 'Different text');

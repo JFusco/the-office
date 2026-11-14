@@ -11,7 +11,13 @@ import type { Ticket, EffectIntent } from '../../src/shared';
 export const MISSING_SAVED_PLAN = 'Saved implementation plan is required';
 /** Called only after resume's fresh provider/ownership readback. Never reruns the plan worker. */
 export function recoverSavedPlan(store: Store, ticket: Ticket, dataRoot: string, groupAlive = processGroupAlive): boolean {
-    if (ticket.stage !== 'plan' || ticket.blocker !== MISSING_SAVED_PLAN && !ticket.savedPlanRecoveryFailure) return false;
+    if (ticket.stage !== 'plan') return false;
+    // A preceding ownership/provider read-back may have replaced the visible
+    // blocker. The unchanged accepted result, not that presentation string,
+    // determines whether the original saved-plan repair is still required.
+    const missingReference = ticket.results.plan?.outcome === 'passed' &&
+        resultGate(ticket, 'plan', ticket.results.plan, resolve(dataRoot, 'runs', ticket.runId)) === MISSING_SAVED_PLAN;
+    if (ticket.blocker !== MISSING_SAVED_PLAN && !ticket.savedPlanRecoveryFailure && !missingReference) return false;
     try { store.transaction(() => {
         const fail = () => { throw new Error('Saved plan needs Office artifact reconciliation; original result and counters retained'); };
         if (store.ticket(ticket.key) !== ticket) return fail();

@@ -3,9 +3,10 @@ import { setPreferences } from './support';
 
 test.beforeEach(async ({ page, request }) => { await setPreferences(request, { reducedMotion: true }); await page.addInitScript(() => localStorage.setItem('office.floor', 'delivery')); });
 
-test('saved plan follow-up has an obvious safe action, shows the retained plan and never repeats a lost request', async ({ page, request }, info) => {
+for (const blocker of ['Saved implementation plan is required', 'Error: I cannot clear dispatch. The session bridge returned complete=false because a log changed.']) {
+test(`saved plan follow-up survives ${blocker.startsWith('Error:') ? 'interrupted read-back' : 'artifact gap'} and never repeats a lost request`, async ({ page, request }, info) => {
     const snapshot = await (await request.get('/api/office?project=cec')).json();
-    const ticket = { ...snapshot.tickets[0], key: 'CEC-154', pilot: true, stage: 'plan', activity: 'blocked', blocker: 'Saved implementation plan is required', results: { plan: { outcome: 'passed', summary: 'Complete revised plan. Preserve saved Page Fields and Component references.' } } };
+    const ticket = { ...snapshot.tickets[0], key: 'CEC-154', pilot: true, stage: 'plan', activity: 'blocked', blocker, results: { plan: { outcome: 'passed', summary: 'Complete revised plan. Preserve saved Page Fields and Component references.' } } };
     snapshot.tickets = [ticket]; snapshot.outbox = [{ id: 'ticket:CEC-154:plan', role: 'developer', ticket: ticket.key, title: 'CEC-154 needs Office follow-up', detail: ticket.blocker, status: 'open', url: '', createdAt: '', updatedAt: '' }];
     await request.post('/__fixture/snapshot?project=cec', { data: snapshot });
     let posts = 0; await page.route('**/api/commands', async route => { posts++; expect(route.request().postDataJSON()).toEqual({ action: 'resume-ticket', key: 'CEC-154' }); await route.abort(); });
@@ -19,6 +20,7 @@ test('saved plan follow-up has an obvious safe action, shows the retained plan a
     await expect(detail.getByRole('button', { name: 'Reconciliation requested — check status' })).toBeDisabled();
     await detail.getByRole('button', { name: 'Refresh status' }).click(); expect(posts).toBe(1);
 });
+}
 
 test('product question opens from outbox with recommendation first, three choices and an editable free-text answer', async ({ page, request }, info) => {
     const feature = await (await request.post('/api/features?project=cec', { data: { action: 'create', title: 'Preserve authored edits', intent: 'Synthetic product choice' } })).json();

@@ -13,6 +13,11 @@ The delivery team shares one fair project queue. CTO and IT work use separate ca
 - GitHub CLI, and the relevant native Jira/Azure tools for configured projects.
 - Installed Brain, Jira Ticket Creator, and QA Team workflows where those native stages are used.
 
+On macOS, session context capture can use the system Python 3 and the public
+descriptor-based filesystem clone API to obtain a coherent private snapshot while
+a chat appends. If that optional primitive is unavailable, the strict portable
+capture remains in use; changing or incomplete input never establishes ownership.
+
 ```sh
 pnpm install
 mkdir -p .local
