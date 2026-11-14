@@ -17,6 +17,11 @@ On macOS, session context capture can use the system Python 3 and the public
 descriptor-based filesystem clone API to obtain a coherent private snapshot while
 a chat appends. If that optional primitive is unavailable, the strict portable
 capture remains in use; changing or incomplete input never establishes ownership.
+For a growing Codex chat, the next capture hashes all previously observed bytes
+before reusing its derived parser checkpoint and folding new records. Changed
+prefixes are parsed completely again. Checkpoints retain no transcript bytes or
+file handles; session/project identity, complete records and the five-second
+read deadline still apply.
 
 ```sh
 pnpm install

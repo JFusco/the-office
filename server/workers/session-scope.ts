@@ -1,6 +1,7 @@
 import type { OfficeProject } from '../../src/shared';
 import { CEC } from '../office/config';
 import { retainSessionMessage, type SessionConversation } from './session-conversation';
+import type { SessionContextParser } from './session-context-lines';
 
 export interface SessionScope {
     project: string;
@@ -44,11 +45,20 @@ export function sessionScope(raw: string, sessionId: string, projects: ScopeProj
 
 /** The same strict record fold supports bounded complete-file reads without retaining transcripts. */
 export function sessionScopeParser(sessionId: string, projects: ScopeProject[]) {
-    let ordinal = -1;
-    let identity = '', header = false, historyStart = 0, activity: SessionContext['activity'] = 'unknown';
-    const scopes = new Map<string, SessionScope>(), userMessages: SessionContext['userMessages'] = [];
-    let conversation: SessionConversation = { projects: [], messages: [], omittedMessages: 0 };
-    const conversationProjects = new Set<string>();
+    return scopeParser(sessionId, projects);
+}
+
+interface ScopeParserState {
+    ordinal: number; identity: string; header: boolean; historyStart: number; activity: SessionContext['activity'];
+    scopes: Map<string, SessionScope>; userMessages: SessionContext['userMessages'];
+    conversation: SessionConversation; conversationProjects: Set<string>;
+}
+
+function scopeParser(sessionId: string, projects: ScopeProject[], previous?: ScopeParserState): SessionContextParser {
+    let { ordinal, identity, header, historyStart, activity, scopes, userMessages, conversation, conversationProjects } =
+        previous ? structuredClone(previous) : { ordinal: -1, identity: '', header: false, historyStart: 0,
+            activity: 'unknown' as SessionContext['activity'], scopes: new Map<string, SessionScope>(), userMessages: [],
+            conversation: { projects: [], messages: [], omittedMessages: 0 } as SessionConversation, conversationProjects: new Set<string>() };
     return { write(line: string) {
         ordinal++;
         if (!line.trim()) return;
@@ -123,5 +133,6 @@ export function sessionScopeParser(sessionId: string, projects: ScopeProject[]) 
     if (identity !== sessionId) throw new Error('Codex rollout identity does not match the loaded session');
     conversation.projects = [...conversationProjects];
     return { activity, scopes: [...scopes.values()], userMessages, conversation };
-    } };
+    }, fork: () => scopeParser(sessionId, projects, { ordinal, identity, header, historyStart, activity,
+        scopes, userMessages, conversation, conversationProjects }) };
 }
