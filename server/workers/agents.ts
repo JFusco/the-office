@@ -1,4 +1,5 @@
 import { knowledgePromptStore } from '../knowledge/office-state-view';
+import { CECReadbackSchema as ReadbackSchema } from '../cec/readback-schema';
 import { withCECPreflightPRs } from '../cec/preflight-pr-read';
 import { implementationWorkerContext } from '../cec/implementation-continuation/worker-context';
 import { verifyContinuationPreservation } from '../cec/implementation-continuation/preservation';
@@ -50,7 +51,6 @@ export const CurrentResultSchema = LegacyResultSchema.extend({ resolution: Resol
 // Historical provider bytes remain historical: parsing never inserts a resolution field.
 export const ResultSchema = z.union([CurrentResultSchema, FreshResultSchema, LegacyResultSchema]);
 const IntakeSchema = z.object({ tickets: z.array(z.object({ key: z.string(), summary: z.string(), type: z.string(), status: z.string(), statusId: z.string(), assignee: z.string(), subtask: z.boolean(), boardMember: z.boolean(), url: z.string(), updated: z.string() }).strict()), summary: z.string(), complete: z.boolean(), blocker: z.string() }).strict();
-const ReadbackSchema = z.object({ key: z.string(), assignee: z.string(), subtask: z.boolean(), boardMember: z.boolean(), status: z.string(), statusId: z.string(), updated: z.string(), existingPrId: z.number().int(), existingOwner: z.string(), blocker: z.string() }).strict();
 export class Agents extends WorkerRuntime {
     override async run<T>(role: Role, task: string, schema: z.ZodType<T>, opts: Parameters<WorkerRuntime['run']>[3] = {}): Promise<T> {
         // Native workers receive one strict object schema; legacy parsing is only for saved results.
