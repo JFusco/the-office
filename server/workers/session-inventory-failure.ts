@@ -1,6 +1,7 @@
 import { ContextReadChanged } from './session-context-lines';
+import { SessionContextDeadline } from './session-context-deadline';
 
-/** Fixed failure categories only: never publish native stderr, transcript text, paths or credentials. */
+/** Fixed failure categories and bounded reader metadata; never publish private source content. */
 export function sessionInventoryFailureDetail(error: unknown): string {
     const message = error instanceof Error ? error.message : '';
     const code = error && typeof error === 'object' && 'code' in error ? error.code : '';
@@ -9,8 +10,12 @@ export function sessionInventoryFailureDetail(error: unknown): string {
         reason = '[context-changing] A session log changed during the bounded read.';
     else if (message === 'Codex session context contains an incomplete record')
         reason = '[context-record] A session log record is incomplete or malformed.';
-    else if (message === 'Session context scan exceeded its read deadline')
+    else if (message === 'Session context scan exceeded its read deadline') {
         reason = '[context-deadline] A session context scan exceeded its bounded read deadline.';
+        if (error instanceof SessionContextDeadline)
+            reason += ` Session ${error.session}; phase ${error.phase}; ${error.bytes} bytes; ${error.elapsedMS} ms.` +
+                ` Phase ${error.phaseMS} ms; event loop ${error.activeMS} active/${error.idleMS} idle ms.`;
+    }
     else if (message === 'A live Codex session has no metadata')
         reason = '[session-metadata] Matching persisted metadata for a live Codex process is unavailable.';
     else if (message === 'Session context file identity changed during its read' || message === 'Codex rollout identity does not match the loaded session')

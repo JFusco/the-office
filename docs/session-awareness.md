@@ -52,7 +52,11 @@ so parsing never grants an old snapshot a new freshness window. The same loaded
 identity and complete current-turn records are required. Stable malformed records,
 replacements, expired observations and continuing capture-time churn stay unavailable.
 Source status uses fixed failure categories without exposing native stderr, chat
-text or session paths; those categories diagnose a read failure and never clear ownership.
+text or session paths. A context deadline also names its canonical session UUID
+(or `unavailable`), file size, snapshot/fold/identity phase, elapsed phase/read time
+and event-loop active/idle time. These bounded observations distinguish snapshot
+waits from parser or event-loop work; they do not establish a cause by themselves.
+Failure diagnostics never clear ownership or extend the five-second limit.
 Unreadable, mismatched or incomplete context makes coverage unavailable;
 it cannot produce a clear ownership verdict. This does not provide universal visibility
 into remote clients or historical chats. Claude's native inventory supplies activity;
