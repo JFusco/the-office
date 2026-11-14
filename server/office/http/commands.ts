@@ -1,4 +1,5 @@
 import { enqueueHistoryRetirement } from '../../operations/retire-history';
+import { decideImplementation } from '../../cec/implementation-continuation/intent';
 import { enqueueGreen156 } from '../../delivery/recovery/green156-admission';
 import { enqueuePacked165 } from '../../delivery/recovery/packed165-intent';
 import { enqueueMetadataRecovery } from '../../delivery/recovery/pr-metadata-intent';
@@ -36,10 +37,11 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery, historyRetirement } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery, historyRetirement, implementationContinuation } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
+            case 'continue-saved-implementation': return json(await decideImplementation(store, key, implementationContinuation, engine.implementationOwnership), 202);
             case 'recover-cto-input': return json(recoverCTOInput(store, messageId, DATA), 202);
             case 'retire-incomplete-history': return json({ accepted: true, id: enqueueHistoryRetirement(store, historyRetirement).id }, 202);
             case 'reconcile-pr-metadata': { const request = enqueueMetadataRecovery(store, key, prMetadataRecovery); return json({ accepted: true, id: request.id, status: request.status }, 202); }

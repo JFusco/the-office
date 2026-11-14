@@ -1,4 +1,5 @@
 import { knowledgeRoute } from '../../knowledge/routes';
+import { implementationContinuationRoute } from '../../cec/implementation-continuation/routes';
 import { refreshWithin } from '../../workers/bounded-session-refresh';
 import { serviceBusy } from '../service-busy';
 import { assertQuestionVisibility } from '../../features/questions/command-visibility';
@@ -19,6 +20,8 @@ import { json, fileResponse } from './responses';
 /** Read and write API routes other than office commands. */
 export async function apiRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
     const { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator } = context;
+    const continuation = await implementationContinuationRoute(req, url, store);
+    if (continuation) return continuation;
     const knowledge = await knowledgeRoute(req, url, offices.stores(), project);
     if (knowledge) return knowledge;
     const features = url.pathname.startsWith('/api/features') ? await featureRoute(req, url, store, engine.features, new Map([...offices.entries].map(([id, entry]) => [id, entry.store])), id => assertQuestionVisibility(store,id,url.searchParams.get('officeWide')==='1')) : undefined;

@@ -11,6 +11,7 @@ import { DATA, CEC, HOLDS, LEGACY_AUTOMATION } from '../office/config';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
 import { recoverSavedPlan } from './recover-saved-plan';
+import { continueImplementation } from './implementation-continuation/continue';
 
 export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean }) {
     return this.store.transaction(() => {
@@ -55,7 +56,9 @@ export async function drainDelivery(this: Engine, selectedId?: string) {
     request.status = 'working';
     this.store.emit('delivery-started', `${request.key} is leaving the implementation queue.`, 'pm', request.key);
     try {
-        if (request.action === 'start-pilot')
+        if (request.action === 'continue-saved-implementation')
+            await continueImplementation(this, request);
+        else if (request.action === 'start-pilot')
             await this.startPilot(request.key, false, request.intakeStatus);
         else
             await this.resume(request.key, false);
@@ -64,7 +67,7 @@ export async function drainDelivery(this: Engine, selectedId?: string) {
             request.error = this.store.ticket(request.key).blocker;
     }
     catch (e) {
-        if (!featureGate(this.store, request.key).allowed) {
+        if (request.action !== 'continue-saved-implementation' && !featureGate(this.store, request.key).allowed) {
             request.status = 'queued';
             request.error = '';
             return;

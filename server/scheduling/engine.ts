@@ -16,6 +16,7 @@ import { observe } from './provider-observation';
 import { captureTicketEvidence } from '../features/handoff/ticket-evidence';
 import { FeatureWorkflow } from '../features/workflow';
 export class Engine {
+    implementationOwnership: import('../cec/implementation-continuation/intent').OwnershipRead = async () => ({ complete: false, fresh: false });
     features: FeatureWorkflow;
     captureEvidence = captureTicketEvidence;
     slackIdentityContext: () => {

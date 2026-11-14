@@ -48,6 +48,15 @@ Sam owns failed PR-check diagnosis for harness-delivered GitHub jobs, including 
 
 Pausing stops workers and retains conflicting capacity until process termination is confirmed. Draining stops new claims while the claimed stage finishes. Interrupted writers and uncertain provider operations require read-back; they are never blindly replayed. Brain's native runner retains its own claim, identity, date, backoff, independent review, and publication gates.
 
+For a first native CEC implementation that times out before returning a commit,
+open its outbox follow-up and choose **Review saved work**. When the original worker,
+source and termination can be verified, **Continue saved work (Recommended)** approves
+one fresh linked copy to finish implementation, checks and commit; **Keep paused**
+saves optional guidance without starting a worker. The original draft, failed checks,
+uncertainty and counters stay in history. Ownership, holds, current staging and
+independent review/QA still gate delivery. A changed or unverified draft stays blocked;
+an interrupted continuation is never automatically repeated.
+
 A pull request Joe merges himself settles its Office handoff once provider reads verify the merged PR and completed issue. The harness retires read-only handoffs and finished CI repairs, retaining local repair worktrees and history. Unfinished workers, uncertain writes or board moves, merges in flight and recovery work still block retirement. Merges by anyone else keep the strict external read-back. [External session awareness](docs/session-awareness.md) connects loaded Codex and live Claude chats to work across repositories and supplies recent user context without granting harness permission. The CMS vendor review reads official sources through the repository's registered locators with curl inside each source's allowed hosts, not WebFetch, which some vendors bot-block; paths under the retired `dev-team` installation resolve to `the-office`.
 
 Stage capability records distinguish verified reader profiles from retained native Jira, QA, Brain, and provider workflows. Native stages remain in place until their restricted adapter passes capability parity. The command registry validates explicit check definitions and scoped subprocesses. It is available for adapter cutovers; retained native implementation stages still use their native command tools.

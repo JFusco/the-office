@@ -1,5 +1,7 @@
 import { knowledgePromptStore } from '../knowledge/office-state-view';
 import { withCECPreflightPRs } from '../cec/preflight-pr-read';
+import { implementationWorkerContext } from '../cec/implementation-continuation/worker-context';
+import { verifyContinuationPreservation } from '../cec/implementation-continuation/preservation';
 import { az } from '../cec/azure';
 import { harperHandoff } from '../knowledge/blocker-followups';
 import { featureDeliveryContext } from '../features/delivery-binding';
@@ -82,16 +84,21 @@ export class Agents extends WorkerRuntime {
     async intake() {
         return this.run('pm', cecIntakePrompt(this.store), IntakeSchema, { readOnly: true, stage: 'intake', timeout: 15 * 60 * 1000 });
     }
-    async readback(key: string) {
-        return this.run('pm', cecReadbackPrompt(this.store, key), ReadbackSchema, { readOnly: true, stage: 'readback', timeout: 15 * 60 * 1000, ticket: key });
+    async readback(key: string, continuationContext = '', requestId = '') {
+        return this.run('pm', cecReadbackPrompt(this.store, key) + (continuationContext ? `\n${continuationContext}` : ''), ReadbackSchema, { readOnly: true, stage: 'readback', timeout: 15 * 60 * 1000, ticket: key, requestId });
     }
     async stage(ticket: Ticket, stage: Stage, role: Role): Promise<StageResult> {
-        const artifactRoot = resolve(DATA, 'runs', ticket.runId);
+        const continued = implementationWorkerContext(ticket, stage);
+        const artifactRoot = continued?.artifactsRoot || resolve(DATA, 'runs', ticket.runId);
         mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
-        const prompt = featureDeliveryContext(this.store, ticket.featureBinding) + cecPrompt(this.store, ticket, stage, role, artifactRoot) + (ticket.repairCycle?.phase === 'diagnosis' && stage === 'code-review' ? `\n${REPAIR_DIAGNOSIS}` : '');
+        const prompt = featureDeliveryContext(this.store, ticket.featureBinding) + cecPrompt(this.store, ticket, stage, role, artifactRoot) + (continued?.prompt || '') + (ticket.repairCycle?.phase === 'diagnosis' && stage === 'code-review' ? `\n${REPAIR_DIAGNOSIS}` : '');
         const featureEnhance = !!ticket.featureBinding && stage === 'enhance';
         const artifactOnly = featureEnhance || ['plan', 'plan-review', 'code-review', 'repair-review', 'ci-diagnose'].includes(stage);
-        return this.run(role, prompt, ResultSchema, { ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT });
+        if (continued) await verifyContinuationPreservation(this.store, ticket);
+        const result = await this.run(role, prompt, ResultSchema, { ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
+            ...(continued ? { requestId: continued.requestId, originalWorkId: continued.originalWorkId } : {}) });
+        if (continued) await verifyContinuationPreservation(this.store, ticket, result);
+        return result;
     }
     async transition(ticket: Ticket, target: string): Promise<StageResult> {
         return this.run('pm', cecTransitionPrompt(this.store, ticket, target), ResultSchema, { ticket: ticket.key, stage: 'transition' });

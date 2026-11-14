@@ -597,6 +597,8 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    implementationContinuation?: import('./contracts/cec-implementation-continuation').ImplementationContinuation;
+    implementationContinuationHold?: { workerId: string; note: string; at: string };
     savedPlanRecoveryFailure?: { at: string; detail: string };
     savedPlanRecovery?: { workerId: string; resultPath: string; resultSha256: string; analysisPath: string; analysisSha256: string; at: string };
     improvementId?: string;
@@ -857,10 +859,11 @@ export function slackMessageUrl(url: string, channelId: string, messageTs: strin
     }
 }
 export interface DeliveryRequest {
+    implementationContinuation?: import('./contracts/cec-implementation-continuation').ImplementationContinuationRequest;
     featureBinding?: import('./contracts/features').FeatureBinding;
     id: string;
     key: string;
-    action: 'start-pilot' | 'resume-ticket';
+    action: 'start-pilot' | 'resume-ticket' | 'continue-saved-implementation';
     requestedAt: string;
     status: 'queued' | 'working' | 'completed' | 'blocked' | 'interrupted';
     error: string;

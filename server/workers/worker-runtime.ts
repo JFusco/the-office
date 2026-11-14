@@ -67,6 +67,7 @@ export class WorkerRuntime {
         inactivityTimeout?: number;
         stage?: string;
         requestId?: string;
+        originalWorkId?: string;
         enqueuedAt?: string;
         artifactsRoot?: string;
     } = {}) {
@@ -136,7 +137,7 @@ export class WorkerRuntime {
         const activity = workerActivity(role, opts.stage || 'assignment', this.store.project.name, opts.ticket);
         this.store.agent(role, { activity: 'working', task: activity, ticket: opts.ticket || '', sessionId: claude ? id : '', provider: claude ? 'claude' : 'codex', model: claude ? DEVELOPER_MODEL : '', effort: claude ? DEVELOPER_EFFORT : '', observedModel: '' });
         writeFileSync(resolve(dir, 'provider.json'), JSON.stringify({ project: this.store.project.id, repository: this.store.project.repository, provider: claude ? 'claude' : 'codex', model: claude ? DEVELOPER_MODEL : null, effort: claude ? DEVELOPER_EFFORT : null, session: claude ? id : null, role, readOnly: !!opts.readOnly }, null, 2), { mode: 0o600 });
-        this.store.beginWork({ id, effortKind: opts.effortKind, requestedModel: claude ? DEVELOPER_MODEL : null, requestedEffort: claude ? DEVELOPER_EFFORT : null, observedModel: null, observedEffort: null, originalId: continuation?.original.id, claimId: claim?.id, lane: assignment?.lane || claim?.lane, role, task: activity, ticket: opts.ticket || '', stage: opts.stage || 'assignment', requestId: opts.requestId || '', sessionId: claude ? id : '', provider: claude ? 'claude' : 'codex', model: claude ? DEVELOPER_MODEL : '', effort: claude ? DEVELOPER_EFFORT : '', status: 'running', startedAt, lastHeartbeatAt: startedAt, endedAt: '', elapsedMs: 0, queuedMs: claim && this.store.state.workLog?.some(work => work.claimId === claim.id) ? 0 : queueTiming?.queueMs ?? (opts.enqueuedAt ? Math.max(0, Date.parse(startedAt) - Date.parse(opts.enqueuedAt)) || 0 : 0), inputTokens: null, outputTokens: null, durationUncertain: false, reportedAt: '' });
+        this.store.beginWork({ id, effortKind: opts.effortKind, requestedModel: claude ? DEVELOPER_MODEL : null, requestedEffort: claude ? DEVELOPER_EFFORT : null, observedModel: null, observedEffort: null, originalId: continuation?.original.id || opts.originalWorkId, claimId: claim?.id, lane: assignment?.lane || claim?.lane, role, task: activity, ticket: opts.ticket || '', stage: opts.stage || 'assignment', requestId: opts.requestId || '', sessionId: claude ? id : '', provider: claude ? 'claude' : 'codex', model: claude ? DEVELOPER_MODEL : '', effort: claude ? DEVELOPER_EFFORT : '', status: 'running', startedAt, lastHeartbeatAt: startedAt, endedAt: '', elapsedMs: 0, queuedMs: claim && this.store.state.workLog?.some(work => work.claimId === claim.id) ? 0 : queueTiming?.queueMs ?? (opts.enqueuedAt ? Math.max(0, Date.parse(startedAt) - Date.parse(opts.enqueuedAt)) || 0 : 0), inputTokens: null, outputTokens: null, durationUncertain: false, reportedAt: '' });
         const heartbeat = setInterval(() => this.store.checkpointWork(id, this.store.clock.monotonic() - started), 5000);
         this.timing.set(role, { id, started, timer: heartbeat });
         writeFileSync(resolve(dir, 'capabilities.json'), JSON.stringify(profile), { mode: 0o600 });
