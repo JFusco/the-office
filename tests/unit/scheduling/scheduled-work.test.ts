@@ -192,3 +192,29 @@ test('cost publication and cost read-back are scheduled independently of hours a
     const stages=project('operations').map(item=>item.stage);expect(stages).toEqual(expect.arrayContaining(['cost-publication','cost-readback']));
     time.cost.githubField=false;expect(project('operations').map(item=>item.stage)).not.toContain('cost-publication');
 });
+
+test('a stopped record explains itself with its own saved detail and a cause, and readiness counts each cause', () => {
+    const {store,project}=fixture(),entry={store} as any;
+    store.state.coordination!.requests=[{id:'stuck',action:'reconcile-native-refresh',key:'GH-254',head:'native-run',lane:'delivery',requestedAt:'2026-10-29T20:00:00Z',status:'blocked',detail:'Error: Native report must identify this publication\nsecond line'} as any];
+    const item=project().find(item=>item.work.id==='stuck')!;
+    expect(item.eligibility).toMatchObject({state:'blocked',cause:'needs-decision',reason:'Blocked, needs a decision: Native report must identify this publication'});
+    expect(projectReadiness(entry,project()).blockedCauses).toMatchObject({'needs-decision':1,failed:0});
+});
+
+test('a prerequisite that fails validation counts as a dependency block, not a decision', () => {
+    const {store,entry,project}=fixture(),c=store.state.coordination!;
+    c.jobs=[{id:'gated',key:'GH-30',stage:'implement',status:'queued',requestedAt:'2026-10-29T20:00:00Z',steps:[],prerequisites:[{target:{projectId:'brain',kind:'delivery',id:'missing'},condition:'job-completed',evidence:'Recorded prerequisite',observedAt:'2026-10-29T20:00:00Z'}]} as any];
+    expect(project().find(item=>item.work.id==='gated')!.eligibility).toMatchObject({state:'blocked',cause:'dependency',reason:'Referenced prerequisite does not exist'});
+    expect(projectReadiness(entry,project()).blockedCauses).toMatchObject({dependency:1,'needs-decision':0});
+    c.listener.reviews=[{id:'intake',key:'GH-31',status:'queued',queuedAt:'',prerequisiteError:'Referenced prerequisite does not exist'} as any];
+    expect(project().find(item=>item.work.id==='intake')!.eligibility).toMatchObject({state:'blocked',cause:'dependency'});
+});
+
+test('a blocked repair follow-up explains itself with its own saved detail and leaves the run unchanged', () => {
+    const {store,project}=fixture();
+    store.state.maintenance={runs:[{id:'run',status:'reconciled',stage:'follow-up',requestedAt:'2026-10-29T20:00:00Z',steps:[],blockerFollowup:{status:'blocked',detail:'Error: Source repair routing needs read-back\nsecond line'}} as any],lastDaily:'',lastWeekly:'',ledger:''};
+    const before=JSON.stringify(store.state.maintenance.runs);
+    const item=project().find(item=>item.work.kind==='continuation'&&item.stage==='repair-followup')!;
+    expect(item.eligibility).toMatchObject({state:'blocked',cause:'needs-decision',reason:'Blocked, needs a decision: Source repair routing needs read-back'});
+    expect(JSON.stringify(store.state.maintenance.runs)).toBe(before);
+});

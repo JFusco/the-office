@@ -1,4 +1,4 @@
-import type { SchedulerState } from './work';
+import type { BlockedCause, SchedulerState } from './work';
 export interface ProjectReadiness {
     projectId: string;
     persistence: 'ready';
@@ -7,6 +7,8 @@ export interface ProjectReadiness {
     providerAgeMs: number | null;
     runnable: number;
     blocked: number;
+    /** `blocked` split by cause, so failed history never reads as work waiting on someone. */
+    blockedCauses?: Record<BlockedCause, number>;
     waiting: number;
     running: number;
     stall: boolean;
