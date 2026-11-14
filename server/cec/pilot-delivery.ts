@@ -11,6 +11,7 @@ import { DATA, CEC, HOLDS, LEGACY_AUTOMATION } from '../office/config';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
 import { recoverSavedPlan } from './recover-saved-plan';
+import { needsResumeReconciliation } from './resume-reconciliation';
 import { continueImplementation } from './implementation-continuation/continue';
 import { parkingUnconfirmed } from './parking/park-ticket';
 import { reconcileRejectedParking } from './parking/rejected-transition';
@@ -196,7 +197,7 @@ export async function resume(this: Engine, key: string, background = true) {
         throw new Error('A different PR exists; resolve duplicate work before resuming');
     assertFeatureGate(this.store, key);
     recoverSavedPlan(this.store, t, DATA);
-    if (/interrupted|timed out|uncertain|reconcil/i.test(t.blocker) || t.results[t.stage]?.receipts.some(x => x.uncertain)) {
+    if (needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const observed = await this.agents.reconcile(t);
         const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));
         if (gap) {

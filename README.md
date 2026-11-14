@@ -53,6 +53,8 @@ Sam owns failed PR-check diagnosis for harness-delivered GitHub jobs, including 
 
 Pausing stops workers and retains conflicting capacity until process termination is confirmed. Draining stops new claims while the claimed stage finishes. Interrupted writers and uncertain provider operations require read-back; they are never blindly replayed. Brain's native runner retains its own claim, identity, date, backoff, independent review, and publication gates.
 
+CEC resumes distinguish a matching harness-classified read-only timeout from an interrupted action. After fresh ownership and eligibility checks, the former leaves the same stage waiting for ordinary execution; it does not reconstruct or accept missing QA results. Uncertain action receipts and unknown QA provider usage still require reconciliation, and failure history and counters remain intact.
+
 For a first native CEC implementation that times out before returning a commit,
 open its outbox follow-up and choose **Review saved work**. When the original worker,
 source and termination can be verified, **Continue saved work (Recommended)** approves
