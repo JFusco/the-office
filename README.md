@@ -55,6 +55,8 @@ Pausing stops workers and retains conflicting capacity until process termination
 
 CEC resumes distinguish a matching harness-classified read-only timeout from an interrupted action. After fresh ownership and eligibility checks, the former leaves the same stage waiting for ordinary execution; it does not reconstruct or accept missing QA results. Uncertain action receipts and unknown QA provider usage still require reconciliation, and failure history and counters remain intact.
 
+The dispatch read-back checks eligibility and competing ownership. A verified, currently coordinated read-only helper is not a competing executor. Native QA owns its actor/tenant/test-data checks and supported browser claim, lease and intake recovery before feature actions; pending QA setup or acceptance is not evidence that dispatch itself failed. Actual access denials, unresolved approval/ownership and uncertain actions remain blocking.
+
 For a first native CEC implementation that times out before returning a commit,
 open its outbox follow-up and choose **Review saved work**. When the original worker,
 source and termination can be verified, **Continue saved work (Recommended)** approves
