@@ -41,7 +41,9 @@ test.each(['developer-checks', 'independent-checks'])('%s does not acquire a bro
 
 test('GitHub browser validation receives the same guidance without widening its no-paid-run authority', () => {
     const { store, ticket } = setup();
-    const job = { key: 'GH-900', stage: 'validate', approach: ticket.approach, head: ticket.commit, worktree: '/tmp/candidate', steps: [], findings: [] } as TicketJob;
+    const job: TicketJob = { id: 'job-900', key: 'GH-900', requestedAt: '', status: 'working', stage: 'validate',
+        approach: ticket.approach, head: ticket.commit, branch: 'codex/unit-browser', worktree: '/tmp/candidate',
+        pr: 0, prUrl: '', detail: '', steps: [] };
     const input = { store, project: store.project, job, root: '/tmp/qa-unit', issue: {}, readyChecks: false };
     expect(stagePrompt(input)).toContain('BROWSER STARTUP AND ACCESS HANDOFF:');
     expect(stagePrompt(input)).toContain('No source or external changes, paid runs, merge or release');
