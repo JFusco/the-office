@@ -1,10 +1,12 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { sep } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import type { OfficeProject } from '../../src/shared';
 import type { SessionContext } from './session-scope';
 import { ContextReadChanged, MAX_CONTEXT_READ_MS, sameContextFile, sessionContextLines, type SessionContextParser } from './session-context-lines';
 import { withSessionContextSnapshot } from './session-context-snapshot';
 import type { SessionContextCheckpoint } from './session-context-checkpoint';
+import { SessionContextDeadline, type ContextReadPhase } from './session-context-deadline';
 export type ContextProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>>;
 export type ContextReader = (path: string, id: string, projects: ContextProject[]) => Promise<SessionContext>;
 
@@ -15,7 +17,7 @@ export function sessionContextFile(root: string, parse: (raw: string, id: string
         context: SessionContext; checkpoint?: SessionContextCheckpoint }>();
     return async (path, id, projects) => {
         const [directory, original] = await Promise.all([realpath(root), realpath(path)]), identity = await stat(original);
-        const deadline = performance.now() + MAX_CONTEXT_READ_MS;
+        const started = performance.now(), deadline = started + MAX_CONTEXT_READ_MS, loopStarted = performance.eventLoopUtilization();
         for (let attempt = 0; attempt < 2; attempt++) {
             const file = await realpath(path), info = await stat(file);
             if (file !== original || info.ino !== identity.ino || info.dev !== identity.dev)
@@ -26,15 +28,19 @@ export function sessionContextFile(root: string, parse: (raw: string, id: string
             const binding = JSON.stringify([id, projects]);
             const prior = cache.get(file);
             if (prior?.version === version) return prior.context;
+            let phase: ContextReadPhase = 'snapshot', phaseStarted = performance.now();
             try {
                 let checkpoint: SessionContextCheckpoint | undefined;
                 const context = createParser
-                    ? await withSessionContextSnapshot(file, info, deadline, (snapshot, captured) =>
-                        sessionContextLines(snapshot, captured, createParser(id, projects), deadline, {
+                    ? await withSessionContextSnapshot(file, info, deadline, (snapshot, captured) => {
+                        phase = 'fold'; phaseStarted = performance.now();
+                        return sessionContextLines(snapshot, captured, createParser(id, projects), deadline, {
                             previous: prior?.binding === binding && prior.ino === info.ino && prior.dev === info.dev ? prior.checkpoint : undefined,
                             captured: value => { checkpoint = value; },
-                        }))
+                        });
+                    })
                     : parse(await readFile(file, 'utf8'), id, projects);
+                phase = 'identity'; phaseStarted = performance.now();
                 const current = await realpath(path), after = await stat(current);
                 if (current !== original || after.ino !== identity.ino || after.dev !== identity.dev)
                     throw new Error('Session context file identity changed during its read');
@@ -54,7 +60,14 @@ export function sessionContextFile(root: string, parse: (raw: string, id: string
                     throw new Error('Session context file identity changed during its read');
                 if (!sameContextFile(info, after)) error = new ContextReadChanged('Session context file changed during its read');
                 // Stable malformed records, replacements and continuing churn stay unavailable.
-                if (!(error instanceof ContextReadChanged) || attempt !== 0 || performance.now() >= deadline) throw error;
+                if (!(error instanceof ContextReadChanged) || attempt !== 0 || performance.now() >= deadline) {
+                    if (error instanceof Error && error.message === 'Session context scan exceeded its read deadline') {
+                        const loop = performance.eventLoopUtilization(loopStarted);
+                        throw new SessionContextDeadline(id, phase, performance.now() - started, info.size,
+                            { phaseMS: performance.now() - phaseStarted, activeMS: loop.active, idleMS: loop.idle });
+                    }
+                    throw error;
+                }
             }
         }
         throw new Error('Session context coverage is unavailable');
