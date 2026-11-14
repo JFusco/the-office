@@ -71,7 +71,15 @@ can continue from it. Changed prefixes and truncated files receive a complete fo
 The final record is always reparsed, so an append cannot turn a malformed or partial
 record into accepted coverage. Checkpoints contain derived context and a digest,
 never transcript bytes or file descriptors. Hashing and parsing share the unchanged
-five-second deadline; failure never publishes a partial checkpoint or clears ownership.
+five-second deadline. An interrupted first fold may retain internal progress every
+16 MiB at a completed chunk boundary. That progress contains only the derived
+parser state, the last sealed-record offset and a digest of the consumed bytes.
+The failed read still returns unavailable, never partial context or clear ownership.
+On a later normal inventory read, a fresh immutable capture must hash every retained
+prefix byte before continuing; changed prefixes, file/session/project identity changes
+and truncation invalidate that progress. Full coverage, strict record validation and
+freshness are still required before any ownership verdict. No retry or budget reset
+is authorized by a saved parsing checkpoint.
 
 A forked Claude transcript may begin with copied parent records before its own
 native identity records. The child index excludes that parent conversation and

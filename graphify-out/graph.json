@@ -90840,7 +90840,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/workers/session-context-file.ts",
-      "source_location": "L35",
+      "source_location": "L36",
       "weight": 1.0
     },
     {
@@ -90852,7 +90852,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/workers/session-context-file.ts",
-      "source_location": "L37",
+      "source_location": "L38",
       "weight": 1.0
     },
     {
@@ -90864,7 +90864,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/workers/session-context-file.ts",
-      "source_location": "L49",
+      "source_location": "L51",
       "weight": 1.0
     },
     {
@@ -90876,7 +90876,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/workers/session-context-file.ts",
-      "source_location": "L49",
+      "source_location": "L51",
       "weight": 1.0
     },
     {
@@ -90888,7 +90888,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/workers/session-context-file.ts",
-      "source_location": "L66",
+      "source_location": "L76",
       "weight": 1.0
     },
     {
@@ -90936,7 +90936,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/workers/session-context-lines.ts",
-      "source_location": "L43",
+      "source_location": "L44",
       "weight": 1.0
     },
     {
@@ -90960,7 +90960,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/workers/session-context-lines.ts",
-      "source_location": "L70",
+      "source_location": "L79",
       "weight": 1.0
     },
     {
@@ -269124,5 +269124,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "01d2bfa913a22a09dbdc35beebb4bc1841e199d1"
+  "built_at_commit": "5cd926d1b30f5f2e6bdc63f949bc3d85135357ee"
 }
