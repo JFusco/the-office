@@ -57,6 +57,11 @@ uncertainty and counters stay in history. Ownership, holds, current staging and
 independent review/QA still gate delivery. A changed or unverified draft stays blocked;
 an interrupted continuation is never automatically repeated.
 
+When Jira is already at the requested workflow status, the PM leaves it unchanged.
+Office verifies the same issue and unchanged metadata through two native read-only
+reads before accepting that handoff. An uncertain write, changed assignment or
+conflicting status stays blocked; an already-satisfied status needs no repeated transition.
+
 A pull request Joe merges himself settles its Office handoff once provider reads verify the merged PR and completed issue. The harness retires read-only handoffs and finished CI repairs, retaining local repair worktrees and history. Unfinished workers, uncertain writes or board moves, merges in flight and recovery work still block retirement. Merges by anyone else keep the strict external read-back. [External session awareness](docs/session-awareness.md) connects loaded Codex and live Claude chats to work across repositories and supplies recent user context without granting harness permission. The CMS vendor review reads official sources through the repository's registered locators with curl inside each source's allowed hosts, not WebFetch, which some vendors bot-block; paths under the retired `dev-team` installation resolve to `the-office`.
 
 Stage capability records distinguish verified reader profiles from retained native Jira, QA, Brain, and provider workflows. Native stages remain in place until their restricted adapter passes capability parity. The command registry validates explicit check definitions and scoped subprocesses. It is available for adapter cutovers; retained native implementation stages still use their native command tools.

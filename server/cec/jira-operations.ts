@@ -5,15 +5,15 @@ import type { Ticket, StageResult } from '../../src/shared';
 import { Effects } from '../store/effects';
 import { command } from '../workers/process';
 import { CEC } from '../office/config';
-export const unpack = (raw: string) => {
-    const result = JSON.parse(raw);
-    if (result.error || result.ok === false || !result.data)
-        throw new Error('Jira operation returned no verified result');
-    return result.data;
-};
+import { verifyAlreadyAtStatus } from './transition-readback';
+import { unpack } from './jira-response';
+export { unpack } from './jira-response';
 const plain = (value: any): string => typeof value === 'string' ? value : value?.type === 'text' ? value.text : value?.type === 'hardBreak' ? '\n' : Array.isArray(value?.content) ? value.content.map(plain).join(value.type === 'doc' ? '\n' : '') : '';
 export class JiraOperations {
     constructor(private store: Store, readonly execute: typeof command = command) { }
+    verifyStatus(ticket: Ticket, target: string, result: StageResult): Promise<StageResult> {
+        return verifyAlreadyAtStatus(this.store, ticket, target, result, this.execute);
+    }
     async qaComment(ticket: Ticket, stage: string, attempt: string, result: StageResult): Promise<void> {
         const marker = `Office ${attempt} ${stage}`;
         const text = `${marker}\n${result.outcome}: ${result.summary}${result.blocker ? `\nBlocked: ${result.blocker}` : ''}\nCandidate: ${result.commit}\n${result.findings.map(finding => `${finding.id}: ${finding.status} · ${finding.summary}`).join('\n')}\n${result.evidence.map(evidence => evidence.url || evidence.path).filter(Boolean).join('\n')}`.trimEnd();
