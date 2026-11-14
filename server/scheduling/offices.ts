@@ -92,6 +92,7 @@ export class Offices {
                 return owners[0].conversations;
             };
             entry.engine.features.ownership = async key => { await this.sessions.refresh(); const owner=this.sessions.forProject(entry.store,key).ownership; return {status:owner.status==='clear'?'clear':owner.status==='owned'?'owned':'unknown',reason:owner.detail}; };
+            entry.engine.implementationOwnership = async key => { await this.sessions.refresh(); return this.sessions.forProject(entry.store, key); };
             entry.coordinator!.sessionBridge = this.sessions;
             entry.coordinator!.dependencyStores = () => this.stores();
             entry.engine.slackIdentityContext = () => [...this.entries.values()].flatMap(({ store }) => (store.state.slackDeliveries || []).filter(d => d.status === 'confirmed' && d.targetType === 'person').map(d => ({ targetId: d.targetId, workspaceId: d.workspaceId, permalink: d.permalink, confirmedAt: d.updatedAt }))).slice(-20);
