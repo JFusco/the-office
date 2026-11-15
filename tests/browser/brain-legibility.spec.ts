@@ -113,7 +113,7 @@ test('unformatted historical assignment and lookup entries still list their sour
     await lookup.getByText('Lookup sources',{exact:true}).click();const retrieved=lookup.locator('details[open] li').first();await expect(retrieved).toContainText(/lesson, revision \d+|Brain note: |Recorded source/);await expect(retrieved).not.toContainText(recorded!.id);await expect(lookup).not.toContainText(recorded!.sha);
 });
 
-test('group and search context survive inspecting a record, with source guidance below the map',async({page})=>{
+test('group paging survives inspecting a record',async({page})=>{
     await page.route('**/api/knowledge/map?**',async route=>{const response=await route.fetch(),map=await response.json();await route.fulfill({response,json:{...map,nodes:[...map.nodes,...Array.from({length:100},(_,i)=>({id:`synthetic:${i}`,title:`Synthetic note ${i}`,kind:'technical',domains:['cms'],detail:'Synthetic group context fixture'}))]}});});
     await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();await page.getByLabel('Include Brain notes (external, read-only)').check();
     const browser=page.getByRole('region',{name:'Brain browser'});await browser.getByRole('button',{name:'CMS 100',exact:true}).click();
@@ -121,8 +121,5 @@ test('group and search context survive inspecting a record, with source guidance
     const record=browser.getByRole('button',{name:/Synthetic note .* · technical/}).first(),name=await record.innerText();await record.click();
     await expect(page.getByRole('navigation',{name:'Brain location'}).getByRole('button',{name:'CMS',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Back to Brain',exact:true}).click();await expect(browser).toContainText('2 / 3');await expect(browser.getByRole('button',{name,exact:true})).toBeVisible();
-    const canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
-    const details=page.getByText('Controls and source details',{exact:true});const bounds=(await details.boundingBox())!;
-    expect(bounds.y).toBeGreaterThan(canvas!.y+canvas!.height);
-    await details.click();await expect(page.getByText('Click empty space to clear a selection. Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.',{exact:true})).toBeVisible();
+
 });

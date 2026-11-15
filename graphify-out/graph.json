@@ -167932,18 +167932,6 @@
     },
     {
       "source": "src_knowledge_map_mapview",
-      "target": "src_ui_index_summary",
-      "relation": "imports",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "import",
-      "source_file": "src/knowledge/map/MapView.tsx",
-      "source_location": "L3",
-      "weight": 1.0
-    },
-    {
-      "source": "src_knowledge_map_mapview",
       "target": "src_contracts_knowledge_views_knowledgemap",
       "relation": "imports",
       "_origin": "ast",
@@ -275507,5 +275495,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "a6e99ae1bb2cbb12d3a7598702d8a3b133501133"
+  "built_at_commit": "48fa81cb6510b4ece0f5f1a70b6f083c13f323cd"
 }
