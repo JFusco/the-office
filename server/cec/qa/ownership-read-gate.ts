@@ -5,7 +5,7 @@ import { featureGate } from '../../features/enrollment-gate';
 import { readOwnershipCandidate, type ReadOwnershipView } from './read-ownership-candidate';
 
 /** Existing explicit, unconsumed QA handoffs only. Fresh metadata authorizes a reader, never QA. */
-export function ownershipReadGate(store: Store, request: DeliveryRequest, view?: ReadOwnershipView, ownClaim = '') {
+export function ownershipReadState(store: Store, request: DeliveryRequest, ownClaim = '') {
     const input = request.officeQAHandoff, t = store.state.tickets.find(t => t.key === request.key);
     if (store.project.provider !== 'azure' || !t || !input || input.consumedAt || input.acknowledgeIncompleteHistory !== true ||
         request.action !== 'resume-ticket' || request.status !== 'blocked' || !request.error || t.blocker !== request.error ||
@@ -26,9 +26,15 @@ export function ownershipReadGate(store: Store, request: DeliveryRequest, view?:
     if (effects.some(e => e.work.projectId === store.project.id &&
         ([request.id, t.runId, `ticket:${t.key}`].includes(e.work.id) || e.target === t.key || e.authorization === t.runId) &&
         !['verified', 'rejected'].includes(e.status))) return;
+    return t;
+}
+
+export function ownershipReadGate(store: Store, request: DeliveryRequest, view?: ReadOwnershipView, ownClaim = '') {
+    const t = ownershipReadState(store, request, ownClaim);
+    if (!t) return;
     if (!view || view.project !== store.project.id || view.key !== t.key ||
         !Number.isFinite(Date.parse(view.observedAt || '')) || Date.parse(view.observedAt!) > store.clock.now().getTime() + 1000 ||
         store.clock.now().getTime() - Date.parse(view.observedAt!) > 150000) return;
-    const candidate = readOwnershipCandidate(store.project, t.key, view, input.coordinatorSessionId);
+    const candidate = readOwnershipCandidate(store.project, t.key, view, request.officeQAHandoff!.coordinatorSessionId);
     return candidate && { ticket: t, candidate };
 }
