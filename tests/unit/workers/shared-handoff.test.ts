@@ -28,7 +28,7 @@ test.each(['pm', 'developer', 'lead', 'qa', 'cto', 'it', 'analyst', 'knowledge']
     });
     try {
         const runtime = new WorkerRuntime(f.store, execute);
-        await expect(runtime.run(role, 'Synthetic assignment', schema, { stage: role === 'analyst' ? 'feature-research' : 'conversation', readOnly: true })).resolves.toMatchObject({ outcome: 'blocked' });
+        await expect(runtime.run(role, 'Synthetic assignment', schema, { stage: role === 'analyst' ? 'feature-research' : 'conversation', readOnly: true, officeQA: role === 'qa' })).resolves.toMatchObject({ outcome: 'blocked' });
         expect(execute).toHaveBeenCalledTimes(1);
         const work = f.store.state.workLog!.at(-1)!, dir = resolve(f.store.dataRoot, 'sessions', work.id);
         expect(work.executionStatus).toBe('completed'); expect(work.status).toBe('blocked');
@@ -44,7 +44,7 @@ test('invalid completed JSON remains an error and never starts another provider 
     const execute = vi.fn(async () => JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: '{"outcome":"passed"}' } }));
     try {
         const runtime = new WorkerRuntime(f.store, execute);
-        await expect(runtime.run('qa', 'Synthetic assignment', schema, { stage: 'conversation', readOnly: true })).rejects.toThrow();
+        await expect(runtime.run('qa', 'Synthetic assignment', schema, { stage: 'conversation', readOnly: true, officeQA: true })).rejects.toThrow();
         expect(execute).toHaveBeenCalledTimes(1);
         const work = f.store.state.workLog!.at(-1)!;
         expect(existsSync(resolve(f.store.dataRoot, 'sessions', work.id, 'execution-completion.json'))).toBe(false);
