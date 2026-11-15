@@ -11,7 +11,8 @@ export function investigationCandidates(projectId: string, state: OfficeSnapshot
         failureKind: 'unconfirmed-delivery', workerIds: workers.filter(work => work.requestId === delivery.requestId).map(work => work.id),
     }));
     const process = workers.filter(work => work.stage !== 'it-investigation' && ['failed', 'interrupted'].includes(work.status) && work.failure?.dispatched && work.failure.category !== 'cancelled' && (work.failure.code === 'surviving-subprocesses' || !deliveries.some(delivery => delivery.requestId === work.requestId)))
-        .map(work => ({ kind: 'worker' as const, id: work.id, requestId: work.requestId, ticket: work.ticket, failureKind: work.failure!.code || work.failure!.category, workerIds: workers.filter(other => other.requestId === work.requestId).map(other => other.id) }));
+        .map(work => ({ kind: 'worker' as const, id: work.id, requestId: work.requestId, ticket: work.ticket, failureKind: work.failure!.code || work.failure!.category,
+            workerIds: work.requestId ? workers.filter(other => other.requestId === work.requestId).map(other => other.id) : [work.id] }));
     return [...slack, ...process];
 }
 export const investigationId = (projectId: string, source: ITInvestigation['source']) => `investigation:${projectId}:${source.kind}:${source.id}:${source.failureKind}`;

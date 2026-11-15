@@ -222,3 +222,18 @@ no sealed plan, packets or pending calls. It consumes the decision once, retains
 the old result/artifact hashes and all counters, and requires a new Office QA
 report. Ordinary resumes do not change old protocols. Sealed or uncertain runs
 remain blocked for reconciliation.
+
+An operator can name its coordinator session in that handoff. Office still requires
+complete, fresh session coverage and Morgan's current ownership read-back. Only one
+exact, active, reference-only coordinator outside the project worktree qualifies;
+unknown actors, execution evidence and competing writers continue to block. The
+handoff records the scoped coordination proof without changing global ownership.
+
+Ellis links an earlier CTO input rejection or uncertain implementation warning to
+an explicitly bound, completed replacement when its native artifacts and accepted
+result verify. The warning is superseded; the original failure, uncertainty and
+counters remain. Empty request IDs never group unrelated workers. An inactive
+read-only reconciliation with missing output can instead receive an explicit
+**retire as incomplete history** decision bound to its exact record and closed
+native claim. This preserves missing evidence and does not assert success or a
+fixed cause. Live related work and unsettled writes still prevent retirement.
