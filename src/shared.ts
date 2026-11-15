@@ -599,6 +599,7 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    officeQAHandoffs?: import('./contracts/office-qa-handoff').OfficeQAHandoff[];
     /** Recent QA reports for the inspector; complete immutable history stays in native attempts/artifacts. */
     qaHistory?: { stage: Stage; result: StageResult }[];
     qaProtocol?: Partial<Record<Stage, 'office-v1'>>;
@@ -866,6 +867,7 @@ export function slackMessageUrl(url: string, channelId: string, messageTs: strin
     }
 }
 export interface DeliveryRequest {
+    officeQAHandoff?: import('./contracts/office-qa-handoff').OfficeQAHandoffRequest;
     qaPlanRetry?: import('./contracts/qa-plan-retry').QAPlanRetryRequest;
     implementationContinuation?: import('./contracts/cec-implementation-continuation').ImplementationContinuationRequest;
     featureBinding?: import('./contracts/features').FeatureBinding;

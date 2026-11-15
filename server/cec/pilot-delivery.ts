@@ -1,5 +1,8 @@
 import { consumeQAPlanRetry } from './qa/consume-plan-retry';
+import { continueUnsealedQA } from './qa/continue-unsealed-qa';
+import { OfficeQAHandoffInput } from './qa/handoff-input';
 import type { FeatureBinding } from '../../src/contracts/features';
+import type { DeliveryRequest } from '../../src/shared';
 import { intakeDisposition, closeIntakeEpisode } from '../features/handoff/intake-disposition';
 import { assessmentEnabled } from '../features/handoff/disposition-store';
 import { enrolled, assertFeatureGate, featureGate } from '../features/enrollment-gate';
@@ -18,15 +21,25 @@ import { parkingUnconfirmed } from './parking/park-ticket';
 import { reconcileRejectedParking } from './parking/rejected-transition';
 import { continueAccessOnlyPlan } from './qa/continue-access-only-plan';
 
-export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean }) {
+export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean; qaHandoff?: unknown }) {
     return this.store.transaction(() => {
     assertFeatureGate(this.store, key);
     if (action === 'start-pilot' && !routing?.binding && assessmentEnabled(this.store) && enrolled(this.store,key)) throw new Error('Open the feature plan; its authorized handoff owns this ticket');
     if (this.store.project.provider !== 'azure')
         throw new Error('GitHub issues use project chat and maintenance');
     const t = this.store.ticket(key), queue = this.store.state.deliveryQueue ??= [];
+    const handoff = routing?.qaHandoff === undefined ? undefined : OfficeQAHandoffInput.parse(routing.qaHandoff);
+    if (handoff && (action !== 'resume-ticket' || routing?.automatic || routing?.binding || handoff.commit !== t.commit))
+        throw new Error('QA handoff requires an explicit resume of the same candidate');
+    const prior = handoff && queue.find(r => r.key === key && r.officeQAHandoff?.workerId === handoff.workerId);
+    if (prior) {
+        const { consumedAt: _, ...original } = prior.officeQAHandoff!;
+        if (JSON.stringify(original) !== JSON.stringify(handoff)) throw new Error('QA handoff already belongs to another decision');
+        return prior;
+    }
     const existing = queue.find(r => r.key === key && ['queued', 'working'].includes(r.status));
     if (existing) {
+        if (handoff) throw new Error('Another request owns the QA handoff');
         if (routing?.binding && JSON.stringify(existing.featureBinding) !== JSON.stringify(routing.binding)) throw new Error('Another delivery request owns this ticket');
         if (!routing?.binding && !routing?.automatic) closeIntakeEpisode(this.store, key, true);
         return existing;
@@ -43,8 +56,9 @@ export function requestDelivery(this: Engine, key: string, action: 'start-pilot'
     }
     else if (!t.pilot || t.stage === 'complete')
         throw new Error('Ticket has no resumable delivery');
-    const request = { id: randomUUID(), key, action, requestedAt: new Date(Math.max(this.store.clock.now().getTime(), Date.parse(queue.at(-1)?.requestedAt || '') + 1 || 0)).toISOString(), status: 'queued' as const, error: '', intakeStatus };
+    const request: DeliveryRequest = { id: randomUUID(), key, action, requestedAt: new Date(Math.max(this.store.clock.now().getTime(), Date.parse(queue.at(-1)?.requestedAt || '') + 1 || 0)).toISOString(), status: 'queued', error: '', intakeStatus };
     if (routing?.binding) Object.assign(request, {featureBinding: structuredClone(routing.binding)});
+    if (handoff) Object.assign(request, {officeQAHandoff: handoff});
     queue.push(request);
     if (!routing?.binding) closeIntakeEpisode(this.store, key, !routing?.automatic);
     this.store.emit('delivery-queued', `${key} queued for ${action === 'start-pilot' ? 'implementation' : 'live read-back and resume'}.`, 'pm', key);
@@ -72,7 +86,7 @@ export async function drainDelivery(this: Engine, selectedId?: string) {
             request.error = this.store.ticket(request.key).blocker;
     }
     catch (e) {
-        if (!request.qaPlanRetry && request.action !== 'continue-saved-implementation' && !featureGate(this.store, request.key).allowed) {
+        if (!request.qaPlanRetry && !request.officeQAHandoff && request.action !== 'continue-saved-implementation' && !featureGate(this.store, request.key).allowed) {
             request.status = 'queued';
             request.error = '';
             return;
@@ -199,11 +213,13 @@ export async function resume(this: Engine, key: string, background = true) {
         throw new Error('A different PR exists; resolve duplicate work before resuming');
     assertFeatureGate(this.store, key);
     const qaRetry = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.qaPlanRetry);
-    if (qaRetry && (live.key !== key || live.status !== t.status || live.existingPrId !== t.prId))
+    const qaHandoff = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.officeQAHandoff);
+    if ((qaRetry || qaHandoff) && (live.key !== key || live.status !== t.status || live.existingPrId !== t.prId))
         throw new Error('Current Jira status or PR changed; preserve the approved incomplete QA decision');
     if (qaRetry) await consumeQAPlanRetry(this.store, qaRetry, DATA, this.implementationOwnership);
-    if (!qaRetry) recoverSavedPlan(this.store, t, DATA);
-    if (!qaRetry && needsResumeReconciliation(t, this.store.state.workLog || [])) {
+    if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, DATA, this.implementationOwnership);
+    if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, DATA);
+    if (!qaRetry && !qaHandoff && needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const observed = await this.agents.reconcile(t);
         const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));
         if (gap) {
@@ -215,7 +231,7 @@ export async function resume(this: Engine, key: string, background = true) {
         advance(t, t.stage, observed);
         this.store.emit('reconciled', 'Previous stage independently verified through read-back; no external action replayed.', 'pm', key);
     }
-    await continueAccessOnlyPlan(this.store, t, DATA);
+    if (!qaHandoff) await continueAccessOnlyPlan(this.store, t, DATA);
     t.activity = 'waiting';
     t.blocker = '';
     if (t.parked?.resumeRequestedAt)

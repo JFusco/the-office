@@ -212,3 +212,13 @@ a **View results** notification. Successful QA is not an outbox approval request
 Older QA Team runs retain their original protocol, evidence and recovery gates;
 this change neither replaces their artifacts nor declares unfinished QA passed.
 The standalone QA Team skill remains available for separately requested audits.
+
+An existing unsealed, zero-provider-usage QA setup block can move to independent
+Office QA through an explicit `resume-ticket` decision with `qaHandoff` (original
+worker ID, exact commit, incomplete-history acknowledgment and setup handoff).
+The scheduler requires fresh ownership and Jira/PR eligibility, a completed native
+worker/claim and absent process group, unchanged clean source, settled effects and
+no sealed plan, packets or pending calls. It consumes the decision once, retains
+the old result/artifact hashes and all counters, and requires a new Office QA
+report. Ordinary resumes do not change old protocols. Sealed or uncertain runs
+remain blocked for reconciliation.
