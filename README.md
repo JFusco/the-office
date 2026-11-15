@@ -119,6 +119,18 @@ identities, active bindings, unknown mutations or usage, and finalized runs rema
 blocked. The new plan still needs actual feature coverage, actor/tenant verification,
 owned fixtures, native browser claims and ordinary acceptance and delivery checks.
 
+CEC-154 also has an explicitly approved corrected-plan continuation after a sealed
+read-only browser call fails and the public QA reducer releases its claim. The
+operator previews `/api/cec/incomplete-qa-plan` and submits `continue-qa-plan` with
+the original worker, unchanged proof fingerprint and incomplete-history acknowledgment.
+One scheduler-owned resume rechecks current eligibility, ownership, candidate,
+original native result and public QA artifacts, then reserves the next ordinary QA
+attempt before execution. The previous pending report, missing final, error and unrun
+work remain incomplete history. This never schedules the old queue, accepts missing
+coverage, resets usage/repair counters or retries a consumed decision. The corrected
+plan must cover actual feature mutations and persistence under normal QA/provider
+gates; Ready for Staging still waits for human merge and verified deployment.
+
 ## Development and verification
 
 ```sh

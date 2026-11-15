@@ -3,6 +3,9 @@ import type { Stage, StageResult, Ticket } from '../../../src/shared';
 
 export function qaRunDirectory(ticket: Ticket, stage: Stage, artifactRoot: string): string {
     const original = resolve(artifactRoot, '.qa', 'runs', `qa-${stage}-${ticket.attempt}`);
+    const retry = ticket.qaPlanRetries?.find(item => item.stage === stage && item.attempt + 1 === ticket.attempt);
+    if (retry && (retry.commit !== ticket.commit || retry.toRunDir !== original))
+        throw new Error('Explicit QA retry identity changed; preserve its original history');
     const continuation = ticket.qaPlanContinuations?.find(item => item.stage === stage && item.attempt === ticket.attempt);
     if (!continuation) return original;
     const next = `${original}-acceptance`;
@@ -13,6 +16,10 @@ export function qaRunDirectory(ticket: Ticket, stage: Stage, artifactRoot: strin
 
 /** A passed result may not reuse the retained access-only report. */
 export function qaPlanEvidenceGap(ticket: Ticket, stage: Stage, result: StageResult, artifactRoot: string): string {
+    if (ticket.qaPlanRetries?.some(item => item.stage === stage && item.attempt + 1 === ticket.attempt)) {
+        try { return result.qaRunDir === qaRunDirectory(ticket, stage, artifactRoot) ? '' : 'The new bound QA plan report is required; incomplete history cannot pass'; }
+        catch { return 'Explicit QA retry identity requires reconciliation'; }
+    }
     if (!ticket.qaPlanContinuations?.some(item => item.stage === stage && item.attempt === ticket.attempt)) return '';
     try {
         return result.qaRunDir === qaRunDirectory(ticket, stage, artifactRoot) ? '' : 'The bound QA acceptance plan report is required; the old access probe cannot pass this stage';
