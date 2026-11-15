@@ -2,9 +2,9 @@ import { test,expect } from './fixture-test';
 import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
-const artifacts = '/private/tmp/office-brain-screenshots';
+const artifacts = process.env.OFFICE_DRAWER_SCREENSHOTS || '/private/tmp/office-brain-screenshots';
 test('synthetic Library, Map and Activity preserve Office navigation and scoped records', async ({ page }) => {
-    mkdirSync(artifacts,{ recursive:true }); await page.goto('/'); await page.getByRole('button',{name:'Brain',exact:true}).click();
+    mkdirSync(artifacts,{ recursive:true }); await page.goto('/'); await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();
     const nav = page.getByRole('navigation',{name:'Brain views'});
     // Lessons is the first view: Harper's curated lessons, before any external Brain search.
     await expect(page.getByRole('heading',{name:'Lessons',exact:true})).toBeVisible();
@@ -15,14 +15,14 @@ test('synthetic Library, Map and Activity preserve Office navigation and scoped 
     await expect(page.getByRole('heading',{name:'Confirm schema versions before mapping changes'})).toBeVisible();
     await page.screenshot({path:`${artifacts}/office-brain-02-library.synthetic.png`,fullPage:true});
     await entriesSettled(page);expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
-    await nav.getByRole('button',{name:'Map',exact:true}).click();
+    await nav.getByRole('button',{name:'Brain',exact:true}).click();
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
     await expect(page.locator('canvas')).toHaveCount(1);
     await page.screenshot({path:`${artifacts}/office-brain-03-map-overview.synthetic.png`,fullPage:true});
     await page.getByLabel('Find a node').fill('schema'); await page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true}).click();
     await expect(page.getByRole('region',{name:'Selected node'})).toContainText('supplied');
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
-    await expect(page.getByRole('button',{name:'Constellation overview',exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Constellation overview',exact:true})).toHaveCount(0);
     await page.screenshot({path:`${artifacts}/office-brain-03-map.synthetic.png`,fullPage:true});
     await entriesSettled(page);expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
     await nav.getByRole('button',{name:'Activity',exact:true}).click(); await expect(page.locator('[data-brain-renderer]')).toHaveCount(0);
@@ -30,15 +30,15 @@ test('synthetic Library, Map and Activity preserve Office navigation and scoped 
     await expect(page.getByRole('list',{name:'Learning timeline'})).toContainText('curated');
     await page.screenshot({path:`${artifacts}/office-brain-04-activity.synthetic.png`,fullPage:true});
     await entriesSettled(page);expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
-    for(let n=0;n<3;n++) { await nav.getByRole('button',{name:'Map',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(1); await nav.getByRole('button',{name:'Library',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(0); }
+    for(let n=0;n<3;n++) { await nav.getByRole('button',{name:'Brain',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(1); await nav.getByRole('button',{name:'Library',exact:true}).click(); await expect(page.locator('canvas')).toHaveCount(0); }
 });
 test('node navigation animates only when Office and system motion preferences permit', async ({ page,request }) => {
     await page.emulateMedia({ reducedMotion:'no-preference' });
     for (const scenario of [{reducedMotion:false,system:false},{reducedMotion:true,system:false},{reducedMotion:false,system:true}]) {
         const {reducedMotion,system}=scenario; await page.emulateMedia({reducedMotion:system?'reduce':'no-preference'});
         await request.post('/__fixture/preferences',{data:{reducedMotion}});
-        await page.goto('/'); await page.getByRole('button',{name:'Brain',exact:true}).click();
-        await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Map',exact:true}).click();
+        await page.goto('/'); await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();
+        await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
         const canvas=page.locator('[data-brain-renderer] canvas'); await expect(canvas).toHaveCount(1);
         // Actual camera flight changes rendered frames; reduced motion settles immediately.
         await page.getByLabel('Find a node').fill('schema');
@@ -50,13 +50,13 @@ test('node navigation animates only when Office and system motion preferences pe
 });
 test('a constellation texture failure disposes the renderer and retains keyboard navigation',async({page})=>{
     await page.addInitScript(()=>{const original=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(this:HTMLCanvasElement,type:string,...args:unknown[]){if(type==='2d')return null;return original.apply(this,[type,...args] as Parameters<typeof original>);} as typeof original;});
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Map',exact:true}).click();
-    await expect(page.getByText('The 3D map is unavailable. Use the searchable connection list below.',{exact:true})).toBeVisible();await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(0);
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
+    await expect(page.getByText('The Brain view is unavailable. Use the searchable connection list beside it.',{exact:true})).toBeVisible();await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(0);
     await page.getByLabel('Find a node').fill('schema');await page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true}).click();await expect(page.getByRole('region',{name:'Selected node'})).toContainText('Saved connections');
 });
 
 test('synthetic Activity opens immutable supplied knowledge and recorded lookup pages',async({page})=>{
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Activity',exact:true}).click();
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Activity',exact:true}).click();
     await page.getByRole('button',{name:'Inspect assignment knowledge',exact:true}).first().click();const detail=page.getByRole('region',{name:'Assignment knowledge',exact:true});await expect(detail).toContainText('Supplied at dispatch');await expect(detail).toContainText('Confirm schema versions');await detail.getByRole('button',{name:'Lookup 1 · served',exact:true}).click();await expect(page.getByRole('region',{name:'Selected lookup',exact:true})).toContainText('schema validation receipts');await page.locator('[data-office-brain]').evaluate(el=>el.scrollTop=0);await page.screenshot({path:`${artifacts}/office-brain-04-assignment-knowledge.synthetic.png`,fullPage:true});await expect(detail).toContainText('Accepted outcome citations');await expect(detail).not.toContainText('SHA-256');await page.getByRole('region',{name:'Selected lookup',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:`${artifacts}/office-brain-04-lookup-outcome.synthetic.png`,fullPage:true});await entriesSettled(page);expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
 });
 
@@ -68,7 +68,7 @@ test('synthetic assignment with no lookups retains an accessible and honest empt
         await route.fulfill({response,json:{...data,lookups:[],lookup:undefined,outcomes:[]}});
     });
     await page.goto('/');
-    await page.getByRole('button',{name:'Brain',exact:true}).click();
+    await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();
     await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Activity',exact:true}).click();
     await page.getByRole('button',{name:'Inspect assignment knowledge',exact:true}).first().click();
     const detail=page.getByRole('region',{name:'Assignment knowledge',exact:true});
@@ -84,5 +84,5 @@ test('room orbit and zoom survive renderer disposal while visiting the Brain map
     await expect.poll(async()=>(await positions()).length).toBeGreaterThan(0);const initial=await positions(),box=(await canvas.boundingBox())!;
     await page.mouse.move(box.x+box.width*.65,box.y+box.height*.7);await page.mouse.down();await page.mouse.move(box.x+box.width*.8,box.y+box.height*.65,{steps:12});await page.mouse.up();await page.mouse.wheel(0,-100);await page.waitForTimeout(700);
     let prior=await positions(),stable=0;await expect.poll(async()=>{await page.waitForTimeout(100);const next=await positions();stable=next.length===prior.length&&next.every((r,i)=>Math.abs(r.x-prior[i].x)<.1&&Math.abs(r.y-prior[i].y)<.1)?stable+1:0;prior=next;return stable>=2;}).toBe(true);const orbited=await positions();expect(orbited.some((r,i)=>Math.abs(r.x-initial[i].x)>5||Math.abs(r.y-initial[i].y)>5)).toBe(true);
-    for(let i=0;i<2;i++){await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Map',exact:true}).click();await expect(page.locator('canvas')).toHaveCount(1);await page.getByRole('button',{name:'Return to office',exact:true}).click();await expect(page.locator('canvas')).toHaveCount(1);await expect.poll(async()=>{const after=await positions();return after.length===orbited.length&&after.every((r,j)=>Math.abs(r.x-orbited[j].x)<2&&Math.abs(r.y-orbited[j].y)<2);}).toBe(true);}
+    for(let i=0;i<2;i++){await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();await expect(page.locator('canvas')).toHaveCount(1);await page.getByRole('button',{name:'Return to office',exact:true}).click();await expect(page.locator('canvas')).toHaveCount(1);await expect.poll(async()=>{const after=await positions();return after.length===orbited.length&&after.every((r,j)=>Math.abs(r.x-orbited[j].x)<2&&Math.abs(r.y-orbited[j].y)<2);}).toBe(true);}
 });

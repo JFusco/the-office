@@ -21,9 +21,10 @@ function fixture() {
 }
 test('queues one linked bounded-context continuation while preserving the failed original and history', () => {
     const f = fixture(); try {
+        f.source.timing = [{ stage: 'conversation:cto', enqueuedAt: 'before' }];
         const before = structuredClone(f.source), accepted = recoverCTOInput(f.store, f.source.id, f.root, () => false);
         expect(accepted.status).toBe('queued'); expect(f.source).toEqual(before);
-        const linked = f.store.state.messages[1]; expect(linked.body).toBe(f.source.body); expect(linked.inputRecovery?.originalMessageId).toBe(f.source.id);
+        const linked = f.store.state.messages[1]; expect(linked.timing).toEqual([]); linked.timing!.push({ stage: 'conversation:cto' } as any); expect(f.source).toEqual(before); expect(linked.body).toBe(f.source.body); expect(linked.inputRecovery?.originalMessageId).toBe(f.source.id);
         expect(recoverCTOInput(f.store, f.source.id, f.root, () => false)).toEqual(accepted); expect(f.store.state.messages).toHaveLength(2);
         linked.status = 'failed'; expect(recoverCTOInput(f.store, f.source.id, f.root, () => false).status).toBe('failed'); expect(f.store.state.messages).toHaveLength(2);
     } finally { f.close(); }

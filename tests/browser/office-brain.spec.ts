@@ -5,8 +5,8 @@ const artifacts = process.env.OFFICE_BRAIN_SCREENSHOTS || '/private/tmp/office-b
 test('synthetic fixture: published technical notes and global scope share the Office map',async({page,request},testInfo)=>{
     testInfo.annotations.push({type:'evidence',description:'Synthetic committed-note fixture; no live Brain publication'});
     await request.post('/__fixture/technical');
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();
-    await page.getByRole('button',{name:'Map',exact:true}).click();
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
     await page.getByLabel('Include Brain notes (external, read-only)').check();
     await page.getByLabel('Find a node').fill('Published validation guide');
@@ -14,9 +14,9 @@ test('synthetic fixture: published technical notes and global scope share the Of
     await expect(page.getByRole('region',{name:'Published technical note'})).toContainText('Verify the committed schema version');
     await expect(page.getByRole('region',{name:'Selected node'})).toContainText('domain membership');
     await page.screenshot({path:`${artifacts}/office-brain-03-published-note.synthetic.png`,fullPage:true});
-    await page.getByLabel('Map scope').selectOption('global');
+    await page.getByText('View options',{exact:true}).click();await page.getByLabel('View scope').selectOption('global');await page.getByLabel('View scope').press('Escape');
     await page.getByLabel('Find a node').fill('');
-    await page.getByRole('region',{name:'Map browser'}).getByRole('button',{name:/Tooling|Technical knowledge/}).click();
+    await page.getByRole('region',{name:'Brain browser'}).getByRole('button',{name:/Tooling|Technical knowledge/}).click();
     await expect(page.getByRole('button',{name:'Published validation guide · technical',exact:true})).toBeVisible();
     await expect(page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true})).toHaveCount(0);
     await expect(page.getByRole('button',{name:'implement assignment · assignment',exact:true})).toHaveCount(0);

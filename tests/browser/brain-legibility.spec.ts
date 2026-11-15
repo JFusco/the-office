@@ -1,10 +1,11 @@
+import { setMapFilter, clearMapSelection } from './support';
 import {test, expect} from './fixture-test';
 import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
 
 test('knowledge uses shared form spacing and safe formatted documents while retaining exact history', async ({page, request})=>{
     await request.post('/__fixture/technical');
-    await page.goto('/'); await page.getByRole('button',{name:'Brain',exact:true}).click();
+    await page.goto('/'); await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();
     await page.getByRole('button',{name:'Library',exact:true}).click();
     const search = page.getByLabel('Search knowledge');
     const spacing = await search.evaluate(el=>{
@@ -38,7 +39,7 @@ test('constellation keeps its renderer through selection, search and filters; la
         const synthetic=Array.from({length:450},(_,i)=>({id:`synthetic:${i}`,kind:'technical',title:`Synthetic guide ${i}`,detail:'Synthetic crowded-map legibility fixture',domains:[i%2?'tooling':'cms']}));
         await route.fulfill({response,json:{...map,nodes:[...map.nodes,...synthetic],truncated:true}});
     });
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     const canvas=page.locator('[data-brain-renderer] canvas'); await expect(canvas).toHaveCount(1);
     const original=await canvas.elementHandle(); expect(original).toBeTruthy();
     const dimensions=await canvas.boundingBox(),frame=(await page.locator('[data-brain-map-frame]').boundingBox())!,list=(await page.locator('[data-brain-list-frame]').boundingBox())!;
@@ -46,23 +47,24 @@ test('constellation keeps its renderer through selection, search and filters; la
     expect(frame.width).toBeGreaterThan(list.width*2);expect(list.width).toBeCloseTo(300,0);
     expect(list.x).toBeGreaterThan(frame.x+frame.width/2);expect(list.x+list.width).toBeLessThanOrEqual(frame.x+frame.width);
     expect(list.y).toBeGreaterThan(frame.y);expect(list.y).toBeLessThan(frame.y+100);
-    const scope=page.getByLabel('Map scope');
+    await page.getByText('View options',{exact:true}).click();
+    const scope=page.getByLabel('View scope');
     expect(await scope.evaluate(el=>getComputedStyle(el).paddingInlineEnd)).toBe('38px');
-    const inset=await scope.evaluate(el=>{const svg=el.parentElement!.querySelector('svg')!; return el.getBoundingClientRect().right-svg.getBoundingClientRect().right;});expect(inset).toBe(12);
+    const inset=await scope.evaluate(el=>{const svg=el.parentElement!.querySelector('svg')!; return el.getBoundingClientRect().right-svg.getBoundingClientRect().right;});expect(inset).toBe(12);await scope.press('Escape');
     await page.getByLabel('Include Brain notes (external, read-only)').check();
     await page.getByLabel('Find a node').fill('Synthetic guide 12');
     await page.getByRole('button',{name:'Synthetic guide 12 · technical',exact:true}).click();
     await expect(page.getByRole('region',{name:'Selected node'})).toContainText('Synthetic crowded-map legibility fixture');
     expect(await canvas.evaluate((el, before)=>el===before,original)).toBe(true);
-    await page.getByRole('button',{name:'Constellation overview',exact:true}).click();
-    await page.getByLabel('Find a node').fill('unmatched-record'); await expect(page.getByRole('region',{name:'Map browser'})).toContainText('No matching records');
+    await clearMapSelection(page);
+    await page.getByLabel('Find a node').fill('unmatched-record'); await expect(page.getByRole('region',{name:'Brain browser'})).toContainText('No matching records');
     expect(await canvas.evaluate((el,before)=>el===before,original)).toBe(true);
-    await page.getByRole('combobox',{name:'Show',exact:true}).selectOption('technical');expect(await canvas.evaluate((el,before)=>el===before,original)).toBe(true);
+    await setMapFilter(page,'technical');expect(await canvas.evaluate((el,before)=>el===before,original)).toBe(true);
     await entriesSettled(page);expect((await new AxeBuilder({page}).include('[data-office-brain]').analyze()).violations).toEqual([]);
 });
 
 test('map labels do not steal marker clicks and explicit connections reveal filtered targets',async({page})=>{
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     const canvas=page.locator('[data-brain-renderer] canvas');await expect(canvas).toHaveCount(1);await canvas.scrollIntoViewIfNeeded();
     const box=(await canvas.boundingBox())!;
     await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
@@ -73,10 +75,10 @@ test('map labels do not steal marker clicks and explicit connections reveal filt
     await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
     await expect.poll(()=>canvas.evaluate(el=>getComputedStyle(el).cursor)).toBe('pointer');
     await page.mouse.click(box.x+box.width/2,box.y+box.height/2);await expect(page.getByRole('region',{name:'Selected node'})).toBeVisible();
-    await page.getByRole('combobox',{name:'Show',exact:true}).selectOption('lesson');
+    await setMapFilter(page,'lesson');
     await page.getByLabel('Find a node').fill('schema');await page.getByRole('button',{name:'Confirm schema versions before mapping changes · lesson',exact:true}).click();
     await page.getByRole('region',{name:'Selected node'}).getByRole('button',{name:/^supplied ·/}).first().click();
-    await expect(page.getByRole('region',{name:'Assignment knowledge',exact:true})).toBeVisible();await expect(page.getByRole('combobox',{name:'Show',exact:true})).toHaveValue('all');
+    await expect(page.getByRole('region',{name:'Assignment knowledge',exact:true})).toBeVisible();await page.getByText('View options',{exact:true}).click();const show=page.getByRole('combobox',{name:'Show',exact:true});await expect(show).toHaveValue('all');await show.press('Escape');
     const selected=page.getByRole('region',{name:'Selected node'});
     await expect(selected.locator(':scope > h3')).toHaveText('implement assignment');
     await expect(selected).toContainText('Recorded knowledge exposure.');
@@ -89,7 +91,7 @@ test('failed lazy knowledge chunk retains the Office shell and room camera',asyn
     const positions=()=>page.locator('[data-scene-label="mail"]').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width};}).filter(r=>r.w>0));
     await expect.poll(async()=>(await positions()).length).toBeGreaterThan(0);const box=(await canvas.boundingBox())!;
     await page.mouse.move(box.x+box.width*.65,box.y+box.height*.7);await page.mouse.down();await page.mouse.move(box.x+box.width*.8,box.y+box.height*.65,{steps:12});await page.mouse.up();await page.waitForTimeout(700);
-    const before=await positions();await page.getByRole('button',{name:'Brain',exact:true}).click();
+    const before=await positions();await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();
     await expect(page.getByRole('status').filter({hasText:'Office Brain could not load.'})).toBeVisible();await expect(page.getByRole('button',{name:'Office settings'})).toBeVisible();
     await page.getByRole('button',{name:'Return to office',exact:true}).click();await expect(page.locator('canvas')).toHaveCount(1);
     await expect.poll(async()=>{const after=await positions();return after.length===before.length && after.every((r,i)=>Math.abs(r.x-before[i].x)<3&&Math.abs(r.y-before[i].y)<3);}).toBe(true);
@@ -104,22 +106,23 @@ test('unformatted historical assignment and lookup entries still list their sour
         if(data.lookup)data.lookup.response.text='Synthetic malformed historical lookup';
         await route.fulfill({response,json:data});
     });
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Activity',exact:true}).click();await page.getByRole('button',{name:'Inspect assignment knowledge'}).first().click();
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Activity',exact:true}).click();await page.getByRole('button',{name:'Inspect assignment knowledge'}).first().click();
     const detail=page.getByRole('region',{name:'Assignment knowledge',exact:true});await expect(detail).toContainText('Some excerpts could not be formatted');
     await detail.getByText('Supplied sources',{exact:true}).click();const supplied=detail.locator('details[open] li').first();await expect(supplied).toContainText(/lesson, revision \d+|Brain note: |Recorded source/);await expect(supplied).not.toContainText(recorded!.id);await expect(detail).not.toContainText(recorded!.sha);
     await detail.getByRole('button',{name:'Lookup 1 · served',exact:true}).click();const lookup=page.getByRole('region',{name:'Selected lookup',exact:true});await expect(lookup).toContainText('Some excerpts could not be formatted');
     await lookup.getByText('Lookup sources',{exact:true}).click();const retrieved=lookup.locator('details[open] li').first();await expect(retrieved).toContainText(/lesson, revision \d+|Brain note: |Recorded source/);await expect(retrieved).not.toContainText(recorded!.id);await expect(lookup).not.toContainText(recorded!.sha);
 });
 
-test('group and search context survive inspecting a record, with a concise introduction above the map',async({page})=>{
+test('group and search context survive inspecting a record, with source guidance below the map',async({page})=>{
     await page.route('**/api/knowledge/map?**',async route=>{const response=await route.fetch(),map=await response.json();await route.fulfill({response,json:{...map,nodes:[...map.nodes,...Array.from({length:100},(_,i)=>({id:`synthetic:${i}`,title:`Synthetic note ${i}`,kind:'technical',domains:['cms'],detail:'Synthetic group context fixture'}))]}});});
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();await page.getByLabel('Include Brain notes (external, read-only)').check();
-    const browser=page.getByRole('region',{name:'Map browser'});await browser.getByRole('button',{name:'CMS 100',exact:true}).click();
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();await page.getByLabel('Include Brain notes (external, read-only)').check();
+    const browser=page.getByRole('region',{name:'Brain browser'});await browser.getByRole('button',{name:'CMS 100',exact:true}).click();
     await browser.getByRole('button',{name:'Next records',exact:true}).click();await expect(browser).toContainText('2 / 3');
     const record=browser.getByRole('button',{name:/Synthetic note .* · technical/}).first(),name=await record.innerText();await record.click();
-    await expect(page.getByRole('navigation',{name:'Map location'}).getByRole('button',{name:'CMS',exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'Back to map',exact:true}).click();await expect(browser).toContainText('2 / 3');await expect(browser.getByRole('button',{name,exact:true})).toBeVisible();
-    const caption=page.getByText("See how the team's lessons and work connect.",{exact:false});const bounds=await caption.boundingBox(),canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
-    expect(bounds!.width).toBeLessThan((await page.locator('[data-brain-content]').boundingBox())!.width*.65);expect(bounds!.y+bounds!.height).toBeLessThan(canvas!.y);expect(await caption.evaluate(el=>getComputedStyle(el).maxWidth)).not.toBe('none');
-    await page.getByText('Controls and source details',{exact:true}).click();await expect(page.getByText('Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.',{exact:true})).toBeVisible();
+    await expect(page.getByRole('navigation',{name:'Brain location'}).getByRole('button',{name:'CMS',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Back to Brain',exact:true}).click();await expect(browser).toContainText('2 / 3');await expect(browser.getByRole('button',{name,exact:true})).toBeVisible();
+    const canvas=await page.locator('[data-brain-renderer] canvas').boundingBox();
+    const details=page.getByText('Controls and source details',{exact:true});const bounds=(await details.boundingBox())!;
+    expect(bounds.y).toBeGreaterThan(canvas!.y+canvas!.height);
+    await details.click();await expect(page.getByText('Click empty space to clear a selection. Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.',{exact:true})).toBeVisible();
 });

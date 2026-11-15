@@ -24,7 +24,7 @@ for (const width of [1440, 390]) {
         const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
         await page.goto('/'); await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
         const opening = sample(page);
-        await page.getByRole('button', { name: 'Brain', exact: true }).click();
+        await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
         const frames = await opening, drawer = page.locator('[data-brain-drawer]');
         const bounds = (await drawer.boundingBox())!;
         expect(bounds.width).toBeCloseTo(width > 1000 ? width * .8 : width, 0);
@@ -32,7 +32,7 @@ for (const width of [1440, 390]) {
         expect(frames.some(frame => frame.x !== null && frame.x > bounds.x + 5)).toBe(true);
         expect(frames.at(-1)!.x).toBeCloseTo(bounds.x, 0);
         await expect(page.locator('canvas')).toHaveCount(0);
-        await page.getByRole('button', { name: 'Map', exact: true }).click();
+        await page.getByRole('navigation',{name:'Brain views'}).getByRole('button', { name: 'Brain', exact: true }).click();
         await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
         const closing = sample(page);
         await page.getByRole('button', { name: 'Return to office', exact: true }).click();
@@ -42,7 +42,7 @@ for (const width of [1440, 390]) {
         await expect(drawer).toHaveCount(0);
         expect(closeFrames.every(frame => frame.canvases <= 1 && !(frame.x !== null && frame.room))).toBe(true);
         await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Brain', exact: true })).toBeFocused();
+        await expect(page.locator('header').getByRole('button', { name: 'Brain', exact: true })).toBeFocused();
         expect(errors).toEqual([]);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     });
@@ -50,17 +50,17 @@ for (const width of [1440, 390]) {
 
 test('all knowledge screens share the content width; map frames and checkbox stay legible', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1100 });
-    await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
     const nav = page.getByRole('navigation', { name: 'Brain views' });
     const widths: number[] = [];
-    for (const name of ['Lessons', 'Library', 'Map', 'Activity']) {
+    for (const name of ['Lessons', 'Library', 'Brain', 'Activity']) {
         await nav.getByRole('button', { name, exact: true }).click();
         await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
         widths.push((await page.locator('[data-brain-content]').boundingBox())!.width);
         await expect(page.getByRole('main')).toHaveCount(1);
     }
     expect(widths).toEqual([1280, 1280, 1280, 1280]);
-    await nav.getByRole('button', { name: 'Map', exact: true }).click();
+    await nav.getByRole('button', { name: 'Brain', exact: true }).click();
     await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
     const borderColor = await page.evaluate(() => {
         const probe = document.createElement('span'); probe.style.color = 'var(--color-secondary-line)'; document.querySelector('[data-brain-map-frame]')!.append(probe);
@@ -91,10 +91,10 @@ test('Brain cannot interrupt an animated elevator trip', async ({ page, request 
     await request.post('/__fixture/preferences', { data: { reducedMotion: false } });
     await page.goto('/'); await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
     await page.getByRole('button', { name: /^Go to Floor 2/ }).click();
-    await expect(page.getByRole('button', { name: 'Brain', exact: true })).toBeDisabled();
+    await expect(page.locator('header').getByRole('button', { name: 'Brain', exact: true })).toBeDisabled();
     await expect(page.locator('[data-elevator-doors]')).toHaveAttribute('data-phase', 'idle');
-    await expect(page.getByRole('button', { name: 'Brain', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await expect(page.locator('header').getByRole('button', { name: 'Brain', exact: true })).toBeEnabled();
+    await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
     await expect(page.getByRole('main', { name: 'Office Brain', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('heading', { name: 'CTO Office', exact: true })).toBeVisible();
@@ -105,7 +105,7 @@ test('Brain cannot interrupt an animated elevator trip', async ({ page, request 
 for (const width of [1440, 390]) {
     test(`project-switch loading covers and disables the knowledge drawer at ${width}px`, async ({ page }) => {
         await page.setViewportSize({ width, height: 1000 });
-        await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+        await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
         await expect(page.getByRole('heading', { name: 'Lessons', exact: true })).toBeVisible();
         let release!: () => void;
         const gate = new Promise<void>(resolve => { release = resolve; });
@@ -125,9 +125,9 @@ for (const width of [1440, 390]) {
 }
 
 test('rapid reopen and switching from Brain to another panel keep one drawer', async ({ page }) => {
-    await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
     await expect(page.locator('[data-brain-drawer]')).toBeVisible();
-    await page.keyboard.press('Escape'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.keyboard.press('Escape'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
     await expect(page.locator('[data-brain-drawer]')).toHaveCount(1);
     await page.getByRole('button', { name: 'People', exact: true }).click();
     await expect(page.locator('[data-brain-drawer]')).toHaveCount(0);
@@ -143,11 +143,11 @@ test('a late Inspector exit cannot restore the room underneath Brain', async ({ 
     await page.goto('/'); await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
     await page.getByRole('button', { name: 'People', exact: true }).click();
     await expect(page.getByRole('complementary', { name: 'People', exact: true })).toBeVisible();
-    await page.keyboard.press('Escape'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.keyboard.press('Escape'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Lessons', exact: true })).toBeVisible();
     await expect(page.locator('[data-scene-label="room"]')).toHaveCount(0);
     await expect(page.locator('canvas')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button', { name: 'Brain', exact: true }).click();
     await expect(page.locator('canvas')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-scene-label="room"]').first()).toBeVisible();
@@ -157,8 +157,8 @@ test('a late Inspector exit cannot restore the room underneath Brain', async ({ 
 for (const viewport of [{ width: 1440, height: 800 }, { width: 390, height: 844 }]) {
     test(`selected map content stays below navigation at ${viewport.width}px`, async ({ page }) => {
         await page.setViewportSize(viewport);
-        await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-        await page.getByRole('button', { name: 'Map', exact: true }).click();
+        await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
+        await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
         await page.getByLabel('Find a node').fill('schema');
         await page.getByRole('button', { name: 'Confirm schema versions before mapping changes · lesson', exact: true }).click();
         const nav = (await page.getByRole('navigation', { name: 'Brain views' }).boundingBox())!;
@@ -168,7 +168,7 @@ for (const viewport of [{ width: 1440, height: 800 }, { width: 390, height: 844 
             const canvas = (await page.locator('[data-brain-renderer]').boundingBox())!, list = (await page.locator('[data-brain-list-frame]').boundingBox())!;
             expect(list.y).toBeGreaterThanOrEqual(canvas.y + canvas.height);
         }
-        const back = page.getByRole('button', { name: 'Back to map', exact: true }); await back.scrollIntoViewIfNeeded();
+        const back = page.getByRole('button', { name: 'Back to Brain', exact: true }); await back.scrollIntoViewIfNeeded();
         expect((await back.boundingBox())!.y).toBeGreaterThanOrEqual(nav.y + nav.height);
         expect(await back.evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
     });
@@ -176,8 +176,8 @@ for (const viewport of [{ width: 1440, height: 800 }, { width: 390, height: 844 
 
 test('the activity checkbox reflows at narrow widths and large text', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 844 });
-    await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     const label = await page.getByRole('checkbox', { name: 'Include employee activity' }).evaluate(el => {
         const label = el.closest('label')!; label.style.fontSize = '24px';
         const text = label.querySelector('span')!, bounds = label.getBoundingClientRect(), content = document.querySelector('[data-brain-content]')!;

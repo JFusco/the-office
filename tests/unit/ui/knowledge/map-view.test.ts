@@ -108,11 +108,12 @@ it('fits every saved neighbor inside both camera axes while preserving node posi
     expect(focus).toEqual({x:0,y:0,z:0});expect(neighbors[0]).toEqual({x:-240,y:120,z:60});
 });
 
-it('the default view draws recorded links: assignments start on, Brain notes start off', () => {
-    expect(initialSelection).toMatchObject({activity: true, technical: false});
+it('the default view draws recorded work and external Brain links, with an explicit opt-out', () => {
+    expect(initialSelection).toMatchObject({activity: true, technical: true});
     const project: KnowledgeMap = {truncated: false, nodes: [
         {id: 'project', kind: 'project', title: 'CEC', detail: ''}, {id: 'lesson', kind: 'lesson', title: 'Pin the router', detail: ''},
         {id: 'attempt', kind: 'assignment', title: 'Employee attempt', detail: ''}, {id: 'note:1', kind: 'technical', title: 'A', detail: ''}, {id: 'note:2', kind: 'technical', title: 'B', detail: ''},
     ], edges: [{source: 'attempt', target: 'lesson', kind: 'supplied'}, {source: 'note:1', target: 'note:2', kind: 'publication'}]};
-    expect(displayScene(project, initialSelection).scene.edges).toEqual([{source: 'attempt', target: 'lesson', kind: 'supplied'}]);
+    expect(displayScene(project, initialSelection).scene.edges).toEqual(project.edges);
+    expect(displayScene(project, {...initialSelection,technical:false}).scene.edges).toEqual([{source: 'attempt', target: 'lesson', kind: 'supplied'}]);
 });

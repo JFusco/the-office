@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator, type APIRequestContext } from './fixture-test';
-import { entriesSettled } from './support';
+import { entriesSettled, clearMapSelection } from './support';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
 
@@ -38,8 +38,8 @@ test('dark constellation glides between real graph identities and preserves a si
     await request.post('/__fixture/preferences', { data: { reducedMotion: false } });
     await crowdedMap(page);
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-    await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     const canvas = page.locator('[data-brain-renderer] canvas'); await expect(canvas).toHaveCount(1);
     const original = await canvas.elementHandle();
     const background = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--scene-brain-background').trim());
@@ -55,20 +55,16 @@ test('dark constellation glides between real graph identities and preserves a si
     expect(await canvas.evaluate((el, before) => el === before, original)).toBe(true);
     await expect(page.locator('canvas')).toHaveCount(1); expect(errors).toEqual([]);
     await entriesSettled(page);expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-    await page.getByRole('button', { name: 'Pause map motion', exact: true }).click();
-    await page.waitForTimeout(800); const still = await canvas.screenshot(); await page.waitForTimeout(300);
-    expect((await canvas.screenshot()).equals(still)).toBe(true);
-    await page.getByRole('button', { name: 'Resume map motion', exact: true }).click();
-    await page.waitForTimeout(3500); const orbit = await canvas.screenshot(); await page.waitForTimeout(300);
-    expect((await canvas.screenshot()).equals(orbit)).toBe(false);
+    await canvas.hover();const drifting=await canvas.screenshot();await page.waitForTimeout(350);
+    expect((await canvas.screenshot()).equals(drifting)).toBe(false);
     if (artifacts) { const video = page.video(); await page.close(); await video?.saveAs(`${artifacts}/dark-map-motion.synthetic.webm`); }
 });
 
 test('action buttons and button links share geometry, hover and focus across knowledge screens', async ({ page }) => {
     await crowdedMap(page); await page.goto('/');
-    await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
     const controls = [page.getByRole('button', { name: 'Return to office', exact: true }),
-        page.getByRole('link', { name: /^Open board:/ }), ...['Lessons', 'Library', 'Map', 'Activity'].map(name => page.getByRole('button', { name, exact: true }))];
+        page.getByRole('link', { name: /^Open board:/ }), ...['Lessons', 'Library', 'Brain', 'Activity'].map(name => page.getByRole('navigation',{name:'Brain views'}).getByRole('button', { name, exact: true }))];
     const expected = await style(controls[0]);
     expect(expected.height).toBe(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--spacing-control-height'))));
     for (const control of controls) expect(await style(control)).toEqual(expected);
@@ -79,38 +75,41 @@ test('action buttons and button links share geometry, hover and focus across kno
     await link.hover(); await expect.poll(() => link.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(hover);
     await page.keyboard.press('Tab'); await link.focus(); await expect(link).toBeFocused();
     expect(await link.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid');
-    await page.getByRole('button', { name: 'Map', exact: true }).click(); await page.getByLabel('Include Brain notes (external, read-only)').check();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button', { name: 'Brain', exact: true }).click(); await page.getByLabel('Include Brain notes (external, read-only)').check();
+    for(const control of [page.getByRole('button',{name:'Refresh Brain',exact:true}),page.getByText('View options',{exact:true})]) {
+        expect(await style(control)).toEqual(expected);
+        expect(await control.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe(normal);
+    }
     await page.getByRole('button', { name: 'Tooling 480', exact: true }).click();
     const previous = page.getByRole('button', { name: 'Previous records', exact: true }); await expect(previous).toBeDisabled();
     const before = await previous.evaluate(el => getComputedStyle(el).backgroundColor); await previous.hover();
     expect(await previous.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(before);
 });
 
-test('Refresh map keeps the viewer\'s Brain-note opt-in', async ({ page }) => {
+test('Refresh Brain keeps the viewer\'s Brain-note opt-in', async ({ page }) => {
     await crowdedMap(page); await page.goto('/');
-    await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     const brain = page.getByLabel('Include Brain notes (external, read-only)'); await brain.check();
-    const browser = page.getByRole('region', { name: 'Map browser' });
+    const browser = page.getByRole('region', { name: 'Brain browser' });
     await expect(browser.getByRole('button', { name: 'Tooling 480', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Refresh map', exact: true }).click();
+    await page.getByRole('button', { name: 'Refresh Brain', exact: true }).click();
     await expect(brain).toBeChecked();
     await expect(browser.getByRole('button', { name: 'Tooling 480', exact: true })).toBeVisible();
 });
 
-test('Pause stills the map content entry animations and resuming restores them', async ({ page, request }) => {
-    await motionOn(page, request);
+test('reduced motion stills map content entries and paging', async ({ page, request }) => {
+    await page.emulateMedia({reducedMotion:'reduce'});await request.post('/__fixture/preferences',{data:{reducedMotion:true}});
     let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
     await crowdedMap(page, gate);
-    await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     await expect(page.getByRole('status').filter({ hasText: 'Loading connections…' })).toBeVisible();
-    await page.getByRole('button', { name: 'Pause map motion', exact: true }).click();
     const frames = revealFrames(page); release();
     // An immediate reveal jumps from hidden to shown; an eased one passes through intermediate opacities.
     const reveal = await frames; expect(reveal.at(-1)).toBe(1); expect(reveal.every(x => x === 0 || x === 1)).toBe(true);
     await page.getByLabel('Include Brain notes (external, read-only)').check();
-    const browser = page.getByRole('region', { name: 'Map browser' }), records = browser.locator('ul');
+    const browser = page.getByRole('region', { name: 'Brain browser' }), records = browser.locator('ul');
     const inspector = page.getByRole('region', { name: 'Selected node' }).locator('xpath=..');
     await browser.getByRole('button', { name: 'Tooling 480', exact: true }).click();
     await expect(browser).toContainText('1 / 12'); expect(await animation(records)).toBe('none');
@@ -118,19 +117,18 @@ test('Pause stills the map content entry animations and resuming restores them',
     await expect(browser).toContainText('2 / 12'); expect(await animation(records)).toBe('none');
     await browser.getByRole('button', { name: /^Preview note .* · technical$/ }).first().click();
     await expect(inspector).toBeVisible(); expect(await animation(inspector)).toBe('none');
-    await page.getByRole('button', { name: 'Back to map', exact: true }).click();
-    await page.getByRole('button', { name: 'Resume map motion', exact: true }).click();
+    await page.getByRole('button', { name: 'Back to Brain', exact: true }).click();
     await browser.getByRole('button', { name: 'Next records', exact: true }).click();
-    await expect(browser).toContainText('3 / 12'); expect(await animation(records)).toBe('knowledge-enter');
+    await expect(browser).toContainText('3 / 12'); expect(await animation(records)).toBe('none');
     await browser.getByRole('button', { name: /^Preview note .* · technical$/ }).first().click();
-    await expect(inspector).toBeVisible(); expect(await animation(inspector)).toBe('knowledge-enter');
+    await expect(inspector).toBeVisible(); expect(await animation(inspector)).toBe('none');
 });
 
 test('keyboard paging keeps focus on the page controls while each page of records eases in', async ({ page, request }) => {
     await motionOn(page, request); await crowdedMap(page); await page.goto('/');
-    await page.getByRole('button', { name: 'Brain', exact: true }).click();
-    await page.getByRole('button', { name: 'Map', exact: true }).click(); await page.getByLabel('Include Brain notes (external, read-only)').check();
-    const browser = page.getByRole('region', { name: 'Map browser' }), records = browser.locator('ul');
+    await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
+    await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click(); await page.getByLabel('Include Brain notes (external, read-only)').check();
+    const browser = page.getByRole('region', { name: 'Brain browser' }), records = browser.locator('ul');
     await browser.getByRole('button', { name: 'Tooling 480', exact: true }).click();
     const next = browser.getByRole('button', { name: 'Next records', exact: true }), previous = browser.getByRole('button', { name: 'Previous records', exact: true });
     const turn = async (control: Locator, shown: string) => {
@@ -141,4 +139,19 @@ test('keyboard paging keeps focus on the page controls while each page of record
     };
     await next.focus(); await turn(next, '2 / 12'); await turn(next, '3 / 12');
     await previous.focus(); await turn(previous, '2 / 12');
+});
+
+
+test('empty-space selection reset and mouse zoom work without a second renderer or motion controls',async({page})=>{
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
+    const canvas=page.locator('[data-brain-renderer] canvas');await expect(canvas).toHaveCount(1);const original=await canvas.elementHandle();
+    const box=(await canvas.boundingBox())!;expect(box.y).toBeLessThan(page.viewportSize()!.height/3);
+    await expect(page.getByLabel('Include Brain notes (external, read-only)')).toBeChecked();
+    await expect(page.getByRole('button',{name:/^(Constellation overview|Overview|Pause map motion|Resume map motion|Motion off)$/})).toHaveCount(0);
+    await page.getByRole('button',{name:'Project · cec',exact:true}).click();await expect(page.getByRole('region',{name:'Selected node'})).toBeVisible();
+    await entriesSettled(page);await canvas.hover();const before=await canvas.screenshot();await page.mouse.wheel(0,-400);
+    await expect.poll(async()=>(await canvas.screenshot()).equals(before)).toBe(false);
+    await expect(page.getByRole('region',{name:'Selected node'})).toBeVisible();
+    await clearMapSelection(page);await expect(page.getByRole('region',{name:'Selected node'})).toHaveCount(0);await expect(page.getByRole('region',{name:'Brain browser'})).toBeVisible();
+    expect(await canvas.evaluate((el,old)=>el===old,original)).toBe(true);
 });

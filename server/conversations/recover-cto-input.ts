@@ -36,7 +36,7 @@ export function recoverCTOInput(store: Store, messageId: unknown, root: string, 
         const effects = (store.db.prepare('SELECT body FROM effects').all() as { body: string }[]).map(row => JSON.parse(row.body) as EffectIntent);
         if (effects.some(effect => effect.work.id === source.id || effect.attemptId === work.id)) throw new Error('Original CTO effects require independent reconciliation');
         const original = structuredClone(source);
-        const message: TeamMessage = { ...source, id, requestId: id, status: 'queued', createdAt: store.clock.now().toISOString(), sessionId: '', error: '', recheck: false, receipts: [], recipients: [],
+        const message: TeamMessage = { ...structuredClone(source), timing: [], id, requestId: id, status: 'queued', createdAt: store.clock.now().toISOString(), sessionId: '', error: '', recheck: false, receipts: [], recipients: [],
             inputRecovery: { originalMessageId: source.id, workerId: work.id, originalSha256: digest(source), artifacts: files.map(({ path, sha256 }) => ({ path, sha256 })) } };
         store.state.messages.push(message);
         if (!isDeepStrictEqual(source, original)) throw new Error('Original CTO failure changed');

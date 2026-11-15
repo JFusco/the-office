@@ -15,7 +15,7 @@ import { focusOverlayPosition, type FocusOverlayLayout } from './focus-overlay-p
 
 export interface ConstellationRuntime { update(view: ConstellationView): void; dispose(): void }
 /** One persistent graph and one frame loop. Navigation changes camera/opacity, never the renderer. */
-export function createConstellation(container: HTMLElement, select: (node: KnowledgeNode) => void, overlay?: HTMLElement): ConstellationRuntime {
+export function createConstellation(container: HTMLElement, select: (node: KnowledgeNode) => void, overlay?: HTMLElement, reset: () => void = () => {}): ConstellationRuntime {
     const palette = sceneColors(), spacing=overlay?knowledgeLayout():undefined;
     const graph = new ForceGraph(container, { controlType: 'orbit', rendererConfig: { antialias: true } });
     const renderer = graph.renderer(), controls = graph.controls() as OrbitControls;
@@ -33,7 +33,7 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
     let annotation: ReturnType<typeof focusOverlayMotion>|undefined;
     let hoverId='';
     let tap: {id:number;x:number;y:number}|undefined;
-    const touchPointers=new Set<number>();
+    const activePointers=new Set<number>();
     const dispose = () => {
         if (cleaned) return; cleaned = true; cancelAnimationFrame(frameId); resize?.disconnect();
         document.removeEventListener('visibilitychange', visibility);
@@ -62,10 +62,10 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         // Check only the last notified sprite: the library has two independent hover caches.
         if(pointerInside&&hoverId){ray.setFromCamera(pointer,graph.camera() as PerspectiveCamera);hovered=!!visuals?.hit(hoverId,ray);}else hovered=false;
         visuals?.hover(hovered?hoverId:'');renderer.domElement.classList.toggle('clickable',hovered);
-        controls.autoRotate = !!view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId && now - lastInteraction > knowledgeOrbitIdle;
-        // Ambient motion follows the same rules as the idle orbit, minus the idle wait: never reduced, paused, in flight, hovered or dragged.
-        // Link particles share the rule: the library reads their speed every frame, so 0 holds them in place.
-        moving = !!view && !view.reduced && !view.paused && !flight && !dragging && !hovered && !view.highlightId;
+        controls.autoRotate = !!view && !view.reduced && !view.paused && !flight && !dragging && now - lastInteraction > knowledgeOrbitIdle;
+        // Like Brain, ambient drift and link particles continue through hover, focus and camera navigation.
+        // Explicit pause and reduced motion still hold them in place.
+        moving = !!view && !view.reduced && !view.paused;
         if (moving) ambient += Math.max(0, Math.min(delta, knowledgeMaxFrameStep)) / 1000;
         atmosphere?.update(ambient, !!view?.focusId, view?.reduced || view?.paused ? 1 : 1 - Math.exp(-Math.min(delta, 50) / 260));
         visuals?.update(view, graph.camera() as PerspectiveCamera, container, delta, ambient);
@@ -79,19 +79,19 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         if(tap&&event.pointerId===tap.id&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)>knowledgeTapSlop)tap=undefined;
         const rect=container.getBoundingClientRect();pointer.set((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2);
     }
-    function enter(event?: PointerEvent) { pointerInside = true;move(event);lastInteraction = previous; }
-    function leave() { pointerInside = false; hovered = false; visuals?.hover(''); lastInteraction = previous; controls.autoRotate = false; }
+    function enter(event?: PointerEvent) { pointerInside = true;move(event); }
+    function leave() { pointerInside = false; hovered = false; visuals?.hover(''); }
     function startTap(event: PointerEvent) {
-        if(event.pointerType==='mouse'||event.button!==0)return;
-        touchPointers.add(event.pointerId);tap=touchPointers.size===1?{id:event.pointerId,x:event.clientX,y:event.clientY}:undefined;
+        if(event.button!==0)return;
+        activePointers.add(event.pointerId);tap=activePointers.size===1?{id:event.pointerId,x:event.clientX,y:event.clientY}:undefined;
     }
-    function cancelTap() { tap=undefined;touchPointers.clear(); }
+    function cancelTap() { tap=undefined;activePointers.clear(); }
     function finishTap(event: PointerEvent) {
-        const start=tap;tap=undefined;touchPointers.delete(event.pointerId);
+        const start=tap;tap=undefined;activePointers.delete(event.pointerId);
         if(!start||event.pointerId!==start.id||Math.hypot(event.clientX-start.x,event.clientY-start.y)>knowledgeTapSlop)return;
         move(event);const camera=graph.camera() as PerspectiveCamera;camera.updateMatrixWorld();ray.setFromCamera(pointer,camera);
-        // A tap gets one fresh hit test; it never depends on the library's throttled hover.
-        const node=visuals?.pick(ray);if(node)select(node);
+        // Every click/tap gets a fresh hit test, including empty space; throttled hover never chooses the click target.
+        const node=visuals?.pick(ray);if(node)select(node);else reset();
     }
     function visibility() {
         cancelAnimationFrame(frameId); previous = 0;
@@ -104,13 +104,13 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
         graph.backgroundColor(palette.brainBackground).nodeThreeObject(raw => visuals!.create(raw as never))
             .nodeVisibility(raw => (raw as { visible: boolean }).visible)
             .nodeLabel('') // The canvas owns hover/selection captions; avoid a duplicate HTML tooltip.
-            .linkColor(() => view?.focusId ? palette.brainFocusConnection : palette.brainConnection).linkOpacity(.5).linkWidth(.6)
+            .linkColor(() => view?.focusId ? palette.brainFocusConnection : palette.brainConnection).linkOpacity(.4).linkWidth(.6)
             // One particle travels each recorded link, like Brain's viewer; three along a focused node's links.
-            // Brain's .85 suits its ~3-unit stars; these stars are ~22 units, so the particle scales up with them.
-            .linkDirectionalParticles(0).linkDirectionalParticleWidth(2.4).linkDirectionalParticleColor(() => palette.brainParticle)
+            // Use Brain's fine, pale traveling particles rather than enlarged moving dots.
+            .linkDirectionalParticles(0).linkDirectionalParticleWidth(.85).linkDirectionalParticleColor(() => palette.brainParticle)
             .linkDirectionalParticleSpeed(() => moving ? .004 : 0)
             .enableNodeDrag(false).showNavInfo(false).cooldownTicks(0)
-            .onNodeClick((node,event) => { if(!['touch','pen'].includes((event as PointerEvent).pointerType))select(node as KnowledgeNode); }).onNodeHover(node => { hoverId=node?.id?.toString()||'';if(!pointerInside)return;lastInteraction=previous;controls.autoRotate=false; });
+            .onNodeHover(node => { hoverId=node?.id?.toString()||''; });
         graph.cameraPosition({x: 0, y: 0, z: overviewDistance});
         controls.addEventListener('start', stopFlight);
         controls.addEventListener('end', endInteraction);
@@ -134,11 +134,11 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
             const dataChanged = view?.data !== next.data;
             const motionDisabled = next.reduced && !view?.reduced;
             if (next.paused && !view?.paused && flight) { graph.cameraPosition(flight.to.position, flight.to.lookAt, 0); flight = undefined; }
-            if (dataChanged || next.highlightId !== view?.highlightId || next.paused !== view?.paused) lastInteraction = previous;
+            if (dataChanged || next.paused !== view?.paused) lastInteraction = previous;
             view = next;
             controls.autoRotate = false;
             // The library steps particles before this runtime's frame, so stop them now rather than one frame late.
-            if (next.reduced || next.paused || next.highlightId) moving = false;
+            if (next.reduced || next.paused) moving = false;
             if (dataChanged) {
                 const old = new Map(graph.graphData().nodes.map(n => [n.id, n]));
                 visuals!.retain(new Set(next.data.nodes.map(n => n.id)));
@@ -159,7 +159,6 @@ export function createConstellation(container: HTMLElement, select: (node: Knowl
                 // Library camera tweens finish the old flight on interruption. Own the interpolation
                 // so rapid selections and user orbit continue from the currently visible pose.
                 flight = next.reduced || next.paused ? undefined : {from:{position:{...graph.cameraPosition()},lookAt:{x:controls.target.x,y:controls.target.y,z:controls.target.z}},to:destination,elapsed:0};
-                if (flight) moving = false;
                 if (next.reduced || next.paused) graph.cameraPosition(destination.position, destination.lookAt, 0);
                 focusId = next.focusId;
             }
