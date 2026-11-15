@@ -16,6 +16,12 @@ export function qaRunDirectory(ticket: Ticket, stage: Stage, artifactRoot: strin
 
 /** A passed result may not reuse the retained access-only report. */
 export function qaPlanEvidenceGap(ticket: Ticket, stage: Stage, result: StageResult, artifactRoot: string): string {
+    const handoff = ticket.officeQAHandoffs?.find(h => h.stage === stage && h.attempt === ticket.attempt && h.commit === ticket.commit);
+    if (handoff) {
+        const prefix = resolve(artifactRoot, 'office-qa', `${stage}-${ticket.attempt}-`);
+        return ticket.qaProtocol?.[stage] === 'office-v1' && !!result.qa && result.qaRunDir.startsWith(prefix) &&
+            !result.qaRunDir.slice(prefix.length).includes('/') ? '' : 'Fresh independent Office QA evidence is required; the legacy setup cannot pass';
+    }
     if (ticket.qaPlanRetries?.some(item => item.stage === stage && item.attempt + 1 === ticket.attempt)) {
         try { return result.qaRunDir === qaRunDirectory(ticket, stage, artifactRoot) ? '' : 'The new bound QA plan report is required; incomplete history cannot pass'; }
         catch { return 'Explicit QA retry identity requires reconciliation'; }

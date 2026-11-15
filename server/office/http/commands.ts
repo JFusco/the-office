@@ -38,7 +38,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery, historyRetirement, implementationContinuation, qaPlanRetry } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery, historyRetirement, implementationContinuation, qaPlanRetry, qaHandoff } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
@@ -215,7 +215,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 engine.unpause();
                 break;
             case 'start-pilot': return json({ accepted: true, request: engine.requestDelivery(key, 'start-pilot') }, 202);
-            case 'resume-ticket': return json({ accepted: true, request: engine.requestDelivery(key, 'resume-ticket') }, 202);
+            case 'resume-ticket': return json({ accepted: true, request: engine.requestDelivery(key, 'resume-ticket', undefined, {qaHandoff}) }, 202);
             case 'refresh-azure': return json({ accepted: true, id: enqueueRequest(store, 'refresh').id }, 202);
             case 'activate-nightly':
                 engine.enableNightly(authorization);
