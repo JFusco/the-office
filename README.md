@@ -237,3 +237,11 @@ read-only reconciliation with missing output can instead receive an explicit
 **retire as incomplete history** decision bound to its exact record and closed
 native claim. This preserves missing evidence and does not assert success or a
 fixed cause. Live related work and unsettled writes still prevent retirement.
+
+
+In Office Brain, the **Brain** tab opens the universe directly below a compact
+page toolbar. External read-only Brain notes start visible. Filters live in
+**View options**, outside the dark canvas. Hover highlights without pausing the
+universe; fine pale particles keep moving through navigation. Click empty space
+to clear a selection, drag to orbit and use the mouse wheel to zoom. There are
+no Overview or Pause controls; the normal reduced-motion preference still applies.

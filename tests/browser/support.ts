@@ -16,3 +16,15 @@ export async function setPreferences(request:APIRequestContext,patch:OfficePrefe
 export async function entriesSettled(page:import('@playwright/test').Page){
   await page.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState!=='running'||animation.effect?.getComputedTiming().endTime===Infinity));
 }
+
+/** Open the compact Map filters, make the choice, then return to the canvas. */
+export async function setMapFilter(page:import('@playwright/test').Page,value:string){
+  const options=page.getByText('View options',{exact:true});
+  if(await options.locator('..').getAttribute('open')===null)await options.click();
+  const show=page.getByRole('combobox',{name:'Show',exact:true});await show.selectOption(value);await show.press('Escape');
+}
+/** Use the public empty-space gesture rather than a removed Overview control. */
+export async function clearMapSelection(page:import('@playwright/test').Page){
+  const canvas=page.locator('[data-brain-renderer] canvas'),box=(await canvas.boundingBox())!;
+  await canvas.click({position:{x:12,y:box.height-12}});
+}

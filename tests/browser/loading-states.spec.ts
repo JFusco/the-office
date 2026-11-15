@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs';
 
 for (const [view, endpoint, label] of [
     ['Library', 'search', 'Searching permitted knowledge…'],
-    ['Map', 'map', 'Loading connections…'], ['Activity', 'activity', 'Loading learning activity…'],
+    ['Brain', 'map', 'Loading connections…'], ['Activity', 'activity', 'Loading learning activity…'],
 ]) {
     test(`${view} shows the shared animated SVG while its real read is pending`, async ({ page, request }) => {
         await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -13,8 +13,8 @@ for (const [view, endpoint, label] of [
         let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
         await page.route(`**/api/knowledge/${endpoint}?**`, async route => { await gate; await route.continue(); });
         try {
-            await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-            await page.getByRole('button', { name: view, exact: true }).click();
+            await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
+            await page.getByRole('navigation',{name:'Brain views'}).getByRole('button', { name: view, exact: true }).click();
             const status = page.getByRole('status').filter({ hasText: label }); await expect(status).toBeVisible();
             const orbit = status.locator('[data-office-loader] g').first();
             const before = await orbit.evaluate(el => getComputedStyle(el).transform);

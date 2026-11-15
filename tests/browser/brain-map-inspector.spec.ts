@@ -1,3 +1,4 @@
+import { setMapFilter } from './support';
 import { test, expect } from './fixture-test';
 import { entriesSettled } from './support';
 import AxeBuilder from '@axe-core/playwright';
@@ -5,8 +6,8 @@ import AxeBuilder from '@axe-core/playwright';
 for (const width of [1024, 1440, 390]) {
     test(`the floating inspector keeps selected titles and labels visible at ${width}px`, async ({ page }) => {
         await page.setViewportSize({ width, height: 900 });
-        await page.goto('/'); await page.getByRole('button', { name: 'Brain', exact: true }).click();
-        await page.getByRole('button', { name: 'Map', exact: true }).click();
+        await page.goto('/'); await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
+        await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
         await page.getByLabel('Find a node').fill('schema');
         await page.getByRole('button', { name: 'Confirm schema versions before mapping changes · lesson', exact: true }).click();
         const heading = page.getByRole('region', { name: 'Selected node', exact: true }).locator(':scope > h3');
@@ -26,11 +27,11 @@ for (const width of [1024, 1440, 390]) {
 
 test('assignment evidence uses dark surfaces and stays within the inspector', async ({ page }) => {
     await page.route('**/api/knowledge/assignment?**',async route=>{const response=await route.fetch(),data=await response.json();data.lookups=data.lookups.map((r:object)=>({...r,outcome:'A long recorded lookup outcome '.repeat(5)}));await route.fulfill({response,json:data});});
-    await page.goto('/'); await page.getByRole('button',{name:'Brain',exact:true}).click(); await page.getByRole('button',{name:'Map',exact:true}).click();
+    await page.goto('/'); await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click(); await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     await page.getByRole('checkbox',{name:'Include employee activity'}).check();
-    await page.getByRole('combobox',{name:'Show',exact:true}).selectOption('assignment');
-    await page.getByRole('region',{name:'Map browser'}).getByRole('button').last().click();
-    await page.getByRole('region',{name:'Map browser'}).getByRole('button').first().click();
+    await setMapFilter(page,'assignment');
+    await page.getByRole('region',{name:'Brain browser'}).getByRole('button').last().click();
+    await page.getByRole('region',{name:'Brain browser'}).getByRole('button').first().click();
     const panel=page.locator('[data-brain-list-frame]');
     await expect(panel.getByRole('heading',{name:'Source evidence supplied',exact:true})).toBeVisible();
     const card=panel.locator('article').first(); await expect(card).toContainText('evidence');

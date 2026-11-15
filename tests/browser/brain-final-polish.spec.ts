@@ -1,7 +1,7 @@
 import {test,expect} from './fixture-test';
 
 test('returning from the floating inspector restores hover on the same node',async({page})=>{
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
     const canvas=page.locator('[data-brain-renderer] canvas');await expect(canvas).toHaveCount(1);await canvas.scrollIntoViewIfNeeded();
     const bounds=(await canvas.boundingBox())!;
     await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
@@ -18,7 +18,7 @@ test('returning from the floating inspector restores hover on the same node',asy
 test.describe('touch selection',()=>{
     test.use({hasTouch:true});
     test('a node tap survives the non-hover pointer leaving after pointerup',async({page})=>{
-        await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('button',{name:'Map',exact:true}).click();
+        await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();await page.getByRole('navigation',{name:'Brain views'}).getByRole('button',{name:'Brain',exact:true}).click();
         const canvas=page.locator('[data-brain-renderer] canvas');await expect(canvas).toHaveCount(1);await canvas.scrollIntoViewIfNeeded();
         await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
         const box=(await canvas.boundingBox())!;
@@ -42,7 +42,7 @@ test('a previous-project error does not replace the next project preloader',asyn
 test('a failed project switch stops its preloader and recovers through the ordinary read loop',async({page})=>{
     let failed=true;
     await page.route(/\/api\/(office|events)\?project=brain/,route=>failed?new URL(route.request().url()).pathname==='/api/events'?route.abort():route.fulfill({status:500,json:{error:'Synthetic project read failure'}}):route.continue());
-    await page.goto('/');await page.getByRole('button',{name:'Brain',exact:true}).click();
+    await page.goto('/');await page.locator('header').getByRole('button',{name:'Brain',exact:true}).click();
     await page.getByRole('combobox',{name:'Office project'}).selectOption('brain');
     const overlay=page.locator('[data-project-loading]');await expect(overlay.getByRole('alert')).toContainText('500');
     await expect(overlay.locator('[data-office-loader]')).toHaveCount(0);await expect(overlay).toContainText('retry automatically');

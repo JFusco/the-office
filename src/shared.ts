@@ -810,6 +810,7 @@ export interface HumanAction {
     updatedAt: string;
 }
 export interface TeamMessage {
+    timing?: QueueTiming[];
     inputRecovery?: { originalMessageId: string; workerId: string; originalSha256: string; artifacts: { path: string; sha256: string }[] };
     slackReplacement?: import('./contracts/slack-supersession').SlackReplacementRequest;
     goalEvidenceReturn?: { requestId: string; answerId: string };

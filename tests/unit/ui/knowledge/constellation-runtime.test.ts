@@ -16,7 +16,7 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     const camera=new PerspectiveCamera(), controls={target:new Vector3(),autoRotate:false,addEventListener:vi.fn(),removeEventListener:vi.fn()}, renderer={domElement:{classList:{toggle:vi.fn()}},setPixelRatio:vi.fn(),dispose:vi.fn(),forceContextLoss:vi.fn()};
     camera.position.set(0,0,300);
     const graph:any={renderer:()=>renderer,controls:()=>controls,scene:()=>({}),camera:()=>camera};
-    for(const name of ['backgroundColor','nodeThreeObject','nodeVisibility','nodeLabel','linkColor','linkOpacity','linkWidth','linkDirectionalParticles','linkDirectionalParticleWidth','linkDirectionalParticleColor','linkDirectionalParticleSpeed','enableNodeDrag','enablePointerInteraction','showNavInfo','cooldownTicks','onNodeClick','onNodeHover','width','height','pauseAnimation','resumeAnimation','_destructor'])graph[name]=vi.fn(()=>graph);
+    for(const name of ['backgroundColor','nodeThreeObject','nodeVisibility','nodeLabel','linkColor','linkOpacity','linkWidth','linkDirectionalParticles','linkDirectionalParticleWidth','linkDirectionalParticleColor','linkDirectionalParticleSpeed','enableNodeDrag','enablePointerInteraction','showNavInfo','cooldownTicks','onNodeClick','onNodeHover','onBackgroundClick','width','height','pauseAnimation','resumeAnimation','_destructor'])graph[name]=vi.fn(()=>graph);
     graph.graphData=vi.fn((data?:typeof saved)=>data?(saved=data,graph):saved);
     graph.cameraPosition=vi.fn((position?:Vector3)=>position?graph:camera.position);
     state.graph=graph;
@@ -25,11 +25,12 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{frame=callback;return 1;}));vi.stubGlobal('cancelAnimationFrame',vi.fn());
     const addEventListener=vi.fn(),removeEventListener=vi.fn();
     const container={replaceChildren:vi.fn(),addEventListener,removeEventListener,getBoundingClientRect:()=>({left:0,top:0,width:1200,height:800}),clientWidth:1200,clientHeight:800} as unknown as HTMLElement;
-    const select=vi.fn(),runtime=createConstellation(container,select), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,technical:true,page:0};
+    const select=vi.fn(),reset=vi.fn(),runtime=createConstellation(container,select,undefined,reset), selection:MapSelection={group:'',selected:'',query:'',filter:'all',activity:false,technical:true,page:0};
     const map={nodes:[{id:'note',title:'Note',kind:'technical' as const,detail:''}],edges:[],truncated:false};
     const overview=displayScene(map,selection), focused=displayScene(map,{...selection,selected:'note'});
     runtime.update({data:overview.scene,reduced:false});const original=saved.nodes[0];
     expect(graph.linkWidth).toHaveBeenLastCalledWith(.6);expect(graph.linkDirectionalParticles).toHaveBeenLastCalledWith(1);
+    expect(graph.linkDirectionalParticleWidth).toHaveBeenCalledWith(.85);
     const speed=graph.linkDirectionalParticleSpeed.mock.calls[0][0] as ()=>number;
     runtime.update({data:focused.scene,focusId:'note',reduced:false});expect(saved.nodes[0]).toBe(original);
     expect(graph.linkWidth).toHaveBeenLastCalledWith(1.2);expect(graph.linkOpacity).toHaveBeenLastCalledWith(.9);expect(graph.linkDirectionalParticles).toHaveBeenLastCalledWith(3);
@@ -37,10 +38,10 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     frame(1);frame(knowledgeCameraDuration+1);
     // A stalled frame slows the flight rather than jumping straight to its end.
     expect(graph.cameraPosition.mock.calls.at(-1)![1]).not.toEqual(original.position);
-    // The camera moves through a flight while drift, twinkle and dust stand still; they resume once it lands.
+    // Camera navigation keeps the same continuous drift, twinkle and particles as Brain.
     const flying=ambient(),pose=graph.cameraPosition.mock.calls.at(-1)![0];
     frame(knowledgeCameraDuration+17);expect(graph.cameraPosition.mock.calls.at(-1)![0]).not.toEqual(pose);
-    expect(ambient()).toBe(flying);expect(state.atmosphere.update).toHaveBeenLastCalledWith(flying,true,expect.any(Number));expect(speed()).toBe(0); // particles hold still in flight
+    expect(ambient()).toBeGreaterThan(flying);expect(state.atmosphere.update).toHaveBeenLastCalledWith(ambient(),true,expect.any(Number));expect(speed()).toBe(.004);
     for(let i=2;i<=Math.ceil(knowledgeCameraDuration/16);i++)frame(knowledgeCameraDuration+1+i*16);
     expect(graph.cameraPosition).toHaveBeenLastCalledWith(expect.any(Object),original.position,0);
     expect(ambient()).toBeGreaterThan(flying);expect(speed()).toBe(.004);
@@ -50,7 +51,7 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     expect(state.atmosphere.update).toHaveBeenLastCalledWith(still,false,1);expect(graph.linkDirectionalParticles).toHaveBeenLastCalledWith(0);expect(speed()).toBe(0);
     runtime.update({data:overview.scene,reduced:false});expect(graph.linkDirectionalParticles).toHaveBeenLastCalledWith(1); // same data, motion back: particles return
     frame(14000);expect(controls.autoRotate).toBe(true);expect(speed()).toBe(.004);
-    runtime.update({data:overview.scene,reduced:false,highlightId:'note'});expect(speed()).toBe(0);frame(14016);expect(speed()).toBe(0);
+    const highlighting=ambient();runtime.update({data:overview.scene,reduced:false,highlightId:'note'});expect(speed()).toBe(.004);frame(14016);expect(speed()).toBe(.004);expect(ambient()).toBeGreaterThan(highlighting);
     runtime.update({data:overview.scene,reduced:false});frame(14032);
     expect(ambient()).toBeGreaterThan(still);
     runtime.update({data:overview.scene,reduced:false,paused:true});expect(speed()).toBe(0); // stops at once, not one frame late
@@ -59,11 +60,11 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     runtime.update({data:overview.scene,reduced:false,paused:false});frame(18001);expect(controls.autoRotate).toBe(false);
     frame(18001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
     const start=controls.addEventListener.mock.calls.find(call=>call[0]==='start')![1],end=controls.addEventListener.mock.calls.find(call=>call[0]==='end')![1];
-    start();frame(25000);expect(controls.autoRotate).toBe(false);end();frame(25001);expect(controls.autoRotate).toBe(false);
+    start();frame(25000);expect(controls.autoRotate).toBe(false);expect(speed()).toBe(.004);end();frame(25001);expect(controls.autoRotate).toBe(false);
     frame(25001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
     const enter=addEventListener.mock.calls.find(call=>call[0]==='pointerenter')![1],leave=addEventListener.mock.calls.find(call=>call[0]==='pointerleave')![1];
     const hover=graph.onNodeHover.mock.calls[0][0];
-    enter();hover({id:'note'});frame(32000);expect(controls.autoRotate).toBe(false);
+    const hovering=ambient();enter();hover({id:'note'});frame(32000);expect(controls.autoRotate).toBe(true);expect(ambient()).toBeGreaterThan(hovering);expect(speed()).toBe(.004);
     leave();frame(33000);hover({id:'note'});hover(null);frame(32001+knowledgeOrbitIdle);expect(controls.autoRotate).toBe(true);
     expect(state.visuals.hover).toHaveBeenLastCalledWith('');
     enter();hover({id:'note'});frame(36000);expect(state.visuals.hover).toHaveBeenLastCalledWith('note');leave({pointerType:'touch'});expect(graph.enablePointerInteraction).not.toHaveBeenCalled();
@@ -73,11 +74,17 @@ it('retains graph identities, animates camera navigation, respects reduced motio
     const down=addEventListener.mock.calls.find(call=>call[0]==='pointerdown')![1],up=addEventListener.mock.calls.find(call=>call[0]==='pointerup')![1],cancel=addEventListener.mock.calls.find(call=>call[0]==='pointercancel')![1];
     const touch={pointerId:4,pointerType:'touch',button:0,clientX:100,clientY:100};state.visuals.pick.mockReturnValue(original);
     down(touch);leave(touch);up(touch);expect(select).toHaveBeenCalledExactlyOnceWith(original);
-    graph.onNodeClick.mock.calls[0][0](original,touch);expect(select).toHaveBeenCalledOnce();
+    expect(graph.onNodeClick).not.toHaveBeenCalled();
     down(touch);up({...touch,clientX:140});expect(select).toHaveBeenCalledOnce();
     const move=addEventListener.mock.calls.find(call=>call[0]==='pointermove')![1];down(touch);move({...touch,clientX:140});move({...touch,clientX:101});up({...touch,clientX:101});expect(select).toHaveBeenCalledOnce();
     down(touch);down({...touch,pointerId:5});up({...touch,pointerId:5});up(touch);expect(select).toHaveBeenCalledOnce();
     down(touch);cancel();up(touch);expect(select).toHaveBeenCalledOnce();
+    const mouse={...touch,pointerId:1,pointerType:'mouse'};
+    down(mouse);up(mouse);expect(select).toHaveBeenCalledTimes(2);
+    state.visuals.pick.mockReturnValue(undefined);down(mouse);up(mouse);expect(reset).toHaveBeenCalledOnce();
+    down(touch);up(touch);expect(reset).toHaveBeenCalledTimes(2);
+    down(mouse);move({...mouse,clientX:140});up(mouse);expect(reset).toHaveBeenCalledTimes(2);
+    down(touch);up({...touch,clientX:140});expect(reset).toHaveBeenCalledTimes(2);
     expect(renderer.dispose).not.toHaveBeenCalled();expect(renderer.setPixelRatio).toHaveBeenCalledWith(2);
     runtime.dispose();runtime.dispose();expect(graph._destructor).toHaveBeenCalledOnce();expect(state.atmosphere.dispose).toHaveBeenCalledOnce();expect(renderer.dispose).toHaveBeenCalledOnce();expect(renderer.forceContextLoss).toHaveBeenCalledOnce();expect(container.replaceChildren).toHaveBeenCalledOnce();
     expect(controls.removeEventListener).toHaveBeenCalledWith('start',start);expect(controls.removeEventListener).toHaveBeenCalledWith('end',end);

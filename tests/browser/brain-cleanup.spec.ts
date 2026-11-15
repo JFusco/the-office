@@ -27,9 +27,9 @@ test(`loaded Office overlays and Brain views clean up with ${reduced ? 'reduced'
             // mounts never exercises the DOM cleanup that failed in the live session.
             await expect(page.getByRole('button', { name: 'DEVELOPMENT Implementation', exact: true })).toBeVisible();
             await expect(page.locator('[data-scene-overlay]').first()).toBeAttached();
-            await page.getByRole('button', { name: 'Brain', exact: true }).click();
+            await page.locator('header').getByRole('button', { name: 'Brain', exact: true }).click();
             await expect(page.locator('[data-scene-overlay]')).toHaveCount(0);
-            await page.getByRole('button', { name: 'Map', exact: true }).click();
+            await page.getByRole('navigation',{name:'Brain views'}).getByRole('button', { name: 'Brain', exact: true }).click();
             await expect(page.locator('[data-brain-renderer] canvas')).toHaveCount(1);
             await expect(page.locator('canvas')).toHaveCount(1);
             await page.getByRole('button', { name: 'Library', exact: true }).click();
