@@ -7,7 +7,8 @@ import { rootArtifact } from '../../store/readback-evidence';
 import { currentAssignment } from '../../workers/assignment-context';
 import { command, processGroupAlive } from '../../workers/process';
 import { HOLDS } from '../../office/config';
-import { assertOwnership, type OwnershipRead } from '../implementation-continuation/intent';
+import type { OwnershipRead } from '../implementation-continuation/intent';
+import { handoffOwnership, type ReadbackOwnerDecision } from './handoff-ownership';
 import { qaRunDirectory } from './run-directory';
 
 function entry(path: string) {
@@ -17,7 +18,7 @@ function entry(path: string) {
 
 /** Consume one explicit, freshly gated resume of an unsealed legacy setup block. No legacy SDK calls. */
 export async function continueUnsealedQA(store: Store, request: DeliveryRequest, dataRoot: string, ownership: OwnershipRead,
-    execute = command, groupAlive = processGroupAlive) {
+    execute = command, groupAlive = processGroupAlive, readback?: ReadbackOwnerDecision) {
     const input = request.officeQAHandoff, ticket = store.ticket(request.key), assignment = currentAssignment();
     const fail = (): never => { throw new Error('QA handoff requires settled unsealed setup history, the same candidate and a fresh explicit decision; preserve all evidence and counters'); };
     if (store.project.provider !== 'azure' || !input || input.consumedAt || request.action !== 'resume-ticket' || request.status !== 'working' ||
@@ -85,16 +86,16 @@ export async function continueUnsealedQA(store: Store, request: DeliveryRequest,
     if (!claim || !['completed','blocked'].includes(claim.status) || !Number.isFinite(Date.parse(claim.endedAt)) ||
         Date.parse(request.requestedAt) <= Date.parse(claim.endedAt) || claim.lane !== 'delivery' || claim.stage !== stage ||
         claim.work?.projectId !== store.project.id || claim.work?.kind !== 'delivery' || claim.work?.id !== `ticket:${ticket.key}`) return fail();
-    await assertOwnership(ticket.key, ownership);
+    await handoffOwnership(store, ticket.key, ownership, input.coordinatorSessionId, readback);
     if ((await execute('git',['rev-parse','HEAD'],{cwd:ticket.worktree,timeout:10000,readOnly:true})).trim() !== ticket.commit ||
         (await execute('git',['status','--porcelain'],{cwd:ticket.worktree,timeout:10000,readOnly:true})).trim()) return fail();
-    await assertOwnership(ticket.key, ownership);
+    const ownershipProof = await handoffOwnership(store, ticket.key, ownership, input.coordinatorSessionId, readback);
     store.transaction(() => {
         current();
         if (artifacts.some(a => rootArtifact(dataRoot,a.path).sha256 !== a.sha256)) return fail();
         const at = store.clock.now().toISOString();
         (ticket.officeQAHandoffs ??= []).push({ ...input, requestId: request.id, stage: stage as 'qa'|'retest', attempt:ticket.attempt,
-            at, originalResult:structuredClone(result), artifacts });
+            at, originalResult:structuredClone(result), artifacts, ownership:ownershipProof });
         input.consumedAt = at; (ticket.qaProtocol ??= {})[stage] = 'office-v1';
         store.emit('office-qa-handed-off','Incomplete unsealed QA setup retained; one explicit handoff to independent Office QA. No prior acceptance or counter reset.','qa',ticket.key);
     });

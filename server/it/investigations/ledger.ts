@@ -8,6 +8,8 @@ import { investigationCandidates, investigationId } from './candidates';
 import { notifyHelperResolution } from './notify-helper-survivor';
 import { retriedReadResolution } from './retried-read';
 import type { Store } from '../../store/store';
+import { ctoReplacementResolution } from './cto-replacement-resolution';
+import { implementationReplacementResolution } from './implementation-replacement-resolution';
 
 /** These saved receipts are populated by existing read-back contracts, never by Ellis's verdict. */
 export function investigationResolution(store: Store, entry: ITInvestigation) {
@@ -20,6 +22,8 @@ export function investigationResolution(store: Store, entry: ITInvestigation) {
     }
     // Delivery recovery alone does not prove the subprocess defect; only the known notify helper explains it.
     if (entry.source.failureKind === 'surviving-subprocesses') return notifyHelperResolution(store, entry);
+    const replacement = ctoReplacementResolution(store, entry) || implementationReplacementResolution(store, entry);
+    if (replacement) return replacement;
     const retried = retriedReadResolution(store, entry);
     if (retried) return retried;
     const recovery = store.state.workLog?.find(work => work.originalId === entry.source.id && work.requestId === entry.source.requestId && work.status === 'completed' && completedExecution(store, work));

@@ -20,3 +20,11 @@ test('only dispatched typed worker failures qualify; model outcomes, cancellatio
         }
     } finally { f.close(); }
 });
+test('workers without a request ID do not absorb unrelated empty-ID workers into their history', () => {
+    const f = investigationFixture(); try {
+        f.store.state.slackDeliveries = [];
+        f.store.state.workLog = [{ ...f.worker, requestId: '' }, { ...f.worker, id: 'unrelated', requestId: '', status: 'running', failure: undefined }];
+        const [source] = investigationCandidates('brain', f.store.state);
+        expect(source.workerIds).toEqual([f.worker.id]);
+    } finally { f.close(); }
+});

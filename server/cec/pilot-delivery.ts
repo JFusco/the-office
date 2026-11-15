@@ -197,12 +197,14 @@ export async function resume(this: Engine, key: string, background = true) {
         throw new Error(`Parked in Jira Blocked for a decision; move it back to ${t.parked.fromStatus} to resume`);
     if (this.store.state.paused || this.busy)
         throw new Error('Office is paused or pipeline is occupied');
+    const qaHandoff = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.officeQAHandoff);
     this.busy = true;
     let live: Awaited<ReturnType<Agents['readback']>>;
     try {
         if (t.parked && parkingUnconfirmed(this.store, t))
             await reconcileRejectedParking(this.store, this.jira.execute, t);
-        live = await this.agents.readback(key);
+        live = await this.agents.readback(key, qaHandoff?.officeQAHandoff?.coordinatorSessionId ?
+            `EXPLICIT QA COORDINATION HANDOFF: This operator request identifies session ${qaHandoff.officeQAHandoff.coordinatorSessionId} as the environment coordinator and browser-access assistant. Verify current authoritative context and coordination under READBACK_OWNER_SCOPE. The declaration alone is insufficient: any competing executor, unknown actor, incomplete coverage, refused handoff or live lease blocks. Prepared setup metadata to verify: ${qaHandoff.officeQAHandoff.setupNote}` : '', qaHandoff?.id || '');
     }
     finally {
         this.busy = false;
@@ -213,11 +215,10 @@ export async function resume(this: Engine, key: string, background = true) {
         throw new Error('A different PR exists; resolve duplicate work before resuming');
     assertFeatureGate(this.store, key);
     const qaRetry = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.qaPlanRetry);
-    const qaHandoff = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.officeQAHandoff);
     if ((qaRetry || qaHandoff) && (live.key !== key || live.status !== t.status || live.existingPrId !== t.prId))
         throw new Error('Current Jira status or PR changed; preserve the approved incomplete QA decision');
     if (qaRetry) await consumeQAPlanRetry(this.store, qaRetry, DATA, this.implementationOwnership);
-    if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, DATA, this.implementationOwnership);
+    if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, DATA, this.implementationOwnership, undefined, undefined, live);
     if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, DATA);
     if (!qaRetry && !qaHandoff && needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const observed = await this.agents.reconcile(t);

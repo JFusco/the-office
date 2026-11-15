@@ -12,6 +12,8 @@ import { requestDelivery } from '../../../../server/cec/pilot-delivery';
 import { qaPlanEvidenceGap } from '../../../../server/cec/qa/run-directory';
 import { prepareCECQA } from '../../../../server/qa/prepare-assignment';
 import { cecPrompt } from '../../../../server/cec/prompts/cec';
+import type { OwnershipRead } from '../../../../server/cec/implementation-continuation/intent';
+import type { ReadbackOwnerDecision } from '../../../../server/cec/qa/handoff-ownership';
 const clear = async () => ({complete:true,fresh:true,ownership:{status:'clear'}});
 function fixture() {
     const root = mkdtempSync(resolve(tmpdir(),'unsealed-qa-'));
@@ -37,7 +39,7 @@ function fixture() {
     const request=requestDelivery.call({store} as any,t.key,'resume-ticket',undefined,{qaHandoff:input});
     request.status='working';const claim=store.claimWork({projectId:'cec',kind:'delivery',id:request.id},'scheduler','resume-ticket')!;
     const execute=vi.fn(async (_p:string,a:string[])=>a[0]==='rev-parse'?t.commit:'');
-    const consume=(ownership=clear,alive=()=>false)=>withAssignment(claim,'delivery',()=>continueUnsealedQA(store,request,root,ownership,execute as any,alive));
+    const consume=(ownership:OwnershipRead=clear,alive=()=>false,readback?:ReadbackOwnerDecision)=>withAssignment(claim,'delivery',()=>continueUnsealedQA(store,request,root,ownership,execute as any,alive,readback));
     return{root,store,t,run,qa,dir,result,work,input,request,claim,write,execute,consume,close(){store.close();rmSync(root,{recursive:true,force:true});}};
 }
 test('explicit handoff retains incomplete evidence and counters, consumes once and dispatches Office QA without the old SDK',async()=>{
@@ -54,6 +56,20 @@ test('explicit handoff retains incomplete evidence and counters, consumes once a
         expect(prompt).not.toContain('Use $qa-team');expect(prompt).not.toContain('ONE CORRECTED CEC-154 PLAN');
         await expect(f.consume()).rejects.toThrow();expect(f.t.officeQAHandoffs).toHaveLength(1);
         f.request.status='blocked';expect(requestDelivery.call({store:f.store} as any,f.t.key,'resume-ticket',undefined,{qaHandoff:f.input}).status).toBe('blocked');
+    }finally{f.close();}
+});
+test('the actual handoff consumes explicit reference-only coordination only after a positive PM readback',async()=>{
+    const f=fixture();try{
+        const id='22345678-1234-4234-9234-123456789abc';f.request.officeQAHandoff!.coordinatorSessionId=id;
+        const view:any={complete:true,fresh:true,observedAt:'2026-11-15T12:01:00Z',project:'cec',key:f.t.key,ownership:{status:'uncertain',matches:[{id}]},
+            sessions:[{id,provider:'codex',status:'active',cwd:'/synthetic/operator',context:{activity:'active',scopes:[{project:'cec',issues:[Number(f.t.key.split('-')[1])],prs:[],
+                evidence:[{kind:'reference',issue:Number(f.t.key.split('-')[1]),reference:'https://example.test/browse/'+f.t.key}]}]}}]};
+        const before=structuredClone(f.result);
+        await expect(f.consume(async()=>view)).rejects.toThrow('verified coordination');
+        expect(f.request.officeQAHandoff!.consumedAt).toBeUndefined();
+        await f.consume(async()=>view,()=>false,{key:f.t.key,existingOwner:'',blocker:''});
+        expect(f.t.officeQAHandoffs![0].ownership).toMatchObject({kind:'coordinated',sessionId:id});
+        expect(f.t.results.retest).toEqual(before);expect(f.t.attempt).toBe(5);
     }finally{f.close();}
 });
 test.each(['sealed-plan','dangling-plan','symlinked-call-directory','pending-call','live-group','unknown-usage','uncertain-receipt','changed-native-result','forged-completion','wrong-assignment','wrong-worker',

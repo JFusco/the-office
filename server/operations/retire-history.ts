@@ -5,6 +5,7 @@ import { HOLDS } from '../office/config';
 import type { Store } from '../store/store';
 import type { HarnessRequest } from '../../src/shared';
 import type { HistoryRetirementIntent } from '../../src/contracts/history-retirement';
+import { readHistoryScope } from './read-history-scope';
 
 const Intent = z.object({ acceptIncompleteHistory: z.literal(true), reason: z.string().trim().min(20).max(1000),
     targets: z.array(z.object({ kind: z.enum(['maintenance', 'investigation']), id: z.string().min(1).max(240),
@@ -21,7 +22,9 @@ function records(store: Store, intent: HistoryRetirementIntent, alive: typeof pr
     return intent.targets.map(target => {
         const rows = target.kind === 'maintenance' ? store.state.maintenance?.runs.filter(run => run.id === target.id) : store.state.it?.investigations?.filter(entry => entry.id === target.id);
         const record = rows?.[0];
-        if (rows?.length !== 1 || !record || historicalRecordDigest(record) !== target.sha256 || !['blocked', 'interrupted'].includes(record.status))
+        const readerHistory = target.kind === 'investigation' && store.state.it?.investigations?.find(e => e.id === target.id)?.source.failureKind === 'transient-read';
+        if (rows?.length !== 1 || !record || historicalRecordDigest(record) !== target.sha256 ||
+            !(readerHistory ? ['queued','blocked'] : ['blocked','interrupted']).includes(record.status))
             throw Error('Exact blocked historical record changed or is unavailable');
         const run = target.kind === 'maintenance' ? store.state.maintenance!.runs.find(run => run.id === target.id)! : undefined;
         const entry = target.kind === 'investigation' ? store.state.it!.investigations!.find(entry => entry.id === target.id)! : undefined;
@@ -32,11 +35,13 @@ function records(store: Store, intent: HistoryRetirementIntent, alive: typeof pr
             throw Error('Only exhausted inactive Brain history without an unfinished handoff may retire');
         if (run?.checkpointId && store.state.coordination?.checkpoints.filter(checkpoint => checkpoint.id === run.checkpointId && checkpoint.runId === run.id).length !== 1)
             throw Error('Exact original checkpoint required');
-        if (entry && (entry.source.kind !== 'worker' || entry.source.failureKind !== 'surviving-subprocesses' ||
+        if (entry && !readerHistory && (entry.source.kind !== 'worker' || entry.source.failureKind !== 'surviving-subprocesses' ||
             entry.report?.officeFix?.status !== 'blocked' || entry.attempts < 1 || HOLDS[entry.source.ticket]))
             throw Error('Only a blocked worker diagnosis with no human hold may be acknowledged');
-        const ids = new Set([target.id, ...(entry ? [entry.source.id, entry.source.requestId, ...entry.source.workerIds] : [])]);
-        const work = store.state.workLog?.filter(work => ids.has(work.id) || ids.has(work.requestId || '')) || [];
+        if (entry && HOLDS[entry.source.ticket]) throw Error('A current human hold prevents retirement');
+        const readScope = readerHistory && entry ? readHistoryScope(store,entry) : undefined;
+        const ids = readScope?.ids || new Set([target.id, ...(entry ? [entry.source.id, entry.source.requestId, ...entry.source.workerIds] : [])].filter(Boolean));
+        const work = readScope?.work || store.state.workLog?.filter(work => ids.has(work.id) || !!work.requestId && ids.has(work.requestId)) || [];
         if (!work.length || work.some(work => !work.endedAt || !['completed', 'failed', 'blocked', 'interrupted'].includes(work.status) ||
             !work.processId || !Number.isSafeInteger(work.processId) || work.processId < 1 || alive(work.processId)) ||
             store.activeClaims().some(claim => ids.has(claim.work.id) || work.some(work => work.id === claim.work.id)))
