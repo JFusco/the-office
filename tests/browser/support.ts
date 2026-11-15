@@ -26,5 +26,6 @@ export async function setMapFilter(page:import('@playwright/test').Page,value:st
 /** Use the public empty-space gesture rather than a removed Overview control. */
 export async function clearMapSelection(page:import('@playwright/test').Page){
   const canvas=page.locator('[data-brain-renderer] canvas'),box=(await canvas.boundingBox())!;
-  await canvas.click({position:{x:12,y:box.height-12}});
+  const viewport=(await page.locator('[data-office-brain]').boundingBox())!;
+  await page.mouse.click(box.x+12,Math.min(box.y+box.height,viewport.y+viewport.height)-12);
 }
