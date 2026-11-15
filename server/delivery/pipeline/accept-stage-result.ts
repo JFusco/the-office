@@ -1,3 +1,4 @@
+import { officeQAEvidenceGap } from '../../qa/report-evidence';
 import { stoppedBaseStageProof } from '../recovery/stopped-base-validation';
 import { captureLearning } from '../../knowledge/learning-events';
 import { acceptFeatureReview } from '../../features/stage-acceptance';
@@ -40,7 +41,7 @@ import { acceptMetadataReview } from '../publication/metadata-review';
 import type { GitHubDelivery } from './github-delivery';
 import { deliveryNextStage, hasUncertainEffects, pendingPreparationCheck, closeoutReceipt } from './github-delivery';
 
-export interface StageContext { job: TicketJob; result: StageResult; project: Store['project']; root: string; issue: any; role: Role; continuation: Awaited<ReturnType<GitHubDelivery['continuationGuard']>> | undefined; reviewStart: any; inputSha256: string; beforeWorkers: Set<string>; issueSha256: string | undefined; candidateAtStart: string; technicalPhase: boolean }
+export interface StageContext { officeQA?: boolean; job: TicketJob; result: StageResult; project: Store['project']; root: string; issue: any; role: Role; continuation: Awaited<ReturnType<GitHubDelivery['continuationGuard']>> | undefined; reviewStart: any; inputSha256: string; beforeWorkers: Set<string>; issueSha256: string | undefined; candidateAtStart: string; technicalPhase: boolean }
 /** Validates and applies one stage result: identity fences, proofs, parking, repairs, gates and the next stage. */
 export async function acceptStageResult(this: GitHubDelivery, context: StageContext): Promise<void> {
     const { job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, issueSha256, candidateAtStart, technicalPhase } = context;
@@ -94,6 +95,10 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         result.evidence.push({ id: crypto.randomUUID(), kind: 'review', summary: 'Saved independent candidate review', path, commit: job.head, environment: 'Office code review', url: '', observedAt: new Date().toISOString() });
     }
     const heldFindings = await outsideAmendmentFindingIds(this,job,result.commit,result);
+    if (job.stage === 'validate' && (context.officeQA || result.qa) && result.outcome === 'passed') {
+        const gap = officeQAEvidenceGap(result, { key: job.key, head: job.head, stage: 'github-validate', approach: job.approach }, root);
+        if (gap) { job.steps.push({ ...nativeProof, stage: job.stage, result }); throw new Error(gap); }
+    }
     if (result.approach) {
         const failedWorker = (this.store.state.workLog || []).filter(w => w.requestId === job.id).some(w => ['failed', 'interrupted', 'blocked'].includes(w.status) && !(this.store.state.workLog || []).some(later => later.requestId === job.id && later.stage === w.stage && later.startedAt > w.startedAt && later.status === 'completed'));
         try {

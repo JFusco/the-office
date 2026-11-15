@@ -1,3 +1,4 @@
+import { referencedQAArtifact } from '../../qa/report-access';
 import { qaPlanRetryRoute } from '../../cec/qa/plan-retry-route';
 import { DATA } from '../config';
 import { knowledgeRoute } from '../../knowledge/routes';
@@ -122,7 +123,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
     }
     if (url.pathname === '/api/artifact') {
         const p = url.searchParams.get('path') || '';
-        if (!containedFile(p, resolve(store.dataRoot, 'runs')))
+        if (!containedFile(p, resolve(store.dataRoot, 'runs')) && !(containedFile(p, resolve(store.dataRoot, 'ticket-work')) && referencedQAArtifact(store.state, p)))
             return json({ error: 'Artifact is not inside a recorded office run' }, 403);
         if (!['.png', '.jpg', '.jpeg', '.webp', '.md', '.json', '.txt'].includes(extname(p)))
             return json({ error: 'Unsupported artifact type' }, 415);

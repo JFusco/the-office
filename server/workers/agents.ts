@@ -1,3 +1,6 @@
+import { OfficeQAReportSchema } from '../qa/report-schema';
+import { bindGitHubQA, prepareCECQA } from '../qa/prepare-assignment';
+import { saveQAReport } from '../qa/save-report';
 import { knowledgePromptStore } from '../knowledge/office-state-view';
 import { CECReadbackSchema as ReadbackSchema } from '../cec/readback-schema';
 import { withCECPreflightPRs } from '../cec/preflight-pr-read';
@@ -48,15 +51,17 @@ export const ResolutionSchema = z.object({ kind: z.enum(['source-repair', 'confl
 export const FreshResultSchema = LegacyResultSchema.extend({ resolution: ResolutionSchema.nullable() }).strict();
 /** Current worker output: a provider-wait may name the npm release it waits for. Older saved results still parse as Fresh or Legacy. */
 export const CurrentResultSchema = LegacyResultSchema.extend({ resolution: ResolutionSchema.extend({ release: ReleaseWaitSchema.nullable() }).strict().nullable() }).strict();
+export const OfficeQAResultSchema = CurrentResultSchema.extend({ qa: OfficeQAReportSchema.nullable() }).strict();
 // Historical provider bytes remain historical: parsing never inserts a resolution field.
-export const ResultSchema = z.union([CurrentResultSchema, FreshResultSchema, LegacyResultSchema]);
+export const ResultSchema = z.union([OfficeQAResultSchema, CurrentResultSchema, FreshResultSchema, LegacyResultSchema]);
 const IntakeSchema = z.object({ tickets: z.array(z.object({ key: z.string(), summary: z.string(), type: z.string(), status: z.string(), statusId: z.string(), assignee: z.string(), subtask: z.boolean(), boardMember: z.boolean(), url: z.string(), updated: z.string() }).strict()), summary: z.string(), complete: z.boolean(), blocker: z.string() }).strict();
 export class Agents extends WorkerRuntime {
     override async run<T>(role: Role, task: string, schema: z.ZodType<T>, opts: Parameters<WorkerRuntime['run']>[3] = {}): Promise<T> {
+        bindGitHubQA(this.store, opts);
         // Native workers receive one strict object schema; legacy parsing is only for saved results.
         return withCECPreflightPRs(this.store, opts.stage, opts.ticket, task, framed => super.run(role,
             Object.is(schema, ResultSchema) ? `${framed}\n${handsOff(this.store) ? HANDS_OFF_RESOLUTION_GUIDANCE : RESOLUTION_GUIDANCE}` : framed,
-            Object.is(schema, ResultSchema) ? CurrentResultSchema as unknown as z.ZodType<T> : schema, opts), args => az(args, true, 55000, this.execute));
+            Object.is(schema, ResultSchema) ? (opts.officeQA ? OfficeQAResultSchema : CurrentResultSchema) as unknown as z.ZodType<T> : schema, opts), args => az(args, true, 55000, this.execute));
     }
     ctoContext: () => unknown = () => ({ projects: [{ project: this.store.project, goals: this.store.state.goals, notes: this.store.state.projectNotes }] });
     async sendSlack(delivery: SlackDelivery, human: Pick<TeamMessage, 'body' | 'ticket' | 'requestId'>) {
@@ -91,12 +96,14 @@ export class Agents extends WorkerRuntime {
         const continued = implementationWorkerContext(ticket, stage);
         const artifactRoot = continued?.artifactsRoot || resolve(DATA, 'runs', ticket.runId);
         mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
-        const prompt = featureDeliveryContext(this.store, ticket.featureBinding) + cecPrompt(this.store, ticket, stage, role, artifactRoot) + (continued?.prompt || '') + (ticket.repairCycle?.phase === 'diagnosis' && stage === 'code-review' ? `\n${REPAIR_DIAGNOSIS}` : '');
+        const { officeQA, directory: qaDirectory } = prepareCECQA(this.store, ticket, stage, artifactRoot);
+        const prompt = featureDeliveryContext(this.store, ticket.featureBinding) + cecPrompt(this.store, ticket, stage, role, artifactRoot, qaDirectory) + (continued?.prompt || '') + (ticket.repairCycle?.phase === 'diagnosis' && stage === 'code-review' ? `\n${REPAIR_DIAGNOSIS}` : '');
         const featureEnhance = !!ticket.featureBinding && stage === 'enhance';
         const artifactOnly = featureEnhance || ['plan', 'plan-review', 'code-review', 'repair-review', 'ci-diagnose'].includes(stage);
         if (continued) await verifyContinuationPreservation(this.store, ticket);
-        const result = await this.run(role, prompt, ResultSchema, { ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
+        const result = await this.run(role, prompt, ResultSchema, { officeQA, ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
             ...(continued ? { requestId: continued.requestId, originalWorkId: continued.originalWorkId } : {}) });
+        if (officeQA) saveQAReport(result, qaDirectory, artifactRoot);
         if (continued) await verifyContinuationPreservation(this.store, ticket, result);
         return result;
     }

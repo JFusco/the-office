@@ -70,6 +70,7 @@ export class WorkerRuntime {
         originalWorkId?: string;
         enqueuedAt?: string;
         artifactsRoot?: string;
+        officeQA?: boolean;
     } = {}) {
         if (this.active.has(role) || this.active.size >= 3)
             throw new Error('Agent capacity is occupied');
@@ -166,7 +167,7 @@ export class WorkerRuntime {
                 if(evidence.text)task+=`\n${evidence.text}`;
                 prepareExposure(this.store,dir,id,opts.stage||'assignment',lessons,assignmentSubject(this.store,opts.requestId,opts.ticket,opts.featureContext?.id),evidence);
             }
-            const route = claude ? null : await resolveModelRoute(role, LOCAL_BINDINGS.models, () => command('python3', [`${SKILLS.qa}/scripts/qa_harness.py`, 'model-policy']));
+            const route = claude ? null : await resolveModelRoute(role, LOCAL_BINDINGS.models, () => command('python3', [`${SKILLS.qa}/scripts/qa_harness.py`, 'model-policy']), !opts.officeQA);
             if (route) {
                 this.store.agent(role, { model: route.model, effort: route.effort });
                 this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.effort, requestedModel: route.model, requestedEffort: route.effort });

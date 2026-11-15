@@ -15,6 +15,7 @@ function setup(validation = 'browser') {
 
 test.each(['qa', 'retest', 'staging-qa', 'preview'] as Stage[])('%s browser stage includes actual-window, callback and same-run ownership guidance', stage => {
     const { store, ticket } = setup();
+    ticket.results[stage] = { qaRunDir: `/tmp/qa-unit/.qa/runs/qa-${stage}-4` } as any;
     const prompt = cecPrompt(store, ticket, stage, 'qa', '/tmp/qa-unit');
     expect(prompt).toContain(`canonical current QA run is /tmp/qa-unit/.qa/runs/qa-${stage}-4`);
     expect(prompt).toContain('Before asking Joe to sign in, show the exact existing window');
@@ -45,7 +46,9 @@ test('GitHub browser validation receives the same guidance without widening its 
         approach: ticket.approach, head: ticket.commit, branch: 'codex/unit-browser', worktree: '/tmp/candidate',
         pr: 0, prUrl: '', detail: '', steps: [] };
     const input = { store, project: store.project, job, root: '/tmp/qa-unit', issue: {}, readyChecks: false };
-    expect(stagePrompt(input)).toContain('BROWSER STARTUP AND ACCESS HANDOFF:');
+    expect(stagePrompt(input)).toContain('ONE independent QA agent');
+    expect(stagePrompt(input)).toContain('PHASE 1 — SETUP');
+    expect(stagePrompt(input)).not.toContain('Use the installed QA Team harness');
     expect(stagePrompt(input)).toContain('No source or external changes, paid runs, merge or release');
     job.approach!.validation = 'independent-checks';
     expect(stagePrompt(input)).not.toContain('BROWSER STARTUP AND ACCESS HANDOFF:');
