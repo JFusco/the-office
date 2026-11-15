@@ -109,6 +109,16 @@ Provider observations include open and draft PRs as pending evidence. GitHub pre
 
 The gear opens **Settings**: Office preferences (graphics, reduced motion, keyboard shortcuts, delivery toasts, coffee-break coworkers), the read-only effective `office-config.json`, and the current project's pickup, PR closeout, Slack, goal-message and time settings. Display preferences now belong to the local service and apply to every project and browser; choices made earlier in a single browser must be selected again. The operating system's reduced-motion setting still applies. The bell and PM mailbox show status only.
 
+A deliberate CEC QA resume can bind one acceptance plan after a retained access-only
+probe. This requires a fresh eligible resume, the exact completed native QA worker
+and claim, zero known provider usage, verified receipts, no unsettled effects, and
+public QA Team validation of the unchanged plan and fully settled read-only calls.
+The old run remains incomplete history; its artifacts, counters and results are
+preserved. Feature-capable plans keep their existing recovery path. Changed
+identities, active bindings, unknown mutations or usage, and finalized runs remain
+blocked. The new plan still needs actual feature coverage, actor/tenant verification,
+owned fixtures, native browser claims and ordinary acceptance and delivery checks.
+
 ## Development and verification
 
 ```sh

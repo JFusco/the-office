@@ -597,6 +597,7 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    qaPlanContinuations?: import('./contracts/qa-plan-continuation').QAPlanContinuation[];
     implementationContinuation?: import('./contracts/cec-implementation-continuation').ImplementationContinuation;
     implementationContinuationHold?: { workerId: string; note: string; at: string };
     savedPlanRecoveryFailure?: { at: string; detail: string };

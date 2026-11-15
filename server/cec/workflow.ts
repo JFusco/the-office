@@ -7,6 +7,7 @@ import { CEC, HOLDS } from '../office/config';
 import { safeWebUrl } from '../office/security';
 import { plannedNext, unresolvedVerification } from '../delivery/pipeline/approach';
 import { STAGES, type OfficeSnapshot, type Stage, type StageResult, type Ticket } from '../../src/shared';
+import { qaPlanEvidenceGap } from './qa/run-directory';
 export function eligibility(t: Pick<Ticket, 'key' | 'assignee' | 'subtask' | 'boardMember' | 'status' | 'statusId'>, allowedStatus?: string): string {
     if (!/^CEC-\d+$/.test(t.key))
         return 'Outside CEC';
@@ -99,6 +100,8 @@ function stageResultGap(t: Ticket, stage: Stage, r: StageResult, artifactRoot: s
     if (stage === 'preview' && (!safeWebUrl(r.previewUrl) || !r.evidence.some(e => e.kind === 'browser' && e.commit === r.commit)))
         return 'Exact candidate application readiness is unverified';
     if (['qa', 'retest', 'staging-qa'].includes(stage)) {
+        const continuationGap = qaPlanEvidenceGap(t, stage, r, artifactRoot);
+        if (continuationGap) return continuationGap;
         if (r.paidRuns === null)
             return 'Provider run usage requires reconciliation';
         if (r.findings.some(f => f.status !== 'verified'))

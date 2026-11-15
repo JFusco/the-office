@@ -15,6 +15,7 @@ import { needsResumeReconciliation } from './resume-reconciliation';
 import { continueImplementation } from './implementation-continuation/continue';
 import { parkingUnconfirmed } from './parking/park-ticket';
 import { reconcileRejectedParking } from './parking/rejected-transition';
+import { continueAccessOnlyPlan } from './qa/continue-access-only-plan';
 
 export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean }) {
     return this.store.transaction(() => {
@@ -209,6 +210,7 @@ export async function resume(this: Engine, key: string, background = true) {
         advance(t, t.stage, observed);
         this.store.emit('reconciled', 'Previous stage independently verified through read-back; no external action replayed.', 'pm', key);
     }
+    await continueAccessOnlyPlan(this.store, t, DATA);
     t.activity = 'waiting';
     t.blocker = '';
     if (t.parked?.resumeRequestedAt)
