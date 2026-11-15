@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { expect, test, vi } from 'vitest';
@@ -56,10 +56,12 @@ test('explicit handoff retains incomplete evidence and counters, consumes once a
         f.request.status='blocked';expect(requestDelivery.call({store:f.store} as any,f.t.key,'resume-ticket',undefined,{qaHandoff:f.input}).status).toBe('blocked');
     }finally{f.close();}
 });
-test.each(['sealed-plan','pending-call','live-group','unknown-usage','uncertain-receipt','changed-native-result','forged-completion','wrong-assignment','wrong-worker',
+test.each(['sealed-plan','dangling-plan','symlinked-call-directory','pending-call','live-group','unknown-usage','uncertain-receipt','changed-native-result','forged-completion','wrong-assignment','wrong-worker',
     'active-worker','worker-failed','changed-head','dirty-source','old-request','competing-request','unknown-ownership','artifact-race','paused','no-scheduler'])('refuses %s without changing history',async reason=>{
     const f=fixture();try{
         if(reason==='sealed-plan')f.write(resolve(f.qa,'plan.json'),{});
+        if(reason==='dangling-plan')symlinkSync(resolve(f.qa,'missing-plan'),resolve(f.qa,'plan.json'));
+        if(reason==='symlinked-call-directory')symlinkSync(resolve(f.qa,'missing-calls'),resolve(f.qa,'calls'));
         if(reason==='pending-call'){mkdirSync(resolve(f.qa,'orchestration'));f.write(resolve(f.qa,'orchestration/state.json'),{open:true});}
         if(reason==='unknown-usage')f.result.paidRuns=null;
         if(reason==='uncertain-receipt')f.result.receipts.push({id:'unknown',action:'write',target:'',verified:false,uncertain:true,detail:''});

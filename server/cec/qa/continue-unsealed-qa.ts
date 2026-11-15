@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { DeliveryRequest, EffectIntent } from '../../../src/shared';
@@ -9,6 +9,11 @@ import { command, processGroupAlive } from '../../workers/process';
 import { HOLDS } from '../../office/config';
 import { assertOwnership, type OwnershipRead } from '../implementation-continuation/intent';
 import { qaRunDirectory } from './run-directory';
+
+function entry(path: string) {
+    try { return lstatSync(path); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+}
 
 /** Consume one explicit, freshly gated resume of an unsealed legacy setup block. No legacy SDK calls. */
 export async function continueUnsealedQA(store: Store, request: DeliveryRequest, dataRoot: string, ownership: OwnershipRead,
@@ -46,11 +51,12 @@ export async function continueUnsealedQA(store: Store, request: DeliveryRequest,
             !Number.isFinite(Date.parse(work.endedAt)) || !Number.isFinite(Date.parse(request.requestedAt)) || Date.parse(request.requestedAt) <= Date.parse(work.endedAt) ||
             store.activeClaims().some(c => c.id === work.claimId) || store.state.workLog?.some(w => w.ticket === ticket.key && ['running','stopping'].includes(w.status)) ||
             ticket.officeQAHandoffs?.some(h => h.workerId === input.workerId) ||
-            existsSync(resolve(from, 'plan.json')) || existsSync(resolve(from, 'final.md'))) return fail();
+            entry(resolve(from, 'plan.json')) || entry(resolve(from, 'final.md'))) return fail();
         // No sealed packets, browser bindings, unfinished calls or execution handoffs may be abandoned here.
         for (const name of ['orchestration','packets','handoffs','tickets','cleanup','calls','leases']) {
             const path = resolve(from, name);
-            if (existsSync(path) && readdirSync(path).length) return fail();
+            const stat = entry(path);
+            if (stat && (stat.isSymbolicLink() || !stat.isDirectory() || readdirSync(path).length)) return fail();
         }
         const effects = (store.db.prepare('SELECT body FROM effects').all() as {body:string}[]).map(r => JSON.parse(r.body) as EffectIntent);
         if (effects.some(e => e.work.projectId === store.project.id &&
