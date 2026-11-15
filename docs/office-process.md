@@ -1,0 +1,256 @@
+# Office process — version 1
+
+This is the shared process baseline agreed on November 15, 2026. Every employee
+uses the existing Office runtime, scheduler and role-specific response schema.
+There is no separate QA dispatcher or learning system. The diagrams describe
+the supported process, not proof that a particular ticket passed it. Configured
+project policy determines which optional stages run; a diagram grants no new
+permission. Changes to these boundaries belong in the same PR as their code and
+behavioral tests. Do not add a ticket-specific process when a shared mechanism
+can carry the same authorized task.
+
+## Whole Office
+
+Solid arrows move work; dotted arrows supply advice or evidence. The scheduler
+releases the project lane between stages. CTO, IT and knowledge capacity stay
+separate from delivery capacity; their advice never becomes a second writer.
+
+```mermaid
+flowchart TD
+    U["Joe: goals, ideas, questions and explicit decisions"] --> AV["Avery: direction and priorities"]
+    U --> IN["Configured Jira or GitHub intake / explicit Start / linked PR"]
+    AV --> PM["Morgan: reconcile scope, eligibility and owner"]
+    IN --> PM
+    PM --> FP{"Feature discovery needed and enabled?"}
+    FP -->|Yes| CA["Casey: research, brief and product questions"]
+    CA --> Q["Questions for you: choices, recommendation and custom answer"]
+    Q -->|Decision saved| CA
+    CA --> PL["Alex: plan; independent review when required"]
+    PL --> AP["Recorded project-policy or human approval"]
+    AP --> EN["Existing delivery queue"]
+    FP -->|Ordinary work / explicit Start| EN
+    IN -->|Existing PR or qualifying automation PR| EN
+    EN --> H["Shared harness: claim, identity, scope, holds, prerequisites and budget"]
+    H --> DEV["Alex: implement / repair on owned candidate"]
+    DEV --> RV["Sam: independent review when selected or required"]
+    RV -->|Findings| DEV
+    RV --> QA["Riley: independent checks or browser QA when selected / required"]
+    QA -->|Observed product defect| DEV
+    QA --> PUB["Harness: provider-specific publication and required current-head checks"]
+    PUB --> GH["GitHub: guarded merge when authorized; exact-merge Actions"]
+    PUB --> AZ["Jira / Azure: Ready for Staging; human merge and deployment"]
+    AZ --> SQ["Riley: verify actual staging version when available"]
+    GH --> CL["Verified closeout: issue / cards / notices / cleanup as applicable"]
+    SQ --> CL
+    H -->|Blocked / interrupted| REC["Shared recovery: classify, retain evidence and route exact prerequisite"]
+    REC -->|Safe authorized continuation| H
+    REC -->|Human decision or access required| Q
+    REC --> IT["Ellis: bounded operational diagnosis; supported recovery only"]
+    IT -->|Verified prerequisite resolved| REC
+    H -.-> LE["Harper: capture outcomes, curate and propose lessons asynchronously"]
+    CL -.-> LE
+    LE -.->|Relevant installed guidance / lookup| H
+    BG["Scheduled maintenance, provider observations, conversations and notices"] --> H
+    BG -.-> AV
+    H -.-> TM["Time, queue, usage and cost evidence; guarded publication"]
+    CL -.-> AV
+```
+
+## Discovery, decisions and intake
+
+Morgan first checks the configured project, assignee, intake status, supported
+issue type, existing feature/delivery/PR ownership, holds and prerequisites.
+An issue is not admitted merely because it appears in a chat or search result.
+Existing PRs are reconciled before any development is created. Exact bot identity
+and content qualification allow routine Dependabot, Renovate and canonical wiki
+PRs to use current-head provider checks and repository rules without an added
+model review or local QA cycle.
+
+```mermaid
+flowchart LR
+    I["Provider issue / idea / explicit planning request"] --> G{"Current intake and ownership eligible?"}
+    G -->|No| W["Wait or show the concrete restriction; preserve original ownership"]
+    G -->|Yes| D{"Ordinary delivery or discovery?"}
+    D -->|Ordinary / explicit Start| O["Existing delivery admission"]
+    D -->|Discovery enabled| C["Bounded source capture; Morgan assessment; Casey research"]
+    C --> N{"Product decision actually missing?"}
+    N -->|Yes| Q["One current question round; no answer selected automatically"]
+    Q --> C
+    N -->|No| B["Confirmed brief under saved manual / automatic policy"]
+    B --> P["Alex plan and required independent plan review"]
+    P --> A["Recheck baseline, requirements, decisions and authority"]
+    A --> O
+```
+
+Questions use the existing Questions for you / outbox action. Joe sees the actual
+question, recommended choice, alternatives and custom answer. Saving a note is
+not an approval or retry. A resolved decision stays bound to its recorded scope;
+an expired observation prompts a fresh check, not another approval for unchanged
+scope. Changed requirements use the existing revision and approval policy.
+
+## Development, review and QA
+
+Morgan proposes the approach and Alex confirms it after source inspection.
+Planning can be none, brief or reviewed; code review can be none, focused or
+full; validation can be developer checks, independent checks or browser QA.
+Repository requirements, explicit acceptance criteria and unresolved findings
+take precedence. No gate is downgraded to hide a failure.
+
+```mermaid
+flowchart TD
+    A["Alex: implementation and required repository checks"] --> R{"Selected independent review required?"}
+    R -->|Yes| S["Sam: review exact candidate"]
+    S -->|Product findings| F["Alex: focused repair; retain finding IDs and counters"]
+    R -->|No| V{"Selected validation route"}
+    S -->|Accepted| V
+    V -->|Developer checks sufficient| P["Provider publication gates"]
+    V -->|Independent checks / browser| SET["Riley: verify candidate, capabilities and owned setup"]
+    SET -->|Missing prerequisite| B["Name owner and action; affected cases untested"]
+    SET -->|Ready| T["Riley: observe all required cases and adjacent regressions"]
+    T --> REP["Structured report: case references, actual observations, evidence and next action"]
+    REP -->|Observed product defect| F
+    F --> S2["Sam: review repaired head when selected / required"]
+    S2 -->|Accepted| RT["Riley: independently retest findings and relevant cases on repaired head"]
+    S2 -->|Findings| F
+    RT --> REP
+    REP -->|Evidence accepted for this exact head| P
+    B -->|Prerequisite resolved under existing authority| SET
+```
+
+Riley is one independent QA worker. The fixer does not verify their own fix.
+Browser QA verifies startup, callback origin, actual signed-in actor, tenant,
+test-data permissions and owned application/database/browser before feature
+actions. Checks-only QA starts no browser merely to satisfy a template. Show a
+visible named browser window before asking Joe to sign in. Keep it available
+while waiting. An HTTP response or login page is not feature acceptance.
+
+The v2 QA report refers to each saved check by a deterministic criterion ID.
+The worker can explain the case in its own words. Changing a saved requirement
+changes its ID; it needs the normal route/baseline decision, not silent semantic
+equivalence. IDs persist across candidate revisions when the requirement text
+does not change. A regression has no acceptance criterion ID. Legacy v1 reports
+retain their exact-text coverage rule and original bytes. Current-head evidence,
+all required cases, prior finding dispositions and known usage/effects still
+gate acceptance. Open a ticket's **QA Results** to see setup, cases, evidence,
+findings, next owner/action and the full report.
+
+## Publication and closeout
+
+```mermaid
+flowchart TD
+    PASS["Accepted implementation, selected review and validation on current head"] --> PR["Harness reconciles or creates the one owned PR"]
+    PR --> CH["Verify repository, base, head, metadata and required provider checks"]
+    CH -->|Failed checks| FIX["Sam diagnoses exact-head logs; authorized repair / metadata fix / evidenced transient retry"]
+    FIX -->|Source changed| RE["Alex repair; new-head review and validation"]
+    RE --> PASS
+    CH -->|Jira / Azure checks passed| READY["Verified Ready for Staging transition; wait"]
+    READY --> HM["Human merge and verified staging deployment"]
+    HM --> ST["Riley: actual deployed-version staging checks"]
+    ST -->|Accepted| CEC["Staging verified; human release / closure remains separate"]
+    CH -->|GitHub merge authorized and current checks green| MG["Harness guarded merge once"]
+    MG --> CI["Watch actual merge Actions and configured release behavior"]
+    CI -->|Verified required outcomes| END["Verify original issue and board closeout"]
+    END --> NC["Natural notices, time/cost publication and safe owned cleanup"]
+```
+
+CEC may retain a verified draft PR before QA under its existing stage route;
+QA pass promotes/publishes that PR rather than creating a duplicate. A staging PR
+can trigger checks, so PR-triggered checks are not required before the PR exists.
+Ready for Staging is a waiting boundary, not permission to merge or deploy COS.
+GitHub automatic merge is limited to configured authorization; it never grants
+that authority to Jira/Azure work. Release, package or downstream-runner success
+must be observed from the relevant provider; a merge is not proof of release.
+
+## Recovery and human involvement — shared across roles
+
+| Observation | Next action | Boundary |
+|---|---|---|
+| Known safe read stale / timed out | Refresh the unfinished read within the existing persisted budget; check freshness at use | Do not restart the job, extend freshness or reset counters |
+| Complete JSON surrounded by one presentation fence | Local schema-validated normalization; retain original bytes and hashes | No model call or action replay; no fragment extraction or invented fields |
+| Malformed / incomplete output | Retain failure; existing stage recovery or owner decides permitted repair | Formatting cannot replace missing evidence or imply a product pass |
+| Product defect observed | Developer repair, selected review, independent retest | Setup errors are not product defects |
+| Missing setup / information | Route named prerequisite to capable owner | Joe is asked only for his actual decision or access |
+| External write uncertain | Independent read-back against exact saved Effects intent | Never blind resend or infer non-execution from a negative search |
+| Wrong identity, permission denied, competing writer, real hold | Stop affected action; authoritative resolution required | Lessons and free-form prose do not grant authority |
+| Native helper survives / output missing | Retain claim, failure and original evidence; supported reconciliation only | No success assertion, unrelated kill or repeated investigation loop |
+
+This policy is not a new automatic retry budget. Existing feature, delivery,
+maintenance and investigation limits remain authoritative. Special historical
+continuations keep their already-bound evidence and approvals; this baseline
+neither replays nor retroactively upgrades them. Retiring incomplete history is
+an explicit record-bound administrative decision, never proof of success or a
+fixed cause.
+
+## Operations, communication, leadership and learning
+
+```mermaid
+flowchart TD
+    SCH["Shared scheduler and configured cadence"] --> OBS["Provider observations and project maintenance"]
+    OBS --> NAT["Native project workflow: identity, scope, budget and publication gates"]
+    NAT -->|Failure| EL["Ellis: scoped read-only diagnosis; supported service recovery"]
+    EL -->|Only human can resolve| HU["Existing outbox decision / access question"]
+    SCH --> CO["Human / team conversation with registered project context"]
+    CO --> OWN["Route implementation to Morgan; advice stays advice"]
+    SCH --> AV["Avery: scheduled weekday goals review and explicit advice"]
+    AV --> GO["Goals, priorities and scoped handoffs to Morgan"]
+    EV["Accepted work, blockers and conflicts"] --> CAP["Harper: existing learning opportunity capture"]
+    CAP --> RET["Budgeted retrospective / curation and lesson proposals"]
+    RET --> DEC["Existing accept / decline / revise and installation policy"]
+    DEC --> LES["Relevant active installed lessons and assignment lookups"]
+    LES -.-> CO
+    LES -.-> NAT
+    LES -.-> OWN
+    EV --> NOT["Configured merge / goal / direct notices"]
+    NOT --> SEND["One durable Slack send; independent message verification"]
+    SEND -->|Unknown result| RB["Read back same intent; never resend blindly"]
+    EV --> TIME["Confirmed work segments, queue time, usage and cost evidence"]
+    TIME --> PUB["Configured guarded publication and read-back"]
+```
+
+Harper supplies advisory guidance across roles; exposure is not proof of use or
+improvement. Workers cite a lesson when it changed an action and report conflicts.
+Feedback/curation is asynchronous and does not gate a completed delivery. External
+Brain content stays read-only. A lesson proposal is not an accepted lesson or a
+global rule. Repeated mechanical defects belong in code and behavioral tests.
+
+Avery's scheduled review is at 5 PM America/New_York on weekdays. Project
+maintenance and learning follow their own configured cadence and budgets; no
+chart adds a new scheduled job. Slack notices are configured separately, with
+no automatic backfill or resend. Pauses stop new work and retain resources until
+termination is confirmed; drains let already-claimed work settle. UI timers do
+not rewrite actual time or provider usage. Publication and corrections retain
+their existing Effects/read-back rules, including the documented absolute-total
+hours exception; that exception is not a general resend policy.
+
+## Code owners and verification
+
+| Process boundary | Owning source |
+|---|---|
+| Fair dispatch, lanes and claims | `server/scheduling/scheduler.ts`, `server/scheduling/scheduled-work.ts`, `server/workers/assignment-context.ts` |
+| Common worker assignment, provider execution, output and lessons | `server/workers/worker-runtime.ts`, `server/workers/handoff-guidance.ts`, `server/workers/parse-result.ts` |
+| Feature research, questions, plan and release | `server/features/workflow.ts`, `server/features/progression/`, `server/features/questions/`, `server/features/release/` |
+| Approach and optional gates | `server/delivery/pipeline/approach.ts` |
+| CEC / Jira-Azure transitions | `server/cec/ticket-stage-runner.ts`, `server/cec/workflow.ts` |
+| GitHub result acceptance, merge and closeout | `server/delivery/pipeline/accept-stage-result.ts`, `server/delivery/harness/`, `server/delivery/readiness/`, `server/delivery/closeout/` |
+| Independent QA and coverage | `server/qa/assignment.ts`, `server/qa/criteria.ts`, `server/qa/report-evidence.ts` |
+| External actions | `server/store/effects.ts` |
+| IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
+| Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
+| Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |
+
+Behavioral checks must prove that all roles use the shared boundary, a normalized
+negative result stays negative without another provider turn, missing or changed
+criteria cannot pass, older v1 reports still parse, and current-head evidence is
+still required. Existing ownership, Effects and staged-delivery tests retain
+their original authority. No diagram or unit fixture establishes live QA success.
+
+## Research references
+
+The architecture decision reuses the installed harness instead of installing a
+new framework. The recommendation draws on [Anthropic's composable workflow
+guidance](https://www.anthropic.com/research/building-effective-agents),
+[A2A's task/input lifecycle](https://a2a-protocol.org/latest/topics/life-of-a-task/),
+[JSON Schema's structural constraints](https://json-schema.org/understanding-json-schema/reference/object)
+and [AWS's retry/idempotency guidance](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/).
+These support the design distinctions; they do not prove improved Office
+throughput, a successful recovery or an applied lesson.

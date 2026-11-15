@@ -43,6 +43,8 @@ import { handsOff, harnessDelivers } from '../delivery/harness/scope';
 import { unblockBrief } from '../knowledge/unblock-brief';
 import { catalogLine } from '../knowledge/lookup/catalog-line';
 import { persistReaderAnalysis } from './reader-analysis';
+import { handoffGuidance } from './handoff-guidance';
+import { parseWorkerResult } from './parse-result';
 export class WorkerRuntime {
     knowledgeContext?:import('../knowledge/context').KnowledgeContext;
     active = new Map<Role, AbortController>();
@@ -115,6 +117,7 @@ export class WorkerRuntime {
         task += `\nACTUAL ASSIGNMENT IDENTITY: The harness supplies ${identityPath} with this assignment's provider session, project, request and role. Before a native Brain claim, read it and match the actual thread; missing or mismatched identity blocks that claim. Never guess an author ID. Non-Brain work must not claim Brain maintenance.`;
         const schemaPath = resolve(dir, 'schema.json');
         writeFileSync(schemaPath, JSON.stringify(jsonSchema));
+        task += `\n${handoffGuidance(resolve(dir, 'assignment.json'), schemaPath)}`;
         const claude = role === 'developer', stream = new ClaudeStream();
         let completionSaved = false;
         const retainClaudeCompletion = () => {
@@ -259,9 +262,13 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
                         }
                         catch { }
                 }
-                payload = JSON.parse(final);
+                payload = final;
             }
-            const result = schema.parse(sanitizeObject(payload));
+            const { result, normalization } = parseWorkerResult(payload, schema, !claude);
+            if (normalization) {
+                writeFileSync(resolve(dir, 'response-original.txt'), final, { mode: 0o600, flag: 'wx' });
+                writeFileSync(resolve(dir, 'response-normalization.json'), JSON.stringify({ method: normalization, sourceSha256: createHash('sha256').update(final).digest('hex'), schemaSha256: createHash('sha256').update(JSON.stringify(jsonSchema)).digest('hex'), at: this.store.clock.now().toISOString(), repeatedActions: false }), { mode: 0o600, flag: 'wx' });
+            }
             if (profile.name === 'reader' && result && typeof result === 'object' && 'evidence' in result && Array.isArray((result as any).evidence) && 'summary' in result) {
                 persistReaderAnalysis(id, opts.stage || '', opts.artifactsRoot || dir, result as any, this.store.clock.now().toISOString());
             }
