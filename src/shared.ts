@@ -597,6 +597,7 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    qaPlanRetries?: import('./contracts/qa-plan-retry').QAPlanRetry[];
     qaPlanContinuations?: import('./contracts/qa-plan-continuation').QAPlanContinuation[];
     implementationContinuation?: import('./contracts/cec-implementation-continuation').ImplementationContinuation;
     implementationContinuationHold?: { workerId: string; note: string; at: string };
@@ -860,6 +861,7 @@ export function slackMessageUrl(url: string, channelId: string, messageTs: strin
     }
 }
 export interface DeliveryRequest {
+    qaPlanRetry?: import('./contracts/qa-plan-retry').QAPlanRetryRequest;
     implementationContinuation?: import('./contracts/cec-implementation-continuation').ImplementationContinuationRequest;
     featureBinding?: import('./contracts/features').FeatureBinding;
     id: string;

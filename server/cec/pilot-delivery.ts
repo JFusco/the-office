@@ -1,3 +1,4 @@
+import { consumeQAPlanRetry } from './qa/consume-plan-retry';
 import type { FeatureBinding } from '../../src/contracts/features';
 import { intakeDisposition, closeIntakeEpisode } from '../features/handoff/intake-disposition';
 import { assessmentEnabled } from '../features/handoff/disposition-store';
@@ -71,7 +72,7 @@ export async function drainDelivery(this: Engine, selectedId?: string) {
             request.error = this.store.ticket(request.key).blocker;
     }
     catch (e) {
-        if (request.action !== 'continue-saved-implementation' && !featureGate(this.store, request.key).allowed) {
+        if (!request.qaPlanRetry && request.action !== 'continue-saved-implementation' && !featureGate(this.store, request.key).allowed) {
             request.status = 'queued';
             request.error = '';
             return;
@@ -197,8 +198,12 @@ export async function resume(this: Engine, key: string, background = true) {
     if (live.existingPrId && live.existingPrId !== t.prId)
         throw new Error('A different PR exists; resolve duplicate work before resuming');
     assertFeatureGate(this.store, key);
-    recoverSavedPlan(this.store, t, DATA);
-    if (needsResumeReconciliation(t, this.store.state.workLog || [])) {
+    const qaRetry = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.qaPlanRetry);
+    if (qaRetry && (live.key !== key || live.status !== t.status || live.existingPrId !== t.prId))
+        throw new Error('Current Jira status or PR changed; preserve the approved incomplete QA decision');
+    if (qaRetry) await consumeQAPlanRetry(this.store, qaRetry, DATA, this.implementationOwnership);
+    if (!qaRetry) recoverSavedPlan(this.store, t, DATA);
+    if (!qaRetry && needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const observed = await this.agents.reconcile(t);
         const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));
         if (gap) {
