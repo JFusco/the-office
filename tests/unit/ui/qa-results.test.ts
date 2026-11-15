@@ -13,6 +13,6 @@ test('setup, untested coverage, full report, owner and preserved prior results a
 });
 test('QA notification only follows an actual new result in the same project',()=>{
     const before={project:{id:'cec'},tickets:[{...ticket,results:{}}]} as any,after={...before,tickets:[ticket]};
-    expect(qaResultChanges(before,after)).toEqual([{key:'CEC-900',text:'CEC-900: QA setup needs help — View results'}]);
+    expect(qaResultChanges(before,after)).toEqual([{project:'cec',key:'CEC-900',text:'cec / CEC-900: QA setup needs help — View results'}]);
     expect(qaResultChanges(after,after)).toEqual([]);expect(qaResultChanges({...before,project:{id:'brain'}},after)).toEqual([]);
 });

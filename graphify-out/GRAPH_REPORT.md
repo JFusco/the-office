@@ -1,7 +1,7 @@
 # Graph Report - office-lightweight-qa-nov15  (2026-11-15)
 
 ## Corpus Check
-- 814 files · ~331,301 words
+- 814 files · ~331,313 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `71294330`
+- Built from commit: `81ada8b0`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -553,7 +553,7 @@ Nodes (6): ref_mammoth, ref_pdfjs_dist, bounded(), extract(), fail(), [path,kind
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Store` connect `Store` to `source-amendment.ts`, `agents.ts`, `outbox.ts`, `post-conflict-preparation.ts`, `ref_node_path`, `session-bridge.ts`, `engine.ts`, `assignments.ts`, `features/workflow.ts`, `github/issue-publication.ts`, `closeout-recovery.ts`, `run.ts`, `config.ts`, `ref_node_crypto`, `OfficeSnapshot`, `worker-runtime.ts`, `record-trigger.ts`, `artifact`, `github-delivery.ts`, `digest`, `StageResult`, `pilot-delivery.ts`, `TimeBook.tsx`, `run-retrospective.ts`, `dependencies.ts`, `.emit`, `sanitize`, `cec/issue-publication.ts`, `features.ts`, `reader.ts`, `shared.ts`, `run-accounting.ts`, `inspect-closed-plan.ts`, `intent.ts`, `.save`, `TicketJob`, `maintenance/maintenance.ts`, `time-scope.ts`, `dependency-bots/adopt.ts`, `remove-candidate.ts`, `index.ts`, `cec/workflow.ts`, `resume-provider-review.ts`, `coordination.ts`, `ticket-evidence.ts`, `weekly-rollup.ts`, `task-briefing.ts`, `scheduled-work.ts`, `admit-improvement.ts`, `Effects`, `evidence-artifacts.ts`, `harnessEffect`, `it-specialist.ts`, `offices.ts`, `record-push.ts`, `JiraIssuePublisher`, `daily-cto.ts`, `stopped-base-validation.ts`, `tracking-issue.ts`, `lesson-selection.ts`, `store.ts`, `create-candidate.ts`, `run-evidence.ts`, `ProjectProgress`, `QuestionNotifications`, `conversations/conversations.ts`, `process.ts`?**
-  _High betweenness centrality (0.104) - this node is a cross-community bridge._
+  _High betweenness centrality (0.105) - this node is a cross-community bridge._
 - **Why does `Engine` connect `engine.ts` to `sanitize`, `cec/issue-publication.ts`, `offices.ts`, `agents.ts`, `shared.ts`, `intent.ts`, `features/workflow.ts`, `maintenance/maintenance.ts`, `Store`, `cec/workflow.ts`, `coordination.ts`, `github-delivery.ts`, `digest`, `pilot-delivery.ts`, `scheduled-work.ts`, `conversations/conversations.ts`, `Effects`?**
   _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Why does `TicketJob` connect `TicketJob` to `source-amendment.ts`, `Inspector.tsx`, `agents.ts`, `post-conflict-preparation.ts`, `ref_node_path`, `closeout-recovery.ts`, `config.ts`, `OfficeSnapshot`, `record-trigger.ts`, `artifact`, `github-delivery.ts`, `digest`, `StageResult`, `pilot-delivery.ts`, `run-retrospective.ts`, `shared.ts`, `maintenance/maintenance.ts`, `dependency-bots/adopt.ts`, `remove-candidate.ts`, `cec/workflow.ts`, `resume-provider-review.ts`, `harnessEffect`, `it-specialist.ts`, `offices.ts`, `record-push.ts`, `daily-cto.ts`, `stopped-base-validation.ts`, `create-candidate.ts`, `ProjectProgress`?**
