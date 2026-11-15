@@ -868,6 +868,7 @@ export function slackMessageUrl(url: string, channelId: string, messageTs: strin
     }
 }
 export interface DeliveryRequest {
+    qaReadContinuation?: import('./contracts/qa-ownership-read').QAOwnershipReadContinuation;
     officeQAHandoff?: import('./contracts/office-qa-handoff').OfficeQAHandoffRequest;
     qaPlanRetry?: import('./contracts/qa-plan-retry').QAPlanRetryRequest;
     implementationContinuation?: import('./contracts/cec-implementation-continuation').ImplementationContinuationRequest;

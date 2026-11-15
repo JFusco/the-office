@@ -1,6 +1,7 @@
 import { green156Admitted } from '../delivery/recovery/green156-evidence';
 import { packed165Admitted } from '../delivery/recovery/packed165-evidence';
 import { packed165SetupReady } from '../delivery/recovery/packed165-setup-continuation';
+import { scheduledOwnershipRead } from '../cec/qa/scheduled-ownership-read';
 import { requestPriority } from '../operations/request-priority';
 import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
@@ -179,8 +180,11 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
             }, continuation.nextCheckAt && Date.parse(continuation.nextCheckAt) > now.getTime() ? eligible('waiting', 'Native gate backoff is active') : null);
     for (const notice of c.notices?.entries || [])
         add('notice', notice, notice.kind === 'goal' ? 'goal-completion-notice' : notice.kind === 'maintenance' ? 'maintenance-completion-notice' : 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }));
-    for (const request of store.state.deliveryQueue || [])
-        add('delivery', request, request.action, request.requestedAt, 3, () => engine.drainDelivery(request.id));
+    for (const request of store.state.deliveryQueue || []) {
+        const read = scheduledOwnershipRead(store, engine, request, () => coordinator?.sessionBridge?.forProject(store, request.key, request.id));
+        if (read) items.push(read);
+        else add('delivery', request, request.action, request.requestedAt, 3, () => engine.drainDelivery(request.id));
+    }
     for (const ticket of store.state.tickets.filter(ticket => ticket.pilot && !['complete', 'mailbox'].includes(ticket.stage) && !store.state.deliveryQueue?.some(request => request.key === ticket.key && ['queued', 'working'].includes(request.status)))) {
         let condition: WorkEligibility | null = ticket.activity === 'blocked' ? eligible('blocked', ticket.blocker) : null;
         if (ticket.stage === 'ready-for-staging' && ticket.results['ready-for-staging']?.outcome === 'passed')
