@@ -1,3 +1,4 @@
+import { officeQAEvidenceGap } from '../qa/report-evidence';
 import { applyIntakeObservation } from './intake-observation';
 import { externalPlanGap } from '../features/cec-plan-gate';
 import { MISSING_INTAKE, reconcileMailbox } from './reconcile-mailbox';
@@ -108,6 +109,12 @@ function stageResultGap(t: Ticket, stage: Stage, r: StageResult, artifactRoot: s
             return 'QA has unresolved findings';
         if (stage === 'retest' && t.findings.some(f => !r.findings.some(current => current.id === f.id && current.status === 'verified')))
             return 'Every prior finding needs an explicit independent retest disposition';
+        if (r.qa || t.qaProtocol?.[stage] === 'office-v1') {
+            const gap = officeQAEvidenceGap(r, { key: t.key, head: stage === 'staging-qa' ? r.commit : t.commit, stage, approach: t.approach }, artifactRoot);
+            if (gap) return gap;
+            if (stage === 'staging-qa' && !r.evidence.some(e => e.kind === 'deployment' && e.commit === r.commit && containedFile(e.path, artifactRoot))) return 'Saved deployed version and acceptance evidence is required';
+            return requireQAReceipt && !r.receipts.some(x => x.action === 'jira-comment' && x.verified && !x.uncertain) ? 'QA update must be verified on the Jira ticket' : '';
+        }
         if (t.approach && t.approach.validation !== 'browser') {
             if (!r.evidence.some(e => e.kind === 'checks' && e.commit === r.commit && containedFile(e.path, artifactRoot)))
                 return 'Saved focused check evidence for this commit is required';

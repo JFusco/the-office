@@ -23,3 +23,9 @@ test('Codex receives exactly one model and one effort setting', () => {
     expect(args.filter(arg => arg === '--model')).toHaveLength(1);
     expect(args.filter(arg => arg.startsWith('model_reasoning_effort='))).toEqual(['model_reasoning_effort="medium"']);
 });
+
+test('routine Office QA uses configured/default Codex directly without loading QA Team', async () => {
+    const unavailable = async () => { throw new Error('QA Team is not installed'); };
+    expect(await resolveModelRoute('qa', {}, unavailable, false)).toMatchObject({source:'default',model:'gpt-6-astra'});
+    expect(await resolveModelRoute('qa', {qa:{model:'gpt-6.1-sol',effort:'high'}}, unavailable, false)).toMatchObject({source:'config',model:'gpt-6.1-sol'});
+});

@@ -7,7 +7,7 @@ import { DEVELOPER_EFFORT, DEVELOPER_MODEL } from '../workers/claude';
  *
  * The developer is pinned to Claude by identity validation in `ClaudeStream`. Every other role
  * runs Codex; until now those inherited `~/.codex/config.toml`, so the defaults below reproduce
- * what ran (gpt-6-astra / high). QA keeps its own `qa_harness` lead policy.
+ * what ran (gpt-6-astra / high). Retained QA Team runs keep their lead policy; routine Office QA uses this role route directly.
  */
 export interface ModelRoute { provider: 'claude' | 'codex'; model: string; effort: string; source: 'default' | 'config' | 'qa-policy' }
 export type ModelOverrides = Partial<Record<Role, { model: string; effort: string }>>;
@@ -40,10 +40,10 @@ export function qaPolicyRoute(policyJson: string): ModelRoute {
     return { provider: 'codex', model: lead.model, effort: lead.reasoning_effort, source: 'qa-policy' };
 }
 
-export async function resolveModelRoute(role: Role, overrides: ModelOverrides = {}, qaPolicy: () => Promise<string>): Promise<ModelRoute> {
+export async function resolveModelRoute(role: Role, overrides: ModelOverrides = {}, qaPolicy: () => Promise<string>, useQATeamPolicy = true): Promise<ModelRoute> {
     if (role === 'developer') return { provider: 'claude', model: DEVELOPER_MODEL, effort: DEVELOPER_EFFORT, source: 'default' };
     const override = overrides[role];
     if (override) return { provider: 'codex', ...override, source: 'config' };
-    if (role === 'qa') return qaPolicyRoute(await qaPolicy());
+    if (role === 'qa' && useQATeamPolicy) return qaPolicyRoute(await qaPolicy());
     return { provider: 'codex', model: CODEX_DEFAULT_MODEL, effort: CODEX_DEFAULT_EFFORT, source: 'default' };
 }

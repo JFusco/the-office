@@ -1,0 +1,34 @@
+import { afterEach, expect, test } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+import type { StageResult, WorkApproach } from '../../../src/shared';
+import { officeQAEvidenceGap } from '../../../server/qa/report-evidence';
+import { saveQAReport } from '../../../server/qa/save-report';
+const roots:string[]=[];afterEach(()=>roots.splice(0).forEach(r=>rmSync(r,{recursive:true,force:true})));
+function fixture(browser=false) {
+    const root=mkdtempSync(resolve(tmpdir(),'office-qa-unit-'));roots.push(root);const directory=resolve(root,'office-qa','qa-1'),head='a'.repeat(40);
+    const approach:WorkApproach={plan:'none',review:'focused',validation:browser?'browser':'independent-checks',checks:['Required acceptance'],reason:'Unit only'};
+    const file=resolve(root,'checks.txt');writeFileSync(file,'Synthetic check evidence');
+    const r:StageResult={outcome:'passed',commit:head,summary:'Synthetic fixture',findings:[],receipts:[],paidRuns:0,blocker:'',branch:'',worktree:'',prId:0,previewUrl:'',qaRunDir:directory,evidence:[{id:'check',kind:'checks',commit:head,path:file,url:'',environment:'unit',summary:'Synthetic checks',observedAt:''}],qa:{version:1,ticket:'CEC-900',commit:head,stage:'qa',validation:approach.validation as 'browser'|'independent-checks',setup:{status:'ready',summary:'Synthetic setup',owner:'Riley',nextAction:'Run checks',url:'',actor:'',resources:[]},cases:[{id:'AC1',kind:'acceptance',check:'Required acceptance',status:'passed',expected:'Expected',observed:'Observed fixture',evidenceIds:['check']},{id:'REG1',kind:'regression',check:'Adjacent error handling',status:'passed',expected:'Expected',observed:'Observed fixture',evidenceIds:['check']}],nextOwner:'Morgan',nextAction:'Check delivery gates'}};
+    const expected={key:'CEC-900',head,stage:'qa',approach};return {root,directory,r,expected,gap:()=>officeQAEvidenceGap(r,expected,root),save:()=>saveQAReport(r,directory,root)};
+}
+test('accepts exact-head complete independent coverage and refuses overwriting a prior report',()=>{
+    const f=fixture();expect(f.gap()).toContain('missing');f.save();expect(f.gap()).toBe('');f.save();f.r.qa!.nextAction='Changed';expect(()=>f.save()).toThrow('Prior Office QA');
+});
+test.each(['blocked','failed','not-tested'] as const)('does not turn %s coverage into a pass',status=>{const f=fixture();f.r.qa!.cases[0].status=status;f.save();expect(f.gap()).toContain('untested');});
+test('setup block names owner/action; omission, missing evidence and changed identities cannot pass',()=>{
+    const f=fixture();f.r.qa!.setup.status='blocked';f.r.qa!.setup.nextAction='Sign in to the visible browser';f.save();expect(f.gap()).toContain('Setup needed: Sign in');
+    for(const mutate of [(g:ReturnType<typeof fixture>)=>g.r.qa!.cases.shift(),(g:ReturnType<typeof fixture>)=>g.r.qa!.cases.pop(),(g:ReturnType<typeof fixture>)=>g.r.evidence[0].commit='b'.repeat(40),(g:ReturnType<typeof fixture>)=>g.r.qa!.commit='b'.repeat(40),(g:ReturnType<typeof fixture>)=>g.r.paidRuns=null]){const g=fixture();mutate(g);g.save();expect(g.gap()).not.toBe('');}
+});
+test('browser passes need actual browser, actor, ownership and saved screenshot in addition to checks',()=>{
+    const f=fixture(true);f.save();expect(f.gap()).toContain('browser');
+    const g=fixture(true);g.r.qa!.setup={...g.r.qa!.setup,url:'http://127.0.0.1:3000',actor:'Synthetic test actor',resources:['Synthetic owned resource']};
+    g.r.evidence.push({...g.r.evidence[0],id:'browser',kind:'browser',url:g.r.qa!.setup.url},{...g.r.evidence[0],id:'png',kind:'screenshot'});g.save();expect(g.gap()).toBe('');
+});
+test('symlinked report directories cannot escape the assignment',()=>{const f=fixture(),outside=mkdtempSync(resolve(tmpdir(),'office-qa-outside-'));roots.push(outside);mkdirSync(resolve(f.root,'office-qa'));symlinkSync(outside,f.directory);expect(()=>f.save()).toThrow('escaped');});
+test('a passed worker cannot change its own selected checks after testing',()=>{const f=fixture();f.r.approach={...f.expected.approach,checks:['Different smaller scope']};f.save();expect(f.gap()).toContain('explicit reroute');});
+test('independent checks cannot pass from a differently typed artifact',()=>{const f=fixture();f.r.evidence[0].kind='review';f.save();expect(f.gap()).toContain('focused check output');});
+test('browser QA retains the allowed-origin rule',()=>{const f=fixture(true);f.r.qa!.setup.url='http://untrusted.example.test';f.r.qa!.setup.actor='Unit actor';f.r.qa!.setup.resources=['Owned unit resource'];f.r.evidence.push({...f.r.evidence[0],id:'browser',kind:'browser',url:f.r.qa!.setup.url},{...f.r.evidence[0],id:'png',kind:'screenshot'});f.save();expect(f.gap()).toContain('browser');});
+
+test('an independent retest of a developer-checks route needs checks, not a browser',()=>{const f=fixture();f.expected.approach.validation='developer-checks';f.save();expect(f.gap()).toBe('');});

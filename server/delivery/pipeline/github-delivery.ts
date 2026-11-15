@@ -1,3 +1,5 @@
+import { saveQAReport } from '../../qa/save-report';
+import { officeQADirectory } from '../../qa/assignment';
 import { routeAutomationMerge } from '../readiness/automation-merge';
 import { stoppedBasePackageInstruction } from '../recovery/stopped-base-package';
 import { runStoppedBaseReview } from '../recovery/stopped-base-review';
@@ -258,13 +260,14 @@ export class GitHubDelivery {
             const expectedHead = job.head;
             const harnessResult = await runHarnessStage(this, job, root, readyChecks);
             if (!harnessResult) assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
-            const result: StageResult = harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: 60 * 60 * 1000 });
+            const result: StageResult = harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { officeQA: job.stage === 'validate', artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: 60 * 60 * 1000 });
+            if (job.stage === 'validate' && !harnessResult) saveQAReport(result, officeQADirectory(root, 'validate', job.steps.filter(s => s.stage === 'validate').length), root);
             try { assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead); }
             catch (error) {
                 job.steps.push({ stage: 'superseded-stage-result', result: structuredClone(result) });
                 throw new Error('Delivery authority changed after execution; result retained for reconciliation', { cause: error });
             }
-            await acceptStageResult.call(this, { job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, issueSha256, candidateAtStart, technicalPhase });
+            await acceptStageResult.call(this, { officeQA: job.stage === 'validate' && job.qaProtocol === 'office-v1' && !harnessResult, job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, issueSha256, candidateAtStart, technicalPhase });
         }
         catch (error) {
             job = this.jobs.find(current => current.id === job.id) || job;

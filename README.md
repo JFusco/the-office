@@ -189,3 +189,26 @@ Dependabot, Renovate (pin-courier), and canonical wiki automation PRs use the ex
 An explicit **Start** also authorizes a new issue's first Backlog → In progress transition. That permission is bound to the admitted job and ends after its first board transition or source work. Automatic pickup cannot use it; Block, Done and a later human return to Backlog remain protected.
 
 Native Codex Slack workers disable unused desktop/browser tools per child while retaining connected Slack tools. This does not change saved settings, writer uncertainty, process-group settlement or independent message verification. Original failures remain historical evidence.
+
+## Office QA
+
+Morgan proposes the testing route and focused checks; Alex confirms it after source
+inspection. Code/API changes use focused independent checks, while changed user
+workflows use browser QA. Riley performs routine QA in one independent worker,
+without QA Team, its model policy or automatic specialist delegation. A named
+specialist capability needs explicit scope; missing capability blocks with an owner.
+Repository requirements and current-head checks still apply.
+
+QA verifies setup first: candidate version, owned application/database/browser,
+callback origin, signed-in actor and test-data permissions. A visible sign-in
+handoff precedes any request for human login. Setup blocks are not product
+failures or passed tests. Every selected acceptance check and adjacent regression
+case needs an observed disposition and saved evidence. Unknown effects and usage
+stay blocked. The fixer and QA worker remain separate.
+
+Open the ticket to see **QA Results**: setup state, checklist, exact build, findings,
+screenshots, next action and owner, and **View full report**. A new result produces
+a **View results** notification. Successful QA is not an outbox approval request.
+Older QA Team runs retain their original protocol, evidence and recovery gates;
+this change neither replaces their artifacts nor declares unfinished QA passed.
+The standalone QA Team skill remains available for separately requested audits.

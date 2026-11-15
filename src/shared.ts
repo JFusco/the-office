@@ -158,6 +158,7 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    qaProtocol?: 'office-v1';
     packedPublicationRepair?: import('./contracts/packed-publication-repair').PackedPublicationRepair;
     admission?: import('./contracts/work').DeliveryAdmission;
     improvementId?: string;
@@ -571,6 +572,7 @@ export interface DeliveryRepairCycle {
     publishedHead?: string;
 }
 export interface StageResult {
+    qa?: import('./contracts/qa').OfficeQAReport | null;
     resolution?: DeliveryResolution | null;
     prerequisites?: Prerequisite[] | null;
     outcome: 'passed' | 'failed' | 'blocked' | 'reroute';
@@ -597,6 +599,9 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    /** Recent QA reports for the inspector; complete immutable history stays in native attempts/artifacts. */
+    qaHistory?: { stage: Stage; result: StageResult }[];
+    qaProtocol?: Partial<Record<Stage, 'office-v1'>>;
     qaPlanRetries?: import('./contracts/qa-plan-retry').QAPlanRetry[];
     qaPlanContinuations?: import('./contracts/qa-plan-continuation').QAPlanContinuation[];
     implementationContinuation?: import('./contracts/cec-implementation-continuation').ImplementationContinuation;
