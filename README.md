@@ -47,6 +47,14 @@ exact status, holds, competing ownership and provider read-back gates still appl
 
 ## Orchestration and recovery
 
+The versioned [whole-Office process and flowcharts](docs/office-process.md) define
+the shared handoff, delivery, recovery, operations and learning boundaries. Every
+role uses the same runtime with its existing response contract. New QA reports
+map cases to saved criterion references; historical reports retain their original
+rules. Harmless presentation formatting is normalized locally without another
+model turn or replaying actions. Identity, permission, evidence and Effects gates
+still decide acceptance.
+
 Every asynchronous command saves durable intent before execution. The scheduler claims one stage, rechecks its identity and authority, and releases the delivery lane between stages. Projects rotate fairly, blocked queue heads are skipped, and an eligible background notice is serviced by its fourth project claim opportunity. Verified closeout and repair continuations retain priority.
 
 Sam owns failed PR-check diagnosis for harness-delivered GitHub jobs, including adopted PRs with no Office worktree. Saved exact-head logs drive source repairs through Alex and fresh review/QA, message-only corrections that preserve source trees, PR metadata fixes, or one evidenced transient retry per ordinary PR workflow run. Three repair attempts per delivery bound the loop. The harness owns all publication and read-back; commit rewording uses an exact-head lease and refuses signed or nonlinear history and dependent PRs. Holds, competing ownership, unavailable credentials and uncertain writes remain explicit blockers. Every repaired PR still needs current-head checks and merge readiness. Legacy native recovery and post-merge repair-issue workflows retain their existing gates.

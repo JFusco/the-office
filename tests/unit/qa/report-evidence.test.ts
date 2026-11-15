@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import type { StageResult, WorkApproach } from '../../../src/shared';
 import { officeQAEvidenceGap } from '../../../server/qa/report-evidence';
 import { saveQAReport } from '../../../server/qa/save-report';
+import { qaCriteria } from '../../../server/qa/criteria';
 const roots:string[]=[];afterEach(()=>roots.splice(0).forEach(r=>rmSync(r,{recursive:true,force:true})));
 function fixture(browser=false) {
     const root=mkdtempSync(resolve(tmpdir(),'office-qa-unit-'));roots.push(root);const directory=resolve(root,'office-qa','qa-1'),head='a'.repeat(40);
@@ -32,3 +33,27 @@ test('independent checks cannot pass from a differently typed artifact',()=>{con
 test('browser QA retains the allowed-origin rule',()=>{const f=fixture(true);f.r.qa!.setup.url='http://untrusted.example.test';f.r.qa!.setup.actor='Unit actor';f.r.qa!.setup.resources=['Owned unit resource'];f.r.evidence.push({...f.r.evidence[0],id:'browser',kind:'browser',url:f.r.qa!.setup.url},{...f.r.evidence[0],id:'png',kind:'screenshot'});f.save();expect(f.gap()).toContain('browser');});
 
 test('an independent retest of a developer-checks route needs checks, not a browser',()=>{const f=fixture();f.expected.approach.validation='developer-checks';f.save();expect(f.gap()).toBe('');});
+
+function current(f: ReturnType<typeof fixture>) {
+    f.r.qa!.version = 2;
+    f.r.qa!.cases[0].criterionId = qaCriteria(f.expected.approach.checks)[0].id;
+    f.r.qa!.cases[1].criterionId = null;
+    return f;
+}
+test('v2 covers the saved requirement by stable reference while QA explains it in its own words', () => {
+    const f = current(fixture()); f.r.qa!.cases[0].check = 'Observed the required behavior through an independent check';
+    f.save(); expect(f.gap()).toBe('');
+});
+test.each(['missing', 'unknown', 'changed-baseline', 'regression-as-acceptance'] as const)('v2 cannot lose coverage through %s', kind => {
+    const f = current(fixture());
+    if (kind === 'missing') f.r.qa!.cases[0].criterionId = null;
+    if (kind === 'unknown') f.r.qa!.cases.push({ ...f.r.qa!.cases[0], id: 'extra', criterionId: 'unassigned' });
+    if (kind === 'changed-baseline') f.expected.approach.checks[0] = 'A different requirement';
+    if (kind === 'regression-as-acceptance') f.r.qa!.cases[1].criterionId = f.r.qa!.cases[0].criterionId;
+    f.save(); expect(f.gap()).not.toBe('');
+});
+test('v2 still rejects the wrong head and missing evidence; v1 retains its original exact-text rule', () => {
+    const f = current(fixture()); f.r.qa!.commit = 'b'.repeat(40); f.save(); expect(f.gap()).toContain('does not match');
+    const g = current(fixture()); g.r.qa!.cases[0].evidenceIds = []; g.save(); expect(g.gap()).toContain('current-head evidence');
+    const h = fixture(); h.r.qa!.cases[0].check = 'Different wording'; h.save(); expect(h.gap()).toContain('every saved required check');
+});

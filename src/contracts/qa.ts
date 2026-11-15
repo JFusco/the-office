@@ -1,6 +1,6 @@
 /** One independent Office QA worker's observed result; old QA Team results remain separate. */
 export interface OfficeQAReport {
-    version: 1;
+    version: 1 | 2;
     ticket: string;
     commit: string;
     stage: string;
@@ -16,6 +16,8 @@ export interface OfficeQAReport {
     };
     cases: {
         id: string;
+        /** Required (nullable for regression) in v2; historical v1 is unchanged. */
+        criterionId?: string | null;
         check: string;
         kind: 'acceptance' | 'regression';
         status: 'passed' | 'failed' | 'blocked' | 'not-tested';

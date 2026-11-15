@@ -74,6 +74,12 @@ src/
 
 ## Harness and agent boundaries
 
+- Keep the shared [Office process](docs/office-process.md) in sync when changing
+  stage order, ownership, recovery or publication boundaries. Reuse the existing
+  runtime, claims and Effects; role-specific payloads do not create another
+  orchestrator. Ship changed contracts, compatible historical readers and their
+  behavioral checks together.
+
 - Models decide: research, implementation, review verdicts, repair content.
 - The deterministic harness acts: worktrees, pushes, PR creation and promotion, board
   lanes, merges, issue closure, comments, time publication.
