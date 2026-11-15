@@ -14,6 +14,7 @@ import { parkDecision } from './parking/park-ticket';
 import { parksInJira } from './parking/parks-in-jira';
 import { STAGE_ROLE, STAGE_LABELS, type Stage, type StageResult } from '../../src/shared';
 import type { Engine } from '../scheduling/engine';
+import { stopReason } from '../delivery/pipeline/stop-reason';
 
 export async function run(this: Engine, key: string) {
     if (this.busy || this.agents.active.size || !this.store.claim(this.owner))
@@ -22,6 +23,7 @@ export async function run(this: Engine, key: string) {
     this.heartbeat = setInterval(() => this.store.claim(this.owner), 20000);
     try {
         const t = this.store.ticket(key);
+        if (!this.store.state.paused) delete t.stop;
         bindDelivery(this.store, t, t.runId);
         let performed = false;
         let priorRole = STAGE_ROLE[t.stage];
@@ -98,6 +100,8 @@ export async function run(this: Engine, key: string) {
             catch (e) {
                 t.activity = 'blocked';
                 t.blocker = `Interrupted stage; external effects require reconciliation. ${String(e)}`;
+                // The harness's own verdict here: the worker returned no verified result, so its writes are unknown.
+                t.stop = { kind: 'uncertain-effect', at: this.store.clock.now().toISOString() };
                 result = { outcome: 'blocked', summary: t.blocker, commit: t.commit, evidence: [], findings: [], receipts: [{ id: attemptId, action: stage, target: key, verified: false, uncertain: true, detail: 'Worker did not return a verified final result' }], previewUrl: t.previewUrl, worktree: t.worktree, branch: t.branch, prId: t.prId, qaRunDir: '', paidRuns: null, blocker: t.blocker };
                 t.results[stage] = result;
                 this.store.finish(attemptId, result);
@@ -235,6 +239,7 @@ export async function run(this: Engine, key: string) {
         const t = this.store.ticket(key);
         t.activity = 'blocked';
         t.blocker = String(e);
+        t.stop = stopReason(e, this.store.state.paused, this.store.clock.now());
         this.store.emit('stage-blocked', t.blocker, STAGE_ROLE[t.stage], key);
     }
     finally {

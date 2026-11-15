@@ -174,6 +174,11 @@ must be observed from the relevant provider; a merge is not proof of release.
 | Wrong identity, permission denied, competing writer, real hold | Stop affected action; authoritative resolution required | Lessons and free-form prose do not grant authority |
 | Native helper survives / output missing | Retain claim, failure and original evidence; supported reconciliation only | No success assertion, unrelated kill or repeated investigation loop |
 
+When a delivery stage, ticket stage or harness request stops on an error, the harness records
+why on the record (`stop.kind`: provider checks, closed source, uncertain effect, transient read,
+pause, hold, authority or unclassified). The label is for counting stops (`pnpm office baseline`);
+it changes no status and grants no retry, resume or authority.
+
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical
 continuations keep their already-bound evidence and approvals; this baseline

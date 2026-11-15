@@ -158,6 +158,8 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    /** Last recorded stop; meaningful only while the job is blocked, interrupted or watching. */
+    stop?: import('./contracts/work').StopReason;
     qaProtocol?: 'office-v1';
     packedPublicationRepair?: import('./contracts/packed-publication-repair').PackedPublicationRepair;
     admission?: import('./contracts/work').DeliveryAdmission;
@@ -599,6 +601,8 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    /** Last recorded stop; meaningful only while the ticket is blocked. */
+    stop?: import('./contracts/work').StopReason;
     officeQAHandoffs?: import('./contracts/office-qa-handoff').OfficeQAHandoff[];
     /** Recent QA reports for the inspector; complete immutable history stays in native attempts/artifacts. */
     qaHistory?: { stage: Stage; result: StageResult }[];

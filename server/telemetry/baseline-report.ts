@@ -29,6 +29,7 @@ export function baselineText({ projects, total }: BaselineReport, stageLimit = 1
         `  jobs: ${delivered} completed, ${total.jobs.cancelled} cancelled, ${total.jobs.unfinished} unfinished; ${total.jobs.blockedSteps} blocked stage results${delivered ? ` (${(total.jobs.blockedSteps / delivered).toFixed(2)} per completed job)` : ''}`,
         `  tickets: ${total.tickets.total} tracked, ${total.tickets.blocked} blocked, ${total.tickets.parked} parked`,
         `  questions for you: ${total.questions.total} raised, ${total.questions.open} open`,
+        `  stopped now by kind: ${Object.entries(total.stops).map(([kind, count]) => `${kind} ${count}`).join(', ') || 'none recorded'}`,
         '', 'Requests that ended blocked or interrupted',
         ...total.requests.filter(request => request.blocked || request.interrupted).map(request => `  ${request.action.padEnd(34)} ${String(request.blocked).padStart(3)} blocked  ${String(request.interrupted).padStart(3)} interrupted  ${String(request.completed).padStart(3)} completed`),
     ].join('\n');

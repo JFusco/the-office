@@ -32,6 +32,12 @@ export interface Prerequisite {
 export type EligibilityState = 'running' | 'runnable' | 'waiting' | 'blocked' | 'terminal';
 /** Why blocked work is not running. Absent on other states; blocked work without one needs a decision. */
 export type BlockedCause = 'needs-decision' | 'failed' | 'interrupted' | 'unconfirmed' | 'dependency' | 'paused';
+/** Harness-classified reason a stage stopped. Labels the stop only; it grants no retry or authority. */
+export type StopKind = 'provider-checks' | 'source-closed' | 'uncertain-effect' | 'transient' | 'paused' | 'hold' | 'authority' | 'unclassified';
+export interface StopReason {
+    kind: StopKind;
+    at: string;
+}
 export interface WorkEligibility {
     state: EligibilityState;
     reason: string;
@@ -146,6 +152,8 @@ export interface WorkClaim {
 }
 export const workKey = (work: WorkRef) => `${work.projectId}:${work.kind}:${work.id}`;
 export interface HarnessRequest {
+    /** Last recorded stop; meaningful only while the request is blocked or interrupted. */
+    stop?: StopReason;
     historyRetirement?: import('./history-retirement').HistoryRetirementIntent;
     packed165SetupContinuation?: { attemptedAt: string; originalFailure: string; workerId: string; workSha256: string; intentSha256: string };
     prMetadataRecovery?: import('./pr-metadata').PRMetadataRecoveryIntent;

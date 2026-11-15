@@ -11,6 +11,8 @@ import { scopeRepairResumeInstruction, scopeRepairResumeNextStage } from '../rec
 import { retireUnstartedDelivery } from '../recovery/retire-unstarted-delivery';
 import { requireSavedPrerequisites } from '../recovery/implementation/saved-prerequisite-handoff';
 import { CurrentChecksWait } from '../readiness/github-check-selection';
+import { SourceClosed } from './source-closed';
+import { stopReason } from './stop-reason';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
 import { outsideAmendmentFindingIds } from '../recovery/source-amendment/source-amendment-held';
@@ -128,6 +130,7 @@ export class GitHubDelivery {
     async step(job: TicketJob) {
         bindDelivery(this.store, job, job.id);
         job.status = 'working';
+        delete job.stop;
         this.store.emit('github-delivery-stage', `${job.key} · ${job.stage}`, 'pm', job.key);
         const project = this.store.project, root = resolve(this.store.dataRoot, 'ticket-work', job.id);
         mkdirSync(root, { recursive: true });
@@ -144,7 +147,7 @@ export class GitHubDelivery {
             const issue = await this.api(`issues/${Number(job.key.slice(3))}`);
             if (await retireUnstartedDelivery(this, job, issue)) return;
             if (issue.pull_request || !['closeout', 'ci-recovery'].includes(job.stage) && issue.state !== 'open' || !job.existingPR && !issue.assignees?.some((a: any) => a.login === 'JFusco'))
-                throw new Error('Issue is closed or no longer assigned to Joe; delivery stopped');
+                throw new SourceClosed('Issue is closed or no longer assigned to Joe; delivery stopped');
             if (job.stage === 'implement' && job.automaticStatus) {
                 const rule = this.store.state.coordination!.pickup, board = await this.engine.github.board();
                 if (!board || board.error)
@@ -275,6 +278,7 @@ export class GitHubDelivery {
             const waiting = error instanceof CurrentChecksWait && job.stage === 'merge' && !job.mergeAttempt && !this.store.state.paused;
             job.status = this.store.state.paused ? 'interrupted' : waiting ? 'watching' : 'blocked';
             job.detail = String(error);
+            job.stop = stopReason(error, this.store.state.paused, this.store.clock.now());
             this.store.emit(waiting ? 'github-checks-waiting' : 'github-delivery-blocked', shortSummary(job.detail), 'pm', job.key);
         }
         finally {

@@ -23,6 +23,8 @@ export interface HarnessBaseline {
     tickets: { total: number; blocked: number; parked: number };
     requests: RequestTotals[];
     questions: { total: number; open: number };
+    /** Jobs, tickets and requests stopped right now, by the kind the harness recorded; `unrecorded` has none saved. */
+    stops: Partial<Record<import('../../src/contracts/work').StopKind | 'unrecorded', number>>;
 }
 export type BaselineState = Pick<OfficeSnapshot, 'workLog' | 'coordination' | 'tickets' | 'outbox' | 'deliveryQueue' | 'project'>;
 
@@ -43,6 +45,8 @@ export function harnessBaseline(states: BaselineState[]): HarnessBaseline {
     const groups = Object.fromEntries(WORK_GROUPS.map(group => [group, empty()])) as Record<WorkGroup, RunTotals>;
     const stages = new Map<string, StageTotals>(), requests = new Map<string, RequestTotals>();
     const jobs = { completed: 0, cancelled: 0, unfinished: 0, blockedSteps: 0 }, tickets = { total: 0, blocked: 0, parked: 0 }, questions = { total: 0, open: 0 };
+    const stops: HarnessBaseline['stops'] = {};
+    const stopped = (isStopped: boolean, record: { stop?: import('../../src/contracts/work').StopReason }) => { const kind = record.stop?.kind || 'unrecorded'; if (isStopped) stops[kind] = (stops[kind] || 0) + 1; };
     for (const state of states) {
         for (const work of state.workLog || []) {
             if (work.provider === 'harness') continue;
@@ -53,13 +57,16 @@ export function harnessBaseline(states: BaselineState[]): HarnessBaseline {
         }
         for (const job of state.coordination?.jobs || []) {
             jobs[job.status === 'completed' ? 'completed' : job.status === 'cancelled' ? 'cancelled' : 'unfinished'] += 1;
+            stopped(['blocked', 'interrupted', 'watching'].includes(job.status), job);
             jobs.blockedSteps += (job.steps || []).filter(step => step.stage !== 'superseded-stage-result' && step.result?.outcome === 'blocked').length;
         }
         for (const ticket of state.tickets || []) {
             tickets.total += 1;
+            stopped(ticket.activity === 'blocked', ticket);
             tickets.blocked += ticket.activity === 'blocked' ? 1 : 0;
             tickets.parked += ticket.parked ? 1 : 0;
         }
+        for (const request of state.coordination?.requests || []) stopped(['blocked', 'interrupted'].includes(request.status), request);
         for (const request of [...state.coordination?.requests || [], ...state.deliveryQueue || []]) {
             if (!requests.has(request.action)) requests.set(request.action, { action: request.action, completed: 0, blocked: 0, interrupted: 0, open: 0 });
             requests.get(request.action)![request.status === 'completed' || request.status === 'blocked' || request.status === 'interrupted' ? request.status : 'open'] += 1;
@@ -68,7 +75,7 @@ export function harnessBaseline(states: BaselineState[]): HarnessBaseline {
         questions.open += (state.outbox || []).filter(action => action.status === 'open').length;
     }
     return {
-        groups, jobs, tickets, questions,
+        groups, jobs, tickets, questions, stops,
         stages: [...stages.values()].sort((a, b) => b.inputTokens - a.inputTokens || a.stage.localeCompare(b.stage)),
         requests: [...requests.values()].sort((a, b) => b.blocked - a.blocked || a.action.localeCompare(b.action)),
     };

@@ -1,4 +1,5 @@
 import { retireIncompleteHistory } from '../operations/retire-history';
+import { stopReason } from '../delivery/pipeline/stop-reason';
 import { admitGreen156 } from '../delivery/recovery/green156-admission';
 import { admitPacked165 } from '../delivery/recovery/packed165-admission';
 import { beginPacked165Setup, packed165SetupReady } from '../delivery/recovery/packed165-setup-continuation';
@@ -84,6 +85,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
     else if (request.status !== 'queued')
         return;
     request.status = 'working';
+    delete request.stop;
     store.save();
     try {
         const delivery = new GitHubDelivery(store, engine);
@@ -238,6 +240,7 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
         request = store.state.coordination!.requests?.find(current => current.id === request.id) || request;
         request.status = store.state.paused ? 'interrupted' : 'blocked';
         request.detail = String(error);
+        request.stop = stopReason(error, store.state.paused, store.clock.now());
     }
     store.emit('operation-finished', request.detail, undefined, request.key);
 }

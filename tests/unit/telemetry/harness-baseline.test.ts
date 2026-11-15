@@ -26,7 +26,8 @@ describe('harnessBaseline', () => {
             coordination: {
                 jobs: [
                     { status: 'completed', steps: [{ result: { outcome: 'blocked' } }, { result: { outcome: 'passed' } }] },
-                    { status: 'cancelled', steps: [] },
+                    { status: 'cancelled', steps: [], stop: { kind: 'hold', at: '' } },
+                    { status: 'blocked', steps: [], stop: { kind: 'transient', at: '' } },
                     { status: 'blocked', steps: [{ stage: 'review', result: { outcome: 'blocked' } }, { stage: 'superseded-stage-result', result: { outcome: 'blocked' } }] },
                 ],
                 requests: [{ action: 'reconcile-preparation', status: 'blocked' }, { action: 'reconcile-preparation', status: 'completed' }, { action: 'poll', status: 'working' }],
@@ -34,11 +35,12 @@ describe('harnessBaseline', () => {
             outbox: [{ status: 'open' }, { status: 'resolved' }],
         });
         const second = state({
-            tickets: [{ activity: 'blocked' }, { activity: 'idle', parked: { stage: 'qa' } }],
+            tickets: [{ activity: 'blocked', stop: { kind: 'uncertain-effect', at: '' } }, { activity: 'idle', parked: { stage: 'qa' } }],
             deliveryQueue: [{ action: 'resume-ticket', status: 'interrupted' }],
         });
         const baseline = harnessBaseline([first, second]);
-        expect(baseline.jobs).toEqual({ completed: 1, cancelled: 1, unfinished: 1, blockedSteps: 2 });
+        expect(baseline.jobs).toEqual({ completed: 1, cancelled: 1, unfinished: 2, blockedSteps: 2 });
+        expect(baseline.stops).toEqual({ transient: 1, 'uncertain-effect': 1, unrecorded: 2 });
         expect(baseline.tickets).toEqual({ total: 2, blocked: 1, parked: 1 });
         expect(baseline.questions).toEqual({ total: 2, open: 1 });
         expect(baseline.requests).toEqual([

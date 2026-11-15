@@ -23,7 +23,7 @@ describe('baselineText', () => {
         const text = baselineText(baselineReport([{ id: 'cms', state: state({
             workLog: [run('github-review', 'completed', 1_000_000), run('preparation-readback', 'blocked', 3_000_000)],
             coordination: {
-                jobs: [{ status: 'completed', steps: [{ result: { outcome: 'blocked' } }] }, { status: 'completed', steps: [] }],
+                jobs: [{ status: 'completed', steps: [{ result: { outcome: 'blocked' } }] }, { status: 'completed', steps: [] }, { status: 'blocked', steps: [], stop: { kind: 'transient', at: '' } }],
                 requests: [{ action: 'reconcile-preparation', status: 'blocked' }, { action: 'poll', status: 'completed' }],
             },
             outbox: [{ status: 'open' }],
@@ -32,8 +32,9 @@ describe('baselineText', () => {
         expect(text).toMatch(/delivery\s+1 runs\s+0 stopped\s+1\.0M in\s+25%/);
         expect(text).toMatch(/readback\s+1 runs\s+1 stopped\s+3\.0M in\s+75%/);
         expect(text.indexOf('preparation-readback [readback]')).toBeLessThan(text.indexOf('github-review [delivery]'));
-        expect(text).toContain('jobs: 2 completed, 0 cancelled, 0 unfinished; 1 blocked stage results (0.50 per completed job)');
+        expect(text).toContain('jobs: 2 completed, 0 cancelled, 1 unfinished; 1 blocked stage results (0.50 per completed job)');
         expect(text).toContain('questions for you: 1 raised, 1 open');
+        expect(text).toContain('stopped now by kind: transient 1, unrecorded 1');
         expect(text).toMatch(/reconcile-preparation\s+1 blocked\s+0 interrupted\s+0 completed/);
         expect(text).not.toMatch(/\n {2}poll /);
     });
