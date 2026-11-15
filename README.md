@@ -229,6 +229,15 @@ exact, active, reference-only coordinator outside the project worktree qualifies
 unknown actors, execution evidence and competing writers continue to block. The
 handoff records the scoped coordination proof without changing global ownership.
 
+If that explicit, unconsumed handoff stopped at a completed ownership reader,
+newer complete native coverage can qualify one internal check of the same request.
+The scheduler verifies the original reader's artifacts, closed claim and absent
+group, settled effects, unchanged clean candidate and current authority before
+queuing one fresh independent PM read. A single reference-only coordinator may
+qualify this read; Morgan must still positively verify coordination before QA.
+The continuation is saved before checking, never automatically repeated, and
+preserves the original request, blocking observation, QA attempt and counters.
+
 Ellis links an earlier CTO input rejection or uncertain implementation warning to
 an explicitly bound, completed replacement when its native artifacts and accepted
 result verify. The warning is superseded; the original failure, uncertainty and
