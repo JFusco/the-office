@@ -1,16 +1,16 @@
-# Graph Report - office-map-universe-nov15  (2026-11-15)
+# Graph Report - office-brain-details-removal-nov15  (2026-11-15)
 
 ## Corpus Check
-- 822 files · ~334,103 words
+- 822 files · ~334,045 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4091 nodes · 19114 edges · 112 communities (111 shown, 1 thin omitted)
+- 4091 nodes · 19113 edges · 112 communities (111 shown, 1 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 620 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a6e99ae1`
+- Built from commit: `48fa81cb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 

@@ -1,6 +1,6 @@
 import { KnowledgeMotion, KnowledgeReveal } from '../KnowledgeReveal';
 import { useMemo, useState } from 'react';
-import { Button, CheckField, cx, Select, selectField, inputField, fieldLabel, interactive, summary } from '../../ui';
+import { Button, CheckField, cx, Select, selectField, inputField, fieldLabel, interactive } from '../../ui';
 import type { KnowledgeMap, KnowledgeNode } from '../../contracts/knowledge-views';
 import { useKnowledgeView } from '../useKnowledgeView';
 import { Constellation } from './Constellation';
@@ -52,7 +52,6 @@ export function MapView({ project, reduced = true }: { project: string; reduced?
             </div>
             <div className="mt-3 flex flex-wrap items-start justify-between gap-3 text-11 text-muted">
                 <p>{data.nodes.length} loaded records · {data.edges.length} saved connections</p>
-                <details className="max-w-reading-copy"><summary className={summary}>Controls and source details</summary><div className="mt-3 grid gap-3 leading-relaxed"><p>See how the team's lessons and work connect. Brain notes are an external, read-only reference.</p><p>Click empty space to clear a selection. Drag to orbit and scroll to zoom, or use the list to browse with a keyboard.</p><p>Lines show saved relationships. Grouping and placement do not determine knowledge routing.</p></div></details>
             </div>
             {error && <p role="alert">{error}</p>}{refreshing&&<p role="status">Updating connections…</p>}
             {data.technicalStatus === 'unavailable' && <p role="status" className="my-3 max-w-reading-copy text-11 leading-relaxed text-muted">Brain is unavailable, so no Brain notes are loaded. Office lessons and work remain available.</p>}
