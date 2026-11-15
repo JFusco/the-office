@@ -237,6 +237,12 @@ queuing one fresh independent PM read. A single reference-only coordinator may
 qualify this read; Morgan must still positively verify coordination before QA.
 The continuation is saved before checking, never automatically repeated, and
 preserves the original request, blocking observation, QA attempt and counters.
+Ownership is observed again after candidate verification; an older in-flight
+inventory is allowed to settle before one new observation. The normal freshness
+window is unchanged. A legacy check that expired before queuing any PM read can
+receive one separately linked forward check after its closed claim, original
+snapshot, reader and zero subsequent PM work verify. Its failed record remains
+unchanged. New failures stay blocked without an automatic retry loop.
 
 Ellis links an earlier CTO input rejection or uncertain implementation warning to
 an explicitly bound, completed replacement when its native artifacts and accepted

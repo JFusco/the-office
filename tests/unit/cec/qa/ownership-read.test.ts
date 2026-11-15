@@ -12,6 +12,7 @@ import { continueOwnershipRead } from '../../../../server/cec/qa/continue-owners
 import { scheduledOwnershipRead } from '../../../../server/cec/qa/scheduled-ownership-read';
 import { HOLDS } from '../../../../server/office/config';
 import { ownershipReadHistory } from '../../../../server/cec/qa/ownership-read-history';
+import { digest } from '../../../../server/store/readback-evidence';
 import type { DeliveryRequest } from '../../../../src/shared';
 
 function fixture() {
@@ -51,12 +52,14 @@ function fixture() {
         throw new Error(`Unexpected read ${args} ${options.cwd}`);
     });
     const engine: any = { busy: false, agents: { active: new Set() } };
-    const project = () => scheduledOwnershipRead(store, engine, request, () => view);
-    const run = async (alive = () => false) => {
-        const claim = store.claimWork({ projectId: 'cec', kind: 'delivery', id: request.id }, 'new', 'check-qa-ownership')!;
-        return withAssignment(claim, 'delivery', () => continueOwnershipRead(store, request, () => view, execute as any, alive));
+    const refresh = vi.fn(async () => view);
+    const project = () => scheduledOwnershipRead(store, engine, request, () => view, refresh);
+    const run = async (alive = () => false, repair = false) => {
+        const claim = store.claimWork({ projectId: 'cec', kind: 'delivery', id: request.id }, 'new', repair ? 'check-qa-ownership-fresh' : 'check-qa-ownership')!;
+        return withAssignment(claim, 'delivery', () => continueOwnershipRead(store, request, () => view, refresh, execute as any, alive, repair));
     };
-    return { root, store, t, request, qa, work, oldClaim, view, dir, write, execute, engine, project, run,
+    return { root, store, t, request, qa, work, oldClaim, view, dir, write, execute, engine, project, run, refresh,
+        advance(ms: number) { now += ms; },
         close() { delete HOLDS[t.key]; store.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
@@ -78,6 +81,94 @@ test('one durable same-request read retains the original blocked decision, resul
         // A second blocked PM observation is retained; it cannot cause another automatic continuation.
         f.request.status = 'blocked'; expect(f.project()).toBeUndefined();
         await expect(f.run()).rejects.toThrow();
+    } finally { f.close(); }
+});
+
+test('refreshes native ownership after a slow source check without extending the freshness window', async () => {
+    const f = fixture(); try {
+        f.advance(33000);
+        const original = f.execute.getMockImplementation()!;
+        f.execute.mockImplementationOnce(async (...args) => { f.advance(28000); f.view.fresh = false; return original(...args); });
+        f.refresh.mockImplementation(async () => {
+            expect(f.request.qaReadContinuation?.sourceVerifiedAt).toBe(f.store.clock.now().toISOString());
+            f.view.observedAt = f.store.clock.now().toISOString(); f.view.fresh = true; return f.view;
+        });
+        await f.run();
+        expect(f.request.status).toBe('queued'); expect(f.refresh).toHaveBeenCalledTimes(1);
+        expect(f.request.qaReadContinuation?.version).toBe(2); expect(f.t.attempt).toBe(5);
+    } finally { f.close(); }
+});
+
+test.each(['incomplete', 'older-observation', 'changed-source', 'new-writer'])('keeps the post-source %s blocked', async reason => {
+    const f = fixture(); try {
+        const original = f.execute.getMockImplementation()!;
+        f.execute.mockImplementationOnce(async (...args) => { f.advance(1000); return original(...args); });
+        f.refresh.mockImplementation(async () => {
+            if (reason !== 'older-observation') f.view.observedAt = f.store.clock.now().toISOString();
+            if (reason === 'incomplete') f.view.complete = false;
+            if (reason === 'changed-source') f.t.commit = 'b'.repeat(40);
+            if (reason === 'new-writer') f.view.ownership.status = 'owned';
+            return f.view;
+        });
+        await f.run(); expect(f.request.status).toBe('blocked'); expect(f.request.qaReadContinuation?.phase).toBe('blocked');
+        expect(f.request.officeQAHandoff?.consumedAt).toBeUndefined(); expect(f.project()).toBeUndefined();
+    } finally { f.close(); }
+});
+
+function legacyExpired(f: ReturnType<typeof fixture>) {
+    const originalRequest = structuredClone(f.request), originalReader = ownershipReadHistory(f.store, f.request, () => false);
+    const ownership = { kind: 'clear' as const, observedAt: f.view.observedAt };
+    const claim = f.store.claimWork({ projectId: 'cec', kind: 'delivery', id: f.request.id }, 'old-check', 'check-qa-ownership')!;
+    f.advance(33000); const startedAt = f.store.clock.now().toISOString(); f.advance(28000);
+    f.request.qaReadContinuation = { phase: 'blocked', startedAt, finishedAt: f.store.clock.now().toISOString(), claimId: claim.id,
+        originalRequest, originalRequestSha256: digest(originalRequest), originalReader, ownership,
+        error: 'Ownership read check blocked: Complete fresh ownership, settled work and unchanged QA approval are required for a new read. Original decision, failure and counters remain; no read was queued.' };
+    f.store.finishClaim(claim.id, 'completed'); f.view.observedAt = f.store.clock.now().toISOString();
+    return JSON.parse((f.store.db.prepare('SELECT body FROM work_claims WHERE id=?').get(claim.id) as { body: string }).body);
+}
+
+test('one separately linked fresh check preserves the exact expired legacy record and all counters', async () => {
+    const f = fixture(); try {
+        const claim = legacyExpired(f), old = structuredClone(f.request.qaReadContinuation), before = structuredClone(f.t);
+        expect(f.project()?.stage).toBe('check-qa-ownership-fresh');
+        await f.run(() => false, true);
+        expect(f.request.status, f.request.qaReadContinuationRepair?.error).toBe('queued');
+        expect(f.request.qaReadContinuation).toEqual(old); expect(f.t).toEqual(before);
+        expect(f.request.qaReadContinuationRepair).toMatchObject({ version: 2, phase: 'queued', predecessor: { claimId: claim.id, sha256: digest(old) } });
+        expect(f.request.officeQAHandoff?.consumedAt).toBeUndefined();
+        f.request.status = 'blocked'; expect(f.project()).toBeUndefined();
+    } finally { f.close(); }
+});
+
+test.each(['unavailable-refresh', 'changed-predecessor'])('a failed forward check for %s stays blocked without replacing its predecessor or opening another attempt', async reason => {
+    const f = fixture(); try {
+        legacyExpired(f); const old = structuredClone(f.request.qaReadContinuation), before = structuredClone(f.t);
+        if (reason === 'unavailable-refresh') f.refresh.mockImplementation(async () => { f.view.complete = false; return f.view; });
+        else {
+            const original = f.execute.getMockImplementation()!;
+            f.execute.mockImplementationOnce(async (...args) => { f.request.qaReadContinuation!.error = 'Changed by another actor'; return original(...args); });
+        }
+        await f.run(() => false, true);
+        expect(f.request.status).toBe('blocked'); expect(f.request.qaReadContinuationRepair?.phase).toBe('blocked');
+        if (reason === 'unavailable-refresh') expect(f.request.qaReadContinuation).toEqual(old);
+        else expect(f.request.qaReadContinuation!.error).toBe('Changed by another actor');
+        expect(f.t).toEqual(before); expect(f.request.officeQAHandoff?.consumedAt).toBeUndefined(); expect(f.project()).toBeUndefined();
+    } finally { f.close(); }
+});
+
+test.each(['new-version', 'unknown-error', 'never-expired', 'initially-stale', 'open-claim', 'wrong-stage', 'changed-request', 'new-PM-read', 'missing-native-reader'])('does not replace a legacy check with %s', reason => {
+    const f = fixture(); try {
+        const claim = legacyExpired(f), old = f.request.qaReadContinuation!;
+        if (reason === 'new-version') old.version = 2;
+        if (reason === 'unknown-error') old.error = 'Unknown source effect';
+        if (reason === 'never-expired') old.finishedAt = old.startedAt;
+        if (reason === 'initially-stale') old.startedAt = old.finishedAt!;
+        if (reason === 'open-claim') f.store.db.prepare('UPDATE work_claims SET status=?,body=? WHERE id=?').run('running', JSON.stringify({ ...claim, status: 'running' }), claim.id);
+        if (reason === 'wrong-stage') f.store.db.prepare('UPDATE work_claims SET body=? WHERE id=?').run(JSON.stringify({ ...claim, stage: 'other' }), claim.id);
+        if (reason === 'changed-request') f.request.officeQAHandoff!.setupNote = 'another decision';
+        if (reason === 'new-PM-read') f.store.state.workLog!.push({ ...f.work, id: 'new-read' });
+        if (reason === 'missing-native-reader') delete old.originalReader;
+        expect(f.project()).toBeUndefined(); expect(f.request.qaReadContinuationRepair).toBeUndefined();
     } finally { f.close(); }
 });
 
@@ -133,12 +224,12 @@ test('the real scheduler claims one exclusive deterministic check and restores b
         const original = structuredClone(f.request), workBefore = structuredClone(f.store.state.workLog);
         let release!: () => void;
         const waiting = new Promise<void>(done => { release = done; });
-        const run: typeof continueOwnershipRead = async (store, request, view) => {
+        const run: typeof continueOwnershipRead = async (store, request, view, refresh) => {
             expect(f.engine.busy).toBe(true);
             await waiting;
-            return continueOwnershipRead(store, request, view, f.execute as any, () => false);
+            return continueOwnershipRead(store, request, view, refresh, f.execute as any, () => false);
         };
-        const item = scheduledOwnershipRead(f.store, f.engine, f.request, () => f.view, run)!;
+        const item = scheduledOwnershipRead(f.store, f.engine, f.request, () => f.view, f.refresh, run)!;
         expect(item.slot).toBeUndefined(); expect(f.execute).not.toHaveBeenCalled();
         const scheduler = new Scheduler(officeCapacity(), f.store.clock);
         const running = scheduler.pump([{ store: f.store, items: [item] }]);

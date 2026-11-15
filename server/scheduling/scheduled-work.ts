@@ -2,6 +2,7 @@ import { green156Admitted } from '../delivery/recovery/green156-evidence';
 import { packed165Admitted } from '../delivery/recovery/packed165-evidence';
 import { packed165SetupReady } from '../delivery/recovery/packed165-setup-continuation';
 import { scheduledOwnershipRead } from '../cec/qa/scheduled-ownership-read';
+import { freshOwnershipRead } from '../cec/qa/fresh-ownership-read';
 import { requestPriority } from '../operations/request-priority';
 import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
@@ -181,7 +182,8 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
     for (const notice of c.notices?.entries || [])
         add('notice', notice, notice.kind === 'goal' ? 'goal-completion-notice' : notice.kind === 'maintenance' ? 'maintenance-completion-notice' : 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }));
     for (const request of store.state.deliveryQueue || []) {
-        const read = scheduledOwnershipRead(store, engine, request, () => coordinator?.sessionBridge?.forProject(store, request.key, request.id));
+        const read = scheduledOwnershipRead(store, engine, request, () => coordinator?.sessionBridge?.forProject(store, request.key, request.id),
+            after => freshOwnershipRead(coordinator?.sessionBridge, store, request.key, request.id, after));
         if (read) items.push(read);
         else add('delivery', request, request.action, request.requestedAt, 3, () => engine.drainDelivery(request.id));
     }
