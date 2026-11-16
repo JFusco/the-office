@@ -4,6 +4,7 @@ import { lastFriday, rollupDue, runRollup, scheduledRollup } from '../../../serv
 import { selectLessons } from '../../../server/knowledge/lesson-selection';
 const knowledgeContext = (store: Parameters<typeof selectLessons>[0], stage?: string) => selectLessons(store, { stage }).text;
 import { knowledgeOutbox } from '../../../server/knowledge/knowledge-outbox';
+import { pendingLessonDecisions } from '../../../src/conversations/lesson-digest';
 import { decideOfficeProposal, mirrorOfficeKnowledge, proposeOfficeLessons, retireOfficeLesson } from '../../../server/knowledge/office-lessons';
 import { ControlStore } from '../../../server/store/control-store';
 import type { KnowledgeRunner } from '../../../server/knowledge/run-retrospective';
@@ -87,13 +88,16 @@ test('office proposals wait for Joe, then reach every project\'s prompts through
     expect(ids).toHaveLength(1);
     expect(proposeOfficeLessons(office, 'cms-field-vocabulary', 'rollup:2026-11-06', [proposal])).toEqual([]); // already proposed
     mirrorOfficeKnowledge(office, [store, other.store]);
-    expect(knowledgeOutbox(store.state).map(item => item.id)).toEqual([`office-lesson:${ids[0]}`]);
-    expect(knowledgeOutbox(other.store.state)).toEqual([]);
+    const [pending] = pendingLessonDecisions(store.state), proposedAt = new Date(pending.proposedAt), nextWeek = new Date(proposedAt.getTime() + 8 * 24 * 60 * 60 * 1000);
+    expect(pending.id).toBe(`office-lesson:${ids[0]}`);
+    expect(knowledgeOutbox(store.state, proposedAt)).toEqual([]); // held for the weekly digest
+    expect(knowledgeOutbox(store.state, nextWeek).map(item => item.id)).toEqual(['lesson-digest']);
+    expect(knowledgeOutbox(other.store.state, nextWeek)).toEqual([]);
     expect(knowledgeContext(store, 'github-review')).not.toContain('wiki build');
     decideOfficeProposal(office, ids[0], true);
     mirrorOfficeKnowledge(office, [store, other.store]);
     expect(knowledgeContext(other.store, 'github-lead-pr')).toContain('[office · process · review] When: Fixture situation Do: Run the wiki build before every review Check: Fixture check');
-    expect(knowledgeOutbox(store.state)).toEqual([]);
+    expect(knowledgeOutbox(store.state, nextWeek)).toEqual([]);
     retireOfficeLesson(office, ids[0]);
     mirrorOfficeKnowledge(office, [store, other.store]);
     expect(knowledgeContext(other.store, 'github-lead-pr')).not.toContain('wiki build');

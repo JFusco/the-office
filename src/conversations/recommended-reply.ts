@@ -1,7 +1,8 @@
+import {isLessonDecision} from './lesson-digest';
 import {deferredPickup} from '../work/pickup-state';
 import type {OfficeSnapshot,Role} from '../shared';
 export function recommendedReply(snapshot:OfficeSnapshot,ticket:string,actionId:string,role:Role){
- if(/^(lesson-issue:|office-lesson:)/.test(actionId))return '';
+ if(isLessonDecision(actionId))return '';
  if(role==='knowledge')return `What has the team learned on ${snapshot.project?.name||'this project'} recently, and is anything still recurring?`;
  if(role==='it')return `Check ${ticket||snapshot.project?.name||'the Office'}’s current connections and recovery reports. Explain what is verified, what can recover automatically, and the exact next owner and steps for anything still blocked.`;
  const name=ticket||snapshot.project?.name||'this project';

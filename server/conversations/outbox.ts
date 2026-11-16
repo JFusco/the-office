@@ -33,7 +33,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
     const teamOwnsIT = (id: string) => state.it?.reports.at(-1)?.followUps.some(f => f.id === id && f.owner !== 'You');
     if (itFollowUps.length)
         item('it-followup', 'Ellis needs your help', itFollowUps.map(f => f.detail).join('\n'), 'pm');
-    for (const decision of knowledgeOutbox(state))
+    for (const decision of knowledgeOutbox(state, at))
         item(decision.id, decision.title, decision.detail, 'knowledge');
     if (state.coordination?.listener.error && !teamOwnsIT('assignment-listener'))
         item('assignment-listener', 'Restore assignment listening', state.coordination.listener.error, 'pm');

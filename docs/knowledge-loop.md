@@ -101,7 +101,11 @@ The Office has no link, upload or Slack channel sources. Its knowledge is Harper
 
 ## What Joe decides
 
-Harper's outbox (`knowledge-outbox.ts`) holds two kinds of item, each cleared in the Outbox or the Lessons panel:
+Harper's proposals reach Joe as one weekly digest (`knowledge-outbox.ts`, `src/conversations/lesson-digest.ts`),
+not one question each. A proposal made during a week appears the following Monday (Eastern time),
+dated by when it was made. Opening the digest shows each proposal with its own decision; every proposal
+can also be decided at any time in the Lessons panel, and the digest clears once its proposals are decided.
+There are two kinds:
 
 - an office-wide lesson to accept or decline;
 - a lesson that belongs in its repository, to file as an issue or decline.
