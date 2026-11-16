@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { BROWSER_QA_LIMIT_MS, qaTimeLimit, qaTimeLimitGuidance } from '../../../server/qa/time-limit';
+import { BROWSER_QA_LIMIT_MS, REPAIR_LIMIT_MS, qaTimeLimit, qaTimeLimitGuidance, stageTimeLimit } from '../../../server/qa/time-limit';
 
 const approach = (validation: string) => ({ plan: 'none', review: 'focused', validation, checks: ['Check'], reason: 'Fixture' }) as any;
 
@@ -13,4 +13,11 @@ test('only a QA stage on the browser route gets the longer limit, and is told wh
     expect(qaTimeLimit(false, approach('browser'))).toBeUndefined();
     expect(qaTimeLimitGuidance(approach('browser'))).toContain('stopped 90 minutes after it starts');
     expect(qaTimeLimitGuidance(approach('independent-checks'))).toBe('');
+});
+
+test('a repair gets 90 minutes whatever the route; other non-QA stages keep the default', () => {
+    expect(REPAIR_LIMIT_MS).toBe(90 * 60 * 1000);
+    expect(stageTimeLimit('repair', false, approach('developer-checks'))).toBe(REPAIR_LIMIT_MS);
+    expect(stageTimeLimit('retest', true, approach('browser'))).toBe(BROWSER_QA_LIMIT_MS);
+    for (const stage of ['implement', 'code-review', 'repair-review', 'plan']) expect(stageTimeLimit(stage, false, approach('browser')), stage).toBeUndefined();
 });
