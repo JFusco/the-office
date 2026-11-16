@@ -1,7 +1,10 @@
 import { supersededReceipt } from './superseded-receipts';
 import type { StageResult, Ticket, WorkTime } from '../../src/shared';
 
-type Attempt = Pick<WorkTime, 'ticket' | 'stage' | 'role' | 'status' | 'failure' | 'completionAccepted'>;
+type Attempt = Pick<WorkTime, 'ticket' | 'stage' | 'role' | 'status' | 'failure' | 'completionAccepted' | 'executionStatus'>;
+
+/** Read-only verdict stages: running one again repeats nothing. */
+const REVIEW_STAGES = ['plan-review', 'code-review', 'repair-review'];
 
 /**
  * A QA stage whose latest run returned a setup stop on this exact candidate, with no paid run: it
@@ -20,7 +23,7 @@ export function needsResumeReconciliation(ticket: Ticket, attempts: readonly Att
     const result = ticket.results[ticket.stage];
     const setupOnly = stoppedInSetup(ticket, result, attempts);
     // A restated receipt of the replaced implementation run is that run's history, not a QA action.
-    if (result?.receipts.some(receipt => receipt.uncertain && !(setupOnly && supersededReceipt(ticket, receipt)))) return true;
+    if (result?.receipts.some(receipt => receipt.uncertain && !supersededReceipt(ticket, receipt))) return true;
 
     // A successful fresh ownership read does not overwrite the failed read that
     // produced this blocker. Only harness-classified, matching reader failures
@@ -37,6 +40,12 @@ export function needsResumeReconciliation(ticket: Ticket, attempts: readonly Att
 
     // Wording about uncertainty or reconciliation in a setup stop's blocker describes history, not a QA action.
     if (setupOnly) return false;
+    // A review whose latest run returned its own verdict has nothing to reconstruct: the review runs again.
+    const latest = attempts.filter(attempt => attempt.ticket === ticket.key && attempt.stage === ticket.stage).at(-1);
+    // Bound to this blocked episode, and never past the single revised-approach assessment a repair cycle allows.
+    const verdict = !!result && result.outcome !== 'passed' && ticket.blocker.replace(/^Error:\s*/, '') === (result.blocker || result.summary);
+    const assessed = ticket.repairCycle?.phase === 'diagnosis' && ticket.repairCycle.diagnosisAttempted;
+    if (REVIEW_STAGES.includes(ticket.stage) && verdict && !assessed && latest?.executionStatus === 'completed' && !latest.failure) return false;
 
     // Retain legacy action-reconciliation signals, without treating an incidental
     // mention such as "the harness owns saved-plan reconciliation" as a command

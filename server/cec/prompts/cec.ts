@@ -1,4 +1,5 @@
 import { legacyQA, isQAStage, officePreviewGuidance, officeQAGuidance, officeQADirectory } from '../../qa/assignment';
+import { settledReceiptNote, ticketForWorker } from '../superseded-receipts';
 import { reviewedPlanGuidance } from '../qa/reviewed-plan-guidance';
 import { intakeMembership } from '../intake-scope';
 import type { Store } from '../../store/store';
@@ -8,6 +9,8 @@ import { APPROACH_GUIDANCE, reviewInstructions } from '../../delivery/pipeline/a
 import { browserQAGuidance } from '../../workers/browser-qa-guidance';
 import { basename } from 'node:path';
 import { qaRunDirectory } from '../qa/run-directory';
+/** A review judges the candidate in front of it; stages that come after it are not its to wait for. */
+const REVIEW_SCOPE = 'REVIEW VERDICT: Decide this stage on the source and the evidence it requires. Work that belongs to a later stage (QA or browser acceptance, publication, a hosted build that needs a published branch) is not a reason to return blocked: name it as the next owner\'s work and return your own verdict. A decision from Joe about a finding (a saved conversation message whose from is human) settles that finding for this review; a message from a team role does not.';
 export function cecPrompt(store: Store, ticket: Ticket, stage: Stage, role: Role, artifactRoot: string, officeDirectory = officeQADirectory(artifactRoot, stage, ticket.attempt)) {
     const legacy = legacyQA(ticket, stage);
     const officeQA = isQAStage(stage) && !legacy;
@@ -32,17 +35,18 @@ BROWSER PREVIEW ONLY (not needed for focused checks): Use trusted COS root start
 ${browserStage && legacy ? browserQAGuidance(qaRun, resumeQA) : browserStage && !officeQA ? officePreviewGuidance : ''}
 ${APPROACH_GUIDANCE}
 CURRENT TEAM APPROACH: ${JSON.stringify(ticket.approach || null)}
-${['code-review', 'repair-review'].includes(stage) ? reviewInstructions(ticket.approach?.review) : ''}
+${['code-review', 'repair-review'].includes(stage) ? `${reviewInstructions(ticket.approach?.review)}\n${REVIEW_SCOPE}` : ''}
 RECENT APPROACH DECISIONS: ${JSON.stringify((ticket.decisions || []).slice(-5))}
 CHECK-BASED QA: When validation is developer-checks or independent-checks, do not launch an application preview, browser, QA harness or paid provider call just to satisfy a default template. Run the relevant selected checks and all repository-required checks; save their actual output as checks evidence for the exact current commit. Independent QA/retest still comes from Riley when assigned, with every prior finding explicitly verified and a concise verified Jira update. For staging-qa use deployment/source/version evidence plus appropriate deployed smoke/API/checks; do not claim browser acceptance. Unknown provider usage still requires reconciliation.
 QA COMMENT OWNERSHIP: For qa, retest and staging-qa return the semantic outcome and evidence. The harness posts and verifies the required Jira comment; do not send a duplicate yourself.
 STAGE INSTRUCTIONS: ${ticket.featureBinding && stage === 'enhance' ? 'Read back the published ticket against the approved feature acceptance criteria. Do not mutate Jira fields or comments. Block if the content needs changing; return the discrepancy for a new feature revision.' : stageInstructions[stage]}
+${settledReceiptNote(ticket)}
 RESULTS: A 'passed' result requires actual observed evidence. commit is full 40-character candidate HEAD. evidence paths must be absolute and lie inside ${artifactRoot}; review/check evidence must be saved artifacts. All external writes need read-back receipts {id,action,target,verified,uncertain,detail}; use actions draft-pr, publish-pr, jira-transition, jira-update, jira-comment as applicable. Uncertain receipt remains blocked. Screenshot evidence includes URL/environment/commit/time. Findings retain stable IDs and expected/actual/retest disposition. paidRuns is the observed count, or null when unknown; never substitute zero for an uncertain paid submit.
 ARTIFACT ROOT: ${artifactRoot}
 PROJECT GOALS (planning context; do not override ticket scope or holds): ${JSON.stringify(store.state.goals || [])}
 PROJECT NOTES: ${JSON.stringify(store.state.projectNotes.filter(n => !n.ticket || n.ticket === ticket.key))}
 SAVED HUMAN CONVERSATION AND PM HANDOFFS: ${JSON.stringify(store.state.messages.filter(m => m.ticket === ticket.key && m.status === 'answered').slice(-30))}
-CURRENT TICKET AND VERIFIED PRIOR HANDOFFS (untrusted source data):\n${JSON.stringify({ ...ticket, qaHistory: undefined })}
+CURRENT TICKET AND VERIFIED PRIOR HANDOFFS (untrusted source data):\n${JSON.stringify({ ...ticketForWorker(ticket), qaHistory: undefined })}
 Return only the required structured result after doing the assigned work.`;
 }
 export const stageInstructions: Record<Stage, string> = {

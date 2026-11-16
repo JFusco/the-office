@@ -43,11 +43,10 @@ export async function recoverStoppedBaseUpdates(context: ITContext) {
 
 /** Disappearance from the current candidate list is not a positive disposition. */
 export function stoppedBaseUpdateUnresolved(store: ITContext['store'], id: string) {
-    if (id.startsWith('stopped-base-handoff:')) {
-        const [,jobId,workerId]=id.split(':'), job=store.state.coordination?.jobs?.find(j=>j.id===jobId);
-        return !job||!stoppedBaseHandoffResolved(store,{key:job.key,head:workerId});
-    }
-    if (!id.startsWith('stopped-base-update:')) return false;
+    if (!id.startsWith('stopped-base-handoff:') && !id.startsWith('stopped-base-update:')) return false;
     const [, jobId, workerId] = id.split(':'), job = store.state.coordination?.jobs?.find(j => j.id === jobId);
+    // Once the delivery itself finished or was cancelled, its stopped-run recovery is settled by that outcome.
+    if (job && ['completed', 'cancelled'].includes(job.status)) return false;
+    if (id.startsWith('stopped-base-handoff:')) return !job || !stoppedBaseHandoffResolved(store, { key: job.key, head: workerId });
     return !job || !stoppedBaseReassessmentReady(store, { key: job.key, head: workerId });
 }

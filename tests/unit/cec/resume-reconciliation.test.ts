@@ -60,6 +60,7 @@ const qaStop = { ticket: 'CEC-999', role: 'qa' as const, stage: 'retest', status
 function setupStop(blocker = 'Browser tool unavailable; nothing was tested.') {
     const t = blockedQA(blocker);
     Object.assign(t, { implementationContinuation: { originalResult: { receipts: [OLD] } } });
+    t.results.implement = decision('', { outcome: 'passed', receipts: [] });
     Object.assign(t.results.retest!, { qa: { setup: { status: 'blocked' } } });
     t.results.retest!.receipts.push({ ...OLD, detail: 'Inherited original receipt, unchanged' });
     return t;
@@ -69,12 +70,14 @@ test.each(['Browser tool unavailable; nothing was tested.', 'The supported brows
     expect(needsResumeReconciliation(t, [qaStop, { ticket: t.key, role: 'pm', stage: 'reconcile', status: 'blocked' }, { ticket: t.key, role: 'pm', stage: 'readback', status: 'completed' }])).toBe(false);
     expect(t).toEqual(before);
 });
-// A neutral blocker, so each case is held by the rule under test and not by the wording match.
+// The restated receipt is settled history on its own, so each case carries wording that forces reconstruction unless the setup-stop rule applies.
+const WORDING = 'External action requires read-back reconciliation';
 test.each(['own uncertain action', 'uncertain action named like a stage', 'restated receipt with no continuation record', 'paid run', 'unknown paid usage', 'setup ready', 'failed outcome', 'other commit', 'no QA run recorded', 'latest QA run interrupted', 'latest QA run failed uncertain'])('a setup stop still reconstructs when QA may have acted: %s', reason => {
-    const t = setupStop(), attempts: any[] = [qaStop];
+    const t = setupStop(WORDING), attempts: any[] = [qaStop];
+    expect(needsResumeReconciliation(setupStop(WORDING), [qaStop]), 'baseline').toBe(false);
     if (reason === 'own uncertain action') t.results.retest!.receipts.push({ id: 'submit', action: 'generation', target: t.key, verified: false, uncertain: true, detail: 'Unknown outcome' });
     if (reason === 'uncertain action named like a stage') t.results.retest!.receipts.push({ id: 'pr', action: 'draft-pr', target: t.key, verified: false, uncertain: true, detail: 'Unknown outcome' });
-    if (reason === 'restated receipt with no continuation record') delete (t as any).implementationContinuation;
+    if (reason === 'restated receipt with no continuation record') { delete (t as any).implementationContinuation; t.blocker = 'Browser tool unavailable; nothing was tested.'; }
     if (reason === 'paid run') t.results.retest!.paidRuns = 1;
     if (reason === 'unknown paid usage') t.results.retest!.paidRuns = null;
     if (reason === 'setup ready') (t.results.retest as any).qa.setup.status = 'ready';
@@ -95,8 +98,31 @@ test('a timed-out run whose saved result the stage accepted no longer forces rec
     expect(needsResumeReconciliation(t, [timedOut])).toBe(true);
     expect(needsResumeReconciliation(t, [{ ...timedOut, completionAccepted: true }])).toBe(false);
 });
+test('a review that returned its own verdict runs again; a restated settled receipt and its wording force nothing', () => {
+    const t = setupStop('The source repair is approved, but the inherited uncertain implementation receipt remains unreconciled.');
+    t.results['repair-review'] = decision('', { outcome: 'blocked', paidRuns: 0, commit: t.commit, blocker: t.blocker, receipts: [{ ...OLD, detail: 'Inherited original receipt preserved' }] });
+    t.stage = 'repair-review';
+    const review = { ticket: t.key, role: 'lead' as const, stage: 'repair-review', status: 'blocked' as const, executionStatus: 'completed' as const };
+    expect(needsResumeReconciliation(t, [review])).toBe(false);
+    // A review run that died, or a review holding an uncertain action of its own, is still reconstructed.
+    expect(needsResumeReconciliation(t, [{ ...review, executionStatus: undefined, status: 'interrupted' as const }])).toBe(true);
+    t.results['repair-review']!.receipts.push({ id: 'x', action: 'jira-comment', target: t.key, verified: false, uncertain: true, detail: 'Unknown outcome' });
+    expect(needsResumeReconciliation(t, [review])).toBe(true);    t.results['repair-review']!.receipts.pop();
+    // Another episode's blocker, or a repair cycle whose one revised-approach assessment was already made, keeps the old route.
+    t.blocker = 'Interrupted stage; external effects require reconciliation. Error: codex timed out; previous action outcome must be reconciled';
+    expect(needsResumeReconciliation(t, [review])).toBe(true);
+    t.blocker = t.results['repair-review']!.blocker;
+    expect(needsResumeReconciliation(t, [review])).toBe(false);
+    t.repairCycle = { phase: 'diagnosis', diagnosisAttempted: true } as any;
+    expect(needsResumeReconciliation(t, [review])).toBe(true);
+});
+test('a writer stage with the same wording is still reconstructed', () => {
+    const t = setupStop('The inherited uncertain implementation receipt remains unreconciled.');
+    t.results.repair = decision('', { outcome: 'blocked', paidRuns: 0, commit: t.commit, blocker: t.blocker, receipts: [] }); t.stage = 'repair';
+    expect(needsResumeReconciliation(t, [{ ticket: t.key, role: 'developer', stage: 'repair', status: 'blocked', executionStatus: 'completed' }])).toBe(true);
+});
 test('a non-QA stage never takes the setup-stop route', () => {
-    const t = setupStop(); t.results.repair = t.results.retest; t.stage = 'repair';
+    const t = setupStop(WORDING); t.results.repair = t.results.retest; t.stage = 'repair';
     expect(needsResumeReconciliation(t, [{ ...qaStop, stage: 'repair' }])).toBe(true);
 });
 test.each(['qa', 'staging-qa'] as const)('the %s stage takes the same route as retest', stage => {
