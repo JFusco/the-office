@@ -215,6 +215,10 @@ and no work is run again. A worker that stalled, a reader, or a worker stopped w
 was still running is not covered. On resume, a checkpoint for another candidate or attempt is
 not accepted.
 
+A QA stage on the browser route runs for up to 90 minutes, and the worker is told that limit.
+Other stages keep their existing limits (45 minutes for Jira/Azure stages, 60 for GitHub
+delivery stages).
+
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical
 continuations keep their already-bound evidence and approvals; this baseline

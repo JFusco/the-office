@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { BROWSER_QA_LIMIT_MS } from '../../../server/qa/time-limit';
 import { Store } from '../../../server/store/store';
 import { coordination } from '../../../server/scheduling/coordination';
 import { Agents, OfficeQAResultSchema, ResultSchema } from '../../../server/workers/agents';
@@ -21,6 +22,10 @@ test('actual CEC dispatch retains prior setup results and assigns a distinct rep
     const agents=new Agents(store);await agents.stage(t,'qa','qa');
     t.results.qa=result;await agents.stage(t,'qa','qa');
     const tasks=run.mock.calls.map(c=>c[1]);
+    // A code/API route keeps the default limit; the browser route gets the longer one and is told so.
+    expect(run.mock.calls[0][3]?.timeout).toBeUndefined();expect(tasks[0]).not.toContain('TIME LIMIT');
+    const browser={...t,results:{},approach:{...t.approach!,validation:'browser'}} as Ticket;await agents.stage(browser,'retest','qa');
+    expect(run.mock.calls.at(-1)![3]).toMatchObject({timeout:BROWSER_QA_LIMIT_MS});expect(run.mock.calls.at(-1)![1]).toContain('stopped 90 minutes after it starts');
     expect(tasks[0].match(/Return qaRunDir=([^;]+)/)?.[1]).not.toBe(tasks[1].match(/Return qaRunDir=([^;]+)/)?.[1]);
     expect(t.qaHistory).toEqual([{stage:'qa',result}]);expect(t.qaProtocol?.qa).toBe('office-v1');
     expect(resultGate(t,'qa',{...result,outcome:'passed',qa:null},store.dataRoot)).toContain('structured Office QA report');
