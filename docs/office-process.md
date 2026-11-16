@@ -207,6 +207,14 @@ recorded continuation replaced does not gate QA. After three setup stops in a ro
 candidate, the next resume shows the count and latest reason without starting a worker;
 resuming again runs one more attempt.
 
+A writable Codex worker saves its finished result as a completion checkpoint before it returns. If
+the stage time limit stops the worker after that save, the checkpoint is the stage result: the
+runner uses it directly, and for a Jira/Azure stage already recorded as interrupted the next
+resume accepts it instead of reconstructing the stage. It passes the same gates as any result
+and no work is run again. A worker that stalled, a reader, or a worker stopped while an action
+was still running is not covered. On resume, a checkpoint for another candidate or attempt is
+not accepted.
+
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical
 continuations keep their already-bound evidence and approvals; this baseline

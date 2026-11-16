@@ -11,7 +11,7 @@ import { deferredPickup } from '../../src/work/pickup-state';
 import { assignmentDiagnostics } from '../it/assignment-diagnostics';
 import { shortSummary } from '../../src/work/work-summary';
 import { PICKUP_CHAT } from '../delivery/intake/pickup';
-import { assertStrictOutputSchema, completedOutput } from './structured-output';
+import { assertStrictOutputSchema, completedOutput, TIMED_OUT_WRITER } from './structured-output';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import {createHash} from 'node:crypto';
 import { dirname, resolve } from 'node:path';
@@ -146,7 +146,7 @@ export class WorkerRuntime {
         this.timing.set(role, { id, started, timer: heartbeat });
         writeFileSync(resolve(dir, 'capabilities.json'), JSON.stringify(profile), { mode: 0o600 });
         let workStatus: 'completed' | 'failed' | 'blocked' | 'interrupted' = 'failed';
-        let final = '';
+        let final = '', actionsInFlight = 0;
         let session = '';
         let lastActivity = 0;
         let lastSummary = '';
@@ -222,17 +222,19 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
                             this.store.checkpointWork(id, this.store.clock.monotonic() - started, { inputTokens: e.usage.input_tokens ?? null, outputTokens: e.usage.output_tokens ?? null });
                             this.store.emit('usage', `${role} used ${e.usage.input_tokens ?? 0} input / ${e.usage.output_tokens ?? 0} output tokens · ${e.usage.cached_input_tokens ?? 0} cached input`, role, opts.ticket);
                         }
+                        // An action still running when the worker is stopped means its checkpoint was not its last word.
+                        if (['command_execution', 'mcp_tool_call', 'web_search'].includes(item?.type)) actionsInFlight += e.type === 'item.started' ? 1 : e.type === 'item.completed' ? -1 : 0;
                         if (e.type === 'item.started' && ['command_execution', 'mcp_tool_call', 'web_search'].includes(item?.type))
                             progress({ name: item.tool || item.type, command: item.command });
                     }
                     catch { }
                 } }).catch(error => {
-                const recovered = !claude && !opts.readOnly ? completedOutput(dir, error, schema) : undefined;
+                const recovered = !claude && !opts.readOnly && !(TIMED_OUT_WRITER.test(String(error)) && actionsInFlight > 0) ? completedOutput(dir, error, schema) : undefined;
                 if (recovered === undefined)
                     throw error;
                 writeFileSync(resolve(dir, 'output-error.json'), JSON.stringify({ error: sanitize(String(error)), recoveredFrom: 'completed-output.json', at: new Date().toISOString() }));
                 final = JSON.stringify(recovered);
-                this.store.emit('worker-output-recovered', 'Saved completed result recovered after an output limit; no work replayed.', role, opts.ticket);
+                this.store.emit('worker-output-recovered', 'Saved completed result recovered after an output or time limit; no work replayed.', role, opts.ticket);
                 return '';
             });
             let payload: unknown;

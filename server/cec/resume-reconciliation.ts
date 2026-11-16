@@ -1,7 +1,7 @@
 import { supersededReceipt } from './superseded-receipts';
 import type { StageResult, Ticket, WorkTime } from '../../src/shared';
 
-type Attempt = Pick<WorkTime, 'ticket' | 'stage' | 'role' | 'status' | 'failure'>;
+type Attempt = Pick<WorkTime, 'ticket' | 'stage' | 'role' | 'status' | 'failure' | 'completionAccepted'>;
 
 /**
  * A QA stage whose latest run returned a setup stop on this exact candidate, with no paid run: it
@@ -27,7 +27,8 @@ export function needsResumeReconciliation(ticket: Ticket, attempts: readonly Att
     // can exempt a timeout; model prose alone cannot establish read-only safety.
     const previous = [...attempts].reverse().find(attempt => attempt.ticket === ticket.key &&
         !(attempt.stage === 'readback' && attempt.status === 'completed'));
-    if (previous?.failure?.category === 'uncertain-effect') return true;
+    // A timed-out run whose saved result the stage accepted is settled; its failure record is history.
+    if (previous?.failure?.category === 'uncertain-effect' && !previous.completionAccepted) return true;
     if (previous?.role === 'pm' && ['readback', 'reconcile'].includes(previous.stage) &&
         previous.status === 'failed' && previous.failure?.category === 'transient-read' &&
         !previous.failure.code && ticket.blocker.replace(/^Error:\s*/, '') === previous.failure.detail) {
