@@ -34,6 +34,7 @@ server/
     harness/       hands-off scope, write guards, effects wrapper, harness stages
     intake/        deterministic admission, PR discovery, pickup policy
     candidate/     worktree creation
+    attempts/      restart of a dead writer run from the accepted head, worktree salvage, backoff
     publication/   PR body, publish, promote, draft/prepare stages
     board/         project board lanes
     readiness/     merge readiness, checks, merge approval
@@ -90,6 +91,9 @@ src/
   second miss goes to Joe.
   Board estimated cost (`Est. Cost (USD)`) follows the ordinary rule: one dispatch through
   Effects, settled only by read-back, never resent (`server/telemetry/cost-ledger.ts`).
+- A hands-off GitHub writer stage whose run died restarts from the accepted head
+  (`server/delivery/attempts/`): the abandoned work is kept under a local ref, the worktree is
+  reset, and nothing is pushed. This re-runs a model stage; it never resends an Effect.
 - Only `holds` in the local office config and structured `prerequisites` gate work.
   Model-written findings are advisory unless the model returns a blocking `outcome`.
 

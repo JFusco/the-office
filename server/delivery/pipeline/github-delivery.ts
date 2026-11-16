@@ -12,6 +12,7 @@ import { retireUnstartedDelivery } from '../recovery/retire-unstarted-delivery';
 import { requireSavedPrerequisites } from '../recovery/implementation/saved-prerequisite-handoff';
 import { CurrentChecksWait } from '../readiness/github-check-selection';
 import { SourceClosed } from './source-closed';
+import { writerRestartInstruction } from '../attempts/restart-instruction';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { stopReason } from './stop-reason';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
@@ -249,6 +250,7 @@ export class GitHubDelivery {
             if (harnessDelivers(this.store, job) && job.stage === 'update-base' && job.repairReason === 'conflicts' && job.pr && !job.repairCycle)
                 instructions = conflictRefreshInstruction(project, job, root);
             instructions += `\n${scopeRepairResumeInstruction(this.store,job)}`;
+            instructions += `\n${writerRestartInstruction(job)}`;
             instructions += `\n${dependabotReviewGuidance(this.store, job)}`;
             instructions += `\n${await stoppedBasePackageInstruction(this, job)}`;
             // The exceptional prepare-pr worker still owns its retarget/promotion steps.

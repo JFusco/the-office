@@ -7,6 +7,7 @@ import type { Store } from '../../store/store';
 import { deliveryAdmission } from './delivery-admission';
 import { resolveDeliveryWork } from './delivery-subject';
 import { harnessDelivers } from './scope';
+import { writerRestarted } from '../attempts/restart-writer';
 export { resolveDeliveryWork } from './delivery-subject';
 
 export interface DeliveryAuthorityInput {
@@ -42,7 +43,7 @@ export function assessDeliveryEligibility(store: Store, job: TicketJob, input: D
     const recovery = request && resolveDeliveryWork(store, { projectId: store.project.id, kind: 'reconciliation', id: request.id });
     if (!recovery || recovery.kind !== 'job' || recovery.job !== job) {
         if (store.state.workLog?.some(w => w.requestId === job.id && ['github-implement', 'github-update-base', 'github-scope-repair'].includes(w.stage) &&
-            ['interrupted', 'failed'].includes(w.status) && w.failure?.dispatched !== false && !job.steps.some(s => s.workerId === w.id) && !(w.id === job.stoppedBaseUpdate?.originalWorkId && stoppedBaseReassessmentReady(store, { key: job.key, head: w.id })))) blockers.push('Original incomplete worker needs readback');
+            ['interrupted', 'failed'].includes(w.status) && w.failure?.dispatched !== false && !job.steps.some(s => s.workerId === w.id) && !writerRestarted(job, w.id) && !(w.id === job.stoppedBaseUpdate?.originalWorkId && stoppedBaseReassessmentReady(store, { key: job.key, head: w.id })))) blockers.push('Original incomplete worker needs readback');
     }
     if (job.steps.at(-1)?.stage === 'superseded-stage-result') blockers.push('Superseded stage result needs reconciliation');
     blockers.push(...conflicts);
