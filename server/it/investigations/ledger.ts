@@ -8,6 +8,7 @@ import { investigationCandidates, investigationId } from './candidates';
 import { notifyHelperResolution } from './notify-helper-survivor';
 import { retriedReadResolution } from './retried-read';
 import { acceptedCompletionResolution } from './accepted-completion-resolution';
+import { finishedSubjectResolution } from './finished-subject-resolution';
 import type { Store } from '../../store/store';
 import { ctoReplacementResolution } from './cto-replacement-resolution';
 import { implementationReplacementResolution } from './implementation-replacement-resolution';
@@ -22,10 +23,11 @@ export function investigationResolution(store: Store, entry: ITInvestigation) {
         return replacement ? { sourceId: replacement.id, receipt: replacement.permalink, kind: 'superseded' as const } : undefined;
     }
     // Delivery recovery alone does not prove the subprocess defect; only the known notify helper explains it.
-    if (entry.source.failureKind === 'surviving-subprocesses') return notifyHelperResolution(store, entry);
+    // Once the work it ran for is finished there is nothing left for that proof to protect.
+    if (entry.source.failureKind === 'surviving-subprocesses') return notifyHelperResolution(store, entry) || finishedSubjectResolution(store, entry);
     const replacement = ctoReplacementResolution(store, entry) || implementationReplacementResolution(store, entry);
     if (replacement) return replacement;
-    const retried = retriedReadResolution(store, entry) || acceptedCompletionResolution(store, entry);
+    const retried = retriedReadResolution(store, entry) || acceptedCompletionResolution(store, entry) || finishedSubjectResolution(store, entry);
     if (retried) return retried;
     const recovery = store.state.workLog?.find(work => work.originalId === entry.source.id && work.requestId === entry.source.requestId && work.status === 'completed' && completedExecution(store, work));
     return recovery ? { kind: 'confirmed' as const, sourceId: recovery.id, receipt: `sessions/${recovery.id}/execution-completion.json` } : undefined;
@@ -49,8 +51,10 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
             if (entry.status !== 'resolved') {
                 entry.status = 'resolved'; entry.nextAt = ''; entry.updatedAt = now.toISOString();
                 entry.resolution = { ...resolution, at: now.toISOString() };
-                captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
-                store.emit('it-investigation-resolved', resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
+                // Closing with a finished subject verifies nothing and replaces nothing, so it is neither recorded as a lesson nor described as one.
+                const finished = /^(?:job|ticket):/.test(resolution.receipt);
+                if (!finished) captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
+                store.emit('it-investigation-resolved', finished ? 'Earlier warning kept as history: the work it concerned has finished. Its original outcome remains unknown.' : resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
             }
         } else if (entry.status === 'resolved') {
             // A stale resolved flag cannot hide a reactivated source or lost receipt.
