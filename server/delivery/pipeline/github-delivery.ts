@@ -12,6 +12,7 @@ import { retireUnstartedDelivery } from '../recovery/retire-unstarted-delivery';
 import { requireSavedPrerequisites } from '../recovery/implementation/saved-prerequisite-handoff';
 import { CurrentChecksWait } from '../readiness/github-check-selection';
 import { SourceClosed } from './source-closed';
+import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { stopReason } from './stop-reason';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
@@ -183,6 +184,14 @@ export class GitHubDelivery {
             }
             if (job.stage === 'lead-pr') {
                 if (await runCIRepair(this, job, issue, root)) return;
+                const wait = await readReviewWait(this, job, await this.verifyPR(job));
+                if (wait) {
+                    applyReviewWait(job, wait, this.store.clock.now());
+                    // The observer must queue the review afresh once the PR is reviewable, whatever it last saw.
+                    delete job.lastPRFingerprint;
+                    this.store.emit('pr-review-waiting', `${job.key}: ${wait.detail}`, 'lead', job.key);
+                    return;
+                }
                 const saved = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
                 if ((job.reviewInputSha256 === deliveryInputSha256(this.store, job.key) || !job.reviewInputSha256 && !deliveryHumanInputs(this.store, job.key).length) && job.reviewContext?.issueUpdatedAt && job.reviewContext.prUpdatedAt && job.reviewContext.baseSha && job.reviewContext.issueUpdatedAt === issue.updated_at && job.reviewContext.step === job.steps.length - 1 && saved?.outcome === 'passed' && saved.prId === job.pr && !job.steps.some(s => hasUncertainEffects(s.stage, s.result)) && saved.evidence.length && !findingsBlock(this.store, saved.findings, f => f.status === 'open') && !hasUncertainEffects('lead-pr', saved)) {
                     const current = await this.verifyPR(job);

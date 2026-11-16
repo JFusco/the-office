@@ -3,7 +3,8 @@ import { afterEach, expect, test } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
-import { refreshConflicted } from '../../../../server/delivery/repairs/refresh-conflicted';
+import { refreshConflicted, refreshEligible, refreshSettled } from '../../../../server/delivery/repairs/refresh-conflicted';
+import { readReviewWait } from '../../../../server/delivery/readiness/review-wait';
 import { HOLDS } from '../../../../server/office/config';
 import type { StageResult } from '../../../../src/shared';
 afterEach(cleanupFakes);
@@ -121,6 +122,38 @@ test('a conflict found during Sam\'s post-refresh readiness review refreshes aga
     await f.delivery.observe();
     expect(job).toMatchObject({ stage: 'update-base', status: 'queued', head: MERGED });
     expect(job.steps.some(s => s.stage === 'conflict-readback')).toBe(false);
+});
+test('a conflict on a team-reviewed head waiting at the readiness review is refreshed without Sam assessing it', async () => {
+    const { f, job, pr } = conflicted();
+    Object.assign(job, { stage: 'lead-pr', status: 'queued' });
+    let reviews = 0;
+    f.engine.agents.run = (async () => { reviews++; throw new Error('No review expected'); }) as any;
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
+    expect(reviews).toBe(0);
+    expect(job).toMatchObject({ stage: 'lead-pr', status: 'watching', stop: { kind: 'pr-not-ready' } });
+    expect(job.steps.some(s => s.stage === 'lead-pr')).toBe(false);
+    await f.delivery.observe();
+    expect(job).toMatchObject({ stage: 'update-base', status: 'queued', repairReason: 'conflicts', head: HEAD });
+    // An unreviewed head is not the harness's to refresh: Sam still assesses it.
+    const unreviewed = conflicted();
+    Object.assign(unreviewed.job, { stage: 'lead-pr', status: 'queued', steps: [] });
+    unreviewed.f.engine.agents.run = (async () => { reviews++; throw new Error('Assessed'); }) as any;
+    await claimedDelivery(unreviewed.f.store, unreviewed.job, () => unreviewed.f.delivery.step(unreviewed.job));
+    expect(reviews).toBe(1);
+    expect(unreviewed.job).toMatchObject({ stage: 'lead-pr', status: 'blocked' });
+    expect(pr.mergeable).toBe(false);
+});
+test('a claimed review step counts as eligible only when asked, and an unsettled refresh leaves the conflict to Sam', async () => {
+    const { f, job, pr } = conflicted();
+    Object.assign(job, { stage: 'lead-pr', status: 'working' });
+    expect(refreshEligible(f.store, job, pr)).toBe(false);
+    expect(refreshEligible(f.store, job, pr, true)).toBe(true);
+    // An unconfirmed board move means the refresh cannot run, so the gate must not promise one.
+    job.boardUpdates = [{ status: 'uncertain' } as any];
+    expect(refreshSettled(f.store, job)).toBe(false);
+    expect(await readReviewWait(f.delivery, job, pr)).toBeNull();
+    job.boardUpdates = [];
+    expect(await readReviewWait(f.delivery, job, pr)).toMatchObject({ kind: 'pr-not-ready' });
 });
 test('a conflict the refresh cannot take (base-update cap reached) blocks with its reason instead of watching silently', async () => {
     const { job } = await conflictDuringReview(2);

@@ -2,7 +2,6 @@ import { HOLDS } from '../../office/config';
 import { harnessDelivers } from '../harness/scope';
 import { teamReviewedHead } from '../readiness/team-review';
 import { findingsBlock } from '../findings/advisory';
-import { conflictOnlyAssessment } from './conflict-repair';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
@@ -25,11 +24,11 @@ function refreshedHead(job: TicketJob): boolean {
         && refresh.evidence.some(evidence => evidence.kind === 'checks' && evidence.commit === job.head);
 }
 
-/** No other owner, worker, unconfirmed board move or effect may be in flight for this job. */
-function settled(store: Store, job: TicketJob): boolean {
+/** No other owner, worker, unconfirmed board move or effect may be in flight for this job; `ownClaimId` is the caller's own claim. */
+export function refreshSettled(store: Store, job: TicketJob, ownClaimId?: string): boolean {
     const intent = store.getEffect(job.mergeIntentId || `merge:${job.id}:${job.head}`);
-    return !store.activeClaims().some(claim => claim.work.kind === 'delivery' && claim.work.id === job.id)
-        && !store.state.workLog?.some(work => work.requestId === job.id && ['running', 'stopping'].includes(work.status))
+    return !store.activeClaims().some(claim => claim.work.kind === 'delivery' && claim.work.id === job.id && claim.id !== ownClaimId)
+        && !store.state.workLog?.some(work => work.requestId === job.id && ['running', 'stopping'].includes(work.status) && (!ownClaimId || work.claimId !== ownClaimId))
         && !job.boardUpdates?.some(update => update.status !== 'verified')
         && !job.steps.some(step => hasUncertainEffects(step.stage, step.result))
         && !(intent && (intent.dispatchedAt || !['prepared', 'rejected'].includes(intent.status)));
@@ -37,11 +36,11 @@ function settled(store: Store, job: TicketJob): boolean {
 
 /**
  * Whether a refresh may replace conflict repair for this job, apart from in-flight work settling.
- * At merge the head was reviewed. During Sam's readiness review, his latest result must be the
- * conflict itself, on a team-reviewed head or an accepted refresh head.
+ * At merge the head was reviewed. At Sam's readiness review the head must be team-reviewed or an
+ * accepted refresh head; `claimed` also admits the job while its own review step holds the claim.
  */
-export function refreshEligible(store: Store, job: TicketJob, p: any): boolean {
-    if (!harnessDelivers(store, job) || !(job.stage === 'merge' ? ['blocked', 'interrupted', 'watching'].includes(job.status) : job.stage === 'lead-pr' && job.status === 'watching'))
+export function refreshEligible(store: Store, job: TicketJob, p: any, claimed = false): boolean {
+    if (!harnessDelivers(store, job) || !(job.stage === 'merge' ? ['blocked', 'interrupted', 'watching'].includes(job.status) : job.stage === 'lead-pr' && (job.status === 'watching' || claimed && job.status === 'working')))
         return false;
     // A retained source-repair cycle keeps its own reconciliation contract.
     if (store.state.paused || store.state.draining || HOLDS[job.key] || job.mergeAttempt || job.mergeApprovalRequired || job.repairCycle || !job.worktree || !job.branch || !job.pr)
@@ -54,8 +53,8 @@ export function refreshEligible(store: Store, job: TicketJob, p: any): boolean {
         return false;
     if (job.stage === 'merge')
         return reviewedHead(store, job);
-    const lead = job.steps.filter(step => step.stage === 'lead-pr').at(-1)?.result;
-    return lead?.commit === job.head && conflictOnlyAssessment(lead) && (!!teamReviewedHead(store, job) || refreshedHead(job));
+    // GitHub's own conflict report on a reviewed head is enough; Sam's assessment is not required.
+    return !!teamReviewedHead(store, job) || refreshedHead(job);
 }
 
 /**
@@ -65,7 +64,7 @@ export function refreshEligible(store: Store, job: TicketJob, p: any): boolean {
  * guarded merge. Returns true when the job was requeued.
  */
 export function refreshConflicted(store: Store, job: TicketJob, p: any): boolean {
-    if (!refreshEligible(store, job, p) || !settled(store, job))
+    if (!refreshEligible(store, job, p) || !refreshSettled(store, job))
         return false;
     job.repairReason = 'conflicts';
     job.stage = 'update-base';
