@@ -234,7 +234,8 @@ export async function resume(this: Engine, key: string, background = true) {
     if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, DATA, this.implementationOwnership, undefined, undefined, live);
     if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, DATA);
     // A stage whose worker saved its finished result before the time limit needs no reconstruction: the stage accepts that result.
-    if (!qaRetry && !qaHandoff && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
+    // Likewise a developer run stopped by the time limit: the stage continues that session.
+    if (!qaRetry && !qaHandoff && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && !await this.agents.continuable(t) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const observed = await this.agents.reconcile(t);
         const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));
         if (gap) {

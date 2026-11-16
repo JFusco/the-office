@@ -222,6 +222,16 @@ minutes for Jira/Azure stages, 60 for GitHub delivery stages).
 Ellis does not investigate a timed-out run whose saved result the stage accepted: that
 investigation resolves from the accepted result.
 
+A Jira/Azure developer stage (implement or repair) on Claude that is stopped by its time limit
+is continued, not restarted or reconstructed: the next run resumes the stopped session's
+conversation under its own session ID, in the same worktree, and is told to check what is
+committed and finish what remains. The worktree must still be on the ticket's branch and hold
+the accepted commit. A stage is continued at most twice, each with a fresh time limit; after
+that, or after any other kind of failure, it stops as an interrupted stage. If the ticket was
+already recorded as interrupted, the next resume continues the session instead of reconstructing
+the stage. Codex stages are not continued this way; a Codex worker's saved completion checkpoint
+is used instead.
+
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical
 continuations keep their already-bound evidence and approvals; this baseline

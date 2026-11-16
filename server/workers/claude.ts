@@ -1,10 +1,12 @@
 export const DEVELOPER_MODEL='claude-opus-5-5';
 export const DEVELOPER_EFFORT='medium';
-export function claudeArguments(schema:object,sessionId:string,readOnly:boolean,dirs:string[]) {
+export function claudeArguments(schema:object,sessionId:string,readOnly:boolean,dirs:string[],resumeSession='') {
   const args=['--print','--model',DEVELOPER_MODEL,'--effort',DEVELOPER_EFFORT,'--output-format','stream-json','--verbose','--json-schema',JSON.stringify(schema),'--session-id',sessionId,
     '--safe-mode','--restricted','--strict-mcp-config','--no-chrome','--settings','{"disableAllHooks":true}',
     '--tools','Read,Glob,Grep,Bash,Edit,Write,WebSearch,WebFetch','--permission-mode',readOnly?'plan':'auto','--permission-prompts','none'];
   for(const dir of new Set(dirs))args.push('--add-dir',dir);
+  // Continue a stopped session's conversation under this run's own session ID; the original transcript stays as it was.
+  if(resumeSession)args.push('--resume',resumeSession,'--fork-session');
   // Deliberately no fallback model or automatic retry of a writer session.
   return args;
 }
