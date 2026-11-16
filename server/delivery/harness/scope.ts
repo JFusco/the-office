@@ -11,7 +11,7 @@ export function handsOff(store: Pick<Store, 'project'>): boolean {
 /** Jobs carrying legacy recovery records keep their dedicated, reconciled model-stage contracts. */
 export function legacyRecovery(job: TicketJob): boolean {
     return !!(job.initialDraftConflict || job.closeoutRecovery || job.implementationRecovery || job.discoveryRecovery || job.savedPrerequisiteHandoff
-        || job.scopeRepairResumes?.length || job.scopeRepairReadback || job.sourceAmendment || job.implementationContinuation || job.candidateRecovery
+        || job.scopeRepairResumes?.length || job.scopeRepairReadback || job.implementationContinuation || job.candidateRecovery
         || job.steps.some(step => step.stage === 'conflict-readback'));
 }
 

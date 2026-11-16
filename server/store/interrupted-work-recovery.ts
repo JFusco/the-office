@@ -5,11 +5,15 @@ import { ROLE_NAMES, workKey, type EffectIntent } from '../../src/shared';
 import { durationLabel } from '../../src/timing/timing';
 import type { Store } from './store';
 import { goalNoticeNeverDispatched } from '../leadership/goal-notice-authorization';
+import { interruptAdoptions } from '../delivery/intake/dependency-bots/interrupted-adoptions';
+import { retireLegacyRecovery } from '../delivery/recovery/retire-legacy-recovery';
 import { maintenanceNoticeNeverDispatched } from '../maintenance/brain/maintenance-notice-authorization';
 
 export function recover(this: Store): void  {
     this.transaction(() => {
         recoverFeatures(this, true);
+        interruptAdoptions(this.state, this.clock.now());
+        retireLegacyRecovery(this.state, this.clock.now(), jobId => !!this.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status NOT IN ('verified','rejected')").get(workKey({ projectId: this.project.id, kind: 'delivery', id: jobId })));
         const coordination = this.state.coordination;
         for (const run of this.state.maintenance?.runs || [])
             if (run.blockerFollowup?.status === 'working') {

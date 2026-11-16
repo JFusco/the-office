@@ -63,3 +63,33 @@ test('a decision-status refresh rejects failed or cross-project reads instead of
     await expect(readLessonDecision(async () => new Response(JSON.stringify(s)), 'cms-field-vocabulary', 'lesson-issue:local')).rejects.toThrow('another project');
     await expect(readLessonDecision(async () => new Response(JSON.stringify(s)), 'brain', 'lesson-issue:local')).resolves.toMatchObject({ id: 'local', proposed: true });
 });
+
+test('the weekly digest opens each due proposal with its own decisions, and no model composer', async () => {
+    const { OutboxLessonDigest } = await import('../../../../src/conversations/OutboxLessonDigest');
+    const snapshot = fixture();
+    const created = snapshot.knowledge!.lessons[0].createdAt, nextWeek = new Date(Date.parse(created) + 8 * 24 * 60 * 60 * 1000);
+    snapshot.knowledge!.lessons.push(learningLesson('second', { statement: 'Validate the PR body.', repositoryInstruction: { status: 'proposed' } }) as never, learningLesson('done', { statement: 'Already declined.', repositoryInstruction: { status: 'declined' } }) as never);
+    const html = renderToStaticMarkup(createElement(OutboxLessonDigest, { snapshot, at: nextWeek }));
+    expect(html.match(/data-outbox-lesson-digest-item/g)).toHaveLength(2);
+    expect(html).toContain('aria-label="Check plan archives."');
+    expect(html).toContain('aria-label="Validate the PR body."');
+    expect(html).not.toContain('Already declined.');
+    expect(html).not.toContain('<textarea');
+    // Proposals made this week are not in the digest yet.
+    expect(renderToStaticMarkup(createElement(OutboxLessonDigest, { snapshot, at: new Date(created) }))).toContain('Every proposal in this digest has been decided.');
+    // Without an explicit time the Office's clock decides, not the browser's.
+    snapshot.serverTime = nextWeek.toISOString();
+    expect(renderToStaticMarkup(createElement(OutboxLessonDigest, { snapshot })).match(/data-outbox-lesson-digest-item/g)).toHaveLength(2);
+    snapshot.serverTime = created;
+    expect(renderToStaticMarkup(createElement(OutboxLessonDigest, { snapshot }))).toContain('Every proposal in this digest has been decided.');
+    expect(recommendedReply(snapshot, '', 'lesson-digest', 'knowledge')).toBe('');
+});
+
+test('the outbox shows the digest under its own title as a lesson decision', () => {
+    const snapshot = fixture();
+    snapshot.outbox = [{ id: 'lesson-digest', title: 'Harper has 1 proposal to review', detail: '- Check plan archives.', status: 'open', role: 'knowledge', ticket: '', url: '', createdAt: '', updatedAt: '' }];
+    const html = renderToStaticMarkup(createElement(Outbox, { snapshot, initialId: 'lesson-digest', sendMessage: async () => { throw new Error('unused'); } }));
+    expect(html).toContain('Harper has 1 proposal to review');
+    expect(html).toContain('Lesson decision');
+    expect(html).not.toContain('<textarea');
+});

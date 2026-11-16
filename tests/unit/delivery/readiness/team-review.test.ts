@@ -23,9 +23,9 @@ test('developer-checks needs only the review; stale heads, failures, legacy jobs
     job.steps.push({ stage: 'review', result: { ...passed(), outcome: 'blocked' } });
     expect(teamReviewedHead(f.store, job)).toBeNull();
     job.steps.push({ stage: 'review', result: passed() });
-    job.sourceAmendment = {} as any;
+    job.candidateRecovery = {} as any;
     expect(teamReviewedHead(f.store, job)).toBeNull();
-    delete job.sourceAmendment;
+    delete job.candidateRecovery;
     (f.store.project as any).id = 'cec';
     expect(teamReviewedHead(f.store, job)).toBeNull();
 });

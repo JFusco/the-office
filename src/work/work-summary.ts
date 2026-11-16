@@ -1,3 +1,4 @@
+import { LESSON_DIGEST } from '../conversations/lesson-digest';
 import { withoutIdentifiers } from '../office/without-identifiers';
 import { deliveryRepairProjection } from './delivery-repair-projection';
 import type { OfficeSnapshot, TicketJob, MaintenanceRun } from '../shared';
@@ -15,6 +16,8 @@ export function shortSummary(text: string = '', limit = 240) {
     return clean.slice(0, end > limit / 2 ? end : limit - 1) + '…';
 }
 export function actionSummary(id: string) {
+    if (id === LESSON_DIGEST)
+        return 'Read each proposal below, then approve or decline it. Proposals arrive together once a week.';
     if (id.startsWith('lesson-issue:'))
         return 'Read the lesson below, then approve filing an improvement issue or decline the suggestion.';
     if (id.startsWith('office-lesson:'))

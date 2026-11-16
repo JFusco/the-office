@@ -158,7 +158,7 @@ Return originalWorkId=${candidate.work.id}, passed only for the proven dispositi
 function brainImplementationCandidate(store: Store, job: TicketJob): { kind: 'candidate'; work: WorkTime; result: StageResult } | undefined {
     try {
         if (store.project.provider !== 'github' || job.implementationContinuation || job.implementationRecovery || job.candidateRecovery ||
-            job.existingPR || job.pr || job.head || job.worktree || job.branch || job.mergeAttempt || job.mergeIntentId || job.sourceAmendment ||
+            job.existingPR || job.pr || job.head || job.worktree || job.branch || job.mergeAttempt || job.mergeIntentId ||
             job.stage !== 'implement' || !['blocked', 'interrupted'].includes(job.status) || HOLDS[job.key] ||
             job.boardUpdates?.some(update => update.status !== 'verified') || store.activeClaims().some(claim => claim.work.id === job.id) ||
             store.state.workLog?.some(work => work.requestId === job.id && ['running', 'stopping'].includes(work.status)) ||

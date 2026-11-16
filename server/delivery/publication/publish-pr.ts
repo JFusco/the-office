@@ -7,7 +7,6 @@ import { lintPRContent, prContent } from './pr-body';
 import { assertMetadataBinding, metadataAppliesToHead } from './metadata-context';
 import { publishMetadata } from './publish-metadata';
 import { recordedPush } from './record-push';
-import { packed165Admitted } from '../recovery/packed165-evidence';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { readPublication } from './read-command';
 import type { command } from '../../workers/process';
@@ -54,12 +53,6 @@ async function pushOnce(store: Store, execute: Execute, jobs: TicketJob[], job: 
  * existing PR's branch with a descendant head. Never force-pushes or opens a second PR.
  */
 export async function publishCandidate(store: Store, execute: Execute, jobs: TicketJob[], job: TicketJob, root: string, delivery?: GitHubDelivery): Promise<Publication> {
-    if (job.packedPublicationRepair) {
-        if (!packed165Admitted(store, job) || root !== job.packedPublicationRepair.contentRoot) throw Error('Approved #165 publication binding changed');
-        const native = execute;
-        execute = (program, args, options) => native(program, args, { ...options, env: { ...options?.env,
-            NPM_CONFIG_WORKSPACE_DIR: job.worktree, npm_config_workspace_dir: job.worktree } });
-    }
     // The existing-PR head update may not silently bypass an admitted metadata handoff.
     const metadata = metadataAppliesToHead(store, job);
     if (metadata) {
@@ -102,7 +95,6 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
     if (adoptable.length === 1)
         return { pr: adoptable[0].number, url: adoptable[0].url, pushed: !remote, created: false };
     const content = await prContent(execute, job, issueNumber, root);
-    if (job.packedPublicationRepair) content.source = 'office';
     await lintPRContent(execute, worktree, content, issueNumber);
     const issueUrl = `https://github.com/${repository}/issues/${issueNumber}`;
     const readBack = async () => {

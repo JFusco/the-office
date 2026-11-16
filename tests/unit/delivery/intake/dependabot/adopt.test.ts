@@ -1,3 +1,4 @@
+import { projectOutbox } from '../../../../../server/conversations/outbox';
 import { claimedDelivery } from '../../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../../support/fake-github';
@@ -161,4 +162,18 @@ test('a commit claiming Dependabot as author but committed by someone else is re
     await adoptDependabot(x.f.store, (x.f as any).execute, x.f.delivery.jobs, x.f.store.state.coordination!.pickup!);
     expect(x.f.store.state.coordination!.adoptions).toMatchObject([{ status: 'refused' }]);
     expect(x.f.state.issue.body).toBe('');
+});
+
+test('an adoption is marked in progress while it runs and raises no question for Joe meanwhile', async () => {
+    const { f, adopt } = dependabot();
+    const during = new Set<string>(), asked: string[] = [];
+    f.state.fail = () => {
+        for (const record of f.store.state.coordination!.adoptions || []) during.add(record.status);
+        asked.push(...projectOutbox(f.store.state).filter(action => action.status === 'open' && action.id.startsWith('dependabot:')).map(action => action.id));
+        return false;
+    };
+    await adopt();
+    expect([...during]).toEqual(['adopting']);
+    expect(asked).toEqual([]);
+    expect(f.store.state.coordination!.adoptions).toMatchObject([{ status: 'adopted' }]);
 });

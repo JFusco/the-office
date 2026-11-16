@@ -9,7 +9,6 @@ import { readBoundedNoFollowSync } from '../../store/owned-artifact';
 import type { Store } from '../../store/store';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { publicationReadArgs, readPublication } from './read-command';
-import { draftReadHeadMatches } from './draft-read-head';
 
 /** Trust only the ledger written during the original live assignment, matched byte for byte
  * to its owned artifact. Neither current source/revision nor a newly supplied file proves history. */
@@ -28,7 +27,7 @@ function protectedOriginalClaim(store: Store, job: TicketJob, root: string, clai
             const proof = JSON.parse(record.body);
             return proof.protocol === 'draft-publication-read-v1' && /^[a-f0-9]{64}$/.test(proof.revision) &&
                 proof.repository === store.project.repository && proof.jobId === job.id && proof.key === job.key &&
-                proof.issue === Number(job.key.slice(3)) && (proof.pr === job.pr || proof.read === 'viewer' && proof.pr === 0) && draftReadHeadMatches(store, job, claim, proof) &&
+                proof.issue === Number(job.key.slice(3)) && (proof.pr === job.pr || proof.read === 'viewer' && proof.pr === 0) && proof.head === job.head &&
                 proof.lane === 'delivery' && isDeepStrictEqual(proof.claim, { ...claim, status: 'running', endedAt: '' }) &&
                 proof.program === 'gh' && proof.readOnly === true &&
                 isDeepStrictEqual(proof.args, publicationReadArgs(proof.repository, proof.read, proof.read === 'issue-comments' ? proof.issue : proof.pr)) &&

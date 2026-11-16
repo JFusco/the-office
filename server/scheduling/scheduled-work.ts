@@ -1,10 +1,7 @@
-import { green156Admitted } from '../delivery/recovery/green156-evidence';
-import { packed165Admitted } from '../delivery/recovery/packed165-evidence';
-import { packed165SetupReady } from '../delivery/recovery/packed165-setup-continuation';
+import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { scheduledOwnershipRead } from '../cec/qa/scheduled-ownership-read';
 import { freshOwnershipRead } from '../cec/qa/fresh-ownership-read';
 import { requestPriority } from '../operations/request-priority';
-import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
 import { scheduledCaptures } from '../features/handoff/scheduled-captures';
 import { scheduledAssessments } from '../features/handoff/scheduled-assessments';
@@ -34,7 +31,7 @@ import { executeRequest, deterministicActions } from './requests';
 import { dueReadback, readBackTime } from '../time/time-readback';
 import { TimeLedger } from '../time/time-ledger';
 import { easternDay } from '../office/clock';
-import { withAmendmentOwnership } from '../delivery/recovery/source-amendment/source-amendment';
+import { withAmendmentOwnership } from '../delivery/recovery/implementation/delivery-ownership';
 import { scheduledRetrospectives } from '../knowledge/scheduled-retrospectives';
 import { scheduledRollup, type RollupHooks } from '../knowledge/weekly-rollup';
 import { stoppedReason } from './stopped-reason';
@@ -104,7 +101,6 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         if ((deterministicActions.has(request.action) ? 'operations' : request.lane) === lane)
             add('reconciliation', request, request.action, request.requestedAt, requestPriority(request.action, request.action === 'cleanup-merged-candidate' && verifiedCloseoutCleanupRequest(store, request)), () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
                 requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') :
-                    packed165SetupReady(store, request) ? eligible('runnable', 'One bounded #165 setup read-back is eligible; source continuation remains gated') :
                     // Native closeout writes are keyed to the GitHub issue under the native run id (request.head) as attempt.
                     history(closedTicketRequest(request, store.state.tickets), ['reconciliation', request.id], ...(c.jobs || []).filter(job => job.key === request.key).map(job => ['delivery', job.id] as [WorkRef['kind'], string]),
                         ...(/^GH-\d+$/.test(request.key) ? [['issue', request.key.slice(3)] as [WorkRef['kind'], string]] : []), ...(request.head ? [['reconciliation', request.head] as [WorkRef['kind'], string]] : [])));
@@ -231,8 +227,6 @@ function requestResolved(store: Store, request: import('../../src/shared').Harne
     }
     if (!['blocked', 'interrupted'].includes(request.status)) return false;
     if (request.action === 'reconcile-review' && stoppedBaseHandoffResolved(store,request)) return true;
-    if (request.action === 'authorize-green-merge-156') { const job = store.state.coordination?.jobs?.find(j => j.key === request.key); return !!job && job.stoppedBaseUpdate?.greenMerge?.requestId === request.id && green156Admitted(store, job); }
-    if (request.action === 'authorize-packed-repair-165') { const job = store.state.coordination?.jobs?.find(j => j.key === request.key && j.packedPublicationRepair?.requestId === request.id); return !!job && packed165Admitted(store, job); }
     if (request.action === 'reconcile-base-update') return stoppedBaseReassessmentReady(store, request);
     if (request.action === 'reconcile-pr-metadata') return metadataRequestResolved(store, request);
     if (request.action === 'reconcile-closeout') return closeoutRequestResolved(store,request);
@@ -241,10 +235,6 @@ function requestResolved(store: Store, request: import('../../src/shared').Harne
     if (request.action === 'reconcile-validation') {
         const job = c.jobs?.find(job => job.key === request.key && job.status !== 'cancelled');
         return !!job?.steps.some(step => step.stage === 'validate' && step.result.outcome === 'passed' && step.result.receipts.some(receipt => receipt.action === 'validation-readback' && receipt.target === request.head && receipt.verified && !receipt.uncertain)) && !!c.requests?.some(success => success.id !== request.id && success.action === request.action && success.key === request.key && success.head === request.head && success.status === 'completed');
-    }
-    if (request.action === 'authorize-source-amendment') {
-        const job = c.jobs?.find(job => job.key === request.key && job.status !== 'cancelled');
-        return !!request.sourceAmendment && !!job?.sourceAmendment?.adoptedAt && JSON.stringify(job.sourceAmendment.authorization) === JSON.stringify(request.sourceAmendment) && !!c.requests?.some(success => success.id !== request.id && success.action === request.action && success.key === request.key && success.head === request.head && success.status === 'completed' && JSON.stringify(success.sourceAmendment) === JSON.stringify(request.sourceAmendment));
     }
     if (request.action === 'apply-time-scope') return !!request.timeScope && c.time?.scopeCorrection?.expectedSha256 === request.head;
     if (request.action === 'correct-recovery-time') {

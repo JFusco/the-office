@@ -6,7 +6,6 @@ import {completedExecution} from '../../workers/worker-completion';
 import {continuationWorkerProof,assertContinuationWorker} from '../recovery/implementation/continuation-evidence';
 import {digest} from '../../store/readback-evidence';
 import {deliveryInputSha256,deliveryHumanInputs} from '../../github/github-context';
-import {requireSourceAmendmentAcceptance} from '../recovery/source-amendment/source-amendment';
 import {HOLDS} from '../../office/config';
 import type {GitHubDelivery} from '../pipeline/github-delivery';
 import type {TicketJob} from '../../../src/shared';
@@ -116,7 +115,7 @@ export async function resumeReviewedMerge(delivery:GitHubDelivery,job:TicketJob,
  requireThat(savedEvidence.every((e:any)=>acceptedEvidence.some(r=>isDeepStrictEqual(e,r)))&&!job.steps.some(s=>s.result.receipts.some(r=>r.uncertain||!r.verified)),'Historical uncertain effects remain unresolved');
  const effect=()=>store.getEffect(job.mergeIntentId||`merge:${job.id}:${job.head}`),unattempted=()=>{const e=effect();return !e||['prepared','rejected'].includes(e.status)&&!e.dispatchedAt&&e.operation==='github-merge'&&e.target===job.prUrl&&e.work.projectId===store.project.id&&e.work.kind==='delivery'&&e.work.id===job.id&&(e.payload as any)?.sha===job.head;};requireThat(unattempted(),'Prior or foreign merge effect cannot be replayed');
  const expected=digest(job),input=deliveryInputSha256(store,job.key),issue=await delivery.api(`issues/${Number(job.key.slice(3))}`);requireThat(issue.number===Number(job.key.slice(3))&&issue.html_url===`https://github.com/${store.project.repository}/issues/${issue.number}`&&issue.state==='open'&&issue.assignees?.some((a:any)=>a.login==='JFusco')&&issue.updated_at===context.issueUpdatedAt,'Issue changed since accepted Lead review');
- await requireSourceAmendmentAcceptance(delivery,job);const selection=await currentMergeChecks(delivery,job,p);
+ const selection=await currentMergeChecks(delivery,job,p);
  const fresh=await delivery.verifyPR(job,true),freshIssue=await delivery.api(`issues/${Number(job.key.slice(3))}`);
  requireThat(canonical()&&digest(store.project)===project&&digest(job)===expected&&deliveryInputSha256(store,job.key)===input&&isDeepStrictEqual([fresh.head.sha,fresh.base.sha,fresh.base.ref,fresh.updated_at,fresh.draft,fresh.mergeable],[p.head.sha,p.base.sha,p.base.ref,p.updated_at,p.draft,p.mergeable])&&freshIssue.updated_at===context.issueUpdatedAt&&
   !store.state.paused&&!store.state.draining&&!HOLDS[job.key]&&enabled()&&!job.mergeApprovalRequired&&unattempted(),'Merge observation changed before queueing');

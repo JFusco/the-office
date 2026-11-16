@@ -1,8 +1,6 @@
 import { requestQAPlanRetry } from '../../cec/qa/request-plan-retry';
 import { enqueueHistoryRetirement } from '../../operations/retire-history';
 import { decideImplementation } from '../../cec/implementation-continuation/intent';
-import { enqueueGreen156 } from '../../delivery/recovery/green156-admission';
-import { enqueuePacked165 } from '../../delivery/recovery/packed165-intent';
 import { enqueueMetadataRecovery } from '../../delivery/recovery/pr-metadata-intent';
 import { promoteNoteLesson } from '../../knowledge/promote-note-lesson';
 import { supersedeSlackDelivery } from '../../conversations/slack/supersede-delivery';
@@ -12,7 +10,7 @@ import { COST_DECISIONS } from '../../telemetry/reconcile-cost';
 import { DiscoveryResumeInput, bindDiscoveryResume } from '../../delivery/recovery/implementation/discovery-recovery';
 import { reconcileGoalReportCommand } from '../../leadership/goal-reporting';
 import { configureGoalNotices } from '../../leadership/goal-notice-settings';
-import { enqueueRequest, enqueueSourceAmendment, enqueueCloseoutReconciliation } from '../../scheduling/requests';
+import { enqueueRequest, enqueueCloseoutReconciliation } from '../../scheduling/requests';
 import { reconcileReadRetries } from '../../scheduling/read-retries';
 import { configureNotices, retryRecipientLookup } from '../../conversations/notifications';
 import { timeLedger } from '../../time/time-ledger';
@@ -38,7 +36,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
         const body = await req.text();
         if (body.length > 4096)
             return json({ error: 'Command is too large' }, 413);
-        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, amendment, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery, historyRetirement, implementationContinuation, qaPlanRetry, qaHandoff } = JSON.parse(body);
+        const { action, key, scheduled, authorization, pickup, notifications, time, merges, replacementProject, replacementId, messageId, checkpointId, head, timeClassification, timeScope, discovery, closeoutSupervisionProof, lessonId, knowledge, channel, slackSupersession, lessonPromotion, prMetadataRecovery, historyRetirement, implementationContinuation, qaPlanRetry, qaHandoff } = JSON.parse(body);
         if (key && (typeof key !== 'string' || !validTicket(store.project, key)))
             return json({ error: 'Issue key does not belong to this project' }, 400);
         switch (action) {
@@ -55,7 +53,6 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             }
             case 'supersede-slack-delivery': supersedeSlackDelivery(store, slackSupersession); break;
             case 'configure-goal-notifications': configureGoalNotices(store, notifications); break;
-            case 'authorize-source-amendment': return json({ accepted: true, id: enqueueSourceAmendment(store, amendment).id }, 202);
             case 'reconcile-goal-report': return json(reconcileGoalReportCommand(store, messageId), 202);
             case 'reconcile-conversation':
                 offices.reconcileConversation(store.project.id, messageId, replacementProject, replacementId);
@@ -176,8 +173,6 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'approve-merge': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
             case 'reconcile-activation':
             case 'reconcile-review': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
-            case 'authorize-green-merge-156': return json({ accepted: true, id: enqueueGreen156(store, key, head || '').id }, 202);
-            case 'authorize-packed-repair-165': return json({ accepted: true, id: enqueuePacked165(store, key, head || '').id }, 202);
             case 'reconcile-base-update': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
             case 'reconcile-closeout': return json({ accepted: true, id: enqueueCloseoutReconciliation(store, key, head || '', closeoutSupervisionProof).id }, 202);
             case 'prepare-pr':

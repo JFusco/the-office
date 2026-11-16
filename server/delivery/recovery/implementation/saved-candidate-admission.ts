@@ -2,7 +2,6 @@ import {readFileSync,readdirSync,existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {homedir} from 'node:os';
 import {isDeepStrictEqual} from 'node:util';
-import {scopeRepairReadbackCandidate} from '../scope-repair/scope-repair-readback';
 import {continuationWorkerProof} from './continuation-evidence';
 import {acceptedNativeGate} from '../preparation/preparation-gates';
 import {rootArtifact,digest} from '../../../store/readback-evidence';
@@ -44,11 +43,6 @@ export function savedCandidateAdmission(store:Store,job:TicketJob,nativeRoot=res
  try{
   const state=store.state,c=state.coordination;
   if(store.project.id!=='cms-field-vocabulary'||store.project.provider!=='github'||store.project.repository!=='JFusco/cms-field-vocabulary'||!c?.enabled||state.paused||state.draining||HOLDS[job.key]||!['blocked','interrupted'].includes(job.status)||c.jobs?.filter(j=>j.key===job.key&&j.status!=='cancelled').length!==1||job.prerequisites?.length||job.dependsOnPR||job.pr||job.existingPR||job.mergeAttempt||job.mergeIntentId||job.boardUpdates?.some(u=>u.status!=='verified')||job.steps.some(s=>s.result.receipts.some(r=>!r.verified||r.uncertain))||state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
-  if(job.key==='GH-91'){
-   if(!job.sourceAmendment?.adoptedAt)return;
-   const selected=scopeRepairReadbackCandidate(store,job);if(!selected)return;
-   return {id:`saved-scope-repair:${job.id}:${selected.work.id}`,action:'reconcile-scope-repair',key:job.key,head:selected.work.id,detail:'Exact saved amendment descendant qualifies for original native readback; source acceptance, unrelated freshness and all delivery gates remain pending.'};
-  }
   if(job.key!=='GH-100'||job.stage!=='implement'||job.head||job.worktree||job.branch||job.candidateRecovery||c.requests?.some(r=>r.key===job.key&&r.action==='adopt-candidate'&&['queued','working'].includes(r.status)))return;
   const candidates=[...(state.maintenance?.runs||[]).flatMap(r=>r.steps.flatMap(s=>s.result.candidates)),...job.steps.filter(s=>s.stage==='implement'&&s.result.commit===parentHead).map(s=>({issue:100,head:s.result.commit,worktree:s.result.worktree,branch:s.result.branch}))].filter(candidate=>candidate.issue===100&&candidate.head===parentHead);
   const unique=[...new Map(candidates.map(candidate=>[`${candidate.worktree}:${candidate.branch}:${candidate.head}`,candidate])).values()];if(unique.length!==1||!unique[0].worktree||!unique[0].branch)return;

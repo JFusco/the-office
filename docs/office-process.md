@@ -29,8 +29,8 @@ flowchart TD
     PL --> AP["Recorded project-policy or human approval"]
     AP --> EN["Existing delivery queue"]
     FP -->|Ordinary work / explicit Start| EN
-    IN -->|Existing PR or qualifying automation PR| EN
-    EN --> H["Shared harness: claim, identity, scope, holds, prerequisites and budget"]
+    IN -->|Existing PR or qualifying automation PR; an adoption in progress raises no question unless it stalls| EN
+    EN --> H["Shared harness: claim, identity, scope, holds, prerequisites and budget; Jira / Azure resume also checks the candidate branch has not moved"]
     H --> DEV["Alex: implement / repair on owned candidate"]
     DEV --> RV["Sam: independent review when selected or required"]
     RV -->|Findings| DEV
@@ -42,12 +42,14 @@ flowchart TD
     AZ --> SQ["Riley: verify actual staging version when available"]
     GH --> CL["Verified closeout: issue / cards / notices / cleanup as applicable"]
     SQ --> CL
-    H -->|Blocked / interrupted| REC["Shared recovery: classify, retain evidence and route exact prerequisite"]
+    H -->|Blocked / interrupted| REC["Shared recovery: record the stop kind, retain evidence and route exact prerequisite"]
+    SS["Service start: cancel unfinished work on removed one-time recovery paths; unsettled writes stay blocked for read-back"] --> REC
     REC -->|Safe authorized continuation| H
     REC -->|Human decision or access required| Q
     REC --> IT["Ellis: bounded operational diagnosis; supported recovery only"]
     IT -->|Verified prerequisite resolved| REC
     H -.-> LE["Harper: capture outcomes, curate and propose lessons asynchronously"]
+    LE -.->|One weekly lesson digest| Q
     CL -.-> LE
     LE -.->|Relevant installed guidance / lookup| H
     BG["Scheduled maintenance, provider observations, conversations and notices"] --> H
@@ -98,14 +100,15 @@ take precedence. No gate is downgraded to hide a failure.
 
 ```mermaid
 flowchart TD
-    A["Alex: implementation and required repository checks"] --> R{"Selected independent review required?"}
+    PRE["Harness: claim, hold and admission; Jira / Azure resume stops if another writer moved the candidate branch"] --> A["Alex: implementation and required repository checks"]
+    A --> R{"Selected independent review required?"}
     R -->|Yes| S["Sam: review exact candidate"]
     S -->|Product findings| F["Alex: focused repair; retain finding IDs and counters"]
     R -->|No| V{"Selected validation route"}
     S -->|Accepted| V
     V -->|Developer checks sufficient| P["Provider publication gates"]
     V -->|Independent checks / browser| SET["Riley: verify candidate, capabilities and owned setup"]
-    SET -->|Missing prerequisite| B["Name owner and action; affected cases untested"]
+    SET -->|Missing prerequisite| B["Name owner and action; affected cases untested; stop kind recorded"]
     SET -->|Ready| T["Riley: observe all required cases and adjacent regressions"]
     T --> REP["Structured report: case references, actual observations, evidence and next action"]
     REP -->|Observed product defect| F
@@ -174,6 +177,11 @@ must be observed from the relevant provider; a merge is not proof of release.
 | Wrong identity, permission denied, competing writer, real hold | Stop affected action; authoritative resolution required | Lessons and free-form prose do not grant authority |
 | Native helper survives / output missing | Retain claim, failure and original evidence; supported reconciliation only | No success assertion, unrelated kill or repeated investigation loop |
 
+When a delivery stage, ticket stage or harness request stops on an error, the harness records
+why on the record (`stop.kind`: provider checks, closed source, uncertain effect, transient read,
+pause, hold, authority or unclassified). The label is for counting stops (`pnpm office baseline`);
+it changes no status and grants no retry, resume or authority.
+
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical
 continuations keep their already-bound evidence and approvals; this baseline
@@ -195,7 +203,7 @@ flowchart TD
     AV --> GO["Goals, priorities and scoped handoffs to Morgan"]
     EV["Accepted work, blockers and conflicts"] --> CAP["Harper: existing learning opportunity capture"]
     CAP --> RET["Budgeted retrospective / curation and lesson proposals"]
-    RET --> DEC["Existing accept / decline / revise and installation policy"]
+    RET --> DEC["One weekly digest in Questions for you; existing accept / decline / revise and installation policy"]
     DEC --> LES["Relevant active installed lessons and assignment lookups"]
     LES -.-> CO
     LES -.-> NAT

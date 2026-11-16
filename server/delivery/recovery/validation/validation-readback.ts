@@ -30,7 +30,7 @@ export function validationReadbackCandidate(store: Store, job: TicketJob) {
     try {
         if (store.project.provider !== 'github' || store.project.id === 'brain' || job.stage !== 'validate' ||
             !['blocked', 'interrupted'].includes(job.status) || job.detail !== shutdownError || job.pr || job.existingPR ||
-            job.mergeAttempt || job.mergeIntentId || job.sourceAmendment || !/^[a-f0-9]{40}$/.test(job.head) || !job.worktree || !job.branch ||
+            job.mergeAttempt || job.mergeIntentId || !/^[a-f0-9]{40}$/.test(job.head) || !job.worktree || !job.branch ||
             job.prerequisites?.length || store.state.workLog?.some(w => w.requestId === job.id && ['running', 'stopping'].includes(w.status))) return;
         const work = store.state.workLog?.filter(w => w.requestId === job.id && w.stage === 'github-validate').at(-1);
         if (!work || work.role !== 'qa' || work.provider !== 'codex' || work.status !== 'failed' || work.ticket !== job.key ||

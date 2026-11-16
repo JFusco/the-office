@@ -1,7 +1,6 @@
 import { CurrentChecksWait, selectCurrentChecks, checksFailed } from '../readiness/github-check-selection';
 import { conflictOnlyAssessment, readConflictRepairProof } from './conflict-repair';
 import {repeatConflictRepairAdmission} from './conflict-chain';
-import {outsideAmendmentFindingIds,amendmentRepairView} from '../recovery/source-amendment/source-amendment-held';
 import { HOLDS } from '../../office/config';
 import { handsOff, harnessDelivers } from '../harness/scope';
 import { queueCIDiagnosis } from './ci-admission';
@@ -114,8 +113,7 @@ Save no source changes. Prior job/evidence: ${JSON.stringify(job)}.`, schema, { 
 }
 
 export async function queueSourceRepair(this: GitHubDelivery, job: TicketJob, result: StageResult, root: string) {
-    const held = await outsideAmendmentFindingIds(this, job, result.commit, result);
-    const repairView = await adoptedReviewCandidate(this, job, amendmentRepairView(result, held), root);
+    const repairView = await adoptedReviewCandidate(this, job, result, root);
     const named = handsOff(this.store), ids = githubRepairEligible(job, repairView, named);
     const publishedAccepted = !!job.pr && job.implementationContinuation?.phase === 'acceptance';
     const nativeAdoptionPending = !!(job.implementationContinuation || job.discoveryRecovery || job.implementationRecovery) && !publishedAccepted;

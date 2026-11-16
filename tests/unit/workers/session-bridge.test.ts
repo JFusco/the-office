@@ -81,12 +81,28 @@ test('cross-repository current-turn references match the exact issue or linked P
  bridge.current.sessions[0].status='active';bridge.current.sessions[0].context!.scopes[0].evidence[0].kind='reference';expect(bridge.forProject(store,'GH-352').ownership.status).toBe('uncertain');
 });
 test('an idle shared runtime cannot erase a positively active desktop turn for the same persisted thread',async()=>{
- const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
+ const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain',provider:'github'},state:{workLog:[]}};
  const base={id:'outside',provider:'codex' as const,cwd:'/preset',title:'Rollout',branch:'main',source:'test'};
  const desktop={...base,status:'active' as const,context:{activity:'active' as const,scopes:[{project:'brain',issues:[255],prs:[],evidence:[{at:'',reference:'repos/Joe/brain/issues/255',kind:'command' as const,issue:255}]}],userMessages:[]}};
  const execute:any=async(program:string)=>program==='claude'?'[]':'/test/.git';
  const bridge=new SessionBridge(()=>[store],execute,async()=>[{...base,status:'idle'}],async()=>accounted([desktop]));
  await bridge.refresh();expect(bridge.current.complete).toBe(true);expect(bridge.forProject(store,'GH-255').ownership.status).toBe('owned');
+ // Outside Jira/Azure, incomplete or expired coverage stays unavailable even with a visible active owner.
+ bridge.current.complete=false;
+ expect(bridge.forProject(store,'GH-255')).toMatchObject({complete:false,ownership:{status:'unavailable'}});
+ bridge.current.complete=true;bridge.current.expiresAt='2000-01-01T00:00:00Z';
+ expect(bridge.forProject(store,'GH-255')).toMatchObject({complete:false,ownership:{status:'unavailable'}});
+});
+test('a Jira/Azure ticket with a visible active or waiting owner is owned even under incomplete coverage',()=>{
+ const store:any={project:{id:'cec',repo:'/cec',repository:'Joe/cec',provider:'azure'},state:{workLog:[]}};
+ const bridge=new SessionBridge(()=>[store]);
+ bridge.current={observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:false,sources:[],sessions:[{id:'outside',provider:'codex',project:'cec',cwd:'/cec',title:'Fix CEC-12',branch:'',status:'active',source:'test'}]};
+ expect(bridge.forProject(store,'CEC-12')).toMatchObject({complete:false,ownership:{status:'owned'}});
+ bridge.current.sessions[0].status='waiting';
+ expect(bridge.forProject(store,'CEC-12').ownership.status).toBe('owned');
+ expect(bridge.forProject(store,'CEC-99')).toMatchObject({complete:false,ownership:{status:'unavailable'}});
+ bridge.current.sessions[0].status='loaded';
+ expect(bridge.forProject(store,'CEC-12').ownership.status).toBe('unavailable');
 });
 test('Claude cross-repository scope and decisions reach the same project ownership packet',async()=>{
  const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};

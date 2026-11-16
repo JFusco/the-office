@@ -14,18 +14,13 @@ import {workerProfile} from '../../../../../server/workers/worker-profiles';
 import {artifact,digest} from '../../../../../server/store/readback-evidence';
 import {scopeRepairResumeCandidate,scopeRepairResumeInstruction,assertScopeRepairResumeFindings,scopeRepairResumeNextStage} from '../../../../../server/delivery/recovery/scope-repair/scope-repair-resume';
 import {reconcileScopeRepairReadback} from '../../../../../server/delivery/recovery/scope-repair/scope-repair-readback';
-import * as amendments from '../../../../../server/delivery/recovery/source-amendment/source-amendment';
-import * as held from '../../../../../server/delivery/recovery/source-amendment/source-amendment-held';
-import {RELEASE_AMENDMENT_PATHS,RELEASE_SOURCE_IDS,sourceHash,sourceJson} from '../../../../../server/delivery/recovery/source-amendment/source-amendment-scope';
-import {GH91} from '../../../../../server/delivery/recovery/source-amendment/source-amendment';
-import {HOLDS} from '../../../../../server/office/config';
 const mockHome=vi.hoisted(()=>({path:'/private/tmp'}));
 vi.mock('node:os',async original=>({...await original<any>(),homedir:()=>mockHome.path}));
 const roots:string[]=[],stores:Store[]=[];
-afterEach(()=>{vi.restoreAllMocks();delete HOLDS['GH-91'];stores.splice(0).forEach(s=>s.close());roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
-function fixture(amendment=false){
+afterEach(()=>{vi.restoreAllMocks();stores.splice(0).forEach(s=>s.close());roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
+function fixture(){
  const root=mkdtempSync(resolve(tmpdir(),'office-scope-resume-'));roots.push(root);mockHome.path=root;
- const project={...projectById('cms-field-vocabulary'),id:amendment?GH91.projectId:'scope-project',repository:amendment?GH91.repository:'example/scoped',repo:resolve(root,'primary')},jobId=amendment?GH91.jobId:'job',number=amendment?91:42;
+ const project={...projectById('cms-field-vocabulary'),id:'scope-project',repository:'example/scoped',repo:resolve(root,'primary')},jobId='job',number=42;
  const store=new Store(':memory:',project,root);stores.push(store);store.state.coordination=coordination();store.state.paused=false;
  const engine=new Engine(store),head='b'.repeat(40),base='a'.repeat(40),worktree=resolve(root,'candidate'),branch='codex/scoped-repair';
  mkdirSync(worktree);writeFileSync(resolve(worktree,'.git'),'gitdir: /private/existing-owned-gitdir');
@@ -67,93 +62,6 @@ function fixture(amendment=false){
  const reconcile=()=>withAssignment(claim,'delivery',()=>reconcileScopeRepairReadback(delivery,job.key,original.id,ownership,intent.id));
  return{root,store,engine,job,head,base,raw,original,oldClaim,saveClaim,put,workerFiles,nativePath,nativeRecords,saveNative,issue,comments,board,execute,delivery,ownership,intent,claim,run,readback,reconcile,setHead:(s:string)=>currentHead=s,setBase:(s:string)=>providerBase=s,setRemote:(s:string)=>remote=s};
 }
-function amendmentFixture(){
- const a=fixture(true),root=resolve(a.root,'ticket-work',a.job.id),proposal='Existing human approved bounded local amendment\n';writeFileSync(resolve(root,'cms91-bounded-amendment.md'),proposal);
- const frozen:Record<string,Record<string,string>>={originalBase:Object.fromEntries(RELEASE_AMENDMENT_PATHS.map(path=>[path,`Frozen ${path}\n`])),proposal:{}};frozen.proposal={...frozen.originalBase};
- const topic='wiki/topics/official-source-freshness.md',original='# Official source freshness\n- Catalog binds 54 sources.\n## Current evidence\n- Retained source guidance.\n## Later evidence\n';
- frozen.originalBase[topic]=original;frozen.proposal[topic]=original.replace('54','55').replace('## Later evidence','- Approved release-index guidance.\n## Later evidence');
- for(const path of ['scripts/source-scan.mjs','tests/source-scan.test.mjs']){frozen.originalBase[path]='Original scanner/test input\n';frozen.proposal[path]='Approved scanner/test input\n';}
- const current:Record<string,string>={...frozen.originalBase,[topic]:original.replace('## Later evidence','- Current #114 guidance.\n- Current #115 guidance.\n## Later evidence')};
- a.job.sourceAmendment={id:'existing-authorization',authorization:{...GH91,sourceIds:[...RELEASE_SOURCE_IDS].sort(),approvedBy:'human',proposalSha256:sourceHash(proposal)},authorizedAt:'2026-10-29',adoptedAt:'2026-10-30',proposalFilesSha256:sourceHash(sourceJson(frozen)),receipts:[]};
- a.job.scopeRepairReadback={intentId:'earlier-accepted-scope',originalWorkId:'earlier',fromHead:a.head,head:a.head,proofPath:a.raw.evidence[0].path,proofSha256:artifact(a.store,a.raw.evidence[0].path).sha256,outsideSourceIds:['retained-outside-source'],at:''};
- vi.spyOn(held,'outsideAmendmentFindingIds').mockResolvedValue(new Set(['additional-finding']));
- const originalExecute=a.execute.getMockImplementation()!;
- a.execute.mockImplementation(async(program,args,options)=>{
-  if(program==='git'&&args[0]==='cat-file')return `${options.input.trim()} commit\n`;
-  if(program==='git'&&['ls-tree','show'].includes(args[0])){
-   const [commit,path]=args[0]==='show'?args[1].split(':'):[args[1],args[3]],files=commit===GH91.originalBase?frozen.originalBase:commit===GH91.originalHead?frozen.proposal:current;
-   return args[0]==='ls-tree'?`100644 blob ${'a'.repeat(40)}\t${path}\n`:files[path];
-  }
-  return originalExecute(program,args,options);
- });
- const assessment=(prompt:string,extra:Record<string,unknown>={})=>a.readback({technicalDirectionSha256:prompt.match(/Current code-owned technical direction SHA256 ([a-f0-9]{64})/)?.[1],...extra});
- a.run.mockImplementation(async(_role,prompt)=>assessment(prompt)as any);
- return {...a,frozen,current,topic,assessment};
-}
-test.each([true,false])('amendment resume binds the advanced provider base with initially cached=%s',async initiallyCached=>{
- const a=amendmentFixture(),execute=a.execute.getMockImplementation()!,providerBase='c'.repeat(40);let cached=initiallyCached;a.setBase(providerBase);
- a.execute.mockImplementation(async(program,args,options)=>{
-  if(program==='git'&&args[0]==='cat-file'){expect(args).toEqual(['cat-file','--batch-check=%(objectname) %(objecttype)']);expect(options).toMatchObject({cwd:a.job.worktree,readOnly:true,timeout:30000,input:`${providerBase}\n`});return `${providerBase} ${cached?'commit':'missing'}\n`;}
-  if(program==='git'&&args[0]==='fetch'){expect(args).toEqual(['fetch','--no-tags','--no-write-fetch-head','--refmap=','--no-recurse-submodules','--no-auto-maintenance','origin',providerBase]);expect(options).toMatchObject({cwd:a.job.worktree,readOnly:false,timeout:60000});cached=true;return '';}
-  if(program==='git'&&args[0]==='ls-tree'&&args[1]===providerBase&&!cached)throw Error('fatal: not a tree object');
-  return execute(program,args,options);
- });
- await a.reconcile();expect(a.execute.mock.calls.filter(([p,args])=>p==='git'&&args[0]==='fetch')).toHaveLength(initiallyCached?0:1);expect(a.run).toHaveBeenCalledOnce();expect(a.job.scopeRepairResumes).toHaveLength(1);
- const proof=JSON.parse(readFileSync(a.job.scopeRepairResumes[0].proofPath,'utf8'));expect(proof.technicalDirection.providerBase).toBe(providerBase);expect(proof.candidate.every((c:any)=>c.providerBase===providerBase&&digest(c.technicalDirection)===digest(proof.technicalDirection))).toBe(true);
- expect(proof.technicalDirection.files.find((f:any)=>f.path===a.topic).expectedText).toContain('- Approved release-index guidance.');
-});
-test.each(['unknown-object','wrong-object-type','foreign-origin','pause','claim','provider-base'])('amendment resume refuses unsafe cache fetch before audit: %s',async scenario=>{
- const a=amendmentFixture(),execute=a.execute.getMockImplementation()!,before=JSON.stringify(a.job);let cacheRead=false;
- a.execute.mockImplementation(async(program,args,options)=>{
-  if(program==='git'&&args[0]==='cat-file'){
-   cacheRead=true;if(scenario==='pause')a.store.state.paused=true;if(scenario==='claim')a.claim.work.id='foreign';if(scenario==='provider-base')a.setBase('c'.repeat(40));
-   return scenario==='unknown-object'?'unexpected diagnostic':`${a.base} ${scenario==='wrong-object-type'?'tree':'missing'}`;
-  }
-  if(cacheRead&&program==='git'&&args[0]==='remote'&&scenario==='foreign-origin')return 'https://github.com/foreign/owner.git';
-  return execute(program,args,options);
- });
- await expect(a.reconcile()).rejects.toThrow();expect(a.execute.mock.calls.some(([p,args])=>p==='git'&&args[0]==='fetch')).toBe(false);expect(a.run).not.toHaveBeenCalled();expect(a.job.scopeRepairResumes).toBeUndefined();expect(JSON.stringify(a.job)).toBe(before);
-});
-test.each(['pause','claim','candidate-head','origin','provider-base','absent-after-fetch','fetch-failure'])('amendment resume refuses changed or unresolved cache fetch: %s',async scenario=>{
- const a=amendmentFixture(),execute=a.execute.getMockImplementation()!,before=JSON.stringify(a.job);let fetched=false;
- a.execute.mockImplementation(async(program,args,options)=>{
-  if(program==='git'&&args[0]==='cat-file')return `${a.base} ${fetched&&scenario!=='absent-after-fetch'?'commit':'missing'}`;
-  if(program==='git'&&args[0]==='fetch'){
-   fetched=true;if(scenario==='pause')a.store.state.paused=true;if(scenario==='claim')a.claim.work.id='foreign';if(scenario==='provider-base')a.setBase('c'.repeat(40));if(scenario==='fetch-failure')throw Error('Exact object cache transport failed');return '';
-  }
-  if(fetched&&program==='git'&&args[0]==='rev-parse'&&scenario==='candidate-head')return 'c'.repeat(40);
-  if(fetched&&program==='git'&&args[0]==='remote'&&scenario==='origin')return `git@github.com:${a.store.project.repository}.git`;
-  return execute(program,args,options);
- });
- await expect(a.reconcile()).rejects.toThrow();expect(a.execute.mock.calls.filter(([p,args])=>p==='git'&&args[0]==='fetch')).toHaveLength(1);expect(a.run).not.toHaveBeenCalled();expect(a.job.scopeRepairResumes).toBeUndefined();expect(JSON.stringify(a.job)).toBe(before);expect(a.intent.status).toBe('working');
-});
-test('fresh amendment resume proves current approved composition while preserving the blocked audit, 29 representations and all gates',async()=>{
- const a=amendmentFixture(),oldRequest={...structuredClone(a.intent),id:'old-negative-intent',status:'blocked',detail:'Historical topic conflict'},oldAudit={...a.original,id:'old-negative-reader',sessionId:'old-negative-native-session',claimId:'old-negative-claim',role:'lead',provider:'codex',stage:'scope-repair-resume-readback',status:'blocked'};
- a.store.state.coordination!.requests!.push(oldRequest as any);a.store.state.workLog!.push(oldAudit as any);a.workerFiles(oldAudit,{outcome:'blocked',repairWithinExistingScope:false,noHumanHold:false},true,'reconciliation',oldRequest.id);
- a.store.state.it={reports:[],recoveries:{'consumed-material-key':{attempts:1,status:'needs-human'}}}as any;
- const retained=JSON.stringify({oldRequest,oldAudit,it:a.store.state.it,steps:a.job.steps,cycle:a.job.repairCycle}),raw=readFileSync(resolve(a.root,'sessions/original/result.json'),'utf8');
- const records=[];for(let i=0;i<27;i++)records.push({type:'assistant',sessionId:a.original.sessionId,cwd:a.job.worktree,uuid:`call-${i}`,message:{content:[{type:'tool_use',id:`read-${i}`,name:'Read',input:{file_path:a.raw.evidence[0].path}}]}},{type:'user',sessionId:a.original.sessionId,cwd:a.job.worktree,parentUuid:`call-${i}`,message:{content:[{type:'tool_result',tool_use_id:`read-${i}`,content:'Retained original read'}]}});
- a.nativeRecords.splice(2,0,...records);a.saveNative();expect(scopeRepairResumeCandidate(a.store,a.job)!.native.calls).toHaveLength(29);
- await a.reconcile();expect(a.run).toHaveBeenCalledOnce();expect(a.intent.status).toBe('completed');expect(a.job).toMatchObject({stage:'scope-repair',status:'queued',approach:{review:'full',validation:'independent-checks'}});
- const proof=JSON.parse(readFileSync(a.job.scopeRepairResumes[0].proofPath,'utf8')),direction=proof.technicalDirection,topic=direction.files.find((f:any)=>f.path===a.topic);
- expect(direction).toMatchObject({authorizationId:a.job.sourceAmendment.id,proposalFilesSha256:a.job.sourceAmendment.proposalFilesSha256,originalBase:GH91.originalBase,proposalHead:GH91.originalHead,providerBase:a.base});
- for(const line of ['- Catalog binds 55 sources.','- Current #114 guidance.','- Current #115 guidance.','- Approved release-index guidance.'])expect(topic.expectedText.split('\n').filter((l:string)=>l===line)).toHaveLength(1);
- expect(sourceHash(topic.expectedText)).toBe(topic.expectedSha256);expect(proof.assessment.callEffects).toHaveLength(29);expect(proof.candidate.every((c:any)=>digest(c.technicalDirection)===digest(direction))).toBe(true);
- expect(scopeRepairResumeInstruction(a.store,a.job)).toContain(a.job.scopeRepairResumes[0].proofPath);expect(scopeRepairResumeInstruction(a.store,a.job)).toContain(digest(direction));expect(scopeRepairResumeNextStage(a.job)).toBe('review');
- expect(JSON.stringify({oldRequest,oldAudit,it:a.store.state.it,steps:a.job.steps,cycle:a.job.repairCycle})).toBe(retained);expect(readFileSync(resolve(a.root,'sessions/original/result.json'),'utf8')).toBe(raw);
- expect(a.run.mock.calls[0][1]).toContain('Historical technical conflicts');expect(a.run.mock.calls[0][1]).toContain('does not prove the actual candidate');
-});
-test.each(['overlap','frozen-proposal','frozen-digest','foreign-git-path','symlink-blob','actual-human-hold'])('current amendment direction refuses %s before audit',async scenario=>{
- const a=amendmentFixture();if(scenario==='overlap')a.current[a.topic]=a.current[a.topic].replace('54','56');if(scenario==='frozen-proposal')a.frozen.proposal[a.topic]+='Changed frozen proposal\n';if(scenario==='frozen-digest')a.job.sourceAmendment.proposalFilesSha256='0'.repeat(64);if(scenario==='actual-human-hold')HOLDS[a.job.key]='Current explicit human hold';
- if(['foreign-git-path','symlink-blob'].includes(scenario)){const execute=a.execute.getMockImplementation()!;a.execute.mockImplementation(async(program,args,options)=>program==='git'&&args[0]==='ls-tree'?`${scenario==='symlink-blob'?'120000':'100644'} blob ${'a'.repeat(40)}\t${scenario==='foreign-git-path'?'outside-scope.ts':args[3]}\n`:execute(program,args,options));}
- await expect(a.reconcile()).rejects.toThrow();expect(a.run).not.toHaveBeenCalled();expect(a.job.scopeRepairResumes).toBeUndefined();
-});
-test.each(['after','final','direction-ack','canonical-human-hold'])('amendment direction/authorization drift refuses %s without accepting the old result',async scenario=>{
- const a=amendmentFixture();
- a.run.mockImplementation(async(_role,prompt)=>{const result=a.assessment(prompt,scenario==='direction-ack'?{technicalDirectionSha256:'f'.repeat(64)}:scenario==='canonical-human-hold'?{outcome:'blocked',noHumanHold:false}:{});if(scenario==='after')a.current[a.topic]=a.current[a.topic].replace('## Later evidence','- A changed current-base addition.\n## Later evidence');return result as any;});
- if(scenario==='final'){const api=vi.mocked(a.delivery.api).getMockImplementation()!;let count=0;vi.mocked(a.delivery.api).mockImplementation(async(path:string)=>{if(path.startsWith('commits/')&&++count===3)a.current[a.topic]=a.current[a.topic].replace('## Later evidence','- Late current-base addition.\n## Later evidence');return api(path);});}
- await expect(a.reconcile()).rejects.toThrow();expect(a.job.status).toBe('blocked');expect(a.job.scopeRepairResumes).toBeUndefined();expect(a.intent.status).toBe('working');expect(a.original.status).toBe('blocked');
-});
 test('a deliberately new intent preserves blocked history and deduplicates queued, working and completed resume requests',()=>{
  const a=fixture();a.intent.status='blocked';const previous=JSON.stringify(a.intent),cycle=JSON.stringify(a.job.repairCycle),fresh=enqueueRequest(a.store,'reconcile-scope-repair',a.job.key,a.original.id);
  expect(fresh.id).not.toBe(a.intent.id);for(const status of ['queued','working','completed']as const){fresh.status=status;expect(enqueueRequest(a.store,'reconcile-scope-repair',a.job.key,a.original.id).id).toBe(fresh.id);}
@@ -194,8 +102,7 @@ test.each(['pause','claim','owner','input','issue','comments','board','head','pr
 });
 test('admitted exact claim may finish a drain while pause remains a hard fence',async()=>{const a=fixture();a.run.mockImplementation(async()=>{const result=a.readback();a.store.state.draining=true;return result as any;});await a.reconcile();expect(a.job.status).toBe('queued');expect(a.store.state.draining).toBe(true);});
 test('queue, provenance and request completion roll back together without altering raw negative evidence',async()=>{const a=fixture(),job=structuredClone(a.job),intent=structuredClone(a.intent);vi.spyOn(a.store,'emit').mockImplementation(()=>{throw new Error('Injected persistence failure');});await expect(a.reconcile()).rejects.toThrow('Injected');expect(a.store.state.coordination!.jobs![0]).toEqual(job);expect(a.store.state.coordination!.requests!.find(r=>r.id===intent.id)).toEqual(intent);expect(JSON.parse(readFileSync(resolve(a.root,'sessions/original/result.json'),'utf8')).result.outcome).toBe('blocked');});
-test.each(['missing','open','duplicate','qa-not-verified'])('every resumed finding remains required through independent stages: %s',async kind=>{const a=fixture();await a.reconcile();const r=structuredClone(a.raw);r.outcome='passed';r.findings.forEach((f:any)=>f.status='verified');if(kind==='missing')r.findings.pop();if(kind==='open')r.findings[1].status='open';if(kind==='duplicate')r.findings.push(r.findings[1]);if(kind==='qa-not-verified')r.findings[1].status='fixed';expect(()=>assertScopeRepairResumeFindings(a.store,a.job,'validate',r,new Set())).toThrow('explicit independent dispositions');});
-test('a proven outside hold stays OPEN while all other findings resolve, without modifying the native result',async()=>{const a=fixture();await a.reconcile();const r=structuredClone(a.raw);r.findings[0].status='verified';const before=JSON.stringify(r);expect(()=>assertScopeRepairResumeFindings(a.store,a.job,'validate',r,new Set(['additional-finding']))).not.toThrow();expect(JSON.stringify(r)).toBe(before);});
+test.each(['missing','open','duplicate','qa-not-verified'])('every resumed finding remains required through independent stages: %s',async kind=>{const a=fixture();await a.reconcile();const r=structuredClone(a.raw);r.outcome='passed';r.findings.forEach((f:any)=>f.status='verified');if(kind==='missing')r.findings.pop();if(kind==='open')r.findings[1].status='open';if(kind==='duplicate')r.findings.push(r.findings[1]);if(kind==='qa-not-verified')r.findings[1].status='fixed';expect(()=>assertScopeRepairResumeFindings(a.store,a.job,'validate',r)).toThrow('explicit independent dispositions');});
 test('old same-head reviews cannot skip the newly required independent stages',async()=>{const a=fixture();a.job.steps.unshift({stage:'review',workerId:'old',result:{...a.raw,outcome:'passed'}},{stage:'validate',workerId:'older',result:{...a.raw,outcome:'passed'}});await a.reconcile();expect(scopeRepairResumeNextStage(a.job)).toBe('review');a.job.steps.push({stage:'review',workerId:'new',result:{...a.raw,outcome:'passed'}});a.job.stage='review';expect(scopeRepairResumeNextStage(a.job)).toBe('validate');a.job.steps.push({stage:'validate',workerId:'new-qa',result:{...a.raw,outcome:'passed'}});a.job.stage='validate';expect(scopeRepairResumeNextStage(a.job)).toBe('draft');});
 test.each(['proof','metadata','old-result','old-claim','native','input'])('saved resume provenance cannot be changed before the next worker: %s',async kind=>{const a=fixture();await a.reconcile();if(kind==='proof')writeFileSync(a.job.scopeRepairResumes[0].proofPath,'{}');if(kind==='metadata')a.job.scopeRepairResumes[0].findingIds.pop();if(kind==='old-result')a.put('original','result.json',{});if(kind==='old-claim'){a.oldClaim.owner='changed';a.saveClaim();}if(kind==='native')writeFileSync(a.nativePath,'changed');if(kind==='input'){a.store.state.messages.push({id:'human',from:'human',to:'pm',ticket:a.job.key,status:'answered',body:'Changed human scope',error:''}as any,{id:'pm',requestId:'human',from:'pm',ticket:a.job.key,status:'answered',error:'',receipts:[]}as any);a.store.state.projectNotes.push({id:'changed',ticket:a.job.key,requestId:'human',summary:'New human scope'}as any);}expect(()=>scopeRepairResumeInstruction(a.store,a.job)).toThrow();});
 
@@ -251,21 +158,17 @@ test('a display-only resume audit is refused for an issued wire input without an
  a.run.mockImplementation(async()=>{const result=a.readback();result.callEffects=result.callEffects.filter((r:any)=>r.id!==JSON.stringify(['read','wire']));return result as any;});
  await expect(a.reconcile()).rejects.toThrow();expect(a.run).toHaveBeenCalledOnce();expect(a.job.status).toBe('blocked');expect(a.job.scopeRepairResumes).toBeUndefined();expect(a.intent.status).toBe('working');
 });
-
-test.each(['review','validate']as const)('resumed amendment %s requires completed transport and its current scheduler claim',async stage=>{
- // Isolate transport/claim admission; amendment authorization and outside scope have their own suites.
+test.each(['review','validate']as const)('resumed %s requires completed transport and its current scheduler claim',async stage=>{
  for(const scenario of ['missing-completion','foreign-claim','current-claim']){
-  const a=fixture();await a.reconcile();a.job.stage=stage;a.job.sourceAmendment={id:'retained-amendment',authorization:{},receipts:[]};
-  vi.spyOn(amendments,'amendmentInstruction').mockReturnValue('Retained amendment authorization');vi.spyOn(amendments,'requireSourceAmendmentAcceptance').mockResolvedValue(undefined);
-  vi.spyOn(held,'outsideAmendmentFindingIds').mockResolvedValue(new Set(['additional-finding']));
+  const a=fixture();await a.reconcile();a.job.stage=stage;
   vi.spyOn(ProjectProgress.prototype,'reconcile').mockResolvedValue(undefined);vi.spyOn(ProjectProgress.prototype,'reviewStarted').mockResolvedValue(undefined);
   Object.assign(a.claim,{work:{projectId:a.store.project.id,kind:'delivery',id:a.job.id},stage});
-  const result=structuredClone(a.raw);Object.assign(result,{outcome:'passed',blocker:''});result.findings[0].status='verified';result.evidence[0].kind=stage==='review'?'review':'checks';
-  a.run.mockImplementation(async role=>{const worker={...a.original,id:'amendment-'+stage,sessionId:'amendment-native-'+stage,role,provider:'codex',stage:'github-'+stage,status:'completed',claimId:scenario==='foreign-claim'?'foreign-claim':a.claim.id};a.store.state.workLog!.push(worker as any);a.workerFiles(worker,result,stage==='review');if(scenario==='missing-completion')rmSync(resolve(a.root,'sessions',worker.id,'execution-completion.json'));return structuredClone(result)as any;});
+  const result=structuredClone(a.raw);Object.assign(result,{outcome:'passed',blocker:''});for(const finding of result.findings)finding.status='verified';result.evidence[0].kind=stage==='review'?'review':'checks';
+  a.run.mockImplementation(async role=>{const worker={...a.original,id:'resumed-'+stage,sessionId:'resumed-native-'+stage,role,provider:'codex',stage:'github-'+stage,status:'completed',claimId:scenario==='foreign-claim'?'foreign-claim':a.claim.id};a.store.state.workLog!.push(worker as any);a.workerFiles(worker,result,stage==='review');if(scenario==='missing-completion')rmSync(resolve(a.root,'sessions',worker.id,'execution-completion.json'));return structuredClone(result)as any;});
   await withAssignment(a.claim,'delivery',()=>a.delivery.step(a.job));
   if(scenario==='current-claim'){
    expect(a.job.status,a.job.detail).toBe('queued');expect(a.job.stage).toBe(stage==='review'?'validate':'review');
-   expect(a.job.steps.at(-1)).toMatchObject({workerId:'amendment-'+stage,nativeResultSha256:sourceHash(sourceJson(result))});expect(a.job.steps.at(-1).result.findings[1].status).toBe('open');expect(a.job.scopeRepairResumes).toHaveLength(1);
+   expect(a.job.steps.at(-1)).toMatchObject({workerId:'resumed-'+stage,nativeResultSha256:digest(result)});expect(a.job.scopeRepairResumes).toHaveLength(1);
   }else{expect(a.job).toMatchObject({stage,status:'blocked'});expect(a.job.detail).toContain(scenario==='missing-completion'?'One completed actual independent resumed scope-repair worker required':'Resumed independent result/claim differs');}
   vi.restoreAllMocks();
  }

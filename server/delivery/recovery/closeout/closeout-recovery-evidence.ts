@@ -44,7 +44,7 @@ function completedClaim(store:Store,work:import('../../../../src/shared').WorkTi
 /** Admit only the retained original, never relabel a failed writer or invent a successful checkpoint. */
 export function closeoutRecoveryCandidate(store:Store,job:TicketJob){
  try{
-  if(store.project.provider!=='github'||store.project.id==='brain'||job.closeoutRecovery||job.sourceAmendment||job.dependsOnPR||job.prerequisites?.length||job.stage!=='closeout'||!['blocked','interrupted'].includes(job.status)||!job.pr||!job.mergeCommit||!job.worktree||!job.branch||
+  if(store.project.provider!=='github'||store.project.id==='brain'||job.closeoutRecovery||job.dependsOnPR||job.prerequisites?.length||job.stage!=='closeout'||!['blocked','interrupted'].includes(job.status)||!job.pr||!job.mergeCommit||!job.worktree||!job.branch||
    job.steps.some(s=>s.stage==='closeout')||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
   const work=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='github-closeout').at(-1);
   if(!work||work.ticket!==job.key||store.state.workLog?.filter(w=>w.id===work.id).length!==1||store.state.workLog?.some(w=>w.id!==work.id&&w.sessionId===work.sessionId)||work.role!=='pm'||work.provider!=='codex'||work.status!=='failed'||!work.sessionId||!work.endedAt||!work.claimId||work.lane!=='delivery')return;

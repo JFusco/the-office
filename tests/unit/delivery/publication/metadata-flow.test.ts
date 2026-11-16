@@ -30,7 +30,7 @@ async function acceptLead(f: ReturnType<typeof metadataFixture>, result: StageRe
     const beforeWorkers = new Set(f.store.state.workLog?.map(w => w.id));
     const native = f.nativeAssessment(result, { stage: 'github-lead-pr', claim });
     await withAssignment(claim, 'delivery', () => acceptStageResult.call(f.delivery, { job: f.job, result, root: f.root, project: f.store.project,
-        role: 'lead', issue: f.state.issue, continuation: undefined, reviewStart: f.pr, beforeWorkers, issueSha256: undefined,
+        role: 'lead', issue: f.state.issue, continuation: undefined, reviewStart: f.pr, beforeWorkers,
         inputSha256: deliveryInputSha256(f.store, f.job.key), technicalPhase: false,
         candidateAtStart: JSON.stringify({ id: f.job.id, stage: f.job.stage, head: f.job.head, branch: f.job.branch, worktree: f.job.worktree }) }));
     f.store.finishClaim(claim.id, 'completed');

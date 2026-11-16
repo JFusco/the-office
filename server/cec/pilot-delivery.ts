@@ -17,6 +17,7 @@ import type { Engine } from '../scheduling/engine';
 import { recoverSavedPlan } from './recover-saved-plan';
 import { needsResumeReconciliation } from './resume-reconciliation';
 import { continueImplementation } from './implementation-continuation/continue';
+import { candidateBranchMoved } from './candidate-branch-moved';
 import { parkingUnconfirmed } from './parking/park-ticket';
 import { reconcileRejectedParking } from './parking/rejected-transition';
 import { continueAccessOnlyPlan } from './qa/continue-access-only-plan';
@@ -213,6 +214,8 @@ export async function resume(this: Engine, key: string, background = true) {
         throw new Error(live.blocker || HOLDS[key] || 'Ownership/eligibility requires attention');
     if (live.existingPrId && live.existingPrId !== t.prId)
         throw new Error('A different PR exists; resolve duplicate work before resuming');
+    const moved = await candidateBranchMoved(this.store, t);
+    if (moved) throw new Error(moved);
     assertFeatureGate(this.store, key);
     const qaRetry = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.qaPlanRetry);
     if ((qaRetry || qaHandoff) && (live.key !== key || live.status !== t.status || live.existingPrId !== t.prId))

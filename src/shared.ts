@@ -158,8 +158,9 @@ export interface ImplementationContinuation {
     maxRounds: 3;
 }
 export interface TicketJob {
+    /** Last recorded stop; meaningful only while the job is blocked, interrupted or watching. */
+    stop?: import('./contracts/work').StopReason;
     qaProtocol?: 'office-v1';
-    packedPublicationRepair?: import('./contracts/packed-publication-repair').PackedPublicationRepair;
     admission?: import('./contracts/work').DeliveryAdmission;
     improvementId?: string;
     featureBinding?: import('./contracts/features').FeatureBinding;
@@ -182,7 +183,6 @@ export interface TicketJob {
     };
     implementationContinuation?: ImplementationContinuation;
     discoveryRecoveryHistory?: NonNullable<TicketJob['discoveryRecovery']>[];
-    sourceAmendment?: SourceAmendment;
     discoveryRecovery?: { requestId: string; originalWorkId: string; originalSessionId: string; baseline: string; noteId: string; findingIds: string[]; at: string };
     implementationRecovery?: { workId: string; kind: 'candidate' | 'preflight'; at: string };
     prerequisites?: Prerequisite[];
@@ -250,40 +250,8 @@ export interface TicketJob {
     steps: {
         workerId?: string;
         nativeResultSha256?: string;
-        issueSha256?: string;
         stage: string;
         result: StageResult;
-    }[];
-}
-export interface SourceAmendmentAuthorization {
-    projectId: string;
-    repository: string;
-    jobId: string;
-    issue: 91;
-    originalHead: string;
-    originalBase: string;
-    sourceIds: string[];
-    approvedBy: 'human';
-    questionItemId: string;
-    proposalSha256: string;
-}
-export interface SourceAmendment {
-    id: string;
-    authorization: SourceAmendmentAuthorization;
-    authorizedAt: string;
-    proposalFilesSha256: string;
-    adoptedAt?: string;
-    receipts: {
-        id: string;
-        authorizationId: string;
-        head: string;
-        base: string;
-        issueSha256: string;
-        scopeSha256: string;
-        proofSha256: string;
-        review: { workerId: string; sessionId: string };
-        qa: { workerId: string; sessionId: string };
-        at: string;
     }[];
 }
 export interface NoticePolicy {
@@ -348,7 +316,7 @@ export interface TimeEntry {
     url: string;
 }
 /** An automated PR the harness bridged (or refused to bridge) into existing-PR delivery. */
-export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
+export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
 export interface Coordination {
     adoptions?: DependabotAdoption[];
     requests?: import('./contracts/work').HarnessRequest[];
@@ -599,6 +567,8 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    /** Last recorded stop; meaningful only while the ticket is blocked. */
+    stop?: import('./contracts/work').StopReason;
     officeQAHandoffs?: import('./contracts/office-qa-handoff').OfficeQAHandoff[];
     /** Recent QA reports for the inspector; complete immutable history stays in native attempts/artifacts. */
     qaHistory?: { stage: Stage; result: StageResult }[];

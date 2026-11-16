@@ -9,7 +9,7 @@ import {projectById} from '../../../../../server/office/projects';
 import {GitHubDelivery} from '../../../../../server/delivery/pipeline/github-delivery';
 import {ProjectProgress} from '../../../../../server/delivery/board/project-progress';
 import {withAssignment} from '../../../../../server/workers/assignment-context';
-import {withAmendmentOwnership} from '../../../../../server/delivery/recovery/source-amendment/source-amendment';
+import {withAmendmentOwnership} from '../../../../../server/delivery/recovery/implementation/delivery-ownership';
 import {workerProfile} from '../../../../../server/workers/worker-profiles';
 import * as processTools from '../../../../../server/workers/process';
 import * as handoffs from '../../../../../server/delivery/recovery/implementation/saved-prerequisite-handoff';

@@ -1,11 +1,13 @@
 import type { OfficeSnapshot } from '../../src/shared';
+import { dueLessonDecisions, LESSON_DIGEST } from '../../src/conversations/lesson-digest';
 
-/** Decisions Harper needs from Joe. Each item clears itself once decided, here in the Outbox or in the Lessons panel. */
-export function knowledgeOutbox(state: OfficeSnapshot): { id: string; title: string; detail: string }[] {
-    const knowledge = state.knowledge;
-    if (!knowledge) return [];
-    return [
-        ...knowledge.lessons.filter(lesson => lesson.status !== 'retired' && lesson.repositoryInstruction?.status === 'proposed').map(lesson => ({ id: `lesson-issue:${lesson.id}`, title: 'Harper suggests a durable team improvement', detail: `${lesson.statement}\nFile it as a GitHub issue or decline it.` })),
-        ...(knowledge.officeProposals || []).filter(proposal => proposal.status === 'proposed').map(proposal => ({ id: `office-lesson:${proposal.id}`, title: 'Harper proposes an office-wide lesson', detail: `${proposal.statement}\nAccept it for every project or decline it.` })),
-    ];
+/**
+ * Joe's human decisions (shown in the header "Needs you" tray). Proposals are advisory, so they
+ * arrive as one weekly digest rather than one question each. Every proposal can be decided at any
+ * time in Harper's Lessons panel; the digest clears itself once its proposals are decided.
+ */
+export function knowledgeOutbox(state: OfficeSnapshot, at = new Date()): { id: string; title: string; detail: string }[] {
+    const due = dueLessonDecisions(state, at);
+    if (!due.length) return [];
+    return [{ id: LESSON_DIGEST, title: `Harper has ${due.length} ${due.length === 1 ? 'proposal' : 'proposals'} to review`, detail: `${due.map(decision => `- ${decision.statement}`).join('\n')}\nDecide each one below or in Harper's Lessons panel.` }];
 }
