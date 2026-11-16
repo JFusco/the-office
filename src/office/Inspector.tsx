@@ -103,7 +103,7 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
     inert={!present} aria-hidden={!present}>
 
     <div className="flex h-drawer-head shrink-0 items-center justify-between border-b border-drawer-rule px-6"><span className={cx(eyebrow,'text-8 text-drawer-title')}>{title}</span><IconButton ref={close} aria-label="Close details" onClick={onClose}><X size={19}/></IconButton></div>
-    <div key={`${selection.kind}:${selectionId}`} data-inspector-scroll className={cx('min-h-0 min-w-0 flex-1 overflow-x-hidden wrap-anywhere scrollbar-thin scrollbar-thumb-scrollbar',chat?'flex flex-col overflow-y-hidden px-6 py-4.5 max-compact:px-5 max-compact:py-3.5':'overflow-y-auto p-6')}>
+    <div key={`${selection.kind}:${selectionId}`} data-inspector-scroll className={cx('min-h-0 min-w-0 flex-1 overflow-x-hidden wrap-anywhere scrollbar-thin scrollbar-thumb-scrollbar',chat?'flex flex-col overflow-y-auto px-6 py-4.5 max-compact:px-5 max-compact:py-3.5':'overflow-y-auto p-6')}>
       {selection.kind==='features'?<FeatureWorkspace key={[snapshot.project?.id,selection.id,selection.sourceGoalId,selection.sourceTicket].join(':')} snapshot={snapshot} initialId={selection.id} sourceGoalId={selection.sourceGoalId} sourceTicket={selection.sourceTicket} onOpen={(project,id)=>onOpenProject(project,'feature:'+id)}/>:null}
       {selection.kind==='people'?<PeoplePanel snapshot={snapshot} names={names} onSelect={onSelect}/>:null}
       {selection.kind==='settings'&&preferences?<SettingsPanel snapshot={snapshot} preferences={preferences} osReduced={osReduced} refresh={refresh}/>:null}
