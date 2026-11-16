@@ -16,7 +16,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import {createHash} from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
-import { command } from './process';
+import { command, CommandFailure } from './process';
 import { DATA, ROOT, CEC, SKILLS } from '../office/config';
 import { sanitize, sanitizeObject } from '../office/security';
 import type { Store } from '../store/store';
@@ -199,7 +199,7 @@ export class WorkerRuntime {
             if (registeredJob) requireDeliveryAuthority(this.store, registeredJob);
             const raw = await this.execute(claude ? 'claude' : 'codex', args, { ...launchPolicy, ...(environment ? { env: environment } : {}), cwd: opts.cwd || ROOT, input: opts.slackSend ? `${assignment}
 EXECUTION: Filesystem remains read-only. The sole permitted external mutation is the exact one Slack message authorized above, using the connected Slack send tool. No other writes, retries, or configuration changes.` : opts.readOnly && !claude ? `${assignment}
-READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may require network access outside the default sandbox. Use the normal per-command approval request for the exact read command and endpoint; automatic review handles that request. Do not change sandbox/configuration, enable unrestricted access, write files, or request a mutation during this read-only assignment. A rejected approval remains a blocker. Do not repeat denied provider operations or request broader permissions. ${opts.stage === 'github-lead-pr' ? 'For GitHub readiness, use the verified native policy packet in this handoff. When it proves the target is unprotected and no rulesets exist, an earlier connector denial for the unused administrative protection endpoint is retained as a diagnostic; it does not invalidate the successful permitted policy reads. Missing required policy evidence still blocks.' : 'A provider permission denial remains a blocker.'}` : assignment, timeout: opts.timeout ?? 45 * 60 * 1000, inactivityTimeout: opts.inactivityTimeout, signal: controller.signal, onLifecycle: diagnostic => { if (!retainLifecycle(dir, diagnostic)) this.store.emit('worker-diagnostic-unavailable', 'Worker lifecycle diagnostic could not be retained; execution outcome unchanged.', role, opts.ticket); }, onStragglersTerminated: group => this.store.emit('activity', `Stopped leftover helper processes (group ${group}) after a clean exit.`, role, opts.ticket), onSpawn: pid => { this.store.checkpointWork(id, this.store.clock.monotonic() - started, { processId: pid }); }, onLine: line => {
+READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may require network access outside the default sandbox. Use the normal per-command approval request for the exact read command and endpoint; automatic review handles that request. Do not change sandbox/configuration, enable unrestricted access, write files, or request a mutation during this read-only assignment. A rejected approval remains a blocker. Do not repeat denied provider operations or request broader permissions. ${opts.stage === 'github-lead-pr' ? 'For GitHub readiness, use the verified native policy packet in this handoff. When it proves the target is unprotected and no rulesets exist, an earlier connector denial for the unused administrative protection endpoint is retained as a diagnostic; it does not invalidate the successful permitted policy reads. Missing required policy evidence still blocks.' : 'A provider permission denial remains a blocker.'}` : assignment, timeout: opts.timeout ?? 45 * 60 * 1000, inactivityTimeout: opts.inactivityTimeout, interruptFirst: claude, signal: controller.signal, onLifecycle: diagnostic => { if (!retainLifecycle(dir, diagnostic)) this.store.emit('worker-diagnostic-unavailable', 'Worker lifecycle diagnostic could not be retained; execution outcome unchanged.', role, opts.ticket); }, onStragglersTerminated: group => this.store.emit('activity', `Stopped leftover helper processes (group ${group}) after a clean exit.`, role, opts.ticket), onSpawn: pid => { this.store.checkpointWork(id, this.store.clock.monotonic() - started, { processId: pid }); }, onLine: line => {
                     try {
                         const e = JSON.parse(line);
                         if (e.type === 'turn.started' || e.type === 'assistant') dispatchExposure(this.store, id);
@@ -292,7 +292,8 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
         }
         catch (error) {
             recordWorkerFailure(this.store, id, error);
-            try { retainClaudeCompletion(); } catch (persistenceError) { error = new Error(`${sanitize(String(error))}; provider completion persistence failed: ${sanitize(String(persistenceError))}`); }
+            // A result the CLI printed in answer to the runner's own interrupt is not a provider completion of the assignment.
+            try { if (!(error instanceof CommandFailure && error.interrupted)) retainClaudeCompletion(); } catch (persistenceError) { error = new Error(`${sanitize(String(error))}; provider completion persistence failed: ${sanitize(String(persistenceError))}`); }
             if (controller.signal.aborted)
                 workStatus = 'interrupted';
             this.store.agent(role, { lastOutcome: { ticket: opts.ticket || '', summary: shortSummary(String(error)), status: workStatus, at: new Date().toISOString() } });

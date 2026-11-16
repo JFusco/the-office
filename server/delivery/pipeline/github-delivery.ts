@@ -4,6 +4,7 @@ import { stoppedBaseNextStage } from '../recovery/stopped-base-gates';
 import { saveQAReport } from '../../qa/save-report';
 import { officeQADirectory } from '../../qa/assignment';
 import { qaTimeLimit } from '../../qa/time-limit';
+import { STAGE_STALL_LIMIT_MS } from '../../workers/stall-limit';
 import { routeAutomationMerge } from '../readiness/automation-merge';
 import { FreshMergeReview } from '../readiness/refresh-merge-review';
 import { assertFeatureGate } from '../../features/enrollment-gate';
@@ -261,7 +262,7 @@ export class GitHubDelivery {
             const expectedHead = job.head;
             const harnessResult = await runHarnessStage(this, job, root, readyChecks);
             if (!harnessResult) assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
-            const result: StageResult = harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { officeQA: job.stage === 'validate', artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: qaTimeLimit(job.stage === 'validate', job.approach) ?? 60 * 60 * 1000 });
+            const result: StageResult = harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { officeQA: job.stage === 'validate', artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: qaTimeLimit(job.stage === 'validate', job.approach) ?? 60 * 60 * 1000, inactivityTimeout: STAGE_STALL_LIMIT_MS });
             if (job.stage === 'validate' && !harnessResult) saveQAReport(result, officeQADirectory(root, 'validate', job.steps.filter(s => s.stage === 'validate').length), root);
             try { assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead); }
             catch (error) {

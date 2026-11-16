@@ -11,7 +11,7 @@ export function incompleteReadOutput(text: string) {
     return /codex exited 1: Incomplete response returned, reason: max_output_tokens/i.test(text);
 }
 export function temporaryReadFailure(text: string) {
-    return !/(?:hold|backlog|prerequisite|permission|denied|forbidden|unauthorized|oauth|token|ownership|active owner|uncertain|mutation|must be reconciled|external effects)/i.test(text) && /(?:timed? out|timeout|ECONNRESET|ECONNREFUSED|EAI_AGAIN|connection (?:reset|closed|failed)|error connecting|HTTP 50[234]|rate.limit|(?:Error: )?codex exited 1: Selected model is at capacity\. Please try a different model\.)/i.test(text);
+    return !/(?:hold|backlog|prerequisite|permission|denied|forbidden|unauthorized|oauth|token|ownership|active owner|uncertain|mutation|must be reconciled|external effects)/i.test(text) && /(?:timed? out|timeout|read stopped producing output|ECONNRESET|ECONNREFUSED|EAI_AGAIN|connection (?:reset|closed|failed)|error connecting|HTTP 50[234]|rate.limit|(?:Error: )?codex exited 1: Selected model is at capacity\. Please try a different model\.)/i.test(text);
 }
 export function planReadRetry(item: {
     status: string;

@@ -237,6 +237,13 @@ already recorded as interrupted, the next resume continues the session instead o
 the stage. Codex stages are not continued this way; a Codex worker's saved completion checkpoint
 is used instead.
 
+A stage worker that produces no output for 20 minutes is stopped as stalled, whatever its time
+limit; a stalled Claude developer stage is continued like one that reached its limit. A Claude
+worker is stopped with an interrupt first, so it ends its turn and records where it stopped; if
+it has not exited five seconds later its process group is terminated as before.
+What the worker prints in answer to that interrupt is not treated as its own completion of the
+assignment. A read-only worker stopped as stalled is retried like one that timed out.
+
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical
 continuations keep their already-bound evidence and approvals; this baseline
