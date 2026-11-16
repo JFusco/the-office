@@ -68,8 +68,9 @@
   --spacing-agent-label: 200px;
 
   /* Scrollable regions */
-  --spacing-history: 52vh;
-  --spacing-history-compact: 40vh;
+  /* Chat history never drops below a readable height on a short viewport. */
+  --spacing-history: max(52vh, 22rem);
+  --spacing-history-compact: max(40vh, 22rem);
   --spacing-notes: 20vh;
   --spacing-notes-compact: 12vh;
 
