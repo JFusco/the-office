@@ -54,6 +54,50 @@ test.each(['Interrupted stage; external effects require reconciliation.', 'Exter
     expect(needsResumeReconciliation(blockedQA(blocker), [])).toBe(true);
 });
 
+/** CEC-154's shape: QA stopped in setup, and its result restates the replaced implementation run's uncertain receipt. */
+const OLD = { id: 'old-implement', action: 'implement', target: 'CEC-999', verified: false, uncertain: true, detail: 'Worker did not return a verified final result' };
+const qaStop = { ticket: 'CEC-999', role: 'qa' as const, stage: 'retest', status: 'blocked' as const };
+function setupStop(blocker = 'Browser tool unavailable; nothing was tested.') {
+    const t = blockedQA(blocker);
+    Object.assign(t, { implementationContinuation: { originalResult: { receipts: [OLD] } } });
+    Object.assign(t.results.retest!, { qa: { setup: { status: 'blocked' } } });
+    t.results.retest!.receipts.push({ ...OLD, detail: 'Inherited original receipt, unchanged' });
+    return t;
+}
+test.each(['Browser tool unavailable; nothing was tested.', 'The supported browser access host is unavailable. The inherited uncertain implementation effect remains unreconciled by this QA assignment.', 'Error: Reconciliation incomplete: Required retest acceptance remains unproven, and the original implementation effect remains uncertain.'])('a QA stage that stopped in setup reruns instead of reconstructing acceptance that never happened: %s', blocker => {
+    const t = setupStop(blocker), before = structuredClone(t);
+    expect(needsResumeReconciliation(t, [qaStop, { ticket: t.key, role: 'pm', stage: 'reconcile', status: 'blocked' }, { ticket: t.key, role: 'pm', stage: 'readback', status: 'completed' }])).toBe(false);
+    expect(t).toEqual(before);
+});
+// A neutral blocker, so each case is held by the rule under test and not by the wording match.
+test.each(['own uncertain action', 'uncertain action named like a stage', 'restated receipt with no continuation record', 'paid run', 'unknown paid usage', 'setup ready', 'failed outcome', 'other commit', 'no QA run recorded', 'latest QA run interrupted', 'latest QA run failed uncertain'])('a setup stop still reconstructs when QA may have acted: %s', reason => {
+    const t = setupStop(), attempts: any[] = [qaStop];
+    if (reason === 'own uncertain action') t.results.retest!.receipts.push({ id: 'submit', action: 'generation', target: t.key, verified: false, uncertain: true, detail: 'Unknown outcome' });
+    if (reason === 'uncertain action named like a stage') t.results.retest!.receipts.push({ id: 'pr', action: 'draft-pr', target: t.key, verified: false, uncertain: true, detail: 'Unknown outcome' });
+    if (reason === 'restated receipt with no continuation record') delete (t as any).implementationContinuation;
+    if (reason === 'paid run') t.results.retest!.paidRuns = 1;
+    if (reason === 'unknown paid usage') t.results.retest!.paidRuns = null;
+    if (reason === 'setup ready') (t.results.retest as any).qa.setup.status = 'ready';
+    if (reason === 'failed outcome') t.results.retest!.outcome = 'failed';
+    if (reason === 'other commit') t.results.retest!.commit = 'f'.repeat(40);
+    if (reason === 'no QA run recorded') attempts.length = 0;
+    if (reason === 'latest QA run interrupted') attempts.push({ ...qaStop, status: 'interrupted' });
+    if (reason === 'latest QA run failed uncertain') attempts.push({ ...qaStop, status: 'failed', failure: { category: 'uncertain-effect', detail: 'Connection lost', dispatched: true } });
+    expect(needsResumeReconciliation(t, attempts)).toBe(true);
+});
+test('a later run that died after a setup stop is reconstructed, whatever the older saved result says', () => {
+    const t = setupStop('Worker interrupted. Reconcile the previous stage and external effects before resuming.');
+    expect(needsResumeReconciliation(t, [qaStop, { ...qaStop, status: 'interrupted' }])).toBe(true);
+});
+test('a non-QA stage never takes the setup-stop route', () => {
+    const t = setupStop(); t.results.repair = t.results.retest; t.stage = 'repair';
+    expect(needsResumeReconciliation(t, [{ ...qaStop, stage: 'repair' }])).toBe(true);
+});
+test.each(['qa', 'staging-qa'] as const)('the %s stage takes the same route as retest', stage => {
+    const t = setupStop(); (t.results as any)[stage] = t.results.retest; t.stage = stage;
+    expect(needsResumeReconciliation(t, [{ ...qaStop, stage }])).toBe(false);
+});
+
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 test.each(['reader-timeout', 'incidental-prose'])('ordinary resume retains every QA requirement and counter after %s', async reason => {

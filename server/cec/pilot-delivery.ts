@@ -1,4 +1,5 @@
 import { consumeQAPlanRetry } from './qa/consume-plan-retry';
+import { confirmSetupStopCap } from './qa/setup-stop-cap';
 import { continueUnsealedQA } from './qa/continue-unsealed-qa';
 import { OfficeQAHandoffInput } from './qa/handoff-input';
 import type { FeatureBinding } from '../../src/contracts/features';
@@ -199,6 +200,14 @@ export async function resume(this: Engine, key: string, background = true) {
     if (this.store.state.paused || this.busy)
         throw new Error('Office is paused or pipeline is occupied');
     const qaHandoff = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.officeQAHandoff);
+    // A plain resume after repeated QA setup stops shows the count once before spending another attempt.
+    const capped = qaHandoff || this.store.state.deliveryQueue?.some(r => r.key === key && r.status === 'working' && r.qaPlanRetry) ? null : confirmSetupStopCap(t);
+    if (capped) {
+        t.blocker = capped; t.activity = 'blocked';
+        this.store.emit('qa-setup-capped', capped, 'pm', key);
+        this.store.save();
+        throw new Error(capped);
+    }
     this.busy = true;
     let live: Awaited<ReturnType<Agents['readback']>>;
     try {
