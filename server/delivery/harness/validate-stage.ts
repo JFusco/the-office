@@ -22,11 +22,11 @@ export function harnessChecks(project: OfficeProject, worktree: string): Check[]
 
 /**
  * Jobs whose validation must return explicit per-finding dispositions (repairs, recovered or
- * resumed findings, amendments, continuations) keep Riley; a command cannot author them.
+ * resumed findings, continuations) keep Riley; a command cannot author them.
  */
 export function harnessValidationEligible(job: TicketJob): boolean {
     return job.approach?.validation === 'independent-checks' && !!job.worktree && /^[a-f0-9]{40}$/i.test(job.head) &&
-        !job.repairCycle?.pendingFindingIds?.length && !job.sourceAmendment && !job.implementationContinuation && !job.discoveryRecovery &&
+        !job.repairCycle?.pendingFindingIds?.length && !job.implementationContinuation && !job.discoveryRecovery &&
         !job.stoppedBaseUpdate && !job.implementationRecovery && !job.candidateRecovery && !job.savedPrerequisiteHandoff && !job.scopeRepairResumes?.length;
 }
 

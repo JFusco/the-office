@@ -10,7 +10,7 @@ export function unstartedDelivery(store: Store, job: TicketJob): boolean {
         !job.head && !job.worktree && !job.steps.length && !job.mergeAttempt && !job.mergeIntentId && !job.mergeCommit &&
         !job.boardUpdates?.length && !job.candidateRecovery && !job.candidateBase &&
         !job.implementationContinuation && !job.implementationRecovery && !job.discoveryRecovery &&
-        !job.sourceAmendment && !job.repairCycle && !job.parked &&
+        !job.repairCycle && !job.parked &&
         !store.state.workLog?.some(work => work.requestId === job.id) &&
         !store.db.prepare('SELECT id FROM effects WHERE work_key=? LIMIT 1').get(
             workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }));

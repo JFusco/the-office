@@ -13,7 +13,7 @@ import {GitOperations} from '../../../github/git-operations';
 import {artifact,digest,ownedPath,rootArtifact} from '../../../store/readback-evidence';
 import {claudeExecution,completedExecution} from '../../../workers/worker-completion';
 import {readValidationProviderContext,validationProviderVersion} from '../validation/validation-provider-context';
-import {refreshDeliveryOwnership} from '../source-amendment/source-amendment';
+import {refreshDeliveryOwnership} from './delivery-ownership';
 import {recordJobApproach} from '../../pipeline/approach';
 import {workKey,type TicketJob,type StageResult} from '../../../../src/shared';
 import type {Store} from '../../../store/store';
@@ -22,7 +22,7 @@ type Ownership={complete:boolean;fresh:boolean;ownership?:{status:string}};
 function requireThat(value:unknown,message:string):asserts value{if(!value)throw new Error(message);}
 const stages=['implement','scope-repair'];
 export function savedPrerequisiteJobEligible(store:Store,job:TicketJob){
- return store.project.provider==='github'&&store.project.id!=='brain'&&stages.includes(job.stage)&&!job.savedPrerequisiteHandoff&&!job.sourceAmendment&&!job.implementationContinuation&&!job.discoveryRecovery&&
+ return store.project.provider==='github'&&store.project.id!=='brain'&&stages.includes(job.stage)&&!job.savedPrerequisiteHandoff&&!job.implementationContinuation&&!job.discoveryRecovery&&
   !job.pr&&!job.existingPR&&!job.mergeAttempt&&!job.mergeIntentId&&!job.dependsOnPR&&!job.prerequisites?.length;
 }
 /** This small admission predicate grants neither candidate adoption nor dependency completion. */

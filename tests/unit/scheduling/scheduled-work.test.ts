@@ -11,8 +11,6 @@ import { selectWork } from '../../../server/scheduling/scheduler';
 import { projectReadiness } from '../../../server/office/readiness';
 import { Offices } from '../../../server/scheduling/offices';
 import type { ExecutionLane, Role, WorkRef } from '../../../src/shared';
-import {GH91,SourceAmendmentCommand} from '../../../server/delivery/recovery/source-amendment/source-amendment';
-import {RELEASE_SOURCE_IDS} from '../../../server/delivery/recovery/source-amendment/source-amendment-scope';
 import {artifact,digest} from '../../../server/store/readback-evidence';
 import * as closeoutEvidence from '../../../server/delivery/recovery/closeout/closeout-recovery-evidence';
 
@@ -94,30 +92,28 @@ test('verified merged cleanup is selected before continuations; unknown cleanup 
     verified.mockReturnValue(true);a.store.state.draining=true;expect(selectWork(a.project(),0)).toBeUndefined();expect(c.requests[0].status).toBe('queued');
 });
 
-function scopeHistory(kind:'readback'|'resume'='readback'){
-    const a=fixture('cms-field-vocabulary'),{store}=a,head='b'.repeat(40),fromHead='a'.repeat(40),job:any={id:GH91.jobId,key:'GH-91',stage:'scope-repair',status:'blocked',head,steps:[],requestedAt:'2026-10-29T19:00:00Z'};
+function scopeHistory(){
+    const a=fixture('cms-field-vocabulary'),{store}=a,head='b'.repeat(40),fromHead='a'.repeat(40),job:any={id:'scope-job',key:'GH-92',stage:'scope-repair',status:'blocked',head,steps:[],requestedAt:'2026-10-29T19:00:00Z'};
     const failed:any={id:'failed-scope',action:'reconcile-scope-repair',key:job.key,head:'original-scope',lane:'delivery',requestedAt:'2026-10-29T20:00:00Z',status:'blocked',detail:'Retained original failure'};
     const success:any={...failed,id:'accepted-scope',requestedAt:'2026-10-29T21:00:00Z',status:'completed'};
     const original:any={id:failed.head,requestId:job.id,sessionId:'original-session',role:'developer',status:'blocked',endedAt:'2026-10-29T19:59:00Z'},reader:any={id:'actual-reader',requestId:job.id,sessionId:'reader-session',role:'lead',status:'completed',endedAt:'2026-10-29T21:01:00Z'};
-    const authorization=SourceAmendmentCommand.parse({...GH91,sourceIds:[...RELEASE_SOURCE_IDS],approvedBy:'human',proposalSha256:'c'.repeat(64)});
-    const proof:any={intentId:success.id,originalWorkId:original.id,originalSessionId:original.sessionId,fromHead,head,authorizationSha256:digest(authorization),reader,
+    const proof:any={intentId:success.id,originalWorkId:original.id,originalSessionId:original.sessionId,fromHead,head,reader,
         assessment:{outcome:'passed',originalWorkId:original.id,nativeSessionId:original.sessionId,commit:head,completeNativeExecution:true,noExternalEffects:true,noHumanHold:true,scansVerified:true,repairWithinExistingScope:true}};
     const path=resolve(store.dataRoot,'ticket-work',job.id,'scope-proof.json');mkdirSync(resolve(path,'..'),{recursive:true});
     const record:any={intentId:success.id,originalWorkId:original.id,head,fromHead,proofPath:path,proofSha256:'',outsideSourceIds:[]};
-    if(kind==='resume'){Object.assign(proof,{version:1,projectId:store.project.id,repository:store.project.repository,jobId:job.id,key:job.key,checkpointSha256:'d'.repeat(64)});record.checkpointSha256=proof.checkpointSha256;job.scopeRepairResumes=[record];}
-    else{job.sourceAmendment={adoptedAt:'2026-10-29T19:00:00Z',authorization};job.scopeRepairReadback=record;}
+    Object.assign(proof,{version:1,projectId:store.project.id,repository:store.project.repository,jobId:job.id,key:job.key,checkpointSha256:'d'.repeat(64)});record.checkpointSha256=proof.checkpointSha256;job.scopeRepairResumes=[record];
     const save=()=>{writeFileSync(path,JSON.stringify(proof));record.proofSha256=artifact(store,path).sha256;};save();
     store.state.coordination!.jobs=[job];store.state.coordination!.requests=[failed,success];store.state.workLog=[original,reader];
     return {...a,job,failed,success,original,reader,proof,record,path,save};
 }
-test.each(['readback','resume']as const)('exact admitted %s resolves prior failed scope requests without hiding the current blocked ticket',kind=>{
-    const a=scopeHistory(kind),before=JSON.stringify([a.failed,a.job]);
+test('exact admitted resume resolves prior failed scope requests without hiding the current blocked ticket',()=>{
+    const a=scopeHistory(),before=JSON.stringify([a.failed,a.job]);
     const items=a.project();expect(items.find(item=>item.work.id===a.failed.id)?.eligibility.state).toBe('terminal');expect(items.find(item=>item.work.id===a.job.id)?.eligibility.state).toBe('blocked');
     expect(JSON.stringify([a.failed,a.job])).toBe(before);
     a.job.head='e'.repeat(40);expect(a.project().find(item=>item.work.id===a.failed.id)?.eligibility.state).toBe('terminal');
 });
-test.each(['hash','original','job','project','success','action','time','assessment','session','reader','authorization','duplicate']as const)('scope history remains blocked for %s ambiguity or missing proof',reason=>{
-    const a=scopeHistory(reason==='project'?'resume':'readback');
+test.each(['hash','original','job','project','success','action','time','assessment','session','reader','duplicate']as const)('scope history remains blocked for %s ambiguity or missing proof',reason=>{
+    const a=scopeHistory();
     if(reason==='hash')writeFileSync(a.path,'{}');
     if(reason==='original')a.failed.head='foreign-original';
     if(reason==='job')a.original.requestId='foreign-job';
@@ -128,7 +124,6 @@ test.each(['hash','original','job','project','success','action','time','assessme
     if(reason==='assessment'){a.proof.assessment.noExternalEffects=false;a.save();}
     if(reason==='session'){a.proof.assessment.nativeSessionId='foreign-session';a.save();}
     if(reason==='reader')a.reader.status='failed';
-    if(reason==='authorization'){a.job.sourceAmendment.authorization.proposalSha256='f'.repeat(64);}
     if(reason==='duplicate')a.store.state.coordination!.jobs!.push({...a.job,id:'other-job'});
     const before=JSON.stringify(a.failed);expect(a.project().find(item=>item.work.id===a.failed.id)?.eligibility.state).toBe('blocked');expect(JSON.stringify(a.failed)).toBe(before);
 });

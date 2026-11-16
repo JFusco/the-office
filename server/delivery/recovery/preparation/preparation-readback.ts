@@ -44,7 +44,7 @@ export function postConflictReadbackCandidate(store:Store,job:TicketJob){return 
 function selectPreparationReadback(store:Store,job:TicketJob,postConflict:boolean){
  try{
   if(store.project.provider!=='github'||store.project.id==='brain'||job.stage!=='prepare-pr'||!['blocked','interrupted'].includes(job.status)||job.detail!==shutdownError||
-   !job.pr||!job.prUrl||job.sourceAmendment||job.mergeAttempt||job.mergeIntentId||job.dependsOnPR||job.prerequisites?.length||!job.worktree||!job.branch||!/^[a-f0-9]{40}$/.test(job.head)||
+   !job.pr||!job.prUrl||job.mergeAttempt||job.mergeIntentId||job.dependsOnPR||job.prerequisites?.length||!job.worktree||!job.branch||!/^[a-f0-9]{40}$/.test(job.head)||
    store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
   const conflict=postConflict?postConflictPreparationEvidence(store,job):undefined;
   if(postConflict&&!conflict)return;

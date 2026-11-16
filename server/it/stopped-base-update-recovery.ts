@@ -15,7 +15,7 @@ export async function recoverStoppedBaseUpdates(context: ITContext) {
         if (!candidate) continue;
         if (stoppedBaseReassessmentReady(store, { key: job.key, head: candidate.head })) {
             const record = it.recoveries[candidate.id];
-            if (record) { record.status = 'resolved'; record.nextAt = ''; if (job.stoppedBaseUpdate?.greenMerge) record.detail = 'Joe authorized green-check merge without extra review/QA. Original negative audit, abandoned candidate and consumed budgets retained.'; current.add(candidate.id); }
+            if (record) { record.status = 'resolved'; record.nextAt = ''; current.add(candidate.id); }
             const r=job.stoppedBaseUpdate!;
             const workers=state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='stopped-base-update-handoff')||[];
             if(!state.paused&&!state.draining&&['blocked','interrupted'].includes(job.status)&&['lead','checkout'].includes(r.phase)&&workers.length===1&&completedExecution(store,workers[0]))

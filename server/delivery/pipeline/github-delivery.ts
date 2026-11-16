@@ -1,9 +1,9 @@
-import { saveQAReport } from '../../qa/save-report';
-import { officeQADirectory } from '../../qa/assignment';
-import { routeAutomationMerge } from '../readiness/automation-merge';
 import { stoppedBasePackageInstruction } from '../recovery/stopped-base-package';
 import { runStoppedBaseReview } from '../recovery/stopped-base-review';
 import { stoppedBaseNextStage } from '../recovery/stopped-base-gates';
+import { saveQAReport } from '../../qa/save-report';
+import { officeQADirectory } from '../../qa/assignment';
+import { routeAutomationMerge } from '../readiness/automation-merge';
 import { FreshMergeReview } from '../readiness/refresh-merge-review';
 import { assertFeatureGate } from '../../features/enrollment-gate';
 import { bindDelivery } from '../../features/delivery-binding';
@@ -15,7 +15,6 @@ import { SourceClosed } from './source-closed';
 import { stopReason } from './stop-reason';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
-import { outsideAmendmentFindingIds } from '../recovery/source-amendment/source-amendment-held';
 import { HOLDS } from '../../office/config';
 import { handsOff, harnessDelivers } from '../harness/scope';
 import { findingsBlock } from '../findings/advisory';
@@ -26,7 +25,6 @@ import { moveLane } from '../board/move-lane';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { BOARD_RULE, DECISION_RULE, conflictRefreshInstruction, implementInstruction } from '../harness/stage-instructions';
 import { REPAIR_DIAGNOSIS, verifyRepairCandidate } from '../repairs/delivery-repairs';
-import { amendmentIssueSha256, requireSourceAmendmentAcceptance } from '../recovery/source-amendment/source-amendment';
 import { reconcileNativeDelivery } from '../../maintenance/brain/brain-delivery-readback';
 import * as readiness from '../readiness/github-readiness';
 import * as closeout from '../recovery/closeout/github-closeout';
@@ -71,14 +69,6 @@ export function deliveryNextStage(job: TicketJob): TicketJob['stage'] {
     const stopped = stoppedBaseNextStage(job); if (stopped) return stopped;
     const resumed = scopeRepairResumeNextStage(job); if (resumed) return resumed;
     if (job.implementationContinuation?.phase === 'acceptance' && ['review', 'validate'].includes(job.stage)) return job.stage === 'review' ? 'validate' : 'draft';
-    if (job.sourceAmendment && ['implement', 'scope-repair', 'update-base', 'review', 'validate'].includes(job.stage)) {
-        const issueSha256 = job.steps.filter(step => step.stage === 'review').at(-1)?.issueSha256;
-        for (const stage of ['review', 'validate'] as const) {
-            const latest = job.steps.filter(step => step.stage === stage).at(-1);
-            if (latest?.result.outcome !== 'passed' || latest.result.commit !== job.head || !latest.workerId || !latest.issueSha256 || latest.issueSha256 !== issueSha256) return stage;
-        }
-        return 'draft';
-    }
     return nextJobStage(job);
 }
 // Durable stages share the same Office lane as intake and maintenance. An
@@ -173,7 +163,7 @@ export class GitHubDelivery {
             }
             if (harnessDelivers(this.store, job) && job.stage === 'update-base')
                 await moveLane(this.store, this.execute, job, 'In progress', () => assertDeliveryMayMutate(this.store, this.jobs, job, job.head));
-            if (job.stage === 'draft' && job.approach && !job.sourceAmendment) {
+            if (job.stage === 'draft' && job.approach) {
                 const next = nextJobStage({ ...job, stage: 'validate' });
                 if (next !== 'draft') {
                     job.stage = next;
@@ -225,19 +215,15 @@ export class GitHubDelivery {
             if (job.stage === 'prepare-pr') {
                 if (metadataAppliesToHead(this.store, job)) assertMetadataBinding(this, job);
                 const current = await this.verifyPR(job);
-                if ((metadataAppliesToHead(this.store, job) || job.packedPublicationRepair) && (current.head.sha !== job.head || current.head.ref !== job.branch))
+                if (metadataAppliesToHead(this.store, job) && (current.head.sha !== job.head || current.head.ref !== job.branch))
                     throw new Error('Bound metadata head changed before preparation; no overwrite or worker');
                 job.head = current.head.sha;
                 job.branch = current.head.ref || job.branch;
                 await verifyInitialDraftConflictPreparation(this,job,current.draft===true);
                 this.store.save();
             }
-            const priorHeldFindings = await outsideAmendmentFindingIds(this,job);
-            const readyChecks = ['review', 'validate'].every(stage => !job.sourceAmendment && (stage === 'review' && job.approach?.review === 'none' || stage === 'validate' && job.approach?.validation === 'developer-checks') || job.steps.some(s => s.stage === stage && s.result.outcome === 'passed' && s.result.commit === job.head && !findingsBlock(this.store, s.result.findings, f => f.status === 'open' && !priorHeldFindings.has(f.id))));
-            if (job.sourceAmendment && ['draft', 'prepare-pr'].includes(job.stage))
-                await requireSourceAmendmentAcceptance(this, job, job.stage === 'draft');
+            const readyChecks = ['review', 'validate'].every(stage => (stage === 'review' && job.approach?.review === 'none' || stage === 'validate' && job.approach?.validation === 'developer-checks') || job.steps.some(s => s.stage === stage && s.result.outcome === 'passed' && s.result.commit === job.head && !findingsBlock(this.store, s.result.findings, f => f.status === 'open')));
             let instructions = technicalPhase ? implementationContinuationInstruction(job, continuation!.notes) : stagePrompt({ store: this.store, project, job, root, issue, readyChecks });
-            const issueSha256 = job.sourceAmendment && ['review', 'validate'].includes(job.stage) ? amendmentIssueSha256(await this.api('issues/91')) : undefined;
             const beforeWorkers = new Set((this.store.state.workLog || []).map(work => work.id));
             this.store.state.lastHandoff = { at: new Date().toISOString(), from: 'pm', to: role, ticket: job.key };
             if (job.stage === 'review' && job.repairCycle?.phase === 'diagnosis') {
@@ -270,7 +256,7 @@ export class GitHubDelivery {
                 job.steps.push({ stage: 'superseded-stage-result', result: structuredClone(result) });
                 throw new Error('Delivery authority changed after execution; result retained for reconciliation', { cause: error });
             }
-            await acceptStageResult.call(this, { officeQA: job.stage === 'validate' && job.qaProtocol === 'office-v1' && !harnessResult, job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, issueSha256, candidateAtStart, technicalPhase });
+            await acceptStageResult.call(this, { officeQA: job.stage === 'validate' && job.qaProtocol === 'office-v1' && !harnessResult, job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, candidateAtStart, technicalPhase });
         }
         catch (error) {
             job = this.jobs.find(current => current.id === job.id) || job;

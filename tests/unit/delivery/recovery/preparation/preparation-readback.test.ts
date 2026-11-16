@@ -137,13 +137,12 @@ test.each(['review','validate'])('fences %s evidence contents and parent inodes 
   await expect(a.reconcile()).rejects.toThrow('Preparation identity, authorization, evidence or ownership changed');expect(JSON.stringify(a.job)).toBe(prior);expect(a.intent.status).toBe('working');expect(a.original.status).toBe('failed');
  }
 });
-test.each(['wrong-provider','active-group','uncertain-write','extra-mutation','source-amendment','stale-review','open-QA-finding','foreign-artifact','missing-field','wrong-native','wrong-head','unknown-failure'])('does not dispatch or mutate an unsafe original: %s',async scenario=>{
+test.each(['wrong-provider','active-group','uncertain-write','extra-mutation','stale-review','open-QA-finding','foreign-artifact','missing-field','wrong-native','wrong-head','unknown-failure'])('does not dispatch or mutate an unsafe original: %s',async scenario=>{
  const a=fixture();
  if(scenario==='wrong-provider')a.original.provider='claude';
  if(scenario==='active-group')a.original.processId=liveProcess();
  if(scenario==='uncertain-write'){a.raw.receipts[0].uncertain=true;a.put('original','completed-output.json',a.raw);}
  if(scenario==='extra-mutation'){a.raw.receipts.push({...a.raw.receipts[0],action:'gh pr reopen'});a.put('original','completed-output.json',a.raw);}
- if(scenario==='source-amendment')a.job.sourceAmendment={}as any;
  if(scenario==='stale-review')a.job.steps[0].result.commit='c'.repeat(40);
  if(scenario==='open-QA-finding')a.job.steps[1].result.findings.push({id:'hold',status:'open'}as any);
  if(scenario==='foreign-artifact'){a.raw.evidence[0].path=resolve(a.root,'sessions/original/provider.json');a.put('original','completed-output.json',a.raw);}

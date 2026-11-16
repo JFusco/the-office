@@ -1,8 +1,5 @@
 import { retireIncompleteHistory } from '../operations/retire-history';
 import { stopReason } from '../delivery/pipeline/stop-reason';
-import { admitGreen156 } from '../delivery/recovery/green156-admission';
-import { admitPacked165 } from '../delivery/recovery/packed165-admission';
-import { beginPacked165Setup, packed165SetupReady } from '../delivery/recovery/packed165-setup-continuation';
 import { reconcileStoppedBaseHandoff } from '../delivery/recovery/stopped-base-review';
 import { reconcileStoppedBaseUpdate } from '../delivery/recovery/stopped-base-update';
 import { stoppedBaseUpdateResolved } from '../delivery/recovery/stopped-base-disposition';
@@ -24,7 +21,6 @@ import { closeNativeRefresh } from '../maintenance/brain/brain-refresh-closeout'
 import { adoptCandidate } from '../delivery/recovery/implementation/candidate-adoption';
 import { recoverDiscovery } from '../delivery/recovery/implementation/discovery-recovery';
 import { recoverImplementation } from '../delivery/recovery/implementation/implementation-recovery';
-import { authorizeSourceAmendment, validateAmendmentIntent } from '../delivery/recovery/source-amendment/source-amendment';
 import { observePrerequisites } from '../delivery/pipeline/dependencies';
 import type { HarnessRequest } from '../../src/shared';
 import {CloseoutSupervisionProofRef,readCloseoutSupervisionProof} from '../delivery/recovery/closeout/closeout-supervision-proof';
@@ -38,20 +34,8 @@ import { fileLessonIssue } from '../knowledge/file-lesson-issue';
 import { graduateLessons } from '../knowledge/lesson-exits';
 import { command } from '../workers/process';
 import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
-const actions = new Set(['authorize-green-merge-156', 'admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'check-lesson-issues', 'file-lesson-issue']);
+const actions = new Set(['admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'check-lesson-issues', 'file-lesson-issue']);
 export const deterministicActions = new Set([ 'retire-incomplete-history', 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'check-lesson-issues', 'file-lesson-issue']);
-export function enqueueSourceAmendment(store: Store, input: unknown): HarnessRequest {
-    const authorization = validateAmendmentIntent(store, input);
-    const prior = store.state.coordination!.requests?.find(request => request.action === 'authorize-source-amendment' && ['queued', 'working', 'completed'].includes(request.status) && JSON.stringify(request.sourceAmendment) === JSON.stringify(authorization));
-    if (prior) return prior;
-    return store.transaction(() => {
-        const request: HarnessRequest = { id: crypto.randomUUID(), action: 'authorize-source-amendment', key: 'GH-91', head: authorization.originalHead, sourceAmendment: authorization,
-            lane: 'delivery', requestedAt: store.clock.now().toISOString(), status: 'queued', detail: 'Waiting for scheduler validation of bounded source repair permission.' };
-        (store.state.coordination!.requests ??= []).push(request);
-        store.emit('source-amendment-intent', 'Bounded GH-91 amendment intent queued; no source acceptance or adoption yet.', undefined, 'GH-91');
-        return request;
-    });
-}
 export function enqueueRequest(store: Store, action: string, key = '', head = '', lane: HarnessRequest['lane'] = 'delivery'): HarnessRequest {
     if (!actions.has(action))
         throw new Error('Unknown harness operation');
@@ -81,8 +65,7 @@ export function enqueueCloseoutReconciliation(store:Store,key:string,head:string
  return store.transaction(()=>{const request=enqueueRequest(store,'reconcile-closeout',key,head);if(descriptor)request.closeoutSupervisionProof=descriptor;store.save();return request;});
 }
 export async function executeRequest(store: Store, engine: Engine, coordinator: Coordinator, request: HarnessRequest, checkIT?: () => Promise<void>): Promise<void> {
-    if (packed165SetupReady(store, request)) beginPacked165Setup(store, request);
-    else if (request.status !== 'queued')
+    if (request.status !== 'queued')
         return;
     request.status = 'working';
     delete request.stop;
@@ -98,14 +81,6 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
             case 'admit-improvement': await admitImprovement(store, request.head); break;
             case 'file-lesson-issue': await fileLessonIssue(store, command, request.head); break;
             case 'check-lesson-issues': await graduateLessons(store, command); break;
-            case 'authorize-source-amendment':
-                await authorizeSourceAmendment(delivery, request, async () => {
-                    await coordinator.sessionBridge?.refresh();
-                    const ownership = coordinator.sessionBridge?.forProject(store, request.key, request.id);
-                    if (!ownership) throw new Error('Amendment ownership inventory is unavailable');
-                    return ownership as any;
-                });
-                break;
             case 'reconcile-native-delivery':
                 await delivery.reconcileNativeDelivery(request.key);
                 break;
@@ -210,8 +185,6 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
                 await delivery.queueConflictRepair(request.key);
                 break;
             }
-            case 'authorize-green-merge-156': await admitGreen156(delivery, request); break;
-            case 'authorize-packed-repair-165': await admitPacked165(delivery, request); break;
             case 'reconcile-base-update':
                 if (!await reconcileBoardPreflight(delivery, request, async () => {
                     await coordinator.sessionBridge?.refresh();

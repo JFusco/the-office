@@ -121,7 +121,7 @@ test('unchanged-head check repair obtains fresh Lead acceptance after independen
         await acceptStageResult.call(f.delivery, { job: f.job, result, project: f.store.project, root: f.artifactRoot,
             issue: f.issue, role: f.job.stage === 'review' || f.job.stage === 'lead-pr' ? 'lead' : 'developer',
             continuation: undefined, reviewStart: f.job.stage === 'lead-pr' ? f.pr : undefined,
-            inputSha256: deliveryInputSha256(f.store, f.job.key), beforeWorkers: new Set<string>(), issueSha256: undefined,
+            inputSha256: deliveryInputSha256(f.store, f.job.key), beforeWorkers: new Set<string>(),
             candidateAtStart: JSON.stringify({ id: f.job.id, stage: f.job.stage, head: f.job.head, branch: f.job.branch, worktree: f.job.worktree }), technicalPhase: false });
     }
     await accept('checks'); expect(f.job.stage).toBe('review');

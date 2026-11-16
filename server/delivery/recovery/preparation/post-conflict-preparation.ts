@@ -28,7 +28,7 @@ export function postConflictPreparationEvidence(store:Store,job:TicketJob){
  const conflict=job.steps.filter(s=>s.stage==='conflict-readback').at(-1),repair=job.steps.filter(s=>s.stage==='update-base').at(-1),publication=job.steps.filter(s=>s.stage==='draft').at(-1);
  const initial=conflict&&initialDraftConflictAnchor(store,job,conflict);
  if(store.project.provider!=='github'||job.repairReason!=='conflicts'||!job.pr||!job.prUrl||!job.worktree||!job.branch||
-  job.sourceAmendment||job.mergeAttempt||job.mergeIntentId||job.dependsOnPR||job.prerequisites?.length&&!initial||
+  job.mergeAttempt||job.mergeIntentId||job.dependsOnPR||job.prerequisites?.length&&!initial||
   job.implementationContinuation&&job.implementationContinuation.phase!=='acceptance')return;
  if(!conflict||!repair||!publication||!conflictOnlyAssessment(conflict.result)&&!initial||repair.result.outcome!=='passed'||repair.result.commit!==job.head||
   publication.result.outcome!=='passed'||publication.result.commit!==job.head||publication.result.prId!==job.pr||

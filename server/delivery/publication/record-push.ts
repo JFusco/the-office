@@ -12,7 +12,7 @@ import type { TicketJob } from '../../../src/shared';
 type Candidate = Readonly<{ head: string; branch: string; worktree: string }>;
 
 /** Records the one ordinary push already owned by Effects. No retry, status change or recovery admission. */
-export async function recordedPush(store: Store, execute: typeof command, job: Pick<TicketJob, 'id' | 'packedPublicationRepair'>, candidate: Candidate,
+export async function recordedPush(store: Store, execute: typeof command, job: Pick<TicketJob, 'id'>, candidate: Candidate,
     guard: () => void, timeout: number) {
     guard();
     if (!/^[a-f0-9]{40}$/.test(candidate.head) || !/^[\w-]{1,100}$/.test(job.id)) throw new Error('Exact push capture identity is required');
@@ -59,8 +59,7 @@ export async function recordedPush(store: Store, execute: typeof command, job: P
     let result: string;
     try {
         result = await execute('git', ['push', 'origin', `${candidate.head}:refs/heads/${candidate.branch}`], {
-            cwd: candidate.worktree, timeout, env: { GIT_TRACE2_EVENT: trace, GIT_TRACE2_ENV_VARS: '', GIT_TRACE2_CONFIG_PARAMS: '', GIT_TRACE2_PARENT_SID: '',
-                ...(job.packedPublicationRepair ? { HUSKY: '1' } : {}) },
+            cwd: candidate.worktree, timeout, env: { GIT_TRACE2_EVENT: trace, GIT_TRACE2_ENV_VARS: '', GIT_TRACE2_CONFIG_PARAMS: '', GIT_TRACE2_PARENT_SID: '' },
             onSpawn: value => { if (pid || !Number.isSafeInteger(value) || value < 1) throw new Error('Native push PID changed'); pid = value; save('spawn.json', { pid, effectId: id, at: store.clock.now().toISOString() }); spawnProof = artifact(store, resolve(directory, 'spawn.json')); },
             onLifecycle: value => { save('lifecycle.json', value); lifecycle = value; lifecycleProof = artifact(store, resolve(directory, 'lifecycle.json')); },
         });

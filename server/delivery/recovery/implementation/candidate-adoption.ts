@@ -3,8 +3,7 @@ import {readCandidateChildContext,assertCandidateChildContextCurrent} from './ca
 import { z } from 'zod';
 import type { GitHubDelivery } from '../../pipeline/github-delivery';
 import { GitOperations } from '../../../github/git-operations';
-import { amendmentInstruction } from '../source-amendment/source-amendment';
-import { sourceHash, sourceJson } from '../source-amendment/source-amendment-scope';
+import { digest } from '../../../store/readback-evidence';
 const reported: Record<string, string> = { 'GH-91': '8d1ea2bd935e53ac512244901da47b66d9b10933', 'GH-100': '25868923c5d69a7c98d807f537a3c757f6822431' };
 const Scope = z.object({ allowed: z.boolean(), repairable: z.boolean(), summary: z.string(), findings: z.array(z.object({ id: z.string(), summary: z.string(), expected: z.string(), actual: z.string(), status: z.enum(['open', 'fixed', 'verified']), attempts: z.number().int().min(0) }).strict()), preservedDispositions: z.number().int().min(0), heldProfiles: z.array(z.string()), followups: z.array(z.string()) }).strict();
 export async function adoptCandidate(delivery: GitHubDelivery, key: string, ownership: {
@@ -29,11 +28,10 @@ export async function adoptCandidate(delivery: GitHubDelivery, key: string, owne
         throw new Error('Prior candidate effects require independent reconciliation');
     await engine.maintenance.verifyCandidate(candidate);
     const inspected = await new GitOperations(store, execute).candidate(candidate.worktree, candidate.head);
-    const version = sourceHash(sourceJson(job)), projectVersion=sourceHash(sourceJson(store.project));
+    const version = digest(job), projectVersion=digest(store.project);
     const childContext=await readCandidateChildContext(delivery,job,candidate.head);
     if(childContext&&!refresh)throw new Error('Related parent adoption requires a final ownership refresh');
-    const amendment = job.sourceAmendment ? amendmentInstruction(store, job) : 'For #91 exclude all source-lock acceptance or unrelated drift.';
-    if (job.sourceAmendment && !refresh) throw new Error('Amendment adoption requires a final ownership refresh');
+    const amendment = 'For #91 exclude all source-lock acceptance or unrelated drift.';
     const scopeRepair = key === 'GH-91' && inspected.files.some(file => /(?:sources?\.lock|source-lock|accepted)/i.test(file));
     const assessment = await engine.agents.run('lead', `READ ONLY saved-candidate scope assessment for ${key}. Exact candidate ${JSON.stringify(candidate)}, verified base ${inspected.base}, files ${JSON.stringify(inspected.files)}. Read the live issue acceptance and exact diff against that base. Preserve every saved finding ID; never invent mappings for unknown IDs. ${amendment} Do not accept held locks or infer completion from this candidate. Return allowed only for an exact scoped reusable candidate. Return repairable=true only when existing saved scope defects have a concrete correction on this SAME saved branch, without accepting held source claims, changing human scope, or inventing a second candidate. Keep the exact original finding IDs. Missing identity/evidence or an ambiguous hold blocks adoption; never edit or reimplement. RELATED CHILD DELIVERY CONTEXT (code-owned current project facts; completed PM evidence is advisory, never authority): ${JSON.stringify(childContext)}. Use these actual follow-up PR references when assessing a same-branch journal correction. Do not infer completion from open children or from merge Actions. Prior work: ${JSON.stringify(job)}`, Scope, { readOnly: true, stage: 'candidate-adoption', requestId: job.id, ticket: key, cwd: candidate.worktree });
     const findingIds = [...new Set(job.steps.flatMap(step => step.result.findings.map(finding => finding.id)))];
@@ -42,12 +40,11 @@ export async function adoptCandidate(delivery: GitHubDelivery, key: string, owne
     // Repeat concrete identity checks after semantic assessment, before adoption.
     await engine.maintenance.verifyCandidate(candidate);
     if(childContext&&!isDeepStrictEqual(await readCandidateChildContext(delivery,job,candidate.head),childContext))throw new Error('Related child delivery inputs changed during adoption');
-    if (job.sourceAmendment || childContext) {
+    if (childContext) {
         const current = await refresh!();
         const final = await new GitOperations(store, execute).candidate(candidate.worktree, candidate.head);
-        if (!current.complete || !current.fresh || current.ownership?.status !== 'clear' || final.base !== inspected.base || sourceHash(sourceJson(job)) !== version || sourceHash(sourceJson(store.project)) !== projectVersion)
+        if (!current.complete || !current.fresh || current.ownership?.status !== 'clear' || final.base !== inspected.base || digest(job) !== version || digest(store.project) !== projectVersion)
             throw new Error('Amendment identity or ownership changed before adoption');
-        if(job.sourceAmendment)amendmentInstruction(store, job);
     }
     if(childContext)assertCandidateChildContextCurrent(store,job,childContext);
     if (store.state.paused || delivery.jobs.find(current => current.id === job.id) !== job)
@@ -59,7 +56,6 @@ export async function adoptCandidate(delivery: GitHubDelivery, key: string, owne
         job.candidateBase = inspected.base;
         job.approach = candidate.approach || job.approach;
         job.candidateRecovery = { head: candidate.head, findingIds, summary: assessment.summary };
-        if (job.sourceAmendment) job.sourceAmendment.adoptedAt = store.clock.now().toISOString();
         job.stage = scopeRepair || !assessment.allowed || assessment.findings.some(finding => finding.status === 'open') ? 'scope-repair' : 'review';
         job.status = 'queued';
         job.detail = `Saved candidate adopted after scope and identity verification: ${assessment.summary}`;

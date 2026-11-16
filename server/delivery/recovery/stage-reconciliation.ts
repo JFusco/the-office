@@ -102,7 +102,7 @@ export async function reconcileBaseUpdate(this: GitHubDelivery, key: string) {
         if (!result.evidence.some(e => e.kind === 'checks' && e.commit === result.commit && containedFile(e.path, resolve(this.store.dataRoot, 'ticket-work', job.id))))
             throw new Error('Saved repaired-head check evidence is missing');
         job.head = result.commit;
-        if (job.repairReason === 'conflicts' && !job.sourceAmendment)
+        if (job.repairReason === 'conflicts')
             acceptConflictRepair(job, result, handsOff(this.store));
         job.stage = deliveryNextStage(job);
         job.status = 'queued';

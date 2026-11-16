@@ -1,15 +1,11 @@
-import { automationMergePolicy } from './automation-merge';
-import { green156Admitted } from '../recovery/green156-evidence';
-import { packed165Admitted } from '../recovery/packed165-evidence';
-import { assertAutomationEffects } from './automation-effects';
 import { assertStoppedBaseMergeReady } from '../recovery/stopped-base-validation';
+import { automationMergePolicy } from './automation-merge';
+import { assertAutomationEffects } from './automation-effects';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { FreshMergeReview, refreshMergeReview } from './refresh-merge-review';
 import {currentMergeChecks} from './github-check-selection';
 import { teamReviewedHead } from './team-review';
 import {conflictOnlyAssessment} from '../repairs/conflict-repair';
-import {outsideAmendmentFindingIds} from '../recovery/source-amendment/source-amendment-held';
-import { requireSourceAmendmentAcceptance } from '../recovery/source-amendment/source-amendment';
 import { Effects } from '../../store/effects';
 import { z } from 'zod';
 import { GITHUB_ISSUE_SKILL } from '../../github/github-context';
@@ -61,33 +57,30 @@ export async function verifyPR(this: GitHubDelivery, job: TicketJob, requireTarg
     return p;
 }
 export async function merge(this: GitHubDelivery, job: TicketJob) {
-    const expectedHead = job.head; let greenOnly = green156Admitted(this.store, job) || packed165Admitted(this.store, job);
-    if (greenOnly) assertAutomationEffects(this.store, job);
+    const expectedHead = job.head;
     assertStoppedBaseMergeReady(this.store, job, expectedHead);
     assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
     if (this.store.state.paused || job.mergeApprovalRequired || job.mergeAuthorization && job.mergeAuthorization.head !== job.head || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
         throw new Error('Office merging is paused, disabled, or awaiting this PR’s approval');
     if (HOLDS[job.key])
         throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
-    await requireSourceAmendmentAcceptance(this, job);
     const priorIntent = this.store.getEffect<{ sha: string }>(job.mergeIntentId || `merge:${job.id}:${job.head}`);
     if (job.mergeAttempt || priorIntent && ['dispatching', 'uncertain', 'verified'].includes(priorIntent.status))
         throw new Error('Prior merge attempt needs read-back; it will not be repeated');
     const p = await this.verifyPR(job, true);
-    greenOnly ||= !!await automationMergePolicy(this, job, p);
+    const greenOnly = !!await automationMergePolicy(this, job, p);
     if (greenOnly) assertAutomationEffects(this.store, job);
     if (!greenOnly) await requireMetadataReview(this, job);
     if (!greenOnly && await refreshMergeReview(this, job, p, true)) return;
     const lead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
     // A Lead review of an older head never counts; the team's exact-head review does for hands-off jobs.
     const review = lead?.commit === job.head ? lead : teamReviewedHead(this.store, job) ?? lead;
-    const heldFindings=review ? await outsideAmendmentFindingIds(this,job,review.commit,review) : new Set<string>();
     if (p.merged_at) {
         job.mergeCommit = p.merge_commit_sha;
         job.status = 'watching';
         return;
     }
-    if (p.state !== 'open' || p.draft || !p.mergeable || p.head.sha !== job.head || !greenOnly && (review?.outcome !== 'passed' || review.commit !== p.head.sha || findingsBlock(this.store, review.findings, f => f.status === 'open' && !heldFindings.has(f.id))))
+    if (p.state !== 'open' || p.draft || !p.mergeable || p.head.sha !== job.head || !greenOnly && (review?.outcome !== 'passed' || review.commit !== p.head.sha || findingsBlock(this.store, review.findings, f => f.status === 'open')))
         throw new Error('PR readiness or reviewed commit changed; Sam must reassess');
     await currentMergeChecks(this,job,p);
     const query = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){headRefOid baseRefName mergeStateStatus reviewDecision reviewThreads(first:100){nodes{isResolved} pageInfo{hasNextPage}}}}}`;
@@ -126,14 +119,13 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
                 throw new Error('Merge work identity or authorization changed');
             if (HOLDS[job.key])
                 throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
-            await requireSourceAmendmentAcceptance(this, job);
             const current = await this.verifyPR(job, true);
             if (!greenOnly) await requireMetadataReview(this, job);
             if (current.head.sha !== payload.sha || current.state !== 'open' || current.draft)
                 throw new Error('Merge candidate changed immediately before dispatch');
             await currentMergeChecks(this,job,current);
             if (greenOnly) {
-                if (!green156Admitted(this.store, job) && !packed165Admitted(this.store, job) && !await automationMergePolicy(this, job, current)) throw Error('Green-check merge policy changed');
+                if (!await automationMergePolicy(this, job, current)) throw Error('Green-check merge policy changed');
                 assertAutomationEffects(this.store, job, true);
             }
             if (!greenOnly && await refreshMergeReview(this, job, current, true)) throw new FreshMergeReview(job.detail);
@@ -168,8 +160,7 @@ export async function finishLeadReview(this: GitHubDelivery, job: TicketJob, res
         writeFileSync(path, JSON.stringify({ pr: p.html_url, head: p.head.sha, review: result }, null, 2));
         result.evidence.push({ id: crypto.randomUUID(), kind: 'review', summary: 'Sam’s saved current-head review', path, commit: p.head.sha, environment: 'Office Lead review', url: p.html_url, observedAt: new Date().toISOString() });
     }
-    const heldFindings=await outsideAmendmentFindingIds(this,job,result.commit,result);
-    const ready = result.outcome === 'passed' && result.commit === p.head.sha && !findingsBlock(this.store, result.findings, f => f.status === 'open' && !heldFindings.has(f.id)) && result.evidence.some(e => e.commit === p.head.sha && containedFile(e.path, root) && e.kind === 'review') && !p.draft && p.mergeable !== false && p.base.ref === this.store.project.target;
+    const ready = result.outcome === 'passed' && result.commit === p.head.sha && !findingsBlock(this.store, result.findings, f => f.status === 'open') && result.evidence.some(e => e.commit === p.head.sha && containedFile(e.path, root) && e.kind === 'review') && !p.draft && p.mergeable !== false && p.base.ref === this.store.project.target;
     if (job.mergeAuthorization && job.mergeAuthorization.head !== job.head)
         job.mergeApprovalRequired = true;
     job.status = ready && !job.mergeApprovalRequired && (this.store.state.coordination?.merges?.enabled || job.mergeAuthorization?.head === job.head) ? 'queued' : 'watching';

@@ -39,7 +39,7 @@ function originalPublication(store:Store,job:TicketJob,work:WorkTime,result:Stag
 export function publishedDraftConflictCandidate(store:Store,job:TicketJob,allowWorking=false){
  try{
   if(store.project.provider!=='github'||store.project.id==='brain'||job.stage!=='draft'||!(['blocked','interrupted'].includes(job.status)||allowWorking&&job.status==='working')||job.pr||job.prUrl||
-   job.sourceAmendment||job.implementationContinuation||job.initialDraftConflict||job.mergeAttempt||job.mergeIntentId||job.dependsOnPR||HOLDS[job.key]||job.boardUpdates?.some(u=>u.status!=='verified')||
+   job.implementationContinuation||job.initialDraftConflict||job.mergeAttempt||job.mergeIntentId||job.dependsOnPR||HOLDS[job.key]||job.boardUpdates?.some(u=>u.status!=='verified')||
    store.state.coordination?.jobs?.filter(j=>j.key===job.key&&j.status!=='cancelled').length!==1||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status))||job.steps.some(s=>s.result.receipts.some(r=>!r.verified||r.uncertain)))return;
   const step=job.steps.at(-1),work=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='github-draft').at(-1);
   if(!step||step.stage!=='draft'||!work)return;

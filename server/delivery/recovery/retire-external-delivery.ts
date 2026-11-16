@@ -13,7 +13,7 @@ function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
         !job.worktree && !job.mergeAttempt && !job.mergeIntentId && !job.mergeCommit &&
         !job.boardUpdates?.some(update => update.status !== 'verified' || update.stage !== 'lead-pr' || update.head !== job.head || update.target !== 'In review') && !job.candidateRecovery && !job.candidateBase &&
         !job.implementationContinuation && !job.implementationRecovery && !job.discoveryRecovery &&
-        !job.sourceAmendment && !job.repairCycle && !job.parked?.published && !job.candidateCleanup &&
+        !job.repairCycle && !job.parked?.published && !job.candidateCleanup &&
         job.steps.every(step => ['prepare-pr', 'lead-pr'].includes(step.stage) &&
             step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain && /^(?:get|read|query|inspect)\b/i.test(receipt.action))) &&
         completedPRReviews(store, job) &&
@@ -35,7 +35,7 @@ function ownerSettles(delivery: GitHubDelivery, job: TicketJob): boolean {
         !job.worktree && !job.mergeAttempt && !job.mergeIntentId && !job.mergeCommit &&
         !job.boardUpdates?.some(update => update.status !== 'verified') &&
         !job.candidateRecovery && !job.candidateBase && !job.implementationContinuation && !job.implementationRecovery &&
-        !job.discoveryRecovery && !job.sourceAmendment && !job.repairCycle && !job.candidateCleanup &&
+        !job.discoveryRecovery && !job.repairCycle && !job.candidateCleanup &&
         job.steps.every(step => ['prepare-pr', 'lead-pr'].includes(step.stage) &&
             step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain && /^(?:get|read|query|inspect)\b/i.test(receipt.action))) &&
         completedPRReviews(store, job) &&

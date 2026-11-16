@@ -155,12 +155,10 @@ export interface HarnessRequest {
     /** Last recorded stop; meaningful only while the request is blocked or interrupted. */
     stop?: StopReason;
     historyRetirement?: import('./history-retirement').HistoryRetirementIntent;
-    packed165SetupContinuation?: { attemptedAt: string; originalFailure: string; workerId: string; workSha256: string; intentSha256: string };
     prMetadataRecovery?: import('./pr-metadata').PRMetadataRecoveryIntent;
     closeoutSupervisionProof?: { path: string; sha256: string };
     timeClassification?: { workIds: string[]; expectedSha256: string; reason: 'recovery-work-is-administrative' };
     timeScope?: { policy: 'model-work-v1'; expectedSha256: string };
-    sourceAmendment?: import('../shared').SourceAmendmentAuthorization;
     discoveryResume?: { noteId: string; scopeDigest: string; jobDigest: string; workDigest: string };
     id: string;
     action: string;

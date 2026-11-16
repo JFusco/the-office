@@ -1,5 +1,5 @@
-import { officeQAEvidenceGap } from '../../qa/report-evidence';
 import { stoppedBaseStageProof } from '../recovery/stopped-base-validation';
+import { officeQAEvidenceGap } from '../../qa/report-evidence';
 import { captureLearning } from '../../knowledge/learning-events';
 import { acceptFeatureReview } from '../../features/stage-acceptance';
 import {completedExecution} from '../../workers/worker-completion';
@@ -9,7 +9,6 @@ import { handoffSavedPrerequisites, savedPrerequisiteFindingsResolved, savedPrer
 import { routeReadyPostConflictPublication } from '../recovery/preparation/post-conflict-preparation';
 import {enqueueRequest} from '../../scheduling/requests';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
-import {outsideAmendmentFindingIds,amendmentRepairView} from '../recovery/source-amendment/source-amendment-held';
 import { HOLDS } from '../../office/config';
 import { handsOff, harnessDelivers } from '../harness/scope';
 import { findingsBlock } from '../findings/advisory';
@@ -17,8 +16,6 @@ import { needsDecision, park } from '../parking/park';
 import { repairDispositions, revisedRepair, retainRepairEvidence } from '../repairs/delivery-repairs';
 import { discoveryReviewSatisfied } from '../recovery/implementation/discovery-recovery';
 import { recoveredFindingsResolved } from '../recovery/implementation/implementation-recovery';
-import { requireSourceAmendmentAcceptance } from '../recovery/source-amendment/source-amendment';
-import { sourceHash, sourceJson } from '../recovery/source-amendment/source-amendment-scope';
 import { deliveryInputSha256 } from '../../github/github-context';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -41,10 +38,10 @@ import { acceptMetadataReview } from '../publication/metadata-review';
 import type { GitHubDelivery } from './github-delivery';
 import { deliveryNextStage, hasUncertainEffects, pendingPreparationCheck, closeoutReceipt } from './github-delivery';
 
-export interface StageContext { officeQA?: boolean; job: TicketJob; result: StageResult; project: Store['project']; root: string; issue: any; role: Role; continuation: Awaited<ReturnType<GitHubDelivery['continuationGuard']>> | undefined; reviewStart: any; inputSha256: string; beforeWorkers: Set<string>; issueSha256: string | undefined; candidateAtStart: string; technicalPhase: boolean }
+export interface StageContext { officeQA?: boolean; job: TicketJob; result: StageResult; project: Store['project']; root: string; issue: any; role: Role; continuation: Awaited<ReturnType<GitHubDelivery['continuationGuard']>> | undefined; reviewStart: any; inputSha256: string; beforeWorkers: Set<string>; candidateAtStart: string; technicalPhase: boolean }
 /** Validates and applies one stage result: identity fences, proofs, parking, repairs, gates and the next stage. */
 export async function acceptStageResult(this: GitHubDelivery, context: StageContext): Promise<void> {
-    const { job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, issueSha256, candidateAtStart, technicalPhase } = context;
+    const { job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, candidateAtStart, technicalPhase } = context;
     const originalStage = job.stage;
     const learn = (boundary = false) => captureLearning(this.store, { kind: 'job', id: job.id }, job.key, originalStage, String(job.steps.length), result, result.summary, 'work', boundary);
     if (this.jobs.find(current => current.id === job.id) !== job || this.store.state.paused || HOLDS[job.key] || candidateAtStart !== JSON.stringify({ id: job.id, stage: job.stage, head: job.head, branch: job.branch, worktree: job.worktree })) {
@@ -52,7 +49,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         throw new Error('Delivery ownership, candidate, hold or pause state changed during this stage; result retained for reconciliation');
     }
     acceptFeatureReview(this.store, job, result, job.stage, beforeWorkers);
-    let nativeProof: { workerId?: string; nativeResultSha256?: string; issueSha256?: string } = issueSha256 ? { issueSha256 } : {};
+    let nativeProof: { workerId?: string; nativeResultSha256?: string } = {};
     nativeProof = { ...nativeProof, ...stoppedBaseStageProof(this.store, job, result, beforeWorkers) };
     let continuationWorker: ReturnType<typeof continuationWorkerProof> | undefined;
     let reviewDiagnostics: ReturnType<typeof continuationReviewArtifacts> = [];
@@ -81,20 +78,11 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         if(!isDeepStrictEqual(proof.result,result)||proof.assignment.claimId!==currentAssignment()?.claim.id)throw new Error('Resumed independent result/claim differs');
         nativeProof={...nativeProof,workerId:workers[0].id,nativeResultSha256:digest(result)};
     }
-    if (job.sourceAmendment && ['review', 'validate'].includes(job.stage)) {
-        const workers = (this.store.state.workLog || []).filter(work => !beforeWorkers.has(work.id) && work.requestId === job.id && work.stage === `github-${job.stage}`);
-        if (workers.length !== 1 || workers[0].role !== role || !workers[0].sessionId || !workers[0].endedAt) {
-            job.steps.push({ ...nativeProof, stage: job.stage, result });
-            throw new Error('Amendment requires one correlated actual independent worker for this stage');
-        }
-        nativeProof = { ...nativeProof, workerId: workers[0].id, nativeResultSha256: sourceHash(sourceJson(result)) };
-    }
     if (job.stage === 'review' && result.commit === job.head && result.evidence.length) {
         const path = resolve(root, `code-review-${job.steps.length}.json`);
         writeFileSync(path, JSON.stringify({ head: job.head, review: result, ...(reviewDiagnostics.length ? { diagnostics: reviewDiagnostics } : {}) }, null, 2));
         result.evidence.push({ id: crypto.randomUUID(), kind: 'review', summary: 'Saved independent candidate review', path, commit: job.head, environment: 'Office code review', url: '', observedAt: new Date().toISOString() });
     }
-    const heldFindings = await outsideAmendmentFindingIds(this,job,result.commit,result);
     if (job.stage === 'validate' && (context.officeQA || result.qa) && result.outcome === 'passed') {
         const gap = officeQAEvidenceGap(result, { key: job.key, head: job.head, stage: 'github-validate', approach: job.approach }, root);
         if (gap) { job.steps.push({ ...nativeProof, stage: job.stage, result }); throw new Error(gap); }
@@ -104,8 +92,6 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         try {
             if (job.implementationContinuation && (result.approach.review !== 'full' || result.approach.validation === 'developer-checks')) throw new Error('Continuation requires retained full independent review and QA');
             if (job.scopeRepairResumes?.length && (result.approach.review !== 'full' || result.approach.validation === 'developer-checks')) throw new Error('Resumed scope repair requires full independent review and QA');
-            if (job.sourceAmendment && (result.approach.review === 'none' || result.approach.validation === 'developer-checks'))
-                throw new Error('Amendment requires retained independent review and QA');
             if (job.stage === 'implement' && (job.implementationRecovery || job.discoveryRecovery)) {
                 result.approach = { ...result.approach,
                     review: result.approach.review === 'full' || job.approach?.review === 'full' ? 'full' : 'focused',
@@ -128,7 +114,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         job.steps.push({ ...nativeProof, stage: 'repair-diagnosis', result });
         if (deliveryInputSha256(this.store, job.key) !== inputSha256 || hasUncertainEffects('review', result) || result.worktree !== job.worktree || result.branch !== job.branch || !retainRepairEvidence(result, 'repair-diagnosis', root, job.worktree))
             throw new Error('Revised approach identity, human input or diagnostic evidence is unverified');
-        const revised = revisedRepair(job.repairCycle, amendmentRepairView(result,heldFindings), handsOff(this.store));
+        const revised = revisedRepair(job.repairCycle, result, handsOff(this.store));
         if (!revised || revised.phase !== 'repair') throw new Error(result.blocker || 'No permitted changed technical approach was established; Morgan retains the concrete restriction and original repair evidence');
         job.repairCycle = revised; job.stage = 'update-base'; job.status = 'queued';
         job.detail = 'Sam established one changed technical approach. Alex continues the same candidate within the extended bounded window; original counters are retained.';
@@ -235,7 +221,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         if (p.state !== 'open' || p.head.sha !== job.head)
             throw new Error('Prepared PR state or exact head is unverified');
         const checksPending = await this.preparationChecksPending(job, result);
-        if (findingsBlock(this.store, result.findings, f => f.status === 'open' && !heldFindings.has(f.id) && !pendingPreparationCheck(f, checksPending)))
+        if (findingsBlock(this.store, result.findings, f => f.status === 'open' && !pendingPreparationCheck(f, checksPending)))
             throw new Error(result.blocker || result.summary || 'PR preparation findings require reconciliation');
         const childPages = JSON.parse(await this.execute('gh', ['api', `repos/${project.repository}/pulls?state=open&base=${encodeURIComponent(p.head.ref)}&per_page=100`, '--paginate', '--slurp'], { cwd: project.repo, timeout: 60000 }));
         if (!Array.isArray(childPages) || childPages.flat().some((child: any) => child.base?.ref === p.head.ref))
@@ -294,8 +280,8 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         throw new Error('Recovered implementation findings require explicit independent disposition');
     if (job.repairCycle && job.repairCycle.phase !== 'diagnosis' && ['update-base', 'review', 'validate'].includes(job.stage) && !repairDispositions(job.repairCycle, result, job.stage === 'validate', handsOff(this.store)))
         throw new Error('Repair must retain every original finding and its explicit current-head disposition');
-    if(result.outcome==='passed')assertScopeRepairResumeFindings(this.store,job,job.stage,result,heldFindings);
-    const openBlocks = (f: StageResult['findings'][number]) => f.status === 'open' && !heldFindings.has(f.id) && !(['update-base', 'draft'].includes(job.stage) && f.id === 'draft-blocks-merge');
+    if(result.outcome==='passed')assertScopeRepairResumeFindings(this.store,job,job.stage,result);
+    const openBlocks = (f: StageResult['findings'][number]) => f.status === 'open' && !(['update-base', 'draft'].includes(job.stage) && f.id === 'draft-blocks-merge');
     // Verdict stages are advisory for hands-off projects; a draft publication's findings describe its technical state.
     if (result.outcome !== 'passed' || (job.stage === 'draft' ? result.findings.some(openBlocks) : findingsBlock(this.store, result.findings, openBlocks)))
     {
@@ -334,7 +320,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         if (['scope-repair', 'update-base'].includes(job.stage) && (result.prId !== (job.pr || 0) || result.worktree !== job.worktree || result.branch !== job.branch))
             throw new Error('Base update must preserve the owned candidate identity');
         if (job.stage === 'scope-repair') {
-            if (!job.candidateRecovery || result.findings.some(finding => !job.candidateRecovery!.findingIds.includes(finding.id)) || job.candidateRecovery.findingIds.some(id => !result.findings.some(finding => finding.id === id && (finding.status !== 'open' || heldFindings.has(id)))))
+            if (!job.candidateRecovery || result.findings.some(finding => !job.candidateRecovery!.findingIds.includes(finding.id)) || job.candidateRecovery.findingIds.some(id => !result.findings.some(finding => finding.id === id && finding.status !== 'open')))
                 throw new Error('Saved finding identity or resolution is incomplete');
             await this.execute('git', ['merge-base', '--is-ancestor', job.candidateRecovery.head, result.commit], { cwd: job.worktree, readOnly: true });
         }
@@ -356,13 +342,10 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         job.head = result.commit;
         job.worktree = result.worktree;
         job.branch = result.branch;
-        if (job.stage === 'update-base' && job.repairReason === 'conflicts' && !job.sourceAmendment)
+        if (job.stage === 'update-base' && job.repairReason === 'conflicts')
             acceptConflictRepair(job, result, handsOff(this.store));
     }
-    if (job.stage === 'validate' && job.sourceAmendment)
-        await requireSourceAmendmentAcceptance(this, job, true);
     if (job.stage === 'draft') {
-        await requireSourceAmendmentAcceptance(this, job);
         if (job.pr && result.prId !== job.pr)
             throw new Error('Existing PR identity changed during publication');
         job.pr = result.prId;

@@ -9,7 +9,7 @@ export function settledExternalRepair(store: Store, job: TicketJob): boolean {
         job.boardUpdates?.some(update => update.status !== 'verified') ||
         job.candidateRecovery || job.candidateBase || job.candidateCleanup ||
         job.implementationContinuation || job.implementationRecovery || job.discoveryRecovery ||
-        job.sourceAmendment || job.repairCycle ||
+        job.repairCycle ||
         !job.ciRepairs?.length || job.ciRepairs.some(repair => repair.phase !== 'done') ||
         job.steps.some(step => step.result.receipts.some(receipt => !receipt.verified || receipt.uncertain)) ||
         store.activeClaims().some(claim => claim.work.id === job.id || claim.work.id === `ticket:${job.key}`) ||

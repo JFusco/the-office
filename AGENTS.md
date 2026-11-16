@@ -42,7 +42,7 @@ server/
     parking/       Block-lane decisions and resume
     closeout/      harness closeout
     recovery/      reconciliation of legacy records (closeout, implementation, preparation,
-                   scope repair, source amendment, validation)
+                   scope repair, validation)
   cec/             Jira/Azure (CEC) pipeline: workflow, mailbox, pilot delivery, stage runner,
                    Jira Blocked parking
   github/          GitHub provider adapters

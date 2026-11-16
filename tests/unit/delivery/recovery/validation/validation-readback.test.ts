@@ -77,7 +77,7 @@ test('a fresh read-only Riley verifies the exact original and queues normal publ
  expect(a.verify).toHaveBeenCalledTimes(2);expect(a.ownership).toHaveBeenCalledTimes(2);
  await expect(reconcileValidation(a.delivery,a.job.key,'original',a.ownership)).rejects.toThrow('Exact stopped');expect(a.run).toHaveBeenCalledTimes(1);
 });
-test.each(['wrong-worker','wrong-session','active-process','untrusted-checkpoint','changed-head','uncertain-receipt','unverified-finding','missing-review','source-amendment','published','unknown-error','symlink-check','foreign-check'] as const)('does not dispatch or advance an unsafe original: %s',async scenario=>{
+test.each(['wrong-worker','wrong-session','active-process','untrusted-checkpoint','changed-head','uncertain-receipt','unverified-finding','missing-review','published','unknown-error','symlink-check','foreign-check'] as const)('does not dispatch or advance an unsafe original: %s',async scenario=>{
  const a=fixture();
  if(scenario==='wrong-worker')a.original.role='developer';
  if(scenario==='wrong-session')a.put('original','assignment-identity.json',{threadId:'other'});
@@ -87,7 +87,6 @@ test.each(['wrong-worker','wrong-session','active-process','untrusted-checkpoint
  if(scenario==='uncertain-receipt'){a.result.receipts.push({id:'write',action:'push',target:'branch',verified:false,uncertain:true,detail:'Unknown'});a.put('original','completed-output.json',a.result);}
  if(scenario==='unverified-finding'){a.result.findings[0].status='open';a.put('original','completed-output.json',a.result);}
  if(scenario==='missing-review')a.lead.status='failed';
- if(scenario==='source-amendment')a.job.sourceAmendment={} as any;
  if(scenario==='published')a.job.pr=123;
  if(scenario==='unknown-error')a.job.detail='Error: unknown writable worker failure';
  if(scenario==='symlink-check'){rmSync(a.check);symlinkSync(resolve(a.root,'sessions/original/provider.json'),a.check);}
