@@ -1,4 +1,4 @@
-import type { DailyCheckpoint, MaintenanceRun, TeamMessage, Ticket } from '../../src/shared';
+import type { DailyCheckpoint, DeliveryRequest, MaintenanceRun, TeamMessage, Ticket, TicketJob } from '../../src/shared';
 import { workKey, type HarnessRequest, type WorkRef } from '../../src/contracts/work';
 
 /**
@@ -57,4 +57,49 @@ export function retiredFollowup(message: Pick<TeamMessage, 'id' | 'from' | 'stat
     const readOnly = message.actionId.startsWith('harper:');
     const unverified = messages.some(reply => reply.id !== message.id && reply.requestId === message.requestId && (reply.receipts || []).some(receipt => !receipt.verified || receipt.uncertain));
     return readOnly || !unverified ? 'Advisory follow-up failed and is not retried; kept as history' : undefined;
+}
+
+const FINISHED = new Set(['completed', 'cancelled']);
+
+/**
+ * These requests repair a delivery in flight. Once every delivery recorded for the ticket is finished there is
+ * nothing left to recover, even while the ticket itself stays open in the backlog. Cost, time and native
+ * reconciliations are operator decisions that outlive the delivery, so they are not listed.
+ */
+const DELIVERY_RECOVERY = new Set(['resume-discovery', 'reconcile-activation', 'reconcile-implementation', 'reconcile-validation', 'reconcile-preparation',
+    'reconcile-scope-repair', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-metadata']);
+export function finishedJobsRequest(request: Pick<HarnessRequest, 'status' | 'key' | 'action'>, jobs: readonly Pick<TicketJob, 'key' | 'status'>[]): string | undefined {
+    if (!STOPPED.has(request.status) || !request.key || !DELIVERY_RECOVERY.has(request.action)) return;
+    const own = jobs.filter(job => job.key === request.key);
+    return own.length && own.every(job => FINISHED.has(job.status)) ? `Superseded: every ${request.key} delivery is finished; the stopped request is kept as history` : undefined;
+}
+
+/** A stopped Start or Resume is history once a later request for the same ticket completed. */
+export function supersededDeliveryRequest(request: Pick<DeliveryRequest, 'id' | 'key' | 'action' | 'status' | 'requestedAt'>, queue: readonly Pick<DeliveryRequest, 'id' | 'key' | 'status' | 'requestedAt'>[]): string | undefined {
+    if (!STOPPED.has(request.status) || !['start-pilot', 'resume-ticket'].includes(request.action)) return;
+    return queue.some(other => other.id !== request.id && other.key === request.key && other.status === 'completed' && other.requestedAt > request.requestedAt)
+        ? `Superseded: a later ${request.key} request completed; this stopped attempt is kept as history` : undefined;
+}
+
+/** An unconfirmed notice is history once its Slack delivery is confirmed or has a proven replacement (see supersession-proof.ts). */
+export function settledNotice(notice: { status: string }, settled: boolean): string | undefined {
+    return notice.status === 'uncertain' && settled ? 'Superseded: a verified replacement delivery settled this notice; the original uncertainty is kept as history' : undefined;
+}
+
+/** Nothing retries a failed Ellis report, and a report about a ticket that has since closed has no reader left. */
+export function closedTicketReport(message: Pick<TeamMessage, 'id' | 'from' | 'status' | 'ticket'>, tickets: readonly Pick<Ticket, 'key' | 'status'>[]): string | undefined {
+    if (message.from !== 'it' || message.status !== 'failed' || !message.id.startsWith('it-report:') || !message.ticket) return;
+    return tickets.some(ticket => ticket.key === message.ticket && ticket.status === 'closed') ? `Superseded: ${message.ticket} is closed; the failed report is kept as history` : undefined;
+}
+
+/**
+ * Avery asks for goal evidence again at each review, so a failed request is history once a later request covering the
+ * same goals was answered. Replies and reports copy the request's fields, so only another request (`goal-evidence:`) counts.
+ */
+export function supersededEvidenceRequest(message: Pick<TeamMessage, 'id' | 'from' | 'status' | 'createdAt' | 'goalEvidenceRequest'>, messages: readonly Pick<TeamMessage, 'id' | 'from' | 'status' | 'createdAt' | 'goalEvidenceRequest'>[]): string | undefined {
+    const asked = message.goalEvidenceRequest;
+    if (message.from !== 'cto' || message.status !== 'failed' || !asked?.projectId || !asked.goalIds?.length) return;
+    return messages.some(other => other.id !== message.id && other.from === 'cto' && other.id.startsWith('goal-evidence:') && other.status === 'answered' && other.createdAt > message.createdAt &&
+        other.goalEvidenceRequest?.projectId === asked.projectId && asked.goalIds.every(id => other.goalEvidenceRequest!.goalIds?.includes(id)))
+        ? 'Superseded: a later goal evidence request was answered; this failed request is kept as history' : undefined;
 }

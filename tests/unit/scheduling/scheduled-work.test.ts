@@ -252,3 +252,37 @@ test('a stale request stays stopped while a native closeout write on its issue o
     store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e2',`${store.project.id}:issue:999`,'dispatching',JSON.stringify({attemptId:'run-a'}));
     expect(state()).toBe('blocked');
 });
+
+test('finished and superseded work leaves the stopped and waiting counts while its saved status is untouched', () => {
+    const {store,entry,project}=fixture(),c=store.state.coordination!;
+    store.state.tickets=[{key:'GH-67',status:'open'} as any,{key:'GH-159',status:'closed'} as any];
+    c.jobs=[{id:'cancelled-67',key:'GH-67',stage:'scope-repair',status:'cancelled',requestedAt:'2026-10-29T20:00:00Z',steps:[]} as any,
+        {id:'cancelled-gated',key:'GH-100',stage:'prepare-pr',status:'cancelled',requestedAt:'2026-10-29T20:00:00Z',steps:[],prerequisites:[{target:{projectId:'brain',kind:'pr',id:'117'},condition:'pr-merged',evidence:'PR #117 is open',observedAt:'2026-10-29T20:00:00Z'}]} as any];
+    c.requests=[{id:'old-recovery',action:'reconcile-activation',key:'GH-67',head:'h',lane:'delivery',requestedAt:'2026-10-30T00:00:00Z',status:'blocked',detail:'Incomplete audit'} as any];
+    store.state.deliveryQueue=[{id:'stopped-start',key:'CEC-154',action:'resume-ticket',requestedAt:'2026-11-14T01:00:00Z',status:'blocked',error:'I cannot clear dispatch'} as any,
+        {id:'later-start',key:'CEC-154',action:'resume-ticket',requestedAt:'2026-11-14T02:00:00Z',status:'completed'} as any,
+        {id:'latest-stop',key:'CEC-154',action:'resume-ticket',requestedAt:'2026-11-14T03:00:00Z',status:'blocked',error:'Still stopped'} as any];
+    store.state.messages.push({id:'it-report:x',requestId:'it-report:x',actionId:'',from:'it',to:'pm',ticket:'GH-159',status:'failed',createdAt:'2026-11-10T00:00:00Z',body:'b',error:'x',receipts:[]} as any,
+        {id:'goal-evidence:old',requestId:'goal-evidence:old',actionId:'',from:'cto',to:'pm',ticket:'',status:'failed',createdAt:'2026-11-01T00:00:00Z',body:'b',error:'at capacity',receipts:[],goalEvidenceRequest:{projectId:'brain',goalIds:['g1']}} as any,
+        {id:'goal-evidence:new',requestId:'goal-evidence:new',actionId:'',from:'cto',to:'pm',ticket:'',status:'answered',createdAt:'2026-11-02T00:00:00Z',body:'b',error:'',receipts:[],goalEvidenceRequest:{projectId:'brain',goalIds:['g1']}} as any);
+    const items=project(),find=(id:string)=>items.find(item=>item.work.id===id)!.eligibility;
+    expect(find('old-recovery')).toMatchObject({state:'terminal',reason:expect.stringMatching(/every GH-67 delivery is finished/)});
+    expect(find('cancelled-gated').state).toBe('terminal');
+    expect(find('stopped-start').state).toBe('terminal');expect(find('latest-stop')).toMatchObject({state:'blocked'});
+    expect(find('it-report:x').state).toBe('terminal');expect(find('goal-evidence:old').state).toBe('terminal');
+    expect(projectReadiness(entry,items)).toMatchObject({blocked:1,waiting:0});
+    expect(c.requests[0].status).toBe('blocked');expect(store.state.deliveryQueue[0].status).toBe('blocked');
+    store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e1',`${store.project.id}:delivery:cancelled-67`,'uncertain',JSON.stringify({attemptId:'cancelled-67'}));
+    expect(project().find(item=>item.work.id==='old-recovery')!.eligibility).toMatchObject({state:'blocked',cause:'needs-decision'});
+    store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e2',`${store.project.id}:delivery:CEC-154`,'uncertain',JSON.stringify({attemptId:'jira-attempt'}));
+    expect(project().find(item=>item.work.id==='stopped-start')!.eligibility.state).toBe('blocked');
+});
+
+test('an unconfirmed notice is history once its Slack delivery is confirmed, and stays stopped without one', () => {
+    const {store,entry,project}=fixture();
+    store.state.coordination!.notices={policy:{} as any,entries:[{id:'notice',kind:'merge',key:'GH-350',status:'uncertain',createdAt:'2026-11-08T00:00:00Z',detail:'Slack delivery could not be confirmed'} as any]};
+    expect(project().find(item=>item.work.id==='notice')!.eligibility).toMatchObject({state:'blocked',cause:'unconfirmed'});
+    store.state.slackDeliveries=[{id:'delivery',requestId:'notice',status:'confirmed'} as any];
+    expect(project().find(item=>item.work.id==='notice')!.eligibility.state).toBe('terminal');
+    expect(projectReadiness(entry,project()).blocked).toBe(0);
+});
