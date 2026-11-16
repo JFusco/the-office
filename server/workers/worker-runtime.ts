@@ -16,7 +16,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import {createHash} from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
-import { command } from './process';
+import { command, CommandFailure } from './process';
 import { DATA, ROOT, CEC, SKILLS } from '../office/config';
 import { sanitize, sanitizeObject } from '../office/security';
 import type { Store } from '../store/store';
@@ -292,7 +292,8 @@ READ-ONLY EXECUTION: Keep filesystem writes prohibited. Native TWG reads may req
         }
         catch (error) {
             recordWorkerFailure(this.store, id, error);
-            try { retainClaudeCompletion(); } catch (persistenceError) { error = new Error(`${sanitize(String(error))}; provider completion persistence failed: ${sanitize(String(persistenceError))}`); }
+            // A result the CLI printed in answer to the runner's own interrupt is not a provider completion of the assignment.
+            try { if (!(error instanceof CommandFailure && error.interrupted)) retainClaudeCompletion(); } catch (persistenceError) { error = new Error(`${sanitize(String(error))}; provider completion persistence failed: ${sanitize(String(persistenceError))}`); }
             if (controller.signal.aborted)
                 workStatus = 'interrupted';
             this.store.agent(role, { lastOutcome: { ticket: opts.ticket || '', summary: shortSummary(String(error)), status: workStatus, at: new Date().toISOString() } });

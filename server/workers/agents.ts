@@ -123,11 +123,11 @@ export class Agents extends WorkerRuntime {
         for (;;) {
             if (resume) {
                 await assertContinuableWorktree(this.execute, ticket);
-                this.store.emit('stage-continued', `${ticket.key}: the ${stage} run stopped at its time limit; continuing the same session (${resume.attempt} of ${MAX_CONTINUATIONS}).`, role, ticket.key);
+                this.store.emit('stage-continued', `${ticket.key}: the ${stage} run ${resume.stalled ? 'stalled' : 'stopped at its time limit'}; continuing the same session (${resume.attempt} of ${MAX_CONTINUATIONS}).`, role, ticket.key);
             }
             const before = new Set((this.store.state.workLog || []).map(work => work.id));
             try {
-                result = await this.run(role, resume ? continuationPrompt(resume.attempt, timeout) : prompt + (officeQA ? qaTimeLimitGuidance(ticket.approach) : ''), ResultSchema, { officeQA, timeout, inactivityTimeout: STAGE_STALL_LIMIT_MS, ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
+                result = await this.run(role, resume ? continuationPrompt(resume.attempt, timeout, resume.stalled) : prompt + (officeQA ? qaTimeLimitGuidance(ticket.approach) : ''), ResultSchema, { officeQA, timeout, inactivityTimeout: STAGE_STALL_LIMIT_MS, ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
                     ...(continued ? { requestId: continued.requestId, originalWorkId: continued.originalWorkId } : {}),
                     ...(resume ? { resumeSession: resume.work.id, originalWorkId: resume.work.id } : {}) });
                 break;

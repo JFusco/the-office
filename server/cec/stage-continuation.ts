@@ -13,7 +13,7 @@ const CONTINUABLE: readonly Stage[] = ['implement', 'repair'];
 /** The runner's own messages when a writable Claude worker reaches its time limit or goes silent past the stall limit. */
 const TIMED_OUT = /\bclaude (?:timed out; previous action outcome must be reconciled|stopped producing output; inspect the retained worker evidence)$/;
 
-export interface StageContinuation { work: WorkTime; attempt: number }
+export interface StageContinuation { work: WorkTime; attempt: number; /** The run went silent past the stall limit instead of reaching its time limit. */ stalled: boolean }
 
 /**
  * The timed-out developer run a stage should continue instead of starting over or reconstructing:
@@ -41,7 +41,7 @@ export function stageContinuation(store: Store, ticket: Ticket, stage: Stage, al
         if (!earlier) break;
         current = earlier;
     }
-    return attempt > MAX_CONTINUATIONS ? undefined : { work, attempt };
+    return attempt > MAX_CONTINUATIONS ? undefined : { work, attempt, stalled: /stopped producing output/.test(work.failure.detail) };
 }
 
 /**
@@ -65,8 +65,8 @@ export async function recordedContinuation(store: Store, execute: typeof command
 }
 
 /** What a continued run is told. The session already holds the assignment; this only says what happened. */
-export function continuationPrompt(attempt: number, limitMs: number | undefined): string {
-    return `CONTINUE THE SAME ASSIGNMENT. The stage time limit stopped you before you returned a result. This is continuation ${attempt} of at most ${MAX_CONTINUATIONS}; your earlier work in this session and worktree is intact.
+export function continuationPrompt(attempt: number, limitMs: number | undefined, stalled = false): string {
+    return `CONTINUE THE SAME ASSIGNMENT. ${stalled ? 'You produced no output for 20 minutes and were stopped as stalled before you returned a result; the command that was running was stopped. Do not run it the same way again: find out why it hung, or bound it with a timeout.' : 'The stage time limit stopped you before you returned a result.'} This is continuation ${attempt} of at most ${MAX_CONTINUATIONS}; your earlier work in this session and worktree is intact.
 1. Run git status and git log first to see what you already committed and what is uncommitted.
 2. Do not redo finished work, and do not repeat an external action you already performed. If a command was cut off, check its effect before deciding what to do.
 3. Finish what remains. Commit after each finding you resolve, so another stop loses nothing.

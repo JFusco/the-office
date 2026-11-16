@@ -38,7 +38,9 @@ test('a developer run stopped for producing no output is continued the same way'
     const { store, t } = stopped(), STALLED = 'claude stopped producing output; inspect the retained worker evidence';
     store.state.workLog![0].failure!.detail = STALLED;
     t.results.repair!.blocker = `Interrupted stage; external effects require reconciliation. Error: ${STALLED}`;
-    expect(stageContinuation(store, t, 'repair', gone)).toMatchObject({ work: { id: 'run-1' }, attempt: 1 });
+    expect(stageContinuation(store, t, 'repair', gone)).toMatchObject({ work: { id: 'run-1' }, attempt: 1, stalled: true });
+    expect(continuationPrompt(1, 90 * 60 * 1000, true)).toContain('Do not run it the same way again');
+    expect(continuationPrompt(1, 90 * 60 * 1000)).toContain('The stage time limit stopped you');
 });
 
 test('any other ending is not continued', () => {

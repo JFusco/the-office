@@ -31,6 +31,8 @@ export function workerFailure(program: string, code: number | null, stdout: stri
     return sanitize(`${program} exited ${code}: ${stderr.trim().slice(-2000) || 'No provider diagnostic was returned. Read the saved session before another attempt.'}`);
 }
 export class CommandFailure extends Error {
+    /** The runner interrupted the process to stop it; anything it reported afterwards answers that interrupt, not its assignment. */
+    interrupted = false;
     constructor(message: string, public category: import('../../src/shared').FailureCategory, public dispatched: boolean, public code?: 'surviving-subprocesses') { super(message); }
 }
 /** Negative PID probes the entire owned group, not just the leader. */
@@ -80,9 +82,11 @@ export async function command(program: string, args: string[], options: {
         };
         const terminate = (graceful = false) => {
             if (!child.pid || killTimer) return;
-            if (graceful && options.interruptFirst && !interruptTimer) {
+            // Only a leader that is still running can answer an interrupt; survivors of one that already exited are terminated at once.
+            if (graceful && options.interruptFirst && !interruptTimer && child.exitCode === null && child.signalCode === null) {
                 // Leader only: it stops its own commands and writes its record. Anything left gets the group signals below.
                 try { process.kill(child.pid, 'SIGINT'); } catch {}
+                if (failure instanceof CommandFailure) failure.interrupted = true;
                 interruptTimer = setTimeout(() => terminate(), options.interruptGraceMs ?? 5000);
                 return;
             }
@@ -97,7 +101,7 @@ export async function command(program: string, args: string[], options: {
             terminate(true);
         };
         const timer = options.timeout === 0 && options.inactivityTimeout ? undefined : setTimeout(() => stop(new CommandFailure(options.readOnly ? `${program} read timed out; saved observations retained; safe to retry the read` : `${program} timed out; previous action outcome must be reconciled`, options.readOnly ? 'transient-read' : 'uncertain-effect', true)), options.timeout ?? 45000);
-        const inactivity = inactivityWatch(options.inactivityTimeout, () => stop(new CommandFailure(`${program} stopped producing output; inspect the retained worker evidence`, options.readOnly ? 'transient-read' : 'uncertain-effect', true)));
+        const inactivity = inactivityWatch(options.inactivityTimeout, () => stop(new CommandFailure(options.readOnly ? `${program} read stopped producing output; saved observations retained; safe to retry the read` : `${program} stopped producing output; inspect the retained worker evidence`, options.readOnly ? 'transient-read' : 'uncertain-effect', true)));
         const abort = () => stop(new CommandFailure('Worker paused; reconcile any external effects before resuming', 'cancelled', true));
         options.signal?.addEventListener('abort', abort, { once: true });
         child.stdout.on('data', (data: Buffer) => {
@@ -108,15 +112,17 @@ export async function command(program: string, args: string[], options: {
             line += s;
             const lines = line.split('\n');
             line = lines.pop()!;
-            for (const l of lines) { lifecycle?.line(l); options.onLine?.(l); }
+            // Output after the runner began stopping the run is its answer to the stop, not a provider-reported end of the assignment.
+            for (const l of lines) { if (!failure) lifecycle?.line(l); options.onLine?.(l); }
             if (out.length > 16000000)
                 stop(new CommandFailure('Worker output limit exceeded', 'uncertain-effect', true));
         });
         child.stderr.on('data', (data: Buffer) => { const s = data.toString(); options.onOutput?.('stderr', s); err = (err + s).slice(-12000); });
-        child.on('exit', (code, signal) => lifecycle?.exit(code, signal));
+        // A leader that exits on the interrupt may leave helpers holding its pipes; do not give them the rest of the grace period.
+        child.on('exit', (code, signal) => { lifecycle?.exit(code, signal); if (failure && interruptTimer && !killTimer) terminate(); });
         child.on('error', stop);
         child.on('close', async (code, signal) => {
-            lifecycle?.close(code, signal); if (line) lifecycle?.line(line);
+            lifecycle?.close(code, signal); if (line && !failure) lifecycle?.line(line);
             clearTimeout(timer);
             inactivity.clear();
             // CLI helpers can finish just after their leader. Allow a bounded normal
