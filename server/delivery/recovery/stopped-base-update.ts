@@ -14,7 +14,8 @@ import type { GitHubDelivery } from '../pipeline/github-delivery';
 
 /** Recognize an original stopped attempt even when a safety gate currently blocks it. */
 export function stoppedBaseUpdateCandidate(store: Store, job: TicketJob) {
-    if (store.project.id !== 'cms-field-vocabulary' || !job.existingPR || !job.pr) return;
+    // A finished delivery has no stopped run left to read back.
+    if (store.project.id !== 'cms-field-vocabulary' || !job.existingPR || !job.pr || ['completed', 'cancelled'].includes(job.status)) return;
     if (job.stoppedBaseUpdate) return { id: `stopped-base-update:${job.id}:${job.stoppedBaseUpdate.originalWorkId}`, head: job.stoppedBaseUpdate.originalWorkId };
     const workers = store.state.workLog?.filter(w => w.requestId === job.id && w.stage === 'github-update-base') || [];
     // A job the harness restarts from the accepted head, or already has, is no longer one original run to read back.
