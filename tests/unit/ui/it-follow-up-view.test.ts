@@ -26,13 +26,16 @@ test('IT-owned session recovery retains its raw owner and retry status', () => {
     expect(sessionVisibilityCopy({ id: 'session-visibility', owner: 'IT', detail: 'Read-only recovery 1/3 did not finish; retry scheduled.' })).toBeUndefined();
 });
 test('Brain and CMS describe optional context while the unchanged CEC gate remains explicit', () => {
-    const followUp: ITFollowUp = { id: 'session-visibility', owner: 'Morgan', detail: 'Current unavailable source' };
+    // The settled follow-up now stays with Ellis; an older Morgan-owned record reads the same.
+    const followUp: ITFollowUp = { id: 'session-visibility', owner: 'IT', detail: 'Current unavailable source' };
+    expect(sessionVisibilityCopy({ ...followUp, owner: 'Morgan' }, 'cec')!.title).toBe(sessionVisibilityCopy(followUp, 'cec')!.title);
     for (const project of ['brain', 'cms-field-vocabulary']) {
         const copy = sessionVisibilityCopy(followUp, project)!;
         expect(copy.title).toBe('Optional chat context unavailable');
         expect(copy.explanation).toContain('assignments and holds');
         expect(copy.explanation).not.toContain('waits for a complete check');
     }
-    expect(sessionVisibilityCopy(followUp, 'cec')!.explanation).toContain('waits for a complete check');
+    expect(sessionVisibilityCopy(followUp, 'cec')!.explanation).toContain('reports its own block');
+    expect(sessionVisibilityCopy(followUp, 'cec')!.next).toContain('Ellis keeps checking');
     expect(followUp.detail).toBe('Current unavailable source');
 });

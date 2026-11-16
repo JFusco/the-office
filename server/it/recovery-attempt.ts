@@ -1,4 +1,5 @@
 import type { TeamMessage } from '../../src/shared';
+import { informationalRecovery } from './informational-recovery';
 import type { ITFollowUp } from '../../src/shared';
 import type { ITContext } from './context';
 
@@ -43,7 +44,8 @@ export async function recoverAttempt(context: ITContext, id: string, detail: str
             return;
         }
         if (r.attempts >= 3) {
-            r.status = 'needs-human';
+            // An informational recovery keeps being watched; it never becomes a request for a person.
+            r.status = informationalRecovery(id) ? 'retrying' : 'needs-human';
             followUps.push({ id, owner, detail: nextStep });
             return;
         }
@@ -71,6 +73,7 @@ export async function recoverAttempt(context: ITContext, id: string, detail: str
         }
         catch { /* Original provider/session evidence stays in its source record. */ }
         r.nextAt = new Date(now.getTime() + delays[Math.min(r.attempts - 1, 2)]).toISOString();
-        r.status = r.attempts >= 3 ? 'needs-human' : 'retrying';
-        followUps.push({ id, owner: r.status === 'needs-human' ? owner : 'IT', detail: r.status === 'needs-human' ? nextStep : `Read-only recovery ${r.attempts}/3 did not finish; retry scheduled.`, nextAt: r.status === 'needs-human' ? undefined : r.nextAt });
+        const exhausted = r.attempts >= 3;
+        r.status = exhausted && !informationalRecovery(id) ? 'needs-human' : 'retrying';
+        followUps.push({ id, owner: exhausted ? owner : 'IT', detail: exhausted ? nextStep : `Read-only recovery ${r.attempts}/3 did not finish; retry scheduled.`, nextAt: exhausted ? undefined : r.nextAt });
 }

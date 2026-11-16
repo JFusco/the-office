@@ -227,6 +227,21 @@ Ellis does not investigate a timed-out run whose saved result the stage accepted
 investigation resolves from the accepted result.
 A stopped-base recovery is settled once its delivery has finished or been cancelled.
 
+Ellis's follow-ups close when the work they are about finishes, and only real trouble reaches
+Morgan or Joe:
+
+- An investigation of a failed worker is kept as history once the delivery it ran for is
+  completed or cancelled, or its Jira/Azure ticket is complete. A Jira/Azure stage worker is
+  recorded without a request ID: it is investigated on its own, and a later completed run of the
+  same ticket stage settles its read failure.
+- An old blocked nightly checkpoint is settled by a later night that completed.
+- A failed project refresh or assignment read is retried by Ellis; Morgan is told only after
+  three failures in a row. The Azure monitor's reads are read-only, so a lingering helper is not
+  treated as a possible write.
+- Session visibility and service status probes are informational and stay with Ellis. Probes are
+  raised only for services the project uses. A confirmed logout still reaches Joe, and work that
+  needs a complete session inventory reports its own block.
+
 A Jira/Azure developer stage (implement or repair) on Claude that is stopped by its time limit
 is continued, not restarted or reconstructed: the next run resumes the stopped session's
 conversation under its own session ID, in the same worktree, and is told to check what is

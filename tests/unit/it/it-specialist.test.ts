@@ -48,7 +48,9 @@ test('unknown provider checks never request a login after retries, while confirm
     a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [{ id: 'anthropic', name: 'Claude', status: 'unknown', detail: 'Status check timed out', checkedAt: '', nextStep: 'Run /login' }] } as any);
     for (const ms of [0, 60000, 180000, 600000])
         await a.it.tick(new Date(1793221200000 + ms), true);
-    expect(a.state.it!.reports.at(-1)!.followUps).toEqual([expect.objectContaining({ owner: 'Morgan' })]);
+    // An incomplete probe stays with Ellis however often it repeats; only a confirmed logout reaches Joe.
+    expect(a.state.it!.reports.at(-1)!.followUps).toEqual([expect.objectContaining({ id: 'probe:anthropic', owner: 'IT' })]);
+    expect(a.state.it!.status).toBe('retrying');
     syncOutbox(a.state);
     expect(a.state.outbox.filter(o => o.status === 'open')).toEqual([]);
     a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [{ id: 'anthropic', name: 'Claude', status: 'disconnected', detail: 'Not logged in', checkedAt: '', nextStep: 'Run /login' }] } as any);
@@ -115,12 +117,16 @@ test.each(['cec', 'brain', 'cms-field-vocabulary'])('%s session visibility follo
     (a.it as any).offices.sessions = { forProject: () => ({ complete: false, fresh: false }), refresh: vi.fn() };
     for (const ms of [0, 60000, 180000, 600000]) await a.it.tick(new Date(1793221200000 + ms), true);
     const followUp = a.state.it!.reports.at(-1)!.followUps.find(f => f.id === 'session-visibility')!;
-    expect(followUp.owner).toBe('Morgan');
+    // Informational: it stays with Ellis after its retries, and never turns his status to needs-attention.
+    expect(followUp.owner).toBe('IT');
+    expect(a.state.it!.status).toBe('retrying');
     if (project === 'cec') {
-        expect(followUp.detail).toContain('delivery ownership still requires complete live evidence');
+        expect(followUp.detail).toContain('work that needs complete live evidence reports its own block');
         expect(followUp.detail).not.toContain('Optional chat context');
     } else expect(followUp.detail).toContain('Optional chat context is unavailable');
     expect(a.state.it!.recoveries['session-visibility'].attempts).toBe(3);
+    // It never becomes a request for a person, so Harper has nothing to hand to Morgan.
+    expect(a.state.it!.recoveries['session-visibility'].status).toBe('retrying');
 });
 test('IT queues read-only closeout reconciliation only after the shared worker is free', async () => {
     const a = setup(), job: any = { id: 'done', key: 'GH-255', stage: 'closeout', status: 'blocked', detail: 'Effect needs read-back', steps: [{ stage: 'closeout', result: { outcome: 'passed' } }] };
@@ -246,4 +252,22 @@ test('an already completed exact readback is not refunded or counted again while
  a.state.it={checkedAt:'',nextCheckAt:'',status:'monitoring',reports:[],services:[],recoveries:{[a.key]:{attempts:1,status:'resolved',requestId:'completed',nextAt:'',detail:'Original error'}}};
  const activation=vi.spyOn(activationRecovery,'savedActivationFailure').mockReturnValue({}as any);
  try{for(const minute of [35,36])await a.it.tick(new Date(`2026-10-30T23:${minute}Z`),true);expect(a.state.it.recoveries[a.key]).toMatchObject({attempts:1,status:'needs-human',requestId:'completed'});expect(a.state.coordination!.requests).toHaveLength(1);}finally{activation.mockRestore();}
+});
+
+test('a service this project does not use raises no probe follow-up', async () => {
+    const a = setup();
+    a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [{ id: 'atlassian', name: 'Atlassian', status: 'unknown', detail: 'Upgrade required', checkedAt: '' }, { id: 'azure', name: 'Azure DevOps', status: 'unknown', detail: 'Timed out', checkedAt: '' }, { id: 'github', name: 'GitHub', status: 'unknown', detail: 'Timed out', checkedAt: '' }] } as any);
+    await a.it.tick(new Date(1793221200000), true);
+    expect(a.state.it!.reports.at(-1)!.followUps.map(f => f.id)).toEqual(['probe:github']);
+});
+test('one failed project refresh is retried by Ellis; Morgan is told only after three in a row', async () => {
+    const a = setup(), start = 1793221200000;
+    a.state.github = { error: 'Worker exited with surviving subprocesses; effects require reconciliation' } as any;
+    await a.it.tick(new Date(start), true);
+    expect(a.state.it!.reports.at(-1)!.followUps.find(f => f.id === 'project-progress')).toMatchObject({ owner: 'IT' });
+    expect(a.state.it!.status).toBe('retrying');
+    // Each queued refresh finishes and the same error is still there.
+    for (const ms of [60000, 180000, 600000, 1200000]) { for (const request of a.state.coordination!.requests || []) request.status = 'completed'; await a.it.tick(new Date(start + ms), true); }
+    expect(a.state.it!.recoveries['project-progress'].attempts).toBe(3);
+    expect(a.state.it!.reports.at(-1)!.followUps.find(f => f.id === 'project-progress')).toMatchObject({ owner: 'Morgan' });
 });

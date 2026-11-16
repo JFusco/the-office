@@ -1,4 +1,5 @@
 import { recoverStoppedBaseUpdates } from './stopped-base-update-recovery';
+import { supersededCheckpoint } from '../operations/stale-records';
 import { handsOff } from '../delivery/harness/scope';
 import { deliveryIntakeBlocker } from '../delivery/harness/delivery-eligibility';
 import {savedActivationFailure,sourceConfigurationRecoveryTarget} from '../delivery/recovery/implementation/activation-recovery';
@@ -33,8 +34,10 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
             let inventory = offices.sessions.forProject(store);
             if (!inventory.complete || !inventory.fresh)
                 await recover('session-visibility', 'Live Codex/Claude session inventory is incomplete.', async () => { await offices.sessions.refresh(); inventory = offices.sessions.forProject(store); return inventory.complete && inventory.fresh; }, store.project.id === 'brain' || store.project.id === 'cms-field-vocabulary'
-                    ? 'Morgan investigates the failed session inventory source and its saved diagnostic. Session visibility is separate from login status. Optional chat context is unavailable; Brain/CMS delivery still requires its registered authority and all current work/provider checks. Other workflows retain their existing checks.'
-                    : 'Morgan investigates the failed session inventory source and its saved diagnostic. Session visibility is separate from login status; delivery ownership still requires complete live evidence.');
+                    ? 'Ellis keeps reading the session inventory. Session visibility is separate from login status. Optional chat context is unavailable; Brain/CMS delivery still requires its registered authority and all current work/provider checks. Other workflows retain their existing checks.'
+                    : 'Ellis keeps reading the session inventory. Session visibility is separate from login status; work that needs complete live evidence reports its own block.',
+                    // Informational: nothing reads this follow-up, and work that needs the inventory raises its own.
+                    'IT');
             if (handsOff(store) || inventory.complete && inventory.fresh) {
                 const latest = [...new Map((state.coordination?.listener.reviews || []).map(r => [r.key, r])).values()];
                 for (const r of latest) {
@@ -65,17 +68,16 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                 actions.push(`${job.key}: safe read-only review retry queued; completion awaits the team.`);
         if (coordinator && state.coordination?.listener.error) {
             const detail = state.coordination.listener.error;
-            if (temporaryReadFailure(detail))
-                await recover('assignment-listener', detail, async () => { return enqueueRequest(store, 'poll'); }, `Morgan investigates ${store.project.name}'s saved listener read failure and provider resource access. A timeout alone does not require a login change.`);
-            else
-                followUps.push({ id: 'assignment-listener', owner: 'Morgan', detail: `Assignment listening requires a read-back of its saved failure: ${detail}` });
+            // One failed read is retried by Ellis; Morgan hears about it only after three in a row.
+            await recover('assignment-listener', detail, async () => { return enqueueRequest(store, 'poll'); }, temporaryReadFailure(detail)
+                ? `Morgan investigates ${store.project.name}'s saved listener read failure and provider resource access. A timeout alone does not require a login change.`
+                : `Assignment listening requires a read-back of its saved failure: ${detail}`);
         }
         const source = store.project.provider === 'github' ? state.github : state.azure;
         if (source?.error) {
-            if (temporaryReadFailure(source.error))
-                await recover('project-progress', source.error, async () => { return enqueueRequest(store, 'refresh'); }, `Morgan investigates the saved ${store.project.provider} read diagnostic and resource access. Preserve the last verified project view; a timeout alone does not require a login change.`);
-            else
-                followUps.push({ id: 'project-progress', owner: 'Morgan', detail: `Project refresh is blocked. Read the saved ${store.project.provider} error and check its resource permissions before retrying.` });
+            await recover('project-progress', source.error, async () => { return enqueueRequest(store, 'refresh'); }, temporaryReadFailure(source.error)
+                ? `Morgan investigates the saved ${store.project.provider} read diagnostic and resource access. Preserve the last verified project view; a timeout alone does not require a login change.`
+                : `Project refresh is blocked. Read the saved ${store.project.provider} error and check its resource permissions before retrying.`);
         }
         for(const job of state.coordination?.jobs||[]){
             const admission=savedCandidateAdmission(store,job);
@@ -154,6 +156,8 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
             const original = state.maintenance?.runs.find(r => r.id === checkpoint.runId);
             if (!coordinator || !['blocked', 'interrupted'].includes(checkpoint.status) || store.project.id !== 'brain' || original?.status !== 'reconciled')
                 continue;
+            // A later night that completed settles this one; it is history, not a follow-up. An active retry wait is still live.
+            if (!(checkpoint.retryAt && Date.parse(checkpoint.retryAt) > now.getTime()) && supersededCheckpoint(checkpoint, state.coordination!.checkpoints)) continue;
             if (original.blockerFollowup) {
                 const f = original.blockerFollowup;
                 if (['blocked', 'interrupted'].includes(f.status))

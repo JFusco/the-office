@@ -28,24 +28,24 @@ export class AzureMonitor {
     try{
       const [rawPrs,rawBuilds]=await Promise.all([
         readAzurePRs(CEC.repository,args=>az(args,true)),
-        az<any[]>(['pipelines','build','list','--top','12'])
+        az<any[]>(['pipelines','build','list','--top','12'],true)
       ]);
       const prs:AzurePR[]=await Promise.all(rawPrs.map(async p=>{
         let policies:AzurePR['policies']=[];
         if(p.status==='active'){
-          const raw=await az<any[]>(['repos','pr','policy','list','--id',String(p.pullRequestId)]);
+          const raw=await az<any[]>(['repos','pr','policy','list','--id',String(p.pullRequestId)],true);
           policies=raw.filter(x=>x.configuration?.isEnabled&&x.configuration?.isBlocking).map(x=>({name:x.configuration?.type?.displayName||'Policy',status:x.status,buildId:Number(x.context?.buildId||0)}));
         }
         return {...azurePRDescription(p.description),id:p.pullRequestId,title:sanitize(p.title),draft:!!p.isDraft,status:p.status,source:p.sourceRefName,target:p.targetRefName,commit:p.lastMergeSourceCommit?.commitId||'',closedAt:p.closedDate||'',mergeCommit:p.lastMergeCommit?.commitId||'',url:prUrl(p.pullRequestId),policies};
       }));
       // Include policy builds even when newer unrelated builds displaced them from the recent-build list.
       const missing=[...new Set(prs.flatMap(p=>p.policies.map(x=>x.buildId)).filter(id=>id&&!rawBuilds.some(b=>b.id===id)))];
-      const fetched=await Promise.all(missing.map(id=>az<any>(['pipelines','build','show','--id',String(id)])));
+      const fetched=await Promise.all(missing.map(id=>az<any>(['pipelines','build','show','--id',String(id)],true)));
       const observeBuild=async(b:any):Promise<AzureBuild>=>{
         const observedAt=new Date().toISOString(),cached=this.store.state.ciHistory?.find(x=>x.id===b.id);let stages:AzureBuild['stages']=[],timingError='';
         if(b.status==='completed'&&cached?.status==='completed'&&cached.finishedAt===b.finishTime&&cached.result===(b.result||'')&&cached.stages.some(s=>s.id)&&!cached.timingError)stages=cached.stages;
         else{
-          try{const raw=await az<any>(['devops','invoke','--area','build','--resource','timeline','--route-parameters',`project=${CEC.project}`,`buildId=${b.id}`,'--api-version','7.1','--http-method','GET']);stages=timelineTiming(raw.records||[],observedAt);}
+          try{const raw=await az<any>(['devops','invoke','--area','build','--resource','timeline','--route-parameters',`project=${CEC.project}`,`buildId=${b.id}`,'--api-version','7.1','--http-method','GET'],true);stages=timelineTiming(raw.records||[],observedAt);}
           catch(e){timingError=`Stage/job timing unavailable: ${sanitize(String(e))}`;stages=cached?.stages||[];}
         }
         return {id:b.id,name:b.definition?.name||'Build',status:b.status,result:b.result||'',commit:b.sourceVersion||'',branch:b.sourceBranch||'',url:buildUrl(b.id),stages,...buildTiming(b,observedAt),timingError};
@@ -56,13 +56,13 @@ export class AzureMonitor {
       let deploymentError='';
       try{
         const appArgs=['--subscription','adcd54e8-229d-4a59-89ec-1713267e3ec9','--resource-group','Cumulative-OS','--name',STAGING_SHELL_APP];
-        const app=JSON.parse(await command('az',['containerapp','show',...appArgs,'--query','{revision:properties.latestReadyRevisionName,latest:properties.latestRevisionName,fqdn:properties.configuration.ingress.fqdn,traffic:properties.configuration.ingress.traffic}','--output','json'],{timeout:55000}));
-        const ready=JSON.parse(await command('az',['containerapp','revision','show',...appArgs,'--revision',app.revision,'--query','{containers:properties.template.containers[].{name:name,image:image},health:properties.healthState,running:properties.runningState}','--output','json'],{timeout:55000}));
+        const app=JSON.parse(await command('az',['containerapp','show',...appArgs,'--query','{revision:properties.latestReadyRevisionName,latest:properties.latestRevisionName,fqdn:properties.configuration.ingress.fqdn,traffic:properties.configuration.ingress.traffic}','--output','json'],{timeout:55000,readOnly:true}));
+        const ready=JSON.parse(await command('az',['containerapp','revision','show',...appArgs,'--revision',app.revision,'--query','{containers:properties.template.containers[].{name:name,image:image},health:properties.healthState,running:properties.runningState}','--output','json'],{timeout:55000,readOnly:true}));
         const serving=app.traffic?.some((t:any)=>t.weight===100&&(t.revisionName===app.revision||(t.latestRevision&&app.latest===app.revision)));
         const image=ready.containers?.find((c:any)=>c.name===STAGING_SHELL_APP)?.image||'';
         const buildId=Number(image.split(':').pop());
         let build=builds.find(b=>b.id===buildId);
-        if(buildId&&!build){const raw=await az<any>(['pipelines','build','show','--id',String(buildId)]);build=await observeBuild(raw);builds.push(build);}
+        if(buildId&&!build){const raw=await az<any>(['pipelines','build','show','--id',String(buildId)],true);build=await observeBuild(raw);builds.push(build);}
         const url=`https://${app.fqdn}`;
         const health=await fetch(`${url}/api/health`,{signal:AbortSignal.timeout(10000)});
         const payload=await health.json() as {status?:string;persistence?:{ok:boolean};dbos?:{ok:boolean}};

@@ -1,4 +1,5 @@
 import { stoppedBaseUpdateUnresolved } from './stopped-base-update-recovery';
+import { supersededCheckpoint } from '../operations/stale-records';
 import { savedAdmissionUnresolved } from '../delivery/recovery/implementation/saved-candidate-admission';
 import {artifact} from '../store/readback-evidence';
 import { repeatConflictRepairUnresolved } from '../delivery/repairs/conflict-chain';
@@ -16,8 +17,9 @@ export async function reconcileRecoveryLedger(context: ITContext): Promise<void>
         if (service.status === 'disconnected')
             followUps.push({ id: `login:${service.id}`, owner: 'You', detail: service.nextStep || `Restore ${service.name} access in the Office service account.` });
         // Unknown is evidence of an incomplete probe, never proof of logout.
-        if (service.status === 'unknown' && !['slack'].includes(service.id) && !service.id.startsWith('listener:'))
-            await recover(`probe:${service.id}`, service.detail, async () => false, `Morgan investigates ${service.name}'s incomplete status check in the Office environment. No logout is established; do not change credentials without an authentication failure.`);
+        // Informational, and only for services this project uses: a confirmed logout is raised above for Joe.
+        if (service.status === 'unknown' && !['slack'].includes(service.id) && !service.id.startsWith('listener:') && !(store.project.provider === 'github' && ['atlassian', 'azure'].includes(service.id)))
+            await recover(`probe:${service.id}`, service.detail, async () => false, `Ellis keeps checking ${service.name}'s status in the Office environment. No logout is established; do not change credentials without an authentication failure.`, 'IT');
     }
     for(const {job,key,recovery} of retainedPartials){
         const pending=state.coordination?.requests?.find(request=>request.id===recovery.requestId&&request.action==='reconcile-closeout'&&request.key===job.key&&request.head===job.closeoutRecovery?.originalWorkId&&['queued','working'].includes(request.status))
@@ -36,7 +38,8 @@ export async function reconcileRecoveryLedger(context: ITContext): Promise<void>
             const unresolvedDelivery = id.startsWith('native-delivery:') && !nativeDeliveryResolved(store, id, r.requestId);
             if(r.status==='resolved'&&!unresolvedDelivery&&!stoppedBaseUpdateUnresolved(store,id))continue;
             const checkpointId = id.startsWith('checkpoint-readback:') ? id.slice(20) : id.startsWith('checkpoint:') ? id.slice(11) : null;
-            const unresolvedCheckpoint = checkpointId !== null && state.coordination?.checkpoints.find(checkpoint => checkpoint.id === checkpointId)?.status !== 'completed';
+            const savedCheckpoint = checkpointId === null ? undefined : state.coordination?.checkpoints.find(checkpoint => checkpoint.id === checkpointId);
+            const unresolvedCheckpoint = checkpointId !== null && savedCheckpoint?.status !== 'completed' && !(savedCheckpoint && supersededCheckpoint(savedCheckpoint, state.coordination!.checkpoints));
             const unresolvedImplementation = (id.startsWith('implementation:') || id.startsWith('implementation-audit-binding:')) && state.coordination?.jobs?.some(job => job.id === id.split(':')[1] && job.stage === 'implement' && ['blocked', 'interrupted'].includes(job.status));
             const unresolvedValidation = id.startsWith('validation:') && state.coordination?.jobs?.some(job => job.id === id.split(':')[1] && job.stage === 'validate' && ['blocked', 'interrupted'].includes(job.status));
             const unresolvedPreparation = (id.startsWith('pr-preparation:') || id.startsWith('post-conflict-preparation:')) && state.coordination?.jobs?.some(job => job.id === id.split(':')[1] && job.stage === 'prepare-pr' && ['blocked', 'interrupted'].includes(job.status));
