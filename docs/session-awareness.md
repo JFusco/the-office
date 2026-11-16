@@ -7,8 +7,16 @@ Each scheduled write rechecks the exact persisted job or original recovery reque
 claim, stage and controls. Private candidate identity, provider head leases, source
 acceptance, independent review, QA and durable effect readback still apply. An
 interrupted original worker is never accepted or replayed because chat context is
-optional. Older native recovery workflows, CEC and native maintenance retain their existing
-ownership rules. Their historical proof formats are unchanged.
+optional. Jira/Azure (CEC) start, ordinary resume and the PM intake review follow the same rule: a
+missing or incomplete chat inventory is unavailable context, never a blocker or an owner. A
+competing writer is named only from positive evidence: a session shown actively working or waiting
+on the exact ticket (reported as `owned` even when the rest of the inventory is incomplete or stale), local
+writes by another session, another PR for the ticket, a live resource lease, a refused handoff, or a
+remote candidate branch holding a commit the Office worktree does not contain
+(`server/cec/candidate-branch-moved.ts`). Explicit QA coordination handoffs, QA plan retries and
+saved-implementation continuations still require a complete, fresh inventory in code until those
+paths are replaced. Older native recovery workflows and native maintenance
+retain their existing ownership rules. Their historical proof formats are unchanged.
 
 The Office checks the shared Codex runtime, open Codex desktop/CLI rollout identities,
 Claude's live inventory and its own worker claims. A chat's starting directory alone

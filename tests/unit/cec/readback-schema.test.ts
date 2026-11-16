@@ -16,7 +16,9 @@ test('the model response fields distinguish a coordinated reader and pending QA 
     const owner = properties.existingOwner, blocker = properties.blocker;
     if (typeof owner !== 'object' || typeof blocker !== 'object') throw new Error('Native readback fields must have object schema metadata');
     expect(owner.description).toContain('verified current coordination');
-    expect(owner.description).toContain('unknown actor or unavailable coverage still blocks');
+    expect(owner.description).toContain('Name an owner only from positive current evidence of competing execution');
+    expect(owner.description).toContain('a session shown actively working or waiting on this exact ticket');
+    expect(owner.description).toContain('neither establish nor clear an owner, and are not blockers');
     expect(blocker.description).toContain('stage work, not dispatch blockers');
     expect(blocker.description).toContain('before feature actions');
     expect(blocker.description).toContain('uncertain external action');

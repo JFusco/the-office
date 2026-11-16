@@ -87,6 +87,10 @@ test('an idle shared runtime cannot erase a positively active desktop turn for t
  const execute:any=async(program:string)=>program==='claude'?'[]':'/test/.git';
  const bridge=new SessionBridge(()=>[store],execute,async()=>[{...base,status:'idle'}],async()=>accounted([desktop]));
  await bridge.refresh();expect(bridge.current.complete).toBe(true);expect(bridge.forProject(store,'GH-255').ownership.status).toBe('owned');
+ // A visible active owner outranks incomplete coverage; without one, incomplete coverage stays unavailable.
+ bridge.current.complete=false;
+ expect(bridge.forProject(store,'GH-255')).toMatchObject({complete:false,ownership:{status:'owned'}});
+ expect(bridge.forProject(store,'GH-999')).toMatchObject({complete:false,ownership:{status:'unavailable'}});
 });
 test('Claude cross-repository scope and decisions reach the same project ownership packet',async()=>{
  const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
