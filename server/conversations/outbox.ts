@@ -13,6 +13,8 @@ export function conversationResolved(state: OfficeSnapshot, message: TeamMessage
         reply.receipts.every(receipt => receipt.verified && !receipt.uncertain) &&
         reply.receipts.some(receipt => receipt.action === 'conversation-readback' && receipt.target === message.id && receipt.verified && !receipt.uncertain));
 }
+/** Backstop for a hang without a restart: adoption is a few provider calls, so one unfinished this long needs a look. */
+export const ADOPTION_STALLED_MS = 5 * 60 * 1000;
 // Reconcile a durable tray against observable work, never against an acknowledgement.
 export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanAction[] {
     const outbox = (state.outbox || []).map(a => ({ ...a }));
@@ -47,7 +49,8 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
             if (!checkpointSuperseded(state, c) && !checkpointHasMaintenanceAlert(state, c))
                 item(`checkpoint:${c.id}`, 'Daily checkpoint needs follow-up', c.detail, 'pm');
     for (const a of state.coordination?.adoptions || [])
-        if (['refused', 'blocked'].includes(a.status))
+        // An adoption still in progress is not a question; one that stays unfinished is.
+        if (['refused', 'blocked'].includes(a.status) || a.status === 'adopting' && at.getTime() - Date.parse(a.at) > ADOPTION_STALLED_MS)
             item(`dependabot:${a.pr}`, `${a.bot || 'Dependabot'} PR #${a.pr} was not adopted`, a.detail, 'pm', a.issue ? `GH-${a.issue}` : '', a.url);
     for (const run of state.maintenance?.runs || [])
         if (run.blockerFollowup && ['blocked', 'interrupted'].includes(run.blockerFollowup.status))

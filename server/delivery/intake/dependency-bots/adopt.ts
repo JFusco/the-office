@@ -60,7 +60,7 @@ async function adoptOne(store: Store, execute: Execute, records: DependabotAdopt
     if (auto && !record && waitsQuietly(await bot.refusal(store, execute, p)))
         return;
     if (!record)
-        records.push(record = { id: crypto.randomUUID(), pr: pr.number, url: pr.url, title: pr.title, issue: 0, status: 'blocked', detail: `${bot.label} PR #${pr.number} adoption started.`, at: new Date().toISOString(), ...(bot.id !== 'dependabot' ? { bot: bot.id } : {}) });
+        records.push(record = { id: crypto.randomUUID(), pr: pr.number, url: pr.url, title: pr.title, issue: 0, status: 'adopting', detail: `${bot.label} PR #${pr.number} adoption started.`, at: new Date().toISOString(), ...(bot.id !== 'dependabot' ? { bot: bot.id } : {}) });
     if (!store.state.coordination!.adoptions!.includes(record)) store.state.coordination!.adoptions!.push(record);
     try {
         const refused = await bot.refusal(store, execute, p);
@@ -82,9 +82,9 @@ async function adoptOne(store: Store, execute: Execute, records: DependabotAdopt
     }
 }
 
-/** A refusal or block whose PR closed (merged, superseded or abandoned) no longer needs Joe. */
+/** A refusal, block or unfinished adoption whose PR closed (merged, superseded or abandoned) no longer needs Joe. */
 function withdrawStale(store: Store, records: DependabotAdoption[], pulls: any[], bot: DependencyBot): void {
-    for (const record of records.filter(r => ['refused', 'blocked'].includes(r.status) && !pulls.some(p => p.number === r.pr)))
+    for (const record of records.filter(r => ['refused', 'blocked', 'adopting'].includes(r.status) && !pulls.some(p => p.number === r.pr)))
         settle(store, record, 'withdrawn', `${bot.label} PR #${record.pr} is no longer open; its adoption follow-up is withdrawn.`, `${bot.id}-withdrawn`);
 }
 
