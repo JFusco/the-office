@@ -35,7 +35,8 @@ import { withAmendmentOwnership } from '../delivery/recovery/implementation/deli
 import { scheduledRetrospectives } from '../knowledge/scheduled-retrospectives';
 import { scheduledRollup, type RollupHooks } from '../knowledge/weekly-rollup';
 import { stoppedReason } from './stopped-reason';
-import { closedTicketRequest, retiredFollowup, supersededCheckpoint, supersededRun, touchesUnsettled, type UnsettledEffects } from '../operations/stale-records';
+import { closedTicketReport, closedTicketRequest, finishedJobsRequest, retiredFollowup, settledNotice, supersededCheckpoint, supersededDeliveryRequest, supersededEvidenceRequest, supersededRun, touchesUnsettled, type UnsettledEffects } from '../operations/stale-records';
+import { slackRequestSettled } from '../conversations/slack/supersession-proof';
 import { unsettledEffects } from '../operations/unsettled-effects';
 import type { WorkRef } from '../../src/contracts/work';
 export interface OfficeEntry {
@@ -90,7 +91,8 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const original = message.from === 'human' ? message : message.from === 'it' && message.actionId.startsWith('message:')
             ? store.state.messages.find(original => original.id === message.actionId.slice(8)) : undefined;
         add('conversation', message, `conversation:${message.to}`, message.createdAt, 3, () => message.to === 'cto' ? conversations.pumpCTO() : message.to === 'it' ? conversations.pumpIT() : message.to === 'knowledge' ? conversations.pumpKnowledge() : conversations.pump(message.id),
-            ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained') : history(retiredFollowup(message, store.state.messages), ['conversation', message.id]));
+            ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained') : history(retiredFollowup(message, store.state.messages) || closedTicketReport(message, store.state.tickets) || supersededEvidenceRequest(message, store.state.messages), ['conversation', message.id],
+                ...(message.ticket ? (c.jobs || []).filter(job => job.key === message.ticket).map(job => ['delivery', job.id] as [WorkRef['kind'], string]) : [])));
     }
     if (lane === 'it') items.push(...scheduledInvestigations(store, (prompt, schema, options) => engine.itAgents.run('it', prompt, schema, options), now));
     if (lane === 'knowledge') {
@@ -102,7 +104,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
             add('reconciliation', request, request.action, request.requestedAt, requestPriority(request.action, request.action === 'cleanup-merged-candidate' && verifiedCloseoutCleanupRequest(store, request)), () => executeRequest(store, engine, coordinator!, request, conversations.checkIT),
                 requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') :
                     // Native closeout writes are keyed to the GitHub issue under the native run id (request.head) as attempt.
-                    history(closedTicketRequest(request, store.state.tickets), ['reconciliation', request.id], ...(c.jobs || []).filter(job => job.key === request.key).map(job => ['delivery', job.id] as [WorkRef['kind'], string]),
+                    history(closedTicketRequest(request, store.state.tickets) || finishedJobsRequest(request, c.jobs || []), ['reconciliation', request.id], ...(c.jobs || []).filter(job => job.key === request.key).map(job => ['delivery', job.id] as [WorkRef['kind'], string]),
                         ...(/^GH-\d+$/.test(request.key) ? [['issue', request.key.slice(3)] as [WorkRef['kind'], string]] : []), ...(request.head ? [['reconciliation', request.head] as [WorkRef['kind'], string]] : [])));
     // Applying the scope correction only rewrites the local ledger (publishing stays paused), so it may
     // run while the office is paused or draining: draining is how live work on affected tickets ends.
@@ -138,12 +140,13 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const dependency = validation ? eligible('blocked', validation, 'Morgan', 'dependency') : dependencyEligibility(job.prerequisites || [], stores, now);
         const repair=deliveryRepairProjection(job),retryAt=repair&&'retryAt' in repair?repair.retryAt:undefined;
         const timeWait=job.status==='queued'&&retryAt&&Date.parse(retryAt)>now.getTime()?{...eligible('waiting',repair?.next||'Recorded source retry backoff is active',repair?.owner||'Alex'),nextCheckAt:retryAt}:null;
+        // A finished job reads by its own status: its recorded prerequisite no longer gates anything.
         add('delivery', job, job.stage, job.requestedAt, job.stage === 'closeout' && !!job.mergeCommit ? 0 : deliveryRepairProjection(job)?.rank || (job.repairReason && job.repairReason !== 'source' || (job.prerequisites?.length && !dependency) ? 1 : 3), () => withAmendmentOwnership(async () => {
             await coordinator!.sessionBridge?.refresh();
             const ownership = coordinator!.sessionBridge?.forProject(store, job.key, job.id);
             if (!ownership) throw new Error('Amendment ownership inventory is unavailable');
             return ownership as any;
-        }, () => coordinator!.pump({ kind: 'delivery', id: job.id })), dependency||timeWait, job.timing);
+        }, () => coordinator!.pump({ kind: 'delivery', id: job.id })), ['completed', 'cancelled'].includes(job.status) ? null : dependency||timeWait, job.timing);
         items.at(-1)!.slot = deliverySlot(job);
     }
     for (const review of [...new Map(c.listener.reviews.map(review => [review.key, review])).values()].filter(review => !(c.jobs || []).some(job => job.key === review.key && job.status !== 'cancelled')))
@@ -176,12 +179,15 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
                 }
             }, continuation.nextCheckAt && Date.parse(continuation.nextCheckAt) > now.getTime() ? eligible('waiting', 'Native gate backoff is active') : null);
     for (const notice of c.notices?.entries || [])
-        add('notice', notice, notice.kind === 'goal' ? 'goal-completion-notice' : notice.kind === 'maintenance' ? 'maintenance-completion-notice' : 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }));
+        add('notice', notice, notice.kind === 'goal' ? 'goal-completion-notice' : notice.kind === 'maintenance' ? 'maintenance-completion-notice' : 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }),
+            notice.status === 'uncertain' ? history(settledNotice(notice, slackRequestSettled(store.state, notice.id)), ['notice', notice.id]) : null);
     for (const request of store.state.deliveryQueue || []) {
         const read = scheduledOwnershipRead(store, engine, request, () => coordinator?.sessionBridge?.forProject(store, request.key, request.id),
             after => freshOwnershipRead(coordinator?.sessionBridge, store, request.key, request.id, after));
         if (read) items.push(read);
-        else add('delivery', request, request.action, request.requestedAt, 3, () => engine.drainDelivery(request.id));
+        else add('delivery', request, request.action, request.requestedAt, 3, () => engine.drainDelivery(request.id), 
+            // Jira and Azure writes are keyed to the ticket, not to the request that made them.
+            history(supersededDeliveryRequest(request, store.state.deliveryQueue!), ['delivery', request.id], ['delivery', request.key], ['delivery', `ticket:${request.key}`]));
     }
     for (const ticket of store.state.tickets.filter(ticket => ticket.pilot && !['complete', 'mailbox'].includes(ticket.stage) && !store.state.deliveryQueue?.some(request => request.key === ticket.key && ['queued', 'working'].includes(request.status)))) {
         let condition: WorkEligibility | null = ticket.activity === 'blocked' ? eligible('blocked', ticket.blocker) : null;
