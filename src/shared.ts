@@ -189,6 +189,12 @@ export interface TicketJob {
     reconciliation?: ReconciliationRequest;
     timing?: QueueTiming[];
     candidateBase?: string;
+    /** Writer stage runs the harness abandoned and restarted from the accepted head; their work is kept under `ref`. */
+    writerRestarts?: import('./contracts/writer-restart').WriterRestart[];
+    /** The stopped writer run the harness would not restart, and why; other recovery owns it. */
+    writerRestartDeclined?: { workId: string; reason: string; at: string };
+    /** Why the last pre-restart read of the branch or PR failed; cleared when the read succeeds. */
+    writerRestartReadError?: string;
     candidateRecovery?: {
         head: string;
         findingIds: string[];

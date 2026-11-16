@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { writerRestartPending } from '../attempts/restart-writer';
 import { resolve } from 'node:path';
 import { artifact, digest } from '../../store/readback-evidence';
 import { stoppedBaseClaim } from './stopped-base-claim';
@@ -16,7 +17,8 @@ export function stoppedBaseUpdateCandidate(store: Store, job: TicketJob) {
     if (store.project.id !== 'cms-field-vocabulary' || !job.existingPR || !job.pr) return;
     if (job.stoppedBaseUpdate) return { id: `stopped-base-update:${job.id}:${job.stoppedBaseUpdate.originalWorkId}`, head: job.stoppedBaseUpdate.originalWorkId };
     const workers = store.state.workLog?.filter(w => w.requestId === job.id && w.stage === 'github-update-base') || [];
-    if (job.stage !== 'update-base' || !workers.some(w => w.status === 'interrupted' && !w.executionStatus)) return;
+    // A job the harness restarts from the accepted head, or already has, is no longer one original run to read back.
+    if (job.stage !== 'update-base' || job.writerRestarts?.length || writerRestartPending(store, job) || !workers.some(w => w.status === 'interrupted' && !w.executionStatus)) return;
     if (workers.length !== 1) throw new Error('Morgan must reconcile duplicate original stopped-base workers');
     return { id: `stopped-base-update:${job.id}:${workers[0].id}`, head: workers[0].id };
 }

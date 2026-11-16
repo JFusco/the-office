@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { PrerequisitesSchema } from '../delivery/pipeline/dependencies';
+import { ATTEMPT_DELAYS_MS } from '../delivery/attempts/attempt-backoff';
 import type { Store } from '../store/store';
 import type { ReadRetry } from '../../src/shared';
 export const IntakeResult = z.object({ outcome: z.enum(['ready', 'owned', 'blocked', 'held']), ownershipChecked: z.boolean(), owner: z.string(), summary: z.string(), evidence: z.array(z.string()).min(1), prerequisites: PrerequisitesSchema, existingWork: z.object({ projectId: z.string(), kind: z.enum(['pr', 'native-session', 'native-run', 'maintenance']), id: z.string(), evidence: z.string() }).strict().nullable() }).strict();
@@ -28,7 +29,7 @@ export function planReadRetry(item: {
             return true;
         }
         r.history.push({ at: now.toISOString(), detail: item.detail });
-        r.nextAt = new Date(now.getTime() + [30000, 120000, 300000][r.attempts]).toISOString();
+        r.nextAt = new Date(now.getTime() + ATTEMPT_DELAYS_MS[r.attempts]).toISOString();
         return true;
     }
     if (now.getTime() < Date.parse(r.nextAt))

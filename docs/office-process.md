@@ -189,6 +189,18 @@ why on the record (`stop.kind`: provider checks, PR not ready, closed source, un
 pause, hold, authority or unclassified). The label is for counting stops (`pnpm office baseline`);
 it changes no status and grants no retry, resume or authority.
 
+A GitHub writer stage (implement or update base) on a hands-off project whose run died within
+the last six hours is restarted by the harness, not read back by a model. The harness first confirms the
+run's processes are gone and that the remote branch and PR are still at the accepted head. It
+keeps whatever the run left in the worktree under a local ref (`refs/office/salvage/<job>/<run>`),
+resets the worktree to the accepted head and queues the same stage again: up to three times,
+after 30 seconds, 2 minutes and 5 minutes. A returned verdict (including a returned `failed`), a moved
+branch or PR, an unsettled effect, a hold, a nested repository in the worktree or an existing
+recovery record is not restarted and keeps its existing handling. Scope repair always carries a
+recovery record, so it is never restarted this way. Once a job has been restarted, the
+stopped-base readback no longer applies to it: a run the harness then declines, or a job that
+uses up its three restarts, stays blocked for a person. Jira/Azure work is unchanged.
+
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical
 continuations keep their already-bound evidence and approvals; this baseline

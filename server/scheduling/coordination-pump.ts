@@ -1,4 +1,5 @@
 import { intakeMembership } from '../cec/intake-scope';
+import { ATTEMPT_DELAYS_MS } from '../delivery/attempts/attempt-backoff';
 import { CEC } from '../office/config';
 import { currentAssignment } from '../workers/assignment-context';
 import { handsOff } from '../delivery/harness/scope';
@@ -52,7 +53,7 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
             const retry = recovery.readbackRetry!;
             retry.attempts++;
             retry.history.push({ at: new Date().toISOString(), detail: recovery.error });
-            retry.nextAt = new Date(Date.now() + [30000, 120000, 300000][Math.min(retry.attempts - 1, 2)]).toISOString();
+            retry.nextAt = new Date(Date.now() + ATTEMPT_DELAYS_MS[Math.min(retry.attempts - 1, 2)]).toISOString();
             this.store.save();
             try {
                 await this.engine.maintenance.reconcile(recovery.id);
@@ -67,7 +68,7 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
             catch (error) {
                 retry.exhausted = retry.attempts >= 3;
                 // A slow read must not consume its own retry delay while it is running.
-                retry.nextAt = new Date(Date.now() + [30000, 120000, 300000][Math.min(retry.attempts - 1, 2)]).toISOString();
+                retry.nextAt = new Date(Date.now() + ATTEMPT_DELAYS_MS[Math.min(retry.attempts - 1, 2)]).toISOString();
                 this.store.emit('maintenance-recovery-followup', retry.exhausted ? `Recovery needs a precise team follow-up after three read-backs: ${String(error)}` : `Morgan will retry the read-only reconciliation at ${retry.nextAt}; no original write was replayed.`, 'pm');
             }
             this.store.save();
