@@ -201,6 +201,12 @@ recovery record, so it is never restarted this way. Once a job has been restarte
 stopped-base readback no longer applies to it: a run the harness then declines, or a job that
 uses up its three restarts, stays blocked for a person. Jira/Azure work is unchanged.
 
+For Jira/Azure work, a QA stage that stopped in setup (nothing tested, no paid run) is run again
+on resume instead of being reconstructed, and a restated receipt of an implementation run that a
+recorded continuation replaced does not gate QA. After three setup stops in a row on one
+candidate, the next resume shows the count and latest reason without starting a worker;
+resuming again runs one more attempt.
+
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical
 continuations keep their already-bound evidence and approvals; this baseline
