@@ -10,8 +10,8 @@ export const MAX_CONTINUATIONS = 2;
 /** Developer stages whose Claude session can be continued in place. */
 const CONTINUABLE: readonly Stage[] = ['implement', 'repair'];
 
-/** The runner's own message when a writable Claude worker reaches its total time limit. */
-const TIMED_OUT = /\bclaude timed out; previous action outcome must be reconciled$/;
+/** The runner's own messages when a writable Claude worker reaches its time limit or goes silent past the stall limit. */
+const TIMED_OUT = /\bclaude (?:timed out; previous action outcome must be reconciled|stopped producing output; inspect the retained worker evidence)$/;
 
 export interface StageContinuation { work: WorkTime; attempt: number }
 

@@ -1,6 +1,7 @@
 import { CurrentOfficeQAReportSchema, OfficeQAReportSchema } from '../qa/report-schema';
 import { bindGitHubQA, prepareCECQA } from '../qa/prepare-assignment';
 import { savedStageCompletion } from '../cec/saved-completion';
+import { STAGE_STALL_LIMIT_MS } from './stall-limit';
 import { assertContinuableWorktree, continuationPrompt, MAX_CONTINUATIONS, recordedContinuation, stageContinuation } from '../cec/stage-continuation';
 import { saveQAReport } from '../qa/save-report';
 import { stageTimeLimit, qaTimeLimitGuidance } from '../qa/time-limit';
@@ -126,7 +127,7 @@ export class Agents extends WorkerRuntime {
             }
             const before = new Set((this.store.state.workLog || []).map(work => work.id));
             try {
-                result = await this.run(role, resume ? continuationPrompt(resume.attempt, timeout) : prompt + (officeQA ? qaTimeLimitGuidance(ticket.approach) : ''), ResultSchema, { officeQA, timeout, ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
+                result = await this.run(role, resume ? continuationPrompt(resume.attempt, timeout) : prompt + (officeQA ? qaTimeLimitGuidance(ticket.approach) : ''), ResultSchema, { officeQA, timeout, inactivityTimeout: STAGE_STALL_LIMIT_MS, ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
                     ...(continued ? { requestId: continued.requestId, originalWorkId: continued.originalWorkId } : {}),
                     ...(resume ? { resumeSession: resume.work.id, originalWorkId: resume.work.id } : {}) });
                 break;

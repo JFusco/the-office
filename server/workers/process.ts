@@ -44,6 +44,12 @@ export async function command(program: string, args: string[], options: {
     /** Zero disables the total deadline when a progress watchdog is supplied. */
     timeout?: number;
     inactivityTimeout?: number;
+    /**
+     * Stop a failing run with SIGINT to its leader first, so a CLI that ends its turn on interrupt
+     * can record where it stopped; the group is terminated after `interruptGraceMs` (default 5s).
+     */
+    interruptFirst?: boolean;
+    interruptGraceMs?: number;
     readOnly?: boolean;
     input?: string;
     onSpawn?: (pid: number) => void;
@@ -66,21 +72,29 @@ export async function command(program: string, args: string[], options: {
     return new Promise<string>((resolve, reject) => {
         const child = spawn(program, args, { cwd: options.cwd, env: options.env ? { ...process.env, ...options.env } : process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
         const lifecycle = child.pid && options.onLifecycle ? lifecycleRecorder(child.pid, options.lifecycleInventory) : undefined;
-        let out = '', err = '', line = '', failure: Error | undefined, killTimer: ReturnType<typeof setTimeout> | undefined;
+        let out = '', err = '', line = '', failure: Error | undefined, killTimer: ReturnType<typeof setTimeout> | undefined, interruptTimer: ReturnType<typeof setTimeout> | undefined;
         const alive = () => { if (!child.pid) return false; const probe = probeProcessGroup(child.pid); lifecycle?.probe(probe); return probe.state !== 'absent'; };
         const signalGroup = (phase: 'term' | 'kill', signal: 'SIGTERM' | 'SIGKILL') => {
             const send = () => { process.kill(-child.pid!, signal); };
             if (lifecycle) lifecycle.signal(phase, send); else try { send(); } catch {}
         };
-        const terminate = () => {
+        const terminate = (graceful = false) => {
             if (!child.pid || killTimer) return;
+            if (graceful && options.interruptFirst && !interruptTimer) {
+                // Leader only: it stops its own commands and writes its record. Anything left gets the group signals below.
+                try { process.kill(child.pid, 'SIGINT'); } catch {}
+                interruptTimer = setTimeout(() => terminate(), options.interruptGraceMs ?? 5000);
+                return;
+            }
+            if (graceful && interruptTimer) return;
+            clearTimeout(interruptTimer);
             signalGroup('term', 'SIGTERM');
             killTimer = setTimeout(() => signalGroup('kill', 'SIGKILL'), 3000);
         };
         const stop = (reason: Error) => {
             if (failure) return;
             failure = reason;
-            terminate();
+            terminate(true);
         };
         const timer = options.timeout === 0 && options.inactivityTimeout ? undefined : setTimeout(() => stop(new CommandFailure(options.readOnly ? `${program} read timed out; saved observations retained; safe to retry the read` : `${program} timed out; previous action outcome must be reconciled`, options.readOnly ? 'transient-read' : 'uncertain-effect', true)), options.timeout ?? 45000);
         const inactivity = inactivityWatch(options.inactivityTimeout, () => stop(new CommandFailure(`${program} stopped producing output; inspect the retained worker evidence`, options.readOnly ? 'transient-read' : 'uncertain-effect', true)));
@@ -128,6 +142,7 @@ export async function command(program: string, args: string[], options: {
             while (alive())
                 await new Promise(done => setTimeout(done, 50));
             clearTimeout(killTimer);
+            clearTimeout(interruptTimer);
             options.signal?.removeEventListener('abort', abort);
             if (stragglersTerminated && !failure && child.pid)
                 try { options.onStragglersTerminated?.(child.pid); } catch { }
