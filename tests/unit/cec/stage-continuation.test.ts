@@ -34,12 +34,20 @@ test('a developer run stopped by the time limit is continued, up to the allowanc
     expect(stageContinuation(store, t, 'repair', gone)).toBeUndefined();
 });
 
+test('a developer run stopped for producing no output is continued the same way', () => {
+    const { store, t } = stopped(), STALLED = 'claude stopped producing output; inspect the retained worker evidence';
+    store.state.workLog![0].failure!.detail = STALLED;
+    t.results.repair!.blocker = `Interrupted stage; external effects require reconciliation. Error: ${STALLED}`;
+    expect(stageContinuation(store, t, 'repair', gone)).toMatchObject({ work: { id: 'run-1' }, attempt: 1, stalled: true });
+    expect(continuationPrompt(1, 90 * 60 * 1000, true)).toContain('Do not run it the same way again');
+    expect(continuationPrompt(1, 90 * 60 * 1000)).toContain('The stage time limit stopped you');
+});
+
 test('any other ending is not continued', () => {
     const cases: [string, (x: ReturnType<typeof stopped>) => void][] = [
         [ALIVE, () => {}],
         ['no recorded process', x => { delete x.store.state.workLog![0].processId; }],
         ['run returned', x => { x.store.state.workLog![0].executionStatus = 'completed'; }],
-        ['stalled, not timed out', x => { x.store.state.workLog![0].failure!.detail = 'claude stopped producing output; inspect the retained worker evidence'; }],
         ['provider error quoting the text', x => { x.store.state.workLog![0].failure!.detail = `claude exited 1: ${TIMEOUT} (quoted)`; }],
         ['Codex worker', x => { Object.assign(x.store.state.workLog![0], { provider: 'codex' }); x.store.state.workLog![0].failure!.detail = 'codex timed out; previous action outcome must be reconciled'; }],
         ['interrupted by a restart', x => { x.store.state.workLog![0].status = 'interrupted'; }],
