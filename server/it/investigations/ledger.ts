@@ -7,6 +7,7 @@ import { completedExecution } from '../../workers/worker-completion';
 import { investigationCandidates, investigationId } from './candidates';
 import { notifyHelperResolution } from './notify-helper-survivor';
 import { retriedReadResolution } from './retried-read';
+import { acceptedCompletionResolution } from './accepted-completion-resolution';
 import type { Store } from '../../store/store';
 import { ctoReplacementResolution } from './cto-replacement-resolution';
 import { implementationReplacementResolution } from './implementation-replacement-resolution';
@@ -24,7 +25,7 @@ export function investigationResolution(store: Store, entry: ITInvestigation) {
     if (entry.source.failureKind === 'surviving-subprocesses') return notifyHelperResolution(store, entry);
     const replacement = ctoReplacementResolution(store, entry) || implementationReplacementResolution(store, entry);
     if (replacement) return replacement;
-    const retried = retriedReadResolution(store, entry);
+    const retried = retriedReadResolution(store, entry) || acceptedCompletionResolution(store, entry);
     if (retried) return retried;
     const recovery = store.state.workLog?.find(work => work.originalId === entry.source.id && work.requestId === entry.source.requestId && work.status === 'completed' && completedExecution(store, work));
     return recovery ? { kind: 'confirmed' as const, sourceId: recovery.id, receipt: `sessions/${recovery.id}/execution-completion.json` } : undefined;

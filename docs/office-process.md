@@ -216,8 +216,11 @@ was still running is not covered. On resume, a checkpoint for another candidate 
 not accepted.
 
 A QA stage on the browser route runs for up to 90 minutes, and the worker is told that limit.
-Other stages keep their existing limits (45 minutes for Jira/Azure stages, 60 for GitHub
-delivery stages).
+A Jira/Azure repair also runs for up to 90 minutes. Other stages keep their existing limits (45
+minutes for Jira/Azure stages, 60 for GitHub delivery stages).
+
+Ellis does not investigate a timed-out run whose saved result the stage accepted: that
+investigation resolves from the accepted result.
 
 This policy is not a new automatic retry budget. Existing feature, delivery,
 maintenance and investigation limits remain authoritative. Special historical

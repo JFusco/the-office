@@ -12,6 +12,17 @@ export function qaTimeLimit(qaStage: boolean, approach?: WorkApproach): number |
     return qaStage && officeValidation(approach) === 'browser' ? BROWSER_QA_LIMIT_MS : undefined;
 }
 
+/**
+ * A repair works through every open finding and reruns the required checks; CEC-154's ran past 40
+ * minutes on five findings.
+ */
+export const REPAIR_LIMIT_MS = 90 * 60 * 1000;
+
+/** The time limit for a Jira/Azure stage; undefined leaves the runtime default. */
+export function stageTimeLimit(stage: string, qaStage: boolean, approach?: WorkApproach): number | undefined {
+    return stage === 'repair' ? REPAIR_LIMIT_MS : qaTimeLimit(qaStage, approach);
+}
+
 /** Tells a browser QA worker its limit, so the finished report is saved before the stop rather than at it. */
 export function qaTimeLimitGuidance(approach?: WorkApproach): string {
     return officeValidation(approach) === 'browser'

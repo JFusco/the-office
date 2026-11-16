@@ -2,7 +2,7 @@ import { CurrentOfficeQAReportSchema, OfficeQAReportSchema } from '../qa/report-
 import { bindGitHubQA, prepareCECQA } from '../qa/prepare-assignment';
 import { savedStageCompletion } from '../cec/saved-completion';
 import { saveQAReport } from '../qa/save-report';
-import { qaTimeLimit, qaTimeLimitGuidance } from '../qa/time-limit';
+import { stageTimeLimit, qaTimeLimitGuidance } from '../qa/time-limit';
 import { isQAStage } from '../qa/assignment';
 import { knowledgePromptStore } from '../knowledge/office-state-view';
 import { CECReadbackSchema as ReadbackSchema } from '../cec/readback-schema';
@@ -113,7 +113,7 @@ export class Agents extends WorkerRuntime {
         const featureEnhance = !!ticket.featureBinding && stage === 'enhance';
         const artifactOnly = featureEnhance || ['plan', 'plan-review', 'code-review', 'repair-review', 'ci-diagnose'].includes(stage);
         if (continued) await verifyContinuationPreservation(this.store, ticket);
-        const result = await this.run(role, prompt + (officeQA ? qaTimeLimitGuidance(ticket.approach) : ''), ResultSchema, { officeQA, timeout: qaTimeLimit(isQAStage(stage), ticket.approach), ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
+        const result = await this.run(role, prompt + (officeQA ? qaTimeLimitGuidance(ticket.approach) : ''), ResultSchema, { officeQA, timeout: stageTimeLimit(stage, isQAStage(stage), ticket.approach), ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
             ...(continued ? { requestId: continued.requestId, originalWorkId: continued.originalWorkId } : {}) });
         if (officeQA) saveQAReport(result, qaDirectory, artifactRoot);
         if (continued) await verifyContinuationPreservation(this.store, ticket, result);
