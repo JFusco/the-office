@@ -697,6 +697,8 @@ export interface WorkTime {
     effort: string;
     /** Provider execution completion is distinct from the task's semantic outcome. */
     executionStatus?: 'completed';
+    /** The stage accepted the result this timed-out run saved before it was stopped; its failure is no longer an open question. */
+    completionAccepted?: true;
     status: 'running' | 'stopping' | 'completed' | 'failed' | 'blocked' | 'interrupted';
     startedAt: string;
     lastHeartbeatAt: string;

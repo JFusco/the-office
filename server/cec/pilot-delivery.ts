@@ -11,7 +11,8 @@ import { bindDelivery } from '../features/delivery-binding';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { Agents } from '../workers/agents';
+import { Agents, ResultSchema } from '../workers/agents';
+import { savedStageCompletion } from './saved-completion';
 import { DATA, CEC, HOLDS, LEGACY_AUTOMATION } from '../office/config';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
@@ -232,7 +233,8 @@ export async function resume(this: Engine, key: string, background = true) {
     if (qaRetry) await consumeQAPlanRetry(this.store, qaRetry, DATA, this.implementationOwnership);
     if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, DATA, this.implementationOwnership, undefined, undefined, live);
     if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, DATA);
-    if (!qaRetry && !qaHandoff && needsResumeReconciliation(t, this.store.state.workLog || [])) {
+    // A stage whose worker saved its finished result before the time limit needs no reconstruction: the stage accepts that result.
+    if (!qaRetry && !qaHandoff && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const observed = await this.agents.reconcile(t);
         const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));
         if (gap) {

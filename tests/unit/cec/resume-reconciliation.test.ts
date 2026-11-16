@@ -89,6 +89,12 @@ test('a later run that died after a setup stop is reconstructed, whatever the ol
     const t = setupStop('Worker interrupted. Reconcile the previous stage and external effects before resuming.');
     expect(needsResumeReconciliation(t, [qaStop, { ...qaStop, status: 'interrupted' }])).toBe(true);
 });
+test('a timed-out run whose saved result the stage accepted no longer forces reconstruction', () => {
+    const t = blockedQA('Repair findings remain open.');
+    const timedOut = { ticket: t.key, role: 'qa' as const, stage: 'retest', status: 'failed' as const, failure: { category: 'uncertain-effect' as const, detail: 'codex timed out; previous action outcome must be reconciled', dispatched: true } };
+    expect(needsResumeReconciliation(t, [timedOut])).toBe(true);
+    expect(needsResumeReconciliation(t, [{ ...timedOut, completionAccepted: true }])).toBe(false);
+});
 test('a non-QA stage never takes the setup-stop route', () => {
     const t = setupStop(); t.results.repair = t.results.retest; t.stage = 'repair';
     expect(needsResumeReconciliation(t, [{ ...qaStop, stage: 'repair' }])).toBe(true);

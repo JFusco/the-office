@@ -1,5 +1,6 @@
 import { CurrentOfficeQAReportSchema, OfficeQAReportSchema } from '../qa/report-schema';
 import { bindGitHubQA, prepareCECQA } from '../qa/prepare-assignment';
+import { savedStageCompletion } from '../cec/saved-completion';
 import { saveQAReport } from '../qa/save-report';
 import { knowledgePromptStore } from '../knowledge/office-state-view';
 import { CECReadbackSchema as ReadbackSchema } from '../cec/readback-schema';
@@ -96,6 +97,15 @@ export class Agents extends WorkerRuntime {
         const continued = implementationWorkerContext(ticket, stage);
         const artifactRoot = continued?.artifactsRoot || resolve(DATA, 'runs', ticket.runId);
         mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
+        // A run that saved its finished result and was then stopped by the time limit is not run again.
+        const adopted = savedStageCompletion(this.store, ticket, stage, ResultSchema);
+        if (adopted) {
+            const { work, result: saved } = adopted;
+            if (saved.qa) saveQAReport(saved, saved.qaRunDir, artifactRoot);
+            work.completionAccepted = true; this.store.save();
+            this.store.emit('worker-output-recovered', `${ticket.key}: the ${stage} result saved before the time limit is used as the stage result; no work replayed.`, role, ticket.key);
+            return saved;
+        }
         const { officeQA, directory: qaDirectory } = prepareCECQA(this.store, ticket, stage, artifactRoot);
         const prompt = featureDeliveryContext(this.store, ticket.featureBinding) + cecPrompt(this.store, ticket, stage, role, artifactRoot, qaDirectory) + (continued?.prompt || '') + (ticket.repairCycle?.phase === 'diagnosis' && stage === 'code-review' ? `\n${REPAIR_DIAGNOSIS}` : '');
         const featureEnhance = !!ticket.featureBinding && stage === 'enhance';

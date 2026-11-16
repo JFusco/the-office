@@ -27,6 +27,11 @@ test('output-limit recovery accepts only the completed bounded schema-valid resu
  try{
   expect(completedOutput(root,'max_output_tokens',schema)).toBeUndefined();writeFileSync(resolve(root,'completed-output.json'),JSON.stringify({done:true}));
   expect(completedOutput(root,'max_output_tokens',schema)).toEqual({done:true});expect(completedOutput(root,'network timeout',schema)).toBeUndefined();
+  // A writable worker stopped by the total time limit after saving its checkpoint has a complete answer; a reader or stalled worker does not.
+  expect(completedOutput(root,new Error('codex timed out; previous action outcome must be reconciled'),schema)).toEqual({done:true});
+  expect(completedOutput(root,'codex read timed out; saved observations retained; safe to retry the read',schema)).toBeUndefined();expect(completedOutput(root,'codex stopped producing output; inspect the retained worker evidence',schema)).toBeUndefined();
+  // Only the runner's own message, at the end of the error: a provider error that quotes it does not qualify.
+  expect(completedOutput(root,'codex exited 1: codex timed out; previous action outcome must be reconciled (quoted by provider)',schema)).toBeUndefined();expect(completedOutput(root,'claude timed out; previous action outcome must be reconciled',schema)).toBeUndefined();
   writeFileSync(resolve(root,'completed-output.json'),'{}');expect(completedOutput(root,'max_output_tokens',schema)).toBeUndefined();
   rmSync(resolve(root,'completed-output.json'));writeFileSync(resolve(other,'result.json'),JSON.stringify({done:true}));symlinkSync(resolve(other,'result.json'),resolve(root,'completed-output.json'));expect(completedOutput(root,'max_output_tokens',schema)).toBeUndefined();
  }finally{rmSync(root,{recursive:true,force:true});rmSync(other,{recursive:true,force:true});}

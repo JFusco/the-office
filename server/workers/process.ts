@@ -123,7 +123,8 @@ export async function command(program: string, args: string[], options: {
                 else terminate();
             }
             // Keep cancellation active and retain capacity until every owned process
-            // has stopped. A cancelled, timed-out or failed run never becomes success.
+            // has stopped. A cancelled, timed-out or failed run is never reported as success here;
+            // the worker runtime may still use a result the worker saved before a time limit.
             while (alive())
                 await new Promise(done => setTimeout(done, 50));
             clearTimeout(killTimer);
