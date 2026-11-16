@@ -19,9 +19,10 @@ export async function candidateBranchMoved(store: Store, ticket: Pick<Ticket, 'b
     catch { return ''; }
     if (!/^[a-f0-9]{40}$/.test(remote) || !/^[a-f0-9]{40}$/.test(head) || remote === head) return '';
     const moved = `Branch ${ticket.branch} on the remote is at ${remote.slice(0, 10)}, which the Office worktree (${head.slice(0, 10)}) does not contain. Another writer pushed to it; reconcile before resuming.`;
-    // Git reports a commit the worktree does not have with exit 128; any other failure is missing context.
+    // Git names a commit the worktree does not have as "Not a valid object name" (exit 128); any
+    // other failure, including an unreadable repository, is missing context.
     try { await git(ticket.worktree, ['cat-file', '-e', `${remote}^{commit}`], 30000); }
-    catch (error) { return /\bexited 128\b/.test(String(error)) ? moved : ''; }
+    catch (error) { return /\bexited 128\b[\s\S]*\bnot a valid object name\b/i.test(String(error)) ? moved : ''; }
     try { await git(ticket.worktree, ['merge-base', '--is-ancestor', remote, head], 30000); return ''; }
     catch (error) { return /\bexited 1\b/.test(String(error)) ? moved : ''; }
 }

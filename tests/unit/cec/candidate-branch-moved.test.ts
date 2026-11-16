@@ -48,6 +48,8 @@ test('an unreadable remote or worktree, a timeout or a ticket with no candidate 
     expect(await candidateBranchMoved(store, ticket, git({ remote: other, ancestor: new Error('git read timed out; no write was attempted') }).execute)).toBe('');
     expect(await candidateBranchMoved(store, ticket, git({ remote: other, known: new Error('git read timed out; no write was attempted') }).execute)).toBe('');
     expect(await candidateBranchMoved(store, ticket, git({ remote: other, ancestor: new Error('git exited 128: fatal: not a git repository') }).execute)).toBe('');
+    expect(await candidateBranchMoved(store, ticket, git({ remote: other, known: new Error('git exited 128: fatal: not a git repository') }).execute)).toBe('');
+    expect(await candidateBranchMoved(store, ticket, git({ remote: other, known: new Error('git exited 128: fatal: unable to read object database') }).execute)).toBe('');
     const untouched = git({ remote: other });
     expect(await candidateBranchMoved(store, { branch: '', worktree: '' }, untouched.execute)).toBe('');
     expect(untouched.calls).toEqual([]);
