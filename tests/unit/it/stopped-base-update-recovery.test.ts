@@ -90,3 +90,20 @@ test.each(['archived', 'deleted'])('an %s native handoff rollout does not reopen
     if (change === 'archived') renameSync(nativePath, nativePath + '.retained'); else rmSync(nativePath);
     expect(stoppedBaseUpdateUnresolved(store, id)).toBe(false); expect(f.state.calls).toEqual([]);
 });
+test('a stopped-base recovery left asking for a person is settled once its delivery finished',async()=>{
+    const f=fixture();
+    f.job.stoppedBaseUpdate={originalWorkId:'original',phase:'audit'} as any;
+    f.it.recoveries[f.id]={attempts:3,nextAt:'',status:'needs-human',detail:'PR merged, merge Actions passed, issue closed, and Done lane verified.'} as any;
+    await f.tick();
+    // Still open while the delivery is: the follow-up and the record stay.
+    expect(f.it.recoveries[f.id].status).not.toBe('resolved');
+    expect(stoppedBaseUpdateUnresolved(f.store,f.id)).toBe(true);
+    for(const status of ['completed','cancelled'] as const){
+        f.job.status=status;f.it.recoveries[f.id].status='needs-human';f.context.followUps.length=0;
+        await f.tick();
+        expect(stoppedBaseUpdateUnresolved(f.store,f.id),status).toBe(false);
+        expect(f.it.recoveries[f.id].status,status).toBe('resolved');
+        expect(f.context.followUps,status).toEqual([]);
+        expect(stoppedBaseUpdateUnresolved(f.store,`stopped-base-handoff:${f.job.id}:handoff`),status).toBe(false);
+    }
+});

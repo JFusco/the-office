@@ -109,8 +109,8 @@ export async function run(this: Engine, key: string) {
                 this.store.emit('stage-blocked', t.blocker, role, key);
                 break;
             }
-            // QA did not perform the replaced implementation run's action; a restated receipt must not gate its own result.
-            if (['qa', 'retest', 'staging-qa'].includes(stage)) result.receipts = ownReceipts(t, result.receipts);
+            // No later stage performed the replaced implementation run's action; a restated receipt must not gate that stage's result.
+            result.receipts = ownReceipts(t, result.receipts);
             if (['qa', 'retest', 'staging-qa'].includes(stage) && result.outcome !== 'reroute') {
                 if (result.outcome === 'passed') {
                     const gap = qaEvidenceGap(t, stage, result, resolve(DATA, 'runs', t.runId));

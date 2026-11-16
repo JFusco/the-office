@@ -202,8 +202,12 @@ stopped-base readback no longer applies to it: a run the harness then declines, 
 uses up its three restarts, stays blocked for a person. Jira/Azure work is unchanged.
 
 For Jira/Azure work, a QA stage that stopped in setup (nothing tested, no paid run) is run again
-on resume instead of being reconstructed, and a restated receipt of an implementation run that a
-recorded continuation replaced does not gate QA. After three setup stops in a row on one
+on resume instead of being reconstructed. A review stage whose worker returned its own verdict
+is likewise run again on resume, since a read-only review repeats nothing. Once the
+implementation that a recorded continuation produced has passed, the receipt of the run it
+replaced is settled history: stage, chat and reconcile workers are shown it as settled and told it
+is history, a restated copy is dropped from any stage's result, and it gates nothing. A review decides on the source and its evidence; work
+that belongs to a later stage is not a reason for it to block. After three setup stops in a row on one
 candidate, the next resume shows the count and latest reason without starting a worker;
 resuming again runs one more attempt.
 
@@ -221,6 +225,7 @@ minutes for Jira/Azure stages, 60 for GitHub delivery stages).
 
 Ellis does not investigate a timed-out run whose saved result the stage accepted: that
 investigation resolves from the accepted result.
+A stopped-base recovery is settled once its delivery has finished or been cancelled.
 
 A Jira/Azure developer stage (implement or repair) on Claude that is stopped by its time limit
 is continued, not restarted or reconstructed: the next run resumes the stopped session's
