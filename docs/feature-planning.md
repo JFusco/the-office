@@ -42,7 +42,7 @@ The native modal shows one question at a time with Back/Next, recommendations, t
 
 Recovery questions are authored by the harness. **Save note** records context without answering, resolving, revising or requeueing work. An explicit available action is still required. **Retry once** authorizes one attempt of the stored operation while retaining automatic counters; an uncertain write offers read-back only and is never resent. **Pause** preserves evidence and ownership. **Return to ordinary delivery** appears only when current ownership, process, publication and effect checks prove release safe; it retains the historical source ticket and stops this feature's progression.
 
-On enabled projects, ticket inspectors show **Open feature plan** for enrolled tickets and **Ask Morgan to assess** for unenrolled tickets. The assessment request is idempotent and cannot reopen terminal Start/fail-open episodes or bypass ownership. Document views derive Draft, Reviewed and Accepted labels, including policy or human authority, from the saved records without rewriting legacy approval digests.
+On enabled projects, ticket inspectors show **Open feature plan** for enrolled tickets and **Ask Morgan if this needs feature planning** for unenrolled tickets whose delivery has not reached implementation; once it has, the request is not offered. The assessment request is idempotent and cannot reopen terminal Start/fail-open episodes or bypass ownership. Document views derive Draft, Reviewed and Accepted labels, including policy or human authority, from the saved records without rewriting legacy approval digests.
 
 ## Revisions, recovery and release
 
