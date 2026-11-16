@@ -1,3 +1,4 @@
+import { readReviewWait } from '../../../../server/delivery/readiness/review-wait';
 import * as harnessStage from '../../../../server/delivery/harness/run-harness-stage';
 import { assessDeliveryEligibility } from '../../../../server/delivery/harness/delivery-authority';
 import { cleanupFakes, fakeGitHub } from '../support/fake-github';
@@ -135,6 +136,7 @@ test('missing, malformed or denied native policy reads block review without requ
     await expect(denied.readinessPolicy(head)).rejects.toThrow('403');
     a.job.pr = 700;
     a.job.stage = 'lead-pr';
+    a.pr.draft = false;
     let calls = 0;
     a.engine.agents.run = async () => { calls++; return a.result('review') as any; };
     await a.delivery.step(a.job);
@@ -176,10 +178,12 @@ test('completed conflict repair advances to the same PR without another source r
     await expect(delivery.reconcileBaseUpdate('GH-999')).rejects.toThrow('completed, certain');
 });
 test('scoped delivery uses separate development/review/QA stages, links draft and hands it to Lead', async () => {
-    const { engine, delivery, job, result, calls } = setup();
+    const { engine, delivery, job, result, calls, pr } = setup();
     const roles: string[] = [];
     engine.agents.run = async (role, _task, _schema, opts) => {
         roles.push(role);
+        // The preparation worker marks the draft ready; a draft never reaches the readiness review.
+        if (job.stage === 'prepare-pr') pr.draft = false;
         if (job.stage === 'review' || job.stage === 'lead-pr')
             expect(opts?.readOnly).toBe(true);
         return result(job.stage === 'review' ? 'review' : 'checks') as any;
@@ -234,6 +238,9 @@ test('PR changes queue Lead reads, while post-merge Actions must match the merge
     const { delivery, job, pr, setRuns } = setup();
     job.pr = 700;
     job.status = 'watching';
+    await delivery.observe();
+    expect(job).toMatchObject({ stage: 'implement', status: 'watching', stop: { kind: 'pr-not-ready' } });
+    pr.draft = false;
     await delivery.observe();
     expect(job.stage).toBe('lead-pr');
     expect(job.status).toBe('queued');
@@ -577,6 +584,7 @@ test('a changed head or open finding requires another independent review', async
         a.job.stage = 'lead-pr';
         a.job.pr = 700;
         a.job.head = head;
+        a.pr.draft = false;
         const saved = a.result();
         if (changed)
             a.pr.head.sha = 'b'.repeat(40);
@@ -590,12 +598,48 @@ test('a changed head or open finding requires another independent review', async
         expect(a.job.stage).toBe('lead-pr');
     }
 });
+test('running checks and a moved or unreadable check set: the readiness review waits only for the first', async () => {
+    const a = setup();
+    Object.assign(a.job, { stage: 'lead-pr', pr: 700, head });
+    a.pr.draft = false;
+    a.setCheckConclusion('pending');
+    let called = 0;
+    a.engine.agents.run = async () => { called++; throw new Error('Reviewed'); };
+    await a.delivery.step(a.job);
+    expect(called).toBe(0);
+    expect(a.job).toMatchObject({ stage: 'lead-pr', status: 'watching', stop: { kind: 'provider-checks' } });
+    const began = a.job.stop!.at;
+    // Each poll while checks run leaves the job waiting from the same start; the review queues once when they finish.
+    await a.delivery.observe();
+    expect(a.job).toMatchObject({ status: 'watching', stop: { kind: 'provider-checks', at: began } });
+    expect(a.job.lastPRFingerprint).toBeUndefined();
+    a.setCheckConclusion('success');
+    await a.delivery.observe();
+    expect(a.job).toMatchObject({ stage: 'lead-pr', status: 'queued' });
+    await a.delivery.step(a.job);
+    expect(called).toBe(1);
+    const moved = setup();
+    Object.assign(moved.job, { stage: 'lead-pr', pr: 700, head });
+    moved.pr.draft = false; moved.pr.head.sha = 'b'.repeat(40); moved.setCheckConclusion('pending');
+    moved.engine.agents.run = async () => { called++; throw new Error('Reviewed'); };
+    await moved.delivery.step(moved.job);
+    expect(called).toBe(2);
+    // A check waiting on a person, and a check set that cannot be read completely, are the review's to report.
+    const api = a.delivery.api.bind(a.delivery), check = (status: string) => ({ total_count: 1, check_runs: [{ id: 1, head_sha: head, status, conclusion: null }] });
+    for (const checks of [check('waiting'), { total_count: 2, check_runs: [] }]) {
+        a.delivery.api = async path => path.includes('/check-runs') ? checks : api(path);
+        expect(await readReviewWait(a.delivery, a.job, a.pr)).toBeNull();
+    }
+    a.delivery.api = async path => path.includes('/check-runs') ? check('queued') : api(path);
+    expect(await readReviewWait(a.delivery, a.job, a.pr)).toMatchObject({ kind: 'provider-checks' });
+});
 test('a new issue or PR update prevents reuse even when the reviewed head is unchanged', async () => {
     const a = setup();
     a.job.stage = 'lead-pr';
     a.job.pr = 700;
     a.job.head = head;
     a.job.steps = [{ stage: 'lead-pr', result: a.result() }];
+    a.pr.draft = false;
     a.pr.updated_at = '2026-10-28T13:00:00Z';
     a.pr.base.sha = 'c'.repeat(40);
     a.job.reviewContext = { head, issueUpdatedAt: '2026-10-28T12:00:00Z', prUpdatedAt: '2026-10-28T12:00:00Z', baseSha: a.pr.base.sha, target: 'main', step: 0 };
@@ -1161,14 +1205,14 @@ test('positively bound newer queued workflow with no check row waits, then its a
  appear();await a.delivery.observe();expect(a.job).toMatchObject({stage:'merge',status:'queued'});expect(JSON.stringify(a.job.steps)).toBe(before);expect(a.run).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
 });
 
-test('unready Lead step keeps watching queued workflow coverage and later observes its successful check',async()=>{
+test('a Lead step waits on queued workflow coverage without a review and queues it once the check succeeds',async()=>{
  const a=setup();Object.assign(a.job,{pr:700,prUrl:a.pr.html_url,head,stage:'lead-pr',worktree:a.result().worktree,branch:a.pr.head.ref});a.pr.draft=false;a.pr.base.sha='b'.repeat(40);
  a.store.state.coordination!.merges={enabled:true,authorizedAt:'human-existing'};const appear=queuedWorkflowCoverage(a);
  const result:StageResult={...a.result('review'),outcome:'blocked',summary:'Current checks are still running',blocker:'Waiting for current workflow coverage',resolution:{kind:'provider-wait',findingIds:['checks'],evidenceIds:['1']},findings:[{id:'checks',status:'open',summary:'Checks are running',actual:'Queued workflow',expected:'Matching passing checks',attempts:0}]};
  const run=vi.spyOn(a.engine.agents,'run').mockResolvedValue(result as any),repair=vi.spyOn(a.delivery,'queueConflictRepair');
- await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'lead-pr',status:'watching'});expect(run).toHaveBeenCalledTimes(1);expect(repair).not.toHaveBeenCalled();expect(a.job.repairReason).toBeUndefined();expect(a.job.mergeAttempt).toBeUndefined();
+ await a.delivery.step(a.job);expect(a.job).toMatchObject({stage:'lead-pr',status:'watching',stop:{kind:'provider-checks'}});expect(run).not.toHaveBeenCalled();expect(repair).not.toHaveBeenCalled();expect(a.job.repairReason).toBeUndefined();expect(a.job.mergeAttempt).toBeUndefined();
  const before=JSON.stringify(a.job.steps);appear();await a.delivery.observe();
- expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});expect(a.job.detail).toContain('current-head review');expect(JSON.stringify(a.job.steps)).toBe(before);expect(run).toHaveBeenCalledTimes(1);expect(repair).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+ expect(a.job).toMatchObject({stage:'lead-pr',status:'queued'});expect(a.job.detail).toContain('current-head review');expect(JSON.stringify(a.job.steps)).toBe(before);expect(run).not.toHaveBeenCalled();expect(repair).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
 });
 
 test('non-wait check selection errors still block an unready Lead step',async()=>{

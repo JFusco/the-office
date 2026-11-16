@@ -33,7 +33,7 @@ export type EligibilityState = 'running' | 'runnable' | 'waiting' | 'blocked' | 
 /** Why blocked work is not running. Absent on other states; blocked work without one needs a decision. */
 export type BlockedCause = 'needs-decision' | 'failed' | 'interrupted' | 'unconfirmed' | 'dependency' | 'paused';
 /** Harness-classified reason a stage stopped. Labels the stop only; it grants no retry or authority. */
-export type StopKind = 'provider-checks' | 'source-closed' | 'uncertain-effect' | 'transient' | 'paused' | 'hold' | 'authority' | 'unclassified';
+export type StopKind = 'provider-checks' | 'pr-not-ready' | 'source-closed' | 'uncertain-effect' | 'transient' | 'paused' | 'hold' | 'authority' | 'unclassified';
 export interface StopReason {
     kind: StopKind;
     at: string;

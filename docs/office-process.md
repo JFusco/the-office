@@ -164,6 +164,13 @@ GitHub automatic merge is limited to configured authorization; it never grants
 that authority to Jira/Azure work. Release, package or downstream-runner success
 must be observed from the relevant provider; a merge is not proof of release.
 
+Sam's GitHub readiness review does not run on a PR that GitHub already reports as not
+reviewable. A draft PR and running current-head checks wait without a model run, and the
+review queues once when the PR is ready and its checks finish. A conflict on a head the team
+already reviewed is refreshed by the harness (Alex merges the current target into the same
+branch) without Sam assessing the conflict first; a conflict on an unreviewed head still goes
+to Sam.
+
 ## Recovery and human involvement — shared across roles
 
 | Observation | Next action | Boundary |
@@ -178,7 +185,7 @@ must be observed from the relevant provider; a merge is not proof of release.
 | Native helper survives / output missing | Retain claim, failure and original evidence; supported reconciliation only | No success assertion, unrelated kill or repeated investigation loop |
 
 When a delivery stage, ticket stage or harness request stops on an error, the harness records
-why on the record (`stop.kind`: provider checks, closed source, uncertain effect, transient read,
+why on the record (`stop.kind`: provider checks, PR not ready, closed source, uncertain effect, transient read,
 pause, hold, authority or unclassified). The label is for counting stops (`pnpm office baseline`);
 it changes no status and grants no retry, resume or authority.
 

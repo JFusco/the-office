@@ -1,6 +1,7 @@
 import { observeAutomationMerge } from '../readiness/automation-merge';
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { refreshMergeReview } from '../readiness/refresh-merge-review';
+import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
 import { retireExternalDeliveries } from '../recovery/retire-external-delivery';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
@@ -101,6 +102,11 @@ export async function observe(this: GitHubDelivery) {
             // A rejected conflict proof permits reassessment, never a CI writer fallback.
             if (!conflictRepairError && await this.queueCIRepair(job))
                 continue;
+            const wait = conflictRepairError ? null : await readReviewWait(this, job, p, { checks, statuses });
+            if (wait) {
+                applyReviewWait(job, wait, this.store.clock.now());
+                continue;
+            }
             const parts = [p.head.sha, p.base.ref, p.base.sha, p.draft, p.mergeable, p.updated_at, deliveryInputSha256(this.store, job.key), checks.check_runs.map((c: any) => [c.id, c.status, c.conclusion]), statuses.state];
             const research = deliveryResearchContext(this.store, job.key).length ? deliveryResearchSha256(this.store, job.key) : undefined;
             if (research) parts.push(research);
