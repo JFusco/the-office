@@ -1,6 +1,7 @@
 import { CurrentOfficeQAReportSchema, OfficeQAReportSchema } from '../qa/report-schema';
 import { bindGitHubQA, prepareCECQA } from '../qa/prepare-assignment';
 import { savedStageCompletion } from '../cec/saved-completion';
+import { assertContinuableWorktree, continuationPrompt, MAX_CONTINUATIONS, recordedContinuation, stageContinuation } from '../cec/stage-continuation';
 import { saveQAReport } from '../qa/save-report';
 import { stageTimeLimit, qaTimeLimitGuidance } from '../qa/time-limit';
 import { isQAStage } from '../qa/assignment';
@@ -95,6 +96,8 @@ export class Agents extends WorkerRuntime {
     async readback(key: string, continuationContext = '', requestId = '') {
         return this.run('pm', cecReadbackPrompt(this.store, key) + (continuationContext ? `\n${continuationContext}` : ''), ReadbackSchema, { readOnly: true, stage: 'readback', timeout: 15 * 60 * 1000, ticket: key, requestId });
     }
+    /** Whether the ticket's interrupted stage would be continued in its stopped session, worktree included. */
+    async continuable(ticket: Ticket): Promise<boolean> { return !!await recordedContinuation(this.store, this.execute, ticket, ticket.stage); }
     async stage(ticket: Ticket, stage: Stage, role: Role): Promise<StageResult> {
         const continued = implementationWorkerContext(ticket, stage);
         const artifactRoot = continued?.artifactsRoot || resolve(DATA, 'runs', ticket.runId);
@@ -113,8 +116,29 @@ export class Agents extends WorkerRuntime {
         const featureEnhance = !!ticket.featureBinding && stage === 'enhance';
         const artifactOnly = featureEnhance || ['plan', 'plan-review', 'code-review', 'repair-review', 'ci-diagnose'].includes(stage);
         if (continued) await verifyContinuationPreservation(this.store, ticket);
-        const result = await this.run(role, prompt + (officeQA ? qaTimeLimitGuidance(ticket.approach) : ''), ResultSchema, { officeQA, timeout: stageTimeLimit(stage, isQAStage(stage), ticket.approach), ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
-            ...(continued ? { requestId: continued.requestId, originalWorkId: continued.originalWorkId } : {}) });
+        const timeout = stageTimeLimit(stage, isQAStage(stage), ticket.approach);
+        // A developer run stopped by the time limit is continued in its own session, not restarted or reconstructed.
+        let resume = stageContinuation(this.store, ticket, stage), result: StageResult;
+        for (;;) {
+            if (resume) {
+                await assertContinuableWorktree(this.execute, ticket);
+                this.store.emit('stage-continued', `${ticket.key}: the ${stage} run stopped at its time limit; continuing the same session (${resume.attempt} of ${MAX_CONTINUATIONS}).`, role, ticket.key);
+            }
+            const before = new Set((this.store.state.workLog || []).map(work => work.id));
+            try {
+                result = await this.run(role, resume ? continuationPrompt(resume.attempt, timeout) : prompt + (officeQA ? qaTimeLimitGuidance(ticket.approach) : ''), ResultSchema, { officeQA, timeout, ticket: ticket.key, stage, readOnly: featureEnhance, artifactsRoot: artifactRoot, cwd: artifactOnly ? artifactRoot : ticket.worktree || ROOT,
+                    ...(continued ? { requestId: continued.requestId, originalWorkId: continued.originalWorkId } : {}),
+                    ...(resume ? { resumeSession: resume.work.id, originalWorkId: resume.work.id } : {}) });
+                break;
+            }
+            catch (error) {
+                // Continue only a new time-limit stop; any other failure, or the allowance used up, ends the stage as before.
+                // Only the run just made counts, and never across a pause or drain.
+                const next = this.store.state.paused || this.store.state.draining ? undefined : stageContinuation(this.store, ticket, stage, undefined, false);
+                if (!next || before.has(next.work.id)) throw error;
+                resume = next;
+            }
+        }
         if (officeQA) saveQAReport(result, qaDirectory, artifactRoot);
         if (continued) await verifyContinuationPreservation(this.store, ticket, result);
         return result;

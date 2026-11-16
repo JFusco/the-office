@@ -70,6 +70,8 @@ export class WorkerRuntime {
         stage?: string;
         requestId?: string;
         originalWorkId?: string;
+        /** A stopped Claude session whose conversation this run continues under its own session ID. */
+        resumeSession?: string;
         enqueuedAt?: string;
         artifactsRoot?: string;
         officeQA?: boolean;
@@ -175,7 +177,7 @@ export class WorkerRuntime {
                 this.store.agent(role, { model: route.model, effort: route.effort });
                 this.store.checkpointWork(id, this.store.clock.monotonic() - started, { model: route.model, effort: route.effort, requestedModel: route.model, requestedEffort: route.effort });
             }
-            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])]) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!);
+            const args = claude ? claudeArguments(jsonSchema, id, !!opts.readOnly, [opts.cwd || ROOT, this.store.project.provider === 'azure' ? ROOT : this.store.dataRoot, readingProject.repo, ...(this.store.project.provider === 'azure' ? [SKILLS.jira, SKILLS.qa] : [dirname(GITHUB_ISSUE_SKILL)])], opts.resumeSession) : codexArguments(schemaPath, opts.cwd || ROOT, !!opts.readOnly, route!);
             const desktopArguments = slackDesktopArguments(claude ? 'claude' : 'codex', profile.name);
             args.push(...desktopArguments);
             args.push(...codexNotifyArguments(claude ? 'claude' : 'codex'));
