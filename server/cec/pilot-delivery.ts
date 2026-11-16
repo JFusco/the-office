@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { Agents, ResultSchema } from '../workers/agents';
 import { savedStageCompletion } from './saved-completion';
+import { unrecordedStageResult } from './unrecorded-result';
 import { ownReceipts } from './superseded-receipts';
 import { DATA, CEC, HOLDS, LEGACY_AUTOMATION } from '../office/config';
 import { eligibility, advance, resultGate } from './workflow';
@@ -236,7 +237,8 @@ export async function resume(this: Engine, key: string, background = true) {
     if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, DATA);
     // A stage whose worker saved its finished result before the time limit needs no reconstruction: the stage accepts that result.
     // Likewise a developer run stopped by the time limit: the stage continues that session.
-    if (!qaRetry && !qaHandoff && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && !await this.agents.continuable(t) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
+    // So does one whose worker returned a result that never reached the ticket.
+    if (!qaRetry && !qaHandoff && !unrecordedStageResult(this.store, t, t.stage) && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && !await this.agents.continuable(t) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const read = await this.agents.reconcile(t), observed = { ...read, receipts: ownReceipts(t, read.receipts) };
         const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));
         if (gap) {

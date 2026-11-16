@@ -219,6 +219,12 @@ and no work is run again. A worker that stalled, a reader, or a worker stopped w
 was still running is not covered. On resume, a checkpoint for another candidate or attempt is
 not accepted.
 
+A stage runner holds its ticket or job for the whole run. When a store transaction fails, the
+store restores its saved contents in place, so that record stays the live one and nothing the
+runner writes afterwards is lost. If a Jira/Azure stage result was saved to its attempt but is
+not on the ticket, the next run of that stage applies it under the same attempt: no worker runs
+again and writes already verified for that attempt are not repeated.
+
 A QA stage on the browser route runs for up to 90 minutes, and the worker is told that limit.
 A Jira/Azure repair also runs for up to 90 minutes. Other stages keep their existing limits (45
 minutes for Jira/Azure stages, 60 for GitHub delivery stages).

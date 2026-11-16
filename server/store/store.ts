@@ -1,4 +1,5 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
+import { restoreInPlace } from './restore-state';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { DATA } from '../office/config';
@@ -88,7 +89,9 @@ export class Store {
         }
         catch (error) {
             this.db.exec('ROLLBACK');
-            this.state = previous;
+            // In place: callers holding a ticket or job across an await keep the live record.
+            // The saved copy is always a correct state, so it is the fallback if the in-place restore cannot finish.
+            try { restoreInPlace(this.state, previous); } catch { this.state = previous; }
             throw error;
         }
         finally {
