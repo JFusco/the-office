@@ -32,7 +32,8 @@ test('malformed plan output persists a failed attempt and blocked feature after 
         const workflow = new FeatureWorkflow(f.store, workers as any, undefined, () => ({ context: async () => '' }) as any);
         await workflow.step(f.feature.id);
         const current = featureById(f.store, f.feature.id);
-        expect(current).not.toBe(f.feature);
+        // A rollback restores the state in place, so the feature a caller holds is still the live one.
+        expect(current).toBe(f.feature);
         expect(current.status).toBe('blocked'); expect(current.attempts[0].status).toBe('failed');
         const persisted = JSON.parse((f.store.db.prepare('SELECT body FROM state WHERE id=1').get() as any).body).features[0];
         expect(persisted.status).toBe('blocked'); expect(persisted.attempts[0].status).toBe('failed');

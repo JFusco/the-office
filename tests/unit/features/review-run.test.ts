@@ -52,7 +52,8 @@ test('helper checkpoint updates re-resolve live review state after a concurrent 
         }, async () => ++inspections === 1 ? f.evidence : { ...f.evidence, status: 'ready', revision: 3, stage: 'refine' });
         await runner.step(f.feature);
         const current = featureById(f.store, f.feature.id);
-        expect(current).not.toBe(f.feature); expect(current.review!.pendingDecision).toBeUndefined();
+        // A rollback restores the state in place, so the feature a caller holds is still the live one.
+        expect(current).toBe(f.feature); expect(current.review!.pendingDecision).toBeUndefined();
         expect(current.status).toBe('queued');
         expect(calls[0].slice(1, 4)).toEqual(['decide', f.evidence.run, '--instruction']);
         expect(JSON.parse(calls[0][4])).toEqual({ 'FIND-1': 'Editors' });
