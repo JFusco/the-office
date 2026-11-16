@@ -1,4 +1,5 @@
 import { captureLearning } from '../knowledge/learning-events';
+import { unrecordedStageResult } from './unrecorded-result';
 import { ownReceipts } from './superseded-receipts';
 import { acceptFeatureReview } from '../features/stage-acceptance';
 import { approvedDelivery } from '../features/delivery-binding';
@@ -66,9 +67,13 @@ export async function run(this: Engine, key: string) {
             performed = true;
             t.activity = 'working';
             this.store.emit('stage-started', STAGE_LABELS[stage], role, key);
-            const attemptId = this.store.begin(t, stage);
+            // A result this stage's worker already returned, saved to its attempt but never to the ticket, is taken as is.
+            const unrecorded = unrecordedStageResult(this.store, t, stage);
+            if (unrecorded) { t.recoveredAttemptId = unrecorded.attemptId; this.store.save(); }
+            if (unrecorded) this.store.emit('stage-result-recovered', `${key}: the ${stage} result its worker returned was not on the ticket; it is applied now. No work is run again.`, role, key);
+            const attemptId = unrecorded?.attemptId ?? this.store.begin(t, stage);
             const transition = ({ understand: 'In Progress', 'code-review': 'Code Review', 'repair-review': 'Code Review', qa: 'QA', retest: 'QA', preview: 'Ready for QA' } as Partial<Record<Stage, string>>)[stage];
-            if (transition) {
+            if (transition && !unrecorded) {
                 const update = await this.jira.verifyStatus(t, transition, await this.agents.transition(t, transition));
                 (t.progressUpdates ??= []).push({ stage, target: transition, at: new Date().toISOString(), result: update });
                 this.store.save();
@@ -93,7 +98,7 @@ export async function run(this: Engine, key: string) {
             let result: StageResult;
             const beforeWorkers = new Set((this.store.state.workLog || []).map(w => w.id));
             try {
-                result = await this.agents.stage(t, stage, role);
+                result = unrecorded?.result ?? await this.agents.stage(t, stage, role);
                 if (t.featureBinding) approvedDelivery(this.store, t.featureBinding);
                 acceptFeatureReview(this.store, t, result, stage, beforeWorkers);
                 if (stage === 'enhance' && result.outcome === 'passed') await verifyFeatureEnhance(this.store, t, result);

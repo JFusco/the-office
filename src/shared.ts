@@ -578,6 +578,8 @@ export interface Ticket {
     officeQAHandoffs?: import('./contracts/office-qa-handoff').OfficeQAHandoff[];
     /** Recent QA reports for the inspector; complete immutable history stays in native attempts/artifacts. */
     qaHistory?: { stage: Stage; result: StageResult }[];
+    /** The stage attempt whose saved result was applied to this ticket after it was found missing; never applied twice. */
+    recoveredAttemptId?: string;
     /** The count of consecutive QA setup stops Joe has already been shown; a resume at this count runs one more attempt. */
     qaSetupStopsConfirmed?: number;
     qaProtocol?: Partial<Record<Stage, 'office-v1'>>;
