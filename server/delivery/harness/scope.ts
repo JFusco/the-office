@@ -1,11 +1,10 @@
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
+import { projectPolicy } from '../../office/project-policy';
 
-/** Projects whose delivery runs on deterministic harness operations instead of model-performed mechanics. */
-export const HANDS_OFF_PROJECTS: ReadonlySet<string> = new Set(['cms-field-vocabulary', 'brain']);
-
+/** This project's delivery runs on deterministic harness operations instead of model-performed mechanics. */
 export function handsOff(store: Pick<Store, 'project'>): boolean {
-    return HANDS_OFF_PROJECTS.has(store.project.id);
+    return projectPolicy(store.project).handsOff;
 }
 
 /** Jobs carrying legacy recovery records keep their dedicated, reconciled model-stage contracts. */

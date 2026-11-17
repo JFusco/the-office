@@ -12,6 +12,7 @@ import { Store } from '../../../server/store/store';
 import { Engine } from '../../../server/scheduling/engine';
 import { projectById, officeCapacity } from '../../../server/office/projects';
 import { Coordinator, checkpointWindow, dueAt } from '../../../server/scheduling/coordination';
+import { projectPolicy } from '../../../server/office/project-policy';
 import type { AssignedIssue, StageResult } from '../../../src/shared';
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })); });
@@ -29,12 +30,13 @@ function setup(project = 'brain', capacity = officeCapacity(), execute?: any) {
 /** Synthetic GitHub for hands-off intake: no open PRs; anything else is unexpected. */
 const noOpenPRs = async (bin: string, args: string[]) => { if (bin === 'gh' && args[1]?.includes('/pulls?state=open')) return '[[]]'; throw new Error(`Unexpected synthetic command ${bin} ${args.join(' ')}`); };
 const issue = (key = 'GH-255'): AssignedIssue => ({ key, summary: 'Synthetic assignment', url: 'https://example.invalid/issue', assignee: 'JFusco', status: 'open', pickupStatus: 'Ready', statusId: '', updated: '', type: 'Issue', subtask: false });
+const checkpoint = (id: string) => projectPolicy(projectById(id)).checkpoint;
 test('checkpoint windows use Eastern wall time, DST and CEC weekdays; activation never replays an earlier run', () => {
     expect(dueAt('2026-10-28', 17)).toBe('2026-10-28T21:00:00.000Z');
     expect(dueAt('2026-11-02', 17)).toBe('2026-11-02T22:00:00.000Z');
-    expect(checkpointWindow('cec', new Date('2026-10-31T18:00:00Z'), '2026-10-28T12:00:00Z').due?.date).toBe('2026-10-30');
-    expect(checkpointWindow('cec', new Date('2026-10-28T14:00:00Z'), '2026-10-28T13:30:00Z').due).toBeUndefined();
-    expect(checkpointWindow('brain', new Date('2026-11-03T23:00:00Z'), '2026-10-28T12:00:00Z').due?.date).toBe('2026-11-03');
+    expect(checkpointWindow(checkpoint('cec'), new Date('2026-10-31T18:00:00Z'), '2026-10-28T12:00:00Z').due?.date).toBe('2026-10-30');
+    expect(checkpointWindow(checkpoint('cec'), new Date('2026-10-28T14:00:00Z'), '2026-10-28T13:30:00Z').due).toBeUndefined();
+    expect(checkpointWindow(checkpoint('brain'), new Date('2026-11-03T23:00:00Z'), '2026-10-28T12:00:00Z').due?.date).toBe('2026-11-03');
 });
 test('daily checkpoints are durable once per date, pause-aware and coalesce missed days', async () => {
     const { c, engine, store } = setup('cec');

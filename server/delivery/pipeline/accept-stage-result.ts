@@ -4,6 +4,7 @@ import { captureLearning } from '../../knowledge/learning-events';
 import { acceptFeatureReview } from '../../features/stage-acceptance';
 import {completedExecution} from '../../workers/worker-completion';
 import { teamReviewedHead, mergeAuthorized } from '../readiness/team-review';
+import { harnessMayMerge } from '../readiness/merge-ceiling';
 import { assertScopeRepairResumeFindings } from '../recovery/scope-repair/scope-repair-resume';
 import { handoffSavedPrerequisites, savedPrerequisiteFindingsResolved, savedPrerequisiteJobEligible } from '../recovery/implementation/saved-prerequisite-handoff';
 import { routeReadyPostConflictPublication } from '../recovery/preparation/post-conflict-preparation';
@@ -233,7 +234,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         }
         const priorLead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
         const rejectedSameHead = priorLead?.commit === job.head && priorLead.outcome !== 'passed';
-        if (!metadataAppliesToHead(this.store, job) && teamReviewedHead(this.store, job) && !rejectedSameHead && !p.draft && mergeAuthorized(this.store, job)) {
+        if (!metadataAppliesToHead(this.store, job) && teamReviewedHead(this.store, job) && !rejectedSameHead && !p.draft && harnessMayMerge(this.store) && mergeAuthorized(this.store, job)) {
             job.stage = 'merge';
             job.status = 'queued';
             job.detail = 'PR prepared. The team already reviewed and verified this exact head, so the guarded merge runs without a second readiness review.';

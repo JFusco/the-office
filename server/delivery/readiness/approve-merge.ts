@@ -1,6 +1,8 @@
 import type { GitHubDelivery } from '../pipeline/github-delivery';
+import { assertHarnessMayMerge } from './merge-ceiling';
 
 export async function approveMerge(this: GitHubDelivery, key: string, head: string) {
+    assertHarnessMayMerge(this.store);
     const job = this.jobs.find(j => j.key === key && j.mergeApprovalRequired && j.stage === 'lead-pr' && j.status === 'watching');
     if (!job || !head || head !== job.head || job.reviewContext?.head !== head || job.steps.at(-1)?.result.outcome !== 'passed')
         throw new Error('A matching reviewed PR head is required for this approval');

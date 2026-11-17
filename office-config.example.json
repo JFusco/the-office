@@ -23,6 +23,11 @@
         "owner": "owner",
         "number": 1,
         "url": "https://github.com/users/owner/projects/1"
+      },
+      "policy": {
+        "merge": "harness",
+        "handsOff": true,
+        "checkpoint": { "hour": 17, "weekends": true }
       }
     }
   ],

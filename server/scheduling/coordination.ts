@@ -7,19 +7,19 @@ import { command } from '../workers/process';
 import { savePickup } from '../delivery/intake/pickup';
 import { BrainFollowup } from '../maintenance/brain/brain-followup';
 import type { AssignedIssue, Coordination, PickupPolicy } from '../../src/shared';
+import type { ProjectPolicy } from '../office/project-policy';
 import { requestWork, preparePR, updateCandidateBase, recheckCandidate, recheckPR, recheck, deferNonReady } from './operator-commands';
 import { readAssignments, poll } from './assignment-poll';
 import { tick } from './coordination-tick';
 import { pump } from './coordination-pump';
 import { resumeRepairedMaintenance, queueCheckpointRetry, readBackCheckpoint, retryCheckpoint } from '../maintenance/checkpoint-retry';
 export function coordination(): Coordination { return { enabled: false, activatedAt: '', lastTickAt: '', nextDueAt: '', checkpoints: [], listener: { lastCheckedAt: '', nextCheckAt: '', error: '', assigned: [], reviews: [] } }; }
-const hours: Record<string, number> = { cec: 9, 'cms-field-vocabulary': 15, brain: 17 };
 export function localDay(now: Date) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now); }
 export function dueAt(day: string, hour: number) {
     const offset = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'longOffset' }).formatToParts(new Date(`${day}T12:00:00Z`)).find(p => p.type === 'timeZoneName')!.value.replace('GMT', '');
     return new Date(`${day}T${String(hour).padStart(2, '0')}:00:00${offset}`).toISOString();
 }
-export function checkpointWindow(project: string, now: Date, activatedAt: string) {
+export function checkpointWindow(checkpoint: ProjectPolicy['checkpoint'], now: Date, activatedAt: string) {
     const day = localDay(now), base = new Date(`${day}T12:00:00Z`);
     let due: {
         date: string;
@@ -28,9 +28,9 @@ export function checkpointWindow(project: string, now: Date, activatedAt: string
     for (let d = -7; d <= 7; d++) {
         const date = new Date(base);
         date.setUTCDate(date.getUTCDate() + d);
-        if (project === 'cec' && [0, 6].includes(date.getUTCDay()))
+        if (!checkpoint.weekends && [0, 6].includes(date.getUTCDay()))
             continue;
-        const dateKey = date.toISOString().slice(0, 10), at = dueAt(dateKey, hours[project] ?? 17);
+        const dateKey = date.toISOString().slice(0, 10), at = dueAt(dateKey, checkpoint.hour);
         if (at < activatedAt)
             continue;
         if (Date.parse(at) <= now.getTime())
