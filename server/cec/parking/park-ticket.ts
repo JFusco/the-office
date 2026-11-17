@@ -8,6 +8,7 @@ import { resolveBlockedTransition } from './blocked-transition';
 import { transitionWithComment } from './commented-transition';
 import { jiraCredential, type JiraCredential } from './jira-credential';
 import { jiraAccount } from './jira-account';
+import { plainWords } from '../../comments/plain-words';
 
 const MARKER = 'Office decision ';
 /** A refused comment preflight never dispatched, so a later attempt is a fresh intent with its own id. */
@@ -37,7 +38,7 @@ export async function parkTicket(store: Store, execute: Execute, t: Ticket, stag
 /** The single Blocked transition for this parking; its identity comes only from the saved park record. */
 export async function moveToBlocked(store: Store, execute: Execute, t: Ticket): Promise<void> {
     const { marker, fromStatus } = t.parked!;
-    const comment = decisionComment(t);
+    const comment = decisionComment(store, t);
     let transitionId = '', credential: JiraCredential | undefined;
     await new Effects(store).execute({ id: parkEffectIds(marker).transition, ...effectFields(store, t), operation: 'jira-transition', payload: { to: BLOCKED, comment }, expectedState: { assignee: CEC.account, from: fromStatus },
         preflight: async () => {
@@ -58,16 +59,21 @@ export async function moveToBlocked(store: Store, execute: Execute, t: Ticket): 
         } });
 }
 
-function decisionComment(t: Ticket): string {
+/**
+ * What a person reads on the ticket: the question first, how to resume, and the Office's reference last.
+ * A park already recorded keeps the wording it was sent with.
+ */
+function decisionComment(store: Store, t: Ticket): string {
     const { marker, reason, stage, fromStatus } = t.parked!;
-    return `${marker}: ${reason}\n\nThe Office paused this ticket at ${STAGE_LABELS[stage]}. Move it back to ${fromStatus} to resume from the same stage.`;
+    const sent = store.getEffect<{ comment?: string }>(parkEffectIds(marker).transition)?.payload.comment;
+    return sent ?? `Paused for a decision: ${plainWords(reason, 3)}\n\nThe Office paused this ticket at "${STAGE_LABELS[stage]}". Move it back to ${fromStatus} to resume from the same stage.\n\n${marker}`;
 }
 
 /** One decision comment per parking, naming the status that resumes the ticket. */
 export async function commentDecision(store: Store, execute: Execute, t: Ticket): Promise<void> {
     const { marker, commentAttempt } = t.parked!;
     if (await findComment(execute, t.key, marker)) return;
-    const text = decisionComment(t);
+    const text = decisionComment(store, t);
     await new Effects(store).execute({ id: parkEffectIds(marker, commentAttempt).comment, ...effectFields(store, t), operation: 'jira-comment', payload: { marker }, expectedState: { assignee: CEC.account, status: BLOCKED },
         preflight: async () => {
             const current = await readIssue(execute, t.key);

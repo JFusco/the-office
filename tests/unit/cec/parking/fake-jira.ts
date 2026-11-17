@@ -1,4 +1,5 @@
 import { CEC } from '../../../../server/office/config';
+import { jiraDocument } from '../../../fixtures/jira-markdown';
 
 /**
  * Synthetic Jira for one or more issues: status, assignee and comments, with injectable transport loss.
@@ -45,7 +46,7 @@ export function fakeJira(issues: Record<string, { status: string; assignee?: str
             throw new Error('twg exited 1: Error: Must leave a comment\n  Code: TWG_TOOL_EXECUTION_FAILED\n  HTTP status: 400\n');
         }
         if (command === 'comment' && sub === 'create') {
-            const comment = { id: String(state[value('--issue-id')].comments.length + 1), author: { accountId: CEC.account }, body: value('--body') };
+            const comment = { id: String(state[value('--issue-id')].comments.length + 1), author: { accountId: CEC.account }, body: value('--body-format') === 'markdown' ? jiraDocument(value('--body')) : value('--body') };
             state[value('--issue-id')].comments.push(comment);
             if (faults.loseCommentResponse) throw new Error('transport lost after dispatch');
             return JSON.stringify({ data: { comment } });
