@@ -260,7 +260,8 @@ before any further repair. That assessment runs as a code-review pass on the sam
 is not a review of a new candidate: the harness asks for no Jira status move for it, and the
 ticket keeps its status until the repair that follows is reviewed. The PM read-back before it is
 told that the exhausted budget and the failed QA result are the reason for the dispatch, not
-blockers for it.
+blockers for it. Until the assessment has run there is nothing to reconstruct, so a resume
+dispatches it without a completion reconciliation.
 
 A QA or retest run that a provider capacity limit (usage limit, rate limit or quota) cut off
 before it returned a result is run again at the next resume. Nothing is reconstructed: the harness

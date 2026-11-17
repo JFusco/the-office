@@ -40,6 +40,9 @@ export function needsResumeReconciliation(ticket: Ticket, attempts: readonly Att
 
     // Wording about uncertainty or reconciliation in a setup stop's blocker describes history, not a QA action.
     if (setupOnly) return false;
+    // Sam's revised-approach assessment that has not run yet is not an interrupted stage: there is nothing to
+    // reconstruct, whatever a refused dispatch said about reconciliation on the way to it.
+    if (ticket.stage === 'code-review' && ticket.repairCycle?.phase === 'diagnosis' && !ticket.repairCycle.diagnosisAttempted) return false;
     // A review whose latest run returned its own verdict has nothing to reconstruct: the review runs again.
     const latest = attempts.filter(attempt => attempt.ticket === ticket.key && attempt.stage === ticket.stage).at(-1);
     // Bound to this blocked episode, and never past the single revised-approach assessment a repair cycle allows.
