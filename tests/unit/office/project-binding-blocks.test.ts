@@ -57,6 +57,7 @@ test.each([
     [{ azure: { ...azure, deployment: { ...azure.deployment, healthPath: 'https://evil.example/health' } } }, 'Project "cec": azure.deployment.healthPath must be an absolute URL path'],
     [{ azure: { ...azure, deployment: { ...azure.deployment, healthPath: '//evil.example/health' } } }, 'Project "cec": azure.deployment.healthPath must be an absolute URL path'],
     [{ azure: { ...azure, deployment: { ...azure.deployment, subscription: undefined } } }, 'Project "cec": azure.deployment.subscription is required'],
+    [{ azure: { ...azure, deployment: { ...azure.deployment, healthy: undefined } } }, 'Project "cec": azure.deployment.healthy is required'],
     [{ azure: { ...azure, deployment: { ...azure.deployment, minutes: 5 } } }, 'Project "cec": azure.deployment.minutes is not supported'],
 ])('%o fails naming the project and key', (overrides, message) => {
     expect(() => parse(overrides)).toThrow(new Error(message));
@@ -91,6 +92,10 @@ test('the loader accepts equivalent explicit blocks and rejects a second Jira/Az
     const load = (projects: object[]) => { writeFileSync(resolve(root, 'office-config.json'), JSON.stringify({ cec, projects })); return localBindings(root); };
     expect(load([{ ...entry, jira, azure }]).projects![0].bindingBlocks?.azure.deployment.healthy).toBe('http-ok');
     expect(load([entry]).projects![0].bindingBlocks).toBeUndefined();
+    // A raw bindingBlocks key in the file never reaches the registry unvalidated.
+    const smuggled = load([{ ...entry, bindingBlocks: { jira: {}, azure: { deployment: { healthPath: 'https://evil.example' } } } }]).projects!;
+    expect(smuggled[0].bindingBlocks).toBeUndefined();
+    expect(explicitBindingInputs(smuggled, cec).size).toBe(0);
     expect(() => load([entry, { ...entry, id: 'acme', repository: 'acme' }])).toThrow('Project "acme": a Jira/Azure project other than cec requires the rules phase');
 });
 

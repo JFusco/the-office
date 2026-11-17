@@ -47,7 +47,7 @@ function parsed<T>(id: string, block: string, schema: z.ZodType<T>, raw: unknown
     if (result.success) return result.data;
     const issue = result.error.issues[0], path = [block, ...issue.path].join('.');
     const at = issue.path.reduce<unknown>((value, key) => value && typeof value === 'object' ? (value as Record<PropertyKey, unknown>)[key as PropertyKey] : undefined, raw);
-    const missing = issue.code === 'invalid_type' && issue.path.length > 0 && at === undefined;
+    const missing = issue.path.length > 0 && at === undefined;
     throw new Error(`Project "${id}": ${issue.code === 'unrecognized_keys' ? `${path}.${issue.keys[0]} is not supported` : missing ? `${path} is required` : `${path} ${issue.message}`}`);
 }
 

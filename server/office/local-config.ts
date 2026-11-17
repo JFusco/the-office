@@ -65,8 +65,9 @@ export function localBindings(dataRoot: string): LocalBindings {
         if (project.autoAdopt !== undefined && (project.provider !== 'github' || !Array.isArray(project.autoAdopt) || project.autoAdopt.some(bot => !(AUTO_ADOPT_BOTS as readonly string[]).includes(bot)) || new Set(project.autoAdopt).size !== project.autoAdopt.length))
             throw new Error('Project autoAdopt must list unique supported dependency bots on a GitHub project');
     for (const project of config.projects || []) {
-        if ('jira' in project || 'azure' in project) project.bindingBlocks = parseBindingBlocks(project, config.cec);
-        else if (project.provider === 'azure' && project.id !== 'cec') throw new Error(`Project "${project.id}": a Jira/Azure project other than cec requires the rules phase`);
+        // Always assigned, so a raw `bindingBlocks` key in the file can never bypass validation.
+        project.bindingBlocks = parseBindingBlocks(project, config.cec);
+        if (!project.bindingBlocks && project.provider === 'azure' && project.id !== 'cec') throw new Error(`Project "${project.id}": a Jira/Azure project other than cec requires the rules phase`);
     }
     assertModelOverrides(config.models);
     assertFeaturePlanningConfig(config.featurePlanning);
