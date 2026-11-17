@@ -114,11 +114,12 @@ export class SessionBridge {
   const now=Date.now(),fresh=now<=Date.parse(this.current.expiresAt);
   const ownIds=new Set((store.state.workLog||[]).filter(w=>w.requestId===requestId&&w.status==='running').map(w=>w.sessionId));
   const sessions=this.current.sessions.filter(s=>s.requestId!==requestId&&!ownIds.has(s.id)&&(s.project===store.project.id||s.context?.scopes.some(scope=>scope.project===store.project.id)||s.context?.conversation?.projects.includes(store.project.id)||resolve(s.cwd)===resolve(store.project.repo)||s.cwd.startsWith(store.project.repo+'/')));
-  const number=validTicket(store.project,key)?key.slice(key.indexOf('-')+1):undefined;
+  // A keyless inventory needs no binding; a key outside this project's own prefix matches nothing.
+  const number=key&&validTicket(store.project,key)?key.slice(key.indexOf('-')+1):undefined;
   const titleMatch=new RegExp(`\\b${key.replace(/[-]/g,'[-]')}(?![a-z0-9])|#${number}(?![0-9])|/issues/${number}(?![0-9])`,'i');
   const branchMatch=new RegExp(`(?:^|/)(?:[a-z][a-z0-9]*[-_])?${number}(?:[-_/]|$)`,'i');
   const prs=(store.state.coordination?.jobs||[]).filter(job=>job.key===key&&job.pr&&job.status!=='cancelled').map(job=>job.pr);
-  const matches=key?sessions.filter(s=>s.status!=='idle'&&(s.ticket?s.ticket===key:s.context?.scopes.some(scope=>scope.project===store.project.id&&(scope.issues.includes(Number(number))||scope.prs.some(pr=>prs.includes(pr))))||((s.project===store.project.id||resolve(s.cwd)===resolve(store.project.repo))&&(titleMatch.test(s.title)||branchMatch.test(s.branch))))):[];
+  const matches=number!==undefined?sessions.filter(s=>s.status!=='idle'&&(s.ticket?s.ticket===key:s.context?.scopes.some(scope=>scope.project===store.project.id&&(scope.issues.includes(Number(number))||scope.prs.some(pr=>prs.includes(pr))))||((s.project===store.project.id||resolve(s.cwd)===resolve(store.project.repo))&&(titleMatch.test(s.title)||branchMatch.test(s.branch))))):[];
   const complete=this.current.complete&&fresh;
   const direct=(s:LiveSession)=>s.ticket?s.ticket===key:(s.project===store.project.id||resolve(s.cwd)===resolve(store.project.repo))&&(titleMatch.test(s.title)||branchMatch.test(s.branch));
   const owns=(s:LiveSession)=>direct(s)||s.context?.scopes.some(scope=>scope.project===store.project.id&&scope.evidence.some(e=>e.kind==='command'&&(e.issue===Number(number)||!!e.pr&&prs.includes(e.pr))));
