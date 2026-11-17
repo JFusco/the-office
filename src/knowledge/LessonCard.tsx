@@ -3,9 +3,14 @@ import type { Lesson } from '../shared';
 import { ExternalLink } from '../ui/icons';
 import { Card, Tag, TextLink, mutedCopy } from '../ui';
 import { knowledgeEnter } from './presentation';
+import { evidenceText } from './evidence-text';
 
 function Evidence({ lesson }: { lesson: Lesson }) {
-  return lesson.evidence.length ? <ul className="flex flex-col gap-1 text-10">{lesson.evidence.map(item => <li key={item.ref}>{/^https:\/\//.test(item.url) ? <TextLink href={item.url} target="_blank" rel="noreferrer">{item.detail}<ExternalLink size={11} /></TextLink> : <span>{item.detail}</span>}</li>)}</ul> : null;
+  return lesson.evidence.length ? <ul className="flex flex-col gap-1 text-10">{lesson.evidence.map(item => {
+    const { heading, text } = evidenceText(item.detail);
+    const shown = <>{heading ? <strong className="block">{heading}</strong> : null}{text}</>;
+    return <li key={item.ref}>{/^https:\/\//.test(item.url) ? <TextLink href={item.url} target="_blank" rel="noreferrer">{shown}<ExternalLink size={11} /></TextLink> : <span>{shown}</span>}</li>;
+  })}</ul> : null;
 }
 
 /** The situation, the action and its check, in the order a teammate needs them. Older lessons may carry only the action. */
