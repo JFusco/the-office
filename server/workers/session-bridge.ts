@@ -1,3 +1,4 @@
+import { validTicket } from '../office/ticket-key';
 import { completeSessionCoverage, desktopCoverageGap } from './session-coverage';
 import { sessionInventoryFailureDetail } from './session-inventory-failure';
 import { accountCodexProcesses, type DesktopSessions } from './codex-process-inventory';
@@ -113,7 +114,7 @@ export class SessionBridge {
   const now=Date.now(),fresh=now<=Date.parse(this.current.expiresAt);
   const ownIds=new Set((store.state.workLog||[]).filter(w=>w.requestId===requestId&&w.status==='running').map(w=>w.sessionId));
   const sessions=this.current.sessions.filter(s=>s.requestId!==requestId&&!ownIds.has(s.id)&&(s.project===store.project.id||s.context?.scopes.some(scope=>scope.project===store.project.id)||s.context?.conversation?.projects.includes(store.project.id)||resolve(s.cwd)===resolve(store.project.repo)||s.cwd.startsWith(store.project.repo+'/')));
-  const number=key.match(/^(?:GH|CEC)-(\d+)$/)?.[1];
+  const number=validTicket(store.project,key)?key.slice(key.indexOf('-')+1):undefined;
   const titleMatch=new RegExp(`\\b${key.replace(/[-]/g,'[-]')}(?![a-z0-9])|#${number}(?![0-9])|/issues/${number}(?![0-9])`,'i');
   const branchMatch=new RegExp(`(?:^|/)(?:[a-z][a-z0-9]*[-_])?${number}(?:[-_/]|$)`,'i');
   const prs=(store.state.coordination?.jobs||[]).filter(job=>job.key===key&&job.pr&&job.status!=='cancelled').map(job=>job.pr);

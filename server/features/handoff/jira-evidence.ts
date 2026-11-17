@@ -1,10 +1,11 @@
+import { ownTicket } from '../../office/ticket-key';
 import { jiraRecord } from '../../cec/jira-record';
 import type { OfficeProject } from '../../../src/shared';
 import { CEC } from '../../office/config';
 import { unpack } from '../../cec/jira-operations';
 import { EVIDENCE_LIMITS, blankEvidence, failedCoverage, type EvidenceReadContext, type EvidenceSection } from './evidence-contract';
 export async function jiraEvidence(project:OfficeProject,key:string,context:EvidenceReadContext) {
- if(project.provider!=='azure'||!/^CEC-[1-9]\d*$/.test(key))throw new Error('Invalid project-qualified Jira issue');
+ if(project.provider!=='azure'||!ownTicket(project,key))throw new Error('Invalid project-qualified Jira issue');
  const evidence=blankEvidence(project.id,key,'azure',CEC.site+'/browse/'+key);
  const native=async(args:string[])=>context.execute('twg',['jira','workitem',...args,'--site',CEC.site,'-o','json','--output-summary','none'],{readOnly:true,timeout:EVIDENCE_LIMITS.commandMs,signal:context.signal});
  const call=async(args:string[])=>unpack(await native(args));
@@ -35,7 +36,7 @@ export async function jiraEvidence(project:OfficeProject,key:string,context:Evid
   if(!row.id||row.body===undefined)throw new Error('Incomplete Jira comment');evidence.comments.push({id:String(row.id),body:row.body,author:row.author?.accountId});
  });
  evidence.coverage.children=await pages('issues',['query','--jql','parent = '+key,'--fields','summary,description,status,issuetype,parent,updated','--first','100'],row=>{
-  const f=row.fields||row;if(!/^CEC-[1-9]\d*$/.test(row.key)||typeof f.summary!=='string'||f.parent?.key&&f.parent.key!==key)throw new Error('Invalid direct child evidence');
+  const f=row.fields||row;if(!ownTicket(project,row.key)||typeof f.summary!=='string'||f.parent?.key&&f.parent.key!==key)throw new Error('Invalid direct child evidence');
   evidence.children.push({key:row.key,summary:f.summary,description:f.description??null,status:f.status?.name,type:f.issuetype?.name,parent:key});
  });
  evidence.coverage.attachments=await pages('attachments',['attachment','query','--issue-id',key],row=>{

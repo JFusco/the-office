@@ -5,6 +5,7 @@ import { intakeLocation } from '../cec/intake-scope';
 import type { OfficeProject, Role } from '../../src/shared';
 import type { ProjectInput } from './local-config';
 import type { ProjectPolicyInput } from './project-policy-config';
+import { projectBindings } from './project-bindings-config';
 /** Use the validated CEC fallback for its canonical explicit project too. Empty overrides remain explicit. */
 export function withCECGoalEvidence(project: OfficeProject, binding: { repo: string; repository: string; goalEvidencePaths?: string[] }): OfficeProject {
     if (project.id !== 'cec' || project.provider !== 'azure' || project.repository !== binding.repository || project.repo !== binding.repo || project.goalEvidencePaths !== undefined || binding.goalEvidencePaths === undefined) return project;
@@ -27,6 +28,8 @@ export const PROJECTS: OfficeProject[] = (configuredProjects(LOCAL_BINDINGS.proj
     { id: 'brain', name: 'Brain', provider: 'github', repo: '/Users/joe.fusco/Projects/brain', repository: 'JFusco/brain', target: 'main', githubProject: { owner: 'JFusco', number: 8, url: 'https://github.com/users/JFusco/projects/8' } },
     { id: 'cms-field-vocabulary', name: 'CMS field vocabulary', provider: 'github', repo: '/Users/joe.fusco/Projects/cms-field-vocabulary', repository: 'JFusco/cms-field-vocabulary', target: 'main', githubProject: { owner: 'JFusco', number: 6, url: 'https://github.com/users/JFusco/projects/6' } },
 ]).map(project => withCECGoalEvidence(project.id === 'cec' && project.provider === 'azure' && CEC.intakeListUrl ? { ...project, board: intakeLocation(CEC) } : project, CEC));
+/** Each Jira/Azure project's connection and workflow, by project id. Read it through `jiraBinding` and `azureBinding`. */
+export const PROJECT_BINDINGS = projectBindings(PROJECTS, CEC);
 export function projectById(id = 'cec'): OfficeProject {
     const project = PROJECTS.find(p => p.id === id);
     if (!project)
@@ -35,7 +38,7 @@ export function projectById(id = 'cec'): OfficeProject {
 }
 // Preserve the original CEC database and all existing evidence in place.
 export function projectData(project: OfficeProject) { return project.id === 'cec' ? DATA : resolve(DATA, 'projects', project.id); }
-export function validTicket(project: OfficeProject, key: string) { return (project.provider === 'github' ? /^GH-\d+$/ : /^CEC-\d+$/).test(key); }
+export { validTicket } from './ticket-key';
 /** A scheduler-owned delivery stage; `exclusive` work (no slot metadata) runs alone. */
 export interface DeliverySlot { role?: Role; exclusive: boolean }
 export interface OfficeCapacity {

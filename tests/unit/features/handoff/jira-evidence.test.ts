@@ -12,7 +12,7 @@ test('native v2 comment pagination retains top-level metadata even for a short f
   }
   return JSON.stringify({data:[]});
  };
- const evidence=await jiraEvidence({...f.store.project,provider:'azure'},'CEC-154',{execute,signal:new AbortController().signal,directory:f.root,download:async()=>{}});
+ const evidence=await jiraEvidence({...f.store.project,id:'cec',provider:'azure'},'CEC-154',{execute,signal:new AbortController().signal,directory:f.root,download:async()=>{}});
  expect(cursors).toEqual(['','next']);expect(evidence.comments.map(comment=>comment.id)).toEqual(['first','second']);
  expect(evidence.coverage.comments.state).toBe('complete');
  }finally{f.close();}
@@ -23,14 +23,14 @@ test.each(['object', 'array'])('Jira preserves ADF, comments and direct children
  const fields = { summary: 'Feature', description, issuetype: { name: 'Task' } };
  const issue = shape === 'array' ? [{ key: 'CEC-154', ...fields }] : { key: 'CEC-154', fields };
  const execute=vi.fn(async(_p:string,args:string[])=>JSON.stringify({data:args.includes('get')?issue:args.includes('comment')?{comments:{nodes:[{id:'comment',body:'Matt context'}],pageInfo:{hasNextPage:false}}}:args.includes('attachment')?{attachments:[]}:{issues:[{key:'CEC-155',summary:'Child',description:'Preserve',parent:{key:'CEC-154'}}]}}));
- const result=await jiraEvidence({...f.store.project,provider:'azure'},'CEC-154',{execute,signal:new AbortController().signal,directory:f.root,download:async()=>{}});
+ const result=await jiraEvidence({...f.store.project,id:'cec',provider:'azure'},'CEC-154',{execute,signal:new AbortController().signal,directory:f.root,download:async()=>{}});
  expect(result.description).toEqual(description);expect(result.children[0].key).toBe('CEC-155');expect(result.comments[0].body).toBe('Matt context');expect(execute.mock.calls[0][1]).toContain('--full');expect(execute.mock.calls.some(c=>c[1].includes('parent = CEC-154'))).toBe(true);
  }finally{f.close();}
 });
 test('missing Jira cursors remain incomplete',async()=>{
  const f=handoffFixture();try{
  const execute=async(_p:string,args:string[])=>JSON.stringify({data:args.includes('get')?{key:'CEC-154',summary:'Feature'}:args.includes('comment')?{comments:{nodes:[{id:'1',body:'context'}],pageInfo:{hasNextPage:true}}}:args.includes('attachment')?{attachments:[]}:{issues:[]}});
- const result=await jiraEvidence({...f.store.project,provider:'azure'},'CEC-154',{execute,signal:new AbortController().signal,directory:f.root,download:async()=>{}});expect(result.coverage.comments.state).toBe('truncated');
+ const result=await jiraEvidence({...f.store.project,id:'cec',provider:'azure'},'CEC-154',{execute,signal:new AbortController().signal,directory:f.root,download:async()=>{}});expect(result.coverage.comments.state).toBe('truncated');
  }finally{f.close();}
 });
 
@@ -41,7 +41,7 @@ test('a single-issue read rejects an ambiguous Jira result before reading relate
             { key: 'CEC-154', summary: 'Requested issue' },
             { key: 'CEC-155', summary: 'Unexpected issue' },
         ] }));
-        const result = await jiraEvidence({ ...fixture.store.project, provider: 'azure' }, 'CEC-154', {
+        const result = await jiraEvidence({ ...fixture.store.project, id: 'cec', provider: 'azure' }, 'CEC-154', {
             execute, signal: new AbortController().signal, directory: fixture.root, download: async () => {},
         });
         expect(result.coverage.issue.state).toBe('unreadable');
