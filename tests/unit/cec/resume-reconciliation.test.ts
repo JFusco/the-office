@@ -145,3 +145,23 @@ test.each(['reader-timeout', 'incidental-prose'])('ordinary resume retains every
     expect(t.activity).toBe('waiting'); expect(t.stage).toBe('retest'); expect(t.blocker).toBe('');
     expect(t.results).toEqual(before.results); expect(t.attempt).toBe(4); expect(t.repairAttempts).toEqual(before.repairAttempts); expect(t.commit).toBe(before.commit);
 });
+
+test('a revised-approach assessment that has not run is dispatched, not reconstructed, whatever the refused dispatch said', () => {
+    const assessment = (blocker: string) => {
+        const t = ticket();
+        Object.assign(t, { key: 'CEC-999', stage: 'code-review', activity: 'blocked', blocker,
+            repairCycle: { owner: 'developer', findingAttempts: { F1: 2 }, attempts: 6, pendingFindingIds: ['F1'], sourceStage: 'retest', sourceHead: t.commit, phase: 'diagnosis' } });
+        return t;
+    };
+    const refused = [{ ticket: 'CEC-999', role: 'pm' as const, stage: 'reconcile', status: 'blocked' as const }];
+    for (const blocker of ['Error: Reconciliation incomplete: The request-size finding remains open and the six-attempt repair budget remains exhausted.',
+        'Error: Dispatch requires Morgan/stage-owner reconciliation of the exhausted six-attempt budget.'])
+        expect(needsResumeReconciliation(assessment(blocker), refused), blocker).toBe(false);
+    // Once the assessment has run, or when a worker on the ticket failed with an unknown write, the existing rules apply.
+    const attempted = assessment('Error: Reconciliation incomplete: missing receipt'); attempted.repairCycle!.diagnosisAttempted = true;
+    expect(needsResumeReconciliation(attempted, refused)).toBe(true);
+    expect(needsResumeReconciliation(assessment('Error: Reconciliation incomplete: missing receipt'),
+        [{ ticket: 'CEC-999', role: 'lead' as const, stage: 'code-review', status: 'failed' as const, failure: { category: 'uncertain-effect' as const, detail: 'Connection lost', dispatched: true } }])).toBe(true);
+    const review = assessment('Error: Reconciliation incomplete: missing receipt'); delete review.repairCycle;
+    expect(needsResumeReconciliation(review, refused)).toBe(true);
+});
