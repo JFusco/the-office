@@ -225,6 +225,12 @@ runner writes afterwards is lost. If a Jira/Azure stage result was saved to its 
 not on the ticket, the next run of that stage applies it under the same attempt: no worker runs
 again and writes already verified for that attempt are not repeated.
 
+A Jira move to Blocked that carried its decision comment and was refused by Jira is settled as
+rejected at the next resume, by reading Jira: the ticket is still at the status it was parked
+from, nothing changed its status after the Office's verified QA comment, and no comment carrying
+that decision exists. The refusal text alone is never taken as proof. If the read does not prove
+it, the ticket says so and stays blocked.
+
 A QA stage on the browser route runs for up to 90 minutes, and the worker is told that limit.
 A Jira/Azure repair also runs for up to 90 minutes. Other stages keep their existing limits (45
 minutes for Jira/Azure stages, 60 for GitHub delivery stages).
