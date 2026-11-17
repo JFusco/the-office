@@ -1,3 +1,4 @@
+import { twgConnection } from './twg-connection';
 import { ownTicket } from '../office/ticket-key';
 import { jiraRecord } from './jira-record';
 import { intakeJql, intakeLocation } from './intake-scope';
@@ -19,7 +20,7 @@ export const jiraText = (value: any): string => typeof value === 'string' ? valu
 export class JiraIssuePublisher implements FeaturePublisher {
     constructor(private store: Store, private provenance: { id: string; sourceTicket?: string; marker(itemId: string): string }, private execute: typeof command = command) {}
     private keyOf(key: string) { if (!ownTicket(this.store.project, key)) throw new Error('Invalid CEC ticket identity'); return key; }
-    private async call(args: string[], readOnly = true) { return unpack(await this.execute('twg', ['jira', ...args, '--site', jiraBinding(this.store.project).site, '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 })); }
+    private async call(args: string[], readOnly = true) { return unpack(await this.execute('twg', ['jira', ...args, ...twgConnection(jiraBinding(this.store.project)), '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 })); }
     private async issue(key: string) { const raw = await this.call(['workitem', 'get', this.keyOf(key)]); return jiraRecord(raw, key); }
     private receipt(raw: any): PublicationReceipt { return { key: this.keyOf(raw.key), url: raw.url || jiraBinding(this.store.project).site + '/browse/' + raw.key }; }
     private content(raw: any) { const fields = raw.fields || raw; return { summary: fields.summary, description: descriptionPreimage(fields.description, jiraText), labels: [...(fields.labels || [])].sort() }; }

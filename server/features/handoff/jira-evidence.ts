@@ -1,3 +1,4 @@
+import { twgConnection } from '../../cec/twg-connection';
 import { ownTicket } from '../../office/ticket-key';
 import { jiraRecord } from '../../cec/jira-record';
 import type { OfficeProject } from '../../../src/shared';
@@ -8,7 +9,7 @@ export async function jiraEvidence(project:OfficeProject,key:string,context:Evid
  if(project.provider!=='azure'||!ownTicket(project,key))throw new Error('Invalid project-qualified Jira issue');
  const site=jiraBinding(project).site;
  const evidence=blankEvidence(project.id,key,'azure',site+'/browse/'+key);
- const native=async(args:string[])=>context.execute('twg',['jira','workitem',...args,'--site',site,'-o','json','--output-summary','none'],{readOnly:true,timeout:EVIDENCE_LIMITS.commandMs,signal:context.signal});
+ const native=async(args:string[])=>context.execute('twg',['jira','workitem',...args,...twgConnection(jiraBinding(project)),'-o','json','--output-summary','none'],{readOnly:true,timeout:EVIDENCE_LIMITS.commandMs,signal:context.signal});
  const call=async(args:string[])=>unpack(await native(args));
  try {
   const raw = jiraRecord(await call(['get', key, '--full']), key);

@@ -1,3 +1,4 @@
+import { twgConnection } from './twg-connection';
 import { jiraRecord } from './jira-record';
 import { commentReadback } from './comment-readback';
 import { unpack } from './jira-response';
@@ -29,7 +30,7 @@ export function commentPayload(store: Store, intent: Pick<JiraCommentIntent, 'id
  */
 export async function postReadableComment(store: Store, execute: typeof command, ticket: Ticket, intent: JiraCommentIntent): Promise<{ id: string }> {
     const payload = commentPayload(store, intent), words = recordedWords(payload, intent.comment), jira = jiraBinding(store.project);
-    const native = async (action: string, args: string[], readOnly: boolean) => execute('twg', ['jira', 'workitem', ...action.split(' '), ...args, '--site', jira.site, '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 });
+    const native = async (action: string, args: string[], readOnly: boolean) => execute('twg', ['jira', 'workitem', ...action.split(' '), ...args, ...twgConnection(jira), '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 });
     const call = async (action: string, args: string[], readOnly: boolean) => unpack(await native(action, args, readOnly));
     return new Effects(store).execute({ id: intent.id, work: { projectId: store.project.id, kind: 'delivery', id: ticket.key }, attemptId: intent.attempt, operation: intent.operation, target: ticket.key, authorization: ticket.runId, payload, expectedState: intent.expectedState,
         preflight: async () => {
