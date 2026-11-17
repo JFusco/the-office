@@ -252,6 +252,15 @@ never gates. It is posted once the stage result is accepted. An update that may 
 is settled by reading the ticket, at once and again at the next resume if that read failed: found,
 it is verified; absent, it is closed as not sent. It is never resent. Workers return the outcome and evidence and post no Jira comments of their own.
 
+A QA or retest run that a provider capacity limit (usage limit, rate limit or quota) cut off
+before it returned a result is run again at the next resume. Nothing is reconstructed: the harness
+treats that run's work as confined to its own test environment, and it posts the Jira comment
+itself and posted none. The rule holds only while no worker on the ticket has since failed with an
+unknown write and no harness write for the ticket is unsettled. The PM read-back and the rerun's
+worker are told the interruption is history, not an open item. The interrupted run and its unknown
+provider usage stay in history, and its IT investigation closes when the rerun returns a result.
+A crash, a time limit, staging QA and every other stage keep their existing handling.
+
 A QA stage on the browser route runs for up to 90 minutes, and the worker is told that limit.
 A Jira/Azure repair also runs for up to 90 minutes. Other stages keep their existing limits (45
 minutes for Jira/Azure stages, 60 for GitHub delivery stages).

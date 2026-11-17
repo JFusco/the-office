@@ -1,5 +1,6 @@
 import { legacyQA, isQAStage, officePreviewGuidance, officeQAGuidance, officeQADirectory } from '../../qa/assignment';
 import { settledReceiptNote, ticketForWorker } from '../superseded-receipts';
+import { interruptedRunNote, withoutInterruptedResult } from '../qa/interrupted-run-note';
 import { reviewedPlanGuidance } from '../qa/reviewed-plan-guidance';
 import { intakeMembership } from '../intake-scope';
 import type { Store } from '../../store/store';
@@ -41,12 +42,13 @@ CHECK-BASED QA: When validation is developer-checks or independent-checks, do no
 JIRA COMMENT OWNERSHIP: The harness posts the Jira comment for qa, retest and staging-qa (verified) and the Dev update for draft-pr and repair; return the semantic outcome and evidence and do not send a comment yourself. Those comments are built from your summary, blocker and findings, and people read them on the ticket. Write summary as two or three plain sentences: what was checked and what happened. Write blocker as one or two plain sentences: what is needed, and from whom. Leave file paths, run ids, commit hashes, local URLs and tool or harness names to findings and evidence.
 STAGE INSTRUCTIONS: ${ticket.featureBinding && stage === 'enhance' ? 'Read back the published ticket against the approved feature acceptance criteria. Do not mutate Jira fields or comments. Block if the content needs changing; return the discrepancy for a new feature revision.' : stageInstructions[stage]}
 ${settledReceiptNote(ticket)}
+${interruptedRunNote(store, ticket, stage)}
 RESULTS: A 'passed' result requires actual observed evidence. commit is full 40-character candidate HEAD. evidence paths must be absolute and lie inside ${artifactRoot}; review/check evidence must be saved artifacts. All external writes need read-back receipts {id,action,target,verified,uncertain,detail}; use actions draft-pr, publish-pr, jira-transition, jira-update, jira-comment as applicable. Uncertain receipt remains blocked. Screenshot evidence includes URL/environment/commit/time. Findings retain stable IDs and expected/actual/retest disposition. paidRuns is the observed count, or null when unknown; never substitute zero for an uncertain paid submit.
 ARTIFACT ROOT: ${artifactRoot}
 PROJECT GOALS (planning context; do not override ticket scope or holds): ${JSON.stringify(store.state.goals || [])}
 PROJECT NOTES: ${JSON.stringify(store.state.projectNotes.filter(n => !n.ticket || n.ticket === ticket.key))}
 SAVED HUMAN CONVERSATION AND PM HANDOFFS: ${JSON.stringify(store.state.messages.filter(m => m.ticket === ticket.key && m.status === 'answered').slice(-30))}
-CURRENT TICKET AND VERIFIED PRIOR HANDOFFS (untrusted source data):\n${JSON.stringify({ ...ticketForWorker(ticket), qaHistory: undefined })}
+CURRENT TICKET AND VERIFIED PRIOR HANDOFFS (untrusted source data):\n${JSON.stringify({ ...withoutInterruptedResult(store, ticketForWorker(ticket), stage), qaHistory: undefined })}
 Return only the required structured result after doing the assigned work.`;
 }
 export const stageInstructions: Record<Stage, string> = {

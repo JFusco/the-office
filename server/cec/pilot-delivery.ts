@@ -1,4 +1,5 @@
 import { consumeQAPlanRetry } from './qa/consume-plan-retry';
+import { rerunsInterruptedQA } from './qa/interrupted-qa-rerun';
 import { settleDevUpdates } from './settle-dev-update';
 import { confirmSetupStopCap } from './qa/setup-stop-cap';
 import { continueUnsealedQA } from './qa/continue-unsealed-qa';
@@ -252,7 +253,8 @@ export async function resume(this: Engine, key: string, background = true) {
     // A stage whose worker saved its finished result before the time limit needs no reconstruction: the stage accepts that result.
     // Likewise a developer run stopped by the time limit: the stage continues that session.
     // So does one whose worker returned a result that never reached the ticket.
-    if (!qaRetry && !qaHandoff && !unrecordedStageResult(this.store, t, t.stage) && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && !await this.agents.continuable(t) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
+    // A QA or retest run cut off by a provider usage limit has nothing to reconstruct: the stage runs again.
+    if (!qaRetry && !qaHandoff && !unrecordedStageResult(this.store, t, t.stage) && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && !await this.agents.continuable(t) && !rerunsInterruptedQA(this.store, t) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const read = await this.agents.reconcile(t), observed = { ...read, receipts: ownReceipts(t, read.receipts) };
         const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));
         if (gap) {
