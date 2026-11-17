@@ -42,13 +42,29 @@ A project entry may carry an optional `policy` block; leave it out and the proje
 
 A mistake stops start-up and names the project and key, for example `Project "web": policy.merge must be "human" or "harness"`.
 
-The `cec` project may also carry `jira` and `azure` blocks, given together. Until per-project workflow rules ship they must name the same Jira site, cloud, account, board or list and Azure organization, project and repository as the top-level `cec` block, which stays in place because prompts still read it. What they add:
+The `cec` project may also carry `jira` and `azure` blocks, given together. Any other key in them stops start-up. Until per-project workflow rules ship, the identity keys must equal the matching field of the top-level `cec` block, which stays in place because prompts still read it:
+
+| Key | Default | Must equal |
+| --- | --- | --- |
+| `jira.site` | required | `cec.site` (an HTTPS origin) |
+| `jira.cloudId` | required | `cec.cloudId` |
+| `jira.account` | required | `cec.account` |
+| `jira.projectKey` | required | the literal `CEC` |
+| `jira.board` | required unless `jira.intakeListUrl` is given | `cec.board` |
+| `jira.intakeListUrl` | none | `cec.intakeListUrl`; leave it out when `cec` has none |
+| `azure.organization` | required | `cec.organization` |
+| `azure.project` | required | `cec.project` |
+| `azure.repositoryId` | required | `cec.repositoryId` (not `cec.repository`) |
+
+What the blocks add:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `jira.twgProfile` | TWG's default login | Saved TWG login profile used for this project's Jira calls and its worklog identity check. |
 | `jira.credentialAccount` | the only Keychain entry | Keychain account of the `the-office-jira` token used for Blocked parking. |
-| `azure.deployment.subscription`, `resourceGroup`, `containerApp` | required | The staging Container App the Office observes. |
+| `azure.deployment.subscription` | required | Azure subscription of the staging Container App the Office observes. |
+| `azure.deployment.resourceGroup` | required | Resource group of that Container App. |
+| `azure.deployment.containerApp` | required | Name of that Container App. |
 | `azure.deployment.container` | `containerApp` | Container whose image identifies the deployed build. |
 | `azure.deployment.environment` | `staging` | Name of the observed environment. |
 | `azure.deployment.healthPath` | `/api/health` | Health endpoint path on the app. |
