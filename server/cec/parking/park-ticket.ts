@@ -1,5 +1,5 @@
 import { Effects } from '../../store/effects';
-import { CEC } from '../../office/config';
+import { jiraBinding } from '../../office/project-bindings';
 import { BLOCKED, findComment, jira, readIssue, type Execute } from './jira-issue';
 import { STAGE_LABELS, type Stage, type StageResult, type Ticket } from '../../../src/shared';
 import type { Store } from '../../store/store';
@@ -22,8 +22,9 @@ const effectFields = (store: Store, t: Ticket) => ({ work: { projectId: store.pr
  */
 export async function parkTicket(store: Store, execute: Execute, t: Ticket, stage: Stage, attemptId: string, result: StageResult): Promise<void> {
     const reason = (result.blocker || result.summary).trim();
-    const live = await readIssue(execute, t.key);
-    if (live.assignee !== CEC.account) throw new Error('Jira assignee changed; not parking');
+    const binding = jiraBinding(store.project);
+    const live = await readIssue(execute, binding, t.key);
+    if (live.assignee !== binding.account) throw new Error('Jira assignee changed; not parking');
     if (live.status === BLOCKED) throw new Error('Ticket is already Blocked in Jira; not taking it over');
     t.parked = { stage, reason, at: store.clock.now().toISOString(), fromStatus: live.status, marker: `${MARKER}${attemptId}`, published: false };
     delete t.resolvedDecision;
@@ -37,25 +38,25 @@ export async function parkTicket(store: Store, execute: Execute, t: Ticket, stag
 
 /** The single Blocked transition for this parking; its identity comes only from the saved park record. */
 export async function moveToBlocked(store: Store, execute: Execute, t: Ticket): Promise<void> {
-    const { marker, fromStatus } = t.parked!;
+    const { marker, fromStatus } = t.parked!, binding = jiraBinding(store.project);
     const comment = decisionComment(store, t);
     let transitionId = '', credential: JiraCredential | undefined;
-    await new Effects(store).execute({ id: parkEffectIds(marker).transition, ...effectFields(store, t), operation: 'jira-transition', payload: { to: BLOCKED, comment }, expectedState: { assignee: CEC.account, from: fromStatus },
+    await new Effects(store).execute({ id: parkEffectIds(marker).transition, ...effectFields(store, t), operation: 'jira-transition', payload: { to: BLOCKED, comment }, expectedState: { assignee: binding.account, from: fromStatus },
         preflight: async () => {
-            const current = await readIssue(execute, t.key);
-            if (current.assignee !== CEC.account || current.status !== fromStatus)
+            const current = await readIssue(execute, binding, t.key);
+            if (current.assignee !== binding.account || current.status !== fromStatus)
                 throw new Error('Jira assignee or status changed before parking');
             // Anything missing here stops the park before a write, so it is refused, not left uncertain.
-            transitionId = await resolveBlockedTransition(execute, t.key);
+            transitionId = await resolveBlockedTransition(execute, binding, t.key);
             credential = await jiraCredential(execute);
             // The move and its comment are authored by the token's account; anything but the Office account would not read back.
-            if (await jiraAccount(execute, credential) !== CEC.account)
+            if (await jiraAccount(execute, binding, credential) !== binding.account)
                 throw new Error('The Jira API token does not belong to the Office account');
         },
-        dispatch: async () => transitionWithComment(execute, credential!, t.key, transitionId, comment),
+        dispatch: async () => transitionWithComment(execute, binding, credential!, t.key, transitionId, comment),
         verify: async () => {
-            const current = await readIssue(execute, t.key);
-            return current.status === BLOCKED && current.assignee === CEC.account;
+            const current = await readIssue(execute, binding, t.key);
+            return current.status === BLOCKED && current.assignee === binding.account;
         } });
 }
 
@@ -71,20 +72,20 @@ function decisionComment(store: Store, t: Ticket): string {
 
 /** One decision comment per parking, naming the status that resumes the ticket. */
 export async function commentDecision(store: Store, execute: Execute, t: Ticket): Promise<void> {
-    const { marker, commentAttempt } = t.parked!;
-    if (await findComment(execute, t.key, marker)) return;
+    const { marker, commentAttempt } = t.parked!, binding = jiraBinding(store.project);
+    if (await findComment(execute, binding, t.key, marker)) return;
     const text = decisionComment(store, t);
-    await new Effects(store).execute({ id: parkEffectIds(marker, commentAttempt).comment, ...effectFields(store, t), operation: 'jira-comment', payload: { marker }, expectedState: { assignee: CEC.account, status: BLOCKED },
+    await new Effects(store).execute({ id: parkEffectIds(marker, commentAttempt).comment, ...effectFields(store, t), operation: 'jira-comment', payload: { marker }, expectedState: { assignee: binding.account, status: BLOCKED },
         preflight: async () => {
-            const current = await readIssue(execute, t.key);
-            if (current.assignee !== CEC.account || current.status !== BLOCKED)
+            const current = await readIssue(execute, binding, t.key);
+            if (current.assignee !== binding.account || current.status !== BLOCKED)
                 throw new Error('Jira changed before the decision comment');
         },
         dispatch: async () => {
-            const data = await jira(execute, ['comment', 'create', '--issue-id', t.key, '--body', text, '--body-format', 'plain'], false);
+            const data = await jira(execute, binding, ['comment', 'create', '--issue-id', t.key, '--body', text, '--body-format', 'plain'], false);
             return { id: String((data.comment || data).id || '') };
         },
-        verify: async () => !!await findComment(execute, t.key, marker) });
+        verify: async () => !!await findComment(execute, binding, t.key, marker) });
 }
 
 export function publishParked(store: Store, t: Ticket) {

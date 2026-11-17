@@ -1,12 +1,15 @@
-import { STAGES, type ApproachDecision, type DeliveryRepairCycle, type QueueTiming, type RetrospectiveSubjectKind, type StageResult, type Ticket, type TicketJob, type WorkApproach } from '../../src/shared';
+import { STAGES, type ApproachDecision, type DeliveryRepairCycle, type OfficeProject, type QueueTiming, type RetrospectiveSubjectKind, type StageResult, type Ticket, type TicketJob, type WorkApproach } from '../../src/shared';
 import type { CIRepair } from '../../src/contracts/ci-repair';
-import { CEC } from '../office/config';
+import { azureBinding } from '../office/project-bindings';
 import type { Store } from '../store/store';
 import { triggerJobId } from './retrospective-triggers';
 import { maintenanceSubject, type MaintenanceSubjectFacts } from './maintenance-subject';
 
 /** Same URL shape as server/cec/azure.ts prUrl, without its provider imports. */
-const azurePrUrl = (id: number) => CEC.organization && CEC.project && CEC.repository ? `${CEC.organization}/${CEC.project}/_git/${CEC.repository}/pullrequest/${id}` : '';
+const azurePrUrl = (project: OfficeProject, id: number) => {
+    const azure = azureBinding(project);
+    return azure.organization && azure.project && project.repository ? `${azure.organization}/${azure.project}/_git/${project.repository}/pullrequest/${id}` : '';
+};
 
 /** The step fields a retrospective reads; a maintenance result maps onto them without findings or evidence. */
 export type SubjectStepResult = Pick<StageResult, 'outcome' | 'summary' | 'blocker' | 'commit' | 'findings' | 'receipts' | 'evidence' | 'resolution'>;
@@ -44,9 +47,9 @@ export function jobSubject(store: Store, job: TicketJob): RetrospectiveSubject {
 }
 
 /** CEC keeps the latest result per stage; Harper reads them in pipeline order. */
-export function ticketSubject(ticket: Ticket): RetrospectiveSubject {
+export function ticketSubject(store: Store, ticket: Ticket): RetrospectiveSubject {
     return { kind: 'ticket', id: ticket.runId, key: ticket.key, status: ticket.status, stage: ticket.stage, detail: ticket.blocker || ticket.parked?.reason || '',
-        issueUrl: /^https:\/\//.test(ticket.url) ? ticket.url : '', pr: ticket.prId, prUrl: ticket.prId ? azurePrUrl(ticket.prId) : '', head: ticket.commit,
+        issueUrl: /^https:\/\//.test(ticket.url) ? ticket.url : '', pr: ticket.prId, prUrl: ticket.prId ? azurePrUrl(store.project, ticket.prId) : '', head: ticket.commit,
         approach: ticket.approach, steps: STAGES.filter(stage => ticket.results[stage]).map(stage => ({ stage, result: ticket.results[stage]! })),
         decisions: ticket.decisions || [], ciRepairs: [], timing: ticket.timing || [], reroutes: ticket.routeChanges || 0, repairCycle: ticket.repairCycle };
 }
@@ -59,7 +62,7 @@ export function findSubject(store: Store, triggerId: string): RetrospectiveSubje
     const job = store.state.coordination?.jobs?.find(entry => entry.id === id);
     if (job && (!kind || kind === 'job')) return jobSubject(store, job);
     const ticket = store.state.tickets.find(entry => entry.runId === id);
-    if (ticket && (!kind || kind === 'ticket')) return ticketSubject(ticket);
+    if (ticket && (!kind || kind === 'ticket')) return ticketSubject(store, ticket);
     const run = store.state.maintenance?.runs.find(entry => entry.id === id);
     if (run && (!kind || kind === 'maintenance')) return maintenanceSubject(store, run);
     if (pending?.source) return { kind: pending.source.kind, id, key: pending.key, status: 'accepted', stage: pending.event.stage, detail: pending.event.reason, issueUrl: '', pr: 0, prUrl: '', head: pending.event.head, steps: [], decisions: [], ciRepairs: [], timing: [], reroutes: 0 };

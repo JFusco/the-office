@@ -4,20 +4,23 @@ import { externalPlanGap } from '../features/cec-plan-gate';
 import { MISSING_INTAKE, reconcileMailbox } from './reconcile-mailbox';
 import { existsSync, realpathSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import { CEC, HOLDS } from '../office/config';
+import { HOLDS } from '../office/config';
+import { jiraBinding } from '../office/project-bindings';
+import { validTicket } from '../office/ticket-key';
 import { safeWebUrl } from '../office/security';
 import { plannedNext, unresolvedVerification } from '../delivery/pipeline/approach';
-import { STAGES, type OfficeSnapshot, type Stage, type StageResult, type Ticket } from '../../src/shared';
+import { STAGES, type OfficeProject, type OfficeSnapshot, type Stage, type StageResult, type Ticket } from '../../src/shared';
 import { qaPlanEvidenceGap } from './qa/run-directory';
-export function eligibility(t: Pick<Ticket, 'key' | 'assignee' | 'subtask' | 'boardMember' | 'status' | 'statusId'>, allowedStatus?: string): string {
-    if (!/^CEC-\d+$/.test(t.key))
+export function eligibility(project: OfficeProject, t: Pick<Ticket, 'key' | 'assignee' | 'subtask' | 'boardMember' | 'status' | 'statusId'>, allowedStatus?: string): string {
+    if (!validTicket(project, t.key))
         return 'Outside CEC';
-    if (t.assignee !== CEC.account)
+    const jira = jiraBinding(project);
+    if (t.assignee !== jira.account)
         return 'Assigned to someone else';
     if (t.subtask)
         return 'Subtasks are excluded';
     if (!t.boardMember)
-        return CEC.intakeListUrl ? 'Not in the configured CEC project list' : `Not in CEC board ${CEC.board}`;
+        return jira.intakeListUrl ? 'Not in the configured CEC project list' : `Not in CEC board ${jira.board}`;
     if (allowedStatus) {
         if (t.status !== allowedStatus || !t.statusId)
             return 'Ticket left the authorized intake status';
@@ -27,13 +30,13 @@ export function eligibility(t: Pick<Ticket, 'key' | 'assignee' | 'subtask' | 'bo
         return 'Intake requires exact To Do or Open status';
     return HOLDS[t.key] || '';
 }
-export function ingest(state: OfficeSnapshot, incoming: Ticket[], now = new Date().toISOString()) {
+export function ingest(project: OfficeProject, state: OfficeSnapshot, incoming: Ticket[], now = new Date().toISOString()) {
     const keys = new Set<string>();
     for (const raw of incoming) {
         if (keys.has(raw.key))
             continue;
         const existing = state.tickets.find(t => t.key === raw.key);
-        const reason = eligibility(raw);
+        const reason = eligibility(project, raw);
         if (reason)
             continue;
         keys.add(raw.key);

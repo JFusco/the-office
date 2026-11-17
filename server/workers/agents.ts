@@ -12,6 +12,7 @@ import { withCECPreflightPRs } from '../cec/preflight-pr-read';
 import { implementationWorkerContext } from '../cec/implementation-continuation/worker-context';
 import { verifyContinuationPreservation } from '../cec/implementation-continuation/preservation';
 import { az } from '../cec/azure';
+import { azureBinding } from '../office/project-bindings';
 import { harperHandoff } from '../knowledge/blocker-followups';
 import { featureDeliveryContext } from '../features/delivery-binding';
 import { REPAIR_DIAGNOSIS } from '../delivery/repairs/delivery-repairs';
@@ -66,7 +67,7 @@ export class Agents extends WorkerRuntime {
         // Native workers receive one strict object schema; legacy parsing is only for saved results.
         return withCECPreflightPRs(this.store, opts.stage, opts.ticket, task, framed => super.run(role,
             Object.is(schema, ResultSchema) ? `${framed}\n${handsOff(this.store) ? HANDS_OFF_RESOLUTION_GUIDANCE : RESOLUTION_GUIDANCE}` : framed,
-            Object.is(schema, ResultSchema) ? (opts.officeQA ? OfficeQAResultSchema : CurrentResultSchema) as unknown as z.ZodType<T> : schema, opts), args => az(args, true, 55000, this.execute));
+            Object.is(schema, ResultSchema) ? (opts.officeQA ? OfficeQAResultSchema : CurrentResultSchema) as unknown as z.ZodType<T> : schema, opts), args => az(azureBinding(this.store.project), args, true, 55000, this.execute));
     }
     ctoContext: () => unknown = () => ({ projects: [{ project: this.store.project, goals: this.store.state.goals, notes: this.store.state.projectNotes }] });
     async sendSlack(delivery: SlackDelivery, human: Pick<TeamMessage, 'body' | 'ticket' | 'requestId'>) {

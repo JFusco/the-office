@@ -1,11 +1,12 @@
 import { jiraResponse, type Execute } from './jira-transport';
+import type { JiraBinding } from '../../office/project-bindings-config';
 
 /** A bounded, complete native collection read. Missing or repeated cursors never mean an empty page. */
-export async function jiraCollection(execute: Execute, args: string[], collection: string): Promise<any[]> {
+export async function jiraCollection(execute: Execute, binding: JiraBinding, args: string[], collection: string): Promise<any[]> {
     let after = '';
     const seen = new Set<string>(), records: any[] = [];
     for (let count = 0; count < 10; count++) {
-        const response = await jiraResponse(execute, [...args, '--first', '100', ...(after ? ['--after', after] : [])], true);
+        const response = await jiraResponse(execute, binding, [...args, '--first', '100', ...(after ? ['--after', after] : [])], true);
         const page = response.data[collection] || response.data;
         const nodes = Array.isArray(page) ? page : page.nodes || page.edges?.map((edge: any) => edge.node);
         const info = page.pageInfo || response.pageInfo;

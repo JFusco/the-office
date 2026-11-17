@@ -2,13 +2,14 @@ import { expect, test } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CEC } from '../../../server/office/config';
+import { projectById } from '../../../server/office/projects';
 import { preflightPRs, withCECPreflightPRs } from '../../../server/cec/preflight-pr-read';
 import { knowledgeStore } from '../knowledge/knowledge-fixture';
 const pr = (id = 1, commit = 'a'.repeat(40)) => ({ pullRequestId: id, status: 'active', repository: { id: CEC.repositoryId, name: CEC.repository },
     title: 'CEC-900 fixture', isDraft: true, sourceRefName: 'refs/heads/codex/cec-900', targetRefName: 'refs/heads/staging', lastMergeSourceCommit: { commitId: commit }, description: 'Fixture evidence' });
 test('native reader keeps active PRs beyond recent history and proves complete pagination', async () => {
     const calls: string[][] = [];
-    const rows = await preflightPRs(async args => {
+    const rows = await preflightPRs(projectById('cec'), async args => {
         calls.push(args);
         if (args[2] === 'show') return pr(Number(args[4]));
         if (args.includes('all')) return [{ ...pr(900), status: 'completed' }];
@@ -26,10 +27,10 @@ test.each([
     { sourceRefName: '' },
     { description: { unexpected: true } },
 ])('missing or changed provider identity cannot establish PR absence: %j', async patch => {
-    await expect(preflightPRs(async args => args.includes('all') ? [] : [{ ...pr(), ...patch }])).rejects.toThrow('incomplete');
+    await expect(preflightPRs(projectById('cec'), async args => args.includes('all') ? [] : [{ ...pr(), ...patch }])).rejects.toThrow('incomplete');
 });
 test.each([null, undefined, ''])('a legitimately empty PR description remains readable (%s)', async description => {
-    const rows = await preflightPRs(async args => args[2] === 'show' ? { ...pr(), description } : args.includes('all') ? [] : [{ ...pr(), description }]);
+    const rows = await preflightPRs(projectById('cec'), async args => args[2] === 'show' ? { ...pr(), description } : args.includes('all') ? [] : [{ ...pr(), description }]);
     expect(rows[0].description).toBe('');
 });
 test('read-only model receives bound native evidence, and successful assessment is fenced by another complete read', async () => {

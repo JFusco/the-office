@@ -16,9 +16,9 @@ test.each([false, true])('a fresh complete intake read reconciles board metadata
         store.state.tickets.push(ticket);
         const original = structuredClone(ticket);
         const execute = async () => [{ ...ticket, summary: 'Current', type: 'Improvement', boardMember: true, updated: 'new' }];
-        ingest(store.state, await execute(), '2026-11-11T12:00:00Z');
+        ingest(store.project, store.state, await execute(), '2026-11-11T12:00:00Z');
         expect(ticket).toMatchObject({ summary: 'Current', type: 'Improvement', boardMember: true, updated: 'new', observedAt: '2026-11-11T12:00:00Z' });
-        expect(eligibility(ticket)).toBe('');
+        expect(eligibility(store.project, ticket)).toBe('');
         expect(ticket.runId).toBe(original.runId);
         expect(ticket.stage).toBe(original.stage);
         expect(ticket.branch).toBe(original.branch);

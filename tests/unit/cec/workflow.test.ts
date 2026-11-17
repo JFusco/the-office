@@ -6,17 +6,19 @@ import { eligibility, ingest, resultGate, advance, ciMatches, containedFile } fr
 import { Store, initialSnapshot } from '../../../server/store/store';
 import { correlatedBuild } from '../../../server/cec/azure';
 import { CEC } from '../../../server/office/config';
+import { projectById } from '../../../server/office/projects';
 import { safeOrigin, sanitize } from '../../../server/office/security';
 import { STAGE_ROLE, type Ticket, type StageResult, type AzurePR, type AzureBuild } from '../../../src/shared';
 const sha='a'.repeat(40),merge='b'.repeat(40);
+const project=projectById('cec');
 function ticket(p:Partial<Ticket>={}):Ticket{return {key:'CEC-999',summary:'Unit-test fixture',type:'Bug',status:'To Do',statusId:'10000',assignee:CEC.account,subtask:false,boardMember:true,url:`${CEC.site}/browse/CEC-999`,updated:'2026-10-27T12:00:00Z',stage:'mailbox',activity:'waiting',blocker:'',runId:'unit-fixture',attempt:0,commit:sha,branch:'',worktree:'',previewUrl:'',prId:0,results:{},findings:[],evidence:[],pilot:false,observedAt:'2026-10-27T12:00:00Z',...p};}
 function result(p:Partial<StageResult>={}):StageResult{return {outcome:'passed',summary:'Synthetic unit evidence; not a live acceptance result',commit:sha,evidence:[],findings:[],receipts:[],previewUrl:'',worktree:'',branch:'',prId:0,qaRunDir:'',paidRuns:0,blocker:'',...p};}
 const roots:string[]=[];function temp(){const p=mkdtempSync(resolve(tmpdir(),'office-test-'));roots.push(p);return p;}afterEach(()=>{for(const r of roots.splice(0))rmSync(r,{recursive:true,force:true});});
 describe('strict CEC intake',()=>{
-  test('accepts exact status identities, not board-column names/categories',()=>{expect(eligibility(ticket())).toBe('');expect(eligibility(ticket({status:'Open',statusId:'1'}))).toBe('');expect(eligibility(ticket({status:'Blocked',statusId:'10107'}))).toContain('exact');expect(eligibility(ticket({status:'To Do',statusId:'1'}))).toContain('exact');});
-  test('excludes subtasks, other assignees, missing board membership and other projects',()=>{for(const p of [{subtask:true},{assignee:'someone'},{boardMember:false},{key:'OTHER-9'}])expect(eligibility(ticket(p))).not.toBe('');});
-  test('does not duplicate tickets or lose PM-managed active work',()=>{const s=initialSnapshot();ingest(s,[ticket(),ticket()]);expect(s.tickets).toHaveLength(1);s.tickets[0].stage='qa';s.tickets[0].status='QA';ingest(s,[]);expect(s.tickets[0].stage).toBe('qa');expect(s.tickets[0].status).toBe('QA');});
-  test('an epic is held and a ticket leaving intake is not silently started',()=>{const s=initialSnapshot();ingest(s,[ticket({type:'Epic',status:'Open',statusId:'1'})]);expect(s.tickets[0].blocker).toContain('decomposition');ingest(s,[]);expect(s.tickets[0].activity).toBe('blocked');});
+  test('accepts exact status identities, not board-column names/categories',()=>{expect(eligibility(project,ticket())).toBe('');expect(eligibility(project,ticket({status:'Open',statusId:'1'}))).toBe('');expect(eligibility(project,ticket({status:'Blocked',statusId:'10107'}))).toContain('exact');expect(eligibility(project,ticket({status:'To Do',statusId:'1'}))).toContain('exact');});
+  test('excludes subtasks, other assignees, missing board membership and other projects',()=>{for(const p of [{subtask:true},{assignee:'someone'},{boardMember:false},{key:'OTHER-9'}])expect(eligibility(project,ticket(p))).not.toBe('');});
+  test('does not duplicate tickets or lose PM-managed active work',()=>{const s=initialSnapshot();ingest(project,s,[ticket(),ticket()]);expect(s.tickets).toHaveLength(1);s.tickets[0].stage='qa';s.tickets[0].status='QA';ingest(project,s,[]);expect(s.tickets[0].stage).toBe('qa');expect(s.tickets[0].status).toBe('QA');});
+  test('an epic is held and a ticket leaving intake is not silently started',()=>{const s=initialSnapshot();ingest(project,s,[ticket({type:'Epic',status:'Open',statusId:'1'})]);expect(s.tickets[0].blocker).toContain('decomposition');ingest(project,s,[]);expect(s.tickets[0].activity).toBe('blocked');});
 });
 describe('proof gates',()=>{
   test('uncertain writes and concurrent edit conflicts never advance',()=>{expect(resultGate(ticket(),'enhance',result({receipts:[{id:'x',action:'jira-update',target:'CEC-999',verified:false,uncertain:true,detail:'Concurrent description update'}]}),temp())).toContain('reconciliation');});

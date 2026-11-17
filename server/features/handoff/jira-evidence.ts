@@ -1,13 +1,14 @@
 import { ownTicket } from '../../office/ticket-key';
 import { jiraRecord } from '../../cec/jira-record';
 import type { OfficeProject } from '../../../src/shared';
-import { CEC } from '../../office/config';
+import { jiraBinding } from '../../office/project-bindings';
 import { unpack } from '../../cec/jira-operations';
 import { EVIDENCE_LIMITS, blankEvidence, failedCoverage, type EvidenceReadContext, type EvidenceSection } from './evidence-contract';
 export async function jiraEvidence(project:OfficeProject,key:string,context:EvidenceReadContext) {
  if(project.provider!=='azure'||!ownTicket(project,key))throw new Error('Invalid project-qualified Jira issue');
- const evidence=blankEvidence(project.id,key,'azure',CEC.site+'/browse/'+key);
- const native=async(args:string[])=>context.execute('twg',['jira','workitem',...args,'--site',CEC.site,'-o','json','--output-summary','none'],{readOnly:true,timeout:EVIDENCE_LIMITS.commandMs,signal:context.signal});
+ const site=jiraBinding(project).site;
+ const evidence=blankEvidence(project.id,key,'azure',site+'/browse/'+key);
+ const native=async(args:string[])=>context.execute('twg',['jira','workitem',...args,'--site',site,'-o','json','--output-summary','none'],{readOnly:true,timeout:EVIDENCE_LIMITS.commandMs,signal:context.signal});
  const call=async(args:string[])=>unpack(await native(args));
  try {
   const raw = jiraRecord(await call(['get', key, '--full']), key);

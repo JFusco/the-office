@@ -34,7 +34,7 @@ test('a completed CEC pilot run learns from accepted results and retains Jira an
     const done = ticket({ stage: 'complete', results: { qa: result('qa', { findings: [{ id: 'Q1', summary: 'Focus ring missing', expected: '', actual: '', status: 'verified', attempts: 1 }] }), implement: result('implement') } });
     store.state.tickets = [done];
     expect(terminalCandidates(store.state.knowledge!, [], store.state.tickets).map(c => c.id)).toEqual([ticketCompletedId(done)]);
-    const packet = retrospectiveFacts(store, ticketSubject(done), { id: ticketCompletedId(done), trigger: 'completed', event: { stage: 'complete', head: '', steps: 2, reason: '' } });
+    const packet = retrospectiveFacts(store, ticketSubject(store, done), { id: ticketCompletedId(done), trigger: 'completed', event: { stage: 'complete', head: '', steps: 2, reason: '' } });
     expect(packet.steps.map(step => (step as { stage: string }).stage)).toEqual(['implement', 'qa']);
     expect(packet.catalog[`ticket:${done.runId}`].url).toBe(done.url);
     expect(packet.catalog[`pr:${done.runId}:41`].url).toMatch(/\/pullrequest\/41$/);

@@ -1,11 +1,15 @@
 import { expect, test } from 'vitest';
 import { transitionWithComment } from '../../../../server/cec/parking/commented-transition';
 import { CEC } from '../../../../server/office/config';
+import { projectById } from '../../../../server/office/projects';
+import { jiraBinding } from '../../../../server/office/project-bindings';
+
+const binding = jiraBinding(projectById('cec'));
 
 test('one REST transition carries its comment in the request and keeps the credential out of the arguments', async () => {
     const calls: any[] = [];
     const execute: any = async (program: string, args: string[], options: any) => { calls.push({ program, args, options }); return ''; };
-    await transitionWithComment(execute, { user: 'office@example.test', token: 'to"k\\en' }, 'CEC-900', '131', 'Office decision a1: Which "locale"?\nSecond line\n\nMove it back to QA.');
+    await transitionWithComment(execute, binding, { user: 'office@example.test', token: 'to"k\\en' }, 'CEC-900', '131', 'Office decision a1: Which "locale"?\nSecond line\n\nMove it back to QA.');
     expect(calls).toHaveLength(1);
     const [{ program, args, options }] = calls;
     expect(program).toBe('curl');
@@ -23,5 +27,5 @@ test('one REST transition carries its comment in the request and keeps the crede
 });
 
 test('a refused or failed request is passed on for read-back, never swallowed', async () => {
-    await expect(transitionWithComment((async () => { throw new Error('curl exited 22'); }) as any, { user: 'u', token: 't' }, 'CEC-900', '131', 'x')).rejects.toThrow('curl exited 22');
+    await expect(transitionWithComment((async () => { throw new Error('curl exited 22'); }) as any, binding, { user: 'u', token: 't' }, 'CEC-900', '131', 'x')).rejects.toThrow('curl exited 22');
 });

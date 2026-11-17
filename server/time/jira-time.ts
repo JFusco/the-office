@@ -3,7 +3,7 @@ import type { TimeLedgerState } from '../../src/contracts/timing';
 import { publishableEntry } from './publishable';
 import type { Store } from '../store/store';
 import { command } from '../workers/process';
-import { CEC } from '../office/config';
+import { jiraBinding } from '../office/project-bindings';
 import { captureTime } from './time-accounting';
 import { easternDay, easternInstant } from '../office/clock';
 const label = 'Office agent effort';
@@ -19,12 +19,12 @@ const data = (raw: string): any => envelope(raw).data;
 const localId = (value: string) => value.split('/').at(-1)!;
 /** One selected TWG connection, complete pagination and property read-back. */
 export class JiraWorklogs {
-    constructor(private execute: typeof command, public connection = `twg:${CEC.site}`) {
-        if (connection !== `twg:${CEC.site}`)
+    constructor(private execute: typeof command, private site: string, public connection = `twg:${site}`) {
+        if (connection !== `twg:${site}`)
             throw new Error('Unverified Jira worklog connection');
     }
     private async call(action: string, args: string[], write = false, whole = false): Promise<any> {
-        const result = envelope(await this.execute('twg', ['jira', 'workitem', 'worklog', action, ...args, '--site', CEC.site, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: !write }));
+        const result = envelope(await this.execute('twg', ['jira', 'workitem', 'worklog', action, ...args, '--site', this.site, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: !write }));
         return whole ? result : result.data;
     }
     async get(key: string, id: string): Promise<any> { const result = await this.call('get', ['--issue-id', key, '--id', id, '--expand', 'properties']); return result?.worklog || result; }
@@ -83,10 +83,11 @@ export async function publishJiraTime(store: Store, execute: typeof command, rec
     locks.add(lock);
     let publication: TimePublication | undefined;
     try {
+        const jira = jiraBinding(store.project);
         const identity = data(await execute('twg', ['whoami', '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 }));
-        if (identity?.accountId !== CEC.account)
+        if (identity?.accountId !== jira.account)
             throw new Error('Jira worklog author is not the configured Office account');
-        const adapter = new JiraWorklogs(execute, ledger.jiraConnection), marker = `${store.project.id}:${entry.id}`;
+        const adapter = new JiraWorklogs(execute, jira.site, ledger.jiraConnection), marker = `${store.project.id}:${entry.id}`;
         const logs = await adapter.list(entry.key), identified = logs.filter(log => log.properties.some((property: any) => property.key === propertyKey && property.value === marker));
         if (identified.length > 1)
             throw new Error('Multiple Jira worklogs have the Office identity');
@@ -102,7 +103,7 @@ export async function publishJiraTime(store: Store, execute: typeof command, rec
             if (identified[0] && (!prior || !matches(identified[0], prior)))
                 throw new Error('Jira worklog changed externally; preserve the human edit');
             const started = easternInstant(entry.date, 12).toISOString().replace('Z', '+0000');
-            publication = { id: crypto.randomUUID(), provider: 'jira', projectId: store.project.id, key: entry.key, status: 'prepared', itemId: entry.id, fieldId: '', worklogId: entry.worklogId || '', baseline: null, previousValue: prior?.intendedValue ?? null, intendedValue: entry.seconds, covered: [{ id: entry.id, revision: entry.revision || 1, seconds: entry.seconds }], payload: { started, author: CEC.account, property: marker, text: `${label} · ${store.project.name} · ${entry.key} · ${entry.date}` }, createdAt: store.clock.now().toISOString(), detail: '' };
+            publication = { id: crypto.randomUUID(), provider: 'jira', projectId: store.project.id, key: entry.key, status: 'prepared', itemId: entry.id, fieldId: '', worklogId: entry.worklogId || '', baseline: null, previousValue: prior?.intendedValue ?? null, intendedValue: entry.seconds, covered: [{ id: entry.id, revision: entry.revision || 1, seconds: entry.seconds }], payload: { started, author: jira.account, property: marker, text: `${label} · ${store.project.name} · ${entry.key} · ${entry.date}` }, createdAt: store.clock.now().toISOString(), detail: '' };
             (ledger.publications ??= []).push(publication);
             store.save();
             if (store.state.paused || !ledger.enabled)
@@ -123,7 +124,7 @@ export async function publishJiraTime(store: Store, execute: typeof command, rec
         entry.worklogId = localId(identified[0]?.id || publication.worklogId);
         entry.status = 'posted';
         entry.detail = `${label}: ${publication.intendedValue}s verified; estimates preserved.`;
-        entry.url = `${CEC.site}/browse/${entry.key}`;
+        entry.url = `${jira.site}/browse/${entry.key}`;
         store.emit('time-posted', entry.detail, 'pm', entry.key);
     }
     catch (error) {

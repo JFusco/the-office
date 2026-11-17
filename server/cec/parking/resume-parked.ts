@@ -1,5 +1,6 @@
 import { Effects } from '../../store/effects';
-import { CEC, HOLDS } from '../../office/config';
+import { HOLDS } from '../../office/config';
+import { jiraBinding } from '../../office/project-bindings';
 import { BLOCKED, findComment, readIssue, type Execute, type LiveIssue } from './jira-issue';
 import { commentDecision, commentRefused, moveToBlocked, parkEffectIds, publishParked, releasePark } from './park-ticket';
 import { STAGE_LABELS, type Ticket } from '../../../src/shared';
@@ -19,15 +20,16 @@ export async function reconcileAndResumeParked(store: Store, execute: Execute, r
     const now = store.clock.now().getTime();
     if (!parked.length || now - (lastRead.get(store) ?? -Infinity) < INTERVAL_MS) return [];
     lastRead.set(store, now);
+    const binding = jiraBinding(store.project);
     const resumed: string[] = [], failed: string[] = [];
     for (const t of parked) {
         let issue: LiveIssue;
-        try { issue = await readIssue(execute, t.key); }
+        try { issue = await readIssue(execute, binding, t.key); }
         catch (error) { failed.push(`${t.key}: ${String(error)}`); continue; }
         if (!t.parked) continue;
         if (!t.parked!.published) await settleParking(store, execute, t, issue);
         else if (t.parked!.resumeRequestedAt) followResume(store, t, issue);
-        else if (issue.status === t.parked!.fromStatus && issue.assignee === CEC.account && !HOLDS[t.key]) {
+        else if (issue.status === t.parked!.fromStatus && issue.assignee === binding.account && !HOLDS[t.key]) {
             try { requestResume(t.key); }
             catch (error) { note(store, t, `Decision needed: ${t.parked!.reason} Resume could not be queued: ${String(error)}`); continue; }
             t.parked!.resumeRequestedAt = new Date(now).toISOString();
@@ -37,7 +39,7 @@ export async function reconcileAndResumeParked(store: Store, execute: Execute, r
             store.save();
             resumed.push(t.key);
         }
-        else if (issue.assignee !== CEC.account) note(store, t, `Decision needed: ${t.parked!.reason} Jira reassigned it; the Office will not resume it.`);
+        else if (issue.assignee !== binding.account) note(store, t, `Decision needed: ${t.parked!.reason} Jira reassigned it; the Office will not resume it.`);
         else if (issue.status !== BLOCKED) note(store, t, `Decision needed: ${t.parked!.reason} Jira is now ${issue.status}; move it to ${t.parked!.fromStatus} to resume.`);
     }
     if (failed.length) throw new Error(failed.join('; '));
@@ -78,7 +80,7 @@ async function settleParking(store: Store, execute: Execute, t: Ticket, issue: L
     const ids = () => parkEffectIds(t.parked!.marker, t.parked!.commentAttempt);
     // A refused transition never reached Jira: release. A refused comment after Blocked landed: keep watching and retry.
     if (!await settle(() => ids().transition, () => moveToBlocked(store, execute, t), async () => issue.status === BLOCKED, detail => releasePark(store, t, detail))) return;
-    if (!await settle(() => ids().comment, () => commentDecision(store, execute, t), async () => !!await findComment(execute, t.key, t.parked!.marker), detail => commentRefused(store, t, detail))) return;
+    if (!await settle(() => ids().comment, () => commentDecision(store, execute, t), async () => !!await findComment(execute, jiraBinding(store.project), t.key, t.parked!.marker), detail => commentRefused(store, t, detail))) return;
     publishParked(store, t);
 }
 

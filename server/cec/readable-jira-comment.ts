@@ -2,7 +2,7 @@ import { jiraRecord } from './jira-record';
 import { commentReadback } from './comment-readback';
 import { unpack } from './jira-response';
 import { Effects } from '../store/effects';
-import { CEC } from '../office/config';
+import { jiraBinding } from '../office/project-bindings';
 import { commentMarkdown, commentWords, markdownWords, type ReadableComment } from '../comments/readable-comment';
 import { storedWords } from '../comments/stored-words';
 import type { Store } from '../store/store';
@@ -28,21 +28,21 @@ export function commentPayload(store: Store, intent: Pick<JiraCommentIntent, 'id
  * by comment id, Office author and words. A comment already recorded keeps the wording and format it was recorded with.
  */
 export async function postReadableComment(store: Store, execute: typeof command, ticket: Ticket, intent: JiraCommentIntent): Promise<{ id: string }> {
-    const payload = commentPayload(store, intent), words = recordedWords(payload, intent.comment);
-    const native = async (action: string, args: string[], readOnly: boolean) => execute('twg', ['jira', 'workitem', ...action.split(' '), ...args, '--site', CEC.site, '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 });
+    const payload = commentPayload(store, intent), words = recordedWords(payload, intent.comment), jira = jiraBinding(store.project);
+    const native = async (action: string, args: string[], readOnly: boolean) => execute('twg', ['jira', 'workitem', ...action.split(' '), ...args, '--site', jira.site, '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 });
     const call = async (action: string, args: string[], readOnly: boolean) => unpack(await native(action, args, readOnly));
     return new Effects(store).execute({ id: intent.id, work: { projectId: store.project.id, kind: 'delivery', id: ticket.key }, attemptId: intent.attempt, operation: intent.operation, target: ticket.key, authorization: ticket.runId, payload, expectedState: intent.expectedState,
         preflight: async () => {
             const record = jiraRecord(await call('get', [ticket.key], true), ticket.key);
             const current = record.fields || record;
-            if (record.key !== ticket.key || current.assignee?.accountId !== CEC.account || current.subtask || intent.changed(current))
+            if (record.key !== ticket.key || current.assignee?.accountId !== jira.account || current.subtask || intent.changed(current))
                 throw new Error(intent.refusal);
         },
         dispatch: async (value) => { const data = await call('comment create', ['--issue-id', ticket.key, '--body', value.text, '--body-format', payload.format === 'markdown' ? 'markdown' : 'plain'], false); const record = data.comment || data; return Array.isArray(record) && record.length === 1 ? record[0] : record; },
         verify: async (receipt) => {
             if (!receipt.id)
                 return false;
-            return commentReadback(receipt.id, CEC.account, words, async after => {
+            return commentReadback(receipt.id, jira.account, words, async after => {
                 const raw = await native('comment query', ['--issue-id', ticket.key, '--first', '100', ...(after ? ['--after', after] : [])], true);
                 return { data: unpack(raw), pageInfo: JSON.parse(raw).pageInfo };
             }, storedWords);

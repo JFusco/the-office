@@ -1,8 +1,9 @@
 import { BLOCKED, jira, type Execute } from './jira-issue';
+import type { JiraBinding } from '../../office/project-bindings-config';
 
 /** The id of the one transition that moves this issue to Blocked now, read from Jira; never assumed. */
-export async function resolveBlockedTransition(execute: Execute, key: string): Promise<string> {
-    const data = await jira(execute, ['transition', '--id', key], true);
+export async function resolveBlockedTransition(execute: Execute, binding: JiraBinding, key: string): Promise<string> {
+    const data = await jira(execute, binding, ['transition', '--id', key], true);
     const matches = (Array.isArray(data?.transitions) ? data.transitions : []).filter((t: any) => (t.toName || t.to?.name) === BLOCKED);
     if (matches.length !== 1 || !matches[0].id)
         throw new Error(`Jira offers ${matches.length} transitions to ${BLOCKED} for ${key}`);

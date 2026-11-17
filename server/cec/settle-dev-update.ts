@@ -1,6 +1,6 @@
 import { jiraCollection } from './parking/jira-collection';
 import { Effects } from '../store/effects';
-import { CEC } from '../office/config';
+import { jiraBinding } from '../office/project-bindings';
 import { sanitize } from '../office/security';
 import { markdownWords } from '../comments/readable-comment';
 import { storedWords } from '../comments/stored-words';
@@ -17,7 +17,7 @@ export async function settleDevUpdate(store: Store, execute: typeof command, key
     if (intent?.status === 'verified') return String((intent.receipt as { id?: string } | null)?.id || '');
     if (!intent || !['dispatching', 'uncertain'].includes(intent.status)) return '';
     const words = storedWords(markdownWords(intent.payload.text));
-    const saved = (await jiraCollection(execute, ['comment', 'query', '--issue-id', key], 'comments')).find(item => item.id && item.author?.accountId === CEC.account && storedWords(item.body) === words);
+    const saved = (await jiraCollection(execute, jiraBinding(store.project), ['comment', 'query', '--issue-id', key], 'comments')).find(item => item.id && item.author?.accountId === jiraBinding(store.project).account && storedWords(item.body) === words);
     if (saved)
         return await new Effects(store).reconcile(id, async () => ({ verified: true, receipt: saved })) ? String(saved.id) : '';
     store.transition('dev-update-not-sent', `${key}: a Dev update was not on the ticket after a complete read. It is closed as not sent and is not resent.`, () =>
