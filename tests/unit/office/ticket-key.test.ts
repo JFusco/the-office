@@ -36,6 +36,11 @@ test('the command-boundary check keeps its looser digits rule and is still expor
     expect(fromProjects).toBe(validTicket);
 });
 
+test('a missing or null provider key is rejected without throwing', () => {
+    expect(validTicket(cec, undefined as any, registry)).toBe(false);
+    expect(validTicket(cec, null as any, registry)).toBe(false);
+});
+
 test('a Jira project without a binding is an error, never a match against another project', () => {
     expect(() => ownTicket({ id: 'unbound', provider: 'azure' }, 'CEC-1', registry)).toThrow('Project "unbound" has no Jira/Azure binding');
 });

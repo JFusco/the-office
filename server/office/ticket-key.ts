@@ -23,7 +23,7 @@ export function ownTicket(project: Project, key: unknown, registry?: Registry): 
 }
 
 /** The command-boundary check: `PREFIX-<digits>`. Identity-sensitive code uses `ownTicket`, which also rejects 0 and leading zeros. */
-export function validTicket(project: Project, key: string, registry?: Registry): boolean {
+export function validTicket(project: Project, key: unknown, registry?: Registry): boolean {
     const prefix = `${ticketPrefix(project, registry)}-`;
-    return key.startsWith(prefix) && /^\d+$/.test(key.slice(prefix.length));
+    return typeof key === 'string' && key.startsWith(prefix) && /^\d+$/.test(key.slice(prefix.length));
 }

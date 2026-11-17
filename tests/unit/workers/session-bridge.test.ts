@@ -111,10 +111,10 @@ test('Claude cross-repository scope and decisions reach the same project ownersh
  const bridge=new SessionBridge(()=>[store],execute,async()=>[],async()=>accounted(),undefined,context);await bridge.refresh();
  const view=bridge.forProject(store,'GH-352');expect(view.complete).toBe(true);expect(view.ownership.status).toBe('owned');expect(view.sessions[0].provider).toBe('claude');expect(view.sessions[0].context?.userMessages[0].text).toContain('boundaries');
 });
-test('a key outside the project prefix matches no session, and a keyless inventory needs no binding',()=>{
+test('a key outside the project prefix matches no session and is never clear, and a keyless inventory needs no binding',()=>{
  const current=()=>({observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:true,sources:[],sessions:[{id:'titled',provider:'codex',project:'brain',cwd:'/brain',title:'Fix CEC-12',branch:'codex/12-fix',status:'active',source:'test'},{id:'ticketed',provider:'codex',project:'brain',cwd:'/brain',title:'Other',branch:'',status:'active',source:'test',ticket:'CEC-12'}]}) as any;
  const brain:any={project:{id:'brain',provider:'github',repo:'/brain'},state:{workLog:[]}};const bridge=new SessionBridge(()=>[brain]);bridge.current=current();
- expect(bridge.forProject(brain,'CEC-12').ownership).toMatchObject({status:'clear',matches:[]});
+ expect(bridge.forProject(brain,'CEC-12').ownership).toMatchObject({status:'unavailable',matches:[]});
  expect(bridge.forProject(brain,'GH-12').ownership.status).toBe('owned');
  const unbound:any={project:{id:'acme',provider:'azure',repo:'/acme'},state:{workLog:[]}};const other=new SessionBridge(()=>[unbound]);other.current=current();
  expect(other.forProject(unbound).ownership.status).toBe('not-requested');
