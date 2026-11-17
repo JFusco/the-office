@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import { Engine } from '../../../server/scheduling/engine';
 import { cecStore, decision, ticket } from './parking/fixtures';
+import { cecReadbackPrompt } from '../../../server/cec/prompts/cec-reads';
 
 const cycle = (): any => ({ owner: 'developer', findingAttempts: { F1: 2 }, attempts: 6, pendingFindingIds: ['F1'], sourceStage: 'retest', sourceHead: 'a'.repeat(40), phase: 'diagnosis' });
 
@@ -21,4 +22,17 @@ test('the revised-approach assessment after the repair budget runs out asks for 
         expect(live.status, name).toBe('QA');
         expect(live.blocker, name).toBe(moves ? 'The latest retest requires repair first.' : 'No changed approach is available.');
     }
+});
+
+test('the PM read-back is told the exhausted budget is why the assessment is dispatched, only until that assessment has run', () => {
+    const { store } = cecStore(), t = { ...ticket('QA'), stage: 'code-review' as const, activity: 'blocked' as const, repairCycle: cycle() };
+    store.state.tickets = [t];
+    expect(cecReadbackPrompt(store, t.key)).toContain('REVISED-APPROACH ASSESSMENT: This ticket\'s repair budget is exhausted');
+    expect(cecReadbackPrompt(store, t.key)).toContain('not blockers for it. Still return any other current hold.');
+    t.repairCycle.diagnosisAttempted = true;
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('REVISED-APPROACH ASSESSMENT');
+    t.repairCycle = { ...cycle(), phase: 'repair' };
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('REVISED-APPROACH ASSESSMENT');
+    Object.assign(t, { stage: 'retest', repairCycle: cycle() });
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('REVISED-APPROACH ASSESSMENT');
 });
