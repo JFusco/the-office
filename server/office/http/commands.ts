@@ -100,8 +100,9 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 if (typeof time.jira === 'boolean')
                     ledger.jiraEnabled = time.jira;
                 if (time.jira === true && !ledger.jiraActivatedAt) {
-                    ledger.jiraActivatedAt = new Date().toISOString();
+                    // Read the binding first: an unbound project throws before activation is recorded.
                     ledger.jiraConnection = `twg:${jiraBinding(store.project).site}`;
+                    ledger.jiraActivatedAt = new Date().toISOString();
                 }
                 store.save();
                 break;
