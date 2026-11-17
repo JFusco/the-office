@@ -1,3 +1,4 @@
+import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { scheduledOwnershipRead } from '../cec/qa/scheduled-ownership-read';
 import { freshOwnershipRead } from '../cec/qa/fresh-ownership-read';
@@ -150,7 +151,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         items.at(-1)!.slot = deliverySlot(job);
     }
     for (const review of [...new Map(c.listener.reviews.map(review => [review.key, review])).values()].filter(review => !(c.jobs || []).some(job => job.key === review.key && job.status !== 'cancelled')))
-        add('intake', review, 'assignment-review', review.queuedAt, 3, () => coordinator!.pump({ kind: 'intake', id: review.id }), review.prerequisiteError ? eligible('blocked', review.prerequisiteError, 'Morgan', 'dependency') : ['owned', 'held'].includes(review.status) && deferredPickup(store.state, review.key) ? eligible('waiting', 'Backlog assignment is deferred until its pickup lane or an explicit Start') : null, review.timing);
+        add('intake', review, 'assignment-review', review.queuedAt, 3, () => coordinator!.pump({ kind: 'intake', id: review.id }), review.prerequisiteError ? eligible('blocked', review.prerequisiteError, 'Morgan', 'dependency') : ['owned', 'held'].includes(review.status) && deferredPickup(store.state, review.key, defaultPickupStatus(store.project)) ? eligible('waiting', 'Backlog assignment is deferred until its pickup lane or an explicit Start') : null, review.timing);
     for (const checkpoint of c.checkpoints.filter(checkpoint => !store.state.maintenance?.runs.some(run => run.id === checkpoint.runId && run.retirement)))
         add('checkpoint', checkpoint, 'checkpoint', checkpoint.requestedAt, 3, () => coordinator!.pump({ kind: 'checkpoint', id: checkpoint.id }), checkpoint.retryAt && Date.parse(checkpoint.retryAt) > now.getTime() ? eligible('waiting', 'Native retry backoff is active') : history(supersededCheckpoint(checkpoint, c.checkpoints), ['checkpoint', checkpoint.id], ['maintenance', checkpoint.runId]));
     for (const run of store.state.maintenance?.runs || []) {

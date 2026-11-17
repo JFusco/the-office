@@ -1,3 +1,4 @@
+import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { harperHandoff } from '../knowledge/blocker-followups';
 import { finishSupersededReadback } from './slack/finish-superseded-readback';
 import { assertConversationReadback } from './conversation-recovery';
@@ -43,7 +44,7 @@ export async function pump(this: Conversations, id?: string) {
             this.store.emit('message-answered', 'Morgan confirmed the original Slack delivery.', 'pm');
             return;
         }
-        if (deferredPickup(this.store.state, message.ticket) && /^(assignment:|question:)/.test(message.actionId)) {
+        if (deferredPickup(this.store.state, message.ticket, defaultPickupStatus(this.store.project)) && /^(assignment:|question:)/.test(message.actionId)) {
             this.record({ ...message, id: crypto.randomUUID(), from: 'pm', to: 'pm', body: `${message.ticket}'s earlier intake follow-up is deferred. No approval or new team work is due. It will wait for the configured pickup status or an explicit Start.`, status: 'answered', createdAt: new Date().toISOString(), recipients: [], receipts: [], recheck: false, error: '', question: '' });
             message.status = 'answered';
             this.store.emit('message-deferred', `${message.ticket}: stale intake follow-up closed; backlog remains deferred.`, 'pm', message.ticket);
