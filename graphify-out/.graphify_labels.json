@@ -1,5 +1,4 @@
 {
-  "0": "TimeBook.tsx",
   "1": "OrgChart.tsx",
   "7": "ref_react",
   "12": "App.tsx",
@@ -12,7 +11,6 @@
   "36": "scheduled-work.ts",
   "41": "time-scope.ts",
   "45": "harness-baseline.ts",
-  "47": "time-readback.ts",
   "64": "ticket-evidence.ts",
   "66": "remove-candidate.ts",
   "67": "retrospective-subject.ts",

@@ -2,8 +2,11 @@ import type { Ticket } from '../../../src/shared';
 import { READBACK_OWNER_SCOPE } from '../readback-schema';
 
 /** The PM checks assignment eligibility; the assigned QA lead owns its run setup. */
-export function readbackDispatchGuidance(ticket?: Pick<Ticket, 'stage' | 'approach'>, interruptedRerun = false): string {
-    const owner = `\nREADBACK OWNER SCOPE: ${READBACK_OWNER_SCOPE}`;
+export function readbackDispatchGuidance(ticket?: Pick<Ticket, 'stage' | 'approach' | 'repairCycle'>, interruptedRerun = false): string {
+    // The harness's own answer to an exhausted repair budget; the PM is told so it does not ask for that answer as a prerequisite.
+    const assessment = ticket?.stage === 'code-review' && ticket.repairCycle?.phase === 'diagnosis' && !ticket.repairCycle.diagnosisAttempted ? `
+REVISED-APPROACH ASSESSMENT: This ticket's repair budget is exhausted after a failed QA result. The harness's recorded recovery route for that is one assessment by Sam of a single revised technical approach on the same candidate, and that assessment is what this read-back is for. It is not a code review of a new candidate and asks for no Jira status move. It grants no repair attempt by itself: a further repair follows only if Sam establishes a changed approach. The exhausted budget, the failed QA result and the absence of a later repair are the reason for this dispatch, not blockers for it. Still return any other current hold.` : '';
+    const owner = `\nREADBACK OWNER SCOPE: ${READBACK_OWNER_SCOPE}${assessment}`;
     if (!ticket || !['qa', 'retest'].includes(ticket.stage)) return owner;
     const browser = !ticket.approach || ticket.approach.validation === 'browser';
     return `${owner}

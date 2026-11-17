@@ -258,7 +258,9 @@ it is verified; absent, it is closed as not sent. It is never resent. Workers re
 When a Jira/Azure ticket's repair budget runs out, Sam assesses one revised technical approach
 before any further repair. That assessment runs as a code-review pass on the same candidate, but it
 is not a review of a new candidate: the harness asks for no Jira status move for it, and the
-ticket keeps its status until the repair that follows is reviewed.
+ticket keeps its status until the repair that follows is reviewed. The PM read-back before it is
+told that the exhausted budget and the failed QA result are the reason for the dispatch, not
+blockers for it.
 
 A QA or retest run that a provider capacity limit (usage limit, rate limit or quota) cut off
 before it returned a result is run again at the next resume. Nothing is reconstructed: the harness
