@@ -1,6 +1,6 @@
 import type { Store } from '../../store/store';
 import type { Role, Ticket, TeamMessage, SlackDelivery } from '../../../src/shared';
-import { CEC, DATA, SKILLS } from '../../office/config';
+import { DATA, SKILLS } from '../../office/config';
 import { PICKUP_CHAT } from '../../delivery/intake/pickup';
 import { timeReport } from '../../../src/timing/timing';
 export function slackSendPrompt(store: Store, delivery: SlackDelivery, human: Pick<TeamMessage, 'body' | 'ticket' | 'requestId'>) {

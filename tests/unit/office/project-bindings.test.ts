@@ -6,7 +6,11 @@ import { PROJECT_BINDINGS, projectById } from '../../../server/office/projects';
 const cec = { site: 'https://one.example.net', cloudId: 'cloud-1', board: 7, account: 'account-1', repo: '/tmp/cos', organization: 'https://dev.azure.com/one', project: 'One', repository: 'cos', repositoryId: 'repo-1', target: 'staging' };
 
 test('the legacy fold carries the cec connection and the workflow values that were in the code', () => {
-    expect(legacyCecBindings(cec)).toEqual({
+    const { prompt, ...bindings } = legacyCecBindings(cec);
+    expect(prompt).toMatchObject({ htmlFallback: true, preflightStatuses: ['In Progress', 'Code Review', 'Ready for QA', 'QA', 'In Review'] });
+    expect(JSON.stringify(prompt.repository)).toBe(JSON.stringify(cec));
+    expect(prompt.repository).not.toBe(cec);
+    expect(bindings).toEqual({
         jira: {
             site: 'https://one.example.net', cloudId: 'cloud-1', account: 'account-1', projectKey: 'CEC', board: 7,
             statuses: {

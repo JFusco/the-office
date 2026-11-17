@@ -1,6 +1,6 @@
 import type { OfficeProject } from '../../src/shared';
 import { PROJECT_BINDINGS } from './projects';
-import type { AzureBinding, JiraBinding, ProjectBindings } from './project-bindings-config';
+import type { AzureBinding, JiraBinding, ProjectBindings, PromptBinding } from './project-bindings-config';
 
 type Project = Pick<OfficeProject, 'id'>;
 type Registry = ReadonlyMap<string, ProjectBindings>;
@@ -20,4 +20,9 @@ export function jiraBinding(project: Project, registry: Registry = PROJECT_BINDI
 /** This project's Azure DevOps connection and observed deployment. Throws for a project that has none. */
 export function azureBinding(project: Project, registry: Registry = PROJECT_BINDINGS): AzureBinding {
     return bindings(project, registry).azure;
+}
+
+/** This project's delivery prompt text and values. Throws for a project that has none. */
+export function promptBinding(project: Project, registry: Registry = PROJECT_BINDINGS): PromptBinding {
+    return bindings(project, registry).prompt;
 }
