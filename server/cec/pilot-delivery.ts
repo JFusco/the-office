@@ -1,4 +1,5 @@
 import { consumeQAPlanRetry } from './qa/consume-plan-retry';
+import { settleDevUpdates } from './settle-dev-update';
 import { confirmSetupStopCap } from './qa/setup-stop-cap';
 import { continueUnsealedQA } from './qa/continue-unsealed-qa';
 import { OfficeQAHandoffInput } from './qa/handoff-input';
@@ -227,6 +228,8 @@ export async function resume(this: Engine, key: string, background = true) {
         }
         if (t.parked && parkingUnconfirmed(this.store, t))
             await reconcileRejectedParking(this.store, this.jira.execute, t);
+        // A Dev update left unsettled by an earlier run informs only; it is read back here so it never stands in a ticket's way.
+        await settleDevUpdates(this.store, this.jira.execute, key);
         live = await this.agents.readback(key, qaHandoff?.officeQAHandoff?.coordinatorSessionId ?
             `EXPLICIT QA COORDINATION HANDOFF: This operator request identifies session ${qaHandoff.officeQAHandoff.coordinatorSessionId} as the environment coordinator and browser-access assistant. Verify current authoritative context and coordination under READBACK_OWNER_SCOPE. The declaration alone is insufficient: any competing executor, unknown actor, incomplete coverage, refused handoff or live lease blocks. Prepared setup metadata to verify: ${qaHandoff.officeQAHandoff.setupNote}` : '', qaHandoff?.id || '');
     }

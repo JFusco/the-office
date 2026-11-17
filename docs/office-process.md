@@ -244,6 +244,14 @@ from, nothing changed its status after the Office's verified QA comment, and no 
 that decision exists. The refusal text alone is never taken as proof. If the read does not prove
 it, the ticket says so and stays blocked.
 
+The harness writes the comments people read on a Jira ticket, in one shape: a headline, a short
+plain summary, what is needed, the findings, a few real links and one closing reference line
+(`server/comments/`). It posts the QA comment for qa, retest and staging-qa, which is verified by
+read-back and gates the stage, and the Dev update after a draft PR or a repair, which informs and
+never gates. It is posted once the stage result is accepted. An update that may have reached Jira
+is settled by reading the ticket, at once and again at the next resume if that read failed: found,
+it is verified; absent, it is closed as not sent. It is never resent. Workers return the outcome and evidence and post no Jira comments of their own.
+
 A QA stage on the browser route runs for up to 90 minutes, and the worker is told that limit.
 A Jira/Azure repair also runs for up to 90 minutes. Other stages keep their existing limits (45
 minutes for Jira/Azure stages, 60 for GitHub delivery stages).
