@@ -255,6 +255,11 @@ never gates. It is posted once the stage result is accepted. An update that may 
 is settled by reading the ticket, at once and again at the next resume if that read failed: found,
 it is verified; absent, it is closed as not sent. It is never resent. Workers return the outcome and evidence and post no Jira comments of their own.
 
+When a Jira/Azure ticket's repair budget runs out, Sam assesses one revised technical approach
+before any further repair. That assessment runs as a code-review pass on the same candidate, but it
+is not a review of a new candidate: the harness asks for no Jira status move for it, and the
+ticket keeps its status until the repair that follows is reviewed.
+
 A QA or retest run that a provider capacity limit (usage limit, rate limit or quota) cut off
 before it returned a result is run again at the next resume. Nothing is reconstructed: the harness
 treats that run's work as confined to its own test environment, and it posts the Jira comment
