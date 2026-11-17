@@ -225,6 +225,19 @@ runner writes afterwards is lost. If a Jira/Azure stage result was saved to its 
 not on the ticket, the next run of that stage applies it under the same attempt: no worker runs
 again and writes already verified for that attempt are not repeated.
 
+The move to Jira Blocked is the one Jira write that does not go through TWG. The workflow requires
+a comment in the transition request itself, as Jira's own dialog sends it, and TWG posts a
+transition comment separately. The harness resolves the Blocked transition for that issue by
+reading Jira, then sends one Jira REST transition carrying the decision comment, through Effects
+like every other write. Its Jira API token is read from the login Keychain (service
+`the-office-jira`, account the Jira user) when a park is sent; it is never stored, logged or put
+in a command's arguments. Before the write the harness asks Jira which account the token acts as.
+A missing token, a token Jira does not accept, a token for another account or a missing transition
+refuses the park before any write, and the ticket keeps its Office block. A move Jira refuses after
+that stays unconfirmed with Jira's reason and is never resent; the settlement described next
+recognizes only the older TWG refusal, so such a move needs IT. Every other read, the read-back
+and the fallback comment stay on TWG.
+
 A Jira move to Blocked that carried its decision comment and was refused by Jira is settled as
 rejected at the next resume, by reading Jira: the ticket is still at the status it was parked
 from, nothing changed its status after the Office's verified QA comment, and no comment carrying
