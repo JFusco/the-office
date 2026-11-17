@@ -1,3 +1,4 @@
+import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { recoverStoppedBaseUpdates } from './stopped-base-update-recovery';
 import { supersededCheckpoint } from '../operations/stale-records';
 import { handsOff } from '../delivery/harness/scope';
@@ -42,7 +43,7 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                 const latest = [...new Map((state.coordination?.listener.reviews || []).map(r => [r.key, r])).values()];
                 for (const r of latest) {
                     const assigned = state.coordination!.listener.assigned.find(i => i.key === r.key);
-                    const pickup = state.coordination!.pickup?.status || (store.project.provider === 'github' ? 'Ready' : 'To Do');
+                    const pickup = state.coordination!.pickup?.status || defaultPickupStatus(store.project);
                     if (HOLDS[r.key] || state.coordination!.pickup?.enabled === false && r.workRequested !== 'manual' || r.status !== 'blocked' || !/(?:session.*(?:visibility|inventory|read)|task.claim)/i.test(r.detail) || !/(?:unavailable|incomplete|missing|restore|not available|lacks)/i.test(r.detail) || !assigned || (assigned.pickupStatus ?? assigned.status) !== pickup || state.coordination!.jobs?.some(j => j.key === r.key && !['cancelled', 'completed'].includes(j.status)))
                         continue;
                     if (handsOff(store) && deliveryIntakeBlocker(store,r.key)) continue;

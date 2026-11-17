@@ -26,8 +26,9 @@ export function eligibility(project: OfficeProject, t: Pick<Ticket, 'key' | 'ass
             return 'Ticket left the authorized intake status';
         return HOLDS[t.key] || '';
     }
-    if (!((t.status === 'To Do' && t.statusId === '10000') || (t.status === 'Open' && t.statusId === '1')))
-        return 'Intake requires exact To Do or Open status';
+    const intake = jiraBinding(project).statuses.intake;
+    if (!intake.some(status => t.status === status.name && t.statusId === status.id))
+        return `Intake requires exact ${intake.map(status => status.name).join(' or ')} status`;
     return HOLDS[t.key] || '';
 }
 export function ingest(project: OfficeProject, state: OfficeSnapshot, incoming: Ticket[], now = new Date().toISOString()) {

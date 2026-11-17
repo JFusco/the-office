@@ -1,13 +1,16 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { Store } from '../../../server/store/store';
-import { projectById } from '../../../server/office/projects';
+import { PROJECT_BINDINGS, projectById } from '../../../server/office/projects';
 import { CEC } from '../../../server/office/config';
 import { verifyAlreadyAtStatus, verifiedTransition } from '../../../server/cec/transition-readback';
+import type { ProjectBindings } from '../../../server/office/project-bindings-config';
 import type { StageResult, Ticket } from '../../../src/shared';
 
 const stores: Store[] = [];
+const registry = PROJECT_BINDINGS as Map<string, ProjectBindings>, original = registry.get('cec')!;
 afterEach(() => stores.splice(0).forEach(store => store.close()));
+afterEach(() => registry.set('cec', original));
 function setup(target = 'Code Review') {
     const store = new Store(':memory:', projectById('cec')); stores.push(store);
     const ticket = { key: 'CEC-999', runId: `unit-${crypto.randomUUID()}`, stage: 'repair-review',
@@ -36,6 +39,17 @@ test.each(['Code Review', 'QA'])('already %s requires two identical native issue
     expect(proof).toMatchObject({ key: ticket.key, runId: ticket.runId, commit: ticket.commit, target });
     expect(proof.before).toEqual(proof.after);
     expect(existsSync(verified.evidence.at(-1)!.path.replace('verified.json', 'intent.json'))).toBe(true);
+});
+
+test('read-back allows the configured stage statuses, not the legacy names', async () => {
+    const statuses = { ...original.jira.statuses, stages: { understand: 'Doing', 'code-review': 'Peer Review', 'repair-review': 'Peer Review', preview: 'Ready to Test', qa: 'Testing', retest: 'Testing' } };
+    registry.set('cec', { ...original, jira: { ...original.jira, statuses } });
+    const configured = setup('Peer Review');
+    expect(verifiedTransition(await verifyAlreadyAtStatus(configured.store, configured.ticket, 'Peer Review', configured.result, configured.execute as any))).toBe(true);
+    expect(configured.execute).toHaveBeenCalledTimes(2);
+    const legacy = setup('Code Review');
+    expect((await verifyAlreadyAtStatus(legacy.store, legacy.ticket, 'Code Review', legacy.result, legacy.execute as any)).blocker).toContain('scope or eligibility changed');
+    expect(legacy.execute).not.toHaveBeenCalled();
 });
 
 test.each(['status', 'assignee', 'type', 'key'])('a contradictory live %s cannot normalize the model receipt', async field => {

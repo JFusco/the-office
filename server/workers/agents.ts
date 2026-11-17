@@ -1,3 +1,4 @@
+import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { CurrentOfficeQAReportSchema, OfficeQAReportSchema } from '../qa/report-schema';
 import { bindGitHubQA, prepareCECQA } from '../qa/prepare-assignment';
 import { savedStageCompletion } from '../cec/saved-completion';
@@ -87,7 +88,7 @@ export class Agents extends WorkerRuntime {
         if (role === 'cto')
             return this.run('cto', ctoChatPrompt(promptStore, message, goalReportContext(this.ctoContext(), message, this.store.project.id), brief) + guidance, ConversationResultSchema, { cwd: message.from === 'pm' ? this.store.project.repo : ROOT, readOnly: true, crossProjectRead: message.from !== 'pm', ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, timeout: 15 * 60 * 1000 });
         if (this.store.project.provider === 'github')
-            return this.run(role, githubFollowupPrompt(promptStore, role, message, brief) + guidance, ConversationResultSchema, { cwd: this.store.project.repo, ticket: message.ticket, stage: deferredPickup(this.store.state, message.ticket) ? 'deferred-conversation' : message.actionId ? 'conversation-readback' : 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, readOnly: !canFileGithubIssue(role, message, brief), effortKind: canFileGithubIssue(role, message, brief) || message.actionId.startsWith('message:') ? 'administrative' : undefined, timeout: 15 * 60 * 1000 });
+            return this.run(role, githubFollowupPrompt(promptStore, role, message, brief) + guidance, ConversationResultSchema, { cwd: this.store.project.repo, ticket: message.ticket, stage: deferredPickup(this.store.state, message.ticket, defaultPickupStatus(this.store.project)) ? 'deferred-conversation' : message.actionId ? 'conversation-readback' : 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, readOnly: !canFileGithubIssue(role, message, brief), effortKind: canFileGithubIssue(role, message, brief) || message.actionId.startsWith('message:') ? 'administrative' : undefined, timeout: 15 * 60 * 1000 });
         const ticket = message.ticket ? this.store.ticket(message.ticket) : null;
         const history = promptStore.state.messages.filter(m => m.id !== message.id && (message.ticket ? m.ticket === message.ticket : !m.ticket)).slice(-24);
         return this.run(role, cecChatPrompt(promptStore, role, message, brief, ticket, history) + guidance, ConversationResultSchema, { ticket: message.ticket, stage: 'conversation', requestId: message.requestId, enqueuedAt: brief ? undefined : message.createdAt, readOnly: role !== 'pm' || !ticket, timeout: 15 * 60 * 1000 });

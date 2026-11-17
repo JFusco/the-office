@@ -1,7 +1,7 @@
 import { Effects } from '../../store/effects';
 import { HOLDS } from '../../office/config';
 import { jiraBinding } from '../../office/project-bindings';
-import { BLOCKED, findComment, readIssue, type Execute, type LiveIssue } from './jira-issue';
+import { findComment, readIssue, type Execute, type LiveIssue } from './jira-issue';
 import { commentDecision, commentRefused, moveToBlocked, parkEffectIds, publishParked, releasePark } from './park-ticket';
 import { STAGE_LABELS, type Ticket } from '../../../src/shared';
 import type { Store } from '../../store/store';
@@ -40,7 +40,7 @@ export async function reconcileAndResumeParked(store: Store, execute: Execute, r
             resumed.push(t.key);
         }
         else if (issue.assignee !== binding.account) note(store, t, `Decision needed: ${t.parked!.reason} Jira reassigned it; the Office will not resume it.`);
-        else if (issue.status !== BLOCKED) note(store, t, `Decision needed: ${t.parked!.reason} Jira is now ${issue.status}; move it to ${t.parked!.fromStatus} to resume.`);
+        else if (issue.status !== jiraBinding(store.project).statuses.blocked) note(store, t, `Decision needed: ${t.parked!.reason} Jira is now ${issue.status}; move it to ${t.parked!.fromStatus} to resume.`);
     }
     if (failed.length) throw new Error(failed.join('; '));
     return resumed;
@@ -50,9 +50,9 @@ export async function reconcileAndResumeParked(store: Store, execute: Execute, r
 function followResume(store: Store, t: Ticket, issue: LiveIssue) {
     const request = [...store.state.deliveryQueue || []].reverse().find(r => r.key === t.key && r.action === 'resume-ticket');
     if (request && ['queued', 'working'].includes(request.status)) return;
-    if (issue.status === BLOCKED) {
+    if (issue.status === jiraBinding(store.project).statuses.blocked) {
         delete t.parked!.resumeRequestedAt;
-        t.status = BLOCKED;
+        t.status = jiraBinding(store.project).statuses.blocked;
         note(store, t, `Decision needed: ${t.parked!.reason} The last resume did not complete; move it back to ${t.parked!.fromStatus} to retry.`);
         return;
     }
@@ -79,7 +79,7 @@ async function settleParking(store: Store, execute: Execute, t: Ticket, issue: L
     };
     const ids = () => parkEffectIds(t.parked!.marker, t.parked!.commentAttempt);
     // A refused transition never reached Jira: release. A refused comment after Blocked landed: keep watching and retry.
-    if (!await settle(() => ids().transition, () => moveToBlocked(store, execute, t), async () => issue.status === BLOCKED, detail => releasePark(store, t, detail))) return;
+    if (!await settle(() => ids().transition, () => moveToBlocked(store, execute, t), async () => issue.status === jiraBinding(store.project).statuses.blocked, detail => releasePark(store, t, detail))) return;
     if (!await settle(() => ids().comment, () => commentDecision(store, execute, t), async () => !!await findComment(execute, jiraBinding(store.project), t.key, t.parked!.marker), detail => commentRefused(store, t, detail))) return;
     publishParked(store, t);
 }
