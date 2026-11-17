@@ -23,7 +23,7 @@ Server domains (entry points `server/index.ts`, `server/dev.ts`, `server/cli.ts`
 
 ```text
 server/
-  office/          service identity: config, projects, security, clock, health, revision,
+  office/          service identity: config, projects, project policy, security, clock, health, revision,
                    service lock and timers
     http/          API routes, office commands, static UI, responses
   store/           persistence: store, schema, migrations, effects, evidence artifacts, recovery

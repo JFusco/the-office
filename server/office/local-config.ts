@@ -6,6 +6,9 @@ import { resolve } from 'node:path';
 import type { OfficeProject } from '../../src/shared';
 import { GOAL_EVIDENCE_LIMITS, goalEvidencePath } from '../leadership/goal-evidence';
 import { assertModelOverrides, type ModelOverrides } from '../telemetry/model-routes';
+import { parseProjectPolicy, type ProjectPolicyInput } from './project-policy-config';
+/** A project entry as written in office-config.json. `policy`, `jira`, `azure` and `prompt` configure start-up and never reach the saved project. */
+export type ProjectInput = OfficeProject & { policy?: ProjectPolicyInput; jira?: unknown; azure?: unknown; prompt?: unknown };
 export interface CECBinding {
     goalEvidencePaths?: string[];
     site: string;
@@ -24,7 +27,7 @@ export interface CECBinding {
 export interface LocalBindings {
     featurePlanning?: FeaturePlanningBindings;
     cec?: CECBinding;
-    projects?: OfficeProject[];
+    projects?: ProjectInput[];
     holds?: Record<string, string>;
     legacyAutomation?: string;
     /** Cross-project delivery stages that may run at once (1..3); absent means 1. */
@@ -41,6 +44,12 @@ export function localBindings(dataRoot: string): LocalBindings {
     const config: LocalBindings = JSON.parse(readFileSync(path, 'utf8'));
     if (config.projects && (!Array.isArray(config.projects) || config.projects.some(project => !project.id || !project.name || !['github', 'azure'].includes(project.provider) || !project.repo || !project.repository || !project.target) || new Set(config.projects.map(project => project.id)).size !== config.projects.length))
         throw new Error('Local project bindings are incomplete or duplicated');
+    for (const project of config.projects || []) {
+        // Only `policy` is wired so far. A block this build cannot honor stops start-up; it is never ignored or saved.
+        for (const block of ['jira', 'azure', 'prompt'] as const)
+            if (block in project) throw new Error(`Project "${project.id}": ${block} requires the bindings/rules phase`);
+        if ('policy' in project) project.policy = parseProjectPolicy(project, project.policy);
+    }
     if (config.cec && (typeof config.cec.board !== 'number' || ['site', 'cloudId', 'account', 'repo', 'organization', 'project', 'repository', 'repositoryId', 'target'].some(key => typeof config.cec![key as keyof CECBinding] !== 'string' || !config.cec![key as keyof CECBinding])))
         throw new Error('Local Jira/Azure binding is incomplete');
     if (config.cec) projectListScope(config.cec);

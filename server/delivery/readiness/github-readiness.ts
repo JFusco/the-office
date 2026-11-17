@@ -28,6 +28,7 @@ import { HOLDS } from '../../office/config';
 import { findingsBlock } from '../findings/advisory';
 import { refreshEligible } from '../repairs/refresh-conflicted';
 import { requireMetadataReview } from '../publication/metadata-review';
+import { assertHarnessMayMerge, harnessMayMerge } from './merge-ceiling';
 export async function readinessPolicy(this: GitHubDelivery, head: string) {
     const project = this.store.project;
     const [branch, pages] = await Promise.all([
@@ -60,12 +61,15 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
     const expectedHead = job.head;
     assertStoppedBaseMergeReady(this.store, job, expectedHead);
     assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
+    const priorIntent = this.store.getEffect<{ sha: string }>(job.mergeIntentId || `merge:${job.id}:${job.head}`);
+    const attempted = !!job.mergeAttempt || !!priorIntent && ['dispatching', 'uncertain', 'verified'].includes(priorIntent.status);
+    // A merge already attempted keeps its read-back route under any policy; anything else stops here with the policy reason.
+    if (!attempted) assertHarnessMayMerge(this.store);
     if (this.store.state.paused || job.mergeApprovalRequired || job.mergeAuthorization && job.mergeAuthorization.head !== job.head || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
         throw new Error('Office merging is paused, disabled, or awaiting this PR’s approval');
     if (HOLDS[job.key])
         throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
-    const priorIntent = this.store.getEffect<{ sha: string }>(job.mergeIntentId || `merge:${job.id}:${job.head}`);
-    if (job.mergeAttempt || priorIntent && ['dispatching', 'uncertain', 'verified'].includes(priorIntent.status))
+    if (attempted)
         throw new Error('Prior merge attempt needs read-back; it will not be repeated');
     const p = await this.verifyPR(job, true);
     const greenOnly = !!await automationMergePolicy(this, job, p);
@@ -115,6 +119,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
     const payload = { sha: job.head, method };
     const merged = await new Effects(this.store).execute({ id: intentId, work: { projectId: this.store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id, operation: 'github-merge', target: job.prUrl, authorization: this.store.state.coordination!.merges?.authorizedAt || job.mergeAuthorization?.head || '', payload, expectedState: { head: job.head, base: this.store.project.target },
         preflight: async () => {
+            assertHarnessMayMerge(this.store);
             if (this.jobs.find(candidate => candidate.id === job.id) !== job || job.stage !== 'merge' || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
                 throw new Error('Merge work identity or authorization changed');
             if (HOLDS[job.key])
@@ -163,7 +168,7 @@ export async function finishLeadReview(this: GitHubDelivery, job: TicketJob, res
     const ready = result.outcome === 'passed' && result.commit === p.head.sha && !findingsBlock(this.store, result.findings, f => f.status === 'open') && result.evidence.some(e => e.commit === p.head.sha && containedFile(e.path, root) && e.kind === 'review') && !p.draft && p.mergeable !== false && p.base.ref === this.store.project.target;
     if (job.mergeAuthorization && job.mergeAuthorization.head !== job.head)
         job.mergeApprovalRequired = true;
-    job.status = ready && !job.mergeApprovalRequired && (this.store.state.coordination?.merges?.enabled || job.mergeAuthorization?.head === job.head) ? 'queued' : 'watching';
+    job.status = ready && !job.mergeApprovalRequired && harnessMayMerge(this.store) && (this.store.state.coordination?.merges?.enabled || job.mergeAuthorization?.head === job.head) ? 'queued' : 'watching';
     if (job.status === 'queued')
         job.stage = 'merge';
     job.detail = `Sam: ${shortSummary(result.summary)}${result.blocker ? ` · ${shortSummary(result.blocker)}` : ''} ${job.status === 'queued' ? 'Office merge queued; no approval needed.' : 'Watching for readiness or dependency changes.'}`;

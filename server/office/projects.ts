@@ -3,12 +3,26 @@ import { resolve } from 'node:path';
 import { DATA, CEC, LOCAL_BINDINGS } from './config';
 import { intakeLocation } from '../cec/intake-scope';
 import type { OfficeProject, Role } from '../../src/shared';
+import type { ProjectInput } from './local-config';
+import type { ProjectPolicyInput } from './project-policy-config';
 /** Use the validated CEC fallback for its canonical explicit project too. Empty overrides remain explicit. */
 export function withCECGoalEvidence(project: OfficeProject, binding: { repo: string; repository: string; goalEvidencePaths?: string[] }): OfficeProject {
     if (project.id !== 'cec' || project.provider !== 'azure' || project.repository !== binding.repository || project.repo !== binding.repo || project.goalEvidencePaths !== undefined || binding.goalEvidencePaths === undefined) return project;
     return { ...project, goalEvidencePaths: [...binding.goalEvidencePaths] };
 }
-export const PROJECTS: OfficeProject[] = (LOCAL_BINDINGS.projects || [
+/** The project as stores save, digest and send it to workers: the entry without its start-up-only blocks, keys in their original order. */
+export function persistedProject(input: ProjectInput): OfficeProject {
+    const { policy, jira, azure, prompt, ...project } = input;
+    return project;
+}
+/** Each configured project's validated `policy` block, by project id. Read it through `projectPolicy`. */
+export function policyInputs(projects: ProjectInput[] = []): ReadonlyMap<string, ProjectPolicyInput> {
+    return new Map(projects.flatMap(project => project.policy ? [[project.id, project.policy] as const] : []));
+}
+/** The configured projects as stores see them, or undefined when the config lists none. */
+export function configuredProjects(projects?: ProjectInput[]): OfficeProject[] | undefined { return projects?.map(persistedProject); }
+export const PROJECT_POLICY_INPUTS = policyInputs(LOCAL_BINDINGS.projects);
+export const PROJECTS: OfficeProject[] = (configuredProjects(LOCAL_BINDINGS.projects) || [
     { id: 'cec', name: 'CEC', provider: 'azure', repo: CEC.repo, repository: CEC.repository, target: CEC.target, board: intakeLocation(CEC) },
     { id: 'brain', name: 'Brain', provider: 'github', repo: '/Users/joe.fusco/Projects/brain', repository: 'JFusco/brain', target: 'main', githubProject: { owner: 'JFusco', number: 8, url: 'https://github.com/users/JFusco/projects/8' } },
     { id: 'cms-field-vocabulary', name: 'CMS field vocabulary', provider: 'github', repo: '/Users/joe.fusco/Projects/cms-field-vocabulary', repository: 'JFusco/cms-field-vocabulary', target: 'main', githubProject: { owner: 'JFusco', number: 6, url: 'https://github.com/users/JFusco/projects/6' } },

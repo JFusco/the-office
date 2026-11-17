@@ -4,6 +4,7 @@ import { assessmentEnabled } from '../features/handoff/disposition-store';
 import { enrolled, assertFeatureGate } from '../features/enrollment-gate';
 import { hasUncertainEffects } from '../delivery/pipeline/github-delivery';
 import type { Coordinator } from './coordination';
+import { assertHarnessMayMerge } from '../delivery/readiness/merge-ceiling';
 
 export function requestWork(this: Coordinator, key: string, binding?: FeatureBinding) {
     return this.store.transaction(() => {
@@ -68,6 +69,7 @@ export function recheckPR(this: Coordinator, key: string) {
     const mergeRecovery = job?.stage === 'ci-recovery' && ['blocked', 'interrupted'].includes(job.status) && !!job.mergeCommit && !job.ciFollowupKey;
     if (!job || !mergePreflight && !mergeRecovery && (job.stage !== 'lead-pr' || !['blocked', 'interrupted', 'watching'].includes(job.status)))
         throw new Error('Only an inactive PR review or a merge preflight with no attempted write can be rechecked');
+    if (mergePreflight) assertHarnessMayMerge(this.store);
     if (job.steps.some(s => hasUncertainEffects(s.stage, s.result)))
         throw new Error('Original effects must be reconciled before a new review');
     job.status = 'queued';

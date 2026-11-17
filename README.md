@@ -31,6 +31,17 @@ cp office-config.example.json .local/office-config.json
 
 Edit the private configuration for your repositories, account, project boards, base branches, and existing human holds. `delivery.concurrency` (1 to 3, default 1) lets that many delivery stages from different projects run at once; each project still runs one stage at a time and each worker role one stage at a time. Hands-off `independent-checks` validation runs the repository's `verify:ci` script in the harness unless a project lists its own `checks` (argv commands with optional `timeoutMs`); browser validation, repairs and any check the harness cannot finish stay with Riley. Keep credentials in their native authenticated tools. `.local`, environment files, databases, logs, sessions, and artifacts are ignored by Git.
 
+A project entry may carry an optional `policy` block; leave it out and the project behaves as it did before.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `policy.merge` | `harness` on GitHub, `human` on Jira/Azure | A ceiling. Under `human` the Office never merges, whatever the Settings switch or a saved approval says. `harness` still needs that switch or an exact-head approval. Jira/Azure accepts only `human`. |
+| `policy.handsOff` | `false` (`true` for `brain` and `cms-field-vocabulary`) | The harness, not a model, creates the candidate, publishes, promotes and closes out. GitHub only. |
+| `policy.checkpoint.hour` | `17` (`9` for `cec`, `15` for `cms-field-vocabulary`) | Hour of the daily checkpoint, 0 to 23, America/New_York. |
+| `policy.checkpoint.weekends` | `true` (`false` for `cec`) | Whether the checkpoint also runs on Saturday and Sunday. |
+
+A mistake stops start-up and names the project and key, for example `Project "web": policy.merge must be "human" or "harness"`. The `jira`, `azure` and `prompt` blocks are not supported yet and also stop start-up.
+
 ```sh
 pnpm dev
 ```

@@ -161,7 +161,10 @@ QA pass promotes/publishes that PR rather than creating a duplicate. A staging P
 can trigger checks, so PR-triggered checks are not required before the PR exists.
 Ready for Staging is a waiting boundary, not permission to merge or deploy COS.
 GitHub automatic merge is limited to configured authorization; it never grants
-that authority to Jira/Azure work. Release, package or downstream-runner success
+that authority to Jira/Azure work. A project's `policy.merge` is a ceiling above
+that authorization: under `human` no merge is queued or dispatched, a merge
+already queued blocks with "Project policy requires human merge", and a merge
+already attempted is still settled by read-back. Release, package or downstream-runner success
 must be observed from the relevant provider; a merge is not proof of release.
 
 Sam's GitHub readiness review does not run on a PR that GitHub already reports as not

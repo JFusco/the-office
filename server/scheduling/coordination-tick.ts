@@ -11,6 +11,7 @@ import { reconcileNoticeConfirmations } from '../conversations/notifications';
 import { BrainFollowup } from '../maintenance/brain/brain-followup';
 import type { Coordinator } from './coordination';
 import { checkpointWindow } from './coordination';
+import { projectPolicy } from '../office/project-policy';
 
 export async function tick(this: Coordinator, now = new Date()) {
     const c = this.state;
@@ -26,7 +27,7 @@ export async function tick(this: Coordinator, now = new Date()) {
     captureTime(this.store);
     captureCost(this.store);
     c.lastTickAt = now.toISOString();
-    const { due, next } = checkpointWindow(this.store.project.id, now, c.activatedAt);
+    const { due, next } = checkpointWindow(projectPolicy(this.store.project).checkpoint, now, c.activatedAt);
     c.nextDueAt = next;
     if (due && !c.checkpoints.some(p => p.date === due.date)) {
         // A durable record precedes dispatch; missed wakes coalesce, never backfill every day.

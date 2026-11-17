@@ -1,4 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
+import { harnessMayMerge } from './merge-ceiling';
 import {teamReviewedHead} from './team-review';
 import {findingsBlock} from '../findings/advisory';
 import {sameProviderInstant} from './provider-instant';
@@ -94,7 +95,7 @@ export async function currentMergeChecks(delivery:GitHubDelivery,job:TicketJob,p
 /** Observation queues only an unchanged, already accepted Lead assessment. Scheduler still owns all effects. */
 export async function resumeReviewedMerge(delivery:GitHubDelivery,job:TicketJob,p:any){
  const {store}=delivery,project=digest(delivery.store.project),canonical=()=>delivery.jobs.filter(j=>j.id===job.id).length===1&&delivery.jobs.find(j=>j.id===job.id)===job&&!store.activeClaims().some(c=>c.work.projectId===store.project.id&&c.work.kind==='delivery'&&c.work.id===job.id)&&!store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)),context=job.reviewContext,review=job.steps.filter(s=>s.stage==='lead-pr').at(-1),work=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='github-lead-pr').at(-1);
- const enabled=()=>store.state.coordination?.merges?.enabled||job.mergeAuthorization?.head===job.head;
+ const enabled=()=>harnessMayMerge(store)&&(store.state.coordination?.merges?.enabled||job.mergeAuthorization?.head===job.head);
  if(!context&&teamReviewedHead(store,job)){
   // Team-reviewed hands-off job: no Lead review to re-validate; requeue once current checks pass on the unchanged head.
   if(!canonical()||job.stage!=='merge'||!['blocked','interrupted','watching'].includes(job.status)||job.mergeAttempt||job.mergeApprovalRequired||store.state.paused||store.state.draining||HOLDS[job.key]||!enabled())return false;

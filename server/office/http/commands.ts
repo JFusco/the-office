@@ -24,6 +24,7 @@ import { configureChannelNotices } from '../../conversations/channel-notice';
 import { requeueWaitedImplement } from '../../delivery/recovery/implementation/requeue-waited-implement';
 import { recoverCTOInput } from '../../conversations/recover-cto-input';
 import { DATA } from '../config';
+import { assertHarnessMayMerge } from '../../delivery/readiness/merge-ceiling';
 
 /** POST /api/commands: operator and harness commands for one project. */
 export async function commandRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
@@ -108,6 +109,8 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'configure-merges': {
                 if (store.project.provider !== 'github' || typeof merges?.enabled !== 'boolean')
                     throw new Error('Invalid GitHub merge setting');
+                // Turning the switch off stays possible under a human-merge policy.
+                if (merges.enabled) assertHarnessMayMerge(store);
                 coordinator!.state.merges = { enabled: merges.enabled, authorizedAt: new Date().toISOString() };
                 store.emit('merge-policy', merges.enabled ? 'Sam may merge linked issue PRs after current-head review and required checks, then Morgan closes out the issue and board.' : 'Automatic PR merging disabled.', 'pm');
                 break;
@@ -170,7 +173,7 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'adopt-candidate': return json({ accepted: true, id: enqueueRequest(store, action, key).id }, 202);
             case 'reconcile-scope-repair':
             case 'reconcile-preparation': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
-            case 'approve-merge': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
+            case 'approve-merge': assertHarnessMayMerge(store); return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
             case 'reconcile-activation':
             case 'reconcile-review': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);
             case 'reconcile-base-update': return json({ accepted: true, id: enqueueRequest(store, action, key, head || '').id }, 202);

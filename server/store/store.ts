@@ -11,6 +11,8 @@ import type { RunAccounting } from '../../src/contracts/telemetry';
 import { PERSONAS, ROLE_NAMES, workKey, type Agent, type EffectIntent, type OfficeEvent, type OfficeSnapshot, type Role, type Stage, type StageResult, type Ticket, type WorkClaim, type WorkRef, type WorkTime } from '../../src/shared';
 import { durationLabel } from '../../src/timing/timing';
 import { projectById, projectData } from '../office/projects';
+import { projectPolicy } from '../office/project-policy';
+import { checkpointLabel } from '../scheduling/checkpoint-label';
 import type { OfficeProject } from '../../src/shared';
 import { type Clock, systemClock } from '../office/clock';
 import { initializeStoreSchema } from './store-schema';
@@ -60,7 +62,7 @@ export class Store {
                 this.state.agents.push(initialSnapshot().agents.find(agent => agent.id === role)!);
         Object.assign(this.state.agents.find(agent => agent.id === 'cto')!, { name: ROLE_NAMES.cto, title: 'CTO' });
         this.state.startedAt = clock.now().toISOString();
-        this.state.intake.schedule = project.id === 'brain' ? 'Daily · 5:00 PM America/New_York' : project.provider === 'github' ? 'Daily · 3:00 PM America/New_York · deeper review due Monday' : 'Weekdays · 9:00 AM America/New_York';
+        this.state.intake.schedule = `${checkpointLabel(projectPolicy(project).checkpoint)}${project.id !== 'brain' && project.provider === 'github' ? ' · deeper review due Monday' : ''}`;
         const developer = this.state.agents.find(agent => agent.id === 'developer');
         if (developer)
             Object.assign(developer, { provider: 'claude', model: DEVELOPER_MODEL, effort: DEVELOPER_EFFORT });
