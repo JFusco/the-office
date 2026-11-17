@@ -20,11 +20,13 @@ test('parks once with an inline decision comment and no duplicate standalone com
     await parkTicket(store, jira.execute, t, 'code-review', 'attempt-1', decision('human-hold'));
     expect(jira.state['CEC-900'].status).toBe('Blocked');
     expect(jira.state['CEC-900'].comments).toHaveLength(1);
-    expect(jira.state['CEC-900'].comments[0].body).toContain('Office decision attempt-1: Which locale');
-    expect(jira.state['CEC-900'].comments[0].body).toContain('Move it back to Code Review to resume');
+    const body = JSON.stringify(jira.state['CEC-900'].comments[0].body);
+    expect(body).toContain('Office decision attempt-1: Which locale');
+    expect(body).toContain('Move it back to Code Review to resume');
     expect(t.parked).toMatchObject({ stage: 'code-review', fromStatus: 'Code Review', published: true });
     expect(t).toMatchObject({ activity: 'blocked', status: 'Blocked' });
-    expect(jira.calls.find(args => args[2] === 'transition')).toEqual(expect.arrayContaining(['--transition-comment-format', 'plain', '--transition-comment']));
+    expect(jira.moves()).toEqual([['rest', 'issue', 'transition', 'CEC-900', '131']]);
+    expect(store.getEffect('park-transition:Office decision attempt-1')).toMatchObject({ status: 'verified', payload: { to: 'Blocked', comment: expect.stringContaining('Office decision attempt-1') } });
     expect(jira.calls.some(args => args[3] === 'create')).toBe(false);
     await parkTicket(store, jira.execute, t, 'code-review', 'attempt-1', decision('human-hold')).catch(() => undefined);
     expect(jira.writes()).toBe(1);
@@ -42,7 +44,7 @@ test('a reassigned or already Blocked ticket is never written', async () => {
     }
 });
 
-test('a lost transition response leaves the Office block, retains its atomic comment and is never resent', async () => {
+test('a lost transition response leaves the Office block, keeps its comment and is never resent', async () => {
     const { store } = cecStore(), t = ticket(), jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
     store.state.tickets = [t];
     jira.faults.loseTransitionResponse = true;
@@ -50,7 +52,7 @@ test('a lost transition response leaves the Office block, retains its atomic com
     expect(t).toMatchObject({ activity: 'blocked', parked: { published: false } });
     expect(jira.state['CEC-900'].comments).toHaveLength(1);
     await expect(parkTicket(store, jira.execute, t, 'implement', 'attempt-1', decision('provider-wait'))).rejects.toThrow();
-    expect(jira.calls.filter(args => args[2] === 'transition')).toHaveLength(1);
+    expect(jira.moves()).toHaveLength(1);
 });
 
 test('a park refused at preflight (here an Office pause) is released to a plain Office block with nothing sent', async () => {
@@ -62,4 +64,37 @@ test('a park refused at preflight (here an Office pause) is released to a plain 
     expect(t.parked).toBeUndefined();
     expect(t).toMatchObject({ activity: 'blocked' });
     expect(t.blocker).toContain('not parked in Jira');
+});
+
+test('a park without its Blocked transition, its Jira token, a token Jira accepts or the Office account behind it is refused before any write and released', async () => {
+    for (const fault of ['noBlockedTransition', 'noCredential', 'revokedToken', 'tokenAccount'] as const) {
+        const { store } = cecStore(), t = ticket(), jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
+        store.state.tickets = [t];
+        (jira.faults as any)[fault] = fault === 'tokenAccount' ? 'someone-else' : true;
+        await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('scope'));
+        expect(jira.writes(), fault).toBe(0);
+        expect(store.getEffect('park-transition:Office decision attempt-1')?.status, fault).toBe('rejected');
+        expect(t.parked, fault).toBeUndefined();
+        expect(t.blocker, fault).toContain('not parked in Jira');
+        expect(JSON.stringify(store.getEffect('park-transition:Office decision attempt-1')), fault).not.toContain('synthetic-token');
+    }
+});
+
+test('the workflow refuses a TWG move to Blocked, whose comment is not in the transition request', async () => {
+    const jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
+    await expect(jira.execute('twg', ['jira', 'workitem', 'transition', '--id', 'CEC-900', '--transition-id', '131', '--transition-comment', 'x', '--transition-comment-format', 'plain'])).rejects.toThrow('Must leave a comment');
+    expect(jira.state['CEC-900']).toMatchObject({ status: 'In Progress', comments: [] });
+});
+
+test('a move Jira refuses stays unconfirmed with Jira\'s reason and is never resent', async () => {
+    const { store } = cecStore(), t = ticket(), jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
+    store.state.tickets = [t];
+    jira.faults.refuseRest = 'Must leave a comment';
+    await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('scope'));
+    expect(store.getEffect('park-transition:Office decision attempt-1')).toMatchObject({ status: 'uncertain', error: expect.stringContaining('Must leave a comment') });
+    expect(t).toMatchObject({ activity: 'blocked', parked: { published: false } });
+    expect(t.blocker).toContain('Jira Blocked move not confirmed');
+    expect(jira.state['CEC-900']).toMatchObject({ status: 'In Progress', comments: [] });
+    await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('scope'));
+    expect(jira.moves()).toHaveLength(1);
 });

@@ -79,8 +79,12 @@ Office verifies the same issue and unchanged metadata through two native read-on
 reads before accepting that handoff. An uncertain write, changed assignment or
 conflicting status stays blocked; an already-satisfied status needs no repeated transition.
 
-Jira Blocked parking attaches the decision comment to the transition, including workflows
-that require a comment on that screen. A retained commentless transition rejected with
+Jira Blocked parking sends the decision comment inside the transition request, which workflows
+that require a comment on that screen need. This one write uses Jira REST with an API token read
+from the login Keychain. To store it, enter
+`security add-generic-password -U -s the-office-jira -a <jira-email> -w "$(pbpaste)"` in a
+terminal, copy the token, then press Return. The interactive `-w` prompt cuts a token off at 128
+characters. A retained commentless transition rejected with
 Jira's explicit HTTP 400 comment validation stays blocked until a selected-ticket Resume
 independently binds its preceding verified QA comment, complete status history and stable
 issue metadata. Only that rejected effect is retired as rejected, with its original error,

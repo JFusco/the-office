@@ -64,7 +64,7 @@ test('a lost transition response is confirmed by read-back, then the comment is 
     clock.advance(60000);
     await reconcileAndResumeParked(store, jira.execute, () => undefined);
     expect(store.getEffect('park-transition:Office decision attempt-1')?.status).toBe('verified');
-    expect(jira.calls.filter(args => args[2] === 'transition')).toHaveLength(1);
+    expect(jira.moves()).toHaveLength(1);
     expect(jira.state['CEC-900'].comments).toHaveLength(1);
     expect(t.parked?.published).toBe(true);
     expect(t.blocker).toBe(`Decision needed: ${t.parked!.reason}`);
@@ -93,7 +93,7 @@ test('a transition that never landed stays with IT and is not resent', async () 
     clock.advance(60000);
     await reconcileAndResumeParked(store, jira.execute, () => undefined);
     expect(store.getEffect('park-transition:Office decision attempt-1')?.status).toBe('uncertain');
-    expect(jira.calls.filter(args => args[2] === 'transition')).toHaveLength(1);
+    expect(jira.moves()).toHaveLength(1);
     expect(t.parked?.published).toBe(false);
 });
 
@@ -132,7 +132,7 @@ test('a comment refused after Blocked landed keeps the park and retries the comm
     expect(jira.state['CEC-900'].comments).toHaveLength(1);
     expect(store.getEffect('park-comment:Office decision attempt-1:1')?.status).toBe('verified');
     expect(t.parked?.published).toBe(true);
-    expect(jira.calls.filter(args => args[2] === 'transition')).toHaveLength(1);
+    expect(jira.moves()).toHaveLength(1);
 });
 
 test('a reassignment after Blocked landed keeps watching without commenting on someone else\'s ticket', async () => {

@@ -4,6 +4,10 @@ import { BLOCKED, findComment, jira, readIssue, type Execute } from './jira-issu
 import { STAGE_LABELS, type Stage, type StageResult, type Ticket } from '../../../src/shared';
 import type { Store } from '../../store/store';
 import { recordTicketParked } from '../../knowledge/record-trigger';
+import { resolveBlockedTransition } from './blocked-transition';
+import { transitionWithComment } from './commented-transition';
+import { jiraCredential, type JiraCredential } from './jira-credential';
+import { jiraAccount } from './jira-account';
 
 const MARKER = 'Office decision ';
 /** A refused comment preflight never dispatched, so a later attempt is a fresh intent with its own id. */
@@ -11,7 +15,7 @@ export const parkEffectIds = (marker: string, commentAttempt = 0) => ({ transiti
 const effectFields = (store: Store, t: Ticket) => ({ work: { projectId: store.project.id, kind: 'delivery' as const, id: t.key }, attemptId: t.parked!.marker.slice(MARKER.length), target: t.key, authorization: t.runId });
 
 /**
- * Moves the ticket to Jira Blocked with its decision comment attached to the transition.
+ * Moves the ticket to Jira Blocked with its decision comment in the transition request (Jira REST; reads stay on TWG).
  * The transition goes first so a lost transition response is the only write since preflight and its
  * read-back is decisive. Both writes are durable effects: verified once, reconciled by read-back, never resent.
  */
@@ -34,13 +38,20 @@ export async function parkTicket(store: Store, execute: Execute, t: Ticket, stag
 export async function moveToBlocked(store: Store, execute: Execute, t: Ticket): Promise<void> {
     const { marker, fromStatus } = t.parked!;
     const comment = decisionComment(t);
+    let transitionId = '', credential: JiraCredential | undefined;
     await new Effects(store).execute({ id: parkEffectIds(marker).transition, ...effectFields(store, t), operation: 'jira-transition', payload: { to: BLOCKED, comment }, expectedState: { assignee: CEC.account, from: fromStatus },
         preflight: async () => {
             const current = await readIssue(execute, t.key);
             if (current.assignee !== CEC.account || current.status !== fromStatus)
                 throw new Error('Jira assignee or status changed before parking');
+            // Anything missing here stops the park before a write, so it is refused, not left uncertain.
+            transitionId = await resolveBlockedTransition(execute, t.key);
+            credential = await jiraCredential(execute);
+            // The move and its comment are authored by the token's account; anything but the Office account would not read back.
+            if (await jiraAccount(execute, credential) !== CEC.account)
+                throw new Error('The Jira API token does not belong to the Office account');
         },
-        dispatch: async () => jira(execute, ['transition', '--id', t.key, '--transition-id', BLOCKED, '--transition-comment', comment, '--transition-comment-format', 'plain'], false),
+        dispatch: async () => transitionWithComment(execute, credential!, t.key, transitionId, comment),
         verify: async () => {
             const current = await readIssue(execute, t.key);
             return current.status === BLOCKED && current.assignee === CEC.account;
