@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { parkDecision, parkTicket } from '../../../../server/cec/parking/park-ticket';
+import { moveToBlocked, parkDecision, parkTicket } from '../../../../server/cec/parking/park-ticket';
 import { parksInJira } from '../../../../server/cec/parking/parks-in-jira';
 import { fakeJira } from './fake-jira';
 import { cecStore, decision, ticket } from './fixtures';
@@ -21,8 +21,10 @@ test('parks once with an inline decision comment and no duplicate standalone com
     expect(jira.state['CEC-900'].status).toBe('Blocked');
     expect(jira.state['CEC-900'].comments).toHaveLength(1);
     const body = JSON.stringify(jira.state['CEC-900'].comments[0].body);
-    expect(body).toContain('Office decision attempt-1: Which locale');
-    expect(body).toContain('Move it back to Code Review to resume');
+    expect(body).toContain('Paused for a decision: Which locale should own the fallback copy?');
+    expect(body).toContain('paused this ticket at \\"Reviewing the code\\". Move it back to Code Review to resume');
+    expect(body).toContain('Office decision attempt-1');
+    expect(body.indexOf('Paused for a decision')).toBeLessThan(body.indexOf('Office decision attempt-1'));
     expect(t.parked).toMatchObject({ stage: 'code-review', fromStatus: 'Code Review', published: true });
     expect(t).toMatchObject({ activity: 'blocked', status: 'Blocked' });
     expect(jira.moves()).toEqual([['rest', 'issue', 'transition', 'CEC-900', '131']]);
@@ -97,4 +99,17 @@ test('a move Jira refuses stays unconfirmed with Jira\'s reason and is never res
     expect(jira.state['CEC-900']).toMatchObject({ status: 'In Progress', comments: [] });
     await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('scope'));
     expect(jira.moves()).toHaveLength(1);
+});
+
+test('a park already recorded keeps the comment it was recorded with', async () => {
+    const { store } = cecStore(), t = ticket(), jira = fakeJira({ 'CEC-900': { status: 'In Progress' } });
+    store.state.tickets = [t];
+    store.state.paused = true;
+    await parkDecision(store, jira.execute, t, 'implement', 'attempt-1', decision('scope'));
+    const recorded = store.getEffect<any>('park-transition:Office decision attempt-1')!;
+    store.state.paused = false;
+    store.updateEffect(recorded.id, 'rejected', current => { current.status = 'prepared'; current.error = ''; (current.payload as { comment: string }).comment = 'Office decision attempt-1: earlier wording'; });
+    t.parked = { stage: 'implement', reason: 'A different reason now.', at: '', fromStatus: 'In Progress', marker: 'Office decision attempt-1', published: false };
+    await moveToBlocked(store, jira.execute, t);
+    expect(JSON.stringify(jira.state['CEC-900'].comments[0].body)).toContain('Office decision attempt-1: earlier wording');
 });

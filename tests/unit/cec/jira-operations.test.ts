@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
+import { jiraDocument } from '../../fixtures/jira-markdown';
 import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { coordination } from '../../../server/scheduling/coordination';
@@ -96,7 +97,7 @@ test('prospective publication recaptures intervals crossing activation and exclu
     expect(calls).toBe(0);
     expect(earlier.state.coordination!.time!.entries[0].status).toBe('excluded');
 });
-test('QA comment readback accepts canonical ADF paragraphs without trailing blank lines', async () => {
+test('the QA comment is posted as markdown and read back by its words from Jira\'s stored document', async () => {
     const store = setup(), ticket: any = { key: 'CEC-999', commit: 'a'.repeat(40), runId: 'run' }, result: any = { outcome: 'blocked', summary: 'Evidence missing', blocker: 'Screenshot is absent', commit: ticket.commit, evidence: [], findings: [], receipts: [] };
     let saved: any;
     const execute: any = async (_program: string, args: string[]) => {
@@ -106,9 +107,9 @@ test('QA comment readback accepts canonical ADF paragraphs without trailing blan
         else if (args.includes('create')) {
             const text = args[args.indexOf('--body') + 1];
             expect(text).toBe(text.trimEnd());
-            expect(text).toContain('blocked:');
-            expect(text).toContain(result.blocker);
-            saved = { id: '20', author: { accountId: CEC.account }, body: { type: 'doc', content: text.split('\n').map(line => ({ type: 'paragraph', content: [{ type: 'text', text: line }] })) } };
+            expect(args[args.indexOf('--body-format') + 1]).toBe('markdown');
+            expect(text).toBe("**QA: blocked**\n\nEvidence missing\n\n**What's needed:** Screenshot is absent\n\nBuild aaaaaaa · Office ref canonica (qa)");
+            saved = { id: '20', author: { accountId: CEC.account }, body: jiraDocument(text) };
             data = saved;
         }
         else
