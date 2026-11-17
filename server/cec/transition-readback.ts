@@ -1,3 +1,4 @@
+import { twgConnection } from './twg-connection';
 import { ownTicket } from '../office/ticket-key';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -46,7 +47,7 @@ export async function verifyAlreadyAtStatus(store: Store, ticket: Ticket, target
             operation: 'Read the same issue twice; never transition, comment or change metadata' });
         const read = async () => {
             const issue = jiraRecord(unpack(await execute('twg', ['jira', 'workitem', 'get', ticket.key,
-                '--site', jira.site, '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 })), ticket.key);
+                ...twgConnection(jira), '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 })), ticket.key);
             const fields = issue.fields || issue;
             if (fields.status?.name !== target || !fields.status?.id || fields.assignee?.accountId !== jira.account ||
                 fields.issuetype?.subtask !== false || !fields.issuetype?.name || fields.issuetype.name === 'Epic' || !fields.updated)

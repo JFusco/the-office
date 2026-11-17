@@ -12,6 +12,8 @@ export interface JiraBinding {
     account: string;
     /** Keychain account of this project's Jira API token; absent for the legacy single-account CEC entry. */
     credentialAccount?: string;
+    /** Saved TWG login profile for this project's Jira calls; absent means TWG's default login. */
+    twgProfile?: string;
     projectKey: string;
     board: number;
     /** When present, this list replaces board membership as the intake source. */
@@ -74,7 +76,7 @@ export function legacyCecBindings(cec: CECBinding): ProjectBindings {
     });
 }
 
-/** Bindings by project id. Only the Azure project `cec` has one until explicit per-project blocks are accepted. */
-export function projectBindings(projects: readonly Pick<OfficeProject, 'id' | 'provider'>[], cec: CECBinding): ReadonlyMap<string, ProjectBindings> {
-    return new Map(projects.filter(project => project.provider === 'azure' && project.id === 'cec').map(project => [project.id, legacyCecBindings(cec)] as const));
+/** Bindings by project id. Only the Azure project `cec` has one until the rules phase; explicit blocks, when given, supply its connection details. */
+export function projectBindings(projects: readonly Pick<OfficeProject, 'id' | 'provider'>[], cec: CECBinding, explicit: ReadonlyMap<string, ProjectBindings> = new Map()): ReadonlyMap<string, ProjectBindings> {
+    return new Map(projects.filter(project => project.provider === 'azure' && project.id === 'cec').map(project => [project.id, explicit.get(project.id) ?? legacyCecBindings(cec)] as const));
 }

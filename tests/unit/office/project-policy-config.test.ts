@@ -54,11 +54,9 @@ test('the loader validates policy and stops on blocks this build cannot honor', 
     expect(load({ ...entry, policy: { checkpoint: { hour: 10 } } }).policy).toEqual({ checkpoint: { hour: 10 } });
     expect(() => load({ ...entry, policy: { merge: 'harness' } })).toThrow('Project "cec": policy.merge must be "human" for provider "azure"');
     expect(() => load({ ...entry, policy: null })).toThrow('Project "cec": policy must be an object');
-    for (const block of ['jira', 'azure', 'prompt']) {
-        expect(() => load({ ...entry, [block]: {} })).toThrow(`Project "cec": ${block} requires the bindings/rules phase`);
-        expect(() => load({ ...entry, [block]: null })).toThrow(`Project "cec": ${block} requires the bindings/rules phase`);
-    }
-    expect(() => load({ ...entry, policy: {}, jira: {}, azure: {}, prompt: {} })).toThrow('Project "cec": jira requires the bindings/rules phase');
+    for (const value of [{}, null]) expect(() => load({ ...entry, prompt: value })).toThrow('Project "cec": prompt requires the rules phase');
+    expect(() => load({ ...entry, policy: {}, jira: {}, azure: {}, prompt: {} })).toThrow('Project "cec": prompt requires the rules phase');
+    for (const block of ['jira', 'azure']) expect(() => load({ ...entry, [block]: {} })).toThrow('Project "cec": jira and azure must be supplied together');
 });
 
 test('a policy block never reaches the saved project, its worker context or a continuation digest', () => {

@@ -40,7 +40,21 @@ A project entry may carry an optional `policy` block; leave it out and the proje
 | `policy.checkpoint.hour` | `17` (`9` for `cec`, `15` for `cms-field-vocabulary`) | Hour of the daily checkpoint, 0 to 23, America/New_York. |
 | `policy.checkpoint.weekends` | `true` (`false` for `cec`) | Whether the checkpoint also runs on Saturday and Sunday. |
 
-A mistake stops start-up and names the project and key, for example `Project "web": policy.merge must be "human" or "harness"`. The `jira`, `azure` and `prompt` blocks are not supported yet and also stop start-up.
+A mistake stops start-up and names the project and key, for example `Project "web": policy.merge must be "human" or "harness"`.
+
+The `cec` project may also carry `jira` and `azure` blocks, given together. Until per-project workflow rules ship they must name the same Jira site, cloud, account, board or list and Azure organization, project and repository as the top-level `cec` block, which stays in place because prompts still read it. What they add:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `jira.twgProfile` | TWG's default login | Saved TWG login profile used for this project's Jira calls and its worklog identity check. |
+| `jira.credentialAccount` | the only Keychain entry | Keychain account of the `the-office-jira` token used for Blocked parking. |
+| `azure.deployment.subscription`, `resourceGroup`, `containerApp` | required | The staging Container App the Office observes. |
+| `azure.deployment.container` | `containerApp` | Container whose image identifies the deployed build. |
+| `azure.deployment.environment` | `staging` | Name of the observed environment. |
+| `azure.deployment.healthPath` | `/api/health` | Health endpoint path on the app. |
+| `azure.deployment.healthy` | required | `cos` (2xx plus the COS health JSON) or `http-ok` (any 2xx). |
+
+`jira.projectKey` must be `CEC` and `jira.statuses` is not accepted yet. A second Jira/Azure project and the `prompt` block stop start-up until per-project rules ship.
 
 ```sh
 pnpm dev

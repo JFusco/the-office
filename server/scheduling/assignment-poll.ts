@@ -1,3 +1,4 @@
+import { twgConnection } from '../cec/twg-connection';
 import { validTicket } from '../office/ticket-key';
 import { observeAssessmentAssignments } from '../features/handoff/observe-assignments';
 import { holdAssessmentIntake } from '../features/handoff/intake-routing';
@@ -33,7 +34,7 @@ export async function readAssignments(this: Coordinator): Promise<AssignedIssue[
         return pages.flat().filter((i: any) => !i.pull_request && i.assignees?.some((a: any) => a.login === 'JFusco')).map((i: any) => ({ key: `GH-${i.number}`, summary: i.title, url: i.html_url, assignee: 'JFusco', status: i.state, statusId: '', updated: i.updated_at, type: 'GitHub issue', subtask: false, pickupStatus: board.items.find(card => card.number === i.number && card.repository === this.store.project.repository)?.status || '' }));
     }
     const jira = jiraBinding(this.store.project);
-    const raw = JSON.parse(await this.execute('twg', ['jira', 'workitem', 'query', '--jql', `project = CEC AND assignee = "${jira.account}" AND resolution = Unresolved ORDER BY key ASC`, '--fields', 'summary,status,assignee,updated,issuetype', '--first', '100', '--site', jira.site, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: true }));
+    const raw = JSON.parse(await this.execute('twg', ['jira', 'workitem', 'query', '--jql', `project = CEC AND assignee = "${jira.account}" AND resolution = Unresolved ORDER BY key ASC`, '--fields', 'summary,status,assignee,updated,issuetype', '--first', '100', ...twgConnection(jira), '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: true }));
     if (raw.error || raw.ok === false || !Array.isArray(raw.data?.issues) || raw.data.issues.length >= 100)
         throw new Error('Jira assignment query failed or pagination coverage is incomplete');
     return raw.data.issues.filter((i: any) => validTicket(this.store.project, i.key) && i.assignee?.accountId === jira.account && !i.issuetype?.subtask).map((i: any) => ({ key: i.key, summary: i.summary, url: i.url, assignee: i.assignee.accountId, status: i.status.name, statusId: i.status.id, updated: i.updated, type: i.issuetype.name, subtask: false }));
@@ -93,7 +94,7 @@ export async function poll(this: Coordinator, now = new Date()) {
             const notices = noticeState(this.store), watched = this.store.state.azure.prs.filter(p => p.status === 'completed' && p.mergeCommit && p.closedAt && !notices.entries.some(n => n.prUrl === p.url && n.mergeCommit === p.mergeCommit)).map(pr => ({ pr, ticket: this.store.state.tickets.find(t => t.prId === pr.id) })).filter(x => x.ticket);
             if (watched.length) {
                 const keys = [...new Set(watched.map(x => x.ticket!.key))];
-                const raw = JSON.parse(await this.execute('twg', ['jira', 'workitem', 'get', ...keys, '--fields', 'assignee,reporter', '--site', jiraBinding(this.store.project).site, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: true }));
+                const raw = JSON.parse(await this.execute('twg', ['jira', 'workitem', 'get', ...keys, '--fields', 'assignee,reporter', ...twgConnection(jiraBinding(this.store.project)), '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: true }));
                 if (raw.error || !Array.isArray(raw.data) || raw.data.length !== keys.length)
                     throw new Error('Jira notice identity read is incomplete');
                 for (const { pr, ticket } of watched) {
