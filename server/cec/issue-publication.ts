@@ -123,7 +123,7 @@ export class JiraIssuePublisher implements FeaturePublisher {
         const status = fields.status, type = fields.issuetype || fields.issueType || raw.issueType;
         return await this.verify(receipt, content) && await this.verify(receipt, assignment) &&
             !raw.subtask && !type?.subtask && type?.name === Content.parse(content.payload).type &&
-            ((status?.name === 'Open' && String(status.id) === '1') || (status?.name === 'To Do' && String(status.id) === '10000'));
+            jiraBinding(this.store.project).statuses.intake.some(intake => status?.name === intake.name && String(status.id) === intake.id);
     }
     async readBack(intent: Readonly<EffectIntent>) {
         const p = intent.payload as { operation: FeatureOperation; key: string; marker: string };

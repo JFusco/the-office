@@ -38,7 +38,7 @@ export async function verifyAlreadyAtStatus(store: Store, ticket: Ticket, target
     const save = (name: string, value: unknown) => writeFileSync(resolve(directory, name), JSON.stringify(value, null, 2), { mode: 0o600, flag: 'wx' });
     try {
         if (store.project.provider !== 'azure' || store.project.id !== 'cec' || !ownTicket(store.project, ticket.key) ||
-            !/^[a-zA-Z0-9-]+$/.test(ticket.runId) || !['In Progress', 'Code Review', 'Ready for QA', 'QA'].includes(target) ||
+            !/^[a-zA-Z0-9-]+$/.test(ticket.runId) || !Object.values(jira.statuses.stages).includes(target) ||
             HOLDS[ticket.key] || ticket.assignee !== jira.account || ticket.subtask !== false || ticket.boardMember !== true)
             throw new Error('Jira status read-back scope or eligibility changed');
         mkdirSync(directory, { recursive: true, mode: 0o700 });

@@ -1,3 +1,4 @@
+import { defaultPickupStatus } from '../../delivery/intake/default-pickup';
 import type { Feature } from '../../../src/contracts/features';
 import type { Store } from '../../store/store';
 import { deferredPickup } from '../../../src/work/pickup-state';
@@ -6,7 +7,7 @@ import { currentApproval } from '../enrollment-gate';
 export function automaticTicketIntakeWait(store: Store, key: string): string {
     if (!key) return '';
     if (!store.state.coordination?.listener.assigned.some(issue => issue.key === key)) return 'Waiting for current configured intake membership';
-    return deferredPickup(store.state, key) ? `Waiting for ${store.state.coordination?.pickup?.status || (store.project.provider === 'github' ? 'Ready' : 'To Do')} intake` : '';
+    return deferredPickup(store.state, key) ? `Waiting for ${store.state.coordination?.pickup?.status || defaultPickupStatus(store.project)} intake` : '';
 }
 /** Explicitly created planning is allowed outside intake. Approved delivery keeps its own fences. */
 export function automaticIntakeWait(store: Store, feature: Feature): string {

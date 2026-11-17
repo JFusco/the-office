@@ -1,3 +1,4 @@
+import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { type DependencyStores } from '../delivery/pipeline/dependencies';
 import { IntakeResult } from './read-retries';
 import type { SessionBridge } from '../workers/session-bridge';
@@ -45,7 +46,7 @@ export class Coordinator {
     polling = false;
     sessionBridge?: SessionBridge;
     dependencyStores: () => DependencyStores = () => new Map([[this.store.project.id, this.store]]);
-    get pickup(): PickupPolicy { return this.state.pickup ??= { enabled: true, status: this.store.project.provider === 'github' ? 'Ready' : 'To Do' }; }
+    get pickup(): PickupPolicy { return this.state.pickup ??= { enabled: true, status: defaultPickupStatus(this.store.project) }; }
     configurePickup(input: unknown) { void this.state; savePickup(this.store, input); }
     requestWork(key: string, binding?: import('../../src/contracts/features').FeatureBinding) { return requestWork.call(this, key, binding); }
     enqueue(issue: AssignedIssue, workRequested?: 'automatic' | 'manual') {

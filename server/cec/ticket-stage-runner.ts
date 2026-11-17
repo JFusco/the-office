@@ -1,3 +1,4 @@
+import { jiraBinding } from '../office/project-bindings';
 import { captureLearning } from '../knowledge/learning-events';
 import { unrecordedStageResult } from './unrecorded-result';
 import { ownReceipts } from './superseded-receipts';
@@ -71,7 +72,7 @@ export async function run(this: Engine, key: string) {
             if (unrecorded) { t.recoveredAttemptId = unrecorded.attemptId; this.store.save(); }
             if (unrecorded) this.store.emit('stage-result-recovered', `${key}: the ${stage} result its worker returned was not on the ticket; it is applied now. No work is run again.`, role, key);
             const attemptId = unrecorded?.attemptId ?? this.store.begin(t, stage);
-            const transition = ({ understand: 'In Progress', 'code-review': 'Code Review', 'repair-review': 'Code Review', qa: 'QA', retest: 'QA', preview: 'Ready for QA' } as Partial<Record<Stage, string>>)[stage];
+            const transition = (jiraBinding(this.store.project).statuses.stages as Partial<Record<Stage, string>>)[stage];
             // Sam's assessment of a revised approach after the repair budget ran out is not a code review of a candidate:
             // the ticket keeps its Jira status until the repair that follows is reviewed.
             const repairDiagnosis = stage === 'code-review' && t.repairCycle?.phase === 'diagnosis';
