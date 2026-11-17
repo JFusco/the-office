@@ -48,7 +48,7 @@ export async function moveToBlocked(store: Store, execute: Execute, t: Ticket): 
                 throw new Error('Jira assignee or status changed before parking');
             // Anything missing here stops the park before a write, so it is refused, not left uncertain.
             transitionId = await resolveBlockedTransition(execute, binding, t.key);
-            credential = await jiraCredential(execute);
+            credential = await jiraCredential(execute, binding.credentialAccount);
             // The move and its comment are authored by the token's account; anything but the Office account would not read back.
             if (await jiraAccount(execute, binding, credential) !== binding.account)
                 throw new Error('The Jira API token does not belong to the Office account');

@@ -10,6 +10,8 @@ export interface JiraBinding {
     cloudId: string;
     /** Jira accountId used for assignment and actor checks. */
     account: string;
+    /** Keychain account of this project's Jira API token; absent for the legacy single-account CEC entry. */
+    credentialAccount?: string;
     projectKey: string;
     board: number;
     /** When present, this list replaces board membership as the intake source. */

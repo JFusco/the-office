@@ -13,7 +13,7 @@ import type { EffectIntent, WorkTime } from '../../../src/shared';
 /** A deliberately narrow administrative abandonment: one failed, first implementation timeout. */
 export function interruptedImplementation(store: Store, key: string, requestId = '', alive = processGroupAlive) {
     const ticket = store.state.tickets.find(t => t.key === key);
-    if (store.project.id !== 'cec' || store.project.provider !== 'azure' || !ownTicket(store.project, key) || !ticket ||
+    if (store.project.provider !== 'azure' || !ownTicket(store.project, key) || !ticket ||
         !ticket.pilot || ticket.stage !== 'implement' || ticket.activity !== 'blocked' || ticket.implementationContinuation ||
         ticket.commit || ticket.branch || ticket.worktree || ticket.prId || store.state.paused || store.state.draining || HOLDS[key] ||
         ticket.assignee !== jiraBinding(store.project).account || ticket.subtask || !ticket.boardMember || ticket.type === 'Epic' || !ticket.approach)

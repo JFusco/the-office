@@ -1,3 +1,4 @@
+import { ownTicket } from '../../office/ticket-key';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -25,7 +26,7 @@ export async function copySavedImplementation(store: Store, requestId: string, s
     const worktree = resolve(parent, `${saved.proof.key.toLowerCase()}-continue-${requestId}`);
     const branch = `codex/${saved.proof.key.toLowerCase()}-continue-${requestId}`;
     const directory = resolve(store.dataRoot, 'runs', saved.proof.runId, 'implementation-continuations', requestId);
-    if (!/^[a-f0-9-]{36}$/.test(requestId) || !/^cec-[1-9][0-9]*-[a-f0-9-]{36}$/.test(saved.proof.runId)) throw new Error('Invalid native continuation identity');
+    if (!/^[a-f0-9-]{36}$/.test(requestId) || !ownTicket(store.project, saved.proof.key) || !new RegExp(`^${saved.proof.key.toLowerCase()}-[a-f0-9-]{36}$`).test(saved.proof.runId)) throw new Error('Invalid native continuation identity');
     const runRoot = resolve(store.dataRoot, 'runs', saved.proof.runId);
     ownedPath(store, runRoot);
     if (!lstatSync(runRoot).isDirectory()) throw new Error('Original run evidence directory is missing');
