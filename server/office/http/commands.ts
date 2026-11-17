@@ -15,7 +15,7 @@ import { reconcileReadRetries } from '../../scheduling/read-retries';
 import { configureNotices, retryRecipientLookup } from '../../conversations/notifications';
 import { timeLedger } from '../../time/time-ledger';
 import { validTicket } from '../projects';
-import { CEC } from '../config';
+import { jiraBinding } from '../project-bindings';
 import type { ServiceContext, RequestContext } from './context';
 import { json } from './responses';
 import { configureKnowledge, declineLessonIssue, reactivateLesson, retireLesson } from '../../knowledge/lesson-commands';
@@ -100,8 +100,9 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
                 if (typeof time.jira === 'boolean')
                     ledger.jiraEnabled = time.jira;
                 if (time.jira === true && !ledger.jiraActivatedAt) {
+                    // Read the binding first: an unbound project throws before activation is recorded.
+                    ledger.jiraConnection = `twg:${jiraBinding(store.project).site}`;
                     ledger.jiraActivatedAt = new Date().toISOString();
-                    ledger.jiraConnection = `twg:${CEC.site}`;
                 }
                 store.save();
                 break;

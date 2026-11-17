@@ -53,6 +53,11 @@ export function localBindings(dataRoot: string): LocalBindings {
     if (config.cec && (typeof config.cec.board !== 'number' || ['site', 'cloudId', 'account', 'repo', 'organization', 'project', 'repository', 'repositoryId', 'target'].some(key => typeof config.cec![key as keyof CECBinding] !== 'string' || !config.cec![key as keyof CECBinding])))
         throw new Error('Local Jira/Azure binding is incomplete');
     if (config.cec) projectListScope(config.cec);
+    // The cec project and the legacy block name one destination; code reads it from the project.
+    for (const project of config.projects || [])
+        if (config.cec && project.id === 'cec' && project.provider === 'azure')
+            for (const field of ['repo', 'repository', 'target'] as const)
+                if (project[field] !== config.cec[field]) throw new Error(`Project "cec": ${field} conflicts with legacy cec.${field}`);
     for (const project of config.projects || [])
         if (project.checks !== undefined && (!Array.isArray(project.checks) || !project.checks.length || project.checks.length > 8 || project.checks.some(check => !check || typeof check.name !== 'string' || !/^[\w:.-]{1,60}$/.test(check.name) || !Array.isArray(check.command) || !check.command.length || check.command.some(part => typeof part !== 'string' || !part) || check.timeoutMs !== undefined && (!Number.isInteger(check.timeoutMs) || check.timeoutMs < 1000 || check.timeoutMs > 60 * 60000))))
             throw new Error('Project checks must be named argv commands with an optional timeout');

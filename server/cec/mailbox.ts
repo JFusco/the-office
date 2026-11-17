@@ -49,7 +49,7 @@ export async function checkMail(this: Engine, scheduled = false) {
         const result = await this.agents.intake();
         if (!result.complete)
             throw new Error(result.blocker || 'Incomplete board pagination');
-        ingest(this.store.state, result.tickets as Ticket[]);
+        ingest(this.store.project, this.store.state, result.tickets as Ticket[]);
         this.store.state.intake = { ...this.store.state.intake, status: 'idle', lastChecked: new Date().toISOString(), error: '' };
         this.store.emit('mail-delivered', result.tickets.length ? `${result.tickets.length} eligible ticket${result.tickets.length === 1 ? '' : 's'} delivered to the PM mailbox.` : 'No new tickets. Your CEC backlog has been checked.', 'pm');
         if (scheduled && this.store.state.nightlyEnabled)

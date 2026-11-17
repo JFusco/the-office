@@ -4,7 +4,7 @@ import { statSync, renameSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Store } from '../../store/store';
 import { command } from '../../workers/process';
-import { CEC } from '../../office/config';
+import { jiraBinding } from '../../office/project-bindings';
 import { readBoundedNoFollowSync } from '../../store/owned-artifact';
 import { extractDocument, type Extractor } from '../../knowledge/artifacts/extraction';
 import { jiraEvidence } from './jira-evidence';
@@ -33,7 +33,7 @@ export async function captureTicketEvidence(store:Store,key:string,execute:typeo
    try {
     if(store.project.provider==='azure'){
      monitor=setInterval(()=>{try{if(statSync(temp).size>maxBytes)controller.abort();}catch{}},25);
-     await bounded('twg',['jira','workitem','attachment','download','--attachment-id',attachment.id,'--output-path',temp,'--site',CEC.site,'-o','json','--output-summary','none'],{readOnly:true,signal,timeout:EVIDENCE_LIMITS.commandMs});
+     await bounded('twg',['jira','workitem','attachment','download','--attachment-id',attachment.id,'--output-path',temp,'--site',jiraBinding(store.project).site,'-o','json','--output-summary','none'],{readOnly:true,signal,timeout:EVIDENCE_LIMITS.commandMs});
     }else if(attachment.url)await download(attachment.url,temp,signal,maxBytes);else throw new Error('Attachment has no supported reader');
     const read=readBoundedNoFollowSync(temp,maxBytes);if(!('sha256' in read)){attachment.coverage={state:read.reason==='too-large'?'truncated':'unreadable',detail:read.reason};continue;}
     chmodSync(temp,0o600);aggregate+=statSync(temp).size;attachment.sha256=read.sha256;

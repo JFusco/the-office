@@ -2,7 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { EffectIntent, Ticket } from '../../../src/shared';
-import { CEC, HOLDS } from '../../office/config';
+import { HOLDS } from '../../office/config';
+import { jiraBinding } from '../../office/project-bindings';
 import type { Store } from '../../store/store';
 import { jiraCollection } from './jira-collection';
 import { readIssue, type Execute } from './jira-issue';
@@ -39,8 +40,9 @@ export async function reconcileRefusedCommentedPark(store: Store, execute: Execu
     if (!effect) return false;
     const attempt = effect.attemptId, marker = `Office decision ${attempt}`, from = (effect.expectedState as { from?: string })?.from;
     const comment = store.getEffect(`qa-comment:${attempt}`), anchor: any = comment?.receipt;
-    requireThat(store.project.id === 'cec' && !HOLDS[ticket.key] && ticket.assignee === CEC.account && ticket.boardMember && !ticket.subtask, 'Parking read-back scope, hold or ownership changed');
-    requireThat(from && (effect.expectedState as { assignee?: string }).assignee === CEC.account, 'The refused transition does not record the status it started from');
+    requireThat(store.project.id === 'cec' && !HOLDS[ticket.key] && ticket.assignee === jiraBinding(store.project).account && ticket.boardMember && !ticket.subtask, 'Parking read-back scope, hold or ownership changed');
+    const connection = jiraBinding(store.project);
+    requireThat(from && (effect.expectedState as { assignee?: string }).assignee === connection.account, 'The refused transition does not record the status it started from');
     requireThat(comment?.status === 'verified' && comment.operation === 'jira-qa-comment' && comment.target === ticket.key && comment.attemptId === attempt &&
         anchor?.id && anchor.created && Date.parse(comment.verifiedAt) <= Date.parse(effect.dispatchedAt), 'The preceding verified QA comment is required');
     const directory = resolve(store.dataRoot, 'runs', ticket.runId, 'parking-rejections', randomUUID());
@@ -49,21 +51,21 @@ export async function reconcileRefusedCommentedPark(store: Store, execute: Execu
     const originalDigest = digest(effect);
     save('intent.json', { key: ticket.key, runId: ticket.runId, originalEffect: effect, verifiedQAComment: comment, originalDigest });
     try {
-        const before = await readIssue(execute, ticket.key); save('before.json', before);
-        requireThat(before.status === from && before.assignee === CEC.account && !!before.updated, 'Jira is no longer at the original status and assignment');
-        const comments = await jiraCollection(execute, ['comment', 'query', '--issue-id', ticket.key], 'comments');
+        const before = await readIssue(execute, connection, ticket.key); save('before.json', before);
+        requireThat(before.status === from && before.assignee === connection.account && !!before.updated, 'Jira is no longer at the original status and assignment');
+        const comments = await jiraCollection(execute, connection, ['comment', 'query', '--issue-id', ticket.key], 'comments');
         const observed = comments.find(item => String(item.id) === String(anchor.id));
-        requireThat(observed && observed.author?.accountId === CEC.account && observed.created === anchor.created, 'The preceding QA comment could not be independently bound');
+        requireThat(observed && observed.author?.accountId === connection.account && observed.created === anchor.created, 'The preceding QA comment could not be independently bound');
         // The one thing the refusal text cannot show: whether the decision comment was posted on its own.
         const posted = comments.filter(item => JSON.stringify(item.body ?? '').includes(marker));
         save('comments.json', { count: comments.length, anchor: observed, decisionComments: posted });
         requireThat(!posted.length, 'A comment carrying this decision exists in Jira; the transition may have been partly applied');
-        const history = await jiraCollection(execute, ['changelog', 'query', '--issue-id', ticket.key], 'changelog'); save('history.json', history);
+        const history = await jiraCollection(execute, connection, ['changelog', 'query', '--issue-id', ticket.key], 'changelog'); save('history.json', history);
         requireThat(history.every(item => item.id && Number.isFinite(Date.parse(item.created)) && Array.isArray(item.items)), 'Jira history was incomplete');
         const statuses = history.flatMap(item => item.items.filter((change: any) => change.fieldId === 'status' || change.field === 'status').map((change: any) => ({ at: Date.parse(item.created), to: change.toString })));
         const preceding = statuses.filter(item => item.at < Date.parse(anchor.created)).sort((a, b) => b.at - a.at)[0];
         requireThat(preceding?.to === from && !statuses.some(item => item.at >= Date.parse(anchor.created)), 'Jira status history changed at or after the QA comment');
-        const after = await readIssue(execute, ticket.key); save('after.json', after);
+        const after = await readIssue(execute, connection, ticket.key); save('after.json', after);
         requireThat(digest(before) === digest(after) && !HOLDS[ticket.key] && digest(store.getEffect(effect.id)) === originalDigest, 'Jira or the ledger changed during read-back');
         const proof = { key: ticket.key, runId: ticket.runId, originalDigest, anchorId: String(anchor.id), before, after, comments: comments.length, observedAt: store.clock.now().toISOString(),
             disposition: 'Jira refused the commented transition; status unchanged and no decision comment exists. No transition replay or success claim.' };

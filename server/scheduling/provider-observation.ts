@@ -1,5 +1,5 @@
 import { correlatedBuild } from '../cec/azure';
-import { CEC } from '../office/config';
+import { azureBinding } from '../office/project-bindings';
 import { command } from '../workers/process';
 import { reconcileAndResumeParked } from '../cec/parking/resume-parked';
 import type { Engine } from './engine';
@@ -25,12 +25,12 @@ export async function observe(this: Engine) {
         }
         if (t.stage === 'ready-for-staging' && t.results['ready-for-staging']?.outcome === 'passed' && t.activity === 'waiting') {
             const p = this.store.state.azure.prs.find(p => p.id === t.prId);
-            const deployment = this.store.state.azure.deployed.find(d => d.environment === 'staging');
+            const deployment = this.store.state.azure.deployed.find(d => d.environment === azureBinding(this.store.project).deployment.environment);
             const build = this.store.state.azure.builds.find(b => b.id === deployment?.buildId);
             const fresh = deployment?.observedAt && Date.now() - Date.parse(deployment.observedAt) < 90000;
             if (p?.status === 'completed' && deployment?.healthy && fresh && deployment.commit && build?.result === 'succeeded') {
                 try {
-                    await command('git', ['merge-base', '--is-ancestor', t.commit, deployment.commit], { cwd: CEC.repo, timeout: 10000 });
+                    await command('git', ['merge-base', '--is-ancestor', t.commit, deployment.commit], { cwd: this.store.project.repo, timeout: 10000 });
                     t.stage = 'staging-qa';
                     t.blocker = '';
                     this.store.emit('staging-available', 'Candidate is included in the healthy running staging image; independent acceptance is starting.', 'qa', t.key);

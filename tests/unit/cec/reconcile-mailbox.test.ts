@@ -43,7 +43,7 @@ test('a complete assignment read retires an unassigned placeholder and preserves
     expect(coordinator.state.jobs).toEqual([]);
     expect(coordinator.state.listener.reviews).toEqual([]);
     // A later mailbox check must not recreate the resolved reminder.
-    ingest(store.state, []);
+    ingest(store.project, store.state, []);
     expect(ticket.activity).toBe('idle');
     expect(projectOutbox(store.state).find(item => item.id === 'ticket:CEC-120:mailbox')?.status).toBe('resolved');
 });
@@ -71,19 +71,19 @@ test('mailbox absence is quiet for unused records but preserves genuine blockers
         expect(ticket).toEqual(before);
     }
     Object.assign(ticket, original, { blocker: 'Epic requires decomposition into development tickets.' });
-    ingest(store.state, []);
+    ingest(store.project, store.state, []);
     expect(ticket.blocker).toBe('Epic requires decomposition into development tickets.');
     Object.assign(ticket, original, { blocker: '', activity: 'waiting' });
-    ingest(store.state, []);
+    ingest(store.project, store.state, []);
     expect(ticket).toMatchObject({ activity: 'idle', blocker: MISSING_INTAKE });
 });
 
 test('retirement keeps the dispatch gate until a fresh eligible intake re-admits the ticket', () => {
     const { store, ticket } = setup();
     Object.assign(ticket, { key: 'CEC-999', status: 'To Do', statusId: '10000', boardMember: true });
-    ingest(store.state, []);
+    ingest(store.project, store.state, []);
     expect(ticket).toMatchObject({ activity: 'idle', blocker: MISSING_INTAKE });
-    ingest(store.state, [{ ...ticket }]);
+    ingest(store.project, store.state, [{ ...ticket }]);
     expect(ticket).toMatchObject({ activity: 'waiting', blocker: '' });
 });
 

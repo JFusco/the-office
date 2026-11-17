@@ -84,3 +84,16 @@ test('configured projects reach stores without their policy, and the policy reac
     expect(projectPolicy({ ...web, id: 'plain' }, registry)).toMatchObject({ handsOff: false, merge: 'harness' });
     expect(handsOff({ project: web } as never)).toBe(false);
 });
+
+test('the cec project and the legacy cec block must name the same repository and target', () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'office-legacy-cec-')); roots.push(root);
+    vi.stubEnv('VITEST', ''); vi.stubEnv('NODE_ENV', 'production');
+    const cec = { site: 'https://one.example.net', cloudId: 'c', board: 1, account: 'a', repo: '/tmp/cos', organization: 'https://dev.azure.com/o', project: 'p', repository: 'cos', repositoryId: 'i', target: 'staging' };
+    const project = { id: 'cec', name: 'CEC', provider: 'azure', repo: '/tmp/cos', repository: 'cos', target: 'staging' };
+    const load = (entry: object) => { writeFileSync(resolve(root, 'office-config.json'), JSON.stringify({ cec, projects: [entry] })); return localBindings(root); };
+    expect(load(project).projects).toHaveLength(1);
+    for (const [field, value] of [['repo', '/tmp/other'], ['repository', 'other'], ['target', 'main']])
+        expect(() => load({ ...project, [field]: value })).toThrow(`Project "cec": ${field} conflicts with legacy cec.${field}`);
+    // Another project is not compared with the legacy block.
+    expect(load({ ...project, id: 'web', provider: 'github', repository: 'example/web', target: 'main' }).projects).toHaveLength(1);
+});

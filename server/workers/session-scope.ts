@@ -1,5 +1,5 @@
 import type { OfficeProject } from '../../src/shared';
-import { CEC } from '../office/config';
+import { jiraBinding } from '../office/project-bindings';
 import { retainSessionMessage, type SessionConversation } from './session-conversation';
 import type { SessionContextParser } from './session-context-lines';
 
@@ -23,8 +23,8 @@ const siteHost = (value: string) => value.replace(/[\\"']/g, '').toLowerCase().r
 
 /** Exact CEC ticket keys named by native TWG work-item commands. A configured --site makes them commands;
  * a missing --site leaves the destination unproven, so they are references. Another site yields nothing. */
-function jiraCommandIssues(text: string): { commands: number[]; references: number[] } {
-    const commands: number[] = [], references: number[] = [], configured = siteHost(CEC.site);
+function jiraCommandIssues(text: string, site: string): { commands: number[]; references: number[] } {
+    const commands: number[] = [], references: number[] = [], configured = siteHost(site);
     for (const command of text.matchAll(/(?<![\w.-])twg\s+jira\s+workitem\b[^;\n|&]*/gi)) {
         const site = command[0].match(/--site(?:=|\s+)[\\"']*([^\s;|&\\"',})\]]+)/i)?.[1];
         // An unexpanded shell value is as unproven as a missing site.
@@ -93,8 +93,9 @@ function scopeParser(sessionId: string, projects: ScopeProject[], previous?: Sco
         for (const project of projects) {
             const repo = escaped(project.repository), path = escaped(project.repo);
             // A current-turn TWG command binds a CEC ticket to the Jira project even from a chat rooted elsewhere.
-            const jira = call && project.provider === 'azure' ? jiraCommandIssues(text) : { commands: [], references: [] };
-            const browse = project.provider === 'azure' ? [...text.matchAll(new RegExp(`${escaped(CEC.site)}/browse/CEC-(\\d+)(?![\\w-])`, 'gi'))] : [];
+            const site = project.provider === 'azure' ? jiraBinding(project).site : '';
+            const jira = call && project.provider === 'azure' ? jiraCommandIssues(text, site) : { commands: [], references: [] };
+            const browse = project.provider === 'azure' ? [...text.matchAll(new RegExp(`${escaped(site)}/browse/CEC-(\\d+)(?![\\w-])`, 'gi'))] : [];
             if (!jira.commands.length && !jira.references.length && !browse.length &&!new RegExp(`(?:(?<![\\w.-])${repo}(?![\\w.-])|${path}(?=[/\\s'"\\\\]|$))`, 'i').test(text)) continue;
             conversationProjects.add(project.id);
             const scope = scopes.get(project.id) || { project: project.id, issues: [], prs: [], evidence: [] };
@@ -124,7 +125,7 @@ function scopeParser(sessionId: string, projects: ScopeProject[], previous?: Sco
             }
             for (const number of jira.commands) {
                 if (!scope.issues.includes(number)) scope.issues.push(number);
-                scope.evidence.push({ at: row.timestamp || '', reference: `twg jira workitem CEC-${number} --site ${CEC.site}`, kind: 'command', issue: number });
+                scope.evidence.push({ at: row.timestamp || '', reference: `twg jira workitem CEC-${number} --site ${site}`, kind: 'command', issue: number });
             }
             scope.evidence = scope.evidence.slice(-8);
             scopes.set(project.id, scope);

@@ -17,7 +17,8 @@ import { Agents, ResultSchema } from '../workers/agents';
 import { savedStageCompletion } from './saved-completion';
 import { unrecordedStageResult } from './unrecorded-result';
 import { ownReceipts } from './superseded-receipts';
-import { DATA, CEC, HOLDS, LEGACY_AUTOMATION } from '../office/config';
+import { DATA, HOLDS, LEGACY_AUTOMATION } from '../office/config';
+import { jiraBinding } from '../office/project-bindings';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
 import { recoverSavedPlan } from './recover-saved-plan';
@@ -54,7 +55,7 @@ export function requestDelivery(this: Engine, key: string, action: 'start-pilot'
     }
     if (routing?.binding || routing?.automatic) { const decision = intakeDisposition(this.store, key, routing.binding); if (decision.kind !== 'proceed') throw new Error(decision.reason); }
     if (action === 'start-pilot') {
-        const reason = eligibility(t, intakeStatus) || t.blocker;
+        const reason = eligibility(this.store.project, t, intakeStatus) || t.blocker;
         if (reason)
             throw new Error(reason);
         if (t.type === 'Epic')
@@ -119,7 +120,7 @@ export async function startPilot(this: Engine, key: string, background = true, i
     if (this.store.state.paused)
         throw new Error('Resume the office first');
     const t = this.store.ticket(key);
-    const reason = eligibility(t, intakeStatus) || HOLDS[key];
+    const reason = eligibility(this.store.project, t, intakeStatus) || HOLDS[key];
     if (reason)
         throw new Error(reason);
     if (t.type === 'Epic')
@@ -134,7 +135,7 @@ export async function startPilot(this: Engine, key: string, background = true, i
     finally {
         this.busy = false;
     }
-    const liveReason = eligibility({ ...live, key }, intakeStatus);
+    const liveReason = eligibility(this.store.project, { ...live, key }, intakeStatus);
     if (liveReason || live.blocker || live.existingOwner || live.existingPrId)
         throw new Error(liveReason || live.blocker || `Existing owner/PR ${live.existingOwner || live.existingPrId} requires reconciliation before adoption`);
     assertFeatureGate(this.store, key);
@@ -171,7 +172,7 @@ export async function dispatchNightly(this: Engine) {
         for (const ticket of this.store.state.tickets) {
             if (this.store.state.paused)
                 break;
-            if (ticket.stage !== 'mailbox' || ticket.blocker || eligibility(ticket))
+            if (ticket.stage !== 'mailbox' || ticket.blocker || eligibility(this.store.project, ticket))
                 continue;
             if (intakeDisposition(this.store, ticket.key).kind !== 'proceed') continue;
             if (!featureGate(this.store, ticket.key).allowed) continue;
@@ -237,7 +238,7 @@ export async function resume(this: Engine, key: string, background = true) {
     finally {
         this.busy = false;
     }
-    if (live.assignee !== CEC.account || live.subtask || !live.boardMember || live.blocker || HOLDS[key] || live.existingOwner)
+    if (live.assignee !== jiraBinding(this.store.project).account || live.subtask || !live.boardMember || live.blocker || HOLDS[key] || live.existingOwner)
         throw new Error(live.blocker || HOLDS[key] || 'Ownership/eligibility requires attention');
     if (live.existingPrId && live.existingPrId !== t.prId)
         throw new Error('A different PR exists; resolve duplicate work before resuming');

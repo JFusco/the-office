@@ -89,12 +89,12 @@ test('CI history deduplicates polls, retains reruns/job attempts, and links PR/c
     const s = store();
     const pr: AzurePR = { id: 3, title: 'CEC-999 synthetic fixture', draft: false, status: 'active', source: 'refs/heads/codex/cec-999-fixture', target: 'refs/heads/staging', commit: 'a'.repeat(40), mergeCommit: 'b'.repeat(40), url: '', policies: [{ name: 'Build', status: 'approved', buildId: 9 }] };
     const build: AzureBuild = { id: 9, name: 'Synthetic CI', status: 'completed', result: 'failed', commit: pr.mergeCommit, branch: 'refs/pull/3/merge', url: 'https://example.org/9', durationMs: 300000, queueMs: 60000, stages: [{ id: 'job', attempt: 1, type: 'Job', name: 'Build', state: 'completed', result: 'failed', issues: [], durationMs: 300000 }] };
-    rememberCi(s.state, [build], [pr]);
-    rememberCi(s.state, [build], [pr]);
+    rememberCi(s.project, s.state, [build], [pr]);
+    rememberCi(s.project, s.state, [build], [pr]);
     expect(s.state.ciHistory).toHaveLength(1);
-    rememberCi(s.state, [{ ...build, result: 'succeeded', stages: [{ ...build.stages[0], attempt: 2, result: 'succeeded' }] }], [pr]);
+    rememberCi(s.project, s.state, [{ ...build, result: 'succeeded', stages: [{ ...build.stages[0], attempt: 2, result: 'succeeded' }] }], [pr]);
     expect(s.state.ciHistory![0].stages).toHaveLength(2);
-    rememberCi(s.state, [{ ...build, id: 10 }], [pr]);
+    rememberCi(s.project, s.state, [{ ...build, id: 10 }], [pr]);
     expect(s.state.ciHistory![0].linkedTickets).toEqual(['CEC-999']);
     expect(timeReport(s.state, 'CEC-999').buildMs).toBe(600000);
     expect(timeReport(s.state).buildRuns).toBe(2);
