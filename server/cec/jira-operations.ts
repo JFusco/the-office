@@ -35,6 +35,9 @@ export class JiraOperations {
                     return {data: unpack(raw), pageInfo: JSON.parse(raw).pageInfo};
                 }, plain);
             } });
+        // An adopted result already carries this comment's receipt; Effects returned the saved one without posting.
+        if (result.receipts.some(receipt => receipt.action === 'jira-comment' && receipt.verified && !receipt.uncertain && String(receipt.id) === String(comment.id)))
+            return;
         result.receipts.push({ id: comment.id, action: 'jira-comment', target: `${CEC.site}/browse/${ticket.key}?focusedCommentId=${comment.id}`, verified: true, uncertain: false, detail: `Harness saved and independently read back the ${stage} outcome.` });
     }
 }
