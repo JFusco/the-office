@@ -17,3 +17,15 @@ test('a missing item, account or token is one plain error that repeats nothing t
         expect(error?.message).toBe(`Jira API token is not available in the Keychain (service ${KEYCHAIN_SERVICE})`);
     }
 });
+
+test('a configured account selects that Keychain entry for both reads; without one the lookup is unchanged', async () => {
+    const k = keychain('"acct"<blob>="second@example.test"\n', 'second-token\n');
+    expect(await jiraCredential(k.execute, 'second@example.test')).toEqual({ user: 'second@example.test', token: 'second-token' });
+    expect(k.calls.map(call => call.args)).toEqual([
+        ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', 'second@example.test'],
+        ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', 'second@example.test', '-w'],
+    ]);
+    const legacy = keychain('"acct"<blob>="office@example.test"\n', 'secret-token\n');
+    await jiraCredential(legacy.execute);
+    expect(legacy.calls.map(call => call.args)).toEqual([['find-generic-password', '-s', KEYCHAIN_SERVICE], ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w']]);
+});

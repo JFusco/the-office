@@ -9,7 +9,6 @@ import { bindDelivery } from '../features/delivery-binding';
 import { resolve } from 'node:path';
 import { recordApproach, reroute, missingApproachStage, stageNeeded } from '../delivery/pipeline/approach';
 import { correlatedBuild } from './azure';
-import { DATA } from '../office/config';
 import { verifiedTransition } from './transition-readback';
 import { advance, resultGate, qaEvidenceGap, publicationEvidenceGap } from './workflow';
 import { parkDecision } from './parking/park-ticket';
@@ -53,7 +52,7 @@ export async function run(this: Engine, key: string) {
             }
             const stage = t.stage, role = STAGE_ROLE[stage];
             if (stage === 'publish') {
-                const gap = publicationEvidenceGap(t, resolve(DATA, 'runs', t.runId));
+                const gap = publicationEvidenceGap(t, resolve(this.store.dataRoot, 'runs', t.runId));
                 if (gap) {
                     t.activity = 'blocked';
                     t.blocker = gap;
@@ -120,7 +119,7 @@ export async function run(this: Engine, key: string) {
             result.receipts = ownReceipts(t, result.receipts);
             if (['qa', 'retest', 'staging-qa'].includes(stage) && result.outcome !== 'reroute') {
                 if (result.outcome === 'passed') {
-                    const gap = qaEvidenceGap(t, stage, result, resolve(DATA, 'runs', t.runId));
+                    const gap = qaEvidenceGap(t, stage, result, resolve(this.store.dataRoot, 'runs', t.runId));
                     if (gap) {
                         result.outcome = 'blocked';
                         result.blocker = `QA acceptance not verified: ${gap}`;
@@ -147,7 +146,7 @@ export async function run(this: Engine, key: string) {
             }
             if (repairDiagnosis) {
                 const revised = revisedRepair(t.repairCycle!, result);
-                if (revised?.phase === 'repair' && retainRepairEvidence(result, 'code-review', resolve(DATA, 'runs', t.runId), t.worktree)) {
+                if (revised?.phase === 'repair' && retainRepairEvidence(result, 'code-review', resolve(this.store.dataRoot, 'runs', t.runId), t.worktree)) {
                     recordApproach(t, result.approach!, role, stage);
                     t.repairCycle = revised;
                     t.repairAttempts = { ...revised.findingAttempts };
@@ -167,7 +166,7 @@ export async function run(this: Engine, key: string) {
                 recordApproach(t, result.approach, role, stage);
                 this.store.emit('approach-selected', `${role}: ${result.approach.reason}`, role, key);
             }
-            const artifactRoot = resolve(DATA, 'runs', t.runId);
+            const artifactRoot = resolve(this.store.dataRoot, 'runs', t.runId);
             const gap = resultGate(t, stage, result, artifactRoot);
             if (gap && parksInJira(result)) {
                 t.results[stage] = result;

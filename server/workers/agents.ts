@@ -34,7 +34,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
 import { command } from './process';
-import { DATA, ROOT, CEC, SKILLS } from '../office/config';
+import { ROOT, CEC, SKILLS } from '../office/config';
 import { sanitize, sanitizeObject } from '../office/security';
 import type { Store } from '../store/store';
 import { ReplySchema, ConversationResultSchema } from '../conversations/conversations';
@@ -102,7 +102,7 @@ export class Agents extends WorkerRuntime {
     async continuable(ticket: Ticket): Promise<boolean> { return !!await recordedContinuation(this.store, this.execute, ticket, ticket.stage); }
     async stage(ticket: Ticket, stage: Stage, role: Role): Promise<StageResult> {
         const continued = implementationWorkerContext(ticket, stage);
-        const artifactRoot = continued?.artifactsRoot || resolve(DATA, 'runs', ticket.runId);
+        const artifactRoot = continued?.artifactsRoot || resolve(this.store.dataRoot, 'runs', ticket.runId);
         mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
         // A run that saved its finished result and was then stopped by the time limit is not run again.
         const adopted = savedStageCompletion(this.store, ticket, stage, ResultSchema);
