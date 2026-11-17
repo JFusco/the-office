@@ -73,7 +73,10 @@ export async function run(this: Engine, key: string) {
             if (unrecorded) this.store.emit('stage-result-recovered', `${key}: the ${stage} result its worker returned was not on the ticket; it is applied now. No work is run again.`, role, key);
             const attemptId = unrecorded?.attemptId ?? this.store.begin(t, stage);
             const transition = ({ understand: 'In Progress', 'code-review': 'Code Review', 'repair-review': 'Code Review', qa: 'QA', retest: 'QA', preview: 'Ready for QA' } as Partial<Record<Stage, string>>)[stage];
-            if (transition && !unrecorded) {
+            // Sam's assessment of a revised approach after the repair budget ran out is not a code review of a candidate:
+            // the ticket keeps its Jira status until the repair that follows is reviewed.
+            const repairDiagnosis = stage === 'code-review' && t.repairCycle?.phase === 'diagnosis';
+            if (transition && !unrecorded && !repairDiagnosis) {
                 const update = await this.jira.verifyStatus(t, transition, await this.agents.transition(t, transition));
                 (t.progressUpdates ??= []).push({ stage, target: transition, at: new Date().toISOString(), result: update });
                 this.store.save();
@@ -90,7 +93,6 @@ export async function run(this: Engine, key: string) {
                 }
                 this.store.emit('pm-transition', update.summary, 'pm', key);
             }
-            const repairDiagnosis = stage === 'code-review' && t.repairCycle?.phase === 'diagnosis';
             if (repairDiagnosis) {
                 if (t.repairCycle!.diagnosisAttempted) throw new Error('Revised-approach assessment already attempted; preserve its result for reconciliation');
                 t.repairCycle!.diagnosisAttempted = true; this.store.save();
