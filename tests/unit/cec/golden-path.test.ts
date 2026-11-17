@@ -47,8 +47,14 @@ test('a Jira/Azure ticket goes from understanding to the Ready for Staging wait'
         return output({ evidence: [proof('checks'), proof('review')] });
     };
 
+    // The Dev update did not reach Jira here: the ticket goes on regardless.
+    const updates: string[] = [];
+    engine.jira.devUpdate = async (ticket, stage) => { updates.push(`${stage} after ${Object.keys(ticket.results).at(-1)}`); return ''; };
     await drainStages(engine, t.key);
     expect(t).toMatchObject({ stage: 'ci', activity: 'waiting', commit: sha, prId: 9 });
+    // Requested once, after the code review result was accepted and before the draft PR result is recorded as passed.
+    expect(updates).toEqual(['draft-pr after code-review']);
+    expect(t.results['draft-pr']?.receipts.map(item => item.action)).toEqual(['draft-pr']);
 
     // Without a passing policy observation the ticket waits; no worker runs.
     await engine.run(t.key);

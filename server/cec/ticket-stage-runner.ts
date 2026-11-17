@@ -214,6 +214,9 @@ export async function run(this: Engine, key: string) {
                 this.store.emit('stage-blocked', gap, role, key);
                 break;
             }
+            // The Dev update tells people where accepted work stands; whether it reached Jira never changes the stage result.
+            if (['draft-pr', 'repair'].includes(stage) && !await this.jira.devUpdate(t, stage, attemptId, result))
+                this.store.emit('dev-update-skipped', `${key}: the ${stage} Dev update is not confirmed on the Jira ticket. The stage continues.`, role, key);
             advance(t, stage, result);
             this.store.emit('stage-passed', result.summary, role, key);
             if (result.approach && t.results.implement?.outcome === 'passed') {
