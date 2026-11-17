@@ -24,6 +24,7 @@ import { continueImplementation } from './implementation-continuation/continue';
 import { candidateBranchMoved } from './candidate-branch-moved';
 import { parkingUnconfirmed } from './parking/park-ticket';
 import { reconcileRejectedParking } from './parking/rejected-transition';
+import { reconcileRefusedCommentedPark } from './parking/refused-commented-park';
 import { continueAccessOnlyPlan } from './qa/continue-access-only-plan';
 
 export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean; qaHandoff?: unknown }) {
@@ -214,6 +215,16 @@ export async function resume(this: Engine, key: string, background = true) {
     this.busy = true;
     let live: Awaited<ReturnType<Agents['readback']>>;
     try {
+        // A refused Blocked move that carried its comment is settled by reading Jira, before anything reads the ledger.
+        try { await reconcileRefusedCommentedPark(this.store, this.jira.execute, t); }
+        catch (error) {
+            // Say on the ticket why it cannot resume; the proof files for the attempt are kept with the run.
+            t.activity = 'blocked';
+            t.blocker = `A refused Jira move to Blocked could not be settled by reading Jira: ${String(error)}`;
+            this.store.emit('jira-park-refusal-unsettled', `${key}: ${t.blocker}`, 'pm', key);
+            this.store.save();
+            throw error;
+        }
         if (t.parked && parkingUnconfirmed(this.store, t))
             await reconcileRejectedParking(this.store, this.jira.execute, t);
         live = await this.agents.readback(key, qaHandoff?.officeQAHandoff?.coordinatorSessionId ?
