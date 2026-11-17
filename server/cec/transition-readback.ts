@@ -1,3 +1,4 @@
+import { ownTicket } from '../office/ticket-key';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -33,7 +34,7 @@ export async function verifyAlreadyAtStatus(store: Store, ticket: Ticket, target
     let directoryCreated = false;
     const save = (name: string, value: unknown) => writeFileSync(resolve(directory, name), JSON.stringify(value, null, 2), { mode: 0o600, flag: 'wx' });
     try {
-        if (store.project.provider !== 'azure' || store.project.id !== 'cec' || !/^CEC-[1-9][0-9]*$/.test(ticket.key) ||
+        if (store.project.provider !== 'azure' || store.project.id !== 'cec' || !ownTicket(store.project, ticket.key) ||
             !/^[a-zA-Z0-9-]+$/.test(ticket.runId) || !['In Progress', 'Code Review', 'Ready for QA', 'QA'].includes(target) ||
             HOLDS[ticket.key] || ticket.assignee !== CEC.account || ticket.subtask !== false || ticket.boardMember !== true)
             throw new Error('Jira status read-back scope or eligibility changed');

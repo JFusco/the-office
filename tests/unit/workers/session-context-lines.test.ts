@@ -13,7 +13,7 @@ import type { Store } from '../../../server/store/store';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function root() { const path = await mkdtemp(join(tmpdir(), 'office-context-lines-')); roots.push(path); return path; }
-const projects = [{ id: 'brain', repo: '/brain', repository: 'Joe/brain' }, { id: 'cms', repo: '/cms', repository: 'Joe/cms' }];
+const projects = [{ id: 'brain', provider: 'github' as const, repo: '/brain', repository: 'Joe/brain' }, { id: 'cms', provider: 'github' as const, repo: '/cms', repository: 'Joe/cms' }];
 const row = (type: string, payload: unknown) => JSON.stringify({ type, payload });
 const meta = row('session_meta', { id: 'loaded' });
 const start = row('event_msg', { type: 'task_started' });

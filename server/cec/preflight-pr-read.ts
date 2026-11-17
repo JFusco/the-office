@@ -1,3 +1,4 @@
+import { ownTicket } from '../office/ticket-key';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -24,7 +25,7 @@ export async function preflightPRs(read: PRRead = nativeRead) {
 export async function withCECPreflightPRs<T>(store: Store, stage: string | undefined, key: string | undefined,
     task: string, run: (task: string) => Promise<T>, read: PRRead = nativeRead): Promise<T> {
     if (store.project.id !== 'cec' || store.project.provider !== 'azure' || !['readback', 'assignment-review'].includes(stage || '')) return run(task);
-    if (store.project.repo !== CEC.repo || store.project.repository !== CEC.repository || !/^CEC-[1-9][0-9]*$/.test(key || ''))
+    if (store.project.repo !== CEC.repo || store.project.repository !== CEC.repository || !ownTicket(store.project, key))
         throw new Error('CEC preflight provider binding changed');
     const id = randomUUID(), directory = resolve(store.dataRoot, 'preflight-reads', id);
     mkdirSync(directory, { recursive: true, mode: 0o700 });

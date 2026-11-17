@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { SessionBridge } from '../../../server/workers/session-bridge';
 
 test('duplicate Claude identities preserve the active client context when another client reports idle', async () => {
-    const store: any = { project: { id: 'brain', repo: '/brain', repository: 'Joe/brain' }, state: { workLog: [] } };
+    const store: any = { project: { id: 'brain', provider: 'github', repo: '/brain', repository: 'Joe/brain' }, state: { workLog: [] } };
     const execute: any = async (program: string) => program === 'claude'
         ? JSON.stringify([{ sessionId: 'same', cwd: '/preset', status: 'working' }, { sessionId: 'same', cwd: '/preset', status: 'idle' }]) : '/test/.git';
     const context: any = async (sessions: any[]) => sessions.map(session => ({ ...session, context: {

@@ -1,3 +1,4 @@
+import { validTicket } from '../office/ticket-key';
 import { observeAssessmentAssignments } from '../features/handoff/observe-assignments';
 import { holdAssessmentIntake } from '../features/handoff/intake-routing';
 import { handsOff } from '../delivery/harness/scope';
@@ -34,7 +35,7 @@ export async function readAssignments(this: Coordinator): Promise<AssignedIssue[
     const raw = JSON.parse(await this.execute('twg', ['jira', 'workitem', 'query', '--jql', `project = CEC AND assignee = "${CEC.account}" AND resolution = Unresolved ORDER BY key ASC`, '--fields', 'summary,status,assignee,updated,issuetype', '--first', '100', '--site', CEC.site, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: true }));
     if (raw.error || raw.ok === false || !Array.isArray(raw.data?.issues) || raw.data.issues.length >= 100)
         throw new Error('Jira assignment query failed or pagination coverage is incomplete');
-    return raw.data.issues.filter((i: any) => /^CEC-\d+$/.test(i.key) && i.assignee?.accountId === CEC.account && !i.issuetype?.subtask).map((i: any) => ({ key: i.key, summary: i.summary, url: i.url, assignee: i.assignee.accountId, status: i.status.name, statusId: i.status.id, updated: i.updated, type: i.issuetype.name, subtask: false }));
+    return raw.data.issues.filter((i: any) => validTicket(this.store.project, i.key) && i.assignee?.accountId === CEC.account && !i.issuetype?.subtask).map((i: any) => ({ key: i.key, summary: i.summary, url: i.url, assignee: i.assignee.accountId, status: i.status.name, statusId: i.status.id, updated: i.updated, type: i.issuetype.name, subtask: false }));
 }
 
 export async function poll(this: Coordinator, now = new Date()) {

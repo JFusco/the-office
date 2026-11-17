@@ -1,3 +1,4 @@
+import { ownTicket } from '../../office/ticket-key';
 import { mkdirSync, lstatSync, existsSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -7,7 +8,7 @@ import type { FeatureEvidenceRef } from '../../../src/contracts/features';
 import { EVIDENCE_LIMITS, type ProviderEvidence } from './evidence-contract';
 import { evidenceDigest } from './evidence-digest';
 export function evidenceDirectory(store:Store,key:string):string {
- if(!/^[\w-]{1,100}$/.test(store.project.id)||! /^(?:GH|CEC)-[1-9]\d*$/.test(key))throw new Error('Invalid evidence owner');
+ if(!/^[\w-]{1,100}$/.test(store.project.id)||!ownTicket(store.project,key))throw new Error('Invalid evidence owner');
  const root=realpathSync(store.dataRoot);let dir=root;
  for(const part of ['assessments',store.project.id,key]){
   dir=resolve(dir,part);if(!existsSync(dir))mkdirSync(dir,{mode:0o700});

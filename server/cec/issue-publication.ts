@@ -1,3 +1,4 @@
+import { ownTicket } from '../office/ticket-key';
 import { jiraRecord } from './jira-record';
 import { intakeJql, intakeLocation } from './intake-scope';
 import { descriptionPreimage, publicationDescription } from './publication-description';
@@ -14,13 +15,13 @@ import type { FeaturePublisher, PublicationReceipt } from '../features/publicati
 const Content = z.object({ space: z.literal('CEC'), type: z.string().min(1), summary: z.string().min(1), description: z.string().min(1), labels: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)) }).strict();
 const Assignment = z.object({ assignee: z.string().min(1) }).strict();
 const Transition = z.object({ id: z.string().min(1), status: z.string().min(1) }).strict();
-const keyOf = (key: string) => { if (!/^CEC-[1-9][0-9]*$/.test(key)) throw new Error('Invalid CEC ticket identity'); return key; };
 export const jiraText = (value: any): string => typeof value === 'string' ? value : value?.type === 'text' ? value.text : value?.type === 'hardBreak' ? '\n' : Array.isArray(value?.content) ? value.content.map(jiraText).join(value.type === 'doc' ? '\n' : '') : '';
 export class JiraIssuePublisher implements FeaturePublisher {
     constructor(private store: Store, private provenance: { id: string; sourceTicket?: string; marker(itemId: string): string }, private execute: typeof command = command) {}
+    private keyOf(key: string) { if (!ownTicket(this.store.project, key)) throw new Error('Invalid CEC ticket identity'); return key; }
     private async call(args: string[], readOnly = true) { return unpack(await this.execute('twg', ['jira', ...args, '--site', CEC.site, '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 })); }
-    private async issue(key: string) { const raw = await this.call(['workitem', 'get', keyOf(key)]); return jiraRecord(raw, key); }
-    private receipt(raw: any): PublicationReceipt { return { key: keyOf(raw.key), url: raw.url || CEC.site + '/browse/' + raw.key }; }
+    private async issue(key: string) { const raw = await this.call(['workitem', 'get', this.keyOf(key)]); return jiraRecord(raw, key); }
+    private receipt(raw: any): PublicationReceipt { return { key: this.keyOf(raw.key), url: raw.url || CEC.site + '/browse/' + raw.key }; }
     private content(raw: any) { const fields = raw.fields || raw; return { summary: fields.summary, description: descriptionPreimage(fields.description, jiraText), labels: [...(fields.labels || [])].sort() }; }
     private async boardFilter() {
         const raw = await this.call(['board', 'scope', 'query', '--id', String(CEC.board), '--project', 'CEC']);
@@ -86,7 +87,7 @@ export class JiraIssuePublisher implements FeaturePublisher {
         } else if (operation.kind === 'transition') {
             const p = Transition.parse(operation.payload), current = await this.issue(key);
             if ((current.fields || current).status?.name !== operation.expected.status) throw new Error('CEC status changed since preview');
-            const data = await this.call(['workitem', 'transition', '--id', keyOf(key)]);
+            const data = await this.call(['workitem', 'transition', '--id', this.keyOf(key)]);
             const transition = data.transitions?.find((t: any) => String(t.id) === p.id && (t.to?.name || t.status?.name) === p.status);
             if (!transition || transition.requirements?.some((r: any) => r.required)) throw new FeatureError('unsupported', 'Transition or required fields need a new product decision');
         } else throw new FeatureError('unsupported', 'Unsupported CEC publication operation');
@@ -96,9 +97,9 @@ export class JiraIssuePublisher implements FeaturePublisher {
         if (operation.kind === 'create' || operation.kind === 'update') {
             const p = Content.parse(operation.payload);
             const description = operation.kind === 'update' ? publicationDescription(p.description, operation.expected.description) : p.description;
-            args = ['workitem', operation.kind, ...(operation.kind === 'create' ? ['--space', p.space, '--type', p.type] : ['--id', keyOf(key)]), '--summary', p.summary, ...(typeof description === 'string' ? ['--description', description, '--description-format', 'plain'] : ['--fields-json', JSON.stringify({description})]), '--labels', p.labels.join(',')];
-        } else if (operation.kind === 'assign') args = ['workitem', 'update', '--id', keyOf(key), '--assignee', Assignment.parse(operation.payload).assignee];
-        else args = ['workitem', 'transition', '--id', keyOf(key), '--transition-id', Transition.parse(operation.payload).id];
+            args = ['workitem', operation.kind, ...(operation.kind === 'create' ? ['--space', p.space, '--type', p.type] : ['--id', this.keyOf(key)]), '--summary', p.summary, ...(typeof description === 'string' ? ['--description', description, '--description-format', 'plain'] : ['--fields-json', JSON.stringify({description})]), '--labels', p.labels.join(',')];
+        } else if (operation.kind === 'assign') args = ['workitem', 'update', '--id', this.keyOf(key), '--assignee', Assignment.parse(operation.payload).assignee];
+        else args = ['workitem', 'transition', '--id', this.keyOf(key), '--transition-id', Transition.parse(operation.payload).id];
         const raw = await this.call(args, false), record = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw.workItem || raw.issue || raw;
         return this.receipt(record.key ? record : await this.issue(key));
     }
@@ -111,7 +112,7 @@ export class JiraIssuePublisher implements FeaturePublisher {
             return matches;
         }
         if (operation.kind === 'assign') return fields.assignee?.accountId === Assignment.parse(operation.payload).assignee &&
-            (await this.query('(' + await this.membershipJql() + ') AND key = "' + keyOf(receipt.key) + '"')).length === 1;
+            (await this.query('(' + await this.membershipJql() + ') AND key = "' + this.keyOf(receipt.key) + '"')).length === 1;
         return fields.status?.name === Transition.parse(operation.payload).status;
     }
     async verifyFinal(item: FeatureManifestItem, receipt: PublicationReceipt) {

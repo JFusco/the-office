@@ -10,7 +10,7 @@ const cleanup:(()=>void)[]=[];afterEach(()=>cleanup.splice(0).forEach(f=>f()));
 /** Injected desktop inventories carry the explicit process accounting report that coverage requires. */
 const accounted=(sessions:any[]=[])=>Object.assign(sessions,{unaccounted:[] as number[]});
 test('a slow inventory expires from its observation start rather than gaining freshness after parsing',async()=>{
- const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
+ const store:any={project:{id:'brain',provider:'github',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
  const start=Date.parse('2026-11-13T19:00:00Z');let now=start;
  const clock=vi.spyOn(Date,'now').mockImplementation(()=>now);
  try{
@@ -22,7 +22,7 @@ test('a slow inventory expires from its observation start rather than gaining fr
  }finally{clock.mockRestore();}
 });
 test('retained conversation exposes an outside chat to both projects without claiming historical issues',()=>{
- const stores:any[]=['brain','cms'].map(id=>({project:{id,repo:'/'+id,repository:'Joe/'+id},state:{workLog:[]}}));
+ const stores:any[]=['brain','cms'].map(id=>({project:{id,provider:'github',repo:'/'+id,repository:'Joe/'+id},state:{workLog:[]}}));
  const row=(type:string,payload:unknown)=>JSON.stringify({type,payload});
  const raw=[row('session_meta',{id:'outside'}),row('event_msg',{type:'task_started'}),
   row('response_item',{type:'custom_tool_call',input:'gh issue view 352 --repo Joe/brain; gh issue view 142 --repo Joe/cms'}),
@@ -61,7 +61,7 @@ test('loaded Guardian approval reviewers are not checkout identities; other load
  expect(()=>loadedCodexSession(undefined)).toThrow();
 });
 test('missing provider visibility fails closed, excludes the current worker and maps outside worktrees by Git identity',async()=>{
- const store:any={project:{id:'brain',repo:'/brain'},state:{workLog:[{status:'running',sessionId:'self',id:'s',provider:'codex',requestId:'review',ticket:'GH-255',task:'Investigating'}]}};
+ const store:any={project:{id:'brain',provider:'github',repo:'/brain'},state:{workLog:[{status:'running',sessionId:'self',id:'s',provider:'codex',requestId:'review',ticket:'GH-255',task:'Investigating'}]}};
  const execute:any=async(bin:string,_args:string[],opts:any)=>bin==='claude'?'[]':opts.cwd==='/brain'||opts.cwd==='/tmp/worktree'?'/brain/.git':'/other/.git';
  const native=async()=>[{id:'outside',provider:'codex' as const,cwd:'/tmp/worktree',title:'GH-255',branch:'issue-255',status:'active' as const,source:'test'}];
  const bridge=new SessionBridge(()=>[store],execute,native,async()=>accounted());await bridge.refresh();const view=bridge.forProject(store,'GH-255','review');expect(view.complete).toBe(true);expect(view.sessions.map(s=>s.id)).toEqual(['outside']);
@@ -69,11 +69,11 @@ test('missing provider visibility fails closed, excludes the current worker and 
  bridge.current.expiresAt='2000-01-01T00:00:00Z';expect(bridge.forProject(store).fresh).toBe(false);
 });
 test('ownership is exact-project and exact-issue; unrelated loaded chats and the current reviewer are not competing owners',()=>{
- const store:any={project:{id:'brain',repo:'/brain'},state:{workLog:[{requestId:'review',sessionId:'self',status:'running'}]}};const b=new SessionBridge(()=>[store]);b.current={observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:true,sources:[],sessions:[{id:'other',provider:'codex',project:'brain',cwd:'/brain',title:'Database guidance',branch:'codex/261-supabase',status:'loaded',source:'test'},{id:'self',provider:'codex',cwd:'/brain',title:'Review GH-255',branch:'',status:'loaded',source:'test'}]};
+ const store:any={project:{id:'brain',provider:'github',repo:'/brain'},state:{workLog:[{requestId:'review',sessionId:'self',status:'running'}]}};const b=new SessionBridge(()=>[store]);b.current={observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:true,sources:[],sessions:[{id:'other',provider:'codex',project:'brain',cwd:'/brain',title:'Database guidance',branch:'codex/261-supabase',status:'loaded',source:'test'},{id:'self',provider:'codex',cwd:'/brain',title:'Review GH-255',branch:'',status:'loaded',source:'test'}]};
  expect(b.forProject(store,'GH-255','review').ownership.status).toBe('clear');expect(b.forProject(store,'GH-261','review').ownership.status).toBe('uncertain');b.current.sessions[0].status='active';expect(b.forProject(store,'GH-261','review').ownership.status).toBe('owned');expect(b.forProject(store,'GH-26','review').ownership.status).toBe('clear');
 });
 test('cross-repository current-turn references match the exact issue or linked PR and idle context does not own work',()=>{
- const store:any={project:{id:'brain',repo:'/brain'},state:{workLog:[],coordination:{jobs:[{key:'GH-352',pr:354,status:'blocked'}]}}};
+ const store:any={project:{id:'brain',provider:'github',repo:'/brain'},state:{workLog:[],coordination:{jobs:[{key:'GH-352',pr:354,status:'blocked'}]}}};
  const bridge=new SessionBridge(()=>[store]);bridge.current={observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:true,sources:[],sessions:[{id:'outside',provider:'codex',cwd:'/preset',title:'Cross-repository rollout',branch:'main',status:'active',source:'test',context:{activity:'active',scopes:[{project:'brain',issues:[],prs:[354],evidence:[{at:'',reference:'gh pr merge 354 --repo Joe/brain',kind:'command',pr:354}]}],userMessages:[{at:'',text:'Proceed with the reviewed implementation.'}]}}]};
  const view=bridge.forProject(store,'GH-352');expect(view.sessions.map(s=>s.id)).toEqual(['outside']);expect(view.ownership.status).toBe('owned');expect(view.sessions[0].context?.userMessages).toHaveLength(1);
  expect(bridge.forProject(store,'GH-354').ownership.status).toBe('clear');bridge.current.sessions[0].status='idle';expect(bridge.forProject(store,'GH-352').ownership.status).toBe('clear');
@@ -105,9 +105,18 @@ test('a Jira/Azure ticket with a visible active or waiting owner is owned even u
  expect(bridge.forProject(store,'CEC-12').ownership.status).toBe('unavailable');
 });
 test('Claude cross-repository scope and decisions reach the same project ownership packet',async()=>{
- const store:any={project:{id:'brain',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
+ const store:any={project:{id:'brain',provider:'github',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
  const execute:any=async(program:string)=>program==='claude'?JSON.stringify([{sessionId:'live',cwd:'/preset',status:'working'}]):'/test/.git';
  const context:any=async(sessions:any[])=>sessions.map(s=>({...s,context:{activity:'active',scopes:[{project:'brain',issues:[352],prs:[],evidence:[{at:'',reference:'repos/Joe/brain/issues/352',kind:'command',issue:352}]}],userMessages:[{at:'',text:'Keep the approved rollout boundaries.'}]}}));
  const bridge=new SessionBridge(()=>[store],execute,async()=>[],async()=>accounted(),undefined,context);await bridge.refresh();
  const view=bridge.forProject(store,'GH-352');expect(view.complete).toBe(true);expect(view.ownership.status).toBe('owned');expect(view.sessions[0].provider).toBe('claude');expect(view.sessions[0].context?.userMessages[0].text).toContain('boundaries');
+});
+test('a key outside the project prefix matches no session and is never clear, and a keyless inventory needs no binding',()=>{
+ const current=()=>({observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+45000).toISOString(),complete:true,sources:[],sessions:[{id:'titled',provider:'codex',project:'brain',cwd:'/brain',title:'Fix CEC-12',branch:'codex/12-fix',status:'active',source:'test'},{id:'ticketed',provider:'codex',project:'brain',cwd:'/brain',title:'Other',branch:'',status:'active',source:'test',ticket:'CEC-12'}]}) as any;
+ const brain:any={project:{id:'brain',provider:'github',repo:'/brain'},state:{workLog:[]}};const bridge=new SessionBridge(()=>[brain]);bridge.current=current();
+ expect(bridge.forProject(brain,'CEC-12').ownership).toMatchObject({status:'unavailable',matches:[]});
+ expect(bridge.forProject(brain,'GH-12').ownership.status).toBe('owned');
+ const unbound:any={project:{id:'acme',provider:'azure',repo:'/acme'},state:{workLog:[]}};const other=new SessionBridge(()=>[unbound]);other.current=current();
+ expect(other.forProject(unbound).ownership.status).toBe('not-requested');
+ expect(()=>other.forProject(unbound,'ACME-1')).toThrow('Project "acme" has no Jira/Azure binding');
 });
