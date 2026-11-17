@@ -4,7 +4,7 @@ import { Store } from '../../../../server/store/store';
 import { DATA } from '../../../../server/office/config';
 import { PROJECT_BINDINGS, projectById } from '../../../../server/office/projects';
 import { cecPrompt } from '../../../../server/cec/prompts/cec';
-import { cecIntakePrompt } from '../../../../server/cec/prompts/cec-reads';
+import { cecIntakePrompt, cecReadbackPrompt } from '../../../../server/cec/prompts/cec-reads';
 import { cecChatPrompt } from '../../../../server/conversations/prompts/conversations';
 import type { ProjectBindings } from '../../../../server/office/project-bindings-config';
 import type { TeamMessage } from '../../../../src/shared';
@@ -50,6 +50,25 @@ test('a delivery prompt takes its authority, branch, statuses and repository fro
     expect(render(store, 'draft-pr')).toContain('one DRAFT Azure DevOps PR to develop;');
     expect(render(store, 'ready-for-staging')).toContain('before transitioning Jira to Awaiting Release.');
     expect(render(store, 'ready-for-staging')).not.toContain('Ready for Staging');
+    expect(render(store, 'understand')).toContain('the separate Doing transition');
+    expect(render(store, 'understand')).not.toContain('In Progress transition');
+    expect(render(store, 'staging-qa')).toContain('Verify human merge inclusion in develop,');
+    expect(render(store, 'staging-qa')).not.toContain('merge inclusion in staging');
+});
+
+test('a resumed parked ticket names the configured Blocked status in its read-back', () => {
+    const resumed = (store: Store) => {
+        store.state.tickets.push({ ...ticket(), parked: { stage: 'code-review', reason: 'decision', at: '2026-11-01T10:00:00Z', fromStatus: 'Code Review', marker: 'office-park-1', published: true, resumeRequestedAt: '2026-11-01T11:00:00Z' } });
+        return cecReadbackPrompt(store, 'CEC-900');
+    };
+    const configured = resumed(otherProject());
+    expect(configured).toContain('The Office parked this ticket in On Hold at 2026-11-01T10:00:00Z with the comment "office-park-1". Joe has since moved it back to Code Review,');
+    expect(configured).not.toContain('in Blocked at');
+    // The legacy case reads CEC's own binding, not the swapped one.
+    registry.set('cec', original);
+    const legacy = new Store(':memory:', projectById('cec'), join(DATA, 'configured-prompt'));
+    stores.push(legacy);
+    expect(resumed(legacy)).toContain('The Office parked this ticket in Blocked at 2026-11-01T10:00:00Z with the comment "office-park-1". Joe has since moved it back to Code Review,');
 });
 
 test('configured preview guidance renders as its own line', () => {
@@ -66,4 +85,16 @@ test('intake and chat prompts follow the configured intake statuses and HTML pol
     expect(chat).toContain('preserve original content/media/metadata. Discover');
     expect(chat).not.toContain('CEC HTML exception');
     expect(chat).toContain('"pickup":{"enabled":true,"status":"Ready"}');
+});
+
+test('a project without a binding keeps the chat text it always had', () => {
+    const store = new Store(':memory:', projectById('brain'), join(DATA, 'configured-prompt'));
+    stores.push(store);
+    const message = { id: 'm-1', requestId: 'm-1', from: 'human', to: 'pm', ticket: '', actionId: '', body: 'Status?', status: 'queued', createdAt: '', sessionId: '', recheck: false, error: '', recipients: [], receipts: [] } as TeamMessage;
+    store.state.coordination = undefined;
+    const chat = cecChatPrompt(store, 'pm', message, '', null, []);
+    expect(chat).toContain('preserve original content/media/metadata and the established CEC HTML exception. Discover');
+    expect(chat).toContain('"pickup":{"enabled":true,"status":"To Do"}');
+    store.state.coordination = { pickup: { enabled: false, status: 'Backlog' } } as unknown as typeof store.state.coordination;
+    expect(cecChatPrompt(store, 'pm', message, '', null, [])).toContain('"pickup":{"enabled":false,"status":"Backlog"}');
 });
