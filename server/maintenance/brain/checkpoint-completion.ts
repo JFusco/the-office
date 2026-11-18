@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { BrainStatusSchema } from './brain-status';
+import { publishedWorkCleanedUp } from './published-cleanup';
+import { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import type { DailyCheckpoint, MaintenanceRun } from '../../../src/shared';
 
@@ -14,17 +16,14 @@ const coverageSchema = z.object({
     delegatedTasksComplete: z.literal(true), allAttemptedEffectsKnown: z.literal(true),
     freshProviderDispositions: z.literal(true), calls: z.array(verified), receipts: z.array(verified),
 });
-const followupSchema = z.object({
-    runId: z.string().uuid(), publicationRunId: z.string().uuid(), completedAt: z.string().datetime({ offset: true }),
-    captures: z.array(z.object({ status: z.literal('completed') })),
-    cleanup: z.array(z.object({ pr: z.number().int(), headSha: z.string(), worktreeStatus: z.literal('completed'),
-        localBranchStatus: z.literal('completed'), remoteBranchStatus: z.literal('completed') })),
-    board: z.array(z.object({ pr: z.number().int(), status: z.literal('completed') })),
-});
-
-/** Read the original date, not today's slot. A reconciled worker alone is not completion. */
-export function brainCheckpointCompletion(store: Store, checkpoint: DailyCheckpoint, run: MaintenanceRun,
-    read: (path: string) => string = path => readFileSync(path, 'utf8')) {
+/**
+ * Read the original date, not today's slot. A reconciled worker alone is not completion: the native
+ * gate must show that date published by this run's own session, the accepted read-back must cover
+ * every call and receipt, and git itself must show each published pull request merged and cleaned up.
+ * The worker's own follow-up notes have no fixed format and are not read.
+ */
+export async function brainCheckpointCompletion(store: Store, checkpoint: DailyCheckpoint, run: MaintenanceRun,
+    read: (path: string) => string = path => readFileSync(path, 'utf8'), execute: typeof command = command) {
     if (store.project.id !== 'brain' || run.status !== 'reconciled') return;
     const step = run.steps.filter(step => step.stage === 'maintenance-readback').at(-1);
     const coverage = coverageSchema.safeParse((step?.result as unknown as { coverage?: unknown })?.coverage);
@@ -44,14 +43,8 @@ export function brainCheckpointCompletion(store: Store, checkpoint: DailyCheckpo
             native.outcome !== 'published' || !/^[a-f0-9]{64}$/.test(native.reportSha256 || '') ||
             run.nativeRunId && run.nativeRunId !== native.id ||
             !(Date.parse(native.completedAt) >= Date.parse(work.startedAt) && Date.parse(native.completedAt) <= Date.parse(work.endedAt))) return;
-        const followupPath = resolve(store.project.repo, '.state/nightly/follow-up', `${native.id}.json`);
-        const followupRaw = read(followupPath), followup = followupSchema.parse(JSON.parse(followupRaw));
-        if (followup.runId !== native.id || followup.publicationRunId !== native.publicationRunId ||
-            !(Date.parse(followup.completedAt) >= Date.parse(native.completedAt) && Date.parse(step.at) >= Date.parse(followup.completedAt)) ||
-            !native.prs?.length || native.prs.some(pr =>
-                followup.cleanup.filter(item => item.pr === pr.number && item.headSha === pr.headSha).length !== 1 ||
-                followup.board.filter(item => item.pr === pr.number).length !== 1)) return;
-        return { native, originalWorkId: work.id, readbackAt: step.at,
-            files: [{ path, sha256: hash(raw) }, { path: followupPath, sha256: hash(followupRaw) }] };
+        if (!(Date.parse(step.at) >= Date.parse(native.completedAt)) || !native.prs?.length ||
+            !await publishedWorkCleanedUp(execute, store.project.repo, store.project.target, native.prs)) return;
+        return { native, originalWorkId: work.id, readbackAt: step.at, cleanupVerifiedFromGit: true, files: [{ path, sha256: hash(raw) }] };
     } catch { return; } // Missing, malformed or incompatible native evidence leaves the notice open.
 }
