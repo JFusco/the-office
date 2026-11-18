@@ -304,6 +304,14 @@ Morgan or Joe:
   recorded without a request ID: it is investigated on its own, and a later completed run of the
   same ticket stage settles its read failure.
 - An old blocked nightly checkpoint is settled by a later night that completed.
+- A blocked Brain nightly checkpoint whose own run did finish is closed by the harness, not by the
+  worker's notes: Brain's gate file must show that date published by the run's own session, the
+  accepted read-back must cover every call and receipt, and git itself must show each published pull
+  request merged into the target branch with no remote branch, local branch or worktree left at its
+  head (`server/maintenance/brain/published-cleanup.ts`). The worker's follow-up notes have no
+  fixed format and are never parsed.
+- A Brain result stops for read-back when it is blocked or reports a write whose outcome is unknown.
+  A write refused before it took effect is a known outcome and does not stop a completed run.
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after
   three failures in a row. The Azure monitor's reads are read-only, so a lingering helper is not
   treated as a possible write.
