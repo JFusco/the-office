@@ -20,20 +20,20 @@ function fixture(project = 'cms-field-vocabulary') {
     store.state.outbox = projectOutbox(store.state);
     return { store, run, checkpoint };
 }
-test.each(['cec', 'cms-field-vocabulary', 'brain'])('%s clears its stale checkpoint after linked completion without changing history or replaying work', project => {
+test.each(['cec', 'cms-field-vocabulary', 'brain'])('%s clears its stale checkpoint after linked completion without changing history or replaying work', async project => {
     const { store, run, checkpoint } = fixture(project), steps = structuredClone(run.steps), read = vi.fn();
     expect(store.state.outbox.filter(item => item.status === 'open')).toHaveLength(1);
-    reconcileCompletedCheckpoints(store, read);
+    await reconcileCompletedCheckpoints(store, read);
     expect(checkpoint.status).toBe('completed');
     expect(store.state.outbox.filter(item => item.status === 'open')).toEqual([]);
     expect(run.steps.slice(0, -1)).toEqual(steps);
     expect(JSON.parse(run.steps.at(-1).result.receipts[0].detail).prior.detail).toBe('Original failure');
     expect(store.state.maintenance!.ledger).toBe('Original history');
     expect(read).not.toHaveBeenCalled();
-    reconcileCompletedCheckpoints(store, read);
+    await reconcileCompletedCheckpoints(store, read);
     expect(run.steps).toHaveLength(2);
 });
-test.each(['unreconciled', 'reconciled-only', 'skipped', 'wrong-link', 'missing-run', 'uncertain', 'uncertain-effect', 'dispatching-effect', 'failed-result', 'active-worker', 'active-recovery', 'active-claim', 'repair', 'continuation', 'paused', 'draining', 'disabled'])('keeps unresolved checkpoint with %s', scenario => {
+test.each(['unreconciled', 'reconciled-only', 'skipped', 'wrong-link', 'missing-run', 'uncertain', 'uncertain-effect', 'dispatching-effect', 'failed-result', 'active-worker', 'active-recovery', 'active-claim', 'repair', 'continuation', 'paused', 'draining', 'disabled'])('keeps unresolved checkpoint with %s', async scenario => {
     const { store, run, checkpoint } = fixture();
     if (scenario === 'unreconciled') run.status = 'blocked';
     if (scenario === 'reconciled-only') run.status = 'reconciled';
@@ -52,7 +52,7 @@ test.each(['unreconciled', 'reconciled-only', 'skipped', 'wrong-link', 'missing-
     if (scenario === 'draining') store.state.draining = true;
     if (scenario === 'disabled') store.state.coordination!.enabled = false;
     const before = structuredClone(store.state);
-    reconcileCompletedCheckpoints(store, vi.fn());
+    await reconcileCompletedCheckpoints(store, vi.fn());
     expect(store.state).toEqual(before);
     expect(checkpoint.status).toBe('blocked');
 });
@@ -65,10 +65,10 @@ test('normal coordinator tick performs reconciliation automatically', async () =
     await coordinator.tick(new Date('2026-11-04T12:00:00Z'));
     expect(checkpoint.status).toBe('completed'); expect(worker).not.toHaveBeenCalled();
 });
-test.each(['queued', 'blocked', 'interrupted'])('completed checkpoint makes an old %s recovery terminal in the scheduler', status => {
+test.each(['queued', 'blocked', 'interrupted'])('completed checkpoint makes an old %s recovery terminal in the scheduler', async status => {
     const { store, checkpoint } = fixture();
     store.state.coordination!.requests = ['retry-checkpoint', 'reconcile-native-checkpoint'].map(action => ({ id: action, key: checkpoint.id, action, status, lane: 'delivery' })) as any;
-    reconcileCompletedCheckpoints(store);
+    await reconcileCompletedCheckpoints(store);
     const engine = new Engine(store), coordinator = new Coordinator(store, engine);
     const work = scheduledWork({ store, engine, coordinator, conversations: {} as any }, new Map([[store.project.id, store]]));
     expect(work.filter(item => item.work.kind === 'reconciliation').map(item => item.eligibility.state)).toEqual(['terminal', 'terminal']);
