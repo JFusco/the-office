@@ -116,10 +116,47 @@ test('a review that returned its own verdict runs again; a restated settled rece
     t.repairCycle = { phase: 'diagnosis', diagnosisAttempted: true } as any;
     expect(needsResumeReconciliation(t, [review])).toBe(true);
 });
-test('a writer stage with the same wording is still reconstructed', () => {
-    const t = setupStop('The inherited uncertain implementation receipt remains unreconciled.');
-    t.results.repair = decision('', { outcome: 'blocked', paidRuns: 0, commit: t.commit, blocker: t.blocker, receipts: [] }); t.stage = 'repair';
-    expect(needsResumeReconciliation(t, [{ ticket: t.key, role: 'developer', stage: 'repair', status: 'blocked', executionStatus: 'completed' }])).toBe(true);
+test('a developer stage that returned its own result runs again, whatever its blocker says; anything left unknown is still reconstructed', () => {
+    // CEC-154's shape: the repair finished and returned, and its blocker says two tests "timed out".
+    const blocker = 'The two database tests that timed out need to be rerun on their own, and typecheck and the build check still need to run; Alex owns both.';
+    const t = blockedQA(blocker);
+    t.results.repair = decision('', { outcome: 'failed', paidRuns: 0, commit: 'c'.repeat(40), blocker, receipts: [] }); t.stage = 'repair';
+    const run = { ticket: t.key, role: 'developer' as const, stage: 'repair', status: 'failed' as const, executionStatus: 'completed' as const };
+    expect(needsResumeReconciliation(t, [run])).toBe(false);
+    // A run that was cut off, or that failed, returned nothing of its own.
+    expect(needsResumeReconciliation(t, [{ ...run, executionStatus: undefined, status: 'interrupted' as const }])).toBe(true);
+    expect(needsResumeReconciliation(t, [{ ...run, failure: { category: 'uncertain-effect' as const, detail: 'Connection lost', dispatched: true } }])).toBe(true);
+    // An unverified or unknown write, or an unknown paid-run count, leaves something outside unknown.
+    t.results.repair!.receipts = [{ id: 'push', action: 'git-push', target: t.key, verified: false, uncertain: false, detail: 'Not read back' }];
+    expect(needsResumeReconciliation(t, [run])).toBe(true);
+    t.results.repair!.receipts = [{ id: 'push', action: 'git-push', target: t.key, verified: false, uncertain: true, detail: 'Unknown outcome' }];
+    expect(needsResumeReconciliation(t, [run])).toBe(true);
+    t.results.repair!.receipts = []; t.results.repair!.paidRuns = null;
+    expect(needsResumeReconciliation(t, [run])).toBe(true);
+    t.results.repair!.paidRuns = 0;
+    // A blocker from another episode is not this result's own words.
+    t.blocker = 'Interrupted stage; external effects require reconciliation. Error: codex timed out; previous action outcome must be reconciled';
+    expect(needsResumeReconciliation(t, [run])).toBe(true);
+    t.blocker = blocker;
+    expect(needsResumeReconciliation(t, [run])).toBe(false);
+    // A run that returned but is recorded with a failure of any kind is not a clean return.
+    expect(needsResumeReconciliation(t, [{ ...run, failure: { category: 'process' as any, detail: 'Exited 1', dispatched: false } }])).toBe(true);
+});
+test.each(['enhance', 'draft-pr', 'publish', 'preview', 'ready-for-staging'])('a %s stage writes to a provider, so the same shape is still reconstructed on its wording', stage => {
+    const blocker = 'The request timed out before its read-back.';
+    const t = blockedQA(blocker);
+    Object.assign(t, { stage });
+    (t.results as any)[stage] = decision('', { outcome: 'blocked', paidRuns: 0, commit: t.commit, blocker, receipts: [] });
+    expect(needsResumeReconciliation(t, [{ ticket: t.key, role: 'developer', stage, status: 'blocked', executionStatus: 'completed' }])).toBe(true);
+});
+test('a QA stage that returned its own verdict with every write read back and its paid runs counted also runs again', () => {
+    const blocker = 'Two cases timed out in the browser and remain untested.';
+    const t = blockedQA(blocker);
+    Object.assign(t.results.retest!, { outcome: 'blocked', paidRuns: 2, blocker });
+    const run = { ticket: t.key, role: 'qa' as const, stage: 'retest', status: 'blocked' as const, executionStatus: 'completed' as const };
+    expect(needsResumeReconciliation(t, [run])).toBe(false);
+    t.results.retest!.paidRuns = null;
+    expect(needsResumeReconciliation(t, [run])).toBe(true);
 });
 test('a non-QA stage never takes the setup-stop route', () => {
     const t = setupStop(WORDING); t.results.repair = t.results.retest; t.stage = 'repair';
