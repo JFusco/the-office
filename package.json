@@ -8,6 +8,9 @@
     "start": "tsx server/index.ts",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
+    "verify:ci": "pnpm build && pnpm test",
+    "lint:pr": "node scripts/validate_pr_body.cjs",
+    "lint:commit": "commitlint --config commitlint.config.cjs",
     "office": "tsx server/cli.ts",
     "test:browser": "playwright test",
     "service:install": "node scripts/install-service.mjs",
@@ -39,6 +42,8 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
+    "@commitlint/cli": "20.5.3",
+    "@commitlint/config-conventional": "20.5.3",
     "@playwright/test": "^1.56.1",
     "@types/node": "^24.19.2",
     "@types/react": "^19.2.2",
