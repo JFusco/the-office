@@ -203,6 +203,23 @@ shape takes the same route on resume without running the stage again. A head tha
 the accepted candidate is still refused (`server/cec/draft-pr-moved-head.ts`,
 `server/cec/confirm-moved-head.ts`, `server/cec/resume-moved-head.ts`).
 
+A change made to a Jira/Azure candidate that already passed the verification the approach selects
+is verified at its own scope. A passing repair that starts from such a candidate, and whose commit
+git shows contains it, may state the review, validation and checks its own change needs, with a
+reason. What it states is never the ticket's approach: the harness applies it to this change only
+and keeps the ticket's own approach to return to. The reviewer and QA are told the verified commit
+and the scope and can widen it through a route change before executing; nothing else a stage
+states replaces a scope in force. A retest of a scoped change owes a disposition for findings not
+yet verified and for those the repair was sent to fix. A stated approach that raises review or
+validation above the ticket's is a lasting decision under the ticket-wide rule, and a scope that
+cannot be shown to sit on the verified candidate is ignored. The scope ends when the change is published,
+or when it has to come back for another repair; the ticket's own approach then applies again and the
+return is recorded as a decision. A ticket whose review once failed keeps at least a focused review
+on the change, because publication requires a passing review on the current head. A candidate is
+not verified while its latest review or QA result failed, whatever the approach selects, and a
+repair on such a candidate keeps the ticket-wide rule: a reduction with work unresolved is refused
+(`server/cec/change-scope.ts`, `server/cec/change-scope-note.ts`).
+
 Sam's GitHub readiness review does not run on a PR that GitHub already reports as not
 reviewable. A draft PR and running current-head checks wait without a model run, and the
 review queues once when the PR is ready and its checks finish. A conflict on a head the team

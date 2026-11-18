@@ -637,8 +637,10 @@ export interface Ticket {
     parked?: { stage: Stage; reason: string; at: string; fromStatus: string; marker: string; published: boolean; resumeRequestedAt?: string; commentAttempt?: number };
     /** The last parked decision Joe resolved by moving the ticket back; stage workers treat its comment as answered. */
     resolvedDecision?: { marker: string; reason: string; status: string; at: string };
-    /** Set when a draft pull request was opened on a head that moved forward from the accepted candidate; cleared once that head passes retest. */
+    /** Set when a draft pull request was opened on a head that moved forward from the accepted candidate; `confirmed` is the commit the confirming repair settled on. */
     headMove?: { from: string; to: string; prId: number; at: string; confirmed?: string };
+    /** A change being verified at its own scope: the verified commit it was made on, and the ticket's approach to return to. */
+    changeScope?: { base: string; approach: WorkApproach };
 }
 export interface OfficeEvent {
     id: number;
