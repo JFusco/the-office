@@ -1,5 +1,4 @@
 import { consumeQAPlanRetry } from './qa/consume-plan-retry';
-import { rerunsInterruptedQA } from './qa/interrupted-qa-rerun';
 import { settleDevUpdates } from './settle-dev-update';
 import { confirmSetupStopCap } from './qa/setup-stop-cap';
 import { continueUnsealedQA } from './qa/continue-unsealed-qa';
@@ -15,14 +14,13 @@ import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { Agents, ResultSchema } from '../workers/agents';
 import { savedStageCompletion } from './saved-completion';
-import { unrecordedStageResult } from './unrecorded-result';
+import { decidedResumeStep, RESUME_STEP } from './resume-step';
 import { ownReceipts } from './superseded-receipts';
 import { HOLDS, LEGACY_AUTOMATION } from '../office/config';
 import { jiraBinding } from '../office/project-bindings';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
 import { recoverSavedPlan } from './recover-saved-plan';
-import { needsResumeReconciliation } from './resume-reconciliation';
 import { continueImplementation } from './implementation-continuation/continue';
 import { candidateBranchMoved } from './candidate-branch-moved';
 import { parkingUnconfirmed } from './parking/park-ticket';
@@ -254,11 +252,9 @@ export async function resume(this: Engine, key: string, background = true) {
     if (qaRetry) await consumeQAPlanRetry(this.store, qaRetry, this.store.dataRoot, this.implementationOwnership);
     if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, this.store.dataRoot, this.implementationOwnership, undefined, undefined, live);
     if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, this.store.dataRoot);
-    // A stage whose worker saved its finished result before the time limit needs no reconstruction: the stage accepts that result.
-    // Likewise a developer run stopped by the time limit: the stage continues that session.
-    // So does one whose worker returned a result that never reached the ticket.
-    // A QA or retest run cut off by a provider usage limit has nothing to reconstruct: the stage runs again.
-    if (!qaRetry && !qaHandoff && !unrecordedStageResult(this.store, t, t.stage) && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && !await this.agents.continuable(t) && !rerunsInterruptedQA(this.store, t) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
+    // One named step per resume (server/cec/resume-step.ts).
+    const step = qaRetry || qaHandoff ? undefined : await decidedResumeStep(this.store, t, { savedCompletion: () => !!savedStageCompletion(this.store, t, t.stage, ResultSchema), continuableSession: () => this.agents.continuable(t) });
+    if (step === 'reconstruct') {
         const read = await this.agents.reconcile(t), observed = { ...read, receipts: ownReceipts(t, read.receipts) };
         const gap = resultGate(t, t.stage, observed, resolve(this.store.dataRoot, 'runs', t.runId));
         if (gap) {
@@ -276,5 +272,5 @@ export async function resume(this: Engine, key: string, background = true) {
     if (t.parked?.resumeRequestedAt)
         t.resolvedDecision = { marker: t.parked.marker, reason: t.parked.reason, status: t.parked.fromStatus, at: t.parked.resumeRequestedAt };
     delete t.parked;
-    this.store.emit('ticket-resumed', 'Ticket resumed after live reconciliation', 'pm', key); // Reconciliation releases capacity; the scheduler claims the next stage.
+    this.store.emit('ticket-resumed', `Ticket resumed after live reconciliation${step ? `: ${RESUME_STEP[step]}` : ''}`, 'pm', key); // Reconciliation releases capacity; the scheduler claims the next stage.
 }
