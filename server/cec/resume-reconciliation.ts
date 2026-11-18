@@ -5,6 +5,8 @@ type Attempt = Pick<WorkTime, 'ticket' | 'stage' | 'role' | 'status' | 'failure'
 
 /** Read-only verdict stages: running one again repeats nothing. */
 const REVIEW_STAGES = ['plan-review', 'code-review', 'repair-review'];
+/** Stages whose own writes stay in the candidate worktree or the run's test environment; anything outside is a receipt. */
+const LOCAL_STAGES = ['plan', 'implement', 'repair', 'qa', 'retest'];
 
 /**
  * A QA stage whose latest run returned a setup stop on this exact candidate, with no paid run: it
@@ -48,7 +50,14 @@ export function needsResumeReconciliation(ticket: Ticket, attempts: readonly Att
     // Bound to this blocked episode, and never past the single revised-approach assessment a repair cycle allows.
     const verdict = !!result && result.outcome !== 'passed' && ticket.blocker.replace(/^Error:\s*/, '') === (result.blocker || result.summary);
     const assessed = ticket.repairCycle?.phase === 'diagnosis' && ticket.repairCycle.diagnosisAttempted;
-    if (REVIEW_STAGES.includes(ticket.stage) && verdict && !assessed && latest?.executionStatus === 'completed' && !latest.failure) return false;
+    const returned = verdict && !assessed && latest?.executionStatus === 'completed' && !latest.failure;
+    if (REVIEW_STAGES.includes(ticket.stage) && returned) return false;
+    // Likewise a stage that works only in its own worktree or test environment, when its latest run finished and
+    // returned its own result with every receipt verified and the paid-run count known. Its blocker is that result's
+    // own words, so a phrase in it such as "tests timed out" describes the work, not an interrupted run. A stage
+    // that writes to a provider (a Jira update, a pushed branch, a pull request) is not covered: a write it made
+    // and did not report would be repeated, so its wording still decides.
+    if (LOCAL_STAGES.includes(ticket.stage) && returned && result.paidRuns !== null && result.receipts.every(receipt => receipt.verified && !receipt.uncertain)) return false;
 
     // Retain legacy action-reconciliation signals, without treating an incidental
     // mention such as "the harness owns saved-plan reconciliation" as a command
