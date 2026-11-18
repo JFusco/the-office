@@ -1,0 +1,60 @@
+name: Commit message lint
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commitlint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  HUSKY: '0'
+  GRAPHIFY_SKIP_HOOK: '1'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  commitlint:
+    name: commitlint
+    runs-on: ubuntu-latest
+    # Bot-authored PRs (Renovate, Dependabot) carry their own provenance, title and commit format.
+    if: ${{ github.event.pull_request.user.type != 'Bot' }}
+    steps:
+      - name: Checkout immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24.14.0'
+      - name: Install declared pnpm
+        run: corepack enable && corepack install
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Validate PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: pnpm run lint:pr
+      - name: Lint PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | pnpm run lint:commit --verbose
+      - name: Lint immutable PR commit range
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git cat-file -e "${HEAD_SHA}^{commit}"
+          TARGET_SHA=$(git rev-parse --verify "refs/remotes/origin/${BASE_REF}^{commit}")
+          git merge-base --is-ancestor "$BASE_SHA" "$TARGET_SHA"
+          printf 'Commit range: %s..%s (event base %s)\n' "$TARGET_SHA" "$HEAD_SHA" "$BASE_SHA"
+          pnpm run lint:commit --from "$TARGET_SHA" --to "$HEAD_SHA" --verbose

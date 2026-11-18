@@ -106,11 +106,96 @@ src/
 - Office harness workers (delivery stages) commit on their owned branch only and never
   push, open a PR, merge or release; the harness publishes after review.
 - Interactive sessions Joe drives in this repository hold a standing grant (2026-10-31)
-  to commit, push, open and merge PRs: work on a short-lived branch, keep `pnpm test`
-  and `pnpm build` green, put a review on record, merge with
-  `gh pr merge --merge --delete-branch`, then delete the branch and any worktree.
-  Deploy to the launchd service only when `/api/health` reports `busy: false`.
-  Other repositories and releases outside the Office's guarded merge still need Joe.
+  to commit, push, open and merge PRs through the Git delivery flow below: keep
+  `pnpm test` and `pnpm build` green, put a review on record, merge once checks pass,
+  then delete the branch and any worktree (Joe extended this to automatic merge and
+  cleanup, 2026-11-18). Deploy to the launchd service only when `/api/health` reports
+  `busy: false`. Other repositories and releases outside the Office's guarded merge
+  still need Joe.
+
+## GitHub issue area labels
+
+Every new issue created with `github-issue-creator`, including delivery-tracking
+issues, must include at least one applicable `area:` label in addition to its
+issue-kind labels (such as `bug`, `enhancement` or `documentation`). Select areas
+from the actual requested work and affected behavior, not incidental mentions.
+Use multiple areas only when each is a substantive part of the issue scope.
+
+Before filing, list the repository's labels and resolve the selected names exactly.
+Use this taxonomy for `JFusco/the-office`; the areas follow the server and UI domains
+above:
+
+| Area label | Use for |
+| --- | --- |
+| `area:office` | Service identity: config, projects, project policy, security, health, HTTP routes |
+| `area:store` | Persistence, schema, migrations, Effects, evidence artifacts and recovery |
+| `area:scheduling` | Scheduler, scheduled work, coordinator poll/tick/pump and requests |
+| `area:workers` | Model workers: runtime, process, Claude/Codex adapters, profiles, lanes |
+| `area:delivery` | GitHub ticket delivery harness: intake, publication, readiness, repairs, closeout |
+| `area:cec` | Jira/Azure (CEC) pipeline: workflow, mailbox, stage runner, Jira parking |
+| `area:comments` | What the Office writes on tickets, issues and PRs |
+| `area:github` | GitHub provider adapters |
+| `area:qa` | Office QA protocol and browser QA guidance |
+| `area:maintenance` | Project maintenance and Brain native runs |
+| `area:leadership` | CTO daily review and goals |
+| `area:conversations` | Team conversations, outbox, notifications and Slack |
+| `area:time` | Time accounting and publication |
+| `area:telemetry` | Model routes, usage capture and estimated cost |
+| `area:operations` | Harness operation retention |
+| `area:it` | IT specialist: checks, recoveries, recovery ledger and reports |
+| `area:knowledge` | Lessons, retrospectives and improvement proposals |
+| `area:features` | Feature planning, handoff and release |
+| `area:ui` | The browser app under `src/`: scene, panels, settings and work views |
+| `area:tooling` | Build, CI, dependencies, scripts, hooks and test infrastructure |
+| `area:docs` | README, `docs/`, `AGENTS.md` and repository skills |
+
+Add other areas only for independently affected subsystems; a change that calls
+shared code is not also in that code's area. If no existing area fits, ask for a
+label decision before filing. Never create, rename or substitute labels without
+authorization, and do not silently omit the required area. Read the saved issue back
+and verify its exact labels, including at least one area, before continuing.
+
+## Git delivery flow
+
+For repository changes that include delivery, complete this sequence:
+
+1. Confirm the worktree is safe to switch, then switch to `main` and run
+   `git pull --ff-only` so the branch point is the current remote main. If
+   another session owns the checkout or local work must remain in place, fetch
+   current `origin/main` and use an isolated worktree. Preserve unrelated edits;
+   never reset or discard work.
+2. Create one actionable GitHub issue with the repository's labels, including an
+   `area:` label, using the `github-issue-creator` workflow (or reuse the issue the
+   request names), and read the saved issue back before creating downstream
+   artifacts.
+3. Create `codex/<issue-number>-<short-slug>` from that updated `main`.
+4. Implement only the issue scope and run `pnpm run verify:ci` (`pnpm build` and
+   `pnpm test`). Update `docs/office-process.md` in the same delivery when stage
+   order, ownership, recovery or publication boundaries change.
+5. Commit with a valid conventional message (`type(scope): subject`, lower-case
+   scope, subject at most 50 characters, body lines at most 72), then push the
+   issue branch with ordinary Git commands. Never push directly to `main`.
+6. Open a pull request with a conventional title and the canonical
+   `.github/pull_request_template.md` body. Keep its level-two headings exactly
+   once and in order; replace every placeholder with meaningful content,
+   include `Closes #<issue-number>`, record verification and risk/rollback,
+   and complete every required checkbox. Run `pnpm run lint:pr < body.md`
+   before opening the PR and read the saved PR back afterward. CI validates the
+   body again.
+7. Put a review on record, watch CI and fix failures. Once every check passes,
+   merge the PR with `gh pr merge --merge` and synchronize local `main`. Leave
+   failed PRs open; never merge failed checks or bypass branch protections.
+8. Once the PR merges, delete its branch: the remote branch if GitHub kept it, the
+   local branch and the worktree used for it. Delete only when the PR merged and
+   the branch tip is the merged head; ask before removing a worktree with
+   uncommitted changes. Never delete an unmerged branch.
+
+Keep the Husky hooks enabled. `commit-msg` runs `pnpm run lint:commit` against the
+shared `commitlint.config.cjs`; `pre-push` rejects any update targeting `main`,
+including explicit refspecs and multi-ref pushes. CI repeats the PR body, PR title
+and commit-range checks (`.github/workflows/commitlint.yml`) and runs
+`pnpm run verify:ci` (`.github/workflows/quality.yml`). `--no-verify` is not a routine
+delivery workaround.
 
 ## Graphify repository workflow
 

@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# Git supplies one proposed ref update per line. Check the destination, not the
+# checked-out branch, so aliases, explicit refspecs, and multi-ref pushes cannot
+# accidentally update main. Reject the entire push.
+while read -r office_push_local_ref office_push_local_oid office_push_remote_ref office_push_remote_oid; do
+  if [ "$office_push_remote_ref" = 'refs/heads/main' ]; then
+    printf '%s\n' 'Direct pushes to main are blocked. Push an issue-linked branch and open a pull request.' >&2
+    exit 1
+  fi
+done
+unset office_push_local_ref office_push_local_oid office_push_remote_ref office_push_remote_oid
+# The full gate (`pnpm run verify:ci`) runs in CI; locally it takes too long to run on every push.
