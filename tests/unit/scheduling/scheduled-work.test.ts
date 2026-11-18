@@ -192,8 +192,8 @@ test('a stopped record explains itself with its own saved detail and a cause, an
     const {store,project}=fixture(),entry={store} as any;
     store.state.coordination!.requests=[{id:'stuck',action:'reconcile-native-refresh',key:'GH-254',head:'native-run',lane:'delivery',requestedAt:'2026-10-29T20:00:00Z',status:'blocked',detail:'Error: Native report must identify this publication\nsecond line'} as any];
     const item=project().find(item=>item.work.id==='stuck')!;
-    expect(item.eligibility).toMatchObject({state:'blocked',cause:'needs-decision',reason:'Blocked, needs a decision: Native report must identify this publication'});
-    expect(projectReadiness(entry,project()).blockedCauses).toMatchObject({'needs-decision':1,failed:0});
+    expect(item.eligibility).toMatchObject({state:'blocked',cause:'unclassified',reason:'Blocked: Native report must identify this publication'});
+    expect(projectReadiness(entry,project()).blockedCauses).toMatchObject({'needs-decision':0,unclassified:1,failed:0});
 });
 
 test('a prerequisite that fails validation counts as a dependency block, not a decision', () => {
@@ -210,7 +210,7 @@ test('a blocked repair follow-up explains itself with its own saved detail and l
     store.state.maintenance={runs:[{id:'run',status:'reconciled',stage:'follow-up',requestedAt:'2026-10-29T20:00:00Z',steps:[],blockerFollowup:{status:'blocked',detail:'Error: Source repair routing needs read-back\nsecond line'}} as any],lastDaily:'',lastWeekly:'',ledger:''};
     const before=JSON.stringify(store.state.maintenance.runs);
     const item=project().find(item=>item.work.kind==='continuation'&&item.stage==='repair-followup')!;
-    expect(item.eligibility).toMatchObject({state:'blocked',cause:'needs-decision',reason:'Blocked, needs a decision: Source repair routing needs read-back'});
+    expect(item.eligibility).toMatchObject({state:'blocked',cause:'unclassified',reason:'Blocked: Source repair routing needs read-back'});
     expect(JSON.stringify(store.state.maintenance.runs)).toBe(before);
 });
 
@@ -235,7 +235,7 @@ test('a stale record linked to an unsettled write stays stopped until read-back 
     store.state.coordination!.jobs=[{id:'job-310',key:'GH-310',status:'completed',stage:'closeout',steps:[],requestedAt:'2026-11-01T00:00:00Z'} as any];
     store.state.coordination!.requests=[{id:'stale',action:'reconcile-native-delivery',key:'GH-310',head:'h',lane:'delivery',requestedAt:'2026-11-03T00:00:00Z',status:'blocked',detail:'x'} as any];
     store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e1',`${store.project.id}:delivery:job-310`,'uncertain',JSON.stringify({attemptId:'job-310'}));
-    expect(project().find(item=>item.work.id==='stale')!.eligibility).toMatchObject({state:'blocked',cause:'needs-decision'});
+    expect(project().find(item=>item.work.id==='stale')!.eligibility).toMatchObject({state:'blocked',cause:'unclassified'});
     store.db.prepare("UPDATE effects SET status='verified' WHERE id='e1'").run();
     expect(project().find(item=>item.work.id==='stale')!.eligibility.state).toBe('terminal');
     expect(projectReadiness(entry,project()).blocked).toBe(0);
@@ -273,7 +273,7 @@ test('finished and superseded work leaves the stopped and waiting counts while i
     expect(projectReadiness(entry,items)).toMatchObject({blocked:1,waiting:0});
     expect(c.requests[0].status).toBe('blocked');expect(store.state.deliveryQueue[0].status).toBe('blocked');
     store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e1',`${store.project.id}:delivery:cancelled-67`,'uncertain',JSON.stringify({attemptId:'cancelled-67'}));
-    expect(project().find(item=>item.work.id==='old-recovery')!.eligibility).toMatchObject({state:'blocked',cause:'needs-decision'});
+    expect(project().find(item=>item.work.id==='old-recovery')!.eligibility).toMatchObject({state:'blocked',cause:'unclassified'});
     store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e2',`${store.project.id}:delivery:CEC-154`,'uncertain',JSON.stringify({attemptId:'jira-attempt'}));
     expect(project().find(item=>item.work.id==='stopped-start')!.eligibility.state).toBe('blocked');
 });
@@ -285,4 +285,22 @@ test('an unconfirmed notice is history once its Slack delivery is confirmed, and
     store.state.slackDeliveries=[{id:'delivery',requestId:'notice',status:'confirmed'} as any];
     expect(project().find(item=>item.work.id==='notice')!.eligibility.state).toBe('terminal');
     expect(projectReadiness(entry,project()).blocked).toBe(0);
+});
+
+test('a parked Jira ticket is a decision; a blocked ticket with nothing recorded about its stop is not', () => {
+    const {store,project}=fixture();
+    const ticket=(key:string,extra:any)=>({key,pilot:true,stage:'retest',activity:'blocked',blocker:'Stopped',updated:'2026-11-18T00:00:00Z',results:{},...extra});
+    store.state.tickets=[ticket('CEC-1',{parked:{stage:'retest',reason:'Approve the provider submission',at:'',fromStatus:'QA',marker:'m',published:true}}),ticket('CEC-2',{}),ticket('CEC-3',{stop:{kind:'uncertain-effect',at:''}})] as any;
+    const cause=(key:string)=>project().find(item=>item.work.id===`ticket:${key}`)!.eligibility.cause;
+    expect([cause('CEC-1'),cause('CEC-2'),cause('CEC-3')]).toEqual(['needs-decision',undefined,'unconfirmed']);
+});
+
+test('a status that names its own cause keeps it, whatever stop was recorded with it', () => {
+    const {store,project}=fixture();
+    store.state.coordination!.requests=[
+        {id:'cut-off',action:'reconcile-native-refresh',key:'GH-1',head:'h',lane:'delivery',requestedAt:'2026-10-29T20:00:00Z',status:'interrupted',stop:{kind:'paused',at:''}},
+        {id:'bare',action:'reconcile-native-refresh',key:'GH-2',head:'h',lane:'delivery',requestedAt:'2026-10-29T20:00:00Z',status:'blocked',stop:{kind:'authority',at:''}},
+    ] as any;
+    const cause=(id:string)=>project().find(item=>item.work.id===id)!.eligibility.cause;
+    expect([cause('cut-off'),cause('bare')]).toEqual(['interrupted','needs-decision']);
 });

@@ -30,8 +30,12 @@ export interface Prerequisite {
     observedAt: string;
 }
 export type EligibilityState = 'running' | 'runnable' | 'waiting' | 'blocked' | 'terminal';
-/** Why blocked work is not running. Absent on other states; blocked work without one needs a decision. */
-export type BlockedCause = 'needs-decision' | 'failed' | 'interrupted' | 'unconfirmed' | 'dependency' | 'paused';
+/**
+ * Why blocked work is not running. Absent on other states. `needs-decision` is recorded only where the harness
+ * knows a person must decide (parked work, a hold, missing authority); blocked work with no recorded cause is
+ * `unclassified`, never assumed to be a decision.
+ */
+export type BlockedCause = 'needs-decision' | 'failed' | 'interrupted' | 'unconfirmed' | 'dependency' | 'paused' | 'unclassified';
 /** Harness-classified reason a stage stopped. Labels the stop only; it grants no retry or authority. */
 export type StopKind = 'provider-checks' | 'pr-not-ready' | 'source-closed' | 'uncertain-effect' | 'transient' | 'paused' | 'hold' | 'authority' | 'unclassified';
 export interface StopReason {
