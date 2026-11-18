@@ -302,6 +302,12 @@ Ellis does not investigate a timed-out run whose saved result the stage accepted
 investigation resolves from the accepted result.
 A stopped-base recovery is settled once its delivery has finished or been cancelled.
 
+Stopped work is counted by the cause the harness itself recorded. It is counted as needing a
+decision only when its park reached a person, it is under a hold or it lacks authority. A park
+waiting on a release is a prerequisite, a write of unknown outcome is unconfirmed, and a status that
+names its own cause (failed, interrupted) keeps it. Work with no recorded cause is shown as exactly
+that, never assumed to be a decision (`server/scheduling/stop-cause.ts`).
+
 Ellis's follow-ups close when the work they are about finishes, and only real trouble reaches
 Morgan or Joe:
 

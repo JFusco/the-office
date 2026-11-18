@@ -36,6 +36,7 @@ import { withAmendmentOwnership } from '../delivery/recovery/implementation/deli
 import { scheduledRetrospectives } from '../knowledge/scheduled-retrospectives';
 import { scheduledRollup, type RollupHooks } from '../knowledge/weekly-rollup';
 import { stoppedReason } from './stopped-reason';
+import { stopCause } from './stop-cause';
 import { closedTicketReport, closedTicketRequest, finishedJobsRequest, retiredFollowup, settledNotice, supersededCheckpoint, supersededDeliveryRequest, supersededEvidenceRequest, supersededRun, touchesUnsettled, type UnsettledEffects } from '../operations/stale-records';
 import { slackRequestSettled } from '../conversations/slack/supersession-proof';
 import { unsettledEffects } from '../operations/unsettled-effects';
@@ -48,13 +49,14 @@ export interface OfficeEntry {
 }
 const eligible = (state: WorkEligibility['state'], reason: string, owner = 'Morgan', cause?: WorkEligibility['cause']): WorkEligibility => ({ state, reason, owner, nextCheckAt: null, ...(cause ? { cause } : {}) });
 /** A record's own status, with stopped records explained by their saved error or detail (see stopped-reason.ts). */
-const recordEligibility = (status: string, record: { detail?: unknown; error?: unknown }): WorkEligibility => {
+const recordEligibility = (status: string, record: { detail?: unknown; error?: unknown } & Parameters<typeof stopCause>[0]): WorkEligibility => {
     if (status === 'queued') return eligible('runnable', 'Ready for scheduler claim');
     if (status === 'working') return eligible('running', 'Work is working');
     if (['completed', 'cancelled', 'answered', 'sent', 'reconciled', 'ready'].includes(status)) return eligible('terminal', `Work is ${status}`);
     if (['watching', 'held'].includes(status)) return eligible('waiting', `Work is ${status}`);
     const stopped = stoppedReason(status, record);
-    return eligible('blocked', stopped.reason, 'Morgan', stopped.cause);
+    // A status that names its own cause keeps it; what the harness recorded about the stop only fills in a bare one.
+    return eligible('blocked', stopped.reason, 'Morgan', stopped.cause === 'unclassified' ? stopCause(record) ?? stopped.cause : stopped.cause);
 };
 /** One projection drives dispatch, queue counts, owner labels and next actions. */
 /** Office-level inputs to Harper's lane: Avery's review status and the office proposal store. */
@@ -191,7 +193,7 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
             history(supersededDeliveryRequest(request, store.state.deliveryQueue!), ['delivery', request.id], ['delivery', request.key], ['delivery', `ticket:${request.key}`]));
     }
     for (const ticket of store.state.tickets.filter(ticket => ticket.pilot && !['complete', 'mailbox'].includes(ticket.stage) && !store.state.deliveryQueue?.some(request => request.key === ticket.key && ['queued', 'working'].includes(request.status)))) {
-        let condition: WorkEligibility | null = ticket.activity === 'blocked' ? eligible('blocked', ticket.blocker) : null;
+        let condition: WorkEligibility | null = ticket.activity === 'blocked' ? eligible('blocked', ticket.blocker, 'Morgan', stopCause(ticket)) : null;
         if (ticket.stage === 'ready-for-staging' && ticket.results['ready-for-staging']?.outcome === 'passed')
             condition = eligible('waiting', ticket.blocker || 'Waiting for staging deployment');
         if (ticket.stage === 'ci' && ticket.blocker)

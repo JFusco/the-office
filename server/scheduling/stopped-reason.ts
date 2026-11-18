@@ -4,7 +4,7 @@ const LABELS: Partial<Record<string, { cause: BlockedCause; label: string }>> = 
     failed: { cause: 'failed', label: 'Failed, not retried' },
     uncertain: { cause: 'unconfirmed', label: 'Effect unconfirmed; read back, never resent' },
     interrupted: { cause: 'interrupted', label: 'Interrupted, waiting for recovery' },
-    blocked: { cause: 'needs-decision', label: 'Blocked, needs a decision' },
+    blocked: { cause: 'unclassified', label: 'Blocked' },
 };
 
 /** The record's own first line of explanation, without a leading "Error:". */
@@ -21,5 +21,5 @@ function explanation(record: { detail?: unknown; error?: unknown }) {
  */
 export function stoppedReason(status: string, record: { detail?: unknown; error?: unknown }): { cause: BlockedCause; reason: string } {
     const known = LABELS[status], label = known?.label || `Stopped (${status})`, why = explanation(record);
-    return { cause: known?.cause || 'needs-decision', reason: why ? `${label}: ${why}` : label };
+    return { cause: known?.cause || 'unclassified', reason: why ? `${label}: ${why}` : label };
 }
