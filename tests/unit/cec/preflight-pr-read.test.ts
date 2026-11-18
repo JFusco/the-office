@@ -68,6 +68,28 @@ test('full description changes after the model block admission even when the PR 
         }, async args => args[2] === 'show' ? { ...pr(), description: ++details === 1 ? 'x'.repeat(400)+'CEC-900 appears beyond the abbreviated list body' : 'Changed body' } : args.includes('all') ? [] : [pr()])).rejects.toThrow('changed during readback');
     } finally { f.close(); }
 });
+test('an unrelated pull request that opens or closes during the read-back does not stop it, and is recorded', async () => {
+    const f = knowledgeStore('cec'); let lists = 0;
+    const other = { ...pr(2), title: 'docs(help): explain a parked step', sourceRefName: 'refs/heads/docs/parked-step', description: 'Help text only.' };
+    try {
+        // The first inventory holds this ticket's pull request and an unrelated one; the second, taken after the model, only the ticket's.
+        const result = await withCECPreflightPRs(f.store, 'readback', 'CEC-900', 'Read', async () => ({ blocker: '', existingPrId: 1 }),
+            async args => args[2] === 'show' ? (args.includes('2') ? other : pr()) : args.includes('all') ? [] : ++lists === 1 ? [pr(), other] : [pr()]);
+        expect(result.existingPrId).toBe(1);
+        const events = (f.store.db.prepare('SELECT body FROM events ORDER BY id').all() as { body: string }[]).map(row => JSON.parse(row.body));
+        expect(events.filter(event => event.kind === 'preflight-prs-changed').map(event => event.message)).toEqual(['CEC-900: pull request #2 changed while the ticket was being read and does not concern it; dispatch continues.']);
+    } finally { f.close(); }
+});
+test('an assignment review continues past several unrelated changes and names each', async () => {
+    const f = knowledgeStore('cec'); let lists = 0;
+    const other = (id: number) => ({ ...pr(id), title: `chore: unrelated ${id}`, sourceRefName: `refs/heads/chore/unrelated-${id}`, description: '' });
+    try {
+        await withCECPreflightPRs(f.store, 'assignment-review', 'CEC-900', 'Review', async () => ({ outcome: 'ready' }),
+            async args => args[2] === 'show' ? (args.includes('2') ? other(2) : args.includes('3') ? other(3) : pr()) : args.includes('all') ? [] : ++lists === 1 ? [pr(), other(2)] : [pr(), other(3)]);
+        const events = (f.store.db.prepare('SELECT body FROM events ORDER BY id').all() as { body: string }[]).map(row => JSON.parse(row.body));
+        expect(events.filter(event => event.kind === 'preflight-prs-changed').map(event => event.message)).toEqual(['CEC-900: pull requests #2, #3 changed while the ticket was being read and do not concern it; dispatch continues.']);
+    } finally { f.close(); }
+});
 test('a missing full PR read stops before any model attempt', async () => {
     const f = knowledgeStore('cec'); let models = 0;
     try {

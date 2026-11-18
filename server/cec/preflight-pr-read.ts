@@ -12,6 +12,7 @@ import type { Store } from '../store/store';
 import { az } from './azure';
 import { readAzurePRs } from './observed-prs';
 import { fullActivePRs, type PRRead } from './preflight-pr-details';
+import { prChanges } from './related-pr-change';
 
 const nativeRead = (project: OfficeProject): PRRead => args => az(azureBinding(project), args, true);
 /** Reuses the monitor's complete active-PR pagination, outside a model's read-only sandbox. */
@@ -48,6 +49,10 @@ The harness used the existing Azure monitor reader and fully paginated ALL activ
     if (verdict?.blocker || verdict?.outcome && verdict.outcome !== 'ready') return result;
     const after = await preflightPRs(store.project, read);
     save('after.json', { ...binding, observedAt: store.clock.now().toISOString(), completeActivePRCoverage: true, prs: after });
-    if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error(`Active ${jiraBinding(store.project).projectKey} PRs changed during readback; retain the assessment and recheck current ownership before dispatch`);
+    // The assessment is stale only if a pull request that could concern this ticket changed under it.
+    const ticket = store.state.tickets.find(item => item.key === key);
+    const changes = prChanges(before, after, { key, branch: ticket?.branch || undefined, prId: ticket?.prId || undefined });
+    if (changes.related.length) throw new Error(`Active ${jiraBinding(store.project).projectKey} PRs changed during readback; retain the assessment and recheck current ownership before dispatch`);
+    if (changes.unrelated.length) store.emit('preflight-prs-changed', `${key}: pull request${changes.unrelated.length === 1 ? '' : 's'} ${changes.unrelated.map(id => `#${id}`).join(', ')} changed while the ticket was being read and ${changes.unrelated.length === 1 ? 'does' : 'do'} not concern it; dispatch continues.`, 'pm', key);
     return result;
 }
