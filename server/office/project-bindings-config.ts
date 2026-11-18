@@ -92,7 +92,7 @@ export function legacyCecBindings(cec: CECBinding): ProjectBindings {
     });
 }
 
-/** Bindings by project id. Only the Azure project `cec` has one until the rules phase; explicit blocks, when given, supply its connection details. */
+/** Bindings by project id: every Azure project with explicit blocks, and the Azure project `cec` from the legacy block when it has none. */
 export function projectBindings(projects: readonly Pick<OfficeProject, 'id' | 'provider'>[], cec: CECBinding, explicit: ReadonlyMap<string, ProjectBindings> = new Map()): ReadonlyMap<string, ProjectBindings> {
-    return new Map(projects.filter(project => project.provider === 'azure' && project.id === 'cec').map(project => [project.id, explicit.get(project.id) ?? legacyCecBindings(cec)] as const));
+    return new Map(projects.filter(project => project.provider === 'azure' && (project.id === 'cec' || explicit.has(project.id))).map(project => [project.id, explicit.get(project.id) ?? legacyCecBindings(cec)] as const));
 }

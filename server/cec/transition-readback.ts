@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import type { StageResult, Ticket } from '../../src/shared';
 import { HOLDS } from '../office/config';
 import { jiraBinding } from '../office/project-bindings';
+import { PROJECT_BINDINGS } from '../office/projects';
 import type { Store } from '../store/store';
 import { command } from '../workers/process';
 import { jiraRecord } from './jira-record';
@@ -37,7 +38,7 @@ export async function verifyAlreadyAtStatus(store: Store, ticket: Ticket, target
     let directoryCreated = false;
     const save = (name: string, value: unknown) => writeFileSync(resolve(directory, name), JSON.stringify(value, null, 2), { mode: 0o600, flag: 'wx' });
     try {
-        if (store.project.provider !== 'azure' || store.project.id !== 'cec' || !ownTicket(store.project, ticket.key) ||
+        if (store.project.provider !== 'azure' || !PROJECT_BINDINGS.has(store.project.id) || !ownTicket(store.project, ticket.key) ||
             !/^[a-zA-Z0-9-]+$/.test(ticket.runId) || !Object.values(jira.statuses.stages).includes(target) ||
             HOLDS[ticket.key] || ticket.assignee !== jira.account || ticket.subtask !== false || ticket.boardMember !== true)
             throw new Error('Jira status read-back scope or eligibility changed');

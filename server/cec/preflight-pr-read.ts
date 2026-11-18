@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OfficeProject } from '../../src/shared';
 import { azureBinding } from '../office/project-bindings';
+import { PROJECT_BINDINGS } from '../office/projects';
 import { sanitizeObject } from '../office/security';
 import { currentAssignment } from '../workers/assignment-context';
 import type { Store } from '../store/store';
@@ -25,7 +26,7 @@ export async function preflightPRs(project: OfficeProject, read: PRRead = native
 /** The model decides relatedness and ownership; native reads fence its PR observation before admission. */
 export async function withCECPreflightPRs<T>(store: Store, stage: string | undefined, key: string | undefined,
     task: string, run: (task: string) => Promise<T>, read: PRRead = nativeRead(store.project)): Promise<T> {
-    if (store.project.id !== 'cec' || store.project.provider !== 'azure' || !['readback', 'assignment-review'].includes(stage || '')) return run(task);
+    if (store.project.provider !== 'azure' || !PROJECT_BINDINGS.has(store.project.id) || !['readback', 'assignment-review'].includes(stage || '')) return run(task);
     if (!ownTicket(store.project, key))
         throw new Error('CEC preflight provider binding changed');
     const id = randomUUID(), directory = resolve(store.dataRoot, 'preflight-reads', id);

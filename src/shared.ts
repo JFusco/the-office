@@ -878,8 +878,14 @@ export const OFFICE_PREFERENCE_DEFAULTS: OfficePreferences = { quality: 'high', 
 /** Preference responses carry the service identity so a client can scope revision ordering. */
 export type OfficePreferencesResponse = OfficePreferences & { serviceInstanceId: string };
 /** Read-only public projection of the effective office configuration. */
+/** One project's resolved policy and, for a bound Jira/Azure project, its non-secret connection facts. */
+export interface OfficeConfigProjectSettings {
+    policy: { merge: 'human' | 'harness'; handsOff: boolean; checkpoint: { hour: number; weekends: boolean } };
+    jira: { site: string; projectKey: string; intakeStatuses: string[]; defaultPickup: string };
+    azure: { organization: string; project: string };
+}
 export interface OfficeConfigSummary {
-    projects: { id: string; name: string; provider: 'azure' | 'github'; repository: string; target: string; boardName: string | null; boardUrl: string | null }[];
+    projects: ({ id: string; name: string; provider: 'azure' | 'github'; repository: string; target: string; boardName: string | null; boardUrl: string | null } & Partial<OfficeConfigProjectSettings>)[];
     cec: { site: string; organization: string; project: string; repository: string; target: string };
     holds: { key: string; reason: string }[];
 }
