@@ -376,6 +376,19 @@ not rewrite actual time or provider usage. Publication and corrections retain
 their existing Effects/read-back rules, including the documented absolute-total
 hours exception; that exception is not a general resend policy.
 
+Jira worklogs (CEC time) are published through Effects in `server/time/jira-worklog-effect.ts`.
+Each attempt gets a fresh ledger publication and its own Effect
+(`jira-worklog:<projectId>:<publication id>`). The publication is saved as prepared and the day
+reserved before Effects runs; the identity and worklog reads are its preflight, and the
+publication is saved as dispatching before the one TWG add or update. An attempted write whose
+outcome is unknown is settled only by read-back, never resent. A verified Effect whose ledger
+record was not finished is completed from its saved receipt without calling Jira. `reconcile-time`
+queues a day to publish again only when no write can have been dispatched for it: no known
+worklog and no attempted publication or Effect. An interruption during the preflight reads now
+holds the day until `reconcile-time`, which requeues it with no Jira call unless the day already
+has a known worklog, which stays held for a person. Publications saved before this change keep
+their original read-back. The GitHub absolute-hours exception above is unchanged.
+
 ## Code owners and verification
 
 | Process boundary | Owning source |

@@ -30,6 +30,8 @@ export interface TimePublication {
     payload: unknown;
     createdAt: string;
     detail: string;
+    /** Jira only: the Effect (`jira-worklog:<projectId>:<id>`) that owns this attempt's one dispatch. Absent on historical records. */
+    effectId?: string;
 }
 export interface TimeLedgerState {
     enabled: boolean;
