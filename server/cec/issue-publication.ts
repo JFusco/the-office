@@ -22,7 +22,7 @@ export class JiraIssuePublisher implements FeaturePublisher {
     constructor(private store: Store, private provenance: { id: string; sourceTicket?: string; marker(itemId: string): string }, private execute: typeof command = command) {}
     private get projectKey() { return jiraBinding(this.store.project).projectKey; }
     private get Content() { return contentSchema(this.projectKey); }
-    private keyOf(key: string) { if (!ownTicket(this.store.project, key)) throw new Error('Invalid CEC ticket identity'); return key; }
+    private keyOf(key: string) { if (!ownTicket(this.store.project, key)) throw new Error(`Invalid ${this.projectKey} ticket identity`); return key; }
     private async call(args: string[], readOnly = true) { return unpack(await this.execute('twg', ['jira', ...args, ...twgConnection(jiraBinding(this.store.project)), '-o', 'json', '--output-summary', 'none'], { readOnly, timeout: 60000 })); }
     private async issue(key: string) { const raw = await this.call(['workitem', 'get', this.keyOf(key)]); return jiraRecord(raw, key); }
     private receipt(raw: any): PublicationReceipt { return { key: this.keyOf(raw.key), url: raw.url || jiraBinding(this.store.project).site + '/browse/' + raw.key }; }
@@ -43,15 +43,15 @@ export class JiraIssuePublisher implements FeaturePublisher {
     }
     private async types() {
         const values = await this.call(['workitem', 'types', 'query', '--project', this.projectKey, '--level', '0']);
-        if (!Array.isArray(values) || !values.length) throw new Error('CEC issue type metadata is unavailable');
+        if (!Array.isArray(values) || !values.length) throw new Error(`${this.projectKey} issue type metadata is unavailable`);
         return values.filter(t => t.hierarchyLevel === 0 && t.subtask === false);
     }
     private async metadata(type: string) {
-        if (!(await this.types()).some(t => t.name === type)) throw new FeatureError('unsupported', 'CEC issue type is not a verified base issue type');
+        if (!(await this.types()).some(t => t.name === type)) throw new FeatureError('unsupported', `${this.projectKey} issue type is not a verified base issue type`);
         const metadata = await this.call(['workitem', 'field', 'create-metadata', '--space', this.projectKey, '--type', type]);
-        if (!Array.isArray(metadata.fields)) throw new Error('CEC required-field metadata is unavailable');
+        if (!Array.isArray(metadata.fields)) throw new Error(`${this.projectKey} required-field metadata is unavailable`);
         const missing = metadata.fields.filter((field: any) => field.required && !['summary', 'description', 'project', 'issuetype', 'labels'].includes(field.id));
-        if (missing.length) throw new FeatureError('unsupported', 'Unsupported required CEC fields: ' + missing.map((field: any) => field.id + ' (' + field.name + ')').join(', '));
+        if (missing.length) throw new FeatureError('unsupported', `Unsupported required ${this.projectKey} fields: ` + missing.map((field: any) => field.id + ' (' + field.name + ')').join(', '));
         return metadata;
     }
     async closed(key: string): Promise<boolean> { const issue = await this.issue(key); return issue.key === key && (issue.fields || issue).status?.statusCategory?.key === 'done'; }
@@ -60,20 +60,20 @@ export class JiraIssuePublisher implements FeaturePublisher {
     }
     async context() {
         const types = await this.types(), preferred = types.find(t => t.name === 'Build Task') || types[0];
-        if (!preferred) throw new FeatureError('unsupported', 'No supported CEC base issue type');
+        if (!preferred) throw new FeatureError('unsupported', `No supported ${this.projectKey} base issue type`);
         const metadata = await this.metadata(preferred.name);
         const scope = await this.membershipJql(), existing = this.provenance.sourceTicket ? await this.issue(this.provenance.sourceTicket) : null;
         return JSON.stringify({ provider: 'azure', destination: this.store.project.repository, featureId: this.provenance.id, assignee: jiraBinding(this.store.project).account, intake: intakeLocation(jiraBinding(this.store.project)), membershipJql: scope, types, recommendedType: preferred.name, metadata, existing,
             contract: 'Manifest items use stable id,title,key(empty for create),action,predecessor,criteria,operations. create/update payload is {space:"' + this.projectKey + '",type:verified issue type name,summary,description,labels:[]}; include the displayed provenance line office-feature-FEATURE_ID-item-ITEM_ID in description and that exact marker as a label. update.expected is observed {summary,description,labels}, retaining the complete raw ADF description for rich documents. An update appends the approved description text to that rich document while preserving its existing nodes. For plain descriptions it replaces the text. assign payload is {assignee:verified Office account}. transition payload {id,status} may only use discovered transitions, with expected {status:observed source status}. Do not invent workflow IDs or required metadata. New tickets retain initial status; their default assignment is guarded until identity is mapped. Every operation has id,kind,payload,expected.' });
     }
     async validate(manifest: FeatureManifest) {
-        if (manifest.provider !== 'azure' || manifest.destination !== this.store.project.repository) throw new FeatureError('invalid-content', 'Wrong CEC publication destination');
+        if (manifest.provider !== 'azure' || manifest.destination !== this.store.project.repository) throw new FeatureError('invalid-content', `Wrong ${this.projectKey} publication destination`);
         await this.membershipJql();
         for (const item of manifest.items) {
             const content = item.operations.find(o => ['create', 'update'].includes(o.kind)), marker = this.provenance.marker(item.id);
-            if (!content || !this.Content.parse(content.payload).description.includes(marker) || !this.Content.parse(content.payload).labels.includes(marker)) throw new FeatureError('invalid-content', 'CEC preview needs its stable provenance text and label');
+            if (!content || !this.Content.parse(content.payload).description.includes(marker) || !this.Content.parse(content.payload).labels.includes(marker)) throw new FeatureError('invalid-content', `${this.projectKey} preview needs its stable provenance text and label`);
             const assignment = item.operations.filter(o => o.kind === 'assign').at(-1);
-            if (!assignment || Assignment.parse(assignment.payload).assignee !== jiraBinding(this.store.project).account) throw new FeatureError('invalid-content', 'CEC preview must assign the verified Office account');
+            if (!assignment || Assignment.parse(assignment.payload).assignee !== jiraBinding(this.store.project).account) throw new FeatureError('invalid-content', `${this.projectKey} preview must assign the verified Office account`);
             for (const operation of item.operations) await this.preflight(item, operation, item.key);
         }
     }
@@ -84,17 +84,17 @@ export class JiraIssuePublisher implements FeaturePublisher {
             await this.metadata(payload.type);
             const current = await this.issue(key), fields = current.fields || current;
             publicationDescription(payload.description, operation.expected.description);
-            if ((fields.labels || []).some((label: string) => !payload.labels.includes(label))) throw new FeatureError('invalid-content', 'CEC update must preserve existing labels');
-            if (JSON.stringify(this.content(current)) !== JSON.stringify(operation.expected)) throw new Error('CEC ticket content changed since approval preview');
+            if ((fields.labels || []).some((label: string) => !payload.labels.includes(label))) throw new FeatureError('invalid-content', `${this.projectKey} update must preserve existing labels`);
+            if (JSON.stringify(this.content(current)) !== JSON.stringify(operation.expected)) throw new Error(`${this.projectKey} ticket content changed since approval preview`);
         } else if (operation.kind === 'assign') {
-            if (Assignment.parse(operation.payload).assignee !== jiraBinding(this.store.project).account) throw new FeatureError('invalid-content', 'Wrong CEC assignee');
+            if (Assignment.parse(operation.payload).assignee !== jiraBinding(this.store.project).account) throw new FeatureError('invalid-content', `Wrong ${this.projectKey} assignee`);
         } else if (operation.kind === 'transition') {
             const p = Transition.parse(operation.payload), current = await this.issue(key);
-            if ((current.fields || current).status?.name !== operation.expected.status) throw new Error('CEC status changed since preview');
+            if ((current.fields || current).status?.name !== operation.expected.status) throw new Error(`${this.projectKey} status changed since preview`);
             const data = await this.call(['workitem', 'transition', '--id', this.keyOf(key)]);
             const transition = data.transitions?.find((t: any) => String(t.id) === p.id && (t.to?.name || t.status?.name) === p.status);
             if (!transition || transition.requirements?.some((r: any) => r.required)) throw new FeatureError('unsupported', 'Transition or required fields need a new product decision');
-        } else throw new FeatureError('unsupported', 'Unsupported CEC publication operation');
+        } else throw new FeatureError('unsupported', `Unsupported ${this.projectKey} publication operation`);
     }
     async dispatch(_item: FeatureManifestItem, operation: FeatureOperation, key: string, _marker: string): Promise<PublicationReceipt> {
         let args: string[];

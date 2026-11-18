@@ -10,7 +10,7 @@ import { readbackDispatchGuidance } from './readback-guidance';
 import { rerunsInterruptedQA } from '../qa/interrupted-qa-rerun';
 export function cecIntakePrompt(store: Store) {
     const jira = jiraBinding(store.project), intake = jira.statuses.intake.map(status => `"${status.name}"`).join(', ');
-    return `Check the CEC mailbox (READ ONLY).
+    return `Check the ${jiraBinding(store.project).projectKey} mailbox (READ ONLY).
 Use the Jira connection guidance in ${SKILLS.jira}/SKILL.md and references/twg.md. Prefer authenticated TWG native Jira reads with discovered current contracts; use a capable authenticated MCP connection only when necessary. Do not run setup/login or mutate anything during intake. Site ${jira.site}, cloudId ${jira.cloudId}.
 ${intakeEnumeration(jira)}
 project = ${jira.projectKey} AND assignee = "${jira.account}" AND status IN (${intake}) AND issuetype NOT IN subTaskIssueTypes() ORDER BY priority DESC, created ASC.

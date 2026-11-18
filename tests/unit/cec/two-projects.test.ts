@@ -122,7 +122,8 @@ test('the second project gets the native status read-back and PR preflight fence
     let reads = 0, task = '';
     await withCECPreflightPRs(store, 'readback', 'ACME-7', 'Read this issue', async text => { task = text; return { blocker: '' }; }, async () => { reads++; return []; });
     expect(reads).toBeGreaterThan(0);
-    expect(task).toContain('NATIVE CEC AZURE PR OBSERVATION');
+    expect(task).toContain('NATIVE ACME AZURE PR OBSERVATION');
+    expect(task).not.toContain('NATIVE CEC');
     expect(task).toContain('"repositoryId":"acme-repo-id"');
     await expect(withCECPreflightPRs(store, 'readback', 'CEC-7', 'Read', async () => ({}), async () => [])).rejects.toThrow('provider binding changed');
 });
@@ -151,4 +152,15 @@ test('the rendered delivery prompt carries the second project\'s authority, targ
     const cec = cecPrompt(open(projectById('cec')), { ...fixtureTicket(), stage: 'implement' }, 'implement', 'developer', '/artifacts');
     for (const legacy of ['plan on 2026-10-27', 'COS_DEV_PORT', 'Existing CEC authority allows documented HTML when ADF is unavailable.']) expect(cec).toContain(legacy);
     expect(cec).not.toContain(ACME_AUTHORITY);
+});
+
+test('eligibility labels and the intake prompt name the project, not CEC', async () => {
+    const acmeStore = open(acme), cecStore = open(projectById('cec'));
+    const { eligibility } = await import('../../../server/cec/workflow');
+    const { cecIntakePrompt } = await import('../../../server/cec/prompts/cec-reads');
+    expect(eligibility(acme, { ...acmeTicket(), key: 'CEC-7' })).toBe('Outside ACME');
+    expect(eligibility(acme, { ...acmeTicket(), boardMember: false })).toBe('Not in the configured ACME project list');
+    expect(eligibility(projectById('cec'), { ...fixtureTicket(), key: 'ACME-7' })).toBe('Outside CEC');
+    expect(cecIntakePrompt(acmeStore)).toMatch(/^Check the ACME mailbox \(READ ONLY\)\./);
+    expect(cecIntakePrompt(cecStore)).toMatch(/^Check the CEC mailbox \(READ ONLY\)\./);
 });

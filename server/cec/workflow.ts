@@ -13,14 +13,14 @@ import { STAGES, type OfficeProject, type OfficeSnapshot, type Stage, type Stage
 import { qaPlanEvidenceGap } from './qa/run-directory';
 export function eligibility(project: OfficeProject, t: Pick<Ticket, 'key' | 'assignee' | 'subtask' | 'boardMember' | 'status' | 'statusId'>, allowedStatus?: string): string {
     if (!validTicket(project, t.key))
-        return 'Outside CEC';
+        return `Outside ${jiraBinding(project).projectKey}`;
     const jira = jiraBinding(project);
     if (t.assignee !== jira.account)
         return 'Assigned to someone else';
     if (t.subtask)
         return 'Subtasks are excluded';
     if (!t.boardMember)
-        return jira.intakeListUrl ? 'Not in the configured CEC project list' : `Not in CEC board ${jira.board}`;
+        return jira.intakeListUrl ? `Not in the configured ${jira.projectKey} project list` : `Not in ${jira.projectKey} board ${jira.board}`;
     if (allowedStatus) {
         if (t.status !== allowedStatus || !t.statusId)
             return 'Ticket left the authorized intake status';
