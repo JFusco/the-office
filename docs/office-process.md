@@ -191,6 +191,18 @@ already queued blocks with "Project policy requires human merge", and a merge
 already attempted is still settled by read-back. Release, package or downstream-runner success
 must be observed from the relevant provider; a merge is not proof of release.
 
+A Jira/Azure draft pull request is expected on the accepted candidate. When the developer brings the
+branch up to date with the target first, so the pull request opens on a head that contains the
+accepted candidate, the harness verifies that with git, records the pull request and sends the new
+head back to the developer to confirm. The confirming pass spends no repair attempt and posts no Dev
+update, because the move is not a finding, and it must report the moved head or a commit that
+contains it. The confirmed head then takes the review the approach selects. A head QA had already
+tested is retested; a head that moved before any QA goes on to the validation the approach selected.
+It is published without drafting again. A stopped ticket whose recorded draft result is in this
+shape takes the same route on resume without running the stage again. A head that does not contain
+the accepted candidate is still refused (`server/cec/draft-pr-moved-head.ts`,
+`server/cec/confirm-moved-head.ts`, `server/cec/resume-moved-head.ts`).
+
 Sam's GitHub readiness review does not run on a PR that GitHub already reports as not
 reviewable. A draft PR and running current-head checks wait without a model run, and the
 review queues once when the PR is ready and its checks finish. A conflict on a head the team
