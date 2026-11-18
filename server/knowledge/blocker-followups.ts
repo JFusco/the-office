@@ -6,7 +6,7 @@ import { investigationResolution } from '../it/investigations/ledger';
 import { nativeDeliveryResolved } from '../it/native-delivery-resolved';
 import { conversationResolved } from '../conversations/outbox';
 import { conversationReadbackReady, uncertainConversations, queueConversationReadback } from '../conversations/conversation-recovery';
-import { HOLDS } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import { captureLearning, learningDigest } from './learning-events';
 
 /** Positive binding, not a prose tag, grants only read-only diagnosis. */
@@ -15,7 +15,7 @@ export function harperHandoff(store: Store, message: TeamMessage): boolean {
 }
 function handoff(store: Store, item: BlockerFollowup, original?: TeamMessage) {
     const id = `harper-followup:${item.id}:${learningDigest(item.nextAction)}`;
-    if (item.handoffId === id || store.state.messages.some(message => message.id === id) || store.state.paused || store.state.draining || HOLDS[item.key]) return;
+    if (item.handoffId === id || store.state.messages.some(message => message.id === id) || store.state.paused || store.state.draining || holdReason(store.project, item.key)) return;
     if (original && !conversationReadbackReady(store, original)) return;
     item.handoffId = id; (item.handoffIds ??= []).push(id);
     store.state.messages.push({ id, requestId: id, from: 'knowledge', to: 'pm', ticket: item.key,
@@ -65,7 +65,7 @@ export function reconcileBlockerFollowups(store: Store): void {
         const blocked = ['blocked', 'interrupted'].includes(job.status);
         const detail = blocked ? job.detail : resolved ? 'Owning delivery source has verified resolution evidence.' : 'Delivery source no longer blocked; recovery proof unknown.';
         const item = observe({ kind: 'job', id: job.id }, job.key, detail, resolved ? job.status === 'cancelled' ? 'superseded' : 'confirmed' : blocked ? 'unresolved' : 'unknown', { status: blocked ? job.status : '', resolved }, { recoveryId: recovery?.[0], requestId: recovery?.[1].requestId, owner: 'Ellis' });
-        if (!resolved && !recovery && !item.nudgeId && knowledge.enabled && !store.state.paused && !store.state.draining && !HOLDS[job.key]) {
+        if (!resolved && !recovery && !item.nudgeId && knowledge.enabled && !store.state.paused && !store.state.draining && !holdReason(store.project, job.key)) {
             item.nudgeId = store.state.coordination?.requests?.find(request => request.action === 'check-it' && ['queued', 'working'].includes(request.status))?.id || enqueueRequest(store, 'check-it', '', '', 'it').id;
         }
     }

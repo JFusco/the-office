@@ -6,7 +6,7 @@ import {resolve,basename,relative} from 'node:path';
 import {homedir} from 'node:os';
 import {isDeepStrictEqual} from 'node:util';
 import {z} from 'zod';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import {currentAssignment} from '../../../workers/assignment-context';
 import {continuationWorkerProof,assertContinuationWorker,continuationWorktree} from '../implementation/continuation-evidence';
 import {artifact,rootArtifact,digest,sha,ownedPath,terminationObservation} from '../../../store/readback-evidence';
@@ -52,7 +52,7 @@ export async function reconcileOriginalCloseout(delivery:GitHubDelivery,key:stri
  const current=(live:CloseoutOwnership)=>{
   if(supervision)requireCloseout(isDeepStrictEqual(readCloseoutSupervisionProof(store,job,selected.work,request.closeoutSupervisionProof),supervision),'Historical closeout supervision proof changed');
   const next=closeoutRecoveryCandidate(store,job),effects=store.db.prepare('SELECT body FROM effects WHERE work_key=?').all(workKey({projectId:store.project.id,kind:'delivery',id:job.id}))as{body:string}[];
-  requireCloseout(!store.state.paused&&!HOLDS[key]&&delivery.jobs.find(j=>j.id===job.id)===job&&delivery.jobs.filter(j=>j.key===key&&j.status!=='cancelled').length===1&&next&&digest({job,project:store.project,human:deliveryHumanInputs(store,key),selected:next})===version&&
+  requireCloseout(!store.state.paused&&!holdReason(store.project, key)&&delivery.jobs.find(j=>j.id===job.id)===job&&delivery.jobs.filter(j=>j.key===key&&j.status!=='cancelled').length===1&&next&&digest({job,project:store.project,human:deliveryHumanInputs(store,key),selected:next})===version&&
    isDeepStrictEqual(currentAssignment()?.claim,claim)&&store.activeClaims().some(c=>isDeepStrictEqual(c,claim))&&digest(request)===intentVersion&&store.state.coordination?.requests?.filter(r=>r.id===intentId).length===1&&isDeepStrictEqual(continuationWorktree(job.worktree),tree)&&
    effects.every(row=>JSON.parse(row.body).status==='verified')&&live.complete&&live.fresh&&live.ownership?.status==='clear','Original closeout identity, effects, scope, claim or ownership changed');
  };

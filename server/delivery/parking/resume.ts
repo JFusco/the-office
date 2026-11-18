@@ -1,4 +1,4 @@
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { dependencyEligibility, type DependencyStores } from '../pipeline/dependencies';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
 import type { Store } from '../../store/store';
@@ -10,7 +10,7 @@ export function resumeParked(store: Store, jobs: TicketJob[], assigned: Assigned
     if (!pickup.enabled) return resumed;
     for (const job of jobs.filter(job => job.parked?.published && job.status === 'blocked')) {
         const lane = assigned.find(issue => issue.key === job.key)?.pickupStatus;
-        if (lane !== pickupStatus || HOLDS[job.key] || job.steps.some(step => hasUncertainEffects(step.stage, step.result)) || dependencyEligibility(job.prerequisites || [], stores, now))
+        if (lane !== pickupStatus || holdReason(store.project, job.key) || job.steps.some(step => hasUncertainEffects(step.stage, step.result)) || dependencyEligibility(job.prerequisites || [], stores, now))
             continue;
         const stage = job.parked!.stage;
         delete job.parked;

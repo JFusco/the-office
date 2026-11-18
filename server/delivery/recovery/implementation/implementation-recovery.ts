@@ -14,7 +14,7 @@ import { recordJobApproach } from '../../pipeline/approach';
 import { GitOperations } from '../../../github/git-operations';
 import { processGroupAlive } from '../../../workers/process';
 import { currentAssignment } from '../../../workers/assignment-context';
-import { HOLDS } from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import { artifact, ownedPath, terminationObservation } from '../../../store/readback-evidence';
 import { continuationScope, continuationWorkerProof, assertContinuationWorker, continuationJsonArtifact, continuationWorktree } from './continuation-evidence';
 import { readValidationProviderContext, validationProviderVersion } from '../validation/validation-provider-context';
@@ -159,7 +159,7 @@ function brainImplementationCandidate(store: Store, job: TicketJob): { kind: 'ca
     try {
         if (store.project.provider !== 'github' || job.implementationContinuation || job.implementationRecovery || job.candidateRecovery ||
             job.existingPR || job.pr || job.head || job.worktree || job.branch || job.mergeAttempt || job.mergeIntentId ||
-            job.stage !== 'implement' || !['blocked', 'interrupted'].includes(job.status) || HOLDS[job.key] ||
+            job.stage !== 'implement' || !['blocked', 'interrupted'].includes(job.status) || holdReason(store.project, job.key) ||
             job.boardUpdates?.some(update => update.status !== 'verified') || store.activeClaims().some(claim => claim.work.id === job.id) ||
             store.state.workLog?.some(work => work.requestId === job.id && ['running', 'stopping'].includes(work.status)) ||
             job.steps.some(step => step.result.receipts.some(r => !r.verified || r.uncertain))) return;
@@ -234,7 +234,7 @@ async function recoverBrainImplementation(delivery: GitHubDelivery, key: string,
     let reused: ReturnType<typeof readPriorBrainAudit>;
     const assertCurrent = (live: Ownership) => {
         const currentIntents = store.state.coordination?.requests?.filter(r => r.action === 'reconcile-implementation' && r.key === key && r.head === originalWorkId && r.status === 'working') || [];
-        if (store.state.paused || HOLDS[key] || !isDeepStrictEqual(currentAssignment()?.claim, claim) ||
+        if (store.state.paused || holdReason(store.project, key) || !isDeepStrictEqual(currentAssignment()?.claim, claim) ||
             currentIntents.length !== 1 || currentIntents[0] !== intent || store.state.coordination!.requests!.filter(r => r.id === intent.id).length !== 1 ||
             !store.activeClaims().some(active => isDeepStrictEqual(active, claim)) ||
             delivery.jobs.find(j => j.id === job.id) !== job || !brainImplementationCandidate(store, job) ||

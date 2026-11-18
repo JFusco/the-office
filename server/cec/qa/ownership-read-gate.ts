@@ -1,6 +1,6 @@
 import type { DeliveryRequest, EffectIntent } from '../../../src/shared';
 import type { Store } from '../../store/store';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { featureGate } from '../../features/enrollment-gate';
 import { readOwnershipCandidate, type ReadOwnershipView } from './read-ownership-candidate';
 
@@ -11,7 +11,7 @@ export function ownershipReadState(store: Store, request: DeliveryRequest, ownCl
         request.action !== 'resume-ticket' || request.status !== 'blocked' || !request.error || t.blocker !== request.error ||
         !store.state.deliveryQueue?.includes(request) || !t.pilot || t.activity !== 'blocked' || !['qa', 'retest'].includes(t.stage) ||
         t.approach?.validation !== 'browser' || input.commit !== t.commit || !/^[a-f0-9]{40}$/.test(t.commit) || t.prId ||
-        store.state.paused || store.state.draining || HOLDS[t.key] || !featureGate(store, t.key).allowed ||
+        store.state.paused || store.state.draining || holdReason(store.project, t.key) || !featureGate(store, t.key).allowed ||
         t.parked && !t.parked.resumeRequestedAt || t.qaProtocol?.[t.stage] || t.officeQAHandoffs?.length ||
         store.state.deliveryQueue.some(r => r.key === t.key && r.id !== request.id && ['queued', 'working'].includes(r.status)) ||
         store.state.workLog?.some(w => w.ticket === t.key && ['running', 'stopping'].includes(w.status))) return;

@@ -1,4 +1,4 @@
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { harnessDelivers } from '../harness/scope';
 import { teamReviewedHead } from '../readiness/team-review';
 import { findingsBlock } from '../findings/advisory';
@@ -43,7 +43,7 @@ export function refreshEligible(store: Store, job: TicketJob, p: any, claimed = 
     if (!harnessDelivers(store, job) || !(job.stage === 'merge' ? ['blocked', 'interrupted', 'watching'].includes(job.status) : job.stage === 'lead-pr' && (job.status === 'watching' || claimed && job.status === 'working')))
         return false;
     // A retained source-repair cycle keeps its own reconciliation contract.
-    if (store.state.paused || store.state.draining || HOLDS[job.key] || job.mergeAttempt || job.mergeApprovalRequired || job.repairCycle || !job.worktree || !job.branch || !job.pr)
+    if (store.state.paused || store.state.draining || holdReason(store.project, job.key) || job.mergeAttempt || job.mergeApprovalRequired || job.repairCycle || !job.worktree || !job.branch || !job.pr)
         return false;
     if (!store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
         return false;

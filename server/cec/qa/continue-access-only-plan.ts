@@ -6,7 +6,8 @@ import type { Ticket, EffectIntent } from '../../../src/shared';
 import type { Store } from '../../store/store';
 import { rootArtifact } from '../../store/readback-evidence';
 import { command, processGroupAlive } from '../../workers/process';
-import { HOLDS, SKILLS } from '../../office/config';
+import { SKILLS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { isAccessOnlyPlan, settledAccessOnlyState } from './access-only-plan';
 
 function entryExists(path: string): boolean {
@@ -42,7 +43,7 @@ export async function continueAccessOnlyPlan(store: Store, ticket: Ticket, dataR
     const work = store.state.workLog?.filter(item => item.ticket === ticket.key && item.role === 'qa' && item.stage === stage).at(-1);
     const snapshot = JSON.stringify({ stage, attempt: ticket.attempt, commit: ticket.commit, result, repairAttempts: ticket.repairAttempts });
     const current = () => {
-        if (store.ticket(ticket.key) !== ticket || store.state.paused || store.state.draining || HOLDS[ticket.key] ||
+        if (store.ticket(ticket.key) !== ticket || store.state.paused || store.state.draining || holdReason(store.project, ticket.key) ||
             !ticket.pilot || ticket.activity !== 'blocked' || !/^[a-f0-9]{40}$/.test(ticket.commit) ||
             !Number.isInteger(ticket.attempt) || ticket.attempt < 1 ||
             ticket.parked && !ticket.parked.resumeRequestedAt || !request || request.status !== 'working' ||

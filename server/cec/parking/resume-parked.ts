@@ -1,5 +1,5 @@
 import { Effects } from '../../store/effects';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { jiraBinding } from '../../office/project-bindings';
 import { findComment, readIssue, type Execute, type LiveIssue } from './jira-issue';
 import { commentDecision, commentRefused, moveToBlocked, parkEffectIds, publishParked, releasePark } from './park-ticket';
@@ -29,7 +29,7 @@ export async function reconcileAndResumeParked(store: Store, execute: Execute, r
         if (!t.parked) continue;
         if (!t.parked!.published) await settleParking(store, execute, t, issue);
         else if (t.parked!.resumeRequestedAt) followResume(store, t, issue);
-        else if (issue.status === t.parked!.fromStatus && issue.assignee === binding.account && !HOLDS[t.key]) {
+        else if (issue.status === t.parked!.fromStatus && issue.assignee === binding.account && !holdReason(store.project, t.key)) {
             try { requestResume(t.key); }
             catch (error) { note(store, t, `Decision needed: ${t.parked!.reason} Resume could not be queued: ${String(error)}`); continue; }
             t.parked!.resumeRequestedAt = new Date(now).toISOString();

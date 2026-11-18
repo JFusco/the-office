@@ -1,4 +1,4 @@
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { deliveryInputSha256 } from '../../github/github-context';
 import { digest } from '../../store/readback-evidence';
 import { currentAssignment } from '../../workers/assignment-context';
@@ -13,7 +13,7 @@ type Ownership = () => Promise<{ complete: boolean; fresh: boolean; project: str
 
 /** Only a failed board preflight before ANY source worker/result may admit this readback. */
 export function boardPreflightCandidate(store: Store, job: TicketJob): { id: string; head: string } | undefined {
-    if (!harnessDelivers(store, job) || store.state.paused || store.state.draining || !store.state.coordination?.enabled || HOLDS[job.key] || HOLDS[`GH-${job.pr}`] ||
+    if (!harnessDelivers(store, job) || store.state.paused || store.state.draining || !store.state.coordination?.enabled || holdReason(store.project, job.key) || holdReason(store.project, `GH-${job.pr}`) ||
         job.status !== 'blocked' || job.stage !== 'update-base' || !job.pr || !/^[a-f0-9]{40}$/.test(job.head) || !job.branch || !job.worktree || job.parked ||
         !/^Error: Board transition needs read-back:/.test(job.detail) || job.mergeAttempt || job.mergeCommit || job.mergeIntentId || job.mergeApprovalRequired || job.prerequisites?.length ||
         job.steps.some(step => step.stage === 'update-base' || hasUncertainEffects(step.stage, step.result)) ||

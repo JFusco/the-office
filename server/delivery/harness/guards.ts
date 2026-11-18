@@ -1,4 +1,4 @@
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 import { harnessDelivers } from './scope';
@@ -8,8 +8,8 @@ import { requireDeliveryAuthority } from './delivery-authority';
 export function assertMayMutate(store: Store, jobs: TicketJob[], job: TicketJob, expectedHead: string): void {
     if (store.state.paused)
         throw new Error('Office paused before a harness write');
-    if (HOLDS[job.key])
-        throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
+    if (holdReason(store.project, job.key))
+        throw new Error(`${job.key} is held: ${holdReason(store.project, job.key)}`);
     if (jobs.find(candidate => candidate.id === job.id) !== job)
         throw new Error('Delivery job identity changed before a harness write');
     if (expectedHead && job.head !== expectedHead)

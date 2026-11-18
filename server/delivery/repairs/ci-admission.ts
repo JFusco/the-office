@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { deliveryInputSha256 } from '../../github/github-context';
 import { CurrentChecksWait } from '../readiness/github-check-selection';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
@@ -13,7 +13,7 @@ import { recordCIBudget } from '../../knowledge/record-trigger';
 export async function queueCIDiagnosis(delivery: GitHubDelivery, job: TicketJob) {
     const { store } = delivery;
     if (job.stage !== 'lead-pr' || job.status !== 'watching' || !job.pr || job.mergeAttempt ||
-        store.state.paused || store.state.draining || HOLDS[job.key] || job.prerequisites?.length ||
+        store.state.paused || store.state.draining || holdReason(store.project, job.key) || job.prerequisites?.length ||
         job.steps.some(s => hasUncertainEffects(s.stage, s.result))) return false;
     const last = job.ciRepairs?.at(-1);
     if (last && last.phase !== 'done') return false;

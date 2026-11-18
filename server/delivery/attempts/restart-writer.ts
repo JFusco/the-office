@@ -1,4 +1,4 @@
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { processGroupAlive } from '../../workers/process';
 import { harnessDelivers } from '../harness/scope';
 import { nextAttemptAt } from './attempt-backoff';
@@ -30,7 +30,7 @@ export function writerRestarted(job: Pick<TicketJob, 'writerRestarts'>, workId: 
 export function writerRestartCandidate(store: Store, job: TicketJob, now: Date, alive: (pid: number) => boolean = processGroupAlive): WriterRestartCandidate | null {
     const state = store.state, accepted = job.head || job.candidateBase;
     if (!harnessDelivers(store, job) || !WRITER_STAGES.includes(job.stage) || !['blocked', 'interrupted'].includes(job.status)) return null;
-    if (state.paused || state.draining || HOLDS[job.key] || job.pr && HOLDS[`GH-${job.pr}`] || !job.worktree || !job.branch || !accepted) return null;
+    if (state.paused || state.draining || holdReason(store.project, job.key) || job.pr && holdReason(store.project, `GH-${job.pr}`) || !job.worktree || !job.branch || !accepted) return null;
     // Work that already has its own recovery record keeps it.
     if (job.stoppedBaseUpdate || job.repairCycle || job.mergeAttempt || job.parked) return null;
     const work = state.workLog?.filter(entry => entry.requestId === job.id && entry.stage === `github-${job.stage}`).at(-1);

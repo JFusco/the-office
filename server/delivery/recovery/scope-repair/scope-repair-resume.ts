@@ -6,7 +6,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {z} from 'zod';
 import {ResultSchema} from '../../../workers/agents';
 import {currentAssignment} from '../../../workers/assignment-context';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import {continuationWorkerProof,assertContinuationWorker,continuationWorktree} from '../implementation/continuation-evidence';
 import {completedExecution,claudeExecution} from '../../../workers/worker-completion';
 import {artifact,digest,ownedPath,rootArtifact} from '../../../store/readback-evidence';
@@ -60,7 +60,7 @@ export async function resumeBlockedScopeRepair(delivery:GitHubDelivery,key:strin
  const expected=digest({job,project:store.project,selected}),claimIdentity=structuredClone(claim),intentIdentity=digest(intent),input=deliveryInputSha256(store,key),tree=continuationWorktree(job.worktree),effectRows=effects(store,job);
  const assertCurrent=(live:Ownership)=>{
   const current=scopeRepairResumeCandidate(store,job);
-  requireThat(!store.state.paused&&!HOLDS[key]&&delivery.jobs.find(j=>j.id===job.id)===job&&current&&digest({job,project:store.project,selected:current})===expected&&
+  requireThat(!store.state.paused&&!holdReason(store.project, key)&&delivery.jobs.find(j=>j.id===job.id)===job&&current&&digest({job,project:store.project,selected:current})===expected&&
    deliveryInputSha256(store,key)===input&&isDeepStrictEqual(effects(store,job),effectRows)&&certain(effectRows)&&
    isDeepStrictEqual(currentAssignment()?.claim,claimIdentity)&&store.activeClaims().some(c=>isDeepStrictEqual(c,claimIdentity))&&
    !store.activeClaims().some(c=>c.id!==claimIdentity.id&&c.work.projectId===store.project.id&&c.work.id===job.id)&&

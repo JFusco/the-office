@@ -24,7 +24,7 @@ import { command } from '../../workers/process';
 import { containedFile } from '../../cec/workflow';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { hasUncertainEffects, closeoutReceipt } from '../pipeline/github-delivery';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { findingsBlock } from '../findings/advisory';
 import { refreshEligible } from '../repairs/refresh-conflicted';
 import { requireMetadataReview } from '../publication/metadata-review';
@@ -67,8 +67,8 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
     if (!attempted) assertHarnessMayMerge(this.store);
     if (this.store.state.paused || job.mergeApprovalRequired || job.mergeAuthorization && job.mergeAuthorization.head !== job.head || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
         throw new Error('Office merging is paused, disabled, or awaiting this PR’s approval');
-    if (HOLDS[job.key])
-        throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
+    if (holdReason(this.store.project, job.key))
+        throw new Error(`${job.key} is held: ${holdReason(this.store.project, job.key)}`);
     if (attempted)
         throw new Error('Prior merge attempt needs read-back; it will not be repeated');
     const p = await this.verifyPR(job, true);
@@ -122,8 +122,8 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
             assertHarnessMayMerge(this.store);
             if (this.jobs.find(candidate => candidate.id === job.id) !== job || job.stage !== 'merge' || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
                 throw new Error('Merge work identity or authorization changed');
-            if (HOLDS[job.key])
-                throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
+            if (holdReason(this.store.project, job.key))
+                throw new Error(`${job.key} is held: ${holdReason(this.store.project, job.key)}`);
             const current = await this.verifyPR(job, true);
             if (!greenOnly) await requireMetadataReview(this, job);
             if (current.head.sha !== payload.sha || current.state !== 'open' || current.draft)

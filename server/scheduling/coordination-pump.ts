@@ -10,7 +10,7 @@ import { admit } from '../delivery/intake/admission';
 import { enqueueRequest } from './requests';
 import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey, observePrerequisites } from '../delivery/pipeline/dependencies';
 import { shortSummary } from '../../src/work/work-summary';
-import { HOLDS } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import { MergeNotifications } from '../conversations/notifications';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import { BrainFollowup } from '../maintenance/brain/brain-followup';
@@ -134,9 +134,10 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
                 review.workRequested = undefined;
             }
             if (this.store.transaction(() => holdAssessmentIntake(this.store, review))) return;
-            if (HOLDS[review.key]) {
+            const held = holdReason(this.store.project, review.key);
+            if (held) {
                 review.status = 'held';
-                review.detail = HOLDS[review.key];
+                review.detail = held;
                 return;
             }
             const own = this.store.state.tickets.find(t => t.key === review.key);

@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { readValidationProviderContext, validationProviderVersion } from './validation-provider-context';
 import { currentAssignment } from '../../../workers/assignment-context';
 import { ResultSchema } from '../../../workers/agents';
-import { HOLDS } from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import { recoveredFindingsResolved } from '../implementation/implementation-recovery';
 import { GitOperations } from '../../../github/git-operations';
 import { processGroupAlive } from '../../../workers/process';
@@ -91,7 +91,7 @@ export async function reconcileValidation(delivery: GitHubDelivery, key: string,
         assertIntent();
         const current = validationReadbackCandidate(store, job);
         const effects = store.db.prepare('SELECT body FROM effects WHERE work_key=?').all(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id })) as { body: string }[];
-        if (store.state.paused || store.state.draining && !mayFinishDraining() || HOLDS[key] || delivery.jobs.find(j => j.id === job.id) !== job || !current ||
+        if (store.state.paused || store.state.draining && !mayFinishDraining() || holdReason(store.project, key) || delivery.jobs.find(j => j.id === job.id) !== job || !current ||
             digest({ job, project: store.project, original: current.work, lead: current.lead, files: current.files }) !== expected ||
             effects.some(row => JSON.parse(row.body).status !== 'verified') || job.boardUpdates?.some(update => update.status !== 'verified') ||
             job.steps.some(step => step.result.receipts.some(r => !r.verified || r.uncertain)) || !live.complete || !live.fresh || live.ownership?.status !== 'clear')

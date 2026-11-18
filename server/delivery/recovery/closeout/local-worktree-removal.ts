@@ -4,7 +4,7 @@ import {dirname,isAbsolute,relative,resolve,sep} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {continuationWorktree} from '../implementation/continuation-evidence';
 import {ownedPath,artifact,digest,terminationObservation} from '../../../store/readback-evidence';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import {deliveryHumanInputs} from '../../../github/github-context';
 import type {Store} from '../../../store/store';
 import type {TicketJob} from '../../../../src/shared';
@@ -79,7 +79,7 @@ export function partialLocalCleanupKey(job:TicketJob){
 export function partialLocalCleanupCandidate(store:Store,job:TicketJob){
  try{
   const r=job.closeoutRecovery;
-  if(store.project.provider!=='github'||store.project.id==='brain'||store.state.paused||store.state.draining||HOLDS[job.key]||job.stage!=='closeout'||!['blocked','interrupted'].includes(job.status)||!r||r.status!=='cleanup-pending'||!job.head||!job.worktree||!job.branch||r.operations.worktree?.localResumption||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
+  if(store.project.provider!=='github'||store.project.id==='brain'||store.state.paused||store.state.draining||holdReason(store.project, job.key)||job.stage!=='closeout'||!['blocked','interrupted'].includes(job.status)||!r||r.status!=='cleanup-pending'||!job.head||!job.worktree||!job.branch||r.operations.worktree?.localResumption||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
   const cleanup=store.state.coordination?.requests?.find(q=>q.id===r.cleanupRequestId);
   if(!cleanup||cleanup.action!=='cleanup-merged-candidate'||cleanup.key!==job.key||cleanup.head!==r.originalWorkId||!['blocked','interrupted'].includes(cleanup.status))return;
   const id=`closeout-cleanup:${job.id}:${r.originalWorkId}:${r.proofSha256}:worktree`,remoteId=id.slice(0,-'worktree'.length)+'remote',op=r.operations.worktree,remote=r.operations.remote;

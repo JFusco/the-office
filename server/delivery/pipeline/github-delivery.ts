@@ -19,7 +19,7 @@ import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { stopReason } from './stop-reason';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { handsOff, harnessDelivers } from '../harness/scope';
 import { findingsBlock } from '../findings/advisory';
 import { runHarnessStage } from '../harness/run-harness-stage';
@@ -130,8 +130,8 @@ export class GitHubDelivery {
         mkdirSync(root, { recursive: true });
         try {
             assertDeliveryMayMutate(this.store, this.jobs, job, job.head);
-            if (job.implementationContinuation && (this.store.state.paused || HOLDS[job.key])) throw new Error('Continuation is paused or held');
-            if (handsOff(this.store) && HOLDS[job.key]) throw new Error(`${job.key} is held: ${HOLDS[job.key]}`);
+            if (job.implementationContinuation && (this.store.state.paused || holdReason(this.store.project, job.key))) throw new Error('Continuation is paused or held');
+            if (handsOff(this.store) && holdReason(this.store.project, job.key)) throw new Error(`${job.key} is held: ${holdReason(this.store.project, job.key)}`);
             if(job.savedPrerequisiteHandoff&&!await requireSavedPrerequisites(this,job)){
                 job.status='queued';job.detail='Independent review waits for fresh verified prerequisite merge';return;
             }

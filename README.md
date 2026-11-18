@@ -39,6 +39,9 @@ A project entry may carry an optional `policy` block; leave it out and the proje
 | `policy.handsOff` | `false` (`true` for `brain` and `cms-field-vocabulary`) | The harness, not a model, creates the candidate, publishes, promotes and closes out. GitHub only. |
 | `policy.checkpoint.hour` | `17` (`9` for `cec`, `15` for `cms-field-vocabulary`) | Hour of the daily checkpoint, 0 to 23, America/New_York. |
 | `policy.checkpoint.weekends` | `true` (`false` for `cec`) | Whether the checkpoint also runs on Saturday and Sunday. |
+| `policy.holds` | none | Human holds for this project only, keyed by ticket key; the top-level `holds` still applies to every project as before. |
+
+A top-level `GH-…` hold stops that issue number in every GitHub project, so put GitHub holds in the owning project's `policy.holds` instead.
 
 A mistake stops start-up and names the project and key, for example `Project "web": policy.merge must be "human" or "harness"`.
 
