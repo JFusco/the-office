@@ -49,8 +49,10 @@ test('unknown provider checks never request a login after retries, while confirm
     for (const ms of [0, 60000, 180000, 600000])
         await a.it.tick(new Date(1793221200000 + ms), true);
     // An incomplete probe stays with Ellis however often it repeats; only a confirmed logout reaches Joe.
-    expect(a.state.it!.reports.at(-1)!.followUps).toEqual([expect.objectContaining({ id: 'probe:anthropic', owner: 'IT' })]);
-    expect(a.state.it!.status).toBe('retrying');
+    expect(a.state.it!.reports.at(-1)!.followUps).toEqual([expect.objectContaining({ id: 'probe:anthropic', owner: 'IT', routine: true })]);
+    // Listed, not counted: a watch on the Office's surroundings does not make Ellis look busy.
+    expect(a.state.it!.status).toBe('monitoring');
+    expect(a.state.it!.reports.at(-1)!.summary).toContain('no operational recovery is pending');
     syncOutbox(a.state);
     expect(a.state.outbox.filter(o => o.status === 'open')).toEqual([]);
     a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [{ id: 'anthropic', name: 'Claude', status: 'disconnected', detail: 'Not logged in', checkedAt: '', nextStep: 'Run /login' }] } as any);
@@ -119,7 +121,9 @@ test.each(['cec', 'brain', 'cms-field-vocabulary'])('%s session visibility follo
     const followUp = a.state.it!.reports.at(-1)!.followUps.find(f => f.id === 'session-visibility')!;
     // Informational: it stays with Ellis after its retries, and never turns his status to needs-attention.
     expect(followUp.owner).toBe('IT');
-    expect(a.state.it!.status).toBe('retrying');
+    // Listed, not counted: it never makes Ellis look busy either.
+    expect(followUp.routine).toBe(true);
+    expect(a.state.it!.status).toBe('monitoring');
     if (project === 'cec') {
         expect(followUp.detail).toContain('work that needs complete live evidence reports its own block');
         expect(followUp.detail).not.toContain('Optional chat context');
@@ -259,6 +263,16 @@ test('a service this project does not use raises no probe follow-up', async () =
     a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [{ id: 'atlassian', name: 'Atlassian', status: 'unknown', detail: 'Upgrade required', checkedAt: '' }, { id: 'azure', name: 'Azure DevOps', status: 'unknown', detail: 'Timed out', checkedAt: '' }, { id: 'github', name: 'GitHub', status: 'unknown', detail: 'Timed out', checkedAt: '' }] } as any);
     await a.it.tick(new Date(1793221200000), true);
     expect(a.state.it!.reports.at(-1)!.followUps.map(f => f.id)).toEqual(['probe:github']);
+});
+test('a routine watch beside a real recovery: only the recovery is counted, and Ellis shows as retrying', async () => {
+    const a = setup();
+    (a.it as any).offices.sessions = { forProject: () => ({ complete: false, fresh: false }), refresh: vi.fn() };
+    a.state.github = { error: 'connection reset' } as any;
+    await a.it.tick(new Date(1793221200000), true);
+    const report = a.state.it!.reports.at(-1)!;
+    expect(report.followUps.map(f => [f.id, !!f.routine]).sort()).toEqual([['project-progress', false], ['session-visibility', true]]);
+    expect(a.state.it!.status).toBe('retrying');
+    expect(report.summary).toMatch(/\b1 (?:operational )?follow-up remain/);
 });
 test('one failed project refresh is retried by Ellis; Morgan is told only after three in a row', async () => {
     const a = setup(), start = 1793221200000;

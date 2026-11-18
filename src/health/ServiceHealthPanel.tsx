@@ -1,3 +1,4 @@
+import { outstandingFollowUps } from './outstanding-follow-ups';
 import { withoutIdentifiers } from '../office/without-identifiers';
 import {LoadingMark,LoadingState} from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
@@ -24,8 +25,8 @@ export function ServiceHealthPanel({project='cec',liveIT,onChat}:{project?:strin
   const id=f.id.replace(/^(?:probe|login):/,''),service=services.find(s=>s.id===id);
   return !service||service.status!=='connected';
  });
- const human=followUps.filter(f=>f.owner==='You').length;
- const itLabel=!diagnostics.fresh?'Update overdue':human?'Needs your help':followUps.some(f=>f.owner==='Morgan')?'Team follow-up':followUps.length?'Follow-up pending':'Monitoring';
+ const human=followUps.filter(f=>f.owner==='You').length,outstanding=outstandingFollowUps(followUps);
+ const itLabel=!diagnostics.fresh?'Update overdue':human?'Needs your help':outstanding.some(f=>f.owner==='Morgan')?'Team follow-up':outstanding.length?'Follow-up pending':'Monitoring';
  const checked=services.filter(s=>s.status==='connected').length,unverified=services.filter(s=>s.status==='unknown').length,unavailable=services.filter(s=>s.status==='disconnected').length;
  useEffect(()=>{
   const controller=new AbortController();setLoading(true);setError('');
@@ -48,7 +49,7 @@ export function ServiceHealthPanel({project='cec',liveIT,onChat}:{project?:strin
    const stale=optional?'Session context unavailable or stale':'Ownership inventory needs refresh';
    return <article key={item.projectId} className="my-3 text-12"><strong>{item.projectId} · {item.stall?'Dispatch needs attention':item.stopping.length?'Stopping workers':item.ownershipFresh?fresh:stale}</strong><p>{item.runnable} ready · {item.running} running · {item.waiting} waiting · {blockedSummary(item)} · {item.publishingBacklog} time entries awaiting publication</p><p className={mutedCopy}>Provider observation: {item.providerAgeMs===null?'unavailable':`${Math.floor(item.providerAgeMs/1000)}s old`}. {optional?'Session context checked':'Ownership checked'}: {item.ownershipObservedAt?new Date(item.ownershipObservedAt).toLocaleString():'unavailable'}.</p></article>;})}<p className={mutedCopy}>Daily CTO review: {report.dailyCTO?`${report.dailyCTO.date} · ${report.dailyCTO.status}`:'No report collected yet'}. </p></Section>:null}
   {it?<section className="my-4.5 rounded-14 border border-it-line border-t-section-rule bg-it p-4" aria-label="Ellis IT specialist"><SectionTitle className="mb-4 justify-between gap-2.5">Ellis · IT specialist <Tag>{itLabel}</Tag></SectionTitle>
-   <p className="leading-body">{!diagnostics.fresh?'Current IT diagnostics need a fresh check. Earlier findings remain in report history; their current status is unverified.':human?`${human} confirmed access follow-up${human===1?' needs':'s need'} your help.`:followUps.length?'Ellis and Morgan own the remaining checks. No login action is requested from you.':'No current IT follow-up.'}</p>
+   <p className="leading-body">{!diagnostics.fresh?'Current IT diagnostics need a fresh check. Earlier findings remain in report history; their current status is unverified.':human?`${human} confirmed access follow-up${human===1?' needs':'s need'} your help.`:outstanding.length?'Ellis and Morgan own the remaining checks. No login action is requested from you.':followUps.length?'Nothing needs a follow-up. Routine checks are listed below.':'No current IT follow-up.'}</p>
    <Button className="mt-5" disabled={loading} onClick={()=>void checkIT()}>Check IT again</Button>
    {Number.isFinite(Date.parse(it.checkedAt))?<p className={cx(mutedCopy,'mt-3')}>Last IT review {new Date(it.checkedAt).toLocaleString()}</p>:null}
    <ITFollowUps it={it} followUps={followUps.filter(f=>!f.id.startsWith('probe:')&&!f.id.startsWith('login:'))}/>

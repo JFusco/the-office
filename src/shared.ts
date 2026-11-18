@@ -1065,6 +1065,8 @@ export interface ITFollowUp {
     owner: 'IT' | 'Morgan' | 'You';
     detail: string;
     nextAt?: string;
+    /** An informational watch on the Office's own surroundings: listed, never counted. */
+    routine?: boolean;
 }
 export interface ITReport {
     id: string;

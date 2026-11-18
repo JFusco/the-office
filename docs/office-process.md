@@ -338,7 +338,10 @@ Morgan or Joe:
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after
   three failures in a row. The Azure monitor's reads are read-only, so a lingering helper is not
   treated as a possible write.
-- Session visibility and service status probes are informational and stay with Ellis. Probes are
+- Session visibility and service status probes are informational and stay with Ellis. They are
+  listed but not counted as follow-ups, and do not by themselves show Ellis as retrying, even while
+  such a watch is being retried. Any other recovery in progress, and anything waiting on Morgan or
+  Joe, is counted. Probes are
   raised only for services the project uses. A confirmed logout still reaches Joe, and work that
   needs a complete session inventory reports its own block.
 

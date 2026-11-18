@@ -1,5 +1,6 @@
 import { investigationFollowUps } from './investigations/follow-ups';
 import type { ITState } from '../../src/shared';
+import { followUpStatus } from '../../src/health/outstanding-follow-ups';
 import type { Store } from '../store/store';
 import { nativeDeliveryResolved } from './native-delivery-resolved';
 
@@ -21,5 +22,5 @@ export function diagnosticSnapshot(store: Store): ITState | undefined {
         if (index >= 0) followUps[index] = current; else followUps.push(current);
     }
     return { ...it, projectId: store.project.id, followUps,
-        status: followUps.some(f => f.owner === 'You' || f.owner === 'Morgan') ? 'needs-attention' : followUps.length ? 'retrying' : 'monitoring' };
+        status: followUpStatus(followUps) };
 }

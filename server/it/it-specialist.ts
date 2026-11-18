@@ -1,3 +1,4 @@
+import { informationalRecovery } from './informational-recovery';
 import { ownAzureCheck } from './own-azure-check';
 import { syncInvestigations } from './investigations/ledger';
 import { investigationFollowUps } from './investigations/follow-ups';
@@ -60,6 +61,8 @@ export class ITSpecialist {
                 await readBackConversations(context);
                 await runDeliveryRecoveries(context);
                 await reconcileRecoveryLedger(context);
+                // A watch that only describes the Office's surroundings is listed, never counted as something to follow up.
+                for (const followUp of followUps) if (informationalRecovery(followUp.id) && followUp.owner !== 'You') followUp.routine = true;
                 // A concurrent rollback replaces snapshot objects; never stamp detached diagnostics as fresh.
                 if (store.state !== state || store.state.it !== it) { replaced = true; continue; }
                 await publishITReport(context);
