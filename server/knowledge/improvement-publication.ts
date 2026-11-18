@@ -4,6 +4,7 @@ import type { Store } from '../store/store';
 import { command } from '../workers/process';
 import { GitHubIssuePublisher } from '../github/issue-publication';
 import { JiraIssuePublisher } from '../cec/issue-publication';
+import { jiraBinding } from '../office/project-bindings';
 export const improvementMarker = (id: string) => `office-improvement-${id}`;
 export function improvementProvider(store: Store, id: string, execute: typeof command = command) {
     const provenance = { id, marker: () => improvementMarker(id) };
@@ -21,6 +22,6 @@ export async function improvementManifest(store: Store, item: KnowledgeImproveme
             if (!option) throw new Error('Configured pickup lane is unavailable');
             row.operations.push({ id: 'board-add', kind: 'board', payload: { action: 'add', projectId: board.projectId, fieldId: board.fieldId, optionId: '', name: '' }, expected: {} }, { id: 'board-status', kind: 'board', payload: { action: 'status', projectId: board.projectId, fieldId: board.fieldId, optionId: option.id, name: option.name }, expected: {} });
         }
-    } else row.operations.push({ id: 'create', kind: 'create', payload: { space: 'CEC', type: context.recommendedType, summary: row.title, description: body, labels: [marker] }, expected: {} }, { id: 'assign', kind: 'assign', payload: { assignee: context.assignee }, expected: {} });
+    } else row.operations.push({ id: 'create', kind: 'create', payload: { space: jiraBinding(store.project).projectKey, type: context.recommendedType, summary: row.title, description: body, labels: [marker] }, expected: {} }, { id: 'assign', kind: 'assign', payload: { assignee: context.assignee }, expected: {} });
     return { provider: store.project.provider, destination: store.project.repository, items: [row] };
 }

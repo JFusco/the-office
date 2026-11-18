@@ -17,6 +17,15 @@ test('renders projects, the binding, escaped holds and the restart footer', () =
     expect(html).toContain('href="https://example.atlassian.net/board"');
     expect(html).toContain('&lt;b&gt;Hold&lt;/b&gt;');
 });
+test('each Azure project shows its own Jira / Azure binding and its resolved policy', () => {
+  const policy = { merge: 'human' as const, handsOff: false, checkpoint: { hour: 9, weekends: false } };
+  const cec = { ...config.projects[0], policy, jira: { site: 'https://example.atlassian.net', projectKey: 'CEC', intakeStatuses: ['To Do', 'Open'], defaultPickup: 'To Do' }, azure: { organization: 'https://dev.azure.com/example', project: 'example' } };
+  const acme = { id: 'acme', name: 'Acme', provider: 'azure' as const, repository: 'acme-web', target: 'develop', boardName: null, boardUrl: null, policy: { ...policy, checkpoint: { hour: 17, weekends: true } }, jira: { site: 'https://acme.example.net', projectKey: 'ACME', intakeStatuses: ['Selected', 'Ready'], defaultPickup: 'Selected' }, azure: { organization: 'https://dev.azure.com/acme', project: 'Acme' } };
+  const html = render({ status: 'ready', config: { ...config, projects: [cec, acme, config.projects[1]] } });
+  for (const text of ['CEC · Jira / Azure binding', 'Acme · Jira / Azure binding', 'https://acme.example.net', 'ACME', 'Selected, Ready', 'https://dev.azure.com/acme · Acme', 'Human merges · not hands-off · checkpoint 09:00, weekdays only', 'checkpoint 17:00']) expect(html).toContain(text);
+  // The legacy single card is only a fallback for a summary without per-project bindings.
+  expect(html.match(/Jira \/ Azure binding/g)).toHaveLength(2);
+});
 test('shows an empty holds list and omits the binding without an Azure project', () => {
     const html = render({ status: 'ready', config: { ...config, projects: [config.projects[1]], holds: [] } });
     expect(html).toContain('No holds are configured'); expect(html).not.toContain('Jira / Azure binding');

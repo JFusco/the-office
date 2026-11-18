@@ -63,10 +63,18 @@ test.each([
     expect(() => parse(overrides)).toThrow(new Error(message));
 });
 
-test('only the Azure project cec may carry explicit blocks, and only beside the legacy cec block', () => {
-    expect(() => parse({}, cec, { id: 'acme', provider: 'azure' })).toThrow('Project "acme": a Jira/Azure project other than cec requires the rules phase');
+test('only Azure projects carry blocks; another Azure project needs all three, and cec needs the legacy block', () => {
+    expect(() => parse({}, cec, { id: 'acme', provider: 'azure' })).toThrow('Project "acme": prompt is required for a Jira/Azure project');
     expect(() => parse({}, cec, { id: 'web', provider: 'github' })).toThrow('Project "web": jira is only supported for provider "azure"');
+    expect(() => parseBindingBlocks({ id: 'web', provider: 'github', prompt: { authority: 'x' } } as never, cec)).toThrow('Project "web": prompt is only supported for provider "azure"');
     expect(() => parse({}, null)).toThrow('Project "cec": jira and azure require the legacy cec block until the rules phase');
+});
+
+test('cec keeps its legacy workflow and prompt text: statuses and prompt are still rejected', () => {
+    expect(() => parse({ jira: { ...jira, statuses: { intake: [{ name: 'To Do', id: '10000' }] } } })).toThrow(new Error('Project "cec": jira.statuses requires the rules phase'));
+    expect(() => parseBindingBlocks({ ...project, jira, azure, prompt: { authority: 'x' } } as never, cec)).toThrow(new Error('Project "cec": prompt requires the rules phase'));
+    expect(() => parseBindingBlocks({ ...project, prompt: { authority: 'x' } } as never, cec)).toThrow(new Error('Project "cec": prompt requires the rules phase'));
+    expect(() => parse({ jira: { ...jira, htmlFallback: true } })).toThrow(new Error('Project "cec": jira.htmlFallback is not supported'));
 });
 
 test('an explicit intake list must match the legacy list and select the configured project and assignee', () => {
@@ -85,7 +93,7 @@ test('the registry uses explicit bindings for cec when given, and the legacy fol
     expect(projectBindings(projects, cec).get('cec')!.azure.deployment.containerApp).toBe('ca-cos-conductor-shell-stg');
 });
 
-test('the loader accepts equivalent explicit blocks and rejects a second Jira/Azure project', () => {
+test('the loader accepts equivalent explicit blocks and rejects a second Jira/Azure project without its own blocks', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'office-binding-blocks-')); roots.push(root);
     vi.stubEnv('VITEST', ''); vi.stubEnv('NODE_ENV', 'production');
     const entry = { id: 'cec', name: 'CEC', provider: 'azure', repo: cec.repo, repository: cec.repository, target: cec.target };
@@ -96,7 +104,8 @@ test('the loader accepts equivalent explicit blocks and rejects a second Jira/Az
     const smuggled = load([{ ...entry, bindingBlocks: { jira: {}, azure: { deployment: { healthPath: 'https://evil.example' } } } }]).projects!;
     expect(smuggled[0].bindingBlocks).toBeUndefined();
     expect(explicitBindingInputs(smuggled, cec).size).toBe(0);
-    expect(() => load([entry, { ...entry, id: 'acme', repository: 'acme' }])).toThrow('Project "acme": a Jira/Azure project other than cec requires the rules phase');
+    expect(() => load([entry, { ...entry, id: 'acme', repository: 'acme' }])).toThrow('Project "acme": jira, azure and prompt are required for a Jira/Azure project');
+    expect(() => load([{ ...entry, prompt: { authority: 'x' } }])).toThrow('Project "cec": prompt requires the rules phase');
 });
 
 test('TWG calls carry the project site and, when configured, its login profile', () => {

@@ -68,6 +68,10 @@ and content qualification allow routine Dependabot, Renovate and canonical wiki
 PRs to use current-head provider checks and repository rules without an added
 model review or local QA cycle.
 
+Each Jira/Azure project uses its own configured Jira statuses, ticket key, prompt authority and
+observed deployment. A project added beside CEC never inherits CEC's authority, statuses or
+repository facts; CEC keeps its legacy values.
+
 ```mermaid
 flowchart LR
     I["Provider issue / idea / explicit planning request"] --> G{"Current intake and ownership eligible?"}

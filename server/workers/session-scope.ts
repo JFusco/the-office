@@ -21,16 +21,16 @@ type ScopeProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<
 /** The configured site may be written as its https URL or bare host, with an optional trailing slash. */
 const siteHost = (value: string) => value.replace(/[\\"']/g, '').toLowerCase().replace(/^https:\/\//, '').replace(/\/+$/, '');
 
-/** Exact CEC ticket keys named by native TWG work-item commands. A configured --site makes them commands;
+/** Exact ticket keys of this project (`projectKey`) named by native TWG work-item commands. A configured --site makes them commands;
  * a missing --site leaves the destination unproven, so they are references. Another site yields nothing. */
-function jiraCommandIssues(text: string, site: string): { commands: number[]; references: number[] } {
+function jiraCommandIssues(text: string, site: string, projectKey: string): { commands: number[]; references: number[] } {
     const commands: number[] = [], references: number[] = [], configured = siteHost(site);
     for (const command of text.matchAll(/(?<![\w.-])twg\s+jira\s+workitem\b[^;\n|&]*/gi)) {
         const site = command[0].match(/--site(?:=|\s+)[\\"']*([^\s;|&\\"',})\]]+)/i)?.[1];
         // An unexpanded shell value is as unproven as a missing site.
         const list = !site || site.includes('$') ? references : siteHost(site) === configured ? commands : undefined;
         if (!list) continue;
-        for (const key of command[0].matchAll(/(?<![\w-])CEC-(\d+)(?![\w-])/g))
+        for (const key of command[0].matchAll(new RegExp(`(?<![\\w-])${escaped(projectKey)}-(\\d+)(?![\\w-])`, 'g')))
             if (!list.includes(Number(key[1]))) list.push(Number(key[1]));
     }
     return { commands, references: references.filter(number => !commands.includes(number)) };
@@ -92,10 +92,10 @@ function scopeParser(sessionId: string, projects: ScopeProject[], previous?: Sco
         }
         for (const project of projects) {
             const repo = escaped(project.repository), path = escaped(project.repo);
-            // A current-turn TWG command binds a CEC ticket to the Jira project even from a chat rooted elsewhere.
-            const site = project.provider === 'azure' ? jiraBinding(project).site : '';
-            const jira = call && project.provider === 'azure' ? jiraCommandIssues(text, site) : { commands: [], references: [] };
-            const browse = project.provider === 'azure' ? [...text.matchAll(new RegExp(`${escaped(site)}/browse/CEC-(\\d+)(?![\\w-])`, 'gi'))] : [];
+            // A current-turn TWG command binds this project's ticket to its Jira project even from a chat rooted elsewhere.
+            const binding = project.provider === 'azure' ? jiraBinding(project) : undefined, site = binding?.site ?? '', key = binding?.projectKey ?? '';
+            const jira = call && binding ? jiraCommandIssues(text, site, key) : { commands: [], references: [] };
+            const browse = binding ? [...text.matchAll(new RegExp(`${escaped(site)}/browse/${escaped(key)}-(\\d+)(?![\\w-])`, 'gi'))] : [];
             if (!jira.commands.length && !jira.references.length && !browse.length &&!new RegExp(`(?:(?<![\\w.-])${repo}(?![\\w.-])|${path}(?=[/\\s'"\\\\]|$))`, 'i').test(text)) continue;
             conversationProjects.add(project.id);
             const scope = scopes.get(project.id) || { project: project.id, issues: [], prs: [], evidence: [] };
@@ -121,11 +121,11 @@ function scopeParser(sessionId: string, projects: ScopeProject[], previous?: Sco
             }
             for (const number of jira.references) {
                 if (!scope.issues.includes(number)) scope.issues.push(number);
-                scope.evidence.push({ at: row.timestamp || '', reference: `twg jira workitem CEC-${number} (no --site)`, kind: 'reference', issue: number });
+                scope.evidence.push({ at: row.timestamp || '', reference: `twg jira workitem ${key}-${number} (no --site)`, kind: 'reference', issue: number });
             }
             for (const number of jira.commands) {
                 if (!scope.issues.includes(number)) scope.issues.push(number);
-                scope.evidence.push({ at: row.timestamp || '', reference: `twg jira workitem CEC-${number} --site ${site}`, kind: 'command', issue: number });
+                scope.evidence.push({ at: row.timestamp || '', reference: `twg jira workitem ${key}-${number} --site ${site}`, kind: 'command', issue: number });
             }
             scope.evidence = scope.evidence.slice(-8);
             scopes.set(project.id, scope);
