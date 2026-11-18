@@ -1,14 +1,15 @@
 import { twgProfile } from '../cec/twg-connection';
-import type { TimeEntry, TimePublication } from '../../src/shared';
+import type { TimeEntry } from '../../src/shared';
 import type { TimeLedgerState } from '../../src/contracts/timing';
 import { publishableEntry } from './publishable';
 import type { Store } from '../store/store';
 import { command } from '../workers/process';
 import { jiraBinding } from '../office/project-bindings';
 import { captureTime } from './time-accounting';
-import { easternDay, easternInstant } from '../office/clock';
-const label = 'Office agent effort';
-const propertyKey = 'officeEntryId';
+import { easternDay } from '../office/clock';
+import { provenNeverSent, unresolvedAttempts } from './jira-attempts';
+import { WORKLOG_PROPERTY as propertyKey, executeJiraWorklogEffect, localWorklogId as localId, projectJiraWorklogEffect, projectVerifiedEffect, reconcileJiraWorklogEffect, uncertaintyDetail } from './jira-worklog-effect';
+import type { JiraConnect, JiraWorklogBinding, WorklogMatch, WorklogSave } from './jira-worklog-effect';
 const locks = new Set<string>();
 const envelope = (raw: string): any => {
     const result = JSON.parse(raw);
@@ -17,7 +18,6 @@ const envelope = (raw: string): any => {
     return result;
 };
 const data = (raw: string): any => envelope(raw).data;
-const localId = (value: string) => value.split('/').at(-1)!;
 /** One selected TWG connection, complete pagination and property read-back. */
 export class JiraWorklogs {
     constructor(private execute: typeof command, private site: string, public connection = `twg:${site}`, private profile: string[] = []) {
@@ -54,7 +54,7 @@ export class JiraWorklogs {
         } while (after);
         return logs;
     }
-    async save(publication: TimePublication): Promise<any> {
+    async save(publication: WorklogSave): Promise<any> {
         const payload = publication.payload as {
             started: string;
             property: string;
@@ -67,77 +67,102 @@ export class JiraWorklogs {
         return result?.worklog || result;
     }
 }
+/** The identity read and worklog adapter for one saved site, connection and TWG profile. */
+const connectWith = (execute: typeof command): JiraConnect => (site, connection, profile) => {
+    const login = twgProfile({ site, twgProfile: profile ?? undefined }), worklogs = new JiraWorklogs(execute, site, connection, login);
+    return {
+        whoami: async () => data(await execute('twg', ['whoami', ...login, '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 }))?.accountId,
+        list: key => worklogs.list(key),
+        get: (key, id) => worklogs.get(key, id),
+        save: input => worklogs.save(input),
+    };
+};
+const bindingOf = (store: Store) => (): JiraWorklogBinding => {
+    const jira = jiraBinding(store.project);
+    return { site: jira.site, account: jira.account, profile: jira.twgProfile || null, connection: store.state.coordination?.time?.jiraConnection || '' };
+};
 export async function publishJiraTime(store: Store, execute: typeof command, reconcileKey?: string): Promise<void> {
     const ledger = store.state.coordination?.time;
-    if (reconcileKey && ledger && requeueNeverSent(store, ledger, reconcileKey))
+    if (reconcileKey && ledger && (finishVerifiedEffects(store, ledger, reconcileKey) || requeueNeverSent(store, ledger, reconcileKey)))
         return;
     if (!ledger?.enabled || ledger.jiraEnabled === false || !ledger.jiraActivatedAt || !ledger.jiraConnection)
         return;
     if (!reconcileKey)
         captureTime(store);
-    const entry = reconcileKey ? ledger.entries.find(entry => entry.key === reconcileKey && entry.status === 'uncertain') : publishableEntry(ledger, store.project.provider, entry => entry.date < easternDay(store.clock.now()) && entry.date >= easternDay(new Date(ledger.jiraActivatedAt!)));
+    const entry = reconcileKey ? readBackEntry(store, ledger, reconcileKey) : publishableEntry(ledger, store.project.provider, entry => entry.date < easternDay(store.clock.now()) && entry.date >= easternDay(new Date(ledger.jiraActivatedAt!)));
     if (!entry)
         return;
     const lock = `${store.project.id}:${entry.key}`;
     if (locks.has(lock))
         return;
     locks.add(lock);
-    let publication: TimePublication | undefined;
     try {
-        const jira = jiraBinding(store.project);
-        const identity = data(await execute('twg', ['whoami', ...twgProfile(jira), '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 }));
-        if (identity?.accountId !== jira.account)
-            throw new Error('Jira worklog author is not the configured Office account');
-        const adapter = new JiraWorklogs(execute, jira.site, ledger.jiraConnection, twgProfile(jira)), marker = `${store.project.id}:${entry.id}`;
-        const logs = await adapter.list(entry.key), identified = logs.filter(log => log.properties.some((property: any) => property.key === propertyKey && property.value === marker));
-        if (identified.length > 1)
-            throw new Error('Multiple Jira worklogs have the Office identity');
-        if (reconcileKey) {
-            publication = ledger.publications?.find(publication => publication.provider === 'jira' && publication.key === entry.key && publication.status === 'uncertain');
-            if (!publication || identified.length !== 1 || !matches(identified[0], publication))
-                throw new Error('Uncertain Jira submission has no unique exact read-back; it cannot be resent');
-        }
+        const connect = connectWith(execute), binding = bindingOf(store);
+        if (reconcileKey)
+            await readBack(store, ledger, entry, connect, binding);
+        else if (unresolvedAttempts(store, ledger, entry).length)
+            throw new Error('An earlier Jira attempt for this day is unresolved; read it back before another write');
         else {
-            const prior = ledger.publications?.filter(publication => publication.provider === 'jira' && publication.covered.some(covered => covered.id === entry.id) && publication.status === 'verified').at(-1);
-            if (entry.worklogId && (!identified[0] || localId(identified[0].id) !== localId(entry.worklogId)))
-                throw new Error('Previously identified Jira worklog is missing; never recreate it');
-            if (identified[0] && (!prior || !matches(identified[0], prior)))
-                throw new Error('Jira worklog changed externally; preserve the human edit');
-            const started = easternInstant(entry.date, 12).toISOString().replace('Z', '+0000');
-            publication = { id: crypto.randomUUID(), provider: 'jira', projectId: store.project.id, key: entry.key, status: 'prepared', itemId: entry.id, fieldId: '', worklogId: entry.worklogId || '', baseline: null, previousValue: prior?.intendedValue ?? null, intendedValue: entry.seconds, covered: [{ id: entry.id, revision: entry.revision || 1, seconds: entry.seconds }], payload: { started, author: jira.account, property: marker, text: `${label} · ${store.project.name} · ${entry.key} · ${entry.date}` }, createdAt: store.clock.now().toISOString(), detail: '' };
-            (ledger.publications ??= []).push(publication);
-            store.save();
-            if (store.state.paused || !ledger.enabled)
-                throw new Error('Jira publishing paused before dispatch');
-            publication.status = 'dispatching';
-            entry.status = 'posting';
-            store.save();
-            const saved = await adapter.save(publication);
-            if (!saved?.id)
-                throw new Error('Jira did not return a saved worklog identity');
-            publication.worklogId = localId(saved.id);
-            store.save();
-            const observed = await adapter.get(entry.key, publication.worklogId);
-            if (!matches(observed, publication))
-                throw new Error('Saved Jira worklog identity, seconds, date, author, label or properties did not match');
+            const frozen = binding();
+            await executeJiraWorklogEffect({ store, entry, binding, transport: connect(frozen.site, frozen.connection, frozen.profile), matcher: matches });
         }
-        publication.status = 'verified';
-        entry.worklogId = localId(identified[0]?.id || publication.worklogId);
-        entry.status = 'posted';
-        entry.detail = `${label}: ${publication.intendedValue}s verified; estimates preserved.`;
-        entry.url = `${jira.site}/browse/${entry.key}`;
-        store.emit('time-posted', entry.detail, 'pm', entry.key);
     }
     catch (error) {
-        if (publication?.status === 'dispatching')
-            publication.status = 'uncertain';
         entry.status = 'uncertain';
-        entry.detail = `Jira time needs read-back; no automatic resubmission: ${String(error)}`;
+        entry.detail = uncertaintyDetail(error);
     }
     finally {
         store.save();
         locks.delete(lock);
     }
+}
+/** The uncertain day to read back: the first one with an unresolved attempt, else the first one. */
+function readBackEntry(store: Store, ledger: TimeLedgerState, key: string): TimeEntry | undefined {
+    const uncertain = ledger.entries.filter(entry => entry.key === key && entry.status === 'uncertain');
+    return uncertain.find(entry => unresolvedAttempts(store, ledger, entry).length) || uncertain[0];
+}
+/**
+ * Read-back of the one unresolved attempt bound to this day. An attempted Effect is settled through
+ * Effects; a publication without one (or beside a missing, prepared or rejected one) keeps the legacy
+ * read-back of its saved payload. Either way nothing is ever resent.
+ */
+async function readBack(store: Store, ledger: TimeLedgerState, entry: TimeEntry, connect: JiraConnect, binding: () => JiraWorklogBinding): Promise<void> {
+    const open = unresolvedAttempts(store, ledger, entry), attempt = open[0];
+    if (open.length > 1)
+        throw new Error('Several unresolved Jira attempts cover this day; reconcile them explicitly');
+    if (!attempt || attempt.publication.projectId !== store.project.id || attempt.publication.key !== entry.key)
+        throw new Error('Uncertain Jira submission has no unique exact read-back; it cannot be resent');
+    if (attempt.state === 'projectable' && attempt.effect)
+        return projectVerifiedEffect(store, attempt.publication, entry, attempt.effect);
+    if (attempt.effect && ['dispatching', 'uncertain'].includes(attempt.effect.status))
+        return reconcileJiraWorklogEffect({ store, entry, publication: attempt.publication, connect, matcher: matches });
+    const jira = binding(), transport = connect(jira.site, jira.connection, jira.profile), marker = `${store.project.id}:${entry.id}`;
+    if (await transport.whoami() !== jira.account)
+        throw new Error('Jira worklog author is not the configured Office account');
+    const identified = (await transport.list(entry.key)).filter(log => log.properties.some((property: any) => property.key === propertyKey && property.value === marker));
+    if (identified.length > 1)
+        throw new Error('Multiple Jira worklogs have the Office identity');
+    if (identified.length !== 1 || !matches(identified[0], attempt.publication))
+        throw new Error('Uncertain Jira submission has no unique exact read-back; it cannot be resent');
+    projectJiraWorklogEffect(store, attempt.publication.id, entry.id, { worklogId: localId(identified[0].id), seconds: attempt.publication.intendedValue, site: jira.site });
+}
+/** A verified Effect beside an unfinished ledger is finished from its receipt, with no Jira call. */
+function finishVerifiedEffects(store: Store, ledger: TimeLedgerState, key: string): boolean {
+    let finished = false;
+    for (const entry of ledger.entries.filter(item => item.key === key && item.status === 'uncertain')) {
+        const open = unresolvedAttempts(store, ledger, entry);
+        if (open.length !== 1 || open[0].state !== 'projectable' || !open[0].effect || open[0].publication.projectId !== store.project.id || open[0].publication.key !== key)
+            continue;
+        try {
+            projectVerifiedEffect(store, open[0].publication, entry, open[0].effect);
+            finished = true;
+        }
+        catch (error) {
+            entry.detail = uncertaintyDetail(error);
+            store.save();
+        }
+    }
+    return finished;
 }
 /**
  * A day left uncertain with no dispatched attempt failed before anything reached Jira (a read or
@@ -145,9 +170,8 @@ export async function publishJiraTime(store: Store, execute: typeof command, rec
  * no provider call is needed. A dispatched attempt keeps the read-back-only rule.
  */
 function requeueNeverSent(store: Store, ledger: TimeLedgerState, key: string): boolean {
-    const dispatched = (entry: TimeEntry) => (ledger.publications || []).some(publication => publication.provider === 'jira' && ['dispatching', 'uncertain'].includes(publication.status) && publication.covered.some(covered => covered.id === entry.id));
     // A day with a known worklog is held for a human (missing worklog, measurement gap), never requeued here.
-    const entry = ledger.entries.find(item => item.key === key && item.status === 'uncertain' && !item.worklogId && !dispatched(item));
+    const entry = ledger.entries.find(item => item.key === key && item.status === 'uncertain' && provenNeverSent(store, ledger, item));
     if (!entry)
         return false;
     entry.status = 'pending';
@@ -156,7 +180,7 @@ function requeueNeverSent(store: Store, ledger: TimeLedgerState, key: string): b
     store.save();
     return true;
 }
-function matches(log: any, publication: TimePublication): boolean {
+function matches(log: any, publication: WorklogMatch): boolean {
     const payload = publication.payload as {
         started: string;
         author: string;
