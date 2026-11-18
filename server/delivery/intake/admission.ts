@@ -2,7 +2,7 @@ import { intakeDisposition, closeIntakeEpisode } from '../../features/handoff/in
 import type { FeatureBinding } from '../../../src/contracts/features';
 import { captureLearning } from '../../knowledge/learning-events';
 import { featureGate } from '../../features/enrollment-gate';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { deliveryIntakeBlocker } from '../harness/delivery-eligibility';
 import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../pipeline/dependencies';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -19,8 +19,9 @@ export function admit(context: IntakeContext, delivery: GitHubDelivery, input: {
     if (disposition.kind !== 'proceed') return { status: 'held', detail: disposition.reason, owner: '', assessmentHold: disposition };
     const gate = featureGate(store, input.key);
     if (!gate.allowed) return { status: 'held', detail: gate.reason, owner: '' };
-    if (HOLDS[input.key])
-        return { status: 'held', detail: HOLDS[input.key], owner: '' };
+    const held = holdReason(store.project, input.key);
+    if (held)
+        return { status: 'held', detail: held, owner: '' };
     const job = state.jobs?.find(candidate => candidate.key === input.key && candidate.status !== 'cancelled');
     if (job)
         return { status: 'owned', detail: `Office delivery ${job.id} owns ${input.key} at ${job.stage}${job.pr ? ` (PR #${job.pr})` : ''}.`, owner: job.id };

@@ -1,7 +1,7 @@
 import { CurrentChecksWait, selectCurrentChecks, checksFailed } from '../readiness/github-check-selection';
 import { conflictOnlyAssessment, readConflictRepairProof } from './conflict-repair';
 import {repeatConflictRepairAdmission} from './conflict-chain';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { handsOff, harnessDelivers } from '../harness/scope';
 import { queueCIDiagnosis } from './ci-admission';
 import { githubRepairEligible, reserveRepair, enqueueRepairDiagnosis, approachFingerprint, verifyRepairCandidate, retainRepairEvidence } from './delivery-repairs';
@@ -117,7 +117,7 @@ export async function queueSourceRepair(this: GitHubDelivery, job: TicketJob, re
     const named = handsOff(this.store), ids = githubRepairEligible(job, repairView, named);
     const publishedAccepted = !!job.pr && job.implementationContinuation?.phase === 'acceptance';
     const nativeAdoptionPending = !!(job.implementationContinuation || job.discoveryRecovery || job.implementationRecovery) && !publishedAccepted;
-    if (!ids || nativeAdoptionPending || HOLDS[job.key] || this.jobs.find(current => current.id === job.id) !== job || job.status !== 'working' || this.store.state.paused || job.steps.some(step => hasUncertainEffects(step.stage, step.result))) return false;
+    if (!ids || nativeAdoptionPending || holdReason(this.store.project, job.key) || this.jobs.find(current => current.id === job.id) !== job || job.status !== 'working' || this.store.state.paused || job.steps.some(step => hasUncertainEffects(step.stage, step.result))) return false;
     if (!retainRepairEvidence(repairView, job.stage, root, repairView.worktree, named)) return false;
     if (job.repairCycle?.pendingFindingIds.some(id => !result.findings.some(f => f.id === id))) return false;
     if (repairView.worktree === this.store.project.repo || result.paidRuns !== 0) return false;

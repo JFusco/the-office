@@ -6,7 +6,7 @@ import type { Store } from '../../store/store';
 import { rootArtifact } from '../../store/readback-evidence';
 import { currentAssignment } from '../../workers/assignment-context';
 import { command, processGroupAlive } from '../../workers/process';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import type { OwnershipRead } from '../implementation-continuation/intent';
 import { handoffOwnership, type ReadbackOwnerDecision } from './handoff-ownership';
 import { qaRunDirectory } from './run-directory';
@@ -44,7 +44,7 @@ export async function continueUnsealedQA(store: Store, request: DeliveryRequest,
     const current = () => {
         if (!isDeepStrictEqual({ ticket: store.ticket(request.key), input: request.officeQAHandoff }, snapshot) ||
             !isDeepStrictEqual(work, workSnapshot) || !store.activeClaims().some(c => c.id === assignment.claim.id) ||
-            store.state.paused || store.state.draining || HOLDS[ticket.key] || !ticket.pilot || ticket.activity !== 'blocked' ||
+            store.state.paused || store.state.draining || holdReason(store.project, ticket.key) || !ticket.pilot || ticket.activity !== 'blocked' ||
             ticket.parked && !ticket.parked.resumeRequestedAt || request.status !== 'working' ||
             !store.state.deliveryQueue?.includes(request) || store.state.deliveryQueue.some(r => r.key === ticket.key && r.id !== request.id && ['queued','working'].includes(r.status)) ||
             !work || work.id !== input.workerId || !['completed','blocked'].includes(work.status) || work.executionStatus !== 'completed' || work.failure ||

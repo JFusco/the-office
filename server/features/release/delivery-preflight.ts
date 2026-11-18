@@ -1,6 +1,6 @@
 import type { Feature, FeaturePublicationItem } from '../../../src/contracts/features';
 import type { Store } from '../../store/store';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { eligibility } from '../../cec/workflow';
 import { featureGate, currentApproval } from '../enrollment-gate';
 import { readHandoff, handoffBinding, sameBinding } from './handoff-readback';
@@ -13,7 +13,7 @@ export function deliveryPreflight(store: Store, feature: Feature, item: FeatureP
     if (!currentApproval(feature) || !item.verified) return wait('Waiting for current approval and verified publication');
     if (readHandoff(store, feature, item)) return {kind: 'accepted', reason: 'Exact authorized handoff is retained'};
     const gate = featureGate(store, item.key); if (!gate.allowed) return wait(gate.reason);
-    if (HOLDS[item.key]) return wait(HOLDS[item.key]);
+    const held = holdReason(store.project, item.key); if (held) return wait(held);
     const binding = handoffBinding(feature, item), state = store.state;
     if (state.coordination?.jobs?.some(j => j.key === item.key && j.status !== 'cancelled') || state.tickets.some(t => t.key === item.key && t.pilot) || state.deliveryQueue?.some(r => r.key === item.key && ['queued','working','interrupted'].includes(r.status) && !sameBinding(r.featureBinding, binding))) return {kind: 'conflict', reason: 'Another delivery owns this ticket; reconcile ownership'};
     const review = state.coordination?.listener.reviews.slice().reverse().find(r => r.key === item.key);

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Ticket } from '../../../src/shared';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { jiraBinding } from '../../office/project-bindings';
 import type { Store } from '../../store/store';
 import { jiraCollection } from './jira-collection';
@@ -26,7 +26,7 @@ export async function reconcileRejectedParking(store: Store, execute: Execute, t
     const unchanged = () => digest(binding) === digest({ key: ticket.key, runId: ticket.runId, commit: ticket.commit, stage: ticket.stage, park: ticket.parked });
     requireThat(store.project.id === 'cec' && store.project.provider === 'azure' && /^CEC-[1-9][0-9]*$/.test(ticket.key) &&
         /^[a-zA-Z0-9-]+$/.test(ticket.runId) && park!.marker === `Office decision ${attempt}` && !!attempt &&
-        !HOLDS[ticket.key] && ticket.assignee === jiraBinding(store.project).account && ticket.boardMember && !ticket.subtask,
+        !holdReason(store.project, ticket.key) && ticket.assignee === jiraBinding(store.project).account && ticket.boardMember && !ticket.subtask,
     'Parking read-back scope, hold or ownership changed');
     const connection = jiraBinding(store.project);
     requireThat(effect?.status === 'uncertain' && effect.work.projectId === store.project.id && effect.work.kind === 'delivery' &&
@@ -74,7 +74,7 @@ export async function reconcileRejectedParking(store: Store, execute: Execute, t
         requireThat(preceding?.to === park!.fromStatus && !statuses.some(item => item.at >= Date.parse(anchor.created)),
             'Jira status history changed at or after the positive comment anchor');
         const after = await readIssue(execute, connection, ticket.key); save('after.json', after);
-        requireThat(digest(before) === digest(after) && unchanged() && !HOLDS[ticket.key] &&
+        requireThat(digest(before) === digest(after) && unchanged() && !holdReason(store.project, ticket.key) &&
             digest(store.getEffect(effect!.id)) === originalDigest && digest(store.getEffect(comment!.id)) === commentDigest,
         'Parking identity, metadata or ledger changed during read-back');
         const proof = { binding, originalDigest, commentDigest, anchorId: String(anchor.id), before, after,

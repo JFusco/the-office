@@ -2,7 +2,7 @@ import { ownTicket } from '../../office/ticket-key';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { jiraBinding } from '../../office/project-bindings';
 import { assertFeatureGate } from '../../features/enrollment-gate';
 import { digest, rootArtifact } from '../../store/readback-evidence';
@@ -15,7 +15,7 @@ export function interruptedImplementation(store: Store, key: string, requestId =
     const ticket = store.state.tickets.find(t => t.key === key);
     if (store.project.provider !== 'azure' || !ownTicket(store.project, key) || !ticket ||
         !ticket.pilot || ticket.stage !== 'implement' || ticket.activity !== 'blocked' || ticket.implementationContinuation ||
-        ticket.commit || ticket.branch || ticket.worktree || ticket.prId || store.state.paused || store.state.draining || HOLDS[key] ||
+        ticket.commit || ticket.branch || ticket.worktree || ticket.prId || store.state.paused || store.state.draining || holdReason(store.project, key) ||
         ticket.assignee !== jiraBinding(store.project).account || ticket.subtask || !ticket.boardMember || ticket.type === 'Epic' || !ticket.approach)
         throw new Error('A paused first implementation with no admitted candidate is required');
     assertFeatureGate(store, key);

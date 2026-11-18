@@ -5,7 +5,7 @@ import {resolve} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {ResultSchema} from '../../../workers/agents';
 import {currentAssignment} from '../../../workers/assignment-context';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import {continuationWorkerProof,assertContinuationWorker,continuationWorktree} from './continuation-evidence';
 import {PrerequisitesSchema,validatePrerequisites} from '../../pipeline/dependencies';
 import {deliveryInputSha256} from '../../../github/github-context';
@@ -85,7 +85,7 @@ export async function handoffSavedPrerequisites(delivery:GitHubDelivery,job:Tick
  const effectRows=()=>store.db.prepare('SELECT body FROM effects WHERE work_key=? ORDER BY id').all(workKey({projectId:store.project.id,kind:'delivery',id:job.id}))as{body:string}[];
  const effects=effectRows();requireThat(effects.every(({body})=>{const e=JSON.parse(body);return e.status==='verified'||e.status==='rejected'&&!e.dispatchedAt;}),'Original delivery effects remain uncertain');
  const stable=(ownership:Ownership)=>{
-  requireThat(ownership.complete&&ownership.fresh&&ownership.ownership?.status==='clear'&&!store.state.paused&&!HOLDS[job.key]&&
+  requireThat(ownership.complete&&ownership.fresh&&ownership.ownership?.status==='clear'&&!store.state.paused&&!holdReason(store.project, job.key)&&
    delivery.jobs.find(j=>j.id===job.id)===job&&digest(job)===expected&&digest(store.project)===project&&deliveryInputSha256(store,job.key)===inputs&&
    isDeepStrictEqual(currentAssignment()?.claim,claim)&&store.activeClaims().some(c=>JSON.stringify(c)===readerClaim)&&
    !store.activeClaims().some(c=>c.id!==claim.id&&c.work.kind==='delivery'&&c.work.id===job.id)&&

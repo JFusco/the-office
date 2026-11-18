@@ -18,7 +18,7 @@ import { validationReadbackCandidate } from '../delivery/recovery/validation/val
 import { implementationRecoveryCandidate } from '../delivery/recovery/implementation/implementation-recovery';
 import { nativeDeliveryReadbackCandidate } from '../maintenance/brain/brain-delivery-readback';
 import { enqueueRequest } from '../scheduling/requests';
-import { HOLDS } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import { recoverBoardPreflights } from './board-preflight-recovery';
 import { temporaryReadFailure, reconcileReadRetries } from '../scheduling/read-retries';
 import { recoverPRMetadata } from './pr-metadata-recovery';
@@ -44,7 +44,7 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                 for (const r of latest) {
                     const assigned = state.coordination!.listener.assigned.find(i => i.key === r.key);
                     const pickup = state.coordination!.pickup?.status || defaultPickupStatus(store.project);
-                    if (HOLDS[r.key] || state.coordination!.pickup?.enabled === false && r.workRequested !== 'manual' || r.status !== 'blocked' || !/(?:session.*(?:visibility|inventory|read)|task.claim)/i.test(r.detail) || !/(?:unavailable|incomplete|missing|restore|not available|lacks)/i.test(r.detail) || !assigned || (assigned.pickupStatus ?? assigned.status) !== pickup || state.coordination!.jobs?.some(j => j.key === r.key && !['cancelled', 'completed'].includes(j.status)))
+                    if (holdReason(store.project, r.key) || state.coordination!.pickup?.enabled === false && r.workRequested !== 'manual' || r.status !== 'blocked' || !/(?:session.*(?:visibility|inventory|read)|task.claim)/i.test(r.detail) || !/(?:unavailable|incomplete|missing|restore|not available|lacks)/i.test(r.detail) || !assigned || (assigned.pickupStatus ?? assigned.status) !== pickup || state.coordination!.jobs?.some(j => j.key === r.key && !['cancelled', 'completed'].includes(j.status)))
                         continue;
                     if (handsOff(store) && deliveryIntakeBlocker(store,r.key)) continue;
                     if ((r.itRecoveryAttempts || 0) >= 3) {
@@ -127,7 +127,7 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                 } else if(!retainedCloseouts.has(`closeout:${job.id}`)) await recover(`closeout:${job.id}`, job.detail, async () => { return enqueueRequest(store, 'reconcile-closeout', job.key, stoppedCloseout?.work.id || pendingCleanup); }, `Morgan reconciles ${job.key}'s original closeout effects; unresolved writes remain stopped.`, 'Morgan');
             }
             if (state.draining) continue;
-            if(state.coordination?.enabled&&!state.paused&&!HOLDS[job.key]&&!job.scopeRepairResumes?.length){
+            if(state.coordination?.enabled&&!state.paused&&!holdReason(store.project, job.key)&&!job.scopeRepairResumes?.length){
                 const resume=scopeRepairResumeCandidate(store,job);
                 if(resume){
                     const key=`scope-repair-resume:${store.project.id}:${job.id}:${job.candidateRecovery!.head}:${job.scopeRepairReadback?.proofSha256||'no-prior-readback'}`;

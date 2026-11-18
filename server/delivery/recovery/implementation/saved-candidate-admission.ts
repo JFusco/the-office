@@ -7,7 +7,7 @@ import {acceptedNativeGate} from '../preparation/preparation-gates';
 import {rootArtifact,digest} from '../../../store/readback-evidence';
 import {deliveryInputSha256} from '../../../github/github-context';
 import {sanitizeObject} from '../../../office/security';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import type {Store} from '../../../store/store';
 import type {TicketJob} from '../../../../src/shared';
 const parentHead='25868923c5d69a7c98d807f537a3c757f6822431';
@@ -42,7 +42,7 @@ function oldAdoptionBasis(store:Store,job:TicketJob,candidate:{head:string;workt
 export function savedCandidateAdmission(store:Store,job:TicketJob,nativeRoot=resolve(homedir(),'.codex','sessions')):SavedCandidateAdmission|undefined{
  try{
   const state=store.state,c=state.coordination;
-  if(store.project.id!=='cms-field-vocabulary'||store.project.provider!=='github'||store.project.repository!=='JFusco/cms-field-vocabulary'||!c?.enabled||state.paused||state.draining||HOLDS[job.key]||!['blocked','interrupted'].includes(job.status)||c.jobs?.filter(j=>j.key===job.key&&j.status!=='cancelled').length!==1||job.prerequisites?.length||job.dependsOnPR||job.pr||job.existingPR||job.mergeAttempt||job.mergeIntentId||job.boardUpdates?.some(u=>u.status!=='verified')||job.steps.some(s=>s.result.receipts.some(r=>!r.verified||r.uncertain))||state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
+  if(store.project.id!=='cms-field-vocabulary'||store.project.provider!=='github'||store.project.repository!=='JFusco/cms-field-vocabulary'||!c?.enabled||state.paused||state.draining||holdReason(store.project, job.key)||!['blocked','interrupted'].includes(job.status)||c.jobs?.filter(j=>j.key===job.key&&j.status!=='cancelled').length!==1||job.prerequisites?.length||job.dependsOnPR||job.pr||job.existingPR||job.mergeAttempt||job.mergeIntentId||job.boardUpdates?.some(u=>u.status!=='verified')||job.steps.some(s=>s.result.receipts.some(r=>!r.verified||r.uncertain))||state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
   if(job.key!=='GH-100'||job.stage!=='implement'||job.head||job.worktree||job.branch||job.candidateRecovery||c.requests?.some(r=>r.key===job.key&&r.action==='adopt-candidate'&&['queued','working'].includes(r.status)))return;
   const candidates=[...(state.maintenance?.runs||[]).flatMap(r=>r.steps.flatMap(s=>s.result.candidates)),...job.steps.filter(s=>s.stage==='implement'&&s.result.commit===parentHead).map(s=>({issue:100,head:s.result.commit,worktree:s.result.worktree,branch:s.result.branch}))].filter(candidate=>candidate.issue===100&&candidate.head===parentHead);
   const unique=[...new Map(candidates.map(candidate=>[`${candidate.worktree}:${candidate.branch}:${candidate.head}`,candidate])).values()];if(unique.length!==1||!unique[0].worktree||!unique[0].branch)return;
@@ -56,7 +56,7 @@ export function savedCandidateAdmission(store:Store,job:TicketJob,nativeRoot=res
    const closeout=child.status==='completed'?child.steps.filter(s=>s.stage==='closeout'&&s.result.outcome==='passed').at(-1)?.result:undefined;
    return {jobId:child.id,key:relation.key,finding:relation.finding,head:child.head,branch:child.branch,pr:child.pr,url:child.prUrl,sourceHead:review.commit,reviewWorker:gate.reviewWorker,qaWorker:gate.qaWorker,files,humanInput:deliveryInputSha256(store,child.key),mergeCommit:child.mergeCommit||'',complete:!!closeout,closeoutReceipts:closeout?.receipts||[]};
   });
-  const fingerprint=digest({project:store.project.id,repository:store.project.repository,jobId:job.id,candidate,basis,related,humanInput:deliveryInputSha256(store,job.key),holds:HOLDS[job.key]||null});
+  const fingerprint=digest({project:store.project.id,repository:store.project.repository,jobId:job.id,candidate,basis,related,humanInput:deliveryInputSha256(store,job.key),holds:holdReason(store.project, job.key)||null});
   return {id:`saved-candidate-adoption:${job.id}:${parentHead}:${fingerprint}`,action:'adopt-candidate',key:job.key,head:parentHead,fingerprint,detail:'Three newly created, natively verified child source/PR references materially change the original blocked adoption context. Read-only reassessment preserves the original unaccepted candidate.'};
  }catch{return;}
 }

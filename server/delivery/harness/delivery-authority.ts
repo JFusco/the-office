@@ -1,6 +1,6 @@
 import { stoppedBaseReassessmentReady } from '../recovery/stopped-base-disposition';
 import { isDeepStrictEqual } from 'node:util';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { currentAssignment } from '../../workers/assignment-context';
 import { type HarnessRequest, type TicketJob } from '../../../src/shared';
 import type { Store } from '../../store/store';
@@ -24,7 +24,7 @@ export function assessDeliveryEligibility(store: Store, job: TicketJob, input: D
     if (store.state.coordination?.jobs?.filter(j => j.id === job.id).length !== 1 || !store.state.coordination.jobs.includes(job)) blockers.push('Delivery job identity changed');
     if (store.state.paused) blockers.push('Project is paused');
     if (store.state.draining) blockers.push('Office is draining');
-    if (HOLDS[job.key] || job.pr && HOLDS[`GH-${job.pr}`]) blockers.push('Explicit human hold');
+    if (holdReason(store.project, job.key) || job.pr && holdReason(store.project, `GH-${job.pr}`)) blockers.push('Explicit human hold');
     if (input.context && (input.context.project !== store.project.id || input.context.key !== job.key)) blockers.push('Context subject does not match delivery');
     for (const claim of store.activeClaims()) {
         const subject = resolveDeliveryWork(store, claim.work);

@@ -17,7 +17,7 @@ import {readValidationProviderContext,validationProviderVersion} from '../valida
 import {verifyRepairCandidate} from '../../repairs/delivery-repairs';
 import {deliveryInputSha256} from '../../../github/github-context';
 import {currentAssignment} from '../../../workers/assignment-context';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import {workKey} from '../../../../src/shared';
 import type {StageResult,TicketJob} from '../../../../src/shared';
 import type {Store} from '../../../store/store';
@@ -58,7 +58,7 @@ export function assertPostConflictOwnership(store:Store,job:TicketJob,intentId?:
  const assignment=currentAssignment(),claim=assignment?.claim;
  const kind=intentId?'reconciliation':'delivery',id=intentId||job.id,stage=intentId?'reconcile-preparation':job.stage;
  if(!claim||assignment?.lane!=='delivery'||claim.lane!=='delivery'||claim.status!=='running'||claim.work.projectId!==store.project.id||claim.work.kind!==kind||claim.work.id!==id||claim.stage!==stage||
-  !store.activeClaims().some(c=>isDeepStrictEqual(c,claim))||store.state.paused||HOLDS[job.key]||
+  !store.activeClaims().some(c=>isDeepStrictEqual(c,claim))||store.state.paused||holdReason(store.project, job.key)||
   store.activeClaims().some(c=>c.work.id===job.id&&c.id!==claim.id)||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status))||
   job.boardUpdates?.some(u=>u.status!=='verified'))throw Error('Post-conflict preparation ownership, pause, hold or admitted claim changed');
  const effects=store.db.prepare('SELECT body FROM effects WHERE work_key=?').all(workKey({projectId:store.project.id,kind:'delivery',id:job.id}))as {body:string}[];
@@ -118,7 +118,7 @@ export async function verifyInitialDraftConflictPreparation(delivery:GitHubDeliv
 /** This is one successfully completed, already-published conflict draft, never an arbitrary worker recovery. */
 export function completedConflictDraftCandidate(store:Store,job:TicketJob){
  try{
-  if(store.project.provider!=='github'||store.project.id==='brain'||job.stage!=='draft'||!['blocked','interrupted'].includes(job.status)||job.repairReason!=='conflicts'||HOLDS[job.key]||
+  if(store.project.provider!=='github'||store.project.id==='brain'||job.stage!=='draft'||!['blocked','interrupted'].includes(job.status)||job.repairReason!=='conflicts'||holdReason(store.project, job.key)||
    store.state.coordination?.jobs?.filter(j=>j.key===job.key&&j.status!=='cancelled').length!==1||job.boardUpdates?.some(u=>u.status!=='verified')||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status))||job.steps.some(s=>s.result.receipts.some(r=>!r.verified||r.uncertain)))return;
   const step=job.steps.at(-1),work=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='github-draft').at(-1);
   if(!step||step.stage!=='draft'||step.result.outcome!=='passed'||!step.result.receipts.length||!work||work.status!=='completed'||work.role!=='developer'||work.provider!=='claude'||!completedExecution(store,work))return;

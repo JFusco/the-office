@@ -3,7 +3,7 @@ import type { KnowledgeImprovement } from '../../src/contracts/knowledge';
 import type { FeatureManifest } from '../../src/contracts/features';
 import type { PublicationReceipt } from '../features/publication';
 import { Effects } from '../store/effects';
-import { HOLDS } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import { improvementDigest, IMPROVEMENT_POLICY } from './propose-improvements';
 import { improvementManifest, improvementMarker, improvementProvider } from './improvement-publication';
 import { retryDelay } from './run-retrospective';
@@ -18,7 +18,7 @@ export function improvementEligible(store: Store, item: KnowledgeImprovement, co
         item.destination === store.project.id && item.origin === 'work' && incidents.every(Boolean) && new Set(incidents).size >= 2 &&
         !!item.evidence.length && !!item.cause && !!item.change && !!item.regression && !!item.acceptance.length &&
         item.digest === improvementDigest(item) &&
-        !item.incidents.some(id => store.state.knowledge?.followups?.some(followup => followup.id === id && HOLDS[followup.key]) || store.state.coordination?.jobs?.some(job => id === `job:${job.id}` && HOLDS[job.key]) || store.state.tickets.some(ticket => id === `ticket:${ticket.runId}` && HOLDS[ticket.key]));
+        !item.incidents.some(id => store.state.knowledge?.followups?.some(followup => followup.id === id && holdReason(store.project, followup.key)) || store.state.coordination?.jobs?.some(job => id === `job:${job.id}` && holdReason(store.project, job.key)) || store.state.tickets.some(ticket => id === `ticket:${ticket.runId}` && holdReason(store.project, ticket.key)));
 }
 /** Independent create/assign/queue grant. Feature approvals are never invented or invoked. */
 export async function admitImprovement(store: Store, id: string, provider: import('../features/publication').FeaturePublisher & { closed?(key: string): Promise<boolean>; openItems(): Promise<{ key: string; text: string; url: string }[]>; verifyFinal: NonNullable<import('../features/publication').FeaturePublisher['verifyFinal']> } = improvementProvider(store, id)): Promise<void> {

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { digest } from '../store/readback-evidence';
 import { processGroupAlive } from '../workers/process';
-import { HOLDS } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import type { Store } from '../store/store';
 import type { HarnessRequest } from '../../src/shared';
 import type { HistoryRetirementIntent } from '../../src/contracts/history-retirement';
@@ -36,9 +36,9 @@ function records(store: Store, intent: HistoryRetirementIntent, alive: typeof pr
         if (run?.checkpointId && store.state.coordination?.checkpoints.filter(checkpoint => checkpoint.id === run.checkpointId && checkpoint.runId === run.id).length !== 1)
             throw Error('Exact original checkpoint required');
         if (entry && !readerHistory && (entry.source.kind !== 'worker' || entry.source.failureKind !== 'surviving-subprocesses' ||
-            entry.report?.officeFix?.status !== 'blocked' || entry.attempts < 1 || HOLDS[entry.source.ticket]))
+            entry.report?.officeFix?.status !== 'blocked' || entry.attempts < 1 || holdReason(store.project, entry.source.ticket)))
             throw Error('Only a blocked worker diagnosis with no human hold may be acknowledged');
-        if (entry && HOLDS[entry.source.ticket]) throw Error('A current human hold prevents retirement');
+        if (entry && holdReason(store.project, entry.source.ticket)) throw Error('A current human hold prevents retirement');
         const readScope = readerHistory && entry ? readHistoryScope(store,entry) : undefined;
         const ids = readScope?.ids || new Set([target.id, ...(entry ? [entry.source.id, entry.source.requestId, ...entry.source.workerIds] : [])].filter(Boolean));
         const work = readScope?.work || store.state.workLog?.filter(work => ids.has(work.id) || !!work.requestId && ids.has(work.requestId)) || [];

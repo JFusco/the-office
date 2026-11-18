@@ -1,4 +1,4 @@
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { harnessEffect } from '../harness/effect';
 import { resolveLane } from '../board/move-lane';
 import { cardStatus, projectCards, setCardStatus, statusField, type Execute } from '../board/project-graphql';
@@ -21,7 +21,7 @@ const due = (job: TicketJob, now: Date) => job.status === 'blocked' && !!job.par
 export async function unparkReleasedWaits(store: Store, execute: Execute, jobs: TicketJob[], pickup: { enabled: boolean; status: string }, now: Date): Promise<string[]> {
     const moved: string[] = [];
     if (!pickup.enabled || !store.project.githubProject || store.state.paused || store.state.draining) return moved;
-    for (const job of jobs.filter(candidate => due(candidate, now) && !HOLDS[candidate.key])) {
+    for (const job of jobs.filter(candidate => due(candidate, now) && !holdReason(store.project, candidate.key))) {
         const parked = job.parked!, release = parked.release!, firstCheck = !parked.releaseBaselineAt;
         parked.releaseCheckedAt = now.toISOString();
         store.save();
@@ -65,7 +65,7 @@ async function returnToPickup(store: Store, execute: Execute, job: TicketJob, la
     const card = (await projectCards(store, execute, field.projectId, [{ kind: 'Issue', number: issueNumber }]))[0];
     if (!card) throw new Error('Issue has no card on its configured board');
     const guard = async () => {
-        if (store.state.paused || store.state.draining || HOLDS[job.key] || job.status !== 'blocked' || !job.parked?.published)
+        if (store.state.paused || store.state.draining || holdReason(store.project, job.key) || job.status !== 'blocked' || !job.parked?.published)
             throw new Error('Release unpark stopped: the parked job changed');
         if (await cardStatus(store, execute, card.id, field.fieldId) !== block.id)
             throw new Error('Release unpark stopped: the card left Block');

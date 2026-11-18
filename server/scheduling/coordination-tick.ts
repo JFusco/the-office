@@ -4,7 +4,7 @@ import { reconcileCompletedCheckpoints } from '../maintenance/completed-checkpoi
 import { enqueueRequest } from './requests';
 import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey } from '../delivery/pipeline/dependencies';
 import { reconcileReadRetries } from './read-retries';
-import { HOLDS } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import { captureTime } from '../time/time-ledger';
 import { captureCost } from '../telemetry/cost-entries';
 import { reconcileNoticeConfirmations } from '../conversations/notifications';
@@ -62,7 +62,7 @@ export async function tick(this: Coordinator, now = new Date()) {
     for (const review of c.listener.reviews.filter(review => review.legacyDependencyReviewPending)) {
         review.legacyDependencyReviewPending = false;
         const assigned = c.listener.assigned.find(issue => issue.key === review.key);
-        if (!assigned || HOLDS[review.key] || review.workRequested !== 'manual' && (assigned.pickupStatus ?? assigned.status) !== this.pickup.status)
+        if (!assigned || holdReason(this.store.project, review.key) || review.workRequested !== 'manual' && (assigned.pickupStatus ?? assigned.status) !== this.pickup.status)
             continue;
         if (!c.listener.reviews.some(next => next.parentReviewId === review.id))
             c.listener.reviews.push({ ...review, id: crypto.randomUUID(), parentReviewId: review.id, status: 'queued', startedAt: '', endedAt: '', queuedAt: now.toISOString(), detail: 'One read-only migration review to establish structured prerequisites; original hold remains in history.', timing: [] });
@@ -86,7 +86,7 @@ export async function tick(this: Coordinator, now = new Date()) {
                 continue;
             r.bridgeRetryVersion = 1;
             const issue = c.listener.assigned.find(i => i.key === r.key);
-            if (HOLDS[r.key] || !issue || (issue.pickupStatus ?? issue.status) !== this.pickup.status && r.workRequested !== 'manual') {
+            if (holdReason(this.store.project, r.key) || !issue || (issue.pickupStatus ?? issue.status) !== this.pickup.status && r.workRequested !== 'manual') {
                 r.status = 'held';
                 r.detail = `No new development is due for ${r.key}${issue ? ` in ${issue.pickupStatus ?? issue.status}` : ''}. Prior intake retained below.\n${r.detail}`;
             }
