@@ -15,9 +15,12 @@ import { verifiedTransition } from './transition-readback';
 import { advance, resultGate, qaEvidenceGap, publicationEvidenceGap } from './workflow';
 import { parkDecision } from './parking/park-ticket';
 import { parksInJira } from './parking/parks-in-jira';
+import { consecutiveSetupStops, isSetupStop } from './qa/setup-stop-cap';
 import { STAGE_ROLE, STAGE_LABELS, type Stage, type StageResult } from '../../src/shared';
 import type { Engine } from '../scheduling/engine';
 import { stopReason } from '../delivery/pipeline/stop-reason';
+
+const QA_STAGES: Stage[] = ['qa', 'retest', 'staging-qa'];
 
 export async function run(this: Engine, key: string) {
     if (this.busy || this.agents.active.size || !this.store.claim(this.owner))
@@ -78,7 +81,9 @@ export async function run(this: Engine, key: string) {
             // the ticket keeps its Jira status until the repair that follows is reviewed.
             const repairDiagnosis = stage === 'code-review' && t.repairCycle?.phase === 'diagnosis';
             if (transition && !unrecorded && !repairDiagnosis) {
-                const update = await this.jira.verifyStatus(t, transition, await this.agents.transition(t, transition));
+                // A QA stage run again after a setup stop moved nothing: when Jira still shows its status, no PM run is spent on it.
+                const held = QA_STAGES.includes(stage) && consecutiveSetupStops(t) > 0 ? await this.jira.statusHeld(t, transition) : undefined;
+                const update = held ?? await this.jira.verifyStatus(t, transition, await this.agents.transition(t, transition));
                 (t.progressUpdates ??= []).push({ stage, target: transition, at: new Date().toISOString(), result: update });
                 this.store.save();
                 if (!verifiedTransition(update)) {
@@ -120,7 +125,7 @@ export async function run(this: Engine, key: string) {
             }
             // No later stage performed the replaced implementation run's action; a restated receipt must not gate that stage's result.
             result.receipts = ownReceipts(t, result.receipts);
-            if (['qa', 'retest', 'staging-qa'].includes(stage) && result.outcome !== 'reroute') {
+            if (QA_STAGES.includes(stage) && result.outcome !== 'reroute') {
                 if (result.outcome === 'passed') {
                     const gap = qaEvidenceGap(t, stage, result, resolve(this.store.dataRoot, 'runs', t.runId));
                     if (gap) {
@@ -129,7 +134,10 @@ export async function run(this: Engine, key: string) {
                     }
                 }
                 try {
-                    await this.jira.qaComment(t, stage, attemptId, result);
+                    // A setup stop that tested nothing and leads nowhere says nothing on the ticket. One that parks for a person or sends
+                    // the ticket to repair keeps its QA comment: the park is settled against it, and a repair should be explained.
+                    if (isSetupStop(result) && !parksInJira(result) && !jiraRepairable(stage, result)) this.store.emit('qa-setup-stop', `${key}: ${stage} stopped in setup before testing anything; no QA comment was posted.`, role, key);
+                    else await this.jira.qaComment(t, stage, attemptId, result);
                 }
                 catch (error) {
                     result.outcome = 'blocked';

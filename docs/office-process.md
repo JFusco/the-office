@@ -224,6 +224,12 @@ that belongs to a later stage is not a reason for it to block. After three setup
 candidate, the next resume shows the count and latest reason without starting a worker;
 resuming again runs one more attempt.
 
+A QA run that stopped in setup without exercising any case or making a paid run posts no QA
+comment. A setup stop that parks for a person or sends the ticket to repair still posts it: the
+park is settled against that comment, and a repair should be explained on the ticket. When the stage runs again after a
+setup stop and the harness's own two matching reads show Jira still in that stage's status, no PM
+run is spent moving it (`server/cec/qa/status-held.ts`).
+
 A writable Codex worker saves its finished result as a completion checkpoint before it returns. If
 the stage time limit stops the worker after that save, the checkpoint is the stage result: the
 runner uses it directly, and for a Jira/Azure stage already recorded as interrupted the next
