@@ -74,6 +74,13 @@ is still assigned keeps its status, so a blocked review still requires its read-
 work. Reviews in flight, tickets the Office is delivering and configured holds are left as they are,
 and an empty read closes nothing (`server/delivery/intake/settle-stopped-reviews.ts`).
 
+For Jira/Azure work the harness reads the complete list of active pull requests before and after
+a PM read-back or assignment review. The assessment is refused only when a pull request that could
+concern the ticket was added, removed or modified in between: one that names the ticket key in its
+title, source branch or description, uses the ticket's branch, or is the ticket's own. Any other
+pull request changing is recorded and does not stop the dispatch
+(`server/cec/related-pr-change.ts`).
+
 Each Jira/Azure project uses its own configured Jira statuses, ticket key, prompt authority and
 observed deployment. A project added beside CEC never inherits CEC's authority, statuses or
 repository facts; CEC keeps its legacy values.
