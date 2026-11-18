@@ -12,7 +12,6 @@
   "66": "remove-candidate.ts",
   "72": "work.ts",
   "73": "report.ts",
-  "91": "config.ts",
   "95": "capture-session-clone.py",
   "105": "extract-worker.mjs"
 }
