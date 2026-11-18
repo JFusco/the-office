@@ -1,12 +1,15 @@
 import type { Ticket } from '../../../src/shared';
-import type { ResumeStep } from '../resume-step';
+import { RESUME_STEP_AHEAD, type ResumeStep } from '../resume-step';
 import { READBACK_OWNER_SCOPE } from '../readback-schema';
 
 /**
  * The PM checks assignment eligibility; the assigned QA lead owns its run setup. `step` is what the resume
- * will do next: where the PM would otherwise read that step's own cause as a blocker, it is told the step.
+ * will do next. The read-back before a plain resume (`plainResume`) is told that step and that the step's own
+ * inputs (open findings, earlier results, the repair budget) are not in themselves blockers; three steps add
+ * detail of their own. A first pickup, a QA handoff and a saved-source continuation follow other routes and
+ * are told no step.
  */
-export function readbackDispatchGuidance(ticket?: Pick<Ticket, 'stage' | 'approach' | 'repairCycle'>, step?: ResumeStep): string {
+export function readbackDispatchGuidance(ticket?: Pick<Ticket, 'stage' | 'approach' | 'repairCycle'>, step?: ResumeStep, plainResume = false): string {
     const interruptedRerun = step === 'rerun-interrupted-qa';
     // The harness's own answer to an exhausted repair budget; the PM is told so it does not ask for that answer as a prerequisite.
     const assessment = ticket?.stage === 'code-review' && ticket.repairCycle?.phase === 'diagnosis' && !ticket.repairCycle.diagnosisAttempted ? `
@@ -14,7 +17,10 @@ REVISED-APPROACH ASSESSMENT: This ticket's repair budget is exhausted after a fa
     // Sam's assessment came back but was not applied to the ticket; the PM is told the resume applies it and runs nothing.
     const returned = step === 'apply-returned-result' && ticket?.stage === 'code-review' && ticket.repairCycle?.phase === 'diagnosis' && ticket.repairCycle.diagnosisAttempted ? `
 RETURNED ASSESSMENT: Sam's single revised-approach assessment for this ticket has already run and returned its result, which the harness has saved but not yet applied to the ticket. This read-back is for applying that saved result: no assessment, review or paid run is repeated, and no Jira status move is asked for. The harness decides from that result whether one further bounded repair follows. The open finding, the exhausted repair budget, the failed QA result and the ticket's current error text are the reason for this step, not blockers for it. Still return any other current hold.` : '';
-    const owner = `\nREADBACK OWNER SCOPE: ${READBACK_OWNER_SCOPE}${assessment}${returned}`;
+    // A plain resume says what it expects to do next and what that step, not this read-back, is responsible for.
+    const next = ticket && step && plainResume ? `
+HARNESS NEXT STEP: Once this read-back passes, the harness's expected next step is that it ${RESUME_STEP_AHEAD[step]} (${ticket.stage}). This read-back decides only whether that step may start now. Findings an earlier run left open, an earlier failed or blocked result, the repair budget and the routing of any repair, review or retest are inputs to that step and to the harness's own routing after it: they are not in themselves blockers for this read-back, and you are not asked to route work or establish a recovery route. A hold that such a result reports and that is still current (a decision still unanswered, access still denied, a prerequisite still unmet) remains a blocker. Still return any current hold, including a human hold, missing assignment or eligibility, a positively identified competing owner, missing provider access, or an external action of unknown outcome${step === 'reconstruct' ? ' other than the one this step reads back' : ''}.` : '';
+    const owner = `\nREADBACK OWNER SCOPE: ${READBACK_OWNER_SCOPE}${next}${assessment}${returned}`;
     if (!ticket || !['qa', 'retest'].includes(ticket.stage)) return owner;
     const browser = !ticket.approach || ticket.approach.validation === 'browser';
     return `${owner}

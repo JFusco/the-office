@@ -59,3 +59,32 @@ test('the read-back is told about a returned assessment only while its saved res
         expect(cecReadbackPrompt(store, t.key)).not.toContain('RETURNED ASSESSMENT:');
     }
 });
+
+test('a parked decision Joe resolved, with a finding its last run left open: the read-back is told the stage runs and that the finding is not a blocker', () => {
+    const { store } = cecStore(), t = { ...ticket('QA'), stage: 'retest' as const, activity: 'blocked' as const, blocker: 'Decision needed: approve the provider submission.',
+        findings: [{ id: 'F2', summary: 'A recovery test fails when run directly', expected: '', actual: '', status: 'open' as const, attempts: 0 }],
+        parked: { stage: 'retest' as const, reason: 'Approve the provider submission', at: '2026-11-18T03:45:00Z', fromStatus: 'QA', marker: 'Office decision x', published: true, resumeRequestedAt: '2026-11-18T05:00:00Z' } };
+    t.results.retest = decision('permission', { paidRuns: 0, blocker: 'Approve the provider submission' });
+    store.state.tickets = [t];
+    expect(resumeStep(store, t)).toBe('run-stage');
+    const prompt = cecReadbackPrompt(store, t.key);
+    expect(prompt).toContain('RESOLVED OFFICE DECISION');
+    expect(prompt).toContain('HARNESS NEXT STEP: Once this read-back passes, the harness\'s expected next step is that it runs the stage (retest).');
+});
+
+test('a first pickup, a QA handoff, a QA plan retry and a saved-source continuation are told no next step', () => {
+    const { store } = cecStore(), t = { ...ticket('QA'), stage: 'retest' as const, activity: 'blocked' as const };
+    store.state.tickets = [t];
+    expect(cecReadbackPrompt(store, t.key)).toContain('HARNESS NEXT STEP');
+    for (const request of [{ officeQAHandoff: {} }, { qaPlanRetry: {} }, { implementationContinuation: {} }]) {
+        store.state.deliveryQueue = [{ id: 'r', key: t.key, action: 'resume-ticket', status: 'working', ...request } as any];
+        expect(cecReadbackPrompt(store, t.key), Object.keys(request)[0]).not.toContain('HARNESS NEXT STEP');
+    }
+    store.state.deliveryQueue = [{ id: 'r', key: t.key, action: 'resume-ticket', status: 'working' } as any];
+    expect(cecReadbackPrompt(store, t.key)).toContain('HARNESS NEXT STEP');
+    store.state.deliveryQueue = [];
+    Object.assign(t, { stage: 'mailbox' });
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('HARNESS NEXT STEP');
+    Object.assign(t, { stage: 'retest', pilot: false });
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('HARNESS NEXT STEP');
+});
