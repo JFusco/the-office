@@ -282,10 +282,12 @@ again, and the PM read-back is told so.
 What a resume does with the current stage is one named step, decided in `server/cec/resume-step.ts`
 in this order: apply a result the worker already returned, accept a finished result a timed-out run
 saved, continue a stopped session, run again a QA stage a provider limit cut off, read back a stage
-whose outcome is unknown, or run the stage. Every PM read-back is told that step before it happens,
+whose outcome is unknown, or run the stage. The PM read-back before a plain resume is told that expected step,
 and that the step's own inputs (findings an earlier run left open, an earlier failed or blocked
-result, the repair budget, the routing of any repair) are not blockers for the read-back: the
-harness routes them after the step. The read-back still returns any current hold. The resume event
+result, the repair budget, the routing of any repair) are not in themselves blockers: the harness
+routes them after the step. A hold such a result reports that is still current remains a blocker,
+and the read-back still returns any current hold. A first pickup, a QA handoff, a QA plan retry
+and a saved-source continuation follow other routes and are told no step. The resume event
 names the step.
 
 A QA or retest run that a provider capacity limit (usage limit, rate limit or quota) cut off

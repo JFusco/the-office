@@ -69,5 +69,22 @@ test('a parked decision Joe resolved, with a finding its last run left open: the
     expect(resumeStep(store, t)).toBe('run-stage');
     const prompt = cecReadbackPrompt(store, t.key);
     expect(prompt).toContain('RESOLVED OFFICE DECISION');
-    expect(prompt).toContain('HARNESS NEXT STEP: Once this read-back passes, the harness runs the stage (retest).');
+    expect(prompt).toContain('HARNESS NEXT STEP: Once this read-back passes, the harness\'s expected next step is that it runs the stage (retest).');
+});
+
+test('a first pickup, a QA handoff, a QA plan retry and a saved-source continuation are told no next step', () => {
+    const { store } = cecStore(), t = { ...ticket('QA'), stage: 'retest' as const, activity: 'blocked' as const };
+    store.state.tickets = [t];
+    expect(cecReadbackPrompt(store, t.key)).toContain('HARNESS NEXT STEP');
+    for (const request of [{ officeQAHandoff: {} }, { qaPlanRetry: {} }, { implementationContinuation: {} }]) {
+        store.state.deliveryQueue = [{ id: 'r', key: t.key, action: 'resume-ticket', status: 'working', ...request } as any];
+        expect(cecReadbackPrompt(store, t.key), Object.keys(request)[0]).not.toContain('HARNESS NEXT STEP');
+    }
+    store.state.deliveryQueue = [{ id: 'r', key: t.key, action: 'resume-ticket', status: 'working' } as any];
+    expect(cecReadbackPrompt(store, t.key)).toContain('HARNESS NEXT STEP');
+    store.state.deliveryQueue = [];
+    Object.assign(t, { stage: 'mailbox' });
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('HARNESS NEXT STEP');
+    Object.assign(t, { stage: 'retest', pilot: false });
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('HARNESS NEXT STEP');
 });

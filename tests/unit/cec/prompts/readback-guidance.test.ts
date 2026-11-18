@@ -30,7 +30,7 @@ test('the actual CEC dispatch prompt carries the role boundary alongside the unc
     const store = new Store(':memory:'); stores.push(store);
     const t = ticket(); t.stage = 'retest'; store.state.tickets = [t];
     const prompt = cecReadbackPrompt(store, t.key);
-    expect(prompt).toContain(readbackDispatchGuidance(t, 'run-stage')); expect(prompt).toContain('all current comments');
+    expect(prompt).toContain(readbackDispatchGuidance(t, 'run-stage', !!t.pilot)); expect(prompt).toContain('all current comments');
     expect(prompt).toContain('An unavailable or incomplete session inventory is missing context, not a blocker and not an owner');
     expect(prompt).not.toContain('If authoritative session visibility is unavailable, return that blocker');
     expect(prompt).toContain('return existingOwner only for a positively identified competing writer or executor');
@@ -41,14 +41,18 @@ test('the actual CEC dispatch prompt carries the role boundary alongside the unc
 
 test('every read-back with a known step is told the step and that the step\'s own inputs are not blockers', () => {
     const t = ticket(); t.stage = 'retest';
-    const prompt = readbackDispatchGuidance(t, 'run-stage');
-    expect(prompt).toContain('HARNESS NEXT STEP: Once this read-back passes, the harness runs the stage (retest).');
+    const prompt = readbackDispatchGuidance(t, 'run-stage', true);
+    expect(prompt).toContain('HARNESS NEXT STEP: Once this read-back passes, the harness\'s expected next step is that it runs the stage (retest).');
     expect(prompt).toContain('Findings an earlier run left open, an earlier failed or blocked result, the repair budget and the routing of any repair, review or retest are inputs to that step');
+    expect(prompt).toContain('they are not in themselves blockers for this read-back');
+    expect(prompt).toContain('A hold that such a result reports and that is still current (a decision still unanswered, access still denied, a prerequisite still unmet) remains a blocker.');
     expect(prompt).toContain('you are not asked to route work or establish a recovery route');
-    expect(prompt).toContain('Still return any current hold: a human hold or unanswered decision');
-    expect(readbackDispatchGuidance(t, 'reconstruct')).toContain('the harness reads back the stage\'s unknown outcome without repeating the action (retest)');
-    expect(readbackDispatchGuidance(t, 'apply-returned-result')).toContain('applies the result the stage\'s worker already returned, and runs nothing again');
-    // Without a ticket or a step there is nothing to state.
-    expect(readbackDispatchGuidance(t)).not.toContain('HARNESS NEXT STEP');
-    expect(readbackDispatchGuidance(undefined, 'run-stage')).not.toContain('HARNESS NEXT STEP');
+    expect(prompt).toContain('or an external action of unknown outcome.');
+    expect(readbackDispatchGuidance(t, 'reconstruct', true)).toContain('reads back the stage\'s unknown outcome without repeating the action (retest)');
+    expect(readbackDispatchGuidance(t, 'reconstruct', true)).toContain('an external action of unknown outcome other than the one this step reads back.');
+    expect(readbackDispatchGuidance(t, 'apply-returned-result', true)).toContain('applies the result the stage\'s worker already returned, and runs nothing again');
+    // Without a ticket, a step or a plain resume there is nothing to state.
+    expect(readbackDispatchGuidance(t, undefined, true)).not.toContain('HARNESS NEXT STEP');
+    expect(readbackDispatchGuidance(undefined, 'run-stage', true)).not.toContain('HARNESS NEXT STEP');
+    expect(readbackDispatchGuidance(t, 'run-stage')).not.toContain('HARNESS NEXT STEP');
 });
