@@ -5,6 +5,7 @@ import { ownReceipts } from './superseded-receipts';
 import { acceptFeatureReview } from '../features/stage-acceptance';
 import { approvedDelivery } from '../features/delivery-binding';
 import { verifyFeatureEnhance } from '../features/cec-plan-gate';
+import { heldApproachLevels } from '../delivery/repairs/held-approach-levels';
 import { jiraRepairable, reserveRepair, enqueueRepairDiagnosis, revisedRepair, approachFingerprint, retainRepairEvidence } from '../delivery/repairs/delivery-repairs';
 import { bindDelivery } from '../features/delivery-binding';
 import { resolve } from 'node:path';
@@ -94,7 +95,8 @@ export async function run(this: Engine, key: string) {
                 this.store.emit('pm-transition', update.summary, 'pm', key);
             }
             if (repairDiagnosis) {
-                if (t.repairCycle!.diagnosisAttempted) throw new Error('Revised-approach assessment already attempted; preserve its result for reconciliation');
+                // The one assessment Sam returned may still be applied if it never reached the ticket; it is never run a second time.
+                if (t.repairCycle!.diagnosisAttempted && !unrecorded) throw new Error('Revised-approach assessment already attempted; preserve its result for reconciliation');
                 t.repairCycle!.diagnosisAttempted = true; this.store.save();
             }
             let result: StageResult;
@@ -146,9 +148,11 @@ export async function run(this: Engine, key: string) {
                 continue;
             }
             if (repairDiagnosis) {
-                const revised = revisedRepair(t.repairCycle!, result);
+                // Compared and recorded with the ticket's levels held: a proposal that only names a lighter level is not a changed approach.
+                const held = result.approach ? heldApproachLevels(t.approach, result.approach) : undefined;
+                const revised = revisedRepair(t.repairCycle!, { ...result, approach: held });
                 if (revised?.phase === 'repair' && retainRepairEvidence(result, 'code-review', resolve(this.store.dataRoot, 'runs', t.runId), t.worktree)) {
-                    recordApproach(t, result.approach!, role, stage);
+                    recordApproach(t, held!, role, stage);
                     t.repairCycle = revised;
                     t.repairAttempts = { ...revised.findingAttempts };
                     t.findings = result.findings; t.results[stage] = result; t.evidence.push(...result.evidence);

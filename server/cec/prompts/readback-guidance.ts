@@ -2,11 +2,14 @@ import type { Ticket } from '../../../src/shared';
 import { READBACK_OWNER_SCOPE } from '../readback-schema';
 
 /** The PM checks assignment eligibility; the assigned QA lead owns its run setup. */
-export function readbackDispatchGuidance(ticket?: Pick<Ticket, 'stage' | 'approach' | 'repairCycle'>, interruptedRerun = false): string {
+export function readbackDispatchGuidance(ticket?: Pick<Ticket, 'stage' | 'approach' | 'repairCycle'>, interruptedRerun = false, assessmentReturned = false): string {
     // The harness's own answer to an exhausted repair budget; the PM is told so it does not ask for that answer as a prerequisite.
     const assessment = ticket?.stage === 'code-review' && ticket.repairCycle?.phase === 'diagnosis' && !ticket.repairCycle.diagnosisAttempted ? `
 REVISED-APPROACH ASSESSMENT: This ticket's repair budget is exhausted after a failed QA result. The harness's recorded recovery route for that is one assessment by Sam of a single revised technical approach on the same candidate, and that assessment is what this read-back is for. It is not a code review of a new candidate and asks for no Jira status move. It grants no repair attempt by itself: a further repair follows only if Sam establishes a changed approach. The exhausted budget, the failed QA result and the absence of a later repair are the reason for this dispatch, not blockers for it. Still return any other current hold.` : '';
-    const owner = `\nREADBACK OWNER SCOPE: ${READBACK_OWNER_SCOPE}${assessment}`;
+    // Sam's assessment came back but was not applied to the ticket; the PM is told the resume applies it and runs nothing.
+    const returned = assessmentReturned ? `
+RETURNED ASSESSMENT: Sam's single revised-approach assessment for this ticket has already run and returned its result, which the harness has saved but not yet applied to the ticket. This read-back is for applying that saved result: no assessment, review or paid run is repeated, and no Jira status move is asked for. The harness decides from that result whether one further bounded repair follows. The open finding, the exhausted repair budget, the failed QA result and the ticket's current error text are the reason for this step, not blockers for it. Still return any other current hold.` : '';
+    const owner = `\nREADBACK OWNER SCOPE: ${READBACK_OWNER_SCOPE}${assessment}${returned}`;
     if (!ticket || !['qa', 'retest'].includes(ticket.stage)) return owner;
     const browser = !ticket.approach || ticket.approach.validation === 'browser';
     return `${owner}

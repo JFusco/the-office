@@ -2,7 +2,9 @@ import { expect, test, vi } from 'vitest';
 import { Engine } from '../../../server/scheduling/engine';
 import { cecStore, decision, ticket } from './parking/fixtures';
 import { cecReadbackPrompt } from '../../../server/cec/prompts/cec-reads';
-import { CEC } from '../../../server/office/config';
+import { CEC, DATA } from '../../../server/office/config';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const cycle = (): any => ({ owner: 'developer', findingAttempts: { F1: 2 }, attempts: 6, pendingFindingIds: ['F1'], sourceStage: 'retest', sourceHead: 'a'.repeat(40), phase: 'diagnosis' });
 
@@ -60,4 +62,83 @@ test('CEC-154\'s shape end to end: a resume after refused dispatches reaches Sam
     expect(engine.agents.stage).toHaveBeenCalledOnce();
     expect((engine.agents.stage as any).mock.calls[0].slice(1)).toEqual(['code-review', 'lead']);
     expect(store.ticket(t.key).repairCycle?.diagnosisAttempted).toBe(true);
+});
+
+const finding = () => ({ id: 'F1', summary: 'Request too large', expected: '', actual: '', status: 'open' as const, attempts: 2 });
+/** Sam's assessment as CEC-154 returned it: a changed approach that names a lighter plan level than the ticket holds. */
+function assessment(runId: string) {
+    const root = resolve(DATA, 'runs', runId), path = resolve(root, 'diagnosis.md');
+    mkdirSync(root, { recursive: true }); writeFileSync(path, 'diagnosis');
+    return decision('', { resolution: { kind: 'source-repair', findingIds: ['F1'], evidenceIds: ['diagnosis'] } as any, summary: 'Trim the bundle.', blocker: 'The harness must assess this proposal.',
+        evidence: [{ id: 'diagnosis', kind: 'review', summary: 'Diagnosis', path, commit: 'a'.repeat(40), environment: 'unit', url: '', observedAt: '' }],
+        approach: { plan: 'brief', review: 'full', validation: 'browser', checks: ['Request stays under the limit'], reason: 'Trim the bundle' } as any, findings: [finding()] });
+}
+const held = { plan: 'reviewed', review: 'full', validation: 'browser', checks: ['Original checks'], reason: 'Original' } as any;
+
+test('a revised approach that names a lighter plan level extends the repair window with the ticket\'s levels held', async () => {
+    const { store } = cecStore(), t = { ...ticket('QA'), stage: 'code-review' as const, activity: 'waiting' as const, repairCycle: cycle(), approach: held, findings: [finding()] };
+    store.state.tickets = [t];
+    const engine = new Engine(store), stages: string[] = [];
+    engine.agents.stage = vi.fn(async (_ticket: any, stage: string) => { stages.push(stage); if (stage !== 'code-review') throw new Error('Stop at the repair'); return assessment(t.runId); }) as any;
+    await engine.run(t.key);
+    const live = store.ticket(t.key);
+    expect(stages).toEqual(['code-review']);
+    expect(live).toMatchObject({ stage: 'repair', activity: 'waiting', blocker: '' });
+    expect(live.stage).toBe('repair');
+    expect(live.repairCycle).toMatchObject({ phase: 'repair', approachRevision: 1, findingAttempts: { F1: 3 } });
+    expect(live.approach).toMatchObject({ plan: 'reviewed', review: 'full', validation: 'browser', checks: ['Request stays under the limit'], reason: 'Trim the bundle' });
+    expect(live.results['code-review']?.summary).toBe('Trim the bundle.');
+});
+
+test('an assessment that returned but never reached the ticket is applied on the next run; Sam is not run again', async () => {
+    const { store, clock } = cecStore(), t = { ...ticket('QA'), stage: 'code-review' as const, activity: 'waiting' as const, approach: held, findings: [finding()],
+        repairCycle: { ...cycle(), diagnosisAttempted: true }, blocker: '' };
+    t.results['code-review'] = decision('', { outcome: 'failed', summary: 'Earlier review', resolution: null });
+    store.state.tickets = [t];
+    const attemptId = store.begin(t, 'code-review');
+    clock.advance(1000);
+    const startedAt = clock.now().toISOString();
+    clock.advance(1000);
+    store.state.workLog = [{ id: 'run-1', ticket: t.key, stage: 'code-review', role: 'lead', status: 'blocked', executionStatus: 'completed', startedAt, endedAt: clock.now().toISOString() } as any];
+    clock.advance(1000);
+    store.finish(attemptId, assessment(t.runId));
+    expect(cecReadbackPrompt(store, t.key)).toContain('RETURNED ASSESSMENT: Sam\'s single revised-approach assessment for this ticket has already run');
+    const engine = new Engine(store), stages: string[] = [];
+    engine.agents.transition = vi.fn();
+    engine.agents.stage = vi.fn(async (_ticket: any, stage: string) => { stages.push(stage); throw new Error('Stop at the repair'); }) as any;
+    await engine.run(t.key);
+    const live = store.ticket(t.key);
+    expect(stages).toEqual([]);
+    expect(live).toMatchObject({ stage: 'repair', activity: 'waiting', blocker: '' });
+    expect(engine.agents.transition).not.toHaveBeenCalled();
+    expect(live.recoveredAttemptId).toBe(attemptId);
+    expect(live.stage).toBe('repair');
+    expect(live.repairCycle).toMatchObject({ phase: 'repair', approachRevision: 1, diagnosisAttempted: true });
+    expect(live.approach).toMatchObject({ plan: 'reviewed', checks: ['Request stays under the limit'] });
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('RETURNED ASSESSMENT');
+});
+
+test('with no returned result to apply, an assessment already attempted is still never run again', async () => {
+    const { store } = cecStore(), t = { ...ticket('QA'), stage: 'code-review' as const, activity: 'waiting' as const, repairCycle: { ...cycle(), diagnosisAttempted: true } };
+    store.state.tickets = [t];
+    const engine = new Engine(store);
+    engine.agents.stage = vi.fn();
+    await engine.run(t.key).catch(() => undefined);
+    expect(engine.agents.stage).not.toHaveBeenCalled();
+    expect(store.ticket(t.key).stage).toBe('code-review');
+    expect(cecReadbackPrompt(store, t.key)).not.toContain('RETURNED ASSESSMENT');
+});
+
+test('a proposal that differs from the exhausted approach only by a lighter level does not extend the repair window', async () => {
+    const exhausted = JSON.stringify({ plan: held.plan, review: held.review, validation: held.validation, checks: held.checks });
+    const { store } = cecStore(), t = { ...ticket('QA'), stage: 'code-review' as const, activity: 'waiting' as const, repairCycle: { ...cycle(), exhaustedApproach: exhausted }, approach: held, findings: [finding()] };
+    store.state.tickets = [t];
+    const engine = new Engine(store);
+    engine.agents.stage = vi.fn(async () => ({ ...assessment(t.runId), approach: { ...held, plan: 'brief' } })) as any;
+    await engine.run(t.key);
+    const live = store.ticket(t.key);
+    expect(live).toMatchObject({ stage: 'code-review', activity: 'blocked', blocker: 'The harness must assess this proposal.' });
+    expect(live.repairCycle).toMatchObject({ phase: 'diagnosis', attempts: 6 });
+    expect(live.repairCycle?.approachRevision).toBeUndefined();
+    expect(live.approach).toEqual(held);
 });
