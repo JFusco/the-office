@@ -6,21 +6,21 @@ const github = (id: string) => ({ id, provider: 'github' as const });
 const azure = (id: string) => ({ id, provider: 'azure' as const });
 
 test('a config without policy blocks keeps what each existing project did before', () => {
-    expect(resolveProjectPolicy(azure('cec'))).toEqual({ merge: 'human', handsOff: false, checkpoint: { hour: 9, weekends: false } });
-    expect(resolveProjectPolicy(github('cms-field-vocabulary'))).toEqual({ merge: 'harness', handsOff: true, checkpoint: { hour: 15, weekends: true } });
-    expect(resolveProjectPolicy(github('brain'))).toEqual({ merge: 'harness', handsOff: true, checkpoint: { hour: 17, weekends: true } });
+    expect(resolveProjectPolicy(azure('cec'))).toEqual({ merge: 'human', handsOff: false, checkpoint: { hour: 9, weekends: false }, holds: {} });
+    expect(resolveProjectPolicy(github('cms-field-vocabulary'))).toEqual({ merge: 'harness', handsOff: true, checkpoint: { hour: 15, weekends: true }, holds: {} });
+    expect(resolveProjectPolicy(github('brain'))).toEqual({ merge: 'harness', handsOff: true, checkpoint: { hour: 17, weekends: true }, holds: {} });
 });
 
 test('a new project defaults by provider and opts in to harness mechanics explicitly', () => {
-    expect(resolveProjectPolicy(github('web'))).toEqual({ merge: 'harness', handsOff: false, checkpoint: { hour: 17, weekends: true } });
-    expect(resolveProjectPolicy(azure('acme'))).toEqual({ merge: 'human', handsOff: false, checkpoint: { hour: 17, weekends: true } });
+    expect(resolveProjectPolicy(github('web'))).toEqual({ merge: 'harness', handsOff: false, checkpoint: { hour: 17, weekends: true }, holds: {} });
+    expect(resolveProjectPolicy(azure('acme'))).toEqual({ merge: 'human', handsOff: false, checkpoint: { hour: 17, weekends: true }, holds: {} });
     expect(resolveProjectPolicy(github('web'), { handsOff: true }).handsOff).toBe(true);
     // An id that is also an Object.prototype key must not pick up inherited values.
     expect(resolveProjectPolicy(github('constructor')).handsOff).toBe(false);
 });
 
 test('each configured key overrides its own default and nothing else', () => {
-    expect(resolveProjectPolicy(github('brain'), { merge: 'human', handsOff: false })).toEqual({ merge: 'human', handsOff: false, checkpoint: { hour: 17, weekends: true } });
+    expect(resolveProjectPolicy(github('brain'), { merge: 'human', handsOff: false })).toEqual({ merge: 'human', handsOff: false, checkpoint: { hour: 17, weekends: true }, holds: {} });
     expect(resolveProjectPolicy(azure('cec'), { checkpoint: { hour: 11 } }).checkpoint).toEqual({ hour: 11, weekends: false });
     expect(resolveProjectPolicy(azure('cec'), { checkpoint: { weekends: true } }).checkpoint).toEqual({ hour: 9, weekends: true });
     expect(resolveProjectPolicy(github('web'), { checkpoint: { hour: 0 } }).checkpoint).toEqual({ hour: 0, weekends: true });

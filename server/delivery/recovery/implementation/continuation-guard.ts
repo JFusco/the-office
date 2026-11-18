@@ -1,5 +1,5 @@
 import { assertSourceConfiguration } from './activation-recovery';
-import { HOLDS } from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { TicketJob, StageResult } from '../../../../src/shared';
@@ -27,7 +27,7 @@ export async function continuationGuard(this: GitHubDelivery, job: TicketJob,rec
     const bridge = new SessionBridge(() => [store], this.execute);
     const assertCurrent = () => {
         const visibility = bridge.forProject(store, job.key, job.id);
-        if (store.state.paused || HOLDS[job.key] || !claim || assignment?.lane !== 'delivery' || claim.lane !== 'delivery' || claim.status !== 'running' ||
+        if (store.state.paused || holdReason(store.project, job.key) || !claim || assignment?.lane !== 'delivery' || claim.lane !== 'delivery' || claim.status !== 'running' ||
             claim.work.projectId !== store.project.id || claim.work.kind !== (reconciliation?'reconciliation':'delivery') || claim.work.id !== (reconciliation?.id||job.id) || claim.stage !== (reconciliation?.action||job.stage) ||
             reconciliation&&(store.project.id!=='brain'||!(state.phase==='technical-review'&&reconciliation.action==='reconcile-review'||reconciliation.action==='reconcile-activation'&&(state.phase==='activation'||!!state.sourceConfig?.reservation&&['repair','technical-review'].includes(state.phase)))||reconciliation.key!==job.key||!reconciliation.head||reconciliation.status!=='working'||reconciliation.lane!=='delivery'||digest(reconciliation)!==expectedReconciliation||store.state.coordination?.requests?.filter(r=>r.id===reconciliation.id).length!==1||!store.state.coordination.requests.some(r=>r===reconciliation)) ||
             !isDeepStrictEqual(currentAssignment()?.claim, claim) || !store.activeClaims().some(active => isDeepStrictEqual(active, claim)) ||

@@ -10,7 +10,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {z} from 'zod';
 import {deliveryHumanInputs,deliveryInputSha256} from '../../../github/github-context';
 import {currentAssignment} from '../../../workers/assignment-context';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import {processGroupAlive} from '../../../workers/process';
 import {artifact,ownedPath,terminationObservation,digest,rootArtifact} from '../../../store/readback-evidence';
 import {readPreparationProviderContext,preparationProviderVersion} from './preparation-provider-context';
@@ -91,7 +91,7 @@ export async function reconcilePreparationReadback(delivery:GitHubDelivery,key:s
   const current=selected.postConflict?postConflictReadbackCandidate(store,job):preparationReadbackCandidate(store,job);
   if(selected.postConflict){assertPostConflictOwnership(store,job,intentId);if(deliveryInputSha256(store,key)!==inputs)throw Error('Post-conflict authenticated input changed');}
   const effects=store.db.prepare('SELECT body FROM effects WHERE work_key=?').all(workKey({projectId:store.project.id,kind:'delivery',id:job.id})) as {body:string}[];
-  if(store.state.paused||store.state.draining&&!mayDrain()||HOLDS[key]||delivery.jobs.find(j=>j.id===job.id)!==job||!current||digest({job,project:store.project,original:current.work,files:current.files,references:current.gates.references,receiptBindings:current.receiptBindings,native:current.native,originalClaim:current.originalClaim})!==expected||
+  if(store.state.paused||store.state.draining&&!mayDrain()||holdReason(store.project, key)||delivery.jobs.find(j=>j.id===job.id)!==job||!current||digest({job,project:store.project,original:current.work,files:current.files,references:current.gates.references,receiptBindings:current.receiptBindings,native:current.native,originalClaim:current.originalClaim})!==expected||
    store.state.coordination?.requests?.filter(r=>r.id===intentId).length!==1||store.state.coordination.requests.find(r=>r.id===intentId)!==intent||digest(intent)!==expectedIntent||
    effects.some(row=>JSON.parse(row.body).status!=='verified')||job.boardUpdates?.some(u=>u.status!=='verified')||job.steps.some(s=>s.result.receipts.some(r=>r.uncertain||!r.verified))||!live.complete||!live.fresh||live.ownership?.status!=='clear')throw new Error('Preparation identity, authorization, evidence or ownership changed');
  };

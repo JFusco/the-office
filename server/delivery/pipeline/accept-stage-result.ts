@@ -10,7 +10,7 @@ import { handoffSavedPrerequisites, savedPrerequisiteFindingsResolved, savedPrer
 import { routeReadyPostConflictPublication } from '../recovery/preparation/post-conflict-preparation';
 import {enqueueRequest} from '../../scheduling/requests';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { handsOff, harnessDelivers } from '../harness/scope';
 import { findingsBlock } from '../findings/advisory';
 import { needsDecision, park } from '../parking/park';
@@ -45,7 +45,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
     const { job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, candidateAtStart, technicalPhase } = context;
     const originalStage = job.stage;
     const learn = (boundary = false) => captureLearning(this.store, { kind: 'job', id: job.id }, job.key, originalStage, String(job.steps.length), result, result.summary, 'work', boundary);
-    if (this.jobs.find(current => current.id === job.id) !== job || this.store.state.paused || HOLDS[job.key] || candidateAtStart !== JSON.stringify({ id: job.id, stage: job.stage, head: job.head, branch: job.branch, worktree: job.worktree })) {
+    if (this.jobs.find(current => current.id === job.id) !== job || this.store.state.paused || holdReason(this.store.project, job.key) || candidateAtStart !== JSON.stringify({ id: job.id, stage: job.stage, head: job.head, branch: job.branch, worktree: job.worktree })) {
         job.steps.push({ stage: 'superseded-stage-result', result });
         throw new Error('Delivery ownership, candidate, hold or pause state changed during this stage; result retained for reconciliation');
     }

@@ -1,4 +1,4 @@
-import { HOLDS } from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import { handsOff } from '../../harness/scope';
 import { dependabotPR, inPickupLane, readRepo } from '../dependabot/qualify';
 import { ensureReviewCards, ensureTrackingIssue } from '../dependabot/tracking-issue';
@@ -55,7 +55,7 @@ function settle(store: Store, record: DependabotAdoption, status: DependabotAdop
 async function adoptOne(store: Store, execute: Execute, records: DependabotAdoption[], p: any, pickup: PickupPolicy, guard: Guard, bot: DependencyBot, auto = false): Promise<void> {
     const pr = { ...dependabotPR(p), bot: bot.id };
     let record = records.find(r => r.pr === pr.number);
-    if (record?.status === 'adopted' || HOLDS[`GH-${pr.number}`])
+    if (record?.status === 'adopted' || holdReason(store.project, `GH-${pr.number}`))
         return;
     if (auto && !record && waitsQuietly(await bot.refusal(store, execute, p)))
         return;

@@ -1,7 +1,7 @@
 import {retainedConflictChain,verifyConflictChainGit} from './conflict-chain';
 import {isDeepStrictEqual} from 'node:util';
 import {resolve} from 'node:path';
-import {HOLDS} from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import {verifyRepairCandidate} from './delivery-repairs';
 import {hasUncertainEffects} from '../pipeline/github-delivery';
 import {artifact,digest} from '../../store/readback-evidence';
@@ -41,7 +41,7 @@ export function conflictAssessmentArtifact(store:import('../../store/store').Sto
 export async function readConflictRepairProof(delivery:GitHubDelivery,job:TicketJob,result:StageResult){
  const {store}=delivery,expected=digest({job,project:store.project}),inputSha256=deliveryInputSha256(store,job.key);
  const assertCurrent=()=>{
-  if(store.state.paused||store.state.draining||HOLDS[job.key]||delivery.jobs.find(j=>j.id===job.id)!==job||digest({job,project:store.project})!==expected||deliveryInputSha256(store,job.key)!==inputSha256||job.mergeAttempt||job.mergeIntentId&&['dispatching','uncertain','verified'].includes(store.getEffect(job.mergeIntentId)?.status||'')||job.boardUpdates?.some(u=>u.status!=='verified')||store.activeClaims().some(claim=>claim.work.kind==='delivery'&&claim.work.id===job.id&&claim.id!==currentAssignment()?.claim.id)||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status))||job.implementationContinuation&&job.implementationContinuation.phase!=='acceptance')throw new Error('Conflict candidate ownership, hold or authorization changed');
+  if(store.state.paused||store.state.draining||holdReason(store.project, job.key)||delivery.jobs.find(j=>j.id===job.id)!==job||digest({job,project:store.project})!==expected||deliveryInputSha256(store,job.key)!==inputSha256||job.mergeAttempt||job.mergeIntentId&&['dispatching','uncertain','verified'].includes(store.getEffect(job.mergeIntentId)?.status||'')||job.boardUpdates?.some(u=>u.status!=='verified')||store.activeClaims().some(claim=>claim.work.kind==='delivery'&&claim.work.id===job.id&&claim.id!==currentAssignment()?.claim.id)||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status))||job.implementationContinuation&&job.implementationContinuation.phase!=='acceptance')throw new Error('Conflict candidate ownership, hold or authorization changed');
  };
  if(!conflictOnlyAssessment(result)||result.commit!==job.head||result.prId!==job.pr||result.worktree!==job.worktree||result.branch!==job.branch||resolve(job.worktree)===resolve(store.project.repo))throw new Error('Conflict-only exact owned assessment required');
  const chain=retainedConflictChain(store,job,conflictOnlyAssessment);

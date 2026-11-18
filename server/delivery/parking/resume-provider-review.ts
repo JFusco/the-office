@@ -1,5 +1,5 @@
 import { deliveryInputSha256, deliveryResearchContext, deliveryResearchSha256 } from '../../github/github-context';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { activeEffectId, harnessEffect } from '../harness/effect';
 import { harnessDelivers } from '../harness/scope';
 import { cardStatus, projectCards, setCardStatus, statusField } from '../board/project-graphql';
@@ -37,7 +37,7 @@ async function resume(delivery: GitHubDelivery, job: TicketJob): Promise<void> {
     const assertCurrent = () => {
         if (delivery.jobs.filter(candidate => candidate.id === job.id).length !== 1 || delivery.jobs.find(candidate => candidate.id === job.id) !== job || JSON.stringify(store.project) !== projectJson || !harnessDelivers(store, job) || job.status !== 'blocked' || job.stage !== 'lead-pr' || job.head !== head || job.key !== key || job.pr !== prNumber || job.branch !== branch || job.worktree !== worktree ||
             job.parked !== parked || JSON.stringify(parked) !== parkJson || job.steps.length !== count || JSON.stringify(job.steps.at(-1)) !== stepJson ||
-            store.state.paused || store.state.draining || store.state.coordination?.pickup?.enabled === false || HOLDS[job.key] || HOLDS[`GH-${prNumber}`] ||
+            store.state.paused || store.state.draining || store.state.coordination?.pickup?.enabled === false || holdReason(store.project, job.key) || holdReason(store.project, `GH-${prNumber}`) ||
             job.mergeAttempt || job.mergeCommit || job.mergeIntentId || job.mergeApprovalRequired || job.prerequisites?.length ||
             store.activeClaims().some(claim => claim.work.kind === 'delivery' && claim.work.id === job.id) ||
             store.state.workLog?.some(worker => worker.requestId === job.id && ['running', 'stopping'].includes(worker.status)) ||

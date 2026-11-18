@@ -4,7 +4,7 @@ import { externalPlanGap } from '../features/cec-plan-gate';
 import { MISSING_INTAKE, reconcileMailbox } from './reconcile-mailbox';
 import { existsSync, realpathSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import { HOLDS } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import { jiraBinding } from '../office/project-bindings';
 import { validTicket } from '../office/ticket-key';
 import { safeWebUrl } from '../office/security';
@@ -24,12 +24,12 @@ export function eligibility(project: OfficeProject, t: Pick<Ticket, 'key' | 'ass
     if (allowedStatus) {
         if (t.status !== allowedStatus || !t.statusId)
             return 'Ticket left the authorized intake status';
-        return HOLDS[t.key] || '';
+        return holdReason(project, t.key) || '';
     }
     const intake = jiraBinding(project).statuses.intake;
     if (!intake.some(status => t.status === status.name && t.statusId === status.id))
         return `Intake requires exact ${intake.map(status => status.name).join(' or ')} status`;
-    return HOLDS[t.key] || '';
+    return holdReason(project, t.key) || '';
 }
 export function ingest(project: OfficeProject, state: OfficeSnapshot, incoming: Ticket[], now = new Date().toISOString()) {
     const keys = new Set<string>();

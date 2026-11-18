@@ -1,5 +1,5 @@
 import {ResultSchema} from '../../workers/agents';
-import {HOLDS} from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import {readFileSync,existsSync} from 'node:fs';
 import {resolve,relative,sep} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
@@ -94,7 +94,7 @@ export async function verifyConflictChainGit(delivery:GitHubDelivery,job:TicketJ
 /** Pure original-bound admission; current provider checks still run under the scheduler claim. */
 export function repeatConflictRepairAdmission(store:Store,job:TicketJob,qualifies:(result:StageResult)=>boolean){
  try{
-  if(store.state.paused||store.state.draining||!store.state.coordination?.enabled||HOLDS[job.key]||job.stage!=='lead-pr'||!['blocked','interrupted'].includes(job.status)||!job.pr||job.prUrl!==`https://github.com/${store.project.repository}/pull/${job.pr}`||job.dependsOnPR||job.prerequisites?.length||job.mergeAttempt||job.mergeIntentId||job.boardUpdates?.some(u=>u.status!=='verified')||job.steps.some(s=>s.result.receipts.some(r=>!r.verified||r.uncertain))||store.state.coordination.jobs?.filter(j=>j.key===job.key&&j.status!=='cancelled').length!==1||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
+  if(store.state.paused||store.state.draining||!store.state.coordination?.enabled||holdReason(store.project, job.key)||job.stage!=='lead-pr'||!['blocked','interrupted'].includes(job.status)||!job.pr||job.prUrl!==`https://github.com/${store.project.repository}/pull/${job.pr}`||job.dependsOnPR||job.prerequisites?.length||job.mergeAttempt||job.mergeIntentId||job.boardUpdates?.some(u=>u.status!=='verified')||job.steps.some(s=>s.result.receipts.some(r=>!r.verified||r.uncertain))||store.state.coordination.jobs?.filter(j=>j.key===job.key&&j.status!=='cancelled').length!==1||store.state.workLog?.some(w=>w.requestId===job.id&&['running','stopping'].includes(w.status)))return;
   const work=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage==='github-lead-pr').at(-1),result=job.steps.filter(s=>s.stage==='lead-pr').at(-1)?.result;
   if(!work||!['completed','blocked'].includes(work.status)||existsSync(resolve(store.dataRoot,'sessions',work.id,'error.json'))||existsSync(resolve(store.dataRoot,'sessions',work.id,'output-error.json'))||work.role!=='lead'||!result||!qualifies(result)||result.commit!==job.head||result.prId!==job.pr||result.worktree!==job.worktree||result.branch!==job.branch)return;
   const bound=continuationWorkerProof(store,job,work,true,job.worktree),saved=ResultSchema.parse({prerequisites:null,...bound.result}) as StageResult;

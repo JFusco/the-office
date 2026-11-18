@@ -16,7 +16,8 @@ import { Agents, ResultSchema } from '../workers/agents';
 import { savedStageCompletion } from './saved-completion';
 import { decidedResumeStep, RESUME_STEP } from './resume-step';
 import { ownReceipts } from './superseded-receipts';
-import { HOLDS, LEGACY_AUTOMATION } from '../office/config';
+import { LEGACY_AUTOMATION } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import { jiraBinding } from '../office/project-bindings';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
@@ -118,7 +119,7 @@ export async function startPilot(this: Engine, key: string, background = true, i
     if (this.store.state.paused)
         throw new Error('Resume the office first');
     const t = this.store.ticket(key);
-    const reason = eligibility(this.store.project, t, intakeStatus) || HOLDS[key];
+    const reason = eligibility(this.store.project, t, intakeStatus) || holdReason(this.store.project, key);
     if (reason)
         throw new Error(reason);
     if (t.type === 'Epic')
@@ -239,8 +240,8 @@ export async function resume(this: Engine, key: string, background = true) {
     finally {
         this.busy = false;
     }
-    if (live.assignee !== jiraBinding(this.store.project).account || live.subtask || !live.boardMember || live.blocker || HOLDS[key] || live.existingOwner)
-        throw new Error(live.blocker || HOLDS[key] || 'Ownership/eligibility requires attention');
+    if (live.assignee !== jiraBinding(this.store.project).account || live.subtask || !live.boardMember || live.blocker || holdReason(this.store.project, key) || live.existingOwner)
+        throw new Error(live.blocker || holdReason(this.store.project, key) || 'Ownership/eligibility requires attention');
     if (live.existingPrId && live.existingPrId !== t.prId)
         throw new Error('A different PR exists; resolve duplicate work before resuming');
     const moved = await candidateBranchMoved(this.store, t);

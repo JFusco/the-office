@@ -7,7 +7,7 @@ import {completedExecution} from '../../workers/worker-completion';
 import {continuationWorkerProof,assertContinuationWorker} from '../recovery/implementation/continuation-evidence';
 import {digest} from '../../store/readback-evidence';
 import {deliveryInputSha256,deliveryHumanInputs} from '../../github/github-context';
-import {HOLDS} from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import type {GitHubDelivery} from '../pipeline/github-delivery';
 import type {TicketJob} from '../../../src/shared';
 function requireThat(value:unknown,message:string):asserts value{if(!value)throw new Error(message);}
@@ -98,13 +98,13 @@ export async function resumeReviewedMerge(delivery:GitHubDelivery,job:TicketJob,
  const enabled=()=>harnessMayMerge(store)&&(store.state.coordination?.merges?.enabled||job.mergeAuthorization?.head===job.head);
  if(!context&&teamReviewedHead(store,job)){
   // Team-reviewed hands-off job: no Lead review to re-validate; requeue once current checks pass on the unchanged head.
-  if(!canonical()||job.stage!=='merge'||!['blocked','interrupted','watching'].includes(job.status)||job.mergeAttempt||job.mergeApprovalRequired||store.state.paused||store.state.draining||HOLDS[job.key]||!enabled())return false;
+  if(!canonical()||job.stage!=='merge'||!['blocked','interrupted','watching'].includes(job.status)||job.mergeAttempt||job.mergeApprovalRequired||store.state.paused||store.state.draining||holdReason(store.project, job.key)||!enabled())return false;
   requireThat(p.state==='open'&&!p.draft&&p.mergeable===true&&p.head.sha===job.head,'Team-reviewed PR is not ready to merge');
   const intent=store.getEffect(job.mergeIntentId||`merge:${job.id}:${job.head}`);requireThat(!intent||['prepared','rejected'].includes(intent.status)&&!intent.dispatchedAt,'Prior merge intent needs read-back');
   const selection=await currentMergeChecks(delivery,job,p);
   job.status='queued';job.detail='Current checks passed on the team-reviewed head. The scheduler rechecks every merge gate before the write.';store.save();return selection;
  }
- if(!canonical()||job.stage!=='merge'||!['blocked','interrupted','watching'].includes(job.status)||!context||job.mergeAttempt||job.mergeApprovalRequired||store.state.paused||store.state.draining||HOLDS[job.key]||!enabled()||job.mergeAuthorization&&job.mergeAuthorization.head!==job.head)return false;
+ if(!canonical()||job.stage!=='merge'||!['blocked','interrupted','watching'].includes(job.status)||!context||job.mergeAttempt||job.mergeApprovalRequired||store.state.paused||store.state.draining||holdReason(store.project, job.key)||!enabled()||job.mergeAuthorization&&job.mergeAuthorization.head!==job.head)return false;
  requireThat(review?.result.outcome==='passed'&&!findingsBlock(store,review.result.findings,f=>f.status==='open')&&review.result.commit===job.head&&context.step===job.steps.indexOf(review)&&context.head===job.head&&context.head===p.head.sha&&context.target===store.project.target&&context.baseSha===p.base.sha&&context.prUpdatedAt===p.updated_at&&p.state==='open'&&!p.draft&&p.mergeable===true,'Saved merge review context changed');
  requireThat(job.reviewInputSha256===deliveryInputSha256(store,job.key)||!job.reviewInputSha256&&!deliveryHumanInputs(store,job.key).length,'Human merge review inputs changed');
  requireThat(work?.status==='completed'&&work.role==='lead'&&completedExecution(store,work),'One accepted actual Lead execution required');
@@ -119,7 +119,7 @@ export async function resumeReviewedMerge(delivery:GitHubDelivery,job:TicketJob,
  const selection=await currentMergeChecks(delivery,job,p);
  const fresh=await delivery.verifyPR(job,true),freshIssue=await delivery.api(`issues/${Number(job.key.slice(3))}`);
  requireThat(canonical()&&digest(store.project)===project&&digest(job)===expected&&deliveryInputSha256(store,job.key)===input&&isDeepStrictEqual([fresh.head.sha,fresh.base.sha,fresh.base.ref,fresh.updated_at,fresh.draft,fresh.mergeable],[p.head.sha,p.base.sha,p.base.ref,p.updated_at,p.draft,p.mergeable])&&freshIssue.updated_at===context.issueUpdatedAt&&
-  !store.state.paused&&!store.state.draining&&!HOLDS[job.key]&&enabled()&&!job.mergeApprovalRequired&&unattempted(),'Merge observation changed before queueing');
+  !store.state.paused&&!store.state.draining&&!holdReason(store.project, job.key)&&enabled()&&!job.mergeApprovalRequired&&unattempted(),'Merge observation changed before queueing');
  assertContinuationWorker(store,original);requireThat(completedExecution(store,work)&&isDeepStrictEqual(claimRows(),rows),'Accepted Lead completion or claim changed');
  store.transaction(()=>{requireThat(canonical()&&digest(store.project)===project&&digest(job)===expected,'Merge job changed');job.status='queued';job.detail='Current workflow executions passed; unchanged accepted Lead review retained. Scheduler will recheck every merge/source/permission gate before any write.';store.emit('merge-checks-reconciled',job.detail,'lead',job.key);});
  return selection;

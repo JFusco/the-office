@@ -4,7 +4,7 @@ import { deferredPickup } from '../../src/work/pickup-state';
 import { checkpointSuperseded } from '../maintenance/superseded';
 import { checkpointHasMaintenanceAlert, maintenanceNeedsHumanFollowup } from '../maintenance/follow-up-alerts';
 import { parkedProviderWait, readinessNeedsFollowup, readinessWait } from '../../src/work/work-summary';
-import { HOLDS } from '../office/config';
+import { holdReason, topLevelHold } from '../office/project-holds';
 import { knowledgeOutbox } from '../knowledge/knowledge-outbox';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
 import { ctoInputRecovered } from './cto-input-resolution';
@@ -61,7 +61,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
     if (capabilityBlocked.length)
         item('ownership-capability', 'Office cannot check other active sessions', `New development is paused for ${capabilityBlocked.map(r => r.key).join(', ')} because the Office worker cannot read current Codex/Claude session ownership. This is an Office capability blocker, not a request for merge approval. Existing linked PRs continue through Sam.\n${capabilityBlocked.map(r => `${r.key}: ${r.detail}`).join('\n')}`, 'pm');
     for (const r of latest)
-        if (!HOLDS[r.key] && ['blocked', 'interrupted'].includes(r.status) && !r.retry?.nextAt && !capabilityBlocked.includes(r) && !state.coordination?.jobs?.some(j => j.key === r.key && j.pr && j.status !== 'cancelled'))
+        if (!(state.project ? holdReason(state.project, r.key) : topLevelHold(r.key)) && ['blocked', 'interrupted'].includes(r.status) && !r.retry?.nextAt && !capabilityBlocked.includes(r) && !state.coordination?.jobs?.some(j => j.key === r.key && j.pr && j.status !== 'cancelled'))
             item(`assignment:${r.id}`, `${r.key} intake needs follow-up`, r.detail, 'pm', r.key, r.url);
     if (state.intake.status === 'blocked' && state.intake.error)
         item('intake', 'Help Morgan check the mailbox', state.intake.error, 'pm');

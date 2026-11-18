@@ -10,6 +10,8 @@ export interface ProjectPolicy {
     handsOff: boolean;
     /** Daily checkpoint, in America/New_York. */
     checkpoint: { hour: number; weekends: boolean };
+    /** Human holds for this project only, by ticket key. The top-level `holds` still applies to every project. */
+    holds: Readonly<Record<string, string>>;
 }
 
 type Project = Pick<OfficeProject, 'id' | 'provider'>;
@@ -33,6 +35,7 @@ export function resolveProjectPolicy(project: Project, input: ProjectPolicyInput
             hour: input.checkpoint?.hour ?? before.checkpoint?.hour ?? 17,
             weekends: input.checkpoint?.weekends ?? before.checkpoint?.weekends ?? true,
         }),
+        holds: Object.freeze(Object.fromEntries(Object.entries(input.holds ?? {}))),
     });
 }
 

@@ -1,5 +1,5 @@
 import { deliveryHumanInputs, deliveryInputSha256 } from '../../github/github-context';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { currentAssignment } from '../../workers/assignment-context';
 import { hasUncertainEffects } from '../pipeline/github-delivery';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -16,7 +16,7 @@ export async function refreshMergeReview(delivery: GitHubDelivery, job: TicketJo
         const intent = store.getEffect(job.mergeIntentId || `merge:${job.id}:${job.head}`);
         return context && job.reviewContext === context && job.stage === 'merge' &&
             (scheduled ? ['working', 'queued'] : ['blocked', 'interrupted', 'watching']).includes(job.status) &&
-            !job.mergeAttempt && !job.mergeCommit && !job.mergeApprovalRequired && !HOLDS[job.key] && !store.state.paused && (allowDraining || !store.state.draining) &&
+            !job.mergeAttempt && !job.mergeCommit && !job.mergeApprovalRequired && !holdReason(store.project, job.key) && !store.state.paused && (allowDraining || !store.state.draining) &&
             delivery.jobs.find(j => j.id === job.id) === job &&
             !store.activeClaims().some(c => c.work.kind === 'delivery' && c.work.id === job.id && c.id !== assignment?.claim.id) &&
             !store.state.workLog?.some(w => w.requestId === job.id && ['running', 'stopping'].includes(w.status) && w.claimId !== assignment?.claim.id) &&

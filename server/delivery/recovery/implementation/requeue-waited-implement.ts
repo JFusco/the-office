@@ -1,4 +1,4 @@
-import { HOLDS } from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import { needsDecision } from '../../parking/needs-decision';
 import { hasUncertainEffects } from '../../pipeline/github-delivery';
 import { recordJobApproach } from '../../pipeline/approach';
@@ -25,7 +25,7 @@ export function requeueWaitedImplement(store: Store, key: string): TicketJob {
     const [waited, rejected] = job.steps.filter(s => s.stage === 'implement').map(s => s.result).slice(-2);
     if (!waited || !rejected || !needsDecision(waited) || rejected.outcome !== 'passed' || !rejected.approach || job.steps.at(-1)?.result !== rejected)
         throw new Error('The rejected implement must directly follow a structured wait or decision');
-    if (job.pr || HOLDS[key])
+    if (job.pr || holdReason(store.project, key))
         throw new Error(`${key} has a PR or a hold; reconcile it through its own gate`);
     if (job.steps.some(s => hasUncertainEffects(s.stage, s.result)))
         throw new Error('Original effects must be reconciled before implement re-runs');

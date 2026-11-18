@@ -1,6 +1,6 @@
 import { assessDeliveryEligibility } from '../delivery/harness/delivery-authority';
 import { handsOff } from '../delivery/harness/scope';
-import { HOLDS } from '../office/config';
+import { holdReason } from '../office/project-holds';
 import { digest } from '../store/readback-evidence';
 import type { ITContext } from './context';
 
@@ -12,7 +12,7 @@ export async function recoverPRMetadata(context: ITContext): Promise<void> {
         if (!r || !key || r.phase === 'done' || job.status === 'completed') continue;
         // Retain consumed attempts even while the admitted original is unavailable or still held.
         if (it.recoveries[key]) current.add(key);
-        if (store.state.paused || store.state.draining || !store.state.coordination?.enabled || HOLDS[job.key] || HOLDS[`GH-${job.pr}`] ||
+        if (store.state.paused || store.state.draining || !store.state.coordination?.enabled || holdReason(store.project, job.key) || holdReason(store.project, `GH-${job.pr}`) ||
             r.phase === 'blocked' || !['blocked', 'interrupted'].includes(job.status) ||
             store.activeClaims().some(c => c.work.kind === 'delivery' && c.work.id === job.id) ||
             store.state.workLog?.some(w => w.requestId === job.id && ['running', 'stopping'].includes(w.status))) continue;

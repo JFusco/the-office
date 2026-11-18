@@ -6,7 +6,8 @@ import type { EffectIntent } from '../../../src/shared';
 import type { Store } from '../../store/store';
 import { rootArtifact } from '../../store/readback-evidence';
 import { command, processGroupAlive } from '../../workers/process';
-import { HOLDS, SKILLS } from '../../office/config';
+import { SKILLS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { closedReadonlyPlan } from './closed-readonly-plan';
 import { qaRunDirectory } from './run-directory';
 import { reviewedPlanGuideDigest } from './reviewed-plan-guidance';
@@ -44,7 +45,7 @@ export async function inspectClosedQAPlan(store: Store, key: string, dataRoot: s
     const identity = () => ({ branch: ticket.branch, worktree: ticket.worktree, prId: ticket.prId, status: ticket.status, statusId: ticket.statusId, assignee: ticket.assignee });
     const snapshot = JSON.stringify({ ...identity(), stage, attempt: ticket.attempt, commit: ticket.commit, result, repairAttempts: ticket.repairAttempts });
     const current = () => {
-        if (store.ticket(ticket.key) !== ticket || store.state.paused || store.state.draining || HOLDS[ticket.key] ||
+        if (store.ticket(ticket.key) !== ticket || store.state.paused || store.state.draining || holdReason(store.project, ticket.key) ||
             !ticket.pilot || ticket.activity !== 'blocked' || !/^[a-f0-9]{40}$/.test(ticket.commit) ||
             !Number.isInteger(ticket.attempt) || ticket.attempt < 1 ||
             ticket.parked && !ticket.parked.resumeRequestedAt ||

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { HOLDS } from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import { Effects } from '../../../store/effects';
 import { harnessEffect } from '../../harness/effect';
 import { readBackOrThrow } from '../../harness/read-retry';
@@ -18,7 +18,7 @@ export async function relinkPinCourier(store: Store, execute: Execute, record: D
     const issue = record.issue, job = jobs.find(j => j.key === `GH-${issue}` && j.pr === pr.number && !['completed', 'cancelled'].includes(j.status));
     const guard = () => {
         if (!job || !jobs.includes(job) || job.key !== `GH-${issue}` || job.pr !== pr.number || ['completed', 'cancelled'].includes(job.status) ||
-            store.state.paused || store.state.draining || HOLDS[`GH-${issue}`] || HOLDS[`GH-${pr.number}`] || record.status !== 'adopted' || record.issue !== issue || record.pr !== pr.number || record.bot !== 'pin-courier' ||
+            store.state.paused || store.state.draining || holdReason(store.project, `GH-${issue}`) || holdReason(store.project, `GH-${pr.number}`) || record.status !== 'adopted' || record.issue !== issue || record.pr !== pr.number || record.bot !== 'pin-courier' ||
             !store.state.coordination?.adoptions?.includes(record) || job.mergeAttempt ||
             store.activeClaims().some(c => c.work.kind === 'delivery' && c.work.id === job.id) ||
             store.state.workLog?.some(w => w.requestId === job.id && ['running', 'stopping'].includes(w.status)))

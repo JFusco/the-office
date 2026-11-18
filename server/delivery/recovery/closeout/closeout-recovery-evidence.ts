@@ -1,7 +1,7 @@
 import {offlineNativeEvidence,completedExecution} from '../../../workers/worker-completion';
 import {retainedConflictChain} from '../../repairs/conflict-chain';
 import {conflictOnlyAssessment} from '../../repairs/conflict-repair';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
@@ -56,7 +56,7 @@ export function closeoutRecoveryCandidate(store:Store,job:TicketJob){
    identity.attemptId!==work.id||identity.requestId!==job.id||identity.projectId!==store.project.id||identity.repository!==store.project.repository||identity.role!=='pm'||identity.threadId!==work.sessionId||error.session!==work.sessionId||error.provider!=='codex'||error.error!=='Error: Worker exited with surviving subprocesses; effects require reconciliation')return;
   const result=closeoutCheckpoint(raw);
   const kind:CloseoutRecoveryKind=result.outcome==='passed'?'core-passed':'cleanup-uncertain';
-  if(kind==='core-passed'&&(store.state.paused||store.state.draining||HOLDS[job.key]||result.findings.some(f=>f.status!=='verified')||result.receipts.some(r=>!r.verified||r.uncertain)))return;
+  if(kind==='core-passed'&&(store.state.paused||store.state.draining||holdReason(store.project, job.key)||result.findings.some(f=>f.status!=='verified')||result.receipts.some(r=>!r.verified||r.uncertain)))return;
   const uncertain=result.receipts.filter(r=>!r.verified||r.uncertain),open=result.findings.filter(f=>f.status==='open');
   if(new Set(result.findings.map(f=>f.id)).size!==result.findings.length||result.findings.some(f=>!f.id)||result.commit!==job.mergeCommit||result.worktree!==job.worktree||result.branch!==job.branch||result.prId!==job.pr||result.paidRuns!==0||result.prerequisites?.length||
    !['issue-close','issue-comment','board-status'].every(action=>closeoutReceipt(result,action,`https://github.com/${store.project.repository}/issues/${Number(job.key.slice(3))}`,store.project.githubProject?.url||'')))return;

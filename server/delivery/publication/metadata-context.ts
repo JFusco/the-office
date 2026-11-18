@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { Store } from '../../store/store';
 import { activeEffectId } from '../harness/effect';
-import { HOLDS } from '../../office/config';
+import { holdReason } from '../../office/project-holds';
 import { deliveryInputSha256 } from '../../github/github-context';
 import { digest } from '../../store/readback-evidence';
 import { hasUncertainEffects, type GitHubDelivery } from '../pipeline/github-delivery';
@@ -55,7 +55,7 @@ export function assertMetadataBinding(delivery: GitHubDelivery, job: TicketJob, 
         b.pr !== job.pr || b.url !== job.prUrl || b.head !== job.head || b.branch !== job.branch || b.base !== store.project.target || b.worktree !== job.worktree ||
         !/^[a-f0-9]{40}$/.test(b.head) || b.url !== `https://github.com/${b.repository}/pull/${b.pr}` || digest(b.before) !== b.beforeSha256 ||
         (!dispatchedMetadataEffect(store, job, repair) && deliveryInputSha256(store, job.key) !== b.inputSha256) || store.state.paused || store.state.draining || !store.state.coordination?.enabled ||
-        HOLDS[job.key] || HOLDS[`GH-${job.pr}`] || job.prerequisites?.length || job.mergeAttempt || job.mergeCommit || job.mergeIntentId && !ownPreparedMerge || job.mergeApprovalRequired ||
+        holdReason(store.project, job.key) || holdReason(store.project, `GH-${job.pr}`) || job.prerequisites?.length || job.mergeAttempt || job.mergeCommit || job.mergeIntentId && !ownPreparedMerge || job.mergeApprovalRequired ||
         job.boardUpdates?.some(u => u.status !== 'verified') || job.steps.some(s => hasUncertainEffects(s.stage, s.result)) ||
         store.activeClaims().some(c => c.work.kind === 'delivery' && c.work.id === job.id && c.id !== claimId) ||
         store.state.workLog?.some(w => w.requestId === job.id && ['running', 'stopping'].includes(w.status) &&

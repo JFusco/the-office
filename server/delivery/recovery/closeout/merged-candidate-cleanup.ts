@@ -4,7 +4,7 @@ import {resolve,dirname} from 'node:path';
 import {homedir} from 'node:os';
 import {isDeepStrictEqual} from 'node:util';
 import {Effects} from '../../../store/effects';
-import {HOLDS} from '../../../office/config';
+import { holdReason } from '../../../office/project-holds';
 import {artifact,rootArtifact,digest,sha,terminationObservation} from '../../../store/readback-evidence';
 import {continuationWorktree} from '../implementation/continuation-evidence';
 import {inspectPartialWorktree,localPathPresent} from './local-worktree-removal';
@@ -35,7 +35,7 @@ export async function cleanupMergedCandidate(delivery:GitHubDelivery,request:Har
   proof.providerObservations?.length===2&&proof.providerObservations.every((p:any)=>p.branchHead===job.head)&&store.state.coordination?.requests?.some(r=>r.id===recovery.intentId&&r.action==='reconcile-closeout'&&r.head===recovery.originalWorkId&&r.status==='completed'),'Bound full original read-back and positive current ref required');
  const identity=()=>({id:job.id,key:job.key,head:job.head,pr:job.pr,prUrl:job.prUrl,branch:job.branch,worktree:job.worktree,mergeCommit:job.mergeCommit,mergeIntentId:job.mergeIntentId});
  const stable=()=>{
-  requireCloseout(!store.state.paused&&!HOLDS[job.key]&&job.stage==='closeout'&&['blocked','interrupted'].includes(job.status)&&delivery.jobs.find(j=>j.id===job.id)===job&&delivery.jobs.filter(j=>j.key===job.key&&j.status!=='cancelled').length===1&&job.closeoutRecovery===recovery&&recovery.status==='cleanup-pending'&&
+  requireCloseout(!store.state.paused&&!holdReason(store.project, job.key)&&job.stage==='closeout'&&['blocked','interrupted'].includes(job.status)&&delivery.jobs.find(j=>j.id===job.id)===job&&delivery.jobs.filter(j=>j.key===job.key&&j.status!=='cancelled').length===1&&job.closeoutRecovery===recovery&&recovery.status==='cleanup-pending'&&
    isDeepStrictEqual(store.project,proof.project)&&digest(identity())===digest(proof.jobIdentity)&&isDeepStrictEqual(job.steps,proof.steps)&&isDeepStrictEqual(deliveryHumanInputs(store,job.key),proof.humanInputs)&&
    digest(request)===requestVersion&&isDeepStrictEqual(closeoutClaim(store,request,'cleanup-merged-candidate'),claim)&&artifact(store,recovery.proofPath).sha256===recovery.proofSha256&&
    isDeepStrictEqual(store.getEffect(original.merge.id),original.merge)&&Object.entries(recovery.operations).every(([name,op])=>names.includes(name as any)&&op.effectId===`closeout-cleanup:${job.id}:${recovery.originalWorkId}:${recovery.proofSha256}:${name}`&&(!op.processId||Number.isSafeInteger(op.processId)&&op.processId>0)),'Cleanup identity, source gates, human scope or claim changed');
@@ -168,7 +168,7 @@ export async function resumeCloseoutCleanup(delivery:GitHubDelivery,request:Harn
  terminationObservation(store,proof.original.work);terminationObservation(store,proof.reader);
  const live=await ownership();
  store.transaction(()=>{
-  requireCloseout(!store.state.paused&&!HOLDS[job.key]&&['blocked','interrupted'].includes(job.status)&&job.stage==='closeout'&&live.complete&&live.fresh&&live.ownership?.status==='clear'&&digest({job,project:store.project,human:deliveryHumanInputs(store,job.key)})===version&&isDeepStrictEqual(closeoutClaim(store,request,'reconcile-closeout'),claim)&&artifact(store,r.proofPath).sha256===r.proofSha256,'Pending closeout scope or ownership changed');
+  requireCloseout(!store.state.paused&&!holdReason(store.project, job.key)&&['blocked','interrupted'].includes(job.status)&&job.stage==='closeout'&&live.complete&&live.fresh&&live.ownership?.status==='clear'&&digest({job,project:store.project,human:deliveryHumanInputs(store,job.key)})===version&&isDeepStrictEqual(closeoutClaim(store,request,'reconcile-closeout'),claim)&&artifact(store,r.proofPath).sha256===r.proofSha256,'Pending closeout scope or ownership changed');
   if(['blocked','interrupted'].includes(cleanup.status)){
    requireCloseout(!store.activeClaims().some(c=>c.work.projectId===store.project.id&&c.work.kind==='reconciliation'&&c.work.id===cleanup.id),'Original cleanup claim is still active');
    cleanup.status='queued';cleanup.detail='Same cleanup identity requeued for exact effect read-back; no uncertain effect may be resent.';

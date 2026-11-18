@@ -5,7 +5,7 @@ import { partialVendorReview, partialVendorReviewLedger } from './vendor-review-
 import { cmsFollowUpInstructions } from './cms-follow-up-instructions';
 import { VENDOR_REVIEW_INSTRUCTIONS } from './vendor-review-instructions';
 import { candidateOwner, skipOwnedCandidate, skippedCandidateLedger } from './candidate-ownership';
-import { HOLDS } from '../office/config';
+import { holdsFor } from '../office/project-holds';
 import { z } from 'zod';
 import { resolve } from 'node:path';
 import { mkdirSync, writeFileSync, realpathSync } from 'node:fs';
@@ -163,7 +163,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
             if (run.weekly) {
                 const triage = await step('pm', 'vendor-review', VENDOR_REVIEW_INSTRUCTIONS, true);
                 const leftToDelivery = (index: number, checkpoint: 'triage' | 'proposal', issue: number) => {
-                    const owned = skipOwnedCandidate(run, { index, checkpoint }, issue, cursor === run.steps.length, () => candidateOwner(this.store.state, HOLDS, issue));
+                    const owned = skipOwnedCandidate(run, { index, checkpoint }, issue, cursor === run.steps.length, () => candidateOwner(this.store.state, holdsFor(this.store.project), issue));
                     if (owned.added) {
                         state.ledger = skippedCandidateLedger(state.ledger, issue, owned.reason, easternDate());
                         this.store.emit('maintenance-observation', `Maintenance left #${issue} to delivery: ${owned.reason}`, 'pm');
