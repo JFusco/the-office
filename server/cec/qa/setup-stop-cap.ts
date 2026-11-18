@@ -5,6 +5,10 @@ export const SETUP_STOP_CAP = 3;
 
 const setupStop = (result: StageResult | undefined, commit: string) => result?.outcome === 'blocked' && result.qa?.setup?.status === 'blocked' && result.commit === commit;
 
+/** A QA run that stopped while setting up: no paid run was made and no case was exercised. */
+export const isSetupStop = (result: StageResult | undefined): boolean => result?.outcome === 'blocked' && result.qa?.setup?.status === 'blocked' && result.paidRuns === 0 &&
+    result.qa.cases.every(item => ['not-tested', 'blocked'].includes(item.status));
+
 /** How many times in a row this QA stage has stopped in setup on the ticket's current candidate. */
 export function consecutiveSetupStops(ticket: Pick<Ticket, 'stage' | 'commit' | 'results' | 'qaHistory'>): number {
     const current = ticket.results[ticket.stage];

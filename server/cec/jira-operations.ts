@@ -3,6 +3,7 @@ import type { Ticket, StageResult } from '../../src/shared';
 import { command } from '../workers/process';
 import { jiraBinding } from '../office/project-bindings';
 import { verifyAlreadyAtStatus } from './transition-readback';
+import { statusHeld } from './qa/status-held';
 import { qaComment } from './qa-comment';
 import { postReadableComment } from './readable-jira-comment';
 import { postDevUpdate } from './post-dev-update';
@@ -11,6 +12,10 @@ export class JiraOperations {
     constructor(private store: Store, readonly execute: typeof command = command) { }
     verifyStatus(ticket: Ticket, target: string, result: StageResult): Promise<StageResult> {
         return verifyAlreadyAtStatus(this.store, ticket, target, result, this.execute);
+    }
+    /** The ticket's status as Jira already shows it, read by the harness itself; undefined when it has to be moved. */
+    statusHeld(ticket: Ticket, target: string): Promise<StageResult | undefined> {
+        return statusHeld(this.store, ticket, target, this.execute);
     }
     async qaComment(ticket: Ticket, stage: string, attempt: string, result: StageResult): Promise<void> {
         const posted = await postReadableComment(this.store, this.execute, ticket, { id: `qa-comment:${attempt}`, operation: 'jira-qa-comment', attempt, commit: result.commit, expectedState: { assignee: jiraBinding(this.store.project).account, stage, commit: ticket.commit },
