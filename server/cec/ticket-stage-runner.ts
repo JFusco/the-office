@@ -14,6 +14,8 @@ import { correlatedBuild } from './azure';
 import { verifiedTransition } from './transition-readback';
 import { advance, resultGate, qaEvidenceGap, publicationEvidenceGap } from './workflow';
 import { parkDecision } from './parking/park-ticket';
+import { draftHeadMovedForward, movedHeadEvent, recordMovedHead } from './draft-pr-moved-head';
+import { confirmsMovedHead, movedHeadUnconfirmed, recordConfirmedHead, routeConfirmedHead } from './confirm-moved-head';
 import { parksInJira } from './parking/parks-in-jira';
 import { consecutiveSetupStops, isSetupStop } from './qa/setup-stop-cap';
 import { STAGE_ROLE, STAGE_LABELS, type Stage, type StageResult } from '../../src/shared';
@@ -180,7 +182,18 @@ export async function run(this: Engine, key: string) {
                 this.store.emit('approach-selected', `${role}: ${result.approach.reason}`, role, key);
             }
             const artifactRoot = resolve(this.store.dataRoot, 'runs', t.runId);
-            const gap = resultGate(t, stage, result, artifactRoot);
+            // A draft pull request opened on a head that moved forward is recorded, and that head goes back to the developer
+            // to confirm: it is the same work brought up to date, but nobody has reviewed or tested it.
+            if (stage === 'draft-pr' && await draftHeadMovedForward(this.jira.execute, t, result) && !resultGate({ ...t, commit: result.commit }, stage, result, artifactRoot)) {
+                t.results[stage] = result; t.evidence.push(...result.evidence);
+                recordMovedHead(t, result, this.store.clock.now().toISOString());
+                if (!await this.jira.devUpdate(t, stage, attemptId, result))
+                    this.store.emit('dev-update-skipped', `${key}: the ${stage} Dev update is not confirmed on the Jira ticket. The stage continues.`, role, key);
+                learn();
+                this.store.emit('draft-pr-head-moved', movedHeadEvent(t), role, key);
+                continue;
+            }
+            const gap = await movedHeadUnconfirmed(this.jira.execute, t, stage, result) || resultGate(t, stage, result, artifactRoot);
             if (gap && parksInJira(result)) {
                 t.results[stage] = result;
                 t.evidence.push(...result.evidence);
@@ -229,9 +242,12 @@ export async function run(this: Engine, key: string) {
                 break;
             }
             // The Dev update tells people where accepted work stands; whether it reached Jira never changes the stage result.
-            if (['draft-pr', 'repair'].includes(stage) && !await this.jira.devUpdate(t, stage, attemptId, result))
+            // A pass that only confirms a moved head fixed nothing: the draft pull request's update already told people.
+            if (['draft-pr', 'repair'].includes(stage) && !confirmsMovedHead(t, stage) && !await this.jira.devUpdate(t, stage, attemptId, result))
                 this.store.emit('dev-update-skipped', `${key}: the ${stage} Dev update is not confirmed on the Jira ticket. The stage continues.`, role, key);
+            recordConfirmedHead(t, stage, result);
             advance(t, stage, result);
+            routeConfirmedHead(t);
             this.store.emit('stage-passed', result.summary, role, key);
             if (result.approach && t.results.implement?.outcome === 'passed') {
                 const missing = missingApproachStage(t);

@@ -24,6 +24,9 @@ import type { Engine } from '../scheduling/engine';
 import { recoverSavedPlan } from './recover-saved-plan';
 import { continueImplementation } from './implementation-continuation/continue';
 import { candidateBranchMoved } from './candidate-branch-moved';
+import { draftHeadMovedForward } from './draft-pr-moved-head';
+import { movedHeadUnconfirmed, recordConfirmedHead, routeConfirmedHead } from './confirm-moved-head';
+import { resumeMovedHead } from './resume-moved-head';
 import { parkingUnconfirmed } from './parking/park-ticket';
 import { reconcileRejectedParking } from './parking/rejected-transition';
 import { reconcileRefusedCommentedPark } from './parking/refused-commented-park';
@@ -242,7 +245,9 @@ export async function resume(this: Engine, key: string, background = true) {
     }
     if (live.assignee !== jiraBinding(this.store.project).account || live.subtask || !live.boardMember || live.blocker || holdReason(this.store.project, key) || live.existingOwner)
         throw new Error(live.blocker || holdReason(this.store.project, key) || 'Ownership/eligibility requires attention');
-    if (live.existingPrId && live.existingPrId !== t.prId)
+    // A draft pull request the ticket opened on a head that moved forward is its own, even while that result waits to be accepted.
+    const draft = t.results['draft-pr'];
+    if (live.existingPrId && live.existingPrId !== (t.prId || (t.stage === 'draft-pr' && await draftHeadMovedForward(this.jira.execute, t, draft) ? draft!.prId : 0)))
         throw new Error('A different PR exists; resolve duplicate work before resuming');
     const moved = await candidateBranchMoved(this.store, t);
     if (moved) throw new Error(moved);
@@ -253,18 +258,22 @@ export async function resume(this: Engine, key: string, background = true) {
     if (qaRetry) await consumeQAPlanRetry(this.store, qaRetry, this.store.dataRoot, this.implementationOwnership);
     if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, this.store.dataRoot, this.implementationOwnership, undefined, undefined, live);
     if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, this.store.dataRoot);
+    // A recorded draft pull request on a head that moved forward is taken as it stands; the stage is not run again.
+    const movedHead = !qaRetry && !qaHandoff && await resumeMovedHead(this.store, this.jira.execute, t);
     // One named step per resume (server/cec/resume-step.ts).
-    const step = qaRetry || qaHandoff ? undefined : await decidedResumeStep(this.store, t, { savedCompletion: () => !!savedStageCompletion(this.store, t, t.stage, ResultSchema), continuableSession: () => this.agents.continuable(t) });
+    const step = qaRetry || qaHandoff || movedHead ? undefined : await decidedResumeStep(this.store, t, { savedCompletion: () => !!savedStageCompletion(this.store, t, t.stage, ResultSchema), continuableSession: () => this.agents.continuable(t) });
     if (step === 'reconstruct') {
         const read = await this.agents.reconcile(t), observed = { ...read, receipts: ownReceipts(t, read.receipts) };
-        const gap = resultGate(t, t.stage, observed, resolve(this.store.dataRoot, 'runs', t.runId));
+        const gap = await movedHeadUnconfirmed(this.jira.execute, t, t.stage, observed) || resultGate(t, t.stage, observed, resolve(this.store.dataRoot, 'runs', t.runId));
         if (gap) {
             t.blocker = `Reconciliation incomplete: ${gap}`;
             t.activity = 'blocked';
             this.store.emit('reconcile-blocked', t.blocker, 'pm', key);
             throw new Error(t.blocker);
         }
+        recordConfirmedHead(t, t.stage, observed);
         advance(t, t.stage, observed);
+        routeConfirmedHead(t);
         this.store.emit('reconciled', 'Previous stage independently verified through read-back; no external action replayed.', 'pm', key);
     }
     if (!qaHandoff) await continueAccessOnlyPlan(this.store, t, this.store.dataRoot);

@@ -1,3 +1,4 @@
+import { movedHeadNote } from '../moved-head-note';
 import { twgConnection } from '../twg-connection';
 import { legacyQA, isQAStage, officePreviewGuidance, officeQAGuidance, officeQADirectory } from '../../qa/assignment';
 import { settledReceiptNote, ticketForWorker } from '../superseded-receipts';
@@ -45,7 +46,7 @@ CHECK-BASED QA: When validation is developer-checks or independent-checks, do no
 JIRA COMMENT OWNERSHIP: The harness posts the Jira comment for qa, retest and staging-qa (verified) and the Dev update for draft-pr and repair; return the semantic outcome and evidence and do not send a comment yourself. Those comments are built from your summary, blocker and findings, and people read them on the ticket. Write summary as two or three plain sentences: what was checked and what happened. Write blocker as one or two plain sentences: what is needed, and from whom. Leave file paths, run ids, commit hashes, local URLs and tool or harness names to findings and evidence.
 STAGE INSTRUCTIONS: ${ticket.featureBinding && stage === 'enhance' ? 'Read back the published ticket against the approved feature acceptance criteria. Do not mutate Jira fields or comments. Block if the content needs changing; return the discrepancy for a new feature revision.' : stageInstructionsFor({ target: project.target, understand: jira.statuses.stages.understand, readyForStaging: jira.statuses.readyForStaging })[stage]}
 ${settledReceiptNote(ticket)}
-${interruptedRunNote(store, ticket, stage)}
+${[interruptedRunNote(store, ticket, stage), movedHeadNote(ticket, stage)].filter(Boolean).join('\n')}
 RESULTS: A 'passed' result requires actual observed evidence. commit is full 40-character candidate HEAD. evidence paths must be absolute and lie inside ${artifactRoot}; review/check evidence must be saved artifacts. All external writes need read-back receipts {id,action,target,verified,uncertain,detail}; use actions draft-pr, publish-pr, jira-transition, jira-update, jira-comment as applicable. Uncertain receipt remains blocked. Screenshot evidence includes URL/environment/commit/time. Findings retain stable IDs and expected/actual/retest disposition. paidRuns is the observed count, or null when unknown; never substitute zero for an uncertain paid submit.
 ARTIFACT ROOT: ${artifactRoot}
 PROJECT GOALS (planning context; do not override ticket scope or holds): ${JSON.stringify(store.state.goals || [])}
