@@ -16,6 +16,7 @@ import { advance, resultGate, qaEvidenceGap, publicationEvidenceGap } from './wo
 import { parkDecision } from './parking/park-ticket';
 import { draftHeadMovedForward, movedHeadEvent, recordMovedHead } from './draft-pr-moved-head';
 import { confirmsMovedHead, movedHeadUnconfirmed, recordConfirmedHead, routeConfirmedHead } from './confirm-moved-head';
+import { applyChangeScope, endChangeScope, statedApproach } from './change-scope';
 import { parksInJira } from './parking/parks-in-jira';
 import { consecutiveSetupStops, isSetupStop } from './qa/setup-stop-cap';
 import { STAGE_ROLE, STAGE_LABELS, type Stage, type StageResult } from '../../src/shared';
@@ -177,9 +178,12 @@ export async function run(this: Engine, key: string) {
                 break;
             }
             const gatesBefore = new Set((['plan', 'plan-review', 'code-review'] as Stage[]).filter(s => stageNeeded(t, s)));
-            if (result.outcome === 'passed' && result.approach) {
-                recordApproach(t, result.approach, role, stage);
-                this.store.emit('approach-selected', `${role}: ${result.approach.reason}`, role, key);
+            // A repair on a verified candidate states the scope for verifying its own change; elsewhere the ticket-wide rule decides.
+            const stated = result.outcome === 'passed' && result.approach ? await statedApproach(this.jira.execute, t, stage, result) : undefined;
+            if (stated === 'ignored') this.store.emit('approach-ignored', `${key}: the approach ${role} stated on ${stage} was not applied; the approach in force stands.`, role, key);
+            if (stated === 'ticket') {
+                recordApproach(t, result.approach!, role, stage);
+                this.store.emit('approach-selected', `${role}: ${result.approach!.reason}`, role, key);
             }
             const artifactRoot = resolve(this.store.dataRoot, 'runs', t.runId);
             // A draft pull request opened on a head that moved forward is recorded, and that head goes back to the developer
@@ -194,6 +198,7 @@ export async function run(this: Engine, key: string) {
                 continue;
             }
             const gap = await movedHeadUnconfirmed(this.jira.execute, t, stage, result) || resultGate(t, stage, result, artifactRoot);
+            const endScope = (why: string) => { if (endChangeScope(t, stage, this.store.clock.now().toISOString())) this.store.emit('change-scope-ended', `${key}: ${why}; the ticket's own approach applies again.`, role, key); };
             if (gap && parksInJira(result)) {
                 t.results[stage] = result;
                 t.evidence.push(...result.evidence);
@@ -216,6 +221,8 @@ export async function run(this: Engine, key: string) {
                         counters[finding.id] = (counters[finding.id] || 0) + 1;
                         finding.attempts = counters[finding.id];
                     }
+                    // A scoped change that has to come back for another repair is verified at the ticket's own approach from here.
+                    endScope(`the scoped change needs another repair after ${stage}`);
                     t.attempt++;
                     t.stage = stage === 'plan-review' ? 'plan' : 'repair';
                     t.activity = 'waiting';
@@ -230,6 +237,7 @@ export async function run(this: Engine, key: string) {
                     t.repairCycle.phase = 'diagnosis';
                     enqueueRepairDiagnosis(this.store, { id: t.runId, key: t.key, head: t.commit, steps: [], repairCycle: t.repairCycle });
                     if (result.resolution?.kind === 'source-repair' && !t.repairCycle.approachRevision && !t.repairCycle.diagnosisAttempted) {
+                        endScope(`the scoped change needs another repair after ${stage}`);
                         t.repairCycle.exhaustedApproach = approachFingerprint(t.approach);
                         t.stage = 'code-review'; t.activity = 'waiting'; t.blocker = '';
                         this.store.emit('delivery-repair-diagnosis', 'Sam will assess one revised technical approach; Ellis checks Office operations separately. Alex retains delivery ownership.', role, key);
@@ -246,10 +254,14 @@ export async function run(this: Engine, key: string) {
             if (['draft-pr', 'repair'].includes(stage) && !confirmsMovedHead(t, stage) && !await this.jira.devUpdate(t, stage, attemptId, result))
                 this.store.emit('dev-update-skipped', `${key}: the ${stage} Dev update is not confirmed on the Jira ticket. The stage continues.`, role, key);
             recordConfirmedHead(t, stage, result);
+            if (stated === 'scope') {
+                applyChangeScope(t, result.approach!, role, stage, this.store.clock.now().toISOString());
+                this.store.emit('change-scope-set', `${role} scoped the verification of this change: ${t.approach!.reason}`, role, key);
+            }
             advance(t, stage, result);
             routeConfirmedHead(t);
             this.store.emit('stage-passed', result.summary, role, key);
-            if (result.approach && t.results.implement?.outcome === 'passed') {
+            if (stated === 'ticket' && t.results.implement?.outcome === 'passed') {
                 const missing = missingApproachStage(t);
                 if (missing && !gatesBefore.has(missing === 'repair-review' ? 'code-review' : missing)) {
                     if (missing !== t.stage)
@@ -261,6 +273,7 @@ export async function run(this: Engine, key: string) {
                     break;
                 }
             }
+            if (stage === 'publish') endScope('the scoped change is published');
             learn(stage === 'ready-for-staging' || stage === 'staging-qa');
             if (stage === 'ready-for-staging') {
                 // Ready is a waiting state. A human merge and proven running staging version unlock staging QA.

@@ -49,6 +49,17 @@ test('a ticket with no repair cycle keeps the older rule: every finding is owed'
     expect(findingsOwedToRetest(t)).toEqual(['QA8-DECISION-001', 'QA8-CHECK-001', 'REPAIR9-CHECK-001']);
 });
 
+test('a retest of a scoped change owes what is not yet verified and what the repair was sent to fix: the rest was verified on the commit the change was made on', () => {
+    const t = { ...carried(), changeScope: { base: 'a'.repeat(40), approach: {} as any } };
+    // Sent to fix, so owed even though another stage already wrote them verified; the developer's own verified note is not.
+    expect(findingsOwedToRetest(t)).toEqual(['QA8-DECISION-001', 'QA8-CHECK-001']);
+    t.repairCycle = cycle([]);
+    expect(findingsOwedToRetest(t)).toEqual([]);
+    t.findings = [...t.findings, finding('MERGE-001', 'fixed')];
+    expect(findingsOwedToRetest(t)).toEqual(['MERGE-001']);
+    expect(missingRetestDispositions(t, { findings: [finding('MERGE-001')] })).toEqual([]);
+});
+
 test('the gate refuses a passed retest only over an owed finding, and names it', () => {
     const t = carried(), root = '/synthetic';
     const result = (ids: string[]) => decision('', { outcome: 'passed', blocker: '', resolution: null, paidRuns: 6, commit: t.commit, findings: ids.map(id => finding(id)) });
