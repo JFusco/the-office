@@ -105,3 +105,20 @@ test('the loader validates policy.holds and keeps it out of the saved project', 
     expect(JSON.stringify(persistedProject(loaded))).not.toContain('Waiting on Joe');
     expect(() => load({ ...entry, policy: { holds: { 'GH-7': '' } } })).toThrow('Project "web": policy.holds.GH-7 must be a non-empty reason');
 });
+
+test('a configured policy.holds entry reaches the start-up registry by project id and stops a harness write', async () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'office-project-holds-')); roots.push(root);
+    const project = { id: 'held-site', name: 'Web', provider: 'github' as const, repo: '/tmp/web', repository: 'example/web', target: 'main' };
+    writeFileSync(resolve(root, 'office-config.json'), JSON.stringify({ projects: [{ ...project, policy: { holds: { 'GH-7': 'Waiting on Joe' } } }] }));
+    vi.stubEnv('VITEST', ''); vi.stubEnv('NODE_ENV', 'production'); vi.stubEnv('OFFICE_DATA_ROOT', root);
+    vi.resetModules();
+    try {
+        // Unmocked start-up imports: config reads the file above, projects builds PROJECT_POLICY_INPUTS from it.
+        const startup = await import('../../../server/office/project-holds');
+        const { assertMayMutate } = await import('../../../server/delivery/harness/guards');
+        expect(startup.holdReason(project, 'GH-7')).toBe('Waiting on Joe');
+        expect(startup.holdReason(web, 'GH-7')).toBeUndefined();
+        const job = { id: 'job-7', key: 'GH-7' } as never;
+        expect(() => assertMayMutate({ project, state: { paused: false } } as never, [job], job, '')).toThrow(new Error('GH-7 is held: Waiting on Joe'));
+    } finally { vi.unstubAllEnvs(); vi.resetModules(); }
+});
