@@ -1,3 +1,4 @@
+import { twgConnection } from './twg-connection';
 import { ownTicket } from '../office/ticket-key';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -5,6 +6,7 @@ import { resolve } from 'node:path';
 import type { StageResult, Ticket } from '../../src/shared';
 import { HOLDS } from '../office/config';
 import { jiraBinding } from '../office/project-bindings';
+import { PROJECT_BINDINGS } from '../office/projects';
 import type { Store } from '../store/store';
 import { command } from '../workers/process';
 import { jiraRecord } from './jira-record';
@@ -36,8 +38,8 @@ export async function verifyAlreadyAtStatus(store: Store, ticket: Ticket, target
     let directoryCreated = false;
     const save = (name: string, value: unknown) => writeFileSync(resolve(directory, name), JSON.stringify(value, null, 2), { mode: 0o600, flag: 'wx' });
     try {
-        if (store.project.provider !== 'azure' || store.project.id !== 'cec' || !ownTicket(store.project, ticket.key) ||
-            !/^[a-zA-Z0-9-]+$/.test(ticket.runId) || !['In Progress', 'Code Review', 'Ready for QA', 'QA'].includes(target) ||
+        if (store.project.provider !== 'azure' || !PROJECT_BINDINGS.has(store.project.id) || !ownTicket(store.project, ticket.key) ||
+            !/^[a-zA-Z0-9-]+$/.test(ticket.runId) || !Object.values(jira.statuses.stages).includes(target) ||
             HOLDS[ticket.key] || ticket.assignee !== jira.account || ticket.subtask !== false || ticket.boardMember !== true)
             throw new Error('Jira status read-back scope or eligibility changed');
         mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -46,7 +48,7 @@ export async function verifyAlreadyAtStatus(store: Store, ticket: Ticket, target
             operation: 'Read the same issue twice; never transition, comment or change metadata' });
         const read = async () => {
             const issue = jiraRecord(unpack(await execute('twg', ['jira', 'workitem', 'get', ticket.key,
-                '--site', jira.site, '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 })), ticket.key);
+                ...twgConnection(jira), '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 })), ticket.key);
             const fields = issue.fields || issue;
             if (fields.status?.name !== target || !fields.status?.id || fields.assignee?.accountId !== jira.account ||
                 fields.issuetype?.subtask !== false || !fields.issuetype?.name || fields.issuetype.name === 'Epic' || !fields.updated)

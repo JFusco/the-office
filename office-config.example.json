@@ -29,6 +29,40 @@
         "handsOff": true,
         "checkpoint": { "hour": 17, "weekends": true }
       }
+    },
+    {
+      "id": "acme",
+      "name": "Example Jira/Azure project",
+      "provider": "azure",
+      "repo": "/absolute/path/to/second-azure-repository",
+      "repository": "example-web",
+      "target": "develop",
+      "jira": {
+        "site": "https://example-team.atlassian.net",
+        "cloudId": "configure-locally",
+        "account": "configure-locally",
+        "projectKey": "ACME",
+        "board": 1,
+        "twgProfile": "configure-locally",
+        "credentialAccount": "configure-locally",
+        "statuses": {
+          "intake": [{ "name": "To Do", "id": "10000" }]
+        }
+      },
+      "azure": {
+        "organization": "https://dev.azure.com/example-team",
+        "project": "example-team",
+        "repositoryId": "configure-locally",
+        "deployment": {
+          "subscription": "configure-locally",
+          "resourceGroup": "configure-locally",
+          "containerApp": "configure-locally",
+          "healthy": "http-ok"
+        }
+      },
+      "prompt": {
+        "authority": "Replace with this project's own approved authority: what the Office may change, where it may open draft PRs, and what it must never do."
+      }
     }
   ],
   "delivery": {

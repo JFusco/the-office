@@ -5,7 +5,10 @@ import { intakeLocation } from '../cec/intake-scope';
 import type { OfficeProject, Role } from '../../src/shared';
 import type { ProjectInput } from './local-config';
 import type { ProjectPolicyInput } from './project-policy-config';
-import { projectBindings } from './project-bindings-config';
+import { projectBindings, type ProjectBindings } from './project-bindings-config';
+import { explicitBindings } from './project-binding-blocks';
+import { ownProjectBindings } from './own-project-bindings';
+import type { CECBinding } from './local-config';
 /** Use the validated CEC fallback for its canonical explicit project too. Empty overrides remain explicit. */
 export function withCECGoalEvidence(project: OfficeProject, binding: { repo: string; repository: string; goalEvidencePaths?: string[] }): OfficeProject {
     if (project.id !== 'cec' || project.provider !== 'azure' || project.repository !== binding.repository || project.repo !== binding.repo || project.goalEvidencePaths !== undefined || binding.goalEvidencePaths === undefined) return project;
@@ -13,23 +16,31 @@ export function withCECGoalEvidence(project: OfficeProject, binding: { repo: str
 }
 /** The project as stores save, digest and send it to workers: the entry without its start-up-only blocks, keys in their original order. */
 export function persistedProject(input: ProjectInput): OfficeProject {
-    const { policy, jira, azure, prompt, ...project } = input;
+    const { policy, jira, azure, prompt, bindingBlocks, ...project } = input;
     return project;
 }
 /** Each configured project's validated `policy` block, by project id. Read it through `projectPolicy`. */
 export function policyInputs(projects: ProjectInput[] = []): ReadonlyMap<string, ProjectPolicyInput> {
     return new Map(projects.flatMap(project => project.policy ? [[project.id, project.policy] as const] : []));
 }
+/** Each project's resolved explicit blocks, by project id: cec's against the legacy block, any other project's from its own blocks only. */
+export function explicitBindingInputs(projects: ProjectInput[] = [], cec: CECBinding): ReadonlyMap<string, ProjectBindings> {
+    return new Map(projects.flatMap(project => {
+        const blocks = project.bindingBlocks;
+        if (!blocks) return [];
+        return [[project.id, 'prompt' in blocks ? ownProjectBindings(project, blocks) : explicitBindings(cec, blocks)] as const];
+    }));
+}
 /** The configured projects as stores see them, or undefined when the config lists none. */
 export function configuredProjects(projects?: ProjectInput[]): OfficeProject[] | undefined { return projects?.map(persistedProject); }
 export const PROJECT_POLICY_INPUTS = policyInputs(LOCAL_BINDINGS.projects);
 export const PROJECTS: OfficeProject[] = (configuredProjects(LOCAL_BINDINGS.projects) || [
-    { id: 'cec', name: 'CEC', provider: 'azure', repo: CEC.repo, repository: CEC.repository, target: CEC.target, board: intakeLocation(CEC) },
+    { id: 'cec', name: 'CEC', provider: 'azure', repo: CEC.repo, repository: CEC.repository, target: CEC.target, board: intakeLocation({ ...CEC, projectKey: 'CEC' }) },
     { id: 'brain', name: 'Brain', provider: 'github', repo: '/Users/joe.fusco/Projects/brain', repository: 'JFusco/brain', target: 'main', githubProject: { owner: 'JFusco', number: 8, url: 'https://github.com/users/JFusco/projects/8' } },
     { id: 'cms-field-vocabulary', name: 'CMS field vocabulary', provider: 'github', repo: '/Users/joe.fusco/Projects/cms-field-vocabulary', repository: 'JFusco/cms-field-vocabulary', target: 'main', githubProject: { owner: 'JFusco', number: 6, url: 'https://github.com/users/JFusco/projects/6' } },
-]).map(project => withCECGoalEvidence(project.id === 'cec' && project.provider === 'azure' && CEC.intakeListUrl ? { ...project, board: intakeLocation(CEC) } : project, CEC));
+]).map(project => withCECGoalEvidence(project.id === 'cec' && project.provider === 'azure' && CEC.intakeListUrl ? { ...project, board: intakeLocation({ ...CEC, projectKey: 'CEC' }) } : project, CEC));
 /** Each Jira/Azure project's connection and workflow, by project id. Read it through `jiraBinding` and `azureBinding`. */
-export const PROJECT_BINDINGS = projectBindings(PROJECTS, CEC);
+export const PROJECT_BINDINGS = projectBindings(PROJECTS, CEC, explicitBindingInputs(LOCAL_BINDINGS.projects, CEC));
 export function projectById(id = 'cec'): OfficeProject {
     const project = PROJECTS.find(p => p.id === id);
     if (!project)

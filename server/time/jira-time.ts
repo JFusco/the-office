@@ -1,3 +1,4 @@
+import { twgProfile } from '../cec/twg-connection';
 import type { TimeEntry, TimePublication } from '../../src/shared';
 import type { TimeLedgerState } from '../../src/contracts/timing';
 import { publishableEntry } from './publishable';
@@ -19,12 +20,12 @@ const data = (raw: string): any => envelope(raw).data;
 const localId = (value: string) => value.split('/').at(-1)!;
 /** One selected TWG connection, complete pagination and property read-back. */
 export class JiraWorklogs {
-    constructor(private execute: typeof command, private site: string, public connection = `twg:${site}`) {
+    constructor(private execute: typeof command, private site: string, public connection = `twg:${site}`, private profile: string[] = []) {
         if (connection !== `twg:${site}`)
             throw new Error('Unverified Jira worklog connection');
     }
     private async call(action: string, args: string[], write = false, whole = false): Promise<any> {
-        const result = envelope(await this.execute('twg', ['jira', 'workitem', 'worklog', action, ...args, '--site', this.site, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: !write }));
+        const result = envelope(await this.execute('twg', ['jira', 'workitem', 'worklog', action, ...args, '--site', this.site, ...this.profile, '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: !write }));
         return whole ? result : result.data;
     }
     async get(key: string, id: string): Promise<any> { const result = await this.call('get', ['--issue-id', key, '--id', id, '--expand', 'properties']); return result?.worklog || result; }
@@ -84,10 +85,10 @@ export async function publishJiraTime(store: Store, execute: typeof command, rec
     let publication: TimePublication | undefined;
     try {
         const jira = jiraBinding(store.project);
-        const identity = data(await execute('twg', ['whoami', '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 }));
+        const identity = data(await execute('twg', ['whoami', ...twgProfile(jira), '-o', 'json', '--output-summary', 'none'], { readOnly: true, timeout: 60000 }));
         if (identity?.accountId !== jira.account)
             throw new Error('Jira worklog author is not the configured Office account');
-        const adapter = new JiraWorklogs(execute, jira.site, ledger.jiraConnection), marker = `${store.project.id}:${entry.id}`;
+        const adapter = new JiraWorklogs(execute, jira.site, ledger.jiraConnection, twgProfile(jira)), marker = `${store.project.id}:${entry.id}`;
         const logs = await adapter.list(entry.key), identified = logs.filter(log => log.properties.some((property: any) => property.key === propertyKey && property.value === marker));
         if (identified.length > 1)
             throw new Error('Multiple Jira worklogs have the Office identity');

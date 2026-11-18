@@ -3,7 +3,6 @@ import type { JiraBinding } from '../../office/project-bindings-config';
 import { jira, type Execute } from './jira-transport';
 export { jira, type Execute } from './jira-transport';
 
-export const BLOCKED = 'Blocked';
 export interface LiveIssue { key: string; status: string; assignee: string; updated: string }
 
 /** Live status, assignee and update time for one or more issues in a single read. */

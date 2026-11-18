@@ -7,8 +7,10 @@ import type { OfficeProject } from '../../src/shared';
 import { GOAL_EVIDENCE_LIMITS, goalEvidencePath } from '../leadership/goal-evidence';
 import { assertModelOverrides, type ModelOverrides } from '../telemetry/model-routes';
 import { parseProjectPolicy, type ProjectPolicyInput } from './project-policy-config';
+import { parseBindingBlocks, type BindingBlocks } from './project-binding-blocks';
+import { assertUniqueProjectKeys } from './jira-project-keys';
 /** A project entry as written in office-config.json. `policy`, `jira`, `azure` and `prompt` configure start-up and never reach the saved project. */
-export type ProjectInput = OfficeProject & { policy?: ProjectPolicyInput; jira?: unknown; azure?: unknown; prompt?: unknown };
+export type ProjectInput = OfficeProject & { policy?: ProjectPolicyInput; jira?: unknown; azure?: unknown; prompt?: unknown; bindingBlocks?: BindingBlocks };
 export interface CECBinding {
     goalEvidencePaths?: string[];
     site: string;
@@ -44,15 +46,11 @@ export function localBindings(dataRoot: string): LocalBindings {
     const config: LocalBindings = JSON.parse(readFileSync(path, 'utf8'));
     if (config.projects && (!Array.isArray(config.projects) || config.projects.some(project => !project.id || !project.name || !['github', 'azure'].includes(project.provider) || !project.repo || !project.repository || !project.target) || new Set(config.projects.map(project => project.id)).size !== config.projects.length))
         throw new Error('Local project bindings are incomplete or duplicated');
-    for (const project of config.projects || []) {
-        // Only `policy` is wired so far. A block this build cannot honor stops start-up; it is never ignored or saved.
-        for (const block of ['jira', 'azure', 'prompt'] as const)
-            if (block in project) throw new Error(`Project "${project.id}": ${block} requires the bindings/rules phase`);
+    for (const project of config.projects || [])
         if ('policy' in project) project.policy = parseProjectPolicy(project, project.policy);
-    }
     if (config.cec && (typeof config.cec.board !== 'number' || ['site', 'cloudId', 'account', 'repo', 'organization', 'project', 'repository', 'repositoryId', 'target'].some(key => typeof config.cec![key as keyof CECBinding] !== 'string' || !config.cec![key as keyof CECBinding])))
         throw new Error('Local Jira/Azure binding is incomplete');
-    if (config.cec) projectListScope(config.cec);
+    if (config.cec) projectListScope({ ...config.cec, projectKey: 'CEC' });
     // The cec project and the legacy block name one destination; code reads it from the project.
     for (const project of config.projects || [])
         if (config.cec && project.id === 'cec' && project.provider === 'azure')
@@ -64,6 +62,11 @@ export function localBindings(dataRoot: string): LocalBindings {
     for (const project of config.projects || [])
         if (project.autoAdopt !== undefined && (project.provider !== 'github' || !Array.isArray(project.autoAdopt) || project.autoAdopt.some(bot => !(AUTO_ADOPT_BOTS as readonly string[]).includes(bot)) || new Set(project.autoAdopt).size !== project.autoAdopt.length))
             throw new Error('Project autoAdopt must list unique supported dependency bots on a GitHub project');
+    // Always assigned, so a raw `bindingBlocks` key in the file can never bypass validation.
+    // A block this build cannot honor stops start-up; it is never ignored or saved.
+    for (const project of config.projects || [])
+        project.bindingBlocks = parseBindingBlocks(project, config.cec);
+    assertUniqueProjectKeys(config.projects || []);
     assertModelOverrides(config.models);
     assertFeaturePlanningConfig(config.featurePlanning);
     const concurrency = config.delivery?.concurrency;

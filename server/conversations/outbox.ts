@@ -1,3 +1,4 @@
+import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { supersedingDelivery, slackRequestSettled } from './slack/supersession-proof';
 import { deferredPickup } from '../../src/work/pickup-state';
 import { checkpointSuperseded } from '../maintenance/superseded';
@@ -107,7 +108,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         }
     for (const m of state.messages) {
         const reconciledSlackReadback = /Slack delivery could not be confirmed|Slack read-back did not match/.test(m.error) && slackRequestSettled(state, m.actionId.startsWith('message:') ? m.actionId.slice(8) : m.id);
-        if (m.question && !deferredPickup(state, m.ticket) && !state.messages.some(reply => reply.from === 'human' && reply.actionId === `question:${m.id}` && reply.status === 'answered'))
+        if (m.question && !deferredPickup(state, m.ticket, state.project ? defaultPickupStatus(state.project) : undefined) && !state.messages.some(reply => reply.from === 'human' && reply.actionId === `question:${m.id}` && reply.status === 'answered'))
             item(`question:${m.id}`, `${m.from === 'human' ? 'Morgan' : ROLE_NAMES[m.from]} has a question`, m.question, m.from === 'human' ? 'pm' : m.from, m.ticket);
         if (m.from === 'human' && !conversationResolved(state, m) && !reconciledSlackReadback && ['failed', 'interrupted'].includes(m.status)) {
             const ctoInput = m.to === 'cto' && m.error.includes('"input_error_code":"input_too_large"');

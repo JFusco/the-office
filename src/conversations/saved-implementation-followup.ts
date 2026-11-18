@@ -2,7 +2,7 @@ import type { OfficeSnapshot, Ticket } from '../shared';
 
 /** Display eligibility only; the server independently verifies native evidence and source. */
 export function savedImplementationFollowup(snapshot: OfficeSnapshot, actionId: string): Ticket | undefined {
-    if (snapshot.project?.id !== 'cec') return;
+    if (snapshot.project?.provider !== 'azure') return;
     return snapshot.tickets.find(t => {
         const result = t.results.implement;
         const writers = (snapshot.workLog || []).filter(w => w.ticket === t.key && w.stage === 'implement');

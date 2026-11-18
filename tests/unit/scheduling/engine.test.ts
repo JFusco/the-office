@@ -92,6 +92,13 @@ test('a worker timeout cannot silently replay an uncertain paid/external effect'
     expect(executions).toBe(1);
 });
 test('nightly activation cannot bypass the real pilot gate', () => { const { store, engine } = setup(); expect(() => engine.enableNightly()).toThrow('completed real ticket pilot'); });
+test('nightly activation and its dated handover belong to CEC alone', () => {
+    const store = new Store(':memory:', { id: 'acme', name: 'Acme', provider: 'azure', repo: '/tmp/acme', repository: 'acme-web', target: 'staging' }, mkdtempSync(resolve(DATA, 'acme-test-')));
+    stores.push(store); cleanup.push(store.dataRoot);
+    for (const authorization of [undefined, 'user-directed-handover-2026-10-27'])
+        expect(() => new Engine(store).enableNightly(authorization)).toThrow('activate-nightly is a CEC compatibility command');
+    expect(store.state.nightlyEnabled).toBeFalsy();
+});
 test('review cannot start when its Jira status transition lacks verified read-back', async () => {
     const { store, t, engine } = setup();
     t.stage = 'code-review';

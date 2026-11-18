@@ -17,7 +17,7 @@ import { Agents, ResultSchema } from '../workers/agents';
 import { savedStageCompletion } from './saved-completion';
 import { unrecordedStageResult } from './unrecorded-result';
 import { ownReceipts } from './superseded-receipts';
-import { DATA, HOLDS, LEGACY_AUTOMATION } from '../office/config';
+import { HOLDS, LEGACY_AUTOMATION } from '../office/config';
 import { jiraBinding } from '../office/project-bindings';
 import { eligibility, advance, resultGate } from './workflow';
 import type { Engine } from '../scheduling/engine';
@@ -151,6 +151,9 @@ export async function startPilot(this: Engine, key: string, background = true, i
 export function enableNightly(this: Engine, authorization?: string) {
     if (this.store.project.provider === 'github')
         throw new Error('Use the combined CMS maintenance entrypoint');
+    // A dated CEC handover and CEC's legacy automation file are no other project's authority.
+    if (this.store.project.id !== 'cec')
+        throw new Error('activate-nightly is a CEC compatibility command; use project checkpoints and pickup settings');
     const pilot = this.store.state.tickets.find(t => t.pilot && t.stage === 'complete' && t.results['staging-qa']?.outcome === 'passed');
     const directed = authorization === 'user-directed-handover-2026-10-27';
     if (!pilot && !directed)
@@ -248,16 +251,16 @@ export async function resume(this: Engine, key: string, background = true) {
     const qaRetry = this.store.state.deliveryQueue?.find(r => r.key === key && r.status === 'working' && r.qaPlanRetry);
     if ((qaRetry || qaHandoff) && (live.key !== key || live.status !== t.status || live.existingPrId !== t.prId))
         throw new Error('Current Jira status or PR changed; preserve the approved incomplete QA decision');
-    if (qaRetry) await consumeQAPlanRetry(this.store, qaRetry, DATA, this.implementationOwnership);
-    if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, DATA, this.implementationOwnership, undefined, undefined, live);
-    if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, DATA);
+    if (qaRetry) await consumeQAPlanRetry(this.store, qaRetry, this.store.dataRoot, this.implementationOwnership);
+    if (qaHandoff) await continueUnsealedQA(this.store, qaHandoff, this.store.dataRoot, this.implementationOwnership, undefined, undefined, live);
+    if (!qaRetry && !qaHandoff) recoverSavedPlan(this.store, t, this.store.dataRoot);
     // A stage whose worker saved its finished result before the time limit needs no reconstruction: the stage accepts that result.
     // Likewise a developer run stopped by the time limit: the stage continues that session.
     // So does one whose worker returned a result that never reached the ticket.
     // A QA or retest run cut off by a provider usage limit has nothing to reconstruct: the stage runs again.
     if (!qaRetry && !qaHandoff && !unrecordedStageResult(this.store, t, t.stage) && !savedStageCompletion(this.store, t, t.stage, ResultSchema) && !await this.agents.continuable(t) && !rerunsInterruptedQA(this.store, t) && needsResumeReconciliation(t, this.store.state.workLog || [])) {
         const read = await this.agents.reconcile(t), observed = { ...read, receipts: ownReceipts(t, read.receipts) };
-        const gap = resultGate(t, t.stage, observed, resolve(DATA, 'runs', t.runId));
+        const gap = resultGate(t, t.stage, observed, resolve(this.store.dataRoot, 'runs', t.runId));
         if (gap) {
             t.blocker = `Reconciliation incomplete: ${gap}`;
             t.activity = 'blocked';
@@ -267,7 +270,7 @@ export async function resume(this: Engine, key: string, background = true) {
         advance(t, t.stage, observed);
         this.store.emit('reconciled', 'Previous stage independently verified through read-back; no external action replayed.', 'pm', key);
     }
-    if (!qaHandoff) await continueAccessOnlyPlan(this.store, t, DATA);
+    if (!qaHandoff) await continueAccessOnlyPlan(this.store, t, this.store.dataRoot);
     t.activity = 'waiting';
     t.blocker = '';
     if (t.parked?.resumeRequestedAt)

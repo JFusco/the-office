@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { Offices } from './scheduling/offices';
 import { DATA, ROOT, PORT, CEC, HOLDS } from './office/config';
-import { PROJECTS } from './office/projects';
+import { PROJECTS, PROJECT_BINDINGS, PROJECT_POLICY_INPUTS } from './office/projects';
 import { safeOrigin, sanitize, sanitizeObject } from './office/security';
 import { acquireServiceLock } from './office/service-lock';
 import { json } from './office/http/responses';
@@ -32,7 +32,7 @@ const built = existsSync(resolve(ROOT, 'dist/index.html')) && process.env.OFFICE
 const vite = built ? null : await createServer({ configFile: resolve(ROOT, 'vite.config.ts'), server: { host: '127.0.0.1', port: PORT + 1, strictPort: true, hmr: { clientPort: PORT + 1 } } });
 if (vite)
     await vite.listen();
-const config = { projects: PROJECTS, cec: CEC, holds: HOLDS };
+const config = { projects: PROJECTS, cec: CEC, holds: HOLDS, bindings: PROJECT_BINDINGS, policies: PROJECT_POLICY_INPUTS };
 function snapshot(project = 'cec') { return sanitizeObject(offices.snapshot(project)); }
 let shutdown = false;
 const server = serve({ hostname: '127.0.0.1', port: PORT,

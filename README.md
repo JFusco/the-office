@@ -40,7 +40,71 @@ A project entry may carry an optional `policy` block; leave it out and the proje
 | `policy.checkpoint.hour` | `17` (`9` for `cec`, `15` for `cms-field-vocabulary`) | Hour of the daily checkpoint, 0 to 23, America/New_York. |
 | `policy.checkpoint.weekends` | `true` (`false` for `cec`) | Whether the checkpoint also runs on Saturday and Sunday. |
 
-A mistake stops start-up and names the project and key, for example `Project "web": policy.merge must be "human" or "harness"`. The `jira`, `azure` and `prompt` blocks are not supported yet and also stop start-up.
+A mistake stops start-up and names the project and key, for example `Project "web": policy.merge must be "human" or "harness"`.
+
+### Add a Jira/Azure project
+
+A Jira/Azure project is configured entirely from its own entry, with `jira`, `azure` and `prompt` blocks. All three are required; nothing is borrowed from CEC. Every value below is a placeholder:
+
+```json
+{
+  "id": "acme",
+  "name": "Acme",
+  "provider": "azure",
+  "repo": "/absolute/path/to/acme-web",
+  "repository": "acme-web",
+  "target": "develop",
+  "jira": {
+    "site": "https://acme.atlassian.net",
+    "cloudId": "your-cloud-id",
+    "account": "your-jira-account-id",
+    "projectKey": "ACME",
+    "board": 12,
+    "twgProfile": "acme",
+    "credentialAccount": "you@acme.example",
+    "statuses": { "intake": [{ "name": "To Do", "id": "10000" }] }
+  },
+  "azure": {
+    "organization": "https://dev.azure.com/acme",
+    "project": "Acme",
+    "repositoryId": "your-repository-guid",
+    "deployment": { "subscription": "your-subscription-id", "resourceGroup": "acme-rg", "containerApp": "acme-web-dev", "healthy": "http-ok" }
+  },
+  "prompt": { "authority": "What this project's owner has approved the Office to do, and what it must never do." }
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `jira.site` | required | Jira site, an HTTPS origin. |
+| `jira.cloudId` | required | Atlassian cloud id of that site. |
+| `jira.account` | required | Jira account id the Office works as; tickets must be assigned to it. |
+| `jira.projectKey` | required | Uppercase key of the Jira project (`ACME` owns `ACME-12`). Unique across projects; `GH` is reserved. |
+| `jira.twgProfile` | required | Saved TWG login profile for this project's Jira calls. |
+| `jira.credentialAccount` | required | Keychain account of the `the-office-jira` token used for Blocked parking. |
+| `jira.statuses.intake` | required | Statuses work is picked up from, as `{ "name", "id" }`; the first is the default pickup. |
+| `jira.board` | required unless `jira.intakeListUrl` is given | Jira board whose membership is intake. |
+| `jira.intakeListUrl` | none | Same-site `/jira/software/c/projects/<KEY>/list?jql=…` list that replaces the board. |
+| `jira.statuses.stages` | CEC's | Status each stage moves to: `understand` In Progress, `code-review` and `repair-review` Code Review, `preview` Ready for QA, `qa` and `retest` QA. Give only the ones that differ. |
+| `jira.statuses.readyForStaging` | `Ready for Staging` | Status after the PR checks pass. |
+| `jira.statuses.blocked` | `Blocked` | Status a parked ticket moves to. Must differ from every intake and stage status. |
+| `jira.htmlFallback` | `false` | Whether documented HTML may be written when Jira's ADF format is unavailable. |
+| `azure.organization` | required | Azure DevOps organization URL. |
+| `azure.project` | required | Azure DevOps project. |
+| `azure.repositoryId` | required | Repository id (not its name). |
+| `azure.deployment.subscription` | required | Azure subscription of the Container App the Office observes. |
+| `azure.deployment.resourceGroup` | required | Resource group of that Container App. |
+| `azure.deployment.containerApp` | required | Name of that Container App. |
+| `azure.deployment.healthy` | required | `cos` (2xx plus the COS health JSON) or `http-ok` (any 2xx). |
+| `azure.deployment.container` | `containerApp` | Container whose image identifies the deployed build. |
+| `azure.deployment.environment` | `staging` | Name of the observed environment. |
+| `azure.deployment.healthPath` | `/api/health` | Health endpoint path on the app. |
+| `prompt.authority` | required | The AUTHORITY sentences every delivery assignment carries. Write this project's own; it never inherits CEC's. |
+| `prompt.preview` | none | Guidance for starting a browser preview. |
+
+Any other key, or a GitHub project with one of these blocks, stops start-up.
+
+CEC keeps its legacy rules. It is configured by the top-level `cec` block, and the `cec` project may also carry `jira` and `azure` blocks, given together (`jira.twgProfile` and `jira.credentialAccount` are optional there), whose identity keys must equal the matching field of that block, with `jira.projectKey` `CEC`. It keeps its built-in statuses and prompt text: `jira.statuses`, `jira.htmlFallback` and `prompt` are not accepted on `cec`.
 
 ```sh
 pnpm dev

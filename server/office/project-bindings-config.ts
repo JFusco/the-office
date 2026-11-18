@@ -1,5 +1,6 @@
 import type { OfficeProject } from '../../src/shared';
 import type { CECBinding } from './local-config';
+import { legacyCecPrompt } from './legacy-cec-prompt';
 
 /** Delivery stages whose start moves the Jira issue to a status. */
 export type JiraStatusStage = 'understand' | 'code-review' | 'repair-review' | 'preview' | 'qa' | 'retest';
@@ -10,6 +11,10 @@ export interface JiraBinding {
     cloudId: string;
     /** Jira accountId used for assignment and actor checks. */
     account: string;
+    /** Keychain account of this project's Jira API token; absent for the legacy single-account CEC entry. */
+    credentialAccount?: string;
+    /** Saved TWG login profile for this project's Jira calls; absent means TWG's default login. */
+    twgProfile?: string;
     projectKey: string;
     board: number;
     /** When present, this list replaces board membership as the intake source. */
@@ -39,7 +44,21 @@ export interface AzureBinding {
     };
 }
 
-export interface ProjectBindings { jira: JiraBinding; azure: AzureBinding }
+/** The project-specific text and values a delivery assignment renders. */
+export interface PromptBinding {
+    /** The AUTHORITY sentences of a delivery assignment. */
+    authority: string;
+    /** The BROWSER PREVIEW ONLY guidance; empty renders no preview line. */
+    preview: string;
+    /** Whether documented HTML is an allowed Jira format when ADF is unavailable. */
+    htmlFallback: boolean;
+    /** PM-managed statuses an intake ticket may move through without stopping work, in order. */
+    preflightStatuses: readonly string[];
+    /** What an assignment's REPOSITORY line serializes. Never credentials. */
+    repository: Readonly<object>;
+}
+
+export interface ProjectBindings { jira: JiraBinding; azure: AzureBinding; prompt: PromptBinding }
 
 function frozen<T>(value: T): T {
     if (value && typeof value === 'object' && !Object.isFrozen(value)) { Object.values(value).forEach(frozen); Object.freeze(value); }
@@ -69,10 +88,11 @@ export function legacyCecBindings(cec: CECBinding): ProjectBindings {
                 containerApp: 'ca-cos-conductor-shell-stg', container: 'ca-cos-conductor-shell-stg', healthPath: '/api/health', healthy: 'cos',
             },
         },
+        prompt: legacyCecPrompt(cec),
     });
 }
 
-/** Bindings by project id. Only the Azure project `cec` has one until explicit per-project blocks are accepted. */
-export function projectBindings(projects: readonly Pick<OfficeProject, 'id' | 'provider'>[], cec: CECBinding): ReadonlyMap<string, ProjectBindings> {
-    return new Map(projects.filter(project => project.provider === 'azure' && project.id === 'cec').map(project => [project.id, legacyCecBindings(cec)] as const));
+/** Bindings by project id: every Azure project with explicit blocks, and the Azure project `cec` from the legacy block when it has none. */
+export function projectBindings(projects: readonly Pick<OfficeProject, 'id' | 'provider'>[], cec: CECBinding, explicit: ReadonlyMap<string, ProjectBindings> = new Map()): ReadonlyMap<string, ProjectBindings> {
+    return new Map(projects.filter(project => project.provider === 'azure' && (project.id === 'cec' || explicit.has(project.id))).map(project => [project.id, explicit.get(project.id) ?? legacyCecBindings(cec)] as const));
 }

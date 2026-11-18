@@ -1,3 +1,4 @@
+import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
@@ -66,7 +67,7 @@ export function reconcileReadRetries(store: Store, now = new Date()) {
             }
             catch { /* Missing or invalid saved output is not proof of completion. */ }
         }
-        const assigned = c.listener.assigned.find(i => i.key === r.key), pickup = c.pickup?.status || (store.project.provider === 'github' ? 'Ready' : 'To Do');
+        const assigned = c.listener.assigned.find(i => i.key === r.key), pickup = c.pickup?.status || defaultPickupStatus(store.project);
         if (r.workRequested !== 'manual' && (!assigned || (assigned.pickupStatus ?? assigned.status) !== pickup))
             continue;
         if (planReadRetry(r, now)) {

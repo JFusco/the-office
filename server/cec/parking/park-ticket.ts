@@ -1,6 +1,6 @@
 import { Effects } from '../../store/effects';
 import { jiraBinding } from '../../office/project-bindings';
-import { BLOCKED, findComment, jira, readIssue, type Execute } from './jira-issue';
+import { findComment, jira, readIssue, type Execute } from './jira-issue';
 import { STAGE_LABELS, type Stage, type StageResult, type Ticket } from '../../../src/shared';
 import type { Store } from '../../store/store';
 import { recordTicketParked } from '../../knowledge/record-trigger';
@@ -25,7 +25,7 @@ export async function parkTicket(store: Store, execute: Execute, t: Ticket, stag
     const binding = jiraBinding(store.project);
     const live = await readIssue(execute, binding, t.key);
     if (live.assignee !== binding.account) throw new Error('Jira assignee changed; not parking');
-    if (live.status === BLOCKED) throw new Error('Ticket is already Blocked in Jira; not taking it over');
+    if (live.status === jiraBinding(store.project).statuses.blocked) throw new Error('Ticket is already Blocked in Jira; not taking it over');
     t.parked = { stage, reason, at: store.clock.now().toISOString(), fromStatus: live.status, marker: `${MARKER}${attemptId}`, published: false };
     delete t.resolvedDecision;
     t.activity = 'blocked';
@@ -41,14 +41,14 @@ export async function moveToBlocked(store: Store, execute: Execute, t: Ticket): 
     const { marker, fromStatus } = t.parked!, binding = jiraBinding(store.project);
     const comment = decisionComment(store, t);
     let transitionId = '', credential: JiraCredential | undefined;
-    await new Effects(store).execute({ id: parkEffectIds(marker).transition, ...effectFields(store, t), operation: 'jira-transition', payload: { to: BLOCKED, comment }, expectedState: { assignee: binding.account, from: fromStatus },
+    await new Effects(store).execute({ id: parkEffectIds(marker).transition, ...effectFields(store, t), operation: 'jira-transition', payload: { to: jiraBinding(store.project).statuses.blocked, comment }, expectedState: { assignee: binding.account, from: fromStatus },
         preflight: async () => {
             const current = await readIssue(execute, binding, t.key);
             if (current.assignee !== binding.account || current.status !== fromStatus)
                 throw new Error('Jira assignee or status changed before parking');
             // Anything missing here stops the park before a write, so it is refused, not left uncertain.
             transitionId = await resolveBlockedTransition(execute, binding, t.key);
-            credential = await jiraCredential(execute);
+            credential = await jiraCredential(execute, binding.credentialAccount);
             // The move and its comment are authored by the token's account; anything but the Office account would not read back.
             if (await jiraAccount(execute, binding, credential) !== binding.account)
                 throw new Error('The Jira API token does not belong to the Office account');
@@ -56,7 +56,7 @@ export async function moveToBlocked(store: Store, execute: Execute, t: Ticket): 
         dispatch: async () => transitionWithComment(execute, binding, credential!, t.key, transitionId, comment),
         verify: async () => {
             const current = await readIssue(execute, binding, t.key);
-            return current.status === BLOCKED && current.assignee === binding.account;
+            return current.status === jiraBinding(store.project).statuses.blocked && current.assignee === binding.account;
         } });
 }
 
@@ -75,10 +75,10 @@ export async function commentDecision(store: Store, execute: Execute, t: Ticket)
     const { marker, commentAttempt } = t.parked!, binding = jiraBinding(store.project);
     if (await findComment(execute, binding, t.key, marker)) return;
     const text = decisionComment(store, t);
-    await new Effects(store).execute({ id: parkEffectIds(marker, commentAttempt).comment, ...effectFields(store, t), operation: 'jira-comment', payload: { marker }, expectedState: { assignee: binding.account, status: BLOCKED },
+    await new Effects(store).execute({ id: parkEffectIds(marker, commentAttempt).comment, ...effectFields(store, t), operation: 'jira-comment', payload: { marker }, expectedState: { assignee: binding.account, status: jiraBinding(store.project).statuses.blocked },
         preflight: async () => {
             const current = await readIssue(execute, binding, t.key);
-            if (current.assignee !== binding.account || current.status !== BLOCKED)
+            if (current.assignee !== binding.account || current.status !== jiraBinding(store.project).statuses.blocked)
                 throw new Error('Jira changed before the decision comment');
         },
         dispatch: async () => {
@@ -91,7 +91,7 @@ export async function commentDecision(store: Store, execute: Execute, t: Ticket)
 export function publishParked(store: Store, t: Ticket) {
     t.parked!.published = true;
     recordTicketParked(store, t);
-    t.status = BLOCKED;
+    t.status = jiraBinding(store.project).statuses.blocked;
     t.statusId = '';
     t.blocker = `Decision needed: ${t.parked!.reason}`;
     store.emit('jira-parked', `${t.key}: decision needed. Moved to Blocked; move it back to ${t.parked!.fromStatus} to resume.`, 'pm', t.key);
