@@ -1,3 +1,4 @@
+import { followUpStatus } from '../../src/health/outstanding-follow-ups';
 import type { Store } from '../store/store';
 import type { Role } from '../../src/shared';
 import { diagnosticContext } from './diagnostic-context';
@@ -16,7 +17,7 @@ export function assignmentDiagnostics(store: Store, scope: { role: Role; ticket?
     const followUps = context.current.followUps.filter(relevant);
     return {
         current: { ...context.current, followUps,
-            status: !context.current.fresh ? 'unknown' : followUps.some(item => item.owner === 'You' || item.owner === 'Morgan') ? 'needs-attention' : followUps.length ? 'retrying' : 'monitoring' },
+            status: !context.current.fresh ? 'unknown' : followUpStatus(followUps) },
         // Combined historical prose can describe other tickets even when one
         // follow-up matches. Retain only its scoped structured observations here.
         history: context.history.map(report => ({ id: report.id, at: report.at, followUps: report.followUps.filter(relevant) })).filter(report => report.followUps.length),
