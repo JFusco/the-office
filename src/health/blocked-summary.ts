@@ -8,6 +8,7 @@ const LABELS: Record<BlockedCause, (n: number) => string> = {
     dependency: n => `${n} waiting on prerequisites`,
     paused: n => `${n} paused`,
     failed: n => `${n} failed (history)`,
+    unclassified: n => `${n} with no recorded cause`,
 };
 
 /** "29 stopped: 17 need a decision · 1 unconfirmed · 11 failed (history)", or "0 stopped". */
