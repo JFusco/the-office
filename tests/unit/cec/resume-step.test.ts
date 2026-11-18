@@ -59,3 +59,15 @@ test('the read-back is told about a returned assessment only while its saved res
         expect(cecReadbackPrompt(store, t.key)).not.toContain('RETURNED ASSESSMENT:');
     }
 });
+
+test('a parked decision Joe resolved, with a finding its last run left open: the read-back is told the stage runs and that the finding is not a blocker', () => {
+    const { store } = cecStore(), t = { ...ticket('QA'), stage: 'retest' as const, activity: 'blocked' as const, blocker: 'Decision needed: approve the provider submission.',
+        findings: [{ id: 'F2', summary: 'A recovery test fails when run directly', expected: '', actual: '', status: 'open' as const, attempts: 0 }],
+        parked: { stage: 'retest' as const, reason: 'Approve the provider submission', at: '2026-11-18T03:45:00Z', fromStatus: 'QA', marker: 'Office decision x', published: true, resumeRequestedAt: '2026-11-18T05:00:00Z' } };
+    t.results.retest = decision('permission', { paidRuns: 0, blocker: 'Approve the provider submission' });
+    store.state.tickets = [t];
+    expect(resumeStep(store, t)).toBe('run-stage');
+    const prompt = cecReadbackPrompt(store, t.key);
+    expect(prompt).toContain('RESOLVED OFFICE DECISION');
+    expect(prompt).toContain('HARNESS NEXT STEP: Once this read-back passes, the harness runs the stage (retest).');
+});

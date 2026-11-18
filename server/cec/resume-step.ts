@@ -16,6 +16,16 @@ export const RESUME_STEP: Record<ResumeStep, string> = {
     'run-stage': 'the stage runs',
 };
 
+/** The same step said before it happens, for the PM read-back that precedes it. */
+export const RESUME_STEP_AHEAD: Record<ResumeStep, string> = {
+    'apply-returned-result': 'applies the result the stage\'s worker already returned, and runs nothing again',
+    'accept-saved-completion': 'accepts the finished result a timed-out run saved, and runs nothing again',
+    'continue-session': 'continues the stage\'s stopped session',
+    'rerun-interrupted-qa': 'runs again the stage a provider limit cut off, and reconstructs nothing',
+    reconstruct: 'reads back the stage\'s unknown outcome without repeating the action',
+    'run-stage': 'runs the stage',
+};
+
 /**
  * The step as the store alone shows it. The PM read-back prompt is written from this, before a saved
  * completion on disk or a continuable session is looked for.
