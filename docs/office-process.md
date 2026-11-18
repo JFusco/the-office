@@ -263,6 +263,12 @@ told that the exhausted budget and the failed QA result are the reason for the d
 blockers for it. Until the assessment has run there is nothing to reconstruct, so a resume
 dispatches it without a completion reconciliation.
 
+The revised approach Sam returns is recorded with every gate level (plan, review, validation) kept
+at least as strict as the ticket's current one: its changed checks and reason are what extend the
+repair window, and the assessment never lowers a gate. The assessment runs once. If it returned a
+result that did not reach the ticket, the next resume applies that saved result without running Sam
+again, and the PM read-back is told so.
+
 A QA or retest run that a provider capacity limit (usage limit, rate limit or quota) cut off
 before it returned a result is run again at the next resume. Nothing is reconstructed: the harness
 treats that run's work as confined to its own test environment, and it posts the Jira comment
