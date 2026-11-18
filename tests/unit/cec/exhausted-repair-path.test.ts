@@ -71,5 +71,7 @@ test('failed retest with the budget spent: Sam assesses once, Alex repairs, Sam 
     // A resume from that ordinary stop reads the ticket back and reconstructs nothing.
     await engine.resume(t.key, false);
     expect(readbacks).toHaveLength(1);
+    const resumed = (store.db.prepare('SELECT body FROM events ORDER BY id').all() as { body: string }[]).map(row => JSON.parse(row.body)).filter(event => event.kind === 'ticket-resumed');
+    expect(resumed.map(event => event.message)).toEqual(['Ticket resumed after live reconciliation: the stage runs']);
     expect(store.ticket(t.key)).toMatchObject({ stage: 'retest', activity: 'waiting', blocker: '' });
 });

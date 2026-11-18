@@ -273,6 +273,12 @@ repair window, and the assessment never lowers a gate. The assessment runs once.
 result that did not reach the ticket, the next resume applies that saved result without running Sam
 again, and the PM read-back is told so.
 
+What a resume does with the current stage is one named step, decided in `server/cec/resume-step.ts`
+in this order: apply a result the worker already returned, accept a finished result a timed-out run
+saved, continue a stopped session, run again a QA stage a provider limit cut off, read back a stage
+whose outcome is unknown, or run the stage. The PM read-back is told the step where it would
+otherwise read the step's own cause as a blocker, and the resume event names it.
+
 A QA or retest run that a provider capacity limit (usage limit, rate limit or quota) cut off
 before it returned a result is run again at the next resume. Nothing is reconstructed: the harness
 treats that run's work as confined to its own test environment, and it posts the Jira comment
