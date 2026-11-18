@@ -97,5 +97,6 @@ export function explicitBindings(cec: CECBinding, blocks: BindingBlocks): Projec
                 healthPath: deployment.healthPath ?? '/api/health', healthy: deployment.healthy,
             }),
         }),
+        prompt: legacy.prompt,
     });
 }

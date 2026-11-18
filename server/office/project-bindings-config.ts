@@ -1,5 +1,6 @@
 import type { OfficeProject } from '../../src/shared';
 import type { CECBinding } from './local-config';
+import { legacyCecPrompt } from './legacy-cec-prompt';
 
 /** Delivery stages whose start moves the Jira issue to a status. */
 export type JiraStatusStage = 'understand' | 'code-review' | 'repair-review' | 'preview' | 'qa' | 'retest';
@@ -43,7 +44,21 @@ export interface AzureBinding {
     };
 }
 
-export interface ProjectBindings { jira: JiraBinding; azure: AzureBinding }
+/** The project-specific text and values a delivery assignment renders. */
+export interface PromptBinding {
+    /** The AUTHORITY sentences of a delivery assignment. */
+    authority: string;
+    /** The BROWSER PREVIEW ONLY guidance; empty renders no preview line. */
+    preview: string;
+    /** Whether documented HTML is an allowed Jira format when ADF is unavailable. */
+    htmlFallback: boolean;
+    /** PM-managed statuses an intake ticket may move through without stopping work, in order. */
+    preflightStatuses: readonly string[];
+    /** What an assignment's REPOSITORY line serializes. Never credentials. */
+    repository: Readonly<object>;
+}
+
+export interface ProjectBindings { jira: JiraBinding; azure: AzureBinding; prompt: PromptBinding }
 
 function frozen<T>(value: T): T {
     if (value && typeof value === 'object' && !Object.isFrozen(value)) { Object.values(value).forEach(frozen); Object.freeze(value); }
@@ -73,6 +88,7 @@ export function legacyCecBindings(cec: CECBinding): ProjectBindings {
                 containerApp: 'ca-cos-conductor-shell-stg', container: 'ca-cos-conductor-shell-stg', healthPath: '/api/health', healthy: 'cos',
             },
         },
+        prompt: legacyCecPrompt(cec),
     });
 }
 
