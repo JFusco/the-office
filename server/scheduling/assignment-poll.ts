@@ -6,6 +6,7 @@ import { handsOff } from '../delivery/harness/scope';
 import { reconcileMailbox } from '../cec/reconcile-mailbox';
 import { syncOutbox } from '../conversations/outbox';
 import { admitReadyCards } from '../delivery/intake/admission';
+import { settleStoppedReviews } from '../delivery/intake/settle-stopped-reviews';
 import { resumeParked } from '../delivery/parking/resume';
 import { retireBacklogged } from '../delivery/parking/retire-backlogged';
 import { retryCandidateCleanup } from '../delivery/candidate/retry-candidate-cleanup';
@@ -16,6 +17,7 @@ import { pinCourier } from '../delivery/intake/dependency-bots/pin-courier';
 import { wikiSync } from '../delivery/intake/dependency-bots/wiki-sync';
 import { observeGitHubMergeNotices } from '../conversations/observe-github-merges';
 import { jiraBinding } from '../office/project-bindings';
+import { holdReason } from '../office/project-holds';
 import { noticeState, queueMergeNotice } from '../conversations/notifications';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import type { AssignedIssue } from '../../src/shared';
@@ -50,6 +52,10 @@ export async function poll(this: Coordinator, now = new Date()) {
         const observedAt = this.store.clock.now().toISOString();
         const previous = new Map(listener.assigned.map(i => [i.key, i]));
         observeAssessmentAssignments(this.store, assigned, this.pickup, this.store.clock.now());
+        // The read is complete, so a stopped review can be settled against it; nothing else ever looks at one again.
+        const settled = settleStoppedReviews(listener.reviews, { assigned, now: this.store.clock.now(), held: key => !!holdReason(this.store.project, key),
+            hasDelivery: key => !!this.store.state.tickets.find(ticket => ticket.key === key)?.pilot || !!this.state.jobs?.some(job => job.key === key && job.status !== 'cancelled') });
+        if (settled.length) this.store.emit('intake-reviews-settled', `Assignment reviews closed as history, their tickets no longer assigned or open: ${settled.join(', ')}.`, 'pm');
         if (this.store.project.provider === 'azure')
             reconcileMailbox(this.store.state, new Set(assigned.filter(issue => (issue.pickupStatus ?? issue.status) === this.pickup.status).map(issue => issue.key)));
         for (const issue of assigned) {

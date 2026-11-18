@@ -54,3 +54,14 @@ test('a Dependabot PR moved to Ready is adopted on the poll, then routed to Sam 
     expect(c.state.jobs).toMatchObject([{ key: 'GH-5', pr: 121, stage: 'prepare-pr', existingPR: true }]);
     expect(modelCalls()).toBe(0);
 });
+
+test('a poll closes a stopped review whose issue is no longer assigned, and leaves one the Office is delivering', async () => {
+    const f = fakeGitHub(), { c, modelCalls } = coordinator(f);
+    const stopped = (key: string) => ({ id: key, key, summary: '', url: '', queuedAt: '2026-10-28T13:00:00Z', startedAt: '', endedAt: '', status: 'owned' as const, detail: 'Ownership unverified.', owner: '' });
+    c.state.listener.reviews.push(stopped('GH-7'), stopped('GH-8'));
+    c.state.jobs = [{ id: 'job', key: 'GH-8', status: 'completed' } as any];
+    await c.poll(new Date('2026-10-31T12:01:00Z'));
+    const status = (key: string) => c.state.listener.reviews.find(review => review.key === key)!.status;
+    expect([status('GH-7'), status('GH-8')]).toEqual(['cancelled', 'owned']);
+    expect(modelCalls()).toBe(0);
+});

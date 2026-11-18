@@ -68,6 +68,12 @@ and content qualification allow routine Dependabot, Renovate and canonical wiki
 PRs to use current-head provider checks and repository rules without an added
 model review or local QA cycle.
 
+An assignment review that stopped is closed as history, with no model run, once a complete
+assignment read shows its ticket is no longer assigned or no longer open. A review of a ticket that
+is still assigned keeps its status, so a blocked review still requires its read-back before any new
+work. Reviews in flight, tickets the Office is delivering and configured holds are left as they are,
+and an empty read closes nothing (`server/delivery/intake/settle-stopped-reviews.ts`).
+
 Each Jira/Azure project uses its own configured Jira statuses, ticket key, prompt authority and
 observed deployment. A project added beside CEC never inherits CEC's authority, statuses or
 repository facts; CEC keeps its legacy values.
