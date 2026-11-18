@@ -1,8 +1,6 @@
 {
   "1": "OrgChart.tsx",
-  "7": "ref_react",
   "12": "App.tsx",
-  "14": "reader.ts",
   "15": "scheduled-captures.ts",
   "16": "run-retrospective.ts",
   "17": "record-trigger.ts",
@@ -11,14 +9,10 @@
   "36": "scheduled-work.ts",
   "41": "time-scope.ts",
   "45": "harness-baseline.ts",
-  "64": "ticket-evidence.ts",
   "66": "remove-candidate.ts",
-  "67": "retrospective-subject.ts",
   "72": "work.ts",
   "73": "report.ts",
   "91": "config.ts",
   "95": "capture-session-clone.py",
-  "105": "extract-worker.mjs",
-  "112": "CommandRegistry",
-  "124": "delivery-ownership.ts"
+  "105": "extract-worker.mjs"
 }
