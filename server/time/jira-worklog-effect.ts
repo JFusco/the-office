@@ -194,7 +194,8 @@ export async function reconcileJiraWorklogEffect({ store, entry, publication, co
             throw new Error('Multiple Jira worklogs have the Office identity');
         const known = (intent.receipt as JiraWorklogReceipt | null)?.id || publication.worklogId || payload.worklogId || '';
         const log = identified[0], id = log ? localWorklogId(log.id) : '';
-        if (!log || known && id !== localWorklogId(known) || !matcher(log, payloadMatch(payload, known)))
+        // A frozen update must read back its own known id, whatever id the saved receipt claims.
+        if (!log || known && id !== localWorklogId(known) || payload.worklogId && id !== payload.worklogId || !matcher(log, payloadMatch(payload, known)))
             return { verified: false, receipt: { id: null } };
         return { verified: true, receipt: { id } };
     });

@@ -238,6 +238,19 @@ describe('recovery', () => {
         expect([fake.writes, day(store).status]).toEqual([1, 'posted']);
     });
 
+    test('an Effect saved under the publication id but frozen for another revision is held, never read as never-sent', async () => {
+        const store = setup(), fake = fakeJira('someone-else');
+        await current(store, fake.execute);
+        const effect = effectOf(store, last(store))!, expected = effect.expectedState as { covered: TimePublication['covered'] };
+        store.putEffect({ ...effect, status: 'rejected', expectedState: { ...expected, covered: [{ ...expected.covered[0], revision: 99 }] } });
+        const foreign = store.getEffect(effect.id);
+        fake.account = account;
+        await operate(store, current, fake);
+        expect([fake.writes, last(store)!.status, day(store).status, day(store).detail]).toEqual([0, 'prepared', 'uncertain', NO_READBACK]);
+        expect(events(store, 'time-requeued')).toHaveLength(0);
+        expect(store.getEffect(effect.id)).toEqual(foreign);
+    });
+
     test('a timeout is never resent: repeated ticks and negative read-back leave it uncertain', async () => {
         const store = setup(), fake = fakeJira(account);
         fake.mode = 'lost-before';
@@ -262,6 +275,39 @@ describe('recovery', () => {
         expect(day(store)).toMatchObject({ status: 'posted', worklogId: '10', detail: posted(30) });
         expect(effectOf(store, last(store))).toMatchObject({ status: 'verified', receipt: { id: '10' } });
         expect([fake.writes, events(store, 'time-posted').length, events(store, 'effect-reconciled').length]).toEqual([1, 1, 1]);
+    });
+
+    test('an update frozen for one worklog is never verified by read-back of another id, even one its receipt names', async () => {
+        const store = setup(), fake = fakeJira(account);
+        await current(store, fake.execute);
+        confirmed(store, 40);
+        // Jira answers the update of 10 with worklog 11, the only marked worklog left.
+        fake.before = args => { if (args[3] === 'update') fake.logs.length = 0; };
+        await current(store, fake.execute);
+        fake.before = undefined;
+        const update = last(store)!;
+        expect(day(store)).toMatchObject({ status: 'uncertain', worklogId: '10', detail: `${UNCERTAIN}Error: Saved Jira worklog identity, seconds, date, author, label or properties did not match` });
+        expect([update.worklogId, effectOf(store, update)!.receipt, fake.logs.map(log => log.id)]).toEqual(['11', { id: '11' }, ['11']]);
+        await operate(store, current, fake);
+        await operate(store, current, fake);
+        expect(last(store)!.id).toBe(update.id);
+        expect([last(store)!.status, effectOf(store, last(store))!.status, day(store).status, day(store).worklogId, day(store).detail]).toEqual(['uncertain', 'uncertain', 'uncertain', '10', NO_READBACK]);
+        expect([fake.writes, events(store, 'time-posted').length, events(store, 'time-requeued').length]).toEqual([2, 1, 0]);
+    });
+
+    test('a same-id update with a lost answer is settled by read-back without another write', async () => {
+        const store = setup(), fake = fakeJira(account);
+        await current(store, fake.execute);
+        confirmed(store, 40);
+        fake.mode = 'lost-after';
+        await current(store, fake.execute);
+        expect(day(store).status).toBe('uncertain');
+        fake.mode = 'ok';
+        await current(store, fake.execute, 'CEC-999');
+        expect(day(store)).toMatchObject({ status: 'posted', worklogId: '10', detail: posted(40) });
+        expect(effectOf(store, last(store))).toMatchObject({ status: 'verified', operation: 'jira-worklog-update', receipt: { id: '10' } });
+        await operate(store, current, fake);
+        expect([fake.writes, events(store, 'time-posted').length]).toEqual([2, 2]);
     });
 
     test('two uncertain days on one ticket are each read back against their own publication', async () => {
