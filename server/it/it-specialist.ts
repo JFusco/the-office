@@ -1,3 +1,4 @@
+import { ownAzureCheck } from './own-azure-check';
 import { syncInvestigations } from './investigations/ledger';
 import { investigationFollowUps } from './investigations/follow-ups';
 import { partialLocalCleanupKey } from '../delivery/recovery/closeout/local-worktree-removal';
@@ -53,7 +54,7 @@ export class ITSpecialist {
                 for(const [id,recovery] of Object.entries(it.recoveries)){
                     const budget=activationBudget(id);if(budget)recovery.attempts=Math.max(recovery.attempts,new Set(budget.requests.map(request=>request.id)).size);
                 }
-                const context: ITContext = { offices: this.offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt: this.nextAt, retainedPartials, retainedCloseouts, services: health.services.filter(s => !s.id.startsWith('listener:') || s.id === `listener:${store.project.id}`), activationBudget, recover: (...args) => recoverAttempt(context, ...args) };
+                const context: ITContext = { offices: this.offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt: this.nextAt, retainedPartials, retainedCloseouts, services: health.services.filter(s => (!s.id.startsWith('listener:') || s.id === `listener:${store.project.id}`) && ownAzureCheck(store.project, s.id)), activationBudget, recover: (...args) => recoverAttempt(context, ...args) };
                 syncInvestigations(store, now);
                 followUps.push(...investigationFollowUps(store));
                 await readBackConversations(context);

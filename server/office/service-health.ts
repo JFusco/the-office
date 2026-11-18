@@ -1,18 +1,23 @@
 import {command} from '../workers/process';
-import {CEC} from './config';
+import {PROJECT_BINDINGS} from './projects';
+import type {ProjectBindings} from './project-bindings-config';
 import type {HealthReport,OfficeSnapshot,ServiceHealth} from '../../src/shared';
 import {ProviderStatusChecks} from './provider-status';
 import {slackHealth} from './slack-health';
 import {listenerHealth} from './listener-health';
 
-type Probe={id:string;name:string;program:string;args:string[];parse:(raw:string)=>Pick<ServiceHealth,'status'|'detail'|'identity'>;nextStep:string};
+export type Probe={id:string;name:string;program:string;args:string[];parse:(raw:string)=>Pick<ServiceHealth,'status'|'detail'|'identity'>;nextStep:string};
 const probes:Probe[]=[
  {id:'openai',name:'OpenAI · Codex',program:'codex',args:['login','status'],parse:()=>({status:'connected',detail:'Codex reports a configured login. No model call was made.'}),nextStep:'Run codex login in your terminal, then refresh. Check the Office service account if the terminal already works.'},
  {id:'anthropic',name:'Anthropic · Claude',program:'claude',args:['auth','status','--json'],parse:raw=>{const s=JSON.parse(raw);return {status:s.loggedIn?'connected':'disconnected',detail:s.loggedIn?'Claude reports a configured login. No model call was made.':'Claude reports no active login in the Office environment.',identity:s.loggedIn?s.email:undefined};},nextStep:'Check Claude’s /login in your terminal, then refresh. An already logged-in terminal may differ from the Office service environment.'},
  {id:'github',name:'GitHub',program:'gh',args:['auth','status','--active','--hostname','github.com','--json','hosts'],parse:raw=>{const host=JSON.parse(raw).hosts?.['github.com']?.find((h:any)=>h.active);return {status:host?.state==='success'?'connected':'disconnected',identity:host?.login,detail:host?.state==='success'?'GitHub verified the active account. Repository and Projects permissions can still differ.':'GitHub could not verify its active account.'};},nextStep:'Check gh auth status in your terminal. Confirm repo and project scopes for the intended account.'},
  {id:'atlassian',name:'Atlassian · Jira & Confluence',program:'twg',args:['whoami','-o','json','--output-summary','none'],parse:raw=>{const s=JSON.parse(raw),u=s.data;return {status:!s.error&&s.ok!==false&&!!u?.accountId?'connected':'unknown',detail:!s.error&&s.ok!==false&&u?.accountId?'Atlassian verified the TWG identity. Jira and Confluence permissions remain resource-specific.':'TWG did not return a verified Atlassian identity.',identity:u?.name};},nextStep:'Run twg doctor in your terminal to inspect the active connection and authentication.'},
- {id:'azure',name:'Azure DevOps',program:'az',args:['devops','project','show','--project',CEC.project,'--organization',CEC.organization,'--query','id','--output','json'],parse:raw=>({status:typeof JSON.parse(raw)==='string'?'connected':'unknown',detail:'Read-only access check for the configured CEC Azure DevOps project.'}),nextStep:'Check Azure DevOps access for the Office service account and configured organization.'},
 ];
+/** One read-only Azure DevOps check per bound Jira/Azure project; cec keeps the original id and wording. */
+export function azureProbes(bindings: ReadonlyMap<string, ProjectBindings>): Probe[] {
+ return [...bindings].map(([id, binding]) => ({id:id==='cec'?'azure':`azure:${id}`,name:id==='cec'?'Azure DevOps':`Azure DevOps · ${binding.jira.projectKey}`,program:'az',args:['devops','project','show','--project',binding.azure.project,'--organization',binding.azure.organization,'--query','id','--output','json'],parse:raw=>({status:typeof JSON.parse(raw)==='string'?'connected':'unknown',detail:`Read-only access check for the configured ${binding.jira.projectKey} Azure DevOps project.`}),nextStep:'Check Azure DevOps access for the Office service account and configured organization.'}));
+}
+probes.push(...azureProbes(PROJECT_BINDINGS));
 export class ServiceHealthChecks {
  private cached?:{at:number;services:ServiceHealth[]};private pending?:Promise<ServiceHealth[]>;
  private providers:ProviderStatusChecks;
