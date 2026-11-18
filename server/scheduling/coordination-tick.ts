@@ -23,7 +23,7 @@ export async function tick(this: Coordinator, now = new Date()) {
     reconcileReadRetries(this.store, now);
     reconcileNoticeConfirmations(this.store);
     reconcileContinuations(this.store);
-    reconcileCompletedCheckpoints(this.store);
+    await reconcileCompletedCheckpoints(this.store, undefined, this.execute);
     captureTime(this.store);
     captureCost(this.store);
     c.lastTickAt = now.toISOString();
