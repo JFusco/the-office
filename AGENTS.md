@@ -160,7 +160,8 @@ and verify its exact labels, including at least one area, before continuing.
 For repository changes that include delivery, complete this sequence:
 
 1. Confirm the worktree is safe to switch, then switch to `main` and run
-   `git pull --ff-only` so the branch point is the current remote main. If
+   `git pull --ff-only` so the branch point is the current remote main, then run
+   `pnpm install` so the Husky hooks and commitlint are present. If
    another session owns the checkout or local work must remain in place, fetch
    current `origin/main` and use an isolated worktree. Preserve unrelated edits;
    never reset or discard work.
