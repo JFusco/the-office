@@ -19,6 +19,7 @@ import { improvementManifest } from '../../../server/knowledge/improvement-publi
 import { verifyAlreadyAtStatus, verifiedTransition } from '../../../server/cec/transition-readback';
 import { withCECPreflightPRs } from '../../../server/cec/preflight-pr-read';
 import { cecPrompt } from '../../../server/cec/prompts/cec';
+import { cecChatPrompt } from '../../../server/conversations/prompts/conversations';
 import { defaultPickupStatus } from '../../../server/delivery/intake/default-pickup';
 import type { OfficeProject, StageResult, Ticket } from '../../../src/shared';
 import { ticket as fixtureTicket } from './parking/fixtures';
@@ -148,6 +149,11 @@ test('the rendered delivery prompt carries the second project\'s authority, targ
             expect(prompt).not.toContain(legacy);
     }
     expect(cecPrompt(store, { ...acmeTicket(), stage: 'understand' }, 'understand', 'developer', '/artifacts')).toContain('the separate Doing transition');
+    // Workers use only TWG on this project's own site and login profile, with no connector fallback.
+    const twg = cecPrompt(store, { ...acmeTicket(), stage: 'enhance' }, 'enhance', 'pm', '/artifacts');
+    expect(twg).toContain(`Use only the installed TWG CLI with --site ${entry.jira.site} --profile acme; there is no MCP or other connector fallback.`);
+    expect(twg).not.toMatch(/MCP connection|capability fallback chosen/);
+    expect(cecChatPrompt(store, 'pm', { ticket: 'ACME-7', body: 'Update the description' } as never, '', null, [])).toContain(`use only the installed TWG CLI with --site ${entry.jira.site} --profile acme (no MCP or other connector fallback)`);
     // CEC still renders its legacy authority and preview from the same registry.
     const cec = cecPrompt(open(projectById('cec')), { ...fixtureTicket(), stage: 'implement' }, 'implement', 'developer', '/artifacts');
     for (const legacy of ['plan on 2026-10-27', 'COS_DEV_PORT', 'Existing CEC authority allows documented HTML when ADF is unavailable.']) expect(cec).toContain(legacy);
