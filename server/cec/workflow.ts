@@ -1,3 +1,4 @@
+import { missingRetestDispositions } from './qa/retest-dispositions';
 import { officeQAEvidenceGap } from '../qa/report-evidence';
 import { applyIntakeObservation } from './intake-observation';
 import { externalPlanGap } from '../features/cec-plan-gate';
@@ -111,8 +112,9 @@ function stageResultGap(t: Ticket, stage: Stage, r: StageResult, artifactRoot: s
             return 'Provider run usage requires reconciliation';
         if (r.findings.some(f => f.status !== 'verified'))
             return 'QA has unresolved findings';
-        if (stage === 'retest' && t.findings.some(f => !r.findings.some(current => current.id === f.id && current.status === 'verified')))
-            return 'Every prior finding needs an explicit independent retest disposition';
+        const undisposed = stage === 'retest' ? missingRetestDispositions(t, r) : [];
+        if (undisposed.length)
+            return `Every prior finding needs an explicit independent retest disposition: ${undisposed.join(', ')}`;
         if (r.qa || t.qaProtocol?.[stage] === 'office-v1') {
             const gap = officeQAEvidenceGap(r, { key: t.key, head: stage === 'staging-qa' ? r.commit : t.commit, stage, approach: t.approach }, artifactRoot);
             if (gap) return gap;

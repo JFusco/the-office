@@ -154,6 +154,13 @@ all required cases, prior finding dispositions and known usage/effects still
 gate acceptance. Open a ticket's **QA Results** to see setup, cases, evidence,
 findings, next owner/action and the full report.
 
+A Jira/Azure retest must mark verified, itself, every finding a QA stage has reported, every
+finding the current repair was sent to fix, and any finding on the ticket that is not yet verified.
+Only a finding another stage raised about its own work and that is already verified, such as a
+developer's note that its verification was unfinished once the review has settled it, is not owed a
+QA disposition. A refusal names the findings that are missing
+(`server/cec/qa/retest-dispositions.ts`).
+
 ## Publication and closeout
 
 ```mermaid
