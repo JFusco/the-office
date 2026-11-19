@@ -3,20 +3,21 @@ import type { StageResult, Ticket } from '../../../src/shared';
 /** Setup stops in a row, on one candidate, that a resume runs through without asking. */
 export const SETUP_STOP_CAP = 3;
 
-const setupStop = (result: StageResult | undefined, commit: string) => result?.outcome === 'blocked' && result.qa?.setup?.status === 'blocked' && result.commit === commit;
-
-/** A QA run that stopped while setting up: no paid run was made and no case was exercised. */
+/** A QA run that stopped while setting up: no paid run was made and no case was exercised. The one definition of a setup stop. */
 export const isSetupStop = (result: StageResult | undefined): boolean => result?.outcome === 'blocked' && result.qa?.setup?.status === 'blocked' && result.paidRuns === 0 &&
-    result.qa.cases.every(item => ['not-tested', 'blocked'].includes(item.status));
+    (result.qa.cases ?? []).every(item => ['not-tested', 'blocked'].includes(item.status));
+
+/** A setup stop on this exact candidate. */
+export const setupStopOn = (result: StageResult | undefined, commit: string): boolean => isSetupStop(result) && result!.commit === commit;
 
 /** How many times in a row this QA stage has stopped in setup on the ticket's current candidate. */
 export function consecutiveSetupStops(ticket: Pick<Ticket, 'stage' | 'commit' | 'results' | 'qaHistory'>): number {
     const current = ticket.results[ticket.stage];
-    if (!['qa', 'retest', 'staging-qa'].includes(ticket.stage) || !setupStop(current, ticket.commit)) return 0;
+    if (!['qa', 'retest', 'staging-qa'].includes(ticket.stage) || !setupStopOn(current, ticket.commit)) return 0;
     // The current result is archived into the history when the next attempt is prepared; count it once.
     const earlier = (ticket.qaHistory || []).filter(entry => entry.stage === ticket.stage && JSON.stringify(entry.result) !== JSON.stringify(current)).map(entry => entry.result);
     let count = 1;
-    for (const result of earlier.reverse()) { if (!setupStop(result, ticket.commit)) break; count++; }
+    for (const result of earlier.reverse()) { if (!setupStopOn(result, ticket.commit)) break; count++; }
     return count;
 }
 

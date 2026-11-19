@@ -1,8 +1,9 @@
 import { ApproachSchema } from '../delivery/pipeline/approach';
+import { heldApproachLevels, LEVELS } from '../delivery/repairs/held-approach-levels';
 import type { Role, Stage, StageResult, Ticket, WorkApproach } from '../../src/shared';
 import type { command } from '../workers/process';
 
-const SHA = /^[a-f0-9]{40}$/, REVIEW = ['none', 'focused', 'full'], VALIDATION = ['developer-checks', 'independent-checks', 'browser'];
+const SHA = /^[a-f0-9]{40}$/;
 const settled = (result: StageResult | undefined, commit: string, closed: (status: string) => boolean) => !!result && result.outcome === 'passed' && result.commit === commit &&
     result.paidRuns !== null && result.receipts.every(receipt => receipt.verified && !receipt.uncertain) && result.findings.every(finding => closed(finding.status));
 const levels = (approach: WorkApproach) => JSON.stringify([approach.review, approach.validation, approach.checks]);
@@ -40,7 +41,7 @@ export async function statedApproach(execute: typeof command, ticket: Pick<Ticke
     const scope = ticket.changeScope;
     if (scope && (stage !== 'repair' || result.commit === ticket.commit)) return 'ignored';
     const base = scope ? scope.base : stage === 'repair' ? verifiedCandidate(ticket) : '', prior = ticket.approach, stated = result.approach!;
-    if (!scope && (!base || !prior || REVIEW.indexOf(stated.review) > REVIEW.indexOf(prior.review) || VALIDATION.indexOf(stated.validation) > VALIDATION.indexOf(prior.validation) || levels(stated) === levels(prior))) return 'ticket';
+    if (!scope && (!base || !prior || LEVELS.review.indexOf(stated.review) > LEVELS.review.indexOf(prior.review) || LEVELS.validation.indexOf(stated.validation) > LEVELS.validation.indexOf(prior.validation) || levels(stated) === levels(prior))) return 'ticket';
     if (!ticket.worktree || !SHA.test(result.commit) || result.commit === base) return 'ignored';
     // Exits non-zero, and so throws, when the verified candidate is not contained in the repair's commit.
     try { await execute('git', ['merge-base', '--is-ancestor', base, result.commit], { cwd: ticket.worktree, timeout: 30000, readOnly: true }); return 'scope'; }
@@ -70,10 +71,9 @@ export async function scopeOutgrown(execute: typeof command, ticket: Pick<Ticket
 export function applyChangeScope(ticket: Ticket, proposed: WorkApproach, role: Role, stage: Stage, at: string): void {
     const prior = ticket.changeScope?.approach ?? ticket.approach!, stated = ApproachSchema.parse(proposed);
     // A scope restated after its review or retest sent the change back is never narrower than the scope in force.
-    const held = ticket.changeScope ? ticket.approach! : undefined, higher = (order: string[], a: string, b?: string) => b && order.indexOf(b) > order.indexOf(a) ? b : a;
-    const review = higher(REVIEW, stated.review, held?.review) as WorkApproach['review'], validation = higher(VALIDATION, stated.validation, held?.validation) as WorkApproach['validation'];
+    const held = ticket.changeScope ? heldApproachLevels(ticket.approach, stated) : stated;
     const reviewOwed = ['failed', 'blocked'].includes(ticket.results['code-review']?.outcome || '');
-    const scope: WorkApproach = { ...stated, plan: prior.plan, review: reviewOwed && review === 'none' ? 'focused' : review, validation };
+    const scope: WorkApproach = { ...held, plan: prior.plan, review: reviewOwed && held.review === 'none' ? 'focused' : held.review };
     ticket.changeScope = { base: ticket.changeScope?.base ?? ticket.commit, approach: prior };
     ticket.approach = scope;
     (ticket.decisions ??= []).push({ role, stage, at, approach: scope });

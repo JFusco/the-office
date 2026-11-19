@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { confirmSetupStopCap, consecutiveSetupStops, SETUP_STOP_CAP } from '../../../../server/cec/qa/setup-stop-cap';
 
 const HEAD = 'a'.repeat(40);
-const stop = (n: number, extra: object = {}) => ({ outcome: 'blocked', commit: HEAD, blocker: `stop ${n}`, qa: { setup: { status: 'blocked', summary: `Browser unavailable (${n}).` } }, ...extra }) as any;
+const stop = (n: number, extra: object = {}) => ({ outcome: 'blocked', commit: HEAD, blocker: `stop ${n}`, paidRuns: 0, qa: { setup: { status: 'blocked', summary: `Browser unavailable (${n}).` }, cases: [] }, ...extra }) as any;
 /** A retest whose current result and `earlier` archived results are given oldest first. */
 function ticket(current: any, earlier: any[] = []) {
     return { key: 'CEC-900', stage: 'retest', commit: HEAD, results: { retest: current }, qaHistory: earlier.map(result => ({ stage: 'retest', result })) } as any;

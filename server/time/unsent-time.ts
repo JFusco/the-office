@@ -12,12 +12,14 @@ export const unsentWait = (releases = 0) => Math.min(UNSENT_RETRY_MS * 3 ** rele
  * True for a GitHub day marked uncertain with no write outstanding for its ticket: a sync that stops
  * before it writes (a failed read, a board that changed outside the Office) marks the day uncertain
  * although nothing was sent, and the read-back has no write to check. The board field is an absolute
- * total and the ticket has a saved baseline, so writing the current total afterwards cannot
- * double-count, and the sync still refuses a board that differs from the value the Office last wrote.
- * A day whose write may have landed is not this rule's and keeps its read-back.
+ * total: with a saved baseline, writing the current total afterwards cannot double-count, and the sync
+ * still refuses a board that differs from the value the Office last wrote. A day an ordinary sync
+ * recorded as stopped before writing (`unsentReleases` set) qualifies before its first baseline is read,
+ * since nothing the Office wrote is on the board yet. A day whose write may have landed, and a legacy
+ * uncertain day with neither, are not this rule's and keep their read-back.
  */
 export function unsentDay(ledger: TimeLedgerState, entry: TimeEntry): boolean {
-    return entry.status === 'uncertain' && !!ledger.baselines?.[entry.key] && !settlementPending(ledger, entry.key);
+    return entry.status === 'uncertain' && (!!ledger.baselines?.[entry.key] || entry.unsentReleases !== undefined) && !settlementPending(ledger, entry.key);
 }
 
 /** Says on the day that nothing was written, and stamps the failure so the next try is paced from it. */

@@ -98,8 +98,10 @@ export class TimeLedger {
             }
             entry.status = 'uncertain';
             // Nothing was sent when the sync stopped before the write and no earlier write is unsettled: that day is tried again, not read back.
-            if (attempted || settlementPending(ledger, entry.key)) entry.detail = `Time sync needs read-back; no automatic retry: ${String(error)}`;
-            else markUnsent(entry, error, this.store.clock.now());
+            // An ordinary sync records that on the day, so one that failed before its first baseline was read is retried too; a legacy uncertain day is not.
+            if (!attempted && !reconcileKey && !settlementPending(ledger, entry.key)) entry.unsentReleases ??= 0;
+            if (!attempted && unsentDay(ledger, entry)) markUnsent(entry, error, this.store.clock.now());
+            else entry.detail = `Time sync needs read-back; no automatic retry: ${String(error)}`;
         }
         finally {
             this.store.save();

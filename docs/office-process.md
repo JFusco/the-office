@@ -295,13 +295,16 @@ uses up its three restarts, stays blocked for a person. Jira/Azure work is uncha
 
 For Jira/Azure work, a QA stage that stopped in setup (nothing tested, no paid run) is run again
 on resume instead of being reconstructed. A review stage whose worker returned its own verdict
-is likewise run again on resume, since a read-only review repeats nothing. So is a stage that
-works only in its own worktree or test environment (plan, implement, repair, QA and retest) when
-its latest run finished and returned its own result with every write read back and its paid runs
-counted: its blocker is that result's own words, so a phrase such as "tests timed out" describes
-the work and not an interrupted run. A result with an unverified or unknown write, or an unknown
-paid-run count, is still reconstructed, and so is a stage that writes to a provider (a Jira update,
-a pushed branch, a pull request), whose wording still decides. Once the
+is likewise run again on resume, since a read-only review repeats nothing. So is plan, implement,
+repair, QA or retest when its latest run finished and returned its own result with every write read
+back and its paid runs counted: its blocker is that result's own words, so a phrase such as "tests
+timed out" describes the work and not an interrupted run. Plan, implement, QA and retest work only
+in their own worktree or test environment. Repair also writes to the provider, but only a
+fast-forward push of the same branch and returning its pull request to draft, which repeat
+idempotently, and only a result that passed those guards is run again. A result with an unverified
+or unknown write, or an unknown paid-run count, is still reconstructed, and so is any other stage
+that writes to a provider (a Jira update, opening or publishing a pull request), whose wording
+still decides. Once the
 implementation that a recorded continuation produced has passed, the receipt of the run it
 replaced is settled history: stage, chat and reconcile workers are shown it as settled and told it
 is history, a restated copy is dropped from any stage's result, and it gates nothing. A review decides on the source and its evidence; work
@@ -425,8 +428,8 @@ Morgan or Joe:
   treated as a possible write.
 - Session visibility and service status probes are informational and stay with Ellis. They are
   listed but not counted as follow-ups, and do not by themselves show Ellis as retrying, even while
-  such a watch is being retried. Any other recovery in progress, and anything waiting on Morgan or
-  Joe, is counted. Probes are
+  such a watch is being retried or once it names Morgan. Any other recovery in progress, and anything
+  waiting on Joe however it is flagged, is counted. Probes are
   raised only for services the project uses. A confirmed logout still reaches Joe, and work that
   needs a complete session inventory reports its own block.
 
