@@ -70,6 +70,33 @@ test('a sync that stops before writing says nothing was sent and is tried again 
     expect([x.board(), x.writes()]).toEqual([0.0681, 1]);
 });
 
+test('a first sync that stops before its baseline is read sends nothing and is tried again with growing pauses until it posts', async () => {
+    const x = failedRead();
+    Object.assign(x.l.entries[0], { status: 'pending', detail: '' });
+    x.l.baselines = {}; x.l.publications = [];
+    x.setBoard(0.5);
+    x.failReads(true);
+    await x.pass(0);
+    expect(x.l.entries[0]).toMatchObject({ status: 'uncertain', unsentReleases: 0, detail: 'Time sync stopped before writing, so nothing was sent; the Office tries again: Error: gh exited 1: gh: HTTP 499' });
+    expect([x.writes(), x.l.publications, x.l.baselines]).toEqual([0, [], {}]);
+    expect(dueUnsent(x.store, at(4))).toBeNull();
+    expect(dueUnsent(x.store, at(5))?.id).toBe('GH-395:2026-11-16');
+    await x.pass(5);
+    expect(x.l.entries[0]).toMatchObject({ status: 'uncertain', unsentReleases: 1 });
+    expect(dueUnsent(x.store, at(19))).toBeNull();
+    expect(dueUnsent(x.store, at(20))?.id).toBe('GH-395:2026-11-16');
+    expect(x.writes()).toBe(0);
+    // Once the board can be read, the baseline is captured and the absolute total is written once and read back.
+    x.failReads(false);
+    await x.pass(20);
+    expect(x.l.entries[0]).toMatchObject({ status: 'posted', detail: '245s of measured Office work attributed to Joe; board total 0.5681h. Baseline 0.5h preserved.' });
+    expect(x.l.entries[0].unsentReleases).toBeUndefined();
+    expect(x.l.entries[0].unsentCheckedAt).toBeUndefined();
+    expect([x.board(), x.writes()]).toEqual([0.5681, 1]);
+    expect(x.l.baselines!['GH-395']).toMatchObject({ baseline: 0.5, lastWritten: 0.5681 });
+    expect(x.l.publications!.map(publication => publication.status)).toEqual(['verified']);
+});
+
 test('a board changed outside the Office is never overwritten: the day says so and stays visible', async () => {
     const x = failedRead();
     x.setBoard(0.5);
@@ -90,13 +117,21 @@ test('a ticket with no saved baseline is not this rule\'s: a legacy uncertain da
     x.l.baselines = {};
     expect(dueUnsent(x.store, at(0))).toBeNull();
     await new TimeLedger(x.store, x.execute).sync('GH-395');
-    expect(x.l.entries[0]).toMatchObject({ status: 'uncertain', detail: expect.stringContaining('Frozen publication identity is missing') });
+    expect(x.l.entries[0]).toMatchObject({ status: 'uncertain', detail: expect.stringContaining('Time sync needs read-back; no automatic retry: Error: Frozen publication identity is missing') });
     expect(x.writes()).toBe(0);
+    // A failed reconcile does not make it one: it is never released, and an ordinary sync leaves it alone.
+    expect(x.l.entries[0].unsentReleases).toBeUndefined();
+    expect(dueUnsent(x.store, at(600))).toBeNull();
+    await x.pass(600);
+    expect([x.l.entries[0].status, x.writes()]).toEqual(['uncertain', 0]);
 });
 
 test('a day whose write may have landed keeps its read-back and is never released by this rule', () => {
     const x = failedRead();
     x.l.publications!.push({ ...x.l.publications![0], id: 'p4', status: 'uncertain', previousValue: 0.0356, intendedValue: 0.0681, createdAt: START });
+    expect(dueUnsent(x.store, at(0))).toBeNull();
+    // Nor is one an ordinary sync recorded as stopped before writing, while that write is unsettled.
+    x.l.entries[0].unsentReleases = 0;
     expect(dueUnsent(x.store, at(0))).toBeNull();
     expect(dueReadback(x.store, at(6))?.id).toBe('p4');
     releaseUnsent(x.store, 'GH-395:2026-11-16');

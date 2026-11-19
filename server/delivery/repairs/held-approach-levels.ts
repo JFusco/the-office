@@ -1,6 +1,7 @@
 import type { WorkApproach } from '../../../src/shared';
 
-const LEVELS = { plan: ['none', 'brief', 'reviewed'], review: ['none', 'focused', 'full'], validation: ['developer-checks', 'independent-checks', 'browser'] } as const;
+/** Each gate's levels, lightest first. */
+export const LEVELS = { plan: ['none', 'brief', 'reviewed'], review: ['none', 'focused', 'full'], validation: ['developer-checks', 'independent-checks', 'browser'] } as const;
 
 /**
  * A revised approach from Sam's assessment after the repair budget ran out, with every gate level kept at

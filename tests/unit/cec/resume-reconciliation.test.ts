@@ -61,7 +61,7 @@ function setupStop(blocker = 'Browser tool unavailable; nothing was tested.') {
     const t = blockedQA(blocker);
     Object.assign(t, { implementationContinuation: { originalResult: { receipts: [OLD] } } });
     t.results.implement = decision('', { outcome: 'passed', receipts: [] });
-    Object.assign(t.results.retest!, { qa: { setup: { status: 'blocked' } } });
+    Object.assign(t.results.retest!, { qa: { setup: { status: 'blocked' }, cases: [] } });
     t.results.retest!.receipts.push({ ...OLD, detail: 'Inherited original receipt, unchanged' });
     return t;
 }

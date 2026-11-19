@@ -1,11 +1,16 @@
 import { supersededReceipt } from './superseded-receipts';
+import { setupStopOn } from './qa/setup-stop-cap';
 import type { StageResult, Ticket, WorkTime } from '../../src/shared';
 
 type Attempt = Pick<WorkTime, 'ticket' | 'stage' | 'role' | 'status' | 'failure' | 'completionAccepted' | 'executionStatus'>;
 
 /** Read-only verdict stages: running one again repeats nothing. */
 const REVIEW_STAGES = ['plan-review', 'code-review', 'repair-review'];
-/** Stages whose own writes stay in the candidate worktree or the run's test environment; anything outside is a receipt. */
+/**
+ * Stages whose returned result settles what they did: their own writes stay in the candidate worktree or the run's
+ * test environment, and anything outside is a receipt. Repair also writes to the provider, but only a fast-forward
+ * push of the same branch and returning its pull request to draft, which repeat idempotently.
+ */
 const LOCAL_STAGES = ['plan', 'implement', 'repair', 'qa', 'retest'];
 
 /**
@@ -14,8 +19,7 @@ const LOCAL_STAGES = ['plan', 'implement', 'repair', 'qa', 'retest'];
  * stage again. A later run that died leaves this saved result behind and does not qualify.
  */
 function stoppedInSetup(ticket: Ticket, result: StageResult | undefined, attempts: readonly Attempt[]): boolean {
-    if (!['qa', 'retest', 'staging-qa'].includes(ticket.stage) || result?.outcome !== 'blocked' || result.qa?.setup?.status !== 'blocked' ||
-        result.paidRuns !== 0 || result.commit !== ticket.commit) return false;
+    if (!['qa', 'retest', 'staging-qa'].includes(ticket.stage) || !setupStopOn(result, ticket.commit)) return false;
     const latest = attempts.filter(attempt => attempt.ticket === ticket.key && attempt.role === 'qa' && attempt.stage === ticket.stage).at(-1);
     return !!latest && ['blocked', 'completed'].includes(latest.status) && !latest.failure;
 }
@@ -52,11 +56,12 @@ export function needsResumeReconciliation(ticket: Ticket, attempts: readonly Att
     const assessed = ticket.repairCycle?.phase === 'diagnosis' && ticket.repairCycle.diagnosisAttempted;
     const returned = verdict && !assessed && latest?.executionStatus === 'completed' && !latest.failure;
     if (REVIEW_STAGES.includes(ticket.stage) && returned) return false;
-    // Likewise a stage that works only in its own worktree or test environment, when its latest run finished and
-    // returned its own result with every receipt verified and the paid-run count known. Its blocker is that result's
-    // own words, so a phrase in it such as "tests timed out" describes the work, not an interrupted run. A stage
-    // that writes to a provider (a Jira update, a pushed branch, a pull request) is not covered: a write it made
-    // and did not report would be repeated, so its wording still decides.
+    // Likewise one of those stages, when its latest run finished and returned its own result with every receipt
+    // verified and the paid-run count known. Its blocker is that result's own words, so a phrase in it such as
+    // "tests timed out" describes the work, not an interrupted run. A repair run again under these guards repeats
+    // only its idempotent push and return to draft. Any other stage that writes to a provider (a Jira update,
+    // opening or publishing a pull request) is not covered: a write it made and did not report would be repeated,
+    // so its wording still decides.
     if (LOCAL_STAGES.includes(ticket.stage) && returned && result.paidRuns !== null && result.receipts.every(receipt => receipt.verified && !receipt.uncertain)) return false;
 
     // Retain legacy action-reconciliation signals, without treating an incidental
