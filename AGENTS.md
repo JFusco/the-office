@@ -58,6 +58,8 @@ server/
   operations/      harness operation retention
   it/              IT specialist: per-project check context, recovery attempts, delivery
                    recoveries, recovery ledger, reports
+  release/         release builds and identity: exact-commit build, release.json manifest,
+                   the release launchd runs (deploy controller to follow)
 tests/unit/        mirrors server/ (plus ui/ for src/ logic)
 ```
 
