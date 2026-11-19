@@ -30,6 +30,7 @@ import { ROLE_NAMES, workKey, type WorkKind, type WorkEligibility } from '../../
 import { dependencyEligibility, validatePrerequisites, type DependencyStores } from '../delivery/pipeline/dependencies';
 import { executeRequest, deterministicActions } from './requests';
 import { dueReadback, readBackTime } from '../time/time-readback';
+import { dueUnsent, releaseUnsent } from '../time/unsent-time';
 import { TimeLedger } from '../time/time-ledger';
 import { easternDay } from '../office/clock';
 import { withAmendmentOwnership } from '../delivery/recovery/implementation/delivery-ownership';
@@ -126,6 +127,10 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const readback = !pendingTime && publishingEnabled && dueReadback(store, now);
         if (readback)
             add('reconciliation', { id: `time-readback:${readback.id}`, status: 'queued' }, 'time-readback', readback.createdAt, 3, () => readBackTime(store, readback.id));
+        // A day that failed before any write has nothing to read back: it is returned to pending, paced and bounded.
+        const unsent = !pendingTime && !readback && publishingEnabled && dueUnsent(store, now);
+        if (unsent)
+            add('reconciliation', { id: `time-unsent:${unsent.id}:${unsent.unsentReleases || 0}`, status: 'queued' }, 'time-unsent', unsent.date, 3, async () => releaseUnsent(store, unsent.id));
         // Cost publication and its read-back are independent of hours and of each other.
         const pendingCost = costPublishingEnabled(store) && costLedger(store)?.entries.find(entry => entry.status === 'pending');
         if (pendingCost)

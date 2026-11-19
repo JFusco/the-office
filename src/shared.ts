@@ -322,6 +322,9 @@ export interface TimeEntry {
     status: 'pending' | 'posting' | 'posted' | 'uncertain' | 'excluded';
     detail: string;
     url: string;
+    /** Times a GitHub day that failed before any write was returned to pending, and when it last was (`server/time/unsent-time.ts`). */
+    unsentReleases?: number;
+    unsentCheckedAt?: string;
 }
 /** An automated PR the harness bridged (or refused to bridge) into existing-PR delivery. */
 export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
