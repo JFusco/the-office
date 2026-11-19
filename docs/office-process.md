@@ -246,7 +246,9 @@ reviewable. A draft PR and running current-head checks wait without a model run,
 review queues once when the PR is ready and its checks finish. A conflict on a head the team
 already reviewed is refreshed by the harness (Alex merges the current target into the same
 branch) without Sam assessing the conflict first; a conflict on an unreviewed head still goes
-to Sam.
+to Sam. The review is told who merges on the project: the Office's project policy and its
+merge switch decide that, not a repository document, so a line in a repository's `AGENTS.md` about
+agents stopping before a merge is not a blocker (`server/delivery/readiness/merge-authority-note.ts`).
 
 On a hands-off project the harness marks a maintenance proposal's draft pull request ready itself.
 A maintenance run publishes its draft only after the review and verification its approach selected
