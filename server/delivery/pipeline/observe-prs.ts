@@ -2,6 +2,7 @@ import { observeAutomationMerge } from '../readiness/automation-merge';
 import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { refreshMergeReview } from '../readiness/refresh-merge-review';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
+import { returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
 import { retireExternalDeliveries } from '../recovery/retire-external-delivery';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
@@ -104,6 +105,11 @@ export async function observe(this: GitHubDelivery) {
             // A rejected conflict proof permits reassessment, never a CI writer fallback.
             if (!conflictRepairError && await this.queueCIRepair(job))
                 continue;
+            // A parked draft a maintenance run already reviewed and verified goes back to the prepare stage to be marked ready.
+            if (!conflictRepairError && returnDraftToPromotion(this.store, job, p)) {
+                this.store.emit('pr-promotion-queued', `${job.key}: ${job.detail}`, 'pm', job.key);
+                continue;
+            }
             const wait = conflictRepairError ? null : await readReviewWait(this, job, p, { checks, statuses });
             if (wait) {
                 applyReviewWait(job, wait, this.store.clock.now());

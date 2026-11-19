@@ -16,6 +16,7 @@ import { CurrentChecksWait } from '../readiness/github-check-selection';
 import { SourceClosed } from './source-closed';
 import { writerRestartInstruction } from '../attempts/restart-instruction';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
+import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { stopReason } from './stop-reason';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
@@ -187,7 +188,13 @@ export class GitHubDelivery {
             }
             if (job.stage === 'lead-pr') {
                 if (await runCIRepair(this, job, issue, root)) return;
-                const wait = await readReviewWait(this, job, await this.verifyPR(job));
+                const reviewed = await this.verifyPR(job);
+                // A draft a maintenance run already reviewed and verified is marked ready by the harness, not waited on.
+                if (returnDraftToPromotion(this.store, job, reviewed)) {
+                    this.store.emit('pr-promotion-queued', `${job.key}: ${job.detail}`, 'pm', job.key);
+                    return;
+                }
+                const wait = await readReviewWait(this, job, reviewed);
                 if (wait) {
                     applyReviewWait(job, wait, this.store.clock.now());
                     // The observer must queue the review afresh once the PR is reviewable, whatever it last saw.
@@ -234,7 +241,7 @@ export class GitHubDelivery {
                 await verifyInitialDraftConflictPreparation(this,job,current.draft===true);
                 this.store.save();
             }
-            const readyChecks = ['review', 'validate'].every(stage => (stage === 'review' && job.approach?.review === 'none' || stage === 'validate' && job.approach?.validation === 'developer-checks') || job.steps.some(s => s.stage === stage && s.result.outcome === 'passed' && s.result.commit === job.head && !findingsBlock(this.store, s.result.findings, f => f.status === 'open')));
+            const readyChecks = maintenanceVerifiedDraft(this.store, job) || ['review', 'validate'].every(stage => (stage === 'review' && job.approach?.review === 'none' || stage === 'validate' && job.approach?.validation === 'developer-checks') || job.steps.some(s => s.stage === stage && s.result.outcome === 'passed' && s.result.commit === job.head && !findingsBlock(this.store, s.result.findings, f => f.status === 'open')));
             let instructions = technicalPhase ? implementationContinuationInstruction(job, continuation!.notes) : stagePrompt({ store: this.store, project, job, root, issue, readyChecks });
             const beforeWorkers = new Set((this.store.state.workLog || []).map(work => work.id));
             this.store.state.lastHandoff = { at: new Date().toISOString(), from: 'pm', to: role, ticket: job.key };
