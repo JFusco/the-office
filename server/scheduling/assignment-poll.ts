@@ -10,6 +10,7 @@ import { settleStoppedReviews } from '../delivery/intake/settle-stopped-reviews'
 import { resumeParked } from '../delivery/parking/resume';
 import { requeueParkedCardRefusals } from '../delivery/recovery/parked-card-refusal';
 import { requeueUndispatchedAssessments } from '../delivery/recovery/undispatched-assessment';
+import { requeueRefusedQAResults } from '../delivery/recovery/refused-qa-result';
 import { retireBacklogged } from '../delivery/parking/retire-backlogged';
 import { retryCandidateCleanup } from '../delivery/candidate/retry-candidate-cleanup';
 import { adoptDependabot } from '../delivery/intake/dependabot/adopt';
@@ -125,6 +126,7 @@ export async function poll(this: Coordinator, now = new Date()) {
                 resumeParked(this.store, this.state.jobs!, assigned, this.pickup, this.dependencyStores(), now);
                 requeueParkedCardRefusals(this.store, this.state.jobs!);
                 requeueUndispatchedAssessments(this.store, this.state.jobs!);
+                requeueRefusedQAResults(this.store, this.state.jobs!);
                 await retireBacklogged(this.store, this.execute, this.state.jobs!, assigned);
                 await retryCandidateCleanup(this.store, this.execute, this.state.jobs!);
                 admitReadyCards(this, delivery, assigned, now);

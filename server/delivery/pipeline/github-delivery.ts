@@ -19,6 +19,7 @@ import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { stopReason } from './stop-reason';
 import { redispatchSavedAssessment } from '../recovery/redispatch-assessment';
+import { retireRefusedQA, savedQAResult } from '../recovery/reaccept-qa-result';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
 import { holdReason } from '../../office/project-holds';
@@ -269,7 +270,7 @@ export class GitHubDelivery {
                 instructions += `\n${job.stage === 'prepare-pr' || !harnessDelivers(this.store, job) ? '' : BOARD_RULE}\n${DECISION_RULE}`;
             const candidateAtStart = JSON.stringify({ id: job.id, stage: job.stage, head: job.head, branch: job.branch, worktree: job.worktree });
             const expectedHead = job.head;
-            const harnessResult = await runHarnessStage(this, job, root, readyChecks);
+            const harnessResult = await savedQAResult(this, job) ?? await runHarnessStage(this, job, root, readyChecks);
             if (!harnessResult) assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
             const result: StageResult = harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { officeQA: job.stage === 'validate', artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: qaTimeLimit(job.stage === 'validate', job.approach) ?? 60 * 60 * 1000, inactivityTimeout: STAGE_STALL_LIMIT_MS });
             if (job.stage === 'validate' && !harnessResult) saveQAReport(result, officeQADirectory(root, 'validate', job.steps.filter(s => s.stage === 'validate').length), root);
@@ -279,6 +280,7 @@ export class GitHubDelivery {
                 throw new Error('Delivery authority changed after execution; result retained for reconciliation', { cause: error });
             }
             await acceptStageResult.call(this, { officeQA: job.stage === 'validate' && job.qaProtocol === 'office-v1' && !harnessResult, job, result, project, root, issue, role, continuation, reviewStart, inputSha256, beforeWorkers, candidateAtStart, technicalPhase });
+            retireRefusedQA(job);
         }
         catch (error) {
             job = this.jobs.find(current => current.id === job.id) || job;

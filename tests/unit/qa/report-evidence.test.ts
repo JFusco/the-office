@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import type { StageResult, WorkApproach } from '../../../src/shared';
-import { officeQAEvidenceGap } from '../../../server/qa/report-evidence';
+import { officeQAEvidenceGap, QA_GATE_REFUSALS } from '../../../server/qa/report-evidence';
 import { saveQAReport } from '../../../server/qa/save-report';
 import { qaCriteria } from '../../../server/qa/criteria';
 const roots:string[]=[];afterEach(()=>roots.splice(0).forEach(r=>rmSync(r,{recursive:true,force:true})));
@@ -56,4 +56,10 @@ test('v2 still rejects the wrong head and missing evidence; v1 retains its origi
     const f = current(fixture()); f.r.qa!.commit = 'b'.repeat(40); f.save(); expect(f.gap()).toContain('does not match');
     const g = current(fixture()); g.r.qa!.cases[0].evidenceIds = []; g.save(); expect(g.gap()).toContain('current-head evidence');
     const h = fixture(); h.r.qa!.cases[0].check = 'Different wording'; h.save(); expect(h.gap()).toContain('every saved required check');
+});
+
+test('the list of what the gate can say names every fixed refusal in its source, and nothing else', () => {
+    const source = readFileSync(resolve(__dirname, '../../../server/qa/report-evidence.ts'), 'utf8');
+    const said = [...source.matchAll(/return '([^']+)'/g)].map(match => match[1]);
+    expect([...new Set(said)].sort()).toEqual([...QA_GATE_REFUSALS].sort());
 });

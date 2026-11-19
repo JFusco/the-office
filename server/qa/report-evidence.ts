@@ -6,6 +6,24 @@ import type { StageResult, WorkApproach } from '../../src/shared';
 import { OfficeQAReportSchema } from './report-schema';
 import { qaCriteria } from './criteria';
 const contained = (path: string, root: string) => !!path && existsSync(path) && existsSync(root) && realpathSync(path).startsWith(realpathSync(root) + sep);
+/** Every fixed thing the gate below can say when it refuses a report; a setup stop names its own next action instead. */
+export const QA_GATE_REFUSALS: readonly string[] = [
+    'A complete structured Office QA report is required',
+    'Change the QA route before execution through an explicit reroute; preserve the assigned checks',
+    'Office QA report does not match the assigned ticket, head, stage or saved route',
+    'Saved Office QA report is missing',
+    'Saved Office QA report differs from its worker result',
+    'Saved Office QA report is unreadable',
+    'QA provider usage or effects require reconciliation',
+    'QA has unresolved findings',
+    'QA has failing, blocked, untested or duplicate cases',
+    'QA must cover every saved required check',
+    'QA criterion references must match the saved acceptance baseline',
+    'Adjacent regression coverage is required',
+    'Each QA case needs saved current-head evidence',
+    'Saved focused check output is required',
+    'Real browser, actor, resource and screenshot evidence is required',
+];
 export function officeQAEvidenceGap(result: StageResult, expected: { key: string; head: string; stage: string; approach?: WorkApproach }, root: string): string {
     const parsed = OfficeQAReportSchema.safeParse(result.qa);
     if (!parsed.success) return 'A complete structured Office QA report is required';
