@@ -186,9 +186,11 @@ For repository changes that include delivery, complete this sequence:
 7. Put a review on record, watch CI and fix failures. Once every check passes,
    merge the PR with `gh pr merge --merge` and synchronize local `main`. Leave
    failed PRs open; never merge failed checks or bypass branch protections.
-8. Once the PR merges, delete its branch: the remote branch if GitHub kept it, the
-   local branch and the worktree used for it. Delete only when the PR merged and
-   the branch tip is the merged head; ask before removing a worktree with
+8. Once a PR merges, by the Office, an agent or Joe, clean up what the
+   delivery created: delete the remote branch if GitHub kept it, the local
+   branch and any worktree used for it, and remove scratch or temporary files
+   the delivery left outside the repository. Delete only when the PR merged
+   and the branch tip is the merged head; ask before removing a worktree with
    uncommitted changes. Never delete an unmerged branch.
 
 Keep the Husky hooks enabled. `commit-msg` runs `pnpm run lint:commit` against the
