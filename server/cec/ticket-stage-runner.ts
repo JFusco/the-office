@@ -16,7 +16,7 @@ import { advance, resultGate, qaEvidenceGap, publicationEvidenceGap } from './wo
 import { parkDecision } from './parking/park-ticket';
 import { draftHeadMovedForward, movedHeadEvent, recordMovedHead } from './draft-pr-moved-head';
 import { confirmsMovedHead, movedHeadUnconfirmed, recordConfirmedHead, routeConfirmedHead } from './confirm-moved-head';
-import { applyChangeScope, endChangeScope, statedApproach } from './change-scope';
+import { applyChangeScope, endChangeScope, scopeOutgrown, statedApproach } from './change-scope';
 import { parksInJira } from './parking/parks-in-jira';
 import { consecutiveSetupStops, isSetupStop } from './qa/setup-stop-cap';
 import { STAGE_ROLE, STAGE_LABELS, type Stage, type StageResult } from '../../src/shared';
@@ -221,8 +221,6 @@ export async function run(this: Engine, key: string) {
                         counters[finding.id] = (counters[finding.id] || 0) + 1;
                         finding.attempts = counters[finding.id];
                     }
-                    // A scoped change that has to come back for another repair is verified at the ticket's own approach from here.
-                    endScope(`the scoped change needs another repair after ${stage}`);
                     t.attempt++;
                     t.stage = stage === 'plan-review' ? 'plan' : 'repair';
                     t.activity = 'waiting';
@@ -237,7 +235,8 @@ export async function run(this: Engine, key: string) {
                     t.repairCycle.phase = 'diagnosis';
                     enqueueRepairDiagnosis(this.store, { id: t.runId, key: t.key, head: t.commit, steps: [], repairCycle: t.repairCycle });
                     if (result.resolution?.kind === 'source-repair' && !t.repairCycle.approachRevision && !t.repairCycle.diagnosisAttempted) {
-                        endScope(`the scoped change needs another repair after ${stage}`);
+                        // A scoped change that exhausted its repair attempts is assessed and verified at the ticket's own approach.
+                        endScope(`the scoped change exhausted its repair attempts after ${stage}`);
                         t.repairCycle.exhaustedApproach = approachFingerprint(t.approach);
                         t.stage = 'code-review'; t.activity = 'waiting'; t.blocker = '';
                         this.store.emit('delivery-repair-diagnosis', 'Sam will assess one revised technical approach; Ellis checks Office operations separately. Alex retains delivery ownership.', role, key);
@@ -258,6 +257,8 @@ export async function run(this: Engine, key: string) {
                 applyChangeScope(t, result.approach!, role, stage, this.store.clock.now().toISOString());
                 this.store.emit('change-scope-set', `${role} scoped the verification of this change: ${t.approach!.reason}`, role, key);
             }
+            // A scope describes one change; a repair that changed it again without restating the scope returns to the ticket's approach.
+            else if (await scopeOutgrown(this.jira.execute, t, stage, result, stated)) endScope('the scoped change was changed again without a new scope');
             advance(t, stage, result);
             routeConfirmedHead(t);
             this.store.emit('stage-passed', result.summary, role, key);

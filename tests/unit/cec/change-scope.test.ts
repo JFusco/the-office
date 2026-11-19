@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { Engine } from '../../../server/scheduling/engine';
 import { JiraOperations } from '../../../server/cec/jira-operations';
-import { applyChangeScope, endChangeScope, statedApproach, verifiedCandidate } from '../../../server/cec/change-scope';
+import { applyChangeScope, endChangeScope, scopeOutgrown, statedApproach, verifiedCandidate } from '../../../server/cec/change-scope';
 import { fakeJira } from './parking/fake-jira';
 import { cecStore, decision, ticket } from './parking/fixtures';
 import { NEW, OLD, draft, git, passed, readback, saved, stopped } from './moved-head-fixtures';
@@ -48,6 +48,10 @@ test('a scope that cannot be shown to sit on the verified candidate is ignored, 
     ] as const) expect(await statedApproach(git(state) as any, ticket as any, 'repair', result), name).toBe('ignored');
     const scoped = { ...base(), commit: NEW, changeScope: { base: OLD, approach: full } };
     for (const stage of ['repair-review', 'retest', 'publish', 'repair'] as Stage[]) expect(await statedApproach(git() as any, scoped, stage, repair({ approach: full })), stage).toBe('ignored');
+    // The one thing that replaces a scope: a repair that changed the commit again restates it for the whole change.
+    expect(await statedApproach(git() as any, scoped, 'repair', repair({ commit: 'c'.repeat(40) }))).toBe('scope');
+    expect(await statedApproach(git({ contains: false }) as any, scoped, 'repair', repair({ commit: 'c'.repeat(40) }))).toBe('ignored');
+    expect(await statedApproach(git() as any, scoped, 'retest', repair({ commit: 'c'.repeat(40) }))).toBe('ignored');
 });
 
 test('a wider approach, an approach stated where no candidate is verified, and a restatement are the ticket-wide rule\'s to decide', async () => {
@@ -97,7 +101,7 @@ function verifiedTicket(extra: Partial<Ticket> = {}) {
         return { ...decision(''), outcome: 'passed', resolution: null, blocker: '', summary: `Moved to ${target}`, receipts: [{ id: 'status', action: 'jira-transition', target: t.key, verified: true, uncertain: false, detail: 'Synthetic read-back' }] }; };
     const script = (results: Partial<Record<Stage, () => StageResult>>) => { engine.agents.stage = async (_ticket, stage) => { stages.push(stage); return results[stage]!(); }; };
     const drive = async () => { for (let i = 0; i < 8 && store.ticket(t.key).activity !== 'blocked' && store.ticket(t.key).stage !== 'ci'; i++) await engine.run(t.key); return store.ticket(t.key); };
-    return { store, t, run, stages, script, drive };
+    return { store, engine, t, run, stages, script, drive };
 }
 
 test('a scoped change is reviewed and tested at its scope, published, and the ticket then returns to its own approach', async () => {
@@ -118,17 +122,84 @@ test('a scoped change is reviewed and tested at its scope, published, and the ti
     expect(live.changeScope).toBeUndefined();
 });
 
-test('a scoped change that has to come back for another repair is verified at the ticket\'s own approach from then on', async () => {
-    const { store, t, run, script, drive } = verifiedTicket();
+const FIXED = 'c'.repeat(40);
+/** A scoped change whose retest failed with a finding, so the ticket is back at repair with the scope still in force. */
+async function backAtRepair() {
+    const fixture = verifiedTicket(), { store, engine, t, run, script } = fixture;
     script({
         repair: () => repair({ evidence: [saved(run, 'merge-checks', 'checks', NEW)] }),
-        retest: () => passed({ commit: NEW, outcome: 'failed', blocker: 'The migration fails on a fresh database', findings: [{ id: 'MERGE-1', summary: 'Migration fails', expected: '', actual: '', status: 'open', attempts: 0 } as any] }),
+        retest: () => passed({ commit: NEW, outcome: 'failed', blocker: 'One database file timed out', findings: [{ id: 'DB-1', summary: 'Setup timeout', expected: '', actual: '', status: 'open', attempts: 0 } as any] }),
     });
-    await drive(); await drive();
-    const live = store.ticket(t.key);
-    expect(live.approach).toEqual(full);
-    expect(live.changeScope).toBeUndefined();
+    // One stage a run: the scoping repair, then the retest that fails.
+    await engine.run(t.key); await engine.run(t.key);
+    expect(store.ticket(t.key)).toMatchObject({ stage: 'repair', activity: 'waiting', approach: { ...narrow, plan: 'none' }, changeScope: { base: OLD, approach: full } });
+    fixture.stages.length = 0;
+    return fixture;
+}
+const settledFinding = (status: string) => [{ id: 'DB-1', summary: 'Setup timeout', expected: '', actual: '', status, attempts: 1 } as any];
+
+test('a scope holds through a repair that changes no source: the same change is retested at the same scope', async () => {
+    const { store, t, run, stages, script, drive } = await backAtRepair();
+    script({
+        repair: () => passed({ commit: NEW, findings: settledFinding('fixed'), evidence: [saved(run, 'rerun-checks', 'checks', NEW)] }),
+        retest: () => decision('', { resolution: null, commit: NEW, summary: 'End of the scripted path', blocker: 'End of the scripted path' }),
+    });
+    await drive();
+    expect(stages).toEqual(['repair', 'retest']);
+    expect(store.ticket(t.key)).toMatchObject({ stage: 'retest', approach: { ...narrow, plan: 'none' }, changeScope: { base: OLD, approach: full } });
+    expect(store.state.events.some(event => event.kind === 'change-scope-ended')).toBe(false);
+});
+
+test('a repair that changes a scoped change again without stating a scope returns it to the ticket\'s own approach', async () => {
+    const { store, t, run, stages, script, drive } = await backAtRepair();
+    script({
+        repair: () => passed({ commit: FIXED, findings: settledFinding('fixed'), evidence: [saved(run, 'fix-checks', 'checks', FIXED)] }),
+        'repair-review': () => decision('', { resolution: null, commit: FIXED, summary: 'End of the scripted path', blocker: 'End of the scripted path' }),
+    });
+    await drive();
+    // The ticket's approach selects a full review, so the grown change is reviewed before it is tested.
+    expect(stages).toEqual(['repair', 'repair-review']);
+    expect(store.ticket(t.key).approach).toEqual(full);
+    expect(store.ticket(t.key).changeScope).toBeUndefined();
     expect(store.state.events.some(event => event.kind === 'change-scope-ended')).toBe(true);
+});
+
+test('a repair that changes a scoped change again and states a scope for the whole change keeps the verified commit and the ticket\'s approach to return to', async () => {
+    const { store, t, run, stages, script, drive } = await backAtRepair();
+    const wider: WorkApproach = { ...narrow, review: 'focused', checks: ['Typecheck', 'Migration test', 'Database lane'], reason: 'Merge plus a migration fix' };
+    script({
+        repair: () => passed({ commit: FIXED, approach: wider, findings: settledFinding('fixed'), evidence: [saved(run, 'fix-checks', 'checks', FIXED)] }),
+        'repair-review': () => decision('', { resolution: null, commit: FIXED, summary: 'End of the scripted path', blocker: 'End of the scripted path' }),
+    });
+    await drive();
+    expect(stages).toEqual(['repair', 'repair-review']);
+    expect(store.ticket(t.key)).toMatchObject({ commit: FIXED, approach: { ...wider, plan: 'none' }, changeScope: { base: OLD, approach: full } });
+});
+
+test('a scope is outgrown by a passing repair that left another commit without a new scope, by what it reports or by what git shows', async () => {
+    const scoped = { commit: NEW, worktree: '/worktree', changeScope: { base: OLD, approach: full } };
+    expect(await scopeOutgrown(git() as any, scoped, 'repair', passed({ commit: FIXED }))).toBe(true);
+    expect(await scopeOutgrown(git() as any, scoped, 'repair', passed({ commit: FIXED }), 'ignored')).toBe(true);
+    expect(await scopeOutgrown(git() as any, scoped, 'repair', passed({ commit: FIXED }), 'scope')).toBe(false);
+    // The same commit is the worker's claim; git must show the worktree still on it.
+    expect(await scopeOutgrown(git({ head: NEW }) as any, scoped, 'repair', passed({ commit: NEW }))).toBe(false);
+    expect(await scopeOutgrown(git({ head: FIXED }) as any, scoped, 'repair', passed({ commit: NEW }))).toBe(true);
+    expect(await scopeOutgrown(git({ fail: true }) as any, scoped, 'repair', passed({ commit: NEW }))).toBe(true);
+    expect(await scopeOutgrown(git() as any, scoped, 'repair', passed({ commit: FIXED, outcome: 'failed' }))).toBe(false);
+    expect(await scopeOutgrown(git() as any, scoped, 'retest', passed({ commit: FIXED }))).toBe(false);
+    expect(await scopeOutgrown(git() as any, { commit: NEW, worktree: '/worktree' }, 'repair', passed({ commit: FIXED }))).toBe(false);
+});
+
+test('a scope restated after the change was sent back is never narrower than the scope in force', () => {
+    const t = { ...ticket(), ...base() } as Ticket;
+    applyChangeScope(t, { ...narrow, review: 'focused', validation: 'browser' }, 'developer', 'repair', '');
+    t.commit = NEW;
+    applyChangeScope(t, { ...narrow, review: 'none', validation: 'independent-checks', checks: ['Typecheck'] }, 'developer', 'repair', '');
+    expect(t.approach).toMatchObject({ review: 'focused', validation: 'browser', checks: ['Typecheck'] });
+    expect(t.changeScope).toEqual({ base: OLD, approach: full });
+    // A wider restatement is taken as stated.
+    applyChangeScope(t, { ...narrow, review: 'full', validation: 'browser' }, 'developer', 'repair', '');
+    expect(t.approach).toMatchObject({ review: 'full', validation: 'browser' });
 });
 
 test('a repair on a candidate that is not verified keeps the ticket-wide rule: a reduction with work unresolved is refused', async () => {

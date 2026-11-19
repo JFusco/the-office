@@ -10,6 +10,7 @@ test('a repair that starts from a verified candidate is told it may scope the ve
     const note = changeScopeNote(verified, 'repair');
     expect(note).toContain(`VERIFIED CANDIDATE: The verification the team selected passed on ${OLD}`);
     expect(note).toContain('Return approach=null when the change alters behaviour the earlier review or QA covered');
+    expect(note).toContain('that QA can run at the retest (a hosted build on the published pull request belongs to the ci stage)');
 });
 
 test('a repair on a candidate that is not verified, and every other stage of an unscoped ticket, are told nothing', () => {
@@ -25,5 +26,9 @@ test('the review, retest and publication of a scoped change are told what the sc
         expect(changeScopeNote(scoped, stage), stage).toContain('return outcome=reroute with a wider approach before executing');
     }
     expect(changeScopeNote(scoped, 'publish')).toContain('evidence for the change is on the current HEAD');
-    for (const stage of ['repair', 'implement', 'ci'] as Stage[]) expect(changeScopeNote(scoped, stage), stage).toBe('');
+    for (const stage of ['implement', 'ci'] as Stage[]) expect(changeScopeNote(scoped, stage), stage).toBe('');
+    // A later repair of the scoped change is told the scope stands while the commit does.
+    expect(changeScopeNote(scoped, 'repair')).toContain(`SCOPED CHANGE: The verification the team selected passed on ${OLD}`);
+    expect(changeScopeNote(scoped, 'repair')).toContain('return the same commit and approach=null: the scope stands');
+    expect(changeScopeNote(scoped, 'repair')).toContain('If you commit anything, even a log, state approach again for the whole change');
 });
