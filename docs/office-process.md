@@ -265,7 +265,8 @@ to Sam. An earlier repair that has finished (no finding still pending) does not 
 a later conflict on the same pull request is refreshed the same way. A conflict repair, by
 either route, leaves a hands-off job on harness delivery: the harness publishes the repaired
 head, Sam reviews it and the guarded merge follows. Only the records of a real legacy
-recovery keep a job on the older model-performed contracts. The review is told who merges on the project: the Office's project policy and its
+recovery keep a job on the older model-performed contracts, including the conflict step an
+initial draft conflict recovery wrote for the worker it adopted. The review is told who merges on the project: the Office's project policy and its
 merge switch decide that, not a repository document, so a line in a repository's `AGENTS.md` about
 agents stopping before a merge is not a blocker (`server/delivery/readiness/merge-authority-note.ts`). On a
 hands-off project the review also gives any acceptance the repository reserves for a maintainer
