@@ -1,4 +1,5 @@
 import type { Store } from '../store/store';
+import { carriedNotRepeated } from './carried-not-repeated';
 import type { Ticket, StageResult } from '../../src/shared';
 import { command } from '../workers/process';
 import { jiraBinding } from '../office/project-bindings';
@@ -19,7 +20,7 @@ export class JiraOperations {
     }
     async qaComment(ticket: Ticket, stage: string, attempt: string, result: StageResult): Promise<void> {
         const posted = await postReadableComment(this.store, this.execute, ticket, { id: `qa-comment:${attempt}`, operation: 'jira-qa-comment', attempt, commit: result.commit, expectedState: { assignee: jiraBinding(this.store.project).account, stage, commit: ticket.commit },
-            comment: qaComment(ticket.key, stage, attempt, result), changed: () => ticket.commit !== result.commit, refusal: 'Jira assignment or candidate changed before QA publication' });
+            comment: qaComment(ticket.key, stage, attempt, result, stage === 'retest' && ticket.changeScope?.carried ? { checks: carriedNotRepeated(ticket), commit: ticket.changeScope.carried.commit } : undefined), changed: () => ticket.commit !== result.commit, refusal: 'Jira assignment or candidate changed before QA publication' });
         // An adopted result already carries this comment's receipt; Effects returned the saved one without posting.
         if (result.receipts.some(receipt => receipt.action === 'jira-comment' && receipt.verified && !receipt.uncertain && String(receipt.id) === String(posted.id)))
             return;

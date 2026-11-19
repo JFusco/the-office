@@ -17,6 +17,7 @@ import { parkDecision } from './parking/park-ticket';
 import { draftHeadMovedForward, movedHeadEvent, recordMovedHead } from './draft-pr-moved-head';
 import { confirmsMovedHead, movedHeadUnconfirmed, recordConfirmedHead, routeConfirmedHead } from './confirm-moved-head';
 import { applyChangeScope, endChangeScope, scopeOutgrown, statedApproach } from './change-scope';
+import { rerouteUnderScope } from './reroute-under-scope';
 import { parksInJira } from './parking/parks-in-jira';
 import { consecutiveSetupStops, isSetupStop } from './qa/setup-stop-cap';
 import { STAGE_ROLE, STAGE_LABELS, type Stage, type StageResult } from '../../src/shared';
@@ -153,7 +154,7 @@ export async function run(this: Engine, key: string) {
             if (result.outcome === 'reroute') {
                 if ((t.routeChanges = (t.routeChanges || 0) + 1) > 3)
                     throw new Error('Team approach remains unsettled after three route changes; preserve the discussion before continuing');
-                reroute(t, stage, result, role);
+                reroute(t, stage, rerouteUnderScope(t, result), role);
                 learn();
                 this.store.emit('approach-changed', `${role} changed the approach: ${t.approach!.reason}`, role, key);
                 continue;
@@ -179,13 +180,13 @@ export async function run(this: Engine, key: string) {
             }
             const gatesBefore = new Set((['plan', 'plan-review', 'code-review'] as Stage[]).filter(s => stageNeeded(t, s)));
             // A repair on a verified candidate states the scope for verifying its own change; elsewhere the ticket-wide rule decides.
-            const stated = result.outcome === 'passed' && result.approach ? await statedApproach(this.jira.execute, t, stage, result) : undefined;
+            const artifactRoot = resolve(this.store.dataRoot, 'runs', t.runId);
+            const stated = result.outcome === 'passed' && result.approach ? await statedApproach(this.jira.execute, t, stage, result, artifactRoot) : undefined;
             if (stated === 'ignored') this.store.emit('approach-ignored', `${key}: the approach ${role} stated on ${stage} was not applied; the approach in force stands.`, role, key);
             if (stated === 'ticket') {
                 recordApproach(t, result.approach!, role, stage);
                 this.store.emit('approach-selected', `${role}: ${result.approach!.reason}`, role, key);
             }
-            const artifactRoot = resolve(this.store.dataRoot, 'runs', t.runId);
             // A draft pull request opened on a head that moved forward is recorded, and that head goes back to the developer
             // to confirm: it is the same work brought up to date, but nobody has reviewed or tested it.
             if (stage === 'draft-pr' && await draftHeadMovedForward(this.jira.execute, t, result) && !resultGate({ ...t, commit: result.commit }, stage, result, artifactRoot)) {
@@ -254,8 +255,9 @@ export async function run(this: Engine, key: string) {
                 this.store.emit('dev-update-skipped', `${key}: the ${stage} Dev update is not confirmed on the Jira ticket. The stage continues.`, role, key);
             recordConfirmedHead(t, stage, result);
             if (stated === 'scope') {
-                applyChangeScope(t, result.approach!, role, stage, this.store.clock.now().toISOString());
-                this.store.emit('change-scope-set', `${role} scoped the verification of this change: ${t.approach!.reason}`, role, key);
+                if (applyChangeScope(t, result.approach!, role, stage, this.store.clock.now().toISOString(), artifactRoot))
+                    this.store.emit('change-scope-set', `${role} scoped the verification of this change: ${t.approach!.reason}`, role, key);
+                else this.store.emit('approach-ignored', `${key}: the approach ${role} stated on ${stage} was not applied; the approach in force stands.`, role, key);
             }
             // A scope describes one change; a repair that changed it again without restating the scope returns to the ticket's approach.
             else if (await scopeOutgrown(this.jira.execute, t, stage, result, stated)) endScope('the scoped change was changed again without a new scope');
