@@ -241,6 +241,15 @@ already reviewed is refreshed by the harness (Alex merges the current target int
 branch) without Sam assessing the conflict first; a conflict on an unreviewed head still goes
 to Sam.
 
+On a hands-off project the harness marks a maintenance proposal's draft pull request ready itself.
+A maintenance run publishes its draft only after the review and verification its approach selected
+ran on the head its proposal step built, and it checks the draft against that head; so once the run
+has completed, a draft whose issue and head match that built head counts as verified. The prepare
+stage then marks it ready through its effect, and a job parked at the readiness review on such a
+draft is sent back to that stage on its next observation, once per head. A run still in flight is
+left alone, because it re-reads its draft on every step. The readiness review and merge
+authorization are unchanged (`server/delivery/publication/maintenance-verified-draft.ts`).
+
 ## Recovery and human involvement — shared across roles
 
 | Observation | Next action | Boundary |

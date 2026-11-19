@@ -251,6 +251,8 @@ export interface TicketJob {
     updatedAt?: string;
     automaticStatus?: string;
     mergeCommit?: string;
+    /** The head for which a maintenance-verified draft was last sent back to the prepare stage to be marked ready; once per head. */
+    draftPromotionHead?: string;
     lastPRFingerprint?: string;
     reviewInputSha256?: string;
     steps: {
