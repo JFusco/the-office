@@ -92,7 +92,7 @@ src/
   single dispatch, read-back). An uncertain effect is reconciled by read-back, never
   resent. One exception: GitHub board hours are an absolute total, so a write read back as
   never landed after it settled is written once more (`server/time/time-readback.ts`); a
-  second miss goes to Joe.
+  second miss in a row for the same ticket, with no verified write between them, goes to Joe.
   A GitHub hours sync that stops before it writes anything sent nothing and is tried
   again with growing pauses (`server/time/unsent-time.ts`); that is not a resend.
   Board estimated cost (`Est. Cost (USD)`) follows the ordinary rule: one dispatch through
