@@ -72,7 +72,8 @@ When the Jira intake source is the configured project list, the harness reads it
 model runs for the mailbox check. TWG marks a further page with a cursor and the last page with
 nothing, so the list is read in key order, each page asking for keys after the last one, until a
 page comes back empty; a read that does not advance, repeats a key, or returns a ticket outside the
-list is refused whole (`server/cec/intake-enumeration.ts`). A board is still enumerated by Morgan.
+list is refused whole. The tickets are delivered in the list's own pickup order, highest priority
+first (`server/cec/intake-enumeration.ts`). A board is still enumerated by Morgan.
 
 An assignment review that stopped is closed as history, with no model run, once a complete
 assignment read shows its ticket is no longer assigned or no longer open. A review of a ticket that

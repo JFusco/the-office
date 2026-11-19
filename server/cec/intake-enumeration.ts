@@ -1,4 +1,4 @@
-import { jira, type Execute } from './parking/jira-transport';
+import { jiraResponse, type Execute } from './parking/jira-transport';
 import { projectListScope } from './intake-scope';
 import type { JiraBinding } from '../office/project-bindings-config';
 import type { Ticket } from '../../src/shared';
@@ -14,21 +14,29 @@ const text = (value: unknown) => typeof value === 'string' ? value : '';
  * TWG marks a further page with a cursor and marks the last page with nothing at all, so the end of a
  * read cannot be told from a marker. The list is read in key order instead, each page asking for keys
  * after the last one, until a page comes back empty: an explicit end. A page whose keys repeat, fail to
- * advance, or belong to another project, or an item assigned to someone else, means the read is not the
- * list that was asked for, and the whole read is refused.
+ * advance, or belong to another project, an item assigned to someone else, or an empty page after one
+ * that said more would follow, means the read is not the list that was asked for, and the whole read is
+ * refused. The tickets are returned in the list's own pickup order, highest priority first and oldest
+ * first within a priority, as Jira orders them.
  */
 export async function enumerateIntakeList(execute: Execute, binding: JiraBinding): Promise<Intake[] | null> {
     const list = projectListScope(binding);
     if (!list) return null;
     const statuses = binding.statuses.intake.map(status => JSON.stringify(status.name)).join(', ');
     const scope = `${list.jql} AND status IN (${statuses}) AND issuetype NOT IN subTaskIssueTypes()`;
+    const read = (jql: string, fields: string) => jiraResponse(execute, binding, ['query', '--jql', jql, '--fields', fields, '--first', String(PAGE)], true);
     const tickets: Intake[] = [];
-    let last = 0;
+    let last = 0, more = false;
     for (let page = 0; page < MAX_PAGES; page++) {
-        const jql = `${scope}${last ? ` AND key > "${binding.projectKey}-${last}"` : ''} ORDER BY key ASC`;
-        const issues = (await jira(execute, binding, ['query', '--jql', jql, '--fields', 'summary,status,issuetype,assignee,updated', '--first', String(PAGE)], true))?.issues;
+        const response = await read(`${scope}${last ? ` AND key > "${binding.projectKey}-${last}"` : ''} ORDER BY key ASC`, 'summary,status,issuetype,assignee,updated');
+        const issues = response?.data?.issues;
         if (!Array.isArray(issues) || issues.length > PAGE) throw new Error('Jira intake list page was incomplete');
-        if (!issues.length) return tickets;
+        if (!issues.length) {
+            // The page before said more followed: an empty answer now is a key Jira no longer resolves here, not the end.
+            if (more) throw new Error('Jira intake list ended after a page that said more followed');
+            return tickets.length > 1 ? inPickupOrder(tickets, (await read(`${scope} ORDER BY priority DESC, created ASC`, 'summary'))?.data?.issues) : tickets;
+        }
+        more = response.pageInfo?.hasNextPage === true;
         for (const issue of issues) {
             const match = new RegExp(`^${binding.projectKey}-([1-9][0-9]*)$`).exec(text(issue?.key)), number = Number(match?.[1]);
             if (!match || number <= last) throw new Error('Jira intake list did not advance in key order');
@@ -41,4 +49,14 @@ export async function enumerateIntakeList(execute: Execute, binding: JiraBinding
         }
     }
     throw new Error('Jira intake list exceeded the bounded read');
+}
+
+/**
+ * The complete set in Jira's own pickup order. The ordered read only supplies positions; a ticket it does
+ * not return (beyond its first page) keeps its place after the ones it does, in key order.
+ */
+function inPickupOrder(tickets: Intake[], ordered: unknown): Intake[] {
+    if (!Array.isArray(ordered)) throw new Error('Jira intake list order was incomplete');
+    const position = new Map(ordered.map((issue, index) => [text(issue?.key), index]));
+    return tickets.map((ticket, index) => ({ ticket, at: position.get(ticket.key) ?? ordered.length + index })).sort((a, b) => a.at - b.at).map(entry => entry.ticket);
 }

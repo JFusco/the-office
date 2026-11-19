@@ -43,3 +43,17 @@ test('a list read that fails blocks the mailbox with its reason and delivers not
     expect(a.store.state.intake.error).toContain('not authenticated');
     expect(a.store.state.tickets).toEqual([]);
 });
+
+test('a board is still enumerated by the model, and an incomplete read still blocks', async () => {
+    const { store } = cecStore();
+    store.state.tickets = []; store.state.paused = false;
+    registry.set('cec', { ...bindings, jira: { ...original, intakeListUrl: undefined } });
+    const engine = new Engine(store);
+    let harness = 0;
+    engine.jira = new JiraOperations(store, (async () => { harness++; return '{}'; }) as any);
+    engine.agents.intake = async () => ({ tickets: [], summary: '', complete: false, blocker: 'Board backlog page 2 unavailable' }) as any;
+    await engine.checkMail();
+    expect(harness).toBe(0);
+    expect(store.state.intake).toMatchObject({ status: 'blocked' });
+    expect(store.state.intake.error).toContain('Board backlog page 2 unavailable');
+});
