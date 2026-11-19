@@ -225,6 +225,21 @@ not verified while its latest review or QA result failed, whatever the approach 
 repair on such a candidate keeps the ticket-wide rule: a reduction with work unresolved is refused
 (`server/cec/change-scope.ts`, `server/cec/change-scope-note.ts`).
 
+The same scope applies after a QA run that failed. The harness reads QA's own failed report for
+this ticket, stage and validation level on the candidate the repair starts from, held to the report
+and evidence a pass at that level needs: a required check is carried when every case that refers to
+it passed with evidence saved in the ticket's run on that commit,
+and every other required check is owed. A repair whose review stands may then state a scope; the
+harness adds every owed check, keeps validation at least at the ticket's level and keeps a review
+where the ticket has one, so a failed case cannot be scoped away, and records the carried checks
+with the commit they passed on. Owed checks stay in every scope restated on a later commit and
+through a route change (`server/cec/reroute-under-scope.ts`), and while checks are owed whatever the
+repair states is a scope; one that would exceed twelve checks is not applied. A required check the
+scoped retest reported and did not pass is owed from then on, including one that had been carried. QA is told which checks are carried and widens the scope before executing if the change
+touches one, and the QA comment on the ticket says how many checks were carried and from which
+build. Nothing is carried by assertion, across a commit that does not contain the one it passed on,
+or from a run that stopped in setup (`server/cec/qa/carried-checks.ts`).
+
 Office QA judges what can be observed at its own stage. A check that only a later stage can observe
 (a hosted build that runs only once the pull request is opened or published, or publication itself)
 is covered for the part observable now and named for the owner of that stage; it is not failed,

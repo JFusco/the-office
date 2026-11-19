@@ -645,7 +645,9 @@ export interface Ticket {
     /** Set when a draft pull request was opened on a head that moved forward from the accepted candidate; `confirmed` is the commit the confirming repair settled on. */
     headMove?: { from: string; to: string; prId: number; at: string; confirmed?: string };
     /** A change being verified at its own scope: the verified commit it was made on, and the ticket's approach to return to. */
-    changeScope?: { base: string; approach: WorkApproach };
+    changeScope?: { base: string; approach: WorkApproach;
+        /** Required checks QA did not pass on the base: the harness keeps them in every scope stated for this change. */ owed?: string[];
+        /** Required checks QA passed on the base, with the commit they passed on; one is not repeated unless the scope names it. */ carried?: { checks: string[]; commit: string } };
 }
 export interface OfficeEvent {
     id: number;

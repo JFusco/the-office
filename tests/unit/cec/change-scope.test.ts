@@ -7,9 +7,11 @@ import { cecStore, decision, ticket } from './parking/fixtures';
 import { NEW, OLD, draft, git, passed, readback, saved, stopped } from './moved-head-fixtures';
 import type { Stage, StageResult, Ticket, WorkApproach } from '../../../src/shared';
 
+const ROOT = '/runs/unit';
+
 const full: WorkApproach = { plan: 'none', review: 'full', validation: 'browser', checks: ['Acceptance A', 'Acceptance B'], reason: 'Ticket approach' };
 const narrow: WorkApproach = { plan: 'reviewed', review: 'none', validation: 'independent-checks', checks: ['Typecheck', 'Migration test'], reason: 'Only the target branch was merged in' };
-const base = () => ({ approach: full, commit: OLD, worktree: '/worktree', results: { 'repair-review': passed({ commit: OLD }), retest: passed({ commit: OLD }) } as Ticket['results'] });
+const base = () => ({ key: 'CEC-900', approach: full, commit: OLD, worktree: '/worktree', results: { 'repair-review': passed({ commit: OLD }), retest: passed({ commit: OLD }) } as Ticket['results'] });
 const repair = (extra: Partial<StageResult> = {}) => passed({ commit: NEW, approach: narrow, ...extra });
 
 test('a candidate is verified when the review and QA the approach selects both passed on it with nothing left open', () => {
@@ -33,10 +35,10 @@ test('a candidate is verified when the review and QA the approach selects both p
 });
 
 test('what a repair states on a verified candidate is the scope for its change when git shows its commit contains that candidate', async () => {
-    expect(await statedApproach(git() as any, base(), 'repair', repair())).toBe('scope');
-    expect(await statedApproach(git() as any, base(), 'repair', repair({ approach: { ...full, validation: 'independent-checks' } }))).toBe('scope');
+    expect(await statedApproach(git() as any, base(), 'repair', repair(), ROOT)).toBe('scope');
+    expect(await statedApproach(git() as any, base(), 'repair', repair({ approach: { ...full, validation: 'independent-checks' } }), ROOT)).toBe('scope');
     // The same levels with other checks are still what this change needs, not a new approach for the ticket.
-    expect(await statedApproach(git() as any, base(), 'repair', repair({ approach: { ...full, checks: ['Build passes'] } }))).toBe('scope');
+    expect(await statedApproach(git() as any, base(), 'repair', repair({ approach: { ...full, checks: ['Build passes'] } }), ROOT)).toBe('scope');
 });
 
 test('a scope that cannot be shown to sit on the verified candidate is ignored, and nothing stated during a scope replaces it', async () => {
@@ -45,13 +47,13 @@ test('a scope that cannot be shown to sit on the verified candidate is ignored, 
         ['an unreadable worktree', base(), repair(), { fail: true }],
         ['the verified commit itself', base(), repair({ commit: OLD }), {}],
         ['no worktree', { ...base(), worktree: '' }, repair(), {}],
-    ] as const) expect(await statedApproach(git(state) as any, ticket as any, 'repair', result), name).toBe('ignored');
+    ] as const) expect(await statedApproach(git(state) as any, ticket as any, 'repair', result, ROOT), name).toBe('ignored');
     const scoped = { ...base(), commit: NEW, changeScope: { base: OLD, approach: full } };
-    for (const stage of ['repair-review', 'retest', 'publish', 'repair'] as Stage[]) expect(await statedApproach(git() as any, scoped, stage, repair({ approach: full })), stage).toBe('ignored');
+    for (const stage of ['repair-review', 'retest', 'publish', 'repair'] as Stage[]) expect(await statedApproach(git() as any, scoped, stage, repair({ approach: full }), ROOT), stage).toBe('ignored');
     // The one thing that replaces a scope: a repair that changed the commit again restates it for the whole change.
-    expect(await statedApproach(git() as any, scoped, 'repair', repair({ commit: 'c'.repeat(40) }))).toBe('scope');
-    expect(await statedApproach(git({ contains: false }) as any, scoped, 'repair', repair({ commit: 'c'.repeat(40) }))).toBe('ignored');
-    expect(await statedApproach(git() as any, scoped, 'retest', repair({ commit: 'c'.repeat(40) }))).toBe('ignored');
+    expect(await statedApproach(git() as any, scoped, 'repair', repair({ commit: 'c'.repeat(40) }), ROOT)).toBe('scope');
+    expect(await statedApproach(git({ contains: false }) as any, scoped, 'repair', repair({ commit: 'c'.repeat(40) }), ROOT)).toBe('ignored');
+    expect(await statedApproach(git() as any, scoped, 'retest', repair({ commit: 'c'.repeat(40) }), ROOT)).toBe('ignored');
 });
 
 test('a wider approach, an approach stated where no candidate is verified, and a restatement are the ticket-wide rule\'s to decide', async () => {
@@ -61,12 +63,12 @@ test('a wider approach, an approach stated where no candidate is verified, and a
         ['the ticket\'s approach restated', base(), 'repair', repair({ approach: { ...full, reason: 'Restated' } })],
         ['another stage', base(), 'retest', repair()],
         ['a candidate that is not verified', { ...base(), results: {} }, 'repair', repair()],
-    ] as const) expect(await statedApproach(git() as any, ticket as any, stage as Stage, result), name).toBe('ticket');
+    ] as const) expect(await statedApproach(git() as any, ticket as any, stage as Stage, result, ROOT), name).toBe('ticket');
 });
 
 test('the scope becomes the approach for this change, keeps the ticket\'s plan level and its approach to return to, and is recorded as a decision', () => {
     const t = { ...ticket(), ...base() } as Ticket;
-    applyChangeScope(t, narrow, 'developer', 'repair', '2026-11-18T00:00:00.000Z');
+    applyChangeScope(t, narrow, 'developer', 'repair', '2026-11-18T00:00:00.000Z', ROOT);
     expect(t.approach).toEqual({ ...narrow, plan: 'none' });
     expect(t.changeScope).toEqual({ base: OLD, approach: full });
     expect(t.decisions?.at(-1)).toEqual({ role: 'developer', stage: 'repair', at: '2026-11-18T00:00:00.000Z', approach: { ...narrow, plan: 'none' } });
@@ -81,7 +83,7 @@ test('the scope becomes the approach for this change, keeps the ticket\'s plan l
 test('a ticket whose review once failed keeps a review on the change, because publication requires one on the current head', () => {
     const t = { ...ticket(), ...base() } as Ticket;
     t.results['code-review'] = passed({ commit: 'd'.repeat(40), outcome: 'blocked' });
-    applyChangeScope(t, narrow, 'developer', 'repair', '');
+    applyChangeScope(t, narrow, 'developer', 'repair', '', ROOT);
     expect(t.approach).toMatchObject({ review: 'focused', validation: 'independent-checks' });
 });
 
@@ -190,15 +192,15 @@ test('a scope is outgrown by a passing repair that left another commit without a
     expect(await scopeOutgrown(git() as any, { commit: NEW, worktree: '/worktree' }, 'repair', passed({ commit: FIXED }))).toBe(false);
 });
 
-test('a scope restated after the change was sent back is never narrower than the scope in force', () => {
+test('a scope restated after the change was sent back keeps review and validation at least at the scope in force', () => {
     const t = { ...ticket(), ...base() } as Ticket;
-    applyChangeScope(t, { ...narrow, review: 'focused', validation: 'browser' }, 'developer', 'repair', '');
+    applyChangeScope(t, { ...narrow, review: 'focused', validation: 'browser' }, 'developer', 'repair', '', ROOT);
     t.commit = NEW;
-    applyChangeScope(t, { ...narrow, review: 'none', validation: 'independent-checks', checks: ['Typecheck'] }, 'developer', 'repair', '');
+    applyChangeScope(t, { ...narrow, review: 'none', validation: 'independent-checks', checks: ['Typecheck'] }, 'developer', 'repair', '', ROOT);
     expect(t.approach).toMatchObject({ review: 'focused', validation: 'browser', checks: ['Typecheck'] });
     expect(t.changeScope).toEqual({ base: OLD, approach: full });
     // A wider restatement is taken as stated.
-    applyChangeScope(t, { ...narrow, review: 'full', validation: 'browser' }, 'developer', 'repair', '');
+    applyChangeScope(t, { ...narrow, review: 'full', validation: 'browser' }, 'developer', 'repair', '', ROOT);
     expect(t.approach).toMatchObject({ review: 'full', validation: 'browser' });
 });
 
