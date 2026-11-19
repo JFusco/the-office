@@ -259,7 +259,7 @@ export class GitHubDelivery {
             }
             if (harnessDelivers(this.store, job) && job.stage === 'implement' && !technicalPhase)
                 instructions = implementInstruction(project, job, issue.number, root);
-            if (harnessDelivers(this.store, job) && job.stage === 'update-base' && job.repairReason === 'conflicts' && job.pr && !job.repairCycle)
+            if (harnessDelivers(this.store, job) && job.stage === 'update-base' && job.repairReason === 'conflicts' && job.pr && !job.repairCycle?.pendingFindingIds?.length)
                 instructions = conflictRefreshInstruction(project, job, root);
             instructions += `\n${scopeRepairResumeInstruction(this.store,job)}`;
             instructions += `\n${writerRestartInstruction(job)}`;

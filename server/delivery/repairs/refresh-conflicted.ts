@@ -42,8 +42,9 @@ export function refreshSettled(store: Store, job: TicketJob, ownClaimId?: string
 export function refreshEligible(store: Store, job: TicketJob, p: any, claimed = false): boolean {
     if (!harnessDelivers(store, job) || !(job.stage === 'merge' ? ['blocked', 'interrupted', 'watching'].includes(job.status) : job.stage === 'lead-pr' && (job.status === 'watching' || claimed && job.status === 'working')))
         return false;
-    // A retained source-repair cycle keeps its own reconciliation contract.
-    if (store.state.paused || store.state.draining || holdReason(store.project, job.key) || job.mergeAttempt || job.mergeApprovalRequired || job.repairCycle || !job.worktree || !job.branch || !job.pr)
+    // A source-repair cycle with findings still pending keeps its own reconciliation contract. A finished one is only
+    // the record of an earlier repair: it is never removed, and must not send a later conflict down the older route.
+    if (store.state.paused || store.state.draining || holdReason(store.project, job.key) || job.mergeAttempt || job.mergeApprovalRequired || job.repairCycle?.pendingFindingIds?.length || !job.worktree || !job.branch || !job.pr)
         return false;
     if (!store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
         return false;
