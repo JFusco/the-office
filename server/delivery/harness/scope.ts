@@ -7,11 +7,18 @@ export function handsOff(store: Pick<Store, 'project'>): boolean {
     return projectPolicy(store.project).handsOff;
 }
 
-/** Jobs carrying legacy recovery records keep their dedicated, reconciled model-stage contracts. */
+/**
+ * Jobs carrying legacy recovery records keep their dedicated, reconciled model-stage contracts. Each such
+ * record is its own field on the job. A plain `conflict-readback` step is not one: the ordinary conflict
+ * repair writes it for any job whose conflict it verified, and a repaired conflict is no reason to take a
+ * job off harness delivery. The initial draft conflict recovery writes that step too, bound to the worker
+ * whose result it adopted; that one still marks the job, so a job whose own record went missing is not
+ * mistaken for harness delivery and is stopped by that recovery's checks.
+ */
 export function legacyRecovery(job: TicketJob): boolean {
     return !!(job.initialDraftConflict || job.closeoutRecovery || job.implementationRecovery || job.discoveryRecovery || job.savedPrerequisiteHandoff
         || job.scopeRepairResumes?.length || job.scopeRepairReadback || job.implementationContinuation || job.candidateRecovery
-        || job.steps.some(step => step.stage === 'conflict-readback'));
+        || job.steps.some(step => step.stage === 'conflict-readback' && step.workerId));
 }
 
 /** The harness performs candidate creation, publication, promotion and closeout for this job. */

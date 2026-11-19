@@ -26,6 +26,15 @@ test('a conflicting team-reviewed PR is requeued for Alex to merge current main 
     expect(job).toMatchObject({ stage: 'update-base', status: 'queued', repairReason: 'conflicts', pr: 200, head: HEAD });
     expect(job.steps.some(s => s.stage === 'conflict-readback')).toBe(false);
 });
+test('the record of a finished repair does not send a later conflict down the older route: the job is refreshed and stays on harness delivery', () => {
+    const { f, job, pr } = conflicted();
+    // As left by an earlier conflict repair that was reviewed, verified and published: nothing pending.
+    job.repairCycle = { owner: 'developer', findingAttempts: { 'main-integration-conflict': 1 }, attempts: 1, pendingFindingIds: [], sourceStage: 'lead-pr', sourceHead: BASE, phase: 'verify', publishedHead: HEAD } as any;
+    expect(refreshEligible(f.store, job, pr)).toBe(true);
+    expect(refreshConflicted(f.store, job, pr)).toBe(true);
+    expect(job).toMatchObject({ stage: 'update-base', status: 'queued', repairReason: 'conflicts' });
+    expect(job.steps.some(s => s.stage === 'conflict-readback')).toBe(false);
+});
 test('mergeable or still-computing PRs, holds, pauses, merge attempts, unreviewed heads and legacy projects are left alone', () => {
     const cases: [string, (x: ReturnType<typeof conflicted>) => void][] = [
         ['mergeable', x => { x.pr.mergeable = true; }],
@@ -40,7 +49,7 @@ test('mergeable or still-computing PRs, holds, pauses, merge attempts, unreviewe
         ['draining', x => { x.f.store.state.draining = true; }],
         ['approval required', x => { x.job.mergeApprovalRequired = true; }],
         ['merges disabled', x => { x.f.store.state.coordination!.merges = { enabled: false } as any; }],
-        ['retained source repair cycle', x => { x.job.repairCycle = { phase: 'verify', pendingFindingIds: [] } as any; }],
+        ['a source repair cycle with findings still pending', x => { x.job.repairCycle = { phase: 'review', pendingFindingIds: ['main-integration-conflict'] } as any; }],
         ['draft PR', x => { x.pr.draft = true; }],
         ['unconfirmed board move', x => { x.job.boardUpdates = [{ status: 'uncertain' } as any]; }],
         ['running worker', x => { x.f.store.state.workLog = [{ id: 'w', requestId: x.job.id, status: 'running' } as any]; }],

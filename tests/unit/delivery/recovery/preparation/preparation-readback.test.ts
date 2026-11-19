@@ -1,4 +1,5 @@
 import * as processTools from '../../../../../server/workers/process';
+import {pinLegacyRoute} from '../../../../fixtures/legacy-route';
 import * as checkpoints from '../../../../../server/delivery/recovery/preparation/preparation-checkpoint';
 import {completedConflictDraftCandidate,reconcileCompletedConflictDraft,postConflictPreparationEvidence,routeReadyPostConflictPublication} from '../../../../../server/delivery/recovery/preparation/post-conflict-preparation';
 import {afterEach,expect,test,vi} from 'vitest';
@@ -26,6 +27,7 @@ const roots:string[]=[],stores:Store[]=[],processes:number[]=[];
 function liveProcess(){const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});child.unref();processes.push(child.pid!);return child.pid!;}
 afterEach(()=>{for(const pid of processes.splice(0))try{process.kill(-pid,'SIGKILL');}catch{}vi.restoreAllMocks();stores.splice(0).forEach(s=>s.close());roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
 function fixture(external=false){
+ pinLegacyRoute('cms-field-vocabulary'); // These jobs exercise the older model-performed conflict publication on purpose.
  const root=mkdtempSync(resolve(tmpdir(),'office-preparation-proof-'));roots.push(root);
  const store=new Store(':memory:',{...projectById('cms-field-vocabulary'),repo:resolve(root,'primary')},root);stores.push(store);store.state.coordination=coordination();store.state.paused=false;
  const engine=new Engine(store),head='a'.repeat(40),branch='codex/113-fixture',worktree=external?mkdtempSync(resolve(tmpdir(),'office-external-candidate-')):resolve(root,'candidate');if(external){roots.push(worktree);writeFileSync(resolve(worktree,'.git'),'gitdir: /private/fixture');}else mkdirSync(worktree);
