@@ -33,7 +33,8 @@ import { currentAssignment } from '../../workers/assignment-context';
 import { linkDraftIssue } from '../publication/link-draft-issue';
 import { readPublication } from '../publication/read-command';
 import { isDeepStrictEqual } from 'node:util';
-import { admitPRMetadata, METADATA_FINDING } from '../publication/metadata-admission';
+import { admitPRMetadata } from '../publication/metadata-admission';
+import { dispatchLeadAssessment } from './dispatch-lead-assessment';
 import { metadataAppliesToHead } from '../publication/metadata-context';
 import { acceptMetadataReview } from '../publication/metadata-review';
 import type { GitHubDelivery } from './github-delivery';
@@ -262,16 +263,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             await this.finishLeadReview(job, result);
             learn(); return;
         }
-        if (result.findings.some(f => f.id === METADATA_FINDING && f.status === 'open'))
-            throw new Error('Unadmitted reserved PR metadata finding requires reconciliation; no source or CI repair');
-        if (harnessDelivers(this.store, job) && !conflictOnlyAssessment(result) && ['blocked', 'failed'].includes(result.outcome)) {
-            job.status = 'watching';
-            if (await this.queueCIRepair(job)) return;
-            job.status = 'working';
-        }
-        if ((!conflictOnlyAssessment(result) || job.existingPR && !job.worktree && harnessDelivers(this.store, job)) && await this.queueSourceRepair(job, result, root)) { learn(); return; }
-        await this.finishLeadReview(job, result);
-        learn();
+        if (await dispatchLeadAssessment(this, job, result, root)) learn();
         return;
     }
     if (await this.queueSourceRepair(job, result, root)) { learn(); return; }
