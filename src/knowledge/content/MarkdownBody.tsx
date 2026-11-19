@@ -22,10 +22,13 @@ export function readableHref(href: string, baseUrl?: string): string | undefined
         return ['https:', 'http:'].includes(url.protocol) ? url.href : undefined;
     } catch { return; }
 }
-/** Source HTML and remote image loads are disabled; document links use their committed base. */
-export function MarkdownBody({ text, baseUrl }: { text: string; baseUrl?: string }) {
+/**
+ * Source HTML and remote image loads are disabled; document links use their committed base. Source HTML is
+ * left out of a document, or shown as the literal text it is where dropping it would lose what was written.
+ */
+export function MarkdownBody({ text, baseUrl, sourceHtml = 'omit' }: { text: string; baseUrl?: string; sourceHtml?: 'omit' | 'text' }) {
     return <div className={typography} data-knowledge-markdown>
-        <Markdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={url => readableHref(url, baseUrl) || ''} components={{
+        <Markdown remarkPlugins={[remarkGfm]} skipHtml={sourceHtml === 'omit'} urlTransform={url => readableHref(url, baseUrl) || ''} components={{
             h1: ({ children }) => <h3>{children}</h3>,
             h2: ({ children }) => <h4>{children}</h4>,
             h3: ({ children }) => <h5>{children}</h5>,
