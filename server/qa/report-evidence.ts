@@ -22,7 +22,9 @@ export function officeQAEvidenceGap(result: StageResult, expected: { key: string
     if (!qa.cases.length || new Set(qa.cases.map(c => c.id)).size !== qa.cases.length || qa.cases.some(c => c.status !== 'passed')) return 'QA has failing, blocked, untested or duplicate cases';
     const criteria = qaCriteria(expected.approach?.checks);
     if (!criteria.length || criteria.some(criterion => !qa.cases.some(c => c.kind === 'acceptance' && (qa.version === 2 ? 'criterionId' in c && c.criterionId === criterion.id : c.check === criterion.check)))) return 'QA must cover every saved required check';
-    if (qa.version === 2 && qa.cases.some(c => c.kind === 'acceptance' ? !('criterionId' in c) || !criteria.some(criterion => criterion.id === c.criterionId) : 'criterionId' in c && c.criterionId !== null)) return 'QA criterion references must match the saved acceptance baseline';
+    // Every saved check is covered above. An acceptance case with no reference is further coverage (a ticket criterion that is
+    // not a saved check); a reference must be one of the saved ones, and a regression case carries none.
+    if (qa.version === 2 && qa.cases.some(c => !('criterionId' in c) || c.criterionId !== null && (c.kind !== 'acceptance' || !criteria.some(criterion => criterion.id === c.criterionId)))) return 'QA criterion references must match the saved acceptance baseline';
     if (!qa.cases.some(c => c.kind === 'regression')) return 'Adjacent regression coverage is required';
     if (qa.cases.some(c => !c.evidenceIds.length || c.evidenceIds.some(id => !result.evidence.some(e => e.id === id && e.commit === expected.head && contained(e.path, root))))) return 'Each QA case needs saved current-head evidence';
     if (qa.validation === 'independent-checks' && !result.evidence.some(e => e.kind === 'checks' && e.commit === expected.head && contained(e.path, root))) return 'Saved focused check output is required';

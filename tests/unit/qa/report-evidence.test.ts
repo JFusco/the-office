@@ -44,6 +44,25 @@ test('v2 covers the saved requirement by stable reference while QA explains it i
     const f = current(fixture()); f.r.qa!.cases[0].check = 'Observed the required behavior through an independent check';
     f.save(); expect(f.gap()).toBe('');
 });
+test('v2 accepts further acceptance cases with no reference, beside the referenced case for every saved check', () => {
+    const f = current(fixture());
+    f.r.qa!.cases.push({ ...f.r.qa!.cases[0], id: 'ticket-criterion', check: 'A ticket criterion that is not a saved check', criterionId: null });
+    f.save(); expect(f.gap()).toBe('');
+    // They do not stand in for the referenced case, and they must pass like any other.
+    const g = current(fixture());
+    g.r.qa!.cases.push({ ...g.r.qa!.cases[0], id: 'ticket-criterion', criterionId: null }); g.r.qa!.cases[0].criterionId = null;
+    g.save(); expect(g.gap()).toBe('QA must cover every saved required check');
+    const h = current(fixture());
+    h.r.qa!.cases.push({ ...h.r.qa!.cases[0], id: 'ticket-criterion', criterionId: null, status: 'failed' });
+    h.save(); expect(h.gap()).toContain('failing');
+});
+test.each(['unknown', 'regression-as-acceptance', 'regression-unknown'] as const)('v2 refuses a reference that is not a saved check on an acceptance case: %s', kind => {
+    const f = current(fixture());
+    if (kind === 'unknown') f.r.qa!.cases.push({ ...f.r.qa!.cases[0], id: 'extra', criterionId: 'unassigned' });
+    if (kind === 'regression-as-acceptance') f.r.qa!.cases[1].criterionId = f.r.qa!.cases[0].criterionId;
+    if (kind === 'regression-unknown') f.r.qa!.cases[1].criterionId = 'unassigned';
+    f.save(); expect(f.gap()).toBe('QA criterion references must match the saved acceptance baseline');
+});
 test.each(['missing', 'unknown', 'changed-baseline', 'regression-as-acceptance'] as const)('v2 cannot lose coverage through %s', kind => {
     const f = current(fixture());
     if (kind === 'missing') f.r.qa!.cases[0].criterionId = null;

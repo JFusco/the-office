@@ -16,7 +16,7 @@ export interface OfficeQAReport {
     };
     cases: {
         id: string;
-        /** Required (nullable for regression) in v2; historical v1 is unchanged. */
+        /** Required in v2; null for a regression case and for an acceptance case that covers no saved check; historical v1 is unchanged. */
         criterionId?: string | null;
         check: string;
         kind: 'acceptance' | 'regression';
