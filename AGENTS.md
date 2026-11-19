@@ -105,7 +105,8 @@ src/
 
 ## Verification
 
-- `pnpm test` (unit, isolated stores) and `pnpm build` must pass before handing back.
+- `pnpm test` (unit, isolated stores) and `pnpm build` must pass, locally or on hosted
+  CI, before a change is merged.
 - Browser tests (`pnpm test:browser`) use the synthetic fixture server by default.
 - Office harness workers (delivery stages) commit on their owned branch only and never
   push, open a PR, merge or release; the harness publishes after review.
@@ -174,9 +175,13 @@ For repository changes that include delivery, complete this sequence:
    request names), and read the saved issue back before creating downstream
    artifacts.
 3. Create `codex/<issue-number>-<short-slug>` from that updated `main`.
-4. Implement only the issue scope and run `pnpm run verify:ci` (`pnpm build` and
-   `pnpm test`). Update `docs/office-process.md` in the same delivery when stage
-   order, ownership, recovery or publication boundaries change.
+4. Implement only the issue scope. Before pushing, run the type-check and the
+   test suites the change touches. Run the full `pnpm run verify:ci` (`pnpm build`
+   and `pnpm test`) locally when the machine can finish it in reasonable time;
+   otherwise hosted CI is the full gate, and the pull request says so. Never run
+   two gates at once on this machine. Update `docs/office-process.md` in the same
+   delivery when stage order, ownership, recovery or publication boundaries
+   change.
 5. Commit with a valid conventional message (`type(scope): subject`, lower-case
    scope, subject at most 50 characters, body lines at most 72), then push the
    issue branch with ordinary Git commands. Never push directly to `main`.
