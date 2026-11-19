@@ -327,6 +327,18 @@ metadata or blocked CI repair, or with any unsettled receipt, board move or effe
 (`server/delivery/recovery/undispatched-assessment.ts`,
 `server/delivery/recovery/redispatch-assessment.ts`).
 
+On a hands-off project a finding the independent review leaves open while passing is advisory. It
+stays advisory at the QA gate for the same head: QA cannot settle a reviewer's note for a later stage,
+so a finding the passed review of the current head raised and left open, and QA returns still open,
+does not fail the gate. A finding QA raises itself, one an earlier stage raised or a repair is still
+answering, and one from a failed review or a review of another head, still do
+(`server/delivery/findings/review-advisories.ts`). The gate records a refusal on the job with the
+human inputs QA ran on. A job blocked at validate by such a refusal, on unchanged inputs, whose saved
+QA result the gate now accepts is queued again at most once per running revision, and the saved
+result is accepted without another QA run once the candidate is read back as the checkout QA
+verified; the refused copy is kept in the job's history
+(`server/delivery/recovery/refused-qa-result.ts`, `server/delivery/recovery/reaccept-qa-result.ts`).
+
 For Jira/Azure work, a QA stage that stopped in setup (nothing tested, no paid run) is run again
 on resume instead of being reconstructed. A review stage whose worker returned its own verdict
 is likewise run again on resume, since a read-only review repeats nothing. So is plan, implement,

@@ -13,6 +13,7 @@ import { conflictOnlyAssessment } from '../repairs/conflict-repair';
 import { holdReason } from '../../office/project-holds';
 import { handsOff, harnessDelivers } from '../harness/scope';
 import { findingsBlock } from '../findings/advisory';
+import { withoutReviewAdvisories } from '../findings/review-advisories';
 import { needsDecision, park } from '../parking/park';
 import { repairDispositions, revisedRepair, retainRepairEvidence } from '../repairs/delivery-repairs';
 import { discoveryReviewSatisfied } from '../recovery/implementation/discovery-recovery';
@@ -86,8 +87,8 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         result.evidence.push({ id: crypto.randomUUID(), kind: 'review', summary: 'Saved independent candidate review', path, commit: job.head, environment: 'Office code review', url: '', observedAt: new Date().toISOString() });
     }
     if (job.stage === 'validate' && (context.officeQA || result.qa) && result.outcome === 'passed') {
-        const gap = officeQAEvidenceGap(result, { key: job.key, head: job.head, stage: 'github-validate', approach: job.approach }, root);
-        if (gap) { job.steps.push({ ...nativeProof, stage: job.stage, result }); throw new Error(gap); }
+        const gap = officeQAEvidenceGap(withoutReviewAdvisories(this.store, job, result), { key: job.key, head: job.head, stage: 'github-validate', approach: job.approach }, root);
+        if (gap) { job.steps.push({ ...nativeProof, stage: job.stage, result }); job.qaGateRefusal = { step: job.steps.length - 1, inputSha256, at: this.store.clock.now().toISOString() }; throw new Error(gap); }
     }
     if (result.approach) {
         const failedWorker = (this.store.state.workLog || []).filter(w => w.requestId === job.id).some(w => ['failed', 'interrupted', 'blocked'].includes(w.status) && !(this.store.state.workLog || []).some(later => later.requestId === job.id && later.stage === w.stage && later.startedAt > w.startedAt && later.status === 'completed'));
