@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from 'vitest';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { archiveOldReports, RETAINED_REPORTS } from '../../../server/it/report-retention';
 
 const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach(root => { try { chmodSync(resolve(root, 'archive'), 0o700); } catch { /* none */ } rmSync(root, { recursive: true, force: true }); }));
+afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const root = () => { const path = mkdtempSync(resolve(tmpdir(), 'office-reports-')); roots.push(path); return path; };
 const NOW = new Date('2026-11-19T12:00:00Z');
 const reports = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `r${index}`, at: new Date(Date.UTC(2026, 9, 28) + index * 3600000).toISOString(), status: 'monitoring', summary: `Report ${index}`, actions: [], followUps: [], notified: [], fingerprint: '' })) as any[];
@@ -33,11 +33,11 @@ test('nothing happens at or under the limit, and each later report archives exac
 
 test('when the archive cannot be written no report leaves state, and the next attempt archives them', () => {
     const data = root(), all = reports(RETAINED_REPORTS + 5);
-    mkdirSync(resolve(data, 'archive'));
-    chmodSync(resolve(data, 'archive'), 0o500);
+    // The archive folder's name is taken by a file, so nothing can be written under it.
+    writeFileSync(resolve(data, 'archive'), '');
     expect(archiveOldReports(data, all, NOW)).toBe(0);
     expect(all).toHaveLength(RETAINED_REPORTS + 5);
-    chmodSync(resolve(data, 'archive'), 0o700);
+    rmSync(resolve(data, 'archive'));
     expect(archiveOldReports(data, all, NOW)).toBe(5);
     expect(all).toHaveLength(RETAINED_REPORTS);
 });

@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from 'vitest';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { archiveOldTaskDetail } from '../../../server/time/ci-history-retention';
 
 const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach(root => { try { chmodSync(resolve(root, 'archive'), 0o700); } catch { /* none */ } rmSync(root, { recursive: true, force: true }); }));
+afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const root = () => { const path = mkdtempSync(resolve(tmpdir(), 'office-ci-')); roots.push(path); return path; };
 const NOW = new Date('2026-11-19T12:00:00Z'), daysAgo = (days: number) => new Date(NOW.getTime() - days * 86400000).toISOString();
 const stages = () => [{ id: 's', type: 'Stage', name: 'Build' }, { id: 'j', type: 'Job', name: 'Job' }, { id: 't1', type: 'Task', name: 'Restore' }, { id: 't2', type: 'Task', name: 'Test' }];
@@ -32,15 +32,22 @@ test('a build Azure still lists, a pull request\'s policy build, and one that ha
 
 test('when the archive cannot be written no build is trimmed, and the next refresh archives it', () => {
     const data = root(), s = state([build(1, daysAgo(30))]);
-    mkdirSync(resolve(data, 'archive'));
-    chmodSync(resolve(data, 'archive'), 0o500);
+    // The archive folder's name is taken by a file, so nothing can be written under it.
+    writeFileSync(resolve(data, 'archive'), '');
     expect(archiveOldTaskDetail(data, s, NOW)).toBe(0);
     expect(s.ciHistory[0].stages).toHaveLength(4);
-    chmodSync(resolve(data, 'archive'), 0o700);
+    rmSync(resolve(data, 'archive'));
     expect(archiveOldTaskDetail(data, s, NOW)).toBe(1);
     expect(s.ciHistory[0].stages).toHaveLength(2);
 });
 
 test('a project with no CI history is untouched', () => {
     expect(archiveOldTaskDetail(root(), { azure: { builds: [], prs: [] } } as any, NOW)).toBe(0);
+});
+
+test('a record with no stage list does not stop the refresh, and builds from two months are each archived to their own file', () => {
+    const data = root(), s = state([{ id: 9, finishedAt: daysAgo(30) } as any, build(1, '2026-10-20T10:00:00Z'), build(2, daysAgo(10))]);
+    expect(archiveOldTaskDetail(data, s, NOW)).toBe(2);
+    expect(readFileSync(resolve(data, 'archive', 'ci-builds-2026-10.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
+    expect(readFileSync(resolve(data, 'archive', 'ci-builds-2026-11.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
 });
