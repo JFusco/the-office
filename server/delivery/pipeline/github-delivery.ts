@@ -18,6 +18,7 @@ import { writerRestartInstruction } from '../attempts/restart-instruction';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { stopReason } from './stop-reason';
+import { redispatchSavedAssessment } from '../recovery/redispatch-assessment';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
 import { holdReason } from '../../office/project-holds';
@@ -202,6 +203,7 @@ export class GitHubDelivery {
                     this.store.emit('pr-review-waiting', `${job.key}: ${wait.detail}`, 'lead', job.key);
                     return;
                 }
+                if (await redispatchSavedAssessment(this, job, root)) return;
                 const saved = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
                 if ((job.reviewInputSha256 === deliveryInputSha256(this.store, job.key) || !job.reviewInputSha256 && !deliveryHumanInputs(this.store, job.key).length) && job.reviewContext?.issueUpdatedAt && job.reviewContext.prUpdatedAt && job.reviewContext.baseSha && job.reviewContext.issueUpdatedAt === issue.updated_at && job.reviewContext.step === job.steps.length - 1 && saved?.outcome === 'passed' && saved.prId === job.pr && !job.steps.some(s => hasUncertainEffects(s.stage, s.result)) && saved.evidence.length && !findingsBlock(this.store, saved.findings, f => f.status === 'open') && !hasUncertainEffects('lead-pr', saved)) {
                     const current = await this.verifyPR(job);

@@ -315,6 +315,18 @@ A hands-off job that stopped at the start of update-base because that move was r
 again once; the board move comes before any source work, so nothing is repeated
 (`server/delivery/recovery/parked-card-refusal.ts`).
 
+A hands-off job on an adopted pull request can also stop inside the harness after its conflict-only
+readiness assessment was accepted and recorded, before anything was written. Such a job is queued
+again at most once per running revision of the Office, because a refusal by the harness only ends
+differently when its code or the provider changed. Its stage then acts on the saved assessment
+without another review, after reading the pull request back as open, on the same head and still
+conflicting; when that read shows otherwise the ordinary review runs, and a read or guard that fails
+stops the job as any stage error does. Only the assessment the harness accepted, on inputs that have
+not changed and whose review was not already closed, qualifies. A job that is parked, held, awaiting a merge, claimed, under a
+metadata or blocked CI repair, or with any unsettled receipt, board move or effect is left alone
+(`server/delivery/recovery/undispatched-assessment.ts`,
+`server/delivery/recovery/redispatch-assessment.ts`).
+
 For Jira/Azure work, a QA stage that stopped in setup (nothing tested, no paid run) is run again
 on resume instead of being reconstructed. A review stage whose worker returned its own verdict
 is likewise run again on resume, since a read-only review repeats nothing. So is plan, implement,

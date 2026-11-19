@@ -255,6 +255,8 @@ export interface TicketJob {
     draftPromotionHead?: string;
     /** Set once when a stop on the harness's own parked pull request card was queued again (`server/delivery/recovery/parked-card-refusal.ts`). */
     parkedCardRequeuedAt?: string;
+    /** The last time a stop after an accepted conflict assessment was queued again, once per running revision (`server/delivery/recovery/undispatched-assessment.ts`). */
+    assessmentRedispatch?: { revision: string; step: number; at: string; dispatchedAt?: string };
     lastPRFingerprint?: string;
     reviewInputSha256?: string;
     steps: {
