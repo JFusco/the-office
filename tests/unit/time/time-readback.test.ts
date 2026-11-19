@@ -51,7 +51,7 @@ test('a write that never landed becomes terminal and one fresh write posts the t
     expect(x.l.entries[0].status).toBe('posted');
     expect(x.writes()).toBe(1);
 });
-test('a second miss is never resent automatically; it is reported once for Joe', async () => {
+test('a second miss in a row is never resent automatically; it is reported once for Joe', async () => {
     const x = uncertain();
     await x.readback(12);
     x.failWrites(true);x.setClock(13);
@@ -64,6 +64,26 @@ test('a second miss is never resent automatically; it is reported once for Joe',
     await x.readback(40);
     expect(events()).toBe(1);
     expect(x.writes()).toBe(1);
+});
+test('a miss after writes that verified is a new miss and gets its own resend', async () => {
+    const x = uncertain();
+    // An earlier write for this ticket never landed and was resent; later writes then verified.
+    const first = { ...x.l.publications![0], id: 'p0', status: 'not-landed', notLanded: { at: ATTEMPT, by: 'office', reason: 'earlier' }, createdAt: '2026-11-02T10:00:00.000Z' };
+    const verified = { ...x.l.publications![0], id: 'pv', status: 'verified', createdAt: '2026-11-02T12:00:00.000Z' };
+    x.l.publications = [first, verified, x.l.publications![0]] as any;
+    await x.readback(12);
+    expect(x.l.entries[0].status).toBe('pending');
+    expect(x.l.publications![2]).toMatchObject({ status: 'not-landed' });
+    x.setClock(13);
+    await new TimeLedger(x.store, x.execute).sync();
+    expect(x.l.entries[0].status).toBe('posted');
+    expect(x.writes()).toBe(1);
+});
+test('another ticket\'s miss does not use up this ticket\'s resend', async () => {
+    const x = uncertain();
+    x.l.publications = [{ ...x.l.publications![0], id: 'other', key: 'GH-1', status: 'not-landed', notLanded: { at: ATTEMPT, by: 'office', reason: 'other ticket' } }, x.l.publications![0]] as any;
+    await x.readback(12);
+    expect(x.l.entries[0].status).toBe('pending');
 });
 test('a board someone else changed, and Jira worklogs, stay with Joe', async () => {
     const edited = uncertain();edited.setBoard(1.5);
