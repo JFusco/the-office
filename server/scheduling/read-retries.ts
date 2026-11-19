@@ -5,7 +5,10 @@ import { z } from 'zod';
 import { PrerequisitesSchema } from '../delivery/pipeline/dependencies';
 import { ATTEMPT_DELAYS_MS } from '../delivery/attempts/attempt-backoff';
 import type { Store } from '../store/store';
-import type { ReadRetry } from '../../src/shared';
+import type { ReadRetry, TicketJob } from '../../src/shared';
+const MAX_READ_RETRIES = 3;
+/** How long a retryable stop may wait for the planner's timer before it is shown to a person: the slower tick is about a minute. */
+export const RETRY_PLAN_GRACE_MS = 120000;
 export const IntakeResult = z.object({ outcome: z.enum(['ready', 'owned', 'blocked', 'held']), ownershipChecked: z.boolean(), owner: z.string(), summary: z.string(), evidence: z.array(z.string()).min(1), prerequisites: PrerequisitesSchema, existingWork: z.object({ projectId: z.string(), kind: z.enum(['pr', 'native-session', 'native-run', 'maintenance']), id: z.string(), evidence: z.string() }).strict().nullable() }).strict();
 /** A read-only worker cut off by the model's output limit produced no effects; re-running the read is safe. */
 export function incompleteReadOutput(text: string) {
@@ -13,6 +16,24 @@ export function incompleteReadOutput(text: string) {
 }
 export function temporaryReadFailure(text: string) {
     return !/(?:hold|backlog|prerequisite|permission|denied|forbidden|unauthorized|oauth|token|ownership|active owner|uncertain|mutation|must be reconciled|external effects)/i.test(text) && /(?:timed? out|timeout|read stopped producing output|ECONNRESET|ECONNREFUSED|EAI_AGAIN|connection (?:reset|closed|failed)|error connecting|HTTP 50[234]|rate.limit|(?:Error: )?codex exited 1: Selected model is at capacity\. Please try a different model\.)/i.test(text);
+}
+/** A job at a read-only review stage with nothing written or unsettled: the only kind whose stop is retried here. */
+export function readOnlyStageJob(job: Pick<TicketJob, 'stage' | 'mergeAttempt' | 'steps'>): boolean {
+    return ['review', 'lead-pr'].includes(job.stage) && !job.mergeAttempt && !job.steps.some(s => s.result.receipts.some(r => r.uncertain || !r.verified && !/^(?:get|read|query|inspect)\b/i.test(r.action)));
+}
+/**
+ * True while the Office will retry this job's stop by itself: a temporary read failure at a read-only
+ * review stage, with retries left, whether or not the next one has been scheduled yet. The retries are
+ * planned on a timer, so for a moment after such a stop none is recorded; the job is not a person's to
+ * act on in that moment either. That moment is bounded: a stop with no retry scheduled within the grace
+ * period was not picked up by the planner (it is not running, or it skipped the job) and is a person's.
+ */
+export function readRetryPending(job: Pick<TicketJob, 'status' | 'detail' | 'stage' | 'mergeAttempt' | 'steps' | 'retry' | 'stop'>, now: Date): boolean {
+    if (!['blocked', 'interrupted'].includes(job.status) || !readOnlyStageJob(job) || job.retry?.exhausted) return false;
+    if (job.retry?.nextAt) return true;
+    const stopped = Date.parse(job.stop?.at || ''), age = now.getTime() - stopped;
+    if (!Number.isFinite(stopped) || age < 0 || age > RETRY_PLAN_GRACE_MS) return false;
+    return (job.retry?.attempts ?? 0) < MAX_READ_RETRIES && (temporaryReadFailure(job.detail) || incompleteReadOutput(job.detail));
 }
 export function planReadRetry(item: {
     status: string;
@@ -25,7 +46,7 @@ export function planReadRetry(item: {
     if (r.exhausted)
         return false;
     if (!r.nextAt) {
-        if (r.attempts >= 3) {
+        if (r.attempts >= MAX_READ_RETRIES) {
             r.exhausted = true;
             return true;
         }
@@ -76,7 +97,7 @@ export function reconcileReadRetries(store: Store, now = new Date()) {
         }
     }
     for (const j of c.jobs || []) {
-        if (!['review', 'lead-pr'].includes(j.stage) || j.mergeAttempt || j.steps.some(s => s.result.receipts.some(r => r.uncertain || !r.verified && !/^(?:get|read|query|inspect)\b/i.test(r.action))) || store.state.workLog?.some(w => w.requestId === j.id && w.status === 'running'))
+        if (!readOnlyStageJob(j) || store.state.workLog?.some(w => w.requestId === j.id && w.status === 'running'))
             continue;
         if (planReadRetry(j, now)) {
             changed = true;
