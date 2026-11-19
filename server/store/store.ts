@@ -1,6 +1,7 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import { restoreInPlace } from './restore-state';
 import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DATA } from '../office/config';
 import { sanitize, sanitizeObject } from '../office/security';
@@ -45,7 +46,8 @@ export class Store {
     private statement: (sql: string) => StatementSync;
     constructor(path = `${DATA}/office.sqlite`, public project: OfficeProject = projectById(), public dataRoot = projectData(project), public clock: Clock = systemClock) {
         mkdirSync(dataRoot, { recursive: true, mode: 0o700 });
-        mkdirSync(DATA, { recursive: true, mode: 0o700 });
+        // The database's own folder, never the global DATA: a Store writes only under the paths it was given.
+        mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
         this.db = new DatabaseSync(path);
         applyConnectionSettings(this.db);
         initializeStoreSchema(this.db);
