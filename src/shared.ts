@@ -260,7 +260,7 @@ export interface TicketJob {
     /** Set when the QA gate refused a passing QA result: the step that holds it and the human inputs QA ran on. */
     qaGateRefusal?: { step: number; inputSha256: string; at: string };
     /** The last time a QA result the gate refused and now accepts was queued again, once per running revision (`server/delivery/recovery/refused-qa-result.ts`). */
-    qaReaccept?: { revision: string; step: number; at: string; usedAt?: string };
+    qaReaccept?: { revision: string; step: number; at: string; usedAt?: string; declined?: string };
     lastPRFingerprint?: string;
     reviewInputSha256?: string;
     steps: {
