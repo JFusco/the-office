@@ -27,17 +27,22 @@ function refusedByGate(store: Store, job: TicketJob): boolean {
 }
 
 /**
- * The passing QA result the gate refused and would accept now, or undefined. It must be the job's last
- * step, for the current head, refused by the gate on inputs that have not changed, with its saved report
- * and evidence still in place; the gate is run again on it exactly as acceptance runs it.
+ * Why the job's saved QA result cannot be accepted now, or '' when it can. It must be the job's last
+ * step, a pass for the current head, refused by the gate on inputs that have not changed, with its saved
+ * report and evidence still in place; the gate is run again on it exactly as acceptance runs it.
  */
-export function acceptableRefusedQA(store: Store, job: TicketJob): StageResult | undefined {
+export function refusedQADecline(store: Store, job: TicketJob): string {
     const last = job.steps.at(-1), result = last?.result;
-    if (last?.stage !== 'validate' || !result?.qa || result.outcome !== 'passed' || result.commit !== job.head) return undefined;
-    if (job.implementationContinuation || job.implementationRecovery || job.discoveryRecovery || job.stoppedBaseUpdate) return undefined;
-    const root = resolve(store.dataRoot, 'ticket-work', job.id);
-    if (!refusedByGate(store, job)) return undefined;
-    return officeQAEvidenceGap(withoutReviewAdvisories(store, job, result), { key: job.key, head: job.head, stage: 'github-validate', approach: job.approach }, root) ? undefined : result;
+    if (last?.stage !== 'validate' || !result?.qa || result.outcome !== 'passed' || result.commit !== job.head) return 'the last step is not a passing QA result for the current head';
+    if (job.implementationContinuation || job.implementationRecovery || job.discoveryRecovery || job.stoppedBaseUpdate) return 'the job is under a continuation or recovery with its own gates';
+    if (!refusedByGate(store, job)) return job.qaGateRefusal?.step === job.steps.length - 1 ? 'the human inputs QA ran on have changed' : 'the stop was not the QA gate refusing this result';
+    const gap = officeQAEvidenceGap(withoutReviewAdvisories(store, job, result), { key: job.key, head: job.head, stage: 'github-validate', approach: job.approach }, resolve(store.dataRoot, 'ticket-work', job.id));
+    return gap ? `the QA gate still refuses it: ${gap}` : '';
+}
+
+/** The passing QA result the gate refused and would accept now, or undefined (`refusedQADecline`). */
+export function acceptableRefusedQA(store: Store, job: TicketJob): StageResult | undefined {
+    return refusedQADecline(store, job) ? undefined : job.steps.at(-1)!.result;
 }
 
 /**
