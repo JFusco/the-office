@@ -253,6 +253,8 @@ export interface TicketJob {
     mergeCommit?: string;
     /** The head for which a maintenance-verified draft was last sent back to the prepare stage to be marked ready; once per head. */
     draftPromotionHead?: string;
+    /** Set once when a stop on the harness's own parked pull request card was queued again (`server/delivery/recovery/parked-card-refusal.ts`). */
+    parkedCardRequeuedAt?: string;
     lastPRFingerprint?: string;
     reviewInputSha256?: string;
     steps: {

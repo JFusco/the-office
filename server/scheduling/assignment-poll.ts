@@ -8,6 +8,7 @@ import { syncOutbox } from '../conversations/outbox';
 import { admitReadyCards } from '../delivery/intake/admission';
 import { settleStoppedReviews } from '../delivery/intake/settle-stopped-reviews';
 import { resumeParked } from '../delivery/parking/resume';
+import { requeueParkedCardRefusals } from '../delivery/recovery/parked-card-refusal';
 import { retireBacklogged } from '../delivery/parking/retire-backlogged';
 import { retryCandidateCleanup } from '../delivery/candidate/retry-candidate-cleanup';
 import { adoptDependabot } from '../delivery/intake/dependabot/adopt';
@@ -121,6 +122,7 @@ export async function poll(this: Coordinator, now = new Date()) {
             if (handsOff(this.store)) {
                 await unparkReleasedWaits(this.store, this.execute, this.state.jobs!, this.pickup, now);
                 resumeParked(this.store, this.state.jobs!, assigned, this.pickup, this.dependencyStores(), now);
+                requeueParkedCardRefusals(this.store, this.state.jobs!);
                 await retireBacklogged(this.store, this.execute, this.state.jobs!, assigned);
                 await retryCandidateCleanup(this.store, this.execute, this.state.jobs!);
                 admitReadyCards(this, delivery, assigned, now);

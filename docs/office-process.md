@@ -308,6 +308,13 @@ recovery record, so it is never restarted this way. Once a job has been restarte
 stopped-base readback no longer applies to it: a run the harness then declines, or a job that
 uses up its three restarts, stays blocked for a person. Jira/Azure work is unchanged.
 
+Parking moves the issue card and the pull request's card to Block, and a person releases the park by
+moving the issue card alone. The pull request's card is then the harness's to move, when its own
+verified write to Block is the last thing it did to that card (`server/delivery/board/harness-parked-card.ts`).
+A hands-off job that stopped at the start of update-base because that move was refused is queued
+again once; the board move comes before any source work, so nothing is repeated
+(`server/delivery/recovery/parked-card-refusal.ts`).
+
 For Jira/Azure work, a QA stage that stopped in setup (nothing tested, no paid run) is run again
 on resume instead of being reconstructed. A review stage whose worker returned its own verdict
 is likewise run again on resume, since a read-only review repeats nothing. So is plan, implement,

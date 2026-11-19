@@ -278,6 +278,8 @@ Dependabot, Renovate (pin-courier), and canonical wiki automation PRs use the ex
 
 An explicit **Start** also authorizes a new issue's first Backlog → In progress transition. That permission is bound to the admitted job and ends after its first board transition or source work. Automatic pickup cannot use it; Block, Done and a later human return to Backlog remain protected.
 
+Parking moves the issue card and the pull request's card to Block. A person releases the park by moving the issue card back; the harness then moves the pull request's card it parked, when its own verified write to Block is the last thing it did to that card; finding a card already in Block is not a move. A job that stopped at the start of update-base on that refusal is queued again once (`server/delivery/recovery/parked-card-refusal.ts`). An issue card in Block is never moved by the harness.
+
 Native Codex Slack workers disable unused desktop/browser tools per child while retaining connected Slack tools. This does not change saved settings, writer uncertainty, process-group settlement or independent message verification. Original failures remain historical evidence.
 
 ## Office QA
