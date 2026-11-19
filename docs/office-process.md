@@ -480,7 +480,13 @@ no automatic backfill or resend. Pauses stop new work and retain resources until
 termination is confirmed; drains let already-claimed work settle. UI timers do
 not rewrite actual time or provider usage. Publication and corrections retain
 their existing Effects/read-back rules, including the documented absolute-total
-hours exception; that exception is not a general resend policy.
+hours exception; that exception is not a general resend policy. A GitHub hours
+sync that stops before it writes anything has sent nothing: with no write
+outstanding for the ticket, that day is not an uncertain write. It is returned to
+pending and the current total is written with read-back, with growing pauses from
+five minutes up to six hours and no last try; it stays visible until it posts, and
+a board changed outside the Office is still never overwritten. A reconcile asked
+for such a day does the same at once (`server/time/unsent-time.ts`).
 
 Jira worklogs (CEC time) are published through Effects in `server/time/jira-worklog-effect.ts`.
 Each attempt gets a fresh ledger publication and its own Effect

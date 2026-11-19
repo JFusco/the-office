@@ -41,7 +41,7 @@ export function actionSummary(id: string) {
     if (id.startsWith('ticket-job:'))
         return 'Ask Morgan to recheck this delivery blocker. No merge approval is being requested.';
     if (id.startsWith('time:'))
-        return 'Confirm the recorded hours before another time update.';
+        return 'If the note says nothing was sent, the Office tries again on its own. Otherwise confirm the recorded hours before another time update.';
     if (id.startsWith('merge-notice:'))
         return 'Resolve the Slack recipient or delivery problem.';
     if (id.startsWith('message:'))

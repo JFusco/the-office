@@ -4,7 +4,8 @@ import { command } from '../workers/process';
 const syncing = new WeakSet<Store>();
 const FIELD = 'Time Spent (Hours)';
 import { timeLedger } from './time-accounting';
-import { publishableEntry } from './publishable';
+import { publishableEntry, settlementPending } from './publishable';
+import { clearUnsent, markUnsent, unsentDay } from './unsent-time';
 import { boardItem, githubGraphql, numberField, numberValue, readNumber } from './board-number-field';
 export { timeLedger, captureTime } from './time-accounting';
 export class TimeLedger {
@@ -46,7 +47,8 @@ export class TimeLedger {
             const item = await boardItem(graphql, projectId, Number(entry.key.slice(3)), this.store.project.repository);
             const current = numberValue(item, fieldId);
             const baselines = ledger.baselines ??= {}, saved = baselines[entry.key];
-            if (reconcileKey) {
+            // A reconcile asked for a day with no write outstanding has nothing to read back: it writes the current total, as a retry would.
+            if (reconcileKey && !unsentDay(ledger, entry)) {
                 const publication = ledger.publications?.filter(publication => publication.key === entry.key && publication.status === 'uncertain').at(-1);
                 if (!publication || publication.itemId !== item.id || publication.fieldId !== fieldId)
                     throw new Error('Frozen publication identity is missing; legacy uncertainty requires explicit reconciliation');
@@ -56,6 +58,7 @@ export class TimeLedger {
                     saved.lastWritten = publication.intendedValue;
                 publication.status = 'verified';
                 entry.status = 'posted';
+                clearUnsent(entry);
                 entry.url = config.url;
                 entry.detail = `Exact attempted board value ${publication.intendedValue}h verified by read-back; no write repeated.`;
                 this.store.emit('time-reconciled', entry.detail, 'pm', entry.key);
@@ -82,6 +85,7 @@ export class TimeLedger {
             publication.status = 'verified';
             baseline.lastWritten = hours;
             entry.status = 'posted';
+            clearUnsent(entry);
             entry.url = config.url;
             entry.detail = `${seconds}s of measured Office work attributed to Joe; board total ${hours}h. Baseline ${baseline.baseline}h preserved.`;
             this.store.emit('time-posted', `${entry.key}: ${hours} hours verified on the project board.`, 'pm', entry.key);
@@ -93,7 +97,9 @@ export class TimeLedger {
                     publication.status = 'uncertain';
             }
             entry.status = 'uncertain';
-            entry.detail = `Time sync needs read-back; no automatic retry: ${String(error)}`;
+            // Nothing was sent when the sync stopped before the write and no earlier write is unsettled: that day is tried again, not read back.
+            if (attempted || settlementPending(ledger, entry.key)) entry.detail = `Time sync needs read-back; no automatic retry: ${String(error)}`;
+            else markUnsent(entry, error, this.store.clock.now());
         }
         finally {
             this.store.save();
