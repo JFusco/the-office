@@ -5,6 +5,7 @@ import { checkpointSuperseded } from '../maintenance/superseded';
 import { checkpointHasMaintenanceAlert, maintenanceNeedsHumanFollowup } from '../maintenance/follow-up-alerts';
 import { parkedProviderWait, readinessNeedsFollowup, readinessWait } from '../../src/work/work-summary';
 import { holdReason, topLevelHold } from '../office/project-holds';
+import { readRetryPending } from '../scheduling/read-retries';
 import { knowledgeOutbox } from '../knowledge/knowledge-outbox';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
 import { ctoInputRecovered } from './cto-input-resolution';
@@ -95,7 +96,8 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         if (parkedProviderWait(j)) continue;
         if (j.status === 'blocked' && j.parked?.published && j.detail.startsWith('Decision needed'))
             item(`ticket-job:${j.id}`, `${j.key} needs a decision on the board`, `${j.parked.reason}\nMove the card back to Ready to resume ${j.parked.stage}.`, 'pm', j.key, j.prUrl);
-        else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt)
+        // A stop the Office retries by itself is not Joe's, from the moment it happens; retries are not planned while paused.
+        else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt && !(readRetryPending(j, at) && !state.paused))
             item(`ticket-job:${j.id}`, `Read back ${j.key} delivery`, j.detail, 'pm', j.key, j.prUrl);
     }
     for (const j of state.coordination?.jobs || [])

@@ -181,6 +181,16 @@ A pull request Joe merges himself settles its Office handoff once provider reads
 
 Stage capability records distinguish verified reader profiles from retained native Jira, QA, Brain, and provider workflows. Native stages remain in place until their restricted adapter passes capability parity. The command registry validates explicit check definitions and scoped subprocesses. It is available for adapter cutovers; retained native implementation stages still use their native command tools.
 
+### History kept out of live state
+
+Every save writes a project's whole state, so history nothing reads is moved beside the store instead of
+staying in it. Ellis's reports beyond the latest 50, and the task-level timing of builds that finished at
+least seven days ago (stage and job timing stays), are appended to monthly files under the project's data
+folder: `archive/it-reports-YYYY-MM.jsonl` and `archive/ci-builds-YYYY-MM.jsonl`, one JSON record per
+line. A record leaves state only after its archive write is confirmed, so a crash can leave a record in
+both places and never in neither (`server/store/history-archive.ts`, `server/it/report-retention.ts`,
+`server/time/ci-history-retention.ts`).
+
 ## Time and daily leadership
 
 Visible running worker and build timers update every second using a shared browser clock. Ordered snapshots prevent delayed HTTP/SSE responses from restoring obsolete running states. Timers freeze when evidence expires, the page is hidden, or the connection drops, and reanchor only after fresh accepted data. Screen estimates never change recorded or published effort.

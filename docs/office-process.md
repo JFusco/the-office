@@ -68,6 +68,13 @@ and content qualification allow routine Dependabot, Renovate and canonical wiki
 PRs to use current-head provider checks and repository rules without an added
 model review or local QA cycle.
 
+When the Jira intake source is the configured project list, the harness reads it itself and no
+model runs for the mailbox check. TWG marks a further page with a cursor and the last page with
+nothing, so the list is read in key order, each page asking for keys after the last one, until a
+page comes back empty; a read that does not advance, repeats a key, or returns a ticket outside the
+list is refused whole. The tickets are delivered in the list's own pickup order, highest priority
+first (`server/cec/intake-enumeration.ts`). A board is still enumerated by Morgan.
+
 An assignment review that stopped is closed as history, with no model run, once a complete
 assignment read shows its ticket is no longer assigned or no longer open. A review of a ticket that
 is still assigned keeps its status, so a blocked review still requires its read-back before any new
@@ -261,7 +268,12 @@ reviewable. A draft PR and running current-head checks wait without a model run,
 review queues once when the PR is ready and its checks finish. A conflict on a head the team
 already reviewed is refreshed by the harness (Alex merges the current target into the same
 branch) without Sam assessing the conflict first; a conflict on an unreviewed head still goes
-to Sam. The review is told who merges on the project: the Office's project policy and its
+to Sam. An earlier repair that has finished (no finding still pending) does not change this:
+a later conflict on the same pull request is refreshed the same way. A conflict repair, by
+either route, leaves a hands-off job on harness delivery: the harness publishes the repaired
+head, Sam reviews it and the guarded merge follows. Only the records of a real legacy
+recovery keep a job on the older model-performed contracts, including the conflict step an
+initial draft conflict recovery wrote for the worker it adopted. The review is told who merges on the project: the Office's project policy and its
 merge switch decide that, not a repository document, so a line in a repository's `AGENTS.md` about
 agents stopping before a merge is not a blocker (`server/delivery/readiness/merge-authority-note.ts`). On a
 hands-off project the review also gives any acceptance the repository reserves for a maintainer

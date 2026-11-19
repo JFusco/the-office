@@ -1,4 +1,5 @@
 import { jiraBinding } from '../../office/project-bindings';
+import { READABLE_REPLY } from './readable-reply';
 import type { Store } from '../../store/store';
 import { ticketForWorker } from '../../cec/superseded-receipts';
 import { twgConnection } from '../../cec/twg-connection';
@@ -31,7 +32,7 @@ GOAL EVIDENCE: Assess each requested goal against its own canonical project’s 
 OFFICE READ-BACK: ${JSON.stringify(boundedCTOContext(ctoContext))}
 CURRENT MESSAGE (Joe's request): ${JSON.stringify(message.body)}
 ${brief ? `HANDOFF CONTEXT: ${JSON.stringify(brief)}` : ''}
-Return a concise reply, goalChanges, notifyRoles, handoffProject, question and the other required schema fields.`;
+${message.from === 'human' ? `${READABLE_REPLY}\n` : ''}Return a concise reply, goalChanges, notifyRoles, handoffProject, question and the other required schema fields.`;
 }
 export function cecChatPrompt(store: Store, role: Role, message: TeamMessage, brief: string, ticket: Ticket | null | undefined, history: TeamMessage[]) {
     // A project without a Jira/Azure binding keeps the text this prompt always had.

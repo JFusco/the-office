@@ -24,12 +24,22 @@ export function dueReadback(store: Store, now: Date): Readback | null {
 }
 
 /**
+ * True when an earlier write for the same key was already read back as never landed and no write for that
+ * key has been verified since: this miss is the second in a row. A verified write in between shows the
+ * board is taking writes again, so a later miss is a new one and gets its own single resend.
+ */
+function missedSinceVerified(publications: TimePublication[], publication: TimePublication): boolean {
+    const earlier = publications.slice(0, publications.indexOf(publication)).filter(p => p.key === publication.key);
+    const verified = earlier.map(p => p.status).lastIndexOf('verified');
+    return earlier.slice(verified + 1).some(p => (p as Readback).notLanded?.by === 'office');
+}
+/**
  * Reads an uncertain GitHub hours write back. The board field holds an absolute total, so one fresh
  * write after a confirmed miss cannot double-count:
  * - the board shows the attempted value: verified, no write (the existing reconcile path);
  * - it still shows the value from before the attempt once the write has settled: recorded as not
- *   landed, and the entry returns to pending for one fresh write with read-back. Only once per key:
- *   a second miss stays with Joe;
+ *   landed, and the entry returns to pending for one fresh write with read-back. Once per miss: a
+ *   second miss in a row for the key, with no verified write between them, stays with Joe;
  * - anything else (someone edited the board, the card left it): stays uncertain for Joe, said once.
  */
 export async function readBackTime(store: Store, publicationId: string, execute: typeof command = command): Promise<void> {
@@ -55,8 +65,8 @@ export async function readBackTime(store: Store, publicationId: string, execute:
         return note(`Board hours read ${current}h, neither the attempted ${publication.intendedValue}h nor the earlier ${publication.previousValue}h; someone else changed them. Reconcile by hand.`);
     if (now.getTime() - Date.parse(publication.createdAt) < SETTLE_MS)
         return;
-    if (timeLedger(store).publications!.some(p => p.key === publication.key && (p as Readback).notLanded?.by === 'office'))
-        return note(`A second hours write for ${publication.key} never landed (board still ${current}h); the Office resends only once. Reconcile by hand.`);
+    if (missedSinceVerified(timeLedger(store).publications!, publication))
+        return note(`A second hours write in a row for ${publication.key} never landed (board still ${current}h); the Office resends only once. Reconcile by hand.`);
     Object.assign(publication, { status: 'not-landed', notLanded: { at: now.toISOString(), by: 'office', reason: `Board read back ${current}h, the value before the attempt, ${Math.round((now.getTime() - Date.parse(publication.createdAt)) / 60000)} minutes after it.` } });
     entry.status = 'pending';
     entry.detail = `The earlier hours write never landed (board still ${current}h); one fresh write with read-back is queued.`;
