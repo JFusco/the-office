@@ -68,6 +68,12 @@ and content qualification allow routine Dependabot, Renovate and canonical wiki
 PRs to use current-head provider checks and repository rules without an added
 model review or local QA cycle.
 
+When the Jira intake source is the configured project list, the harness reads it itself and no
+model runs for the mailbox check. TWG marks a further page with a cursor and the last page with
+nothing, so the list is read in key order, each page asking for keys after the last one, until a
+page comes back empty; a read that does not advance, repeats a key, or returns a ticket outside the
+list is refused whole (`server/cec/intake-enumeration.ts`). A board is still enumerated by Morgan.
+
 An assignment review that stopped is closed as history, with no model run, once a complete
 assignment read shows its ticket is no longer assigned or no longer open. A review of a ticket that
 is still assigned keeps its status, so a blocked review still requires its read-back before any new

@@ -1,6 +1,7 @@
 import { jiraBinding } from '../office/project-bindings';
 import { randomUUID } from 'node:crypto';
 import { ingest } from './workflow';
+import { enumerateIntakeList } from './intake-enumeration';
 import { type Ticket } from '../../src/shared';
 import type { Engine } from '../scheduling/engine';
 
@@ -47,9 +48,11 @@ export async function checkMail(this: Engine, scheduled = false) {
     this.store.state.intake.error = '';
     this.store.emit('mail-check', `PM is checking the ${jiraBinding(this.store.project).projectKey} mailbox`, 'pm');
     try {
-        const result = await this.agents.intake();
-        if (!result.complete)
-            throw new Error(result.blocker || 'Incomplete board pagination');
+        // The configured project list is read by the harness itself; only a board is still enumerated by a model.
+        const listed = await enumerateIntakeList(this.jira.execute, jiraBinding(this.store.project));
+        const result = listed ? { tickets: listed } : await this.agents.intake();
+        if (!listed && !(result as { complete?: boolean }).complete)
+            throw new Error((result as { blocker?: string }).blocker || 'Incomplete board pagination');
         ingest(this.store.project, this.store.state, result.tickets as Ticket[]);
         this.store.state.intake = { ...this.store.state.intake, status: 'idle', lastChecked: new Date().toISOString(), error: '' };
         this.store.emit('mail-delivered', result.tickets.length ? `${result.tickets.length} eligible ticket${result.tickets.length === 1 ? '' : 's'} delivered to the PM mailbox.` : `No new tickets. Your ${jiraBinding(this.store.project).projectKey} backlog has been checked.`, 'pm');
