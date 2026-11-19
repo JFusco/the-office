@@ -248,7 +248,11 @@ already reviewed is refreshed by the harness (Alex merges the current target int
 branch) without Sam assessing the conflict first; a conflict on an unreviewed head still goes
 to Sam. The review is told who merges on the project: the Office's project policy and its
 merge switch decide that, not a repository document, so a line in a repository's `AGENTS.md` about
-agents stopping before a merge is not a blocker (`server/delivery/readiness/merge-authority-note.ts`).
+agents stopping before a merge is not a blocker (`server/delivery/readiness/merge-authority-note.ts`). On a
+hands-off project the review also gives any acceptance the repository reserves for a maintainer
+before merge, such as of a reviewed source observation, on the cited evidence; a configured hold or
+a required approval on the pull request still binds
+(`server/delivery/readiness/delegated-acceptance-note.ts`).
 
 On a hands-off project the harness marks a maintenance proposal's draft pull request ready itself.
 A maintenance run publishes its draft only after the review and verification its approach selected
