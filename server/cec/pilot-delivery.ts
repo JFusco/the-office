@@ -26,7 +26,7 @@ import { continueImplementation } from './implementation-continuation/continue';
 import { candidateBranchMoved } from './candidate-branch-moved';
 import { draftHeadMovedForward } from './draft-pr-moved-head';
 import { movedHeadUnconfirmed, recordConfirmedHead, routeConfirmedHead } from './confirm-moved-head';
-import { endChangeScope } from './change-scope';
+import { endChangeScope, scopeOutgrown } from './change-scope';
 import { resumeMovedHead } from './resume-moved-head';
 import { parkingUnconfirmed } from './parking/park-ticket';
 import { reconcileRejectedParking } from './parking/rejected-transition';
@@ -274,6 +274,9 @@ export async function resume(this: Engine, key: string, background = true) {
         }
         const reconciled = t.stage;
         recordConfirmedHead(t, reconciled, observed);
+        // A reconstructed repair states no scope: one that changed a scoped change returns it to the ticket's approach.
+        if (await scopeOutgrown(this.jira.execute, t, reconciled, observed) && endChangeScope(t, reconciled, this.store.clock.now().toISOString()))
+            this.store.emit('change-scope-ended', `${key}: the scoped change was changed again without a new scope; the ticket's own approach applies again.`, 'pm', key);
         advance(t, reconciled, observed);
         routeConfirmedHead(t);
         if (reconciled === 'publish' && endChangeScope(t, reconciled, this.store.clock.now().toISOString())) this.store.emit('change-scope-ended', `${key}: the scoped change is published; the ticket's own approach applies again.`, 'pm', key);

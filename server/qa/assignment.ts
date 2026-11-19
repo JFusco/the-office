@@ -1,4 +1,5 @@
 import { qaCriteria } from './criteria';
+import { LATER_STAGE_GATES } from './later-stage-gates';
 import { BROWSER_ATTACH_RULE } from './browser-attach';
 import { resolve } from 'node:path';
 import type { Stage, Ticket, WorkApproach } from '../../src/shared';
@@ -22,6 +23,7 @@ PHASE 1 — SETUP: Verify the candidate and tools/resources needed for the selec
 ${BROWSER_ATTACH_RULE}
 If human sign-in is necessary, open and SHOW a visible named browser window at the exact URL first. Tell Joe its application, title, URL and sign-in button. Keep its recorded owned resources available while waiting; do not stop them and then ask Joe to find them. Return outcome=blocked, qa.setup.status=blocked, a concrete owner and next action, and untested cases. Access/setup is not a product failure or passed QA. Never change credentials, roles, provider registration or auth flags.
 PHASE 2 — TEST: When setup is ready, run each applicable acceptance case and adjacent regressions using the saved route. Browser cases require actual supported browser interaction, screenshots and relevant console/network observations. Code/API checks need actual saved output. Retest every prior finding independently on the current head. Do not use mocks as live acceptance, repeat unknown mutations or hide provider usage. Keep paidRuns accurate (null if unknown). Existing scope and provider authority remain unchanged.
+${LATER_STAGE_GATES}
 PHASE 3 — REPORT: Return qa (version=2, ticket=${key}, commit=${head}, stage=${stage}, validation=${officeValidation(approach)}), setup, cases, nextOwner and nextAction in the strict result. For EACH saved required check include an acceptance case with its supplied criterionId. cases[].check may use your own clear wording without changing the requirement; regression cases use criterionId=null. Never invent an ID or omit a requirement; include at least one adjacent regression case. Each case needs expected/observed, passed|failed|blocked|not-tested and actual evidenceIds from result.evidence. Explain every untested case. For setup blocked, report all work still untested. No invented coverage. Return qaRunDir=${directory}; save evidence only inside the assignment artifact root. Office saves the full report; do not overwrite old reports or manufacture QA Team artifacts. Return qa=null only for a reroute before execution. A passed result requires ready setup, all cases passed, current-head evidence and no unresolved findings/effects. Failed means an observed product/check failure; blocked means setup, access or an unknown result. Your completion is not ticket closure, merge or staging acceptance. No external publication; the Office owns comments and transitions.`;
 }
 

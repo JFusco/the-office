@@ -212,13 +212,27 @@ and the scope and can widen it through a route change before executing; nothing 
 states replaces a scope in force. A retest of a scoped change owes a disposition for findings not
 yet verified and for those the repair was sent to fix. A stated approach that raises review or
 validation above the ticket's is a lasting decision under the ticket-wide rule, and a scope that
-cannot be shown to sit on the verified candidate is ignored. The scope ends when the change is published,
-or when it has to come back for another repair; the ticket's own approach then applies again and the
-return is recorded as a decision. A ticket whose review once failed keeps at least a focused review
+cannot be shown to sit on the verified candidate is ignored. A scope describes one change, from the
+verified commit to the current head, and holds while that change is the same: a later repair that
+commits nothing keeps it (git must show the worktree still on that commit), and one that changes the
+commit keeps a scope only by stating one for the whole change; a restated scope keeps review and
+validation at least at the scope in force. The scope ends when the change is published, when a
+repair changes it again without a new scope, or when its repair attempts are exhausted and a revised
+approach is assessed; the ticket's own approach then applies again and the return is recorded as a
+decision. A ticket whose review once failed keeps at least a focused review
 on the change, because publication requires a passing review on the current head. A candidate is
 not verified while its latest review or QA result failed, whatever the approach selects, and a
 repair on such a candidate keeps the ticket-wide rule: a reduction with work unresolved is refused
 (`server/cec/change-scope.ts`, `server/cec/change-scope-note.ts`).
+
+Office QA judges what can be observed at its own stage. A check that only a later stage can observe
+(a hosted build that runs only once the pull request is opened or published, or publication itself)
+is covered for the part observable now and named for the owner of that stage; it is not failed,
+blocked or raised as a finding. A required check with no part observable now is taken out through
+a route change before QA executes, not given an invented case. An earlier finding that records only
+that such a gate has not run yet is settled with that reason. A gate that has run and failed, or is
+running now, is reported as observed
+(`server/qa/later-stage-gates.ts`).
 
 Sam's GitHub readiness review does not run on a PR that GitHub already reports as not
 reviewable. A draft PR and running current-head checks wait without a model run, and the
