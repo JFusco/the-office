@@ -41,10 +41,16 @@ test('a read-only primary inspection checkout is retained as evidence and replac
     expect(f.job.stage).toBe('update-base');
     expect(f.calls.some(c => c.options?.cwd === f.store.project.repo && ['checkout', 'merge', 'push', 'reset', 'clean'].includes(c.args[0]))).toBe(false);
 });
-test('an unrelated reported checkout never becomes an adopted repair candidate', async () => {
+test('an unrelated reported checkout never becomes an adopted repair candidate: the repair runs in the harness\'s own clone', async () => {
     const f = setup(); f.result.worktree = '/unrelated/candidate';
-    await expect(claimedDelivery(f.store, f.job, () => f.delivery.queueSourceRepair(f.job, f.result, f.artifactRoot))).rejects.toThrow('unowned');
-    expect(f.job.worktree).toBe(''); expect(f.calls.some(c => c.args[0] === 'clone')).toBe(false);
+    expect(await claimedDelivery(f.store, f.job, () => f.delivery.queueSourceRepair(f.job, f.result, f.artifactRoot))).toBe(true);
+    // The reviewer's inspection checkout stays in its saved assessment and is used for nothing.
+    expect(f.result.worktree).toBe('/unrelated/candidate');
+    expect(f.job.worktree).not.toBe('/unrelated/candidate');
+    expect(f.job.worktree.startsWith(f.artifactRoot)).toBe(true);
+    expect(f.job.adoptedRepairCheckout?.worktree).toBe(f.job.worktree);
+    expect(f.calls.filter(c => c.args[0] === 'clone')).toHaveLength(1);
+    expect(f.calls.some(c => c.options?.cwd === '/unrelated/candidate' || c.args.includes('/unrelated/candidate'))).toBe(false);
 });
 test.each(['permission', 'human-hold', 'scope'] as const)('adopted %s is never converted into a writer', async kind => {
     const f = setup(); f.result.resolution!.kind = kind;

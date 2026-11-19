@@ -17,13 +17,12 @@ import type { StageResult, TicketJob } from '../../../src/shared';
 /** Supply an owned clone for an adopted PR's scoped repair, retaining its original assessment. */
 export async function adoptedReviewCandidate(delivery: GitHubDelivery, job: TicketJob, result: StageResult, root: string) {
     const { store } = delivery, conflict = conflictOnlyAssessment(result);
-    // A read-only reviewer may report the inspection checkout. It is never a repair candidate.
+    // A read-only reviewer may report the checkout it inspected, the project's or another such as a maintenance
+    // run's worktree. It is never a repair candidate: the repair runs in the harness's own clone, made below.
     if (!harnessDelivers(store, job) || !job.existingPR || job.stage !== 'lead-pr' || job.worktree ||
         !job.pr || result.prId !== job.pr || result.commit !== job.head || result.paidRuns !== 0 ||
         job.repairCycle?.pendingFindingIds.some(id => !result.findings.some(f => f.id === id)) ||
         (!repairFindingIds(result, true) && !conflict)) return result;
-    if (result.worktree && result.worktree !== store.project.repo)
-        throw new Error('Adopted repair cannot use an unowned reported checkout');
     const input = deliveryInputSha256(store, job.key), head = job.head, branch = job.branch, prId = job.pr;
     let candidate = job.adoptedRepairCheckout;
     const assertCurrent = () => {
