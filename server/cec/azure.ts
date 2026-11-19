@@ -6,6 +6,7 @@ import { azurePRDescription, collectAzureGoalDocuments } from '../leadership/goa
 import type { AzureBuild, AzurePR, OfficeProject } from '../../src/shared';
 import type { Store } from '../store/store';
 import { buildTiming, timelineTiming, rememberCi } from '../time/ci-timing';
+import { archiveOldTaskDetail } from '../time/ci-history-retention';
 import { readAzurePRs } from './observed-prs';
 async function readInPairs<T,R>(items:T[],read:(item:T)=>Promise<R>):Promise<R[]>{const out:R[]=[];for(let i=0;i<items.length;i+=2)out.push(...await Promise.all(items.slice(i,i+2).map(read)));return out;}
 export async function az<T>(azure:Pick<AzureBinding,'organization'|'project'>,args:string[],readOnly=false,timeout=55000,execute:typeof command=command):Promise<T>{
@@ -73,6 +74,7 @@ export class AzureMonitor {
       const observation={status:deploymentError?'blocked' as const:'idle' as const,observedAt,error:deploymentError,prs,builds,deployed,goalDocuments:previous.goalDocuments};
       const evidence=await collectAzureGoalDocuments({project:this.store.project,state:{...this.store.state,azure:observation},clock:this.store.clock},{projectId:project.id,repository:project.repository,repositoryId:azure.repositoryId,project:azure.project},args=>az(azure,args,true,15000),observedAt);
       this.store.state.azure={...observation,goalDocuments:evidence.documents,goalEvidenceGaps:evidence.gaps};
+      archiveOldTaskDetail(this.store.dataRoot,this.store.state,this.store.clock.now());
       // Deployed images are separate from a green pipeline; never infer the running version from a build result.
       const stateOf=(b:AzureBuild)=>({...b,observedAt:undefined,queueMs:undefined,durationMs:undefined,stages:b.stages.map(s=>({...s,durationMs:undefined}))});
       const changed=JSON.stringify(prs)!==JSON.stringify(previous.prs)||JSON.stringify(builds.map(stateOf))!==JSON.stringify(previous.builds.map(stateOf));
