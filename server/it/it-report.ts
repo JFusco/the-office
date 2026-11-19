@@ -1,5 +1,6 @@
 import { followUpStatus, outstandingFollowUps } from '../../src/health/outstanding-follow-ups';
 import type { ITReport } from '../../src/shared';
+import { archiveOldReports } from './report-retention';
 import type { ITContext } from './context';
 const team: import('../../src/shared').Role[] = ['pm', 'developer', 'lead', 'qa'];
 
@@ -16,6 +17,7 @@ export async function publishITReport(context: ITContext): Promise<void> {
         const summary = actions.length ? `Ellis completed ${actions.length} operational recovery check${actions.length === 1 ? '' : 's'} for ${store.project.name}. ${outstanding ? `${outstanding} follow-up${outstanding === 1 ? '' : 's'} remain.` : 'No operational follow-up remains.'}` : outstanding ? `Ellis checked ${store.project.name}. ${outstanding} operational follow-up${outstanding === 1 ? '' : 's'} remain.` : `Ellis checked ${store.project.name}; no operational recovery is pending.`;
         const report: ITReport = { id: crypto.randomUUID(), at: now.toISOString(), status, summary, actions, followUps, notified: team, fingerprint };
         it.reports.push(report);
+        archiveOldReports(store.dataRoot, it.reports, now);
         store.emit('it-report', `${summary} Report shared with Morgan, Alex, Sam and Riley.`, 'pm');
     }
     it.checkedAt = now.toISOString();
