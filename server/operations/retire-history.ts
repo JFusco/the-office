@@ -6,6 +6,7 @@ import type { Store } from '../store/store';
 import type { HarnessRequest } from '../../src/shared';
 import type { HistoryRetirementIntent } from '../../src/contracts/history-retirement';
 import { readHistoryScope } from './read-history-scope';
+import { recordAdmission } from '../store/admission-journal';
 
 const Intent = z.object({ acceptIncompleteHistory: z.literal(true), reason: z.string().trim().min(20).max(1000),
     targets: z.array(z.object({ kind: z.enum(['maintenance', 'investigation']), id: z.string().min(1).max(240),
@@ -66,7 +67,7 @@ export function enqueueHistoryRetirement(store: Store, input: unknown, alive = p
         const request: HarnessRequest = { id: crypto.randomUUID(), action: 'retire-incomplete-history', key: '', head: digest(intent),
             requestedAt: store.clock.now().toISOString(), status: 'queued', lane: 'operations', historyRetirement: intent,
             detail: 'Joe authorized retirement as incomplete history. Original outcomes and unresolved evidence will be preserved.' };
-        (coordination.requests ??= []).push(request); store.emit('history-retirement-queued', request.detail, 'pm'); return request;
+        (coordination.requests ??= []).push(request); recordAdmission(store.db, 'request', request.id, request.requestedAt); store.emit('history-retirement-queued', request.detail, 'pm'); return request;
     });
 }
 export function retireIncompleteHistory(store: Store, request: HarnessRequest, alive = processGroupAlive) {

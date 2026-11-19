@@ -30,3 +30,17 @@ test('recovery waits for the old process and records one replacement without cha
         const next = beginReader(store, f); expect(next.id).toBe(f.attempts[1].id); expect(f.attempts).toHaveLength(2);
     } finally { store.close(); rmSync(root, { recursive: true, force: true }); }
 });
+test('fenced start-up recovery interrupts the reader but spends no replacement; the next unfenced pass queues it once', () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'office-feature-fenced-')), store = new Store(':memory:', projectById('brain'), root);
+    try {
+        const f = createFeature(store, { action: 'create', requestId: 'create', title: 'Search', intent: 'Find content' });
+        f.baseline = { path: root, repository: store.project.repository, sha: 'base', ref: 'main', scope: [], files: {} };
+        const old = beginReader(store, f);
+        const budget = structuredClone(f.recovery);
+        recoverFeatures(store, true, () => false, true);
+        expect(f.status).toBe('blocked'); expect(old.status).toBe('interrupted');
+        expect(f.attempts).toHaveLength(1); expect(f.recovery).toEqual(budget);
+        recoverFeatures(store, false, () => false); recoverFeatures(store, false, () => false);
+        expect(f.attempts).toHaveLength(2); expect(f.attempts[1].replacementOf).toBe(old.id);
+    } finally { store.close(); rmSync(root, { recursive: true, force: true }); }
+});

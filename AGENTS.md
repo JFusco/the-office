@@ -24,9 +24,10 @@ Server domains (entry points `server/index.ts`, `server/dev.ts`, `server/cli.ts`
 ```text
 server/
   office/          service identity: config, projects, project policy, security, clock, health, revision,
-                   service lock and timers
+                   service lock, deployment fence and timers
     http/          API routes, office commands, static UI, responses
-  store/           persistence: store, schema, migrations, effects, evidence artifacts, recovery
+  store/           persistence: store, schema, migrations, effects, admission journal, evidence
+                   artifacts, recovery
   scheduling/      dispatch: scheduler, scheduled work, coordinator (poll, tick, pump), requests
   workers/         model workers: runtime, process, Claude/Codex adapters, profiles, lanes
   delivery/        GitHub ticket delivery

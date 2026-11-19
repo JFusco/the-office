@@ -19,6 +19,7 @@ import type {GitHubDelivery} from '../../pipeline/github-delivery';
 import type {Store} from '../../../store/store';
 import {workKey} from '../../../../src/shared';
 import type {HarnessRequest,TicketJob} from '../../../../src/shared';
+import { recordAdmission } from '../../../store/admission-journal';
 export type CloseoutOwnership={complete:boolean;fresh:boolean;ownership?:{status:string}};
 const Assessment=z.object({outcome:z.enum(['passed','blocked']),originalWorkId:z.string(),nativeSessionId:z.string(),checkpointSha256:z.string(),mergeCommit:z.string(),head:z.string(),cleanupFindingId:z.string(),
  completeNativeExecution:z.boolean(),originalDeletionNotCurrentlyApplied:z.boolean(),noOtherUncertainEffects:z.boolean(),coreCloseoutVerified:z.boolean(),sourceGatesPreserved:z.boolean(),noHumanHold:z.boolean(),supervisionProofSha256:z.string().regex(/^[a-f0-9]{64}$/).optional(),nativeSessionPath:z.string().min(1),nativeRecordCount:z.number().int().min(1),summary:z.string().trim().min(1),evidence:z.array(z.object({path:z.string().min(1),summary:z.string().min(1)}).strict()).min(1)}).strict();
@@ -96,6 +97,7 @@ Original worker ${JSON.stringify(selected.work)}, checkpoint SHA256 ${selected.c
   current(ownershipAfter);assertContinuationWorker(store,reader);if(selected.kind==='core-passed')requireCloseout(completedExecution(store,workers[0])&&readerNative&&isDeepStrictEqual(rootArtifact(readerNative.root,readerNative.file.path),readerNative.file),'Independent native completion changed');requireCloseout(isDeepStrictEqual(rootArtifact(nativeRoot,native.path),native),'Native evidence changed before recovery commit');
   job.closeoutRecovery={kind:selected.kind,originalWorkId,originalSessionId:selected.work.sessionId!,intentId,proofPath:path,proofSha256,cleanupRequestId:cleanupId,checkpointSha256:selected.checkpointSha256,status:'cleanup-pending',operations:{},at};
   store.state.coordination!.requests!.push({id:cleanupId,action:'cleanup-merged-candidate',key,head:originalWorkId,lane:'delivery',requestedAt:at,status:'queued',detail:selected.kind==='core-passed'?'Passed original checkpoint and failed transport retained; cleanup never attempted; waiting for its distinct conditional claim.':'Original timeout retained; unchanged exact ref observed; awaiting separate conditional cleanup claim.'});
+  recordAdmission(store.db,'request',cleanupId,at);
   request.status='completed';request.detail=selected.kind==='core-passed'?'Passed core closeout and failed original transport independently reconciled; unattempted cleanup queued under a distinct bounded intent.':'Original timed-out deletion and failures retained; current exact ref verified, distinct bounded cleanup intent queued.';
   job.detail=selected.kind==='core-passed'?'Original passed core checkpoint and failed transport retained; complete effects reconciled. First exact-tip cleanup is queued separately and remains pending.':'Original deletion timeout retained; exact original ref still exists, so separate conditional cleanup is queued. Core closeout verified, cleanup still pending.';job.updatedAt=at;
   store.emit('closeout-original-reconciled',`${key}: ${job.detail}`,'pm',key);

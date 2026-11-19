@@ -7,6 +7,7 @@ import { hasUncertainEffects } from '../pipeline/github-delivery';
 import { harnessDelivers } from '../harness/scope';
 import type { Store } from '../../store/store';
 import type { HarnessRequest, TicketJob } from '../../../src/shared';
+import { recordAdmission } from '../../store/admission-journal';
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const PRMetadataRecoveryInput = z.object({ jobId: z.string().uuid(), head: z.string().regex(/^[a-f0-9]{40}$/), workerId: z.string().uuid(),
@@ -49,5 +50,7 @@ export function enqueueMetadataRecovery(store: Store, key: string, value: unknow
         throw new Error('Original metadata park lease changed');
     const request: HarnessRequest = { id: crypto.randomUUID(), action: 'reconcile-pr-metadata', key, head: input.head, prMetadataRecovery: input,
         lane: 'delivery', status: 'queued', requestedAt: store.clock.now().toISOString(), detail: 'Exact original metadata assessment authorized; source and merge gates remain.' };
-    requests.push(request); store.save(); return request;
+    // The transaction saves once at commit, as the bare save did, with the admission row in it.
+    store.transaction(() => { requests.push(request); recordAdmission(store.db, 'request', request.id, request.requestedAt); });
+    return request;
 }

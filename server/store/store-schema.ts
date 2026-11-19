@@ -16,5 +16,6 @@ export function initializeStoreSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS goal_application_history ON goal_review_applications(project_id,goal_id,at);
     CREATE TABLE IF NOT EXISTS queue_observations (work_key TEXT NOT NULL,stage TEXT NOT NULL,enqueued_at TEXT NOT NULL,ready_at TEXT NOT NULL,PRIMARY KEY(work_key,stage));
     CREATE TABLE IF NOT EXISTS queue_timings (claim_id TEXT PRIMARY KEY,work_key TEXT NOT NULL,body TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS admissions (seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, ref TEXT NOT NULL, at TEXT NOT NULL);
   `);
 }

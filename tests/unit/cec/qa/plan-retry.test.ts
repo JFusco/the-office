@@ -1,3 +1,4 @@
+import { admissionCursor, admissionsSince } from '../../../../server/store/admission-journal';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -105,8 +106,10 @@ test('one explicit decision survives duplicate calls and consumes once under its
         const inspect: typeof inspectClosedQAPlan = (s,k,r,_e,_g,id) => inspectClosedQAPlan(s,k,r,f.execute,() => false,id);
         const proof = await inspect(f.store,f.t.key,f.root);
         const input = { workerId: proof.workerId, fingerprint: proof.fingerprint, acknowledgeIncompleteHistory: true };
+        const cursor = admissionCursor(f.store.db);
         const first = await requestQAPlanRetry(f.store,f.t.key,input,f.root,clear,inspect);
         expect((await requestQAPlanRetry(f.store,f.t.key,input,f.root,clear,inspect)).request.id).toBe(first.request.id);
+        expect(admissionsSince(f.store.db, cursor).map(row => [row.kind, row.ref])).toEqual([['delivery', first.request.id]]);
         expect(f.store.state.deliveryQueue).toHaveLength(1);
         const original = structuredClone(f.result); first.request.status = 'working';
         const claim = f.store.claimWork({ projectId:'cec', kind:'delivery', id:first.request.id },'scheduler','resume-ticket')!;

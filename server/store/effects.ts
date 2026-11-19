@@ -4,6 +4,7 @@ import { workKey } from '../../src/shared';
 import type { EffectIntent, WorkRef } from '../../src/shared';
 import type { Store } from './store';
 import { sanitize } from '../office/security';
+import { recordAdmission } from './admission-journal';
 export class EffectUncertainError extends Error {
     constructor(public intentId: string, detail: string) { super(detail); }
 }
@@ -42,7 +43,7 @@ export class Effects {
                 payload: structuredClone(operation.payload), expectedState: structuredClone(operation.expectedState),
                 status: 'prepared', createdAt: this.store.clock.now().toISOString(), dispatchedAt: '', verifiedAt: '', receipt: null, error: '', elapsedMs: null,
             };
-            this.store.transaction(() => this.store.putEffect(intent!));
+            this.store.transaction(() => { this.store.putEffect(intent!); recordAdmission(this.store.db, 'effect', intent!.id, intent!.createdAt); });
         }
         try {
             await operation.preflight();

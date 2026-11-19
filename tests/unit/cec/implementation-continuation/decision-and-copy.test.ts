@@ -1,3 +1,4 @@
+import { admissionCursor, admissionsSince } from '../../../../server/store/admission-journal';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -14,7 +15,9 @@ const clear = async () => ({ complete: true, fresh: true, ownership: { status: '
 async function approved(f: ReturnType<typeof fixture>) {
     const saved = await f.inspect();
     const input = { workerId: f.work.id, fingerprint: saved.proof.fingerprint, decision: 'continue', acknowledgeUncertainHistory: true, note: 'Keep the accepted plan.' };
+    const cursor = admissionCursor(f.store.db);
     const value = await decideImplementation(f.store, f.t.key, input, clear, async () => saved.proof);
+    expect(admissionsSince(f.store.db, cursor).map(row => [row.kind, row.ref])).toEqual([['delivery', value.request!.id]]);
     return { saved, input, request: value.request! };
 }
 function executor(f: ReturnType<typeof fixture>, failApply = false) {

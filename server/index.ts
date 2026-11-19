@@ -18,6 +18,8 @@ import { staticRoute } from './office/http/static-files';
 import { preferencesRoute } from './office/http/preferences';
 import { officeConfigRoute } from './office/http/office-config';
 import { telemetryRoute } from './telemetry/telemetry-route';
+import { deploymentFenceRoute } from './office/http/deployment-fence-route';
+import { deploymentFenceGate } from './office/http/deployment-fence-gate';
 import { startServiceTicks } from './office/service-ticks';
 mkdirSync(DATA, { recursive: true, mode: 0o700 });
 const releaseLock = acquireServiceLock(DATA);
@@ -40,9 +42,17 @@ const server = serve({ hostname: '127.0.0.1', port: PORT,
         if (!safeOrigin(req))
             return json({ error: 'Only same-origin local office requests are accepted' }, 403);
         const url = new URL(req.url);
+        let endWrite: (() => void) | undefined;
         try {
             // Office-wide routes run before project resolution: they need no project query.
             const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, config, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
+            // The fence's own endpoints, then its gate: while a deployment holds it, every other write is refused.
+            for (const route of [deploymentFenceRoute, deploymentFenceGate]) {
+                const response = await route(req, url, service);
+                if (response) return response;
+            }
+            // A write that passed the open gate keeps health busy until it ends, so a fence taken meanwhile waits for it.
+            endWrite = req.method === 'GET' || req.method === 'HEAD' ? undefined : offices.operations.begin();
             for (const route of [preferencesRoute, officeConfigRoute, telemetryRoute]) {
                 const response = await route(req, url, service);
                 if (response) return response;
@@ -59,6 +69,7 @@ const server = serve({ hostname: '127.0.0.1', port: PORT,
         catch (e) {
             return json({ error: sanitize(e instanceof Error ? e.message : String(e)) }, 409);
         }
+        finally { endWrite?.(); }
     } }) as Server;
 await new Promise<void>((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
 server.requestTimeout = 255000;

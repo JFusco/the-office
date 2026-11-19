@@ -5,6 +5,7 @@ import type { Store } from '../../store/store';
 import type { DeliveryRequest } from '../../../src/shared';
 import { assertOwnership, type OwnershipRead } from '../implementation-continuation/intent';
 import { inspectClosedQAPlan } from './inspect-closed-plan';
+import { recordAdmission } from '../../store/admission-journal';
 const Decision = z.object({ workerId: z.string().uuid(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
     acknowledgeIncompleteHistory: z.literal(true) }).strict();
 
@@ -29,6 +30,7 @@ export async function requestQAPlanRetry(store: Store, key: string, raw: unknown
         const request: DeliveryRequest = { id: randomUUID(), key, action: 'resume-ticket', requestedAt: at, status: 'queued', error: '',
             qaPlanRetry: { proof, acknowledgeIncompleteHistory: true, approvedAt: at } };
         (store.state.deliveryQueue ??= []).push(request);
+        recordAdmission(store.db, 'delivery', request.id, request.requestedAt);
         store.emit('qa-plan-retry-queued', 'Joe approved one corrected QA plan; original incomplete work and every failure/counter remain in history.', 'qa', key);
         return { accepted: true, request };
     });
