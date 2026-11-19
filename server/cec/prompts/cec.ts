@@ -1,4 +1,5 @@
 import { movedHeadNote } from '../moved-head-note';
+import { REVIEW_FINDINGS_RULE } from './review-findings-rule';
 import { changeScopeNote } from '../change-scope-note';
 import { twgConnection } from '../twg-connection';
 import { legacyQA, isQAStage, officePreviewGuidance, officeQAGuidance, officeQADirectory } from '../../qa/assignment';
@@ -41,7 +42,7 @@ ${handoff ? `EXPLICIT OFFICE QA HANDOFF: Resume ${handoff.requestId} retained th
 ${binding.preview ? `BROWSER PREVIEW ONLY (not needed for focused checks): ${binding.preview}\n` : ''}${browserStage && legacy ? browserQAGuidance(qaRun, resumeQA) : browserStage && !officeQA ? officePreviewGuidance : ''}
 ${APPROACH_GUIDANCE}
 CURRENT TEAM APPROACH: ${JSON.stringify(ticket.approach || null)}
-${['code-review', 'repair-review'].includes(stage) ? `${reviewInstructions(ticket.approach?.review)}\n${REVIEW_SCOPE}` : ''}
+${['code-review', 'repair-review'].includes(stage) ? `${reviewInstructions(ticket.approach?.review)}\n${REVIEW_SCOPE}\n${REVIEW_FINDINGS_RULE}` : ''}
 RECENT APPROACH DECISIONS: ${JSON.stringify((ticket.decisions || []).slice(-5))}
 CHECK-BASED QA: When validation is developer-checks or independent-checks, do not launch an application preview, browser, QA harness or paid provider call just to satisfy a default template. Run the relevant selected checks and all repository-required checks; save their actual output as checks evidence for the exact current commit. Independent QA/retest still comes from Riley when assigned, with every prior finding explicitly verified; the harness posts the Jira update. For staging-qa use deployment/source/version evidence plus appropriate deployed smoke/API/checks; do not claim browser acceptance. Unknown provider usage still requires reconciliation.
 JIRA COMMENT OWNERSHIP: The harness posts the Jira comment for qa, retest and staging-qa (verified) and the Dev update for draft-pr and repair; return the semantic outcome and evidence and do not send a comment yourself. Those comments are built from your summary, blocker and findings, and people read them on the ticket. Write summary as two or three plain sentences: what was checked and what happened. Write blocker as one or two plain sentences: what is needed, and from whom. Leave file paths, run ids, commit hashes, local URLs and tool or harness names to findings and evidence.

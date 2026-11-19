@@ -234,6 +234,13 @@ that such a gate has not run yet is settled with that reason. A gate that has ru
 running now, is reported as observed
 (`server/qa/later-stage-gates.ts`).
 
+A Jira/Azure review's findings must agree with its verdict: the gate refuses a review that leaves
+any finding open, and only a failed review goes back to the developer. A reviewer names a later
+stage's gate in the summary instead of holding it as an open finding, settles an earlier finding
+that only says such a gate has not run yet, and returns failed for a finding that needs source
+work, including a pull request that now conflicts with its target branch
+(`server/cec/prompts/review-findings-rule.ts`).
+
 Sam's GitHub readiness review does not run on a PR that GitHub already reports as not
 reviewable. A draft PR and running current-head checks wait without a model run, and the
 review queues once when the PR is ready and its checks finish. A conflict on a head the team
