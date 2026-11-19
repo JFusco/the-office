@@ -1,4 +1,5 @@
 import { settleRequestedSlackReplacement } from './slack/settle-replacement';
+import { labelIsUrl } from './slack-link-label';
 import { reconcileNoticeConfirmations } from './notifications';
 import { z } from 'zod';
 import { slackMessageUrl, type SlackDelivery } from '../../src/shared';
@@ -19,7 +20,7 @@ export const SlackVerificationSchema = z.object({ found: z.boolean(), channelId:
 export function comparableSlackText(text: string) {
     return text.replace(/\r\n/g, '\n').replace(/^• /gm, '- ').replace(/^(- [^\n]*)\n(?![\n-])/gm, '$1\n\n').replace(/&(?:amp|lt|gt);/g, s => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>' })[s]!)
         .replace(/<@([UW][A-Z0-9]+)\|[^>]+>/g, '<@$1>').replace(/<#([CG][A-Z0-9]+)\|[^>]+>/g, '<#$1>')
-        .replace(/<(https?:\/\/[^>|]+)(?:\|([^>]+))?>/g, (_all, url: string, label: string | undefined) => !label || label === url || label === url.replace(/^https?:\/\//, '') ? url : `[${label}](${url})`)
+        .replace(/<(https?:\/\/[^>|]+)(?:\|([^>]+))?>/g, (_all, url: string, label: string | undefined) => !label || labelIsUrl(label, url) ? url : `[${label}](${url})`)
         .replace(/\n\*Sent using\* <@U0A3Q4JJX17>\s*$/, '').trim();
 }
 export class SlackMessages {
