@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { cleanupFakes, fakeGitHub, HEAD } from '../support/fake-github';
 import { park } from '../../../../server/delivery/parking/park';
 import { resumeParked } from '../../../../server/delivery/parking/resume';
-import { unparkSignedIn } from '../../../../server/delivery/parking/sign-in-unpark';
+import { MAX_SIGN_IN_UNPARKS, unparkSignedIn } from '../../../../server/delivery/parking/sign-in-unpark';
 import { SIGN_IN_WAIT_FILE } from '../../../../server/qa/sign-in-wait';
 import { HOLDS } from '../../../../server/office/config';
 import type { StageResult } from '../../../../src/shared';
@@ -92,4 +92,30 @@ test('a card a person already moved out of Block is not moved, and is not tried 
     expect(await unparkSignedIn(f.store, execute, f.delivery.jobs, pickup, SIGNED_IN)).toEqual([]);
     expect([f.state.cards[0].status, f.state.comments.length]).toEqual(['progress', comments]);
     expect(job.signInUnparkedStep).toBe(job.steps.length - 1);
+});
+
+test('a move that fails is recorded once and not tried again on later polls', async () => {
+    const { f, job, execute } = await parked();
+    let boardReads = 0;
+    const failing = async (program: string, args: string[], options: any) => {
+        if (program === 'gh' && args.join(' ').includes('graphql')) { boardReads++; throw new Error('GitHub is unavailable'); }
+        return execute(program, args, options);
+    };
+    const events = () => (f.store.state.events || []).filter((event: any) => event.kind === 'sign-in-unpark-unavailable').length;
+    expect(await unparkSignedIn(f.store, failing as any, f.delivery.jobs, pickup, SIGNED_IN)).toEqual([]);
+    const reads = boardReads;
+    expect([reads > 0, events(), f.state.cards[0].status]).toEqual([true, 1, 'block']);
+    expect(await unparkSignedIn(f.store, failing as any, f.delivery.jobs, pickup, SIGNED_IN)).toEqual([]);
+    expect([boardReads, events(), job.signInUnparks]).toEqual([reads, 1, undefined]);
+});
+
+test('a job is returned for an observed sign-in at most the cap, however many times QA stops again', async () => {
+    const { f, job, execute } = await parked();
+    job.signInUnparks = MAX_SIGN_IN_UNPARKS;
+    let reads = 0;
+    expect(await unparkSignedIn(f.store, execute, f.delivery.jobs, pickup, async () => { reads++; return SIGNED_IN(); })).toEqual([]);
+    expect([reads, f.state.cards[0].status]).toEqual([0, 'block']);
+    job.signInUnparks = MAX_SIGN_IN_UNPARKS - 1;
+    expect(await unparkSignedIn(f.store, execute, f.delivery.jobs, pickup, SIGNED_IN)).toEqual(['GH-5']);
+    expect(job.signInUnparks).toBe(MAX_SIGN_IN_UNPARKS);
 });

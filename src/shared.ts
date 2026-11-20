@@ -220,6 +220,8 @@ export interface TicketJob {
     releaseUnparks?: number;
     /** The step whose sign-in wait the harness already returned to pickup once (`server/delivery/parking/sign-in-unpark.ts`). */
     signInUnparkedStep?: number;
+    /** How many times the harness returned this job to pickup for an observed sign-in. */
+    signInUnparks?: number;
     approach?: WorkApproach;
     decisions?: ApproachDecision[];
     skippedStages?: Record<string, string>;

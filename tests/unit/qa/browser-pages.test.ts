@@ -31,3 +31,12 @@ test('null when nothing listens on the port', async () => {
     await new Promise(done => servers.pop()!.close(done));
     expect(await browserPages(port)).toBeNull();
 });
+
+test('a redirect is refused, so the read never leaves the port it was given', async () => {
+    const elsewhere = await listening(200, JSON.stringify([{ type: 'page', url: 'https://app.example.test/projects' }]));
+    const redirecting = createServer((_request, response) => { response.writeHead(302, { location: `http://127.0.0.1:${elsewhere.port}/json/list` }); response.end(); });
+    servers.push(redirecting);
+    await new Promise<void>(done => redirecting.listen(0, '127.0.0.1', done));
+    expect(await browserPages((redirecting.address() as AddressInfo).port)).toBeNull();
+    expect(elsewhere.requests).toEqual([]);
+});

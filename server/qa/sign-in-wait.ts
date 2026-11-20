@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { safeWebUrl } from '../office/security';
@@ -24,7 +24,9 @@ export function readSignInWait(result: Pick<StageResult, 'qaRunDir'> | undefined
     if (!result?.qaRunDir) return;
     const file = resolve(result.qaRunDir, SIGN_IN_WAIT_FILE);
     try {
-        if (!inside(file, root) || !inside(file, result.qaRunDir) || statSync(file).size > 20000) return;
+        // A regular file only: a link, a pipe or a device is never opened.
+        const entry = existsSync(file) ? lstatSync(file) : undefined;
+        if (!entry?.isFile() || entry.size > 20000 || !inside(file, root) || !inside(file, result.qaRunDir)) return;
         const parsed = SignInWaitSchema.safeParse(JSON.parse(readFileSync(file, 'utf8')));
         return parsed.success ? parsed.data : undefined;
     }

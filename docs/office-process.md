@@ -424,7 +424,8 @@ the PM read-back and QA's own check of the signed-in actor still run
 (`server/cec/qa/resume-after-sign-in.ts`). For GitHub delivery, where the wait parks the card, the
 harness moves the card from Block back to the pickup lane with one issue comment, through Effects,
 and the ordinary parked resume follows (`server/delivery/parking/sign-in-unpark.ts`,
-`server/delivery/parking/return-to-pickup.ts`). Each happens once per recorded wait. A missing or
+`server/delivery/parking/return-to-pickup.ts`). Each is tried once per recorded wait, and a GitHub
+job is returned this way at most twice. A missing or
 malformed record, a browser that no longer answers, a hold, a pause, or a card a person moved
 leaves the work for a person to resume.
 

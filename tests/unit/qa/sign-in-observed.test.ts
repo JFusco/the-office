@@ -25,4 +25,7 @@ test('an application that serves its own sign-in page: only that page is the sig
     expect(signInState(pages('https://app.example.test/login?next=%2Fprojects'), own)).toBe('waiting');
     expect(signInState(pages('https://app.example.test/projects'), own)).toBe('signed-in');
     expect(signInState(pages('https://app.example.test/projects', 'https://app.example.test/login'), own)).toBe('waiting');
+    // A further step of the same sign-in is still the sign-in; a path that only starts with the same letters is not.
+    for (const step of ['/login/', '/login/mfa', '/login/password?step=2']) expect(signInState(pages(`https://app.example.test${step}`), own)).toBe('waiting');
+    expect(signInState(pages('https://app.example.test/loginhistory'), own)).toBe('signed-in');
 });

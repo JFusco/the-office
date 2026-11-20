@@ -51,11 +51,11 @@ async function returnToPickup(store: Store, execute: Execute, job: TicketJob, la
     const parked = job.parked!, release = parked.release!;
     const returned = await returnCardToPickup(store, execute, job, lane, { slug: 'release', label: 'Release unpark',
         body: pickup => `${release.package}@${found} is published on npm, which meets this ticket's wait for a stable release at or above ${release.minimum}. The Office is moving the card back to ${pickup} to resume from ${parked.stage}.` });
-    if (!returned) return false;
+    if (returned === null) return false;
     job.releaseUnparks = (job.releaseUnparks || 0) + 1;
     // One unpark per park: a card a person puts back in Block afterwards stays there for Joe.
     delete parked.release;
-    store.emit('delivery-release-unparked', `${job.key}: ${release.package}@${found} is published; card moved back to ${lane}.`, 'pm', job.key);
+    store.emit('delivery-release-unparked', `${job.key}: ${release.package}@${found} is published; card moved back to ${returned}.`, 'pm', job.key);
     store.save();
     return true;
 }
