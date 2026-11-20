@@ -2,7 +2,7 @@
 
 The Overseer is the repair engine for the harness and the Office. It is being delivered in phases;
 this guide covers what exists. Today that is deterministic deployment, the incident ledger and
-the mark the Office puts on stopped work a repair covers. Freezing recovery for that work, resume
+the mark the Office puts on stopped work a repair covers, which holds recovery back for it. Resume
 after a fix and the autonomous runner are later phases and are not described here until they ship. The process rules are in the Office process, under
 [Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
 
@@ -187,8 +187,9 @@ investigation and not dismissed, the third one incident with its event history.
 ### Binding a fix you made by hand
 
 When you fix a harness defect yourself, two commands tie the fix to the incident and to exactly
-the work it stopped. Starting the repair marks that work as awaiting it, which today changes how
-it is counted. Later phases use the binding to hold recovery back and to resume after the fix.
+the work it stopped. Starting the repair marks that work as awaiting it: it is counted that way,
+and recovery, restart and requests for it are held back. A later phase uses the binding to resume
+after the fix.
 
 1. Read the incident and note its `revision`:
 
@@ -320,8 +321,18 @@ not revive it, and neither does starting the same repair again; a new repair aft
 recurs does. Work is marked only when its record still stands as the ledger last saw it, so a
 project the Office could not read for a while is not marked on stale information.
 
-Today the mark only changes how stopped work is counted. It does not yet stop the Office from
-retrying, recovering or handing off that work; that follows in the next change.
+While the mark holds, the Office also leaves that stop alone: IT spends no recovery attempt on it,
+a dead writer is not restarted into the same defect, the failed run is not investigated again,
+Harper does not hand it to Morgan, and the "read back" request for it leaves your outbox. Nothing
+is reset: every count is where it was, and when the mark ends or runs out those paths carry on
+from there and the request comes back. Anything that is yours to settle is never held back this
+way: a decision, a merge approval, a question, a hold, a pause, missing authority, a prerequisite
+that is not finished, or a write whose outcome is unconfirmed. That last one is checked against
+the project's current writes each time, so a write that turns uncertain shows up at once.
+
+One limit to know: the hold does not stretch any other clock. The harness restarts a dead writer
+only within six hours of the stop. If a repair takes longer than that and then runs out without a
+fix, that job comes back to you as a "read back" request; it is not restarted by itself.
 
 ### What to expect
 

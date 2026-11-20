@@ -1,4 +1,5 @@
 import type { TeamMessage } from '../../src/shared';
+import { recoveryHeld } from './held-recovery';
 import { informationalRecovery } from './informational-recovery';
 import type { ITFollowUp } from '../../src/shared';
 import type { ITContext } from './context';
@@ -8,6 +9,8 @@ const delays = [30000, 120000, 300000];
 export async function recoverAttempt(context: ITContext, id: string, detail: string, run: () => Promise<boolean | string | import('../../src/shared').HarnessRequest | TeamMessage>, nextStep: string, owner: ITFollowUp['owner'] = 'Morgan') {
     const { offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt, retainedPartials, retainedCloseouts, services, activationBudget, recover } = context;
         current.add(id);
+        // The record this recovery is about is waiting on a harness repair: no attempt is spent, nothing is queued, and what was counted stays counted.
+        if (recoveryHeld(context, id)) return;
         const r = it.recoveries[id] ??= { attempts: 0, nextAt: '', status: 'retrying', detail };
         r.detail = detail;
         const auditBinding = id.startsWith('stopped-base-handoff:') || id.startsWith('implementation-audit-binding:')||id.startsWith('saved-candidate-adoption:'), oneShot = auditBinding || id.startsWith('partial-local-cleanup:') || id.startsWith('post-conflict-draft:') || id.startsWith('initial-draft-conflict:') || id.startsWith('closeout-core:') || id.startsWith('scope-repair-resume:');
@@ -54,24 +57,26 @@ export async function recoverAttempt(context: ITContext, id: string, detail: str
             return;
         }
         r.attempts++;
-        try {
-            const result = await run();
-            if (result && typeof result === 'object') {
-                r.requestId = result.id;
-                r.status = 'retrying';
-                r.nextAt = new Date(now.getTime() + delays[Math.min(r.attempts - 1, 2)]).toISOString();
-                actions.push(`${'action' in result ? result.action : 'conversation-readback'} queued for scheduler execution; verification is pending.`);
-                followUps.push({ id, owner: 'IT', detail: 'Recovery intent saved; waiting for the scheduler.', nextAt: r.nextAt });
-                return;
-            }
-            if (result) {
-                r.status = 'resolved';
-                r.nextAt = '';
-                actions.push(typeof result === 'string' ? result : `${id}: recovered and read back successfully after ${r.attempts} check${r.attempts === 1 ? '' : 's'}.`);
-                return;
-            }
-        }
+        let result: Awaited<ReturnType<typeof run>> = false;
+        try { result = await run(); }
         catch { /* Original provider/session evidence stays in its source record. */ }
+        const queued = result && typeof result === 'object' ? result : null;
+        // Keep the identity of an intent already queued before the wait arrived.
+        if (queued) r.requestId = queued.id;
+        if (recoveryHeld(context, id)) return;
+        if (queued) {
+            r.status = 'retrying';
+            r.nextAt = new Date(now.getTime() + delays[Math.min(r.attempts - 1, 2)]).toISOString();
+            actions.push(`${'action' in queued ? queued.action : 'conversation-readback'} queued for scheduler execution; verification is pending.`);
+            followUps.push({ id, owner: 'IT', detail: 'Recovery intent saved; waiting for the scheduler.', nextAt: r.nextAt });
+            return;
+        }
+        if (result) {
+            r.status = 'resolved';
+            r.nextAt = '';
+            actions.push(typeof result === 'string' ? result : `${id}: recovered and read back successfully after ${r.attempts} check${r.attempts === 1 ? '' : 's'}.`);
+            return;
+        }
         r.nextAt = new Date(now.getTime() + delays[Math.min(r.attempts - 1, 2)]).toISOString();
         const exhausted = r.attempts >= 3;
         r.status = exhausted && !informationalRecovery(id) ? 'needs-human' : 'retrying';

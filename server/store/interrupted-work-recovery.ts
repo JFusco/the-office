@@ -1,6 +1,6 @@
+import { currentOutbox } from '../conversations/current-outbox';
 import { processGroupAlive } from '../workers/process';
 import { recoverFeatures } from '../features/recovery';
-import { projectOutbox } from '../conversations/outbox';
 import { ROLE_NAMES, workKey, type EffectIntent } from '../../src/shared';
 import { durationLabel } from '../../src/timing/timing';
 import type { Store } from './store';
@@ -129,7 +129,7 @@ export function recover(this: Store, fenced = false): void  {
             intent.error = 'Interrupted after dispatch; independent read-back required.';
             this.putEffect(intent);
         }
-        this.state.outbox = projectOutbox(this.state, this.clock.now());
+        this.state.outbox = currentOutbox(this);
         for (const request of this.state.coordination?.requests || [])
             if (request.status === 'working') {
                 request.status = 'interrupted';

@@ -1,3 +1,4 @@
+import { recoveryHeld } from './held-recovery';
 import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { recoverStoppedBaseUpdates } from './stopped-base-update-recovery';
 import { supersededCheckpoint } from '../operations/stale-records';
@@ -47,6 +48,8 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                     if (holdReason(store.project, r.key) || state.coordination!.pickup?.enabled === false && r.workRequested !== 'manual' || r.status !== 'blocked' || !/(?:session.*(?:visibility|inventory|read)|task.claim)/i.test(r.detail) || !/(?:unavailable|incomplete|missing|restore|not available|lacks)/i.test(r.detail) || !assigned || (assigned.pickupStatus ?? assigned.status) !== pickup || state.coordination!.jobs?.some(j => j.key === r.key && !['cancelled', 'completed'].includes(j.status)))
                         continue;
                     if (handsOff(store) && deliveryIntakeBlocker(store,r.key)) continue;
+                    // An intake review waiting on a harness repair is left as it is; its read-back count is not spent.
+                    if (context.freeze?.({ kind: 'intake', id: r.id })) continue;
                     if ((r.itRecoveryAttempts || 0) >= 3) {
                         followUps.push({ id: `ownership:${r.id}`, owner: 'Morgan', detail: `${r.key}: three IT ownership read-backs did not resolve the failure. Inspect the exact failed bridge source and saved intake sessions before another attempt.` });
                         continue;
@@ -119,7 +122,7 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                 if(stoppedCloseout&&'kind'in stoppedCloseout&&stoppedCloseout.kind==='core-passed'){
                     current.add(`closeout:${job.id}`); // Preserve the prior consumed budget; this material proof has its own single readback.
                     const key=`closeout-core:${job.id}:${stoppedCloseout.work.id}:${stoppedCloseout.checkpointSha256}`;
-                    if(it.recoveries[key]){current.add(key);const existing=it.recoveries[key],pending=state.coordination?.requests?.find(r=>r.id===existing.requestId&&['queued','working'].includes(r.status));existing.status=pending?'retrying':'needs-human';}
+                    if(it.recoveries[key]){current.add(key);if(!recoveryHeld(context,key)){const existing=it.recoveries[key],pending=state.coordination?.requests?.find(r=>r.id===existing.requestId&&['queued','working'].includes(r.status));existing.status=pending?'retrying':'needs-human';}}
                     else await recover(key,job.detail,async()=>enqueueRequest(store,'reconcile-closeout',job.key,stoppedCloseout.work.id),'Morgan verifies the original completed core closeout and exact checkpoint before any new cleanup effect; no closeout writes are replayed.','Morgan');
                 } else if(partial){
                     current.add(`closeout:${job.id}`); // Keep the original exhausted three attempts and their evidence.
@@ -131,7 +134,7 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                 const resume=scopeRepairResumeCandidate(store,job);
                 if(resume){
                     const key=`scope-repair-resume:${store.project.id}:${job.id}:${job.candidateRecovery!.head}:${job.scopeRepairReadback?.proofSha256||'no-prior-readback'}`;
-                    if(it.recoveries[key]){current.add(key);const existing=it.recoveries[key],pending=state.coordination.requests?.find(r=>r.id===existing.requestId&&['queued','working'].includes(r.status));existing.status=pending?'retrying':'needs-human';continue;}
+                    if(it.recoveries[key]){current.add(key);if(!recoveryHeld(context,key)){const existing=it.recoveries[key],pending=state.coordination.requests?.find(r=>r.id===existing.requestId&&['queued','working'].includes(r.status));existing.status=pending?'retrying':'needs-human';}continue;}
                     await recover(key,job.detail,async()=>enqueueRequest(store,'reconcile-scope-repair',job.key,resume.work.id),'Morgan verifies the exact stopped source repair on the same candidate; this single automatic readback never resets repair or source-acceptance budgets.','Morgan');continue;
                 }
             }

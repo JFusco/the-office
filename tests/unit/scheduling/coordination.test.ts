@@ -14,6 +14,7 @@ import { projectById, officeCapacity } from '../../../server/office/projects';
 import { Coordinator, checkpointWindow, dueAt } from '../../../server/scheduling/coordination';
 import { projectPolicy } from '../../../server/office/project-policy';
 import type { AssignedIssue, StageResult } from '../../../src/shared';
+import { markAwaitingRepair, unmark } from '../incidents/repair/mark-fixture';
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })); });
 function setup(project = 'brain', capacity = officeCapacity(), execute?: any) {
@@ -60,6 +61,22 @@ test('daily checkpoints are durable once per date, pause-aware and coalesce miss
     expect(c.state.checkpoints[1].status).toBe('interrupted');
     await c.pump();
     expect(calls).toBe(1);
+});
+test('assignment polling saves the outbox as it reads now: a stop a harness repair covers is left out, and is back once the wait ends', async () => {
+    const { c, store } = setup('cec');
+    c.readAssignments = async () => [];
+    store.state.tickets = [{ key: 'CEC-9', title: 't', summary: 't', url: '', stage: 'develop', activity: 'blocked', blocker: 'Worktree is missing', stop: { kind: 'unclassified', at: 't1' }, results: {}, commit: '', runId: 'r1', attempt: 1, pilot: true, status: 'open' }] as any;
+    const open = () => store.state.outbox.filter(action => action.status === 'open').map(action => action.id);
+    await c.poll();
+    expect(c.state.listener.error).toBe('');
+    expect(open()).toContain('ticket:CEC-9:develop');
+    const at = store.clock.now().toISOString();
+    markAwaitingRepair(store.state, 'cec', { kind: 'delivery', id: 'ticket:CEC-9' }, 'develop', { since: at, progressAt: at });
+    await c.poll();
+    expect(open()).not.toContain('ticket:CEC-9:develop');
+    unmark(store.state);
+    await c.poll();
+    expect(open()).toContain('ticket:CEC-9:develop');
 });
 test('assignment polling deduplicates, preserves the last complete feed on failure, and queues reassignment', async () => {
     const { c } = setup();

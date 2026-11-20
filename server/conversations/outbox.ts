@@ -1,3 +1,4 @@
+import { repairFreeze } from '../incidents/repair/repair-freeze';
 import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { supersedingDelivery, slackRequestSettled } from './slack/supersession-proof';
 import { deferredPickup } from '../../src/work/pickup-state';
@@ -19,9 +20,12 @@ export function conversationResolved(state: OfficeSnapshot, message: TeamMessage
 /** Backstop for a hang without a restart: adoption is a few provider calls, so one unfinished this long needs a look. */
 export const ADOPTION_STALLED_MS = 5 * 60 * 1000;
 // Reconcile a durable tray against observable work, never against an acknowledgement.
-export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanAction[] {
+export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: import('../incidents/repair/freeze-reads').FreezeReads | null): HumanAction[] {
     const outbox = (state.outbox || []).map(a => ({ ...a }));
     const now = at.toISOString(), current = new Set<string>();
+    // Work a harness repair in progress covers is not a person's to read back while that wait holds; its item returns when the wait ends.
+    // Without the project's current writes and prerequisites to read, nothing is hidden.
+    const awaitingRepair = (kind: Parameters<typeof repairFreeze>[1]['kind'], id: string) => !!repairFreeze(state, { kind, id }, at, reads);
     function item(id: string, title: string, detail: string, role: Role, ticket = '', url = '') {
         current.add(id);
         const old = outbox.find(a => a.id === id);
@@ -51,7 +55,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
             item(`time:${t.id}`, `Reconcile ${t.key} hours`, t.detail, 'pm', t.key, t.url);
     for (const c of state.coordination?.checkpoints || [])
         if (!state.maintenance?.runs.some(run => run.id === c.runId && run.retirement) && ['blocked', 'interrupted'].includes(c.status) && (c.repairResume?.needsFollowup || !state.maintenance?.runs.some(r => r.id === c.runId && (r.blockerFollowup || r.readbackRetry && !r.readbackRetry.exhausted && ['blocked', 'interrupted'].includes(r.status)))))
-            if (!checkpointSuperseded(state, c) && !checkpointHasMaintenanceAlert(state, c))
+            if (!checkpointSuperseded(state, c) && !checkpointHasMaintenanceAlert(state, c) && !awaitingRepair('checkpoint', c.id))
                 item(`checkpoint:${c.id}`, 'Daily checkpoint needs follow-up', c.detail, 'pm');
     for (const a of state.coordination?.adoptions || [])
         // An adoption still in progress is not a question; one that stays unfinished is.
@@ -65,11 +69,11 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         if (run.blockerFollowup && ['blocked', 'interrupted'].includes(run.blockerFollowup.status))
             item(`maintenance-blocker:${run.id}`, 'Read back the source repair handoff', run.blockerFollowup.detail, 'pm');
     const latest = [...new Map((state.coordination?.listener.reviews || []).map(r => [r.key, r])).values()];
-    const capabilityBlocked = latest.filter(r => r.status === 'blocked' && !r.retry?.nextAt && !state.coordination?.jobs?.some(j => j.key === r.key && j.pr && j.status !== 'cancelled') && /session.*(?:inventory|read|visibility)|task.claim/i.test(r.detail) && /unavailable|missing|lacks|not available/i.test(r.detail));
+    const capabilityBlocked = latest.filter(r => r.status === 'blocked' && !r.retry?.nextAt && !state.coordination?.jobs?.some(j => j.key === r.key && j.pr && j.status !== 'cancelled') && /session.*(?:inventory|read|visibility)|task.claim/i.test(r.detail) && /unavailable|missing|lacks|not available/i.test(r.detail) && !awaitingRepair('intake', r.id));
     if (capabilityBlocked.length)
         item('ownership-capability', 'Office cannot check other active sessions', `New development is paused for ${capabilityBlocked.map(r => r.key).join(', ')} because the Office worker cannot read current Codex/Claude session ownership. This is an Office capability blocker, not a request for merge approval. Existing linked PRs continue through Sam.\n${capabilityBlocked.map(r => `${r.key}: ${r.detail}`).join('\n')}`, 'pm');
     for (const r of latest)
-        if (!(state.project ? holdReason(state.project, r.key) : topLevelHold(r.key)) && ['blocked', 'interrupted'].includes(r.status) && !r.retry?.nextAt && !capabilityBlocked.includes(r) && !state.coordination?.jobs?.some(j => j.key === r.key && j.pr && j.status !== 'cancelled'))
+        if (!(state.project ? holdReason(state.project, r.key) : topLevelHold(r.key)) && ['blocked', 'interrupted'].includes(r.status) && !r.retry?.nextAt && !capabilityBlocked.includes(r) && !state.coordination?.jobs?.some(j => j.key === r.key && j.pr && j.status !== 'cancelled') && !awaitingRepair('intake', r.id))
             item(`assignment:${r.id}`, `${r.key} intake needs follow-up`, r.detail, 'pm', r.key, r.url);
     if (state.intake.status === 'blocked' && state.intake.error)
         item('intake', 'Help Morgan check the mailbox', state.intake.error, 'pm');
@@ -78,10 +82,10 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
     if (state.github?.status === 'blocked' && state.github.error && !teamOwnsIT('project-progress'))
         item('github', 'Restore the GitHub connection', state.github.error, 'pm');
     for (const run of state.maintenance?.runs || [])
-        if (maintenanceNeedsHumanFollowup(state, run))
+        if (maintenanceNeedsHumanFollowup(state, run) && !awaitingRepair('maintenance', run.id))
             item(`maintenance:${run.id}`, `Read back ${state.project?.name || 'project'} maintenance`, `${run.stage}: ${run.error}`, 'pm');
     for (const t of state.tickets) {
-        if (t.activity === 'blocked' && t.blocker)
+        if (t.activity === 'blocked' && t.blocker && !awaitingRepair('delivery', `ticket:${t.key}`))
             item(`ticket:${t.key}:${t.stage}`, isSavedPlanFollowup(t) ? `${t.key} needs Office follow-up` : `${t.key} needs your help`, t.blocker, STAGE_ROLE[t.stage], t.key, t.url);
         if (t.stage === 'ready-for-staging' && t.results['ready-for-staging']?.outcome === 'passed') {
             const pr = state.azure.prs.find(p => p.id === t.prId);
@@ -104,7 +108,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         if (j.status === 'blocked' && j.parked?.published && j.detail.startsWith('Decision needed'))
             item(`ticket-job:${j.id}`, `${j.key} needs a decision on the board`, `${j.parked.reason}\nMove the card back to Ready to resume ${j.parked.stage}.`, 'pm', j.key, j.prUrl);
         // A stop the Office retries by itself is not Joe's, from the moment it happens; retries are not planned while paused.
-        else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt && !(readRetryPending(j, at) && !state.paused))
+        else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt && !(readRetryPending(j, at) && !state.paused) && !awaitingRepair('delivery', j.id))
             item(`ticket-job:${j.id}`, `Read back ${j.key} delivery`, j.detail, 'pm', j.key, j.prUrl);
     }
     for (const j of state.coordination?.jobs || [])
@@ -140,5 +144,6 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         }
     return outbox;
 }
+/** Saves the unfiltered projection. A caller that holds the project's store saves `currentOutbox(store)` instead, which hides what a repair wait holds. */
 export function syncOutbox(state: OfficeSnapshot) { state.outbox = projectOutbox(state); }
 export function openActions(state: OfficeSnapshot): HumanAction[] { return state.outbox.filter(a => a.status === 'open'); }

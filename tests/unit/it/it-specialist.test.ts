@@ -1,3 +1,8 @@
+import { partialLocalCleanupKey } from '../../../server/delivery/recovery/closeout/local-worktree-removal';
+import { markAwaitingRepair, unmark } from '../incidents/repair/mark-fixture';
+import { REPAIR_WAIT_MS } from '../../../server/incidents/repair/repair-wait';
+import * as closeoutRecovery from '../../../server/delivery/recovery/closeout/closeout-recovery-evidence';
+import * as scopeRepair from '../../../server/delivery/recovery/scope-repair/scope-repair-resume';
 import { GitHubDelivery } from '../../../server/delivery/pipeline/github-delivery';
 import { expect, test, vi } from 'vitest';
 import { ITSpecialist } from '../../../server/it/it-specialist';
@@ -117,6 +122,147 @@ test('IT restores only eligible Ready ownership reads, with a three-attempt cap 
     expect(a.state.coordination!.listener.reviews[1].status).toBe('blocked');
     expect(a.state.it!.reports.at(-1)!.followUps.some(f => f.owner === 'Morgan')).toBe(true);
 });
+test('an ownership read awaiting a harness repair is not requeued and its attempts are not spent; it is restored once the wait ends', async () => {
+    const a = setup();
+    (a.it as any).offices.sessions = { forProject: () => ({ complete: true, fresh: true }), refresh: vi.fn() };
+    a.state.coordination!.pickup = { enabled: true, status: 'Ready' };
+    a.state.coordination!.listener.assigned = [{ key: 'GH-91', pickupStatus: 'Ready' }, { key: 'GH-92', pickupStatus: 'Ready' }] as any;
+    const review = (key: string) => ({ id: key, key, status: 'blocked', detail: 'Office must restore complete session visibility; inventory unavailable', queuedAt: '', endedAt: '2026-10-29T00:00:00Z' });
+    a.state.coordination!.listener.reviews = [review('GH-91'), review('GH-92')] as any;
+    const [held, other] = a.state.coordination!.listener.reviews, at = new Date(1793221200000);
+    a.store.clock.now = () => at;
+    markAwaitingRepair(a.state, 'brain', { kind: 'intake', id: held.id }, 'assignment-review', { since: at.toISOString(), progressAt: at.toISOString() });
+    const before = JSON.stringify(held);
+    for (let i = 0; i < 3; i++) await a.it.tick(new Date(at.getTime() + i * 60000), true);
+    expect(JSON.stringify(held)).toBe(before);
+    expect(held.itRecoveryAttempts).toBeUndefined();
+    // The review nothing covers is restored as before.
+    expect(other.itRecoveryAttempts).toBe(1);
+    expect(other.status).toBe('queued');
+    unmark(a.state);
+    await a.it.tick(new Date(at.getTime() + 4 * 60000), true);
+    expect(held).toMatchObject({ itRecoveryAttempts: 1, status: 'queued' });
+});
+
+test('a saved recovery about held work survives ticks that never visit it: not resolved, not reset, one routine follow-up; without the wait the ledger settles it', async () => {
+    const run = async (wait: 'held' | 'absent' | 'released during tick') => {
+        const a = setup(), at = new Date(1793221200000);
+        a.store.clock.now = () => at;
+        a.state.coordination!.jobs = [{ id: 'job-7', key: 'GH-7', status: 'blocked', stage: 'review', detail: 'Error: Worktree is missing', head: 'abc1234', requestedAt: 'r', updatedAt: 'u', steps: [], stop: { kind: 'unclassified', at: 't1' } }] as any;
+        a.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { 'pr-review-readback:job-7': { attempts: 2, nextAt: '2026-10-29T00:10:00.000Z', status: 'retrying', detail: 'earlier', requestId: 'req-gone' } } } as any;
+        if (wait !== 'absent') markAwaitingRepair(a.state, 'brain', { kind: 'delivery', id: 'job-7' }, 'review', { since: at.toISOString(), progressAt: at.toISOString() });
+        if (wait === 'released during tick') {
+            (a.it as any).offices.sessions = { forProject: () => {
+                unmark(a.state);
+                return { complete: true, fresh: true };
+            } };
+        }
+        const ticks = wait === 'held' ? 3 : 1;
+        for (let i = 0; i < ticks; i++) await a.it.tick(new Date(at.getTime() + i * 60000), true);
+        return { recovery: a.state.it!.recoveries['pr-review-readback:job-7'], followUps: a.state.it!.reports.at(-1)!.followUps.filter(f => f.id === 'pr-review-readback:job-7') };
+    };
+    const held = await run('held');
+    expect(held.recovery).toEqual({ attempts: 2, nextAt: '2026-10-29T00:10:00.000Z', status: 'retrying', detail: 'earlier', requestId: 'req-gone' });
+    expect(held.followUps).toEqual([{ id: 'pr-review-readback:job-7', owner: 'IT', detail: 'Awaiting harness repair JFusco/the-office#389; held without spending an attempt.', routine: true }]);
+    const free = await run('absent');
+    expect(free.recovery).toMatchObject({ status: 'resolved', nextAt: '' });
+    expect(free.followUps).toEqual([]);
+    expect(await run('released during tick')).toEqual(free);
+});
+
+test.each([false, true])('ownership recovery uses the decision clock when expiry during the health read is %s', async expires => {
+    const a = setup(), markedAt = new Date('2026-10-28T21:00:00Z');
+    const expiry = new Date(markedAt.getTime() + REPAIR_WAIT_MS);
+    let at = new Date(expiry.getTime() - 1);
+    a.store.clock.now = () => at;
+    (a.it as any).offices.sessions = { forProject: () => ({ complete: true, fresh: true }) };
+    const c = a.state.coordination!;
+    c.pickup = { enabled: true, status: 'Ready' };
+    c.listener.assigned = [{ key: 'GH-91', pickupStatus: 'Ready' }] as any;
+    c.listener.reviews = [{ id: 'review', key: 'GH-91', status: 'blocked', detail: 'Session inventory unavailable', endedAt: markedAt.toISOString(), itRecoveryAttempts: 1 }] as any;
+    const review = c.listener.reviews[0], before = structuredClone(review);
+    markAwaitingRepair(a.state, 'brain', { kind: 'intake', id: review.id }, 'assignment-review', { since: markedAt.toISOString(), progressAt: markedAt.toISOString() });
+    const report = await a.health.report();
+    a.health.report.mockImplementationOnce(async () => {
+        if (expires) at = expiry;
+        return report;
+    });
+    const tickAt = at;
+
+    await a.it.tick(tickAt, true);
+
+    if (expires) expect(review).toMatchObject({ status: 'queued', itRecoveryAttempts: 2, queuedAt: tickAt.toISOString() });
+    else expect(review).toEqual(before);
+});
+
+test.each(['closeout', 'scope-repair'] as const)('an existing %s recovery preserves status until its repair wait ends', async stage => {
+    const a = setup(), at = new Date('2026-10-28T21:00:00Z'), head = 'a'.repeat(40), proof = 'e'.repeat(64);
+    a.store.project = a.state.project = projectById('cms-field-vocabulary');
+    a.store.clock.now = () => at;
+    const c = a.state.coordination!;
+    c.enabled = true;
+    const job = { id: 'job-7', key: 'GH-7', stage, status: 'blocked', detail: 'Saved work needs read-back', head, steps: [], stop: { kind: 'unclassified', at: at.toISOString() }, ...(stage === 'scope-repair' ? { candidateRecovery: { head } } : {}) } as any;
+    c.jobs = [job];
+    Object.assign(a.engine, { busy: false, agents: { active: new Map() } });
+    const id = stage === 'closeout' ? `closeout-core:${job.id}:original:${proof}` : `scope-repair-resume:${a.store.project.id}:${job.id}:${head}:no-prior-readback`;
+    const before = { attempts: 1, nextAt: at.toISOString(), status: 'retrying' as const, detail: 'Earlier read-back', requestId: 'req-gone' };
+    const saved = a.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { [id]: { ...before } } };
+    const candidate = stage === 'closeout'
+        ? vi.spyOn(closeoutRecovery, 'closeoutRecoveryCandidate').mockReturnValue({ kind: 'core-passed', work: { id: 'original' }, checkpointSha256: proof } as any)
+        : vi.spyOn(scopeRepair, 'scopeRepairResumeCandidate').mockReturnValue({ work: { id: 'original' } } as any);
+    const requests = () => c.requests ?? [];
+    try {
+        markAwaitingRepair(a.state, a.store.project.id, { kind: 'delivery', id: job.id }, stage, { since: at.toISOString(), progressAt: at.toISOString() });
+        await a.it.tick(at, true);
+        expect(candidate).toHaveBeenCalledWith(a.store, job);
+        expect(saved.recoveries[id]).toEqual(before);
+        expect(requests()).toEqual([]);
+
+        unmark(a.state);
+        await a.it.tick(new Date(at.getTime() + 60000), true);
+        expect(saved.recoveries[id]).toEqual({ ...before, status: 'needs-human' });
+        expect(requests()).toEqual([]);
+    } finally { candidate.mockRestore(); }
+});
+
+test('a held activation read-back keeps the count it has; its budget is rebuilt from the original requests once the wait ends', async () => {
+    const a = activationFixture(), at = new Date('2026-10-30T23:35:00Z');
+    a.store.clock.now = () => at;
+    a.job.stop = { kind: 'unclassified', at: at.toISOString() };
+    const before = { attempts: 1, status: 'retrying' as const, requestId: 'third', nextAt: '', detail: 'Raw historical diagnostic' };
+    a.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { [a.key]: { ...before } } };
+    a.state.coordination!.requests = [a.request('first'), a.request('second'), a.request('third', 'queued')];
+    const activation = vi.spyOn(activationRecovery, 'savedActivationFailure').mockReturnValue(undefined), config = vi.spyOn(activationRecovery, 'sourceConfigurationRecoveryTarget').mockReturnValue(undefined);
+    try {
+        markAwaitingRepair(a.state, 'brain', { kind: 'delivery', id: a.job.id }, 'scope-repair', { since: at.toISOString(), progressAt: at.toISOString() });
+        await a.it.tick(at, true);
+        await a.it.tick(new Date(at.getTime() + 60000), true);
+        expect(a.state.it.recoveries[a.key]).toEqual(before);
+        expect(a.state.it.reports.at(-1)!.followUps.filter(f => f.id === a.key)).toEqual([{ id: a.key, owner: 'IT', detail: 'Awaiting harness repair JFusco/the-office#389; held without spending an attempt.', routine: true }]);
+        unmark(a.state);
+        await a.it.tick(new Date(at.getTime() + 120000), true);
+        expect(a.state.it.recoveries[a.key]).toMatchObject({ attempts: 3, requestId: 'third' });
+    } finally { activation.mockRestore(); config.mockRestore(); }
+});
+
+test('a held cleanup read-back the tick does not otherwise reach keeps its status and retry time; released, the ledger settles it', async () => {
+    const a = setup(), at = new Date('2026-10-28T21:00:00Z');
+    a.store.clock.now = () => at;
+    // A busy engine skips the closeout recovery itself, so only the ledger's own pass over retained cleanups can touch this one.
+    Object.assign(a.engine, { busy: true, agents: { active: new Map() } });
+    const job = { id: 'job-9', key: 'GH-9', stage: 'closeout', status: 'blocked', detail: 'Cleanup needs read-back', head: 'a'.repeat(40), worktree: '/tmp/office/job-9', steps: [], stop: { kind: 'unclassified', at: at.toISOString() }, closeoutRecovery: { status: 'cleanup-pending', originalWorkId: 'work-1', proofSha256: 'e'.repeat(64), cleanupRequestId: 'cleanup-gone' } } as any;
+    a.state.coordination!.jobs = [job];
+    const key = partialLocalCleanupKey(job)!, before = { attempts: 1, nextAt: at.toISOString(), status: 'retrying' as const, detail: 'Earlier cleanup read-back', requestId: 'req-gone' };
+    expect(key.startsWith('partial-local-cleanup:job-9:')).toBe(true);
+    const saved = a.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { [key]: { ...before } } };
+    markAwaitingRepair(a.state, 'brain', { kind: 'delivery', id: job.id }, 'closeout', { since: at.toISOString(), progressAt: at.toISOString() });
+    await a.it.tick(at, true);
+    expect(saved.recoveries[key]).toEqual(before);
+    unmark(a.state);
+    await a.it.tick(new Date(at.getTime() + 60000), true);
+    expect(saved.recoveries[key]).toEqual({ ...before, status: 'needs-human', nextAt: '' });
+});
+
 test.each(['cec', 'brain', 'cms-field-vocabulary'])('%s session visibility follow-up preserves its ownership requirement', async project => {
     const a = setup();
     a.store.project = a.state.project = projectById(project);

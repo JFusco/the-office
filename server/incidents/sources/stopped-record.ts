@@ -1,3 +1,4 @@
+import { hasUncertainEffects } from '../../delivery/pipeline/uncertain-effects';
 import type { Prerequisite, StopReason, WorkRef } from '../../../src/contracts/work';
 import type { MaintenanceRun, OfficeSnapshot, StageResult } from '../../../src/shared';
 import { deliveryRepairProjection } from '../../../src/work/delivery-repair-projection';
@@ -42,6 +43,10 @@ export interface StoppedRecord {
     retryAt?: string;
     /** The structured prerequisites the record waits on. */
     prerequisites?: Prerequisite[];
+    /** A saved result of this record reports a write whose outcome is unknown or unverified: a read-back is required, whatever the Effects ledger holds. */
+    uncertainWrite?: boolean;
+    /** `WorkFailure.category` of the run that worked this stop, while that failure still stands. */
+    failure?: string;
 }
 
 /** What the stage runner writes on the receipt of a result it made itself when a stage was cut short. */
@@ -60,6 +65,12 @@ const repeats = (text: string, result: Refused | null) => includes(text, result?
 /** A result the harness wrote itself: it carries the runner's own receipt for this ticket and stage. */
 const synthesized = (result: Refused, key: string, stage: string) => !!result.receipts?.some(receipt => receipt.action === stage && receipt.target === key && !receipt.verified && [REFUSED_RECEIPT, INTERRUPTED_RECEIPT].includes(receipt.detail));
 const lastRun = (state: OfficeSnapshot, of: (run: Run) => boolean) => state.workLog?.filter(of).at(-1);
+/** A saved result with a write receipt of unknown outcome, the condition that stops Brain maintenance for a read-back. */
+const unknownWrite = (result: { receipts?: readonly { uncertain?: boolean }[] } | undefined) => !!result?.receipts?.some(receipt => receipt.uncertain);
+const ticketWriteUnconfirmed = (result: StageResult | undefined) =>
+    unknownWrite(result) || !!result?.receipts?.some(receipt => receipt.action === 'jira-transition' && !receipt.verified);
+/** The delivery pipeline's own rule for a result that still owes a read-back; a result saved without receipts owes none. */
+const jobWriteUnconfirmed = (stage: string, result: StageResult | undefined) => !!result?.receipts && hasUncertainEffects(stage, result);
 /** The run's typed failure still stands: a stage that accepted the result a failed run had saved was not stopped by that failure. */
 const failed = (run: Run | undefined) => !!run?.failure && !run.completionAccepted;
 /** A maintenance run's stop is its last step's blocker, and no typed failure says the harness stopped it. */
@@ -87,7 +98,8 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         const run = lastRun(state, run => run.ticket === ticket.key && run.stage === ticket.stage), blocked = ticket.activity === 'blocked', stop = blocked ? ticket.stop ?? null : null;
         // Required Azure policies still running on the pull request's head: a wait the runner saved itself.
         const policies = ticket.stage === 'ci' && ticket.activity === 'waiting' && !!ticket.blocker;
-        const result = refused(ticket.results[ticket.stage]), transition = refused(ticket.progressUpdates?.filter(update => update.stage === ticket.stage).at(-1)?.result);
+        const stageResult = ticket.results[ticket.stage], moved = ticket.progressUpdates?.filter(update => update.stage === ticket.stage).at(-1)?.result;
+        const result = refused(stageResult), transition = refused(moved);
         // The blocker is attributed to the attempt that produced it: a refused transition first, then the stage's result.
         const said = !policies && repeats(ticket.blocker, transition) ? transition : !policies && repeats(ticket.blocker, result) && !synthesized(result!, ticket.key, ticket.stage) && !failed(run) ? result : null;
         const harness = policies || !said && (repeats(ticket.blocker, result) || failed(run) || !!stop);
@@ -96,7 +108,9 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         const mirrored = (state.deliveryQueue ?? []).filter(request => request.key === ticket.key && STOPPED.includes(request.status) && !!request.error && request.error === ticket.blocker).map((request): [string, string] => ['delivery', request.id]);
         return { ...base, standing: blocked || policies ? 'stopped' : 'gated', stage: ticket.stage, key: ticket.key, text: ticket.blocker, author, kind, stop, head: ticket.commit, lastWorker: run?.id ?? '', episode: stop?.at ?? `${ticket.runId}:${ticket.attempt}`,
             facts: policies ? { stopKind: 'provider-checks' } : said ? { resolution: said.resolution?.kind, parked: ticket.parked } : { stopKind: harness ? stop?.kind : undefined, parked: ticket.parked },
-            covers: [...worker(run?.id), ...mirrored], effects: [work, { projectId: project, kind: 'delivery', id: ticket.key }], prerequisites: ticket.prerequisites };
+            covers: [...worker(run?.id), ...mirrored], effects: [work, { projectId: project, kind: 'delivery', id: ticket.key }], prerequisites: ticket.prerequisites,
+            // A status change that was sent and could not be verified is a write of unknown outcome, as is any receipt that says so.
+            uncertainWrite: ticketWriteUnconfirmed(stageResult) || ticketWriteUnconfirmed(moved), failure: failed(run) ? run!.failure!.category : undefined };
     }
     if (work.kind === 'delivery') {
         const job = c?.jobs?.find(job => job.id === work.id);
@@ -111,18 +125,21 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
             return { ...base, standing: active || job.status === 'watching' && (!!stop || approval || followup) ? 'stopped' : 'gated', stage: job.stage, key: job.key, keys: job.pr ? [`GH-${job.pr}`] : [], text: job.detail, identity: approval ? MERGE_APPROVAL : undefined, author: approval ? 'harness' : model ? 'model' : 'harness',
                 kind: approval ? 'merge-approval' : followup ? 'readiness' : model ? result?.resolution?.kind ?? result?.outcome ?? 'blocked' : stop?.kind ?? '', stop, head: job.head, lastWorker: run?.id ?? '', episode: stop?.at ?? job.updatedAt ?? job.requestedAt,
                 facts: { ...(model ? { resolution: followup ? undefined : result?.resolution?.kind } : { stopKind: stop?.kind }), parked: job.parked, mergeApproval: approval, retrying: pending(job.retry), exhausted: !!job.retry?.exhausted }, covers: worker(run?.id), effects: [work, ...issue(project, job.key)],
-                retryAt: repair && 'retryAt' in repair ? repair.retryAt : undefined, prerequisites: job.prerequisites };
+                retryAt: repair && 'retryAt' in repair ? repair.retryAt : undefined, prerequisites: job.prerequisites, uncertainWrite: job.steps.some(step => jobWriteUnconfirmed(step.stage, step.result)), failure: failed(run) ? run!.failure!.category : undefined };
         }
         const request = state.deliveryQueue?.find(request => request.id === work.id);
+        if (!request) return null;
+        const run = lastRun(state, run => run.requestId === request.id);
         // A delivery request's error can be the ticket's own blocker, which may be a model's.
-        return request ? { ...base, standing: STOPPED.includes(request.status) ? 'stopped' : 'gated', stage: request.action, key: request.key, text: request.error, author: 'unknown', episode: request.requestedAt, effects: [work, { projectId: project, kind: 'delivery', id: request.key }, { projectId: project, kind: 'delivery', id: `ticket:${request.key}` }] } : null;
+        return { ...base, standing: STOPPED.includes(request.status) ? 'stopped' : 'gated', stage: request.action, key: request.key, text: request.error, author: 'unknown', episode: request.requestedAt,
+            failure: failed(run) ? run!.failure!.category : undefined, effects: [work, { projectId: project, kind: 'delivery', id: request.key }, { projectId: project, kind: 'delivery', id: `ticket:${request.key}` }] };
     }
     if (work.kind === 'reconciliation') {
         const request = c?.requests?.find(request => request.id === work.id);
         if (!request) return null;
         const run = lastRun(state, run => run.requestId === request.id), author = handedBack(run), stopped = STOPPED.includes(request.status), stop = stopped ? request.stop ?? null : null;
         return { ...base, standing: stopped ? 'stopped' : 'gated', stage: request.action, key: request.key, text: request.detail, author, kind: author === 'harness' ? stop?.kind ?? '' : '', stop, head: request.head, lastWorker: run?.id ?? '', episode: stop?.at ?? request.requestedAt,
-            facts: { stopKind: author === 'harness' ? stop?.kind : undefined }, covers: worker(run?.id),
+            facts: { stopKind: author === 'harness' ? stop?.kind : undefined }, failure: failed(run) ? run!.failure!.category : undefined, covers: worker(run?.id),
             effects: [work, ...(c?.jobs ?? []).filter(job => !!request.key && job.key === request.key).map(job => ({ projectId: project, kind: 'delivery' as const, id: job.id })), ...issue(project, request.key), ...(request.head ? [{ projectId: project, kind: 'reconciliation' as const, id: request.head }] : [])] };
     }
     if (work.kind === 'intake') {
@@ -133,7 +150,7 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         const run = lastRun(state, run => run.requestId === review.id), harness = !!review.prerequisiteError || !!review.failure;
         // Without a typed failure the detail is Morgan's own summary of the review.
         return { ...base, standing: review.prerequisiteError || STOPPED.includes(review.status) ? 'stopped' : 'gated', key: review.key, text: review.prerequisiteError || review.detail, author: harness ? 'harness' : 'model', kind: review.prerequisiteError ? 'dependency' : review.failure?.category ?? 'review',
-            lastWorker: run?.id ?? '', episode: review.endedAt || review.queuedAt, facts: { cause: review.prerequisiteError ? 'dependency' : undefined, failure: review.failure?.category, retrying: pending(review.retry), exhausted: !!review.retry?.exhausted }, covers: worker(run?.id), prerequisites: review.prerequisites };
+            lastWorker: run?.id ?? '', episode: review.endedAt || review.queuedAt, facts: { cause: review.prerequisiteError ? 'dependency' : undefined, failure: review.failure?.category, retrying: pending(review.retry), exhausted: !!review.retry?.exhausted }, failure: failed(run) ? run!.failure!.category : undefined, covers: worker(run?.id), prerequisites: review.prerequisites };
     }
     if (work.kind === 'checkpoint') {
         const checkpoint = c?.checkpoints.find(checkpoint => checkpoint.id === work.id);
@@ -141,8 +158,9 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         // A checkpoint whose maintenance ended blocked repeats that run's error, which can be a model's blocker.
         const run = state.maintenance?.runs.find(run => run.id === checkpoint.runId), outcome = run ? stepBlocker(state, run, checkpoint.detail) : null;
         // A mailbox checkpoint repeats the intake error, which a board-enumerating model may have written.
-        const mailbox = !run && !!state.intake?.error && includes(checkpoint.detail, state.intake.error) ? handedBack(lastRun(state, worked => worked.stage === 'intake')) : 'harness';
-        return { ...base, standing: STOPPED.includes(checkpoint.status) ? 'stopped' : 'gated', text: checkpoint.detail, author: outcome ? 'model' : mailbox, kind: outcome ?? '', episode: `${checkpoint.startRetries ?? 0}:${checkpoint.endedAt}`, retryAt: checkpoint.retryAt || undefined, effects: [work, { projectId: project, kind: 'maintenance', id: checkpoint.runId }] };
+        const intake = !run && state.intake?.error && includes(checkpoint.detail, state.intake.error) ? lastRun(state, worked => worked.stage === 'intake') : undefined;
+        return { ...base, standing: STOPPED.includes(checkpoint.status) ? 'stopped' : 'gated', text: checkpoint.detail, author: outcome ? 'model' : handedBack(intake), kind: outcome ?? '', episode: `${checkpoint.startRetries ?? 0}:${checkpoint.endedAt}`,
+            failure: failed(intake) ? intake!.failure!.category : undefined, retryAt: checkpoint.retryAt || undefined, effects: [work, { projectId: project, kind: 'maintenance', id: checkpoint.runId }] };
     }
     if (work.kind === 'maintenance') {
         const run = state.maintenance?.runs.find(run => run.id === work.id);
@@ -150,7 +168,7 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         const last = lastRun(state, worked => worked.requestId === run.id), outcome = stepBlocker(state, run, run.error);
         // A checkpoint that only repeats this run's stop is the same stop.
         const mirrored = (c?.checkpoints ?? []).filter(checkpoint => checkpoint.runId === run.id && STOPPED.includes(checkpoint.status) && !!run.error && checkpoint.detail === run.error).map((checkpoint): [string, string] => ['checkpoint', checkpoint.id]);
-        return { ...base, standing: STOPPED.includes(run.status) ? 'stopped' : 'gated', stage: run.stage, text: run.error, author: outcome ? 'model' : 'harness', kind: outcome ?? '', lastWorker: last?.id ?? '', episode: run.endedAt || run.requestedAt, facts: { retrying: pending(run.readbackRetry), exhausted: !!run.readbackRetry?.exhausted }, covers: [...worker(last?.id), ...mirrored] };
+        return { ...base, standing: STOPPED.includes(run.status) ? 'stopped' : 'gated', stage: run.stage, text: run.error, author: outcome ? 'model' : 'harness', kind: outcome ?? '', lastWorker: last?.id ?? '', episode: run.endedAt || run.requestedAt, facts: { retrying: pending(run.readbackRetry), exhausted: !!run.readbackRetry?.exhausted }, covers: [...worker(last?.id), ...mirrored], uncertainWrite: !!run.steps?.some(step => unknownWrite(step.result)), failure: failed(last) ? last!.failure!.category : undefined };
     }
     if (work.kind === 'continuation') {
         const followup = state.maintenance?.runs.find(run => run.id === work.id)?.blockerFollowup;
@@ -162,7 +180,7 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         // A recipient lookup is a model's run; what it handed back may be its own blocker.
         const run = lastRun(state, run => run.requestId === notice.id);
         return { ...base, standing: ['blocked', 'uncertain'].includes(notice.status) ? 'stopped' : 'gated', key: notice.key ?? '', text: notice.detail, author: handedBack(run), kind: notice.status === 'uncertain' ? 'uncertain' : '', lastWorker: run?.id ?? '', episode: notice.createdAt,
-            facts: { cause: notice.status === 'uncertain' ? 'unconfirmed' : undefined }, covers: [['slack-delivery', notice.id], ...worker(run?.id)] };
+            facts: { cause: notice.status === 'uncertain' ? 'unconfirmed' : undefined }, failure: failed(run) ? run!.failure!.category : undefined, covers: [['slack-delivery', notice.id], ...worker(run?.id)] };
     }
     if (work.kind === 'conversation') {
         // An investigation is scheduled as a conversation; its diagnosis is read by its own collector.
@@ -170,7 +188,7 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         const message = state.messages.find(message => message.id === work.id);
         if (!message) return null;
         const run = lastRun(state, run => !!message.requestId && run.requestId === message.requestId);
-        return { ...base, standing: ['failed', 'interrupted'].includes(message.status) ? 'stopped' : 'gated', key: message.ticket ?? '', text: message.error, author: handedBack(run), lastWorker: run?.id ?? '', episode: message.createdAt, covers: [['slack-delivery', message.id], ...worker(run?.id)],
+        return { ...base, standing: ['failed', 'interrupted'].includes(message.status) ? 'stopped' : 'gated', key: message.ticket ?? '', text: message.error, author: handedBack(run), lastWorker: run?.id ?? '', episode: message.createdAt, failure: failed(run) ? run!.failure!.category : undefined, covers: [['slack-delivery', message.id], ...worker(run?.id)],
             effects: [work, ...(c?.jobs ?? []).filter(job => !!message.ticket && job.key === message.ticket).map(job => ({ projectId: project, kind: 'delivery' as const, id: job.id }))] };
     }
     return null;

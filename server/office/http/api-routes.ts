@@ -1,3 +1,4 @@
+import { currentOutbox } from '../../conversations/current-outbox';
 import { referencedQAArtifact } from '../../qa/report-access';
 import { qaPlanRetryRoute } from '../../cec/qa/plan-retry-route';
 import { DATA, ROOT } from '../config';
@@ -131,7 +132,8 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         return fileResponse(p, { 'Cache-Control': 'private, max-age=30', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
     }
     if (url.pathname === '/api/messages') {
-        if (req.method === 'GET') return json({ messages: store.state.messages, outbox: store.state.outbox });
+        // Projected now, not as last saved: a repair wait can begin, end or expire between events.
+        if (req.method === 'GET') return json({ messages: store.state.messages, outbox: currentOutbox(store) });
         if (req.method !== 'POST')
             return json({ error: 'POST required' }, 405);
         if (Number(req.headers.get('content-length') || 0) > 30000)

@@ -17,6 +17,17 @@ attempts. The budget is saved before dispatch. After interruption, the provision
 three-minute deadline plus 30 seconds must elapse and diagnosis processes must stop
 before another attempt. Exhaustion belongs to Morgan; restarts never refund attempts.
 
+An investigation is also not ready while the record its failed run worked is awaiting a harness
+repair (`held-investigation.ts`): the cause is already known and being fixed. The run's record is
+the one its request is (a delivery job or request, an assignment review, a maintenance run, a
+checkpoint, a harness request, a notice or a conversation); a delivery request that only repeats
+a stopped ticket's stop is that ticket; a stage run without a request belongs to a ticket only
+when that ticket's stop names the run (`source-record.ts`). A Slack delivery investigation is
+about no stopped record and is never held. Nor is an investigation whose own run failed for
+authentication, permission, ownership or a write of unknown outcome: that is not something a
+harness repair settles. No attempt is spent while an investigation waits, and it is ready again,
+from the same count, when the wait ends or expires.
+
 Ellis receives metadata for at most eight original workers, capped 16 KiB session
 artifacts (`error.json`, `execution-completion.json`, and Slack-verifier result fields),
 and at most eight matching durable effect summaries. The packet reports omitted worker

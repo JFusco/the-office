@@ -1,3 +1,4 @@
+import { recoveryHeld } from './held-recovery';
 import { stoppedBaseUpdateUnresolved } from './stopped-base-update-recovery';
 import { supersededCheckpoint } from '../operations/stale-records';
 import { savedAdmissionUnresolved } from '../delivery/recovery/implementation/saved-candidate-admission';
@@ -22,12 +23,16 @@ export async function reconcileRecoveryLedger(context: ITContext): Promise<void>
             await recover(`probe:${service.id}`, service.detail, async () => false, `Ellis keeps checking ${service.name}'s status in the Office environment. No logout is established; do not change credentials without an authentication failure.`, 'IT');
     }
     for(const {job,key,recovery} of retainedPartials){
+        // A cleanup read-back about held work keeps its status and retry time.
+        if(recoveryHeld(context,key))continue;
         const pending=state.coordination?.requests?.find(request=>request.id===recovery.requestId&&request.action==='reconcile-closeout'&&request.key===job.key&&request.head===job.closeoutRecovery?.originalWorkId&&['queued','working'].includes(request.status))
             ||state.coordination?.requests?.find(request=>request.id===job.closeoutRecovery?.cleanupRequestId&&request.action==='cleanup-merged-candidate'&&['queued','working'].includes(request.status));
         recovery.status=pending?'retrying':'needs-human';if(!pending)recovery.nextAt='';
         if(!followUps.some(f=>f.id===key||f.id===`closeout:${job.id}`))followUps.push({id:`closeout:${job.id}`,owner:pending?'IT':'Morgan',detail:pending?'The same partial cleanup readback is queued or working; scheduler owns execution.':'The single partial local cleanup continuation was used; the same cleanup effect stays uncertain until Morgan reviews it.'});
     }
     for (const [id, r] of Object.entries(it.recoveries)) {
+        // Held first: a recovery this tick never reached must not be read as resolved, nor have its status rewritten.
+        if(recoveryHeld(context,id))continue;
         if(current.has(id))continue;
             const budget=activationBudget(id),config=budget?.job.implementationContinuation?.sourceConfig;
             const unresolvedActivation=budget&&!['completed','cancelled'].includes(budget.job.status)&&(!!budget.pending||(budget.source?!!config?.attemptOpen||!!config?.reservation:budget.job.stage==='scope-repair'&&budget.job.implementationContinuation?.phase==='activation'&&(state.workLog||[]).filter(work=>work.requestId===budget.job.id&&work.stage==='github-scope-repair').at(-1)?.id===id.split(':')[2]));
