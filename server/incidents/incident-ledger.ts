@@ -44,6 +44,11 @@ export class IncidentLedger {
         return this.read(() => { const row = this.db.prepare('SELECT body FROM incidents WHERE id=?').get(id) as { body: string } | undefined; return row ? JSON.parse(row.body) as Incident : null; }, null);
     }
 
+    /** One recorded event by its ID, or null. */
+    event(id: string): IncidentEvent | null {
+        return this.read(() => { const row = this.db.prepare('SELECT body FROM incident_events WHERE id=?').get(id) as { body: string } | undefined; return row ? JSON.parse(row.body) as IncidentEvent : null; }, null);
+    }
+
     /** How often a subject was observed in an incident, and when first, from the event history; null if never. */
     subjectHistory(incident: string, subject: string): { episodes: number; firstObservedAt: string } | null {
         return this.read(() => {

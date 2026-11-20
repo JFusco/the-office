@@ -62,7 +62,8 @@ server/
   it/              IT specialist: per-project check context, recovery attempts, delivery
                    recoveries, recovery ledger, reports
   incidents/       office-wide incident ledger: observation of stopped work, cause identity,
-                   expected waits, research eligibility
+                   expected waits, research eligibility; write-back of repair starts and fix
+                   bindings, and the `pnpm office incident` command
     sources/       one collector per signal: stopped work, worker failures, IT recoveries and
                    investigations, improvement proposals, provider errors, Slack deliveries, outbox
   release/         release builds and identity: exact-commit build, release.json manifest,

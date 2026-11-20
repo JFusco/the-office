@@ -52,6 +52,14 @@ test('the same event with its properties in another order is the same event; a d
     expect(() => ledger.record({ events: [{ ...reordered, body: { ...reordered.body, nested: { one: 1, two: 3 } } }], incidents: [] })).toThrow(/different content/);
 });
 
+test('one event is read back by its ID', () => {
+    const ledger = new IncidentLedger(memory());
+    expect(ledger.event('e1')).toBeNull();
+    ledger.record({ events: [event('e1', { body: { note: 'x' } })], incidents: [incident()] });
+    expect(ledger.event('e1')).toEqual(event('e1', { body: { note: 'x' } }));
+    expect(ledger.event('e2')).toBeNull();
+});
+
 test('the event history answers how often a subject was observed and when first', () => {
     const ledger = new IncidentLedger(memory());
     expect(ledger.subjectHistory('inc-0000000000000001', 'brain/delivery/job-1')).toBeNull();
