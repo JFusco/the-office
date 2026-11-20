@@ -29,11 +29,15 @@ export function expireLessons(store: Store): void {
         if (eligible(lesson)) retire(store, lesson.id, eligible, 'expired', `expired on ${lesson.validUntil}`);
 }
 
-/** Once a day, asks the harness to read back the issues filed for lessons. Nothing is queued when no lesson has one. */
+/**
+ * Once a day, checks filed issues for graduation when retrospectives are enabled and retries pending card moves
+ * regardless of the retrospective setting or the lesson's active status.
+ */
 export function queueLessonIssueCheck(store: Store): void {
     const knowledge = store.state.knowledge, today = easternDay(store.clock.now());
-    if (!knowledge?.enabled || store.state.paused || store.state.draining || knowledge.issueCheckDay === today) return;
-    if (!knowledge.lessons.some(lesson => lesson.status === 'active' && lesson.repositoryInstruction?.status === 'filed')) return;
+    if (!knowledge || store.state.paused || store.state.draining || knowledge.issueCheckDay === today) return;
+    if (!knowledge.lessons.some(lesson => lesson.repositoryInstruction?.status === 'filed'
+        && (lesson.repositoryInstruction.lanePending || (knowledge.enabled && lesson.status === 'active')))) return;
     knowledge.issueCheckDay = today;
     enqueueRequest(store, 'check-lesson-issues');
 }

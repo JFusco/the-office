@@ -5,7 +5,7 @@ import { knowledgeChatPrompt } from '../../../server/knowledge/chat-prompt';
 import { Engine } from '../../../server/scheduling/engine';
 import { Conversations } from '../../../server/conversations/conversations';
 import type { command } from '../../../server/workers/process';
-import type { Lesson } from '../../../src/shared';
+import type { EffectIntent, Lesson } from '../../../src/shared';
 import { knowledgeStore } from './knowledge-fixture';
 
 const cleanup: (() => void)[] = [];
@@ -14,14 +14,15 @@ function setup(projectId = 'brain') { const fixture = knowledgeStore(projectId);
 const lesson = (overrides: Partial<Lesson> = {}): Lesson => ({ id: 'L-agents', scope: 'project', tier: 'guidance', revision: 1, kind: 'convention', when: 'Fixture situation', check: 'Fixture check', statement: 'Regenerate the catalog with pnpm wiki before committing', detail: 'The verify check fails on drift.', stages: ['implement'], paths: [], status: 'active', evidence: [{ kind: 'pr', ref: 'pr:x:7', url: 'https://github.com/JFusco/brain/pull/7', detail: 'PR #7' }], sourceRetrospectiveId: 'x:completed', repositoryInstruction: { status: 'proposed' }, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', ...overrides });
 
 /** A fake gh: issue search, create and view against an in-memory list. */
-function fakeGh(options: { failCreate?: boolean } = {}) {
-    const issues: { url: string; body: string }[] = [], calls: string[][] = [];
+function fakeGh(options: { failCreate?: boolean; hideFromSearch?: boolean } = {}) {
+    const issues: { url: string; body: string; assignees: { login: string }[] }[] = [], calls: string[][] = [];
     const execute = (async (program: string, args: string[], opts: { input?: string } = {}) => {
         calls.push([program, ...args]);
-        if (args[0] === 'issue' && args[1] === 'list') return JSON.stringify(issues);
+        if (args[0] === 'issue' && args[1] === 'list') return JSON.stringify(options.hideFromSearch ? [] : issues);
         if (args[0] === 'issue' && args[1] === 'create') {
             const url = `https://github.com/JFusco/brain/issues/${100 + issues.length}`;
-            issues.push({ url, body: opts.input || '' });
+            const assignee = args.indexOf('--assignee');
+            issues.push({ url, body: opts.input || '', assignees: assignee >= 0 ? [{ login: args[assignee + 1] }] : [] });
             if (options.failCreate) throw new Error('transport closed after create');
             return `Creating issue in JFusco/brain\n\n${url}\n`;
         }
@@ -39,6 +40,7 @@ test('an approved AGENTS.md suggestion becomes exactly one GitHub issue with the
     expect(url).toBe('https://github.com/JFusco/brain/issues/100');
     expect(gh.issues[0].body).toContain(lessonIssueMarker({ id: 'L-agents' }));
     expect(gh.issues[0].body).toContain('https://github.com/JFusco/brain/pull/7');
+    expect(gh.issues[0].assignees).toEqual([{ login: 'JFusco' }]);
     expect(store.state.knowledge!.lessons[0].repositoryInstruction).toMatchObject({ status: 'filed', issueUrl: url });
     expect(await fileLessonIssue(store, gh.execute, 'L-agents')).toBe(url);
     expect(gh.calls.filter(call => call[2] === 'create')).toHaveLength(1);
@@ -54,6 +56,32 @@ test('an uncertain create is reconciled by searching for the marker and never re
     expect(url).toBe('https://github.com/JFusco/brain/issues/100');
     expect(failing.calls.filter(call => call[2] === 'create')).toHaveLength(1);
     expect(store.state.knowledge!.lessons[0].repositoryInstruction?.status).toBe('filed');
+});
+
+test('a legacy verified receipt must read back assigned to Joe before filing can resume', async () => {
+    const { store } = setup();
+    const proposed = lesson(), marker = lessonIssueMarker(proposed);
+    const url = 'https://github.com/JFusco/brain/issues/100';
+    const gh = fakeGh({ hideFromSearch: true });
+    gh.issues.push({ url, body: marker, assignees: [] });
+    store.state.knowledge!.lessons = [proposed];
+    const intent: EffectIntent = {
+        id: 'lesson-issue:L-agents', work: { projectId: 'brain', kind: 'retrospective', id: proposed.id }, attemptId: proposed.id,
+        operation: 'github-issue-create', target: 'JFusco/brain', authorization: 'joe-approved-lesson-issue',
+        payload: { title: `Team learning: ${proposed.statement}`, marker }, expectedState: { status: 'proposed' },
+        status: 'verified', createdAt: proposed.createdAt, dispatchedAt: proposed.createdAt, verifiedAt: proposed.createdAt,
+        receipt: { url }, error: '', elapsedMs: 0,
+    };
+    store.putEffect(intent);
+
+    await expect(fileLessonIssue(store, gh.execute, proposed.id)).rejects.toThrow('assigned to JFusco');
+    expect(store.state.knowledge!.lessons[0].repositoryInstruction).toEqual({ status: 'proposed' });
+    expect(gh.calls).toEqual([['gh', 'issue', 'view', url, '--json', 'url,body,assignees']]);
+
+    gh.issues[0].assignees = [{ login: 'JFusco' }];
+    await expect(fileLessonIssue(store, gh.execute, proposed.id)).resolves.toBe(url);
+    expect(store.state.knowledge!.lessons[0].repositoryInstruction).toMatchObject({ status: 'filed', issueUrl: url });
+    expect(gh.calls.filter(call => call[2] === 'create')).toHaveLength(0);
 });
 
 test('declined, CEC and unknown suggestions are never filed', async () => {

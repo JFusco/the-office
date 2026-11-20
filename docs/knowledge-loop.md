@@ -109,3 +109,15 @@ There are two kinds:
 
 - an office-wide lesson to accept or decline;
 - a lesson that belongs in its repository, to file as an issue or decline.
+
+Filing is Joe's request to deliver it. The issue is created assigned to JFusco and counts as filed
+only once GitHub reads it back assigned to him; an existing issue carrying the lesson's marker but
+not assigned to him is neither adopted nor filed again (`file-lesson-issue.ts`). Once GitHub's
+project automation has added its card and set its first lane, the harness moves the card from
+Backlog (or no lane) to the project's pickup lane, so intake admits it like any other ticket
+(`lesson-issue-ready.ts`). The card is read again just before the write, and a card a person has
+moved elsewhere is left where it is. A move that cannot finish yet stays pending and is retried by
+the daily lesson-issue check, even after its lesson retires or while retrospectives are disabled.
+The harness settles an attempted move only by reading back the saved card and lane. A move
+refused before dispatch gets a new attempt. The issue is never filed twice. Issues filed before
+this behaviour are not moved.
