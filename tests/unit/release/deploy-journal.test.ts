@@ -11,7 +11,7 @@ function started() { const dir = mkdtempSync(resolve(tmpdir(), 'office-deploy-jo
 
 test('a new journal holds the plan and no step; starting the same operation twice is refused', () => {
     const dir = started();
-    expect(readDeployJournal(dir, OP)).toEqual({ operation: OP, steps: STEPS, facts: { target: 'c'.repeat(40) }, last: null, torn: false });
+    expect(readDeployJournal(dir, OP)).toEqual({ operation: OP, steps: STEPS, facts: { target: 'c'.repeat(40) }, receipts: {}, last: null, torn: false });
     expect(() => startDeployJournal(dir, OP, STEPS, {})).toThrow();
     expect(() => readDeployJournal(dir, 'deploy-20261120-b')).toThrow('has no journal');
 });
@@ -74,4 +74,14 @@ test('after the last step is done nothing further can start', () => {
     const dir = started();
     for (const step of STEPS) { recordDeployStep(dir, OP, step, 'intended'); recordDeployStep(dir, OP, step, 'done'); }
     expect(() => recordDeployStep(dir, OP, 'acquire-fence', 'intended')).toThrow('out of order; nothing is next');
+});
+
+test('the receipts of completed steps are kept by step for a restarted controller', () => {
+    const dataRoot = mkdtempSync(resolve(tmpdir(), 'office-deploy-journal-')); roots.push(dataRoot);
+    const operation = 'deploy-20261120t030000z-0a0b0c0d';
+    startDeployJournal(dataRoot, operation, ['fence', 'stop', 'start'], {});
+    recordDeployStep(dataRoot, operation, 'fence', 'intended'); recordDeployStep(dataRoot, operation, 'fence', 'done', { tokenDigest: 'd' });
+    recordDeployStep(dataRoot, operation, 'stop', 'intended'); recordDeployStep(dataRoot, operation, 'stop', 'done');
+    recordDeployStep(dataRoot, operation, 'start', 'intended'); recordDeployStep(dataRoot, operation, 'start', 'failed', { reason: 'no' });
+    expect(readDeployJournal(dataRoot, operation).receipts).toEqual({ fence: { tokenDigest: 'd' }, stop: {} });
 });

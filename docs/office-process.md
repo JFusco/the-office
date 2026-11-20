@@ -677,8 +677,7 @@ requeue existing records are still refused.
 ### Deploy building blocks
 
 `server/release/` holds the parts a deployment is assembled from. None of them stops, starts or
-reconfigures the service, and nothing calls them yet; the controller that sequences them is a later
-change.
+reconfigures the service on its own; the deployment controller below sequences them.
 
 - **Deploy lock** (`deploy-lock.ts`). One deployment per data root. A live owner refuses a second
   deployment. Acquisition uses a guard file. A takeover atomically replaces a confirmed dead
@@ -708,6 +707,80 @@ change.
   PATH entry change. Rendering requires a Node service with absolute data and working directories.
   Any reference to the current release commit outside those three locations causes refusal.
 
+### Deployment
+
+`pnpm office deploy COMMIT` replaces the running release with a verified one. The command only
+launches the controller and reports; the controller (`server/release/deploy.ts`) runs from the
+release named by the controller pin (`controller-pin.json` in the data root), never from the
+invoking checkout or the target release. A person sets the pin. An operation keeps the controller
+it started with: a resume or an `end` runs under the pin its journal recorded. The operator's
+procedure, the bootstrap and STOP recovery are in [the overseer guide](overseer.md).
+
+A deployment is refused, with nothing changed, unless the target release verifies against its
+manifest, launchd runs a release of this data root and the running process loaded that release,
+`/api/health` reports the deployment fence, the fence is open, no STOP record stands, no other
+deployment holds the lock, and no earlier deployment is unfinished. A deployment that journaled a
+plan and recorded no outcome is unfinished until it is resumed or a person ends it. A busy service
+is not refused: the fence stops new work being admitted so the work in flight can drain, and the
+service is stopped only after it reads idle.
+
+It then runs these steps in order under the deploy lock. Each is journaled `intended` before it runs
+and settled after:
+
+1. `fence`: acquire the deployment fence. The token stays in an owner-only file beside the journal,
+   never in the journal or an effect.
+2. `idle`: wait for two idle `/api/health` reads of the same instance with the fence held.
+3. `stop`: `launchctl bootout`, then confirm launchd no longer has the service and its process is
+   gone.
+4. `backup`: copy every store into `backups/<operation>/`.
+5. `snapshot`: record every project's admission cursor and a content fingerprint of every store.
+6. `plist`: install the plist rendered for the target, after re-verifying the target against the
+   manifest digest frozen at the start.
+7. `start`: recheck the frozen target before sending `launchctl bootstrap`.
+8. `verify`: `/api/health` must report the target manifest's hash, a service instance not seen
+   before and this deployment's fence still held.
+9. `record`: write `active-release.json`, the receipt of the verified activation. The plist stays
+   the source of truth for what runs.
+10. `release`: release the fence. The `record` and `release` writes each require a fresh health
+    read of the verified instance with its fence held.
+
+**Mutations.** Fence acquire and release, the stop, the plist install, the start and the
+active-release record each go through Effects on the controller's own store
+(`deployments/controller.sqlite`) under one identity per operation and step. Read-back comes first,
+so a step whose outcome is already visible is not dispatched again. A dispatched step that read-back
+cannot confirm is uncertain and is never resent.
+
+**Before the stop.** A service that does not become idle, or is no longer the idle fenced instance
+when the stop is about to be dispatched, is left running; the deployment releases its own fence and
+ends `aborted`.
+
+**After the stop.** The controller confirms the service is still down before backup and snapshot.
+Loss of that confirmation goes directly to STOP. Other failures in steps 4 to 8 enter a rollback
+with its own journal (`rollback-…`). The rollback halts the service, checks eligibility, reinstalls
+the saved plist, restarts the previous release, verifies its hash under the fence and releases
+the fence. This includes a plist install or a start that read-back could not confirm: the step is not
+sent again, and the rollback's own separately identified steps settle the service by read-back. The
+rollback is code only. It requires a complete, readable baseline taken after the old service
+stopped. The controller checks that every admission cursor and store fingerprint still matches
+before restoring the plist and before sending the restart. A missing baseline, unreadable store,
+or difference goes to STOP. If the restarted previous release fails verification, the controller
+attempts a separate halt and records whether it was confirmed. Backups are for manual recovery.
+
+**STOP.** These each leave `deployments/STOP.json` naming the operation and its last journaled
+step: a fence acquire, a stop, an active-release record or a fence release that read-back cannot
+confirm; a journal that ends in a cut-short line; a rollback that is not eligible or does not
+complete. The launcher also writes STOP if the controller cannot start, times out, exits non-zero,
+or returns without an outcome for its operation. A saved outcome stays available for diagnosis
+after an abnormal exit. While the record stands every deployment is refused.
+Only a person removes it. `pnpm office deploy end OPERATION` releases the fence that operation's
+token holds and nothing else, and records an unfinished operation `ended`.
+`pnpm office deploy resume OPERATION` continues an operation whose controller died, from its
+journal: the step in progress is settled by read-back. An operation that recorded an outcome, or
+whose fence a person ended, is not resumed.
+
+No deployment path pauses, drains or resumes a project. The fence is the only hold a deployment
+places, and the only one it lifts.
+
 ## Code owners and verification
 
 | Process boundary | Owning source |
@@ -720,6 +793,7 @@ change.
 | GitHub result acceptance, merge and closeout | `server/delivery/pipeline/accept-stage-result.ts`, `server/delivery/harness/`, `server/delivery/readiness/`, `server/delivery/closeout/` |
 | Independent QA and coverage | `server/qa/assignment.ts`, `server/qa/criteria.ts`, `server/qa/report-evidence.ts` |
 | External actions | `server/store/effects.ts` |
+| Release build, deployment and rollback | `server/release/` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |
