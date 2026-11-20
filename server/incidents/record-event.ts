@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import type { Incident, IncidentEvent, IncidentRepair, SubjectFix } from '../../src/contracts/incidents';
+import { canonical } from './canonical-json';
+import { dismiss, type DismissalFacts, type DismissalRequest } from './dismissal';
 import type { FixIdentity } from './fix-identity';
 import type { IncidentLedger } from './incident-ledger';
 import { repairSubject } from './subject-digest';
@@ -44,11 +46,13 @@ export const EVENT_ID = /^(?!inc-)[A-Za-z0-9][A-Za-z0-9._:-]{7,99}$/;
 /** The part of a write the caller sent: what makes a second send the same request or a different one. */
 export type WriteRequest =
     | { kind: 'repair-started'; issue: number }
-    | { kind: 'fix-bound'; reference: string; bindings: SubjectFix[] };
-/** A write with what GitHub reported for it. */
+    | { kind: 'fix-bound'; reference: string; bindings: SubjectFix[] }
+    | ({ kind: 'dismissed' } & DismissalRequest);
+/** A write with what GitHub reported for it, or, for a dismissal, what the Office established about its own code and evidence. */
 export type ResolvedWrite =
     | { kind: 'repair-started'; request: Extract<WriteRequest, { kind: 'repair-started' }>; issue: IncidentRepair['issue'] }
-    | { kind: 'fix-bound'; request: Extract<WriteRequest, { kind: 'fix-bound' }>; fix: FixIdentity };
+    | { kind: 'fix-bound'; request: Extract<WriteRequest, { kind: 'fix-bound' }>; fix: FixIdentity }
+    | { kind: 'dismissed'; request: Extract<WriteRequest, { kind: 'dismissed' }>; facts: DismissalFacts };
 
 /** The most subjects one repair can be for: a fix must state something for each, in one bounded request. */
 export const REPAIR_SUBJECTS = 1000;
@@ -56,7 +60,6 @@ export const REPAIR_SUBJECTS = 1000;
 /** `revision` is the one this event produced; on a repeated send `incident` is the incident as it is now, which may have moved on. */
 export interface Recorded { event: IncidentEvent; revision: number; incident: Incident; replayed: boolean }
 
-const canonical = (value: unknown): string => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
 
 /**
  * The saved result of an event ID already recorded, when this is the same request sent again; null
@@ -76,9 +79,10 @@ export function replayed(ledger: IncidentLedger, incident: string, eventId: stri
 
 /**
  * Records one event a person or the repair runner sent. The incident must be at the revision the
- * caller read, the event must be legal from its state, and a fix must account for exactly the
- * subjects its repair recorded, each unchanged. The event and the new projection are saved
- * together or not at all.
+ * caller read, the event must be legal from its state, a fix must account for exactly the
+ * subjects its repair recorded, each unchanged, and a dismissal must name the evidence and the
+ * code as they stand (see dismissal.ts). The event and the new projection are saved together or
+ * not at all.
  */
 export function recordIncidentEvent(ledger: IncidentLedger, incidentId: string, eventId: string, expectedRevision: number, write: ResolvedWrite, now: Date): Recorded {
     const again = replayed(ledger, incidentId, eventId, expectedRevision, write.request);
@@ -96,6 +100,11 @@ export function recordIncidentEvent(ledger: IncidentLedger, incidentId: string, 
         // Fixes bound to an earlier repair of the same incident stay on record.
         next = { ...incident, state, repair, fixes: incident.fixes ?? [] };
         body = { request, issue: write.issue, subjects: repair.subjects, from: incident.state, to: state };
+    } else if (write.kind === 'dismissed') {
+        const { kind: _, ...dismissal } = write.request;
+        const dismissed = dismiss(incident, eventId, dismissal, write.facts, at);
+        next = dismissed.next;
+        body = { request, ...dismissed.body };
     } else {
         const state = nextState(incident.state, 'fix-bound', write.fix.onMain), repair = incident.repair;
         if (!repair) throw new Error(`Incident ${incidentId} has no repair to bind a fix to`);

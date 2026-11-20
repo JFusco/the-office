@@ -3,13 +3,16 @@ import type { IncidentState } from '../../src/contracts/incidents';
 /**
  * Every state change an event may make. Closed: an event from a state not listed here is refused.
  * Observation is not in this table, because it never changes a state. `repair-started` and
- * `fix-bound` are written through the Office by a person or the repair runner; `fix-deployed` only
- * by the Office itself, when the release it runs holds the fix (see deployed-fixes.ts).
+ * `fix-bound` and `dismissed` are written through the Office by a person or the repair runner;
+ * `fix-deployed` and `dismissal-invalidated` only by the Office itself, when the release it runs
+ * holds the fix (see deployed-fixes.ts) or a dismissal no longer holds (see dismissal-validity.ts).
  */
 const TRANSITIONS = {
     'repair-started': { from: ['observed', 'triaged', 'recurred'], to: () => 'fixing' },
     'fix-bound': { from: ['fixing'], to: (onMain: boolean) => onMain ? 'shipped' : 'fixing' },
     'fix-deployed': { from: ['shipped'], to: () => 'deployed' },
+    'dismissed': { from: ['observed', 'triaged', 'recurred'], to: () => 'dismissed' },
+    'dismissal-invalidated': { from: ['dismissed'], to: () => 'observed' },
 } as const satisfies Record<string, { from: readonly IncidentState[]; to: (onMain: boolean) => IncidentState }>;
 
 export type WrittenEvent = keyof typeof TRANSITIONS;

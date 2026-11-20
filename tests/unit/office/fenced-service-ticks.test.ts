@@ -29,7 +29,7 @@ function service(initiallyFenced: boolean) {
         incidents: { inState: (wanted: string) => { state.compared.push(wanted); state.inFlight.push(operations.count); return []; } }, operations };
     const report = vi.fn(async () => ({ services: [], checkedAt: '', context: '' }));
     const itSpecialist = new ITSpecialist({ entries: new Map(), fenced: offices.fenced } as any, { report } as any);
-    const stop = startServiceTicks({ offices, itSpecialist, loadedRevision: { hash: 'h'.repeat(64) } } as any);
+    const stop = startServiceTicks({ offices, itSpecialist, loadedRevision: { hash: 'h'.repeat(64), manifest: [] } } as any);
     const refreshes = () => (store.state.coordination?.requests || []).filter(r => r.action === 'refresh');
     return { state, stop, refreshes, report, itSpecialist, operations };
 }
@@ -101,13 +101,14 @@ test('the running release is compared with shipped incidents after each incident
     expect(state.compared).toEqual([]);
     state.fenced = false;
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(state.compared).toEqual(['shipped']);
+    // Dismissals are checked first, then the release is compared.
+    expect(state.compared).toEqual(['dismissed', 'shipped']);
     // Health is busy for as long as the comparison runs, and not after.
-    expect(state.inFlight).toEqual([1]);
+    expect(state.inFlight).toEqual([0, 1]);
     expect(operations.count).toBe(0);
     process.env.OFFICE_NO_POLL = '1';
     await vi.advanceTimersByTimeAsync(60_000);
     expect(state.incidentSyncs).toBe(2);
-    expect(state.compared).toEqual(['shipped']);
+    expect(state.compared).toEqual(['dismissed', 'shipped', 'dismissed']);
     stop();
 });

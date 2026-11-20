@@ -115,6 +115,30 @@ export interface IncidentFix {
     deployed?: { event: string; release: { commit: string; hash: string; operation: string; activatedAt: string }; at: string };
 }
 
+/** A file of the running release as a verdict read it. Accepted only while the release holds that path with that hash. */
+export interface SourceCitation { path: string; sha256: string; line?: number }
+
+/**
+ * A remembered verdict that the stop is correct. It holds only while the code it cited and the
+ * stops it judged stay the same; once that changes it is kept, marked as lapsed.
+ */
+export interface IncidentDismissal {
+    event: string;
+    /** The verdict's own words, as evidence: one line, bounded, credentials removed. */
+    reason: string;
+    /** SHA-256 of the reason exactly as it was sent, so a repeated send is told from a different one. */
+    reasonDigest: string;
+    /** Digest of the evidence packet the verdict was formed on. */
+    packet: string;
+    cited: SourceCitation[];
+    /** The subjects open when it was recorded, as they stood. */
+    subjects: RepairSubject[];
+    /** The release the citations were checked against. */
+    loadedHash: string;
+    dismissedAt: string;
+    lapsed?: { event: string; reason: string; at: string };
+}
+
 export interface Incident {
     id: string;
     fingerprint: string;
@@ -131,13 +155,37 @@ export interface Incident {
     repair?: IncidentRepair;
     /** Every fix bound so far, oldest first. */
     fixes?: IncidentFix[];
+    /** Every dismissal so far, oldest first; only the last can still stand. */
+    dismissals?: IncidentDismissal[];
 }
 
 /**
- * The first six are written by observation; the next two by a person or the repair runner through
- * the Office; the last two by the Office when it compares the release it runs with a bound fix.
+ * What the Office knows about one incident, bounded and hashed. Every list that is cut states its
+ * total. `digest` is the SHA-256 of the rest in canonical form, exactly as it is handed out, with
+ * credentials already removed from every string; a packet has no time of its own.
  */
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'release-identity-unknown';
+export interface EvidencePacket {
+    version: 1;
+    incident: Pick<Incident, 'id' | 'fingerprint' | 'state' | 'revision' | 'cause' | 'expected' | 'research' | 'firstObservedAt' | 'lastObservedAt'>;
+    release: { loadedHash: string; status: 'verified' | 'unknown'; commit: string | null; manifestDigest: string | null; operation: string | null; activatedAt: string | null; reason: string | null };
+    /** `included` is a prefix of the ordered subjects: at most fifty, and no more than fit the packet's size. */
+    subjects: {
+        total: number; open: number;
+        included: (RepairSubject & Pick<IncidentSubjectRecord, 'projectId' | 'kind' | 'id' | 'status' | 'stage' | 'stop' | 'lastWorker' | 'head' | 'unsettledEffect' | 'expected' | 'sources' | 'episode' | 'episodeCount' | 'openedAt' | 'clearedAt' | 'evidence'>)[];
+    };
+    repair: { event: string; issue: IncidentRepair['issue']; startedAt: string; subjects: number } | null;
+    fixes: { total: number; recent: (Pick<IncidentFix, 'event' | 'commit' | 'pullRequest' | 'onMain' | 'boundAt'> & { bindings: number; deployed: IncidentFix['deployed'] | null })[] };
+    dismissals: { total: number; recent: (Pick<IncidentDismissal, 'event' | 'reason' | 'packet' | 'cited' | 'loadedHash' | 'dismissedAt'> & { subjects: number; lapsed: IncidentDismissal['lapsed'] | null })[] };
+    events: { total: number; recent: Pick<IncidentEvent, 'id' | 'at' | 'kind'>[] };
+    digest: string;
+}
+
+/**
+ * The first six are written by observation. `repair-started`, `fix-bound` and `dismissed` are
+ * written by a person or the repair runner through the Office. `fix-deployed`,
+ * `release-identity-unknown` and `dismissal-invalidated` are written by the Office itself.
+ */
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */

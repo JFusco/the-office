@@ -7,6 +7,7 @@ import { subjectKey, type IncidentSubjectRecord, type RepairSubject } from '../.
  * a binding for another stop, stage or head of that subject does not match.
  */
 export function repairSubject(subject: IncidentSubjectRecord): RepairSubject {
-    const key = subjectKey(subject);
-    return { subject: key, digest: createHash('sha256').update(JSON.stringify([key, subject.episodeCount, subject.episode, subject.stage, subject.stop, subject.head])).digest('hex') };
+    // The stop's two fields in a fixed order: the same stop is the same digest however its record was written.
+    const key = subjectKey(subject), stop = subject.stop ? { kind: subject.stop.kind, at: subject.stop.at } : null;
+    return { subject: key, digest: createHash('sha256').update(JSON.stringify([key, subject.episodeCount, subject.episode, subject.stage, stop, subject.head])).digest('hex') };
 }
