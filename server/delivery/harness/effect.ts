@@ -1,6 +1,7 @@
 import { Effects } from '../../store/effects';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
+import { settleNotLanded } from './resend-not-landed';
 
 export interface HarnessEffect<R> {
     /** Stable per job and candidate, e.g. `push:<head>`. */
@@ -13,21 +14,31 @@ export interface HarnessEffect<R> {
     dispatch: () => Promise<R>;
     /** Read-only: the canonical receipt when the write is observable, otherwise null. */
     readBack: () => Promise<R | null>;
+    /**
+     * Only for an absolute write, which cannot apply twice: read-only, true when the target still shows the
+     * state from before the attempt, so the attempt did not land. The write is then sent once more under a
+     * fresh intent (`resend-not-landed.ts`). Every other effect is reconciled by read-back and never resent.
+     */
+    notLanded?: () => Promise<boolean>;
 }
 
-/** A rejected preflight never dispatched, so a later attempt may use a fresh intent id. */
+/** A rejected preflight never dispatched, and an attempt read back as never landed is settled: a later attempt may use a fresh intent id. */
 export function activeEffectId(store: Store, base: string): string {
     for (let attempt = 0; ; attempt++) {
         const id = attempt ? `${base}:retry-${attempt}` : base;
         const intent = store.getEffect(id);
-        if (!intent || intent.status !== 'rejected' || intent.dispatchedAt)
+        if (!intent || intent.status !== 'rejected' || intent.dispatchedAt && !intent.notLandedAt)
             return id;
     }
 }
 
-/** One durable write with read-back. Uncertain attempts are reconciled by reading, never resent. */
+/**
+ * One durable write with read-back. Uncertain attempts are reconciled by reading, never resent. The one
+ * exception is an effect that declares `notLanded`: an absolute write shown not to have landed is sent once more.
+ */
 export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>, effect: HarnessEffect<R>): Promise<R> {
-    const id = activeEffectId(store, `harness:${job.id}:${effect.key}`);
+    const base = `harness:${job.id}:${effect.key}`;
+    let id = activeEffectId(store, base);
     const effects = new Effects(store);
     const prior = store.getEffect<R>(id);
     if (prior && ['dispatching', 'uncertain'].includes(prior.status)) {
@@ -35,9 +46,11 @@ export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>,
             const receipt = await effect.readBack();
             return { verified: receipt !== null, receipt };
         });
-        if (!verified)
+        if (verified)
+            return store.getEffect<R>(id)!.receipt as R;
+        if (!effect.notLanded || !await settleNotLanded(store, base, id, effect.notLanded))
             throw new Error(`${effect.operation} for ${effect.target} is unverified after read-back; it will not be resent`);
-        return store.getEffect<R>(id)!.receipt as R;
+        id = activeEffectId(store, base);
     }
     await effect.guard();
     return effects.execute<Record<string, unknown>, R>({

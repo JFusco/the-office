@@ -17,7 +17,7 @@ test('removes the job-owned worktree, local branch and remote branch once, with 
     expect(existsSync(job.worktree)).toBe(false);expect(f.state.localBranches.has(job.branch)).toBe(false);expect(f.state.remote[job.branch]).toBeFalsy();
     expect(f.store.getEffect(`harness:${job.id}:remove-remote:${job.branch}`)?.status).toBe('verified');
     expect(await removeCandidate(f.store, f.execute as any, job, guard)).toEqual({ worktree: false, local: false, remote: false });
-    expect(f.state.calls.filter(c => c.startsWith('git push origin :refs/heads/'))).toHaveLength(1);
+    expect(f.state.calls.filter(c => c.startsWith('gh api -X DELETE '))).toHaveLength(1);
 });
 test('a candidate the Office did not create, another issue\'s branch or a worktree outside the worktrees folder is skipped untouched', async () => {
     const cases: [string, (x: ReturnType<typeof owned>) => void][] = [
@@ -29,7 +29,7 @@ test('a candidate the Office did not create, another issue\'s branch or a worktr
     for (const [reason, arrange] of cases) {
         const x = owned();arrange(x);
         const result = await removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard);
-        expect(result.skipped).toContain(reason);expect(x.f.state.localBranches.has(x.job.branch)).toBe(true);expect(x.f.state.calls.some(c => /worktree remove|worktree prune|rm -rf|branch -D|push origin :/.test(c))).toBe(false);
+        expect(result.skipped).toContain(reason);expect(x.f.state.localBranches.has(x.job.branch)).toBe(true);expect(x.f.state.calls.some(c => /worktree remove|worktree prune|rm -rf|branch -D|push origin :|-X DELETE/.test(c))).toBe(false);
     }
 });
 test('an Office-created candidate whose own PR discovery marked existingPR is still removed', async () => {
@@ -49,16 +49,16 @@ test('uncommitted work, a changed branch, an open PR from or into it, a later ti
         const x = owned(), worktree = x.job.worktree;arrange(x);
         await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, tip)).rejects.toThrow(message);
         expect(x.f.state.remote[x.job.branch]).toBe(HEAD);expect(existsSync(worktree)).toBe(true);expect(x.f.state.localBranches.has(x.job.branch)).toBe(true);
-        expect(x.f.state.calls.some(c => /worktree remove|worktree prune|rm -rf|branch -D|push origin :/.test(c))).toBe(false);
+        expect(x.f.state.calls.some(c => /worktree remove|worktree prune|rm -rf|branch -D|push origin :|-X DELETE/.test(c))).toBe(false);
     }
 });
 test('an uncertain earlier remote delete is settled by read-back once the branch is gone, never resent', async () => {
-    const x = owned();x.f.state.fail = (_p, args) => args[0] === 'push';
+    const x = owned();x.f.state.fail = (_p, args) => args[2] === 'DELETE';
     await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard)).rejects.toThrow();
     const id = `harness:${x.job.id}:remove-remote:${x.job.branch}`;expect(['uncertain', 'dispatching']).toContain(x.f.store.getEffect(id)?.status);
     x.f.state.fail = () => false;x.f.state.remote[x.job.branch] = '';
     await removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard);
-    expect(x.f.store.getEffect(id)?.status).toBe('verified');expect(x.f.state.calls.filter(c => c.startsWith('git push origin :refs/heads/'))).toHaveLength(1);
+    expect(x.f.store.getEffect(id)?.status).toBe('verified');expect(x.f.state.calls.filter(c => c.startsWith('gh api -X DELETE '))).toHaveLength(1);
 });
 test('a removal cut off midway (only committed files deleted) is finished; real changes still preserve', async () => {
     const { f, job, guard } = owned();
@@ -155,7 +155,7 @@ test('without a delivered head a maintenance run\'s candidate is not taken as ow
     const result = await removeCandidate(f.store, f.execute as any, job, guard);
     expect(result.skipped).toContain('did not create');
     expect([existsSync(job.worktree), f.state.localBranches.has(job.branch), !!f.state.remote[job.branch]]).toEqual([true, true, true]);
-    expect(f.state.calls.some(c => /worktree remove|worktree prune|branch -D|push origin :/.test(c))).toBe(false);
+    expect(f.state.calls.some(c => /worktree remove|worktree prune|branch -D|push origin :|-X DELETE/.test(c))).toBe(false);
 });
 test('a candidate the job created itself keeps the exact-head rule even when a maintenance run also recorded it', async () => {
     const x = adopted(); x.job.candidateBase = 'f'.repeat(40);
@@ -170,4 +170,55 @@ test('after the job\'s private repair clone is gone, the run\'s own worktree and
     job.worktree = clone;
     expect(await removeCandidate(f.store, f.execute as any, job, guard, HEAD)).toEqual({ worktree: true, local: true, remote: true, created: true });
     expect([existsSync(created), f.state.localBranches.has(job.branch), !!f.state.remote[job.branch]]).toEqual([false, false, false]);
+});
+
+/** The delete was attempted and failed without reaching the provider; the branch is still at the delivered head. */
+async function failedDelete(agoMs: number) {
+    const x = owned(), id = `harness:${x.job.id}:remove-remote:${x.job.branch}`;
+    x.f.state.fail = (_p, args) => args[2] === 'DELETE';
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow();
+    x.f.state.fail = () => false;
+    const intent = x.f.store.getEffect(id)!; intent.dispatchedAt = new Date(Date.now() - agoMs).toISOString(); x.f.store.putEffect(intent);
+    const deletes = () => x.f.state.calls.filter(c => c.startsWith('gh api -X DELETE ')).length;
+    return { ...x, id, deletes };
+}
+test('the remote branch is deleted through the provider, not by a push that would run the repository hooks', async () => {
+    const { f, job, guard } = owned();
+    await removeCandidate(f.store, f.execute as any, job, guard, HEAD);
+    expect(f.state.calls.filter(c => c.startsWith('gh api -X DELETE '))).toEqual([`gh api -X DELETE repos/${f.store.project.repository}/git/refs/heads/${job.branch}`]);
+    expect(f.state.calls.some(c => c.startsWith('git push'))).toBe(false);
+});
+test('a delete read back as never landed, once it has settled, is sent once more under a fresh intent', async () => {
+    const x = await failedDelete(11 * 60 * 1000);
+    expect(await removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).toMatchObject({ remote: true });
+    expect(x.f.store.getEffect(x.id)).toMatchObject({ status: 'rejected' });
+    expect(x.f.store.getEffect(x.id)!.notLandedAt).toBeTruthy();
+    expect(x.f.store.getEffect(`${x.id}:retry-1`)?.status).toBe('verified');
+    expect([x.deletes(), !!x.f.state.remote[x.job.branch]]).toEqual([2, false]);
+});
+test('an attempt that has not had time to settle is only read back', async () => {
+    const x = await failedDelete(60 * 1000);
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow('will not be resent');
+    expect([x.deletes(), x.f.store.getEffect(x.id)?.status]).toEqual([1, 'uncertain']);
+});
+test('a second miss for the same branch is not sent again', async () => {
+    const x = await failedDelete(11 * 60 * 1000);
+    x.f.state.fail = (_p, args) => args[2] === 'DELETE';
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow();
+    x.f.state.fail = () => false;
+    const second = x.f.store.getEffect(`${x.id}:retry-1`)!; second.dispatchedAt = new Date(Date.now() - 11 * 60 * 1000).toISOString(); x.f.store.putEffect(second);
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow('will not be resent');
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow('will not be resent');
+    expect([x.deletes(), !!x.f.state.remote[x.job.branch], !!x.f.store.getEffect(`${x.id}:retry-2`)]).toEqual([2, true, false]);
+});
+test('a branch that moved after the attempt is preserved, not deleted again', async () => {
+    const x = await failedDelete(11 * 60 * 1000);
+    x.f.state.remote[x.job.branch] = 'd'.repeat(40);
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow('not the delivered');
+    expect(x.deletes()).toBe(1);
+});
+test('without a delivered head nothing is sent again', async () => {
+    const x = await failedDelete(11 * 60 * 1000);
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard)).rejects.toThrow('will not be resent');
+    expect(x.deletes()).toBe(1);
 });

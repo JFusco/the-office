@@ -103,6 +103,8 @@ export interface EffectIntent<T = unknown> {
     receipt: unknown;
     error: string;
     elapsedMs: number | null;
+    /** Set when an attempted write was read back as never having landed (`Effects.notLanded`); the intent is then `rejected`. */
+    notLandedAt?: string;
 }
 export type ReconciliationAction = 'reconcile-activation' | 'reconcile-preparation' | 'reconcile-review' | 'reconcile-base-update' | 'reconcile-closeout' | 'reconcile-pr-link' | 'approve-merge' | 'retry-checkpoint' | 'reconcile-time' | 'reconcile-maintenance' | 'adopt-candidate';
 export interface ReconciliationRequest {

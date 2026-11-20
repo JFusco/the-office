@@ -142,8 +142,11 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
     if (remote || unsettled) {
         const absent = async () => await remoteSha() ? null : { deleted: true };
         await harnessEffect(store, job, { key: `remove-remote:${branch}`, operation: 'git-remote-branch-delete', target: `refs/heads/${branch}`, payload: { branch }, guard,
-            dispatch: async () => { await git(['push', 'origin', `:refs/heads/${branch}`], true); return absent(); },
-            readBack: absent });
+            // Through the provider, not a push: a push runs the repository's pre-push hook, which has nothing to check on a delete.
+            dispatch: async () => { await execute('gh', ['api', '-X', 'DELETE', `repos/${store.project.repository}/git/refs/heads/${branch}`], { cwd: repo, timeout: 60000 }); return absent(); },
+            readBack: absent,
+            // A delete cannot apply twice. Still at the delivered head after every check above: it did not land.
+            notLanded: async () => !!tip && await remoteSha() === tip });
         removed.remote = !!remote;
     }
     store.emit('candidate-removed', `${job.key}: removed ${[removed.worktree && 'worktree', removed.local && 'local branch', removed.remote && 'remote branch'].filter(Boolean).join(', ') || 'nothing (already clean)'} for ${branch}.`, 'pm', job.key);

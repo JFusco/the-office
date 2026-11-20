@@ -81,6 +81,7 @@ export function fakeGitHub(issueNumber = 5) {
             if (args[1] === 'view') return JSON.stringify({ closingIssuesReferences: prJson(state.prs.find(pr => pr.number === Number(args[2]))).closingIssuesReferences });
         }
         if (program === 'gh' && args[0] === 'issue' && args[1] === 'close') { state.issue.state = 'closed'; return ''; }
+        if (program === 'gh' && args[0] === 'api' && args[1] === '-X' && args[2] === 'DELETE' && /\/git\/refs\/heads\//.test(args[3])) { state.remote[args[3].split('/git/refs/heads/')[1]] = ''; return ''; }
         if (program === 'gh' && args[0] === 'api') {
             const path = args[1];
             if (path === 'user') return JSON.stringify({ login: 'JFusco' });

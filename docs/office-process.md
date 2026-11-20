@@ -221,6 +221,13 @@ or outside it, uncommitted work, or an open pull request from or into the branch
 everything. A cleanup recorded before a maintenance run's candidate counted is tried once more by
 the poll. A branch the Office did not create is left alone.
 
+The remote branch is deleted through the provider API, not by a push, so the repository's pre-push
+hook does not run on a delete. A delete cannot apply twice. When an attempted delete is still
+unverified ten minutes later and the branch is read back at the delivered head with every guard
+above passing, the attempt is recorded as not landed and the delete is sent once more under a fresh
+intent (`server/delivery/harness/resend-not-landed.ts`). A second miss for the same branch is not
+sent again and stays with a person. No other effect is resent this way.
+
 After staging QA passes on a project with production settings (CEC: branch `production`, pipeline
 `prod-deploy`), the harness follows the ticket to production without a model
 (`server/cec/production/`). When the ticket's commit is on staging and not on production it makes

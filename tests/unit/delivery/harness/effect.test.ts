@@ -30,3 +30,39 @@ test('a rejected preflight never dispatched, so a later attempt may run', async 
     await harnessEffect(f.store, job, effect);
     expect(writes).toBe(1);
 });
+
+const settled = (f: ReturnType<typeof fakeGitHub>, id: string) => { const intent = f.store.getEffect(id)!; intent.dispatchedAt = new Date(Date.now() - 11 * 60 * 1000).toISOString(); f.store.putEffect(intent); };
+test('an absolute write shown not to have landed is sent once more; a second miss is not', async () => {
+    const f = fakeGitHub(), job = f.candidate(), id = `harness:${job.id}:k`;
+    let writes = 0, fails = true, done = false, before = true;
+    const effect = { key: 'k', operation: 'op', target: 't', payload: {}, guard: () => {}, dispatch: async () => { writes++; if (fails) throw new Error('timeout before dispatch'); done = true; return { ok: true }; },
+        readBack: async () => done ? { ok: true } : null, notLanded: async () => before };
+    await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('timeout');
+    // Not settled yet: only read back.
+    await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('will not be resent');
+    expect(writes).toBe(1);
+    // Settled, but the target no longer shows the earlier state: not ours to send again.
+    settled(f, id); before = false;
+    await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('will not be resent');
+    expect([writes, f.store.getEffect(id)?.status]).toEqual([1, 'uncertain']);
+    // Settled and still the earlier state: one fresh intent, which misses too.
+    before = true;
+    await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('timeout');
+    expect([writes, f.store.getEffect(id)?.status, f.store.getEffect(`${id}:retry-1`)?.status]).toEqual([2, 'rejected', 'uncertain']);
+    settled(f, `${id}:retry-1`);
+    await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('will not be resent');
+    expect(writes).toBe(2);
+    // A later read-back that sees the write still verifies it.
+    done = true;
+    expect(await harnessEffect(f.store, job, effect)).toEqual({ ok: true });
+    expect(writes).toBe(2);
+});
+test('an effect that does not declare itself absolute is never sent again, however long it has settled', async () => {
+    const f = fakeGitHub(), job = f.candidate(), id = `harness:${job.id}:k`;
+    let writes = 0;
+    const effect = { key: 'k', operation: 'op', target: 't', payload: {}, guard: () => {}, dispatch: async () => { writes++; throw new Error('timeout after dispatch'); }, readBack: async () => null };
+    await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('timeout');
+    settled(f, id);
+    await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('will not be resent');
+    expect([writes, f.store.getEffect(id)?.status]).toEqual([1, 'uncertain']);
+});
