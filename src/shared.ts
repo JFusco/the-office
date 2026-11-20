@@ -880,6 +880,8 @@ export interface SlackDelivery {
     createdAt: string;
     updatedAt: string;
     error: string;
+    /** The release that last read this unconfirmed delivery back by itself (`server/conversations/slack/reread-uncertain.ts`). */
+    rereadRevision?: string;
 }
 export function slackMessageUrl(url: string, channelId: string, messageTs: string): boolean {
     try {

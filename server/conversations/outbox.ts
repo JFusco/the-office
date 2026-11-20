@@ -40,8 +40,9 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         item(decision.id, decision.title, decision.detail, 'knowledge');
     if (state.coordination?.listener.error && !teamOwnsIT('assignment-listener'))
         item('assignment-listener', 'Restore assignment listening', state.coordination.listener.error, 'pm');
+    // A notice whose delivery is unconfirmed has that delivery's own read-back item below; it is not listed twice.
     for (const n of state.coordination?.notices?.entries || []) {
-        if (!slackRequestSettled(state, n.id) && ['blocked', 'uncertain'].includes(n.status) && !((n.kind === 'goal' || n.kind === 'maintenance') && state.slackDeliveries?.some(d => d.requestId === n.id && d.status === 'uncertain')))
+        if (!slackRequestSettled(state, n.id) && ['blocked', 'uncertain'].includes(n.status) && !state.slackDeliveries?.some(d => d.requestId === n.id && d.status === 'uncertain' && !supersedingDelivery(state, d)))
             item(`merge-notice:${n.id}`, n.kind === 'goal' ? `Resolve “${n.goalTitle}” completion DM` : n.kind === 'maintenance' ? 'Resolve maintenance completion DM' : `Resolve ${n.key} Slack notice`, n.detail, 'pm', n.key, n.prUrl);
     }
     for (const t of state.coordination?.time?.entries || [])

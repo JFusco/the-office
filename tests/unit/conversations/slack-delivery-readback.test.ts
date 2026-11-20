@@ -23,7 +23,7 @@ test('an uncertain send that reads back confirmed is settled without a resend or
 test('an uncertain send that cannot be read back stays uncertain with its original error and is never resent',async()=>{
  const {store,notices,counts,read}=setup();read(false);await notices.pump();await notices.pump();
  expect(counts()).toEqual({sends:1,reads:1});expect(store.state.slackDeliveries![0]).toMatchObject({status:'uncertain'});expect(store.state.slackDeliveries![0].error).toContain('surviving subprocesses');
- expect(store.state.coordination!.notices!.entries[0].status).toBe('uncertain');expect(open(store)).toEqual(expect.arrayContaining(['merge-notice','message']));
+ expect(store.state.coordination!.notices!.entries[0].status).toBe('uncertain');expect(open(store)).toContain('message');expect(open(store)).not.toContain('merge-notice');
 });
 test('a paused or cancelled send starts no read-back worker; a failed read-back keeps the send error first',async()=>{
  const paused=setup();paused.read(true);paused.engine.agents.sendSlack=async()=>{throw new CommandFailure('Worker paused; reconcile any external effects before resuming','cancelled',true);};await paused.notices.pump();
