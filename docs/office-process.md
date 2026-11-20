@@ -451,6 +451,12 @@ worker are told the interruption is history, not an open item. The interrupted r
 provider usage stay in history, and its IT investigation closes when the rerun returns a result.
 A crash, a time limit, staging QA and every other stage keep their existing handling.
 
+A QA, retest or staging QA worker that returned normally, and whose result the Office then refused
+to accept (a report it would not save, for example), left nothing unknown. The stage is blocked in
+those words, without an uncertain-effect stop, and the next resume runs it again. A record saved
+before this rule, with the interrupted-stage wording, resumes the same way. The rule holds only
+while no run on the ticket has failed since. A QA run that did not return keeps its handling.
+
 A QA stage on the browser route runs for up to 90 minutes, and the worker is told that limit.
 A Jira/Azure repair also runs for up to 90 minutes. Other stages keep their existing limits (45
 minutes for Jira/Azure stages, 60 for GitHub delivery stages).

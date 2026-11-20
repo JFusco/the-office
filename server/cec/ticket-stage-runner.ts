@@ -1,4 +1,5 @@
 import { jiraBinding } from '../office/project-bindings';
+import { REFUSED_RECEIPT, refusedQA, refusedQABlocker } from './qa/refused-result';
 import { captureLearning } from '../knowledge/learning-events';
 import { unrecordedStageResult } from './unrecorded-result';
 import { ownReceipts } from './superseded-receipts';
@@ -118,10 +119,12 @@ export async function run(this: Engine, key: string) {
             }
             catch (e) {
                 t.activity = 'blocked';
-                t.blocker = `Interrupted stage; external effects require reconciliation. ${String(e)}`;
-                // The harness's own verdict here: the worker returned no verified result, so its writes are unknown.
-                t.stop = { kind: 'uncertain-effect', at: this.store.clock.now().toISOString() };
-                result = { outcome: 'blocked', summary: t.blocker, commit: t.commit, evidence: [], findings: [], receipts: [{ id: attemptId, action: stage, target: key, verified: false, uncertain: true, detail: 'Worker did not return a verified final result' }], previewUrl: t.previewUrl, worktree: t.worktree, branch: t.branch, prId: t.prId, qaRunDir: '', paidRuns: null, blocker: t.blocker };
+                // A QA worker that returned with nothing unknown left nothing to read back; the Office refused what came back.
+                const refused = refusedQA(stage, e);
+                t.blocker = refused ? refusedQABlocker(stage, e) : `Interrupted stage; external effects require reconciliation. ${String(e)}`;
+                // Otherwise the harness's own verdict: the worker returned no verified result, so its writes are unknown.
+                if (!refused) t.stop = { kind: 'uncertain-effect', at: this.store.clock.now().toISOString() };
+                result = { outcome: 'blocked', summary: t.blocker, commit: t.commit, evidence: [], findings: [], receipts: [{ id: attemptId, action: stage, target: key, verified: false, uncertain: !refused, detail: refused ? REFUSED_RECEIPT : 'Worker did not return a verified final result' }], previewUrl: t.previewUrl, worktree: t.worktree, branch: t.branch, prId: t.prId, qaRunDir: '', paidRuns: refused ? refused.paidRuns : null, blocker: t.blocker };
                 t.results[stage] = result;
                 this.store.finish(attemptId, result);
                 this.store.emit('stage-blocked', t.blocker, role, key);
