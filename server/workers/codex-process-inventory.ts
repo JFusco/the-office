@@ -28,7 +28,7 @@ export function codexProcessInventory(raw: string): CodexProcessInventory {
 
 /**
  * A PID is covered by a verified transcript it holds, by a registered running Office worker, by being one of the
- * given `hosts`, or by descending from a process that is: a helper a known host started. Command lines are not trusted here; `idle-exec-servers.ts` holds the one exception.
+ * given `hosts`, or by descending from a process that is: a helper a known host started. Command lines are not trusted here; `idle-exec-servers.ts`, `computer-history-writers.ts` and `login-status-queries.ts` hold the exceptions.
  */
 export function unaccountedProcesses(inventory: CodexProcessInventory, verified: ReadonlySet<string>, workers: ReadonlySet<number>, parents: ReadonlyMap<number, number> = new Map(), hosts: readonly number[] = []): number[] {
     const covered = new Set([...workers, ...hosts]);
@@ -44,7 +44,7 @@ export function unaccountedProcesses(inventory: CodexProcessInventory, verified:
     return inventory.pids.filter(pid => !covered.has(pid) && !descends(pid));
 }
 
-/** Account for every process before deduplicating descriptors into one session per transcript. Missing metadata throws in `load`. `idle` names processes known to be running nothing. */
+/** Account for every process before deduplicating descriptors into one session per transcript. Missing metadata throws in `load`. `idle` names processes known to own no checkout: an exec-server running nothing, the desktop app's read-only memory writer, a login status query. */
 export function accountCodexProcesses(raw: string, load: (path: string) => LiveSession | null, workers: ReadonlySet<number>, parents: ReadonlyMap<number, number> = new Map(), daemon: readonly number[] = [], idle: readonly number[] = []): DesktopSessions {
     const inventory = codexProcessInventory(raw), verified = new Set<string>(), sessions: LiveSession[] = [];
     for (const path of inventory.rollouts.keys()) {

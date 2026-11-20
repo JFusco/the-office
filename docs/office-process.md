@@ -582,6 +582,14 @@ Morgan or Joe:
   most six times for one checkpoint; after that, and for any run that left a receipt or moved the gate,
   the ordinary read-back applies. A worker's session inventory request reads again for up to ten
   seconds while the inventory is incomplete; a newer incomplete read still replaces an older complete one.
+- The session inventory is complete when every Codex process is explained: by a session transcript it
+  holds, by being a running Office worker, or by descending from one of these. Three kinds of process
+  that hold no transcript and cannot work in a checkout are explained by what they are: an exec-server
+  running nothing (`server/workers/idle-exec-servers.ts`), the desktop app's read-only memory writer
+  started by its Computer Use service (`server/workers/computer-history-writers.ts`), and a
+  `codex login status` query such as the Office's own health check runs
+  (`server/workers/login-status-queries.ts`). Each is recognised by its exact start-up arguments, never by
+  words in a prompt.
 - A Brain result stops for read-back when it is blocked or reports a write whose outcome is unknown.
   A write refused before it took effect is a known outcome and does not stop a completed run.
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after
