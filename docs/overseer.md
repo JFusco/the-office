@@ -150,8 +150,9 @@ deployment.
 
 ## Incidents
 
-The Office records every stop it can see in one ledger, grouped by cause across projects. It only
-observes: nothing in it retries, resumes or repairs anything, and it never writes to a project.
+The Office records every stop it can see in one ledger, grouped by cause across projects. Nothing
+in it retries, resumes or repairs anything, and it never writes to a project. Besides what it
+observes, it holds what you tell it about a repair: that one started, and which fix it is.
 
 ### Reading the ledger
 
@@ -178,11 +179,66 @@ investigation, the third one incident with its event history.
 | `expected` | The kind of wait when the stop is one the Office already understands (`hold`, `decision`, `merge-approval`, `prerequisite`, `pause`, `authentication`, `provider-wait`, `retry`, `uncertain-effect`, `question`). Each subject has its own; the incident's is the one every open subject shares, or `null`. |
 | `research` | Whether the incident may be investigated now, and why: no explanation, or an expected wait that came back after two resumes, holds three subjects or two projects, or stood 24 hours. Withdrawn as soon as none of those holds. |
 | `subjects` | Each affected piece of work: project, kind, ID, stage, saved stop, the run that last worked it, candidate head, whether a write is unsettled, `open` or `cleared`, and its episodes. Every return after a clear is one episode. |
-| `state` | `observed` today. The later states are set by later phases. |
+| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`. The later states are set by later phases. |
+| `repair`, `fixes` | The repair issue and the subjects it is for; every fix bound so far, with what it declares per subject. |
+
+### Binding a fix you made by hand
+
+When you fix a harness defect yourself, two commands tie the fix to the incident and to exactly
+the work it stopped. Later phases use that binding to wait on the fix and to resume after it;
+today it is a record.
+
+1. Read the incident and note its `revision`:
+
+   ```bash
+   pnpm office incident status inc-0123456789abcdef
+   ```
+
+2. Say the repair has started, naming the issue that tracks it:
+
+   ```bash
+   pnpm office incident start-repair inc-0123456789abcdef --issue 365 --revision 7
+   ```
+
+   The Office reads the issue back from GitHub, records a digest of every subject open at that
+   revision and moves the incident to `fixing`. The answer shows the new revision.
+
+3. Bind the fix, by pull request or by full commit SHA:
+
+   ```bash
+   pnpm office incident bind-fix inc-0123456789abcdef 364 --revision 8 --no-route "fixed by hand; nothing to resume"
+   ```
+
+   A merged pull request binds its merge commit. The incident stays `fixing` while that commit
+   is outside `main` and moves to `shipped` when a binding confirms the commit is on `main`.
+   An open pull request binds its current head and leaves the incident `fixing`. Bind again
+   after it merges, and again once the merge commit reaches `main` if it merged elsewhere.
+   Use the current revision and a new event ID for each new binding.
+   `--no-route REASON` states, for every subject, that there is nothing to resume. To declare
+   routes, pass `--bindings FILE`: a JSON array with one entry per subject the repair recorded.
+
+   ```json
+   [
+     { "subject": "brain/delivery/job-1", "digest": "<from repair.subjects>", "disposition": "route",
+       "route": { "action": "reconcile-review", "payload": { "key": "GH-12" }, "expectedStage": "review" },
+       "boundary": { "kind": "stage-result-passed", "stage": "review" } },
+     { "subject": "brain/delivery/job-2", "digest": "<from repair.subjects>", "disposition": "no-route",
+       "reason": "merged by hand" }
+   ]
+   ```
+
+   The dispositions are `route` (with a `boundary` of `stage-result-passed`, `stage-left` or
+   `record-settled`), `undeclared-boundary` (a route and a `reason`) and `no-route` (a `reason`).
+
+Each write prints an event ID before it is sent. If no answer comes back, send the same command
+again with `--event` and that ID: it is recorded once. If the Office answers that the incident is
+at another revision, the ledger moved since you read it; read it again and resend with the new
+revision and a new event ID. A write is refused while a deployment holds the fence.
 
 ### What to expect
 
-- The ledger is updated once a minute and not at all while a deployment holds the fence. Until the
+- Observation updates the ledger once a minute and not at all while a deployment holds the fence.
+  A repair start or a fix binding you record is saved at once. Until the
   first stop is recorded its tables do not exist and both routes return nothing.
 - A paused or draining project shows as one subject. Its stopped work stays open until the project
   runs again and the ledger can see whether it cleared.

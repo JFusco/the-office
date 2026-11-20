@@ -78,6 +78,41 @@ export interface IncidentResearch {
     at: string | null;
 }
 
+/** One subject as it stood when a repair started: its key and a digest of its episode count and marker, stage, stop and head. */
+export interface RepairSubject { subject: string; digest: string }
+
+/** A repair in progress: the issue that tracks it and exactly which subjects it is for. */
+export interface IncidentRepair {
+    event: string;
+    issue: { repository: string; number: number; url: string };
+    startedAt: string;
+    subjects: RepairSubject[];
+}
+
+/** How the Office could resume a subject once the fix serves. Checked against the handler inventory when a resume is admitted. */
+export interface RepairRoute { action: string; payload: Record<string, unknown>; expectedStage: string }
+
+/** An observable sign that a resumed subject got past what was repaired. A closed list: nothing here is executed. */
+export type RepairBoundary = { kind: 'stage-result-passed'; stage: string } | { kind: 'stage-left'; stage: string } | { kind: 'record-settled' };
+
+/** What a fix declares for one subject. Without a declared boundary a resume proves nothing about the repair. */
+export type SubjectFix = RepairSubject & (
+    | { disposition: 'route'; route: RepairRoute; boundary: RepairBoundary }
+    | { disposition: 'undeclared-boundary'; route: RepairRoute; reason: string }
+    | { disposition: 'no-route'; reason: string });
+
+/** A fix bound to the incident, as GitHub reported it when it was bound. */
+export interface IncidentFix {
+    event: string;
+    /** The merge commit of a merged pull request, the head of an open one, or the commit named. */
+    commit: string;
+    pullRequest: { number: number; head: string; merged: boolean } | null;
+    /** The commit was on `main` when bound. */
+    onMain: boolean;
+    boundAt: string;
+    bindings: SubjectFix[];
+}
+
 export interface Incident {
     id: string;
     fingerprint: string;
@@ -90,9 +125,14 @@ export interface Incident {
     firstObservedAt: string;
     lastObservedAt: string;
     subjects: IncidentSubjectRecord[];
+    /** Set by `repair-started`; observation never changes it. */
+    repair?: IncidentRepair;
+    /** Every fix bound so far, oldest first. */
+    fixes?: IncidentFix[];
 }
 
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn';
+/** The first six are written by observation; the last two by a person or the repair runner through the Office. */
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */

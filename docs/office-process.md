@@ -786,9 +786,11 @@ places, and the only one it lifts.
 ### Incident ledger
 
 The Office keeps one office-wide record of stopped work, on the control database beside the
-deployment fence (`server/incidents/`). It is observation only. It reads each project's state and
-the scheduler's own projection, writes two tables of its own, and never writes a project store,
-calls a provider or runs a model. An incident describes a stop; it grants no retry, no resume and
+deployment fence (`server/incidents/`). Its scheduled collector only observes: it reads each
+project's state and the scheduler's own projection, writes two tables of its own, and never
+writes a project store, calls a provider or runs a model. A person can also record a repair start
+and a fix binding on an incident (see Write-back below); that reads GitHub and writes only the
+ledger. An incident describes a stop; it grants no retry, no resume and
 no authority over the work.
 
 **What is read.** Once a minute, unless a deployment holds the fence, one collector per signal
@@ -879,10 +881,43 @@ An unchanged office costs no write, and the tables themselves are created by the
 change, so a release that starts under a deployment's fence leaves the control database as it
 found it. The lifecycle states `triaged`, `fixing`, `shipped`, `deployed`, `verified`, `recurred`,
 `housekept`, `dismissed`, `needs-joe` and `abandoned` are defined; observation alone reaches only
-`observed` and never changes a state a later step set.
+`observed` and never changes a state a later step set. `fixing` and `shipped` are set by the
+write-back events below; the others have no writer yet.
 
 `GET /api/incidents` lists the ledger (`open=1`, `research=1`); `GET /api/incidents/<id>` returns
 one incident with its events. Both are read-only.
+
+**Write-back.** Two events can be recorded from outside observation, by a person now and by the
+repair runner later, through one route and one validation: `POST /api/incidents/<id>/events`. The
+deployment fence's gate refuses it like any other write.
+
+- `repair-started` records the repair issue, read back from GitHub as an issue of the Office's own
+  repository, and a digest of every subject open at that revision: its key, episode count and
+  marker, stage, saved stop and head. It moves an incident that is `observed`, `triaged` or
+  `recurred` to `fixing`; fixes bound to an earlier repair stay on record.
+- `fix-bound` records a fix as GitHub reports it. A full commit SHA is read back and compared with
+  `main`. A pull request of the Office's repository is read back for its state, head and merge
+  commit: merged, the fix is its merge commit, compared with `main` like any commit; open, the fix
+  is its observed head. A number alone is neither a commit nor a merge receipt, and a comparison
+  GitHub does not answer plainly is refused. The incident stays `fixing` while the fix
+  is not on `main` and becomes `shipped` when it is. A pull request whose head moved is bound
+  again by a new event; an earlier binding is never changed.
+
+A fix states, for every subject its repair recorded and for no other, one of: a route (action,
+payload of at most 4,096 characters, expected stage) with a repaired boundary; a route whose
+boundary is undeclared, with the reason; or no route, with the reason. A boundary is one of a
+closed list of observable checks (`stage-result-passed`, `stage-left`, `record-settled`); nothing
+executable is accepted. Each binding must carry the digest recorded when the repair started, so a
+binding written for another stop, stage or head of that subject is refused. A repair covers at
+most 1,000 subjects. A route recorded here is checked against the handler it names when a resume
+is admitted, not now.
+
+Every event carries an ID its sender chose and the incident revision its sender read. The same ID
+with the same request returns the saved event and the revision it produced, without reading
+GitHub again, beside the incident as it stands now; the same ID with
+another request, a stale revision, a transition not in the table or a binding that fails any rule
+above is refused and nothing is saved. Observation changes neither the state these events set nor
+the repair and fixes they recorded.
 
 ## Code owners and verification
 
