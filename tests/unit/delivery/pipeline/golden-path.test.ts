@@ -11,7 +11,7 @@ afterEach(() => { vi.restoreAllMocks(); cleanupFakes(); });
 const WRITES: [string, RegExp][] = [
     ['create-worktree', /^git worktree add /], ['push-candidate', /^git push origin [a-f0-9]{40}:refs\/heads\//], ['create-draft-pr', /^gh pr create /],
     ['comment-on-issue', /\/issues\/\d+\/comments --method POST/], ['ready-pr', /^gh pr ready /], ['merge-pr', /\/merge --method PUT/],
-    ['close-issue', /^gh issue close /], ['move-card', /^board mutation /], ['edit-pr-body', /\/pulls\/\d+ .*PATCH/], ['delete-local-branch', /^git branch -D /], ['delete-remote-branch', /^git push origin :refs\/heads\//], ['unregister-worktree', /^git worktree prune/],
+    ['close-issue', /^gh issue close /], ['move-card', /^board mutation /], ['edit-pr-body', /\/pulls\/\d+ .*PATCH/], ['delete-local-branch', /^git branch -D /], ['delete-remote-branch', /^gh api -X DELETE repos\/[^ ]+\/git\/refs\/heads\//], ['unregister-worktree', /^git worktree prune/],
 ];
 
 /**

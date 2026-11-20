@@ -44,7 +44,7 @@ test('a refusal becomes a pending cleanup, which the poll keeps retrying', async
 test('a finished cleanup with no maintenance-created candidate, a job with no cleanup record, and an unfinished job are left alone', async () => {
     const plain = delivered({ ...DONE }, false);
     await retryCandidateCleanup(plain.f.store, plain.f.execute as any, plain.f.delivery.jobs);
-    expect([plain.f.state.calls.some(c => /branch -D|push origin :/.test(c)), existsSync(plain.job.worktree)]).toEqual([false, true]);
+    expect([plain.f.state.calls.some(c => /branch -D|push origin :|-X DELETE/.test(c)), existsSync(plain.job.worktree)]).toEqual([false, true]);
     const unrecorded = delivered(undefined);
     await retryCandidateCleanup(unrecorded.f.store, unrecorded.f.execute as any, unrecorded.f.delivery.jobs);
     expect(existsSync(unrecorded.job.worktree)).toBe(true);

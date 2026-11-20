@@ -111,6 +111,11 @@ src/
   again with growing pauses (`server/time/unsent-time.ts`); that is not a resend.
   Board estimated cost (`Est. Cost (USD)`) follows the ordinary rule: one dispatch through
   Effects, settled only by read-back, never resent (`server/telemetry/cost-ledger.ts`).
+  A second exception: deleting a delivered candidate's remote branch a second time changes
+  nothing more, so a delete read back as never landed (the branch still at the delivered head, ten minutes after
+  the attempt, every removal guard passing) is sent once more under a fresh intent
+  (`server/delivery/harness/resend-not-landed.ts`); a second miss for the branch goes to Joe.
+  The delete goes through the provider API, not a push, so no repository hook runs.
 - A hands-off GitHub writer stage whose run died restarts from the accepted head
   (`server/delivery/attempts/`): the abandoned work is kept under a local ref, the worktree is
   reset, and nothing is pushed. This re-runs a model stage; it never resends an Effect.

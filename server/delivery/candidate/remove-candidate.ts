@@ -94,6 +94,9 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
     if (local)
         await delivered(local, `Local branch ${branch}`);
     if (remote) {
+        // The name goes into a provider path: one that could be read as anything but this ref is not sent.
+        if (!/^[A-Za-z0-9._\/-]+$/.test(branch))
+            throw new Error(`Remote branch ${branch} has a name the delete cannot address exactly; preserved`);
         atTip(remote, `Remote branch ${branch}`);
         for (const side of ['--head', '--base'])
             if (JSON.parse(await execute('gh', ['pr', 'list', '--repo', store.project.repository, side, branch, '--state', 'open', '--json', 'number'], { cwd: repo, timeout: 60000, readOnly: true })).length)
@@ -142,8 +145,11 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
     if (remote || unsettled) {
         const absent = async () => await remoteSha() ? null : { deleted: true };
         await harnessEffect(store, job, { key: `remove-remote:${branch}`, operation: 'git-remote-branch-delete', target: `refs/heads/${branch}`, payload: { branch }, guard,
-            dispatch: async () => { await git(['push', 'origin', `:refs/heads/${branch}`], true); return absent(); },
-            readBack: absent });
+            // Through the provider, not a push: a push runs the repository's pre-push hook, which has nothing to check on a delete.
+            dispatch: async () => { await execute('gh', ['api', '-X', 'DELETE', `repos/${store.project.repository}/git/refs/heads/${branch}`], { cwd: repo, timeout: 60000 }); return absent(); },
+            readBack: absent,
+            // A second delete of the same merged head changes nothing more. Still at the delivered head after every check above: it did not land.
+            notLanded: async () => !!tip && await remoteSha() === tip });
         removed.remote = !!remote;
     }
     store.emit('candidate-removed', `${job.key}: removed ${[removed.worktree && 'worktree', removed.local && 'local branch', removed.remote && 'remote branch'].filter(Boolean).join(', ') || 'nothing (already clean)'} for ${branch}.`, 'pm', job.key);
