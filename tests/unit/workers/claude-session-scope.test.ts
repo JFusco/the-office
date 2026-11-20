@@ -52,3 +52,54 @@ test('a foreign identity after Claude child binding remains an error', () => {
     const boundary = JSON.stringify({ type: 'custom-title', sessionId: 'live' });
     expect(() => claudeSessionScope([boundary, row('user', 'wrong', { sessionId: 'other' })].join('\n'), 'live', projects)).toThrow('identity');
 });
+
+import { claudeScopeParser } from '../../../server/workers/claude-session-scope';
+import { sessionContextFile } from '../../../server/workers/session-context-file';
+import { mkdtemp, writeFile, appendFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const LINES = [row('user', 'Other parent prompt', { sessionId: 'parent' }),
+    row('user', 'Implement https://github.com/Joe/brain/issues/352 and own cleanup.'),
+    row('assistant', [{ type: 'text', text: 'Starting.' }, { type: 'tool_use', name: 'Bash', input: { command: 'gh pr merge 354 --repo Joe/brain' } }]),
+    row('user', [{ type: 'tool_result', content: 'merged' }]),
+    row('assistant', [{ type: 'tool_use', name: 'Bash', input: { command: 'gh pr view 888 --repo Joe/cms' } }], { isSidechain: true }),
+    row('summary', 'not a message'),
+    row('user', 'Now look at https://github.com/Joe/cms/issues/142'),
+    row('assistant', [{ type: 'tool_use', name: 'Bash', input: { command: 'gh pr view 143 --repo Joe/cms' } }])];
+
+test('the line parser gives the same context as the whole-text parser, at every split point through a fork', () => {
+    const whole = claudeSessionScope(LINES.join('\n'), 'live', projects);
+    for (let cut = 0; cut <= LINES.length; cut++) {
+        const first = claudeScopeParser('live', projects);
+        for (const line of LINES.slice(0, cut)) first.write(line);
+        // The fork carries on from the checkpoint; the original keeps its own state.
+        const resumed = first.fork!();
+        for (const line of LINES.slice(cut)) resumed.write(line);
+        expect(resumed.finish()).toEqual(whole);
+        if (cut < 2) expect(() => first.finish()).toThrow();
+    }
+});
+
+test('the line parser fails closed like the whole-text parser', () => {
+    expect(() => claudeScopeParser('live', projects).finish()).toThrow('bound');
+    const partial = claudeScopeParser('live', projects);
+    expect(() => partial.write('{')).toThrow('incomplete');
+    const foreign = claudeScopeParser('live', projects);
+    foreign.write(row('user', 'mine'));
+    expect(() => foreign.write(row('user', 'theirs', { sessionId: 'other' }))).toThrow('identity');
+    const onlyParent = claudeScopeParser('live', projects);
+    onlyParent.write(row('user', 'theirs', { sessionId: 'parent' }));
+    expect(() => onlyParent.finish()).toThrow('identity');
+});
+
+test('read through the file reader: a transcript that grew is read again from its checkpoint, with the whole-text result', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'office-claude-stream-')), path = join(directory, 'live.jsonl');
+    try {
+        const read = sessionContextFile(directory, claudeSessionScope, claudeScopeParser);
+        await writeFile(path, LINES.slice(0, 4).join('\n') + '\n');
+        expect(await read(path, 'live', projects)).toEqual(claudeSessionScope(LINES.slice(0, 4).join('\n'), 'live', projects));
+        await appendFile(path, LINES.slice(4).join('\n') + '\n');
+        expect(await read(path, 'live', projects)).toEqual(claudeSessionScope(LINES.join('\n'), 'live', projects));
+    } finally { await rm(directory, { recursive: true, force: true }); }
+});
