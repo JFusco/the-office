@@ -1,7 +1,15 @@
 import { needsDecision } from '../../delivery/parking/needs-decision';
+import { isSetupStop } from '../qa/setup-stop-cap';
 import type { StageResult } from '../../../src/shared';
 
-/** A structured decision with no uncertain or unverified write of its own; anything else stays an operational block. */
+/** A QA run that stopped in setup, tested nothing, and is waiting on its own environment: a browser, a sign-in. */
+const environmentWait = (result: StageResult) => isSetupStop(result) && result.resolution?.kind === 'provider-wait' && !result.resolution.release;
+
+/**
+ * A structured decision with no uncertain or unverified write of its own; anything else stays an
+ * operational block. A QA environment wait never parks: it is the Office's own test environment,
+ * not a decision about the ticket. A setup stop that asks a person to decide still parks.
+ */
 export function parksInJira(result: StageResult): boolean {
-    return needsDecision(result) && !result.receipts.some(receipt => receipt.uncertain || !receipt.verified);
+    return needsDecision(result) && !environmentWait(result) && !result.receipts.some(receipt => receipt.uncertain || !receipt.verified);
 }

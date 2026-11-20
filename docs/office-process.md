@@ -464,6 +464,13 @@ worker are told the interruption is history, not an open item. The interrupted r
 provider usage stay in history, and its IT investigation closes when the rerun returns a result.
 A crash, a time limit, staging QA and every other stage keep their existing handling.
 
+A QA worker attaches to a browser a handoff names while that browser is live. When its process and
+port are both gone the handoff has ended and the worker starts its own browser. On a sign-in page it
+clicks a single sign-on button itself and stops only at a password, verification, account or consent
+prompt, never typing a credential. A QA run that stopped in setup, tested nothing and waits on its
+own environment (a browser, a sign-in) does not park the Jira ticket in Blocked; it stays blocked in
+the Office. A setup stop that asks a person to decide still parks.
+
 A QA, retest or staging QA worker that returned normally, and whose result the Office then refused
 to accept (a report it would not save, for example), left nothing unknown. The stage is blocked in
 those words, without an uncertain-effect stop, and the next resume runs it again. A record saved
