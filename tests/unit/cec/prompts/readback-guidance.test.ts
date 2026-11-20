@@ -56,3 +56,22 @@ test('every read-back with a known step is told the step and that the step\'s ow
     expect(readbackDispatchGuidance(undefined, 'run-stage', true)).not.toContain('HARNESS NEXT STEP');
     expect(readbackDispatchGuidance(t, 'run-stage')).not.toContain('HARNESS NEXT STEP');
 });
+
+test.each(['staging-qa', 'retest'] as const)('an explicit resume after a %s sign-in wait tells the read-back that wait is answered, and only then', stage => {
+    const t = ticket(); t.stage = stage;
+    const wait = { outcome: 'blocked', summary: 'x', blocker: 'Joe needs to complete Microsoft sign-in in the visible Chrome for Testing window.', paidRuns: 0, commit: t.commit, evidence: [], findings: [], receipts: [], previewUrl: '', worktree: '', branch: '', prId: 0, qaRunDir: '/r',
+        resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [], release: null }, qa: { setup: { status: 'blocked' }, cases: [{ status: 'not-tested' }] } } as any;
+    t.results[stage] = wait;
+    const answered = readbackDispatchGuidance(t, 'run-stage', true);
+    expect(answered).toContain('ANSWERED ENVIRONMENT WAIT');
+    expect(answered).toContain('Joe needs to complete Microsoft sign-in in the visible Chrome for Testing window.');
+    expect(answered).toContain('do not return them as a blocker');
+    expect(answered).toContain('Still return any other or newer hold.');
+    expect(answered.includes('QA DISPATCH BOUNDARY')).toBe(stage === 'retest');
+    // Not an explicit resume, a stop that asks a person to decide, or a run that tested something: nothing is said.
+    expect(readbackDispatchGuidance(t, 'run-stage', false)).not.toContain('ANSWERED ENVIRONMENT WAIT');
+    t.results[stage] = { ...wait, resolution: { ...wait.resolution, kind: 'human-hold' } };
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('ANSWERED ENVIRONMENT WAIT');
+    t.results[stage] = { ...wait, paidRuns: 1 };
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('ANSWERED ENVIRONMENT WAIT');
+});

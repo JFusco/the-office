@@ -489,7 +489,9 @@ port are both gone the handoff has ended and the worker starts its own browser. 
 clicks a single sign-on button itself and stops only at a password, verification, account or consent
 prompt, never typing a credential. A QA run that stopped in setup, tested nothing and waits on its
 own environment (a browser, a sign-in) does not park the Jira ticket in Blocked; it stays blocked in
-the Office. A setup stop that asks a person to decide still parks.
+the Office. A setup stop that asks a person to decide still parks. When such a ticket is resumed, the read-back before
+the resume is told that the wait is what the resume answers and is not to be returned as a blocker;
+the QA worker verifies access itself and stops again if it is missing.
 
 A QA, retest or staging QA worker that returned normally, and whose result the Office then refused
 to accept (a report it would not save, for example), left nothing unknown. The stage is blocked in
