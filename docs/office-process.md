@@ -222,11 +222,13 @@ everything. A cleanup recorded before a maintenance run's candidate counted is t
 the poll. A branch the Office did not create is left alone.
 
 The remote branch is deleted through the provider API, not by a push, so the repository's pre-push
-hook does not run on a delete. A delete cannot apply twice. When an attempted delete is still
+hook does not run on a delete. Deleting a merged branch a second time changes nothing more. When an attempted delete is still
 unverified ten minutes later and the branch is read back at the delivered head with every guard
 above passing, the attempt is recorded as not landed and the delete is sent once more under a fresh
 intent (`server/delivery/harness/resend-not-landed.ts`). A second miss for the same branch is not
-sent again and stays with a person. No other effect is resent this way.
+sent again and stays with a person. No other effect is resent this way. A branch someone restored
+at the same head within those ten minutes is indistinguishable from a delete that never landed and is
+deleted; every commit on it is already merged.
 
 After staging QA passes on a project with production settings (CEC: branch `production`, pipeline
 `prod-deploy`), the harness follows the ticket to production without a model

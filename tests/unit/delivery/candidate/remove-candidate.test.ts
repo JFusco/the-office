@@ -222,3 +222,11 @@ test('without a delivered head nothing is sent again', async () => {
     await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard)).rejects.toThrow('will not be resent');
     expect(x.deletes()).toBe(1);
 });
+test('a branch whose name the provider path could misread is not deleted remotely', async () => {
+    const x = owned(), odd = `${x.job.branch}#x`, worktree = x.job.worktree;
+    x.f.state.localBranches.add(odd); x.f.state.remote[odd] = HEAD; x.f.state.local.branch = odd;
+    x.job.branch = odd; x.job.worktree = resolve(dirname(worktree), odd.slice('codex/'.length));
+    mkdirSync(x.job.worktree, { recursive: true });
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow('cannot address exactly');
+    expect([!!x.f.state.remote[odd], x.f.state.calls.some(c => c.includes('-X DELETE')), existsSync(x.job.worktree), x.f.state.localBranches.has(odd)]).toEqual([true, false, true, true]);
+});

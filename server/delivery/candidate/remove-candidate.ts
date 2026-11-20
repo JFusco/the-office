@@ -94,6 +94,9 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
     if (local)
         await delivered(local, `Local branch ${branch}`);
     if (remote) {
+        // The name goes into a provider path: one that could be read as anything but this ref is not sent.
+        if (!/^[A-Za-z0-9._\/-]+$/.test(branch))
+            throw new Error(`Remote branch ${branch} has a name the delete cannot address exactly; preserved`);
         atTip(remote, `Remote branch ${branch}`);
         for (const side of ['--head', '--base'])
             if (JSON.parse(await execute('gh', ['pr', 'list', '--repo', store.project.repository, side, branch, '--state', 'open', '--json', 'number'], { cwd: repo, timeout: 60000, readOnly: true })).length)
@@ -145,7 +148,7 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
             // Through the provider, not a push: a push runs the repository's pre-push hook, which has nothing to check on a delete.
             dispatch: async () => { await execute('gh', ['api', '-X', 'DELETE', `repos/${store.project.repository}/git/refs/heads/${branch}`], { cwd: repo, timeout: 60000 }); return absent(); },
             readBack: absent,
-            // A delete cannot apply twice. Still at the delivered head after every check above: it did not land.
+            // A second delete of the same merged head changes nothing more. Still at the delivered head after every check above: it did not land.
             notLanded: async () => !!tip && await remoteSha() === tip });
         removed.remote = !!remote;
     }
