@@ -1,3 +1,4 @@
+import { dueSlackReread, rereadUncertainSlack } from '../conversations/slack/reread-uncertain';
 import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { operationsSlot } from './operations-slot';
 import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
@@ -189,6 +190,10 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
                     store.save();
                 }
             }, continuation.nextCheckAt && Date.parse(continuation.nextCheckAt) > now.getTime() ? eligible('waiting', 'Native gate backoff is active') : null);
+    // A Slack delivery an earlier run of the service left unconfirmed is read back once per release, behind everything a person asked for.
+    const slackReread = dueSlackReread(store);
+    if (slackReread)
+        add('reconciliation', { id: `slack-reread:${slackReread.id}`, status: 'queued' }, 'slack-reread', slackReread.updatedAt, 4, () => rereadUncertainSlack(conversations, slackReread.id));
     for (const notice of c.notices?.entries || [])
         add('notice', notice, notice.kind === 'goal' ? 'goal-completion-notice' : notice.kind === 'maintenance' ? 'maintenance-completion-notice' : 'merge-notice', notice.createdAt, 4, () => coordinator!.pump({ kind: 'notice', id: notice.id }),
             notice.status === 'uncertain' ? history(settledNotice(notice, slackRequestSettled(store.state, notice.id)), ['notice', notice.id]) : null);

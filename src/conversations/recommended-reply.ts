@@ -18,7 +18,9 @@ export function recommendedReply(snapshot:OfficeSnapshot,ticket:string,actionId:
  if(role==='knowledge')return `What has the team learned on ${snapshot.project?.name||'this project'} recently, and is anything still recurring?`;
  const name=ticket||snapshot.project?.name||'this project';
  const item=actionId?snapshot.outbox?.find(action=>action.id===actionId):undefined,why=blocker(item?.detail),said=why?` It says: “${why}”`:'';
- if(role==='it')return why?`${item!.title}.${said} Check the connection or recovery this refers to and tell me what is verified, what recovers by itself, and the exact step and owner for anything still blocked.`:`Check ${ticket||snapshot.project?.name||'the Office'}’s current connections and recovery reports. Explain what is verified, what can recover automatically, and the exact next owner and steps for anything still blocked.`;
+ // An item speaks for a job or a ticket only when it is that job's or ticket's own item.
+ const own=/^(ticket-job:|ticket:)/.test(actionId)?why:'';
+ if(role==='it')return why&&item!.role==='it'?`${item!.title}.${said} Check the connection or recovery this refers to and tell me what is verified, what recovers by itself, and the exact step and owner for anything still blocked.`:`Check ${ticket||snapshot.project?.name||'the Office'}’s current connections and recovery reports. Explain what is verified, what can recover automatically, and the exact next owner and steps for anything still blocked.`;
  if(ticket&&deferredPickup(snapshot,ticket))return `Keep ${ticket} deferred in Backlog. Read back the earlier conversation and resolve stale follow-up only when its original effects are verified. Do not start development or ask for approval to pick it up.`;
  if(actionId.startsWith('merge-approval:'))return `Explain ${name}’s reviewed PR, exact-head checks and any remaining risks before I decide whether to approve its merge.`;
  if(actionId.startsWith('question:')){
@@ -40,12 +42,12 @@ export function recommendedReply(snapshot:OfficeSnapshot,ticket:string,actionId:
  const job=snapshot.coordination?.jobs?.find(j=>j.key===ticket&&!['cancelled','completed'].includes(j.status));
  if(job?.dependsOnPR)return `Check the current state of parent PR #${job.dependsOnPR} for ${ticket}. Explain the remaining prerequisite and next owner; preserve the dependency until verified complete.`;
  if(job&&['blocked','interrupted'].includes(job.status)){
-  const stopped=why||blocker(job.detail);
+  const stopped=own||blocker(job.detail);
   return `${ticket} is stopped at ${job.stage}${stopped?`: “${stopped}”`:''}. Read back that stage’s saved session and tell me the one action that unblocks it and who takes it; if it is mine, give me the exact steps. Do not replay an uncertain write.`;
  }
  const stuck=ticket?snapshot.tickets?.find(candidate=>candidate.key===ticket&&candidate.activity==='blocked'&&candidate.blocker):undefined;
  if(stuck){
-  const stopped=why||blocker(stuck.blocker);
+  const stopped=own||blocker(stuck.blocker);
   return `${ticket} is blocked at ${stuck.stage}: “${stopped}”. Tell me what you have verified about this, the one action that unblocks it and who takes it; if it is mine, give me the exact steps.`;
  }
  if(why)return `${item!.title}.${said} Tell me what you have verified, the one action that settles it and who takes it.`;

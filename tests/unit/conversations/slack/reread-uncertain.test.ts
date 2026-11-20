@@ -3,6 +3,9 @@ import { Store } from '../../../../server/store/store';
 import { Engine } from '../../../../server/scheduling/engine';
 import { Conversations } from '../../../../server/conversations/conversations';
 import { dueSlackReread, rereadUncertainSlack } from '../../../../server/conversations/slack/reread-uncertain';
+import { CommandFailure } from '../../../../server/workers/process';
+import { scheduledWork } from '../../../../server/scheduling/scheduled-work';
+import { coordination } from '../../../../server/scheduling/coordination';
 import { projectOutbox } from '../../../../server/conversations/outbox';
 import type { SlackDelivery } from '../../../../src/shared';
 
@@ -28,29 +31,37 @@ function setup(stored = STORED) {
     return { store, engine, chat, delivery, counts: () => ({ reads, sends }), open };
 }
 
-test('with nothing waiting, the pump reads an old unconfirmed delivery back once; confirmed, its outbox item closes and nothing is sent', async () => {
+test('a due delivery is read back once; confirmed, its outbox item closes and nothing is sent', async () => {
     const s = setup();
     expect(s.open()).toEqual(['message:request-1']);
-    await s.chat.pump();
+    expect(dueSlackReread(s.store, 'release-a')?.id).toBe('delivery');
+    expect(await rereadUncertainSlack(s.chat, 'delivery', 'release-a')).toBe(true);
     expect(s.delivery).toMatchObject({ status: 'confirmed', error: '' });
     expect([s.counts(), s.open(), s.engine.busy, s.chat.running]).toEqual([{ reads: 1, sends: 0 }, [], false, false]);
-    await s.chat.pump();
+    expect(dueSlackReread(s.store, 'release-a')).toBeUndefined();
+    expect(await rereadUncertainSlack(s.chat, 'delivery', 'release-a')).toBe(false);
     expect(s.counts().reads).toBe(1);
 });
 
-test('one that still does not match stays unconfirmed with its item, and is not read again until the release changes', async () => {
-    const s = setup('• lock: something else entirely');
-    expect(await rereadUncertainSlack(s.chat, 'release-a')).toBe(true);
-    expect(s.delivery).toMatchObject({ status: 'uncertain', rereadRevision: 'release-a' });
-    expect(s.delivery.error).toContain('did not match');
+test('one that still does not match keeps its item and its original error, and is not read again until the release changes', async () => {
+    const s = setup('• lock: something else entirely'), original = s.delivery.error;
+    expect(await rereadUncertainSlack(s.chat, 'delivery', 'release-a')).toBe(true);
+    expect(s.delivery).toMatchObject({ status: 'uncertain', rereadRevision: 'release-a', error: original });
     expect(s.open()).toEqual(['message:request-1']);
-    expect(await rereadUncertainSlack(s.chat, 'release-a')).toBe(false);
+    expect(dueSlackReread(s.store, 'release-a')).toBeUndefined();
+    expect(await rereadUncertainSlack(s.chat, 'delivery', 'release-a')).toBe(false);
     expect(s.counts()).toEqual({ reads: 1, sends: 0 });
-    // A read this process made counts as this release's own, whatever the release is called: the delivery is no longer old.
-    expect(dueSlackReread(s.store, 'release-b')).toBeUndefined();
-    s.delivery.updatedAt = new Date(Date.parse(s.store.state.startedAt) - 1000).toISOString();
-    expect(await rereadUncertainSlack(s.chat, 'release-b')).toBe(true);
+    expect(dueSlackReread(s.store, 'release-b')?.id).toBe('delivery');
+    expect(await rereadUncertainSlack(s.chat, 'delivery', 'release-b')).toBe(true);
     expect(s.counts().reads).toBe(2);
+});
+
+test('a read stopped by a pause or a shutdown does not use up the release\'s one read', async () => {
+    const s = setup();
+    s.engine.agents.verifySlack = async () => { throw new CommandFailure('Worker paused; reconcile any external effects before resuming', 'cancelled', true); };
+    expect(await rereadUncertainSlack(s.chat, 'delivery', 'release-a')).toBe(true);
+    expect([s.delivery.status, s.delivery.rereadRevision, s.engine.busy, s.chat.running]).toEqual(['uncertain', undefined, false, false]);
+    expect(dueSlackReread(s.store, 'release-a')?.id).toBe('delivery');
 });
 
 test.each<[string, (s: ReturnType<typeof setup>) => void]>([
@@ -59,19 +70,19 @@ test.each<[string, (s: ReturnType<typeof setup>) => void]>([
     ['the Office is paused', s => { s.store.state.paused = true; }],
     ['the Office is draining', s => { s.store.state.draining = true; }],
     ['another owner holds the store', s => { s.store.claim('someone-else'); }],
+    ['the team is in the middle of something', s => { s.engine.busy = true; }],
+    ['a conversation is running', s => { s.chat.running = true; }],
 ])('nothing is read when %s', async (_name, change) => {
     const s = setup(); change(s);
-    expect(await rereadUncertainSlack(s.chat, 'release-a')).toBe(false);
+    expect(await rereadUncertainSlack(s.chat, 'delivery', 'release-a')).toBe(false);
     expect(s.counts().reads).toBe(0);
 });
 
-test('a message waiting for the team is answered first', async () => {
-    const s = setup();
-    let followups = 0;
-    s.engine.agents.followup = async () => { followups++; return { handoffProject: '', pickupChange: null, reply: 'Noted.', notifyRoles: [], question: '', goalChanges: [], slackRequests: [], notes: [], receipts: [] } as any; };
-    s.chat.enqueue({ id: crypto.randomUUID(), body: 'What is in flight?', role: 'pm' });
-    await s.chat.pump();
-    expect([followups, s.counts().reads]).toEqual([1, 0]);
-    await s.chat.pump();
-    expect(s.counts().reads).toBe(1);
+test('the scheduler offers the read as its own work item, and only while it is due', () => {
+    const s = setup(), entry = { store: s.store, engine: s.engine, conversations: s.chat, coordinator: undefined } as any;
+    s.store.state.coordination = coordination();
+    const offered = () => scheduledWork(entry, new Map([[s.store.project.id, s.store]])).filter(item => item.stage === 'slack-reread').map(item => item.work.id);
+    expect(offered()).toEqual(['slack-reread:delivery']);
+    s.delivery.status = 'confirmed';
+    expect(offered()).toEqual([]);
 });

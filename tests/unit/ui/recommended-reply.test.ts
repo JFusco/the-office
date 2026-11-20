@@ -46,3 +46,11 @@ test('an item the Office is already retrying has no suggested reply, and a long 
  const reply=recommendedReply(s,'','github','pm');
  expect(reply).toContain('Restore the GitHub connection. It says: “word word');expect(reply).toContain('word…”');expect(reply.length).toBeLessThan(420);
 });
+test('an item about something else on the same ticket is not passed off as the job\'s stop reason',()=>{
+ const s=initialSnapshot();s.coordination=coordination();
+ s.coordination.jobs=[{key:'GH-12',status:'blocked',stage:'lead-pr',detail:'PR is a draft'} as any];
+ s.outbox=[action('time:t1','Publish GH-12 hours','Hours write could not be confirmed','GH-12')];
+ const reply=recommendedReply(s,'GH-12','time:t1','pm');
+ expect(reply).toContain('GH-12 is stopped at lead-pr: “PR is a draft”');expect(reply).not.toContain('Hours write');
+ expect(recommendedReply(s,'GH-12','time:t1','it')).toContain('current connections and recovery reports');
+});
