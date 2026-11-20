@@ -21,6 +21,8 @@ export function comparableSlackText(text: string) {
     return text.replace(/\r\n/g, '\n').replace(/^• /gm, '- ').replace(/^(- [^\n]*)\n(?![\n-])/gm, '$1\n\n').replace(/&(?:amp|lt|gt);/g, s => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>' })[s]!)
         .replace(/<@([UW][A-Z0-9]+)\|[^>]+>/g, '<@$1>').replace(/<#([CG][A-Z0-9]+)\|[^>]+>/g, '<#$1>')
         .replace(/<(https?:\/\/[^>|]+)(?:\|([^>]+))?>/g, (_all, url: string, label: string | undefined) => !label || labelIsUrl(label, url) ? url : `[${label}](${url})`)
+        // Slack stores text such as name@1.2.3 as a mailto link labelled with that same text.
+        .replace(/<mailto:([^>|]+)(?:\|([^>]+))?>/g, (_all, address: string, label: string | undefined) => !label || label === address ? address : `[${label}](mailto:${address})`)
         .replace(/\n\*Sent using\* <@U0A3Q4JJX17>\s*$/, '').trim();
 }
 export class SlackMessages {

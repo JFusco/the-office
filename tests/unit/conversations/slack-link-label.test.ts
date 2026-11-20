@@ -23,3 +23,14 @@ test('a sent notice whose link Slack shortened reads back as the saved text', ()
     // A link given other text is still a different message.
     expect(comparableSlackText(readBack.replace('dev.azure.com/verndale/…/41448', 'the pull request'))).not.toBe(comparableSlackText(saved));
 });
+
+test('name@version text that Slack stores as a mailto link compares equal to what was sent', () => {
+    // The GH-415 merge notice as Slack returned it, and as the Office saved it.
+    const saved = '- pnpm-lock.yaml: refreshed. minimatch@10.2.6 is replaced by minimatch@11.0.9 for eslint@10.14.0 and…\n\nPR: https://github.com/JFusco/brain/pull/416 · merge ff53e0d';
+    const readBack = '• pnpm-lock.yaml: refreshed. <mailto:minimatch@10.2.6|minimatch@10.2.6> is replaced by <mailto:minimatch@11.0.9|minimatch@11.0.9> for <mailto:eslint@10.14.0|eslint@10.14.0> and…\nPR: <https://github.com/JFusco/brain/pull/416|github.com/JFusco/brain/pull/416> · merge ff53e0d\n*Sent using* <@U0A3Q4JJX17|ChatGPT>';
+    expect(comparableSlackText(readBack)).toBe(comparableSlackText(saved));
+    expect(comparableSlackText('Ask <mailto:a@example.test>')).toBe('Ask a@example.test');
+    // A label that is not the address is other text, and stays different from the plain address.
+    expect(comparableSlackText('Ask <mailto:a@example.test|the owner>')).not.toBe('Ask a@example.test');
+    expect(comparableSlackText('Ask <mailto:a@example.test|b@example.test>')).not.toBe(comparableSlackText('Ask b@example.test'));
+});
