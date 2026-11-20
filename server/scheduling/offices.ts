@@ -38,6 +38,9 @@ import { DELIVERY_CONCURRENCY } from '../office/config';
 import { mirrorOfficeKnowledge, proposeOfficeLessons } from '../knowledge/office-lessons';
 import { seedOfficeLessons } from '../knowledge/seeded-office-lessons';
 import { expireLessons, queueLessonIssueCheck } from '../knowledge/lesson-exits';
+import { IncidentLedger } from '../incidents/incident-ledger';
+import { observeProjects } from '../incidents/observe-projects';
+import { syncIncidents } from '../incidents/sync-incidents';
 export class Offices {
     capacity = officeCapacity(DELIVERY_CONCURRENCY);
     ctoCapacity = officeCapacity();
@@ -56,6 +59,10 @@ export class Offices {
     fence = new DeploymentFence(this.control.db);
     /** True while a deployment holds the fence. Fixtures built without the constructor have no fence. */
     fenced(): boolean { return this.fence ? this.fence.held() : false; }
+    /** The office-wide incident record, on the control connection beside the fence (see server/incidents/). */
+    incidents = new IncidentLedger(this.control.db);
+    /** Reads every project's stopped work into the incident ledger; writes nothing to a project, and nothing at all while fenced. */
+    observeIncidents(now = new Date()) { return this.fenced() ? undefined : syncIncidents(this.incidents, observeProjects([...this.entries.values()], (entry, lane) => this.projection(entry, lane), now), now); }
     /** Ticks and HTTP writes that started before the fence was taken; health reports busy until they end. */
     operations = new InFlightOperations();
     dailyCTO = new DailyCTO(this.control, () => [...this.entries.values()], () => knowledgeEntries([...this.entries.values()]));

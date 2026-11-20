@@ -61,6 +61,10 @@ server/
   operations/      harness operation retention
   it/              IT specialist: per-project check context, recovery attempts, delivery
                    recoveries, recovery ledger, reports
+  incidents/       office-wide incident ledger: observation of stopped work, cause identity,
+                   expected waits, research eligibility
+    sources/       one collector per signal: stopped work, worker failures, IT recoveries and
+                   investigations, improvement proposals, provider errors, Slack deliveries, outbox
   release/         release builds and identity: exact-commit build, release.json manifest,
                    the release launchd runs; deployment: controller pin and launcher, deploy
                    lock and journal, fence hold, idle wait, stop, store backup and snapshot,
@@ -153,6 +157,7 @@ above:
 | `area:telemetry` | Model routes, usage capture and estimated cost |
 | `area:operations` | Harness operation retention |
 | `area:it` | IT specialist: checks, recoveries, recovery ledger and reports |
+| `area:repair` | Incident ledger, repair wait and resume, the Overseer runner |
 | `area:knowledge` | Lessons, retrospectives and improvement proposals |
 | `area:features` | Feature planning, handoff and release |
 | `area:ui` | The browser app under `src/`: scene, panels, settings and work views |

@@ -1,8 +1,9 @@
 import { enqueueRequest } from '../scheduling/requests';
 import { sanitize } from './security';
+import { redactEvidence } from '../incidents/redact-evidence';
 import type { ServiceContext } from './http/context';
 
-/** Background scheduling, checkpoint, IT and provider-refresh timers; returns a stop function. */
+/** Background scheduling, checkpoint, IT, incident-observation and provider-refresh timers; returns a stop function. */
 export function startServiceTicks({ offices, itSpecialist }: Pick<ServiceContext, 'offices' | 'itSpecialist'>): () => void {
     // A fence that cannot be read counts as held, and never throws out of a timer callback.
     const fenced = () => { try { return offices.fenced(); } catch (e) { console.error(sanitize(String(e))); return true; } };
@@ -16,6 +17,11 @@ export function startServiceTicks({ offices, itSpecialist }: Pick<ServiceContext
         if (process.env.OFFICE_NO_POLL !== '1')
             void itSpecialist.tick().catch(e => console.error(sanitize(String(e))));
     }, 15000);
+    // Reads stopped work into the incident ledger. Local only: no provider is called and no project store is written.
+    const incidentTick = setInterval(() => {
+        if (fenced()) return;
+        try { offices.observeIncidents(); } catch (e) { console.error(redactEvidence(String(e))); }
+    }, 60000);
     const lastPoll = new Map<string, number>();
     const tick = setInterval(() => {
         // Checked before lastPoll advances: a fenced interval is deferred to the first tick after release, not lost.
@@ -30,5 +36,5 @@ export function startServiceTicks({ offices, itSpecialist }: Pick<ServiceContext
             }
         }
     }, 5000);
-    return () => { clearInterval(tick); clearInterval(itTick); clearInterval(checkpointTick); clearInterval(conversationTick); };
+    return () => { clearInterval(tick); clearInterval(incidentTick); clearInterval(itTick); clearInterval(checkpointTick); clearInterval(conversationTick); };
 }
