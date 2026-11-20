@@ -90,3 +90,8 @@ test('in the outbox: nothing for one miss, one item for two in a row, nothing on
     expect(runs('brain', ['sun', 49, 'blocked'], ['mon', 25, 'blocked'], ['tue', 1, 'completed']).open()).toEqual([]);
     expect(runs('cec', ['mon', 25, 'completed'], ['tue', 1, 'blocked']).open()).toEqual(['maintenance:tue']);
 });
+
+test('a record with no request time is never left to a later run, and does not break the rule for others', () => {
+    const f = runs('brain', ['mon', 25, 'completed'], ['tue', 1, 'blocked'], ['old', 99, 'blocked', { requestedAt: undefined }]);
+    expect([f.left('old'), f.left('tue')]).toEqual([false, true]);
+});

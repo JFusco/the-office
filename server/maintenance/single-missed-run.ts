@@ -5,7 +5,8 @@ import type { MaintenanceRun, OfficeSnapshot } from '../../src/shared';
 const STOPPED = ['blocked', 'interrupted'];
 /** A missed night is left alone until the next night's run is overdue: a day, and two hours for that run to start and stop. */
 export const NEXT_RUN_DUE_MS = 26 * 60 * 60 * 1000;
-const night = (run: MaintenanceRun) => run.requestedAt.slice(0, 10);
+/** The night a run belongs to; a record without a request time belongs to none and is never left to a later run. */
+const night = (run: MaintenanceRun) => String(run.requestedAt || '').slice(0, 10);
 
 /**
  * True while a stopped daily run on a hands-off project is not yet a person's to act on, because the next
@@ -19,8 +20,8 @@ const night = (run: MaintenanceRun) => run.requestedAt.slice(0, 10);
  * appears whatever happened since. The run keeps its status and error; only the outbox action waits.
  */
 export function leftToNextRun(state: Pick<OfficeSnapshot, 'maintenance' | 'project'>, run: MaintenanceRun, now = new Date()): boolean {
-    if (!state.project || !projectPolicy(state.project).handsOff || run.weekly || !STOPPED.includes(run.status) || !run.readbackRetry?.exhausted) return false;
-    const daily = (state.maintenance?.runs || []).filter(other => !other.weekly);
+    if (!state.project || !projectPolicy(state.project).handsOff || run.weekly || !STOPPED.includes(run.status) || !run.readbackRetry?.exhausted || !night(run)) return false;
+    const daily = (state.maintenance?.runs || []).filter(other => !other.weekly && !!night(other));
     if (daily.some(other => other.requestedAt > run.requestedAt && STOPPED.includes(other.status))) return true;
     if (now.getTime() - Date.parse(run.requestedAt) >= NEXT_RUN_DUE_MS) return false;
     const before = daily.filter(other => night(other) < night(run)).sort((a, b) => a.requestedAt.localeCompare(b.requestedAt)).at(-1);
