@@ -27,6 +27,12 @@ test('browser passes need actual browser, actor, ownership and saved screenshot 
     const g=fixture(true);g.r.qa!.setup={...g.r.qa!.setup,url:'http://127.0.0.1:3000',actor:'Synthetic test actor',resources:['Synthetic owned resource']};
     g.r.evidence.push({...g.r.evidence[0],id:'browser',kind:'browser',url:g.r.qa!.setup.url},{...g.r.evidence[0],id:'png',kind:'screenshot'});g.save();expect(g.gap()).toBe('');
 });
+test('a browser observation inside the application the setup names counts; one on another origin does not',()=>{
+    const make=(url:string)=>{const g=fixture(true);g.r.qa!.setup={...g.r.qa!.setup,url:'http://127.0.0.1:3000',actor:'Synthetic test actor',resources:['Synthetic owned resource']};
+        g.r.evidence.push({...g.r.evidence[0],id:'browser',kind:'browser',url},{...g.r.evidence[0],id:'png',kind:'screenshot'});g.save();return g.gap();};
+    expect(make('http://127.0.0.1:3000/projects/p1/features/f1?tab=functional-spec')).toBe('');
+    expect(make('http://127.0.0.1:3001/projects/p1')).toBe('Real browser, actor, resource and screenshot evidence is required');
+});
 test('symlinked report directories cannot escape the assignment',()=>{const f=fixture(),outside=mkdtempSync(resolve(tmpdir(),'office-qa-outside-'));roots.push(outside);mkdirSync(resolve(f.root,'office-qa'));symlinkSync(outside,f.directory);expect(()=>f.save()).toThrow('escaped');});
 test('a passed worker cannot change its own selected checks after testing',()=>{const f=fixture();f.r.approach={...f.expected.approach,checks:['Different smaller scope']};f.save();expect(f.gap()).toContain('explicit reroute');});
 test('independent checks cannot pass from a differently typed artifact',()=>{const f=fixture();f.r.evidence[0].kind='review';f.save();expect(f.gap()).toContain('focused check output');});

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { officeValidation } from '../../qa/assignment';
 import { qaCriteria } from '../../qa/criteria';
+import { underSetupUrl } from '../../qa/setup-url';
 import { CurrentOfficeQAReportSchema } from '../../qa/report-schema';
 import { safeWebUrl } from '../../office/security';
 import { containedFile } from '../workflow';
@@ -35,7 +36,7 @@ export function qaCoverage(ticket: Tested, root: string): QACoverage | null {
         result.paidRuns === null || result.receipts.some(receipt => receipt.uncertain || !receipt.verified) || !result.qaRunDir || !containedFile(file, root) || !same(file, result.qa)) return null;
     const onCommit = (kind: string) => result.evidence.filter(item => item.kind === kind && item.commit === ticket.commit);
     if (qa.validation === 'independent-checks' && !onCommit('checks').some(item => containedFile(item.path, root))) return null;
-    if (qa.validation === 'browser' && (!safeWebUrl(qa.setup.url) || !qa.setup.actor || !qa.setup.resources.length || !onCommit('browser').some(item => item.url === qa.setup.url))) return null;
+    if (qa.validation === 'browser' && (!safeWebUrl(qa.setup.url) || !qa.setup.actor || !qa.setup.resources.length || !onCommit('browser').some(item => underSetupUrl(item.url, qa.setup.url)))) return null;
     const evidence = (id: string) => result.evidence.find(item => item.id === id && item.commit === ticket.commit && containedFile(item.path, root));
     const proven = (item: (typeof qa.cases)[number]) => item.kind === 'acceptance' && item.status === 'passed' && item.evidenceIds.length > 0 && item.evidenceIds.every(id => !!evidence(id)) &&
         (qa.validation !== 'browser' || item.evidenceIds.some(id => evidence(id)!.kind === 'screenshot'));
