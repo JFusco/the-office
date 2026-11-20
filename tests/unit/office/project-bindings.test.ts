@@ -16,7 +16,7 @@ test('the legacy fold carries the cec connection and the workflow values that we
             statuses: {
                 intake: [{ name: 'To Do', id: '10000' }, { name: 'Open', id: '1' }],
                 stages: { understand: 'In Progress', 'code-review': 'Code Review', 'repair-review': 'Code Review', preview: 'Ready for QA', qa: 'QA', retest: 'QA' },
-                readyForStaging: 'Ready for Staging', blocked: 'Blocked',
+                readyForStaging: 'Ready for Staging', blocked: 'Blocked', readyForProduction: 'Ready for Production', done: 'Done',
             },
         },
         azure: {

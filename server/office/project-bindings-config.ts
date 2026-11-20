@@ -24,6 +24,10 @@ export interface JiraBinding {
         stages: Readonly<Record<JiraStatusStage, string>>;
         readyForStaging: string;
         blocked: string;
+        /** The status of a ticket verified on staging with its promotion pull request open. Absent: the Office moves nothing after staging. */
+        readyForProduction?: string;
+        /** The status of a ticket and its sub-tasks once it is in production. */
+        done?: string;
     };
 }
 
@@ -81,6 +85,8 @@ export function legacyCecBindings(cec: CECBinding): ProjectBindings {
                 stages: { understand: 'In Progress', 'code-review': 'Code Review', 'repair-review': 'Code Review', preview: 'Ready for QA', qa: 'QA', retest: 'QA' },
                 readyForStaging: 'Ready for Staging',
                 blocked: 'Blocked',
+                readyForProduction: 'Ready for Production',
+                done: 'Done',
             },
         },
         azure: {
