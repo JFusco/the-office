@@ -644,7 +644,12 @@ global rule. Repeated mechanical defects belong in code and behavioral tests.
 Avery's scheduled review is at 5 PM America/New_York on weekdays. Project
 maintenance and learning follow their own configured cadence and budgets; no
 chart adds a new scheduled job. Slack notices are configured separately, with
-no automatic backfill or resend. Pauses stop new work and retain resources until
+no automatic backfill or resend. A Slack delivery left unconfirmed by an earlier
+run of the service is read back once per release without a person asking, when
+nothing else is waiting for the team: read-only, nothing is sent, and one that
+still does not match keeps its outbox item
+(`server/conversations/slack/reread-uncertain.ts`). A notice whose delivery is
+unconfirmed is listed in the outbox once, as that delivery's read-back. Pauses stop new work and retain resources until
 termination is confirmed; drains let already-claimed work settle. UI timers do
 not rewrite actual time or provider usage. Publication and corrections retain
 their existing Effects/read-back rules, including the documented absolute-total

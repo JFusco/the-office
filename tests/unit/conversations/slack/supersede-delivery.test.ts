@@ -10,12 +10,12 @@ import { supersessionFixture } from './fixture';
 test('operator closeout removes both Slack alerts and IT attention, retaining uncertainty, history and budget', () => {
     const f = supersessionFixture(); try {
         syncInvestigations(f.store); const entry = f.store.state.it!.investigations![0]; entry.status = 'blocked'; entry.attempts = 1;
-        f.store.state.outbox = projectOutbox(f.store.state); expect(f.store.state.outbox.filter(item => item.status === 'open')).toHaveLength(2);
+        f.store.state.outbox = projectOutbox(f.store.state); expect(f.store.state.outbox.filter(item => item.status === 'open').map(item => item.id.split(':')[0])).toEqual(['message']);
         const original = structuredClone(f.delivery); const first = supersedeSlackDelivery(f.store, f.input);
         expect(supersedeSlackDelivery(f.store, f.input)).toEqual(first);
         expect(f.delivery.status).toBe(original.status); expect(f.delivery.error).toBe(original.error); expect(f.delivery.text).toBe(original.text);
         expect(entry).toMatchObject({ status: 'resolved', attempts: 1, resolution: { kind: 'superseded', sourceId: 'replacement', receipt: f.replacement.permalink } });
-        expect(projectOutbox(f.store.state).every(item => item.status === 'resolved')).toBe(true); expect(projectOutbox(f.store.state)).toHaveLength(2);
+        expect(projectOutbox(f.store.state).every(item => item.status === 'resolved')).toBe(true); expect(projectOutbox(f.store.state)).toHaveLength(1);
         expect(diagnosticSnapshot(f.store)).toMatchObject({ status: 'monitoring', followUps: [] });
         f.replacement.status = 'uncertain'; syncInvestigations(f.store);
         expect(entry.status).toBe('blocked'); expect(projectOutbox(f.store.state).some(item => item.id === 'message:notice' && item.status === 'open')).toBe(true);
