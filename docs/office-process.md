@@ -68,6 +68,18 @@ and content qualification allow routine Dependabot, Renovate and canonical wiki
 PRs to use current-head provider checks and repository rules without an added
 model review or local QA cycle.
 
+On a hands-off GitHub project the harness also reads the repository's open Dependabot alerts each
+poll (`server/delivery/intake/dependabot/track-alerts.ts`). An alert open for more than a day with
+no open Dependabot pull request naming its package gets one issue, created through Effects and
+carrying a hidden marker for the alert number. When pickup is enabled its card is placed in the
+pickup lane if it is absent or still in Backlog, so admission treats it like any other ticket; this
+is the one case where the harness moves a card out of Backlog without a person. An issue already
+carrying the marker, open or closed, is never duplicated or reopened. When the alert is no longer
+open and no delivery is in flight for the issue, the harness reads that alert's own state, says it on
+the issue and closes it: completed when fixed, not planned when dismissed. A write it could not
+confirm is never repeated; the record stays blocked, reaches the outbox, and settles once a person
+moves the card or files the issue with the marker.
+
 When the Jira intake source is the configured project list, the harness reads it itself and no
 model runs for the mailbox check. TWG marks a further page with a cursor and the last page with
 nothing, so the list is read in key order, each page asking for keys after the last one, until a

@@ -336,8 +336,11 @@ export interface TimeEntry {
 }
 /** An automated PR the harness bridged (or refused to bridge) into existing-PR delivery. */
 export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
+/** A Dependabot alert the harness turned into an issue because no pull request came for it. */
+export interface DependabotAlertIssue { id: string; alert: number; package: string; issue: number; status: 'tracking' | 'tracked' | 'resolved' | 'blocked'; detail: string; at: string }
 export interface Coordination {
     adoptions?: DependabotAdoption[];
+    alertIssues?: DependabotAlertIssue[];
     requests?: import('./contracts/work').HarnessRequest[];
     dependencyObservations?: import('./contracts/work').DependencyObservation[];
     continuations?: Continuation[];
