@@ -5,6 +5,7 @@ import { savedStageCompletion } from '../cec/saved-completion';
 import { STAGE_STALL_LIMIT_MS } from './stall-limit';
 import { assertContinuableWorktree, continuationPrompt, MAX_CONTINUATIONS, recordedContinuation, stageContinuation } from '../cec/stage-continuation';
 import { saveQAReport } from '../qa/save-report';
+import { RefusedQAResult } from '../cec/qa/refused-result';
 import { stageTimeLimit, qaTimeLimitGuidance } from '../qa/time-limit';
 import { isQAStage } from '../qa/assignment';
 import { knowledgePromptStore } from '../knowledge/office-state-view';
@@ -142,7 +143,8 @@ export class Agents extends WorkerRuntime {
                 resume = next;
             }
         }
-        if (officeQA) saveQAReport(result, qaDirectory, artifactRoot);
+        // The worker returned; a report the Office will not save is its own refusal, not a run that died.
+        if (officeQA) try { saveQAReport(result, qaDirectory, artifactRoot); } catch (error) { throw new RefusedQAResult(result, error); }
         if (continued) await verifyContinuationPreservation(this.store, ticket, result);
         return result;
     }
