@@ -3,6 +3,7 @@ import { sanitize } from './security';
 import { sourceVersions } from '../incidents/cited-sources';
 import { invalidateDismissals } from '../incidents/dismissal-validity';
 import { redactEvidence } from '../incidents/redact-evidence';
+import { admitRepairWaits } from '../incidents/repair/admit-repair-waits';
 import { watchDeployedFixes } from '../incidents/watch-deployed-fixes';
 import { command } from '../workers/process';
 import { DATA, ROOT } from './config';
@@ -33,6 +34,8 @@ export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pic
         if (fenced()) return;
         try { offices.observeIncidents(); } catch (e) { console.error(redactEvidence(String(e))); }
         try { invalidateDismissals(offices.incidents, versions, new Date()); } catch (e) { console.error(redactEvidence(String(e))); }
+        // Marks, in each project's own store, the stops a repair in progress covers. The one write the incident domain makes to a project.
+        try { admitRepairWaits(offices.incidents, [...offices.entries.values()], new Date(), fenced); } catch (e) { console.error(redactEvidence(String(e))); }
         if (process.env.OFFICE_NO_POLL !== '1') void offices.operations.run(compareRelease);
     }, 60000);
     const lastPoll = new Map<string, number>();

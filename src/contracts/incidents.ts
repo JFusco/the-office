@@ -183,9 +183,10 @@ export interface EvidencePacket {
 /**
  * The first six are written by observation. `repair-started`, `fix-bound` and `dismissed` are
  * written by a person or the repair runner through the Office. `fix-deployed`,
- * `release-identity-unknown` and `dismissal-invalidated` are written by the Office itself.
+ * `release-identity-unknown`, `dismissal-invalidated` and `repair-wait-expired` are written by
+ * the Office itself.
  */
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated';
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */
