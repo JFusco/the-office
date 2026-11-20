@@ -72,7 +72,7 @@ export class GitHubMonitor {
       for(const old of prior.issues)if(old.state==='open'&&!allIssues.some((i:any)=>i.number===old.number))allIssues.push(await this.api(`issues/${old.number}`));
       const board=await this.board();
       const state:GitHubState={status:'idle',observedAt,error:'',prs,board,issues:allIssues.map((i:any)=>({number:i.number,key:`GH-${i.number}`,title:i.title,state:i.state,url:i.html_url,updatedAt:i.updated_at})),
-        runs:runs.workflow_runs.map((r:any)=>({id:r.id,name:r.name||r.display_title,status:r.status,conclusion:r.conclusion||'',head:r.head_sha,branch:r.head_branch,event:r.event,attempt:r.run_attempt,url:r.html_url,createdAt:r.created_at,updatedAt:r.updated_at,startedAt:r.run_started_at||''}))};
+        runs:runs.workflow_runs.map((r:any)=>({id:r.id,workflowId:r.workflow_id,name:r.name||r.display_title,status:r.status,conclusion:r.conclusion||'',head:r.head_sha,branch:r.head_branch,event:r.event,attempt:r.run_attempt,url:r.html_url,createdAt:r.created_at,updatedAt:r.updated_at,startedAt:r.run_started_at||''}))};
       this.store.state.github=state;
       for(const issue of state.issues){
         const existing=this.store.state.tickets.find(t=>t.key===issue.key);
