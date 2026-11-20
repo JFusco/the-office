@@ -210,6 +210,17 @@ already queued blocks with "Project policy requires human merge", and a merge
 already attempted is still settled by read-back. Release, package or downstream-runner success
 must be observed from the relevant provider; a merge is not proof of release.
 
+After a GitHub closeout the harness removes the candidate it owns: the worktree, the local branch
+and the remote branch, the last through Effects (`server/delivery/candidate/remove-candidate.ts`).
+It owns a candidate the job created, and one a completed maintenance run of the same project
+created for the issue: that run's passed `draft-pr` step names the issue, the branch and the
+Office's own worktree path for it (`server/delivery/candidate/maintenance-candidate.ts`). The remote
+branch must be at the delivered head. A maintenance run's worktree and local branch may be at that
+head or behind it, because a later repair happens in the job's private clone; anything ahead of it
+or outside it, uncommitted work, or an open pull request from or into the branch preserves
+everything. A cleanup recorded before a maintenance run's candidate counted is tried once more by
+the poll. A branch the Office did not create is left alone.
+
 After staging QA passes on a project with production settings (CEC: branch `production`, pipeline
 `prod-deploy`), the harness follows the ticket to production without a model
 (`server/cec/production/`). When the ticket's commit is on staging and not on production it makes

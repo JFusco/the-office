@@ -1,4 +1,5 @@
 import { removeAdoptedClone } from './remove-adopted-clone';
+import { maintenanceCandidate } from './maintenance-candidate';
 import { existsSync } from 'node:fs';
 import { lstatSync } from 'node:fs';
 import { moveAside, moveBack, purgeRemoved } from './move-aside';
@@ -11,7 +12,7 @@ import { likePrefix } from '../../store/like-prefix';
 import type { TicketJob } from '../../../src/shared';
 
 type Execute = typeof command;
-export interface CandidateRemoval { worktree: boolean; local: boolean; remote: boolean; skipped?: string }
+export interface CandidateRemoval { worktree: boolean; local: boolean; remote: boolean; skipped?: string; /** The candidate was one a maintenance run created (`maintenance-candidate.ts`). */ created?: boolean }
 
 /** Only a candidate the Office created for this issue is removable: never an adopted PR branch or another checkout. */
 function notOwned(store: Store, job: TicketJob): string {
@@ -33,36 +34,65 @@ function notOwned(store: Store, job: TicketJob): string {
  * Removes the candidate this job recorded as its own: its worktree, its local branch and its
  * remote branch. Uncommitted work, a changed branch, an open PR from or into the branch, or (when
  * `tip` is given) any commit beyond the delivered head preserves everything and throws before any write.
+ * A candidate a completed maintenance run created for this issue is the Office's own too: after the
+ * job's private repair clone, if it has one, the run's worktree and branches are removed the same way.
  */
 export async function removeCandidate(store: Store, execute: Execute, job: TicketJob, guard: () => void, tip = ''): Promise<CandidateRemoval> {
-    const repo = store.project.repo, branch = job.branch, removed: CandidateRemoval = { worktree: false, local: false, remote: false };
-    if (!branch && !job.worktree)
+    const removed: CandidateRemoval = { worktree: false, local: false, remote: false };
+    if (!job.branch && !job.worktree)
         return removed;
-    if (job.adoptedRepairCheckout) return removeAdoptedClone(store, execute, job, guard, tip);
-    const skipped = notOwned(store, job);
-    if (skipped)
-        return { ...removed, skipped };
+    // A candidate the job created itself keeps its own exact-head rule, whatever a maintenance run also recorded.
+    if (!job.adoptedRepairCheckout && !notOwned(store, job))
+        return removeOwned(store, execute, job, job.worktree, guard, tip, false);
+    // Without a delivered head there is nothing to hold a maintenance run's copy to, so it is not taken as owned.
+    const created = tip ? maintenanceCandidate(store, job) : '';
+    if (job.adoptedRepairCheckout) {
+        const clone = await removeAdoptedClone(store, execute, job, guard, tip);
+        if (!created) return clone;
+        const rest = await removeOwned(store, execute, job, created, guard, tip, true);
+        return { worktree: clone.worktree || rest.worktree, local: rest.local, remote: rest.remote, created: true };
+    }
+    if (created) return { ...await removeOwned(store, execute, job, created, guard, tip, true), created: true };
+    return { ...removed, skipped: notOwned(store, job) };
+}
+
+/**
+ * Removes one Office-owned worktree and its branch. `behind` is for a maintenance run's own worktree and
+ * local branch, which a later repair in the job's private clone leaves behind the delivered head: they may
+ * be at it or an ancestor of it, never ahead or diverged. The remote branch is always at the delivered head.
+ */
+async function removeOwned(store: Store, execute: Execute, job: TicketJob, worktree: string, guard: () => void, tip: string, behind: boolean): Promise<CandidateRemoval> {
+    const repo = store.project.repo, branch = job.branch, removed: CandidateRemoval = { worktree: false, local: false, remote: false };
     const git = (args: string[], write = false) => execute('git', args, { cwd: repo, timeout: 120000, readOnly: !write }).then(out => out.trim());
     const atTip = (sha: string, what: string) => { if (tip && sha !== tip) throw new Error(`${what} is at ${sha.slice(0, 7)}, not the delivered ${tip.slice(0, 7)}; preserved`); };
     const localRef = () => git(['for-each-ref', '--format=%(objectname)', `refs/heads/${branch}`]);
     const remoteSha = async () => (await git(['ls-remote', '--heads', 'origin', `refs/heads/${branch}`])).split(/\s/)[0] || '';
     // Every preservation check reads before the first write, so a refusal leaves the candidate whole.
-    const present = !!job.worktree && existsSync(job.worktree);
+    const present = !!worktree && existsSync(worktree);
+    // Nothing of its own beyond the delivered head: at it, or (for a maintenance run's copy) an ancestor of it.
+    const delivered = async (sha: string, what: string) => {
+        if (!tip || sha === tip) return;
+        if (!behind) atTip(sha, what);
+        // The delivered head may never have been fetched here, and the read below needs the object. Like candidate
+        // creation's fetch it changes no branch or worktree; if it fails, the read fails and everything is preserved.
+        await execute('git', ['fetch', '--quiet', 'origin', tip], { cwd: repo, timeout: 120000, readOnly: true }).catch(() => undefined);
+        await git(['merge-base', '--is-ancestor', sha, tip]).catch(() => { throw new Error(`${what} is at ${sha.slice(0, 7)}, which could not be shown to be in the delivered ${tip.slice(0, 7)}; preserved`); });
+    };
     let interrupted = false;
     if (present) {
-        const read = (...args: string[]) => execute('git', args, { cwd: job.worktree, timeout: 30000, readOnly: true }).then(out => out.trim());
+        const read = (...args: string[]) => execute('git', args, { cwd: worktree, timeout: 30000, readOnly: true }).then(out => out.trim());
         if (await read('branch', '--show-current') !== branch)
-            throw new Error(`${job.worktree} is no longer on ${branch}; preserved`);
+            throw new Error(`${worktree} is no longer on ${branch}; preserved`);
         // Untrimmed: porcelain status columns are significant.
-        const status = await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: job.worktree, timeout: 30000, readOnly: true });
+        const status = await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: worktree, timeout: 30000, readOnly: true });
         interrupted = interruptedRemoval(status);
         if (status.trim() && !interrupted)
-            throw new Error(`${job.worktree} has uncommitted changes; preserved`);
-        atTip(await read('rev-parse', 'HEAD'), job.worktree);
+            throw new Error(`${worktree} has uncommitted changes; preserved`);
+        await delivered(await read('rev-parse', 'HEAD'), worktree);
     }
     const local = await localRef(), remote = await remoteSha();
     if (local)
-        atTip(local, `Local branch ${branch}`);
+        await delivered(local, `Local branch ${branch}`);
     if (remote) {
         atTip(remote, `Remote branch ${branch}`);
         for (const side of ['--head', '--base'])
@@ -72,30 +102,30 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
     if (present) {
         guard();
         // Re-read just before acting: anything written during the network checks above is real work.
-        const now = await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: job.worktree, timeout: 30000, readOnly: true });
+        const now = await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: worktree, timeout: 30000, readOnly: true });
         if (now.trim() && !(interrupted && interruptedRemoval(now)))
-            throw new Error(`${job.worktree} changed during cleanup; preserved`);
-        const registration = (await git(['worktree', 'list', '--porcelain'])).split('\n\n').find(block => block.split('\n')[0] === `worktree ${job.worktree}`) || '';
+            throw new Error(`${worktree} changed during cleanup; preserved`);
+        const registration = (await git(['worktree', 'list', '--porcelain'])).split('\n\n').find(block => block.split('\n')[0] === `worktree ${worktree}`) || '';
         if (/^locked/m.test(registration))
-            throw new Error(`${job.worktree} is locked; preserved`);
-        if (lstatSync(job.worktree).isSymbolicLink() || existsSync(resolve(job.worktree, '.gitmodules')))
+            throw new Error(`${worktree} is locked; preserved`);
+        if (lstatSync(worktree).isSymbolicLink() || existsSync(resolve(worktree, '.gitmodules')))
             // Git's own removal handles submodules and linked trees; it refuses anything it would lose.
-            await execute('git', ['worktree', 'remove', ...(interrupted ? ['--force'] : []), '--', job.worktree], { cwd: repo, timeout: 10 * 60 * 1000 });
+            await execute('git', ['worktree', 'remove', ...(interrupted ? ['--force'] : []), '--', worktree], { cwd: repo, timeout: 10 * 60 * 1000 });
         else {
             // Deleting a worktree's dependencies can take minutes; set it aside instantly, unregister it, then delete in the background.
-            const aside = moveAside(job.worktree);
+            const aside = moveAside(worktree);
             await git(['worktree', 'prune'], true);
-            if ((await git(['worktree', 'list', '--porcelain'])).split('\n').some(line => line === `worktree ${job.worktree}`)) {
-                moveBack(aside, job.worktree);
-                throw new Error(`${job.worktree} stayed registered after it was set aside; restored in place`);
+            if ((await git(['worktree', 'list', '--porcelain'])).split('\n').some(line => line === `worktree ${worktree}`)) {
+                moveBack(aside, worktree);
+                throw new Error(`${worktree} stayed registered after it was set aside; restored in place`);
             }
             purgeRemoved(execute, repo);
         }
-        if (existsSync(job.worktree))
-            throw new Error(`${job.worktree} remains after removal`);
+        if (existsSync(worktree))
+            throw new Error(`${worktree} remains after removal`);
         removed.worktree = true;
     }
-    else if (job.worktree) {
+    else if (worktree) {
         // A worktree directory deleted outside Git leaves a stale registration that pins the branch.
         guard();
         await git(['worktree', 'prune'], true);
