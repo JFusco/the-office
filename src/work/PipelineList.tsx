@@ -3,7 +3,7 @@ import { Count, Notice, Section, SectionTitle, StatusDot, Tag, TextLink, mutedCo
 import { pipelineHeadline, pipelineRows } from './pipeline-view';
 
 /** Every pipeline or workflow on one line each: name, how its newest run ended, where and when. */
-export function PipelineList({ pipelines, title = 'Pipelines', now = Date.now() }: { pipelines?: PipelineWatch; title?: string; now?: number }) {
+export function PipelineList({ pipelines, title = 'Pipeline status', now = Date.now() }: { pipelines?: PipelineWatch; title?: string; now?: number }) {
     const rows = pipelineRows(pipelines?.items || [], now);
     return <Section data-pipelines>
         <SectionTitle className="mb-2">{title} <Count>{rows.length}</Count></SectionTitle>
