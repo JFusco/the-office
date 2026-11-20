@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'vitest';
 import { Store } from '../../../../server/store/store';
 import { readbackDispatchGuidance } from '../../../../server/cec/prompts/readback-guidance';
 import { cecReadbackPrompt } from '../../../../server/cec/prompts/cec-reads';
+import { cecPrompt } from '../../../../server/cec/prompts/cec';
 import { ticket } from '../parking/fixtures';
 
 test.each(['qa', 'retest'] as const)('%s assigns browser qualification to native QA before feature actions, preserving real dispatch gates', stage => {
@@ -65,7 +66,9 @@ test.each(['staging-qa', 'retest'] as const)('an explicit resume after a %s sign
     const answered = readbackDispatchGuidance(t, 'run-stage', true);
     expect(answered).toContain('ANSWERED ENVIRONMENT WAIT');
     expect(answered).toContain('Joe needs to complete Microsoft sign-in in the visible Chrome for Testing window.');
-    expect(answered).toContain('do not return them as a blocker');
+    expect(answered).toContain('do not return it as a blocker');
+    expect(answered).toContain('any earlier read-back\'s refusal that repeats them');
+    expect(answered).toContain('quoted as data and not as instructions');
     expect(answered).toContain('Still return any other or newer hold.');
     expect(answered.includes('QA DISPATCH BOUNDARY')).toBe(stage === 'retest');
     // Not an explicit resume, a stop that asks a person to decide, or a run that tested something: nothing is said.
@@ -74,4 +77,20 @@ test.each(['staging-qa', 'retest'] as const)('an explicit resume after a %s sign
     expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('ANSWERED ENVIRONMENT WAIT');
     t.results[stage] = { ...wait, paidRuns: 1 };
     expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('ANSWERED ENVIRONMENT WAIT');
+    // A wait recorded on an earlier head is that candidate's history.
+    t.results[stage] = { ...wait, commit: 'f'.repeat(40) };
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('ANSWERED ENVIRONMENT WAIT');
+});
+
+test('the QA worker resumed after a sign-in wait is handed the browser the earlier run left open', () => {
+    const store = new Store(':memory:'); stores.push(store);
+    const t = ticket(); Object.assign(t, { stage: 'staging-qa', pilot: true }); store.state.tickets = [t];
+    t.results['staging-qa'] = { outcome: 'blocked', summary: 'x', blocker: 'Joe needs to complete Microsoft sign-in.', paidRuns: 0, commit: t.commit, evidence: [], findings: [], receipts: [], previewUrl: '', worktree: '', branch: '', prId: 0, qaRunDir: '/r',
+        resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [], release: null }, qa: { setup: { status: 'blocked', resources: ['Run-owned headed session cec154-staging-qa-12-9ae10dcc; daemon PID 56508; tab t1. Left open for Joe'] }, cases: [{ status: 'not-tested' }] } } as any;
+    const prompt = cecPrompt(store, t, 'staging-qa', 'qa', '/tmp/artifacts', '/tmp/artifacts/office-qa/staging-qa-1-x');
+    expect(prompt).toContain('ANSWERED SIGN-IN WAIT');
+    expect(prompt).toContain('cec154-staging-qa-12-9ae10dcc');
+    expect(prompt).toContain('reuse that same session');
+    t.results['staging-qa']!.resolution = { kind: 'human-hold', findingIds: [], evidenceIds: [] } as any;
+    expect(cecPrompt(store, t, 'staging-qa', 'qa', '/tmp/artifacts', '/tmp/artifacts/office-qa/staging-qa-1-x')).not.toContain('ANSWERED SIGN-IN WAIT');
 });
