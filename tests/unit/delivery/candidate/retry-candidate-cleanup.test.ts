@@ -9,7 +9,7 @@ function delivered(cleanup: any, maintenance = true) {
     f.state.localBranches.add(job.branch); f.state.remote[job.branch] = HEAD; f.state.local.head = HEAD;
     delete job.candidateBase;
     job.candidateCleanup = cleanup;
-    if (maintenance) f.store.state.maintenance = { runs: [{ id: 'run-1', status: 'completed', steps: [{ role: 'developer', stage: 'draft-pr', result: { outcome: 'passed', summary: '', receipts: [], candidates: [{ issue: Number(job.key.slice(3)), worktree: job.worktree, branch: job.branch, head: HEAD, summary: '' }] } }] }] } as any;
+    if (maintenance) f.store.state.maintenance = { runs: [{ id: 'run-1', status: 'completed', steps: [{ role: 'developer', stage: 'draft-pr', result: { outcome: 'passed', summary: '', receipts: [{ id: 'pr', action: 'gh-pr-create-draft', target: '', verified: true, uncertain: false, detail: '' }], candidates: [{ issue: Number(job.key.slice(3)), worktree: job.worktree, branch: job.branch, head: HEAD, summary: '' }] } }] }] } as any;
     return { f, job };
 }
 const DONE = { status: 'done', detail: 'Removed the candidate worktree.', at: '2026-11-19T22:47:48.875Z' };

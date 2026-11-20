@@ -106,7 +106,7 @@ test('a worktree Git keeps registered after it was set aside is restored in plac
 function adopted() {
     const x = owned();
     delete x.job.candidateBase;
-    x.f.store.state.maintenance = { runs: [{ id: 'run-1', status: 'completed', steps: [{ role: 'developer', stage: 'draft-pr', result: { outcome: 'passed', summary: '', receipts: [], candidates: [{ issue: Number(x.job.key.slice(3)), worktree: x.job.worktree, branch: x.job.branch, head: 'e'.repeat(40), summary: '' }] } }] }] } as any;
+    x.f.store.state.maintenance = { runs: [{ id: 'run-1', status: 'completed', steps: [{ role: 'developer', stage: 'draft-pr', result: { outcome: 'passed', summary: '', receipts: [{ id: 'pr', action: 'gh-pr-create-draft', target: '', verified: true, uncertain: false, detail: '' }], candidates: [{ issue: Number(x.job.key.slice(3)), worktree: x.job.worktree, branch: x.job.branch, head: 'e'.repeat(40), summary: '' }] } }] }] } as any;
     return x;
 }
 test('a candidate a completed maintenance run created is removed like the Office\'s own, and marked as such', async () => {
@@ -129,7 +129,7 @@ test('the run\'s copy may be behind the delivered head, but not outside it; the 
 
     const diverged = adopted(), kept = diverged.job.worktree;
     diverged.f.state.local.head = 'c'.repeat(40); (diverged.f.state as any).notAncestor = true;
-    await expect(removeCandidate(diverged.f.store, diverged.f.execute as any, diverged.job, diverged.guard, HEAD)).rejects.toThrow('which is not in the delivered');
+    await expect(removeCandidate(diverged.f.store, diverged.f.execute as any, diverged.job, diverged.guard, HEAD)).rejects.toThrow('could not be shown to be in the delivered');
     expect([existsSync(kept), diverged.f.state.localBranches.has(diverged.job.branch), !!diverged.f.state.remote[diverged.job.branch]]).toEqual([true, true, true]);
 
     const moved = adopted();
@@ -149,4 +149,25 @@ test('uncommitted work or an open pull request preserves a maintenance-created c
     const open = adopted(); open.f.state.prs.push({ number: 7, state: 'open', head: { sha: HEAD, ref: open.job.branch }, base: { ref: 'main' } });
     await expect(removeCandidate(open.f.store, open.f.execute as any, open.job, open.guard, HEAD)).rejects.toThrow('open PR from it');
     expect(existsSync(open.job.worktree)).toBe(true);
+});
+test('without a delivered head a maintenance run\'s candidate is not taken as owned', async () => {
+    const { f, job, guard } = adopted();
+    const result = await removeCandidate(f.store, f.execute as any, job, guard);
+    expect(result.skipped).toContain('did not create');
+    expect([existsSync(job.worktree), f.state.localBranches.has(job.branch), !!f.state.remote[job.branch]]).toEqual([true, true, true]);
+    expect(f.state.calls.some(c => /worktree remove|worktree prune|branch -D|push origin :/.test(c))).toBe(false);
+});
+test('a candidate the job created itself keeps the exact-head rule even when a maintenance run also recorded it', async () => {
+    const x = adopted(); x.job.candidateBase = 'f'.repeat(40);
+    x.f.state.local.head = 'c'.repeat(40);
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow('not the delivered');
+    expect(x.f.state.calls.some(c => c.includes('merge-base --is-ancestor'))).toBe(false);
+});
+test('after the job\'s private repair clone is gone, the run\'s own worktree and branches are still removed', async () => {
+    const { f, job, guard } = adopted(), created = job.worktree, id = 'review-1';
+    const clone = resolve(f.store.dataRoot, 'ticket-work', job.id, `ci-${id}`, 'candidate');
+    job.adoptedRepairCheckout = { id, worktree: clone, branch: job.branch, head: HEAD } as any;
+    job.worktree = clone;
+    expect(await removeCandidate(f.store, f.execute as any, job, guard, HEAD)).toEqual({ worktree: true, local: true, remote: true, created: true });
+    expect([existsSync(created), f.state.localBranches.has(job.branch), !!f.state.remote[job.branch]]).toEqual([false, false, false]);
 });

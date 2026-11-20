@@ -41,7 +41,11 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
     const removed: CandidateRemoval = { worktree: false, local: false, remote: false };
     if (!job.branch && !job.worktree)
         return removed;
-    const created = maintenanceCandidate(store, job);
+    // A candidate the job created itself keeps its own exact-head rule, whatever a maintenance run also recorded.
+    if (!job.adoptedRepairCheckout && !notOwned(store, job))
+        return removeOwned(store, execute, job, job.worktree, guard, tip, false);
+    // Without a delivered head there is nothing to hold a maintenance run's copy to, so it is not taken as owned.
+    const created = tip ? maintenanceCandidate(store, job) : '';
     if (job.adoptedRepairCheckout) {
         const clone = await removeAdoptedClone(store, execute, job, guard, tip);
         if (!created) return clone;
@@ -49,10 +53,7 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
         return { worktree: clone.worktree || rest.worktree, local: rest.local, remote: rest.remote, created: true };
     }
     if (created) return { ...await removeOwned(store, execute, job, created, guard, tip, true), created: true };
-    const skipped = notOwned(store, job);
-    if (skipped)
-        return { ...removed, skipped };
-    return removeOwned(store, execute, job, job.worktree, guard, tip, false);
+    return { ...removed, skipped: notOwned(store, job) };
 }
 
 /**
@@ -72,9 +73,10 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
     const delivered = async (sha: string, what: string) => {
         if (!tip || sha === tip) return;
         if (!behind) atTip(sha, what);
-        // The delivered head may never have been fetched here; the read below needs the object.
-        await git(['fetch', '--quiet', 'origin', tip], true).catch(() => undefined);
-        await git(['merge-base', '--is-ancestor', sha, tip]).catch(() => { throw new Error(`${what} is at ${sha.slice(0, 7)}, which is not in the delivered ${tip.slice(0, 7)}; preserved`); });
+        // The delivered head may never have been fetched here, and the read below needs the object. Like candidate
+        // creation's fetch it changes no branch or worktree; if it fails, the read fails and everything is preserved.
+        await execute('git', ['fetch', '--quiet', 'origin', tip], { cwd: repo, timeout: 120000, readOnly: true }).catch(() => undefined);
+        await git(['merge-base', '--is-ancestor', sha, tip]).catch(() => { throw new Error(`${what} is at ${sha.slice(0, 7)}, which could not be shown to be in the delivered ${tip.slice(0, 7)}; preserved`); });
     };
     let interrupted = false;
     if (present) {
