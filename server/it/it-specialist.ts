@@ -19,7 +19,8 @@ export class ITSpecialist {
     nextAt = 0;
     constructor(private offices: Offices, private health: ServiceHealthChecks) { }
     async tick(now = new Date(), force = false) {
-        if (this.running || !force && now.getTime() < this.nextAt)
+        // Skipped whole while a deployment holds the fence, forced checks included: no attempt is spent on a refusal.
+        if (this.running || !force && now.getTime() < this.nextAt || this.offices.fenced?.())
             return;
         this.running = true;
         if (!force || this.nextAt <= now.getTime())

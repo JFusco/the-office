@@ -34,6 +34,7 @@ import { fileLessonIssue } from '../knowledge/file-lesson-issue';
 import { graduateLessons } from '../knowledge/lesson-exits';
 import { command } from '../workers/process';
 import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
+import { recordAdmission } from '../store/admission-journal';
 const actions = new Set(['admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'check-lesson-issues', 'file-lesson-issue']);
 export const deterministicActions = new Set([ 'retire-incomplete-history', 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'check-lesson-issues', 'file-lesson-issue']);
 export function enqueueRequest(store: Store, action: string, key = '', head = '', lane: HarnessRequest['lane'] = 'delivery'): HarnessRequest {
@@ -48,8 +49,12 @@ export function enqueueRequest(store: Store, action: string, key = '', head = ''
     if (old)
         return old;
     const request: HarnessRequest = { id: crypto.randomUUID(), action, key, head, lane, requestedAt: store.clock.now().toISOString(), status: 'queued', detail: 'Waiting for scheduler ownership.' };
-    requests.push(request);
-    store.emit('operation-queued', `${action} queued for the harness.`, undefined, key);
+    // One transaction: the request, its admission row and the event commit together (emit already opened one).
+    store.transaction(() => {
+        requests.push(request);
+        recordAdmission(store.db, 'request', request.id, request.requestedAt);
+        store.emit('operation-queued', `${action} queued for the harness.`, undefined, key);
+    });
     return request;
 }
 /** A deliberately supplied historical proof belongs to this new exact-original read intent only. */

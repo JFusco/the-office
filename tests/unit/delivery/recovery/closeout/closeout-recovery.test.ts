@@ -1,3 +1,4 @@
+import { admissionCursor, admissionsSince } from '../../../../../server/store/admission-journal';
 import {HOLDS} from '../../../../../server/office/config';
 import {afterEach,expect,test,vi} from 'vitest';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync,readFileSync,existsSync,symlinkSync} from 'node:fs';
@@ -416,3 +417,7 @@ test.each(['human-input','head','original-process','reader-native','reader-claim
 });
 test.each(['dirty','dependent','tip','reader-native','source-native'])('core first cleanup remains fenced against %s',async scenario=>{const a=coreFixture();await a.reconcile();if(scenario==='dirty')a.refs.dirty=' M human-file';if(scenario==='dependent')a.refs.dependents.push({number:999});if(scenario==='tip')a.refs.remote='c'.repeat(40);if(scenario==='reader-native')writeFileSync(resolve(a.root,'.codex/sessions/2026/10/30/rollout-native-reader.jsonl'),'{}');if(scenario==='source-native')writeFileSync(resolve(a.root,'.codex/sessions/2026/10/30/rollout-native-source-review.jsonl'),'{}');await expect(a.cleanup()).rejects.toThrow();expect(a.writes).toEqual([]);expect(a.original.status).toBe('failed');});
 test('core uncertain first conditional delete keeps the same effect identity and is reconciled without resend',async()=>{const a=coreFixture();await a.reconcile();a.hooks.afterWrite=kind=>{if(kind==='remote')throw Error('Transport lost after actual CAS');};await expect(a.cleanup()).rejects.toThrow();expect(a.writes).toHaveLength(1);a.cleanupRequest().status='blocked';const id=a.cleanupRequest().id;await a.resume();expect(a.cleanupRequest().id).toBe(id);a.hooks.afterWrite=undefined;await a.cleanup();expect(a.job.status).toBe('completed');expect(a.writes.map(w=>w.kind)).toEqual(['remote','worktree','branch']);expect(a.original.status).toBe('failed');});
+test('the separate cleanup request is journaled as an admission in the reconciliation transaction',async()=>{
+ const a=fixture();const cursor=admissionCursor(a.store.db);await a.reconcile();
+ expect(admissionsSince(a.store.db,cursor).filter(row=>row.kind==='request').map(row=>row.ref)).toContain(a.cleanupRequest().id);
+});

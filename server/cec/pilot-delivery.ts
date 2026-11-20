@@ -32,6 +32,7 @@ import { parkingUnconfirmed } from './parking/park-ticket';
 import { reconcileRejectedParking } from './parking/rejected-transition';
 import { reconcileRefusedCommentedPark } from './parking/refused-commented-park';
 import { continueAccessOnlyPlan } from './qa/continue-access-only-plan';
+import { recordAdmission } from '../store/admission-journal';
 
 export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean; qaHandoff?: unknown }) {
     return this.store.transaction(() => {
@@ -72,6 +73,7 @@ export function requestDelivery(this: Engine, key: string, action: 'start-pilot'
     if (routing?.binding) Object.assign(request, {featureBinding: structuredClone(routing.binding)});
     if (handoff) Object.assign(request, {officeQAHandoff: handoff});
     queue.push(request);
+    recordAdmission(this.store.db, 'delivery', request.id, request.requestedAt);
     if (!routing?.binding) closeIntakeEpisode(this.store, key, !routing?.automatic);
     this.store.emit('delivery-queued', `${key} queued for ${action === 'start-pilot' ? 'implementation' : 'live read-back and resume'}.`, 'pm', key);
     return request;

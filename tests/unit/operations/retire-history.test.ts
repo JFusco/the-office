@@ -10,6 +10,7 @@ import type { HistoryRetirementIntent } from '../../../src/contracts/history-ret
 import type { MaintenanceRun } from '../../../src/shared';
 import { commandRoute } from '../../../server/office/http/commands';
 import { executeRequest } from '../../../server/scheduling/requests';
+import { admissionCursor, admissionsSince } from '../../../server/store/admission-journal';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => cleanups.splice(0).forEach(close => close()));
@@ -88,4 +89,10 @@ test('the supported HTTP intent runs through the normal deterministic request la
     expect(request.status).toBe('completed');
     expect(f.run.retirement?.requestId).toBe(id);
     expect(f.entry.status).toBe('blocked');
+});
+test('the retirement request is journaled as an admission once; the repeated intent journals nothing', () => {
+    const f = fixture(), before = admissionCursor(f.store.db);
+    const request = f.enqueue();
+    expect(f.enqueue().id).toBe(request.id);
+    expect(admissionsSince(f.store.db, before).map(row => [row.kind, row.ref])).toEqual([['request', request.id]]);
 });

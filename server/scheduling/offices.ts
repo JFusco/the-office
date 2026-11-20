@@ -20,6 +20,8 @@ import { diagnosticSnapshot } from '../it/diagnostic-snapshot';
 import { DailyCTO } from '../leadership/daily-cto';
 import { ControlStore } from '../store/control-store';
 import { PreferencesStore } from '../office/preferences-store';
+import { DeploymentFence } from '../office/deployment-fence';
+import { InFlightOperations } from '../office/in-flight-operations';
 import { randomUUID } from 'node:crypto';
 import { Scheduler } from './scheduler';
 import { systemClock } from '../office/clock';
@@ -49,6 +51,12 @@ export class Offices {
     operationsScheduler = new Scheduler(this.operationsCapacity, systemClock, 'operations');
     control = new ControlStore();
     preferences = new PreferencesStore(this.control.db);
+    /** Read before any project store opens or any timer starts, so a restarted release begins fenced. */
+    fence = new DeploymentFence(this.control.db);
+    /** True while a deployment holds the fence. Fixtures built without the constructor have no fence. */
+    fenced(): boolean { return this.fence ? this.fence.held() : false; }
+    /** Ticks and HTTP writes that started before the fence was taken; health reports busy until they end. */
+    operations = new InFlightOperations();
     dailyCTO = new DailyCTO(this.control, () => [...this.entries.values()], () => knowledgeEntries([...this.entries.values()]));
     serviceInstanceId = randomUUID();
     snapshotSequence = 0;
@@ -78,7 +86,7 @@ export class Offices {
         this.control.recover();
         for (const project of PROJECTS) {
             const root = projectData(project), store = new Store(resolve(root, 'office.sqlite'), project, root);
-            store.recover();
+            store.recover(this.fenced());
             try { markCaptureStart(store); backfillClaudeCost(store); } catch (error) { store.emit('accounting-unavailable', `Saved Claude cost estimates were not imported: ${String(error).slice(0, 300)}`); } // idempotent
             const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
@@ -129,11 +137,20 @@ export class Offices {
         });
     }
     snapshot(id = PROJECTS[0].id) { const scoped=knowledgeOfficeState(id,this.get(id).store.state);return { ...scoped, featureQuestions: this.questions(), featurePlanning: { assessment: featurePolicy(id, FEATURE_PLANNING).assessment.enabled, progression: featurePolicy(id, FEATURE_PLANNING).progression, policyDigest: featurePolicy(id, FEATURE_PLANNING).digest }, slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: projectOutbox(scoped), dailyCTO: this.control.summaries(), officeKnowledge: officeKnowledgeSnapshot(id,this.control.knowledge?.()), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
-    async tick(now = new Date()) { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); }
+    async tick(now = new Date()) {
+        if (this.fenced()) return;
+        // Registered before the first await: a fence taken meanwhile sees this tick as still busy.
+        const run = async () => { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); };
+        return this.operations ? this.operations.run(run) : run();
+    }
     async pump() {
-        try { this.questionEvents().refresh(); } catch { /* A malformed persisted round only delays question notifications. */ }
-        for (const { store } of this.entries.values()) {
-            recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); expireLessons(store); queueLessonIssueCheck(store); }
+        // While fenced only settlement of already-owned work runs: nothing is queued, offered or claimed.
+        const fenced = this.fenced();
+        if (!fenced) {
+            try { this.questionEvents().refresh(); } catch { /* A malformed persisted round only delays question notifications. */ }
+            for (const { store } of this.entries.values()) {
+                recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); expireLessons(store); queueLessonIssueCheck(store); }
+        }
         // Runs finished outside a worker (restart recovery, dead process) get their accounting here; async, never awaited.
         for (const { store } of this.entries.values()) void reconcileUncapturedRuns(store).catch(() => { /* reported per run */ });
         for (const { store } of this.entries.values())
@@ -155,8 +172,9 @@ export class Offices {
                 }
         for (const {store} of this.entries.values()) {
             reconcileStoppingClaims(store);
-            for (const feature of store.state.features || []) { const owner=this.sessions.forProject(store,feature.sourceTicket).ownership; offerOrdinaryRelease(store,feature,{status:owner.status==='clear'?'clear':owner.status==='owned'?'owned':'unknown',reason:owner.detail}); }
+            if (!fenced) for (const feature of store.state.features || []) { const owner=this.sessions.forProject(store,feature.sourceTicket).ownership; offerOrdinaryRelease(store,feature,{status:owner.status==='clear'?'clear':owner.status==='owned'?'owned':'unknown',reason:owner.detail}); }
         }
+        if (fenced) return;
         const entries = [...this.entries.values()];
         const queues = (lane: string) => {
             const queues = entries.map(entry => ({ store: entry.store, items: this.projection(entry, lane) }));

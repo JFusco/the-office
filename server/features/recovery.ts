@@ -12,7 +12,8 @@ import { wakeFeature } from './progression/wake';
 import {retainStoppingClaim} from '../scheduling/stopping-claims';
 
 /** Called at startup and after stopping work is reconciled; never retries ordinary failures. */
-export function recoverFeatures(store: Store, startup = false, alive = processGroupAlive) {
+/** While a deployment holds the fence (`fenced`), interruption and process settlement still run; wake-ups and replacement reservations wait for an unfenced pump. */
+export function recoverFeatures(store: Store, startup = false, alive = processGroupAlive, fenced = false) {
     reconcileFeatureCompletion(store);
     for (const feature of store.state.features || []) {
         if (startup && feature.status === 'working') {
@@ -38,6 +39,7 @@ export function recoverFeatures(store: Store, startup = false, alive = processGr
         }
         const workers = store.state.workLog?.filter(w => w.requestId === feature.id && ['running', 'stopping'].includes(w.status)) || [];
         if (groups.length || workers.some(w => w.processId && alive(w.processId))) continue;
+        if (fenced) continue;
         wakeFeature(store, feature, true);
         if (automaticFeature(feature)) {
             if (!automaticEnabled(feature, FEATURE_PLANNING) || feature.paused || store.state.paused) continue;

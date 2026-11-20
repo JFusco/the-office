@@ -6,6 +6,7 @@ import { interruptedImplementation } from './original';
 import type { Store } from '../../store/store';
 import type { DeliveryRequest } from '../../../src/shared';
 import type { SavedImplementationProof } from '../../../src/contracts/cec-implementation-continuation';
+import { recordAdmission } from '../../store/admission-journal';
 
 export const ImplementationDecision = z.object({ workerId: z.string().uuid(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
     decision: z.enum(['continue', 'hold']), acknowledgeUncertainHistory: z.boolean(), note: z.string().max(1000) }).strict();
@@ -45,6 +46,7 @@ export async function decideImplementation(store: Store, key: string, raw: unkno
         const request: DeliveryRequest = { id: randomUUID(), key, action: 'continue-saved-implementation', requestedAt: at, status: 'queued', error: '',
             implementationContinuation: { proof, note: input.note, approvedAt: at, acknowledgeUncertainHistory: true } };
         (store.state.deliveryQueue ||= []).push(request);
+        recordAdmission(store.db, 'delivery', request.id, request.requestedAt);
         store.emit('implementation-continuation-queued', 'Joe approved one forward continuation from a saved copy; the original timeout and uncertainty remain in history.', 'pm', key);
         return { accepted: true, request };
     });

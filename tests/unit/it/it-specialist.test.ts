@@ -5,11 +5,15 @@ import { initialSnapshot } from '../../../server/store/store';
 import { coordination } from '../../../server/scheduling/coordination';
 import { projectById } from '../../../server/office/projects';
 import { syncOutbox } from '../../../server/conversations/outbox';
+import { DatabaseSync } from 'node:sqlite';
+import { initializeStoreSchema } from '../../../server/store/store-schema';
 function setup() {
     const state = initialSnapshot();
     state.project = projectById('brain');
     state.coordination = coordination();
-    const store = { state, project: state.project, clock: { now: () => new Date() }, activeClaims: () => [], save: vi.fn(), emit: vi.fn() };
+    // enqueueRequest writes the request and its admission row in one transaction.
+    const db = new DatabaseSync(':memory:'); initializeStoreSchema(db);
+    const store = { state, project: state.project, clock: { now: () => new Date() }, activeClaims: () => [], save: vi.fn(), emit: vi.fn(), db, transaction: <T>(operation: () => T) => operation() };
     const coordinator = { poll: vi.fn(async () => { }), retryCheckpoint: vi.fn() }, engine = { observe: vi.fn(async () => { }) };
     const offices = { entries: new Map([['brain', { store, engine, coordinator }]]) };
     const health = { report: vi.fn(async () => ({ checkedAt: '', context: '', services: [{ id: 'github', name: 'GitHub', status: 'connected', detail: 'Verified', checkedAt: '' }] })) };

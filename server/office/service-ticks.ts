@@ -4,18 +4,22 @@ import type { ServiceContext } from './http/context';
 
 /** Background scheduling, checkpoint, IT and provider-refresh timers; returns a stop function. */
 export function startServiceTicks({ offices, itSpecialist }: Pick<ServiceContext, 'offices' | 'itSpecialist'>): () => void {
+    // A fence that cannot be read counts as held, and never throws out of a timer callback.
+    const fenced = () => { try { return offices.fenced(); } catch (e) { console.error(sanitize(String(e))); return true; } };
     const conversationTick = setInterval(() => { void offices.pump().catch(e => console.error(sanitize(String(e)))); }, 2000);
     const checkpointTick = setInterval(() => {
         if (process.env.OFFICE_NO_POLL !== '1')
             void offices.tick().catch(e => console.error(sanitize(String(e))));
     }, 15000);
+    // ITSpecialist.tick checks the fence itself, before it advances its due marker.
     const itTick = setInterval(() => {
         if (process.env.OFFICE_NO_POLL !== '1')
             void itSpecialist.tick().catch(e => console.error(sanitize(String(e))));
     }, 15000);
     const lastPoll = new Map<string, number>();
     const tick = setInterval(() => {
-        if (process.env.OFFICE_NO_POLL === '1')
+        // Checked before lastPoll advances: a fenced interval is deferred to the first tick after release, not lost.
+        if (process.env.OFFICE_NO_POLL === '1' || fenced())
             return;
         for (const [id, { store, engine }] of offices.entries) {
             const active = store.state.tickets.some(t => t.pilot && t.stage !== 'complete');

@@ -22,6 +22,7 @@ import { statementCache } from './statement-cache';
 import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
+import { recordAdmission } from './admission-journal';
 export function initialSnapshot(): OfficeSnapshot {
     const now = new Date().toISOString();
     return {
@@ -174,6 +175,7 @@ export class Store {
                 return null;
             const claim: WorkClaim = { id: randomUUID(), work, owner, stage, lane, status: 'running', claimedAt: this.clock.now().toISOString(), endedAt: '' };
             this.statement('INSERT INTO work_claims VALUES(?,?,?,?)').run(claim.id, workKey(work), claim.status, JSON.stringify(claim));
+            recordAdmission(this.db, 'claim', claim.id, claim.claimedAt);
             return claim;
         });
     }
@@ -215,7 +217,8 @@ export class Store {
             return intent;
         });
     }
-    recover(): void  { return recover.call(this); }
+    /** `fenced`: a deployment holds the fence, so start-up recovery spends no feature retry. */
+    recover(fenced = false): void  { return recover.call(this, fenced); }
     begin(ticket: Ticket, stage: Stage): string {
         const id = randomUUID();
         this.statement('INSERT INTO attempts VALUES(?,?,?,?,?,?)').run(id, ticket.key, stage, 'running', '', JSON.stringify({ startedAt: this.clock.now().toISOString(), commit: ticket.commit }));

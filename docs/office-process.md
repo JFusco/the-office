@@ -575,6 +575,50 @@ holds the day until `reconcile-time`, which requeues it with no Jira call unless
 has a known worklog, which stays held for a person. Publications saved before this change keep
 their original read-back. The GitHub absolute-hours exception above is unchanged.
 
+### Deployment fence and admission journal
+
+A deployment holds the Office-wide deployment fence (`server/office/deployment-fence.ts`) while it
+replaces the running release. It is one row on the control database, separate from the leases
+start-up recovery deletes, so a newly started release opens already fenced. An unreadable row
+counts as held.
+
+While the fence is held:
+
+- **Scheduling and ticks.** No claim is taken and no tick starts. The scheduler pumps, the queue
+  producers at the top of the pump, the coordinator tick, the daily CTO collection and Ellis's tick
+  do not run. Ellis's tick is skipped whole, forced checks included, so no recovery attempt is
+  spent on a refusal. Start-up feature recovery still marks interrupted work but reserves no
+  replacement until the fence is released.
+- **Work already in flight.** A tick, an Ellis recovery or an HTTP write that began before the fence
+  was taken is not interrupted. It may still queue a new request, which is journaled and waits
+  unclaimed. `/api/health` reports `busy` until each of these ends.
+- **Already-owned work.** It may finish. A stopping worker is still settled and its claim released.
+- **Refresh.** The provider refresh is deferred to the first tick after release, not dropped.
+- **HTTP.** Every write is refused with 409 except the fence's own endpoints and the `pause` and
+  `drain` commands with a declared whole-number `Content-Length` of 1–4096 bytes. A `pause` or
+  `drain` request with a missing or out-of-range length gets 409 without its body being read.
+  Reads, including `/api/health` and its `fence` field, still answer.
+
+Only the token that acquired the fence releases it; the stored row keeps a digest, never the token.
+The fence grants no authority and changes no recovery budget.
+
+Each project database keeps an append-only admission journal (`server/store/admission-journal.ts`).
+It records every new scheduler claim, effect intent, harness request and delivery request, in the
+same transaction as that write and outside the saved state. The journaled writers are
+`Store.claimWork`, `Effects.execute`, `enqueueRequest`, `requestDelivery`, the history-retirement,
+PR-metadata, QA plan-retry and saved-implementation operator commands, and the closeout cleanup
+request. One start-up migration that queues a legacy `adopt-candidate` request is not journaled; it
+runs identically in every release.
+
+The journal omits status changes to existing records under a claim, during start-up recovery and
+through operator commands. An IT tick that began before the fence was taken can also requeue
+an existing request under the same ID without advancing the cursor.
+
+A deployment compares a project's journal cursor from before a release started with its cursor while
+that release is still fenced. An unchanged cursor means no new admission rows were appended.
+The deployment makes the comparison before releasing the fence, when operator commands that can
+requeue existing records are still refused.
+
 ## Code owners and verification
 
 | Process boundary | Owning source |

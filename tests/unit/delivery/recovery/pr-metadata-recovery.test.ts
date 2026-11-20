@@ -8,6 +8,7 @@ import { withAssignment } from '../../../../server/workers/assignment-context';
 import { harnessPrepare } from '../../../../server/delivery/publication/prepare-stage';
 import { requireMetadataReview } from '../../../../server/delivery/publication/metadata-review';
 import { deliveryInputSha256 } from '../../../../server/github/github-context';
+import { admissionsSince } from '../../../../server/store/admission-journal';
 
 
 test('an exact original permission park completes one metadata assessment/PATCH and two verified returns without replaying source or resetting budgets', async () => {
@@ -136,3 +137,9 @@ test.each(['worker', 'proposal', 'head', 'park', 'claim', 'competing-claim'])('o
 });
 
 test('original metadata recovery does not require optional chat visibility',async()=>{const f=original();f.ownership.complete=false;f.ownership.fresh=false;f.ownership.ownership.status='unavailable';await f.run();expect(f.writes.patches).toBe(1);expect(f.job.status).toBe('queued');});
+test('the metadata recovery request is journaled as an admission once; the repeated intent journals nothing', () => {
+    const f = original(), rows = () => admissionsSince(f.store.db, 0).filter(row => row.kind === 'request' && row.ref === f.request.id);
+    expect(rows()).toHaveLength(1);
+    expect(enqueueMetadataRecovery(f.store, f.job.key, f.intent).id).toBe(f.request.id);
+    expect(rows()).toHaveLength(1);
+});

@@ -9,9 +9,9 @@ import { interruptAdoptions } from '../delivery/intake/dependency-bots/interrupt
 import { retireLegacyRecovery } from '../delivery/recovery/retire-legacy-recovery';
 import { maintenanceNoticeNeverDispatched } from '../maintenance/brain/maintenance-notice-authorization';
 
-export function recover(this: Store): void  {
+export function recover(this: Store, fenced = false): void  {
     this.transaction(() => {
-        recoverFeatures(this, true);
+        recoverFeatures(this, true, undefined, fenced);
         interruptAdoptions(this.state, this.clock.now());
         retireLegacyRecovery(this.state, this.clock.now(), jobId => !!this.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status NOT IN ('verified','rejected')").get(workKey({ projectId: this.project.id, kind: 'delivery', id: jobId })));
         const coordination = this.state.coordination;
