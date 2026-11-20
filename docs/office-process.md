@@ -220,8 +220,16 @@ deploy. A ticket is recorded as in production when a passed `prod-deploy` run on
 branch ran a commit that contains the ticket's commit; a squashed copy does not count. Nothing is
 opened while another ticket of the Office is still in staging QA, because the pull request carries
 everything on staging. A pull request someone abandoned is said once and not reopened. A ticket is
-followed for 30 days. Moving the ticket and its sub-tasks to Done follows the production record and
-is not built yet.
+followed for 30 days. The harness then keeps Jira in step, each move one effect that carries its comment and is read back
+(`server/cec/production/production-status.ts`). With the promotion pull request open, a parent in
+Ready for Staging moves to Ready for Production. Once production is recorded, every sub-task that is
+not Done moves to Done, whoever it is assigned to, and then the parent. The available moves are read
+from Jira each time: one Jira does not offer, or whose screen needs a field other than the comment,
+stops there and is said once, and a parent is never closed before its sub-tasks. Both steps act
+only on a parent that is still the Office's and still in Ready for Staging or Ready for Production:
+a status or owner a person set in between leaves the ticket and its sub-tasks alone. A sub-task
+list that cannot be read whole closes nothing. A move that was sent and did not read back is never
+sent again, one a person undid is not made again, and one stopped before sending is tried three times.
 
 A Jira/Azure draft pull request is expected on the accepted candidate. When the developer brings the
 branch up to date with the target first, so the pull request opens on a head that contains the
