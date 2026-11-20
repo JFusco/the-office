@@ -17,6 +17,7 @@ import { adoptDependabot } from '../delivery/intake/dependabot/adopt';
 import { trackDependabotAlerts } from '../delivery/intake/dependabot/track-alerts';
 import { adoptDependencyBot } from '../delivery/intake/dependency-bots/adopt';
 import { unparkReleasedWaits } from '../delivery/parking/release-unpark';
+import { unparkSignedIn } from '../delivery/parking/sign-in-unpark';
 import { pinCourier } from '../delivery/intake/dependency-bots/pin-courier';
 import { wikiSync } from '../delivery/intake/dependency-bots/wiki-sync';
 import { observeGitHubMergeNotices } from '../conversations/observe-github-merges';
@@ -126,6 +127,7 @@ export async function poll(this: Coordinator, now = new Date()) {
             await delivery.discover(assigned);
             if (handsOff(this.store)) {
                 await unparkReleasedWaits(this.store, this.execute, this.state.jobs!, this.pickup, now);
+                await unparkSignedIn(this.store, this.execute, this.state.jobs!, this.pickup);
                 resumeParked(this.store, this.state.jobs!, assigned, this.pickup, this.dependencyStores(), now);
                 requeueParkedCardRefusals(this.store, this.state.jobs!);
                 requeueUndispatchedAssessments(this.store, this.state.jobs!);

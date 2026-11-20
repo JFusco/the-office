@@ -413,6 +413,22 @@ resumed. If the gate accepts it, the result is taken as a pass under a new attem
 comment, and no PM transition or QA worker runs; otherwise the stage runs as usual
 (`server/cec/qa/gate-refused-pass.ts`).
 
+A QA worker that leaves a browser window open for a person to sign in also writes a record in its run
+directory: the browser's loopback debugging port, the sign-in page and the application
+(`server/qa/sign-in-wait.ts`). While the work waits on that sign-in for its current candidate, the
+harness reads the tab URLs on that port and nothing else: no page content, no cookie, no input
+(`server/qa/browser-pages.ts`). The sign-in is seen as done when a tab is in the application and no
+tab is still on the sign-in page (`server/qa/sign-in-observed.ts`). For Jira/Azure work the Office
+then requests one resume of the ticket, the same resume a person asks for, so the setup-stop cap,
+the PM read-back and QA's own check of the signed-in actor still run
+(`server/cec/qa/resume-after-sign-in.ts`). For GitHub delivery, where the wait parks the card, the
+harness moves the card from Block back to the pickup lane with one issue comment, through Effects,
+and the ordinary parked resume follows (`server/delivery/parking/sign-in-unpark.ts`,
+`server/delivery/parking/return-to-pickup.ts`). Each is tried once per recorded wait, and a GitHub
+job is returned this way at most twice. A missing or
+malformed record, a browser that no longer answers, a hold, a pause, or a card a person moved
+leaves the work for a person to resume.
+
 A QA run that stopped in setup without exercising any case or making a paid run posts no QA
 comment. A setup stop that parks for a person or sends the ticket to repair still posts it: the
 park is settled against that comment, and a repair should be explained on the ticket. When the stage runs again after a
