@@ -26,3 +26,18 @@ export function removeStaleSessionSnapshots(directory = tmpdir(), now = Date.now
     } catch { /* No temporary directory to read. */ }
     return removed;
 }
+
+/** How often a running service looks again. */
+export const SNAPSHOT_SWEEP_MS = 5 * 60 * 1000;
+
+/**
+ * Removes stale capture directories now and then every few minutes while the service runs. The service is
+ * restarted within seconds of dying, so a directory left by the one that died is still too young at start;
+ * a later sweep takes it. The timer does not keep the process alive.
+ */
+export function sweepStaleSessionSnapshots(directory = tmpdir()): NodeJS.Timeout {
+    removeStaleSessionSnapshots(directory);
+    const timer = setInterval(() => removeStaleSessionSnapshots(directory), SNAPSHOT_SWEEP_MS);
+    timer.unref();
+    return timer;
+}

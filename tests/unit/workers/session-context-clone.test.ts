@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { constants, appendFileSync } from 'node:fs';
-import { mkdtemp, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureSessionContextClone } from '../../../server/workers/session-context-clone';
@@ -15,7 +15,10 @@ async function fixture() {
 }
 
 test.skipIf(process.platform !== 'darwin')('native clone reads the pinned descriptor even when its pathname is replaced, and is left without a name', async () => {
-    const f = await fixture(), source = await open(f.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const f = await fixture();
+    // A log readable by others, as session logs are: the capture must not stay that way.
+    await chmod(f.path, 0o644);
+    const source = await open(f.path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
         await rename(f.path, f.path + '.original'); await writeFile(f.path, 'replacement\n');
         const clone = await captureSessionContextClone(source, join(f.root, 'clone'), performance.now() + 5000);
@@ -78,5 +81,7 @@ test.skipIf(process.platform !== 'darwin')('a clone that cannot be made leaves n
         // The destination already exists, so the helper's clone is refused.
         await writeFile(join(f.root, 'clone'), 'in the way');
         await expect(captureSessionContextClone(source, join(f.root, 'clone'), performance.now() + 5000)).rejects.toThrow('native snapshot could not complete');
+        // Whatever sat at the capture path is gone too: the path is only ever inside the capture's own directory.
+        await expect(stat(join(f.root, 'clone'))).rejects.toMatchObject({ code: 'ENOENT' });
     } finally { await source.close(); }
 });

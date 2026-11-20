@@ -593,7 +593,8 @@ Morgan or Joe:
   inside a directory only it can read, removes its name at once and reads from that descriptor, so capture
   does not grow with the log's size and nothing is copied (`server/workers/session-context-clone.ts`).
   For the moment between the clone and the unlink the clone has a name; a capture directory left by a
-  service that died then is removed at the next start, once it is older than a minute
+  service that died then is removed by a sweep at start and every five minutes after, once it is older
+  than a minute
   (`server/workers/session-snapshot-cleanup.ts`). Hosts without the clone primitive keep the byte copy.
 - The session inventory is complete when every Codex process is explained: by a session transcript it
   holds, by being a running Office worker, or by descending from one of these. Three kinds of process

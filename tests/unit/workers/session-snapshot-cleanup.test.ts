@@ -1,8 +1,8 @@
-import { afterEach, expect, test } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { afterEach, expect, test, vi } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { removeStaleSessionSnapshots, STALE_SNAPSHOT_MS } from '../../../server/workers/session-snapshot-cleanup';
+import { removeStaleSessionSnapshots, STALE_SNAPSHOT_MS, SNAPSHOT_SWEEP_MS, sweepStaleSessionSnapshots } from '../../../server/workers/session-snapshot-cleanup';
 import { SNAPSHOT_PREFIX } from '../../../server/workers/session-context-snapshot';
 
 const roots: string[] = [];
@@ -23,4 +23,23 @@ test('a capture directory left by a service that died is removed with what it ho
 
 test('a missing temporary directory is not an error', () => {
     expect(removeStaleSessionSnapshots(join(temp(), 'absent'))).toBe(0);
+});
+
+test('a directory too young at start is taken by a later sweep, as after a restart within seconds of a crash', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    const root = temp(), left = join(root, `${SNAPSHOT_PREFIX}crashed`);
+    mkdirSync(left); writeFileSync(join(left, 'clone'), 'left behind');
+    const timer = sweepStaleSessionSnapshots(root);
+    try {
+        expect(existsSync(left)).toBe(true);
+        vi.advanceTimersByTime(SNAPSHOT_SWEEP_MS);
+        expect(existsSync(left)).toBe(false);
+    } finally { clearInterval(timer); vi.useRealTimers(); }
+});
+
+test('a link named like a capture directory is left alone, and so is what it points at', () => {
+    const root = temp(), outside = temp(), kept = join(outside, 'keep.txt'), link = join(root, `${SNAPSHOT_PREFIX}link`);
+    writeFileSync(kept, 'not ours'); symlinkSync(outside, link); aged(outside, STALE_SNAPSHOT_MS + 1000);
+    expect(removeStaleSessionSnapshots(root, Date.now() + STALE_SNAPSHOT_MS * 2)).toBe(0);
+    expect([existsSync(link), existsSync(kept)]).toEqual([true, true]);
 });
