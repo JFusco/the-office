@@ -10,11 +10,18 @@ test('the Jira user and token come from the Keychain item with read-only calls',
 });
 
 test('a missing item, account or token is one plain error that repeats nothing the Keychain returned', async () => {
-    const failures: any[] = [keychain('"svce"<blob>="the-office-jira"\n', 'secret-token\n').execute, keychain('"acct"<blob>="office@example.test"\n', '\n').execute,
-        async () => { throw new Error('security exited 44: secret-token could not be found'); }];
-    for (const execute of failures) {
+    const unavailable = `Jira API token is not available in the Keychain (service ${KEYCHAIN_SERVICE})`;
+    const timedOut = Object.assign(new Error('security read timed out; secret-token'), { category: 'transient-read' });
+    const failures: [any, string][] = [
+        [keychain('"svce"<blob>="the-office-jira"\n', 'secret-token\n').execute, 'the item has no account'],
+        [keychain('"acct"<blob>="office@example.test"\n', '\n').execute, 'the item has no token'],
+        [async () => { throw new Error('security exited 44: secret-token could not be found'); }, 'security exited 44'],
+        [async () => { throw timedOut; }, 'the read timed out'],
+        [async () => { throw new Error('spawn security ENOENT secret-token'); }, 'the read failed'],
+    ];
+    for (const [execute, cause] of failures) {
         const error = await jiraCredential(execute).then(() => undefined, e => e as Error);
-        expect(error?.message).toBe(`Jira API token is not available in the Keychain (service ${KEYCHAIN_SERVICE})`);
+        expect(error?.message).toBe(`${unavailable}: ${cause}`);
     }
 });
 
