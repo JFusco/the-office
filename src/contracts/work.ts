@@ -36,11 +36,38 @@ export type EligibilityState = 'running' | 'runnable' | 'waiting' | 'blocked' | 
  * `unclassified`, never assumed to be a decision.
  */
 export type BlockedCause = 'needs-decision' | 'failed' | 'interrupted' | 'unconfirmed' | 'dependency' | 'paused' | 'unclassified';
+/**
+ * What blocked work is counted under. `awaiting-repair` is never a cause the scheduler projects: it
+ * is read from a repair-wait marker where work is counted, and stands in only for a stop that is
+ * unclassified, failed or interrupted (see server/incidents/repair/).
+ */
+export type CountedCause = BlockedCause | 'awaiting-repair';
 /** Harness-classified reason a stage stopped. Labels the stop only; it grants no retry or authority. */
 export type StopKind = 'provider-checks' | 'pr-not-ready' | 'source-closed' | 'uncertain-effect' | 'transient' | 'paused' | 'hold' | 'authority' | 'unclassified';
 export interface StopReason {
     kind: StopKind;
     at: string;
+}
+/**
+ * A harness repair in progress covers this stopped work: the Office's own answer, in the project's
+ * store, to "is this exact stop waiting on a fix?". Written only by server/incidents/repair/. It
+ * grants no retry, no resume and no authority, and never hides a stronger cause.
+ */
+export interface RepairWait {
+    /** The incident and the `repair-started` event this wait belongs to. */
+    incident: string;
+    repair: string;
+    issue: { repository: string; number: number; url: string };
+    /** The incident subject, as `project/kind/id`, and the digest the repair recorded for it. */
+    subject: string;
+    digest: string;
+    /** The stop this wait is for, as the project's own record stood; a later stop of the same record is not covered. */
+    stands: { stage: string; episode: string; stop: StopReason | null; head: string };
+    since: string;
+    /** The last recorded progress of the repair: its start, a fix bound, or that fix found in the running release. */
+    progressAt: string;
+    /** Set once, 48 hours after the last progress; an expired wait is never brought back for the same repair. */
+    expiredAt?: string;
 }
 export interface WorkEligibility {
     state: EligibilityState;

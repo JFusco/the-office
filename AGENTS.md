@@ -66,6 +66,8 @@ server/
                    bindings, the `pnpm office incident` command, recognition of a bound fix
                    in the release the service runs, evidence packets, and false-positive
                    dismissals that lapse when their cited code or covered stops change
+    repair/        repair waits: the marker in a project's store for stopped work a repair in
+                   progress covers, its admission and 48-hour expiry, and the effective cause
     sources/       one collector per signal: stopped work, worker failures, IT recoveries and
                    investigations, improvement proposals, provider errors, Slack deliveries, outbox
   release/         release builds and identity: exact-commit build, release.json manifest,

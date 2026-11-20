@@ -14,6 +14,8 @@ export interface StoppedRecord {
      * or one another collector reads.
      */
     standing: 'stopped' | 'gated' | 'ignored';
+    /** The stage the scheduler projects this record at, where the record holds one of its own. */
+    stage?: string;
     /** The ticket or issue key, for a hold lookup. */
     key: string;
     /** Other keys a hold on this work may be configured under, such as its pull request's. */
@@ -92,7 +94,7 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         const author = said ? 'model' : harness ? 'harness' : 'unknown', kind = policies ? 'provider-checks' : said ? said.resolution?.kind ?? said.outcome : harness ? stop?.kind ?? '' : '';
         // A delivery request that only mirrors this ticket's stop is the same stop.
         const mirrored = (state.deliveryQueue ?? []).filter(request => request.key === ticket.key && STOPPED.includes(request.status) && !!request.error && request.error === ticket.blocker).map((request): [string, string] => ['delivery', request.id]);
-        return { ...base, standing: blocked || policies ? 'stopped' : 'gated', key: ticket.key, text: ticket.blocker, author, kind, stop, head: ticket.commit, lastWorker: run?.id ?? '', episode: stop?.at ?? `${ticket.runId}:${ticket.attempt}`,
+        return { ...base, standing: blocked || policies ? 'stopped' : 'gated', stage: ticket.stage, key: ticket.key, text: ticket.blocker, author, kind, stop, head: ticket.commit, lastWorker: run?.id ?? '', episode: stop?.at ?? `${ticket.runId}:${ticket.attempt}`,
             facts: policies ? { stopKind: 'provider-checks' } : said ? { resolution: said.resolution?.kind, parked: ticket.parked } : { stopKind: harness ? stop?.kind : undefined, parked: ticket.parked },
             covers: [...worker(run?.id), ...mirrored], effects: [work, { projectId: project, kind: 'delivery', id: ticket.key }], prerequisites: ticket.prerequisites };
     }
@@ -106,20 +108,20 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
             // The stop repeats a saved result of the stage, a metadata assessment or a CI diagnosis saved outside its steps.
             const model = followup || active && !failed(run) && (repeats(job.detail, result) || assessment?.outcome === 'blocked' && includes(job.detail, assessment.summary) || includes(job.detail, job.ciRepairs?.at(-1)?.plan?.summary));
             const repair = deliveryRepairProjection(job);
-            return { ...base, standing: active || job.status === 'watching' && (!!stop || approval || followup) ? 'stopped' : 'gated', key: job.key, keys: job.pr ? [`GH-${job.pr}`] : [], text: job.detail, identity: approval ? MERGE_APPROVAL : undefined, author: approval ? 'harness' : model ? 'model' : 'harness',
+            return { ...base, standing: active || job.status === 'watching' && (!!stop || approval || followup) ? 'stopped' : 'gated', stage: job.stage, key: job.key, keys: job.pr ? [`GH-${job.pr}`] : [], text: job.detail, identity: approval ? MERGE_APPROVAL : undefined, author: approval ? 'harness' : model ? 'model' : 'harness',
                 kind: approval ? 'merge-approval' : followup ? 'readiness' : model ? result?.resolution?.kind ?? result?.outcome ?? 'blocked' : stop?.kind ?? '', stop, head: job.head, lastWorker: run?.id ?? '', episode: stop?.at ?? job.updatedAt ?? job.requestedAt,
                 facts: { ...(model ? { resolution: followup ? undefined : result?.resolution?.kind } : { stopKind: stop?.kind }), parked: job.parked, mergeApproval: approval, retrying: pending(job.retry), exhausted: !!job.retry?.exhausted }, covers: worker(run?.id), effects: [work, ...issue(project, job.key)],
                 retryAt: repair && 'retryAt' in repair ? repair.retryAt : undefined, prerequisites: job.prerequisites };
         }
         const request = state.deliveryQueue?.find(request => request.id === work.id);
         // A delivery request's error can be the ticket's own blocker, which may be a model's.
-        return request ? { ...base, standing: STOPPED.includes(request.status) ? 'stopped' : 'gated', key: request.key, text: request.error, author: 'unknown', episode: request.requestedAt, effects: [work, { projectId: project, kind: 'delivery', id: request.key }, { projectId: project, kind: 'delivery', id: `ticket:${request.key}` }] } : null;
+        return request ? { ...base, standing: STOPPED.includes(request.status) ? 'stopped' : 'gated', stage: request.action, key: request.key, text: request.error, author: 'unknown', episode: request.requestedAt, effects: [work, { projectId: project, kind: 'delivery', id: request.key }, { projectId: project, kind: 'delivery', id: `ticket:${request.key}` }] } : null;
     }
     if (work.kind === 'reconciliation') {
         const request = c?.requests?.find(request => request.id === work.id);
         if (!request) return null;
         const run = lastRun(state, run => run.requestId === request.id), author = handedBack(run), stopped = STOPPED.includes(request.status), stop = stopped ? request.stop ?? null : null;
-        return { ...base, standing: stopped ? 'stopped' : 'gated', key: request.key, text: request.detail, author, kind: author === 'harness' ? stop?.kind ?? '' : '', stop, head: request.head, lastWorker: run?.id ?? '', episode: stop?.at ?? request.requestedAt,
+        return { ...base, standing: stopped ? 'stopped' : 'gated', stage: request.action, key: request.key, text: request.detail, author, kind: author === 'harness' ? stop?.kind ?? '' : '', stop, head: request.head, lastWorker: run?.id ?? '', episode: stop?.at ?? request.requestedAt,
             facts: { stopKind: author === 'harness' ? stop?.kind : undefined }, covers: worker(run?.id),
             effects: [work, ...(c?.jobs ?? []).filter(job => !!request.key && job.key === request.key).map(job => ({ projectId: project, kind: 'delivery' as const, id: job.id })), ...issue(project, request.key), ...(request.head ? [{ projectId: project, kind: 'reconciliation' as const, id: request.head }] : [])] };
     }
@@ -148,7 +150,7 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         const last = lastRun(state, worked => worked.requestId === run.id), outcome = stepBlocker(state, run, run.error);
         // A checkpoint that only repeats this run's stop is the same stop.
         const mirrored = (c?.checkpoints ?? []).filter(checkpoint => checkpoint.runId === run.id && STOPPED.includes(checkpoint.status) && !!run.error && checkpoint.detail === run.error).map((checkpoint): [string, string] => ['checkpoint', checkpoint.id]);
-        return { ...base, standing: STOPPED.includes(run.status) ? 'stopped' : 'gated', text: run.error, author: outcome ? 'model' : 'harness', kind: outcome ?? '', lastWorker: last?.id ?? '', episode: run.endedAt || run.requestedAt, facts: { retrying: pending(run.readbackRetry), exhausted: !!run.readbackRetry?.exhausted }, covers: [...worker(last?.id), ...mirrored] };
+        return { ...base, standing: STOPPED.includes(run.status) ? 'stopped' : 'gated', stage: run.stage, text: run.error, author: outcome ? 'model' : 'harness', kind: outcome ?? '', lastWorker: last?.id ?? '', episode: run.endedAt || run.requestedAt, facts: { retrying: pending(run.readbackRetry), exhausted: !!run.readbackRetry?.exhausted }, covers: [...worker(last?.id), ...mirrored] };
     }
     if (work.kind === 'continuation') {
         const followup = state.maintenance?.runs.find(run => run.id === work.id)?.blockerFollowup;

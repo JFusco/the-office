@@ -548,7 +548,9 @@ Stopped work is counted by the cause the harness itself recorded. It is counted 
 decision only when its park reached a person, it is under a hold or it lacks authority. A park
 waiting on a release is a prerequisite, a write of unknown outcome is unconfirmed, and a status that
 names its own cause (failed, interrupted) keeps it. Work with no recorded cause is shown as exactly
-that, never assumed to be a decision (`server/scheduling/stop-cause.ts`).
+that, never assumed to be a decision (`server/scheduling/stop-cause.ts`). Work whose exact stop a
+harness repair in progress covers is counted as awaiting repair, in place of a failed, interrupted
+or unexplained stop only (see Repair wait under Incident ledger).
 
 Ellis's follow-ups close when the work they are about finishes, and only real trouble reaches
 Morgan or Joe:
@@ -827,8 +829,9 @@ project's state and the scheduler's own projection, writes two tables of its own
 writes a project store, calls a provider or runs a model. A person can also record a repair start
 and a fix binding on an incident (see Write-back below), and the Office compares the release it
 runs with fixes that are on `main` (see Deployed fixes below); both read GitHub and write only the
-ledger. An incident describes a stop; it grants no retry, no resume and
-no authority over the work.
+ledger. One step writes a project store: while a repair is in progress, the stops it covers are
+marked in their project (see Repair wait below), and that marker is all it writes. An incident
+describes a stop; it grants no retry, no resume and no authority over the work.
 
 **What is read.** Once a minute, unless a deployment holds the fence, one collector per signal
 reads every project:
@@ -1026,6 +1029,40 @@ change to a file the verdict did not cite, do not lapse it. The check reads and 
 ledger. Research eligibility is still computed from the stops alone; a dismissed incident is left
 out of the research listing rather than made ineligible. Nothing produces a verdict yet.
 
+**Repair wait.** While an incident's repair is in progress (`fixing`, `shipped` or `deployed`), the
+Office marks the exact stops that repair covers, in each project's own store, where the scheduler
+and the recovery paths read (`server/incidents/repair/`). After each observation, and so never
+while a deployment holds the fence, every subject the repair recorded that the ledger still holds
+open exactly as recorded, and whose project record stands stopped the same way, gets one marker in
+that project's coordination state (`repairWaits`): the incident, the repair event and issue, the
+subject and its digest, and how the stop stood (stage, episode, saved stop, head). This is the
+only write the incident domain makes to a project store, one transaction per project, and it
+writes nothing else; the fence is asked again before every write. The ledger keeps a subject as it
+last saw it while it cannot see a project, so a record that has since stopped again or moved stage
+is not marked on the ledger's word. A subject with no record of its own in a project store (an IT
+recovery, an investigation, an outbox-only item, a worker run, a paused project) is not marked.
+
+A wait is in effect only for the stop it was admitted for. The project-side check reads the record
+the way observation does: a new episode, or another stage, saved stop or head of the same record,
+ends the wait without any write, and a marker is read only for the project it names. A marker
+follows the repair's own progress (its start, a fix bound, that fix found in the running release)
+and runs out 48 hours after the last progress that reached it in time: progress that comes more
+than 48 hours after the one before it came after the wait had run out, and does not revive it. The
+expiry is recorded once, on the marker and as one `repair-wait-expired` event on the incident, and
+the original cause is counted again. An expired wait is never brought back for the same repair and
+subject: the expired marker is kept while the repair covers the stop, and if the marker was
+removed in between (the stop changed and changed back) it is rebuilt from the recorded expiry, as
+expired. A new repair of the incident can admit a new wait. A marker is removed when its incident
+no longer carries that repair or the ledger no longer holds the subject as the repair recorded it,
+and an expired marker only after its expiry is on record.
+
+Where blocked work is counted for health, a wait in effect shows as `awaiting-repair`, and only in
+place of an unclassified, failed or interrupted stop or a missing cause. A decision, a
+prerequisite, a pause and an unconfirmed write are counted as themselves, also when they arise
+after the marker. The scheduler's projection, and with it the cause and reason the ledger derives
+a stop's identity from, are unchanged: a marked stop keeps its fingerprint, its incident and its
+digest. The marker changes no scheduling, recovery, restart or hand-off decision yet.
+
 ## Code owners and verification
 
 | Process boundary | Owning source |
@@ -1042,6 +1079,7 @@ out of the research listing rather than made ineligible. Nothing produces a verd
 | Incident observation and cause identity | `server/incidents/` |
 | Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
 | Evidence packets, dismissals and their lapse | `server/incidents/evidence-packet.ts`, `server/incidents/dismissal.ts`, `server/incidents/dismissal-validity.ts` |
+| Repair waits: marker, admission, expiry, effective cause | `server/incidents/repair/` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |

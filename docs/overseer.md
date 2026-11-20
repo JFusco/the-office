@@ -1,9 +1,9 @@
 # Overseer
 
 The Overseer is the repair engine for the harness and the Office. It is being delivered in phases;
-this guide covers what exists. Today that is deterministic deployment and the incident ledger.
-Repair waits, resume after a fix and the autonomous runner are later phases and are not described
-here until they ship. The process rules are in the Office process, under
+this guide covers what exists. Today that is deterministic deployment, the incident ledger and
+the mark the Office puts on stopped work a repair covers. Freezing recovery for that work, resume
+after a fix and the autonomous runner are later phases and are not described here until they ship. The process rules are in the Office process, under
 [Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
 
 ## Deployment
@@ -151,7 +151,8 @@ deployment.
 ## Incidents
 
 The Office records every stop it can see in one ledger, grouped by cause across projects. Nothing
-in it retries, resumes or repairs anything, and it never writes to a project. Besides what it
+in it retries, resumes or repairs anything. It writes one thing to a project: while a repair is in
+progress, a mark on the stops that repair covers (see Work awaiting a repair). Besides what it
 observes, it holds what you tell it about a repair: that one started, and which fix it is.
 
 ### Reading the ledger
@@ -186,8 +187,8 @@ investigation and not dismissed, the third one incident with its event history.
 ### Binding a fix you made by hand
 
 When you fix a harness defect yourself, two commands tie the fix to the incident and to exactly
-the work it stopped. Later phases use that binding to wait on the fix and to resume after it;
-today it is a record.
+the work it stopped. Starting the repair marks that work as awaiting it, which today changes how
+it is counted. Later phases use the binding to hold recovery back and to resume after the fix.
 
 1. Read the incident and note its `revision`:
 
@@ -303,6 +304,24 @@ cited file changes or disappears in the running release, when another piece of w
 same cause, or when covered work stops again or stands differently. The incident's `dismissals`
 keep the lapsed verdict and say why. A file you did not cite can change freely, so cite every file
 the verdict depends on.
+
+### Work awaiting a repair
+
+Once you start a repair on an incident, the Office marks the exact stops that repair covers in
+their own projects, within a minute. In the health panel those items move from "failed",
+"interrupted" or "with no recorded cause" to "awaiting a harness repair". Anything with a stronger
+reason, a decision that is yours, a prerequisite, a pause, an unconfirmed write, keeps that reason.
+
+The mark is for one stop of one piece of work. If the work stops again, or is moved by hand, the
+mark no longer applies to it. It also runs out: 48 hours after the repair last moved (you started
+it, bound a fix, or the fix was found in the running release) the items are counted under their
+original cause again and the incident records `repair-wait-expired`. A fix bound after that does
+not revive it, and neither does starting the same repair again; a new repair after the incident
+recurs does. Work is marked only when its record still stands as the ledger last saw it, so a
+project the Office could not read for a while is not marked on stale information.
+
+Today the mark only changes how stopped work is counted. It does not yet stop the Office from
+retrying, recovering or handing off that work; that follows in the next change.
 
 ### What to expect
 

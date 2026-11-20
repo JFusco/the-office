@@ -346,6 +346,8 @@ export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: str
 /** A Dependabot alert the harness turned into an issue because no pull request came for it. */
 export interface DependabotAlertIssue { id: string; alert: number; package: string; issue: number; status: 'tracking' | 'tracked' | 'resolved' | 'blocked'; detail: string; at: string }
 export interface Coordination {
+    /** Stopped work a harness repair in progress covers, by work kind and ID (see RepairWait). Absent when there is none. */
+    repairWaits?: Record<string, import('./contracts/work').RepairWait>;
     adoptions?: DependabotAdoption[];
     alertIssues?: DependabotAlertIssue[];
     requests?: import('./contracts/work').HarnessRequest[];
