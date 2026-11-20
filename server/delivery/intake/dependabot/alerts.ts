@@ -5,6 +5,8 @@ export interface DependabotAlert { number: number; createdAt: string; package: s
 
 export function dependabotAlert(raw: any): DependabotAlert | null {
     if (!Number.isInteger(raw?.number) || raw.state !== 'open' || !raw.dependency?.package?.name) return null;
+    // GitHub keeps an alert open after its advisory is withdrawn; there is nothing left to fix.
+    if (raw.security_advisory?.withdrawn_at) return null;
     return {
         number: raw.number, createdAt: String(raw.created_at || ''), package: String(raw.dependency.package.name), ecosystem: String(raw.dependency.package.ecosystem || ''),
         manifest: String(raw.dependency.manifest_path || ''), relationship: String(raw.dependency.relationship || 'unknown'), severity: String(raw.security_advisory?.severity || 'unknown'),

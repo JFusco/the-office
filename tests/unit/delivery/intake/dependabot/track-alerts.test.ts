@@ -151,3 +151,9 @@ test('a card a person or the harness already moved is left where it is, and pick
     expect(off.f.state.cards[0].status).toBe('backlog');
     expect(off.f.state.issue.title).toContain('Resolve Dependabot alert #22');
 });
+
+test('an open alert whose advisory was withdrawn is not read as an alert', () => {
+    const live = raw(7), withdrawn = { ...raw(8), security_advisory: { ...raw(8).security_advisory, withdrawn_at: '2026-11-18T15:38:56Z' } };
+    expect(dependabotAlert(live)?.number).toBe(7);
+    expect(dependabotAlert(withdrawn)).toBeNull();
+});
