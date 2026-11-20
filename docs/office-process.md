@@ -589,6 +589,13 @@ Morgan or Joe:
   most six times for one checkpoint; after that, and for any run that left a receipt or moved the gate,
   the ordinary read-back applies. A worker's session inventory request reads again for up to ten
   seconds while the inventory is incomplete; a newer incomplete read still replaces an older complete one.
+- A session log is read from a captured clone that shares the log's blocks: the service opens the clone
+  inside a directory only it can read, removes its name at once and reads from that descriptor, so capture
+  does not grow with the log's size and nothing is copied (`server/workers/session-context-clone.ts`).
+  For the moment between the clone and the unlink the clone has a name; a capture directory left by a
+  service that died then is removed by a sweep at start and every five minutes after, once it is older
+  than a minute
+  (`server/workers/session-snapshot-cleanup.ts`). Hosts without the clone primitive keep the byte copy.
 - The session inventory is complete when every Codex process is explained: by a session transcript it
   holds, by being a running Office worker, or by descending from one of these. Three kinds of process
   that hold no transcript and cannot work in a checkout are explained by what they are: an exec-server

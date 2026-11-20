@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { constants, appendFileSync } from 'node:fs';
-import { mkdtemp, open, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureSessionContextClone } from '../../../server/workers/session-context-clone';
@@ -14,17 +14,39 @@ async function fixture() {
     const path = join(root, 'source.jsonl'); await writeFile(path, 'original\n', { mode: 0o600 }); return { root, path };
 }
 
-test.skipIf(process.platform !== 'darwin')('native clone reads the pinned descriptor even when its pathname is replaced', async () => {
-    const f = await fixture(), source = await open(f.path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const targetPath = join(f.root, 'anonymous'), target = await open(targetPath, 'wx+', 0o600); await unlink(targetPath);
+test.skipIf(process.platform !== 'darwin')('native clone reads the pinned descriptor even when its pathname is replaced, and is left without a name', async () => {
+    const f = await fixture();
+    // A log readable by others, as session logs are: the capture must not stay that way.
+    await chmod(f.path, 0o644);
+    const source = await open(f.path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
         await rename(f.path, f.path + '.original'); await writeFile(f.path, 'replacement\n');
-        expect(await captureSessionContextClone(source, target, join(f.root, 'clone'), performance.now() + 5000)).toBe(true);
-        const buffer = Buffer.alloc(9); await target.read(buffer, 0, buffer.length, 0);
-        expect(buffer.toString()).toBe('original\n');
+        const clone = await captureSessionContextClone(source, join(f.root, 'clone'), performance.now() + 5000);
+        expect(clone).not.toBeNull();
+        try {
+            const buffer = Buffer.alloc(9); await clone!.read(buffer, 0, buffer.length, 0);
+            expect(buffer.toString()).toBe('original\n');
+            const info = await clone!.stat();
+            expect([info.nlink, info.mode & 0o777, info.isFile()]).toEqual([0, 0o600, true]);
+            // What is appended to the log afterwards is not in the capture.
+            appendFileSync(f.path + '.original', 'later\n');
+            expect((await clone!.stat()).size).toBe(9);
+        } finally { await clone!.close(); }
         expect(await readFile(f.path, 'utf8')).toBe('replacement\n');
         await expect(stat(join(f.root, 'clone'))).rejects.toMatchObject({ code: 'ENOENT' });
-    } finally { await source.close(); await target.close(); }
+    } finally { await source.close(); }
+});
+
+test.skipIf(process.platform !== 'darwin')('capturing a large log does not copy it: the time does not grow with its size', async () => {
+    const f = await fixture(), big = join(f.root, 'big.jsonl');
+    const handle = await open(big, 'w', 0o600); await handle.truncate(512 * 1024 * 1024); await handle.close();
+    const source = await open(big, constants.O_RDONLY | constants.O_NOFOLLOW), started = performance.now();
+    try {
+        const clone = await captureSessionContextClone(source, join(f.root, 'clone'), performance.now() + 5000);
+        try { expect((await clone!.stat()).size).toBe(512 * 1024 * 1024); } finally { await clone!.close(); }
+        // Dominated by starting the helper; a byte copy of half a gigabyte would take far longer.
+        expect(performance.now() - started).toBeLessThan(3000);
+    } finally { await source.close(); }
 });
 
 test.skipIf(process.platform !== 'darwin')('continuous appends yield one complete private snapshot without discarding earlier records', async () => {
@@ -45,10 +67,21 @@ test.skipIf(process.platform !== 'darwin')('continuous appends yield one complet
 });
 
 test('expired snapshots fail before launching a native helper', async () => {
-    const f = await fixture(), source = await open(f.path, 'r'), target = await open(join(f.root, 'target'), 'wx+', 0o600);
+    const f = await fixture(), source = await open(f.path, 'r');
     try {
-        if (process.platform === 'darwin') await expect(captureSessionContextClone(source, target, join(f.root, 'clone'), performance.now() - 1)).rejects.toThrow('deadline');
-        else expect(await captureSessionContextClone(source, target, join(f.root, 'clone'), performance.now() - 1)).toBe(false);
-        expect((await target.stat()).size).toBe(0);
-    } finally { await source.close(); await target.close(); }
+        if (process.platform === 'darwin') await expect(captureSessionContextClone(source, join(f.root, 'clone'), performance.now() - 1)).rejects.toThrow('deadline');
+        else expect(await captureSessionContextClone(source, join(f.root, 'clone'), performance.now() - 1)).toBeNull();
+        await expect(stat(join(f.root, 'clone'))).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { await source.close(); }
+});
+
+test.skipIf(process.platform !== 'darwin')('a clone that cannot be made leaves nothing behind', async () => {
+    const f = await fixture(), source = await open(f.path, 'r');
+    try {
+        // The destination already exists, so the helper's clone is refused.
+        await writeFile(join(f.root, 'clone'), 'in the way');
+        await expect(captureSessionContextClone(source, join(f.root, 'clone'), performance.now() + 5000)).rejects.toThrow('native snapshot could not complete');
+        // Whatever sat at the capture path is gone too: the path is only ever inside the capture's own directory.
+        await expect(stat(join(f.root, 'clone'))).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { await source.close(); }
 });
