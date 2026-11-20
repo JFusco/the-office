@@ -14,6 +14,17 @@ test('only structured decisions without an uncertain write park in Jira', () => 
     expect(parksInJira(decision('scope', { receipts: [{ id: 'x', action: 'jira-update', target: 'CEC-900', verified: false, uncertain: true, detail: '' }] }))).toBe(false);
 });
 
+test('a QA run waiting on its own environment in setup does not park; one that asks a person to decide still does', () => {
+    const setup = (status: string, paidRuns: number | null) => ({ paidRuns, qa: { setup: { status }, cases: [] } }) as any;
+    expect(parksInJira(decision('provider-wait', setup('blocked', 0)))).toBe(false);
+    for (const kind of ['human-hold', 'permission', 'scope'])
+        expect(parksInJira(decision(kind, setup('blocked', 0)))).toBe(true);
+    // One that got past setup, spent a paid run, or waits on a registered release is not an environment wait.
+    expect(parksInJira(decision('provider-wait', setup('ready', 0)))).toBe(true);
+    expect(parksInJira(decision('provider-wait', setup('blocked', 1)))).toBe(true);
+    expect(parksInJira({ ...decision('provider-wait', setup('blocked', 0)), resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [], release: { registry: 'npm', package: 'x', minimum: '1.0.0' } } })).toBe(true);
+});
+
 test('parks once with an inline decision comment and no duplicate standalone comment', async () => {
     const { store } = cecStore(), t = ticket('Code Review'), jira = fakeJira({ 'CEC-900': { status: 'Code Review' } });
     store.state.tickets = [t];
