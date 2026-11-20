@@ -21,6 +21,8 @@ const Entry = z.object({
 export type DeployStepState = z.infer<typeof Entry>['state'];
 export interface DeployJournalView {
     operation: string; steps: string[]; facts: Record<string, unknown>;
+    /** Receipts of the steps recorded `done`, by step, for a restarted controller and for a later rollback decision. */
+    receipts: Record<string, Record<string, unknown>>;
     /** The newest step entry, or null before the first step. */
     last: { step: string; state: DeployStepState; at: string; receipt?: Record<string, unknown> } | null;
     /** True when the final line was cut short: the step it recorded is unknown and nothing more may be appended. */
@@ -62,11 +64,12 @@ export function readDeployJournal(dataRoot: string, operation: string): DeployJo
     if (!lines.length) throw new Error(`The journal of deployment ${operation} has no complete header`);
     const header = Header.parse(JSON.parse(lines[0]));
     if (header.operation !== operation) throw new Error(`The journal of deployment ${operation} names ${header.operation}`);
-    const view: DeployJournalView = { operation, steps: header.steps, facts: header.facts, last: null, torn };
+    const view: DeployJournalView = { operation, steps: header.steps, facts: header.facts, receipts: {}, last: null, torn };
     for (const line of lines.slice(1)) {
         const entry = Entry.parse(JSON.parse(line));
         assertNext(view, entry.operation, entry.step, entry.state);
         view.last = { step: entry.step, state: entry.state, at: entry.at, ...(entry.receipt ? { receipt: entry.receipt } : {}) };
+        if (entry.state === 'done') view.receipts[entry.step] = entry.receipt ?? {};
     }
     return view;
 }
