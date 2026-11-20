@@ -2,6 +2,7 @@ import { jiraBinding } from '../office/project-bindings';
 import { REFUSED_RECEIPT, refusedQA, refusedQABlocker } from './qa/refused-result';
 import { captureLearning } from '../knowledge/learning-events';
 import { unrecordedStageResult } from './unrecorded-result';
+import { GATE_REFUSED, gateRefusedPass } from './qa/gate-refused-pass';
 import { ownReceipts } from './superseded-receipts';
 import { acceptFeatureReview } from '../features/stage-acceptance';
 import { approvedDelivery } from '../features/delivery-binding';
@@ -80,12 +81,15 @@ export async function run(this: Engine, key: string) {
             const unrecorded = unrecordedStageResult(this.store, t, stage);
             if (unrecorded) { t.recoveredAttemptId = unrecorded.attemptId; this.store.save(); }
             if (unrecorded) this.store.emit('stage-result-recovered', `${key}: the ${stage} result its worker returned was not on the ticket; it is applied now. No work is run again.`, role, key);
+            // A pass the QA gate refused and accepts now is taken as saved, under a new attempt with its own QA comment.
+            const refusedPass = unrecorded ? undefined : gateRefusedPass(this.store, t, stage);
+            if (refusedPass) this.store.emit('qa-result-reaccepted', `${key}: the saved ${stage} result passes the QA gate that refused it; it is accepted now. No QA run.`, role, key);
             const attemptId = unrecorded?.attemptId ?? this.store.begin(t, stage);
             const transition = (jiraBinding(this.store.project).statuses.stages as Partial<Record<Stage, string>>)[stage];
             // Sam's assessment of a revised approach after the repair budget ran out is not a code review of a candidate:
             // the ticket keeps its Jira status until the repair that follows is reviewed.
             const repairDiagnosis = stage === 'code-review' && t.repairCycle?.phase === 'diagnosis';
-            if (transition && !unrecorded && !repairDiagnosis) {
+            if (transition && !unrecorded && !refusedPass && !repairDiagnosis) {
                 // A QA stage run again after a setup stop moved nothing: when Jira still shows its status, no PM run is spent on it.
                 const held = QA_STAGES.includes(stage) && consecutiveSetupStops(t) > 0 ? await this.jira.statusHeld(t, transition) : undefined;
                 const update = held ?? await this.jira.verifyStatus(t, transition, await this.agents.transition(t, transition));
@@ -112,7 +116,7 @@ export async function run(this: Engine, key: string) {
             let result: StageResult;
             const beforeWorkers = new Set((this.store.state.workLog || []).map(w => w.id));
             try {
-                result = unrecorded?.result ?? await this.agents.stage(t, stage, role);
+                result = unrecorded?.result ?? refusedPass ?? await this.agents.stage(t, stage, role);
                 if (t.featureBinding) approvedDelivery(this.store, t.featureBinding);
                 acceptFeatureReview(this.store, t, result, stage, beforeWorkers);
                 if (stage === 'enhance' && result.outcome === 'passed') await verifyFeatureEnhance(this.store, t, result);
@@ -137,7 +141,7 @@ export async function run(this: Engine, key: string) {
                     const gap = qaEvidenceGap(t, stage, result, resolve(this.store.dataRoot, 'runs', t.runId));
                     if (gap) {
                         result.outcome = 'blocked';
-                        result.blocker = `QA acceptance not verified: ${gap}`;
+                        result.blocker = `${GATE_REFUSED}${gap}`;
                     }
                 }
                 try {

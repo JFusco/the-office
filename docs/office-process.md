@@ -405,6 +405,14 @@ resuming again runs one more attempt. The read-back before that attempt is told 
 reason for it and not a current hold; the QA agent checks its own setup again
 (`server/cec/qa/setup-stop-cap.ts`).
 
+A browser observation counts toward the QA gate when it was made in the application the report's
+setup names: on the setup URL's origin, at or under its path (`server/qa/setup-url.ts`). For
+Jira/Azure work, a QA stage blocked only by one of the gate's fixed refusals, with its paid runs
+counted and every receipt verified, has the gate run again on its saved result when the ticket is
+resumed. If the gate accepts it, the result is taken as a pass under a new attempt with its own QA
+comment, and no PM transition or QA worker runs; otherwise the stage runs as usual
+(`server/cec/qa/gate-refused-pass.ts`).
+
 A QA run that stopped in setup without exercising any case or making a paid run posts no QA
 comment. A setup stop that parks for a person or sends the ticket to repair still posts it: the
 park is settled against that comment, and a repair should be explained on the ticket. When the stage runs again after a

@@ -5,6 +5,7 @@ import { resolve, sep } from 'node:path';
 import type { StageResult, WorkApproach } from '../../src/shared';
 import { OfficeQAReportSchema } from './report-schema';
 import { qaCriteria } from './criteria';
+import { underSetupUrl } from './setup-url';
 const contained = (path: string, root: string) => !!path && existsSync(path) && existsSync(root) && realpathSync(path).startsWith(realpathSync(root) + sep);
 /** Every fixed thing the gate below can say when it refuses a report; a setup stop names its own next action instead. */
 export const QA_GATE_REFUSALS: readonly string[] = [
@@ -47,7 +48,7 @@ export function officeQAEvidenceGap(result: StageResult, expected: { key: string
     if (qa.cases.some(c => !c.evidenceIds.length || c.evidenceIds.some(id => !result.evidence.some(e => e.id === id && e.commit === expected.head && contained(e.path, root))))) return 'Each QA case needs saved current-head evidence';
     if (qa.validation === 'independent-checks' && !result.evidence.some(e => e.kind === 'checks' && e.commit === expected.head && contained(e.path, root))) return 'Saved focused check output is required';
     if (qa.validation === 'browser' && (!safeWebUrl(qa.setup.url) || !qa.setup.actor || !qa.setup.resources.length ||
-        !result.evidence.some(e => e.kind === 'browser' && e.commit === expected.head && e.url === qa.setup.url) ||
+        !result.evidence.some(e => e.kind === 'browser' && e.commit === expected.head && underSetupUrl(e.url, qa.setup.url)) ||
         !result.evidence.some(e => e.kind === 'screenshot' && e.commit === expected.head && contained(e.path, root)))) return 'Real browser, actor, resource and screenshot evidence is required';
     return '';
 }
