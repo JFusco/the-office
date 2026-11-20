@@ -22,9 +22,12 @@ import { deploymentFenceRoute } from './office/http/deployment-fence-route';
 import { deploymentFenceGate } from './office/http/deployment-fence-gate';
 import { startServiceTicks } from './office/service-ticks';
 import { incidentsRoute } from './incidents/routes';
+import { removeStaleSessionSnapshots } from './workers/session-snapshot-cleanup';
 mkdirSync(DATA, { recursive: true, mode: 0o700 });
 const releaseLock = acquireServiceLock(DATA);
 process.on('exit', releaseLock);
+// A capture directory a service that died left behind may hold a named clone of a session log.
+removeStaleSessionSnapshots();
 const offices = new Offices();
 const loadedRevision = runtimeRevision();
 const serviceHealth = new ServiceHealthChecks();

@@ -1,7 +1,8 @@
-"""Copy a coherent macOS clone of inherited reader fd3 to anonymous target fd4.
+"""Make a coherent macOS clone of inherited reader fd3 at the given private path.
 
-No original path, native session API, transcript output or provider operation.
-Exit 66 means the optional OS clone primitive is unavailable before target writes.
+The caller opens the clone and removes its name; this helper writes no transcript
+bytes itself. No original path, native session API, transcript output or provider
+operation. Exit 66 means the optional OS clone primitive is unavailable.
 """
 import ctypes
 import errno
@@ -18,32 +19,13 @@ def capture():
     clone.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
     clone.restype = ctypes.c_int
     destination = sys.argv[1]
-    if not stat.S_ISREG(os.fstat(3).st_mode) or not stat.S_ISREG(os.fstat(4).st_mode):
+    if not stat.S_ISREG(os.fstat(3).st_mode):
         return 65
     if clone(3, -2, os.fsencode(destination), 0):  # AT_FDCWD on macOS
         code = ctypes.get_errno()
         if code in (errno.ENOSYS, errno.ENOTSUP, errno.EXDEV):
             return 66
         return 65
-    try:
-        source = os.open(destination, os.O_RDONLY | os.O_NOFOLLOW)
-        try:
-            os.unlink(destination)
-            while True:
-                chunk = os.read(source, 1024 * 1024)
-                if not chunk:
-                    break
-                remaining = memoryview(chunk)
-                while remaining:
-                    written = os.write(4, remaining)
-                    if not written:
-                        return 65
-                    remaining = remaining[written:]
-        finally:
-            os.close(source)
-    finally:
-        if os.path.lexists(destination):
-            os.unlink(destination)
     return 0
 
 
