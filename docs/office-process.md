@@ -918,16 +918,19 @@ An unchanged office costs no write, and the tables themselves are created by the
 change, so a release that starts under a deployment's fence leaves the control database as it
 found it. The lifecycle states `triaged`, `fixing`, `shipped`, `deployed`, `verified`, `recurred`,
 `housekept`, `dismissed`, `needs-joe` and `abandoned` are defined; observation alone reaches only
-`observed` and never changes a state a later step set. `fixing` and `shipped` are set by the
-write-back events below, and `deployed` by the Office when the release it runs holds the fix (see
-Deployed fixes); the others have no writer yet.
+`observed` and never changes a state a later step set. `fixing`, `shipped` and `dismissed` are set
+by the write-back events below, `deployed` by the Office when the release it runs holds the fix
+(see Deployed fixes), and a dismissal that no longer holds returns its incident to `observed` (see
+Dismissal); the others have no writer yet.
 
-`GET /api/incidents` lists the ledger (`open=1`, `research=1`); `GET /api/incidents/<id>` returns
-one incident with its events. Both are read-only.
+`GET /api/incidents` lists the ledger (`open=1`; `research=1`, which leaves out dismissed
+incidents); `GET /api/incidents/<id>` returns one incident with its events;
+`GET /api/incidents/<id>/evidence` returns its evidence packet. All three are read-only.
 
-**Write-back.** Two events can be recorded from outside observation, by a person now and by the
+**Write-back.** Three events can be recorded from outside observation, by a person now and by the
 repair runner later, through one route and one validation: `POST /api/incidents/<id>/events`. The
-deployment fence's gate refuses it like any other write.
+deployment fence's gate refuses it like any other write. They are `repair-started` and `fix-bound`,
+described here, and `dismissed`, described under Dismissal.
 
 - `repair-started` records the repair issue, read back from GitHub as an issue of the Office's own
   repository, and a digest of every subject open at that revision: its key, episode count and
@@ -986,6 +989,43 @@ keeps `/api/health` busy, and it stops, reading and writing nothing more, as soo
 holds the fence. `fix-deployed` cannot be written through the events route. Nothing waits on or
 resumes after a deployed fix yet.
 
+**Evidence packet.** What the Office knows about one incident, bounded and hashed, for a verdict to
+be tied to (`server/incidents/evidence-packet.ts`). It is built from the ledger and the running
+release only; no project store is read. It holds the incident's identity, state, cause, research
+status and revision; the loaded hash and the release identity; at most 50 subjects, open ones
+first and then the most recently cleared, each with the facts the ledger holds for it (key and
+digest, stage, saved stop, last worker run, head, whether a write is unsettled, expected wait,
+sources, episodes and bounded evidence); the repair issue; the last five fixes without their
+bindings; the last five dismissals and whether each lapsed; and the count of events with the ID,
+time and kind of the last 30. Every list that is cut states its total, and the packet as JSON never
+exceeds 256 KiB: subjects are taken whole and in order for as long as they fit, so a key or a
+digest is never cut. Credentials are removed from every string before the digest is taken, so the
+packet carries the SHA-256 of exactly what is handed out; it has no time of its own, and the same
+ledger state and release give the same bytes. Wording a provider or a model wrote appears in it
+only as bounded evidence; nothing in a packet is an instruction or grants anything.
+
+**Dismissal.** A verdict that the stop is correct can be remembered, against exactly what it
+judged (`server/incidents/dismissal.ts`). `dismissed` carries a reason, the digest of the evidence
+packet the verdict was formed on and 1 to 20 citations; a citation is a path in the running
+release, the SHA-256 of that file as the citer read it, and optionally a line. It is allowed from
+`observed`, `triaged` or `recurred`. The Office refuses it unless the digest is the one it computes
+for the incident now and every citation matches the code it loaded at start-up; those versions
+come from the service's own manifest, never from the caller. It records the subjects open at that
+revision as they stood, and the loaded hash. The reason is kept as evidence only: its first line,
+at most 1,000 characters, credentials removed, including the value of a credential property in
+pasted JSON. The digest of the reason exactly as it was sent is kept beside it, so the same event
+ID sent again with other words is refused as a different request.
+
+A dismissal holds only while what it cited and what it judged stay the same
+(`server/incidents/dismissal-validity.ts`). After each observation the Office checks every
+dismissed incident: a cited file that changed or left the running release, a subject that was not
+part of the dismissal, or a covered subject with a new episode or another stage, stop or head,
+lapses it. One `dismissal-invalidated` event records the reason, the dismissal stays on record
+marked as lapsed, and the incident returns to `observed`. A covered subject that clears, and a
+change to a file the verdict did not cite, do not lapse it. The check reads and writes only the
+ledger. Research eligibility is still computed from the stops alone; a dismissed incident is left
+out of the research listing rather than made ineligible. Nothing produces a verdict yet.
+
 ## Code owners and verification
 
 | Process boundary | Owning source |
@@ -1001,6 +1041,7 @@ resumes after a deployed fix yet.
 | Release build, deployment and rollback | `server/release/` |
 | Incident observation and cause identity | `server/incidents/` |
 | Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
+| Evidence packets, dismissals and their lapse | `server/incidents/evidence-packet.ts`, `server/incidents/dismissal.ts`, `server/incidents/dismissal-validity.ts` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |

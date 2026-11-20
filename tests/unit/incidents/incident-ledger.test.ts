@@ -60,6 +60,14 @@ test('one event is read back by its ID', () => {
     expect(ledger.event('e2')).toBeNull();
 });
 
+test('the history of an incident is its event count and its most recent events, oldest first, without their bodies', () => {
+    const ledger = new IncidentLedger(memory());
+    expect(ledger.history('inc-0000000000000001', 2)).toEqual({ total: 0, recent: [] });
+    ledger.record({ events: [event('e1', { body: { large: 'x'.repeat(1000) } }), event('e2', { kind: 'subject-observed' }), event('e3', { kind: 'subject-cleared' }), event('other', { incident: 'inc-0000000000000002' })], incidents: [incident()] });
+    expect(ledger.history('inc-0000000000000001', 2)).toEqual({ total: 3, recent: [{ id: 'e2', at: '2026-11-20T12:00:00.000Z', kind: 'subject-observed' }, { id: 'e3', at: '2026-11-20T12:00:00.000Z', kind: 'subject-cleared' }] });
+    expect(ledger.history('inc-0000000000000001', 10).recent.map(e => e.id)).toEqual(['e1', 'e2', 'e3']);
+});
+
 test('the event history answers how often a subject was observed and when first', () => {
     const ledger = new IncidentLedger(memory());
     expect(ledger.subjectHistory('inc-0000000000000001', 'brain/delivery/job-1')).toBeNull();

@@ -1,12 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { Incident, IncidentEvent } from '../../src/contracts/incidents';
+import { canonical } from './canonical-json';
 
 /** What one observation changes: events to append and the incidents they leave behind. */
 export interface IncidentChange { events: IncidentEvent[]; incidents: Incident[] }
 
 const absent = (error: unknown) => /no such table/i.test(String(error));
-/** The same value whatever order its properties were written in; arrays keep their order. */
-const canonical = (value: unknown): string => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
 const isOpen = (incident: Incident) => incident.subjects.some(subject => subject.status === 'open') ? 1 : 0;
 
 /**
@@ -60,6 +59,15 @@ export class IncidentLedger {
             const row = this.db.prepare("SELECT COUNT(*) AS episodes, MIN(at) AS first FROM incident_events WHERE incident=? AND kind IN ('subject-observed','episode-observed') AND json_extract(body,'$.body.subject')=?").get(incident, subject) as { episodes: number; first: string | null };
             return row.episodes && row.first ? { episodes: row.episodes, firstObservedAt: row.first } : null;
         }, null);
+    }
+
+    /** How many events an incident has, and the ID, time and kind of its most recent ones, oldest first. */
+    history(incident: string, limit: number): { total: number; recent: Pick<IncidentEvent, 'id' | 'at' | 'kind'>[] } {
+        return this.read(() => {
+            const total = (this.db.prepare('SELECT COUNT(*) AS total FROM incident_events WHERE incident=?').get(incident) as { total: number }).total;
+            const recent = this.db.prepare('SELECT id, at, kind FROM incident_events WHERE incident=? ORDER BY seq DESC LIMIT ?').all(incident, limit) as Pick<IncidentEvent, 'id' | 'at' | 'kind'>[];
+            return { total, recent: recent.map(({ id, at, kind }) => ({ id, at, kind })).reverse() };
+        }, { total: 0, recent: [] });
     }
 
     events(incident: string): IncidentEvent[] {

@@ -169,7 +169,7 @@ curl -s http://127.0.0.1:4318/api/incidents/inc-0123456789abcdef
 ```
 
 The first lists incidents with a subject still stopped, the second those eligible for
-investigation, the third one incident with its event history.
+investigation and not dismissed, the third one incident with its event history.
 
 ### What an incident says
 
@@ -179,8 +179,9 @@ investigation, the third one incident with its event history.
 | `expected` | The kind of wait when the stop is one the Office already understands (`hold`, `decision`, `merge-approval`, `prerequisite`, `pause`, `authentication`, `provider-wait`, `retry`, `uncertain-effect`, `question`). Each subject has its own; the incident's is the one every open subject shares, or `null`. |
 | `research` | Whether the incident may be investigated now, and why: no explanation, or an expected wait that came back after two resumes, holds three subjects or two projects, or stood 24 hours. Withdrawn as soon as none of those holds. |
 | `subjects` | Each affected piece of work: project, kind, ID, stage, saved stop, the run that last worked it, candidate head, whether a write is unsettled, `open` or `cleared`, and its episodes. Every return after a clear is one episode. |
-| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`, then `deployed` once the Office finds that fix in the release it runs. The remaining states are set by later phases. |
+| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`, then `deployed` once the Office finds that fix in the release it runs. `dismissed` while a false-positive verdict stands; back to `observed` when it lapses. The remaining states are set by later phases. |
 | `repair`, `fixes` | The repair issue and the subjects it is for; every fix bound so far, with what it declares per subject. A fix found in the running release carries `deployed`: the release commit, its hash, the deployment that activated it and when. |
+| `dismissals` | Every false-positive verdict recorded: its reason, the evidence packet and source files it was tied to, the subjects it covered, and `lapsed` with the reason once it no longer holds. |
 
 ### Binding a fix you made by hand
 
@@ -264,6 +265,44 @@ incident stays `shipped`, read `release` in `/api/health` first; that is the cur
 
 A `release-identity-unknown` event in an incident's history is a record of one moment: that fix,
 compared with the release that ran then. It is not withdrawn when a later release is verified.
+
+### Evidence and dismissing a false positive
+
+```bash
+curl -s http://127.0.0.1:4318/api/incidents/inc-0123456789abcdef/evidence
+```
+
+The answer is the incident's evidence packet: what the Office knows about it, cut to a fixed size,
+with a `digest` of its own content. It is the same until the incident or the running release
+changes. Up to 50 subjects and the last 30 events are included, fewer subjects when they would
+take the packet past 256 KiB; `total` beside each list says how many there are. Credentials are
+removed from every string in it.
+
+When a stop is correct, the harness refused something it should refuse, you can record that so the
+incident is no longer offered for research. There is no command for it; post the event:
+
+```bash
+curl -s -X POST http://127.0.0.1:4318/api/incidents/inc-0123456789abcdef/events -H 'Content-Type: application/json' -d @dismissal.json
+```
+
+```json
+{ "kind": "dismissed", "eventId": "joe-dismiss-2026-11-20-a", "expectedRevision": 7,
+  "reason": "The write guard is right: the branch is not owned by this job.",
+  "packet": "<digest from the evidence packet>",
+  "cited": [ { "path": "server/delivery/harness/write-guards.ts", "sha256": "<sha256 of that file in the running release>", "line": 41 } ] }
+```
+
+Cite the code that makes the stop correct, one to twenty files, each with the SHA-256 of the file
+as the running release holds it (`shasum -a 256` on the file in the release directory). The Office
+refuses a dismissal whose packet digest is not the current one, or that cites a file or a version
+the service does not run. Read the evidence again and resend with a new event ID. Only the first
+line of the reason is kept, up to 1,000 characters, with credentials removed.
+
+A dismissal is not permanent. It lapses by itself, and the incident returns to `observed`, when a
+cited file changes or disappears in the running release, when another piece of work stops for the
+same cause, or when covered work stops again or stands differently. The incident's `dismissals`
+keep the lapsed verdict and say why. A file you did not cite can change freely, so cite every file
+the verdict depends on.
 
 ### What to expect
 
