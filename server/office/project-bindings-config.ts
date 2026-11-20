@@ -42,6 +42,8 @@ export interface AzureBinding {
         /** `cos`: 2xx plus the COS health JSON; `http-ok`: 2xx only. */
         healthy: 'cos' | 'http-ok';
     };
+    /** Where a change goes after staging: the branch promoted to and the pipeline that deploys it. Absent: the Office stops at staging. */
+    production?: { branch: string; pipeline: string };
 }
 
 /** The project-specific text and values a delivery assignment renders. */
@@ -87,6 +89,7 @@ export function legacyCecBindings(cec: CECBinding): ProjectBindings {
                 environment: 'staging', subscription: 'adcd54e8-229d-4a59-89ec-1713267e3ec9', resourceGroup: 'Cumulative-OS',
                 containerApp: 'ca-cos-conductor-shell-stg', container: 'ca-cos-conductor-shell-stg', healthPath: '/api/health', healthy: 'cos',
             },
+            production: { branch: 'production', pipeline: 'prod-deploy' },
         },
         prompt: legacyCecPrompt(cec),
     });
