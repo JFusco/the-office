@@ -50,6 +50,8 @@ server/
   cec/             Jira/Azure (CEC) pipeline: workflow, mailbox, pilot delivery, stage runner,
                    Jira Blocked parking
   github/          GitHub provider adapters
+  pipelines/       every Azure pipeline and GitHub Actions workflow with its latest runs, and the
+                   changes between passing and failing
   maintenance/     project maintenance and Brain native runs
   leadership/      CTO daily review and goals
   conversations/   team conversations, outbox, notifications, Slack

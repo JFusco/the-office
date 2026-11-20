@@ -420,6 +420,8 @@ export interface GitHubPR {
 }
 export interface GitHubRun {
     id: number;
+    /** The workflow this run belongs to; absent on runs observed before workflows were tracked. */
+    workflowId?: number;
     name: string;
     status: string;
     conclusion: string;
@@ -1012,6 +1014,8 @@ export interface OfficeSnapshot {
     /** When per-run usage capture began; earlier runs stay uncaptured. Set once, never reset. */
     telemetryCaptureStartedAt?: string;
     ciHistory?: AzureBuild[];
+    /** Every pipeline or workflow of the project with its latest runs. */
+    pipelines?: import('./contracts/pipelines').PipelineWatch;
     projectNotes: {
         id: string;
         ticket: string;
