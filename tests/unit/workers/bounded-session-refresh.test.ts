@@ -27,3 +27,16 @@ test('a refresh that fails after the limit is not an unhandled rejection', async
     // No handler of our own: only refreshWithin's race may observe `late`, so vitest fails the run if it does not.
     vi.useRealTimers(); fail(new Error('late')); await new Promise(resolve => setImmediate(resolve));
 });
+
+test('an incomplete inventory is read again until it is complete or the time is up', async () => {
+    const { refreshUntilComplete } = await import('../../../server/workers/bounded-session-refresh');
+    const answers = [false, false, true, false], bridge = { reads: 0, current: { complete: false, expiresAt: new Date(Date.now() + 45000).toISOString() }, async refresh() { this.current = { complete: answers[this.reads++] ?? false, expiresAt: new Date(Date.now() + 45000).toISOString() }; return {} as never; } };
+    await refreshUntilComplete(bridge, 5000);
+    expect([bridge.reads, bridge.current.complete]).toEqual([3, true]);
+    const never = { reads: 0, current: { complete: false, expiresAt: '' }, async refresh() { this.reads++; return {} as never; } };
+    await refreshUntilComplete(never, 5000);
+    expect(never.reads).toBe(4);
+    let clock = 0; const slow = { reads: 0, current: { complete: false, expiresAt: '' }, async refresh() { this.reads++; clock += 6000; return {} as never; } };
+    await refreshUntilComplete(slow, 10000, () => clock);
+    expect(slow.reads).toBe(2);
+});
