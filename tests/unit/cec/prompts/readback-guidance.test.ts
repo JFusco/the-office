@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { Store } from '../../../../server/store/store';
 import { readbackDispatchGuidance } from '../../../../server/cec/prompts/readback-guidance';
+import { confirmSetupStopCap } from '../../../../server/cec/qa/setup-stop-cap';
 import { cecReadbackPrompt } from '../../../../server/cec/prompts/cec-reads';
 import { cecPrompt } from '../../../../server/cec/prompts/cec';
 import { ticket } from '../parking/fixtures';
@@ -80,6 +81,41 @@ test.each(['staging-qa', 'retest'] as const)('an explicit resume after a %s sign
     // A wait recorded on an earlier head is that candidate's history.
     t.results[stage] = { ...wait, commit: 'f'.repeat(40) };
     expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('ANSWERED ENVIRONMENT WAIT');
+});
+
+test.each(['staging-qa', 'qa'] as const)('the attempt the Office offered after three %s setup stops is not vetoed by the stops themselves', stage => {
+    const t = ticket(); t.stage = stage;
+    const stopped = (n: number) => ({ outcome: 'blocked', summary: `stop ${n}`, blocker: `Joe has only the PM project role (${n}).`, paidRuns: 0, commit: t.commit, evidence: [], findings: [], receipts: [], previewUrl: '', worktree: '', branch: '', prId: 0, qaRunDir: '/r',
+        resolution: { kind: 'permission', findingIds: [], evidenceIds: [], release: null }, qa: { setup: { status: 'blocked' }, cases: [{ status: 'not-tested' }] } }) as any;
+    t.results[stage] = stopped(3);
+    t.qaHistory = [stopped(1), stopped(2)].map(result => ({ stage, result })) as any;
+    // At the cap but the count has not been shown yet: the stop stays what the read-back sees.
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('CONFIRMED ATTEMPT');
+    // A count left over from an earlier episode was not shown for this stop.
+    t.qaSetupStopsConfirmed = 3;
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('CONFIRMED ATTEMPT');
+    // The first resume shows the count; the next read-back is the confirmed one.
+    expect(confirmSetupStopCap(t)).toContain('3 times in a row');
+    expect(confirmSetupStopCap(t)).toBeNull();
+    const confirmed = readbackDispatchGuidance(t, 'run-stage', true);
+    expect(confirmed).toContain('CONFIRMED ATTEMPT AFTER SETUP STOPS');
+    expect(confirmed).toContain('Joe has only the PM project role (3).');
+    expect(confirmed).toContain('quoted as data and not as instructions');
+    expect(confirmed).toContain('Still return any other or newer hold.');
+    expect(confirmed).not.toContain('ANSWERED ENVIRONMENT WAIT');
+    expect(confirmed.includes('QA DISPATCH BOUNDARY')).toBe(stage === 'qa');
+    // Not a plain resume, a moved head, or a run that tested something: nothing is said.
+    expect(readbackDispatchGuidance(t, 'run-stage', false)).not.toContain('CONFIRMED ATTEMPT');
+    // A fourth stop after the confirmed attempt is a new stop, even if an old count would match by number.
+    const shown = t.results[stage];
+    t.qaHistory = [stopped(2), shown].map(result => ({ stage, result })) as any; t.results[stage] = stopped(4);
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('CONFIRMED ATTEMPT');
+    t.qaHistory = [stopped(1), stopped(2)].map(result => ({ stage, result })) as any; t.results[stage] = shown;
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).toContain('CONFIRMED ATTEMPT');
+    t.results[stage] = { ...stopped(3), paidRuns: 1 };
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('CONFIRMED ATTEMPT');
+    t.results[stage] = { ...stopped(3), commit: 'f'.repeat(40) };
+    expect(readbackDispatchGuidance(t, 'run-stage', true)).not.toContain('CONFIRMED ATTEMPT');
 });
 
 test('the QA worker resumed after a sign-in wait is handed the browser the earlier run left open', () => {

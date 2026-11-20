@@ -606,6 +606,8 @@ export interface Ticket {
     recoveredAttemptId?: string;
     /** The count of consecutive QA setup stops Joe has already been shown; a resume at this count runs one more attempt. */
     qaSetupStopsConfirmed?: number;
+    /** The stage, candidate and exact stop that count was shown for; a count without it, or for another stop, was not shown for this one. */
+    qaSetupStopsConfirmedFor?: string;
     qaProtocol?: Partial<Record<Stage, 'office-v1'>>;
     qaPlanRetries?: import('./contracts/qa-plan-retry').QAPlanRetry[];
     qaPlanContinuations?: import('./contracts/qa-plan-continuation').QAPlanContinuation[];
