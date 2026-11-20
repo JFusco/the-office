@@ -115,3 +115,32 @@ test('exclusive work drains running slots, runs alone, then slotted work resumes
     await last;
     expect(capacity.slots.size).toBe(0);
 });
+test('each project runs one of its own operations while the others run theirs; an operation that spans projects still runs alone', async () => {
+    const { operationsSlot } = await import('../../../server/scheduling/operations-slot');
+    expect(['refresh', 'poll', 'time-publication', 'time-readback', 'time-unsent', 'cost-publication', 'cost-readback'].map(operationsSlot)).toEqual(Array(7).fill({}));
+    expect(['observe-dependencies', 'file-lesson-issue', 'retire-incomplete-history', 'evidence-capture', 'apply-time-scope'].map(operationsSlot)).toEqual(Array(5).fill(undefined));
+
+    const a = store('brain'), b = store('cms-field-vocabulary'), c = store('cec'), scheduler = new Scheduler(officeCapacity(3), undefined, 'operations'), calls: string[] = [], releases = new Map<string, () => void>();
+    const op = (s: Store, stage: string) => { const work = heldItem(s, stage, undefined, calls, releases, false); work.stage = stage; work.slot = operationsSlot(stage); return work; };
+    const projects = [{ store: a, items: [op(a, 'poll'), op(a, 'refresh')] }, { store: b, items: [op(b, 'poll')] }, { store: c, items: [op(c, 'refresh')] }];
+    const running = [scheduler.pump(projects), scheduler.pump(projects), scheduler.pump(projects)];
+    await scheduler.pump(projects);
+    // One operation per project, all three at once; Brain's second waits for its first.
+    expect(calls).toEqual(['start brain:poll', 'start cms-field-vocabulary:poll', 'start cec:refresh']);
+    projects[2].items.push(op(c, 'observe-dependencies'));
+    releases.get('brain:poll')!(); await running[0];
+    await scheduler.pump(projects);
+    // The operation that spans projects is waiting, so nothing new starts until the others drain.
+    expect(calls).toHaveLength(3);
+    releases.get('cms-field-vocabulary:poll')!(); releases.get('cec:refresh')!(); await Promise.all(running);
+    projects[1].items.length = 0; projects[2].items.splice(0, 1);
+    const alone = scheduler.pump(projects);
+    await scheduler.pump(projects);
+    expect(calls.slice(3)).toEqual(['start cec:observe-dependencies']);
+    releases.get('cec:observe-dependencies')!(); await alone;
+    projects[0].items.splice(0, 1); projects[2].items.length = 0;
+    const last = scheduler.pump(projects);
+    expect(calls.at(-1)).toBe('start brain:refresh');
+    releases.get('brain:refresh')!(); await last;
+    expect([a, b, c].flatMap(s => s.activeClaims())).toEqual([]);
+});
