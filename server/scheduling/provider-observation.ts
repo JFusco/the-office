@@ -1,3 +1,4 @@
+import { resumeAfterSignIn } from '../cec/qa/resume-after-sign-in';
 import { az, correlatedBuild } from '../cec/azure';
 import { followProduction } from '../cec/production/follow-production';
 import { observePipelines } from '../pipelines/observe-pipelines';
@@ -24,6 +25,7 @@ export async function observe(this: Engine) {
     if (this.store.state.paused || this.busy)
         return;
     await observeParked(this);
+    await resumeAfterSignIn(this.store, key => this.requestDelivery(key, 'resume-ticket'));
     for (const t of this.store.state.tickets) {
         if (!t.pilot)
             continue;

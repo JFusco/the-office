@@ -218,6 +218,8 @@ export interface TicketJob {
     parked?: { stage: string; reason: string; at: string; published: boolean; release?: ReleaseWait; releaseCheckedAt?: string; releaseBaselineAt?: string; releaseFound?: string };
     /** Times the harness returned this job to the pickup lane after its npm release wait was met. */
     releaseUnparks?: number;
+    /** The step whose sign-in wait the harness already returned to pickup once (`server/delivery/parking/sign-in-unpark.ts`). */
+    signInUnparkedStep?: number;
     approach?: WorkApproach;
     decisions?: ApproachDecision[];
     skippedStages?: Record<string, string>;
@@ -608,6 +610,8 @@ export interface Ticket {
     qaSetupStopsConfirmed?: number;
     /** The stage, candidate and exact stop that count was shown for; a count without it, or for another stop, was not shown for this one. */
     qaSetupStopsConfirmedFor?: string;
+    /** The QA run directory of the sign-in wait the Office already resumed once by itself (`server/cec/qa/resume-after-sign-in.ts`). */
+    signInResumedFor?: string;
     qaProtocol?: Partial<Record<Stage, 'office-v1'>>;
     qaPlanRetries?: import('./contracts/qa-plan-retry').QAPlanRetry[];
     qaPlanContinuations?: import('./contracts/qa-plan-continuation').QAPlanContinuation[];

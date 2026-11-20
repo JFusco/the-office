@@ -1,7 +1,6 @@
 import { holdReason } from '../../office/project-holds';
-import { harnessEffect } from '../harness/effect';
-import { resolveLane } from '../board/move-lane';
-import { cardStatus, projectCards, setCardStatus, statusField, type Execute } from '../board/project-graphql';
+import type { Execute } from '../board/project-graphql';
+import { returnCardToPickup } from './return-to-pickup';
 import { highestStableAtLeast } from './release-version';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
@@ -48,50 +47,15 @@ export async function unparkReleasedWaits(store: Store, execute: Execute, jobs: 
     return moved;
 }
 
-/** Whether any attempt of this lane write (including `:retry-n` ids after a rejected preflight) awaits read-back. */
-function unreadLaneWrite(store: Store, base: string): boolean {
-    for (let attempt = 0; ; attempt++) {
-        const intent = store.getEffect(attempt ? `${base}:retry-${attempt}` : base);
-        if (!intent) return false;
-        if (['dispatching', 'uncertain'].includes(intent.status)) return true;
-    }
-}
-
 async function returnToPickup(store: Store, execute: Execute, job: TicketJob, lane: string, found: string): Promise<boolean> {
-    const parked = job.parked!, release = parked.release!, repository = store.project.repository, issueNumber = Number(job.key.slice(3)), attempt = job.steps.length;
-    const field = await statusField(store, execute), block = resolveLane(field, 'Block');
-    const pickup = field.options.filter(option => option.name.trim().toLowerCase() === lane.trim().toLowerCase());
-    if (pickup.length !== 1) throw new Error(`Project board needs exactly one "${lane}" Status option; found ${pickup.length}`);
-    const card = (await projectCards(store, execute, field.projectId, [{ kind: 'Issue', number: issueNumber }]))[0];
-    if (!card) throw new Error('Issue has no card on its configured board');
-    const guard = async () => {
-        if (store.state.paused || store.state.draining || holdReason(store.project, job.key) || job.status !== 'blocked' || !job.parked?.published)
-            throw new Error('Release unpark stopped: the parked job changed');
-        if (await cardStatus(store, execute, card.id, field.fieldId) !== block.id)
-            throw new Error('Release unpark stopped: the card left Block');
-    };
-    // A lane write whose outcome was never read back is reconciled by reading, whatever lane the card shows now.
-    const reconciling = unreadLaneWrite(store, `harness:${job.id}:release-lane:${attempt}`);
-    if (!reconciling && await cardStatus(store, execute, card.id, field.fieldId) !== block.id) return false;
-    const marker = `Office release ${job.id}:${attempt}`;
-    const findComment = async () => {
-        const pages = JSON.parse(await execute('gh', ['api', `repos/${repository}/issues/${issueNumber}/comments?per_page=100`, '--paginate', '--slurp'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
-        const comment = pages.flat().find((item: any) => item.body?.includes(marker));
-        return comment ? { id: comment.id as number, url: comment.html_url as string } : null;
-    };
-    const body = `${marker}: ${release.package}@${found} is published on npm, which meets this ticket's wait for a stable release at or above ${release.minimum}. The Office is moving the card back to ${pickup[0].name} to resume from ${parked.stage}.`;
-    if (!reconciling && !await findComment())
-        await harnessEffect(store, job, { key: `release-comment:${attempt}`, operation: 'github-issue-comment', target: `https://github.com/${repository}/issues/${issueNumber}`, payload: { marker }, guard,
-            dispatch: async () => { await execute('gh', ['api', `repos/${repository}/issues/${issueNumber}/comments`, '-f', `body=${body}`], { cwd: store.project.repo, timeout: 60000 }); return findComment(); },
-            readBack: findComment });
-    const readLane = async () => await cardStatus(store, execute, card.id, field.fieldId) === pickup[0].id ? { lane: pickup[0].name } : null;
-    await harnessEffect(store, job, { key: `release-lane:${attempt}`, operation: 'github-project-status', target: `${field.projectId}:${card.id}`, payload: { option: pickup[0].id }, guard,
-        dispatch: async () => { await setCardStatus(store, execute, field.projectId, card.id, field.fieldId, pickup[0].id); return readLane(); },
-        readBack: readLane });
+    const parked = job.parked!, release = parked.release!;
+    const returned = await returnCardToPickup(store, execute, job, lane, { slug: 'release', label: 'Release unpark',
+        body: pickup => `${release.package}@${found} is published on npm, which meets this ticket's wait for a stable release at or above ${release.minimum}. The Office is moving the card back to ${pickup} to resume from ${parked.stage}.` });
+    if (!returned) return false;
     job.releaseUnparks = (job.releaseUnparks || 0) + 1;
     // One unpark per park: a card a person puts back in Block afterwards stays there for Joe.
     delete parked.release;
-    store.emit('delivery-release-unparked', `${job.key}: ${release.package}@${found} is published; card moved back to ${pickup[0].name}.`, 'pm', job.key);
+    store.emit('delivery-release-unparked', `${job.key}: ${release.package}@${found} is published; card moved back to ${lane}.`, 'pm', job.key);
     store.save();
     return true;
 }
