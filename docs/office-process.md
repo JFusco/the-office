@@ -569,10 +569,13 @@ Morgan or Joe:
   recorded without a request ID: it is investigated on its own, and a later completed run of the
   same ticket stage settles its read failure.
 - An old blocked nightly checkpoint is settled by a later night that completed.
-- On a hands-off project one stopped daily maintenance run is not put in the outbox: the next
-  scheduled run takes it over without a person. It stays in the maintenance view with its error. A
-  second stopped run in a row reaches a person as one item
-  (`server/maintenance/single-missed-run.ts`). Weekly runs and other projects are unchanged.
+- On a hands-off project one stopped daily maintenance run whose automatic read-backs are used up is
+  not put in the outbox while the next night's run is not yet overdue (26 hours), provided the night
+  before ended in a completed run that re-observed its sources: the next scheduled run takes it over
+  without a person. It stays in the maintenance view with its error. A second stopped night in a row
+  reaches a person as one item, the later run's; a night that ended only in a read-back or in
+  never-started retries counts as stopped (`server/maintenance/single-missed-run.ts`). Weekly runs,
+  projects with no automatic read-back and projects that are not hands-off are unchanged.
 - A blocked Brain nightly checkpoint whose own run did finish is closed by the harness, not by the
   worker's notes: Brain's gate file must show that date published by the run's own session, the
   accepted read-back must cover every call and receipt, and git itself must show each published pull
