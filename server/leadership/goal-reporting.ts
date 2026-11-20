@@ -41,7 +41,7 @@ export function projectPRFacts(store: Store) {
             id: pr.number, title: pr.title, ...githubPRDescription(pr.description), descriptionTruncated: !!pr.descriptionTruncated || !!githubPRDescription(pr.description).descriptionTruncated, url: pr.url, state: pr.state, draft: pr.draft,
             version: provider?.observedAt || '', head: pr.head, base: pr.base, mergedAt: pr.mergedAt, linkedIssues: pr.linkedIssues || [], checks: pr.checks, reviews: pr.reviews,
         })) : [...store.state.azure.prs.filter(pr=>pr.status==='active'), ...store.state.azure.prs.filter(pr=>pr.status!=='active').slice(0,25)].map(pr => ({ id: pr.id, title: pr.title, ...azurePRDescription(pr.description), descriptionTruncated: !!pr.descriptionTruncated || !!azurePRDescription(pr.description).descriptionTruncated, url: pr.url, state: pr.status,
-            draft: pr.draft, version: provider?.observedAt || '', head: pr.commit, mergeCommit: pr.mergeCommit, closedAt: pr.closedAt || '', policies: pr.policies })),
+            draft: pr.draft, version: provider?.observedAt || '', head: pr.commit, source: pr.source, target: pr.target, mergeCommit: pr.mergeCommit, closedAt: pr.closedAt || '', policies: pr.policies })),
     };
 }
 
