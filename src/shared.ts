@@ -420,6 +420,8 @@ export interface GitHubPR {
 }
 export interface GitHubRun {
     id: number;
+    /** The workflow this run belongs to; absent on runs observed before workflows were tracked. */
+    workflowId?: number;
     name: string;
     status: string;
     conclusion: string;
@@ -586,6 +588,8 @@ export interface Receipt {
     detail: string;
 }
 export interface Ticket {
+    /** The ticket after staging acceptance: promotion pull request and production deploy. */
+    production?: import('./contracts/production').ProductionFollow;
     /** Last recorded stop; meaningful only while the ticket is blocked. */
     stop?: import('./contracts/work').StopReason;
     officeQAHandoffs?: import('./contracts/office-qa-handoff').OfficeQAHandoff[];
@@ -1012,6 +1016,8 @@ export interface OfficeSnapshot {
     /** When per-run usage capture began; earlier runs stay uncaptured. Set once, never reset. */
     telemetryCaptureStartedAt?: string;
     ciHistory?: AzureBuild[];
+    /** Every pipeline or workflow of the project with its latest runs. */
+    pipelines?: import('./contracts/pipelines').PipelineWatch;
     projectNotes: {
         id: string;
         ticket: string;

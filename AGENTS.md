@@ -48,8 +48,10 @@ server/
   comments/        what the Office writes on tickets, issues and PRs: one readable shape, plain wording,
                    the words a provider stored
   cec/             Jira/Azure (CEC) pipeline: workflow, mailbox, pilot delivery, stage runner,
-                   Jira Blocked parking
+                   Jira Blocked parking, promotion pull request and production deploy
   github/          GitHub provider adapters
+  pipelines/       every Azure pipeline and GitHub Actions workflow with its latest runs, and the
+                   changes between passing and failing
   maintenance/     project maintenance and Brain native runs
   leadership/      CTO daily review and goals
   conversations/   team conversations, outbox, notifications, Slack

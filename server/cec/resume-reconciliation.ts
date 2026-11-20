@@ -1,5 +1,6 @@
 import { supersededReceipt } from './superseded-receipts';
 import { setupStopOn } from './qa/setup-stop-cap';
+import { officeRefusedQA } from './qa/refused-result';
 import type { StageResult, Ticket, WorkTime } from '../../src/shared';
 
 type Attempt = Pick<WorkTime, 'ticket' | 'stage' | 'role' | 'status' | 'failure' | 'completionAccepted' | 'executionStatus'>;
@@ -28,6 +29,8 @@ function stoppedInSetup(ticket: Ticket, result: StageResult | undefined, attempt
 export function needsResumeReconciliation(ticket: Ticket, attempts: readonly Attempt[]): boolean {
     const result = ticket.results[ticket.stage];
     const setupOnly = stoppedInSetup(ticket, result, attempts);
+    // A QA result the Office itself refused after its worker returned: nothing was written, so there is nothing to read back.
+    if (officeRefusedQA(ticket, result, attempts)) return false;
     // A restated receipt of the replaced implementation run is that run's history, not a QA action.
     if (result?.receipts.some(receipt => receipt.uncertain && !supersededReceipt(ticket, receipt))) return true;
 

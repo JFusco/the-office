@@ -198,6 +198,19 @@ already queued blocks with "Project policy requires human merge", and a merge
 already attempted is still settled by read-back. Release, package or downstream-runner success
 must be observed from the relevant provider; a merge is not proof of release.
 
+After staging QA passes on a project with production settings (CEC: branch `production`, pipeline
+`prod-deploy`), the harness follows the ticket to production without a model
+(`server/cec/production/`). When the ticket's commit is on staging and not on production it makes
+sure one staging-to-production pull request is open: the one already open is joined, otherwise one
+is opened through Effects and read back. An uncertain creation is settled by reading the open pull
+requests and is never sent again. The harness never completes that pull request and never starts a
+deploy. A ticket is recorded as in production when a passed `prod-deploy` run on the production
+branch ran a commit that contains the ticket's commit; a squashed copy does not count. Nothing is
+opened while another ticket of the Office is still in staging QA, because the pull request carries
+everything on staging. A pull request someone abandoned is said once and not reopened. A ticket is
+followed for 30 days. Moving the ticket and its sub-tasks to Done follows the production record and
+is not built yet.
+
 A Jira/Azure draft pull request is expected on the accepted candidate. When the developer brings the
 branch up to date with the target first, so the pull request opens on a head that contains the
 accepted candidate, the harness verifies that with git, records the pull request and sends the new
@@ -450,6 +463,12 @@ unknown write and no harness write for the ticket is unsettled. The PM read-back
 worker are told the interruption is history, not an open item. The interrupted run and its unknown
 provider usage stay in history, and its IT investigation closes when the rerun returns a result.
 A crash, a time limit, staging QA and every other stage keep their existing handling.
+
+A QA, retest or staging QA worker that returned normally, and whose result the Office then refused
+to accept (a report it would not save, for example), left nothing unknown. The stage is blocked in
+those words, without an uncertain-effect stop, and the next resume runs it again. A record saved
+before this rule, with the interrupted-stage wording, resumes the same way. The rule holds only
+while no run on the ticket has failed since. A QA run that did not return keeps its handling.
 
 A QA stage on the browser route runs for up to 90 minutes, and the worker is told that limit.
 A Jira/Azure repair also runs for up to 90 minutes. Other stages keep their existing limits (45
