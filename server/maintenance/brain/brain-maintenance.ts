@@ -1,4 +1,5 @@
 import { brainResultStop } from './brain-result-stop';
+import { gateMark, neverStarted, unstartedCandidate } from './not-started';
 import { captureLearning } from '../../knowledge/learning-events';
 import { parseBrainStatus } from './brain-status';
 import { z } from 'zod';
@@ -13,6 +14,13 @@ export const BrainResult = z.object({ outcome: z.enum(['completed', 'skipped', '
 // Brain's own nightly runner remains the publication authority. The Office
 // supplies durable dispatch, shared capacity, project chat and read-back.
 export class BrainMaintenance extends GitHubMaintenance {
+    /** Whether this blocked run provably never started, by reading the nightly gate now. */
+    async notStarted(run: MaintenanceRun): Promise<boolean> { return unstartedCandidate(run) && neverStarted(run, gateMark(await this.readStatus(), await this.readCheckout())); }
+    /** The primary checkout's commit and its uncommitted changes, as git reports them. */
+    async readCheckout() {
+        const git = (args: string[]) => command('git', args, { cwd: this.store.project.repo, readOnly: true, timeout: 30000 });
+        return { head: (await git(['rev-parse', 'HEAD'])).trim(), changes: await git(['status', '--porcelain']) };
+    }
     async readStatus() { return parseBrainStatus(JSON.parse(await command('node', ['scripts/nightly.mjs', 'status'], { cwd: this.store.project.repo, readOnly: true, timeout: 60000 }))); }
     request(scheduled = false, now = new Date()) {
         if (this.store.state.paused)
@@ -40,6 +48,8 @@ export class BrainMaintenance extends GitHubMaintenance {
             return;
         run.status = 'working';
         run.startedAt = new Date().toISOString();
+        // The gate before dispatch: a blocked run that left it untouched never started.
+        try { run.gateBefore = gateMark(await this.readStatus(), await this.readCheckout()); } catch { /* Without the mark the run keeps its ordinary read-back. */ }
         this.store.save();
         try {
             const result = await this.agents.run('pm', `${unverifiedPriorRunNote(run)}Brain maintenance through the Office.

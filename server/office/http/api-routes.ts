@@ -3,7 +3,7 @@ import { qaPlanRetryRoute } from '../../cec/qa/plan-retry-route';
 import { DATA } from '../config';
 import { knowledgeRoute } from '../../knowledge/routes';
 import { implementationContinuationRoute } from '../../cec/implementation-continuation/routes';
-import { refreshWithin } from '../../workers/bounded-session-refresh';
+import { refreshUntilComplete } from '../../workers/bounded-session-refresh';
 import { serviceBusy } from '../service-busy';
 import { assertQuestionVisibility } from '../../features/questions/command-visibility';
 import { featureRoute } from '../../features/routes';
@@ -53,7 +53,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         if (key && !validTicket(store.project, key))
             return json({ error: 'Invalid ticket key' }, 400);
         // Workers bound this read at 15 seconds; a slow live inventory must not outlast it.
-        await refreshWithin(offices.sessions);
+        await refreshUntilComplete(offices.sessions);
         return json(sanitizeObject(offices.sessions.forProject(store, key, url.searchParams.get('requestId') || '')));
     }
     if (url.pathname === '/api/time') {

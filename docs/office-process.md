@@ -525,6 +525,13 @@ Morgan or Joe:
   request merged into the target branch with no remote branch, local branch or worktree left at its
   head (`server/maintenance/brain/published-cleanup.ts`). The worker's follow-up notes have no
   fixed format and are never parsed.
+- A blocked Brain run that provably never started is tried again by the harness, not read back by a
+  model: its worker returned no receipt, the nightly gate reads exactly as it did before dispatch for
+  the same slot with nothing active, and the primary checkout is at the same commit with the same
+  uncommitted changes (`server/maintenance/brain/not-started.ts`). It is retried after five minutes, at
+  most six times for one checkpoint; after that, and for any run that left a receipt or moved the gate,
+  the ordinary read-back applies. A worker's session inventory request reads again for up to ten
+  seconds while the inventory is incomplete; a newer incomplete read still replaces an older complete one.
 - A Brain result stops for read-back when it is blocked or reports a write whose outcome is unknown.
   A write refused before it took effect is a known outcome and does not stop a completed run.
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after

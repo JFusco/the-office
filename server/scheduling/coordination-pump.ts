@@ -1,4 +1,5 @@
 import { intakeMembership } from '../cec/intake-scope';
+import { MAX_START_RETRIES, START_RETRY_MS } from '../maintenance/brain/not-started';
 import { ATTEMPT_DELAYS_MS } from '../delivery/attempts/attempt-backoff';
 import { jiraBinding } from '../office/project-bindings';
 import { PROJECT_BINDINGS } from '../office/projects';
@@ -52,6 +53,20 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
         const recovery = (!selected || selected.kind === 'recovery') ? this.maintenanceRecovery() : undefined;
         if (recovery) {
             const retry = recovery.readbackRetry!;
+            // A run that never started has nothing to read back: it is tried again, a bounded number of times.
+            const stalled = this.store.project.id === 'brain' ? this.state.checkpoints.find(c => c.runId === recovery.id && ['blocked', 'interrupted'].includes(c.status) && (c.startRetries || 0) < MAX_START_RETRIES) : undefined;
+            if (stalled && await (this.engine.maintenance as import('../maintenance/brain/brain-maintenance').BrainMaintenance).notStarted(recovery).catch(() => false)) {
+                const reason = recovery.error;
+                recovery.status = 'reconciled';
+                recovery.error = '';
+                retry.nextAt = '';
+                stalled.startRetries = (stalled.startRetries || 0) + 1;
+                this.queueCheckpointRetry(stalled, recovery, { retryAfter: new Date(Date.now() + START_RETRY_MS).toISOString() });
+                stalled.detail = `Brain maintenance did not start (${reason}). Nothing was claimed or written; it is tried again after ${stalled.retryAt} (${stalled.startRetries} of ${MAX_START_RETRIES}).`;
+                this.store.emit('maintenance-not-started', stalled.detail, 'pm');
+                this.store.save();
+                return;
+            }
             retry.attempts++;
             retry.history.push({ at: new Date().toISOString(), detail: recovery.error });
             retry.nextAt = new Date(Date.now() + ATTEMPT_DELAYS_MS[Math.min(retry.attempts - 1, 2)]).toISOString();

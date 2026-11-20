@@ -98,6 +98,8 @@ export interface AssignmentReview {
     bridgeRetryVersion?: number;
 }
 export interface DailyCheckpoint {
+    /** Times this checkpoint's maintenance was tried again after a run that never started. */
+    startRetries?: number;
     continuationId?: string;
     reconciliation?: ReconciliationRequest;
     id: string;
@@ -470,6 +472,8 @@ export interface MaintenanceResult {
     }[];
 }
 export interface MaintenanceRun {
+    /** Brain's nightly gate as read just before the worker was dispatched; proves a blocked run never started. */
+    gateBefore?: { slotDate: string; attempts: number; active: string; completed: string; head: string; changes: string };
     retirement?: import('./contracts/history-retirement').HistoryRetirement;
     /** Earlier blocked/interrupted runs this scheduled run proceeded past (their history is retained). */
     supersedes?: string[];
