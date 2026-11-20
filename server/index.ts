@@ -21,6 +21,7 @@ import { telemetryRoute } from './telemetry/telemetry-route';
 import { deploymentFenceRoute } from './office/http/deployment-fence-route';
 import { deploymentFenceGate } from './office/http/deployment-fence-gate';
 import { startServiceTicks } from './office/service-ticks';
+import { incidentsRoute } from './incidents/routes';
 mkdirSync(DATA, { recursive: true, mode: 0o700 });
 const releaseLock = acquireServiceLock(DATA);
 process.on('exit', releaseLock);
@@ -53,7 +54,7 @@ const server = serve({ hostname: '127.0.0.1', port: PORT,
             }
             // A write that passed the open gate keeps health busy until it ends, so a fence taken meanwhile waits for it.
             endWrite = req.method === 'GET' || req.method === 'HEAD' ? undefined : offices.operations.begin();
-            for (const route of [preferencesRoute, officeConfigRoute, telemetryRoute]) {
+            for (const route of [preferencesRoute, officeConfigRoute, telemetryRoute, incidentsRoute]) {
                 const response = await route(req, url, service);
                 if (response) return response;
             }

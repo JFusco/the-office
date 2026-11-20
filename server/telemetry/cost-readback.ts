@@ -13,7 +13,8 @@ import { costPublishingInProgress, settle } from './cost-ledger';
  * that a write did not land.
  */
 export function dueCostReadback(store: Store, now: Date): CostEntry | null {
-    const ledger = costLedger(store);
+    // A question about what is due only reads: a time ledger with no cost ledger yet has nothing to settle.
+    const ledger = store.state.coordination?.time?.cost;
     if (!ledger || store.project.provider !== 'github' || costPublishingInProgress(store)) return null;
     return ledger.entries.find(entry => entry.status === 'posting'
         || entry.status === 'uncertain' && now.getTime() - Date.parse(entry.readbackAt || entry.updatedAt) >= READBACK_INTERVAL_MS) ?? null;

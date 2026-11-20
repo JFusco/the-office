@@ -781,6 +781,107 @@ whose fence a person ended, is not resumed.
 No deployment path pauses, drains or resumes a project. The fence is the only hold a deployment
 places, and the only one it lifts.
 
+### Incident ledger
+
+The Office keeps one office-wide record of stopped work, on the control database beside the
+deployment fence (`server/incidents/`). It is observation only. It reads each project's state and
+the scheduler's own projection, writes two tables of its own, and never writes a project store,
+calls a provider or runs a model. An incident describes a stop; it grants no retry, no resume and
+no authority over the work.
+
+**What is read.** Once a minute, unless a deployment holds the fence, one collector per signal
+reads every project:
+
+- stopped work: everything the scheduler projects as blocked (tickets, delivery jobs, requests,
+  intake reviews, checkpoints, maintenance, notices and conversations), and waiting work whose own
+  record is a stop (a pull request that is not ready, checks or required Azure policies still
+  running, a merge waiting for approval, a pull-request review that needs follow-up) or that waits
+  on a configured hold, a retry the Office planned or an unfinished structured prerequisite;
+- runs that failed after dispatch, by failure category, each counted for 24 hours;
+- IT recoveries handed to a person;
+- IT investigations that name the harness or propose an Office fix;
+- improvement proposals addressed to the Office harness;
+- the latest error of the assignment listener, the mailbox intake and the GitHub and Azure readers,
+  kept while the reader's next read is under way; a GitHub project's mailbox error is the GitHub
+  read's own and is reported once;
+- Slack deliveries that could not be confirmed and were not replaced;
+- any other open outbox item, by its title only, including the item of a ticket or intake review
+  the scheduler does not project.
+
+A saved stop is read only while the record's status makes it current; a watching job keeps only a
+wait's own stop. A record that could run but is held by the scheduler's condition, a prerequisite
+or a configured hold, is described by that condition and not by what the record last said. An
+intake review another delivery owns is not a stop. A paused or draining project is one subject,
+the project, with one cause for both. Evidence is one bounded line with credentials removed,
+including the provider token formats the office-wide redaction does not cover; a conversation body
+is never copied.
+
+**Cause identity.** Only text the harness is known to have written is identity. Such a cause is
+fingerprinted from its source, provider, stage, typed cause and normalized text, without the
+project, so the same cause in two projects is one incident. Everything else is identified by its
+subject, stage and typed cause, and its wording is evidence only:
+
+- `model`: the stop repeats what a saved result said. For a ticket that is its last refused
+  transition, then the stage's last result; for a job the stage's last result, a blocked metadata
+  assessment or a CI diagnosis; in each case when the stage's run recorded no harness failure that
+  still stands. For an
+  intake review, any detail without a typed failure or prerequisite error; for maintenance and the
+  checkpoint that repeats it, the last step's blocker; a pull-request review that needs follow-up;
+  an investigation; an improvement proposal.
+- `unknown`: the record does not say where its text came from: work with no retained record, a
+  delivery request's error, a ticket blocker with no saved stop, result or failure behind it, what
+  a run that completed handed back to a request, notice, conversation or Jira mailbox read, a
+  recovery's copied detail, and the outbox item of an unprojected ticket or review. For these the
+  scheduler's own cause, which can come from the text's wording, is neither kind nor explanation.
+
+A merge waiting for approval is identified by that restriction, not by the job's changing detail.
+
+A result the stage runner wrote itself when it cut a stage short carries the runner's own receipt
+for that ticket and stage; it is the harness's, and groups.
+
+**Subjects and episodes.** Each affected subject is bound to its project, kind, source ID, stage,
+saved stop, the run that last worked it, candidate head and whether a write filed under any of its
+references is still unsettled. Two sources that report the same stop yield one subject: a failed
+run is folded into the job, ticket, review or maintenance run it worked for, and an unconfirmed
+Slack delivery into its notice or conversation, which then carries the unsettled write and, when
+it has no explanation of its own, the delivery's; a delivery request that only mirrors its
+ticket's stop is folded into the ticket, and a checkpoint that only repeats its maintenance run's
+into the run. An exhausted recovery and the record it tried to recover stay separate subjects. A subject whose signal is gone is cleared. A subject that returns
+after it cleared, or whose stop marker changed, is a new episode of the same incident and one
+observed resume, and how long it has stood is counted from that latest stop; the count survives
+the projection dropping an old cleared subject, because it is read back from the events. A subject is not cleared while its signal cannot be seen: stopped work
+while its project is paused or draining, a source whose collector failed for that project, and
+everything of a project that could not be read. While stopped work cannot be seen, the runs and
+deliveries its open subjects hold stay with them, and those a pause newly hides fold into the
+pause; while another source cannot be seen, what it had contributed to a subject stays on it.
+
+**Expected waits.** Holds, decisions, merge approvals, prerequisites, pauses, authentication
+blocks, provider waits, planned retries, uncertain effects and questions are recognised from typed
+fields and the office config, never from wording, and recorded as expected. A hold may be
+configured under the ticket or its pull request; a park on a provider's own wait is that wait; a
+retry whose budget is spent explains nothing. A stop kind the
+harness derived from a model's blocker is left out, so a model's words never choose the
+explanation. Each subject keeps its own explanation; the incident names one only when every open
+subject shares it. An incident with an open subject that has no explanation is eligible for
+research at once. Otherwise it becomes eligible only after an open subject has two observed
+resumes, or with three open subjects, two projects or 24 hours. Eligibility permits investigation; it does not lift the hold,
+decision or wait. It is about now: withdrawn as soon as no reason for it holds, and earned again
+if one returns.
+
+**Record.** An append-only event history (`incident-observed`, `subject-observed`,
+`episode-observed`, `subject-cleared`, `research-promoted`, `research-withdrawn`) with stable
+event IDs, and one projection per incident with a revision. A change is recorded whole or not at
+all; an event ID reused with different content, whatever order its properties are written in, or
+a projection that skips a revision, is refused.
+An unchanged office costs no write, and the tables themselves are created by the first recorded
+change, so a release that starts under a deployment's fence leaves the control database as it
+found it. The lifecycle states `triaged`, `fixing`, `shipped`, `deployed`, `verified`, `recurred`,
+`housekept`, `dismissed`, `needs-joe` and `abandoned` are defined; observation alone reaches only
+`observed` and never changes a state a later step set.
+
+`GET /api/incidents` lists the ledger (`open=1`, `research=1`); `GET /api/incidents/<id>` returns
+one incident with its events. Both are read-only.
+
 ## Code owners and verification
 
 | Process boundary | Owning source |
@@ -794,6 +895,7 @@ places, and the only one it lifts.
 | Independent QA and coverage | `server/qa/assignment.ts`, `server/qa/criteria.ts`, `server/qa/report-evidence.ts` |
 | External actions | `server/store/effects.ts` |
 | Release build, deployment and rollback | `server/release/` |
+| Incident observation and cause identity | `server/incidents/` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |

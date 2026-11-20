@@ -1,9 +1,10 @@
 # Overseer
 
 The Overseer is the repair engine for the harness and the Office. It is being delivered in phases;
-this guide covers what exists. Today that is deterministic deployment. Incident recording, repair
-waits, resume after a fix and the autonomous runner are later phases and are not described here
-until they ship. The process rules are in [the Office process](office-process.md#deployment).
+this guide covers what exists. Today that is deterministic deployment and the incident ledger.
+Repair waits, resume after a fix and the autonomous runner are later phases and are not described
+here until they ship. The process rules are in the Office process, under
+[Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
 
 ## Deployment
 
@@ -146,3 +147,49 @@ deployment.
 - Pause, drain or resume a project.
 - Switch controller code in the middle of an operation.
 - Release a fence another deployment holds.
+
+## Incidents
+
+The Office records every stop it can see in one ledger, grouped by cause across projects. It only
+observes: nothing in it retries, resumes or repairs anything, and it never writes to a project.
+
+### Reading the ledger
+
+```bash
+curl -s 'http://127.0.0.1:4318/api/incidents?open=1'
+```
+
+```bash
+curl -s 'http://127.0.0.1:4318/api/incidents?research=1'
+```
+
+```bash
+curl -s http://127.0.0.1:4318/api/incidents/inc-0123456789abcdef
+```
+
+The first lists incidents with a subject still stopped, the second those eligible for
+investigation, the third one incident with its event history.
+
+### What an incident says
+
+| Field | Meaning |
+|---|---|
+| `cause` | Where the signal was read, the provider, the stage, the typed cause and, for a cause the harness wrote, its normalized text. `author: model` means the stop repeats what a model's saved result said; `author: unknown` means the record does not say who wrote it. In both cases the words are in `evidence` only and the incident belongs to that one subject. |
+| `expected` | The kind of wait when the stop is one the Office already understands (`hold`, `decision`, `merge-approval`, `prerequisite`, `pause`, `authentication`, `provider-wait`, `retry`, `uncertain-effect`, `question`). Each subject has its own; the incident's is the one every open subject shares, or `null`. |
+| `research` | Whether the incident may be investigated now, and why: no explanation, or an expected wait that came back after two resumes, holds three subjects or two projects, or stood 24 hours. Withdrawn as soon as none of those holds. |
+| `subjects` | Each affected piece of work: project, kind, ID, stage, saved stop, the run that last worked it, candidate head, whether a write is unsettled, `open` or `cleared`, and its episodes. Every return after a clear is one episode. |
+| `state` | `observed` today. The later states are set by later phases. |
+
+### What to expect
+
+- The ledger is updated once a minute and not at all while a deployment holds the fence. Until the
+  first stop is recorded its tables do not exist and both routes return nothing.
+- A paused or draining project shows as one subject. Its stopped work stays open until the project
+  runs again and the ledger can see whether it cleared.
+- A failed run is counted for 24 hours, then clears by itself. One that belongs to a stopped job,
+  ticket, review or maintenance run is part of that subject instead.
+- If a collector cannot read a project, the service log says which one each minute, and what that
+  collector had reported for the project is left open until it can.
+- With three GitHub projects, ordinary provider waits will meet the two-project threshold often.
+  That is the plan's threshold; it makes them eligible for research, nothing more.
+- The repair runner's own failures are not recorded yet; the runner does not exist.

@@ -21,8 +21,9 @@ function service(initiallyFenced: boolean) {
     const root = mkdtempSync(resolve(tmpdir(), 'office-ticks-')); roots.push(root);
     const store = new Store(':memory:', projectById('cms-field-vocabulary'), root); stores.push(store);
     store.state.coordination ??= coordination();
-    const state = { fenced: initiallyFenced, fenceReads: 0 };
-    const offices = { entries: new Map([['cms-field-vocabulary', { store, engine: {} }]]), fenced: () => { state.fenceReads++; return state.fenced; }, pump: async () => {}, tick: async () => {} };
+    const state = { fenced: initiallyFenced, fenceReads: 0, incidentSyncs: 0, incidentError: '' };
+    const offices = { entries: new Map([['cms-field-vocabulary', { store, engine: {} }]]), fenced: () => { state.fenceReads++; return state.fenced; }, pump: async () => {}, tick: async () => {},
+        observeIncidents: () => { state.incidentSyncs++; if (state.incidentError) throw new Error(state.incidentError); } };
     const report = vi.fn(async () => ({ services: [], checkedAt: '', context: '' }));
     const itSpecialist = new ITSpecialist({ entries: new Map(), fenced: offices.fenced } as any, { report } as any);
     const stop = startServiceTicks({ offices, itSpecialist } as any);
@@ -59,4 +60,34 @@ test('an unfenced IT timer tick reads the fence once', async () => {
     // 5 s, 10 s and 15 s refresh ticks read once each; the 15 s IT tick reads once, not twice.
     expect(state.fenceReads).toBe(4);
     stop();
+});
+
+test('the incident ledger is not synced while fenced, and is synced once a minute after release', async () => {
+    const { state, stop } = service(true);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(state.incidentSyncs).toBe(0);
+    state.fenced = false;
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(state.incidentSyncs).toBe(0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(state.incidentSyncs).toBe(1);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(state.incidentSyncs).toBe(3);
+    stop();
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(state.incidentSyncs).toBe(3);
+});
+
+test('an incident sync that throws is reported without its secrets and does not stop the next one', async () => {
+    const { state, stop } = service(false);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+        state.incidentError = `ledger unreadable: Bearer abc.def via xoxb-1-2-${'c'.repeat(20)}`;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(errors).toHaveBeenCalledWith(expect.stringMatching(/ledger unreadable: Bearer \[redacted\]/));
+        expect(errors.mock.calls.flat().join(' ')).not.toContain('xoxb-');
+        state.incidentError = '';
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(state.incidentSyncs).toBe(2);
+    } finally { errors.mockRestore(); stop(); }
 });
