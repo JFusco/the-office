@@ -638,6 +638,40 @@ that release is still fenced. An unchanged cursor means no new admission rows we
 The deployment makes the comparison before releasing the fence, when operator commands that can
 requeue existing records are still refused.
 
+### Deploy building blocks
+
+`server/release/` holds the parts a deployment is assembled from. None of them stops, starts or
+reconfigures the service, and nothing calls them yet; the controller that sequences them is a later
+change.
+
+- **Deploy lock** (`deploy-lock.ts`). One deployment per data root. A live owner refuses a second
+  deployment. Acquisition uses a guard file. A takeover atomically replaces a confirmed dead
+  owner's lock and names the owner it replaced. An inconclusive PID check, an unreadable lock or a
+  leftover guard refuses acquisition.
+- **Deployment journal** (`deploy-journal.ts`). One append-only file per operation under
+  `deployments/`, outside every release directory. It fixes the ordered steps when the deployment
+  starts and takes an `intended` entry before a step and its outcome after, each synced to disk. A
+  step cannot start until the one before it is `done`. An `uncertain` or `failed` step ends the
+  journal, so an uncertain step is never resent from it; an abort or rollback after one is a new
+  operation with its own journal. A cut-short final line is reported and nothing more is appended.
+- **Idle wait** (`wait-idle.ts`). Idle is two consecutive, separately fetched `/api/health` reads of
+  the same service instance, each `busy: false` with this deployment's fence held. An unreachable
+  service, a read still unanswered at the deadline, a changed instance, a fence that is open or
+  held by another token, unreadable health, or the deadline each end the wait with a named refusal
+  and no idle receipt.
+- **Store backup** (`backup-stores.ts`). Copies each store database into `backups/<operation>/` with
+  an inventory of sizes, digests and schema, and lists the archive files beside the stores without
+  copying them. A retry clears stale staging after checking it contains no declared database. The
+  backup is for recovery by a person. No deployment or rollback restores from it.
+- **Admission snapshot** (`admission-snapshot.ts`). Reads each project's journal cursor on a
+  read-only connection; the database file is not written. Two snapshots compare as unchanged only
+  when both name the same projects and every cursor is readable and equal; anything else, including
+  an entry with no project name, counts as admitted or unknown.
+- **Plist rendering** (`render-plist.ts`). Derives the service plist for another release of the same
+  data root. Only the working directory, the entry script and the release's own `node_modules/.bin`
+  PATH entry change. Rendering requires a Node service with absolute data and working directories.
+  Any reference to the current release commit outside those three locations causes refusal.
+
 ## Code owners and verification
 
 | Process boundary | Owning source |
