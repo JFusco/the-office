@@ -101,3 +101,52 @@ test('a worktree Git keeps registered after it was set aside is restored in plac
     await expect(removeCandidate(x.f.store, (x.f as any).execute, x.job, x.guard, HEAD)).rejects.toThrow('restored in place');
     expect(existsSync(x.job.worktree)).toBe(true);
 });
+
+/** A job that adopted the pull request a completed maintenance run drafted: it recorded no candidate of its own. */
+function adopted() {
+    const x = owned();
+    delete x.job.candidateBase;
+    x.f.store.state.maintenance = { runs: [{ id: 'run-1', status: 'completed', steps: [{ role: 'developer', stage: 'draft-pr', result: { outcome: 'passed', summary: '', receipts: [], candidates: [{ issue: Number(x.job.key.slice(3)), worktree: x.job.worktree, branch: x.job.branch, head: 'e'.repeat(40), summary: '' }] } }] }] } as any;
+    return x;
+}
+test('a candidate a completed maintenance run created is removed like the Office\'s own, and marked as such', async () => {
+    const { f, job, guard } = adopted();
+    expect(await removeCandidate(f.store, f.execute as any, job, guard, HEAD)).toEqual({ worktree: true, local: true, remote: true, created: true });
+    expect(existsSync(job.worktree)).toBe(false);expect(f.state.localBranches.has(job.branch)).toBe(false);expect(f.state.remote[job.branch]).toBeFalsy();
+    expect(f.store.getEffect(`harness:${job.id}:remove-remote:${job.branch}`)?.status).toBe('verified');
+});
+test('the run\'s worktree is found at its own path when the job worked in a private clone elsewhere', async () => {
+    const { f, job, guard } = adopted(), created = job.worktree;
+    job.worktree = resolve(f.root, 'private-clone', 'candidate');
+    expect(await removeCandidate(f.store, f.execute as any, job, guard, HEAD)).toMatchObject({ worktree: true, local: true, remote: true, created: true });
+    expect(existsSync(created)).toBe(false);
+});
+test('the run\'s copy may be behind the delivered head, but not outside it; the remote branch must be at it', async () => {
+    const behind = adopted();
+    behind.f.state.local.head = 'c'.repeat(40);
+    expect(await removeCandidate(behind.f.store, behind.f.execute as any, behind.job, behind.guard, HEAD)).toMatchObject({ worktree: true, local: true, remote: true });
+    expect(behind.f.state.calls.some(c => c.includes('merge-base --is-ancestor'))).toBe(true);
+
+    const diverged = adopted(), kept = diverged.job.worktree;
+    diverged.f.state.local.head = 'c'.repeat(40); (diverged.f.state as any).notAncestor = true;
+    await expect(removeCandidate(diverged.f.store, diverged.f.execute as any, diverged.job, diverged.guard, HEAD)).rejects.toThrow('which is not in the delivered');
+    expect([existsSync(kept), diverged.f.state.localBranches.has(diverged.job.branch), !!diverged.f.state.remote[diverged.job.branch]]).toEqual([true, true, true]);
+
+    const moved = adopted();
+    moved.f.state.remote[moved.job.branch] = 'd'.repeat(40);
+    await expect(removeCandidate(moved.f.store, moved.f.execute as any, moved.job, moved.guard, HEAD)).rejects.toThrow('not the delivered');
+    expect(existsSync(moved.job.worktree)).toBe(true);
+});
+test('an owned candidate still has to be exactly at the delivered head', async () => {
+    const x = owned();
+    x.f.state.local.head = 'c'.repeat(40);
+    await expect(removeCandidate(x.f.store, x.f.execute as any, x.job, x.guard, HEAD)).rejects.toThrow('not the delivered');
+    expect(x.f.state.calls.some(c => c.includes('merge-base --is-ancestor'))).toBe(false);
+});
+test('uncommitted work or an open pull request preserves a maintenance-created candidate too', async () => {
+    const dirty = adopted(); dirty.f.state.local.dirty = true;
+    await expect(removeCandidate(dirty.f.store, dirty.f.execute as any, dirty.job, dirty.guard, HEAD)).rejects.toThrow('uncommitted changes');
+    const open = adopted(); open.f.state.prs.push({ number: 7, state: 'open', head: { sha: HEAD, ref: open.job.branch }, base: { ref: 'main' } });
+    await expect(removeCandidate(open.f.store, open.f.execute as any, open.job, open.guard, HEAD)).rejects.toThrow('open PR from it');
+    expect(existsSync(open.job.worktree)).toBe(true);
+});

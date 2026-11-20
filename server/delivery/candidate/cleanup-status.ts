@@ -6,7 +6,7 @@ export function recordCandidateCleanup(store: Store, job: TicketJob, outcome: Ca
     const at = new Date().toISOString();
     if (!(outcome instanceof Error)) {
         const parts = [outcome.worktree && 'worktree', outcome.local && 'local branch', outcome.remote && 'remote branch'].filter(Boolean);
-        job.candidateCleanup = { status: outcome.skipped ? 'skipped' : 'done', detail: outcome.skipped ? `Candidate not removed: ${outcome.skipped}.` : parts.length ? `Removed the candidate ${parts.join(', ')}.` : 'No candidate worktree or branch remained.', at };
+        job.candidateCleanup = { status: outcome.skipped ? 'skipped' : 'done', detail: outcome.skipped ? `Candidate not removed: ${outcome.skipped}.` : parts.length ? `Removed the candidate ${parts.join(', ')}.` : 'No candidate worktree or branch remained.', at, ...(outcome.created ? { created: true } : {}) };
         return;
     }
     const detail = String(outcome);
