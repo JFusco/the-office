@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { Store } from '../../../server/store/store';
+import { InFlightOperations } from '../../../server/office/in-flight-operations';
 import { projectById } from '../../../server/office/projects';
 import { startServiceTicks } from '../../../server/office/service-ticks';
 import { coordination } from '../../../server/scheduling/coordination';
@@ -21,14 +22,16 @@ function service(initiallyFenced: boolean) {
     const root = mkdtempSync(resolve(tmpdir(), 'office-ticks-')); roots.push(root);
     const store = new Store(':memory:', projectById('cms-field-vocabulary'), root); stores.push(store);
     store.state.coordination ??= coordination();
-    const state = { fenced: initiallyFenced, fenceReads: 0, incidentSyncs: 0, incidentError: '' };
+    const state = { fenced: initiallyFenced, fenceReads: 0, incidentSyncs: 0, incidentError: '', compared: [] as string[], inFlight: [] as number[] };
+    const operations = new InFlightOperations();
     const offices = { entries: new Map([['cms-field-vocabulary', { store, engine: {} }]]), fenced: () => { state.fenceReads++; return state.fenced; }, pump: async () => {}, tick: async () => {},
-        observeIncidents: () => { state.incidentSyncs++; if (state.incidentError) throw new Error(state.incidentError); } };
+        observeIncidents: () => { state.incidentSyncs++; if (state.incidentError) throw new Error(state.incidentError); },
+        incidents: { inState: (wanted: string) => { state.compared.push(wanted); state.inFlight.push(operations.count); return []; } }, operations };
     const report = vi.fn(async () => ({ services: [], checkedAt: '', context: '' }));
     const itSpecialist = new ITSpecialist({ entries: new Map(), fenced: offices.fenced } as any, { report } as any);
-    const stop = startServiceTicks({ offices, itSpecialist } as any);
+    const stop = startServiceTicks({ offices, itSpecialist, loadedRevision: { hash: 'h'.repeat(64) } } as any);
     const refreshes = () => (store.state.coordination?.requests || []).filter(r => r.action === 'refresh');
-    return { state, stop, refreshes, report, itSpecialist };
+    return { state, stop, refreshes, report, itSpecialist, operations };
 }
 
 test('while fenced the refresh tick queues nothing, and the IT tick does no work and keeps its due marker', async () => {
@@ -90,4 +93,21 @@ test('an incident sync that throws is reported without its secrets and does not 
         await vi.advanceTimersByTimeAsync(60_000);
         expect(state.incidentSyncs).toBe(2);
     } finally { errors.mockRestore(); stop(); }
+});
+
+test('the running release is compared with shipped incidents after each incident sync, never while fenced or with polling off', async () => {
+    const { state, stop, operations } = service(true);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(state.compared).toEqual([]);
+    state.fenced = false;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(state.compared).toEqual(['shipped']);
+    // Health is busy for as long as the comparison runs, and not after.
+    expect(state.inFlight).toEqual([1]);
+    expect(operations.count).toBe(0);
+    process.env.OFFICE_NO_POLL = '1';
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(state.incidentSyncs).toBe(2);
+    expect(state.compared).toEqual(['shipped']);
+    stop();
 });

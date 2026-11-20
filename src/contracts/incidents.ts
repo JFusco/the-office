@@ -111,6 +111,8 @@ export interface IncidentFix {
     onMain: boolean;
     boundAt: string;
     bindings: SubjectFix[];
+    /** Set once a verified running release was found to hold the commit. A merge or a binding never sets it. */
+    deployed?: { event: string; release: { commit: string; hash: string; operation: string; activatedAt: string }; at: string };
 }
 
 export interface Incident {
@@ -131,8 +133,11 @@ export interface Incident {
     fixes?: IncidentFix[];
 }
 
-/** The first six are written by observation; the last two by a person or the repair runner through the Office. */
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound';
+/**
+ * The first six are written by observation; the next two by a person or the repair runner through
+ * the Office; the last two by the Office when it compares the release it runs with a bound fix.
+ */
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'release-identity-unknown';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */

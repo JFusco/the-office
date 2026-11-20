@@ -44,6 +44,11 @@ export class IncidentLedger {
         return this.read(() => { const row = this.db.prepare('SELECT body FROM incidents WHERE id=?').get(id) as { body: string } | undefined; return row ? JSON.parse(row.body) as Incident : null; }, null);
     }
 
+    /** Every incident in one lifecycle state, whether or not a subject is still open. */
+    inState(state: Incident['state']): Incident[] {
+        return this.read(() => (this.db.prepare("SELECT body FROM incidents WHERE json_extract(body,'$.state')=? ORDER BY id").all(state) as { body: string }[]).map(row => JSON.parse(row.body) as Incident), []);
+    }
+
     /** One recorded event by its ID, or null. */
     event(id: string): IncidentEvent | null {
         return this.read(() => { const row = this.db.prepare('SELECT body FROM incident_events WHERE id=?').get(id) as { body: string } | undefined; return row ? JSON.parse(row.body) as IncidentEvent : null; }, null);

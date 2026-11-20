@@ -18,6 +18,7 @@ export function fakeGitHub(answers: Record<string, unknown>) {
 
 export const issueCall = (number: number) => `issue view ${number} --repo ${REPO} --json number,url`;
 export const commitCall = (sha: string) => `api repos/${REPO}/commits/${sha}`;
-export const compareCall = (sha: string) => `api repos/${REPO}/compare/${sha}...main`;
+export const historyCall = (commit: string, ref: string) => `api repos/${REPO}/compare/${commit}...${ref}`;
+export const compareCall = (sha: string) => historyCall(sha, 'main');
 export const pullCall = (number: number) => `pr view ${number} --repo ${REPO} --json number,url,state,headRefOid,mergeCommit`;
 export const pull = (number: number, over: Record<string, unknown> = {}) => ({ number, url: `https://github.com/${REPO}/pull/${number}`, state: 'OPEN', headRefOid: SHA('a'), mergeCommit: null, ...over });

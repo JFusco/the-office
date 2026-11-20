@@ -16,3 +16,8 @@ test('a fix is bound only while fixing: unmerged it stays fixing, on main it is 
     expect(nextState('fixing', 'fix-bound', true)).toBe('shipped');
     for (const state of STATES.filter(state => state !== 'fixing')) expect(() => nextState(state, 'fix-bound', true)).toThrow(/must be fixing/);
 });
+
+test('a fix is deployed only from shipped', () => {
+    expect(nextState('shipped', 'fix-deployed')).toBe('deployed');
+    for (const state of STATES.filter(state => state !== 'shipped')) expect(() => nextState(state, 'fix-deployed')).toThrow(`An incident that is ${state} cannot record fix-deployed; it must be shipped`);
+});
