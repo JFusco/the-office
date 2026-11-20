@@ -77,7 +77,7 @@ server.requestTimeout = 255000;
 for (const { store } of offices.entries.values())
     store.emit('office-opened', `${store.project.name} office is open. Saved work has been recovered; remote evidence still needs current verification.`);
 console.log(`\n  The Office is open → http://127.0.0.1:${PORT}\n  ${built ? 'Production build' : 'Development preview'} · Local only\n`);
-const stopTicks = startServiceTicks({ offices, itSpecialist });
+const stopTicks = startServiceTicks({ offices, itSpecialist, loadedRevision });
 async function close() {
     if (shutdown)
         return;

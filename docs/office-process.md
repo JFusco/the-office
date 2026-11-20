@@ -750,7 +750,8 @@ and settled after:
 8. `verify`: `/api/health` must report the target manifest's hash, a service instance not seen
    before and this deployment's fence still held.
 9. `record`: write `active-release.json`, the receipt of the verified activation. The plist stays
-   the source of truth for what runs.
+   the source of truth for what runs. The service reads this receipt to name its own release in
+   `/api/health` (see Release identity under Incident ledger).
 10. `release`: release the fence. The `record` and `release` writes each require a fresh health
     read of the verified instance with its fence held.
 
@@ -797,7 +798,8 @@ The Office keeps one office-wide record of stopped work, on the control database
 deployment fence (`server/incidents/`). Its scheduled collector only observes: it reads each
 project's state and the scheduler's own projection, writes two tables of its own, and never
 writes a project store, calls a provider or runs a model. A person can also record a repair start
-and a fix binding on an incident (see Write-back below); that reads GitHub and writes only the
+and a fix binding on an incident (see Write-back below), and the Office compares the release it
+runs with fixes that are on `main` (see Deployed fixes below); both read GitHub and write only the
 ledger. An incident describes a stop; it grants no retry, no resume and
 no authority over the work.
 
@@ -890,7 +892,8 @@ change, so a release that starts under a deployment's fence leaves the control d
 found it. The lifecycle states `triaged`, `fixing`, `shipped`, `deployed`, `verified`, `recurred`,
 `housekept`, `dismissed`, `needs-joe` and `abandoned` are defined; observation alone reaches only
 `observed` and never changes a state a later step set. `fixing` and `shipped` are set by the
-write-back events below; the others have no writer yet.
+write-back events below, and `deployed` by the Office when the release it runs holds the fix (see
+Deployed fixes); the others have no writer yet.
 
 `GET /api/incidents` lists the ledger (`open=1`, `research=1`); `GET /api/incidents/<id>` returns
 one incident with its events. Both are read-only.
@@ -927,6 +930,35 @@ another request, a stale revision, a transition not in the table or a binding th
 above is refused and nothing is saved. Observation changes neither the state these events set nor
 the repair and fixes they recorded.
 
+**Release identity.** The service can name the release it runs only from records it can check
+(`server/office/release-identity.ts`). The identity is `verified` when all of these agree: the
+service runs from a release directory of its data root; that directory's `release.json` names the
+directory's commit and the content hash loaded at start-up; and the receipt a deployment wrote
+after verifying its activation (`active-release.json`) names the same commit and hash and the
+digest of that `release.json`. Any disagreement, and any record that is missing, is `unknown` with
+its reason; a reason never repeats text read from a file. `/api/health` reports it as `release`.
+It is read on demand: a release that starts under a deployment is unknown until that deployment
+records it, and a release without a matching receipt stays unknown however it was started. The
+receipt identifies the release, not the process: the same recorded release restarted is still
+verified. Paths are compared as physical paths, so an alias for the data root changes nothing.
+
+**Deployed fixes.** A merge or a binding never makes a fix live. After each observation, and so
+never while a deployment holds the fence, the Office takes every `shipped` incident and compares
+the fix commit with the release it runs (`server/incidents/deployed-fixes.ts`). When the release
+identity is verified and GitHub reports the fix commit in the history of the release commit, one
+`fix-deployed` event is recorded, the fix carries the release (commit, hash, deployment, activation
+time) and the incident becomes `deployed`. A release that does not hold the fix records nothing
+and the incident stays `shipped`. When the identity is unknown, one `release-identity-unknown`
+event per incident, fix and loaded hash says why, no state changes and GitHub is not asked. Only a
+plain answer from GitHub is believed; an unclear one or a failed read is asked again on a later
+pass. A release commit and a fix commit are compared once per service process, at most ten new
+comparisons a pass, and each pass starts after the incident the last one asked about, so reads
+that keep failing do not hold up the rest. The receipt is read again before a fix is marked: if it
+changed while GitHub was asked, nothing is recorded and the answer is kept. A comparison in flight
+keeps `/api/health` busy, and it stops, reading and writing nothing more, as soon as a deployment
+holds the fence. `fix-deployed` cannot be written through the events route. Nothing waits on or
+resumes after a deployed fix yet.
+
 ## Code owners and verification
 
 | Process boundary | Owning source |
@@ -941,6 +973,7 @@ the repair and fixes they recorded.
 | External actions | `server/store/effects.ts` |
 | Release build, deployment and rollback | `server/release/` |
 | Incident observation and cause identity | `server/incidents/` |
+| Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |

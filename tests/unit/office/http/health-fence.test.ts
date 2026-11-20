@@ -30,3 +30,11 @@ test('health reports the fence, and busy while Ellis is mid-tick or an operation
     end();
     expect((await health(ctx)).busy).toBe(false);
 });
+
+test('health names the release it runs, or why it cannot, beside everything it reported before', async () => {
+    const answer = await health(context().context);
+    // A test process does not run from a release directory.
+    expect(answer.release).toEqual({ status: 'unknown', reason: 'the service does not run from a release directory of its data root' });
+    expect(answer).toMatchObject({ ok: true, loadedHash: 'h', serviceInstanceId: 'instance', busy: false, fence: { status: 'open' }, mode: 'running', projects: [] });
+    for (const field of ['startedAt', 'readiness', 'dailyCTO', 'pid', 'uptime']) expect(answer).toHaveProperty(field);
+});

@@ -24,7 +24,7 @@ Server domains (entry points `server/index.ts`, `server/dev.ts`, `server/cli.ts`
 ```text
 server/
   office/          service identity: config, projects, project policy, security, clock, health, revision,
-                   service lock, deployment fence and timers
+                   release identity, service lock, deployment fence and timers
     http/          API routes, office commands, static UI, responses
   store/           persistence: store, schema, migrations, effects, admission journal, evidence
                    artifacts, recovery
@@ -63,7 +63,8 @@ server/
                    recoveries, recovery ledger, reports
   incidents/       office-wide incident ledger: observation of stopped work, cause identity,
                    expected waits, research eligibility; write-back of repair starts and fix
-                   bindings, and the `pnpm office incident` command
+                   bindings, the `pnpm office incident` command, and recognition of a bound fix
+                   in the release the service runs
     sources/       one collector per signal: stopped work, worker failures, IT recoveries and
                    investigations, improvement proposals, provider errors, Slack deliveries, outbox
   release/         release builds and identity: exact-commit build, release.json manifest,

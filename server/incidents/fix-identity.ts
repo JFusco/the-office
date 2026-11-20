@@ -1,5 +1,6 @@
 import type { IncidentFix } from '../../src/contracts/incidents';
 import type { command } from '../workers/process';
+import { inHistoryOf } from './commit-ancestry';
 import { OFFICE_REPOSITORY, readGitHub } from './office-repository';
 
 export type FixIdentity = Pick<IncidentFix, 'commit' | 'pullRequest' | 'onMain'>;
@@ -7,14 +8,8 @@ export type FixIdentity = Pick<IncidentFix, 'commit' | 'pullRequest' | 'onMain'>
 const SHA = /^[0-9a-f]{40}$/;
 const PULL = new RegExp(`^(?:#?(\\d+)|https://github\\.com/${OFFICE_REPOSITORY.replace('/', '\\/')}/pull/(\\d+))$`);
 
-/** Whether `main` holds the commit. Only what GitHub positively reports is believed; anything else is refused. */
-async function onMain(commit: string, execute: typeof command): Promise<boolean> {
-    // `main` compared against the commit: ahead or identical means the commit is in its history.
-    const { status } = await readGitHub<{ status?: unknown }>(execute, ['api', `repos/${OFFICE_REPOSITORY}/compare/${commit}...main`]);
-    if (status === 'ahead' || status === 'identical') return true;
-    if (status === 'behind' || status === 'diverged') return false;
-    throw new Error(`GitHub did not say how main compares with ${commit}`);
-}
+/** Whether `main` holds the commit. */
+const onMain = (commit: string, execute: typeof command) => inHistoryOf(commit, 'main', execute);
 
 /**
  * What a fix reference is, as GitHub reports it now. A full commit SHA is read back and compared

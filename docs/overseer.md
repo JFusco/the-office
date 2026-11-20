@@ -179,8 +179,8 @@ investigation, the third one incident with its event history.
 | `expected` | The kind of wait when the stop is one the Office already understands (`hold`, `decision`, `merge-approval`, `prerequisite`, `pause`, `authentication`, `provider-wait`, `retry`, `uncertain-effect`, `question`). Each subject has its own; the incident's is the one every open subject shares, or `null`. |
 | `research` | Whether the incident may be investigated now, and why: no explanation, or an expected wait that came back after two resumes, holds three subjects or two projects, or stood 24 hours. Withdrawn as soon as none of those holds. |
 | `subjects` | Each affected piece of work: project, kind, ID, stage, saved stop, the run that last worked it, candidate head, whether a write is unsettled, `open` or `cleared`, and its episodes. Every return after a clear is one episode. |
-| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`. The later states are set by later phases. |
-| `repair`, `fixes` | The repair issue and the subjects it is for; every fix bound so far, with what it declares per subject. |
+| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`, then `deployed` once the Office finds that fix in the release it runs. The remaining states are set by later phases. |
+| `repair`, `fixes` | The repair issue and the subjects it is for; every fix bound so far, with what it declares per subject. A fix found in the running release carries `deployed`: the release commit, its hash, the deployment that activated it and when. |
 
 ### Binding a fix you made by hand
 
@@ -235,11 +235,44 @@ again with `--event` and that ID: it is recorded once. If the Office answers tha
 at another revision, the ledger moved since you read it; read it again and resend with the new
 revision and a new event ID. A write is refused while a deployment holds the fence.
 
+### When a fix counts as deployed
+
+Binding a fix, and merging it, never makes it live. The Office decides that itself, from the
+release it runs:
+
+```bash
+curl -s http://127.0.0.1:4318/api/health
+```
+
+`release` in the answer is either `verified`, with the commit, the hash, the deployment that
+activated it and when, or `unknown` with the reason. It is `verified` only for a release that
+`pnpm office deploy` activated and recorded: the directory, its `release.json`, the code loaded
+at start-up and the deployment's receipt must all agree. A release that no deployment recorded is
+`unknown`, however correct its code is; restarting a recorded release keeps it `verified`.
+
+Once a verified release serves, each `shipped` incident whose fix commit is in that release's
+history becomes `deployed`, and its fix shows the release under `deployed`. You do nothing for
+this. The Office compares at most ten fixes a minute, so many at once take a few minutes. If an
+incident stays `shipped`, read `release` in `/api/health` first; that is the current answer.
+
+- `release` is `unknown`: the running release is not one a deployment recorded. The controller
+  refuses to deploy the commit that already runs, so the fix is recognised with the next release
+  you build and deploy that contains it.
+- `release` is `verified` and the incident is still `shipped` after a few minutes: the release
+  does not contain the fix commit, or GitHub has not answered. The comparison is made once per
+  release; the next deployment is compared again.
+
+A `release-identity-unknown` event in an incident's history is a record of one moment: that fix,
+compared with the release that ran then. It is not withdrawn when a later release is verified.
+
 ### What to expect
 
 - Observation updates the ledger once a minute and not at all while a deployment holds the fence.
   A repair start or a fix binding you record is saved at once. Until the
   first stop is recorded its tables do not exist and both routes return nothing.
+- The comparison of a `shipped` fix with the running release asks GitHub through the service's own
+  `gh` login, once per release and fix commit. It is skipped while a deployment holds the fence and
+  when the service runs with polling off.
 - A paused or draining project shows as one subject. Its stopped work stays open until the project
   runs again and the ledger can see whether it cleared.
 - A failed run is counted for 24 hours, then clears by itself. One that belongs to a stopped job,

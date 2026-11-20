@@ -125,6 +125,9 @@ test('a malformed body, an unknown incident, a missing length and an oversized b
     const s = seeded();
     expect((await post(s, '{not json'))!.status).toBe(400);
     expect((await post(s, { kind: 'dismissed', eventId: 'cli-x-123456', expectedRevision: 1 }))!.status).toBe(400);
+    // Only the Office itself records that a fix is deployed.
+    expect((await post(s, { kind: 'fix-deployed', eventId: 'cli-x-123456', expectedRevision: s.revision }))!.status).toBe(400);
+    expect((await post(s, { kind: 'release-identity-unknown', eventId: 'cli-x-123456', expectedRevision: s.revision }))!.status).toBe(400);
     expect((await post(s, start(s, { extra: true })))!.status).toBe(400);
     expect((await post(s, start(s), '/api/incidents/inc-ffffffffffffffff/events'))!.status).toBe(404);
     expect((await post(s, start(s), undefined, {}))!.status).toBe(411);
