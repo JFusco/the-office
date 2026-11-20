@@ -6,6 +6,7 @@ import { checkpointHasMaintenanceAlert, maintenanceNeedsHumanFollowup } from '..
 import { parkedProviderWait, readinessNeedsFollowup, readinessWait } from '../../src/work/work-summary';
 import { holdReason, topLevelHold } from '../office/project-holds';
 import { readRetryPending } from '../scheduling/read-retries';
+import { hoursReadbackPending } from '../time/readback-pending';
 import { knowledgeOutbox } from '../knowledge/knowledge-outbox';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
 import { ctoInputRecovered } from './cto-input-resolution';
@@ -44,7 +45,8 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
             item(`merge-notice:${n.id}`, n.kind === 'goal' ? `Resolve “${n.goalTitle}” completion DM` : n.kind === 'maintenance' ? 'Resolve maintenance completion DM' : `Resolve ${n.key} Slack notice`, n.detail, 'pm', n.key, n.prUrl);
     }
     for (const t of state.coordination?.time?.entries || [])
-        if (t.status === 'uncertain')
+        // An hours write the Office is still reading back by itself is not yet a person's.
+        if (t.status === 'uncertain' && !hoursReadbackPending(state.coordination?.time, t, at))
             item(`time:${t.id}`, `Reconcile ${t.key} hours`, t.detail, 'pm', t.key, t.url);
     for (const c of state.coordination?.checkpoints || [])
         if (!state.maintenance?.runs.some(run => run.id === c.runId && run.retirement) && ['blocked', 'interrupted'].includes(c.status) && (c.repairResume?.needsFollowup || !state.maintenance?.runs.some(r => r.id === c.runId && (r.blockerFollowup || r.readbackRetry && !r.readbackRetry.exhausted && ['blocked', 'interrupted'].includes(r.status)))))

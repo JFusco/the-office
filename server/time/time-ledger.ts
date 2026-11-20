@@ -101,7 +101,9 @@ export class TimeLedger {
             // An ordinary sync records that on the day, so one that failed before its first baseline was read is retried too; a legacy uncertain day is not.
             if (!attempted && !reconcileKey && !settlementPending(ledger, entry.key)) entry.unsentReleases ??= 0;
             if (!attempted && unsentDay(ledger, entry)) markUnsent(entry, error, this.store.clock.now());
-            else entry.detail = `Time sync needs read-back; no automatic retry: ${String(error)}`;
+            // A write that was sent is read back by the Office itself (time-readback); only a day with nothing sent to read back waits for a person.
+            else entry.detail = attempted ? `The hours write could not be confirmed. The Office reads the board back itself and repeats nothing unless the board shows it never landed: ${String(error)}`
+                : `Time sync needs read-back; no automatic retry: ${String(error)}`;
         }
         finally {
             this.store.save();
