@@ -22,6 +22,7 @@ test('the legacy fold carries the cec connection and the workflow values that we
         azure: {
             organization: 'https://dev.azure.com/one', project: 'One', repositoryId: 'repo-1',
             deployment: { environment: 'staging', subscription: 'adcd54e8-229d-4a59-89ec-1713267e3ec9', resourceGroup: 'Cumulative-OS', containerApp: 'ca-cos-conductor-shell-stg', container: 'ca-cos-conductor-shell-stg', healthPath: '/api/health', healthy: 'cos' },
+            production: { branch: 'production', pipeline: 'prod-deploy' },
         },
     });
     const list = 'https://one.example.net/jira/software/c/projects/CEC/list?jql=x';

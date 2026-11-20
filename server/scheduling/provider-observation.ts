@@ -1,4 +1,5 @@
 import { az, correlatedBuild } from '../cec/azure';
+import { followProduction } from '../cec/production/follow-production';
 import { observePipelines } from '../pipelines/observe-pipelines';
 import { azurePipelines } from '../pipelines/azure-pipelines';
 import { githubWorkflows } from '../pipelines/github-workflows';
@@ -50,6 +51,8 @@ export async function observe(this: Engine) {
             }
         }
     }
+    // After the tickets above, whose staging check needs a fresh observation.
+    { const azure = azureBinding(this.store.project); await followProduction(this.store, azure, { read: args => az(azure, args, true, 30000), write: args => az(azure, args) }); }
 }
 
 const parkedReadError = new WeakMap<object, string>();

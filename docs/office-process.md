@@ -198,6 +198,19 @@ already queued blocks with "Project policy requires human merge", and a merge
 already attempted is still settled by read-back. Release, package or downstream-runner success
 must be observed from the relevant provider; a merge is not proof of release.
 
+After staging QA passes on a project with production settings (CEC: branch `production`, pipeline
+`prod-deploy`), the harness follows the ticket to production without a model
+(`server/cec/production/`). When the ticket's commit is on staging and not on production it makes
+sure one staging-to-production pull request is open: the one already open is joined, otherwise one
+is opened through Effects and read back. An uncertain creation is settled by reading the open pull
+requests and is never sent again. The harness never completes that pull request and never starts a
+deploy. A ticket is recorded as in production when a passed `prod-deploy` run on the production
+branch ran a commit that contains the ticket's commit; a squashed copy does not count. Nothing is
+opened while another ticket of the Office is still in staging QA, because the pull request carries
+everything on staging. A pull request someone abandoned is said once and not reopened. A ticket is
+followed for 30 days. Moving the ticket and its sub-tasks to Done follows the production record and
+is not built yet.
+
 A Jira/Azure draft pull request is expected on the accepted candidate. When the developer brings the
 branch up to date with the target first, so the pull request opens on a head that contains the
 accepted candidate, the harness verifies that with git, records the pull request and sends the new
