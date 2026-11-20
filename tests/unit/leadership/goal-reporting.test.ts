@@ -88,7 +88,7 @@ test('all four CEC goals are collected with CEC Azure PR evidence, separately fr
     brain.store.state.github!.prs = [{ number: 400, title: 'Brain candidate', state: 'OPEN', draft: true, author: 'agent', head: 'brain-head', base: 'base', url: 'https://github.com/JFusco/brain/pull/400', mergedAt: '', mergeable: true, reviews: [], checks: [] }];
     const facts = collectCTOFacts([cec, brain].map(({ store, engine }) => ({ store, engine, conversations: {} as any })), at);
     expect(facts.projects[0].goals).toHaveLength(4);
-    expect(facts.projects[0].pullRequests).toMatchObject({ projectId: 'cec', provider: 'azure', prs: [{ id: 40851, head: 'cec-head', version: at }] });
+    expect(facts.projects[0].pullRequests).toMatchObject({ projectId: 'cec', provider: 'azure', prs: [{ id: 40851, head: 'cec-head', version: at, source: 'feature', target: 'main' }] });
     expect(JSON.stringify(facts.projects[0])).not.toContain('brain-head');
     expect(projectPRFacts(brain.store).prs).toMatchObject([{ id: 400, head: 'brain-head' }]);
     const ref = { projectId: 'cec', kind: 'pr' as const, id: '40851', version: at, head: 'cec-head' };
