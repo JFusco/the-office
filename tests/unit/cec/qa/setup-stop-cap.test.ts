@@ -34,3 +34,18 @@ test('below the cap a resume runs; at the cap the first resume shows the reason 
     expect(confirmSetupStopCap(again)).toContain('Browser unavailable (4).');
     expect(confirmSetupStopCap(again)).toBeNull();
 });
+
+test('a count shown for an earlier stop does not confirm a later one with the same number', () => {
+    // Three stops, shown and confirmed; then a run that tested something; then three more stops.
+    const first = ticket(stop(3), [stop(1), stop(2)]);
+    expect(confirmSetupStopCap(first)).toContain('3 times in a row');
+    expect(confirmSetupStopCap(first)).toBeNull();
+    const later = ticket(stop(7), [stop(1), stop(2), stop(3), stop(4, { paidRuns: 1 }), stop(5), stop(6)]);
+    later.qaSetupStopsConfirmed = first.qaSetupStopsConfirmed; later.qaSetupStopsConfirmedFor = first.qaSetupStopsConfirmedFor;
+    expect(consecutiveSetupStops(later)).toBe(3);
+    expect(confirmSetupStopCap(later)).toContain('3 times in a row');
+    expect(confirmSetupStopCap(later)).toBeNull();
+    // A count saved before the stop was recorded with it is shown once more.
+    const legacy = ticket(stop(3), [stop(1), stop(2)]); legacy.qaSetupStopsConfirmed = 3;
+    expect(confirmSetupStopCap(legacy)).toContain('3 times in a row');
+});

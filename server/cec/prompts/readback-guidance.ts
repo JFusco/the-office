@@ -11,7 +11,7 @@ import { setupStopCapConfirmed } from '../qa/setup-stop-cap';
  * detail of their own. A first pickup, a QA handoff and a saved-source continuation follow other routes and
  * are told no step.
  */
-export function readbackDispatchGuidance(ticket?: Pick<Ticket, 'stage' | 'approach' | 'repairCycle'> & Partial<Pick<Ticket, 'results' | 'commit' | 'qaHistory' | 'qaSetupStopsConfirmed'>>, step?: ResumeStep, plainResume = false): string {
+export function readbackDispatchGuidance(ticket?: Pick<Ticket, 'stage' | 'approach' | 'repairCycle'> & Partial<Pick<Ticket, 'results' | 'commit' | 'qaHistory' | 'qaSetupStopsConfirmed' | 'qaSetupStopsConfirmedFor'>>, step?: ResumeStep, plainResume = false): string {
     const interruptedRerun = step === 'rerun-interrupted-qa';
     // The harness's own answer to an exhausted repair budget; the PM is told so it does not ask for that answer as a prerequisite.
     const assessment = ticket?.stage === 'code-review' && ticket.repairCycle?.phase === 'diagnosis' && !ticket.repairCycle.diagnosisAttempted ? `
