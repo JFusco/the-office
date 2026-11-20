@@ -43,7 +43,8 @@ export class Offices {
     ctoCapacity = officeCapacity();
     itCapacity = officeCapacity();
     knowledgeCapacity = officeCapacity();
-    operationsCapacity = officeCapacity();
+    // One operation per project at a time: a project's observation and poll do not queue behind another project's.
+    operationsCapacity = officeCapacity(Math.max(1, PROJECTS.length));
     scheduler = new Scheduler(this.capacity);
     ctoScheduler = new Scheduler(this.ctoCapacity, systemClock, 'cto');
     itScheduler = new Scheduler(this.itCapacity, systemClock, 'it');
