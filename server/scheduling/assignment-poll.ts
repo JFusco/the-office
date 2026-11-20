@@ -14,6 +14,7 @@ import { requeueRefusedQAResults } from '../delivery/recovery/refused-qa-result'
 import { retireBacklogged } from '../delivery/parking/retire-backlogged';
 import { retryCandidateCleanup } from '../delivery/candidate/retry-candidate-cleanup';
 import { adoptDependabot } from '../delivery/intake/dependabot/adopt';
+import { trackDependabotAlerts } from '../delivery/intake/dependabot/track-alerts';
 import { adoptDependencyBot } from '../delivery/intake/dependency-bots/adopt';
 import { unparkReleasedWaits } from '../delivery/parking/release-unpark';
 import { pinCourier } from '../delivery/intake/dependency-bots/pin-courier';
@@ -120,6 +121,8 @@ export async function poll(this: Coordinator, now = new Date()) {
             await adoptDependabot(this.store, this.execute, this.state.jobs ??= [], this.pickup);
             await adoptDependencyBot(this.store, this.execute, this.state.jobs, this.pickup, pinCourier);
             await adoptDependencyBot(this.store, this.execute, this.state.jobs, this.pickup, wikiSync);
+            // An alert Dependabot left without a pull request becomes an issue; admission below picks it up like any other.
+            await trackDependabotAlerts(this.store, this.execute, this.state.jobs, this.pickup);
             await delivery.discover(assigned);
             if (handsOff(this.store)) {
                 await unparkReleasedWaits(this.store, this.execute, this.state.jobs!, this.pickup, now);

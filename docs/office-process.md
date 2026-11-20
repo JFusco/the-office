@@ -68,6 +68,18 @@ and content qualification allow routine Dependabot, Renovate and canonical wiki
 PRs to use current-head provider checks and repository rules without an added
 model review or local QA cycle.
 
+On a hands-off GitHub project the harness also reads the repository's open Dependabot alerts each
+poll (`server/delivery/intake/dependabot/track-alerts.ts`). An alert open for more than a day with
+no open Dependabot pull request naming its package gets one issue, created through Effects and
+carrying a hidden marker for the alert number. When pickup is enabled its card is placed in the
+pickup lane if it is absent or still in Backlog, so admission treats it like any other ticket; this
+is the one case where the harness moves a card out of Backlog without a person. An issue already
+carrying the marker, open or closed, is never duplicated or reopened. When the alert is no longer
+open and no delivery is in flight for the issue, the harness reads that alert's own state, says it on
+the issue and closes it: completed when fixed, not planned when dismissed. A write it could not
+confirm is never repeated; the record stays blocked, reaches the outbox, and settles once a person
+moves the card or files the issue with the marker.
+
 When the Jira intake source is the configured project list, the harness reads it itself and no
 model runs for the mailbox check. TWG marks a further page with a cursor and the last page with
 nothing, so the list is read in key order, each page asking for keys after the last one, until a
@@ -208,8 +220,16 @@ deploy. A ticket is recorded as in production when a passed `prod-deploy` run on
 branch ran a commit that contains the ticket's commit; a squashed copy does not count. Nothing is
 opened while another ticket of the Office is still in staging QA, because the pull request carries
 everything on staging. A pull request someone abandoned is said once and not reopened. A ticket is
-followed for 30 days. Moving the ticket and its sub-tasks to Done follows the production record and
-is not built yet.
+followed for 30 days. The harness then keeps Jira in step, each move one effect that carries its comment and is read back
+(`server/cec/production/production-status.ts`). With the promotion pull request open, a parent in
+Ready for Staging moves to Ready for Production. Once production is recorded, every sub-task that is
+not Done moves to Done, whoever it is assigned to, and then the parent. The available moves are read
+from Jira each time: one Jira does not offer, or whose screen needs a field other than the comment,
+stops there and is said once, and a parent is never closed before its sub-tasks. Both steps act
+only on a parent that is still the Office's and still in Ready for Staging or Ready for Production:
+a status or owner a person set in between leaves the ticket and its sub-tasks alone. A sub-task
+list that cannot be read whole closes nothing. A move that was sent and did not read back is never
+sent again, one a person undid is not made again, and one stopped before sending is tried three times.
 
 A Jira/Azure draft pull request is expected on the accepted candidate. When the developer brings the
 branch up to date with the target first, so the pull request opens on a head that contains the
@@ -464,6 +484,15 @@ worker are told the interruption is history, not an open item. The interrupted r
 provider usage stay in history, and its IT investigation closes when the rerun returns a result.
 A crash, a time limit, staging QA and every other stage keep their existing handling.
 
+A QA worker attaches to a browser a handoff names while that browser is live. When its process and
+port are both gone the handoff has ended and the worker starts its own browser. On a sign-in page it
+clicks a single sign-on button itself and stops only at a password, verification, account or consent
+prompt, never typing a credential. A QA run that stopped in setup, tested nothing and waits on its
+own environment (a browser, a sign-in) does not park the Jira ticket in Blocked; it stays blocked in
+the Office. A setup stop that asks a person to decide still parks. When such a ticket is resumed, the read-back before
+the resume is told that the wait is what the resume answers and is not to be returned as a blocker;
+the QA worker verifies access itself and stops again if it is missing.
+
 A QA, retest or staging QA worker that returned normally, and whose result the Office then refused
 to accept (a report it would not save, for example), left nothing unknown. The stage is blocked in
 those words, without an uncertain-effect stop, and the next resume runs it again. A record saved
@@ -498,6 +527,13 @@ Morgan or Joe:
   request merged into the target branch with no remote branch, local branch or worktree left at its
   head (`server/maintenance/brain/published-cleanup.ts`). The worker's follow-up notes have no
   fixed format and are never parsed.
+- A blocked Brain run that provably never started is tried again by the harness, not read back by a
+  model: its worker returned no receipt, the nightly gate reads exactly as it did before dispatch for
+  the same slot with nothing active, and the primary checkout is at the same commit with the same
+  uncommitted changes (`server/maintenance/brain/not-started.ts`). It is retried after five minutes, at
+  most six times for one checkpoint; after that, and for any run that left a receipt or moved the gate,
+  the ordinary read-back applies. A worker's session inventory request reads again for up to ten
+  seconds while the inventory is incomplete; a newer incomplete read still replaces an older complete one.
 - A Brain result stops for read-back when it is blocked or reports a write whose outcome is unknown.
   A write refused before it took effect is a known outcome and does not stop a completed run.
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after

@@ -98,6 +98,8 @@ export interface AssignmentReview {
     bridgeRetryVersion?: number;
 }
 export interface DailyCheckpoint {
+    /** Times this checkpoint's maintenance was tried again after a run that never started. */
+    startRetries?: number;
     continuationId?: string;
     reconciliation?: ReconciliationRequest;
     id: string;
@@ -336,8 +338,11 @@ export interface TimeEntry {
 }
 /** An automated PR the harness bridged (or refused to bridge) into existing-PR delivery. */
 export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
+/** A Dependabot alert the harness turned into an issue because no pull request came for it. */
+export interface DependabotAlertIssue { id: string; alert: number; package: string; issue: number; status: 'tracking' | 'tracked' | 'resolved' | 'blocked'; detail: string; at: string }
 export interface Coordination {
     adoptions?: DependabotAdoption[];
+    alertIssues?: DependabotAlertIssue[];
     requests?: import('./contracts/work').HarnessRequest[];
     dependencyObservations?: import('./contracts/work').DependencyObservation[];
     continuations?: Continuation[];
@@ -467,6 +472,8 @@ export interface MaintenanceResult {
     }[];
 }
 export interface MaintenanceRun {
+    /** Brain's nightly gate as read just before the worker was dispatched; proves a blocked run never started. */
+    gateBefore?: { slotDate: string; attempts: number; active: string; completed: string; head: string; changes: string };
     retirement?: import('./contracts/history-retirement').HistoryRetirement;
     /** Earlier blocked/interrupted runs this scheduled run proceeded past (their history is retained). */
     supersedes?: string[];

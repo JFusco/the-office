@@ -1,4 +1,5 @@
 import { defaultPickupStatus } from '../delivery/intake/default-pickup';
+import { operationsSlot } from './operations-slot';
 import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../delivery/recovery/stopped-base-disposition';
 import { scheduledOwnershipRead } from '../cec/qa/scheduled-ownership-read';
 import { freshOwnershipRead } from '../cec/qa/fresh-ownership-read';
@@ -138,6 +139,8 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const costReadback = dueCostReadback(store, now);
         if (costReadback)
             add('reconciliation', { id: `cost-readback:${costReadback.key}`, status: 'queued' }, 'cost-readback', costReadback.updatedAt, 3, () => readBackCost(store, costReadback.key));
+        // One project's own operations do not wait behind another project's.
+        for (const item of items) item.slot = operationsSlot(item.stage);
         return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));
     }
     if (lane !== 'delivery')

@@ -84,3 +84,38 @@ test('the automatic completion read-back route is idempotent and never retries a
     await expect(coordinator.readBackCheckpoint(a.checkpoint.id)).rejects.toThrow('no maintenance retry');
     expect(a.checkpoint.status).toBe('blocked'); expect(request).not.toHaveBeenCalled();
 });
+test('a blocked run that never started is tried again without a read-back, a bounded number of times', async () => {
+    const a = setup(), engine = new Engine(a.store), coordinator = new Coordinator(a.store, engine);
+    const mark = { slotDate: a.gate.slotDate, attempts: a.gate.attempts, active: '', completed: a.gate.completed.id, head: 'h1', changes: '' };
+    const checkout = (e: Engine) => vi.spyOn(e.maintenance as any, 'readCheckout').mockResolvedValue({ head: 'h1', changes: '' });
+    Object.assign(a.original, { status: 'blocked', error: 'Error: ownership-coverage-incomplete', gateBefore: mark, readbackRetry: { attempts: 0, nextAt: '', history: [], exhausted: false },
+        steps: [{ role: 'pm', stage: 'brain-maintenance', at: '', result: { outcome: 'blocked', summary: '', ledger: '', blocker: 'ownership-coverage-incomplete', receipts: [], candidates: [] } }] });
+    const reconcile = vi.spyOn(engine.maintenance, 'reconcile');
+    const read = vi.spyOn(engine.maintenance as any, 'readStatus').mockResolvedValue(a.gate);
+    const worker = vi.spyOn(engine.agents, 'run'); checkout(engine);
+    await coordinator.pump({ kind: 'recovery', id: a.original.id });
+    expect(reconcile).not.toHaveBeenCalled(); expect(worker).not.toHaveBeenCalled(); expect(read).toHaveBeenCalledTimes(1);
+    expect(a.original).toMatchObject({ status: 'reconciled', error: '', readbackRetry: { attempts: 0 } });
+    expect(a.checkpoint).toMatchObject({ status: 'queued', startRetries: 1 });
+    expect(Date.parse(a.checkpoint.retryAt!) - Date.now()).toBeGreaterThan(4 * 60 * 1000);
+    expect(a.checkpoint.detail).toContain('did not start (Error: ownership-coverage-incomplete). Nothing was claimed or written');
+    expect(a.store.state.events.filter(e => e.kind === 'maintenance-not-started')).toHaveLength(1);
+
+    // The sixth time is the last: after that the run keeps its ordinary read-back and reaches a person.
+    const b = setup(), engineB = new Engine(b.store), coordinatorB = new Coordinator(b.store, engineB);
+    Object.assign(b.original, { status: 'blocked', error: 'Error: ownership-coverage-incomplete', gateBefore: mark, readbackRetry: { attempts: 0, nextAt: '', history: [], exhausted: false }, steps: a.original.steps });
+    b.checkpoint.startRetries = 6;
+    const reconcileB = vi.spyOn(engineB.maintenance, 'reconcile').mockRejectedValue(new Error('still unverified'));
+    vi.spyOn(engineB.maintenance as any, 'readStatus').mockResolvedValue(b.gate);
+    await coordinatorB.pump({ kind: 'recovery', id: b.original.id });
+    expect(reconcileB).toHaveBeenCalledOnce();
+    expect(b.original.status).toBe('blocked');
+
+    // A gate that moved means the run did start: it is read back.
+    const c = setup(), engineC = new Engine(c.store), coordinatorC = new Coordinator(c.store, engineC);
+    Object.assign(c.original, { status: 'blocked', error: 'x', gateBefore: { ...mark, attempts: 0 }, readbackRetry: { attempts: 0, nextAt: '', history: [], exhausted: false }, steps: a.original.steps });
+    const reconcileC = vi.spyOn(engineC.maintenance, 'reconcile').mockRejectedValue(new Error('still unverified'));
+    vi.spyOn(engineC.maintenance as any, 'readStatus').mockResolvedValue(c.gate); checkout(engineC);
+    await coordinatorC.pump({ kind: 'recovery', id: c.original.id });
+    expect(reconcileC).toHaveBeenCalledOnce();
+});
