@@ -54,6 +54,10 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date()): HumanActi
         // An adoption still in progress is not a question; one that stays unfinished is.
         if (['refused', 'blocked'].includes(a.status) || a.status === 'adopting' && at.getTime() - Date.parse(a.at) > ADOPTION_STALLED_MS)
             item(`dependabot:${a.pr}`, `${a.bot || 'Dependabot'} PR #${a.pr} was not adopted`, a.detail, 'pm', a.issue ? `GH-${a.issue}` : '', a.url);
+    for (const a of state.coordination?.alertIssues || [])
+        // Tried again every poll; one that stays blocked past the stall time is worth a look.
+        if (a.status === 'blocked' && at.getTime() - Date.parse(a.at) > ADOPTION_STALLED_MS)
+            item(`dependabot-alert:${a.alert}`, `Dependabot alert #${a.alert} has no ticket yet`, a.detail, 'pm', a.issue ? `GH-${a.issue}` : '');
     for (const run of state.maintenance?.runs || [])
         if (run.blockerFollowup && ['blocked', 'interrupted'].includes(run.blockerFollowup.status))
             item(`maintenance-blocker:${run.id}`, 'Read back the source repair handoff', run.blockerFollowup.detail, 'pm');
