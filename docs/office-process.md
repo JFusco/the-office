@@ -401,7 +401,9 @@ replaced is settled history: stage, chat and reconcile workers are shown it as s
 is history, a restated copy is dropped from any stage's result, and it gates nothing. A review decides on the source and its evidence; work
 that belongs to a later stage is not a reason for it to block. After three setup stops in a row on one
 candidate, the next resume shows the count and latest reason without starting a worker;
-resuming again runs one more attempt.
+resuming again runs one more attempt. The read-back before that attempt is told the stops are the
+reason for it and not a current hold; the QA agent checks its own setup again
+(`server/cec/qa/setup-stop-cap.ts`).
 
 A QA run that stopped in setup without exercising any case or making a paid run posts no QA
 comment. A setup stop that parks for a person or sends the ticket to repair still posts it: the

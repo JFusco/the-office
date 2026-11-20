@@ -21,6 +21,12 @@ export function consecutiveSetupStops(ticket: Pick<Ticket, 'stage' | 'commit' | 
     return count;
 }
 
+/** The cap was reached, its count was shown, and nothing has run since: the resume now arriving is the deliberate one. */
+export const setupStopCapConfirmed = (ticket: Pick<Ticket, 'stage' | 'commit' | 'results' | 'qaHistory' | 'qaSetupStopsConfirmed'>): boolean => {
+    const stops = consecutiveSetupStops(ticket);
+    return stops >= SETUP_STOP_CAP && ticket.qaSetupStopsConfirmed === stops;
+};
+
 /**
  * Once the cap is reached, the first resume does not run another attempt: it records that the
  * count was shown and returns the reason to show. Resuming again at the same count runs one
