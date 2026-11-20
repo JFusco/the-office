@@ -1,9 +1,6 @@
 import { needsDecision } from '../../delivery/parking/needs-decision';
-import { isSetupStop } from '../qa/setup-stop-cap';
+import { environmentWait } from '../qa/environment-wait';
 import type { StageResult } from '../../../src/shared';
-
-/** A QA run that stopped in setup, tested nothing, and is waiting on its own environment: a browser, a sign-in. */
-const environmentWait = (result: StageResult) => isSetupStop(result) && result.resolution?.kind === 'provider-wait' && !result.resolution.release;
 
 /**
  * A structured decision with no uncertain or unverified write of its own; anything else stays an
