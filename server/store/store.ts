@@ -80,23 +80,37 @@ export class Store {
     }
     save(): void {
         // Both steps are sized by the text they end in: the redacted copy has no size of its own until it is serialised.
-        const began = performance.now(), redacted = sanitizeObject(this.state), copied = performance.now();
-        const body = JSON.stringify(redacted);
-        this.timings.add('save: redact', copied - began, body.length);
-        this.timings.add('save: serialise', performance.now() - copied, body.length);
-        this.savedChars = body.length;
+        const began = performance.now();
+        let redacted: OfficeSnapshot;
+        try { redacted = sanitizeObject(this.state); }
+        catch (error) {
+            this.timings.add('save: redact', performance.now() - began);
+            throw error;
+        }
+        const copied = performance.now();
+        let body: string | undefined;
+        try { body = JSON.stringify(redacted); }
+        finally {
+            const serialised = performance.now(), chars = body?.length ?? 0;
+            this.timings.add('save: redact', copied - began, chars);
+            this.timings.add('save: serialise', serialised - copied, chars);
+        }
         this.statement('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(body);
+        this.savedChars = body.length;
     }
     transaction<T>(operation: () => T): T {
         if (this.transactionDepth)
             return operation();
         const began = performance.now();
-        // Sized by the state as last saved: measuring the copy itself would serialise it a second time.
-        const previous = this.timings.time('transaction: rollback copy', () => structuredClone(this.state), () => this.savedChars);
+        const previousSavedChars = this.savedChars;
+        let previous: OfficeSnapshot;
         let result!: T;
         let events: OfficeEvent[] = [];
-        // A refused BEGIN (a locked database) is the slowest transaction of all: it is counted too.
-        try { this.db.exec('BEGIN IMMEDIATE'); }
+        try {
+            // Sized by the state as last saved: measuring the copy itself would serialise it a second time.
+            previous = this.timings.time('transaction: rollback copy', () => structuredClone(this.state), () => previousSavedChars);
+            this.db.exec('BEGIN IMMEDIATE');
+        }
         catch (error) { this.timings.add('transaction: whole attempt', performance.now() - began); throw error; }
         this.transactionDepth = 1;
         try {
@@ -111,6 +125,7 @@ export class Store {
         }
         catch (error) {
             this.db.exec('ROLLBACK');
+            this.savedChars = previousSavedChars;
             // In place: callers holding a ticket or job across an await keep the live record.
             // The saved copy is always a correct state, so it is the fallback if the in-place restore cannot finish.
             try { restoreInPlace(this.state, previous); } catch { this.state = previous; }

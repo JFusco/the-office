@@ -1,5 +1,8 @@
+import { DatabaseSync } from 'node:sqlite';
 import { expect, test } from 'vitest';
-import { MAX_TIMED_NAMES, storeTimings } from '../../../server/store/store-timings';
+import { serialisedSnapshot } from '../../../server/office/http/serialised-snapshot';
+import { storeTimings } from '../../../server/store/store-timings';
+import { timeStatements } from '../../../server/store/timed-statements';
 
 function clocked() { let at = 0; return { timings: storeTimings(() => at, '2026-11-21T00:00:00.000Z'), pass: (ms: number) => { at += ms; } }; }
 
@@ -22,12 +25,27 @@ test('work that throws is still timed, and its error reaches the caller unchange
     expect(timings.report().timings['sql: INSERT']).toEqual({ calls: 1, ms: 4, slowestMS: 4, chars: 0 });
 });
 
-test('the table of names is bounded: past the bound, time is kept under one shared name', () => {
+test('character sizing is outside the recorded work duration', () => {
+    const { timings, pass } = clocked();
+    timings.time('sql: SELECT', () => { pass(4); return 'text'; }, text => { pass(9); return text.length; });
+    expect(timings.report().timings['sql: SELECT']).toEqual({ calls: 1, ms: 4, slowestMS: 4, chars: 4 });
+});
+
+test('more than 200 SQL shapes and later snapshot steps keep distinct totals', () => {
     const { timings } = clocked();
-    for (let i = 0; i < MAX_TIMED_NAMES + 5; i++) timings.add(`name ${i}`, 1);
-    timings.add('name 0', 1);
+    using db = new DatabaseSync(':memory:');
+    timeStatements(db, timings);
+    const shapes = Array.from({ length: 201 }, (_, i) => `SELECT 'text' AS col_${i}`);
+    for (const sql of shapes) db.prepare(sql).get();
+    const snapshot = timings.time('browser snapshot: build and redact', () => ({ revision: 1 }));
+    const body = serialisedSnapshot({ timings }, snapshot, 'a request');
+    serialisedSnapshot({ timings }, snapshot, 'a push');
+
     const report = timings.report().timings;
-    expect(Object.keys(report)).toHaveLength(MAX_TIMED_NAMES + 1);
-    expect(report.other).toMatchObject({ calls: 5, ms: 5 });
-    expect(report['name 0'].calls).toBe(2);
+    expect(Object.keys(report)).toHaveLength(204);
+    for (let i = 0; i < shapes.length; i++)
+        expect(report[`sql: SELECT ? AS col_${i}`]).toMatchObject({ calls: 1, chars: 4 });
+    expect(report['browser snapshot: build and redact']).toMatchObject({ calls: 1, chars: 0 });
+    expect(report['browser snapshot: serialise for a request']).toMatchObject({ calls: 1, chars: body.length });
+    expect(report['browser snapshot: serialise for a push']).toMatchObject({ calls: 1, chars: body.length });
 });
