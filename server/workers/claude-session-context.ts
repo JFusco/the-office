@@ -1,11 +1,10 @@
-import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { readdir, access } from 'node:fs/promises';
 import type { LiveSession } from './session-bridge';
-import { claudeSessionScope } from './claude-session-scope';
-import { sessionContextFile, type ContextReader, type ContextProject } from './session-context-file';
-const root = resolve(homedir(), '.claude/projects');
-const readTranscript = sessionContextFile(root, claudeSessionScope);
+import type { ContextReader, ContextProject } from './session-context-file';
+import { CLAUDE_TRANSCRIPTS as root } from './session-context-readers';
+import { threadedContextReader } from './session-context-client';
+const readTranscript = threadedContextReader('claude');
 
 /** Resolve only a live inventory identity; a moved checkout may leave its transcript under the original project. */
 export async function claudeTranscript(session: LiveSession, directory = root) {

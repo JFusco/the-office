@@ -7,7 +7,7 @@ import { ContextReadChanged, MAX_CONTEXT_READ_MS, sameContextFile, sessionContex
 import { withSessionContextSnapshot } from './session-context-snapshot';
 import type { SessionContextCheckpoint } from './session-context-checkpoint';
 import { SessionContextDeadline, type ContextReadPhase } from './session-context-deadline';
-export type ContextProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>>;
+export type ContextProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>> & { jira?: { site: string; projectKey: string } };
 export type ContextReader = (path: string, id: string, projects: ContextProject[]) => Promise<SessionContext>;
 
 /** Cache derived context, never transcripts; changed files, identities or project bindings invalidate it. */

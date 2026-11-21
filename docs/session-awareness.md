@@ -89,6 +89,17 @@ and truncation invalidate that progress. Full coverage, strict record validation
 freshness are still required before any ownership verdict. No retry or budget reset
 is authorized by a saved parsing checkpoint.
 
+Codex rollouts and Claude transcripts are read the same way, on one worker thread
+of the service that owns both readers and their derived caches. A read needs many
+turns of an event loop inside its five-second deadline, and the service's own loop
+can be held for seconds by store writes; the deadline is measured on the thread.
+The thread returns derived context or the reader's own failure, never transcript
+bytes. A thread that exits, or gives no answer within twenty seconds, fails every
+read it still owed as unavailable and is replaced on the next read; its caches start
+empty, so the next reads are complete folds. Each project's Jira site and key are
+resolved by the service and sent with the read, so the thread never applies a
+configuration edited since the service started.
+
 A forked Claude transcript may begin with copied parent records before its own
 native identity records. The child index excludes that parent conversation and
 ownership scope. A child that has not sent a message yet can still bind through

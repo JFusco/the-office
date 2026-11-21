@@ -1,10 +1,9 @@
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
 import type { LiveSession } from './session-bridge';
-import { sessionScope, sessionScopeParser, type SessionContext } from './session-scope';
-import { sessionContextFile, type ContextProject, type ContextReader } from './session-context-file';
+import type { SessionContext } from './session-scope';
+import type { ContextProject, ContextReader } from './session-context-file';
+import { threadedContextReader } from './session-context-client';
 
-const readRollout = sessionContextFile(resolve(homedir(), '.codex/sessions'), sessionScope, sessionScopeParser);
+const readRollout = threadedContextReader('codex');
 
 /** Read context only for positively loaded identities; never search or resume historical chats. */
 export async function codexSessionContext(sessions: LiveSession[], projects: ContextProject[], read: ContextReader = readRollout): Promise<LiveSession[]> {
