@@ -183,8 +183,8 @@ Stage capability records distinguish verified reader profiles from retained nati
 
 ### History kept out of live state
 
-Every save writes a project's whole state, so history nothing reads is moved beside the store instead of
-staying in it. Ellis's reports beyond the latest 50, and the task-level timing of builds that finished at
+A save writes the top-level parts of a project's state that changed, and the rollback copy and every load
+still cover all of it, so history nothing reads is moved beside the store instead of staying in it. Ellis's reports beyond the latest 50, and the task-level timing of builds that finished at
 least seven days ago (stage and job timing stays), are appended to monthly files under the project's data
 folder: `archive/it-reports-YYYY-MM.jsonl` and `archive/ci-builds-YYYY-MM.jsonl`, one JSON record per
 line. A record leaves state only after its archive write is confirmed, so a crash can leave a record in
