@@ -1,3 +1,4 @@
+import { settledSlackReadback } from './slack/settled-readback';
 import { repairFreeze } from '../incidents/repair/repair-freeze';
 import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { supersedingDelivery, slackRequestSettled } from './slack/supersession-proof';
@@ -120,7 +121,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: im
             item(`ticket-job:${j.id}`, `${j.key} needs team follow-up`, `${wait.summary}\n${wait.next}`, 'pm', j.key, j.prUrl);
         }
     for (const m of state.messages) {
-        const reconciledSlackReadback = /Slack delivery could not be confirmed|Slack read-back did not match/.test(m.error) && slackRequestSettled(state, m.actionId.startsWith('message:') ? m.actionId.slice(8) : m.id);
+        const reconciledSlackReadback = settledSlackReadback(state, m);
         // A question about a ticket that has since been closed has nothing left to decide.
         if (m.question && !state.tickets.some(t => t.key === m.ticket && t.status === 'closed') && !deferredPickup(state, m.ticket, state.project ? defaultPickupStatus(state.project) : undefined) && !state.messages.some(reply => reply.from === 'human' && reply.actionId === `question:${m.id}` && reply.status === 'answered'))
             item(`question:${m.id}`, `${m.from === 'human' ? 'Morgan' : ROLE_NAMES[m.from]} has a question`, m.question, m.from === 'human' ? 'pm' : m.from, m.ticket);

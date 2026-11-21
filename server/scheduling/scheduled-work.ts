@@ -1,3 +1,4 @@
+import { settledSlackReadback } from '../conversations/slack/settled-readback';
 import { dueSlackReread, rereadUncertainSlack } from '../conversations/slack/reread-uncertain';
 import { defaultPickupStatus } from '../delivery/intake/default-pickup';
 import { operationsSlot } from './operations-slot';
@@ -97,7 +98,9 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         const original = message.from === 'human' ? message : message.from === 'it' && message.actionId.startsWith('message:')
             ? store.state.messages.find(original => original.id === message.actionId.slice(8)) : undefined;
         add('conversation', message, `conversation:${message.to}`, message.createdAt, 3, () => message.to === 'cto' ? conversations.pumpCTO() : message.to === 'it' ? conversations.pumpIT() : message.to === 'knowledge' ? conversations.pumpKnowledge() : conversations.pump(message.id),
-            ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained') : history(retiredFollowup(message, store.state.messages) || closedTicketReport(message, store.state.tickets) || supersededEvidenceRequest(message, store.state.messages), ['conversation', message.id],
+            ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained')
+                // The same rule the outbox applies: a failed Slack read-back is history once its delivery is confirmed.
+                : ['failed', 'interrupted'].includes(message.status) && settledSlackReadback(store.state, message) ? eligible('terminal', 'The Slack delivery this was about is confirmed; the failed request is kept as history') : history(retiredFollowup(message, store.state.messages) || closedTicketReport(message, store.state.tickets) || supersededEvidenceRequest(message, store.state.messages), ['conversation', message.id],
                 ...(message.ticket ? (c.jobs || []).filter(job => job.key === message.ticket).map(job => ['delivery', job.id] as [WorkRef['kind'], string]) : [])));
     }
     if (lane === 'it') items.push(...scheduledInvestigations(store, (prompt, schema, options) => engine.itAgents.run('it', prompt, schema, options), now));
