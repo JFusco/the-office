@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import type { Incident, IncidentEvent, IncidentRepair, SubjectFix } from '../../src/contracts/incidents';
+import { subjectKey, type Incident, type IncidentEvent, type IncidentRepair, type SubjectFix } from '../../src/contracts/incidents';
 import { canonical } from './canonical-json';
 import { dismiss, type DismissalFacts, type DismissalRequest } from './dismissal';
 import type { FixIdentity } from './fix-identity';
 import type { IncidentLedger } from './incident-ledger';
+import { routeFault } from './repair/resume-routes';
 import { repairSubject } from './subject-digest';
 import { nextState } from './transitions';
 
@@ -80,7 +81,8 @@ export function replayed(ledger: IncidentLedger, incident: string, eventId: stri
 /**
  * Records one event a person or the repair runner sent. The incident must be at the revision the
  * caller read, the event must be legal from its state, a fix must account for exactly the
- * subjects its repair recorded, each unchanged, and a dismissal must name the evidence and the
+ * subjects its repair recorded, each unchanged, with every route one the inventory holds for that
+ * subject (see repair/resume-routes.ts), and a dismissal must name the evidence and the
  * code as they stand (see dismissal.ts). The event and the new projection are saved together or
  * not at all.
  */
@@ -118,6 +120,15 @@ export function recordIncidentEvent(ledger: IncidentLedger, incidentId: string, 
         }
         const missing = repair.subjects.filter(subject => !seen.has(subject.subject)).map(subject => subject.subject);
         if (missing.length) throw new Error(`A fix states a route, an undeclared boundary or no route for every subject of its repair; missing: ${missing.slice(0, 10).join(', ')}`);
+        // A route that could never resume its subject is refused now, while the person binding it can still correct it.
+        // The repair kept a digest, not the stage: the stage is known only while the ledger still holds the subject as it was digested.
+        const held = new Map(incident.subjects.map(subject => [subjectKey(subject), subject]));
+        for (const binding of bindings) {
+            if (binding.disposition === 'no-route') continue;
+            const subject = held.get(binding.subject), stage = subject && repairSubject(subject).digest === binding.digest ? subject.stage : null;
+            const fault = routeFault(binding.route, { subject: binding.subject, stage, provider: incident.cause.provider });
+            if (fault) throw new Error(`The route bound to ${binding.subject} can never resume it: ${fault}`);
+        }
         const fix = { event: eventId, ...write.fix, boundAt: at, bindings };
         next = { ...incident, state, fixes: [...incident.fixes ?? [], fix] };
         body = { request, fix: write.fix, from: incident.state, to: state };

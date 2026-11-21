@@ -1,0 +1,88 @@
+import { z } from 'zod';
+import type { RepairRoute } from '../../../src/contracts/incidents';
+
+/** Whose key a route's payload carries: the ticket the work is for, or the subject's own record. */
+type Keyed = 'ticket' | 'record';
+
+export interface ResumeRoute {
+    /** What the handler resumes: a GitHub delivery job, a CEC pilot ticket, an assignment review, a maintenance run or a checkpoint. */
+    subject: 'job' | 'ticket' | 'intake' | 'maintenance' | 'checkpoint';
+    keyed: Keyed;
+    /** What `head` names for this handler, or null when it takes none. Never assumed to be a commit. */
+    head: string | null;
+    /** Whether this release can dispatch the route. A route that cannot be dispatched resumes nothing. */
+    dispatch: boolean;
+}
+
+const original = (stage: string) => `the ID of the original stopped ${stage} worker`;
+
+/**
+ * Every route a fix may name: the closed list of existing handlers the Office intends to resume
+ * stopped work through. An action that is not here is not a route. Each row states what the
+ * handler's own signature establishes; its preconditions stay the handler's to check when it runs.
+ * No row is dispatched yet: `dispatch` turns true with the change that ships that route's resume
+ * and its test.
+ */
+export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
+    'resume-ticket': { subject: 'ticket', keyed: 'ticket', head: null, dispatch: false },
+    'reconcile-implementation': { subject: 'job', keyed: 'ticket', head: original('implementation'), dispatch: false },
+    'reconcile-validation': { subject: 'job', keyed: 'ticket', head: original('validation'), dispatch: false },
+    'reconcile-preparation': { subject: 'job', keyed: 'ticket', head: `${original('preparation')}; empty selects the saved-result reconciliation`, dispatch: false },
+    'reconcile-review': { subject: 'job', keyed: 'ticket', head: 'the ID of the stopped base-update handoff worker or of the continuation\'s original worker; empty selects the saved-review reconciliation', dispatch: false },
+    'reconcile-base-update': { subject: 'job', keyed: 'ticket', head: `the job's head commit for a board preflight, or ${original('base-update')}; empty selects the saved-result reconciliation`, dispatch: false },
+    'reconcile-scope-repair': { subject: 'job', keyed: 'ticket', head: original('scope-repair'), dispatch: false },
+    'reconcile-closeout': { subject: 'job', keyed: 'ticket', head: `${original('closeout')}; empty selects the saved-closeout reconciliation`, dispatch: false },
+    'review-candidate': { subject: 'job', keyed: 'ticket', head: null, dispatch: false },
+    'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: false },
+    'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: false },
+    'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: false },
+    'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: false },
+    'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: false },
+    'reconcile-native-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: false },
+};
+
+/** Compared and saved exactly as sent: a key with space around it names nothing, so it is refused, not trimmed. */
+const Key = z.string().min(1).max(200).refine(key => key === key.trim());
+const KeyOnly = z.object({ key: Key }).strict();
+const KeyAndHead = z.object({ key: Key, head: z.string().max(200).optional() }).strict();
+
+/** A subject key is `project/kind/id`; a project ID and a kind hold no slash, an ID may. */
+function parts(subject: string): { kind: string; id: string } | null {
+    const [project, kind, ...rest] = subject.split('/');
+    return project && kind && rest.length ? { kind, id: rest.join('/') } : null;
+}
+
+/**
+ * A project's delivery work is scheduled under one kind whatever it is: a GitHub job by its ID, a
+ * CEC pilot ticket as `ticket:KEY`, and a CEC queue request by its own ID. Only the project's
+ * provider tells a job from a queue request, so a job needs GitHub and a ticket needs Azure.
+ */
+const SUBJECTS: Record<ResumeRoute['subject'], { named: string; is: (kind: string, id: string, provider: string) => boolean }> = {
+    ticket: { named: 'a CEC pilot ticket', is: (kind, id, provider) => kind === 'delivery' && id.startsWith('ticket:') && provider === 'azure' },
+    job: { named: 'a GitHub delivery job', is: (kind, id, provider) => kind === 'delivery' && !id.startsWith('ticket:') && provider === 'github' },
+    intake: { named: 'an assignment review', is: kind => kind === 'intake' },
+    maintenance: { named: 'a maintenance run', is: kind => kind === 'maintenance' },
+    checkpoint: { named: 'a checkpoint', is: kind => kind === 'checkpoint' },
+};
+
+/**
+ * Why a route can never resume the subject it is bound to, or null. Checked from the binding and
+ * the subject as the repair recorded it, with no project read: the action is in the inventory, the
+ * payload has that action's shape, the action applies to the subject's kind in a project of that
+ * provider (the one its incident's cause records), a key that names the
+ * subject's own record names this one, and the stage the route expects is the stage the stop was
+ * recorded at. The digest already pins that stage, so any other could never be admitted. A null
+ * stage is one the caller could not establish; it is then not compared.
+ */
+export function routeFault(route: RepairRoute, subject: { subject: string; stage: string | null; provider: string }, routes: Readonly<Record<string, ResumeRoute>> = RESUME_ROUTES): string | null {
+    const known = Object.hasOwn(routes, route.action) ? routes[route.action] : undefined;
+    if (!known) return `${route.action} is not a resume route; the routes are ${Object.keys(routes).join(', ')}`;
+    const payload = (known.head === null ? KeyOnly : KeyAndHead).safeParse(route.payload);
+    if (!payload.success) return `the payload of ${route.action} is ${known.head === null ? '{ key }' : '{ key, head? }'}`;
+    const work = parts(subject.subject);
+    if (!work || !SUBJECTS[known.subject].is(work.kind, work.id, subject.provider)) return `${route.action} resumes ${SUBJECTS[known.subject].named}, which ${subject.subject || 'this subject'} is not`;
+    const own = known.subject === 'ticket' ? work.id.slice('ticket:'.length) : known.keyed === 'record' ? work.id : null;
+    if (own !== null && payload.data.key !== own) return `the key of ${route.action} for ${subject.subject} is ${own}`;
+    if (subject.stage !== null && route.expectedStage !== subject.stage) return `${subject.subject} was recorded at stage ${subject.stage || '(none)'}, not ${route.expectedStage}`;
+    return null;
+}

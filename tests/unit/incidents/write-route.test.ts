@@ -50,7 +50,7 @@ test('a fix is bound from a pull request GitHub reports merged', async () => {
     expect(s.github.calls).toEqual([issueCall(365), pullCall(12), compareCall(SHA('b'))]);
 });
 
-test('route payloads are bounded before record parsing and bind intact at the limit', async () => {
+test('route payloads are bounded before record parsing; one within the bound still needs its route\'s shape, and then binds intact', async () => {
     const s = seeded();
     await post(s, start(s));
     const before = s.incidents.get(s.id)!;
@@ -71,12 +71,18 @@ test('route payloads are bounded before record parsing and bind intact at the li
         expect(s.incidents.get(s.id)).toEqual(before);
         expect(s.github.calls).toEqual([issueCall(365)]);
     }
-    const response = await bind(atLimit);
+    // Within the size bound, so it is read; GitHub confirms the fix, and the ledger refuses the route.
+    await expect(bind(atLimit)).rejects.toThrow('The route bound to brain/delivery/job-1 can never resume it: the payload of reconcile-review is { key, head? }');
+    expect(s.incidents.events(s.id)).toHaveLength(count);
+    expect(s.incidents.get(s.id)).toEqual(before);
+    expect(s.github.calls).toEqual([issueCall(365), pullCall(12), compareCall(SHA('b'))]);
+    const largest = { key: 'k'.repeat(200), head: 'h'.repeat(200) };
+    const response = await bind(largest);
     expect(response!.status).toBe(200);
     expect(s.incidents.get(s.id)).toMatchObject({
-        revision: before.revision + 1, fixes: [{ bindings: [{ route: { payload: atLimit } }] }],
+        revision: before.revision + 1, fixes: [{ bindings: [{ route: { payload: largest } }] }],
     });
-    expect(s.incidents.event('cli-bind-1')?.body.request).toMatchObject({ bindings: [{ route: { payload: atLimit } }] });
+    expect(s.incidents.event('cli-bind-1')?.body.request).toMatchObject({ bindings: [{ route: { payload: largest } }] });
     expect(s.incidents.events(s.id)).toHaveLength(count + 1);
 });
 
