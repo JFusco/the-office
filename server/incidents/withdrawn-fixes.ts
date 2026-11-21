@@ -2,7 +2,7 @@ import type { Incident, IncidentEvent, IncidentFix } from '../../src/contracts/i
 import type { ReleaseIdentity } from '../office/release-identity';
 import type { command } from '../workers/process';
 import { inHistoryOf } from './commit-ancestry';
-import type { CompareMemory } from './deployed-fixes';
+import { comparison, type CompareMemory } from './deployed-fixes';
 import { eventId } from './event-id';
 import type { IncidentLedger } from './incident-ledger';
 import { nextState } from './transitions';
@@ -52,7 +52,7 @@ export async function recordWithdrawnFixes({ ledger, identity, execute, now, mem
         if (served.status === 'verified') {
             // The same commit serves again: it holds whatever it held when the mark was made.
             if (served.commit === mark.release.commit) { result.kept.push(seen.id); continue; }
-            const key = `${served.commit}:${fix.commit}`;
+            const key = comparison(served.commit, fix.commit);
             if (!memory.answers.has(key)) {
                 if (failed.has(key) || result.reads >= limit) { result.waiting.push(seen.id); continue; }
                 result.reads += 1;

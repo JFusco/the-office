@@ -3,9 +3,11 @@
 The Overseer is the repair engine for the harness and the Office. It is being delivered in phases;
 this guide covers what exists. Today that is deterministic deployment, the incident ledger and
 the mark the Office puts on stopped work a repair covers, which holds recovery back for it. Resume
-after a fix has its first part: the list of routes a fix may name, and the switch that will stop
-automatic resumes. Nothing is resumed automatically yet. The autonomous runner is a later phase and
-is not described here until it ships. The process rules are in the Office process, under
+after a fix works for one route so far: once a fix you bound is running and you have enabled the
+switch for automatic resumes, which starts paused, the Office queues `reconcile-review` with no
+`head` for the work that fix stopped (see [Resuming after a fix](#resuming-after-a-fix)). The
+other routes follow. The autonomous runner is a later phase and is not described here until it
+ships. The process rules are in the Office process, under
 [Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
 
 ## Deployment
@@ -152,10 +154,12 @@ deployment.
 
 ## Incidents
 
-The Office records every stop it can see in one ledger, grouped by cause across projects. Nothing
-in it retries, resumes or repairs anything. It writes one thing to a project: while a repair is in
-progress, a mark on the stops that repair covers (see Work awaiting a repair). Besides what it
-observes, it holds what you tell it about a repair: that one started, and which fix it is.
+The Office records every stop it can see in one ledger, grouped by cause across projects. By
+itself the ledger retries and repairs nothing. It writes two things to a project: while a repair
+is in progress, a mark on the stops that repair covers (see Work awaiting a repair); and, once
+the fix runs and you have enabled it, the one recovery request the fix named for a marked stop
+(see Resuming after a fix). Besides what it observes, it holds what you tell it about a repair:
+that one started, and which fix it is.
 
 ### Reading the ledger
 
@@ -355,8 +359,12 @@ fix, that job comes back to you as a "read back" request; it is not restarted by
 
 ### Resuming after a fix
 
-The Office does not resume anything by itself yet. Three things exist so that it can, and so that
-you can see and stop it when it does.
+Once a fix you bound is running, the Office can resume the work it stopped: it queues the
+recovery request the fix named for each piece of work, once, and stops holding that work back. It
+does this only while the switch below is enabled, and the switch starts paused. One route is
+resumed this way so far: `reconcile-review` with no `head`, which checks a saved independent
+review against the unchanged pull request and runs no model. Every other route in the table is
+accepted by `bind-fix` but not resumed yet; its work is handed back to you when the wait runs out.
 
 **Routes.** A route names one of the Office's existing recovery handlers. These are the only ones
 a fix may name:
@@ -408,24 +416,43 @@ you just read, and is refused if anything changed the switch since, a pause incl
 again and you will see why it was paused. Before anyone has changed it the revision is 0. The
 switch pauses no project and cancels nothing. Neither command is accepted while a deployment
 holds the fence. If the saved switch cannot be read it shows `invalid` and counts as paused;
-pause it once to rewrite it, then enable it at the revision that pause returns. In this release
-the switch changes nothing else, because nothing can be dispatched yet.
+pause it once to rewrite it, then enable it at the revision that pause returns.
 
-**What would happen.** Once a fix is found in the running release, `incident status` adds
-`resumes`: for each subject the fix bound, `no-route`, `gone`, `held` or `due`, with the reason.
+**What happens.** Once a fix is found in the running release, `incident status` adds `resumes`:
+for each subject the fix bound, one of these, with the reason.
 
+- `admitted`: its resume was queued. This happens once per subject and fix and stays on record,
+  whatever the work does next.
+- `due`: it can be resumed and the switch is enabled. The Office puts it to admission on its next
+  pass, about a minute apart; whether it is queued then depends on the checks below.
+- `held`: it can be resumed and the switch is paused. Nothing is queued until you enable it.
 - `no-route`: the fix declared none, the route is not valid for that subject, or this release
-  cannot dispatch it. Today a routed subject that still stands open as bound reads this way,
-  with "This release cannot dispatch ...".
+  does not resume that route yet ("This release cannot dispatch ...").
 - `gone`: the stop cleared, or the work has since stopped again or been moved. It is never
   resumed in its later form.
-- `held`: it could be resumed and the switch is paused.
-- `due`: it could be resumed and the switch is enabled.
 
-It is a reading of the ledger made when you ask, recorded nowhere.
+When the Office queues a resume it also stops holding that work back, in the same step. It
+changes nothing else about the job: no attempt count, no budget. The request then runs like any
+other recovery request, and its handler still makes its own checks. For `reconcile-review` that
+means the job carries on under the merge authorization and readiness rules it already had.
 
-`resumes` goes away again if the fix stops running: after a rollback the incident returns to
-`shipped` (see When a fix counts as deployed) and there is nothing to read.
+A subject that is `due` is not always queued at once. The incident's history says why, once per
+reason, as `resume-refused`:
+
+| Code | Meaning | What happens next |
+| --- | --- | --- |
+| `resumes-paused` | The switch is paused. | Queued once you enable it, if the work still waits. |
+| `release-unconfirmed` | The Office could not verify the running release or has yet to confirm that it contains the fix. | A rollback to a verified release known to contain the fix can still allow admission. If the running release lacks the fix or cannot be verified, the Office withdraws the deployment mark and returns the incident to `shipped`. |
+| `project-paused` | The project is paused or draining. | Queued when it runs again. |
+| `request-pending` | Another request for that ticket is queued or working. | Queued when that one ends. |
+| `wait-ended` | The work is not being held for this repair right now. Either that is final: the wait ran out after 48 hours, or the work stopped again or was moved. Or it is temporary: something stronger explains the stop for now, such as a hold, a decision, a merge approval, a prerequisite or an unconfirmed write. | If final, not resumed; the item is yours. If temporary, the Office tries again each pass and queues it once that cause is gone, as long as the 48 hours have not run out. |
+| `key-mismatch`, `no-record`, `not-dispatchable`, `already-reconciled` | The route does not fit the work as it stands. | Not resumed; read the detail. |
+
+The Office does not yet judge whether a resume worked: the incident stays `deployed`. If the
+request it queued stops, that shows up like any other stopped request.
+
+`resumes` goes away when the Office withdraws the deployment mark and returns the incident to
+`shipped` (see When a fix counts as deployed).
 
 ### What to expect
 

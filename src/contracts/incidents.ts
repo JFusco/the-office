@@ -133,11 +133,24 @@ export interface IncidentFix {
 export interface ResumeSwitch { enabled: boolean; revision: number; reason: string; at: string | null; invalid?: true }
 
 /**
- * How a bound subject stands once its fix is found in the running release. `no-route`: nothing will
- * resume it. `gone`: it cleared, or no longer stands as the fix bound it. `held`: it could be resumed
- * and automatic resumes are paused. `due`: it could be resumed and they are enabled.
+ * How a bound subject stands once its fix is found in the running release. `admitted`: its resume
+ * was queued, once, for this fix. `no-route`: nothing will resume it. `gone`: it cleared, or no
+ * longer stands as the fix bound it. `held`: it could be resumed and automatic resumes are paused.
+ * `due`: it could be resumed and they are enabled.
  */
-export type ResumeStanding = 'no-route' | 'gone' | 'held' | 'due';
+export type ResumeStanding = 'admitted' | 'no-route' | 'gone' | 'held' | 'due';
+
+/**
+ * Why a due subject was not resumed on a pass. `resumes-paused`: the Office-wide switch.
+ * `release-unconfirmed`: the running release is not verified, or is not known to hold the fix.
+ * `project-paused`: its project is paused or draining. `wait-ended`: the repair wait no longer
+ * holds for that exact stop (it ran out, the stop changed, or something stronger explains it).
+ * `no-record`: its project or its delivery job is not there. `key-mismatch`: the route's key is
+ * not that job's. `request-pending`: another request for that key is queued or working.
+ * `already-reconciled`: the same request completed earlier and stands as its own answer.
+ * `not-dispatchable`: this release does not dispatch that route in that form.
+ */
+export type ResumeRefusal = 'resumes-paused' | 'release-unconfirmed' | 'project-paused' | 'wait-ended' | 'no-record' | 'key-mismatch' | 'request-pending' | 'already-reconciled' | 'not-dispatchable';
 
 /** What the Office reads for one fix found in the running release. A reading only: it grants nothing and records nothing. */
 export interface ResumeAssessment {
@@ -215,10 +228,10 @@ export interface EvidencePacket {
 /**
  * The first six are written by observation. `repair-started`, `fix-bound` and `dismissed` are
  * written by a person or the repair runner through the Office. `fix-deployed`, `fix-withdrawn`,
- * `release-identity-unknown`, `dismissal-invalidated` and `repair-wait-expired` are written by
- * the Office itself.
+ * `release-identity-unknown`, `dismissal-invalidated`, `repair-wait-expired`, `resume-admitted`
+ * and `resume-refused` are written by the Office itself.
  */
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired';
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired' | 'resume-admitted' | 'resume-refused';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */

@@ -4,7 +4,8 @@ import { sourceVersions } from '../incidents/cited-sources';
 import { invalidateDismissals } from '../incidents/dismissal-validity';
 import { redactEvidence } from '../incidents/redact-evidence';
 import { admitRepairWaits } from '../incidents/repair/admit-repair-waits';
-import { watchDeployedFixes } from '../incidents/watch-deployed-fixes';
+import { dispatchResumes } from '../incidents/repair/resume-arrivals';
+import { releaseWatch } from '../incidents/repair/running-release';
 import { command } from '../workers/process';
 import { DATA, ROOT } from './config';
 import type { ServiceContext } from './http/context';
@@ -29,14 +30,17 @@ export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pic
     // The comparison counts as an operation in flight, so a deployment that takes the fence meanwhile waits for it to end.
     // Between the two, a dismissal whose cited code or covered stops changed is returned to observed. Local only.
     const loadedHash = loadedRevision.hash, versions = sourceVersions(loadedRevision.manifest);
-    const compareRelease = watchDeployedFixes({ ledger: offices.incidents, identity: () => releaseIdentity({ root: ROOT, dataRoot: DATA, loadedHash }), loadedHash, execute: command, allowed: () => !fenced() });
+    // What GitHub said of a release and a fix is kept by the comparison and read by the resume pass: a fix is resumed only in a release known to hold it.
+    const release = releaseWatch({ ledger: offices.incidents, identity: () => releaseIdentity({ root: ROOT, dataRoot: DATA, loadedHash }), loadedHash, execute: command, allowed: () => !fenced() });
     const incidentTick = setInterval(() => {
         if (fenced()) return;
         try { offices.observeIncidents(); } catch (e) { console.error(redactEvidence(String(e))); }
         try { invalidateDismissals(offices.incidents, versions, new Date()); } catch (e) { console.error(redactEvidence(String(e))); }
-        // Marks, in each project's own store, the stops a repair in progress covers. The one write the incident domain makes to a project.
+        // Marks, in each project's own store, the stops a repair in progress covers.
         try { admitRepairWaits(offices.incidents, [...offices.entries.values()], new Date(), fenced); } catch (e) { console.error(redactEvidence(String(e))); }
-        if (process.env.OFFICE_NO_POLL !== '1') void offices.operations.run(compareRelease);
+        // Then queues, once per subject and fix, the resume a fix found in the running release bound for work still awaiting it. Local only.
+        try { dispatchResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], control: offices.resumes, running: release.holding, now: () => new Date(), fenced }); } catch (e) { console.error(redactEvidence(String(e))); }
+        if (process.env.OFFICE_NO_POLL !== '1') void offices.operations.run(release.compare);
     }, 60000);
     const lastPoll = new Map<string, number>();
     const tick = setInterval(() => {

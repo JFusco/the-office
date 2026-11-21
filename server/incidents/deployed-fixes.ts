@@ -6,6 +6,9 @@ import { eventId } from './event-id';
 import type { IncidentLedger } from './incident-ledger';
 import { nextState } from './transitions';
 
+/** How one comparison is remembered: a release commit and a fix commit. */
+export const comparison = (release: string, fix: string) => `${release}:${fix}`;
+
 /**
  * What is kept between passes. `answers`: what GitHub said for a release commit and a fix commit;
  * a commit's history never changes, so an answer holds for the life of the process. `resumeAfter`:
@@ -72,7 +75,7 @@ export async function recordDeployedFixes({ ledger, identity, loadedHash, execut
             result.unknown.push(seen.id);
             continue;
         }
-        const key = `${served.commit}:${fix.commit}`;
+        const key = comparison(served.commit, fix.commit);
         if (!memory.answers.has(key)) {
             if (failed.has(key) || reads >= limit) { result.waiting.push(seen.id); continue; }
             reads += 1;
