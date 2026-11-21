@@ -123,10 +123,13 @@ The record names the operation and the last journaled step. Then, by case:
 - **The journal ends in a cut-short line**: its last step is unknown, so nothing is undone on its
   word. Treat it as the case above.
 - **A rollback could not prove the stores were unchanged.** A missing baseline, an unreadable
-  store, an admission, or a changed store blocks restoration. Check the STOP reason, confirm the
-  service is down and the fence is held, then decide between fixing forward and restoring a
-  complete backup from `backups/<operation>/` by hand. When the service runs what you want, run
-  `pnpm office deploy end <operation>` and remove the record.
+  store, an admission, or a changed store blocks restoration. A target that only started under the
+  fence is not a change; one that added a table or index, migrated saved state beyond what a start
+  rewrites or wrote any other row is, so a release with a store change is not rolled back once it
+  has opened the stores.
+  Check the STOP reason, confirm the service is down and the fence is held, then decide between
+  fixing forward and restoring a complete backup from `backups/<operation>/` by hand. When the
+  service runs what you want, run `pnpm office deploy end <operation>` and remove the record.
 
 `deploy end` releases only the fence that operation's token holds. It does not resume a project,
 change a pause or clear a drain, and it leaves the STOP record for you to remove. An operation that

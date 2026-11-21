@@ -12,6 +12,7 @@ import { fileDigest, writeManifest } from '../../../server/release/release-manif
 import { releaseDirectory } from '../../../server/release/release-paths';
 import { SERVICE_LABEL } from '../../../server/release/service-plist';
 import { recordAdmission } from '../../../server/store/admission-journal';
+import { ControlStore } from '../../../server/store/control-store';
 import { Store } from '../../../server/store/store';
 
 export const FROM = 'a'.repeat(40), TO = 'b'.repeat(40), PIN = 'c'.repeat(40);
@@ -20,7 +21,7 @@ export const FROM = 'a'.repeat(40), TO = 'b'.repeat(40), PIN = 'c'.repeat(40);
 export interface Behaviour {
     /** `fail`: launchctl errors and the service keeps running. `lost`: it errors although the service stopped. */
     bootout?: 'fail' | 'lost';
-    /** `fail`: launchd refuses to load. `silent`: loaded but never answers. `writes`/`admits`: starts, then changes a store. */
+    /** `fail`: launchd refuses to load. `silent`: started but never answers. `writes`/`admits`: starts, then changes a store beyond what a start writes. */
     bootstrap?: 'fail' | 'silent' | 'writes' | 'admits' | 'wrong-hash' | 'unfenced';
     busy?: boolean;
     acquire?: 'fail';
@@ -54,8 +55,9 @@ export function buildFakeRelease(dataRoot: string, commit: string, marker = comm
 
 /**
  * A temporary data root with two releases, a running fake service, a real fence on a real control
- * database, a real project store, and fake `plutil`/`launchctl`/HTTP in front of them. Plists are
- * kept as JSON text; the fake `plutil` treats both formats alike.
+ * database, a real project store, and fake `plutil`/`launchctl`/HTTP in front of them. Every start
+ * of the fake service opens and writes both stores as the real one does. Plists are kept as JSON
+ * text; the fake `plutil` treats both formats alike.
  */
 export function world(behaviour: Behaviour = {}): World {
     const root = mkdtempSync(resolve(tmpdir(), 'office-deploy-')), dataRoot = resolve(root, '.local'), plistPath = resolve(root, 'LaunchAgents', `${SERVICE_LABEL}.plist`);
@@ -67,11 +69,21 @@ export function world(behaviour: Behaviour = {}): World {
         ProgramArguments: ['/usr/local/bin/node', '--import', 'tsx', resolve(directories[FROM], 'server/index.ts')],
         EnvironmentVariables: { OFFICE_DATA_ROOT: dataRoot, PATH: `${directories[FROM]}/node_modules/.bin:/usr/bin` },
     }));
-    const projectDb = resolve(dataRoot, 'office.sqlite'), store = new Store(projectDb, projectById('brain'), dataRoot);
+    const projectDb = resolve(dataRoot, 'office.sqlite'), controlDb = resolve(dataRoot, 'office-control.sqlite');
+    const clock = { ms: Date.parse('2026-11-20T03:00:00.000Z') }, calls: string[] = [], alive = new Set<number>([4001]);
+    // What a service start writes before it can answer (`Offices`, then `server/index.ts`): the control store
+    // opens and recovers; the project store opens, recovers and records that the office is open.
+    const start = (fenced: boolean) => {
+        const at = { now: () => new Date(clock.ms), monotonic: () => 0 }, opened = new ControlStore(controlDb, at);
+        opened.recover(); opened.close();
+        const store = new Store(projectDb, projectById('brain'), dataRoot, at);
+        store.recover(fenced); store.emit('office-opened', 'Brain office is open.');
+        return store;
+    };
+    const store = start(false);
     recordAdmission(store.db, 'request', 'seed', '2026-11-20T00:00:00.000Z');
     store.close();
-    const controlDb = resolve(dataRoot, 'office-control.sqlite'), control = new DatabaseSync(controlDb), fence = new DeploymentFence(control);
-    const clock = { ms: Date.parse('2026-11-20T03:00:00.000Z') }, calls: string[] = [], alive = new Set<number>([4001]);
+    const control = new DatabaseSync(controlDb), fence = new DeploymentFence(control);
     const service: World['service'] = { loaded: true, pid: 4001, instance: 'instance-1', hash: hashOf(FROM) };
     let pids = 4001, instances = 1, answering = true, fenced = true;
     const plist = () => JSON.parse(readFileSync(plistPath, 'utf8'));
@@ -98,6 +110,7 @@ export function world(behaviour: Behaviour = {}): World {
             const commit = String(plist().WorkingDirectory).split('/').at(-1)!;
             service.loaded = true; service.pid = ++pids; alive.add(service.pid); service.instance = `instance-${++instances}`;
             service.hash = mode === 'wrong-hash' ? 'f'.repeat(64) : hashOf(commit); answering = mode !== 'silent'; fenced = mode !== 'unfenced';
+            start(fence.read().status !== 'open').close();
             if (mode === 'writes') mutate(projectDb, "CREATE TABLE IF NOT EXISTS migrated (id INTEGER); INSERT INTO migrated VALUES (1)");
             if (mode === 'admits') mutate(projectDb, "INSERT INTO admissions (kind, ref, at) VALUES ('request', 'after-start', '2026-11-20T03:05:00.000Z')");
             return '';

@@ -781,6 +781,15 @@ reconfigures the service on its own; the deployment controller below sequences t
   read-only connection; the database file is not written. Two snapshots compare as unchanged only
   when both name the same projects and every cursor is readable and equal; anything else, including
   an entry with no project name, counts as admitted or unknown.
+- **Store fingerprint** (`store-fingerprint.ts`). A digest of each store's schema and rows, read on
+  a read-only connection. It leaves out what a release writes by starting under the fence and
+  admitting nothing (`fenced-start-writes.ts`): planner statistics in any store and, in a project
+  store, the values of the start time, revision, clock and recent-event list (in the `state` row
+  and in their `state_parts` rows), `office-opened` events added after the earlier read, the event
+  counter while it names the last event, and where the `state_parts` rows sit in their table.
+  Events the earlier read held must still be there unchanged, and a later event of any other kind
+  is a change. So are a new table or index, a migration that changes any other saved state, one of
+  those four state keys removed or no longer in its shape, and a change to any other row.
 - **Plist rendering** (`render-plist.ts`). Derives the service plist for another release of the same
   data root. Only the working directory, the entry script and the release's own `node_modules/.bin`
   PATH entry change. Rendering requires a Node service with absolute data and working directories.
@@ -842,8 +851,10 @@ the fence. This includes a plist install or a start that read-back could not con
 sent again, and the rollback's own separately identified steps settle the service by read-back. The
 rollback is code only. It requires a complete, readable baseline taken after the old service
 stopped. The controller checks that every admission cursor and store fingerprint still matches
-before restoring the plist and before sending the restart. A missing baseline, unreadable store,
-or difference goes to STOP. If the restarted previous release fails verification, the controller
+before restoring the plist and before sending the restart. A target that started under the fence
+and admitted nothing still matches, so a failed verification after such a start is rolled back. A
+target whose start added a table or index, migrated any other saved state or changed any other
+row does not match. A missing baseline, unreadable store, or difference goes to STOP. If the restarted previous release fails verification, the controller
 attempts a separate halt and records whether it was confirmed. Backups are for manual recovery.
 
 **STOP.** These each leave `deployments/STOP.json` naming the operation and its last journaled

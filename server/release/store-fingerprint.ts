@@ -1,8 +1,23 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { APPENDED_TABLE, comparableOrder, comparableRow, startEvent } from './fenced-start-writes';
 
-export interface StoreFingerprint { name: string; digest: string | null; reason?: string }
+export interface StoreFingerprint {
+    name: string; digest: string | null; reason?: string;
+    /** A project store: the last event the digest covers. Of later events, only those a start does not account for are part of it. */
+    eventsThrough?: number;
+}
+
+export interface FingerprintScope {
+    /** Names of the project stores, read without what a start under the fence writes (`fenced-start-writes.ts`). */
+    projects?: string[];
+    /** An earlier read: each project store's events are read as far as that read went; later ones only when a start does not account for them. */
+    since?: StoreFingerprint[];
+}
+
+/** Planner statistics `PRAGMA optimize` rewrites when a store opens or closes. Advisory: no release reads them as data. */
+const STATISTICS = /^sqlite_stat[1-4]$/;
 
 function encode(value: unknown): unknown {
     if (value instanceof Uint8Array) return ['blob', Buffer.from(value).toString('hex')];
@@ -11,29 +26,52 @@ function encode(value: unknown): unknown {
     return value;
 }
 
+const coversEvents = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+
 /**
- * A digest of everything each database holds: its schema and every row of every table, read on a
- * read-only connection. Two equal digests mean nothing in the store changed between the reads, which
- * is the only proof that the release that ran before can still read it. A reorganised but logically
- * equal database may differ; that errs towards "changed". Unreadable is null with the reason.
+ * A digest of what each database holds: its schema and every row of every table, read on a read-only
+ * connection. Planner statistics are left out of every store. A project store is also read without
+ * what a start under the fence writes. Its events are read as far as the `since` read went; a later
+ * event counts only when it is not one a start records. So a release that started and admitted
+ * nothing compares as unchanged. Equal digests are the proof that
+ * the release that ran before can still read the store. A reorganised but logically equal database
+ * may differ; that errs towards "changed". Unreadable is null with the reason.
  */
-export function fingerprintStores(databases: { name: string; path: string }[]): StoreFingerprint[] {
+export function fingerprintStores(databases: { name: string; path: string }[], scope: FingerprintScope = {}): StoreFingerprint[] {
+    const projects = new Set(scope.projects), earlier = new Map((scope.since ?? []).map(entry => [entry?.name, entry?.eventsThrough]));
     return databases.map(({ name, path }) => {
         if (!existsSync(path)) return { name, digest: null, reason: `${path} does not exist` };
         let db: DatabaseSync | null = null;
         try {
             db = new DatabaseSync(path, { readOnly: true, timeout: 5000 });
             db.exec('BEGIN');
-            const hash = createHash('sha256'), version = db.prepare('PRAGMA user_version').get();
-            const objects = db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').all() as { type: string; name: string }[];
+            const hash = createHash('sha256'), version = db.prepare('PRAGMA user_version').get(), project = projects.has(name);
+            const objects = (db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').all() as { type: string; name: string }[]).filter(object => !STATISTICS.test(object.name));
             hash.update(JSON.stringify([version, objects]));
-            for (const { name: table } of objects.filter(object => object.type === 'table')) {
-                const rows = db.prepare(`SELECT * FROM "${table.replaceAll('"', '""')}"`);
+            const tables = objects.filter(object => object.type === 'table');
+            let eventsThrough: number | undefined, lastEvent: bigint | undefined;
+            if (project && tables.some(table => table.name === APPENDED_TABLE)) {
+                const last = db.prepare(`SELECT COALESCE(MAX(rowid),0) AS last FROM "${APPENDED_TABLE}"`), bound = earlier.get(name);
+                last.setReadBigInts(true);
+                lastEvent = (last.get() as { last: bigint }).last;
+                eventsThrough = coversEvents(bound) ? bound : Number(lastEvent);
+            }
+            for (const { name: table } of tables) {
+                const quoted = `"${table.replaceAll('"', '""')}"`, appended = project && table === APPENDED_TABLE;
+                const rows = db.prepare(appended ? `SELECT * FROM ${quoted} WHERE rowid<=? ORDER BY rowid` : `SELECT * FROM ${quoted}${project ? comparableOrder(table) : ''}`);
                 rows.setReadBigInts(true);
                 hash.update(`\n${table}\n`);
-                for (const row of rows.iterate()) hash.update(`${JSON.stringify(Object.values(row).map(encode))}\n`);
+                const digestRow = (row: Record<string, unknown>) => hash.update(`${JSON.stringify(Object.values(row).map(encode))}\n`);
+                for (const read of appended ? rows.iterate(eventsThrough!) : rows.iterate()) {
+                    const row = project ? comparableRow(table, read as Record<string, unknown>, lastEvent) : read;
+                    if (row) digestRow(row);
+                }
+                if (!appended) continue;
+                const later = db.prepare(`SELECT * FROM ${quoted} WHERE rowid>? ORDER BY rowid`);
+                later.setReadBigInts(true);
+                for (const read of later.iterate(eventsThrough!)) if (!startEvent(read as Record<string, unknown>)) digestRow(read as Record<string, unknown>);
             }
-            return { name, digest: hash.digest('hex') };
+            return { name, digest: hash.digest('hex'), ...(eventsThrough === undefined ? {} : { eventsThrough }) };
         } catch (error) {
             return { name, digest: null, reason: String(error).slice(0, 300) };
         } finally { db?.close(); }

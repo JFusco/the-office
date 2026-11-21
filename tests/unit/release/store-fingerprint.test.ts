@@ -63,3 +63,53 @@ test('stores compare as unchanged only when both reads name the same stores with
     expect(changedStores([a, a], [a])).toContainEqual({ name: '*', reason: 'a fingerprint names a store twice' });
     expect(changedStores([{ digest: a.digest } as any], [{ digest: a.digest } as any]).length).toBeGreaterThan(0);
 });
+
+const state = (at: string, revision: number, rest = '"paused":false') => `UPDATE state SET body = '{"startedAt":"${at}","serverTime":"${at}","revision":${revision},"events":[${revision}],${rest}}'`;
+const parts = (at: string, revision: number) => `INSERT OR REPLACE INTO state_parts VALUES ('startedAt', 0, '"${at}"'), ('serverTime', 1, '"${at}"'), ('revision', 2, '${revision}'), ('events', 3, '[${revision}]')`;
+const PROJECT = `CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL); INSERT INTO events(body) VALUES ('{"kind":"office-opened"}'); CREATE TABLE admissions (seq INTEGER PRIMARY KEY AUTOINCREMENT); CREATE TABLE state_parts (key TEXT PRIMARY KEY, position INTEGER NOT NULL, body TEXT NOT NULL); ${state('t0', 1)}; ${parts('t0', 1)}; INSERT INTO state_parts VALUES ('paused', 4, 'false')`;
+const START = `INSERT INTO events(body) VALUES ('{"kind":"office-opened","at":"t1"}'); ${state('t1', 2)}; ${parts('t1', 2)}`;
+const project = (path: string, since?: ReturnType<typeof fingerprintStores>) => fingerprintStores([{ name: 'cec', path }], { projects: ['cec'], since });
+
+test('a project store that a release only started compares as unchanged', () => {
+    const path = database(PROJECT), before = project(path);
+    expect(before).toEqual([{ name: 'cec', digest: expect.stringMatching(/^[0-9a-f]{64}$/), eventsThrough: 1 }]);
+    change(path, `${START}; ${START}; ANALYZE`);
+    expect(changedStores(before, project(path, JSON.parse(JSON.stringify(before))))).toEqual([]);
+    // The start replaced its four parts, which now sit after the one it left alone.
+    const db = new DatabaseSync(path, { readOnly: true });
+    try { expect(db.prepare('SELECT key FROM state_parts ORDER BY rowid').all().map(row => row.key)).toEqual(['paused', 'startedAt', 'serverTime', 'revision', 'events']); } finally { db.close(); }
+    // The same writes are a change in a store that is not a project's.
+    expect(fingerprintStores([{ name: 'cec', path }])[0].digest).not.toBe(fingerprintStores([{ name: 'cec', path: database(PROJECT) }])[0].digest);
+});
+
+test.each([
+    ['another part of the state', state('t1', 2, '"paused":true')],
+    ['a start key the previous release cannot read', state('t1', 2).replace('"events":[2]', '"events":"gone"')],
+    ['a removed start key', state('t1', 2).replace('"startedAt":"t1",', '')],
+    ['a state that no longer parses', "UPDATE state SET body = 'startedAt'"],
+    ['an event the earlier read covered', `UPDATE events SET body = '{"kind":"office-opened","at":"t9"}' WHERE id = 1`],
+    ['a removed event', 'DELETE FROM events'],
+    ['an event no start records', `INSERT INTO events(body) VALUES ('{"kind":"work-time-reported"}')`],
+    ['an event that does not parse', "INSERT INTO events(body) VALUES ('office-opened')"],
+    ['an effect', "UPDATE effects SET n = 1 WHERE id = 'e1'"],
+    ['the schema', 'CREATE TABLE added (key TEXT PRIMARY KEY)'],
+    ['another state part', `UPDATE state_parts SET body = 'true' WHERE key = 'paused'`],
+    ['a start part the previous release cannot read', `UPDATE state_parts SET body = '"gone"' WHERE key = 'events'`],
+    ['a removed start part', `DELETE FROM state_parts WHERE key = 'startedAt'`],
+    ['the counter of another table', 'INSERT INTO admissions DEFAULT VALUES; DELETE FROM admissions'],
+    ['an event counter that no longer names the last event', "UPDATE sqlite_sequence SET seq = 99 WHERE name = 'events'"],
+    ['the place of a start part among the keys', "UPDATE state_parts SET position = 9 WHERE key = 'revision'"],
+])('a start that also changes %s is a changed project store', (_, sql) => {
+    const path = database(PROJECT), before = project(path);
+    change(path, `${START}; ${sql}`);
+    expect(changedStores(before, project(path, before))).toEqual([{ name: 'cec', reason: 'its contents changed' }]);
+});
+
+test('planner statistics are no part of any fingerprint, and an unusable earlier bound reads every event', () => {
+    const path = database(PROJECT), plain = digest(path), before = project(path);
+    change(path, 'ANALYZE');
+    expect(digest(path)).toBe(plain);
+    change(path, START);
+    for (const eventsThrough of [undefined, -1, 1.5, '1'])
+        expect(changedStores(before, project(path, [{ ...before[0], eventsThrough } as any]))).toEqual([{ name: 'cec', reason: 'its contents changed' }]);
+});

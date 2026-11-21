@@ -30,7 +30,7 @@ test('after a start with unchanged stores the target is stopped and the previous
     const journal = readDeployJournal(w.dataRoot, operation);
     expect(journal.facts).toEqual({ kind: 'rollback', of: OP, reason: 'the target did not verify', started: true });
     expect(journal.receipts.halt).toMatchObject({ loaded: false, instance: 'instance-2' });
-    expect(journal.receipts.eligibility).toEqual({ basis: 'no admission and no store change since the old service stopped' });
+    expect(journal.receipts.eligibility).toEqual({ basis: 'no admission and no store change beyond a start under the fence since the old service stopped' });
     expect(readFileSync(w.plistPath, 'utf8')).toBe(prior);
     expect(w.service).toMatchObject({ loaded: true, instance: 'instance-3', hash: w.hashOf(FROM) });
     expect(w.fence.read()).toEqual({ status: 'open' });
