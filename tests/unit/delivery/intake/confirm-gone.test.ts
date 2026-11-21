@@ -33,3 +33,9 @@ test('only asked-for tickets the search returned are confirmed', () => {
     expect(confirmedGone(undefined, ['CEC-16']).size).toBe(0);
     expect(confirmedGone({ key: 'CEC-16' }, ['CEC-16']).size).toBe(0);
 });
+
+test('a ticket the Office is delivering or holds is not asked about, and a project key with an underscore is accepted', () => {
+    expect(stoppedReviewKeys([review('CEC-1', 'owned'), review('CEC-2', 'owned')], key => key === 'CEC-1')).toEqual(['CEC-2']);
+    expect(stoppedReviewKeys([review('MY_PROJ-7', 'blocked')])).toEqual(['MY_PROJ-7']);
+    expect(goneQuery('MY_PROJ', 'acct', ['MY_PROJ-7'])).toContain('project = MY_PROJ AND key in (MY_PROJ-7)');
+});

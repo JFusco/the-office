@@ -65,3 +65,9 @@ test('a confirmation does not override a delivery, a hold or a review in flight,
     const mixed = [review('CEC-5', 'owned'), review('CEC-6', 'owned')];
     expect(settleStoppedReviews(mixed, inputs([issue('CEC-5')], { confirmedGone: new Set(['CEC-5']) }))).toEqual(['CEC-6']);
 });
+
+test('a closed review drops a recorded prerequisite fault, which would keep it counted as blocked', () => {
+    const reviews = [review('CEC-1', 'blocked', { prerequisiteError: 'Prerequisite read failed' } as any)];
+    expect(settleStoppedReviews(reviews, inputs([other]))).toEqual(['CEC-1']);
+    expect('prerequisiteError' in reviews[0]).toBe(false);
+});

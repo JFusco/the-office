@@ -32,6 +32,8 @@ export function settleStoppedReviews(reviews: AssignmentReview[], inputs: Settle
     for (const review of new Map(reviews.map(review => [review.key, review])).values()) {
         if (!['owned', 'blocked', 'held'].includes(review.status) || assigned.has(review.key) || empty && !inputs.confirmedGone!.has(review.key) || inputs.hasDelivery(review.key) || inputs.held(review.key)) continue;
         review.status = 'cancelled';
+        // A closed review waits on nothing: a recorded prerequisite fault would keep it counted as blocked.
+        delete review.prerequisiteError;
         review.endedAt = at;
         review.detail = `No longer assigned to the Office or no longer open; this review is kept as history.\nEarlier intake: ${review.detail}`;
         closed.push(review.key);

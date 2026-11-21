@@ -1,11 +1,16 @@
 import type { AssignmentReview } from '../../../src/shared';
 
-const KEY = /^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/;
+// A project key as the binding configuration allows it, and a ticket key in such a project.
+const PROJECT = /^[A-Z][A-Z0-9_]*$/, KEY = /^[A-Z][A-Z0-9_]*-\d{1,9}$/;
 const STOPPED = ['owned', 'blocked', 'held'];
 
-/** The tickets whose latest review is stopped: the ones an empty assignment read leaves unexplained. At most ninety, one read. */
-export function stoppedReviewKeys(reviews: readonly AssignmentReview[]): string[] {
-    return [...new Map(reviews.map(review => [review.key, review])).values()].filter(review => STOPPED.includes(review.status) && KEY.test(review.key)).map(review => review.key).slice(0, 90);
+/**
+ * The tickets whose latest review is stopped and could be settled: the ones an empty assignment read leaves
+ * unexplained. A ticket the Office is delivering or holds is never settled, so it is not asked about. At most
+ * ninety, one read.
+ */
+export function stoppedReviewKeys(reviews: readonly AssignmentReview[], kept: (key: string) => boolean = () => false): string[] {
+    return [...new Map(reviews.map(review => [review.key, review])).values()].filter(review => STOPPED.includes(review.status) && KEY.test(review.key) && !kept(review.key)).map(review => review.key).slice(0, 90);
 }
 
 /**
@@ -15,7 +20,7 @@ export function stoppedReviewKeys(reviews: readonly AssignmentReview[]): string[
  */
 export function goneQuery(projectKey: string, account: string, keys: readonly string[]): string {
     const asked = keys.filter(key => KEY.test(key) && key.startsWith(`${projectKey}-`));
-    if (!asked.length || !/^[A-Z][A-Z0-9]{1,9}$/.test(projectKey) || !/^[A-Za-z0-9:_-]+$/.test(account)) return '';
+    if (!asked.length || !PROJECT.test(projectKey) || !/^[A-Za-z0-9:_-]+$/.test(account)) return '';
     return `project = ${projectKey} AND key in (${asked.join(', ')}) AND (resolution is not EMPTY OR assignee is EMPTY OR assignee != "${account}") ORDER BY key ASC`;
 }
 

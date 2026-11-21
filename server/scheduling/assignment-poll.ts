@@ -48,17 +48,32 @@ export async function readAssignments(this: Coordinator): Promise<AssignedIssue[
     return raw.data.issues.filter((i: any) => validTicket(this.store.project, i.key) && i.assignee?.accountId === jira.account && !i.issuetype?.subtask).map((i: any) => ({ key: i.key, summary: i.summary, url: i.url, assignee: i.assignee.accountId, status: i.status.name, statusId: i.status.id, updated: i.updated, type: i.issuetype.name, subtask: false }));
 }
 
-/** Which of these tickets Jira reports as resolved or no longer the Office's. A read that fails confirms nothing. Jira projects only. */
+/** The confirming read is made at most this often per project; while it confirms nothing there is nothing new to learn sooner. */
+export const GONE_READ_MS = 10 * 60 * 1000;
+const goneRead = new WeakMap<object, { at: number; said: string }>();
+
+/**
+ * Which of these tickets Jira reports as resolved or no longer the Office's. Jira projects only. A read that
+ * fails confirms nothing and is said once per distinct failure; the next read waits `GONE_READ_MS`.
+ */
 export async function readGoneTickets(this: Coordinator, keys: string[]): Promise<Set<string>> {
     if (this.store.project.provider !== 'azure') return new Set();
     const jira = jiraBinding(this.store.project), jql = goneQuery(jira.projectKey, jira.account, keys);
-    if (!jql) return new Set();
+    const last = goneRead.get(this.store), now = this.store.clock.now().getTime();
+    if (!jql || last && now - last.at < GONE_READ_MS) return new Set();
+    let said = '';
     try {
-        const raw = JSON.parse(await this.execute('twg', ['jira', 'workitem', 'query', '--jql', jql, '--fields', 'status,assignee,resolution', '--first', '100', ...twgConnection(jira), '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: true }));
-        if (raw.error || raw.ok === false || !Array.isArray(raw.data?.issues) || raw.data.issues.length >= 100) return new Set();
+        const raw = JSON.parse(await this.execute('twg', ['jira', 'workitem', 'query', '--jql', jql, '--fields', 'summary,status,assignee', '--first', '100', ...twgConnection(jira), '-o', 'json', '--output-summary', 'none'], { timeout: 60000, readOnly: true }));
+        if (raw.error || raw.ok === false || !Array.isArray(raw.data?.issues) || raw.data.issues.length >= 100) throw new Error('Jira returned no usable answer');
+        goneRead.set(this.store, { at: now, said });
         return confirmedGone(raw.data.issues, keys);
     }
-    catch { return new Set(); }
+    catch (error) {
+        said = `Stopped assignment reviews could not be checked against Jira, so none was closed: ${String(error).replace(/^Error:\s*/, '').slice(0, 300)}`;
+        if (last?.said !== said) this.store.emit('intake-reviews-unchecked', said, 'pm');
+        goneRead.set(this.store, { at: now, said });
+        return new Set();
+    }
 }
 export async function poll(this: Coordinator, now = new Date()) {
     if (!this.state.enabled || this.store.state.paused || this.polling)
@@ -72,9 +87,10 @@ export async function poll(this: Coordinator, now = new Date()) {
         observeAssessmentAssignments(this.store, assigned, this.pickup, this.store.clock.now());
         // The read is complete, so a stopped review can be settled against it; nothing else ever looks at one again.
         // An empty read settles a review only when Jira itself says that review's ticket is resolved or reassigned.
-        const confirmedGone = assigned.length ? undefined : await this.readGoneTickets(stoppedReviewKeys(listener.reviews));
-        const settled = settleStoppedReviews(listener.reviews, { assigned, confirmedGone, now: this.store.clock.now(), held: key => !!holdReason(this.store.project, key),
-            hasDelivery: key => !!this.store.state.tickets.find(ticket => ticket.key === key)?.pilot || !!this.state.jobs?.some(job => job.key === key && job.status !== 'cancelled') });
+        const held = (key: string) => !!holdReason(this.store.project, key);
+        const hasDelivery = (key: string) => !!this.store.state.tickets.find(ticket => ticket.key === key)?.pilot || !!this.state.jobs?.some(job => job.key === key && job.status !== 'cancelled');
+        const confirmedGone = assigned.length ? undefined : await this.readGoneTickets(stoppedReviewKeys(listener.reviews, key => held(key) || hasDelivery(key)));
+        const settled = settleStoppedReviews(listener.reviews, { assigned, confirmedGone, now: this.store.clock.now(), held, hasDelivery });
         if (settled.length) this.store.emit('intake-reviews-settled', `Assignment reviews closed as history, their tickets no longer assigned or open: ${settled.join(', ')}.`, 'pm');
         if (this.store.project.provider === 'azure')
             reconcileMailbox(this.store.state, new Set(assigned.filter(issue => (issue.pickupStatus ?? issue.status) === this.pickup.status).map(issue => issue.key)));
