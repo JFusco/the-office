@@ -3,7 +3,9 @@
 The Overseer is the repair engine for the harness and the Office. It is being delivered in phases;
 this guide covers what exists. Today that is deterministic deployment, the incident ledger and
 the mark the Office puts on stopped work a repair covers, which holds recovery back for it. Resume
-after a fix and the autonomous runner are later phases and are not described here until they ship. The process rules are in the Office process, under
+after a fix has its first part: the list of routes a fix may name, and the switch that will stop
+automatic resumes. Nothing is resumed automatically yet. The autonomous runner is a later phase and
+is not described here until it ships. The process rules are in the Office process, under
 [Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
 
 ## Deployment
@@ -188,8 +190,8 @@ investigation and not dismissed, the third one incident with its event history.
 
 When you fix a harness defect yourself, two commands tie the fix to the incident and to exactly
 the work it stopped. Starting the repair marks that work as awaiting it: it is counted that way,
-and recovery, restart and requests for it are held back. A later phase uses the binding to resume
-after the fix.
+and recovery, restart and requests for it are held back. The binding is what the Office will
+resume from after the fix; see Resuming after a fix.
 
 1. Read the incident and note its `revision`:
 
@@ -232,6 +234,8 @@ after the fix.
 
    The dispositions are `route` (with a `boundary` of `stage-result-passed`, `stage-left` or
    `record-settled`), `undeclared-boundary` (a route and a `reason`) and `no-route` (a `reason`).
+   A route is checked as you bind it; the Office refuses one that could never resume its subject
+   and tells you why (see Resuming after a fix).
 
 Each write prints an event ID before it is sent. If no answer comes back, send the same command
 again with `--event` and that ID: it is recorded once. If the Office answers that the incident is
@@ -333,6 +337,82 @@ the project's current writes each time, so a write that turns uncertain shows up
 One limit to know: the hold does not stretch any other clock. The harness restarts a dead writer
 only within six hours of the stop. If a repair takes longer than that and then runs out without a
 fix, that job comes back to you as a "read back" request; it is not restarted by itself.
+
+### Resuming after a fix
+
+The Office does not resume anything by itself yet. Three things exist so that it can, and so that
+you can see and stop it when it does.
+
+**Routes.** A route names one of the Office's existing recovery handlers. These are the only ones
+a fix may name:
+
+| Action | Resumes | Payload | `head` |
+| --- | --- | --- | --- |
+| `resume-ticket` | a CEC pilot ticket (`cec/delivery/ticket:KEY`) | `{ key }`, the ticket's own key | none |
+| `reconcile-implementation`, `reconcile-validation`, `reconcile-scope-repair` | a GitHub delivery job | `{ key, head? }`, the ticket key | the original stopped worker's ID |
+| `reconcile-preparation`, `reconcile-closeout` | a GitHub delivery job | `{ key, head? }` | the original stopped worker's ID; empty for the saved-result route |
+| `reconcile-review` | a GitHub delivery job | `{ key, head? }` | the stopped base-update handoff worker's ID or the continuation's original worker; empty for the saved-review route |
+| `reconcile-base-update` | a GitHub delivery job | `{ key, head? }` | the job's head commit for a board preflight, or the original base-update worker's ID; empty for the saved-result route |
+| `review-candidate`, `review-pr`, `requeue-implement` | a GitHub delivery job | `{ key }` | none |
+| `review-assignment` | an assignment review | `{ key }`, the ticket key | none |
+| `reconcile-maintenance` | a maintenance run | `{ key }`, the run's own ID | none |
+| `retry-checkpoint`, `reconcile-native-checkpoint` | a checkpoint | `{ key }`, the checkpoint's own ID | none |
+
+`bind-fix` refuses a binding whose action is not in this table, whose payload has another shape,
+whose action is for another kind of subject, whose key should be the subject's own and is not, or
+whose `expectedStage` is not the stage the incident shows for that subject. Nothing is saved, the
+incident keeps its revision, and you can send the corrected file with a new event ID.
+
+Three details of that check:
+
+- A key is taken exactly as you wrote it, 1 to 200 characters. One with a space before or after
+  it is refused, not trimmed.
+- A GitHub delivery job and a CEC queue request look alike in the ledger (`project/delivery/ID`).
+  The job routes are for GitHub projects only; a stopped CEC queue request has no route, and a
+  CEC ticket's route is `resume-ticket` on its `ticket:KEY` subject.
+- The stage is compared only while the subject still stands as it did when you started the
+  repair. If it has stopped again or moved since, the binding is accepted without that check,
+  and the subject reads `gone` once the fix serves; it is never resumed in its later form.
+
+`head` is whatever that handler means by it; it is not a commit unless the table says so.
+Stopped work with no row here, such as a stopped harness request or a conversation, has no
+route: bind it `no-route`.
+
+**The switch.** One office-wide switch says whether automatic repair resumes are admitted. It
+starts paused.
+
+```bash
+pnpm office incident resumes
+pnpm office incident pause-resumes --reason "looking at CEC-154"
+pnpm office incident resume-resumes --revision 3 --reason "fix confirmed by hand"
+```
+
+`resumes` prints the switch: `enabled`, `revision`, `reason` and `at`. `/api/health` shows the
+same under `repairResumes`. Pausing always works and needs nothing. Enabling needs the revision
+you just read, and is refused if anything changed the switch since, a pause included; read it
+again and you will see why it was paused. Before anyone has changed it the revision is 0. The
+switch pauses no project and cancels nothing. Neither command is accepted while a deployment
+holds the fence. If the saved switch cannot be read it shows `invalid` and counts as paused;
+pause it once to rewrite it, then enable it at the revision that pause returns. In this release
+the switch changes nothing else, because nothing can be dispatched yet.
+
+**What would happen.** Once a fix is found in the running release, `incident status` adds
+`resumes`: for each subject the fix bound, `no-route`, `gone`, `held` or `due`, with the reason.
+
+- `no-route`: the fix declared none, the route is not valid for that subject, or this release
+  cannot dispatch it. Today a routed subject that still stands open as bound reads this way,
+  with "This release cannot dispatch ...".
+- `gone`: the stop cleared, or the work has since stopped again or been moved. It is never
+  resumed in its later form.
+- `held`: it could be resumed and the switch is paused.
+- `due`: it could be resumed and the switch is enabled.
+
+It is a reading of the ledger made when you ask, recorded nowhere.
+
+One limit for now: the Office does not look again once it has found a fix in a release. If that
+release is rolled back to one without the fix, the incident still shows `deployed` and `resumes`
+is still shown. Nothing acts on it in this release. Returning such an incident to `shipped` is
+the next change (JFusco/the-office#417), and it lands before anything is resumed automatically.
 
 ### What to expect
 

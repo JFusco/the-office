@@ -967,7 +967,8 @@ by the write-back events below, `deployed` by the Office when the release it run
 Dismissal); the others have no writer yet.
 
 `GET /api/incidents` lists the ledger (`open=1`; `research=1`, which leaves out dismissed
-incidents); `GET /api/incidents/<id>` returns one incident with its events;
+incidents); `GET /api/incidents/<id>` returns one incident with its events and, once its fix is found in the
+running release, how each bound subject stands for a resume (see Resume after a fix);
 `GET /api/incidents/<id>/evidence` returns its evidence packet. All three are read-only.
 
 **Write-back.** Three events can be recorded from outside observation, by a person now and by the
@@ -993,8 +994,23 @@ boundary is undeclared, with the reason; or no route, with the reason. A boundar
 closed list of observable checks (`stage-result-passed`, `stage-left`, `record-settled`); nothing
 executable is accepted. Each binding must carry the digest recorded when the repair started, so a
 binding written for another stop, stage or head of that subject is refused. A repair covers at
-most 1,000 subjects. A route recorded here is checked against the handler it names when a resume
-is admitted, not now.
+most 1,000 subjects.
+
+A route is one of a closed inventory (`server/incidents/repair/resume-routes.ts`): the existing
+handlers the Office intends to resume stopped work through, and nothing else. A binding with a
+route is refused, and nothing is saved, when its action is not in the inventory, its payload does
+not have that action's shape (`{ key }`, or `{ key, head? }` where the handler takes a head), the
+action does not apply to the subject's kind, a key that names the subject's own record names
+another, or its expected stage is not the stage the stop was recorded at. A key is compared and
+saved exactly as sent, so one with space around it is refused. A project's delivery work shares one
+subject kind (a GitHub job by its ID, a CEC pilot ticket as `ticket:KEY`, a CEC queue request by
+its own ID), so a job route also needs the incident's cause to record the GitHub provider and a
+ticket route Azure. The stage is compared only while the ledger still holds the subject as the
+repair digested it; a subject that has stopped again or moved since is bound without that check
+and reads `gone` once the fix serves. What `head` names is the
+handler's own meaning (an original worker's ID for most, a commit for a board preflight) and is
+never assumed to be a commit. These checks read no project; the handler's own preconditions are
+checked again when a resume is admitted and when it runs.
 
 Every event carries an ID its sender chose and the incident revision its sender read. The same ID
 with the same request returns the saved event and the revision it produced, without reading
@@ -1002,6 +1018,36 @@ GitHub again, beside the incident as it stands now; the same ID with
 another request, a stale revision, a transition not in the table or a binding that fails any rule
 above is refused and nothing is saved. Observation changes neither the state these events set nor
 the repair and fixes they recorded.
+
+**Resume after a fix.** Not dispatched yet: the Office resumes nothing by itself, and a `deployed`
+incident stays `deployed`. What exists is the inventory above, a switch and a reading.
+
+The switch (`server/incidents/repair/resume-control.ts`) says whether automatic repair resumes are
+admitted, office-wide. It is one row on the control database beside the fence and the ledger, and
+survives a restart and lease recovery. It starts paused, and a saved switch that cannot be read is
+paused. Its table is created by the first change, never by opening it, so a release that starts
+under a deployment's fence leaves the control database as it found it. Every change advances its
+revision and records a reason and a time. A pause is always accepted. Enabling must name the
+revision that was read, so a pause made in between is never overridden unseen. Pausing it pauses
+no project and cancels nothing already admitted. `GET /api/incidents/resumes` reads it, `POST`
+changes it (refused by the fence's gate like any other write), and `/api/health` reports it as
+`repairResumes`.
+
+The reading (`server/incidents/repair/assess-resumes.ts`) is returned as `resumes` by
+`GET /api/incidents/<id>` once the incident's latest fix is found in the running release. For each
+subject that fix bound it states one of: `no-route` (the fix declared none, the route is not valid
+for the subject, or this release cannot dispatch it), `gone` (the subject cleared, or no longer
+stands as the fix bound it; it is never resumed in a later form), `held` (it could be resumed and
+the switch is paused) or `due` (it could be resumed and the switch is enabled). It is computed
+from the ledger on each read and recorded nowhere. No route in the inventory can be dispatched
+yet, so a routed subject that still stands open as bound reads `no-route` until the change that
+ships its resume; one that cleared or moved reads `gone`.
+
+One limit: the reading rests on the deployment mark recorded when the fix was found (see Deployed
+fixes), and nothing compares a `deployed` incident with the running release again. After a
+rollback to a release without the fix the incident still reads `deployed` and the reading is still
+returned. Nothing acts on it yet. The ledger is to follow the running release before any resume
+is dispatched (JFusco/the-office#417).
 
 **Release identity.** The service can name the release it runs only from records it can check
 (`server/office/release-identity.ts`). The identity is `verified` when all of these agree: the

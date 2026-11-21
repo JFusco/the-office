@@ -4,7 +4,8 @@ import { groupCandidates } from '../../../server/incidents/candidates';
 import { IncidentLedger } from '../../../server/incidents/incident-ledger';
 import { planSync } from '../../../server/incidents/plan-sync';
 import { recordIncidentEvent, replayed, type ResolvedWrite } from '../../../server/incidents/record-event';
-import type { SubjectFix } from '../../../src/contracts/incidents';
+import { repairSubject } from '../../../server/incidents/subject-digest';
+import type { RepairRoute, SubjectFix } from '../../../src/contracts/incidents';
 import { AT, candidate, later } from './incident-fixture';
 import { REPO, SHA } from './github-fake';
 
@@ -172,4 +173,91 @@ test('observation after these events keeps the state, the repair and the fixes',
     expect(after.revision).toBeGreaterThan(before.revision);
     expect([after.state, after.repair, after.fixes]).toEqual(['shipped', before.repair, before.fixes]);
     expect(after.subjects.find(subject => subject.id === 'job-1')).toMatchObject({ status: 'open', episodeCount: 2 });
+});
+
+test('a route that could never resume its subject is refused when the fix is bound, and nothing is saved', () => {
+    const { ledger, id, revision } = seeded();
+    recordIncidentEvent(ledger, id, 'cli-start-1', revision, started(), later(2));
+    const [a, b] = ledger.get(id)!.repair!.subjects, before = JSON.stringify([ledger.get(id), ledger.events(id)]);
+    const sound: RepairRoute = { action: 'reconcile-review', payload: { key: 'GH-12' }, expectedStage: 'review' };
+    const bind = (route: RepairRoute, disposition: 'route' | 'undeclared-boundary' = 'route') => () => recordIncidentEvent(ledger, id, 'cli-bind-1', revision + 1, bound([
+        disposition === 'route' ? { ...a, disposition, route, boundary: { kind: 'record-settled' } } : { ...a, disposition, route, reason: 'nothing observable' }, { ...b, disposition: 'no-route', reason: 'r' }]), later(3));
+    for (const disposition of ['route', 'undeclared-boundary'] as const) {
+        expect(bind({ ...sound, action: 'reconcile-everything' }, disposition)).toThrow(/^The route bound to brain\/delivery\/job-1 can never resume it: reconcile-everything is not a resume route/);
+        expect(bind({ ...sound, payload: { ticket: 'GH-12' } }, disposition)).toThrow('The route bound to brain/delivery/job-1 can never resume it: the payload of reconcile-review is { key, head? }');
+        expect(bind({ ...sound, action: 'resume-ticket' }, disposition)).toThrow('The route bound to brain/delivery/job-1 can never resume it: resume-ticket resumes a CEC pilot ticket, which brain/delivery/job-1 is not');
+        // Saved as sent, so a key that would only match once trimmed is refused; so is one that is too long until trimmed.
+        expect(bind({ ...sound, payload: { key: ' GH-12 ' } }, disposition)).toThrow('the payload of reconcile-review is { key, head? }');
+        expect(bind({ ...sound, payload: { key: `${'k'.repeat(200)} ` } }, disposition)).toThrow('the payload of reconcile-review is { key, head? }');
+        expect(bind({ ...sound, expectedStage: 'lead-pr' }, disposition)).toThrow('The route bound to brain/delivery/job-1 can never resume it: brain/delivery/job-1 was recorded at stage review, not lead-pr');
+    }
+    expect(JSON.stringify([ledger.get(id), ledger.events(id)])).toBe(before);
+    expect(bind(sound)().incident.fixes![0].bindings[0]).toMatchObject({ disposition: 'route', route: sound });
+});
+
+test('the second faulty binding is refused as the first would be', () => {
+    const { ledger, id, revision } = seeded();
+    recordIncidentEvent(ledger, id, 'cli-start-1', revision, started(), later(2));
+    const [a, b] = ledger.get(id)!.repair!.subjects, sound = { action: 'reconcile-review', payload: { key: 'GH-12' }, expectedStage: 'review' };
+    expect(() => recordIncidentEvent(ledger, id, 'cli-bind-1', revision + 1, bound([{ ...a, disposition: 'route', route: sound, boundary: { kind: 'record-settled' } }, { ...b, disposition: 'undeclared-boundary', route: { ...sound, action: 'resume' }, reason: 'r' }]), later(3)))
+        .toThrow(/^The route bound to brain\/delivery\/job-2 can never resume it: resume is not a resume route/);
+    expect(ledger.get(id)!.state).toBe('fixing');
+});
+
+test('the expected stage is compared only while the ledger still holds the subject as the repair digested it', () => {
+    const { ledger, id, revision } = seeded();
+    recordIncidentEvent(ledger, id, 'cli-start-1', revision, started(), later(2));
+    const [a, b] = ledger.get(id)!.repair!.subjects;
+    // job-1 stops again at another stage, for the same cause: its digest no longer matches the one the repair kept, and its recorded stage cannot be established.
+    const cause = { source: 'stopped-work' as const, provider: 'github', stage: 'review', kind: 'unclassified', text: 'worktree is missing', author: 'harness' as const };
+    ledger.record(planSync(ledger.current(), groupCandidates([candidate({ id: 'job-1', episode: 'e2', stage: 'lead-pr' }, { cause }), candidate({ id: 'job-2' })]), later(3)));
+    const moved = ledger.get(id)!, now = moved.subjects.find(subject => subject.id === 'job-1')!;
+    expect(now).toMatchObject({ status: 'open', stage: 'lead-pr', episode: 'e2' });
+    expect(repairSubject(now).digest).not.toBe(a.digest);
+    const route = { action: 'reconcile-review', payload: { key: 'GH-12' }, expectedStage: 'review' };
+    const saved = recordIncidentEvent(ledger, id, 'cli-bind-1', moved.revision, bound([{ ...a, disposition: 'route', route, boundary: { kind: 'record-settled' } }, { ...b, disposition: 'no-route', reason: 'r' }]), later(4));
+    expect(saved.incident.fixes![0].bindings[0]).toMatchObject({ disposition: 'route', route });
+});
+
+test('an event recorded before a route left the inventory is still returned as saved', () => {
+    const { ledger, id, revision } = seeded();
+    recordIncidentEvent(ledger, id, 'cli-start-1', revision, started(), later(2));
+    const [a, b] = ledger.get(id)!.repair!.subjects;
+    // Written straight to the ledger, as a release with no inventory recorded it.
+    const bindings: SubjectFix[] = [{ ...a, disposition: 'route', route: { action: 'retired-handler', payload: { anything: true }, expectedStage: 'elsewhere' }, boundary: { kind: 'record-settled' } }, { ...b, disposition: 'no-route', reason: 'r' }];
+    // Bound while its commit was still off `main`, so the incident stays `fixing` and a new binding is legal.
+    const current = ledger.get(id)!, request = { kind: 'fix-bound' as const, reference: '12', bindings, expectedRevision: revision + 1 };
+    const fix = { event: 'cli-bind-old', commit: SHA('b'), pullRequest: null, onMain: false, boundAt: later(3).toISOString(), bindings };
+    ledger.record({ events: [{ id: 'cli-bind-old', incident: id, at: later(3).toISOString(), kind: 'fix-bound', body: { request, revision: revision + 2 } }], incidents: [{ ...current, state: 'fixing', revision: revision + 2, fixes: [fix] }] });
+    const again = recordIncidentEvent(ledger, id, 'cli-bind-old', revision + 1, bound(bindings), later(9));
+    expect(again).toMatchObject({ replayed: true, revision: revision + 2, event: { id: 'cli-bind-old' } });
+    // The same binding sent as a new event is checked, and refused for its route alone.
+    const before = JSON.stringify([ledger.get(id), ledger.events(id)]);
+    expect(() => recordIncidentEvent(ledger, id, 'cli-bind-new', revision + 2, bound(bindings), later(9))).toThrow(/^The route bound to brain\/delivery\/job-1 can never resume it: retired-handler is not a resume route/);
+    expect(JSON.stringify([ledger.get(id), ledger.events(id)])).toBe(before);
+    // With a route the inventory holds, the same new event is recorded: nothing else stood in its way.
+    const sound: SubjectFix[] = [{ ...a, disposition: 'route', route: { action: 'reconcile-review', payload: { key: 'GH-12' }, expectedStage: 'review' }, boundary: { kind: 'record-settled' } }, { ...b, disposition: 'no-route', reason: 'r' }];
+    expect(recordIncidentEvent(ledger, id, 'cli-bind-new', revision + 2, bound(sound), later(9))).toMatchObject({ replayed: false, incident: { state: 'shipped' } });
+});
+
+test('a GitHub job route is refused for a CEC queue request, which shares its subject kind, and a record-keyed route for a padded ID', () => {
+    const db = new DatabaseSync(':memory:'); dbs.push(db);
+    const ledger = new IncidentLedger(db);
+    // A stopped CEC delivery request and a stopped checkpoint, each its own incident.
+    const azure = { source: 'stopped-work' as const, provider: 'azure', stage: 'resume-ticket', kind: 'unclassified', text: 'worktree is missing', author: 'harness' as const };
+    ledger.record(planSync([], groupCandidates([candidate({ projectId: 'cec', id: 'dq-2', stage: 'resume-ticket' }, { cause: azure }), candidate({ kind: 'checkpoint', id: 'cp-1', stage: 'checkpoint' })]), AT));
+    const request = ledger.list().find(incident => incident.cause.provider === 'azure')!, checkpoint = ledger.list().find(incident => incident.cause.provider === 'github')!;
+    const refused = (incident: typeof request, route: RepairRoute, message: string) => {
+        const repair = recordIncidentEvent(ledger, incident.id, `cli-start-${incident.id}`, ledger.get(incident.id)!.revision, started(), later(2)).incident, [subject] = repair.repair!.subjects;
+        const before = JSON.stringify([ledger.get(incident.id), ledger.events(incident.id)]);
+        for (const fix of [{ ...subject, disposition: 'route' as const, route, boundary: { kind: 'record-settled' as const } }, { ...subject, disposition: 'undeclared-boundary' as const, route, reason: 'r' }])
+            expect(() => recordIncidentEvent(ledger, incident.id, 'cli-bind-1', repair.revision, bound([fix]), later(3))).toThrow(message);
+        expect(JSON.stringify([ledger.get(incident.id), ledger.events(incident.id)])).toBe(before);
+        return { repair, subject };
+    };
+    refused(request, { action: 'review-pr', payload: { key: 'CEC-154' }, expectedStage: 'resume-ticket' }, 'The route bound to cec/delivery/dq-2 can never resume it: review-pr resumes a GitHub delivery job, which cec/delivery/dq-2 is not');
+    const { repair, subject } = refused(checkpoint, { action: 'retry-checkpoint', payload: { key: ' cp-1 ' }, expectedStage: 'checkpoint' }, 'The route bound to brain/checkpoint/cp-1 can never resume it: the payload of retry-checkpoint is { key }');
+    // The exact ID binds, and is saved as sent.
+    const exact: RepairRoute = { action: 'retry-checkpoint', payload: { key: 'cp-1' }, expectedStage: 'checkpoint' };
+    expect(recordIncidentEvent(ledger, checkpoint.id, 'cli-bind-1', repair.revision, bound([{ ...subject, disposition: 'route', route: exact, boundary: { kind: 'record-settled' } }]), later(3)).incident.fixes![0].bindings[0]).toMatchObject({ route: exact });
 });

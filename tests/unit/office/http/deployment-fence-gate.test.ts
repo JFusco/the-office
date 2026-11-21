@@ -65,3 +65,13 @@ test('an oversized command body is refused without being read', async () => {
     const req = new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': '5000' }, body: JSON.stringify({ action: 'pause', pad: 'x'.repeat(4980) }) });
     expect((await deploymentFenceGate(req, url, ctx))!.status).toBe(409);
 });
+
+test('while fenced the resume switch cannot be changed, a pause included, and can still be read', async () => {
+    const ctx = context(true);
+    for (const body of [{ enabled: false }, { enabled: true, expectedRevision: 0 }]) {
+        const { req, url } = request('POST', '/api/incidents/resumes', body);
+        expect((await deploymentFenceGate(req, url, ctx))!.status).toBe(409);
+    }
+    const { req, url } = request('GET', '/api/incidents/resumes');
+    expect(await deploymentFenceGate(req, url, ctx)).toBeUndefined();
+});

@@ -21,6 +21,19 @@ test('status reads one incident and prints it', async () => {
     expect(JSON.parse(o.lines[0])).toEqual({ incident: { id: ID } });
 });
 
+test('incident verbs reject the resume switch name as an incident ID before sending a request', async () => {
+    const o = office({ [`GET ${BASE}/api/incidents/resumes`]: { body: { resumes: { enabled: false, revision: 0 } } } });
+    for (const args of [
+        ['status', 'resumes'],
+        ['start-repair', 'resumes', '--issue', '365', '--revision', '7'],
+        ['bind-fix', 'resumes', '#12', '--revision', '8', '--no-route', 'r'],
+    ]) {
+        expect(await incidentCommand(args, o.io), args.join(' ')).toBe(2);
+        expect(o.lines.at(-1)).toContain('pnpm office incident status INCIDENT');
+    }
+    expect(o.sent).toEqual([]);
+});
+
 test('start-repair sends the issue, the revision the person read and an event ID it printed first', async () => {
     const o = office();
     expect(await incidentCommand(['start-repair', ID, '--issue', '365', '--revision', '7'], o.io)).toBe(0);
@@ -74,4 +87,39 @@ test('a flag with no value, or followed by another flag, is refused before an ID
         expect(o.lines.join('\n')).toMatch(/needs a value/);
         expect(o.lines.join('\n')).not.toContain('cli-minted');
     }
+});
+
+test('resumes reads the switch; pause-resumes needs nothing; resume-resumes names the revision that was read', async () => {
+    const url = `${BASE}/api/incidents/resumes`;
+    const o = office({ [`GET ${url}`]: { body: { resumes: { enabled: false, revision: 0 } } } });
+    expect(await incidentCommand(['resumes'], o.io)).toBe(0);
+    expect(JSON.parse(o.lines[0])).toEqual({ resumes: { enabled: false, revision: 0 } });
+    expect(await incidentCommand(['pause-resumes'], o.io)).toBe(0);
+    expect(await incidentCommand(['pause-resumes', '--reason', 'two rollbacks in a row'], o.io)).toBe(0);
+    // Revision 0 is the switch nobody has changed yet.
+    expect(await incidentCommand(['resume-resumes', '--revision', '0'], o.io)).toBe(0);
+    expect(await incidentCommand(['resume-resumes', '--reason', 'first fix bound by hand', '--revision', '7'], o.io)).toBe(0);
+    expect(o.sent).toEqual([
+        { url, method: 'GET', body: undefined },
+        { url, method: 'POST', body: { enabled: false } },
+        { url, method: 'POST', body: { enabled: false, reason: 'two rollbacks in a row' } },
+        { url, method: 'POST', body: { enabled: true, expectedRevision: 0 } },
+        { url, method: 'POST', body: { enabled: true, expectedRevision: 7, reason: 'first fix bound by hand' } },
+    ]);
+});
+
+test('a refused switch change exits non-zero with what the Office said', async () => {
+    const o = office({ [`POST ${BASE}/api/incidents/resumes`]: { status: 409, body: { error: 'The resume switch is at revision 2, not 1; read it again' } } });
+    expect(await incidentCommand(['resume-resumes', '--revision', '1'], o.io)).toBe(1);
+    expect(JSON.parse(o.lines[0])).toEqual({ error: 'The resume switch is at revision 2, not 1; read it again' });
+});
+
+test('a switch command with a missing revision, a stray word, another verb\'s flag or a repeated flag sends nothing', async () => {
+    const o = office();
+    for (const args of [['resume-resumes'], ['resume-resumes', '--revision', 'seven'], ['resume-resumes', '--revision', '-1'], ['resume-resumes', '--revision'], ['resume-resumes', '3'], ['resume-resumes', '--revision', '3', 'now'],
+        ['resume-resumes', '--revision', '3', '--issue', '9'], ['resume-resumes', '--revision', '3', '--revision', '4'], ['pause-resumes', 'now'], ['pause-resumes', '--revision', '3'], ['pause-resumes', '--reason'],
+        ['pause-resumes', '--reason', 'a', '--reason', 'b'], ['resumes', 'inc-0123456789abcdef'], ['resumes', '--reason', 'x']])
+        expect(await incidentCommand(args, o.io), args.join(' ')).toBe(2);
+    expect(o.sent).toEqual([]);
+    expect(o.lines.at(-1)).toContain('pnpm office incident resume-resumes --revision REVISION [--reason TEXT]');
 });
