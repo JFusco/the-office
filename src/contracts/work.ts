@@ -184,9 +184,38 @@ export interface WorkClaim {
     endedAt: string;
 }
 export const workKey = (work: WorkRef) => `${work.projectId}:${work.kind}:${work.id}`;
+/**
+ * Marks a request the Office queued to resume stopped work once a harness fix was found in the
+ * running release: which incident, subject and fix it is for, the route it took and the release it
+ * was admitted under. One per incident, subject and fix: while any request carries it, whatever
+ * became of that request, the subject is not resumed for that fix again.
+ */
+export interface RepairResume {
+    /**
+     * SHA-256 of the incident, subject and fix event: what a later pass matches. The fields below
+     * say the same in words, but a caller-chosen event ID can be changed by the credential
+     * redaction every saved string goes through, and a digest cannot.
+     */
+    id: string;
+    incident: string;
+    /** The incident subject, as `project/kind/id`, and the digest the fix bound it by. */
+    subject: string;
+    digest: string;
+    /** The `fix-bound` event and its commit. */
+    fix: string;
+    commit: string;
+    action: string;
+    /** SHA-256 of the route's payload in canonical form. */
+    payload: string;
+    /** The verified release that ran, and was known to hold the fix, when the resume was admitted. */
+    release: { commit: string; operation: string };
+    admittedAt: string;
+}
 export interface HarnessRequest {
     /** Last recorded stop; meaningful only while the request is blocked or interrupted. */
     stop?: StopReason;
+    /** Set when the Office queued this request as a repair resume (see server/incidents/repair/dispatch-resume.ts). */
+    repairResume?: RepairResume;
     historyRetirement?: import('./history-retirement').HistoryRetirementIntent;
     prMetadataRecovery?: import('./pr-metadata').PRMetadataRecoveryIntent;
     closeoutSupervisionProof?: { path: string; sha256: string };

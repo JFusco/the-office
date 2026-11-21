@@ -15,6 +15,9 @@ import { observe } from '../incident-fixture';
 import { groupCandidates } from '../../../../server/incidents/candidates';
 import { COLLECTORS } from '../../../../server/incidents/sources/collectors';
 import { blocked, HOUR, job, later, world } from './repair-wait-fixture';
+import { admitResume } from '../../../../server/incidents/repair/dispatch-resume';
+import { recordIncidentEvent } from '../../../../server/incidents/record-event';
+import { deployedWorld } from './resume-fixture';
 
 const stores: Store[] = [], dbs: DatabaseSync[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0).forEach(db => db.close()); });
@@ -370,4 +373,39 @@ test('marking changes no scheduling or recovery reading of the project; only the
     w.pass(49 * HOUR);
     expect(read(3)).toBe(before);
     expect(asked(49 * HOUR + 1)).toEqual(['ticket-job:1', 'ticket-job:2']);
+});
+
+test('a stop resumed for the repair\'s latest fix is not marked again, whatever became of the resume; the rest stay marked', async () => {
+    // The clock stepped back after the repair started at minute 1.
+    const w = await deployedWorld(stores, dbs, undefined, undefined, { bindMinute: 0 });
+    expect(Object.keys(w.waits())).toEqual(['delivery/1', 'delivery/2']);
+    const resumed = admitResume(w.store, w.intent('1'), later(5)) as { admitted: { status: string } };
+    expect(Object.keys(w.waits())).toEqual(['delivery/2']);
+    // The job still stands stopped exactly as the repair recorded it, and the incident is still deployed: without the binding it would be marked again.
+    for (const status of ['queued', 'working', 'blocked', 'completed']) {
+        resumed.admitted.status = status;
+        expect(w.pass(6), status).toEqual({ admitted: [], expired: [], removed: [], unmarked: [] });
+        expect(Object.keys(w.waits()), status).toEqual(['delivery/2']);
+    }
+    expect(repairWaitFor(w.store.state, w.work('1'), 'review', later(6))).toBeNull();
+    expect(repairWaitFor(w.store.state, w.work('2'), 'review', later(6))).not.toBeNull();
+    // A marker put back by hand for the resumed stop is taken away again.
+    w.store.state.coordination!.repairWaits!['delivery/1'] = { ...w.waits()['delivery/2'], subject: KEYS[0] };
+    expect(w.pass(7)).toEqual({ admitted: [], expired: [], removed: [KEYS[0]], unmarked: [] });
+    expect(Object.keys(w.waits())).toEqual(['delivery/2']);
+});
+
+test('a resume for an earlier repair\'s fix does not keep a new repair\'s stops from being marked', async () => {
+    const w = await deployedWorld(stores, dbs);
+    admitResume(w.store, w.intent('1'), later(5));
+    admitResume(w.store, w.intent('2'), later(5));
+    expect('repairWaits' in w.store.state.coordination!).toBe(false);
+    // The cause came back: the incident recurred and a second repair starts. Its fix is not bound yet, so the latest fix is still the first repair's.
+    const incident = w.ledger.get(w.id)!;
+    w.ledger.record({ events: [], incidents: [{ ...incident, state: 'recurred', revision: incident.revision + 1 }] });
+    const previousBindingAt = new Date(incident.fixes!.at(-1)!.boundAt);
+    recordIncidentEvent(w.ledger, w.id, 'cli-start-2', w.ledger.get(w.id)!.revision, { kind: 'repair-started', request: { kind: 'repair-started', issue: 421 }, issue: { repository: 'JFusco/the-office', number: 421, url: 'https://github.com/JFusco/the-office/issues/421' } }, previousBindingAt);
+    expect(w.ledger.get(w.id)).toMatchObject({ state: 'fixing', fixes: [{ event: 'cli-bind-1' }] });
+    expect(w.pass(61)).toEqual({ admitted: KEYS, expired: [], removed: [], unmarked: [] });
+    expect(w.waits()['delivery/1']).toMatchObject({ repair: 'cli-start-2' });
 });

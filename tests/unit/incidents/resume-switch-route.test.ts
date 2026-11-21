@@ -1,8 +1,10 @@
 import { afterEach, expect, test } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { groupCandidates } from '../../../server/incidents/candidates';
+import { eventId } from '../../../server/incidents/event-id';
 import { IncidentLedger } from '../../../server/incidents/incident-ledger';
 import { planSync } from '../../../server/incidents/plan-sync';
+import { resumeIdentity } from '../../../server/incidents/repair/resume-binding';
 import { ResumeControl } from '../../../server/incidents/repair/resume-control';
 import { incidentsRoute } from '../../../server/incidents/routes';
 import { repairSubject } from '../../../server/incidents/subject-digest';
@@ -81,9 +83,14 @@ test('one incident states how each bound subject stands once its fix is found in
     s.incidents.record({ events: [], incidents: [deployed] });
     const before = state(s);
     expect((await read()).resumes).toEqual({ fix: 'cli-bind-1', commit: 'b'.repeat(40), release, subjects: [
-        { subject: 'brain/delivery/job-1', standing: 'no-route', reason: 'This release cannot dispatch reconcile-review.', action: 'reconcile-review' },
+        { subject: 'brain/delivery/job-1', standing: 'held', reason: 'Automatic repair resumes are paused: Automatic repair resumes have never been enabled.', action: 'reconcile-review' },
         { subject: 'brain/delivery/job-2', standing: 'no-route', reason: 'The fix declared no route: fixed by hand' },
     ] });
     // Reading it wrote nothing: not the ledger, not the switch.
     expect(state(s)).toBe(before);
+    // The reading follows the switch, and then the ledger's own record of an admission.
+    s.resumes.enable(0, 'go', later(7));
+    expect(((await read()).resumes as { subjects: { standing: string }[] }).subjects.map(subject => subject.standing)).toEqual(['due', 'no-route']);
+    s.incidents.record({ events: [{ id: eventId(observed.id, 'resume-admitted', resumeIdentity(observed.id, 'brain/delivery/job-1', 'cli-bind-1')), incident: observed.id, at: later(8).toISOString(), kind: 'resume-admitted', body: { subject: 'brain/delivery/job-1' } }], incidents: [] });
+    expect(((await read()).resumes as { subjects: { standing: string }[] }).subjects.map(subject => subject.standing)).toEqual(['admitted', 'no-route']);
 });

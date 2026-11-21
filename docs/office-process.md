@@ -869,9 +869,12 @@ project's state and the scheduler's own projection, writes two tables of its own
 writes a project store, calls a provider or runs a model. A person can also record a repair start
 and a fix binding on an incident (see Write-back below), and the Office compares the release it
 runs with fixes that are on `main` (see Deployed fixes below); both read GitHub and write only the
-ledger. One step writes a project store: while a repair is in progress, the stops it covers are
-marked in their project (see Repair wait below), and that marker is all it writes. An incident
-describes a stop; it grants no retry, no resume and no authority over the work.
+ledger. Two steps write a project store. While a repair is in progress, the stops it covers are
+marked in their project (see Repair wait below). And once the fix is found in the running release,
+the recovery request the fix bound for a marked stop is queued there, once, with the marker
+removed (see Resume after a fix below). An incident by itself describes a stop; it grants no
+retry and no authority over the work, and nothing is resumed without a fix bound to a route, found
+in the running release, with automatic resumes enabled.
 
 **What is read.** Once a minute, unless a deployment holds the fence, one collector per signal
 reads every project:
@@ -1020,8 +1023,12 @@ another request, a stale revision, a transition not in the table or a binding th
 above is refused and nothing is saved. Observation changes neither the state these events set nor
 the repair and fixes they recorded.
 
-**Resume after a fix.** The Office does not dispatch resumes yet. What exists is the inventory
-above, a switch and a reading.
+**Resume after a fix.** Once an incident's fix is found in the running release, the Office queues,
+once per subject and fix, the recovery request the fix bound for that subject, and lifts the repair
+wait from it. It does this through the inventory above, a switch, a reading and a pass. One route
+is dispatched so far: `reconcile-review` without a head, which verifies a saved independent review
+against the unchanged pull request and issue and runs no model. Every other row, and
+`reconcile-review` with a head, is not dispatched yet.
 
 The switch (`server/incidents/repair/resume-control.ts`) says whether automatic repair resumes are
 admitted, office-wide. It is one row on the control database beside the fence and the ledger, and
@@ -1039,10 +1046,58 @@ The reading (`server/incidents/repair/assess-resumes.ts`) is returned as `resume
 subject that fix bound it states one of: `no-route` (the fix declared none, the route is not valid
 for the subject, or this release cannot dispatch it), `gone` (the subject cleared, or no longer
 stands as the fix bound it; it is never resumed in a later form), `held` (it could be resumed and
-the switch is paused) or `due` (it could be resumed and the switch is enabled). It is computed
-from the ledger on each read and recorded nowhere. No route in the inventory can be dispatched
-yet, so a routed subject that still stands open as bound reads `no-route` until the change that
-ships its resume; one that cleared or moved reads `gone`.
+the switch is paused), `due` (it could be resumed and the switch is enabled) or `admitted` (its
+resume was queued for this fix; it stays so whatever the subject does next). It is computed from
+the ledger on each read. An unadmitted subject with a route this release cannot dispatch reads
+`no-route` while its stop remains open as bound. If the stop clears or changes, it reads `gone`.
+
+The pass (`server/incidents/repair/resume-arrivals.ts`) runs on the incident timer after the
+repair waits are kept, and never while a deployment holds the fence. For every `deployed`
+incident it puts each subject the reading calls `due` to admission in its own project
+(`server/incidents/repair/dispatch-resume.ts`), each at its own moment: the clock is read per
+subject, so a wait that runs out during the pass is not admitted on an earlier reading.
+
+The deployment mark alone does not admit a resume. It says what was found when it was made, and
+in the tick after a rollback, before the withdrawal pass has run, it names a release that no
+longer serves. A resume is admitted only when the release that runs now is verified and known to
+hold the fix (`server/incidents/repair/running-release.ts`): its commit is the one the mark
+names, or GitHub was asked about it and said it contains the fix, by the answers the comparison
+keeps (see Deployed fixes). Otherwise the subject is refused as `release-unconfirmed` and tried
+again next pass. The request records the release that ran, not the one the mark names.
+
+Admission reads everything at that moment, with
+nothing awaited between the checks and the write, and refuses when: a resume is already bound for
+that incident, subject and fix (it is returned, never repeated); the project is paused or
+draining; the route is not dispatched in that form; the repair wait of that incident is not in
+effect for the subject's exact stop, because it ran out, the stop changed, or something stronger
+explains it (see Repair wait: a hold, a decision, a merge approval, a prerequisite, an unsettled
+write, missing authority); the subject has no delivery job in that project, or the route's key is
+not that job's; another request for that key is queued or working; or the same request completed
+earlier and stands as its own answer. Otherwise, in one project transaction, the existing request
+is queued through `enqueueRequest`, marked with `repairResume` (incident, subject and digest, fix
+event and commit, action, a digest of the payload, the release, the time), and the subject's
+repair-wait marker is removed. The request's admission-journal row commits with it. No counter,
+attempt count or budget of the job is changed; the scheduler runs the request under its existing
+ownership and the handler checks its own preconditions.
+
+One resume per subject and fix: any request in the project's store that carries that binding
+counts, whatever its status, and recovery requests are never pruned. The binding is matched by a
+digest of the incident, subject and fix event (`server/incidents/repair/resume-binding.ts`), not
+by those strings: everything saved in a project's state passes the credential redaction, which
+can change an event ID a person chose, and a digest comes back as it went in. The project's store
+is the authority. The ledger records afterwards. Each pass first gives every bound request in
+every project its `resume-admitted` event, taken from the saved request and dated when it was
+admitted, whatever state the incident is in by then; so an admission whose event was lost is
+recorded without queueing again, even after its fix was withdrawn. A refusal is one
+`resume-refused` event per subject, fix and reason, a subject held by the paused switch included
+(`resumes-paused`). Neither changes the incident's state or revision. A refusal consumes nothing:
+the subject is put to admission again each pass and is admitted if the reason goes while its wait
+still holds. `wait-ended` covers both a wait that is over for good and one that a hold, decision,
+prerequisite or unsettled write outranks for now. The refusal the queue itself makes
+(`already-reconciled`) is undone as a transaction, so no refusal writes a project. A stop whose
+wait already ran out is not resumed; it has gone back to a person. Whether a resume worked is not judged yet: the incident stays `deployed`.
+`reconcile-review` without a head ends in the job's normal continuation under its existing merge
+authorization and readiness requirements.
 
 The reading follows the running release: an incident whose fix that release no longer holds, or
 whose release can no longer be verified, has returned to `shipped` within a few ticks (see
@@ -1075,8 +1130,8 @@ comparisons a pass, and each pass starts after the incident the last one asked a
 that keep failing do not hold up the rest. The receipt is read again before a fix is marked: if it
 changed while GitHub was asked, nothing is recorded and the answer is kept. A comparison in flight
 keeps `/api/health` busy, and it stops, reading and writing nothing more, as soon as a deployment
-holds the fence. `fix-deployed` cannot be written through the events route. Nothing waits on or
-resumes after a deployed fix yet.
+holds the fence. `fix-deployed` cannot be written through the events route. What a deployed fix
+resumes is under Resume after a fix.
 
 `deployed` holds only while the release the service runs holds the fix. In the same tick, before
 the pass above, the Office takes every `deployed` incident (`server/incidents/withdrawn-fixes.ts`).
@@ -1139,9 +1194,10 @@ and the recovery paths read (`server/incidents/repair/`). After each observation
 while a deployment holds the fence, every subject the repair recorded that the ledger still holds
 open exactly as recorded, and whose project record stands stopped the same way, gets one marker in
 that project's coordination state (`repairWaits`): the incident, the repair event and issue, the
-subject and its digest, and how the stop stood (stage, episode, saved stop, head). This is the
-only write the incident domain makes to a project store, one transaction per project, and it
-writes nothing else; the fence is asked again before every write. The ledger keeps a subject as it
+subject and its digest, and how the stop stood (stage, episode, saved stop, head). This pass
+writes only that marker map, one transaction per project; the fence is asked again before every
+write. A stop already resumed for the repair's latest fix is not marked again, whatever became of
+that resume: it has had its one resume (see Resume after a fix). The ledger keeps a subject as it
 last saw it while it cannot see a project, so a record that has since stopped again or moved stage
 is not marked on the ledger's word. A subject with no record of its own in a project store (an IT
 recovery, an investigation, an outbox-only item, a worker run, a paused project) is not marked.

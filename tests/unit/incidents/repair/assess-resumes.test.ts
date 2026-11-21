@@ -10,7 +10,7 @@ import { AT, candidate, later } from '../incident-fixture';
 const PAUSED: ResumeSwitch = { enabled: false, revision: 4, reason: 'two rollbacks in a row', at: AT.toISOString() }, ENABLED: ResumeSwitch = { enabled: true, revision: 5, reason: 'go', at: AT.toISOString() };
 const RELEASE = { commit: 'c'.repeat(40), hash: 'h'.repeat(64), operation: 'op-1', activatedAt: later(5).toISOString() };
 /** An inventory where one review route can be dispatched and one cannot. */
-const ROUTES: Record<string, ResumeRoute> = { 'reconcile-review': { subject: 'job', keyed: 'ticket', head: 'a worker', dispatch: true }, 'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: false } };
+const ROUTES: Record<string, ResumeRoute> = { 'reconcile-review': { subject: 'job', keyed: 'ticket', head: 'a worker', dispatch: 'all' }, 'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' } };
 const review: RepairRoute = { action: 'reconcile-review', payload: { key: 'GH-12' }, expectedStage: 'review' };
 
 /** An incident with three stopped jobs, as the ledger would hold it, and a fix bound to all three. */
@@ -76,10 +76,25 @@ test('a job route bound to work in a project of another provider is no route, by
     expect(standings(assessResumes(bound, ENABLED, ROUTES))).toEqual([['job-1', 'due'], ['job-2', 'due'], ['job-3', 'due']]);
 });
 
-test('with the Office\'s own inventory nothing is held or due yet', () => {
-    const bound = incident(subjects => subjects.map(subject => routed(subject)));
+test('with the Office\'s own inventory only the saved-review reconciliation is held or due', () => {
+    const bound = incident(([a, b, c]) => [routed(a), routed(b, { ...review, payload: { key: 'GH-12', head: 'worker-1' } }), routed(c, { action: 'review-pr', payload: { key: 'GH-12' }, expectedStage: 'review' })]);
+    for (const [control, standing, reason] of [[PAUSED, 'held', 'Automatic repair resumes are paused: two rollbacks in a row'], [ENABLED, 'due', 'Automatic repair resumes are enabled.']] as const)
+        expect(assessResumes(bound, control)!.subjects.map(subject => [subject.standing, subject.reason])).toEqual([
+            [standing, reason], ['no-route', 'This release cannot dispatch reconcile-review with a head.'], ['no-route', 'This release cannot dispatch review-pr.']]);
+});
+
+test('a subject whose resume was admitted for this fix reads admitted, whatever it has done since; a declared no-route stays that', () => {
+    const bound = incident(([a, b, c]) => [routed(a), routed(b), { ...c, disposition: 'no-route', reason: 'fixed by hand' }]);
+    const [one, two, three] = bound.subjects, moved: Incident = { ...bound, subjects: [{ ...one, status: 'cleared', clearedAt: later(7).toISOString() }, two, three] };
+    const admitted = (subject: string) => subject !== 'brain/delivery/job-2';
     for (const control of [PAUSED, ENABLED])
-        expect(assessResumes(bound, control)!.subjects.map(subject => [subject.standing, subject.reason])).toEqual(Array(3).fill(['no-route', 'This release cannot dispatch reconcile-review.']));
+        expect(assessResumes(moved, control, ROUTES, admitted)!.subjects).toEqual([
+            { subject: 'brain/delivery/job-1', standing: 'admitted', reason: 'Its resume was queued for this fix; a fix resumes a subject once.', action: 'reconcile-review' },
+            { subject: 'brain/delivery/job-2', standing: control.enabled ? 'due' : 'held', reason: control.enabled ? 'Automatic repair resumes are enabled.' : 'Automatic repair resumes are paused: two rollbacks in a row', action: 'reconcile-review' },
+            { subject: 'brain/delivery/job-3', standing: 'no-route', reason: 'The fix declared no route: fixed by hand' },
+        ]);
+    // Asked of no one, nothing is admitted.
+    expect(standings(assessResumes(bound, ENABLED, ROUTES))).toEqual([['job-1', 'due'], ['job-2', 'due'], ['job-3', 'no-route']]);
 });
 
 test('a subject that cleared, left the ledger or no longer stands as bound is gone, whatever the switch says', () => {

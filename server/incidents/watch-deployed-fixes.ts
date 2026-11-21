@@ -1,6 +1,6 @@
 import type { ReleaseIdentity } from '../office/release-identity';
 import type { command } from '../workers/process';
-import { compareMemory, COMPARES_PER_PASS, recordDeployedFixes, type DeployedFixes } from './deployed-fixes';
+import { compareMemory, COMPARES_PER_PASS, recordDeployedFixes, type CompareMemory, type DeployedFixes } from './deployed-fixes';
 import type { IncidentLedger } from './incident-ledger';
 import { redactEvidence } from './redact-evidence';
 import { recordWithdrawnFixes } from './withdrawn-fixes';
@@ -12,6 +12,8 @@ export interface DeployedFixWatch {
     loadedHash: string;
     execute: typeof command;
     allowed: () => boolean;
+    /** What GitHub said, kept between ticks. Given by a caller that also needs to read it (see repair/running-release.ts). */
+    memory?: CompareMemory;
     now?: () => Date;
     report?: (message: string) => void;
 }
@@ -27,8 +29,7 @@ export type DeployedFixPass = DeployedFixes & { withdrawn: string[] };
  * for arrivals. Ticks do not overlap. Failures are reported with credentials removed, and the
  * next tick can run as usual.
  */
-export function watchDeployedFixes({ ledger, identity, loadedHash, execute, allowed, now = () => new Date(), report = console.error }: DeployedFixWatch): () => Promise<DeployedFixPass | undefined> {
-    const memory = compareMemory();
+export function watchDeployedFixes({ ledger, identity, loadedHash, execute, allowed, memory = compareMemory(), now = () => new Date(), report = console.error }: DeployedFixWatch): () => Promise<DeployedFixPass | undefined> {
     let running = false, reserveArrivalRead = false;
     return async () => {
         if (running || !allowed()) return undefined;

@@ -26,7 +26,7 @@ function service(initiallyFenced: boolean) {
     const operations = new InFlightOperations();
     const offices = { entries: new Map([['cms-field-vocabulary', { store, engine: {} }]]), fenced: () => { state.fenceReads++; return state.fenced; }, pump: async () => {}, tick: async () => {},
         observeIncidents: () => { state.incidentSyncs++; if (state.incidentError) throw new Error(state.incidentError); },
-        incidents: { inState: (wanted: string) => { state.compared.push(wanted); state.inFlight.push(operations.count); return []; } }, operations };
+        incidents: { inState: (wanted: string) => { state.compared.push(wanted); state.inFlight.push(operations.count); return []; } }, resumes: { read: () => ({ enabled: false, revision: 0, reason: 'never enabled', at: null }) }, operations };
     const report = vi.fn(async () => ({ services: [], checkedAt: '', context: '' }));
     const itSpecialist = new ITSpecialist({ entries: new Map(), fenced: offices.fenced } as any, { report } as any);
     const stop = startServiceTicks({ offices, itSpecialist, loadedRevision: { hash: 'h'.repeat(64), manifest: [] } } as any);
@@ -101,14 +101,14 @@ test('the running release is compared with shipped incidents after each incident
     expect(state.compared).toEqual([]);
     state.fenced = false;
     await vi.advanceTimersByTimeAsync(60_000);
-    // Dismissals are checked first, then repairs in progress are marked, then the release is compared: deployed incidents for a withdrawal, then shipped ones for an arrival.
-    expect(state.compared).toEqual(['dismissed', 'fixing', 'shipped', 'deployed', 'deployed', 'shipped']);
+    // Dismissals are checked first, then repairs in progress are marked, then due resumes are queued for deployed incidents, then the release is compared: deployed incidents for a withdrawal, then shipped ones for an arrival.
+    expect(state.compared).toEqual(['dismissed', 'fixing', 'shipped', 'deployed', 'deployed', 'deployed', 'shipped']);
     // Health is busy for as long as the comparison runs, and not after.
-    expect(state.inFlight).toEqual([0, 0, 0, 0, 1, 1]);
+    expect(state.inFlight).toEqual([0, 0, 0, 0, 0, 1, 1]);
     expect(operations.count).toBe(0);
     process.env.OFFICE_NO_POLL = '1';
     await vi.advanceTimersByTimeAsync(60_000);
     expect(state.incidentSyncs).toBe(2);
-    expect(state.compared).toEqual(['dismissed', 'fixing', 'shipped', 'deployed', 'deployed', 'shipped', 'dismissed', 'fixing', 'shipped', 'deployed']);
+    expect(state.compared).toEqual(['dismissed', 'fixing', 'shipped', 'deployed', 'deployed', 'deployed', 'shipped', 'dismissed', 'fixing', 'shipped', 'deployed', 'deployed']);
     stop();
 });

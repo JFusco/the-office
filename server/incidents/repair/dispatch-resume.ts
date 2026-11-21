@@ -1,0 +1,87 @@
+import { createHash } from 'node:crypto';
+import type { IncidentFix, ResumeRefusal, SubjectFix } from '../../../src/contracts/incidents';
+import type { HarnessRequest, WorkRef } from '../../../src/contracts/work';
+import { enqueueRequest } from '../../scheduling/requests';
+import type { Store } from '../../store/store';
+import { canonical } from '../canonical-json';
+import { freezeReads } from './freeze-reads';
+import { repairFreeze } from './repair-freeze';
+import { waitKey } from './repair-wait';
+import { boundResume, resumeIdentity } from './resume-binding';
+import { dispatchable, RESUME_ROUTES, subjectParts, type ResumeRoute } from './resume-routes';
+
+/** One subject of a fix the running release holds, to be resumed by the route the fix bound for it. */
+export interface ResumeIntent {
+    incident: string;
+    fix: Pick<IncidentFix, 'event' | 'commit'>;
+    /** The verified release that runs now and is known to hold the fix (see running-release.ts). */
+    release: { commit: string; operation: string };
+    binding: Extract<SubjectFix, { route: unknown }>;
+}
+
+/** `replayed`: the resume was admitted by an earlier pass; the request found is returned and nothing is queued. */
+export type ResumeAdmission = { admitted: HarnessRequest; replayed: boolean } | { refused: Exclude<ResumeRefusal, 'resumes-paused' | 'release-unconfirmed'>; detail: string };
+
+const PENDING: readonly string[] = ['queued', 'working'];
+/** Thrown inside the admitting transaction to undo it whole: the queue answered with a request it already held. */
+class NotQueued extends Error {}
+
+/**
+ * Admits one resume in its project, or says why not. A resume already bound for this incident,
+ * subject and fix is returned as it stands. Otherwise every condition is read now, with nothing
+ * awaited, so no other work runs between the checks and the write:
+ *
+ * - the project is neither paused nor draining;
+ * - this release dispatches the route in this form, for a delivery job;
+ * - the repair wait of this incident is in effect for the subject's exact stop, so the stop
+ *   stands as the fix bound it and nothing stronger explains it (see repair-freeze.ts);
+ * - the subject is a delivery job of this project and the route's key is that job's;
+ * - no other request for that key is queued or working.
+ *
+ * Then the existing recovery request is queued through `enqueueRequest`, bound to the fix, and the
+ * subject's repair-wait marker is removed, in one transaction with the request's admission row.
+ * A refusal writes nothing, the one the queue itself makes included: that transaction is undone.
+ * The caller checks the deployment fence, the Office-wide switch and that the running release
+ * holds the fix; the handler checks its own preconditions when the scheduler runs the request. No counter,
+ * attempt or budget of the job is touched.
+ */
+export function admitResume(store: Store, intent: ResumeIntent, now: Date, routes: Readonly<Record<string, ResumeRoute>> = RESUME_ROUTES): ResumeAdmission {
+    const state = store.state, { binding, incident, fix } = intent, { action, payload } = binding.route;
+    const refused = (code: Exclude<ResumeRefusal, 'resumes-paused' | 'release-unconfirmed'>, detail: string): ResumeAdmission => ({ refused: code, detail });
+    const identity = resumeIdentity(incident, binding.subject, fix.event), bound = boundResume(state, identity);
+    if (bound) return { admitted: bound, replayed: true };
+    if (state.paused || state.draining) return refused('project-paused', state.draining ? 'The project is draining.' : 'The project is paused.');
+    const known = Object.hasOwn(routes, action) ? routes[action] : undefined;
+    if (!known || known.subject !== 'job' || !dispatchable(known, payload)) return refused('not-dispatchable', `This release does not dispatch ${action}${payload.head ? ' with a head' : ''}.`);
+    const work = subjectParts(binding.subject);
+    if (!work || work.project !== store.project.id || work.kind !== 'delivery') return refused('no-record', `${binding.subject} is not delivery work of ${store.project.id}.`);
+    const ref = { kind: work.kind, id: work.id } as Pick<WorkRef, 'kind' | 'id'>;
+    const wait = repairFreeze(state, ref, now, freezeReads(store, now));
+    if (!wait || wait.incident !== incident || wait.digest !== binding.digest) return refused('wait-ended', 'The repair wait no longer holds for this stop: it ran out, the stop changed, or something stronger explains it.');
+    // A wait in effect means the record stands stopped, so a job found here is a live one.
+    const job = state.coordination?.jobs?.find(job => job.id === work.id);
+    if (!job) return refused('no-record', `${binding.subject} has no delivery job.`);
+    const key = String(payload.key), head = typeof payload.head === 'string' ? payload.head : '';
+    if (job.key !== key) return refused('key-mismatch', `The route names ${key}; the job is ${job.key}.`);
+    const requests = state.coordination!.requests ?? [];
+    if (requests.some(request => request.key === job.key && PENDING.includes(request.status))) return refused('request-pending', `Another request for ${job.key} is queued or working.`);
+    try {
+        return store.transaction((): ResumeAdmission => {
+        const known = new Set(requests.map(request => request.id)), request = enqueueRequest(store, action, job.key, head);
+        // An identical request that completed earlier is its own answer to `enqueueRequest`; binding it would claim a resume that never ran.
+        if (known.has(request.id)) throw new NotQueued();
+        request.repairResume = {
+            id: identity, incident, subject: binding.subject, digest: binding.digest, fix: fix.event, commit: fix.commit, action,
+            payload: createHash('sha256').update(canonical(payload)).digest('hex'), release: intent.release, admittedAt: now.toISOString(),
+        };
+        const waits = state.coordination!.repairWaits!;
+        delete waits[waitKey(ref)];
+        if (!Object.keys(waits).length) delete state.coordination!.repairWaits;
+        store.emit('repair-resume-admitted', `${job.key}: ${action} queued to resume after harness fix ${fix.commit.slice(0, 7)} (${incident}).`, undefined, job.key);
+        return { admitted: request, replayed: false };
+        });
+    } catch (error) {
+        if (error instanceof NotQueued) return refused('already-reconciled', `${action} for ${job.key} completed earlier and was not queued again.`);
+        throw error;
+    }
+}

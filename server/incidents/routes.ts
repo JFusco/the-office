@@ -11,6 +11,7 @@ import { readFix } from './fix-identity';
 import type { IncidentLedger } from './incident-ledger';
 import { recordIncidentEvent, REPAIR_SUBJECTS, replayed, SubjectFixSchema, type ResolvedWrite, type WriteRequest } from './record-event';
 import { assessResumes } from './repair/assess-resumes';
+import { resumeAdmitted } from './repair/resume-arrivals';
 import { NEVER_ENABLED, type ResumeControl } from './repair/resume-control';
 import { readRepairIssue } from './repair-issue';
 import { json } from '../office/http/responses';
@@ -116,5 +117,5 @@ export async function incidentsRoute(req: Request, url: URL, context: IncidentsR
         return incident ? json({ packet: packetOf(incident, context) }) : json({ error: 'No such incident' }, 404);
     }
     const id = url.pathname.slice('/api/incidents/'.length), incident = /^inc-[0-9a-f]{16}$/.test(id) ? incidents.get(id) : null;
-    return incident ? json(sanitizeObject({ incident, events: incidents.events(id), resumes: assessResumes(incident, context.offices.resumes?.read() ?? NEVER_ENABLED) })) : json({ error: 'No such incident' }, 404);
+    return incident ? json(sanitizeObject({ incident, events: incidents.events(id), resumes: assessResumes(incident, context.offices.resumes?.read() ?? NEVER_ENABLED, undefined, subject => resumeAdmitted(incidents, incident, subject)) })) : json({ error: 'No such incident' }, 404);
 }

@@ -1,15 +1,15 @@
 import { expect, test } from 'vitest';
-import { RESUME_ROUTES, routeFault } from '../../../../server/incidents/repair/resume-routes';
+import { dispatchable, RESUME_ROUTES, routeFault, subjectParts } from '../../../../server/incidents/repair/resume-routes';
 
 const JOB = { subject: 'cms-field-vocabulary/delivery/job-1', stage: 'review', provider: 'github' };
 const route = (action: string, payload: Record<string, unknown>, expectedStage = 'review') => ({ action, payload, expectedStage });
 
-test('the inventory is the closed list of existing handlers, and no route is dispatched yet', () => {
+test('the inventory is the closed list of existing handlers, and only the saved-review reconciliation is dispatched', () => {
     expect(Object.keys(RESUME_ROUTES).sort()).toEqual([
         'reconcile-base-update', 'reconcile-closeout', 'reconcile-implementation', 'reconcile-maintenance', 'reconcile-native-checkpoint', 'reconcile-preparation', 'reconcile-review',
         'reconcile-scope-repair', 'reconcile-validation', 'requeue-implement', 'resume-ticket', 'retry-checkpoint', 'review-assignment', 'review-candidate', 'review-pr',
     ]);
-    expect(Object.values(RESUME_ROUTES).filter(known => known.dispatch)).toEqual([]);
+    expect(Object.entries(RESUME_ROUTES).filter(([, known]) => known.dispatch !== 'none').map(([action, known]) => [action, known.dispatch])).toEqual([['reconcile-review', 'saved-result']]);
 });
 
 test('an action outside the inventory is not a route, including a name every object carries', () => {
@@ -93,7 +93,28 @@ test('the expected stage is the stage the stop was recorded at, when that is kno
 });
 
 test('a caller\'s own inventory decides, when one is given', () => {
-    const routes = { 'only-this': { subject: 'job', keyed: 'ticket', head: null, dispatch: true } } as const;
+    const routes = { 'only-this': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' } } as const;
     expect(routeFault(route('only-this', { key: 'GH-12' }), JOB, routes)).toBeNull();
     expect(routeFault(route('reconcile-review', { key: 'GH-12' }), JOB, routes)).toBe('reconcile-review is not a resume route; the routes are only-this');
+});
+
+test('a route is dispatched in the forms its row names: none, only without a head, or all', () => {
+    const row = (dispatch: 'none' | 'saved-result' | 'all') => ({ subject: 'job', keyed: 'ticket', head: 'a worker', dispatch }) as const;
+    for (const payload of [{ key: 'GH-12' }, { key: 'GH-12', head: '' }, { key: 'GH-12', head: 'worker-1' }]) {
+        expect(dispatchable(row('none'), payload)).toBe(false);
+        expect(dispatchable(row('all'), payload)).toBe(true);
+    }
+    expect(dispatchable(row('saved-result'), { key: 'GH-12' })).toBe(true);
+    expect(dispatchable(row('saved-result'), { key: 'GH-12', head: '' })).toBe(true);
+    expect(dispatchable(row('saved-result'), { key: 'GH-12', head: 'worker-1' })).toBe(false);
+    // The Office's own inventory: the saved review, and nothing with a head.
+    expect(dispatchable(RESUME_ROUTES['reconcile-review'], { key: 'GH-12' })).toBe(true);
+    expect(dispatchable(RESUME_ROUTES['reconcile-review'], { key: 'GH-12', head: 'worker-1' })).toBe(false);
+});
+
+test('a subject key is read as its project, kind and ID', () => {
+    expect(subjectParts('cms-field-vocabulary/delivery/job-1')).toEqual({ project: 'cms-field-vocabulary', kind: 'delivery', id: 'job-1' });
+    expect(subjectParts('cec/delivery/ticket:CEC-154')).toEqual({ project: 'cec', kind: 'delivery', id: 'ticket:CEC-154' });
+    expect(subjectParts('brain/checkpoint/a/b')).toEqual({ project: 'brain', kind: 'checkpoint', id: 'a/b' });
+    for (const subject of ['', 'job-1', 'brain/delivery', '/delivery/job-1', 'brain//job-1']) expect(subjectParts(subject), subject).toBeNull();
 });

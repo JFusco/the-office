@@ -10,8 +10,11 @@ export interface ResumeRoute {
     keyed: Keyed;
     /** What `head` names for this handler, or null when it takes none. Never assumed to be a commit. */
     head: string | null;
-    /** Whether this release can dispatch the route. A route that cannot be dispatched resumes nothing. */
-    dispatch: boolean;
+    /**
+     * What of the route this release dispatches. `none`: nothing; it resumes nothing. `saved-result`:
+     * only its form without a `head`, which reconciles a saved result. `all`: every form.
+     */
+    dispatch: 'none' | 'saved-result' | 'all';
 }
 
 const original = (stage: string) => `the ID of the original stopped ${stage} worker`;
@@ -20,25 +23,25 @@ const original = (stage: string) => `the ID of the original stopped ${stage} wor
  * Every route a fix may name: the closed list of existing handlers the Office intends to resume
  * stopped work through. An action that is not here is not a route. Each row states what the
  * handler's own signature establishes; its preconditions stay the handler's to check when it runs.
- * No row is dispatched yet: `dispatch` turns true with the change that ships that route's resume
- * and its test.
+ * `dispatch` widens only with the change that ships that route's resume and its test.
  */
 export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
-    'resume-ticket': { subject: 'ticket', keyed: 'ticket', head: null, dispatch: false },
-    'reconcile-implementation': { subject: 'job', keyed: 'ticket', head: original('implementation'), dispatch: false },
-    'reconcile-validation': { subject: 'job', keyed: 'ticket', head: original('validation'), dispatch: false },
-    'reconcile-preparation': { subject: 'job', keyed: 'ticket', head: `${original('preparation')}; empty selects the saved-result reconciliation`, dispatch: false },
-    'reconcile-review': { subject: 'job', keyed: 'ticket', head: 'the ID of the stopped base-update handoff worker or of the continuation\'s original worker; empty selects the saved-review reconciliation', dispatch: false },
-    'reconcile-base-update': { subject: 'job', keyed: 'ticket', head: `the job's head commit for a board preflight, or ${original('base-update')}; empty selects the saved-result reconciliation`, dispatch: false },
-    'reconcile-scope-repair': { subject: 'job', keyed: 'ticket', head: original('scope-repair'), dispatch: false },
-    'reconcile-closeout': { subject: 'job', keyed: 'ticket', head: `${original('closeout')}; empty selects the saved-closeout reconciliation`, dispatch: false },
-    'review-candidate': { subject: 'job', keyed: 'ticket', head: null, dispatch: false },
-    'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: false },
-    'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: false },
-    'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: false },
-    'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: false },
-    'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: false },
-    'reconcile-native-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: false },
+    'resume-ticket': { subject: 'ticket', keyed: 'ticket', head: null, dispatch: 'none' },
+    'reconcile-implementation': { subject: 'job', keyed: 'ticket', head: original('implementation'), dispatch: 'none' },
+    'reconcile-validation': { subject: 'job', keyed: 'ticket', head: original('validation'), dispatch: 'none' },
+    'reconcile-preparation': { subject: 'job', keyed: 'ticket', head: `${original('preparation')}; empty selects the saved-result reconciliation`, dispatch: 'none' },
+    // Without a head: a saved independent review is verified against the unchanged pull request and issue. No model runs and no provider write is repeated.
+    'reconcile-review': { subject: 'job', keyed: 'ticket', head: 'the ID of the stopped base-update handoff worker or of the continuation\'s original worker; empty selects the saved-review reconciliation', dispatch: 'saved-result' },
+    'reconcile-base-update': { subject: 'job', keyed: 'ticket', head: `the job's head commit for a board preflight, or ${original('base-update')}; empty selects the saved-result reconciliation`, dispatch: 'none' },
+    'reconcile-scope-repair': { subject: 'job', keyed: 'ticket', head: original('scope-repair'), dispatch: 'none' },
+    'reconcile-closeout': { subject: 'job', keyed: 'ticket', head: `${original('closeout')}; empty selects the saved-closeout reconciliation`, dispatch: 'none' },
+    'review-candidate': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
+    'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
+    'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
+    'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: 'none' },
+    'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: 'none' },
+    'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none' },
+    'reconcile-native-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none' },
 };
 
 /** Compared and saved exactly as sent: a key with space around it names nothing, so it is refused, not trimmed. */
@@ -46,10 +49,15 @@ const Key = z.string().min(1).max(200).refine(key => key === key.trim());
 const KeyOnly = z.object({ key: Key }).strict();
 const KeyAndHead = z.object({ key: Key, head: z.string().max(200).optional() }).strict();
 
-/** A subject key is `project/kind/id`; a project ID and a kind hold no slash, an ID may. */
-function parts(subject: string): { kind: string; id: string } | null {
+/** A subject key is `project/kind/id`; a project ID and a kind hold no slash, an ID may. Null when it is not one. */
+export function subjectParts(subject: string): { project: string; kind: string; id: string } | null {
     const [project, kind, ...rest] = subject.split('/');
-    return project && kind && rest.length ? { kind, id: rest.join('/') } : null;
+    return project && kind && rest.length ? { project, kind, id: rest.join('/') } : null;
+}
+
+/** Whether this release dispatches the route in the form this payload gives it. */
+export function dispatchable(known: ResumeRoute, payload: Record<string, unknown>): boolean {
+    return known.dispatch === 'all' || known.dispatch === 'saved-result' && !payload.head;
 }
 
 /**
@@ -79,7 +87,7 @@ export function routeFault(route: RepairRoute, subject: { subject: string; stage
     if (!known) return `${route.action} is not a resume route; the routes are ${Object.keys(routes).join(', ')}`;
     const payload = (known.head === null ? KeyOnly : KeyAndHead).safeParse(route.payload);
     if (!payload.success) return `the payload of ${route.action} is ${known.head === null ? '{ key }' : '{ key, head? }'}`;
-    const work = parts(subject.subject);
+    const work = subjectParts(subject.subject);
     if (!work || !SUBJECTS[known.subject].is(work.kind, work.id, subject.provider)) return `${route.action} resumes ${SUBJECTS[known.subject].named}, which ${subject.subject || 'this subject'} is not`;
     const own = known.subject === 'ticket' ? work.id.slice('ticket:'.length) : known.keyed === 'record' ? work.id : null;
     if (own !== null && payload.data.key !== own) return `the key of ${route.action} for ${subject.subject} is ${own}`;
