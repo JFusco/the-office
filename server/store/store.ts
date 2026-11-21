@@ -21,7 +21,7 @@ import { initializeStoreSchema } from './store-schema';
 import { applyConnectionSettings, closeConnection, optimizeOnOpen } from './connection-settings';
 import { statementCache } from './statement-cache';
 import { storeTimings } from './store-timings';
-import { timedStatements } from './timed-statements';
+import { timeStatements } from './timed-statements';
 import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
@@ -47,6 +47,7 @@ export class Store {
     commitListeners = new Set<() => void>();
     /** What this store's saves, transactions and statements have cost since it was opened. Measurement only. */
     timings = storeTimings();
+    private savedChars = 0;
     private transactionDepth = 0;
     private pendingEvents: OfficeEvent[] = [];
     private statement: (sql: string) => StatementSync;
@@ -55,10 +56,11 @@ export class Store {
         // The database's own folder, never the global DATA: a Store writes only under the paths it was given.
         mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
         this.db = new DatabaseSync(path);
+        timeStatements(this.db, this.timings);
         applyConnectionSettings(this.db);
         initializeStoreSchema(this.db);
         optimizeOnOpen(this.db);
-        this.statement = timedStatements(statementCache(this.db), this.timings);
+        this.statement = statementCache(this.db);
         const row = this.statement('SELECT body FROM state WHERE id=1').get() as {
             body: string;
         } | undefined;
@@ -77,20 +79,25 @@ export class Store {
         this.save();
     }
     save(): void {
-        const redacted = this.timings.time('save: redact', () => sanitizeObject(this.state));
-        const body = this.timings.time('save: serialise', () => JSON.stringify(redacted), text => text.length);
+        // Both steps are sized by the text they end in: the redacted copy has no size of its own until it is serialised.
+        const began = performance.now(), redacted = sanitizeObject(this.state), copied = performance.now();
+        const body = JSON.stringify(redacted);
+        this.timings.add('save: redact', copied - began, body.length);
+        this.timings.add('save: serialise', performance.now() - copied, body.length);
+        this.savedChars = body.length;
         this.statement('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(body);
     }
     transaction<T>(operation: () => T): T {
         if (this.transactionDepth)
             return operation();
         const began = performance.now();
-        const previous = this.timings.time('transaction: rollback copy', () => structuredClone(this.state));
+        // Sized by the state as last saved: measuring the copy itself would serialise it a second time.
+        const previous = this.timings.time('transaction: rollback copy', () => structuredClone(this.state), () => this.savedChars);
         let result!: T;
         let events: OfficeEvent[] = [];
         // A refused BEGIN (a locked database) is the slowest transaction of all: it is counted too.
         try { this.db.exec('BEGIN IMMEDIATE'); }
-        catch (error) { this.timings.add('transaction: begin to commit', performance.now() - began); throw error; }
+        catch (error) { this.timings.add('transaction: whole attempt', performance.now() - began); throw error; }
         this.transactionDepth = 1;
         try {
             result = operation();
@@ -112,7 +119,7 @@ export class Store {
         finally {
             this.transactionDepth = 0;
             this.pendingEvents = [];
-            this.timings.add('transaction: begin to commit', performance.now() - began);
+            this.timings.add('transaction: whole attempt', performance.now() - began);
         }
         const committed = performance.now();
         for (const listener of this.commitListeners) { try { listener(); } catch { this.commitListeners.delete(listener); } }
