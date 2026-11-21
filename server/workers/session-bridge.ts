@@ -1,7 +1,8 @@
 import { validTicket } from '../office/ticket-key';
 import { completeSessionCoverage, desktopCoverageGap } from './session-coverage';
 import { sessionInventoryFailureDetail } from './session-inventory-failure';
-import { accountCodexProcesses, type DesktopSessions } from './codex-process-inventory';
+import { accountCodexProcesses, codexProcessInventory, type DesktopSessions } from './codex-process-inventory';
+import { codexThreadMetadata } from './codex-thread-metadata';
 import { processTable } from './process-table';
 import { idleExecServers } from './idle-exec-servers';
 import { computerHistoryWriters } from './computer-history-writers';
@@ -81,7 +82,8 @@ async function desktopSessions(execute:typeof command,workers:ReadonlySet<number
  const db=new DatabaseSync(join(homedir(),'.codex/state_5.sqlite'),{readOnly:true});
  // Parentage explains the helpers a known host starts; without the process table every helper and the daemon stay unaccounted.
  const table=await execute('ps',['-axo','pid=,ppid=,lstart=,command='],{timeout:10000}).then(processTable,()=>processTable(''));
- try{const lookup=db.prepare('SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path=?');return accountCodexProcesses(raw,path=>loadedCodexSession(lookup.get(path)),workers,table.parents,codexDaemonProcesses(table.started),[...idleExecServers(table),...computerHistoryWriters(table),...loginStatusQueries(table)]);}finally{db.close();}
+ // One query for every open transcript: a query per transcript scans Codex's whole table each time (codex-thread-metadata.ts).
+ try{const metadata=codexThreadMetadata(db,codexProcessInventory(raw).rollouts.keys());return accountCodexProcesses(raw,path=>loadedCodexSession(metadata.get(path)),workers,table.parents,codexDaemonProcesses(table.started),[...idleExecServers(table),...computerHistoryWriters(table),...loginStatusQueries(table)]);}finally{db.close();}
 }
 export class SessionBridge {
  current:SessionInventory={observedAt:'',expiresAt:'',sessions:[],sources:[],complete:false};polling?:Promise<SessionInventory>;
