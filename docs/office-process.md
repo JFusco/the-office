@@ -962,9 +962,10 @@ change, so a release that starts under a deployment's fence leaves the control d
 found it. The lifecycle states `triaged`, `fixing`, `shipped`, `deployed`, `verified`, `recurred`,
 `housekept`, `dismissed`, `needs-joe` and `abandoned` are defined; observation alone reaches only
 `observed` and never changes a state a later step set. `fixing`, `shipped` and `dismissed` are set
-by the write-back events below, `deployed` by the Office when the release it runs holds the fix
-(see Deployed fixes), and a dismissal that no longer holds returns its incident to `observed` (see
-Dismissal); the others have no writer yet.
+by the write-back events below. The Office moves `shipped` to `deployed` when the running release
+holds the fix, and returns `deployed` to `shipped` with `fix-withdrawn` when the release loses the
+fix or can no longer be verified (see Deployed fixes). A dismissal that no longer holds returns
+its incident to `observed` (see Dismissal). The other states have no writer yet.
 
 `GET /api/incidents` lists the ledger (`open=1`; `research=1`, which leaves out dismissed
 incidents); `GET /api/incidents/<id>` returns one incident with its events and, once its fix is found in the
@@ -1019,8 +1020,8 @@ another request, a stale revision, a transition not in the table or a binding th
 above is refused and nothing is saved. Observation changes neither the state these events set nor
 the repair and fixes they recorded.
 
-**Resume after a fix.** Not dispatched yet: the Office resumes nothing by itself, and a `deployed`
-incident stays `deployed`. What exists is the inventory above, a switch and a reading.
+**Resume after a fix.** The Office does not dispatch resumes yet. What exists is the inventory
+above, a switch and a reading.
 
 The switch (`server/incidents/repair/resume-control.ts`) says whether automatic repair resumes are
 admitted, office-wide. It is one row on the control database beside the fence and the ledger, and
@@ -1043,11 +1044,9 @@ from the ledger on each read and recorded nowhere. No route in the inventory can
 yet, so a routed subject that still stands open as bound reads `no-route` until the change that
 ships its resume; one that cleared or moved reads `gone`.
 
-One limit: the reading rests on the deployment mark recorded when the fix was found (see Deployed
-fixes), and nothing compares a `deployed` incident with the running release again. After a
-rollback to a release without the fix the incident still reads `deployed` and the reading is still
-returned. Nothing acts on it yet. The ledger is to follow the running release before any resume
-is dispatched (JFusco/the-office#417).
+The reading follows the running release: an incident whose fix that release no longer holds, or
+whose release can no longer be verified, has returned to `shipped` within a few ticks (see
+Deployed fixes) and has no reading.
 
 **Release identity.** The service can name the release it runs only from records it can check
 (`server/office/release-identity.ts`). The identity is `verified` when all of these agree: the
@@ -1068,15 +1067,34 @@ identity is verified and GitHub reports the fix commit in the history of the rel
 `fix-deployed` event is recorded, the fix carries the release (commit, hash, deployment, activation
 time) and the incident becomes `deployed`. A release that does not hold the fix records nothing
 and the incident stays `shipped`. When the identity is unknown, one `release-identity-unknown`
-event per incident, fix and loaded hash says why, no state changes and GitHub is not asked. Only a
-plain answer from GitHub is believed; an unclear one or a failed read is asked again on a later
-pass. A release commit and a fix commit are compared once per service process, at most ten new
+event per incident, fix and loaded hash explains why. If the Office withdrew the fix because
+its release identity was unknown, the key also includes the withdrawal event.
+An explanation changes no state and needs no GitHub read. An unclear or failed comparison is
+retried on a later tick. A definitive answer holds for the life of the process, with at most ten new
 comparisons a pass, and each pass starts after the incident the last one asked about, so reads
 that keep failing do not hold up the rest. The receipt is read again before a fix is marked: if it
 changed while GitHub was asked, nothing is recorded and the answer is kept. A comparison in flight
 keeps `/api/health` busy, and it stops, reading and writing nothing more, as soon as a deployment
 holds the fence. `fix-deployed` cannot be written through the events route. Nothing waits on or
 resumes after a deployed fix yet.
+
+`deployed` holds only while the release the service runs holds the fix. In the same tick, before
+the pass above, the Office takes every `deployed` incident (`server/incidents/withdrawn-fixes.ts`).
+When the release identity is unknown, or is verified and GitHub reports the fix commit outside the
+history of the release commit, one `fix-withdrawn` event is recorded, the fix loses its
+deployment mark, keeping on record the release the mark named, when it was set and why it went
+(`not-in-release` or `release-identity-unknown`), and the incident returns to `shipped`. The pass
+above then treats it as any shipped incident: it explains an unknown identity, and makes the
+incident `deployed` again, with a new event and a new mark, when a verified release holds the
+fix. A release that still holds the fix records nothing: the commit the mark names is not asked
+about again, and another verified release is compared once. An unclear answer or a failed read
+withdraws nothing. The two passes share definitive answers, skip repeat attempts at failed
+comparisons in the same tick, and share ten reads per tick, with withdrawals first. When
+withdrawals use all ten reads and leave arrivals waiting, the next tick reserves one read for
+arrivals. A release identity that changes between the reading and the write withdraws nothing
+that tick. `fix-withdrawn` cannot be written through the events route. A withdrawal neither
+shortens nor lengthens a repair wait: the mark it removed still
+counts as the progress it was (see Repair wait).
 
 **Evidence packet.** What the Office knows about one incident, bounded and hashed, for a verdict to
 be tied to (`server/incidents/evidence-packet.ts`). It is built from the ledger and the running
@@ -1131,7 +1149,8 @@ recovery, an investigation, an outbox-only item, a worker run, a paused project)
 A wait is in effect only for the stop it was admitted for. The project-side check reads the record
 the way observation does: a new episode, or another stage, saved stop or head of the same record,
 ends the wait without any write, and a marker is read only for the project it names. A marker
-follows the repair's own progress (its start, a fix bound, that fix found in the running release)
+follows the repair's own progress (its start, a fix bound, that fix found in the running release,
+including a finding since withdrawn)
 and runs out 48 hours after the last progress that reached it in time: progress that comes more
 than 48 hours after the one before it came after the wait had run out, and does not revive it. The
 expiry is recorded once, on the marker and as one `repair-wait-expired` event on the incident, and

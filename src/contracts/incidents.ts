@@ -115,8 +115,15 @@ export interface IncidentFix {
     onMain: boolean;
     boundAt: string;
     bindings: SubjectFix[];
-    /** Set once a verified running release was found to hold the commit. A merge or a binding never sets it. */
+    /** Set while a verified running release is known to hold the commit, and removed when the running release no longer does. A merge or a binding never sets it. */
     deployed?: { event: string; release: { commit: string; hash: string; operation: string; activatedAt: string }; at: string };
+    /**
+     * The last time the mark was removed: the release it named, when it had been set, and why.
+     * `not-in-release`: the verified release then running did not contain the commit.
+     * `release-identity-unknown`: the running release could not be verified, so nothing showed
+     * the commit was running.
+     */
+    withdrawn?: { event: string; reason: 'not-in-release' | 'release-identity-unknown'; release: { commit: string; hash: string; operation: string; activatedAt: string }; deployedAt: string; at: string };
 }
 
 /**
@@ -207,11 +214,11 @@ export interface EvidencePacket {
 
 /**
  * The first six are written by observation. `repair-started`, `fix-bound` and `dismissed` are
- * written by a person or the repair runner through the Office. `fix-deployed`,
+ * written by a person or the repair runner through the Office. `fix-deployed`, `fix-withdrawn`,
  * `release-identity-unknown`, `dismissal-invalidated` and `repair-wait-expired` are written by
  * the Office itself.
  */
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired';
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */

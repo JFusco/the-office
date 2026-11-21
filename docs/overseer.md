@@ -182,7 +182,7 @@ investigation and not dismissed, the third one incident with its event history.
 | `expected` | The kind of wait when the stop is one the Office already understands (`hold`, `decision`, `merge-approval`, `prerequisite`, `pause`, `authentication`, `provider-wait`, `retry`, `uncertain-effect`, `question`). Each subject has its own; the incident's is the one every open subject shares, or `null`. |
 | `research` | Whether the incident may be investigated now, and why: no explanation, or an expected wait that came back after two resumes, holds three subjects or two projects, or stood 24 hours. Withdrawn as soon as none of those holds. |
 | `subjects` | Each affected piece of work: project, kind, ID, stage, saved stop, the run that last worked it, candidate head, whether a write is unsettled, `open` or `cleared`, and its episodes. Every return after a clear is one episode. |
-| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`, then `deployed` once the Office finds that fix in the release it runs. `dismissed` while a false-positive verdict stands; back to `observed` when it lapses. The remaining states are set by later phases. |
+| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`, then `deployed` once the Office finds that fix in the release it runs. It returns to `shipped` if the running release lacks the fix or can no longer be verified. `dismissed` while a false-positive verdict stands; back to `observed` when it lapses. The remaining states are set by later phases. |
 | `repair`, `fixes` | The repair issue and the subjects it is for; every fix bound so far, with what it declares per subject. A fix found in the running release carries `deployed`: the release commit, its hash, the deployment that activated it and when. |
 | `dismissals` | Every false-positive verdict recorded: its reason, the evidence packet and source files it was tied to, the subjects it covered, and `lapsed` with the reason once it no longer holds. |
 
@@ -271,6 +271,21 @@ incident stays `shipped`, read `release` in `/api/health` first; that is the cur
 
 A `release-identity-unknown` event in an incident's history is a record of one moment: that fix,
 compared with the release that ran then. It is not withdrawn when a later release is verified.
+
+`deployed` lasts only while the running release holds the fix. The Office checks every minute:
+
+- **A rollback.** If the release that runs now does not contain the fix commit, the incident
+  returns to `shipped` and records `fix-withdrawn`. Its fix shows `withdrawn` in place of
+  `deployed`: the release it had been found in, when, and the reason `not-in-release`. Deploy a
+  release that contains the fix and it becomes `deployed` again by itself.
+- **A release the Office cannot verify.** If the running release is `unknown`, for instance
+  after a hand deploy, nothing shows the fix is running. The incident returns to `shipped` with
+  the reason `release-identity-unknown`, and stays there until a release that
+  `pnpm office deploy` recorded holds the fix.
+- **A newer release that still has the fix.** Nothing changes and nothing is recorded.
+
+A withdrawal does not change how long work waits for the repair: the earlier finding still
+counts as progress, so the 48 hours run from where they ran before.
 
 ### Evidence and dismissing a false positive
 
@@ -409,10 +424,8 @@ the switch changes nothing else, because nothing can be dispatched yet.
 
 It is a reading of the ledger made when you ask, recorded nowhere.
 
-One limit for now: the Office does not look again once it has found a fix in a release. If that
-release is rolled back to one without the fix, the incident still shows `deployed` and `resumes`
-is still shown. Nothing acts on it in this release. Returning such an incident to `shipped` is
-the next change (JFusco/the-office#417), and it lands before anything is resumed automatically.
+`resumes` goes away again if the fix stops running: after a rollback the incident returns to
+`shipped` (see When a fix counts as deployed) and there is nothing to read.
 
 ### What to expect
 

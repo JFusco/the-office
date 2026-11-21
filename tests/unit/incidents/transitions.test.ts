@@ -30,3 +30,8 @@ test('a fix is deployed only from shipped', () => {
     expect(nextState('shipped', 'fix-deployed')).toBe('deployed');
     for (const state of STATES.filter(state => state !== 'shipped')) expect(() => nextState(state, 'fix-deployed')).toThrow(`An incident that is ${state} cannot record fix-deployed; it must be shipped`);
 });
+
+test('a fix is withdrawn only from deployed, and returns the incident to shipped', () => {
+    expect(nextState('deployed', 'fix-withdrawn')).toBe('shipped');
+    for (const state of STATES.filter(state => state !== 'deployed')) expect(() => nextState(state, 'fix-withdrawn')).toThrow(`An incident that is ${state} cannot record fix-withdrawn; it must be deployed`);
+});

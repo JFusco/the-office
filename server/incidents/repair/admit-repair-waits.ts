@@ -15,10 +15,26 @@ export interface RepairWaitEntry { store: Pick<Store, 'project' | 'state' | 'tra
 export interface RepairWaitPass { admitted: string[]; expired: string[]; removed: string[]; unmarked: string[] }
 interface Covered { incident: Incident; subject: IncidentSubjectRecord; key: string; digest: string; progress: string[] }
 
-/** When the repair moved, oldest first: its start, each fix bound to it, and that fix found in the running release. */
-function progressOf(incident: Incident): string[] {
+/**
+ * When the repair moved, oldest first: its start, each fix bound to it, and that fix found in the
+ * running release. A mark withdrawn since was progress when it was set and still counts, so a
+ * withdrawal neither shortens nor lengthens a wait.
+ */
+function progressOf(ledger: IncidentLedger, incident: Incident): string[] {
     const repair = incident.repair!, times = [repair.startedAt];
-    for (const fix of incident.fixes ?? []) if (fix.boundAt >= repair.startedAt) times.push(fix.boundAt, ...(fix.deployed ? [fix.deployed.at] : []));
+    const withdrawnFixes = new Set<string>();
+    for (const fix of incident.fixes ?? []) {
+        if (fix.boundAt < repair.startedAt) continue;
+        times.push(fix.boundAt);
+        if (fix.withdrawn) withdrawnFixes.add(fix.event);
+        else if (fix.deployed) times.push(fix.deployed.at);
+    }
+    // The projection keeps only the latest withdrawal. Earlier arrivals can still bridge the wait.
+    if (withdrawnFixes.size) {
+        for (const event of ledger.events(incident.id)) {
+            if (event.kind === 'fix-deployed' && typeof event.body.fix === 'string' && withdrawnFixes.has(event.body.fix)) times.push(event.at);
+        }
+    }
     return times.sort();
 }
 
@@ -66,7 +82,7 @@ export function admitRepairWaits(ledger: IncidentLedger, entries: readonly Repai
     const covered = new Map<string, Covered[]>();
     for (const incident of COVERING.flatMap(state => ledger.inState(state))) {
         if (!incident.repair) continue;
-        const recorded = new Map(incident.repair.subjects.map(subject => [subject.subject, subject.digest])), progress = progressOf(incident);
+        const recorded = new Map(incident.repair.subjects.map(subject => [subject.subject, subject.digest])), progress = progressOf(ledger, incident);
         for (const subject of incident.subjects) {
             const key = subjectKey(subject);
             if (subject.status !== 'open' || recorded.get(key) !== repairSubject(subject).digest) continue;

@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { groupCandidates } from '../../../server/incidents/candidates';
 import { compareMemory, COMPARES_PER_PASS, recordDeployedFixes, type CompareMemory } from '../../../server/incidents/deployed-fixes';
+import { eventId } from '../../../server/incidents/event-id';
 import { IncidentLedger } from '../../../server/incidents/incident-ledger';
 import { planSync } from '../../../server/incidents/plan-sync';
 import { recordIncidentEvent } from '../../../server/incidents/record-event';
@@ -30,8 +31,8 @@ function office(...causes: string[]) {
         const bindings = ledger.get(id)!.repair!.subjects.map(subject => ({ ...subject, disposition: 'no-route' as const, reason: 'nothing to resume' }));
         recordIncidentEvent(ledger, id, `cli-bind-${id}`, ledger.get(id)!.revision, { kind: 'fix-bound', request: { kind: 'fix-bound', reference: commit, bindings }, fix: { commit, pullRequest: null, onMain } }, later(2));
     };
-    const pass = (identity: ReleaseIdentity | (() => ReleaseIdentity), execute: typeof command, memory: CompareMemory = compareMemory(), more: { loadedHash?: string; allowed?: () => boolean; now?: Date } = {}) =>
-        recordDeployedFixes({ ledger, identity: typeof identity === 'function' ? identity : () => identity, loadedHash: more.loadedHash ?? HASH, execute, now: more.now ?? later(3), memory, allowed: more.allowed });
+    const pass = (identity: ReleaseIdentity | (() => ReleaseIdentity), execute: typeof command, memory: CompareMemory = compareMemory(), more: { loadedHash?: string; allowed?: () => boolean; now?: Date; limit?: number } = {}) =>
+        recordDeployedFixes({ ledger, identity: typeof identity === 'function' ? identity : () => identity, loadedHash: more.loadedHash ?? HASH, execute, now: more.now ?? later(3), memory, allowed: more.allowed, limit: more.limit });
     const saved = () => JSON.stringify([ledger.list(), ids.map(id => ledger.events(id))]);
     return { ledger, ids, id: ids[0], ship, pass, saved, candidates };
 }
@@ -47,7 +48,8 @@ test('a shipped incident whose fix is in the verified release becomes deployed o
     expect(after).toMatchObject({ state: 'deployed', revision: before.revision + 1 });
     expect(after.fixes).toEqual([{ ...before.fixes![0], deployed: { event: event.id, release, at: later(3).toISOString() } }]);
     expect(event).toMatchObject({ kind: 'fix-deployed', incident: o.id, at: later(3).toISOString(), body: { fix: `cli-bind-${o.id}`, commit: SHA('f'), release, from: 'shipped', to: 'deployed', revision: after.revision } });
-    expect(event.id.startsWith(`${o.id}:fix-deployed:`)).toBe(true);
+    // A first arrival is named by its incident and fix alone, as it always was.
+    expect(event.id).toBe(eventId(o.id, 'fix-deployed', `cli-bind-${o.id}`));
     // Again: the incident is no longer shipped, so nothing is asked and nothing is recorded.
     const saved = o.saved();
     expect(await o.pass(verified, github.execute)).toEqual({ deployed: [], unknown: [], absent: [], waiting: [] });
@@ -185,6 +187,16 @@ test('one pass reads GitHub a bounded number of times; the rest wait for the nex
     expect(o.ledger.list().every(incident => incident.state === 'deployed')).toBe(true);
 });
 
+test('a caller that already spent part of the tick\'s reads leaves this pass only the rest', async () => {
+    const o = office('alpha lease is missing', 'bravo lease is missing', 'charlie lease is missing'), commits = o.ids.map((_, n) => n.toString(16).padStart(40, '0'));
+    o.ids.forEach((id, n) => o.ship(id, commits[n]));
+    const github = fakeGitHub(Object.fromEntries(commits.map(commit => [historyCall(commit, RELEASE), { status: 'ahead' }]))), memory = compareMemory();
+    expect(await o.pass(verified, github.execute, memory, { limit: 0 })).toEqual({ deployed: [], unknown: [], absent: [], waiting: [...o.ids].sort() });
+    expect(github.calls).toEqual([]);
+    const two = await o.pass(verified, github.execute, memory, { limit: 2 });
+    expect([two.deployed.length, two.waiting.length, github.calls.length]).toEqual([2, 1, 2]);
+});
+
 test('observation keeps a deployed incident deployed and its recorded release', async () => {
     const o = office();
     o.ship(o.id, SHA('f'));
@@ -211,4 +223,23 @@ test('reads that keep failing do not keep later incidents waiting, and one faili
     p.ids.forEach(id => p.ship(id, SHA('f')));
     expect((await p.pass(verified, failing.execute)).waiting).toEqual(p.ids);
     expect(failing.calls).toHaveLength(1);
+});
+
+test('an unknown release is explained again only after a withdrawal it caused; any other withdrawal leaves the first explanation standing', async () => {
+    const mark = { commit: RELEASE, hash: HASH, operation: OP, activatedAt: '2026-11-20T03:00:09.000Z' };
+    for (const [reason, explained] of [['not-in-release', false], ['release-identity-unknown', true]] as const) {
+        const o = office(), github = fakeGitHub({});
+        o.ship(o.id, SHA('f'));
+        expect(await o.pass(unknown, github.execute)).toMatchObject({ unknown: [o.id] });
+        expect(kinds(o).filter(kind => kind === 'release-identity-unknown')).toHaveLength(1);
+        // The fix was found in a release since, and withdrawn from it.
+        const incident = o.ledger.get(o.id)!, fix = incident.fixes![0];
+        o.ledger.record({ events: [], incidents: [{ ...incident, revision: incident.revision + 1, fixes: [{ ...fix, withdrawn: { event: `${o.id}:fix-withdrawn:w1`, reason, release: mark, deployedAt: later(4).toISOString(), at: later(5).toISOString() } }] }] });
+        expect(await o.pass(unknown, github.execute, compareMemory(), { now: later(6) })).toMatchObject({ unknown: [o.id] });
+        expect(kinds(o).filter(kind => kind === 'release-identity-unknown'), reason).toHaveLength(explained ? 2 : 1);
+        // And once only for that withdrawal.
+        await o.pass(unknown, github.execute, compareMemory(), { now: later(7) });
+        expect(kinds(o).filter(kind => kind === 'release-identity-unknown'), reason).toHaveLength(explained ? 2 : 1);
+        expect(github.calls).toEqual([]);
+    }
 });

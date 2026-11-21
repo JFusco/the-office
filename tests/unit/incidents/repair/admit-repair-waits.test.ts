@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { admitRepairWaits } from '../../../../server/incidents/repair/admit-repair-waits';
 import { REPAIR_WAIT_MS, repairWaitFor } from '../../../../server/incidents/repair/repair-wait';
 import { recordDeployedFixes, compareMemory } from '../../../../server/incidents/deployed-fixes';
+import { recordWithdrawnFixes } from '../../../../server/incidents/withdrawn-fixes';
 import { projectOutbox } from '../../../../server/conversations/outbox';
 import { freezeReads } from '../../../../server/incidents/repair/freeze-reads';
 import { LANES } from '../../../../server/incidents/observe-projects';
@@ -72,6 +73,67 @@ test('the wait follows the repair: a fix bound or found in the running release m
     w.pass(80 * HOUR + 1);
     expect(w.waits()['delivery/1']).toMatchObject({ progressAt: later(80 * HOUR).toISOString() });
     expect(w.waits()['delivery/1'].expiredAt).toBeUndefined();
+});
+
+function releasePasses({ ledger }: ReturnType<typeof world>) {
+    const release = SHA('e'), rollback = SHA('d'), loadedHash = '1'.repeat(64);
+    const identity = (commit: string) => ({ status: 'verified' as const, commit, hash: loadedHash, manifestDigest: '2'.repeat(64), operation: `deploy-${commit.slice(0, 4)}`, activatedAt: later(80 * HOUR).toISOString() });
+    const { execute } = fakeGitHub({ [historyCall(SHA('f'), release)]: { status: 'ahead' }, [historyCall(SHA('f'), rollback)]: { status: 'behind' } });
+    const memory = compareMemory();
+    return {
+        arrive: (hours: number) => recordDeployedFixes({ ledger, identity: () => identity(release), loadedHash, execute, now: later(hours * HOUR), memory }),
+        withdraw: (hours: number) => recordWithdrawnFixes({ ledger, identity: () => identity(rollback), execute, now: later(hours * HOUR), memory, limit: 10 }),
+    };
+}
+
+test('a fix withdrawn from the running release neither shortens nor lengthens the wait, for a marker kept or rebuilt', async () => {
+    for (const rebuilt of [false, true]) {
+        const w = world(stores, dbs), { arrive, withdraw } = releasePasses(w);
+        w.start('cli-start-1', 1);
+        w.pass(2);
+        w.bind(40 * HOUR);
+        await arrive(80);
+        w.pass(80 * HOUR + 1);
+        expect(w.waits()['delivery/1']).toMatchObject({ progressAt: later(80 * HOUR).toISOString() });
+        // Rolled back at hour 90: the incident is shipped again, and the wait stands where it stood.
+        expect((await withdraw(90)).withdrawn).toEqual([w.id]);
+        expect(w.ledger.get(w.id)!.state).toBe('shipped');
+        // The marker is lost and admitted afresh from the ledger: it must come out the same.
+        if (rebuilt) w.store.transaction(() => { delete w.store.state.coordination!.repairWaits; });
+        w.pass(91 * HOUR);
+        expect(w.waits()['delivery/1']).toMatchObject({ progressAt: later(80 * HOUR).toISOString() });
+        expect(w.waits()['delivery/1'].expiredAt).toBeUndefined();
+        expect(repairWaitFor(w.store.state, w.work('1'), 'review', later(91 * HOUR))).not.toBeNull();
+        // It runs out 48 hours after the arrival, not after the withdrawal and not after the binding.
+        expect(w.pass(127 * HOUR).expired).toEqual([]);
+        expect(w.pass(128 * HOUR + 1).expired).toEqual(KEYS);
+    }
+});
+
+test('a rebuilt wait keeps the progress from both arrivals after a second withdrawal', async () => {
+    const w = world(stores, dbs), { arrive, withdraw } = releasePasses(w);
+    w.start('cli-start-1', 0);
+    w.pass(1);
+    w.bind(40 * HOUR);
+    expect((await arrive(80)).deployed).toEqual([w.id]);
+    w.pass(80 * HOUR + 1);
+    expect((await withdraw(90)).withdrawn).toEqual([w.id]);
+    expect((await arrive(120)).deployed).toEqual([w.id]);
+    w.pass(120 * HOUR + 1);
+    expect((await withdraw(125)).withdrawn).toEqual([w.id]);
+
+    w.pass(126 * HOUR);
+    const kept = w.waits()['delivery/1'];
+    expect(kept.progressAt).toBe(later(120 * HOUR).toISOString());
+    expect(kept.expiredAt).toBeUndefined();
+
+    w.store.transaction(() => { delete w.store.state.coordination!.repairWaits; });
+    expect(w.pass(126 * HOUR)).toMatchObject({ admitted: KEYS, expired: [] });
+    const rebuilt = w.waits()['delivery/1'];
+    expect(rebuilt.progressAt).toBe(kept.progressAt);
+    expect(rebuilt.expiredAt).toBeUndefined();
+    expect(w.pass(168 * HOUR - 1).expired).toEqual([]);
+    expect(w.pass(168 * HOUR).expired).toEqual(KEYS);
 });
 
 test('an unchanged wait expires 48 hours after its last progress, once, with one event; the original cause is counted again', () => {
