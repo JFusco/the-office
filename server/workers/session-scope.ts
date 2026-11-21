@@ -1,5 +1,4 @@
 import type { OfficeProject } from '../../src/shared';
-import { jiraBinding } from '../office/project-bindings';
 import { retainSessionMessage, type SessionConversation } from './session-conversation';
 import type { SessionContextParser } from './session-context-lines';
 
@@ -15,8 +14,13 @@ export interface SessionContext {
     userMessages: { at: string; text: string }[];
     conversation?: SessionConversation;
 }
+/** Never fall back to another project's connection, or to none: an unbound project would read as owning no ticket. */
+function unbound(id: string): never { throw new Error(`Project "${id}" has no Jira/Azure binding`); }
 const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-/** `jira` is this project's Jira site and key when the caller has already resolved them; otherwise the configured binding is read here. */
+/**
+ * `jira` is the Jira site and key of a Jira/Azure project. The caller resolves it (`postedProjects`): this parser reads no
+ * configuration, so the thread it runs on never loads the local configuration file. A Jira/Azure project without it is refused.
+ */
 type ScopeProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>> & { jira?: { site: string; projectKey: string } };
 
 /** The configured site may be written as its https URL or bare host, with an optional trailing slash. */
@@ -94,7 +98,7 @@ function scopeParser(sessionId: string, projects: ScopeProject[], previous?: Sco
         for (const project of projects) {
             const repo = escaped(project.repository), path = escaped(project.repo);
             // A current-turn TWG command binds this project's ticket to its Jira project even from a chat rooted elsewhere.
-            const binding = project.provider === 'azure' ? project.jira ?? jiraBinding(project) : undefined, site = binding?.site ?? '', key = binding?.projectKey ?? '';
+            const binding = project.provider === 'azure' ? project.jira ?? unbound(project.id) : undefined, site = binding?.site ?? '', key = binding?.projectKey ?? '';
             const jira = call && binding ? jiraCommandIssues(text, site, key) : { commands: [], references: [] };
             const browse = binding ? [...text.matchAll(new RegExp(`${escaped(site)}/browse/${escaped(key)}-(\\d+)(?![\\w-])`, 'gi'))] : [];
             if (!jira.commands.length && !jira.references.length && !browse.length &&!new RegExp(`(?:(?<![\\w.-])${repo}(?![\\w.-])|${path}(?=[/\\s'"\\\\]|$))`, 'i').test(text)) continue;

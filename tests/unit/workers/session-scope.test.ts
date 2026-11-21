@@ -48,7 +48,7 @@ test('later follow-ups retain cross-project conversation and decisions without r
     } });
 });
 test('exact configured-site TWG commands bind CEC tickets as commands; other sites and returned URLs do not', () => {
-    const cec = [{ id: 'cec', repo: '/projects/cec', repository: 'Org/cec-repo', provider: 'azure' as const }];
+    const cec = [{ id: 'cec', repo: '/projects/cec', repository: 'Org/cec-repo', provider: 'azure' as const, jira: { site: CEC.site, projectKey: 'CEC' } }];
     const scopes = (...rows: string[]) => sessionScope([meta, start, ...rows].join('\n'), 'outside', cec).scopes;
     expect(scopes(call(`twg jira workitem update --id CEC-154 --site ${CEC.site} -o json`))).toMatchObject([
         { project: 'cec', issues: [154], prs: [], evidence: [{ kind: 'command', issue: 154 }] }]);
@@ -60,7 +60,7 @@ test('exact configured-site TWG commands bind CEC tickets as commands; other sit
     expect(sessionScope([meta, start, call(`twg jira workitem update --id CEC-154 --site ${CEC.site}`)].join('\n'), 'outside', projects).scopes).toEqual([]);
 });
 test('configured-site host variants are commands; a site-less command is only a reference for its exact key', () => {
-    const cec = [{ id: 'cec', repo: '/projects/cec', repository: 'Org/cec-repo', provider: 'azure' as const }];
+    const cec = [{ id: 'cec', repo: '/projects/cec', repository: 'Org/cec-repo', provider: 'azure' as const, jira: { site: CEC.site, projectKey: 'CEC' } }];
     const host = new URL(CEC.site).host;
     const evidence = (...rows: string[]) => sessionScope([meta, start, ...rows].join('\n'), 'outside', cec).scopes.flatMap(scope => scope.evidence.map(e => [e.kind, e.issue]));
     for (const site of [host, `https://${host}/`, `"https://${host}/"`, host.toUpperCase()])
@@ -85,4 +85,9 @@ test('forked sessions bind the first header and replace inherited scope with the
     expect(sessionScope(raw, 'outside', projects)).toMatchObject({ activity: 'idle', scopes: [{ project: 'brain', prs: [354] }] });
     expect(() => sessionScope(raw, 'parent', projects)).toThrow('identity');
     expect(sessionScope(raw.split('\n').slice(0, 4).join('\n'), 'outside', projects)).toEqual({ activity: 'unknown', scopes: [], userMessages: [], conversation: { projects: [], messages: [], omittedMessages: 0 } });
+});
+
+test('a Jira/Azure project without its resolved site and key is refused, never read as owning no ticket', () => {
+    const unbound = [{ id: 'cec', repo: '/projects/cec', repository: 'Org/cec-repo', provider: 'azure' as const }];
+    expect(() => sessionScope([meta, start, call('twg jira workitem get CEC-154')].join('\n'), 'outside', unbound)).toThrow('Project "cec" has no Jira/Azure binding');
 });

@@ -18,6 +18,8 @@ export function sessionInventoryFailureDetail(error: unknown): string {
     }
     else if (message === 'Session context reader thread stopped')
         reason = '[context-thread] The thread that reads session logs stopped before answering.';
+    else if (/^Project "[^"]*" has no Jira\/Azure binding$/.test(message))
+        reason = '[project-binding] A Jira/Azure project has no configured Jira binding, so its tickets cannot be recognised.';
     else if (message === 'A live Codex session has no metadata')
         reason = '[session-metadata] Matching persisted metadata for a live Codex process is unavailable.';
     else if (message === 'Session context file identity changed during its read' || message === 'Codex rollout identity does not match the loaded session')

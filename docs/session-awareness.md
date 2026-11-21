@@ -97,8 +97,10 @@ The thread returns derived context or the reader's own failure, never transcript
 bytes. A thread that exits, or gives no answer within twenty seconds, fails every
 read it still owed as unavailable and is replaced on the next read; its caches start
 empty, so the next reads are complete folds. Each project's Jira site and key are
-resolved by the service and sent with the read, so the thread never applies a
-configuration edited since the service started.
+resolved by the service and sent with the read. The thread reads no local
+configuration at all, so a configuration file edited or damaged since the service
+started cannot change or stop it; a Jira/Azure project that arrives without its site
+and key is refused, never read as owning no ticket.
 
 A forked Claude transcript may begin with copied parent records before its own
 native identity records. The child index excludes that parent conversation and
