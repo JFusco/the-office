@@ -3,6 +3,7 @@ import { restoreInPlace } from './restore-state';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { DATA } from '../office/config';
 import { sanitize, sanitizeObject } from '../office/security';
 import { currentOutbox } from '../conversations/current-outbox';
@@ -19,6 +20,8 @@ import { type Clock, systemClock } from '../office/clock';
 import { initializeStoreSchema } from './store-schema';
 import { applyConnectionSettings, closeConnection, optimizeOnOpen } from './connection-settings';
 import { statementCache } from './statement-cache';
+import { storeTimings } from './store-timings';
+import { timeStatements } from './timed-statements';
 import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
@@ -42,6 +45,9 @@ export class Store {
     state: OfficeSnapshot;
     listeners = new Set<(event: OfficeEvent) => void>();
     commitListeners = new Set<() => void>();
+    /** What this store's saves, transactions and statements have cost since it was opened. Measurement only. */
+    timings = storeTimings();
+    private savedChars = 0;
     private transactionDepth = 0;
     private pendingEvents: OfficeEvent[] = [];
     private statement: (sql: string) => StatementSync;
@@ -50,6 +56,7 @@ export class Store {
         // The database's own folder, never the global DATA: a Store writes only under the paths it was given.
         mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
         this.db = new DatabaseSync(path);
+        timeStatements(this.db, this.timings);
         applyConnectionSettings(this.db);
         initializeStoreSchema(this.db);
         optimizeOnOpen(this.db);
@@ -72,15 +79,39 @@ export class Store {
         this.save();
     }
     save(): void {
-        this.statement('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(JSON.stringify(sanitizeObject(this.state)));
+        // Both steps are sized by the text they end in: the redacted copy has no size of its own until it is serialised.
+        const began = performance.now();
+        let redacted: OfficeSnapshot;
+        try { redacted = sanitizeObject(this.state); }
+        catch (error) {
+            this.timings.add('save: redact', performance.now() - began);
+            throw error;
+        }
+        const copied = performance.now();
+        let body: string | undefined;
+        try { body = JSON.stringify(redacted); }
+        finally {
+            const serialised = performance.now(), chars = body?.length ?? 0;
+            this.timings.add('save: redact', copied - began, chars);
+            this.timings.add('save: serialise', serialised - copied, chars);
+        }
+        this.statement('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(body);
+        this.savedChars = body.length;
     }
     transaction<T>(operation: () => T): T {
         if (this.transactionDepth)
             return operation();
-        const previous = structuredClone(this.state);
+        const began = performance.now();
+        const previousSavedChars = this.savedChars;
+        let previous: OfficeSnapshot;
         let result!: T;
         let events: OfficeEvent[] = [];
-        this.db.exec('BEGIN IMMEDIATE');
+        try {
+            // Sized by the state as last saved: measuring the copy itself would serialise it a second time.
+            previous = this.timings.time('transaction: rollback copy', () => structuredClone(this.state), () => previousSavedChars);
+            this.db.exec('BEGIN IMMEDIATE');
+        }
+        catch (error) { this.timings.add('transaction: whole attempt', performance.now() - began); throw error; }
         this.transactionDepth = 1;
         try {
             result = operation();
@@ -94,6 +125,7 @@ export class Store {
         }
         catch (error) {
             this.db.exec('ROLLBACK');
+            this.savedChars = previousSavedChars;
             // In place: callers holding a ticket or job across an await keep the live record.
             // The saved copy is always a correct state, so it is the fallback if the in-place restore cannot finish.
             try { restoreInPlace(this.state, previous); } catch { this.state = previous; }
@@ -102,7 +134,9 @@ export class Store {
         finally {
             this.transactionDepth = 0;
             this.pendingEvents = [];
+            this.timings.add('transaction: whole attempt', performance.now() - began);
         }
+        const committed = performance.now();
         for (const listener of this.commitListeners) { try { listener(); } catch { this.commitListeners.delete(listener); } }
         // A failed SSE subscriber must not undo or misreport an already committed result.
         for (const event of events)
@@ -114,6 +148,7 @@ export class Store {
                     this.listeners.delete(callback);
                 }
             }
+        this.timings.add('transaction: listeners after commit', performance.now() - committed);
         return result;
     }
     transition<T>(kind: string, message: string, operation: () => T, role?: Role, ticket?: string): T {

@@ -39,7 +39,10 @@ const vite = built ? null : await createServer({ configFile: resolve(ROOT, 'vite
 if (vite)
     await vite.listen();
 const config = { projects: PROJECTS, cec: CEC, holds: HOLDS, bindings: PROJECT_BINDINGS, policies: PROJECT_POLICY_INPUTS };
-function snapshot(project = 'cec') { return sanitizeObject(offices.snapshot(project)); }
+function snapshot(project = 'cec') {
+    const build = () => sanitizeObject(offices.snapshot(project)), timings = offices.entries.get(project)?.store.timings;
+    return timings ? timings.time('browser snapshot: build and redact', build) : build();
+}
 let shutdown = false;
 const server = serve({ hostname: '127.0.0.1', port: PORT,
     async fetch(req) {
