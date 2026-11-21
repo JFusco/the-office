@@ -22,6 +22,7 @@ import { applyConnectionSettings, closeConnection, optimizeOnOpen } from './conn
 import { statementCache } from './statement-cache';
 import { storeTimings } from './store-timings';
 import { timeStatements } from './timed-statements';
+import { StateParts } from './state-parts';
 import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
@@ -48,6 +49,7 @@ export class Store {
     /** What this store's saves, transactions and statements have cost since it was opened. Measurement only. */
     timings = storeTimings();
     private savedChars = 0;
+    private parts!: StateParts;
     private transactionDepth = 0;
     private pendingEvents: OfficeEvent[] = [];
     private statement: (sql: string) => StatementSync;
@@ -61,10 +63,8 @@ export class Store {
         initializeStoreSchema(this.db);
         optimizeOnOpen(this.db);
         this.statement = statementCache(this.db);
-        const row = this.statement('SELECT body FROM state WHERE id=1').get() as {
-            body: string;
-        } | undefined;
-        this.state = row ? JSON.parse(row.body) : initialSnapshot();
+        this.parts = new StateParts(this.statement, sql => this.db.exec(sql), this.timings);
+        this.state = (this.parts.load() ?? initialSnapshot()) as OfficeSnapshot;
         this.state.project = project;
         migrateSnapshot(this.state, project, this.clock.now().toISOString());
         for (const role of ['cto', 'it', 'analyst', 'knowledge'] as const)
@@ -78,31 +78,15 @@ export class Store {
             Object.assign(developer, { provider: 'claude', model: DEVELOPER_MODEL, effort: DEVELOPER_EFFORT });
         this.save();
     }
+    /** Writes the top-level keys of the state that changed since the last save (`state-parts.ts`). */
     save(): void {
-        // Both steps are sized by the text they end in: the redacted copy has no size of its own until it is serialised.
-        const began = performance.now();
-        let redacted: OfficeSnapshot;
-        try { redacted = sanitizeObject(this.state); }
-        catch (error) {
-            this.timings.add('save: redact', performance.now() - began);
-            throw error;
-        }
-        const copied = performance.now();
-        let body: string | undefined;
-        try { body = JSON.stringify(redacted); }
-        finally {
-            const serialised = performance.now(), chars = body?.length ?? 0;
-            this.timings.add('save: redact', copied - began, chars);
-            this.timings.add('save: serialise', serialised - copied, chars);
-        }
-        this.statement('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(body);
-        this.savedChars = body.length;
+        this.savedChars = this.parts.save(this.state, this.transactionDepth > 0);
     }
     transaction<T>(operation: () => T): T {
         if (this.transactionDepth)
             return operation();
         const began = performance.now();
-        const previousSavedChars = this.savedChars;
+        const previousSavedChars = this.savedChars, partsAsWritten = this.parts.mark();
         let previous: OfficeSnapshot;
         let result!: T;
         let events: OfficeEvent[] = [];
@@ -126,6 +110,7 @@ export class Store {
         catch (error) {
             this.db.exec('ROLLBACK');
             this.savedChars = previousSavedChars;
+            partsAsWritten(); // The part rows this transaction wrote are gone with it.
             // In place: callers holding a ticket or job across an await keep the live record.
             // The saved copy is always a correct state, so it is the fallback if the in-place restore cannot finish.
             try { restoreInPlace(this.state, previous); } catch { this.state = previous; }
