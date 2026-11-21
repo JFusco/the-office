@@ -13,7 +13,7 @@ export type ExpectedWait = 'hold' | 'decision' | 'merge-approval' | 'prerequisit
 
 export interface IncidentCause {
     source: IncidentSource;
-    /** The project's ticket provider (`github`, `jira`), or the model provider for a worker failure. */
+    /** The project's ticket provider (`github` for GitHub or `azure` for Jira/Azure), or the model provider for a worker failure. */
     provider: string;
     stage: string;
     /** The typed cause the harness recorded: a stop kind, a blocked cause, a failure category. */
@@ -89,7 +89,11 @@ export interface IncidentRepair {
     subjects: RepairSubject[];
 }
 
-/** How the Office could resume a subject once the fix serves. Checked against the handler inventory when a resume is admitted. */
+/**
+ * How the Office could resume a subject once the fix serves. Checked against the route inventory
+ * (server/incidents/repair/resume-routes.ts) when the fix is bound; the handler's own
+ * preconditions are checked again when a resume is admitted.
+ */
 export interface RepairRoute { action: string; payload: Record<string, unknown>; expectedStage: string }
 
 /** An observable sign that a resumed subject got past what was repaired. A closed list: nothing here is executed. */
@@ -113,6 +117,27 @@ export interface IncidentFix {
     bindings: SubjectFix[];
     /** Set once a verified running release was found to hold the commit. A merge or a binding never sets it. */
     deployed?: { event: string; release: { commit: string; hash: string; operation: string; activatedAt: string }; at: string };
+}
+
+/**
+ * The Office-wide switch for automatic repair resumes. Paused until a person enables it, and every
+ * change advances the revision. `invalid`: the saved switch could not be read, which counts as paused.
+ */
+export interface ResumeSwitch { enabled: boolean; revision: number; reason: string; at: string | null; invalid?: true }
+
+/**
+ * How a bound subject stands once its fix is found in the running release. `no-route`: nothing will
+ * resume it. `gone`: it cleared, or no longer stands as the fix bound it. `held`: it could be resumed
+ * and automatic resumes are paused. `due`: it could be resumed and they are enabled.
+ */
+export type ResumeStanding = 'no-route' | 'gone' | 'held' | 'due';
+
+/** What the Office reads for one fix found in the running release. A reading only: it grants nothing and records nothing. */
+export interface ResumeAssessment {
+    fix: string;
+    commit: string;
+    release: NonNullable<IncidentFix['deployed']>['release'];
+    subjects: { subject: string; standing: ResumeStanding; reason: string; action?: string }[];
 }
 
 /** A file of the running release as a verdict read it. Accepted only while the release holds that path with that hash. */

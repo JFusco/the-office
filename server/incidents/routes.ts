@@ -10,12 +10,15 @@ import { evidencePacket, PACKET_EVENTS } from './evidence-packet';
 import { readFix } from './fix-identity';
 import type { IncidentLedger } from './incident-ledger';
 import { recordIncidentEvent, REPAIR_SUBJECTS, replayed, SubjectFixSchema, type ResolvedWrite, type WriteRequest } from './record-event';
+import { assessResumes } from './repair/assess-resumes';
+import { NEVER_ENABLED, type ResumeControl } from './repair/resume-control';
 import { readRepairIssue } from './repair-issue';
 import { json } from '../office/http/responses';
 import { sanitizeObject } from '../office/security';
 
 export interface IncidentsRouteContext {
-    offices: { incidents: IncidentLedger };
+    /** `resumes`: the switch for automatic repair resumes; a context without one reads as never enabled and accepts no change. */
+    offices: { incidents: IncidentLedger; resumes?: ResumeControl };
     /** The code this service loaded at start-up: its hash and every file's hash. */
     loadedRevision?: { hash: string; manifest: readonly { path: string; hash: string }[] };
     /** The release identity as it reads now; the service's own records when not given. */
@@ -30,7 +33,7 @@ function packetOf(incident: Incident, context: IncidentsRouteContext) {
     return evidencePacket({ incident, history: context.offices.incidents.history(incident.id, PACKET_EVENTS), loadedHash, release: context.release?.() ?? releaseIdentity({ root: ROOT, dataRoot: DATA, loadedHash }) });
 }
 
-const LIMIT = 1024 * 1024;
+const LIMIT = 1024 * 1024, SWITCH_LIMIT = 4096;
 const Write = z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('repair-started'), eventId: z.string(), expectedRevision: z.number().int().min(1), issue: z.number().int().min(1) }).strict(),
     z.object({ kind: z.literal('fix-bound'), eventId: z.string(), expectedRevision: z.number().int().min(1), reference: z.string().trim().min(1).max(200), bindings: z.array(SubjectFixSchema).max(REPAIR_SUBJECTS) }).strict(),
@@ -65,15 +68,39 @@ async function writeEvent(req: Request, id: string, context: IncidentsRouteConte
     return json(sanitizeObject(saved));
 }
 
+const SwitchChange = z.discriminatedUnion('enabled', [
+    z.object({ enabled: z.literal(false), reason: z.string().max(2000).optional() }).strict(),
+    z.object({ enabled: z.literal(true), expectedRevision: z.number().int().min(0), reason: z.string().max(2000).optional() }).strict(),
+]);
+
+/**
+ * `/api/incidents/resumes`: `GET` reads the switch for automatic repair resumes; `POST` pauses
+ * them, which is always accepted, or enables them at the revision the caller read. It changes
+ * only whether new repair resumes are admitted: no project is paused or resumed by it.
+ */
+async function resumeSwitch(req: Request, context: IncidentsRouteContext): Promise<Response> {
+    const control = context.offices.resumes;
+    if (req.method === 'GET') return json({ resumes: control?.read() ?? NEVER_ENABLED });
+    if (req.method !== 'POST') return json({ error: 'GET or POST required' }, 405);
+    if (!control) return json({ error: 'This Office has no resume switch' }, 404);
+    if (!declaredWithin(req, SWITCH_LIMIT)) return json({ error: `A resume switch change needs a Content-Length of 1 to ${SWITCH_LIMIT} bytes` }, req.headers.get('content-length') === null ? 411 : 413);
+    const body = await req.text(), parsed = SwitchChange.safeParse((() => { try { return JSON.parse(body); } catch { return undefined; } })());
+    if (!parsed.success) return json({ error: 'Expected {enabled: false, reason?} or {enabled: true, expectedRevision, reason?}' }, 400);
+    const now = (context.now ?? (() => new Date()))(), change = parsed.data;
+    return json({ resumes: change.enabled ? control.enable(change.expectedRevision, change.reason, now) : control.pause(change.reason, now) });
+}
+
 /**
  * `/api/incidents` lists the ledger; `open=1` keeps incidents with a subject still stopped and
  * `research=1` those eligible for investigation and not dismissed. `/api/incidents/<id>` returns
- * one incident with its event history, `/api/incidents/<id>/evidence` its evidence packet. All
+ * one incident with its event history and, once its fix is found in the running release, how
+ * each bound subject stands for a resume; `/api/incidents/<id>/evidence` its evidence packet. All
  * three only read. `/api/incidents/<id>/events` accepts the three events a person or the repair
  * runner may record; nothing else about an incident can be written from outside.
  */
 export async function incidentsRoute(req: Request, url: URL, context: IncidentsRouteContext): Promise<Response | undefined> {
     if (url.pathname !== '/api/incidents' && !url.pathname.startsWith('/api/incidents/')) return undefined;
+    if (url.pathname === '/api/incidents/resumes') return resumeSwitch(req, context);
     const events = /^\/api\/incidents\/(inc-[0-9a-f]{16})\/events$/.exec(url.pathname);
     if (events) return req.method === 'POST' ? writeEvent(req, events[1], context) : json({ error: 'POST required' }, 405);
     if (req.method !== 'GET') return json({ error: 'GET required' }, 405);
@@ -89,5 +116,5 @@ export async function incidentsRoute(req: Request, url: URL, context: IncidentsR
         return incident ? json({ packet: packetOf(incident, context) }) : json({ error: 'No such incident' }, 404);
     }
     const id = url.pathname.slice('/api/incidents/'.length), incident = /^inc-[0-9a-f]{16}$/.test(id) ? incidents.get(id) : null;
-    return incident ? json(sanitizeObject({ incident, events: incidents.events(id) })) : json({ error: 'No such incident' }, 404);
+    return incident ? json(sanitizeObject({ incident, events: incidents.events(id), resumes: assessResumes(incident, context.offices.resumes?.read() ?? NEVER_ENABLED) })) : json({ error: 'No such incident' }, 404);
 }
