@@ -15,6 +15,10 @@ export interface RepositoryInstruction {
     status: 'proposed' | 'filed' | 'declined';
     issueUrl?: string;
     filedAt?: string;
+    /** Filed issue whose card still has to reach the pickup lane; absent on issues filed before cards were moved. */
+    lanePending?: boolean;
+    /** Lane-move attempts refused before sending; each later attempt is a fresh Effect. */
+    laneAttempt?: number;
 }
 export type LessonTier = 'hypothesis' | 'guidance' | 'procedure' | 'rule';
 export interface Lesson {

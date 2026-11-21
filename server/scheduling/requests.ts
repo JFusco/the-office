@@ -31,6 +31,7 @@ import type { Coordinator } from './coordination';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import { TimeLedger } from '../time/time-ledger';
 import { fileLessonIssue } from '../knowledge/file-lesson-issue';
+import { readyPendingLessonIssues } from '../knowledge/lesson-issue-ready';
 import { graduateLessons } from '../knowledge/lesson-exits';
 import { command } from '../workers/process';
 import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
@@ -85,7 +86,10 @@ export async function executeRequest(store: Store, engine: Engine, coordinator: 
             case 'apply-time-scope': applyTimeScope(store, request); break;
             case 'admit-improvement': await admitImprovement(store, request.head); break;
             case 'file-lesson-issue': await fileLessonIssue(store, command, request.head); break;
-            case 'check-lesson-issues': await graduateLessons(store, command); break;
+            case 'check-lesson-issues':
+                await readyPendingLessonIssues(store, command);
+                if (store.state.knowledge?.enabled) await graduateLessons(store, command);
+                break;
             case 'reconcile-native-delivery':
                 await delivery.reconcileNativeDelivery(request.key);
                 break;
