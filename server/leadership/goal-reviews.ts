@@ -6,6 +6,13 @@ export const EvidenceRefSchema = z.object({ projectId: z.string().max(80), kind:
 export const GoalEvidenceRequestSchema = z.object({ projectId: z.string().min(1).max(80), goals: z.array(z.object({ goalId: z.string().min(1).max(200), expectedUpdatedAt: z.string().min(1).max(100) }).strict()).min(1).max(12), inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/), questions: z.array(z.string().trim().min(1).max(500)).min(1).max(6) }).strict();
 export const DailyResultSchema = z.object({ evidenceRequests: z.array(GoalEvidenceRequestSchema).max(12).optional(), summary: z.string().min(1).max(12000), updates: z.array(z.object({ projectId: z.string(), goalId: z.string(), expectedUpdatedAt: z.string(), progress: z.string().max(2000), blockers: z.array(z.string().max(500)).max(10), evidence: z.array(EvidenceRefSchema).max(20), linkedWork: z.array(EvidenceRefSchema).max(20), rationale: z.string().min(1).max(4000), status: z.enum(['idea', 'planned', 'active', 'blocked', 'done']).nullable() }).strict()).max(200), unmapped: z.array(z.string().max(500)).max(200) }).strict();
 export const FreshDailyResultSchema = DailyResultSchema.extend({ summary: z.string().min(1).max(1500), updates: z.array(DailyResultSchema.shape.updates.element.extend({ progress: z.string().max(350), blockers: z.array(z.string().max(220)).max(3) })).max(200), evidenceRequests: z.array(GoalEvidenceRequestSchema).max(12) });
+/**
+ * What a provider's pull request observation says about a goal: work has started, and nothing more. It is not
+ * delivery acceptance, so it supports a verdict without deciding it. `workEvidence` returns this same object
+ * for every such observation, which is how `statusAllowed` tells an observation from accepted or unaccepted work.
+ */
+const PR_OBSERVED: { started: boolean; accepted: boolean } = Object.freeze({ started: true, accepted: false });
+
 export function workEvidence(store: Store, ref: GoalEvidenceRef): {
     started: boolean;
     accepted: boolean;
@@ -30,10 +37,13 @@ export function workEvidence(store: Store, ref: GoalEvidenceRef): {
     }
     if (ref.kind === 'pr') {
         const provider = store.project.provider === 'github' ? store.state.github : store.state.azure;
-        if (!provider || provider.error || !provider.observedAt || ref.version !== provider.observedAt) return null;
+        // The reference is current while the provider still shows this pull request at the cited head. The provider is
+        // observed again every minute or so, so the cited observation only has to be a real one, at or before the latest.
+        const cited = Date.parse(ref.version), latest = Date.parse(provider?.observedAt || '');
+        if (!provider || provider.error || !Number.isFinite(cited) || !Number.isFinite(latest) || cited > latest) return null;
         const pr = store.project.provider === 'github' ? store.state.github?.prs.find(pr => String(pr.number) === ref.id) : store.state.azure.prs.find(pr => String(pr.id) === ref.id);
         const head = pr && ('head' in pr ? pr.head : pr.commit);
-        if (pr && head && ref.head === head) return { started: true, accepted: false };
+        if (pr && head && ref.head === head) return PR_OBSERVED;
     }
     return null;
 }
@@ -46,8 +56,12 @@ function statusAllowed(goal: ProjectGoal, update: DailyGoalUpdate, evidence: {
         return true;
     if (goal.status === 'idea' || goal.status === 'done')
         return false;
-    if (next === 'done')
-        return ['active', 'blocked'].includes(goal.status) && evidence.length > 0 && evidence.every(item => item.accepted) && update.blockers.length === 0;
+    if (next === 'done') {
+        // Done rests on accepted work: at least one cited item that is work, and every such item accepted.
+        // A pull request observation beside it neither supplies that nor vetoes it.
+        const work = evidence.filter(item => item !== PR_OBSERVED);
+        return ['active', 'blocked'].includes(goal.status) && work.length > 0 && work.every(item => item.accepted) && update.blockers.length === 0;
+    }
     if (next === 'blocked')
         return ['planned', 'active'].includes(goal.status) && update.blockers.length > 0;
     if (next === 'active')
