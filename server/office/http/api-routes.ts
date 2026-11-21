@@ -45,7 +45,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
     if (url.pathname === '/api/projects')
         return json({ projects: offices.summaries() });
     if (url.pathname === '/api/health')
-        return json({ ok: true, loadedHash: loadedRevision.hash, release: releaseIdentity({ root: ROOT, dataRoot: DATA, loadedHash: loadedRevision.hash }), serviceInstanceId: offices.serviceInstanceId, startedAt: store.state.startedAt, readiness: [...offices.entries.values()].map(entry => projectReadiness(entry, offices.projection(entry), Date.now(), offices.sessions.forProject(entry.store))), dailyCTO: offices.control.summaries()[0] || null, mode: store.state.paused ? 'paused' : 'running', pid: process.pid, uptime: process.uptime(), busy: serviceBusy(offices.capacity,offices.entries.values()) || itSpecialist.running || offices.operations.count > 0, fence: offices.fence.read(), repairResumes: offices.resumes.read(), projects: [...offices.entries.values()].map(e => ({ id: e.store.project.id, busy: e.engine.busy, workers: e.store.state.workLog?.filter(w => w.status === 'running').length || 0, polling: !!e.coordinator?.polling })) });
+        return json({ ok: true, loadedHash: loadedRevision.hash, release: releaseIdentity({ root: ROOT, dataRoot: DATA, loadedHash: loadedRevision.hash }), serviceInstanceId: offices.serviceInstanceId, startedAt: store.state.startedAt, readiness: [...offices.entries.values()].map(entry => projectReadiness(entry, offices.projection(entry), Date.now(), offices.sessions.forProject(entry.store))), dailyCTO: offices.control.summaries()[0] || null, mode: store.state.paused ? 'paused' : 'running', pid: process.pid, uptime: process.uptime(), busy: serviceBusy(offices.capacity,offices.entries.values()) || itSpecialist.running || offices.operations.count > 0, fence: offices.fence.read(), repairResumes: offices.resumes.read(), storeTimings: [...offices.entries.values()].map(e => ({ project: e.store.project.id, ...e.store.timings.report() })), projects: [...offices.entries.values()].map(e => ({ id: e.store.project.id, busy: e.engine.busy, workers: e.store.state.workLog?.filter(w => w.status === 'running').length || 0, polling: !!e.coordinator?.polling })) });
     if (url.pathname === '/api/office')
         return json(snapshot(project));
     if (url.pathname === '/api/sessions') {
@@ -97,7 +97,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         const stream = new ReadableStream({ start(c) {
                 const send = () => {
                     try {
-                        c.enqueue(new TextEncoder().encode(`id: ${store.state.revision}\nevent: snapshot\ndata: ${JSON.stringify(snapshot(project))}\n\n`));
+                        c.enqueue(new TextEncoder().encode(`id: ${store.state.revision}\nevent: snapshot\ndata: ${store.timings.time('browser snapshot: serialise for a push', () => JSON.stringify(snapshot(project)), text => text.length)}\n\n`));
                     }
                     catch {
                         stop();

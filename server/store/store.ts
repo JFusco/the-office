@@ -3,6 +3,7 @@ import { restoreInPlace } from './restore-state';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { DATA } from '../office/config';
 import { sanitize, sanitizeObject } from '../office/security';
 import { currentOutbox } from '../conversations/current-outbox';
@@ -19,6 +20,8 @@ import { type Clock, systemClock } from '../office/clock';
 import { initializeStoreSchema } from './store-schema';
 import { applyConnectionSettings, closeConnection, optimizeOnOpen } from './connection-settings';
 import { statementCache } from './statement-cache';
+import { storeTimings } from './store-timings';
+import { timedStatements } from './timed-statements';
 import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
@@ -42,6 +45,8 @@ export class Store {
     state: OfficeSnapshot;
     listeners = new Set<(event: OfficeEvent) => void>();
     commitListeners = new Set<() => void>();
+    /** What this store's saves, transactions and statements have cost since it was opened. Measurement only. */
+    timings = storeTimings();
     private transactionDepth = 0;
     private pendingEvents: OfficeEvent[] = [];
     private statement: (sql: string) => StatementSync;
@@ -53,7 +58,7 @@ export class Store {
         applyConnectionSettings(this.db);
         initializeStoreSchema(this.db);
         optimizeOnOpen(this.db);
-        this.statement = statementCache(this.db);
+        this.statement = timedStatements(statementCache(this.db), this.timings);
         const row = this.statement('SELECT body FROM state WHERE id=1').get() as {
             body: string;
         } | undefined;
@@ -72,15 +77,20 @@ export class Store {
         this.save();
     }
     save(): void {
-        this.statement('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(JSON.stringify(sanitizeObject(this.state)));
+        const redacted = this.timings.time('save: redact', () => sanitizeObject(this.state));
+        const body = this.timings.time('save: serialise', () => JSON.stringify(redacted), text => text.length);
+        this.statement('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(body);
     }
     transaction<T>(operation: () => T): T {
         if (this.transactionDepth)
             return operation();
-        const previous = structuredClone(this.state);
+        const began = performance.now();
+        const previous = this.timings.time('transaction: rollback copy', () => structuredClone(this.state));
         let result!: T;
         let events: OfficeEvent[] = [];
-        this.db.exec('BEGIN IMMEDIATE');
+        // A refused BEGIN (a locked database) is the slowest transaction of all: it is counted too.
+        try { this.db.exec('BEGIN IMMEDIATE'); }
+        catch (error) { this.timings.add('transaction: begin to commit', performance.now() - began); throw error; }
         this.transactionDepth = 1;
         try {
             result = operation();
@@ -102,7 +112,9 @@ export class Store {
         finally {
             this.transactionDepth = 0;
             this.pendingEvents = [];
+            this.timings.add('transaction: begin to commit', performance.now() - began);
         }
+        const committed = performance.now();
         for (const listener of this.commitListeners) { try { listener(); } catch { this.commitListeners.delete(listener); } }
         // A failed SSE subscriber must not undo or misreport an already committed result.
         for (const event of events)
@@ -114,6 +126,7 @@ export class Store {
                     this.listeners.delete(callback);
                 }
             }
+        this.timings.add('transaction: listeners after commit', performance.now() - committed);
         return result;
     }
     transition<T>(kind: string, message: string, operation: () => T, role?: Role, ticket?: string): T {
