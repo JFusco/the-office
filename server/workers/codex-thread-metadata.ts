@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 
 /** Well under SQLite's limit on bound values in one statement. */
 export const METADATA_CHUNK = 500;
+const COLUMNS = 'id,cwd,name,title,git_branch,thread_source,source,rollout_path';
 
 /**
  * Codex's own metadata rows for the given transcript paths, by path, read with one query per chunk of paths.
@@ -11,9 +12,11 @@ export const METADATA_CHUNK = 500;
  */
 export function codexThreadMetadata(db: Pick<DatabaseSync, 'prepare'>, paths: Iterable<string>): Map<string, unknown> {
     const wanted = [...new Set(paths)], rows = new Map<string, unknown>();
+    // With nothing to read, the table and its columns are still checked, as preparing the single lookup always did.
+    if (!wanted.length) db.prepare(`SELECT ${COLUMNS} FROM threads WHERE rollout_path=?`);
     for (let from = 0; from < wanted.length; from += METADATA_CHUNK) {
         const chunk = wanted.slice(from, from + METADATA_CHUNK);
-        const found = db.prepare(`SELECT id,cwd,name,title,git_branch,thread_source,source,rollout_path FROM threads WHERE rollout_path IN (${chunk.map(() => '?').join(',')}) ORDER BY rowid`)
+        const found = db.prepare(`SELECT ${COLUMNS} FROM threads WHERE rollout_path IN (${chunk.map(() => '?').join(',')}) ORDER BY rowid`)
             .all(...chunk) as { rollout_path: string }[];
         for (const row of found) if (!rows.has(row.rollout_path)) rows.set(row.rollout_path, row);
     }

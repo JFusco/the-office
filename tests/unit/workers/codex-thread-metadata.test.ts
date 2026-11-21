@@ -27,8 +27,9 @@ test('every wanted transcript is read in one query, and the rows are the ones a 
 });
 
 test('a path with more than one row keeps the first in table order', () => {
-    const { db } = threads([['first', path(1)], ['second', path(1)]]);
-    expect(codexThreadMetadata(db, [path(1)]).get(path(1))).toMatchObject({ id: 'first' });
+    // Ids that sort the other way, so only table order gives this answer.
+    const { db } = threads([['z-inserted-first', path(1)], ['a-inserted-second', path(1)]]);
+    expect(codexThreadMetadata(db, [path(1)]).get(path(1))).toMatchObject({ id: 'z-inserted-first' });
 });
 
 test('more paths than one statement should bind are read in chunks, and no path is lost', () => {
@@ -40,10 +41,12 @@ test('more paths than one statement should bind are read in chunks, and no path 
     expect(found.get(path(count - 1))).toMatchObject({ id: `t${count - 1}` });
 });
 
-test('no paths means no query', () => {
-    const { db, queries } = threads([['a', path(1)]]);
+test('with no paths nothing is read, but a database without the expected table is still refused', () => {
+    const { db } = threads([['a', path(1)]]);
     expect(codexThreadMetadata(db, []).size).toBe(0);
-    expect(queries()).toBe(0);
+    const empty = new DatabaseSync(':memory:'); open.push(empty);
+    expect(() => codexThreadMetadata(empty, [])).toThrow(/no such table/);
+    expect(() => codexThreadMetadata(empty, [path(1)])).toThrow(/no such table/);
 });
 
 test('a transcript with no metadata row is still refused by the inventory, never treated as absent', () => {
