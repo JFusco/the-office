@@ -38,9 +38,18 @@ test('the first save writes every key and the same whole row the previous releas
     const again = parts(db), loaded = again.stored.load() as Record<string, unknown>;
     expect(JSON.stringify(loaded)).toBe(before(state));
     expect(Object.keys(loaded)).toEqual(Object.keys(JSON.parse(before(state))));
-    // What was loaded is what is written: saving it unchanged writes nothing.
+    // The loaded object has no `skipped` key, so the keys after it close up once; their text is not redacted again.
     again.stored.save(loaded, false);
-    expect(again.writes()).toEqual([0, 0]);
+    expect(row(db)).toBe(before(state));
+    const closed = again.writes();
+    again.stored.save(loaded, false);
+    expect(again.writes()).toEqual(closed);
+    // A state with no such gap is exactly what was written: saving it after a load writes nothing.
+    const plain = database(), first = parts(plain);
+    first.stored.save({ a: 1, b: [SECRET], c: { d: null } }, false);
+    const next = parts(plain);
+    next.stored.save(next.stored.load() as object, false);
+    expect(next.writes()).toEqual([0, 0]);
 });
 
 test('a save writes only the keys whose content changed, redacted, and the whole row stays what the previous release would write', () => {
@@ -130,4 +139,37 @@ test('a save that fails part way leaves the database and what is remembered as t
     expect(JSON.stringify(parts(db).stored.load())).toBe(saved); // The part rows written before the failure went with it.
     stored.save(state, false);
     expect(row(db)).toBe(before(state));
+});
+
+test('a key cleared and set again in place moves no other key', () => {
+    const db = database(), { stored, writes } = parts(db);
+    const state: Record<string, unknown> = { first: 1, pendingMail: { id: 'm1' }, big: ['kept'], last: true };
+    stored.save(state, false);
+    const before1 = writes();
+    state.pendingMail = undefined; // Still a key of the object, with nothing to save.
+    stored.save(state, false);
+    expect(row(db)).toBe(before(state));
+    expect(writes()).toEqual([before1[0], before1[1] + 1]); // Its row is removed; `big` and `last` are not rewritten.
+    state.pendingMail = { id: 'm2' };
+    stored.save(state, false);
+    expect(writes()).toEqual([before1[0] + 1, before1[1] + 2]);
+    expect(row(db)).toBe(before(state));
+    expect(JSON.stringify(parts(db).stored.load())).toBe(before(state));
+});
+
+test('a save that fails on a write inside the caller\'s transaction makes the next save replace every part', () => {
+    const db = database(), { stored } = parts(db), state = sample();
+    stored.save(state, false);
+    db.exec('BEGIN IMMEDIATE');
+    db.exec("CREATE TEMP TRIGGER refuse_state BEFORE INSERT ON state BEGIN SELECT RAISE(ABORT, 'rejected'); END;");
+    state.revision = 70;
+    expect(() => stored.save(state, true)).toThrow('rejected'); // The part row for `revision` is written, the row is not.
+    db.exec('DROP TRIGGER refuse_state');
+    state.revision = 3; // Back to what is remembered: without the replacement this key would be skipped.
+    stored.save(state, true);
+    db.exec('COMMIT');
+    expect(row(db)).toBe(before(state));
+    expect(JSON.stringify(parts(db).stored.load())).toBe(before(state));
+    const rows = db.prepare('SELECT key,body FROM state_parts ORDER BY position').all() as { key: string; body: string }[];
+    expect(`{${rows.map(part => `${JSON.stringify(part.key)}:${part.body}`).join(',')}}`).toBe(before(state));
 });

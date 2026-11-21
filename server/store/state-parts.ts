@@ -3,7 +3,7 @@ import { sanitizeObject } from '../office/security';
 import type { StoreTimings } from './store-timings';
 
 interface WrittenPart { position: number; raw: string; redacted: string }
-type PartRow = { key: string; body: string };
+type PartRow = { key: string; position: number; body: string };
 
 const ROW = 'INSERT OR REPLACE INTO state(id,body) VALUES(1,?)';
 
@@ -28,12 +28,12 @@ export class StateParts {
      */
     load(): unknown {
         const row = this.statement('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined;
-        const rows = this.statement('SELECT key,body FROM state_parts ORDER BY position,key').all() as PartRow[];
+        const rows = this.statement('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as PartRow[];
         this.written = new Map(); this.stale = false;
         if (!rows.length) return row ? JSON.parse(row.body) : null;
         if (row && row.body !== whole(rows)) { this.stale = true; return JSON.parse(row.body); }
         // What was stored is already redacted and in the form it serialises to again, so it is also the text to compare with.
-        rows.forEach(({ key, body }, position) => this.written.set(key, { position, raw: body, redacted: body }));
+        for (const { key, position, body } of rows) this.written.set(key, { position, raw: body, redacted: body });
         return Object.fromEntries(rows.map(({ key, body }) => [key, JSON.parse(body)]));
     }
 
@@ -58,18 +58,22 @@ export class StateParts {
         } catch (error) {
             if (!inTransaction) { try { this.exec('ROLLBACK'); } catch { /* The first failure is the one to report. */ } }
             restore();
+            // Inside the caller's transaction some part rows may already be written and may yet be committed:
+            // nothing remembered can be trusted for them, so the next save replaces every part.
+            if (inTransaction) this.stale = true;
             throw error;
         }
     }
 
     private write(state: object): number {
         // Keys whose value has no JSON form are left out, exactly as serialising the whole object leaves them out.
+        // A key keeps its place among all keys, so one that is cleared and set again in place moves no other key.
         const parts = this.timings.time('save: serialise', () => Object.entries(state)
-            .map(([key, value]) => ({ key, value, raw: JSON.stringify(value) as string | undefined }))
-            .filter((part): part is { key: string; value: unknown; raw: string } => part.raw !== undefined),
+            .map(([key, value], position) => ({ key, value, position, raw: JSON.stringify(value) as string | undefined }))
+            .filter((part): part is { key: string; value: unknown; position: number; raw: string } => part.raw !== undefined),
         found => found.reduce((sum, part) => sum + part.raw.length, 0));
         const next = new Map<string, WrittenPart>(), changed: string[] = [];
-        this.timings.time('save: redact', () => parts.forEach(({ key, value, raw }, position) => {
+        this.timings.time('save: redact', () => parts.forEach(({ key, value, raw, position }) => {
             const before = this.stale ? undefined : this.written.get(key);
             const redacted = before?.raw === raw ? before.redacted : JSON.stringify(sanitizeObject(value));
             if (!before || before.raw !== raw || before.position !== position) changed.push(key);
@@ -83,7 +87,7 @@ export class StateParts {
             this.statement('INSERT OR REPLACE INTO state_parts(key,position,body) VALUES(?,?,?)').run(key, part.position, part.redacted);
         }
         for (const key of removed) this.statement('DELETE FROM state_parts WHERE key=?').run(key);
-        const body = whole([...next].map(([key, part]) => ({ key, body: part.redacted })));
+        const body = whole([...next].map(([key, part]) => ({ key, position: part.position, body: part.redacted })));
         this.statement(ROW).run(body);
         this.written = next; this.stale = false;
         return body.length;

@@ -32,6 +32,10 @@ test('state, the admission row and the event row commit together, and a restart 
     const saved = row(store);
     store.db.close();
     const reopened = openStore(path).store;
+    // A restart writes only the keys its start changes (the start time, the agents), not the whole state again.
+    const rewritten = reopened.timings.report().timings['sql: INSERT OR REPLACE INTO state_parts(key,position,body) VALUES(?,?,?)'].calls;
+    expect(rewritten).toBeGreaterThan(0);
+    expect(rewritten).toBeLessThan(Object.keys(JSON.parse(saved)).length / 2);
     expect(reopened.state.pilotKey).toBe('CEC-1');
     expect(reopened.state.revision).toBe(JSON.parse(saved).revision);
     expect(partsText(reopened)).toBe(row(reopened));
@@ -66,4 +70,18 @@ test('a state row left by the previous release after a rollback is what the next
     const next = openStore(path).store;
     expect(next.state.pilotKey).toBe('CEC-9');
     expect(partsText(next)).toBe(row(next));
+});
+
+test('a commit that fails after SQLite has already rolled back does not leave the store believing its parts were written', () => {
+    const { store } = openStore();
+    store.transaction(() => { store.state.pilotKey = 'CEC-1'; });
+    const exec = store.db.exec.bind(store.db);
+    store.db.exec = (sql: string) => { if (sql === 'COMMIT') { exec('ROLLBACK'); throw new Error('disk full'); } return exec(sql); };
+    expect(() => store.transaction(() => { store.state.pilotKey = 'CEC-2'; })).toThrow(); // The store's own ROLLBACK then finds no transaction.
+    store.db.exec = exec;
+    // Memory still holds CEC-2 (as before this change); the next save must write it, not skip it as already written.
+    store.state.pilotKey = 'CEC-2';
+    store.save();
+    expect(JSON.parse(row(store)).pilotKey).toBe('CEC-2');
+    expect(partsText(store)).toBe(row(store));
 });

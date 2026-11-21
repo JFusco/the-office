@@ -108,9 +108,11 @@ export class Store {
             events = this.pendingEvents;
         }
         catch (error) {
-            this.db.exec('ROLLBACK');
+            // First, before a ROLLBACK that can itself fail when SQLite already rolled back a failed COMMIT:
+            // the part rows this transaction wrote are gone with it either way.
+            partsAsWritten();
             this.savedChars = previousSavedChars;
-            partsAsWritten(); // The part rows this transaction wrote are gone with it.
+            this.db.exec('ROLLBACK');
             // In place: callers holding a ticket or job across an await keep the live record.
             // The saved copy is always a correct state, so it is the fallback if the in-place restore cannot finish.
             try { restoreInPlace(this.state, previous); } catch { this.state = previous; }
