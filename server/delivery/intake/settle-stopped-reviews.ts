@@ -8,6 +8,11 @@ export interface SettleInputs {
     /** A configured hold keeps its review as it is. */
     held: (key: string) => boolean;
     now: Date;
+    /**
+     * Tickets a direct read confirmed are resolved or no longer assigned to the Office (`confirm-gone.ts`).
+     * Only used when `assigned` is empty: then these, and only these, may be settled.
+     */
+    confirmedGone?: ReadonlySet<string>;
 }
 
 /**
@@ -16,15 +21,19 @@ export interface SettleInputs {
  * history once that ticket is no longer assigned or no longer open. A review of a ticket that is still
  * assigned keeps its status, and with it the read-back a blocked review requires before any new work.
  * Reviews in flight, tickets the Office is delivering and configured holds are left alone, and an empty
- * read settles nothing: it is far likelier a provider fault than every ticket leaving at once.
+ * read by itself settles nothing: it is far likelier a provider fault than every ticket leaving at once.
+ * When the read is empty, a review is closed only if its own ticket was separately confirmed gone.
  * Returns the keys it closed. No model run and no provider write.
  */
 export function settleStoppedReviews(reviews: AssignmentReview[], inputs: SettleInputs): string[] {
-    if (!inputs.assigned.length) return [];
+    const empty = !inputs.assigned.length;
+    if (empty && !inputs.confirmedGone?.size) return [];
     const assigned = new Set(inputs.assigned.map(issue => issue.key)), at = inputs.now.toISOString(), closed: string[] = [];
     for (const review of new Map(reviews.map(review => [review.key, review])).values()) {
-        if (!['owned', 'blocked', 'held'].includes(review.status) || assigned.has(review.key) || inputs.hasDelivery(review.key) || inputs.held(review.key)) continue;
+        if (!['owned', 'blocked', 'held'].includes(review.status) || assigned.has(review.key) || empty && !inputs.confirmedGone!.has(review.key) || inputs.hasDelivery(review.key) || inputs.held(review.key)) continue;
         review.status = 'cancelled';
+        // A closed review waits on nothing: a recorded prerequisite fault would keep it counted as blocked.
+        delete review.prerequisiteError;
         review.endedAt = at;
         review.detail = `No longer assigned to the Office or no longer open; this review is kept as history.\nEarlier intake: ${review.detail}`;
         closed.push(review.key);

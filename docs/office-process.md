@@ -92,7 +92,10 @@ An assignment review that stopped is closed as history, with no model run, once 
 assignment read shows its ticket is no longer assigned or no longer open. A review of a ticket that
 is still assigned keeps its status, so a blocked review still requires its read-back before any new
 work. Reviews in flight, tickets the Office is delivering and configured holds are left as they are,
-and an empty read closes nothing (`server/delivery/intake/settle-stopped-reviews.ts`).
+and an empty read by itself closes nothing (`server/delivery/intake/settle-stopped-reviews.ts`).
+When the read is empty on a Jira project, the harness asks Jira about the tickets of its stopped
+reviews by key and closes only the reviews of tickets Jira returns as resolved or no longer assigned
+to the Office; a failed or empty answer closes nothing (`server/delivery/intake/confirm-gone.ts`).
 
 For Jira/Azure work the harness reads the complete list of active pull requests before and after
 a PM read-back or assignment review. The assessment is refused only when a pull request that could
