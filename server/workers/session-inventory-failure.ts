@@ -16,6 +16,8 @@ export function sessionInventoryFailureDetail(error: unknown): string {
             reason += ` Session ${error.session}; phase ${error.phase}; ${error.bytes} bytes; ${error.elapsedMS} ms.` +
                 ` Phase ${error.phaseMS} ms; event loop ${error.activeMS} active/${error.idleMS} idle ms.`;
     }
+    else if (message === 'Session context reader thread stopped')
+        reason = '[context-thread] The thread that reads session logs stopped before answering.';
     else if (message === 'A live Codex session has no metadata')
         reason = '[session-metadata] Matching persisted metadata for a live Codex process is unavailable.';
     else if (message === 'Session context file identity changed during its read' || message === 'Codex rollout identity does not match the loaded session')

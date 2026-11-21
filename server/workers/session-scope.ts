@@ -16,7 +16,8 @@ export interface SessionContext {
     conversation?: SessionConversation;
 }
 const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-type ScopeProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>>;
+/** `jira` is this project's Jira site and key when the caller has already resolved them; otherwise the configured binding is read here. */
+type ScopeProject = Pick<OfficeProject, 'id' | 'repo' | 'repository'> & Partial<Pick<OfficeProject, 'provider'>> & { jira?: { site: string; projectKey: string } };
 
 /** The configured site may be written as its https URL or bare host, with an optional trailing slash. */
 const siteHost = (value: string) => value.replace(/[\\"']/g, '').toLowerCase().replace(/^https:\/\//, '').replace(/\/+$/, '');
@@ -93,7 +94,7 @@ function scopeParser(sessionId: string, projects: ScopeProject[], previous?: Sco
         for (const project of projects) {
             const repo = escaped(project.repository), path = escaped(project.repo);
             // A current-turn TWG command binds this project's ticket to its Jira project even from a chat rooted elsewhere.
-            const binding = project.provider === 'azure' ? jiraBinding(project) : undefined, site = binding?.site ?? '', key = binding?.projectKey ?? '';
+            const binding = project.provider === 'azure' ? project.jira ?? jiraBinding(project) : undefined, site = binding?.site ?? '', key = binding?.projectKey ?? '';
             const jira = call && binding ? jiraCommandIssues(text, site, key) : { commands: [], references: [] };
             const browse = binding ? [...text.matchAll(new RegExp(`${escaped(site)}/browse/${escaped(key)}-(\\d+)(?![\\w-])`, 'gi'))] : [];
             if (!jira.commands.length && !jira.references.length && !browse.length &&!new RegExp(`(?:(?<![\\w.-])${repo}(?![\\w.-])|${path}(?=[/\\s'"\\\\]|$))`, 'i').test(text)) continue;
