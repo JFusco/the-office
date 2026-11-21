@@ -19,9 +19,10 @@ function parts(db: DatabaseSync) {
     timeStatements(db, timings);
     const stored = new StateParts(statementCache(db), sql => db.exec(sql), timings);
     const calls = (name: string) => timings.report().timings[name]?.calls ?? 0;
-    return { stored, calls, writes: () => [calls(WRITE_PART), calls(WRITE_ROW)] };
+    return { stored, calls, writes: () => [calls(WRITE_PART), calls(WRITE_ROW)], redactChars: () => timings.report().timings['save: redact']?.chars ?? 0 };
 }
 const row = (db: DatabaseSync) => (db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined)?.body;
+const partRows = (db: DatabaseSync) => db.prepare('SELECT key,position,body FROM state_parts ORDER BY position,key').all();
 const keys = (db: DatabaseSync) => (db.prepare('SELECT key FROM state_parts ORDER BY position').all() as { key: string }[]).map(part => part.key);
 /** What the previous release wrote for the same state. */
 const before = (state: object) => JSON.stringify(sanitizeObject(state));
@@ -39,9 +40,12 @@ test('the first save writes every key and the same whole row the previous releas
     expect(JSON.stringify(loaded)).toBe(before(state));
     expect(Object.keys(loaded)).toEqual(Object.keys(JSON.parse(before(state))));
     // The loaded object has no `skipped` key, so the keys after it close up once; their text is not redacted again.
+    const writesBeforeClosing = again.writes(), redactedBeforeClosing = again.redactChars();
     again.stored.save(loaded, false);
     expect(row(db)).toBe(before(state));
     const closed = again.writes();
+    expect(closed).toEqual([writesBeforeClosing[0] + 4, writesBeforeClosing[1] + 1]);
+    expect(again.redactChars() - redactedBeforeClosing).toBe(0);
     again.stored.save(loaded, false);
     expect(again.writes()).toEqual(closed);
     // A state with no such gap is exactly what was written: saving it after a load writes nothing.
@@ -50,6 +54,32 @@ test('the first save writes every key and the same whole row the previous releas
     const next = parts(plain);
     next.stored.save(next.stored.load() as object, false);
     expect(next.writes()).toEqual([0, 0]);
+});
+
+test('a reloaded part whose redaction changes again is rewritten on the next save', () => {
+    const db = database(), { stored } = parts(db);
+    const state = { revision: 3, note: '?secret=x y,z', stable: true };
+    stored.save(state, false);
+    const restarted = parts(db), loaded = restarted.stored.load() as typeof state;
+    expect(loaded.note).toBe('?secret=[redacted],z');
+    loaded.revision++;
+    restarted.stored.save(loaded, false);
+    expect(row(db)).toBe(before(loaded));
+    expect(partRows(db)).toContainEqual({ key: 'note', position: 1, body: '"?secret=[redacted]"' });
+    expect(restarted.writes()).toEqual([2, 1]);
+});
+
+test('a property toJSON sees its owning key and runs once per save', () => {
+    const db = database(), { stored } = parts(db);
+    const fixture = () => {
+        let calls = 0;
+        return { state: { probe: { toJSON: (key: string) => `${key}-${++calls}` } }, calls: () => calls };
+    };
+    const live = fixture();
+    stored.save(live.state, false);
+    expect(live.calls()).toBe(1);
+    expect(row(db)).toBe(before(fixture().state));
+    expect(partRows(db)).toEqual([{ key: 'probe', position: 0, body: '"probe-1"' }]);
 });
 
 test('a save writes only the keys whose content changed, redacted, and the whole row stays what the previous release would write', () => {
@@ -112,6 +142,32 @@ test('a store that has only the old row loads from it and writes its parts on th
     expect(row(db)).toBe(before(state));
 });
 
+test('the first save of empty state creates a compatibility row and zero parts', () => {
+    const db = database(), { stored, writes } = parts(db);
+    expect(stored.save({}, false)).toBe(2);
+    expect([row(db), keys(db), writes()]).toEqual(['{}', [], [0, 1]]);
+    const restarted = parts(db), loaded = restarted.stored.load();
+    expect(loaded).toEqual({});
+    restarted.stored.save(loaded as object, false);
+    expect(restarted.writes()).toEqual([0, 0]);
+});
+
+test('clearing legacy-only state persists an empty row even after a rolled-back attempt', () => {
+    const db = database(), legacy = before(sample());
+    db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(legacy);
+    const { stored } = parts(db);
+    expect(JSON.stringify(stored.load())).toBe(legacy);
+    const restore = stored.mark();
+    db.exec('BEGIN IMMEDIATE');
+    stored.save({}, true);
+    expect(row(db)).toBe('{}');
+    db.exec('ROLLBACK');
+    restore();
+    expect(row(db)).toBe(legacy);
+    stored.save({}, false);
+    expect([row(db), keys(db), parts(db).stored.load()]).toEqual(['{}', [], {}]);
+});
+
 test('writes rolled back by the caller\'s transaction are forgotten, so the next save writes them again', () => {
     const db = database(), { stored } = parts(db), state = sample();
     stored.save(state, false);
@@ -130,13 +186,13 @@ test('writes rolled back by the caller\'s transaction are forgotten, so the next
 test('a save that fails part way leaves the database and what is remembered as they were', () => {
     const db = database(), { stored } = parts(db), state = sample();
     stored.save(state, false);
-    const saved = row(db);
+    const saved = row(db), savedParts = partRows(db);
     db.exec("CREATE TRIGGER refuse_state BEFORE INSERT ON state BEGIN SELECT RAISE(ABORT, 'rejected'); END;");
     state.revision = 60; state.flag = true;
     expect(() => stored.save(state, false)).toThrow('rejected');
-    db.exec('DROP TRIGGER refuse_state');
     expect(row(db)).toBe(saved);
-    expect(JSON.stringify(parts(db).stored.load())).toBe(saved); // The part rows written before the failure went with it.
+    expect(partRows(db)).toEqual(savedParts);
+    db.exec('DROP TRIGGER refuse_state');
     stored.save(state, false);
     expect(row(db)).toBe(before(state));
 });

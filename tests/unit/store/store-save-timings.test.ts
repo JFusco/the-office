@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { Store } from '../../../server/store/store';
 import { readSavedState } from '../../../server/store/read-saved-state';
-import { sanitizeObject } from '../../../server/office/security';
+import * as security from '../../../server/office/security';
 
 let folder = '';
 let testStore: Store | undefined;
@@ -45,7 +45,7 @@ test('a store reports what its saves and transactions cost, and the saved row is
     expect(after['save: redact'].chars - before['save: redact'].chars).toBe('"CEC-1"'.length);
     expect(store.state.pilotKey).toBe('CEC-1');
     const saved = store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string };
-    expect(saved.body).toBe(JSON.stringify(sanitizeObject(store.state)));
+    expect(saved.body).toBe(JSON.stringify(security.sanitizeObject(store.state)));
     expect(readSavedState(path)?.pilotKey).toBe('CEC-1');
 });
 
@@ -67,24 +67,22 @@ test('the rollback copy is sized by the state as last saved, and SQL run on the 
     expect(store.timings.report().timings['sql: SELECT body FROM effects WHERE status=?'].calls).toBe(1);
 });
 
-test('a save that fails while serialising or redacting writes nothing, and the next save still writes the change', () => {
-    for (const failAt of [1, 2]) { // The first serialisation of a key compares it; the second is its redaction.
-        const { store } = openStore();
-        const report = () => store.timings.report().timings, before = report(), failure = new Error('no JSON form');
-        let calls = 0;
-        (store.state as unknown as Record<string, unknown>).probe = { toJSON() { if (++calls === failAt) throw failure; return 'value'; } };
-        let caught: unknown;
-        try { store.save(); } catch (error) { caught = error; }
-        expect(caught).toBe(failure);
-        const after = report();
-        expect(after['save: serialise'].calls).toBe(before['save: serialise'].calls + 1);
-        expect(after['save: redact'].calls).toBe(before['save: redact'].calls + (failAt === 2 ? 1 : 0));
-        expect([after[WRITE_PART].calls, after[WRITE_ROW].calls]).toEqual([before[WRITE_PART].calls, before[WRITE_ROW].calls]);
-        store.save();
-        expect(JSON.parse((store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string }).body).probe).toBe('value');
-        store.db.close(); testStore = undefined;
-        rmSync(folder, { recursive: true, force: true });
-    }
+test.each(['serialise', 'redact'])('a failed %s step writes nothing, and the next save still writes the change', step => {
+    const { store } = openStore();
+    const report = () => store.timings.report().timings, before = report(), failure = new Error('save step failed');
+    const probe = { toJSON: vi.fn(() => 'value') };
+    (store.state as unknown as Record<string, unknown>).probe = probe;
+    const fail = () => { throw failure; };
+    if (step === 'serialise') probe.toJSON.mockImplementationOnce(fail);
+    else vi.spyOn(security, 'sanitizeObject').mockImplementationOnce(fail);
+
+    expect(() => store.save()).toThrow(failure);
+    const after = report();
+    expect(after['save: serialise'].calls).toBe(before['save: serialise'].calls + 1);
+    expect(after['save: redact'].calls).toBe(before['save: redact'].calls + (step === 'redact' ? 1 : 0));
+    expect([after[WRITE_PART].calls, after[WRITE_ROW].calls]).toEqual([before[WRITE_PART].calls, before[WRITE_ROW].calls]);
+    store.save();
+    expect(JSON.parse((store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string }).body).probe).toBe('value');
 });
 
 test.each(['a rejected state write', 'a rollback after an inner save'])('the next rollback copy uses the persisted size after %s', scenario => {

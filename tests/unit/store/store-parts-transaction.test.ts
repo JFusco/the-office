@@ -12,7 +12,8 @@ function openStore(path = join(folder ||= mkdtempSync(join(tmpdir(), 'store-part
     const store = new Store(path, undefined, folder); stores.push(store); return { store, path };
 }
 const row = (store: Store) => (store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string }).body;
-const partsText = (store: Store) => `{${(store.db.prepare('SELECT key,body FROM state_parts ORDER BY position').all() as { key: string; body: string }[])
+const partRows = (store: Store) => store.db.prepare('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as { key: string; position: number; body: string }[];
+const partsText = (store: Store) => `{${partRows(store)
     .map(part => `${JSON.stringify(part.key)}:${part.body}`).join(',')}}`;
 const events = (store: Store) => (store.db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number }).n;
 const work = (store: Store) => ({ projectId: store.project.id, kind: 'delivery' as const, id: 'CEC-1' });
@@ -72,14 +73,39 @@ test('a state row left by the previous release after a rollback is what the next
     expect(partsText(next)).toBe(row(next));
 });
 
+test('catching a save that triggered a SQLite rollback cannot persist the final save', () => {
+    const { store } = openStore();
+    store.transaction(() => { store.state.pilotKey = 'CEC-1'; });
+    const persisted = () => [row(store), partRows(store), admissionCursor(store.db), events(store)];
+    const saved = persisted(), revision = store.state.revision;
+    store.db.exec(`CREATE TEMP TRIGGER refuse_state BEFORE INSERT ON state
+        WHEN json_extract(NEW.body, '$.pilotKey') = 'CEC-2' BEGIN SELECT RAISE(ROLLBACK, 'rejected'); END;`);
+
+    expect(() => store.transaction(() => {
+        expect(store.claimWork(work(store), 'owner', 'implement')).not.toBeNull();
+        store.emit('claimed', 'Claimed CEC-1');
+        store.state.pilotKey = 'CEC-2';
+        expect(() => store.save()).toThrow('rejected');
+        expect(store.db.isTransaction).toBe(false);
+        store.state.pilotKey = 'CEC-3';
+    })).toThrow('SQLite rolled back the active Store transaction');
+
+    expect(persisted()).toEqual(saved);
+    expect([store.state.pilotKey, store.state.revision]).toEqual(['CEC-1', revision]);
+    store.state.pilotKey = 'CEC-3';
+    store.save();
+    expect(JSON.parse(row(store)).pilotKey).toBe('CEC-3');
+    expect(partsText(store)).toBe(row(store));
+});
+
 test('a commit that fails after SQLite has already rolled back does not leave the store believing its parts were written', () => {
     const { store } = openStore();
     store.transaction(() => { store.state.pilotKey = 'CEC-1'; });
     const exec = store.db.exec.bind(store.db);
     store.db.exec = (sql: string) => { if (sql === 'COMMIT') { exec('ROLLBACK'); throw new Error('disk full'); } return exec(sql); };
-    expect(() => store.transaction(() => { store.state.pilotKey = 'CEC-2'; })).toThrow(); // The store's own ROLLBACK then finds no transaction.
+    expect(() => store.transaction(() => { store.state.pilotKey = 'CEC-2'; })).toThrow('disk full');
     store.db.exec = exec;
-    // Memory still holds CEC-2 (as before this change); the next save must write it, not skip it as already written.
+    expect(store.state.pilotKey).toBe('CEC-1');
     store.state.pilotKey = 'CEC-2';
     store.save();
     expect(JSON.parse(row(store)).pilotKey).toBe('CEC-2');

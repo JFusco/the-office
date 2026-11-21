@@ -2,7 +2,7 @@ import type { StatementSync } from 'node:sqlite';
 import { sanitizeObject } from '../office/security';
 import type { StoreTimings } from './store-timings';
 
-interface WrittenPart { position: number; raw: string; redacted: string }
+interface WrittenPart { position: number; raw: string | undefined; redacted: string }
 type PartRow = { key: string; position: number; body: string };
 
 const ROW = 'INSERT OR REPLACE INTO state(id,body) VALUES(1,?)';
@@ -18,6 +18,7 @@ const ROW = 'INSERT OR REPLACE INTO state(id,body) VALUES(1,?)';
  */
 export class StateParts {
     private written = new Map<string, WrittenPart>();
+    private rowMatchesParts = false;
     /** The part rows in the database are not what `written` says, so the next save replaces them all. */
     private stale = false;
     constructor(private statement: (sql: string) => StatementSync, private exec: (sql: string) => void, private timings: StoreTimings) {}
@@ -29,18 +30,23 @@ export class StateParts {
     load(): unknown {
         const row = this.statement('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined;
         const rows = this.statement('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as PartRow[];
-        this.written = new Map(); this.stale = false;
-        if (!rows.length) return row ? JSON.parse(row.body) : null;
-        if (row && row.body !== whole(rows)) { this.stale = true; return JSON.parse(row.body); }
-        // What was stored is already redacted and in the form it serialises to again, so it is also the text to compare with.
-        for (const { key, position, body } of rows) this.written.set(key, { position, raw: body, redacted: body });
-        return Object.fromEntries(rows.map(({ key, body }) => [key, JSON.parse(body)]));
+        this.written = new Map();
+        this.rowMatchesParts = row !== undefined && row.body === whole(rows);
+        this.stale = rows.length > 0 && row !== undefined && !this.rowMatchesParts;
+        if (!rows.length || this.stale) return row ? JSON.parse(row.body) : null;
+        return Object.fromEntries(rows.map(({ key, position, body }) => {
+            const value: unknown = JSON.parse(body);
+            // A stored value becomes live again on load, and redacting it again can change its text.
+            const raw = JSON.stringify(sanitizeObject(value)) === body ? body : undefined;
+            this.written.set(key, { position, raw, redacted: body });
+            return [key, value];
+        }));
     }
 
     /** What is remembered as written, to put back when the database rolls those writes back. */
     mark(): () => void {
-        const written = new Map(this.written), stale = this.stale;
-        return () => { this.written = written; this.stale = stale; };
+        const written = new Map(this.written), stale = this.stale, rowMatchesParts = this.rowMatchesParts;
+        return () => { this.written = written; this.stale = stale; this.rowMatchesParts = rowMatchesParts; };
     }
 
     /**
@@ -68,19 +74,32 @@ export class StateParts {
     private write(state: object): number {
         // Keys whose value has no JSON form are left out, exactly as serialising the whole object leaves them out.
         // A key keeps its place among all keys, so one that is cleared and set again in place moves no other key.
-        const parts = this.timings.time('save: serialise', () => Object.entries(state)
-            .map(([key, value], position) => ({ key, value, position, raw: JSON.stringify(value) as string | undefined }))
-            .filter((part): part is { key: string; value: unknown; position: number; raw: string } => part.raw !== undefined),
+        const parts = this.timings.time('save: serialise', () => Object.entries(state).flatMap(([key, value], position) => {
+            // The wrapper supplies the owning key to toJSON. Use the captured value for redaction too.
+            const entry = JSON.stringify({ [key]: value });
+            if (entry === '{}') return [];
+            const raw = entry.slice(JSON.stringify(key).length + 2, -1);
+            return [{ key, position, raw }];
+        }),
         found => found.reduce((sum, part) => sum + part.raw.length, 0));
         const next = new Map<string, WrittenPart>(), changed: string[] = [];
-        this.timings.time('save: redact', () => parts.forEach(({ key, value, raw, position }) => {
-            const before = this.stale ? undefined : this.written.get(key);
-            const redacted = before?.raw === raw ? before.redacted : JSON.stringify(sanitizeObject(value));
-            if (!before || before.raw !== raw || before.position !== position) changed.push(key);
-            next.set(key, { position, raw, redacted });
-        }), () => changed.reduce((sum, key) => sum + next.get(key)!.redacted.length, 0));
+        this.timings.time('save: redact', () => {
+            let chars = 0;
+            for (const { key, raw, position } of parts) {
+                const before = this.stale ? undefined : this.written.get(key);
+                let redacted: string;
+                if (before?.raw === raw) redacted = before.redacted;
+                else {
+                    redacted = JSON.stringify(sanitizeObject(JSON.parse(raw)));
+                    chars += redacted.length;
+                }
+                if (before?.raw !== raw || before.position !== position) changed.push(key);
+                next.set(key, { position, raw, redacted });
+            }
+            return chars;
+        }, chars => chars);
         const removed = this.stale ? [] : [...this.written.keys()].filter(key => !next.has(key));
-        if (!this.stale && !changed.length && !removed.length) return this.size(next);
+        if (this.rowMatchesParts && !this.stale && !changed.length && !removed.length) return this.size(next);
         if (this.stale) this.statement('DELETE FROM state_parts').run();
         for (const key of changed) {
             const part = next.get(key)!;
@@ -89,7 +108,7 @@ export class StateParts {
         for (const key of removed) this.statement('DELETE FROM state_parts WHERE key=?').run(key);
         const body = whole([...next].map(([key, part]) => ({ key, position: part.position, body: part.redacted })));
         this.statement(ROW).run(body);
-        this.written = next; this.stale = false;
+        this.written = next; this.stale = false; this.rowMatchesParts = true;
         return body.length;
     }
 

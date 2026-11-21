@@ -80,7 +80,9 @@ export class Store {
     }
     /** Writes the top-level keys of the state that changed since the last save (`state-parts.ts`). */
     save(): void {
-        this.savedChars = this.parts.save(this.state, this.transactionDepth > 0);
+        const inTransaction = this.transactionDepth > 0;
+        if (inTransaction && !this.db.isTransaction) throw new Error('SQLite rolled back the active Store transaction');
+        this.savedChars = this.parts.save(this.state, inTransaction);
     }
     transaction<T>(operation: () => T): T {
         if (this.transactionDepth)
@@ -108,11 +110,9 @@ export class Store {
             events = this.pendingEvents;
         }
         catch (error) {
-            // First, before a ROLLBACK that can itself fail when SQLite already rolled back a failed COMMIT:
-            // the part rows this transaction wrote are gone with it either way.
             partsAsWritten();
             this.savedChars = previousSavedChars;
-            this.db.exec('ROLLBACK');
+            if (this.db.isTransaction) this.db.exec('ROLLBACK');
             // In place: callers holding a ticket or job across an await keep the live record.
             // The saved copy is always a correct state, so it is the fallback if the in-place restore cannot finish.
             try { restoreInPlace(this.state, previous); } catch { this.state = previous; }
