@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'vitest';
 import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { saveGoal } from '../../../server/leadership/goals';
+import { coordination } from '../../../server/scheduling/coordination';
 import { applyGoalReview, workEvidence } from '../../../server/leadership/goal-reviews';
 
 const stores: Store[] = [];
@@ -33,6 +34,10 @@ test.each<[string, (f: ReturnType<typeof setup>) => unknown]>([
     ['the pull request is not in the provider read', f => workEvidence(f.store, { ...f.pr, id: '99999' })],
     ['the cited read is later than the provider\'s latest', f => workEvidence(f.store, { ...f.pr, version: '2026-11-20T22:30:00.000Z' })],
     ['the cited read is not a time', f => workEvidence(f.store, { ...f.pr, version: 'stale' })],
+    ['the cited read is only a year', f => workEvidence(f.store, { ...f.pr, version: '2026' })],
+    ['the cited read is a loose date', f => workEvidence(f.store, { ...f.pr, version: 'Nov 20, 2026' })],
+    ['the cited read has no zone', f => workEvidence(f.store, { ...f.pr, version: '2026-11-20T21:58:23' })],
+    ['the cited read is weeks old', f => workEvidence(f.store, { ...f.pr, version: '2026-10-31T10:19:49.757Z' })],
     ['the provider read failed', f => { f.store.state.azure.error = 'Unavailable'; return workEvidence(f.store, f.pr); }],
     ['the provider was never read', f => { f.store.state.azure.observedAt = ''; return workEvidence(f.store, f.pr); }],
 ])('a pull request reference is refused when %s', (_name, read) => {
@@ -60,4 +65,37 @@ test('a stale ticket reference still refuses the whole update', () => {
     const { store, goal, pr, work, update } = setup();
     expect(() => applyGoalReview(store, 'review-1', update([pr, { ...work, version: '2026-11-19T00:13:24.266-0500' }]))).toThrow('stale or unsupported');
     expect(goal.status).toBe('active');
+});
+
+test('a blocked goal whose earlier links included the pull request can leave blocked when it and the accepted work are cited again', () => {
+    const { store, goal, pr, work, update } = setup();
+    goal.status = 'blocked';
+    goal.progress = { note: 'Waiting', blockers: ['Target branch unverified'], evidence: [pr, work], linkedWork: [pr, work], lastReviewId: 'earlier', reviewedAt: '' } as any;
+    applyGoalReview(store, 'review-2', update([pr, work]));
+    expect(goal.status).toBe('done');
+    // An earlier link that is not cited again still holds it.
+    const again = setup();
+    again.goal.status = 'blocked';
+    again.goal.progress = { note: '', blockers: ['x'], evidence: [again.pr, again.work], linkedWork: [again.pr, again.work], lastReviewId: 'earlier', reviewedAt: '' } as any;
+    expect(() => applyGoalReview(again.store, 'review-2', again.update([again.work]))).toThrow('lack positive resolution evidence');
+});
+
+test('a pull request the Office is delivering is that delivery\'s work however it is cited, and vetoes done until the delivery is accepted', () => {
+    const store = new Store(':memory:', projectById('brain')); stores.push(store);
+    const goal = saveGoal(store, { id: crypto.randomUUID(), expectedUpdatedAt: '', project: store.project.name, title: 'Ship it', detail: '', priority: 2, status: 'active' });
+    store.state.coordination = coordination();
+    const closeout = { stage: 'closeout', result: { outcome: 'passed', receipts: [{ id: 'r', action: 'x', target: '', verified: true, uncertain: false, detail: '' }] } };
+    const delivering = { id: 'job-1', key: 'GH-1', pr: 12, head: HEAD, mergeCommit: '', updatedAt: '2026-11-20T20:00:00.000Z', stage: 'lead-pr', status: 'watching', steps: [{ stage: 'review', result: { outcome: 'passed', receipts: [] } }] } as any;
+    const accepted = { id: 'job-2', key: 'GH-2', pr: 13, head: 'c'.repeat(40), mergeCommit: '', updatedAt: '2026-11-20T20:00:00.000Z', stage: 'closeout', status: 'completed', steps: [closeout] } as any;
+    store.state.coordination.jobs = [delivering, accepted];
+    store.state.github = { status: 'idle', observedAt: LATER, error: '', issues: [], runs: [], prs: [{ number: 12, title: '', state: 'OPEN', draft: false, author: '', head: HEAD, base: 'main', url: '', mergedAt: '', mergeable: true, reviews: [], checks: [] }] } as any;
+    // Cited at a provider time, not the job's own: it reaches the provider read, and is still judged as the job's work.
+    const cited = { projectId: 'brain', kind: 'pr' as const, id: '12', version: COLLECTED, head: HEAD };
+    const other = { projectId: 'brain', kind: 'job' as const, id: 'job-2', version: accepted.updatedAt, head: accepted.head };
+    expect(workEvidence(store, cited)).toEqual({ started: true, accepted: false });
+    const update = { projectId: 'brain', goalId: goal.id, expectedUpdatedAt: goal.updatedAt, progress: 'Done.', blockers: [], evidence: [cited, other], linkedWork: [], rationale: '', status: 'done' } as any;
+    expect(() => applyGoalReview(store, 'review-1', update)).toThrow('lacks scope acceptance');
+    Object.assign(delivering, { stage: 'closeout', status: 'completed', steps: [closeout] });
+    applyGoalReview(store, 'review-1', update);
+    expect(goal.status).toBe('done');
 });
