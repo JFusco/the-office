@@ -30,3 +30,9 @@ test('the real bridge projection reports the safe cause while failed coverage re
     expect(view.complete).toBe(false); expect(view.ownership.status).toBe('unavailable');
     expect(view.sources[2]).toMatchObject({ ok: false, detail: expect.stringContaining('[session-metadata]') });
 });
+
+test('an unbound Jira/Azure project is named as a configuration gap, without its identity', () => {
+    const detail = sessionInventoryFailureDetail(new Error('Project "acme" has no Jira/Azure binding'));
+    expect(detail).toContain('[project-binding]');
+    expect(detail).not.toContain('acme');
+});

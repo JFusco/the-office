@@ -142,3 +142,12 @@ test('the Jira site and key are resolved on this side, from the service\'s own c
         { id: 'other', repo: '/projects/o', repository: 'o', provider: 'azure', jira: { site: 'https://given.example', projectKey: 'OT' } }]);
     expect(lookups).toEqual(['cec']);
 });
+
+test('a project whose Jira binding cannot be resolved fails the read before any thread is started', async () => {
+    const threads: unknown[] = [];
+    const reader = contextThread(() => { threads.push(1); throw new Error('never started'); }, THREAD_ANSWER_MS, () => undefined,
+        (project: { id: string }) => { throw new Error(`Project "${project.id}" has no Jira/Azure binding`); });
+    await expect(reader('claude')('/b.jsonl', 'b', [{ id: 'acme', repo: '/projects/acme', repository: 'acme', provider: 'azure' }]))
+        .rejects.toThrow('Project "acme" has no Jira/Azure binding');
+    expect(threads).toHaveLength(0);
+});
