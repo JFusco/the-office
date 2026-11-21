@@ -43,7 +43,9 @@ test('a failed read rejects with the reader\'s own failure and leaves the thread
     const read = reader('claude')('/b.jsonl', 'b', []);
     threads[0].emit('message', { seq: 1, failure: packContextFailure(new ContextReadChanged('Session context file changed during its read')) });
     await expect(read).rejects.toBeInstanceOf(ContextReadChanged);
-    void reader('claude')('/b.jsonl', 'b', []);
+    const next = reader('claude')('/b.jsonl', 'b', []);
+    threads[0].emit('message', { seq: 2, context: context('still answering') });
+    expect((await next).userMessages[0].text).toBe('still answering');
     expect(threads).toHaveLength(1);
     expect(threads[0].terminated).toBe(0);
 });

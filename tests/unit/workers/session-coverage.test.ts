@@ -3,6 +3,7 @@ import { SessionBridge, loadedCodexSession, type LiveSession } from '../../../se
 import { accountCodexProcesses } from '../../../server/workers/codex-process-inventory';
 import { codexSessionContext } from '../../../server/workers/codex-session-context';
 import { sessionScope } from '../../../server/workers/session-scope';
+import { postedProjects } from '../../../server/workers/session-context-client';
 import type { ContextProject } from '../../../server/workers/session-context-file';
 import { CEC } from '../../../server/office/config';
 import { knowledgeStore } from '../knowledge/knowledge-fixture';
@@ -34,7 +35,7 @@ function absentRuntimeBridge(fixture: ReturnType<typeof knowledgeStore>, lsof: s
     const native = async (): Promise<LiveSession[]> => { throw Object.assign(new Error('Socket absent'), { code: 'ENOENT' }); };
     const desktop = async (_execute: unknown, workers: ReadonlySet<number>) => accountCodexProcesses(lsof,
         path => loadedCodexSession({ id: 'live', cwd: '/elsewhere', title: 'Generic task', git_branch: 'main', thread_source: 'user', rollout_path: path }), workers);
-    const context = (sessions: LiveSession[], projects: ContextProject[]) => codexSessionContext(sessions, projects, async (_path, id, scoped) => sessionScope(raw, id, scoped));
+    const context = (sessions: LiveSession[], projects: ContextProject[]) => codexSessionContext(sessions, projects, async (_path, id, scoped) => sessionScope(raw, id, postedProjects(scoped)));
     const execute = async (program: string, _args: string[], options?: { cwd?: string }) =>
         program === 'claude' ? '[]' : options?.cwd === fixture.store.project.repo ? '/cec/.git' : '/elsewhere/.git';
     return new SessionBridge(() => [fixture.store], execute as any, native, desktop, context);

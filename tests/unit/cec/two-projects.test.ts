@@ -14,6 +14,7 @@ import { ownTicket, ticketPrefix } from '../../../server/office/ticket-key';
 import { intakeJql, intakeLocation, projectListScope } from '../../../server/cec/intake-scope';
 import { readAssignments } from '../../../server/scheduling/assignment-poll';
 import { sessionScope } from '../../../server/workers/session-scope';
+import { postedProjects } from '../../../server/workers/session-context-client';
 import { JiraIssuePublisher } from '../../../server/cec/issue-publication';
 import { improvementManifest } from '../../../server/knowledge/improvement-publication';
 import { verifyAlreadyAtStatus, verifiedTransition } from '../../../server/cec/transition-readback';
@@ -86,7 +87,7 @@ test('ticket ownership and session scope accept only the project\'s own keys', (
         call(`twg jira workitem get CEC-14 ACME-15 --site ${CEC.site} -o json`),
         call('open https://acme.example.net/browse/ACME-16 https://acme.example.net/browse/CEC-17'),
     ].join('\n');
-    const scopes = sessionScope(raw, 'chat', [projectById('cec'), acme]).scopes;
+    const scopes = sessionScope(raw, 'chat', postedProjects([projectById('cec'), acme])).scopes;
     expect(scopes.find(scope => scope.project === 'acme')?.issues).toEqual([12, 16]);
     expect(scopes.find(scope => scope.project === 'acme')?.evidence.map(item => item.reference)).toContain('twg jira workitem ACME-12 --site https://acme.example.net');
     expect(scopes.find(scope => scope.project === 'cec')?.issues).toEqual([14]);
