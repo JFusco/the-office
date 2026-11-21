@@ -64,7 +64,8 @@ server/
   incidents/       office-wide incident ledger: observation of stopped work, cause identity,
                    expected waits, research eligibility; write-back of repair starts and fix
                    bindings, the `pnpm office incident` command, recognition of a bound fix
-                   in the release the service runs, evidence packets, and false-positive
+                   in the release the service runs and its withdrawal when that release no
+                   longer holds it, evidence packets, and false-positive
                    dismissals that lapse when their cited code or covered stops change
     repair/        repair waits: the marker in a project's store for stopped work a repair in
                    progress covers, its admission and 48-hour expiry, and the effective cause;
