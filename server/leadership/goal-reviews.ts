@@ -6,6 +6,18 @@ export const EvidenceRefSchema = z.object({ projectId: z.string().max(80), kind:
 export const GoalEvidenceRequestSchema = z.object({ projectId: z.string().min(1).max(80), goals: z.array(z.object({ goalId: z.string().min(1).max(200), expectedUpdatedAt: z.string().min(1).max(100) }).strict()).min(1).max(12), inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/), questions: z.array(z.string().trim().min(1).max(500)).min(1).max(6) }).strict();
 export const DailyResultSchema = z.object({ evidenceRequests: z.array(GoalEvidenceRequestSchema).max(12).optional(), summary: z.string().min(1).max(12000), updates: z.array(z.object({ projectId: z.string(), goalId: z.string(), expectedUpdatedAt: z.string(), progress: z.string().max(2000), blockers: z.array(z.string().max(500)).max(10), evidence: z.array(EvidenceRefSchema).max(20), linkedWork: z.array(EvidenceRefSchema).max(20), rationale: z.string().min(1).max(4000), status: z.enum(['idea', 'planned', 'active', 'blocked', 'done']).nullable() }).strict()).max(200), unmapped: z.array(z.string().max(500)).max(200) }).strict();
 export const FreshDailyResultSchema = DailyResultSchema.extend({ summary: z.string().min(1).max(1500), updates: z.array(DailyResultSchema.shape.updates.element.extend({ progress: z.string().max(350), blockers: z.array(z.string().max(220)).max(3) })).max(200), evidenceRequests: z.array(GoalEvidenceRequestSchema).max(12) });
+/**
+ * What a provider's pull request observation says about a goal: work has started, and nothing more. It is not
+ * delivery acceptance, so it supports a verdict without deciding it. `workEvidence` returns this same object
+ * for every such observation, which is how `statusAllowed` tells an observation from accepted or unaccepted work.
+ */
+const PR_OBSERVED: Readonly<{ started: boolean; accepted: boolean }> = Object.freeze({ started: true, accepted: false });
+/** A cited provider observation is a full UTC timestamp, at most this long before the provider's latest read. */
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/, CITED_WITHIN_MS = 6 * 60 * 60 * 1000;
+type DeliveryJob = NonNullable<NonNullable<Store['state']['coordination']>['jobs']>[number];
+/** A delivery is accepted once its closeout passed with every receipt verified. */
+const jobAccepted = (job: DeliveryJob) => job.status === 'completed' && job.stage === 'closeout' && job.steps.some(step => step.stage === 'closeout' && step.result.outcome === 'passed' && step.result.receipts.length > 0 && step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain));
+
 export function workEvidence(store: Store, ref: GoalEvidenceRef): {
     started: boolean;
     accepted: boolean;
@@ -15,7 +27,7 @@ export function workEvidence(store: Store, ref: GoalEvidenceRef): {
     const job = store.state.coordination?.jobs?.find(job => job.id === ref.id || job.key === ref.id || ref.kind === 'pr' && String(job.pr) === ref.id);
     if (job && ['job', 'issue', 'pr', 'blocker'].includes(ref.kind)) {
         if (ref.version === job.updatedAt && ref.head === (job.mergeCommit || job.head))
-            return { started: !!job.steps.length, accepted: job.status === 'completed' && job.stage === 'closeout' && job.steps.some(step => step.stage === 'closeout' && step.result.outcome === 'passed' && step.result.receipts.length > 0 && step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain)) };
+            return { started: !!job.steps.length, accepted: jobAccepted(job) };
         if (ref.kind !== 'pr') return null;
     }
     if (ref.kind === 'ticket' || ref.kind === 'blocker') {
@@ -30,10 +42,16 @@ export function workEvidence(store: Store, ref: GoalEvidenceRef): {
     }
     if (ref.kind === 'pr') {
         const provider = store.project.provider === 'github' ? store.state.github : store.state.azure;
-        if (!provider || provider.error || !provider.observedAt || ref.version !== provider.observedAt) return null;
+        // The reference is current while the provider still shows this pull request at the cited head. The provider is
+        // observed again every minute or so, so the cited time need not be the latest observation: it has to be a
+        // full UTC timestamp no later than it and no more than a few hours before it, the span of one review.
+        const cited = TIMESTAMP.test(ref.version) ? Date.parse(ref.version) : NaN, latest = Date.parse(provider?.observedAt || '');
+        if (!provider || provider.error || !Number.isFinite(cited) || !Number.isFinite(latest) || cited > latest || latest - cited > CITED_WITHIN_MS) return null;
         const pr = store.project.provider === 'github' ? store.state.github?.prs.find(pr => String(pr.number) === ref.id) : store.state.azure.prs.find(pr => String(pr.id) === ref.id);
         const head = pr && ('head' in pr ? pr.head : pr.commit);
-        if (pr && head && ref.head === head) return { started: true, accepted: false };
+        // A pull request the Office is delivering cannot be set aside as an observation while that delivery is not
+        // accepted: cited this way it is unaccepted work. A provider observation itself never reports acceptance.
+        if (pr && head && ref.head === head) return job && !jobAccepted(job) ? { started: true, accepted: false } : PR_OBSERVED;
     }
     return null;
 }
@@ -46,14 +64,20 @@ function statusAllowed(goal: ProjectGoal, update: DailyGoalUpdate, evidence: {
         return true;
     if (goal.status === 'idea' || goal.status === 'done')
         return false;
-    if (next === 'done')
-        return ['active', 'blocked'].includes(goal.status) && evidence.length > 0 && evidence.every(item => item.accepted) && update.blockers.length === 0;
+    if (next === 'done') {
+        // Done rests on accepted work: at least one cited item that is work, and every such item accepted.
+        // A pull request observation beside it neither supplies that nor vetoes it.
+        const work = evidence.filter(item => item !== PR_OBSERVED);
+        return ['active', 'blocked'].includes(goal.status) && work.length > 0 && work.every(item => item.accepted) && update.blockers.length === 0;
+    }
     if (next === 'blocked')
         return ['planned', 'active'].includes(goal.status) && update.blockers.length > 0;
     if (next === 'active')
         return ['planned', 'blocked'].includes(goal.status) && update.blockers.length === 0 && evidence.some(item => item.started);
     return goal.status === 'blocked' && next === 'planned' && update.blockers.length === 0;
 }
+/** A previously linked item is resolved when it is accepted work, or a pull request observation cited again and still current. */
+const resolved = (fact: ReturnType<typeof workEvidence>) => fact === PR_OBSERVED || !!fact?.accepted;
 /** Local goal + application receipt commit together; central acknowledgement follows. */
 export function applyGoalReview(store: Store, reviewId: string, update: DailyGoalUpdate) {
     return store.transaction(() => {
@@ -71,7 +95,7 @@ export function applyGoalReview(store: Store, reviewId: string, update: DailyGoa
         const facts = references.map(ref => workEvidence(store, ref));
         if (facts.some(fact => !fact))
             throw new Error('Goal evidence identity or version is stale or unsupported');
-        if (goal.status === 'blocked' && update.status && update.status !== 'blocked' && (goal.progress?.linkedWork.length || 0) > 0 && !goal.progress!.linkedWork.every(old => references.some(ref => ref.projectId === old.projectId && ref.kind === old.kind && ref.id === old.id) && workEvidence(store, references.find(ref => ref.projectId === old.projectId && ref.kind === old.kind && ref.id === old.id)!)?.accepted))
+        if (goal.status === 'blocked' && update.status && update.status !== 'blocked' && (goal.progress?.linkedWork.length || 0) > 0 && !goal.progress!.linkedWork.every(old => references.some(ref => ref.projectId === old.projectId && ref.kind === old.kind && ref.id === old.id) && resolved(workEvidence(store, references.find(ref => ref.projectId === old.projectId && ref.kind === old.kind && ref.id === old.id)!))))
             throw new Error('Previously recorded blockers lack positive resolution evidence');
         if (!statusAllowed(goal, update, facts as {
             started: boolean;
