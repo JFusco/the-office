@@ -5,6 +5,7 @@ import { writerRestartInstruction } from '../../../../server/delivery/attempts/r
 import { assessDeliveryEligibility } from '../../../../server/delivery/harness/delivery-authority';
 import { HOLDS } from '../../../../server/office/config';
 import { stoppedBaseUpdateCandidate } from '../../../../server/delivery/recovery/stopped-base-update';
+import { markAwaitingRepair, unmark } from '../../incidents/repair/mark-fixture';
 afterEach(cleanupFakes);
 
 const STOPPED = '2026-11-16T12:00:00.000Z', LATER = new Date('2026-11-16T12:10:00Z'), gone = () => false;
@@ -93,4 +94,13 @@ test('the stopped-base readback stays out while a restart is pending and after o
     f.store.state.workLog!.push({ ...work, id: 'run-2' });
     job.writerRestartDeclined = { workId: 'run-2', reason: 'moved', at: STOPPED };
     expect(stoppedBaseUpdateCandidate(f.store, job)).toBeUndefined();
+});
+
+test('a job awaiting a harness repair is still the harness\'s to restart: the candidate and the pending answer do not change, so no other recovery takes it', () => {
+    const { f, job } = stopped();
+    const before = [JSON.stringify(writerRestartCandidate(f.store, job, LATER, gone)), writerRestartPending(f.store, job, gone), !!stoppedBaseUpdateCandidate(f.store, job)];
+    markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: job.id }, 'update-base', { since: STOPPED, progressAt: STOPPED });
+    expect([JSON.stringify(writerRestartCandidate(f.store, job, LATER, gone)), writerRestartPending(f.store, job, gone), !!stoppedBaseUpdateCandidate(f.store, job)]).toEqual(before);
+    expect(before).toEqual([expect.stringContaining('"attempt":1'), true, false]);
+    unmark(f.store.state);
 });

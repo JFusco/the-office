@@ -1,3 +1,5 @@
+import { freezeReads } from '../../incidents/repair/freeze-reads';
+import { repairFreeze } from '../../incidents/repair/repair-freeze';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SalvageRetry, salvageWorktree } from './salvage-worktree';
@@ -30,8 +32,13 @@ export async function restartStoppedWriters(delivery: GitHubDelivery) {
     for (const job of [...delivery.jobs]) {
         const candidate = writerRestartCandidate(store, job, store.clock.now());
         if (!candidate) continue;
+        // A stop a harness repair in progress covers is not restarted into the same defect. The job stays the harness's to restart,
+        // so no other recovery takes it over, and its restart counts and salvage are untouched.
+        const held = () => { const now = store.clock.now(); return !!repairFreeze(store.state, { kind: 'delivery', id: job.id }, now, freezeReads(store, now)); };
+        if (held()) continue;
         const { work, accepted, attempt } = candidate, at = () => store.clock.now().toISOString();
-        const current = () => writerRestartCandidate(store, job, store.clock.now())?.work.id === work.id;
+        let resetDispatched = false;
+        const current = () => (resetDispatched || !held()) && writerRestartCandidate(store, job, store.clock.now())?.work.id === work.id;
         const unreadable = (error: unknown) => {
             const reason = String(error).slice(0, 300);
             if (job.writerRestartReadError === reason) return;
@@ -46,15 +53,20 @@ export async function restartStoppedWriters(delivery: GitHubDelivery) {
         };
         let moved: string;
         try { moved = await unchangedSinceAccepted(delivery, job, accepted); }
-        catch (error) { unreadable(error); continue; }
+        catch (error) { if (!held()) unreadable(error); continue; }
         // The reads are asynchronous; act only if the same stopped run is still the candidate.
         if (!current()) continue;
-        delete job.writerRestartReadError;
-        if (moved) { decline(moved); continue; }
+        if (moved) { delete job.writerRestartReadError; decline(moved); continue; }
         let stopped = false;
         try {
-            const saved = await salvageWorktree(delivery.execute, { worktree: job.worktree!, branch: job.branch!, accepted, ref: `refs/office/salvage/${job.id}/${work.id}` },
+            // A repair wait admitted after reset starts must let cleanup and recording finish.
+            const execute: GitHubDelivery['execute'] = (program, args, options) => {
+                if (program === 'git' && args[0] === 'reset') resetDispatched = true;
+                return delivery.execute(program, args, options);
+            };
+            const saved = await salvageWorktree(execute, { worktree: job.worktree!, branch: job.branch!, accepted, ref: `refs/office/salvage/${job.id}/${work.id}` },
                 () => { if (!current()) { stopped = true; throw new Error('The job changed owner, hold or state during the salvage'); } });
+            delete job.writerRestartReadError;
             // The worktree is reset: record that even if the job was cancelled or retired meanwhile, but queue only a job still stopped.
             (job.writerRestarts ??= []).push({ workId: work.id, stage: job.stage, at: at(), accepted, abandoned: saved.abandoned, ref: saved.ref });
             if (delivery.jobs.includes(job) && ['blocked', 'interrupted'].includes(job.status)) {
@@ -66,9 +78,11 @@ export async function restartStoppedWriters(delivery: GitHubDelivery) {
             store.save();
         }
         catch (error) {
-            if (error instanceof SalvageRetry && !stopped) unreadable(error);
-            // A guard stop leaves the run for the next observation; any other failure is this run's final answer.
-            else if (!stopped) decline(String(error));
+            if (!resetDispatched && held()) continue;
+            delete job.writerRestartReadError;
+            if (stopped) continue;
+            if (error instanceof SalvageRetry) unreadable(error);
+            else decline(String(error));
         }
     }
 }

@@ -1,3 +1,4 @@
+import { hasUncertainEffects } from './uncertain-effects';
 import { stoppedBasePackageInstruction } from '../recovery/stopped-base-package';
 import { runStoppedBaseReview } from '../recovery/stopped-base-review';
 import { stoppedBaseNextStage } from '../recovery/stopped-base-gates';
@@ -62,9 +63,7 @@ import { deliveryTask } from './delivery-task';
 import { acceptStageResult } from './accept-stage-result';
 import { runCIRepair } from '../repairs/run-ci-repair';
 import { assertMetadataBinding, metadataAppliesToHead } from '../publication/metadata-context';
-export function hasUncertainEffects(stage: string, result: StageResult) {
-    return result.receipts.some(r => r.uncertain || !r.verified && !(['review', 'lead-pr'].includes(stage) && /^(?:get|read|query|inspect)\b/i.test(r.action)));
-}
+export { hasUncertainEffects };
 export function pendingPreparationCheck(f: StageResult['findings'][number], checksPending = false) {
     if (['source-acceptance', 'review', 'supporting-references'].includes(f.id))
         return true; // Content and review gates carry into Lead review; metadata preparation never approves them.

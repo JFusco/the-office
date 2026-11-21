@@ -1098,7 +1098,69 @@ place of an unclassified, failed or interrupted stop or a missing cause. A decis
 prerequisite, a pause and an unconfirmed write are counted as themselves, also when they arise
 after the marker. The scheduler's projection, and with it the cause and reason the ledger derives
 a stop's identity from, are unchanged: a marked stop keeps its fingerprint, its incident and its
-digest. The marker changes no scheduling, recovery, restart or hand-off decision yet.
+digest.
+
+While a wait holds a record back, the Office leaves that stop alone
+(`server/incidents/repair/repair-freeze.ts`). A record is held only while a wait is in effect for
+its exact stop and nothing stronger explains it. It is never held while its project is paused or
+draining, under a configured hold, parked on the board for any reason, waiting for a merge approval
+or an answer, stopped for missing authority or authentication (by its saved stop or by the typed
+failure of the run that worked it), gated by a prerequisite, or while a write for it is
+unconfirmed: a saved stop that says so, a saved result of the record that still owes a read-back,
+or a write still dispatching or uncertain in the project's Effects ledger. A delivery job's saved
+results are judged by the pipeline's own rule for that, in any of its steps
+(`server/delivery/pipeline/uncertain-effects.ts`); a ticket's by an uncertain receipt or an
+unverified status change on its stage result or its transition; a maintenance run's by an
+uncertain receipt. Those keep their own handling, whether they stood before the wait or arose after it. The
+unsettled writes and the prerequisites are read at the moment of each decision, from the project's
+own store and with the scheduler's own validation (`server/incidents/repair/freeze-reads.ts`);
+nothing about them is kept on the marker or between decisions. A reader that cannot make those
+reads, or whose read fails, holds nothing back. A prerequisite in another project is not visible
+to these reads and always gates. For a held record:
+
+- an IT recovery about it spends no attempt, queues no request and does not become `needs-human`;
+  it leaves one routine follow-up naming the repair issue. The record a recovery is about is read
+  from the recovery's own ID: a checkpoint family names its checkpoint, a conversation read-back, a
+  service probe and the Office-wide watches are about none, and every other family names a delivery
+  job (`server/it/recovery-record.ts`). The question is asked afresh at every place a recovery
+  could be written, on the project's clock at that moment: before an attempt and again after its
+  awaited read returns, the budget rebuild at the start of a tick, the direct status writes for
+  closeout and scope-repair read-backs, the stopped-base read-back and the ledger pass that would
+  otherwise call an unvisited recovery resolved (`server/it/held-recovery.ts`). A wait that ends
+  in the middle of a tick stops holding at once, so nothing written after it is lost; one that
+  begins while an attempt is in flight keeps the attempt already counted and any request already
+  queued, and writes no outcome;
+- IT does not requeue its ownership read (`server/it/delivery-recoveries.ts`);
+- its dead writer run is not restarted. The job stays the harness's to restart, so no other
+  recovery takes it over in the meantime (`server/delivery/attempts/restart-stopped-writers.ts`).
+  Nothing is read or written for it, including a failed read's note or a decline, until the
+  worktree reset is sent; from that point the restart is completed whatever arrives;
+- an investigation of the run that worked it is not ready. A run belongs to the record its request
+  is (a job, a delivery request, an intake review, a maintenance run, a checkpoint, a harness
+  request, a notice or a conversation), and a stage run without a request to the ticket whose stop
+  names it; a delivery request that only repeats a stopped ticket's stop is that ticket; a Slack
+  delivery is about no stopped record (`server/it/investigations/source-record.ts`). The
+  investigation is judged on its own runs as well: when a run under investigation itself failed
+  for authentication, permission, ownership or a write of unknown outcome, the investigation is
+  never held, whichever record it resolves to
+  (`server/it/investigations/held-investigation.ts`, used by `readiness.ts` and by Harper's guard);
+- Harper does not hand it to Morgan or nudge IT about it, including through a recovery or an
+  investigation about it; the follow-up record is still kept (`server/knowledge/blocker-followups.ts`);
+- its read-back or follow-up request is not shown in the outbox, and a held intake review is not
+  named in the shared session-visibility request (`server/conversations/outbox.ts`). Wherever the
+  outbox is saved or served it is projected as it reads now, at one time sampled from the
+  project's clock and with the project's current reads (`server/conversations/current-outbox.ts`):
+  on every event, at start-up recovery, after assignment polling, in the messages endpoint, the
+  project summaries and the snapshot. The incident ledger's own reading of the outbox is not given
+  those reads, so a held stop keeps its identity there.
+
+Nothing is reset, resumed or rewritten: recovery attempts, read-back counts, restart counts and
+investigation attempts are exactly what they were. When the wait ends or expires each path
+continues from them under its own rules, and the outbox request returns. A wait does not extend a
+path's own time limit: a writer run that stopped more than six hours ago is no longer restarted by
+the harness, so after a long wait that job is a person's to read back, unless a resume after the
+fix releases it. The Office's own bounded retry of a transient failed read is not held. The
+scheduler's dispatch is unchanged; a held record was already not running.
 
 ## Code owners and verification
 

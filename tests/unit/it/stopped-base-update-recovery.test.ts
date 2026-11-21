@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fakeGitHub, cleanupFakes } from '../delivery/support/fake-github';
@@ -6,9 +6,13 @@ import { recoverStoppedBaseUpdates, stoppedBaseUpdateUnresolved } from '../../..
 import { recoverAttempt } from '../../../server/it/recovery-attempt';
 import { reconcileRecoveryLedger } from '../../../server/it/recovery-ledger';
 import { saveStoppedBaseArtifact } from '../../../server/delivery/recovery/stopped-base-disposition';
+import * as stoppedBaseDisposition from '../../../server/delivery/recovery/stopped-base-disposition';
 import { artifact, digest } from '../../../server/store/readback-evidence';
 import type { ITContext } from '../../../server/it/context';
 import type { WorkTime } from '../../../src/shared';
+import { freezeReads } from '../../../server/incidents/repair/freeze-reads';
+import { repairFreeze } from '../../../server/incidents/repair/repair-freeze';
+import { markAwaitingRepair, unmark } from '../incidents/repair/mark-fixture';
 afterEach(cleanupFakes);
 function fixture() {
     const f=fakeGitHub(),job=f.candidate({existingPR:true,pr:156,status:'interrupted',stage:'update-base'});
@@ -17,6 +21,7 @@ function fixture() {
     const it: ITContext['it']=f.store.state.it={checkedAt:'',nextCheckAt:'',status:'monitoring' as const,reports:[],recoveries:{},services:[]};
     const context:ITContext={store:f.store,state:f.store.state,engine:f.engine,it,actions:[],followUps:[],current:new Set(),now:new Date('2026-11-11T00:00:00Z'),services:[],retainedPartials:[],retainedCloseouts:new Set(),activationBudget:()=>undefined,coordinator:{} as any,health:{checkedAt:'',context:'',services:[]},nextAt:0,offices:{} as any,
         recover:(...args)=>recoverAttempt(context,...args)};
+    context.freeze = work => repairFreeze(context.state, work, context.now, freezeReads(f.store, context.now));
     const id=`stopped-base-update:${job.id}:original`;
     const tick=async()=>{context.current.clear();await recoverStoppedBaseUpdates(context);await reconcileRecoveryLedger(context);context.now=new Date(context.now.getTime()+600000);};
     return {...f,job,it,context,id,tick};
@@ -106,4 +111,65 @@ test('a stopped-base recovery left asking for a person is settled once its deliv
         expect(f.context.followUps,status).toEqual([]);
         expect(stoppedBaseUpdateUnresolved(f.store,`stopped-base-handoff:${f.job.id}:handoff`),status).toBe(false);
     }
+});
+
+test('a stopped base update awaiting a harness repair is left alone: no read-back, no attempt and no request for a person, from the first observation; it proceeds when the wait ends', async () => {
+    const f = fixture();
+    f.job.stop = { kind: 'unclassified', at: '2026-11-10T23:00:00.000Z' };
+    const at = f.context.now.toISOString();
+    markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: f.job.id }, 'update-base', { since: at, progressAt: at });
+    const heldNote = { id: f.id, owner: 'IT', routine: true, detail: 'Awaiting harness repair JFusco/the-office#389; held without spending an attempt.' };
+    for (let pass = 0; pass < 2; pass++) {
+        f.context.followUps.length = 0;
+        await f.tick();
+        expect(f.context.followUps).toEqual([heldNote]);
+    }
+    expect(f.store.state.coordination!.requests ?? []).toEqual([]);
+    expect(f.it.recoveries).toEqual({});
+    // A second original worker would be reported to Morgan at once; held, it is not.
+    (f.store.state.workLog ??= []).push({ id: 'second', requestId: f.job.id, ticket: f.job.key, stage: 'github-update-base', status: 'interrupted' } as WorkTime);
+    await f.tick();
+    expect(f.context.followUps.filter(followUp => followUp.owner === 'Morgan')).toEqual([]);
+    f.store.state.workLog = f.store.state.workLog!.filter(work => work.id !== 'second');
+    unmark(f.store.state);
+    await f.tick();
+    expect(f.store.state.coordination!.requests).toHaveLength(1);
+    expect(f.it.recoveries[f.id].attempts).toBe(1);
+});
+
+test('an existing stopped-base recovery about held work keeps its count, status and retry time through ticks that would have settled it', async () => {
+    const f = fixture();
+    await f.tick();
+    f.store.state.coordination!.requests![0].status = 'blocked';
+    const before = JSON.stringify(f.it.recoveries[f.id]);
+    f.job.stop = { kind: 'unclassified', at: '2026-11-10T23:00:00.000Z' };
+    const at = f.context.now.toISOString();
+    markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: f.job.id }, 'update-base', { since: at, progressAt: at });
+    for (let pass = 0; pass < 4; pass++) await f.tick();
+    expect(JSON.stringify(f.it.recoveries[f.id])).toBe(before);
+    expect(f.store.state.coordination!.requests).toHaveLength(1);
+    expect(f.context.followUps.filter(followUp => followUp.id === f.id).at(-1)).toMatchObject({ owner: 'IT', routine: true });
+});
+
+test('a held stopped-base recovery is not settled directly either: a ready reassessment resolves it only once the wait ends', async () => {
+    const f = fixture();
+    await f.tick();
+    f.store.state.coordination!.requests![0].status = 'blocked';
+    const before = JSON.stringify(f.it.recoveries[f.id]);
+    f.job.stop = { kind: 'unclassified', at: '2026-11-10T23:00:00.000Z' };
+    const at = f.context.now.toISOString();
+    markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: f.job.id }, 'update-base', { since: at, progressAt: at });
+    // The job carries its stopped-base record for the same original run, and the reassessment evidence is complete:
+    // without the wait this resolves the recovery on the spot.
+    f.job.stoppedBaseUpdate = { originalWorkId: 'original', phase: 'audit' } as never;
+    const ready = vi.spyOn(stoppedBaseDisposition, 'stoppedBaseReassessmentReady').mockReturnValue(true);
+    try {
+        f.context.followUps.length = 0;
+        await recoverStoppedBaseUpdates(f.context);
+        expect(JSON.stringify(f.it.recoveries[f.id])).toBe(before);
+        expect(f.context.followUps).toEqual([{ id: f.id, owner: 'IT', detail: 'Awaiting harness repair JFusco/the-office#389; held without spending an attempt.', routine: true }]);
+        unmark(f.store.state);
+        await recoverStoppedBaseUpdates(f.context);
+        expect(f.it.recoveries[f.id]).toMatchObject({ status: 'resolved', nextAt: '' });
+    } finally { ready.mockRestore(); }
 });

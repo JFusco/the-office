@@ -4,6 +4,7 @@ import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../del
 import { assessDeliveryEligibility } from '../delivery/harness/delivery-authority';
 import { enqueueRequest } from '../scheduling/requests';
 import type { ITContext } from './context';
+import { recoveryHeld } from './held-recovery';
 
 /** One stable original family; stopped/paused/evidence gaps never erase its budget. */
 export async function recoverStoppedBaseUpdates(context: ITContext) {
@@ -11,8 +12,12 @@ export async function recoverStoppedBaseUpdates(context: ITContext) {
     for (const job of state.coordination?.jobs || []) {
         let candidate;
         try { candidate = stoppedBaseUpdateCandidate(store, job); }
-        catch (error) { followUps.push({ id: `stopped-base-update:${job.id}:unknown`, owner: 'Morgan', detail: String(error) }); continue; }
-        if (!candidate) continue;
+        catch (error) {
+            if (!context.freeze?.({ kind: 'delivery', id: job.id }))
+                followUps.push({ id: `stopped-base-update:${job.id}:unknown`, owner: 'Morgan', detail: String(error) });
+            continue;
+        }
+        if (!candidate || recoveryHeld(context, candidate.id)) continue;
         if (stoppedBaseReassessmentReady(store, { key: job.key, head: candidate.head })) {
             const record = it.recoveries[candidate.id];
             if (record) { record.status = 'resolved'; record.nextAt = ''; current.add(candidate.id); }

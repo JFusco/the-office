@@ -4,6 +4,7 @@ import { admitRepairWaits } from '../../../../server/incidents/repair/admit-repa
 import { REPAIR_WAIT_MS, repairWaitFor } from '../../../../server/incidents/repair/repair-wait';
 import { recordDeployedFixes, compareMemory } from '../../../../server/incidents/deployed-fixes';
 import { projectOutbox } from '../../../../server/conversations/outbox';
+import { freezeReads } from '../../../../server/incidents/repair/freeze-reads';
 import { LANES } from '../../../../server/incidents/observe-projects';
 import { projectReadiness } from '../../../../server/office/readiness';
 import { scheduledWork, type OfficeEntry } from '../../../../server/scheduling/scheduled-work';
@@ -287,21 +288,24 @@ test('a stronger cause is counted as itself, also when it arises after the marke
     expect(REPAIR_WAIT_MS).toBe(48 * 60 * 60 * 1000);
 });
 
-test('marking changes no scheduling, recovery or outbox reading of the project', () => {
+test('marking changes no scheduling or recovery reading of the project; only the read-back requests for held work leave the outbox, and return', () => {
     const w = world(stores, dbs);
     w.store.state.it = { ...w.store.state.it, reports: w.store.state.it?.reports ?? [], recoveries: { 'implementation:1': { attempts: 2, nextAt: '', status: 'retrying', detail: 'Worktree is missing' }, 'validation:2': { attempts: 3, nextAt: '', status: 'needs-human', detail: 'Worktree is missing' } } } as never;
     const entry = { store: w.store, engine: {}, conversations: {}, coordinator: {} } as OfficeEntry, all = new Map([[w.store.project.id, w.store]]);
-    const read = () => JSON.stringify({
-        lanes: LANES.map(lane => scheduledWork(entry, all, later(3), lane).map(({ work, stage, rank, eligibility }) => ({ work, stage, rank, eligibility }))),
-        it: w.store.state.it, outbox: projectOutbox(w.store.state, later(3)),
-        jobs: w.jobs(), requests: w.store.state.coordination!.requests, reviews: w.store.state.coordination!.listener.reviews,
+    const read = (minutes: number) => JSON.stringify({
+        lanes: LANES.map(lane => scheduledWork(entry, all, later(minutes), lane).map(({ work, stage, rank, eligibility }) => ({ work, stage, rank, eligibility }))),
+        it: w.store.state.it, jobs: w.jobs(), requests: w.store.state.coordination!.requests, reviews: w.store.state.coordination!.listener.reviews,
     });
+    const asked = (minutes: number) => projectOutbox(w.store.state, later(minutes), freezeReads(w.store, later(minutes))).filter(action => action.status === 'open').map(action => action.id).sort();
     w.start();
-    const before = read();
+    const before = read(3);
     expect(JSON.parse(before).lanes.flat().filter((item: { eligibility: { state: string } }) => item.eligibility.state === 'blocked')).toHaveLength(2);
+    expect(asked(3)).toEqual(['ticket-job:1', 'ticket-job:2']);
     expect(w.pass(2).admitted).toEqual(KEYS);
-    expect(read()).toBe(before);
-    // And after the waits run out.
+    expect(read(3)).toBe(before);
+    expect(asked(3)).toEqual([]);
+    // After the waits run out everything reads as it did, and the requests are back.
     w.pass(49 * HOUR);
-    expect(read()).toBe(before);
+    expect(read(3)).toBe(before);
+    expect(asked(49 * HOUR + 1)).toEqual(['ticket-job:1', 'ticket-job:2']);
 });

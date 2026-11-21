@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { initialSnapshot } from '../../../server/store/store';
 import { coordination } from '../../../server/scheduling/coordination';
 import { projectOutbox } from '../../../server/conversations/outbox';
+import { markAwaitingRepair, NOTHING_STRONGER } from '../incidents/repair/mark-fixture';
 import { planReadRetry, readRetryPending, RETRY_PLAN_GRACE_MS } from '../../../server/scheduling/read-retries';
 
 const STOPPED = '2026-11-19T19:46:40.000Z', SOON = new Date('2026-11-19T19:46:50.000Z');
@@ -58,4 +59,63 @@ test('the wait for the planner is bounded: a stop nobody scheduled a retry for w
     planReadRetry(scheduled, SOON);
     expect(readRetryPending(scheduled, late)).toBe(true);
     expect(outbox(scheduled, false, late)).toEqual([]);
+});
+
+test('a stop a harness repair covers is not put to Joe while the wait holds, and is again when it ends; a decision always is', () => {
+    const state = { ...initialSnapshot(), coordination: coordination() } as any, at = new Date('2026-11-20T13:00:00.000Z');
+    const stopped = job({ id: 'job', detail: 'Error: Worktree is missing', stop: { kind: 'unclassified', at: STOPPED }, retry: { attempts: 3, nextAt: '', history: [], exhausted: true } });
+    const other = job({ id: 'other', key: 'GH-200', detail: 'Error: Worktree is missing', stop: { kind: 'unclassified', at: STOPPED }, retry: { attempts: 3, nextAt: '', history: [], exhausted: true } });
+    state.coordination.jobs = [stopped, other];
+    const asked = (when = at, reads: typeof NOTHING_STRONGER | null = NOTHING_STRONGER) => projectOutbox(state, when, reads).filter(action => action.status === 'open').map(action => action.id).sort();
+    expect(asked()).toEqual(['ticket-job:job', 'ticket-job:other']);
+    markAwaitingRepair(state, 'brain', { kind: 'delivery', id: 'job' }, 'lead-pr');
+    expect(asked()).toEqual(['ticket-job:other']);
+    // A reader that cannot see the project's current writes hides nothing.
+    expect(asked(at, null)).toEqual(['ticket-job:job', 'ticket-job:other']);
+    expect(projectOutbox(state, at).filter(action => action.status === 'open')).toHaveLength(2);
+    // A write for it that is unsettled now is Joe's to read back.
+    expect(asked(at, { ...NOTHING_STRONGER, unsettled: () => ({ workKeys: new Set(['brain:delivery:job']), attempts: new Set() }) })).toEqual(['ticket-job:job', 'ticket-job:other']);
+    // A decision that reached the board is Joe's whatever is being repaired.
+    Object.assign(stopped, { detail: 'Decision needed: choose', parked: { published: true, reason: 'choose', stage: 'lead-pr', marker: 'm' } });
+    expect(projectOutbox(state, at, NOTHING_STRONGER).find(action => action.id === 'ticket-job:job')?.title).toBe('GH-173 needs a decision on the board');
+    Object.assign(stopped, { detail: 'Error: Worktree is missing', parked: undefined });
+    expect(asked()).toEqual(['ticket-job:other']);
+    // 48 hours without progress: the request is back.
+    expect(asked(new Date('2026-11-22T12:00:00.000Z'))).toEqual(['ticket-job:job', 'ticket-job:other']);
+    // A paused project hides nothing behind a repair wait.
+    state.paused = true;
+    expect(asked()).toEqual(['ticket-job:job', 'ticket-job:other']);
+});
+
+test('the same holds for a checkpoint, an intake review, a maintenance run and a ticket: each request leaves while its record is held and only then', () => {
+    const at = new Date('2026-11-20T13:00:00.000Z');
+    const cases: { id: string; work: { kind: 'checkpoint' | 'intake' | 'maintenance' | 'delivery'; id: string }; stage: string; build: (state: any) => void }[] = [
+        { id: 'checkpoint:cp-1', work: { kind: 'checkpoint', id: 'cp-1' }, stage: 'checkpoint', build: state => { state.coordination.checkpoints = [{ id: 'cp-1', runId: 'no-run', date: '2026-11-20', status: 'blocked', detail: 'Worktree is missing', requestedAt: 'r', endedAt: 'e1' }]; } },
+        { id: 'assignment:rv-1', work: { kind: 'intake', id: 'rv-1' }, stage: 'assignment-review', build: state => { state.coordination.listener.reviews = [{ id: 'rv-1', key: 'GH-91', status: 'blocked', detail: 'Worktree is missing', queuedAt: 'q', endedAt: 'e1', url: '' }]; } },
+        { id: 'maintenance:run-1', work: { kind: 'maintenance', id: 'run-1' }, stage: 'follow-up', build: state => { state.maintenance = { runs: [{ id: 'run-1', requestedAt: 'r', startedAt: 's', endedAt: 'e1', status: 'blocked', weekly: false, stage: 'follow-up', error: 'Worktree is missing', steps: [] }], lastDaily: '', lastWeekly: '', ledger: '' }; } },
+        { id: 'ticket:CEC-9:develop', work: { kind: 'delivery', id: 'ticket:CEC-9' }, stage: 'develop', build: state => { state.tickets = [{ key: 'CEC-9', title: 't', url: '', stage: 'develop', activity: 'blocked', blocker: 'Worktree is missing', stop: { kind: 'unclassified', at: 't1' }, results: {}, commit: '', runId: 'r1', attempt: 1, pilot: true, status: 'open' }]; } },
+    ];
+    for (const { id, work, stage, build } of cases) {
+        const state = { ...initialSnapshot(), coordination: coordination() } as any;
+        build(state);
+        const open = (reads: typeof NOTHING_STRONGER | null = NOTHING_STRONGER, when = at) => projectOutbox(state, when, reads).filter(action => action.status === 'open').map(action => action.id);
+        expect(open(), id).toContain(id);
+        markAwaitingRepair(state, 'brain', work, stage);
+        expect(open(), id).not.toContain(id);
+        expect(open(null), id).toContain(id);
+        expect(open(NOTHING_STRONGER, new Date('2026-11-22T13:00:00.000Z')), id).toContain(id);
+    }
+});
+
+test('a held intake review is not named in the shared session-visibility request either', () => {
+    const state = { ...initialSnapshot(), coordination: coordination() } as any, at = new Date('2026-11-20T13:00:00.000Z');
+    const review = (key: string) => ({ id: key, key, status: 'blocked', detail: 'Office must restore complete session visibility; inventory unavailable', queuedAt: 'q', endedAt: 'e1', url: '' });
+    state.coordination.listener.reviews = [review('GH-91'), review('GH-92')];
+    const shared = () => projectOutbox(state, at, NOTHING_STRONGER).find(action => action.id === 'ownership-capability' && action.status === 'open')?.detail ?? '';
+    expect(shared()).toContain('GH-91, GH-92');
+    markAwaitingRepair(state, 'brain', { kind: 'intake', id: 'GH-91' }, 'assignment-review');
+    expect(shared()).toContain('GH-92');
+    expect(shared()).not.toContain('GH-91');
+    markAwaitingRepair(state, 'brain', { kind: 'intake', id: 'GH-92' }, 'assignment-review');
+    expect(shared()).toBe('');
 });

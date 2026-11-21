@@ -2,10 +2,12 @@ import type { Offices } from '../scheduling/offices';
 import type { ServiceHealthChecks } from '../office/service-health';
 import type { Store } from '../store/store';
 import type { ITFollowUp, ITState, TeamMessage, TicketJob } from '../../src/shared';
-import type { HarnessRequest } from '../../src/contracts/work';
+import type { HarnessRequest, RepairWait, WorkRef } from '../../src/contracts/work';
 
 /** Everything one project check shares across its sections. */
 export interface ITContext {
+    /** Decides from the project clock and reads at the time of each guard. */
+    freeze?: (work: Pick<WorkRef, 'kind' | 'id'>) => RepairWait | null;
     offices: Offices; store: Store; engine: ReturnType<Offices['get']>['engine']; coordinator: ReturnType<Offices['get']>['coordinator'];
     state: Store['state']; it: ITState; actions: string[]; followUps: ITFollowUp[]; current: Set<string>; now: Date;
     health: Awaited<ReturnType<ServiceHealthChecks['report']>>; nextAt: number;

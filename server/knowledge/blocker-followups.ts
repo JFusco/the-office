@@ -1,3 +1,7 @@
+import { freezeReads } from '../incidents/repair/freeze-reads';
+import { repairFreeze } from '../incidents/repair/repair-freeze';
+import { investigationHeld } from '../it/investigations/held-investigation';
+import { recoveryRecord } from '../it/recovery-record';
 import { clearUnblockBrief } from './unblock-brief';
 import type { BlockerFollowup, LearningSubject, TeamMessage } from '../../src/shared';
 import type { Store } from '../store/store';
@@ -13,9 +17,29 @@ import { captureLearning, learningDigest } from './learning-events';
 export function harperHandoff(store: Store, message: TeamMessage): boolean {
     return message.from === 'knowledge' && message.to === 'pm' && (!!store.state.knowledge?.followups?.some(item => (item.handoffId === message.id || item.handoffIds?.includes(message.id))));
 }
+/** The record a follow-up is about, by what kind of source it has; a message, a feature or a proposal is about none. An investigation is judged on its own. */
+function followupRecord(store: Store, item: BlockerFollowup) {
+    const { kind, id } = item.source;
+    if (kind === 'job') return { kind: 'delivery' as const, id };
+    if (kind === 'maintenance') return { kind: 'maintenance' as const, id };
+    if (kind === 'ticket') return item.key ? { kind: 'delivery' as const, id: `ticket:${item.key}` } : null;
+    if (kind === 'recovery') return recoveryRecord(store.state, id);
+    return null;
+}
+function heldForRepair(store: Store, item: BlockerFollowup): boolean {
+    if (item.source.kind === 'investigation') {
+        // Held exactly when its readiness is: the same decision, including the investigated run's own failure.
+        const entry = store.state.it?.investigations?.find(entry => entry.id === item.source.id);
+        return !!entry && investigationHeld(store, entry);
+    }
+    const about = followupRecord(store, item), now = store.clock.now();
+    return !!about && !!repairFreeze(store.state, about, now, freezeReads(store, now));
+}
 function handoff(store: Store, item: BlockerFollowup, original?: TeamMessage) {
     const id = `harper-followup:${item.id}:${learningDigest(item.nextAction)}`;
     if (item.handoffId === id || store.state.messages.some(message => message.id === id) || store.state.paused || store.state.draining || holdReason(store.project, item.key)) return;
+    // What a harness repair in progress covers is not handed to Morgan for diagnosis; the follow-up record itself is kept.
+    if (heldForRepair(store, item)) return;
     if (original && !conversationReadbackReady(store, original)) return;
     item.handoffId = id; (item.handoffIds ??= []).push(id);
     store.state.messages.push({ id, requestId: id, from: 'knowledge', to: 'pm', ticket: item.key,
@@ -65,7 +89,7 @@ export function reconcileBlockerFollowups(store: Store): void {
         const blocked = ['blocked', 'interrupted'].includes(job.status);
         const detail = blocked ? job.detail : resolved ? 'Owning delivery source has verified resolution evidence.' : 'Delivery source no longer blocked; recovery proof unknown.';
         const item = observe({ kind: 'job', id: job.id }, job.key, detail, resolved ? job.status === 'cancelled' ? 'superseded' : 'confirmed' : blocked ? 'unresolved' : 'unknown', { status: blocked ? job.status : '', resolved }, { recoveryId: recovery?.[0], requestId: recovery?.[1].requestId, owner: 'Ellis' });
-        if (!resolved && !recovery && !item.nudgeId && knowledge.enabled && !store.state.paused && !store.state.draining && !holdReason(store.project, job.key)) {
+        if (!resolved && !recovery && !item.nudgeId && knowledge.enabled && !store.state.paused && !store.state.draining && !holdReason(store.project, job.key) && !heldForRepair(store, item)) {
             item.nudgeId = store.state.coordination?.requests?.find(request => request.action === 'check-it' && ['queued', 'working'].includes(request.status))?.id || enqueueRequest(store, 'check-it', '', '', 'it').id;
         }
     }

@@ -1,3 +1,4 @@
+import { markAwaitingRepair, unmark } from '../incidents/repair/mark-fixture';
 import {registerDeliveryFixture} from '../../fixtures/delivery-claim';
 import {TimeLedger} from '../../../server/time/time-ledger';
 import {FEATURE_PLANNING} from '../../../server/office/config';
@@ -42,6 +43,21 @@ function offices(limit = 1) {
     return office;
 }
 const reply = { handoffProject: '', pickupChange: null, reply: 'Synthetic response', notifyRoles: [], question: '', goalChanges: [], slackRequests: [], notes: [], receipts: [] };
+test('the project summaries and the snapshot count and show the outbox as it reads now: a stop a harness repair covers is left out of both', () => {
+    const office = offices(), cms = office.get('cms-field-vocabulary');
+    cms.store.state.coordination!.jobs = [{ id: 'job', key: 'GH-173', status: 'blocked', stage: 'lead-pr', requestedAt: '2026-11-19T19:00:00Z', detail: 'Error: Worktree is missing', head: 'abc1234', stop: { kind: 'unclassified', at: '2026-11-19T19:46:40.000Z' }, steps: [], pr: 176, prUrl: 'https://example.test/pr/176', retry: { attempts: 3, nextAt: '', history: [], exhausted: true } }] as any;
+    const needsYou = () => office.summaries().find(summary => summary.id === 'cms-field-vocabulary')!.needsYou;
+    const shown = () => (office.snapshot('cms-field-vocabulary').outbox as { id: string; status: string }[]).filter(action => action.status === 'open').map(action => action.id);
+    const before = needsYou();
+    expect(shown()).toContain('ticket-job:job');
+    const at = cms.store.clock.now().toISOString();
+    markAwaitingRepair(cms.store.state, 'cms-field-vocabulary', { kind: 'delivery', id: 'job' }, 'lead-pr', { since: at, progressAt: at });
+    expect(needsYou()).toBe(before - 1);
+    expect(shown()).not.toContain('ticket-job:job');
+    unmark(cms.store.state);
+    expect(needsYou()).toBe(before);
+    expect(shown()).toContain('ticket-job:job');
+});
 test('queued messages wait for the active project, rotate projects, and retain FIFO within each project', async () => {
     const office = offices(), cec = office.get('cec'), cms = office.get('cms-field-vocabulary'), seen: string[] = [];
     for (const entry of [cec, cms])

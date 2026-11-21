@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, HEAD } from '../support/fake-github';
 import { restartStoppedWriters } from '../../../../server/delivery/attempts/restart-stopped-writers';
+import { markAwaitingRepair, unmark } from '../../incidents/repair/mark-fixture';
 afterEach(cleanupFakes);
 
 const PARTIAL = 'e'.repeat(40);
@@ -83,4 +84,111 @@ test('a job cancelled or held while its worktree is being saved is not queued, a
     expect(paused.job).toMatchObject({ status: 'blocked' });
     expect(paused.job.writerRestarts).toBeUndefined();
     expect(paused.job.writerRestartDeclined).toBeUndefined();
+});
+
+test('a stopped writer whose stop a harness repair covers is not restarted, nothing is written, and it is restarted once the wait ends', async () => {
+    const { f, job, writes } = stopped();
+    job.stop = { kind: 'unclassified', at: '2026-11-16T12:00:00.000Z' };
+    const at = new Date().toISOString();
+    markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: job.id }, 'update-base', { since: at, progressAt: at });
+    const before = JSON.stringify(job), calls = f.state.calls.length;
+    await restartStoppedWriters(f.delivery);
+    await restartStoppedWriters(f.delivery);
+    expect(JSON.stringify(job)).toBe(before);
+    expect(writes).toEqual([]);
+    // Held before anything is read: the remote branch and pull request are not even asked about.
+    expect(f.state.calls.length).toBe(calls);
+    expect(job.writerRestarts).toBeUndefined();
+    unmark(f.store.state);
+    await restartStoppedWriters(f.delivery);
+    expect(job).toMatchObject({ status: 'queued', writerRestarts: [expect.objectContaining({ workId: 'run-1' })] });
+});
+
+test('a wait that arrives while the stopped run is being read stops the restart before anything is reset', async () => {
+    const { f, job, writes, hooks } = stopped();
+    job.stop = { kind: 'unclassified', at: '2026-11-16T12:00:00.000Z' };
+    const at = new Date().toISOString();
+    hooks.onWrite = command => { if (command === 'cat-file') markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: job.id }, 'update-base', { since: at, progressAt: at }); };
+    await restartStoppedWriters(f.delivery);
+    expect(job.status).toBe('blocked');
+    expect(writes.some(write => write.startsWith('reset'))).toBe(false);
+    expect(job.writerRestarts).toBeUndefined();
+});
+
+test('a repair wait arriving after reset is dispatched lets cleanup finish and keeps the salvage ref', async () => {
+    const { f, job, writes, hooks } = stopped();
+    job.stop = { kind: 'unclassified', at: '2026-11-16T12:00:00.000Z' };
+    const at = f.store.clock.now().toISOString();
+    hooks.onWrite = command => {
+        if (command === 'reset') markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: job.id }, 'update-base', { since: at, progressAt: at });
+    };
+
+    await restartStoppedWriters(f.delivery);
+
+    expect(writes).toContain('clean -fd');
+    expect(job).toMatchObject({
+        status: 'queued',
+        writerRestarts: [expect.objectContaining({ workId: 'run-1', abandoned: PARTIAL, ref: `refs/office/salvage/${job.id}/run-1` })],
+    });
+});
+
+test('a genuine cleanup failure after reset is recorded even if a repair wait arrived', async () => {
+    const { f, job, hooks } = stopped();
+    job.stop = { kind: 'unclassified', at: '2026-11-16T12:00:00.000Z' };
+    const at = f.store.clock.now().toISOString();
+    hooks.onWrite = command => {
+        if (command === 'reset') markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: job.id }, 'update-base', { since: at, progressAt: at });
+        if (command === 'clean') throw new Error('Synthetic cleanup failure');
+    };
+
+    await restartStoppedWriters(f.delivery);
+
+    expect(job.status).toBe('blocked');
+    expect(job.writerRestartDeclined).toMatchObject({
+        workId: 'run-1',
+        reason: expect.stringContaining(`Unfinished work is kept at refs/office/salvage/${job.id}/run-1`),
+    });
+});
+
+test('a failed salvage read during a repair wait leaves the writer eligible to restart after release', async () => {
+    const { f, job, writes, hooks } = stopped();
+    job.stop = { kind: 'unclassified', at: '2026-11-16T12:00:00.000Z' };
+    const at = f.store.clock.now().toISOString();
+    hooks.onWrite = command => {
+        if (command !== 'cat-file') return;
+        markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: job.id }, 'update-base', { since: at, progressAt: at });
+        throw new Error('Synthetic cat-file read failure');
+    };
+    job.writerRestartReadError = 'Earlier read failure';
+
+    await restartStoppedWriters(f.delivery);
+    expect(writes).toEqual([`cat-file -e ${HEAD}^{commit}`]);
+    expect(job.status).toBe('blocked');
+    expect(job.writerRestartReadError).toBe('Earlier read failure');
+    expect(job.writerRestartDeclined).toBeUndefined();
+    expect(job.writerRestarts).toBeUndefined();
+
+    unmark(f.store.state);
+    delete hooks.onWrite;
+    await restartStoppedWriters(f.delivery);
+    expect(job.writerRestartReadError).toBeUndefined();
+    expect(job).toMatchObject({ status: 'queued', writerRestarts: [expect.objectContaining({ workId: 'run-1' })] });
+});
+
+test('a failed remote read after admission preserves the last restart read error', async () => {
+    const { f, job, writes } = stopped();
+    job.stop = { kind: 'unclassified', at: '2026-11-16T12:00:00.000Z' };
+    job.writerRestartReadError = 'Earlier read failure';
+    const at = f.store.clock.now().toISOString();
+    f.state.fail = (program, args) => {
+        if (program !== 'git' || args[0] !== 'ls-remote') return false;
+        markAwaitingRepair(f.store.state, f.store.project.id, { kind: 'delivery', id: job.id }, 'update-base', { since: at, progressAt: at });
+        return true;
+    };
+
+    await restartStoppedWriters(f.delivery);
+
+    expect(job.writerRestartReadError).toBe('Earlier read failure');
+    expect(f.store.state.events.some(event => event.kind === 'writer-restart-unreadable')).toBe(false);
+    expect(writes).toEqual([]);
 });

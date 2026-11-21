@@ -1,10 +1,10 @@
+import { currentOutbox } from '../conversations/current-outbox';
 import { twgConnection } from '../cec/twg-connection';
 import { validTicket } from '../office/ticket-key';
 import { observeAssessmentAssignments } from '../features/handoff/observe-assignments';
 import { holdAssessmentIntake } from '../features/handoff/intake-routing';
 import { handsOff } from '../delivery/harness/scope';
 import { reconcileMailbox } from '../cec/reconcile-mailbox';
-import { syncOutbox } from '../conversations/outbox';
 import { admitReadyCards } from '../delivery/intake/admission';
 import { settleStoppedReviews } from '../delivery/intake/settle-stopped-reviews';
 import { resumeParked } from '../delivery/parking/resume';
@@ -144,7 +144,7 @@ export async function poll(this: Coordinator, now = new Date()) {
         listener.assigned = assigned;
         listener.lastCheckedAt = observedAt;
         listener.error = '';
-        syncOutbox(this.store.state);
+        this.store.state.outbox = currentOutbox(this.store);
     }
     catch (error) {
         this.state.listener.error = String(error);

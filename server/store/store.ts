@@ -5,7 +5,7 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DATA } from '../office/config';
 import { sanitize, sanitizeObject } from '../office/security';
-import { projectOutbox } from '../conversations/outbox';
+import { currentOutbox } from '../conversations/current-outbox';
 import { DEVELOPER_MODEL, DEVELOPER_EFFORT } from '../workers/claude';
 import { recordRunEvidence, type EvidenceOutcome } from './run-evidence';
 import type { RunAccounting } from '../../src/contracts/telemetry';
@@ -133,7 +133,7 @@ export class Store {
         this.state.revision = event.id;
         this.state.serverTime = event.at;
         this.state.events = [event, ...this.state.events].slice(0, 100);
-        this.state.outbox = projectOutbox(this.state, this.clock.now());
+        this.state.outbox = currentOutbox(this);
         this.pendingEvents.push(event);
         return event;
     }

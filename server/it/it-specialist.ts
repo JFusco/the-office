@@ -1,3 +1,6 @@
+import { freezeReads } from '../incidents/repair/freeze-reads';
+import { repairFreeze } from '../incidents/repair/repair-freeze';
+import { recoveryWait } from './held-recovery';
 import { informationalRecovery } from './informational-recovery';
 import { ownAzureCheck } from './own-azure-check';
 import { syncInvestigations } from './investigations/ledger';
@@ -41,6 +44,10 @@ export class ITSpecialist {
                     return !['completed','cancelled'].includes(job.status)&&key&&recovery&&(recovery.attempts>0||recovery.requestId)?[{job,key,recovery}]:[];
                 });
                 const current = new Set<string>([...retainedCloseouts,...retainedPartials.map(value=>value.key)]); // Eligibility loss is not resolution.
+                const freeze: NonNullable<ITContext['freeze']> = work => {
+                    const at = store.clock.now();
+                    return repairFreeze(state, work, at, freezeReads(store, at));
+                };
                 const activationBudget=(id:string)=>{
                     const match=/^(activation-readback|source-config-readback):([^:]+):([^:]+)$/.exec(id);
                     if(!match||store.project.id!=='brain'||state.project?.id!==store.project.id)return;
@@ -54,9 +61,11 @@ export class ITSpecialist {
                 };
                 // Repair historical undercounts from exact original intent identities, including while paused/draining.
                 for(const [id,recovery] of Object.entries(it.recoveries)){
+                    // A recovery about held work keeps the count it has; it is rebuilt when the wait ends.
+                    if(recoveryWait({ state, freeze }, id))continue;
                     const budget=activationBudget(id);if(budget)recovery.attempts=Math.max(recovery.attempts,new Set(budget.requests.map(request=>request.id)).size);
                 }
-                const context: ITContext = { offices: this.offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt: this.nextAt, retainedPartials, retainedCloseouts, services: health.services.filter(s => (!s.id.startsWith('listener:') || s.id === `listener:${store.project.id}`) && ownAzureCheck(store.project, s.id)), activationBudget, recover: (...args) => recoverAttempt(context, ...args) };
+                const context: ITContext = { freeze, offices: this.offices, store, engine, coordinator, state, it, actions, followUps, current, now, health, nextAt: this.nextAt, retainedPartials, retainedCloseouts, services: health.services.filter(s => (!s.id.startsWith('listener:') || s.id === `listener:${store.project.id}`) && ownAzureCheck(store.project, s.id)), activationBudget, recover: (...args) => recoverAttempt(context, ...args) };
                 syncInvestigations(store, now);
                 followUps.push(...investigationFollowUps(store));
                 await readBackConversations(context);

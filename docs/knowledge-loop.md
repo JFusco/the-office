@@ -77,6 +77,8 @@ There is no age-based retirement and no recurrence review. Joe can reactivate an
 
 The retrospective a park, block or exhausted repair budget already triggers may save an unblock brief for that subject: what is known, the decision, the next step. It is kept only when Harper returns one. A block that arrives while an open learning batch exists for the same subject is merged into that batch, which is then marked as blocked and owes the brief (`record-trigger.ts`, `blocking-trigger.ts`). Blocked retrospectives run ahead of routine ones and are neither held by nor counted against the limit of 8 retrospectives per project per day (`scheduled-retrospectives.ts`, `run-retrospective.ts`). It shows on the blocker follow-up and sits immediately after the assignment line when the work resumes. It is cleared once the follow-up confirms resolution.
 
+A blocked item that is awaiting a harness repair is not handed to Morgan for diagnosis and does not nudge IT while that wait holds (`server/incidents/repair/repair-freeze.ts`). That covers a job, a ticket and a maintenance run, and an IT recovery or an investigation that is about one of them. Its follow-up record is still kept and still learns from a material change; the hand-off is made when the wait ends or expires. An item with a stronger cause of its own, such as a decision or a park, is handed off as before.
+
 **On lookup** (`lookup/`)
 
 A worker that is unsure, or about to block, queries `GET /api/knowledge/lookup` with its per-attempt capability. Results are advisory observations, never instructions. A worker cites the reference it used in its evidence; that citation is recorded as plain history.

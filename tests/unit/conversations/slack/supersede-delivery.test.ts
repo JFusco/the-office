@@ -6,6 +6,7 @@ import { diagnosticSnapshot } from '../../../../server/it/diagnostic-snapshot';
 import { projectOutbox } from '../../../../server/conversations/outbox';
 import { commandRoute } from '../../../../server/office/http/commands';
 import { supersessionFixture } from './fixture';
+import { markAwaitingRepair } from '../../incidents/repair/mark-fixture';
 
 test('operator closeout removes both Slack alerts and IT attention, retaining uncertainty, history and budget', () => {
     const f = supersessionFixture(); try {
@@ -62,4 +63,15 @@ test('a future timestamp cannot produce a valid closeout and a channel receipt m
         channel.delivery.targetType = channel.replacement.targetType = 'channel'; channel.delivery.targetId = channel.replacement.targetId = 'C123';
         expect(() => supersedeSlackDelivery(channel.store, channel.input)).toThrow('same recipient');
     } finally { channel.close(); }
+});
+
+test('closing out a Slack delivery saves the outbox as it reads now: a stop a harness repair covers stays out of it', () => {
+    const f = supersessionFixture(); try {
+        f.store.state.coordination!.jobs = [{ id: 'job', key: 'GH-173', status: 'blocked', stage: 'lead-pr', requestedAt: '2026-11-07T19:00:00Z', detail: 'Error: Worktree is missing', head: 'abc1234', stop: { kind: 'unclassified', at: '2026-11-07T19:46:40.000Z' }, steps: [], pr: 176, prUrl: 'https://example.test/pr/176', retry: { attempts: 3, nextAt: '', history: [], exhausted: true } }] as any;
+        const at = f.store.clock.now().toISOString(), open = () => f.store.state.outbox.filter(item => item.status === 'open').map(item => item.id);
+        markAwaitingRepair(f.store.state, 'brain', { kind: 'delivery', id: 'job' }, 'lead-pr', { since: at, progressAt: at });
+        expect(projectOutbox(f.store.state, f.store.clock.now()).filter(item => item.status === 'open').map(item => item.id)).toContain('ticket-job:job');
+        supersedeSlackDelivery(f.store, f.input);
+        expect(open()).not.toContain('ticket-job:job');
+    } finally { f.close(); }
 });

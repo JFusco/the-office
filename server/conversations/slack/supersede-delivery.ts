@@ -1,7 +1,7 @@
+import { currentOutbox } from '../current-outbox';
 import { z } from 'zod';
 import { replacementContext, slackFingerprint, supersedingDelivery } from './supersession-proof';
 import { syncInvestigations } from '../../it/investigations/ledger';
-import { syncOutbox } from '../outbox';
 import { sanitize } from '../../office/security';
 import type { Store } from '../../store/store';
 
@@ -24,7 +24,8 @@ export function supersedeSlackDelivery(store: Store, input: unknown) {
         if (!context) throw new Error('Replacement must be a newer confirmed message for the same recipient, workspace and explicitly linked work');
         if (original.supersededBy) (original.supersessionHistory ??= []).push(original.supersededBy);
         original.supersededBy = { projectId: store.project.id, replacementDeliveryId: replacement.id, originalFingerprint: slackFingerprint(original), replacementFingerprint: slackFingerprint(replacement), contextFingerprint: context, reason: sanitize(request.reason), at: store.clock.now().toISOString() };
-        syncInvestigations(store); syncOutbox(store.state);
+        syncInvestigations(store);
+        store.state.outbox = currentOutbox(store);
         store.emit('slack-delivery-superseded', 'Earlier Slack warning closed by a verified replacement. Original send outcome and failure history retained.', 'pm');
         return original.supersededBy;
     });
