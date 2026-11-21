@@ -10,7 +10,7 @@ import { BrainFollowup } from '../maintenance/brain/brain-followup';
 import type { AssignedIssue, Coordination, PickupPolicy } from '../../src/shared';
 import type { ProjectPolicy } from '../office/project-policy';
 import { requestWork, preparePR, updateCandidateBase, recheckCandidate, recheckPR, recheck, deferNonReady } from './operator-commands';
-import { readAssignments, poll } from './assignment-poll';
+import { readAssignments, readGoneTickets, poll } from './assignment-poll';
 import { tick } from './coordination-tick';
 import { pump } from './coordination-pump';
 import { resumeRepairedMaintenance, queueCheckpointRetry, readBackCheckpoint, retryCheckpoint } from '../maintenance/checkpoint-retry';
@@ -70,6 +70,7 @@ export class Coordinator {
     recheck(key: string) { return recheck.call(this, key); }
     async deferNonReady(key: string) { return deferNonReady.call(this, key); }
     async readAssignments(): Promise<AssignedIssue[]>  { return readAssignments.call(this); }
+    async readGoneTickets(keys: string[]): Promise<Set<string>> { return readGoneTickets.call(this, keys); }
     async poll(now = new Date()) { return poll.call(this, now); }
     async tick(now = new Date()) { return tick.call(this, now); }
     async resumeRepairedMaintenance(now = new Date()) { return resumeRepairedMaintenance.call(this, now); }

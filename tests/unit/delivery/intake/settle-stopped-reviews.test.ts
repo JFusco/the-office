@@ -44,3 +44,24 @@ test('only the latest review of a ticket is closed; its earlier reviews stay as 
     expect(settleStoppedReviews(reviews, inputs([other]))).toEqual(['CEC-1']);
     expect(reviews.map(item => item.status)).toEqual(['blocked', 'cancelled']);
 });
+
+test('an empty read settles only the reviews whose own ticket was confirmed gone', () => {
+    const reviews = [review('CEC-1', 'owned'), review('CEC-2', 'blocked'), review('CEC-3', 'held'), review('CEC-4', 'owned')];
+    expect(settleStoppedReviews(reviews, inputs([], { confirmedGone: new Set(['CEC-1', 'CEC-3', 'CEC-9']) }))).toEqual(['CEC-1', 'CEC-3']);
+    expect(reviews.map(item => item.status)).toEqual(['cancelled', 'blocked', 'cancelled', 'owned']);
+});
+
+test('an empty read with nothing confirmed, or an empty confirmation, still settles nothing', () => {
+    const reviews = [review('CEC-1', 'owned')], before = structuredClone(reviews);
+    expect(settleStoppedReviews(reviews, inputs([], { confirmedGone: new Set() }))).toEqual([]);
+    expect(reviews).toEqual(before);
+});
+
+test('a confirmation does not override a delivery, a hold or a review in flight, and is not consulted when the read is not empty', () => {
+    const reviews = [review('CEC-1', 'owned'), review('CEC-2', 'owned'), review('CEC-3', 'working' as any)];
+    const gone = new Set(['CEC-1', 'CEC-2', 'CEC-3']);
+    expect(settleStoppedReviews(reviews, inputs([], { confirmedGone: gone, hasDelivery: key => key === 'CEC-1', held: key => key === 'CEC-2' }))).toEqual([]);
+    // With tickets in the read, the read decides: CEC-5 is still assigned although the set names it.
+    const mixed = [review('CEC-5', 'owned'), review('CEC-6', 'owned')];
+    expect(settleStoppedReviews(mixed, inputs([issue('CEC-5')], { confirmedGone: new Set(['CEC-5']) }))).toEqual(['CEC-6']);
+});
