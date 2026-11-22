@@ -1001,7 +1001,10 @@ found it. The lifecycle states `triaged`, `fixing`, `shipped`, `deployed`, `veri
 by the write-back events below. The Office moves `shipped` to `deployed` when the running release
 holds the fix, and returns `deployed` to `shipped` with `fix-withdrawn` when the release loses the
 fix or can no longer be verified (see Deployed fixes). A dismissal that no longer holds returns
-its incident to `observed` (see Dismissal). The other states have no writer yet.
+its incident to `observed` (see Dismissal). The Office moves `deployed` to `verified` or `recurred`,
+and `verified` to `recurred`, from what became of the fix's resumes and from the cause stopping
+work again (see Resume after a fix). `triaged`, `housekept`, `needs-joe` and `abandoned` have no
+writer yet.
 
 `GET /api/incidents` lists the ledger (`open=1`; `research=1`, which leaves out dismissed
 incidents); `GET /api/incidents/<id>` returns one incident with its events and, once its fix is found in the
@@ -1173,27 +1176,75 @@ wait already ran out is not resumed; it has gone back to a person.
 
 After that pass the Office judges what became of each resume it queued
 (`server/incidents/repair/judge-resumes.ts`): for every `deployed` incident, each subject of its
-latest fix whose admission the ledger holds. The reading (`resume-outcome.ts`) is pure and takes
-the first that applies: `recurred` (the subject opened again in the same incident after the
-admission and after the deployment mark that stands); an outcome already recorded, unless it is
-`chained`; `untested` (the mark is newer than the admission, so the release was withdrawn in
-between); `gone` (the project no longer holds the request); `untested` (the binding does not
-record how the job stood); `moved-by-hand` (an operator's command event for the request's ticket
-after the admission's own project event: `pr-preparation-queued`, `candidate-base-update`,
-`candidate-review-recheck`, `pr-review-recheck`, `implement-requeued`); `untested` (the boundary
-is undeclared); `advanced` (the declared boundary is crossed, `boundary-crossed.ts`) or `untested`
-when it cannot be judged; `gone` (the job is missing or cancelled); `chained` (the job, or the
-resume's own request, opened in another incident after the admission). A boundary crossed by any
-automatic path counts; the request's own end is never evidence, since a completed request can
-leave the job where it was. So that "after the admission" can be read at all, admission saves on
+latest fix whose admission the ledger holds, and only while the release that runs now is verified
+and known to hold the fix (the deployment mark alone can outlast the release it names). The
+reading (`resume-outcome.ts`) is pure and takes the first that applies: `recurred` (the ledger
+recorded the subject opening in the same incident after the deployment mark that stands, by its
+own order of writing, `IncidentLedger.openedAfter`, and the project did not date that stop at or
+before the mark; a resume is admitted only for a subject that still stood as bound, so such an
+opening followed the admission too, unless the mark was made again after it); an outcome already
+recorded, unless it is `chained` or `stalled`; `untested` (the fix's mark was withdrawn and its
+replacement followed the admission in ledger order or is dated after the saved admission time,
+which also covers late admission records); `gone` (the project no longer holds the request);
+`untested` (the binding does not record how the job stood); `moved-by-hand` (an operator's command
+event for the request's ticket after the admission's own project event: `pr-preparation-queued`,
+`candidate-base-update`, `candidate-review-recheck`, `pr-review-recheck`, `implement-requeued`);
+`untested` (the boundary is undeclared); `advanced` (the declared boundary is crossed,
+`boundary-crossed.ts`) or `untested` when it cannot be judged; `gone` (the job is missing or
+cancelled); `stalled` (see below), which replaces `chained` and is not followed by it; `chained`
+(the job, or the resume's own request, opened in another incident after the admission). A boundary
+crossed by any automatic path counts; the request's own end is never evidence, since a completed
+request can leave the job where it was. So that "after the admission" can be read at all, admission saves on
 the binding the job's step count and stage and the ID of the project event it emitted: a job's
 steps carry no time. A changed outcome is recorded as one `resume-outcome` event and as the
 subject's entry in the fix's `outcomes`, with the incident's revision advanced and the incident
-read again for every subject. When the projection has let a long-cleared subject go, when it last
-opened is taken from the event history. The project's events and the other incidents are read
-only while a subject's outcome is still open. The pass changes no incident state and writes no
-project store, asks the deployment fence before each subject is read and again before each write,
-and has no deadline: a resume that shows nothing stays pending, and the incident stays `deployed`.
+read again for every subject. The project's own date for a stop is known while the projection
+holds the subject; once it has let a long-cleared subject go, the order of writing decides alone.
+The project's events are read only while a subject's outcome is still open, and the other
+incidents only while it can still be called chained or stalled. The pass changes no incident state and writes no
+project store, and asks the deployment fence before each subject is read and again before each
+write.
+
+A resume that shows nothing is `stalled` after 24 hours (`stalled-resume.ts`): asked after every
+final reading and before `chained`, which it replaces; like `chained` it gives way to any final
+outcome and to `recurred`. The 24 hours run from the latest of the admission, the last start,
+heartbeat or end of a run filed under the job or under the resume's own request
+(`resume-activity.ts`; a job's `updatedAt` is not read, since many changes do not set it), and the
+subject's last standing change in any incident (`IncidentLedger.subjectChangedAt`). The Office
+suppresses a `stalled` judgment while the project is paused or draining or the subject is open
+in any incident with an `expected` wait. Time spent waiting still counts toward the 24 hours if
+nothing moves.
+
+Then the Office settles incidents (`settle-incidents.ts`, verdict in `verify-incident.ts`), from
+the ledger. A `deployed` incident is settled only while the release that runs now is verified and
+known to hold its fix. While a release comparison is pending or inconclusive, the incident stays
+`deployed` and judging and settlement pause. If the comparison confirms the fix, both resume
+under the same deployment mark. The withdrawal pass returns the incident to `shipped` only if
+the release identity is unknown or the comparison confirms the fix is absent.
+
+A `deployed` incident becomes `recurred` when a resume's outcome is `recurred` or the ledger
+recorded any subject of the incident opening
+after the deployment mark's own event, resumed or not, named by the fix or not (Joe, 2026-11-22).
+"After" is the ledger's order of writing, not the times on the events, so a clock that steps back
+decides nothing; a subject whose own saved stop the project dated at or before the mark stopped
+before it and does not count. The first recurrence decides. It becomes `verified` when every
+subject of the latest fix is accounted for and at least one resume `advanced`: accounted for is a
+binding with no route, a stop that cleared or changed without a resume, or a resume with a final
+outcome; a subject still held or due, a resume that is pending, `chained` or `stalled`, and a
+subject bound to a route this release cannot dispatch (which the reading also calls `no-route`)
+are not. Otherwise it stays `deployed`; no `needs-joe` move exists yet. A `verified` incident
+becomes `recurred` when the ledger observes a subject opening and records it after the verification
+event, whatever release runs. Stops the project dated at or before the deployment mark are
+excluded here too. Each move is one event (`incident-verified`,
+`incident-recurred`; legal only from those states, `server/incidents/transitions.ts`) with the
+new state and revision; a verification is also noted on the incident. The pass asks the
+deployment fence before each listing, each incident, each admission lookup, each opening history
+read and each write. `repair-started` and `dismissed` were already legal from `recurred`.
+The other passes handle the consequences of leaving `deployed`. Repair-wait markers are kept
+for `fixing`, `shipped` and `deployed` only, so the
+markers of subjects not yet resumed are removed on the next pass and that work returns to
+ordinary recovery; no resume is queued or judged for the fix any more; and the deployment mark is
+no longer withdrawn or renewed.
 
 A boundary is read three ways, for a delivery job. `stage-result-passed`: a step of that stage
 whose result passed, saved after the step count the admission recorded; a job that now has fewer
@@ -1208,9 +1259,10 @@ with the wait lifted, IT's own recovery for that job finds the identical request
 counts one attempt (`server/it/recovery-attempt.ts`), and a request whose head is a run's ID
 keeps the harness from restarting that run (`server/delivery/attempts/restart-writer.ts`).
 
-The reading follows the running release: an incident whose fix that release no longer holds, or
-whose release can no longer be verified, has returned to `shipped` within a few ticks (see
-Deployed fixes) and has no reading.
+The status includes the `resumes` assessment while the incident is `deployed` and its latest fix
+carries a deployment mark, including while a release comparison is pending or inconclusive.
+`resumes` becomes `null` when withdrawal returns the incident to `shipped` or settlement moves it
+to `verified` or `recurred`.
 
 **Release identity.** The service can name the release it runs only from records it can check
 (`server/office/release-identity.ts`). The identity is `verified` when all of these agree: the
@@ -1242,8 +1294,8 @@ keeps `/api/health` busy, and it stops, reading and writing nothing more, as soo
 holds the fence. `fix-deployed` cannot be written through the events route. What a deployed fix
 resumes is under Resume after a fix.
 
-`deployed` holds only while the release the service runs holds the fix. In the same tick, before
-the pass above, the Office takes every `deployed` incident (`server/incidents/withdrawn-fixes.ts`).
+In the same tick, before the pass above, the Office checks every `deployed` incident against
+the running release (`server/incidents/withdrawn-fixes.ts`).
 When the release identity is unknown, or is verified and GitHub reports the fix commit outside the
 history of the release commit, one `fix-withdrawn` event is recorded, the fix loses its
 deployment mark, keeping on record the release the mark named, when it was set and why it went

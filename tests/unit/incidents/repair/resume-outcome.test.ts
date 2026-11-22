@@ -10,16 +10,16 @@ type Job = NonNullable<OutcomeEvidence['job']>;
 const job = (over: Partial<Job> = {}): Job => ({ stage: 'review', status: 'blocked', steps: [], ...over });
 const request = (stood: unknown = { steps: 0, stage: 'review', event: 7 }) => ({ repairResume: { stood } }) as OutcomeEvidence['request'];
 /** A resume with nothing yet to say: the job stands where it stood, its record has not reopened, nothing else is known. */
-const pending = (over: Partial<OutcomeEvidence> = {}): OutcomeEvidence => ({ binding: BOUND, admittedAt: ADMITTED, deployedAt: DEPLOYED, record: { openedAt: '2026-11-20T12:00:00.000Z' }, request: request(), job: job(), moved: null, elsewhere: [], ...over });
-const LEFT = { job: job({ stage: 'lead-pr', status: 'queued' }) }, MOVED = { moved: { kind: 'pr-review-recheck', at: LATER } }, REOPENED = { record: { openedAt: LATER } };
+const pending = (over: Partial<OutcomeEvidence> = {}): OutcomeEvidence => ({ binding: BOUND, admittedAt: ADMITTED, deployedAt: DEPLOYED, replacementMarkAfterAdmission: false, reopened: null, request: request(), job: job(), moved: null, elsewhere: [], stalled: null, ...over });
+const LEFT = { job: job({ stage: 'lead-pr', status: 'queued' }) }, MOVED = { moved: { kind: 'pr-review-recheck', at: LATER } }, REOPENED = { reopened: { at: LATER, stoppedAt: null } };
 const ELSEWHERE = { elsewhere: [{ incident: 'inc-other', subject: 'p/delivery/1', openedAt: LATER }] };
 const FINAL: ResumeOutcomeKind[] = ['advanced', 'moved-by-hand', 'gone', 'untested'];
+const REMADE = { replacementMarkAfterAdmission: true };
+/** Nothing has moved since the admission, for 24 hours, and no wait explains it. */
+const STALLED = { stalled: ADMITTED };
 
 test('a resume whose job stands where it stood has no outcome yet', () => {
     expect(resumeOutcome(pending())).toBeNull();
-    // Its own record as it was before the admission, or no record at all, is not a recurrence.
-    expect(resumeOutcome(pending({ record: undefined }))).toBeNull();
-    expect(resumeOutcome(pending({ record: { openedAt: ADMITTED } }))).toBeNull();
 });
 
 test('advanced: the declared boundary is crossed', () => {
@@ -30,38 +30,55 @@ test('advanced: the declared boundary is crossed', () => {
     expect(resumeOutcome(pending({ binding: passed, job: job({ steps: [step] }), request: request({ steps: 1, stage: 'review', event: 7 }) }))).toBeNull();
 });
 
-test('recurred: the subject opened again in this incident after the admission and after the deployment mark, whatever else is true', () => {
-    const recurred = { outcome: 'recurred', detail: `The subject stopped again for this incident's cause at ${LATER}, after its resume.` };
+test('recurred: the ledger recorded the subject opening after the admission and the mark, whatever else is true', () => {
+    const recurred = { outcome: 'recurred', detail: `The subject stopped again for this incident's cause, seen at ${LATER}, after its resume.` };
     expect(resumeOutcome(pending(REOPENED))).toEqual(recurred);
     // It outranks every other reading, and replaces every outcome recorded before it.
-    expect(resumeOutcome(pending({ ...REOPENED, ...LEFT, ...MOVED, ...ELSEWHERE, request: undefined, job: undefined, binding: UNDECLARED }))).toEqual(recurred);
-    for (const previous of [...FINAL, 'chained'] as const) expect(resumeOutcome(pending({ ...REOPENED, previous })), previous).toEqual(recurred);
+    expect(resumeOutcome(pending({ ...REOPENED, ...LEFT, ...MOVED, ...ELSEWHERE, ...STALLED, request: undefined, job: undefined, binding: UNDECLARED }))).toEqual(recurred);
+    for (const previous of [...FINAL, 'chained', 'stalled'] as const) expect(resumeOutcome(pending({ ...REOPENED, previous })), previous).toEqual(recurred);
     // Nothing replaces it, and it is not said twice.
     expect(resumeOutcome(pending({ ...REOPENED, ...LEFT, previous: 'recurred' }))).toBeNull();
-    // Opened before the admission, or after it but before the mark that stands was made: not a recurrence under this fix.
-    expect(resumeOutcome(pending({ record: { openedAt: '2026-11-20T12:04:59.999Z' } }))).toBeNull();
-    expect(resumeOutcome(pending({ record: { openedAt: LATER }, deployedAt: '2026-11-20T12:40:00.000Z' }))).toMatchObject({ outcome: 'untested' });
-    expect(resumeOutcome(pending({ record: { openedAt: '2026-11-20T12:41:00.000Z' }, deployedAt: '2026-11-20T12:40:00.000Z' }))).toMatchObject({ outcome: 'recurred' });
+    // When the opening was seen is for the record only: the ledger's order decided that it came after.
+    expect(resumeOutcome(pending({ reopened: { at: '2026-11-20T11:00:00.000Z', stoppedAt: null } }))).toMatchObject({ outcome: 'recurred' });
+});
+
+test('a stop the project itself dated at or before the deployment mark is not a recurrence, whenever the ledger saw it', () => {
+    const opened = (stoppedAt: string | null, over: Partial<OutcomeEvidence> = {}) => resumeOutcome(pending({ reopened: { at: LATER, stoppedAt }, ...over }));
+    expect(opened('2026-11-20T12:03:00.000Z')).toBeNull();
+    expect(opened(DEPLOYED)).toBeNull();
+    expect(opened('2026-11-20T12:04:00.001Z')).toMatchObject({ outcome: 'recurred' });
+    // No date, or one that cannot be read, says nothing: the opening counts.
+    for (const stoppedAt of [null, '', 't2']) expect(opened(stoppedAt), String(stoppedAt)).toMatchObject({ outcome: 'recurred' });
+    // The mark was withdrawn and made again after the admission: a stop dated before the new mark happened while the fix was not serving, and the resume is untested.
+    const remade = '2026-11-20T12:40:00.000Z';
+    expect(opened('2026-11-20T12:35:00.000Z', { deployedAt: remade, ...REMADE })).toMatchObject({ outcome: 'untested' });
+    expect(opened(remade, { deployedAt: remade, ...REMADE })).toMatchObject({ outcome: 'untested' });
+    expect(opened('2026-11-20T12:41:00.000Z', { deployedAt: remade, ...REMADE })).toMatchObject({ outcome: 'recurred' });
+    // With that stop left out, a recorded outcome stands as usual.
+    expect(opened('2026-11-20T12:03:00.000Z', { previous: 'advanced', ...LEFT })).toBeNull();
 });
 
 test('an outcome already recorded stands, whatever the project shows later; only chained gives way', () => {
-    for (const previous of FINAL) for (const later of [LEFT, MOVED, ELSEWHERE, { request: undefined }, { job: undefined }, { deployedAt: LATER }, { binding: UNDECLARED }])
+    for (const previous of FINAL) for (const later of [LEFT, MOVED, ELSEWHERE, STALLED, { request: undefined }, { job: undefined }, REMADE, { binding: UNDECLARED }])
         expect(resumeOutcome(pending({ ...later, previous })), `${previous} ${JSON.stringify(later)}`).toBeNull();
     expect(resumeOutcome(pending({ ...LEFT, previous: 'chained' }))).toMatchObject({ outcome: 'advanced' });
     expect(resumeOutcome(pending({ ...MOVED, previous: 'chained' }))).toMatchObject({ outcome: 'moved-by-hand' });
     expect(resumeOutcome(pending({ job: undefined, previous: 'chained' }))).toMatchObject({ outcome: 'gone' });
-    expect(resumeOutcome(pending({ deployedAt: LATER, previous: 'chained' }))).toMatchObject({ outcome: 'untested' });
+    expect(resumeOutcome(pending({ ...REMADE, previous: 'chained' }))).toMatchObject({ outcome: 'untested' });
     // Still chained, and still open elsewhere: nothing new to say.
     expect(resumeOutcome(pending({ ...ELSEWHERE, previous: 'chained' }))).toBeNull();
 });
 
-test('untested: the deployment mark is newer than the admission, so nothing since can be put to the fix', () => {
+test('untested: a replacement mark followed the admission, so nothing since can be put to the fix', () => {
     const untested = { outcome: 'untested', detail: 'The release that held the fix stopped serving after the resume was admitted; what happened since says nothing of the fix.' };
-    expect(resumeOutcome(pending({ deployedAt: LATER }))).toEqual(untested);
+    // A replacement mark appended later still counts after a clock step. A recurrence takes priority.
+    expect(resumeOutcome(pending({ ...LEFT, ...REMADE }))).toEqual(untested);
+    expect(resumeOutcome(pending({ ...REOPENED, ...REMADE }))).toMatchObject({ outcome: 'recurred' });
     // Ahead of everything but a recurrence: a boundary crossed, a move, a missing request.
-    expect(resumeOutcome(pending({ deployedAt: LATER, ...LEFT, ...MOVED, request: undefined }))).toEqual(untested);
-    // A mark made at the admission's own instant is not newer.
-    expect(resumeOutcome(pending({ deployedAt: ADMITTED, ...LEFT }))).toMatchObject({ outcome: 'advanced' });
+    expect(resumeOutcome(pending({ ...REMADE, ...LEFT, ...MOVED, request: undefined }))).toEqual(untested);
+    // The clock can step back under the original mark.
+    expect(resumeOutcome(pending({ deployedAt: LATER }))).toBeNull();
+    expect(resumeOutcome(pending({ deployedAt: LATER, ...LEFT }))).toMatchObject({ outcome: 'advanced' });
 });
 
 test('gone: the project no longer holds the resume\'s request, or the job is missing or cancelled with the boundary uncrossed', () => {
@@ -108,9 +125,34 @@ test('chained: the job or the resume\'s request opened in another incident after
 });
 
 test('the same evidence gives the same reading, however often it is asked', () => {
-    for (const evidence of [pending(), pending(LEFT), pending(MOVED), pending(ELSEWHERE), pending(REOPENED), pending({ job: undefined })]) {
+    for (const evidence of [pending(), pending(LEFT), pending(MOVED), pending(ELSEWHERE), pending(STALLED), pending(REOPENED), pending({ job: undefined })]) {
         const frozen = JSON.stringify(evidence), first = resumeOutcome(evidence);
         expect(resumeOutcome(evidence)).toEqual(first);
         expect(JSON.stringify(evidence)).toBe(frozen);
     }
+});
+
+test('stalled: nothing has moved for 24 hours; said after every final reading, ahead of chained, and once', () => {
+    const stalled = { outcome: 'stalled', detail: `Nothing has moved for this resume since ${ADMITTED}: 24 hours without progress, and no wait that explains it.` };
+    expect(resumeOutcome(pending(STALLED))).toEqual(stalled);
+    // A resume that also ran into another stop is stalled, not chained; and one already called chained becomes stalled.
+    expect(resumeOutcome(pending({ ...STALLED, ...ELSEWHERE }))).toEqual(stalled);
+    expect(resumeOutcome(pending({ ...STALLED, previous: 'chained' }))).toEqual(stalled);
+    // Anything final comes first.
+    expect(resumeOutcome(pending({ ...STALLED, ...LEFT }))).toMatchObject({ outcome: 'advanced' });
+    expect(resumeOutcome(pending({ ...STALLED, ...MOVED }))).toMatchObject({ outcome: 'moved-by-hand' });
+    expect(resumeOutcome(pending({ ...STALLED, job: undefined }))).toMatchObject({ outcome: 'gone' });
+    expect(resumeOutcome(pending({ ...STALLED, binding: UNDECLARED }))).toMatchObject({ outcome: 'untested' });
+    expect(resumeOutcome(pending({ ...STALLED, ...REMADE }))).toMatchObject({ outcome: 'untested' });
+});
+
+test('a stalled resume is not final: anything final replaces it; it is not said again and does not go back to chained', () => {
+    expect(resumeOutcome(pending({ previous: 'stalled' }))).toBeNull();
+    expect(resumeOutcome(pending({ ...STALLED, previous: 'stalled' }))).toBeNull();
+    expect(resumeOutcome(pending({ ...ELSEWHERE, previous: 'stalled' }))).toBeNull();
+    expect(resumeOutcome(pending({ ...LEFT, previous: 'stalled' }))).toMatchObject({ outcome: 'advanced' });
+    expect(resumeOutcome(pending({ ...MOVED, previous: 'stalled' }))).toMatchObject({ outcome: 'moved-by-hand' });
+    expect(resumeOutcome(pending({ job: undefined, previous: 'stalled' }))).toMatchObject({ outcome: 'gone' });
+    expect(resumeOutcome(pending({ ...REMADE, previous: 'stalled' }))).toMatchObject({ outcome: 'untested' });
+    expect(resumeOutcome(pending({ ...REOPENED, previous: 'stalled' }))).toMatchObject({ outcome: 'recurred' });
 });

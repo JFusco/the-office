@@ -35,3 +35,21 @@ test('a fix is withdrawn only from deployed, and returns the incident to shipped
     expect(nextState('deployed', 'fix-withdrawn')).toBe('shipped');
     for (const state of STATES.filter(state => state !== 'deployed')) expect(() => nextState(state, 'fix-withdrawn')).toThrow(`An incident that is ${state} cannot record fix-withdrawn; it must be deployed`);
 });
+
+test('an incident is verified only from deployed, and recurs only from deployed or verified', () => {
+    for (const state of STATES) {
+        if (state === 'deployed') expect(nextState(state, 'incident-verified')).toBe('verified');
+        else expect(() => nextState(state, 'incident-verified')).toThrow(`An incident that is ${state} cannot record incident-verified; it must be deployed`);
+        if (['deployed', 'verified'].includes(state)) expect(nextState(state, 'incident-recurred')).toBe('recurred');
+        else expect(() => nextState(state, 'incident-recurred')).toThrow(`An incident that is ${state} cannot record incident-recurred; it must be deployed or verified`);
+    }
+});
+
+test('a verified incident accepts nothing but its recurrence; a recurred one can be repaired again or dismissed', () => {
+    for (const event of ['repair-started', 'fix-bound', 'fix-deployed', 'fix-withdrawn', 'incident-verified', 'dismissed', 'dismissal-invalidated'] as const)
+        expect(() => nextState('verified', event), event).toThrow(/An incident that is verified cannot record/);
+    expect(nextState('recurred', 'repair-started')).toBe('fixing');
+    expect(nextState('recurred', 'dismissed')).toBe('dismissed');
+    for (const event of ['fix-bound', 'fix-deployed', 'fix-withdrawn', 'incident-verified', 'incident-recurred', 'dismissal-invalidated'] as const)
+        expect(() => nextState('recurred', event), event).toThrow(/An incident that is recurred cannot record/);
+});

@@ -190,7 +190,7 @@ investigation and not dismissed, the third one incident with its event history.
 | `expected` | The kind of wait when the stop is one the Office already understands (`hold`, `decision`, `merge-approval`, `prerequisite`, `pause`, `authentication`, `provider-wait`, `retry`, `uncertain-effect`, `question`). Each subject has its own; the incident's is the one every open subject shares, or `null`. |
 | `research` | Whether the incident may be investigated now, and why: no explanation, or an expected wait that came back after two resumes, holds three subjects or two projects, or stood 24 hours. Withdrawn as soon as none of those holds. |
 | `subjects` | Each affected piece of work: project, kind, ID, stage, saved stop, the run that last worked it, candidate head, whether a write is unsettled, `open` or `cleared`, and its episodes. Every return after a clear is one episode. |
-| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`, then `deployed` once the Office finds that fix in the release it runs. It returns to `shipped` if the running release lacks the fix or can no longer be verified. `dismissed` while a false-positive verdict stands; back to `observed` when it lapses. The remaining states are set by later phases. |
+| `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`, then `deployed` once the Office finds that fix in the release it runs. It returns to `shipped` if the running release is confirmed to lack the fix or its identity is unknown. `dismissed` while a false-positive verdict stands; back to `observed` when it lapses. `verified` once its resumes show the fix worked, and `recurred` when the ledger sees the cause stop work again (see When an incident is verified or has recurred). The remaining states are set by later phases. |
 | `repair`, `fixes` | The repair issue and the subjects it is for; every fix bound so far, with what it declares per subject. A fix found in the running release carries `deployed`: the release commit, its hash, the deployment that activated it and when. The first recorded judgment adds `outcomes` to the fix, with one entry per subject judged so far. The field is absent while all admitted resumes for the fix are pending. See [What became of a resume](#what-became-of-a-resume). |
 | `dismissals` | Every false-positive verdict recorded: its reason, the evidence packet and source files it was tied to, the subjects it covered, and `lapsed` with the reason once it no longer holds. |
 
@@ -244,8 +244,9 @@ resume from after the fix; see Resuming after a fix.
    `record-settled`), `undeclared-boundary` (a route and a `reason`) and `no-route` (a `reason`).
    A route is checked as you bind it; the Office refuses one that could never resume its subject
    and tells you why (see Resuming after a fix). A boundary is not checked against its route.
-   One the route never reaches leaves the resume pending; a `stage-left` for a stage the job was
-   not at when it was resumed is recorded `untested` (see What became of a resume).
+   One the route never reaches leaves the resume pending, and `stalled` once 24 quiet hours have
+   passed; a `stage-left` for a stage the job was not at when it was resumed is recorded
+   `untested` (see What became of a resume).
 
 Each write prints an event ID before it is sent. If no answer comes back, send the same command
 again with `--event` and that ID: it is recorded once. If the Office answers that the incident is
@@ -282,7 +283,7 @@ incident stays `shipped`, read `release` in `/api/health` first; that is the cur
 A `release-identity-unknown` event in an incident's history is a record of one moment: that fix,
 compared with the release that ran then. It is not withdrawn when a later release is verified.
 
-`deployed` lasts only while the running release holds the fix. The Office checks every minute:
+The Office checks each `deployed` incident against the running release every minute:
 
 - **A rollback.** If the release that runs now does not contain the fix commit, the incident
   returns to `shipped` and records `fix-withdrawn`. Its fix shows `withdrawn` in place of
@@ -495,22 +496,35 @@ reason, as `resume-refused`:
 ### What became of a resume
 
 Once a resume is queued, the Office reads each minute what became of it and records the outcome
-once, in the incident's history as `resume-outcome` and on the fix as `outcomes`. It reads the
-project's own records and the ledger; nothing is asked of a model, and no project is written.
-The incident stays `deployed` whatever the outcome: the Office does not yet move it to `verified`
-or `recurred`, and no deadline applies to a resume that shows nothing.
+once, in the incident's history as `resume-outcome` and on the fix as `outcomes`. It does so only
+while the release it runs is verified and known to hold the fix. Judging pauses while a release
+comparison is pending. The pass uses the project's records and the ledger without asking a model,
+and writes outcomes only to the ledger.
+What the outcomes amount to for the incident is decided separately (see When an incident is
+verified or has recurred).
 
 | Outcome | Meaning |
 | --- | --- |
 | `advanced` | The boundary the fix declared was crossed after the resume was queued. It counts whichever automatic path crossed it: the resume's request, a later recovery request or a restart. |
-| `recurred` | The work stopped again for this incident's cause after the resume, in a release that held the fix. This replaces any outcome recorded before it, and nothing replaces it. |
+| `recurred` | The ledger recorded the work stopping again for this incident's cause after the resume and after the fix was found in the running release. This replaces any outcome recorded before it, and nothing replaces it. |
 | `chained` | Before anything else could be said, the job, or the request the resume queued, stopped for another cause; the detail names that incident. Not final: any other outcome replaces it. |
+| `stalled` | Nothing has moved for 24 hours and no wait the Office understands explains it; the detail says since when. Not final: any outcome but `chained` replaces it, and it replaces `chained`. |
 | `moved-by-hand` | An operator's command for the ticket followed the resume (PR preparation, a candidate base update, a candidate or PR review recheck, a requeued implementation). The boundary is not read after that, and the move is found even if the job is gone since. |
 | `gone` | The job is missing or cancelled with the boundary not crossed, or the project no longer holds the request. |
 | `untested` | Nothing can show whether the repair worked: the fix declared the boundary undeclared; the boundary cannot be judged for this job; the release that held the fix stopped serving after the resume was queued; or the resume was queued by a release that did not yet record how the job stood. |
 
 A resume with no entry is still pending. `moved-by-hand`, `gone` and `untested` say nothing about
-the repair either way. An outcome other than `chained` stays as recorded unless the work recurs.
+the repair either way. An outcome other than `chained` or `stalled` stays as recorded unless the
+work recurs.
+
+The 24 hours of `stalled` run from the latest of: the resume being queued, the last run of the job
+or of the request the resume queued (a run in progress counts up to its last heartbeat), and the
+last time the ledger saw the work stop, stop anew or clear, in any incident. The Office suppresses
+a `stalled` judgment while the project is paused or draining or the work is open in the ledger
+under an `expected` wait such as a hold, a decision, a merge approval, a prerequisite or a
+provider wait. Time spent waiting still counts toward the 24 hours if nothing moves. A resume
+quiet since admission can be `stalled` at hour 24 even if its project was paused for the first
+20 hours.
 
 What each boundary reads, for a delivery job:
 
@@ -543,8 +557,59 @@ merged by its owner is `gone`, not `advanced`, unless the boundary was crossed f
 
 If the request a resume queued stops, that also shows up like any other stopped request.
 
-`resumes` goes away when the Office withdraws the deployment mark and returns the incident to
-`shipped` (see When a fix counts as deployed).
+### When an incident is verified or has recurred
+
+After the outcomes are read, the Office decides each minute whether they amount to something for
+the incident. For a `deployed` incident, it requires a verified running release known to hold
+the fix. While a release comparison is pending or inconclusive, the incident stays `deployed`
+and judging and settlement pause. If the comparison confirms the fix, both resume under the
+same deployment mark. The withdrawal pass returns the incident to `shipped` only if the release
+identity is unknown or the comparison confirms the fix is absent.
+
+A `deployed` incident becomes:
+
+- `recurred` as soon as the cause stops work again with the fix deployed: a resume's outcome is
+  `recurred`, or the ledger records any work of the incident stopping after it recorded the fix
+  as found in the running release, whether or not that work was resumed and whether or not the
+  fix names it. The first such stop decides; the other work is not waited for. "After" is the
+  order the ledger wrote things in, not the times on them. If the projection still holds the
+  subject's stop date, a stop the project dated at or before the deployment mark is excluded.
+  Once the projection drops the subject, append order alone decides.
+- `verified` once every piece of work the fix names is accounted for and at least one resume
+  `advanced`. Accounted for means: the fix gave it no route; or its stop cleared or changed
+  without a resume; or its resume ended `advanced`, `moved-by-hand`, `gone` or `untested`. Work
+  still waiting to be resumed, a resume that is pending, `chained` or `stalled`, and work the fix
+  bound to a route this release cannot dispatch (its standing also reads `no-route`, but it is
+  still stopped as bound) are not accounted for.
+
+Otherwise it stays `deployed`. In particular a fix none of whose resumes `advanced` is never
+verified by the Office, however the others ended, and an incident that is only stalled or chained
+stays where it is for you to read.
+
+A `verified` incident becomes `recurred` when the ledger first records another stop for the same
+cause after the verification event, whatever release is running. A stop dated at or before
+deployment is excluded while the projection still holds the subject's stop date. Once the
+projection drops the subject, append order alone decides. The incident stays `verified` through
+a rollback and can accept a repair or dismissal once it recurs. The `verified` record keeps
+the fix, the verification event and its time after recurrence.
+
+A `recurred` incident keeps its fix, what the fix declared and every outcome. You can start a new
+repair for it or dismiss it, as for an observed one.
+
+What follows from leaving `deployed`, on the next pass:
+
+- Work of the incident that was still being held for the repair and had not been resumed is no
+  longer held. It goes back to ordinary recovery, restarts and follow-ups, as before the repair.
+- No further resume is queued for the fix, and resumes still pending are no longer read.
+- `deployed` on the fix is no longer kept true of the running release; read it as the release the
+  fix was last found in.
+
+History shows each move once, as `incident-verified` or `incident-recurred`, with the work that
+decided it.
+
+`resumes` is `null` in the incident's status whenever the incident is not `deployed`: after the
+Office withdraws the deployment mark and returns it to `shipped` (see When a fix counts as
+deployed), and after it becomes `verified` or `recurred`.
 
 ### What to expect
 

@@ -53,19 +53,41 @@ export class IncidentLedger {
         return this.read(() => { const row = this.db.prepare('SELECT body FROM incident_events WHERE id=?').get(id) as { body: string } | undefined; return row ? JSON.parse(row.body) as IncidentEvent : null; }, null);
     }
 
-    /** How often a subject was observed in an incident, and when first and when it last opened, from the event history; null if never. */
-    subjectHistory(incident: string, subject: string): { episodes: number; firstObservedAt: string; lastOpenedAt: string } | null {
+    /** Whether both events are recorded and the first was appended after the second. */
+    eventFollows(event: string, earlier: string): boolean {
+        return this.read(() => !!this.db.prepare(
+            'SELECT 1 FROM incident_events AS later JOIN incident_events AS earlier ON later.seq > earlier.seq WHERE later.id=? AND earlier.id=?',
+        ).get(event, earlier), false);
+    }
+
+    /** How often a subject was observed in an incident, and when first, from the event history; null if never. */
+    subjectHistory(incident: string, subject: string): { episodes: number; firstObservedAt: string } | null {
         return this.read(() => {
-            const row = this.db.prepare(`
-                WITH openings AS (
-                    SELECT seq, at FROM incident_events
-                    WHERE incident=? AND kind IN ('subject-observed','episode-observed') AND json_extract(body,'$.body.subject')=?
-                )
-                SELECT COUNT(*) AS episodes, MIN(at) AS first,
-                       (SELECT at FROM openings ORDER BY seq DESC LIMIT 1) AS last
-                FROM openings
-            `).get(incident, subject) as { episodes: number; first: string | null; last: string | null };
-            return row.episodes && row.first && row.last ? { episodes: row.episodes, firstObservedAt: row.first, lastOpenedAt: row.last } : null;
+            const row = this.db.prepare("SELECT COUNT(*) AS episodes, MIN(at) AS first FROM incident_events WHERE incident=? AND kind IN ('subject-observed','episode-observed') AND json_extract(body,'$.body.subject')=?").get(incident, subject) as { episodes: number; first: string | null };
+            return row.episodes && row.first ? { episodes: row.episodes, firstObservedAt: row.first } : null;
+        }, null);
+    }
+
+    /**
+     * The subjects of an incident that opened after every one of the given events was appended,
+     * each with when its latest such opening was recorded. By append order, not by clock: an
+     * opening is after an event when the ledger wrote it later, whatever their times say. Of the
+     * events given, those the ledger does not hold are not waited for; with none held, or none
+     * given, nothing has opened since.
+     */
+    openedAfter(incident: string, events: readonly string[]): { subject: string; at: string }[] {
+        return this.read(() => {
+            const rows = this.db.prepare(`SELECT json_extract(body,'$.body.subject') AS subject, at FROM incident_events WHERE incident=? AND kind IN ('subject-observed','episode-observed') AND seq > (SELECT MAX(seq) FROM incident_events WHERE id IN (${events.map(() => '?').join(',')})) ORDER BY seq`)
+                .all(incident, ...events) as { subject: string; at: string }[];
+            return [...new Map(rows.map(row => [row.subject, row])).values()].map(({ subject, at }) => ({ subject, at }));
+        }, []);
+    }
+
+    /** When a subject's standing last changed in any incident: the last time it was first seen, opened another episode or cleared, by append order; null if never. */
+    subjectChangedAt(subject: string): string | null {
+        return this.read(() => {
+            const row = this.db.prepare("SELECT at FROM incident_events WHERE kind IN ('subject-observed','episode-observed','subject-cleared') AND json_extract(body,'$.body.subject')=? ORDER BY seq DESC LIMIT 1").get(subject) as { at: string } | undefined;
+            return row?.at ?? null;
         }, null);
     }
 

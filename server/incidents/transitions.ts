@@ -6,13 +6,18 @@ import type { IncidentState } from '../../src/contracts/incidents';
  * `fix-bound` and `dismissed` are written through the Office by a person or the repair runner;
  * `fix-deployed`, `fix-withdrawn` and `dismissal-invalidated` only by the Office itself, when the
  * release it runs holds the fix (see deployed-fixes.ts), no longer does (see withdrawn-fixes.ts)
- * or a dismissal no longer holds (see dismissal-validity.ts).
+ * or a dismissal no longer holds (see dismissal-validity.ts); `incident-verified` and
+ * `incident-recurred` only by the Office itself, from what became of the fix's resumes and from
+ * the cause stopping work again (see repair/settle-incidents.ts). A verified incident accepts
+ * nothing but that recurrence; a recurred one can be repaired again or dismissed.
  */
 const TRANSITIONS = {
     'repair-started': { from: ['observed', 'triaged', 'recurred'], to: () => 'fixing' },
     'fix-bound': { from: ['fixing'], to: (onMain: boolean) => onMain ? 'shipped' : 'fixing' },
     'fix-deployed': { from: ['shipped'], to: () => 'deployed' },
     'fix-withdrawn': { from: ['deployed'], to: () => 'shipped' },
+    'incident-verified': { from: ['deployed'], to: () => 'verified' },
+    'incident-recurred': { from: ['deployed', 'verified'], to: () => 'recurred' },
     'dismissed': { from: ['observed', 'triaged', 'recurred'], to: () => 'dismissed' },
     'dismissal-invalidated': { from: ['dismissed'], to: () => 'observed' },
 } as const satisfies Record<string, { from: readonly IncidentState[]; to: (onMain: boolean) => IncidentState }>;
