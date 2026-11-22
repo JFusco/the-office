@@ -6,6 +6,7 @@ import { withAssignment } from '../../../../server/workers/assignment-context';
 import { artifact, digest } from '../../../../server/store/readback-evidence';
 import { reconcileStoppedBaseUpdate, stoppedBaseUpdateCandidate } from '../../../../server/delivery/recovery/stopped-base-update';
 import type { HarnessRequest, WorkTime } from '../../../../src/shared';
+import { savedState } from '../../store/saved-state';
 const facts = vi.hoisted(() => ({ current: {} as any, drift: false, positive: true, completed: false, resultFile: {} as any, completionFile: {} as any }));
 vi.mock('../../../../server/delivery/recovery/stopped-base-original', () => ({ readStoppedBaseOriginal: () => structuredClone(facts.current.original) }));
 vi.mock('../../../../server/delivery/recovery/stopped-base-native', () => ({ readStoppedClaudeNative: () => structuredClone(facts.current.native) }));
@@ -46,7 +47,7 @@ function fixture() {
     f.delivery.engine.agents.run = vi.fn(async () => {
         calls++;
         expect(job.stoppedBaseUpdate!.audit.state).toBe('dispatched');
-        const saved = JSON.parse((f.store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string }).body);
+        const saved = savedState<any>(f.store);
         expect(saved.coordination.jobs.find((j: any) => j.id === job.id).stoppedBaseUpdate.audit.state).toBe('dispatched');
         expect(JSON.parse(readFileSync(resolve(f.store.dataRoot, 'ticket-work', job.id, `stopped-base-input-${request.head}.json`), 'utf8'))).toMatchObject(input);
         throw new Error('Ambiguous return after dispatch');

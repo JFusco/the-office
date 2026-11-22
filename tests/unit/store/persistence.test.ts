@@ -9,6 +9,7 @@ import { projectById } from '../../../server/office/projects';
 import { coordination, Coordinator } from '../../../server/scheduling/coordination';
 import { Engine } from '../../../server/scheduling/engine';
 import type { EffectIntent, WorkTime } from '../../../src/shared';
+import { savedState } from './saved-state';
 const stores: {
     close(): void;
 }[] = [];
@@ -32,10 +33,7 @@ test('failed transition rolls back domain records, effect intents and events bef
     expect(observed).toBe(0);
     store.transition('fixture', 'Committed', () => { store.state.pilotKey = 'GH-999'; });
     expect(observed).toBe(1);
-    const saved = store.db.prepare('SELECT body FROM state').get() as {
-        body: string;
-    };
-    expect(JSON.parse(saved.body).pilotKey).toBe('GH-999');
+    expect(savedState(store).pilotKey).toBe('GH-999');
 });
 test('stopping work retains its unique claim until termination is established', () => {
     const store = setup(), claim = store.claimWork(work, 'owner', 'implement')!;

@@ -6,6 +6,7 @@ import { readStoppedBaseOriginal } from '../../../../server/delivery/recovery/st
 import { workerProfile } from '../../../../server/workers/worker-profiles';
 import * as processTools from '../../../../server/workers/process';
 import type { WorkTime } from '../../../../src/shared';
+import { savedStateText } from '../../store/saved-state';
 
 afterEach(() => { vi.restoreAllMocks(); cleanupFakes(); });
 function fixture() {
@@ -52,11 +53,11 @@ test.each(['ticket-work', 'job'])('a symlink at %s cannot redirect the retained 
     renameSync(ancestor, outside); symlinkSync(outside, ancestor, 'dir');
     expect(f.records['assignment.json'].scope.worktree).toBe(f.job.worktree);
     f.store.save();
-    const before = JSON.stringify({ job: f.job, work: f.work }), saved = f.store.db.prepare('SELECT body FROM state WHERE id=1').get();
+    const before = JSON.stringify({ job: f.job, work: f.work }), saved = savedStateText(f.store);
     const artifacts = Object.keys(f.records).map(name => ({ path: resolve(f.root, name), bytes: readFileSync(resolve(f.root, name)) }));
     expect(f.run).toThrow('must not contain symbolic links');
     expect(JSON.stringify({ job: f.job, work: f.work })).toBe(before);
-    expect(f.store.db.prepare('SELECT body FROM state WHERE id=1').get()).toEqual(saved);
+    expect(savedStateText(f.store)).toEqual(saved);
     for (const file of artifacts) expect(readFileSync(file.path)).toEqual(file.bytes);
     expect(f.state.calls).toEqual([]);
 });

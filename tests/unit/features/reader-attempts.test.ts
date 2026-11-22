@@ -9,6 +9,7 @@ import { beginReader, acceptReader } from '../../../server/features/reader-attem
 import { FeatureWorkflow } from '../../../server/features/workflow';
 import { featureById, commandFeature } from '../../../server/features/commands';
 import { fixture } from './test-store';
+import { savedState } from '../store/saved-state';
 test('a late same-revision reader preserves evidence without replacing the current brief', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'office-feature-reader-')), store = new Store(':memory:', projectById('brain'), root);
     try {
@@ -35,7 +36,7 @@ test('malformed plan output persists a failed attempt and blocked feature after 
         // A rollback restores the state in place, so the feature a caller holds is still the live one.
         expect(current).toBe(f.feature);
         expect(current.status).toBe('blocked'); expect(current.attempts[0].status).toBe('failed');
-        const persisted = JSON.parse((f.store.db.prepare('SELECT body FROM state WHERE id=1').get() as any).body).features[0];
+        const persisted = savedState<any>(f.store).features[0];
         expect(persisted.status).toBe('blocked'); expect(persisted.attempts[0].status).toBe('failed');
     } finally { f.close(); }
 });

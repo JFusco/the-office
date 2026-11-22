@@ -5,6 +5,7 @@ import { HOLDS } from '../../../../server/office/config';
 import { enqueueRequest } from '../../../../server/scheduling/requests';
 import { withAssignment } from '../../../../server/workers/assignment-context';
 import type { TicketJob } from '../../../../src/shared';
+import { savedState } from '../../store/saved-state';
 
 afterEach(() => { delete HOLDS['GH-5']; cleanupFakes(); });
 function fixture() {
@@ -32,7 +33,7 @@ function fixture() {
     const worker = vi.fn(async () => { throw new Error('No source worker is authorized in this recovery'); });
     f.engine.agents.run = worker as any;
     const reconcile = (ownership = owner) => withAssignment(claim, 'delivery', () => reconcileBoardPreflight(f.delivery, request, ownership));
-    const persistedJob = (): TicketJob => JSON.parse((f.store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string }).body).coordination.jobs.find((current: TicketJob) => current.id === job.id);
+    const persistedJob = (): TicketJob => savedState<any>(f.store).coordination.jobs.find((current: TicketJob) => current.id === job.id);
     f.store.save();
     return { f, job, request, claim, owner, reconcile, worker, persistedJob, writes: () => writes, afterRead: (fn: typeof afterRead) => { afterRead = fn; } };
 }

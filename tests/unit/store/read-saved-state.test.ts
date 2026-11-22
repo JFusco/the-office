@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readSavedState } from '../../../server/store/read-saved-state';
+import { Store } from '../../../server/store/store';
+import { projectById } from '../../../server/office/projects';
+import { sanitizeObject } from '../../../server/office/security';
 
 const dirs: string[] = [];
 function database(body?: string, wal = false) {
@@ -31,6 +34,21 @@ describe('readSavedState', () => {
         const before = statSync(path).mtimeMs;
         expect(readSavedState(path)).toEqual({ tickets: [], outbox: [] });
         expect(statSync(path).mtimeMs).toBe(before);
+    });
+
+    it('reads a store the service wrote as the service would on restart, with or without its whole row', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'office-saved-state-')); dirs.push(dir);
+        const path = join(dir, 'office.sqlite'), store = new Store(path, projectById('brain'), dir);
+        store.state.pilotKey = 'GH-7'; store.save();
+        const expected = JSON.parse(JSON.stringify(sanitizeObject(store.state)));
+        expect(readSavedState(path)).toEqual(expected);
+        // Without the whole row the parts are the state.
+        store.db.exec('DELETE FROM state');
+        expect(readSavedState(path)).toEqual(expected);
+        // A row that differs from the parts was written without them, and is the state.
+        store.db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(JSON.stringify({ pilotKey: 'GH-8' }));
+        expect(readSavedState(path)).toEqual({ pilotKey: 'GH-8' });
+        store.close();
     });
 
     it('returns null when no state row or no database exists, and creates nothing', () => {
