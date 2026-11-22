@@ -103,7 +103,8 @@ export function verifiedCloseoutCleanupRequest(store:Store,request:import('../..
   if(request.action!=='cleanup-merged-candidate'||request.lane!=='delivery')return false;
   const jobs=store.state.coordination?.jobs?.filter(j=>j.key===request.key&&j.status!=='cancelled')||[];if(jobs.length!==1)return false;
   const job=jobs[0],r=job.closeoutRecovery;if(job.stage!=='closeout'||!['blocked','interrupted'].includes(job.status)||!job.mergeCommit||!r||r.status!=='cleanup-pending'||request.id!==r.cleanupRequestId||request.head!==r.originalWorkId)return false;
-  const file=artifact(store,r.proofPath);if(file.sha256!==r.proofSha256)return false;const proof=JSON.parse(readFileSync(file.path,'utf8')),original=proof.original;
+  // Read once: the bytes parsed are the bytes whose hash was compared.
+  const saved=readArtifact(store,r.proofPath);if(saved.file.sha256!==r.proofSha256)return false;const proof=JSON.parse(saved.bytes.toString('utf8')),original=proof.original;
   const legacy=r.kind===undefined&&proof.kind===undefined&&original?.kind===undefined;
   const kind=legacy&&original?.result?.outcome==='blocked'&&original.result.receipts?.filter((x:any)=>!x.verified||x.uncertain).length===1&&original.result.receipts.some((x:any)=>x.id==='merged-branch-cleanup'&&x.uncertain)?'cleanup-uncertain':!legacy&&r.kind===proof.kind&&proof.kind===original?.kind?proof.kind:undefined;
   if(kind!=='core-passed'&&kind!=='cleanup-uncertain')return false;
