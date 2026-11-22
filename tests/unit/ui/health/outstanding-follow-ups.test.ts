@@ -25,7 +25,7 @@ test('Ellis shows no follow-up when only routine notes remain, and counts only w
     const at = Date.parse('2026-11-18T14:00:00Z');
     const snapshot = (followUps: ITFollowUp[]) => ({ agents: [], project: { id: 'cec' }, it: { checkedAt: new Date(at).toISOString(), projectId: 'cec', followUps, reports: [] } }) as any;
     expect(itAgent(snapshot([watch, probe]), at)).toMatchObject({ activity: 'idle', task: 'No current IT follow-up.' });
-    expect(itAgent(snapshot([watch, probe, retry]), at)).toMatchObject({ activity: 'working', task: '1 operational follow-up remain.' });
+    expect(itAgent(snapshot([watch, probe, retry]), at)).toMatchObject({ activity: 'working', task: '1 operational follow-up remains.' });
     expect(itAgent(snapshot([watch, team, retry]), at)).toMatchObject({ activity: 'blocked', task: '2 operational follow-ups remain.' });
     // The full list is still there to show.
     expect(itDiagnostics(snapshot([watch, probe, retry]).it, 'cec', at)).toMatchObject({ followUps: [watch, probe, retry], status: 'retrying' });
