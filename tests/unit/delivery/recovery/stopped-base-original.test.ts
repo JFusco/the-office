@@ -6,7 +6,7 @@ import { readStoppedBaseOriginal } from '../../../../server/delivery/recovery/st
 import { workerProfile } from '../../../../server/workers/worker-profiles';
 import * as processTools from '../../../../server/workers/process';
 import type { WorkTime } from '../../../../src/shared';
-import { savedStateText } from '../../store/saved-state';
+import { savedStateText } from '../../store/saved-state-fixture';
 
 afterEach(() => { vi.restoreAllMocks(); cleanupFakes(); });
 function fixture() {

@@ -9,7 +9,7 @@ import { projectById } from '../../../server/office/projects';
 import { coordination, Coordinator } from '../../../server/scheduling/coordination';
 import { Engine } from '../../../server/scheduling/engine';
 import type { EffectIntent, WorkTime } from '../../../src/shared';
-import { savedState } from './saved-state';
+import { savedState } from './saved-state-fixture';
 const stores: {
     close(): void;
 }[] = [];

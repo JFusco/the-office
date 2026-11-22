@@ -6,7 +6,7 @@ import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { createFeature, commandFeature, featureById } from '../../../server/features/commands';
 import { document } from '../../../server/features/documents';
-import { savedState } from '../store/saved-state';
+import { savedState } from '../store/saved-state-fixture';
 let store: Store, root: string;
 beforeEach(() => { root = mkdtempSync(resolve(tmpdir(), 'office-feature-command-')); store = new Store(':memory:', projectById('brain'), root); });
 afterEach(() => { store.close(); rmSync(root, { recursive: true, force: true }); });

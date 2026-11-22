@@ -9,7 +9,7 @@ import { publishFeature, type FeaturePublisher } from '../../../server/features/
 import { featureGate } from '../../../server/features/enrollment-gate';
 import { fixture } from './test-store';
 import { commandFeature, featureById } from '../../../server/features/commands';
-import { savedState } from '../store/saved-state';
+import { savedState } from '../store/saved-state-fixture';
 test('an uncertain create retains its identity across approvals and is reconciled without dispatch', async () => {
     const root = mkdtempSync(resolve(tmpdir(), 'office-publication-')), store = new Store(':memory:', projectById('brain'), root);
     try {

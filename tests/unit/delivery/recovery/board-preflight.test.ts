@@ -5,7 +5,7 @@ import { HOLDS } from '../../../../server/office/config';
 import { enqueueRequest } from '../../../../server/scheduling/requests';
 import { withAssignment } from '../../../../server/workers/assignment-context';
 import type { TicketJob } from '../../../../src/shared';
-import { savedState } from '../../store/saved-state';
+import { savedState } from '../../store/saved-state-fixture';
 
 afterEach(() => { delete HOLDS['GH-5']; cleanupFakes(); });
 function fixture() {

@@ -6,7 +6,7 @@ import { withAssignment } from '../../../../server/workers/assignment-context';
 import { artifact, digest } from '../../../../server/store/readback-evidence';
 import { reconcileStoppedBaseUpdate, stoppedBaseUpdateCandidate } from '../../../../server/delivery/recovery/stopped-base-update';
 import type { HarnessRequest, WorkTime } from '../../../../src/shared';
-import { savedState } from '../../store/saved-state';
+import { savedState } from '../../store/saved-state-fixture';
 const facts = vi.hoisted(() => ({ current: {} as any, drift: false, positive: true, completed: false, resultFile: {} as any, completionFile: {} as any }));
 vi.mock('../../../../server/delivery/recovery/stopped-base-original', () => ({ readStoppedBaseOriginal: () => structuredClone(facts.current.original) }));
 vi.mock('../../../../server/delivery/recovery/stopped-base-native', () => ({ readStoppedClaudeNative: () => structuredClone(facts.current.native) }));

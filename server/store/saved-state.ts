@@ -42,6 +42,7 @@ export function readSaved(db: DatabaseSync): SavedSelection {
             ? db.prepare('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as PartRow[] : [];
         return selectSaved(parts, row?.body);
     } finally {
-        if (own) db.exec('ROLLBACK');
+        // SQLite may already have ended the transaction after a failed read: the first failure is the one to report.
+        if (own && db.isTransaction) db.exec('ROLLBACK');
     }
 }

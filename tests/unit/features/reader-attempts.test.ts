@@ -9,7 +9,7 @@ import { beginReader, acceptReader } from '../../../server/features/reader-attem
 import { FeatureWorkflow } from '../../../server/features/workflow';
 import { featureById, commandFeature } from '../../../server/features/commands';
 import { fixture } from './test-store';
-import { savedState } from '../store/saved-state';
+import { savedState } from '../store/saved-state-fixture';
 test('a late same-revision reader preserves evidence without replacing the current brief', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'office-feature-reader-')), store = new Store(':memory:', projectById('brain'), root);
     try {

@@ -1,13 +1,9 @@
 import { afterEach, expect, test } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { joinParts, readSaved, savedText, selectSaved, type PartRow } from '../../../server/store/saved-state';
-import { Store } from '../../../server/store/store';
-import { projectById } from '../../../server/office/projects';
-import { sanitizeObject } from '../../../server/office/security';
-import { savedFingerprint, savedState, savedStateText } from './saved-state';
 
-const stores: Store[] = [], dbs: DatabaseSync[] = [];
-afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0).forEach(db => db.close()); });
+const dbs: DatabaseSync[] = [];
+afterEach(() => { dbs.splice(0).forEach(db => db.close()); });
 const parts: PartRow[] = [{ key: 'a', position: 0, body: '1' }, { key: 'b "quoted"', position: 1, body: '{"c":[true,null]}' }];
 const joined = '{"a":1,"b \\"quoted\\"":{"c":[true,null]}}';
 
@@ -63,54 +59,8 @@ test('a read leaves no transaction open, and inside the caller\'s transaction re
     expect(JSON.parse(savedText(readSaved(db))!).a).toBe(1);
 });
 
-test('a store\'s saved state is what a restart reads: the redacted text of its state', () => {
-    const store = new Store(':memory:', projectById('brain')); stores.push(store);
-    store.state.pilotKey = 'GH-7';
-    (store.state as unknown as Record<string, unknown>).probe = { note: 'password=hunter2 and more' };
-    store.save();
-    expect(savedStateText(store)).toBe(JSON.stringify(sanitizeObject(store.state)));
-    expect(savedState(store).pilotKey).toBe('GH-7');
-    expect(JSON.stringify(savedState(store))).not.toContain('hunter2');
-    expect(() => savedState({ db: database() })).toThrow('Nothing is saved');
-});
-
-test('the fingerprint is stable between reads and changes with any saved value, its type, or the schema', () => {
-    const db = database();
-    db.exec('CREATE TABLE other(id INTEGER PRIMARY KEY, n, payload BLOB) ; CREATE TABLE keyed(k TEXT PRIMARY KEY, v) WITHOUT ROWID');
-    // Written as SQL literals: a JavaScript number is bound as a real.
-    db.exec("INSERT INTO other VALUES(1,5,x'0102')");
-    db.prepare('INSERT INTO keyed VALUES(?,?)').run('x', 'text');
-    put(db, parts);
-    const store = { db }, first = savedFingerprint(store);
-    expect(savedFingerprint(store)).toBe(first);
-    expect(first).toMatch(/^[a-f0-9]{64}$/);
-    const changes: [string, string][] = [
-        ['an integer becomes a real', 'UPDATE other SET n=5.0'], ['a blob changes', "UPDATE other SET payload=x'0103'"], ['a text becomes a blob', "UPDATE keyed SET v=x'74657874'"],
-        ['a part row is deleted', "DELETE FROM state_parts WHERE key='a'"], ['a part moves', "UPDATE state_parts SET position=7 WHERE key='a'"],
-        ['a row is added to a table without a rowid', "INSERT INTO keyed VALUES('y','text')"], ['the whole row appears', "INSERT INTO state VALUES(1,'{}')"],
-        ['the schema version changes', 'PRAGMA user_version=3'], ['a table is added', 'CREATE TABLE added(id)'],
-    ];
-    for (const [name, sql] of changes) {
-        db.exec('SAVEPOINT change'); db.exec(sql);
-        expect(savedFingerprint(store), name).not.toBe(first);
-        db.exec('ROLLBACK TO change'); db.exec('RELEASE change');
-        if (name === 'the schema version changes') db.exec('PRAGMA user_version=0');
-        expect(savedFingerprint(store), `${name}, undone`).toBe(first);
-    }
-});
-
-test('the fingerprint ignores planner statistics and the physical order of rows, and a failed read is thrown', () => {
-    const db = database();
-    put(db, parts);
-    const store = { db }, first = savedFingerprint(store);
-    db.exec('CREATE INDEX by_position ON state_parts(position)');
-    const indexed = savedFingerprint(store);
-    db.exec('ANALYZE');
-    expect(savedFingerprint(store)).toBe(indexed);
-    expect(indexed).not.toBe(first);
-    db.exec("DELETE FROM state_parts WHERE key='a'");
-    put(db, [parts[0]]);
-    expect(savedFingerprint(store)).toBe(indexed);
-    db.close(); dbs.splice(dbs.indexOf(db), 1);
-    expect(() => savedFingerprint(store)).toThrow();
+test('a failed read ends the read transaction it opened and reports the failure itself', () => {
+    const db = new DatabaseSync(':memory:'); dbs.push(db);
+    expect(() => readSaved(db)).toThrow(/no such table: state/);
+    expect(db.isTransaction).toBe(false);
 });

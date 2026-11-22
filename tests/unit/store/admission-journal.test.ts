@@ -10,8 +10,7 @@ import { projectById } from '../../../server/office/projects';
 import { coordination } from '../../../server/scheduling/coordination';
 import { Engine } from '../../../server/scheduling/engine';
 import { officeCapacity } from '../../../server/office/projects';
-import type { OfficeSnapshot } from '../../../src/shared';
-import { savedState, savedStateText } from './saved-state';
+import { savedState, savedStateText } from './saved-state-fixture';
 
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
@@ -96,6 +95,6 @@ test('journaling adds no state save: one enqueue and one claim save exactly as o
     save.mockClear();
     s.claimWork({ projectId: s.project.id, kind: 'issue', id: 'GH-9' }, 'owner', 'implement');
     expect(save).toHaveBeenCalledTimes(1);
-    const body = savedStateText(s)!;
+    const body = savedStateText(s);
     expect(body).not.toContain('"admissions"');
 });

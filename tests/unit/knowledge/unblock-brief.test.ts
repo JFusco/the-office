@@ -4,7 +4,7 @@ import { reconcileBlockerFollowups } from '../../../server/knowledge/blocker-fol
 import { catalogLine } from '../../../server/knowledge/lookup/catalog-line';
 import { unblockBrief } from '../../../server/knowledge/unblock-brief';
 import { job, knowledgeStore, learningLesson } from './knowledge-fixture';
-import { savedState } from '../store/saved-state';
+import { savedState } from '../store/saved-state-fixture';
 
 const unblock = { known: 'The live PR body fails lint:pr.', decision: 'A metadata-only blocker is not a source repair.', next: 'Morgan republishes the validated body.' };
 const catalog = { now: { kind: 'learning' as const, ref: 'now', url: '', detail: 'Current run' } };

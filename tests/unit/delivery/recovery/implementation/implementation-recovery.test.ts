@@ -31,7 +31,7 @@ import {coordination} from '../../../../../server/scheduling/coordination';
 import {implementationRecoveryCandidate,recoverImplementation,recoveredFindingsResolved} from '../../../../../server/delivery/recovery/implementation/implementation-recovery';
 import {ITSpecialist} from '../../../../../server/it/it-specialist';
 import type {StageResult,TicketJob} from '../../../../../src/shared';
-import { savedState } from '../../../store/saved-state';
+import { savedState } from '../../../store/saved-state-fixture';
 const roots:string[]=[],stores:Store[]=[];
 afterEach(()=>{vi.restoreAllMocks();stores.splice(0).forEach(s=>s.close());roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
 function fixture(kind:'candidate'|'preflight'='candidate'){

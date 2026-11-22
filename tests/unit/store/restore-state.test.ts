@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { restoreInPlace } from '../../../server/store/restore-state';
 import { Store } from '../../../server/store/store';
-import { savedState } from './saved-state';
+import { savedState } from './saved-state-fixture';
 
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));

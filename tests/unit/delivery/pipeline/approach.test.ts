@@ -10,7 +10,7 @@ import { projectById } from '../../../../server/office/projects';
 import { publicationEvidenceGap, resultGate } from '../../../../server/cec/workflow';
 import { recordApproach, recordJobApproach, reroute, unresolvedVerification } from '../../../../server/delivery/pipeline/approach';
 import type { Evidence, Stage, StageResult, Ticket, WorkApproach } from '../../../../src/shared';
-import { savedState } from '../../store/saved-state';
+import { savedState } from '../../store/saved-state-fixture';
 const sha = 'a'.repeat(40), roots: string[] = [], stores: Store[] = [];
 afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(p => rmSync(p, { recursive: true, force: true })); });
 const small: WorkApproach = { plan: 'none', review: 'none', validation: 'developer-checks', checks: ['Relevant build/typecheck'], reason: 'A small understood change is covered by focused checks.' };
