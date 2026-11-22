@@ -115,7 +115,11 @@ export interface IncidentFix {
     onMain: boolean;
     boundAt: string;
     bindings: SubjectFix[];
-    /** Set while a verified running release is known to hold the commit, and removed when the running release no longer does. A merge or a binding never sets it. */
+    /**
+     * Recorded when a verified running release is known to hold the fix. Withdrawal removes the
+     * mark from a deployed incident. After verification or recurrence, it records the release
+     * the fix was last found in.
+     */
     deployed?: { event: string; release: { commit: string; hash: string; operation: string; activatedAt: string }; at: string };
     /**
      * The last time the mark was removed: the release it named, when it had been set, and why.
@@ -132,14 +136,15 @@ export interface IncidentFix {
  * What became of one admitted resume, as the project's own records and the ledger show it.
  * `advanced`: the boundary the fix declared was crossed after the admission. `recurred`: the
  * subject stopped again for this incident's cause after it. `chained`: the job, or the resume's
- * own request, stopped for another cause first; the only outcome that is not final.
- * `moved-by-hand`: an operator's command moved the job after the admission. `gone`: the request
- * or the job is no longer there to be read. `untested`: nothing can show whether the repair
- * worked. The last three say nothing about the repair either way.
+ * own request, stopped for another cause first. `stalled`: nothing moved for 24 hours and no
+ * wait the Office understands explains it. Those two are not final. `moved-by-hand`: an
+ * operator's command moved the job after the admission. `gone`: the request or the job is no
+ * longer there to be read. `untested`: nothing can show whether the repair worked. The last
+ * three say nothing about the repair either way.
  */
-export type ResumeOutcomeKind = 'advanced' | 'recurred' | 'chained' | 'moved-by-hand' | 'gone' | 'untested';
+export type ResumeOutcomeKind = 'advanced' | 'recurred' | 'chained' | 'stalled' | 'moved-by-hand' | 'gone' | 'untested';
 
-/** One subject's recorded outcome for a fix. Replaced only by `recurred`, or, while it is `chained`, by any other. */
+/** One subject's recorded outcome for a fix. Replaced only by `recurred`, or, while it is `chained` or `stalled`, by any other; `stalled` replaces `chained` and not the reverse. */
 export interface ResumeOutcome { subject: string; outcome: ResumeOutcomeKind; detail: string; event: string; at: string }
 
 /**
@@ -219,6 +224,8 @@ export interface Incident {
     fixes?: IncidentFix[];
     /** Every dismissal so far, oldest first; only the last can still stand. */
     dismissals?: IncidentDismissal[];
+    /** The last time the incident was verified: the event, the fix it was for and when. Kept when the cause returns and the incident becomes `recurred`. */
+    verified?: { event: string; fix: string; at: string };
 }
 
 /**
@@ -246,9 +253,10 @@ export interface EvidencePacket {
  * The first six are written by observation. `repair-started`, `fix-bound` and `dismissed` are
  * written by a person or the repair runner through the Office. `fix-deployed`, `fix-withdrawn`,
  * `release-identity-unknown`, `dismissal-invalidated`, `repair-wait-expired`, `resume-admitted`,
- * `resume-refused` and `resume-outcome` are written by the Office itself.
+ * `resume-refused`, `resume-outcome`, `incident-verified` and `incident-recurred` are written by
+ * the Office itself.
  */
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired' | 'resume-admitted' | 'resume-refused' | 'resume-outcome';
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired' | 'resume-admitted' | 'resume-refused' | 'resume-outcome' | 'incident-verified' | 'incident-recurred';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */

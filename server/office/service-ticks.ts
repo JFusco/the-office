@@ -8,6 +8,7 @@ import { admitRepairWaits } from '../incidents/repair/admit-repair-waits';
 import { judgeResumes } from '../incidents/repair/judge-resumes';
 import { dispatchResumes } from '../incidents/repair/resume-arrivals';
 import { releaseWatch } from '../incidents/repair/running-release';
+import { settleIncidents } from '../incidents/repair/settle-incidents';
 import { command } from '../workers/process';
 import { DATA, ROOT } from './config';
 import type { ServiceContext } from './http/context';
@@ -43,7 +44,9 @@ export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pic
         // Then queues, once per subject and fix, the resume a fix found in the running release bound for work still awaiting it. Local only.
         try { timedStep(offices.stepTimings, 'incidents: resumes', () => dispatchResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], control: offices.resumes, running: release.holding, now: () => new Date(), fenced })); } catch (e) { console.error(redactEvidence(String(e))); }
         // Then reads, in each project, what became of the resumes already queued, and records it in the ledger. Local only: no project store is written.
-        try { timedStep(offices.stepTimings, 'incidents: resume outcomes', () => judgeResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], now: () => new Date(), fenced })); } catch (e) { console.error(redactEvidence(String(e))); }
+        try { timedStep(offices.stepTimings, 'incidents: resume outcomes', () => judgeResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], running: release.holding, now: () => new Date(), fenced })); } catch (e) { console.error(redactEvidence(String(e))); }
+        // Then moves an incident on once those outcomes amount to something: verified, or recurred when its cause stopped work again. Ledger only.
+        try { timedStep(offices.stepTimings, 'incidents: verdicts', () => settleIncidents({ ledger: offices.incidents, running: release.holding, now: () => new Date(), fenced })); } catch (e) { console.error(redactEvidence(String(e))); }
         if (process.env.OFFICE_NO_POLL !== '1')
             void timedStep(offices.stepTimings, 'incidents: release compare (start)', () => offices.operations.run(release.compare));
     }, 60000);

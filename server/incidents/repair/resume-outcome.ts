@@ -1,19 +1,29 @@
-import type { IncidentSubjectRecord, ResumeOutcomeKind, SubjectFix } from '../../../src/contracts/incidents';
+import type { ResumeOutcomeKind, SubjectFix } from '../../../src/contracts/incidents';
 import type { HarnessRequest } from '../../../src/contracts/work';
 import type { TicketJob } from '../../../src/shared';
 import { boundaryCrossed } from './boundary-crossed';
+import { stopDatedBefore } from './stop-dated-before';
 
 /** Everything one resume's outcome is read from. Nothing here is a model's word. */
 export interface OutcomeEvidence {
     binding: Extract<SubjectFix, { route: unknown }>;
     /** When the ledger says the resume was admitted. */
     admittedAt: string;
-    /** When the fix's deployment mark, as it stands, was made. A mark made after the admission means the release was withdrawn in between. */
+    /** When the current deployment mark was made. */
     deployedAt: string;
+    /** Whether a replacement mark followed admission by ledger order or saved admission time. */
+    replacementMarkAfterAdmission: boolean;
     /** The outcome already recorded for this subject and fix. */
     previous?: ResumeOutcomeKind;
-    /** When the subject last opened in this incident: from its record, or from the history once the projection has let a cleared record go. */
-    record?: Pick<IncidentSubjectRecord, 'openedAt'>;
+    /**
+     * The subject's latest opening in this incident that the ledger recorded after the deployment
+     * mark that stands, by its own order of writing (see IncidentLedger.openedAfter): when, and
+     * the project's own date for that stop where the projection still holds the subject. Null
+     * when it has not opened since. A resume is admitted only for a subject that still stood as
+     * the fix bound it, so an opening after the mark is after the admission too, unless the mark
+     * was made again later.
+     */
+    reopened: { at: string; stoppedAt: string | null } | null;
     /** The resume's request as its project holds it. */
     request?: Pick<HarnessRequest, 'repairResume'>;
     job?: Pick<TicketJob, 'stage' | 'status' | 'steps'>;
@@ -21,6 +31,8 @@ export interface OutcomeEvidence {
     moved: { kind: string; at: string } | null;
     /** Where else the job, or the resume's own request, is open: other incidents, each with when it opened there. */
     elsewhere: readonly { incident: string; subject: string; openedAt: string }[];
+    /** When the quiet began, if nothing has moved for the resume for 24 hours and no wait explains it (see stalled-resume.ts); null otherwise. */
+    stalled: string | null;
 }
 
 export interface OutcomeReading { outcome: ResumeOutcomeKind; detail: string }
@@ -31,12 +43,13 @@ const after = (at: string, than: string) => Date.parse(at) > Date.parse(than);
  * What became of one admitted resume, or null while nothing new can be said. The first that
  * applies:
  *
- * 1. `recurred`: the subject opened again in this incident after the admission and after the
- *    deployment mark: the cause outlived the fix in a release that held it. It replaces whatever
- *    was recorded, and nothing replaces it.
- * 2. An outcome already recorded stands, unless it is `chained`.
- * 3. `untested`: the deployment mark is newer than the admission, so the release that held the
- *    fix stopped serving while the outcome was open, and what happened since says nothing of it.
+ * 1. `recurred`: the ledger recorded the subject opening again in this incident after the
+ *    deployment mark, and the project did not date that stop at or before the mark: the cause
+ *    stopped the work anew with the fix deployed. It replaces whatever was recorded, and nothing
+ *    replaces it.
+ * 2. An outcome already recorded stands, unless it is `chained` or `stalled`.
+ * 3. `untested`: a replacement deployment mark followed the admission by append order or by the saved
+ *    admission time. The release that held the fix stopped serving while the outcome was open.
  * 4. `gone`: the project no longer holds the resume's request.
  * 5. `untested`: the binding does not say how the job stood at the admission.
  * 6. `moved-by-hand`: an operator's command for the ticket followed the admission. Asked before
@@ -44,19 +57,22 @@ const after = (at: string, than: string) => Date.parse(at) > Date.parse(than);
  * 7. `untested`: the fix declared no boundary.
  * 8. `advanced`: the boundary is crossed (see boundary-crossed.ts); `untested` when it cannot be judged.
  * 9. `gone`: the job is missing or cancelled.
- * 10. `chained`: the job, or the resume's own request, opened in another incident after the
- *     admission. Recorded once; it gives way to any outcome above.
+ * 10. `stalled`: nothing has moved for 24 hours and no wait explains it. Recorded once; it
+ *     replaces `chained` and gives way to any outcome above.
+ * 11. `chained`: the job, or the resume's own request, opened in another incident after the
+ *     admission. Recorded once; it gives way to any outcome above, and is not said of a resume
+ *     already called stalled.
  *
  * Whichever automatic path crossed the boundary, the resume, IT's next request or a restart, it
  * counts: the boundary is evidence about the fix, not about the request. Pure: the same evidence
  * gives the same reading, and nothing is read here (see judge-resumes.ts for what is read when).
  */
-export function resumeOutcome({ binding, admittedAt, deployedAt, previous, record, request, job, moved, elsewhere }: OutcomeEvidence): OutcomeReading | null {
+export function resumeOutcome({ binding, admittedAt, deployedAt, replacementMarkAfterAdmission, previous, reopened, request, job, moved, elsewhere, stalled }: OutcomeEvidence): OutcomeReading | null {
     const say = (outcome: ResumeOutcomeKind, detail: string): OutcomeReading => ({ outcome, detail });
     if (previous === 'recurred') return null;
-    if (record && after(record.openedAt, admittedAt) && after(record.openedAt, deployedAt)) return say('recurred', `The subject stopped again for this incident's cause at ${record.openedAt}, after its resume.`);
-    if (previous && previous !== 'chained') return null;
-    if (after(deployedAt, admittedAt)) return say('untested', 'The release that held the fix stopped serving after the resume was admitted; what happened since says nothing of the fix.');
+    if (reopened && !stopDatedBefore(reopened.stoppedAt, deployedAt)) return say('recurred', `The subject stopped again for this incident's cause, seen at ${reopened.at}, after its resume.`);
+    if (previous && previous !== 'chained' && previous !== 'stalled') return null;
+    if (replacementMarkAfterAdmission) return say('untested', 'The release that held the fix stopped serving after the resume was admitted; what happened since says nothing of the fix.');
     if (!request?.repairResume) return say('gone', 'The project no longer holds the request this resume queued.');
     const stood = request.repairResume.stood;
     if (!stood) return say('untested', 'The resume was admitted before outcomes were judged: how the job stood then was not recorded.');
@@ -66,6 +82,8 @@ export function resumeOutcome({ binding, admittedAt, deployedAt, previous, recor
     if ('unjudged' in crossing) return say('untested', crossing.unjudged);
     if (crossing.crossed) return say('advanced', crossing.detail);
     if (!job || job.status === 'cancelled') return say('gone', job ? 'The job was cancelled before the boundary was crossed.' : 'The project no longer holds the job.');
+    if (previous === 'stalled') return null;
+    if (stalled) return say('stalled', `Nothing has moved for this resume since ${stalled}: 24 hours without progress, and no wait that explains it.`);
     if (previous === 'chained') return null;
     const link = elsewhere.find(other => after(other.openedAt, admittedAt));
     return link ? say('chained', `${link.subject} stopped for another cause after the resume (${link.incident}).`) : null;
