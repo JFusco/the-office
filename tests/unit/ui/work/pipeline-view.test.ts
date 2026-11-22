@@ -13,6 +13,7 @@ test('one line per pipeline, the failing ones first', () => {
     expect(rows[5].url).toBe('https://ci.example/sync');
     expect(pipelineHeadline(rows)).toBe('2 of 6 need a look');
     expect(pipelineHeadline(pipelineRows([pipeline('checks', true, 'passed')], now))).toBe('Nothing is failing');
+    expect(pipelineHeadline(pipelineRows([pipeline('checks', true, 'passed'), pipeline('deploy', true, 'failed')], now))).toBe('1 of 2 needs a look');
 });
 
 test('ago', () => {

@@ -39,5 +39,5 @@ export function pipelineRows(items: readonly PipelineStatus[], now: number): Pip
 export function pipelineHeadline(rows: readonly PipelineRow[]): string {
     const failing = rows.filter(r => r.attention).length;
     if (!rows.length) return '';
-    return failing ? `${failing} of ${rows.length} need a look` : 'Nothing is failing';
+    return failing ? `${failing} of ${rows.length} ${failing === 1 ? 'needs' : 'need'} a look` : 'Nothing is failing';
 }
