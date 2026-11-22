@@ -1,6 +1,7 @@
 import { pruneCompletedReads } from '../operations/request-retention';
 import { reconcileContinuations } from '../maintenance/continuations';
 import { reconcileCompletedCheckpoints } from '../maintenance/completed-checkpoints';
+import { checkpointOutcome } from '../maintenance/checkpoint-outcome';
 import { enqueueRequest } from './requests';
 import { validatePrerequisites, dependencyEligibility, dependencyCompletionKey } from '../delivery/pipeline/dependencies';
 import { reconcileReadRetries } from './read-retries';
@@ -68,11 +69,11 @@ export async function tick(this: Coordinator, now = new Date()) {
             c.listener.reviews.push({ ...review, id: crypto.randomUUID(), parentReviewId: review.id, status: 'queued', startedAt: '', endedAt: '', queuedAt: now.toISOString(), detail: 'One read-only migration review to establish structured prerequisites; original hold remains in history.', timing: [] });
     }
     for (const checkpoint of c.checkpoints.filter(checkpoint => checkpoint.status === 'working')) {
-        const run = this.store.state.maintenance?.runs.find(run => run.id === checkpoint.runId);
-        if (run && ['completed', 'blocked', 'interrupted'].includes(run.status)) {
-            checkpoint.status = run.status as 'completed' | 'blocked' | 'interrupted';
+        const outcome = checkpointOutcome(this.store.state.maintenance?.runs.find(run => run.id === checkpoint.runId));
+        if (outcome) {
+            checkpoint.status = outcome.status;
             checkpoint.endedAt = now.toISOString();
-            checkpoint.detail = run.error || `Maintenance ${run.id}: ${run.stage}`;
+            checkpoint.detail = outcome.detail;
             this.store.emit('checkpoint-finished', checkpoint.detail, 'pm');
         }
     }

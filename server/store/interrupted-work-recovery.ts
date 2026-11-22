@@ -8,6 +8,7 @@ import { goalNoticeNeverDispatched } from '../leadership/goal-notice-authorizati
 import { interruptAdoptions } from '../delivery/intake/dependency-bots/interrupted-adoptions';
 import { retireLegacyRecovery } from '../delivery/recovery/retire-legacy-recovery';
 import { maintenanceNoticeNeverDispatched } from '../maintenance/brain/maintenance-notice-authorization';
+import { checkpointOutcome } from '../maintenance/checkpoint-outcome';
 
 export function recover(this: Store, fenced = false): void  {
     this.transaction(() => {
@@ -39,6 +40,19 @@ export function recover(this: Store, fenced = false): void  {
         for (const c of coordination?.checkpoints || [])
             if (c.status === 'working') {
                 const run = this.state.maintenance?.runs.find(run => run.id === c.runId);
+                // The run finished before the service stopped, and only the coordinator tick that copies its result
+                // was missed (it does not run while a deployment holds the fence). The checkpoint ends as its run
+                // did, when its run did. Where that tick would itself be waiting (coordination off, or the project
+                // paused) the checkpoint is left for it.
+                const finished = run?.status === 'completed' && !!run.endedAt && run.checkpointId === c.id ? checkpointOutcome(run) : undefined;
+                if (finished) {
+                    if (!coordination?.enabled || this.state.paused) continue;
+                    c.status = finished.status;
+                    c.endedAt = run!.endedAt;
+                    c.detail = finished.detail;
+                    this.emit('checkpoint-finished', c.detail, 'pm');
+                    continue;
+                }
                 const activeOwnership = this.activeClaims().some(claim => [c.id, c.runId].includes(claim.work.id)) || this.state.workLog?.some(work => [c.id, c.runId].includes(work.requestId) && ['running', 'stopping'].includes(work.status));
                 const uncertainEffect = run && this.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain')").get(workKey({ projectId: this.project.id, kind: 'maintenance', id: run.id }));
                 if (run?.status === 'queued' && (!run.checkpointId || run.checkpointId === c.id) && !activeOwnership && !uncertainEffect && !run.steps.some(step => step.result.receipts.some(receipt => !receipt.verified || receipt.uncertain)) && !['working', 'interrupted'].includes(run.blockerFollowup?.status || ''))
