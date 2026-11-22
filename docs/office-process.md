@@ -1036,10 +1036,17 @@ the repair and fixes they recorded.
 
 **Resume after a fix.** Once an incident's fix is found in the running release, the Office queues,
 once per subject and fix, the recovery request the fix bound for that subject, and lifts the repair
-wait from it. It does this through the inventory above, a switch, a reading and a pass. One route
-is dispatched so far: `reconcile-review` without a head, which verifies a saved independent review
-against the unchanged pull request and issue and runs no model. Every other row, and
-`reconcile-review` with a head, is not dispatched yet.
+wait from it. It does this through the inventory above, a switch, a reading and a pass. The seven
+GitHub read-back routes are dispatched: `reconcile-implementation`, `reconcile-validation` and
+`reconcile-scope-repair`, which always need a head, and `reconcile-preparation`,
+`reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a head or as their
+saved-result form without one. Every other row is not dispatched yet.
+`reconcile-review` without a head verifies a saved independent review against the unchanged pull
+request and issue and runs no model. Several of the other handlers start a model run when the
+scheduler runs the request (the implementation, validation, scope-repair, preparation, stopped
+base update and closeout read-backs), so a resume through them is a paid run no person started.
+A stopped base handoff is read from the run it already started; no other is started. A resume is
+still one per subject and fix, and none is admitted while the switch is paused.
 
 The switch (`server/incidents/repair/resume-control.ts`) says whether automatic repair resumes are
 admitted, office-wide. It is one row on the control database beside the fence and the ledger, and
@@ -1083,13 +1090,44 @@ draining; the route is not dispatched in that form; the repair wait of that inci
 effect for the subject's exact stop, because it ran out, the stop changed, or something stronger
 explains it (see Repair wait: a hold, a decision, a merge approval, a prerequisite, an unsettled
 write, missing authority); the subject has no delivery job in that project, or the route's key is
-not that job's; another request for that key is queued or working; or the same request completed
-earlier and stands as its own answer. Otherwise, in one project transaction, the existing request
+not that job's; another request for that key is queued or working; the route's `head` is not the
+one its handler would take for that job now (`head-mismatch`, below); or the same request
+completed earlier and stands as its own answer. Otherwise, in one project transaction, the existing request
 is queued through `enqueueRequest`, marked with `repairResume` (incident, subject and digest, fix
 event and commit, action, a digest of the payload, the release, the time), and the subject's
 repair-wait marker is removed. The request's admission-journal row commits with it. No counter,
 attempt count or budget of the job is changed; the scheduler runs the request under its existing
 ownership and the handler checks its own preconditions.
+
+The head check (`server/incidents/repair/route-head.ts`) asks the handler's own admission rule,
+the function the handler itself calls when the request runs, so admission and execution cannot
+come to disagree about which run a request may read. A handler refuses any run but the one that
+rule names, and a request it refuses ends blocked with the resume spent; so a head it would not
+take is refused before anything is queued. By route: where a saved prerequisite result sends an
+implementation request to the handoff, the one latest completed writer that handoff reads, else
+the implementation recovery candidate's run; the validation candidate's; the scope-repair
+candidate's; for preparation at `draft` the published-draft candidate's, else the
+completed-conflict-draft candidate's, and at any other stage the post-conflict or ordinary
+read-back candidate's; for a base update the board preflight's commit, else the stopped base
+update's run; for closeout a pending cleanup's original run, else the closeout recovery
+candidate's; and for `reconcile-review` with a head the one run a started stopped-base handoff
+holds (already resolved, or with that run's completion on record and the job at the PR review),
+or the run of a saved negative continuation review. A form without a head is admitted only when
+the handler's saved-result form is what would run: no exact original stands, and the job is the
+one that form reads (`prepare-pr` and blocked; `update-base` and stopped; for closeout the first
+job of that key at `closeout`, cancelled ones included, since that is how the saved closeout is
+found). A base update whose dead writer run qualifies for the harness's own restart is refused in
+either form, for as long as it qualifies and so also after the six-hour restart window: that
+qualification hides the stopped run from its rule, a queued request ends it, and the handler
+would then read the run. Its work returns to a person when the wait runs out. A head given where the saved-result form would run is refused,
+also where the handler would ignore it (`reconcile-base-update`, `reconcile-review`). A job that
+shares its key with another job that is not cancelled is refused, since every handler finds its
+job by key, and a rule that throws is a refusal. `reconcile-review` without a head is not checked
+this way: it is queued at whatever stage the job stands, and its handler refuses it then if no
+completed PR review is saved. The check comes last, after the pending-request check; it reads the
+job, its runs and their saved evidence and writes nothing. Reading takes time, so the wait's
+deadline is read again afterwards, moved on by what that reading took on the project's clock: a
+wait that ran out meanwhile is refused `wait-ended`, whatever the rule said.
 
 One resume per subject and fix: any request in the project's store that carries that binding
 counts, whatever its status, and recovery requests are never pruned. The binding is matched by a
@@ -1105,10 +1143,16 @@ recorded without queueing again, even after its fix was withdrawn. A refusal is 
 the subject is put to admission again each pass and is admitted if the reason goes while its wait
 still holds. `wait-ended` covers both a wait that is over for good and one that a hold, decision,
 prerequisite or unsettled write outranks for now. The refusal the queue itself makes
-(`already-reconciled`) is undone as a transaction, so no refusal writes a project. A stop whose
+(`already-reconciled`) is undone as a transaction, so no refusal writes a project. The head check
+comes before it: a run an earlier request already reconciled is one its handler no longer reads,
+so that binding is refused `head-mismatch`, and `already-reconciled` is left for a head the
+handler would still take. A stop whose
 wait already ran out is not resumed; it has gone back to a person. Whether a resume worked is not judged yet: the incident stays `deployed`.
 `reconcile-review` without a head ends in the job's normal continuation under its existing merge
-authorization and readiness requirements.
+authorization and readiness requirements. Once queued, a resume is an ordinary recovery request:
+with the wait lifted, IT's own recovery for that job finds the identical request, adopts it and
+counts one attempt (`server/it/recovery-attempt.ts`), and a request whose head is a run's ID
+keeps the harness from restarting that run (`server/delivery/attempts/restart-writer.ts`).
 
 The reading follows the running release: an incident whose fix that release no longer holds, or
 whose release can no longer be verified, has returned to `shipped` within a few ticks (see
@@ -1204,8 +1248,13 @@ Office marks the exact stops that repair covers, in each project's own store, wh
 and the recovery paths read (`server/incidents/repair/`). After each observation, and so never
 while a deployment holds the fence, every subject the repair recorded that the ledger still holds
 open exactly as recorded, and whose project record stands stopped the same way, gets one marker in
-that project's coordination state (`repairWaits`): the incident, the repair event and issue, the
-subject and its digest, and how the stop stood (stage, episode, saved stop, head). This pass
+that project's coordination state (`repairWaits`): the incident, the repair event, a digest of
+that event's ID, the issue, the subject and its digest, and how the stop stood (stage, episode,
+saved stop, head). A saved marker is matched to its repair by the digest of the event ID, and the
+expiry event's ID is derived from it: the ID itself is saved through the credential redaction,
+which can change one a person chose. A marker saved without the digest is matched by the event ID,
+and an expiry recorded under that ID stands and is not recorded again. The two kinds of expiry ID
+differ in shape, so one repair's digest is never read as another repair's event ID. This pass
 writes only that marker map, one transaction per project; the fence is asked again before every
 write. A stop already resumed for the repair's latest fix is not marked again, whatever became of
 that resume: it has had its one resume (see Resume after a fix). The ledger keeps a subject as it
@@ -1294,7 +1343,8 @@ investigation attempts are exactly what they were. When the wait ends or expires
 continues from them under its own rules, and the outbox request returns. A wait does not extend a
 path's own time limit: a writer run that stopped more than six hours ago is no longer restarted by
 the harness, so after a long wait that job is a person's to read back, unless a resume after the
-fix releases it. The Office's own bounded retry of a transient failed read is not held. The
+fix releases it. An `update-base` job in that state is not resumed (see Resume after a fix) and
+is a person's. The Office's own bounded retry of a transient failed read is not held. The
 scheduler's dispatch is unchanged; a held record was already not running.
 
 ## Code owners and verification

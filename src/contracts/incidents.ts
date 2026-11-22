@@ -146,11 +146,12 @@ export type ResumeStanding = 'admitted' | 'no-route' | 'gone' | 'held' | 'due';
  * `project-paused`: its project is paused or draining. `wait-ended`: the repair wait no longer
  * holds for that exact stop (it ran out, the stop changed, or something stronger explains it).
  * `no-record`: its project or its delivery job is not there. `key-mismatch`: the route's key is
- * not that job's. `request-pending`: another request for that key is queued or working.
+ * not that job's. `head-mismatch`: the route's `head` is not the one its handler would take for
+ * that job as it stands. `request-pending`: another request for that key is queued or working.
  * `already-reconciled`: the same request completed earlier and stands as its own answer.
  * `not-dispatchable`: this release does not dispatch that route in that form.
  */
-export type ResumeRefusal = 'resumes-paused' | 'release-unconfirmed' | 'project-paused' | 'wait-ended' | 'no-record' | 'key-mismatch' | 'request-pending' | 'already-reconciled' | 'not-dispatchable';
+export type ResumeRefusal = 'resumes-paused' | 'release-unconfirmed' | 'project-paused' | 'wait-ended' | 'no-record' | 'key-mismatch' | 'head-mismatch' | 'request-pending' | 'already-reconciled' | 'not-dispatchable';
 
 /** What the Office reads for one fix found in the running release. A reading only: it grants nothing and records nothing. */
 export interface ResumeAssessment {

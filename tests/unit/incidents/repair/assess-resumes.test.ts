@@ -76,11 +76,11 @@ test('a job route bound to work in a project of another provider is no route, by
     expect(standings(assessResumes(bound, ENABLED, ROUTES))).toEqual([['job-1', 'due'], ['job-2', 'due'], ['job-3', 'due']]);
 });
 
-test('with the Office\'s own inventory only the saved-review reconciliation is held or due', () => {
+test('with the Office\'s own inventory a read-back route is held or due with a head and without; a route not dispatched yet is no route', () => {
     const bound = incident(([a, b, c]) => [routed(a), routed(b, { ...review, payload: { key: 'GH-12', head: 'worker-1' } }), routed(c, { action: 'review-pr', payload: { key: 'GH-12' }, expectedStage: 'review' })]);
     for (const [control, standing, reason] of [[PAUSED, 'held', 'Automatic repair resumes are paused: two rollbacks in a row'], [ENABLED, 'due', 'Automatic repair resumes are enabled.']] as const)
         expect(assessResumes(bound, control)!.subjects.map(subject => [subject.standing, subject.reason])).toEqual([
-            [standing, reason], ['no-route', 'This release cannot dispatch reconcile-review with a head.'], ['no-route', 'This release cannot dispatch review-pr.']]);
+            [standing, reason], [standing, reason], ['no-route', 'This release cannot dispatch review-pr.']]);
 });
 
 test('a subject whose resume was admitted for this fix reads admitted, whatever it has done since; a declared no-route stays that', () => {

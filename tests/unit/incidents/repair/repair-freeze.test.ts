@@ -103,7 +103,7 @@ test('a write for the record that is unsettled now keeps its read-back, with no 
     w.store.db.prepare("UPDATE effects SET status='verified' WHERE id='e1'").run();
     expect(frozen(w)).not.toBeNull();
     // Nothing about it is kept on the marker.
-    expect(Object.keys(w.waits()['delivery/1']).sort()).toEqual(['digest', 'incident', 'issue', 'progressAt', 'repair', 'since', 'stands', 'subject']);
+    expect(Object.keys(w.waits()['delivery/1']).sort()).toEqual(['digest', 'incident', 'issue', 'progressAt', 'repair', 'repairDigest', 'since', 'stands', 'subject']);
 });
 
 test('a published Jira park keeps the ticket help item open even when its saved result waits on a release', () => {

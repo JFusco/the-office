@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { subjectKey } from '../../../src/contracts/incidents';
 import type { RepairWait, WorkRef } from '../../../src/contracts/work';
 import type { OfficeSnapshot } from '../../../src/shared';
@@ -8,6 +9,13 @@ export const REPAIR_WAIT_MS = 48 * 60 * 60 * 1000;
 
 type Work = Pick<WorkRef, 'projectId' | 'kind' | 'id'>;
 export const waitKey = (work: Pick<WorkRef, 'kind' | 'id'>) => `${work.kind}/${work.id}`;
+
+/**
+ * What a marker's repair is matched by: a digest of the `repair-started` event's ID. The ID is
+ * saved in a project's state, where every string passes the credential redaction, so one a person
+ * chose can come back changed (see resume-binding.ts). A digest comes back as it went in.
+ */
+export const repairDigest = (event: string) => createHash('sha256').update(event).digest('hex');
 
 /**
  * How a record's stop stands now, in the terms a marker records, or null when the record is not

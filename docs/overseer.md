@@ -3,10 +3,11 @@
 The Overseer is the repair engine for the harness and the Office. It is being delivered in phases;
 this guide covers what exists. Today that is deterministic deployment, the incident ledger and
 the mark the Office puts on stopped work a repair covers, which holds recovery back for it. Resume
-after a fix works for one route so far: once a fix you bound is running and you have enabled the
-switch for automatic resumes, which starts paused, the Office queues `reconcile-review` with no
-`head` for the work that fix stopped (see [Resuming after a fix](#resuming-after-a-fix)). The
-other routes follow. The autonomous runner is a later phase and is not described here until it
+after a fix works for the seven GitHub read-back routes: once a fix you bound is running and you
+have enabled the switch for automatic resumes, which starts paused, the Office queues the
+recovery request that fix named for the work it stopped (see
+[Resuming after a fix](#resuming-after-a-fix)). The CEC route and the remaining routes follow.
+The autonomous runner is a later phase and is not described here until it
 ships. The process rules are in the Office process, under
 [Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
 
@@ -364,10 +365,19 @@ fix, that job comes back to you as a "read back" request; it is not restarted by
 
 Once a fix you bound is running, the Office can resume the work it stopped: it queues the
 recovery request the fix named for each piece of work, once, and stops holding that work back. It
-does this only while the switch below is enabled, and the switch starts paused. One route is
-resumed this way so far: `reconcile-review` with no `head`, which checks a saved independent
-review against the unchanged pull request and runs no model. Every other route in the table is
-accepted by `bind-fix` but not resumed yet; its work is handed back to you when the wait runs out.
+does this only while the switch below is enabled, and the switch starts paused. The GitHub
+read-back routes are resumed this way: `reconcile-implementation`, `reconcile-validation` and
+`reconcile-scope-repair`, which always need a `head`, and `reconcile-preparation`,
+`reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a `head` or without.
+The other rows of the table are accepted by `bind-fix` but not resumed yet; their work is handed
+back to you when the wait runs out.
+
+**Cost.** `reconcile-review` with no `head` checks a saved independent review against the
+unchanged pull request and runs no model. With the `head` of a stopped base handoff it reads the
+run that handoff already started and starts no other. Treat every other form as one that may
+start a model run when its request runs: the implementation, validation, scope-repair,
+preparation, stopped base update and closeout read-backs each can. With the switch enabled the
+Office starts those runs by itself, one per piece of work and fix. Nothing caps their cost yet.
 
 **Routes.** A route names one of the Office's existing recovery handlers. These are the only ones
 a fix may name:
@@ -375,7 +385,8 @@ a fix may name:
 | Action | Resumes | Payload | `head` |
 | --- | --- | --- | --- |
 | `resume-ticket` | a CEC pilot ticket (`cec/delivery/ticket:KEY`) | `{ key }`, the ticket's own key | none |
-| `reconcile-implementation`, `reconcile-validation`, `reconcile-scope-repair` | a GitHub delivery job | `{ key, head? }`, the ticket key | the original stopped worker's ID |
+| `reconcile-implementation` | a GitHub delivery job | `{ key, head? }`, the ticket key | the original stopped worker's ID; where the job holds a saved prerequisite result, the ID of the latest completed writer of the job's stage (`implement` or `scope-repair`) |
+| `reconcile-validation`, `reconcile-scope-repair` | a GitHub delivery job | `{ key, head? }`, the ticket key | the original stopped worker's ID |
 | `reconcile-preparation`, `reconcile-closeout` | a GitHub delivery job | `{ key, head? }` | the original stopped worker's ID; empty for the saved-result route |
 | `reconcile-review` | a GitHub delivery job | `{ key, head? }` | the stopped base-update handoff worker's ID or the continuation's original worker; empty for the saved-review route |
 | `reconcile-base-update` | a GitHub delivery job | `{ key, head? }` | the job's head commit for a board preflight, or the original base-update worker's ID; empty for the saved-result route |
@@ -401,6 +412,30 @@ Three details of that check:
   and the subject reads `gone` once the fix serves; it is never resumed in its later form.
 
 `head` is whatever that handler means by it; it is not a commit unless the table says so.
+
+**The head must be the handler's.** Each handler reads one exact earlier run and refuses any
+other, and a request it refuses ends blocked with the resume spent. So before it queues a resume,
+the Office asks that handler's own rule which run it would read for the job as it stands. If the
+`head` you bound is not that one, nothing is queued and the incident records `head-mismatch`,
+naming what the handler reads, or saying it has nothing to read. `bind-fix` does not make this
+check; it cannot read the project.
+
+- `reconcile-implementation`, `reconcile-validation` and `reconcile-scope-repair` always need a
+  `head`: the stopped run. One case differs. Where the job holds a saved prerequisite result,
+  `reconcile-implementation` reads the latest writer of the job's stage, which must have completed
+  with its completion on record; an older writer of that stage is refused.
+- For `reconcile-preparation`, `reconcile-base-update` and `reconcile-closeout`, leave `head` out
+  only for the saved-result form. It is refused while the handler has an original run to read for
+  that job, and when the job is not at the stage that form reads. A `head` given where the
+  saved-result form would run is refused too.
+- `reconcile-base-update` is not resumed, in either form, for a job whose dead writer run
+  qualifies for the harness's own restart. That holds for as long as the run qualifies, also after
+  the six hours in which the harness would have restarted it, so that work comes back to you when
+  the wait runs out.
+- `reconcile-review` with a `head` is checked like the rest. With no `head` it is not put to this
+  check at all: it is queued whatever stage the job is at, and its handler refuses it then if no
+  completed PR review is saved for it. Bind that form only for a job stopped at the PR review.
+
 Stopped work with no row here, such as a stopped harness request or a conversation, has no
 route: bind it `no-route`.
 
@@ -437,7 +472,10 @@ for each subject the fix bound, one of these, with the reason.
 When the Office queues a resume it also stops holding that work back, in the same step. It
 changes nothing else about the job: no attempt count, no budget. The request then runs like any
 other recovery request, and its handler still makes its own checks. For `reconcile-review` that
-means the job carries on under the merge authorization and readiness rules it already had.
+means the job carries on under the merge authorization and readiness rules it already had. Two
+things follow from it being an ordinary request: IT's own recovery for that job finds it, adopts
+it and counts one attempt; and a request whose `head` is a run's ID keeps the harness from
+restarting that run, whatever becomes of the request.
 
 A subject that is `due` is not always queued at once. The incident's history says why, once per
 reason, as `resume-refused`:
@@ -449,6 +487,7 @@ reason, as `resume-refused`:
 | `project-paused` | The project is paused or draining. | Queued when it runs again. |
 | `request-pending` | Another request for that ticket is queued or working. | Queued when that one ends. |
 | `wait-ended` | The work is not being held for this repair right now. Either that is final: the wait ran out after 48 hours, or the work stopped again or was moved. Or it is temporary: something stronger explains the stop for now, such as a hold, a decision, a merge approval, a prerequisite or an unconfirmed write. | If final, not resumed; the item is yours. If temporary, the Office tries again each pass and queues it once that cause is gone, as long as the 48 hours have not run out. |
+| `head-mismatch` | The route's `head` is not the run its handler would read for that job now, the handler has nothing to read for it (a run an earlier request already reconciled included), or another job that is not cancelled has the same ticket key. | The Office tries again each pass and queues it if that changes while the wait holds. Read the detail: it names what the handler reads. |
 | `key-mismatch`, `no-record`, `not-dispatchable`, `already-reconciled` | The route does not fit the work as it stands. | Not resumed; read the detail. |
 
 The Office does not yet judge whether a resume worked: the incident stays `deployed`. If the

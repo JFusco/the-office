@@ -57,6 +57,8 @@ export interface RepairWait {
     /** The incident and the `repair-started` event this wait belongs to. */
     incident: string;
     repair: string;
+    /** A digest of `repair`, and what a saved marker is matched by: saved text is redacted, so the ID itself can come back changed. Absent on a marker saved before it was kept. */
+    repairDigest?: string;
     issue: { repository: string; number: number; url: string };
     /** The incident subject, as `project/kind/id`, and the digest the repair recorded for it. */
     subject: string;

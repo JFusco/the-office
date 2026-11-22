@@ -3,18 +3,26 @@ import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { canonical } from '../../../../server/incidents/canonical-json';
 import { admitResume } from '../../../../server/incidents/repair/dispatch-resume';
+import { REPAIR_WAIT_MS } from '../../../../server/incidents/repair/repair-wait';
 import { boundResume, resumeIdentity } from '../../../../server/incidents/repair/resume-binding';
 import { RESUME_ROUTES, type ResumeRoute } from '../../../../server/incidents/repair/resume-routes';
+import { routeHeadFault } from '../../../../server/incidents/repair/route-head';
 import { HOLDS } from '../../../../server/office/config';
 import { enqueueRequest } from '../../../../server/scheduling/requests';
 import type { Store } from '../../../../server/store/store';
 import { HOUR, later } from './repair-wait-fixture';
 import { markAwaitingRepair } from './mark-fixture';
 import { deployedWorld, FIX, OPERATION, RELEASE, reviewRoute } from './resume-fixture';
+import { rules, run } from './route-head-fixture';
 
 const stores: Store[] = [], dbs: DatabaseSync[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0).forEach(db => db.close()); delete HOLDS['GH-1']; });
 const ONE = 'cms-field-vocabulary/delivery/1';
+const READ_BACK = ['reconcile-implementation', 'reconcile-validation', 'reconcile-scope-repair', 'reconcile-preparation', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-review'];
+type World = Awaited<ReturnType<typeof deployedWorld>>;
+/** The fixture's first job bound to another route. Its stage stays `review`: what a handler reads at which stage is route-head.ts's to say, and is tested there. */
+const routed = (w: World, action: string, head?: string) => w.intent('1', { binding: { ...w.binding('1'), route: { action, payload: head === undefined ? { key: 'GH-1' } : { key: 'GH-1', head }, expectedStage: 'review' } } });
+const taken: typeof routeHeadFault = () => null;
 
 test('a due resume queues the bound request once, binds it to the fix and lifts the wait from that stop alone, in one write', async () => {
     const w = await deployedWorld(stores, dbs), job = JSON.stringify(w.jobs()[0]);
@@ -75,9 +83,13 @@ test('nothing is admitted, and nothing is written, while the project is paused o
 test('only a route this release dispatches, in the form it dispatches, for a delivery job, is admitted', async () => {
     const w = await deployedWorld(stores, dbs), saved = w.saved();
     const routed = (route: ReturnType<typeof reviewRoute>) => w.intent('1', { binding: { ...w.binding('1'), route } });
-    expect(admitResume(w.store, routed(reviewRoute('1', { payload: { key: 'GH-1', head: 'worker-1' } })), later(5))).toEqual({ refused: 'not-dispatchable', detail: 'This release does not dispatch reconcile-review with a head.' });
-    for (const action of ['review-pr', 'reconcile-closeout', 'resume-ticket', 'reconcile-everything', 'constructor'])
-        expect(admitResume(w.store, routed(reviewRoute('1', { action })), later(5)), action).toEqual({ refused: 'not-dispatchable', detail: `This release does not dispatch ${action}.` });
+    // The handler's rule is not reached for a route that is not dispatched.
+    const unasked: typeof routeHeadFault = () => { throw new Error('not to be asked'); };
+    for (const action of ['review-pr', 'review-candidate', 'requeue-implement', 'resume-ticket', 'reconcile-maintenance', 'reconcile-everything', 'constructor'])
+        expect(admitResume(w.store, routed(reviewRoute('1', { action })), later(5), RESUME_ROUTES, unasked), action).toEqual({ refused: 'not-dispatchable', detail: `This release does not dispatch ${action}.` });
+    // The form is the inventory's to say: a row that dispatches only its saved result is refused with a head.
+    const narrow: Record<string, ResumeRoute> = { ...RESUME_ROUTES, 'reconcile-review': { ...RESUME_ROUTES['reconcile-review'], dispatch: 'saved-result' } };
+    expect(admitResume(w.store, routed(reviewRoute('1', { payload: { key: 'GH-1', head: 'worker-1' } })), later(5), narrow, unasked)).toEqual({ refused: 'not-dispatchable', detail: 'This release does not dispatch reconcile-review with a head.' });
     // A route for another kind of subject is not this engine's, even where an inventory would dispatch it.
     const wide: Record<string, ResumeRoute> = { ...RESUME_ROUTES, 'resume-ticket': { ...RESUME_ROUTES['resume-ticket'], dispatch: 'all' }, 'retry-checkpoint': { ...RESUME_ROUTES['retry-checkpoint'], dispatch: 'all' } };
     for (const action of ['resume-ticket', 'retry-checkpoint']) expect(admitResume(w.store, routed(reviewRoute('1', { action })), later(5), wide)).toMatchObject({ refused: 'not-dispatchable' });
@@ -151,24 +163,47 @@ test('a request already queued or working for the job\'s key holds the resume ba
     }
 });
 
-test('an identical request that completed earlier and still answers for itself is not taken for a resume', async () => {
-    // reconcile-validation with a head is one the queue answers with its completed request; such a route is not dispatched yet, so the inventory is widened here.
-    const routes: Record<string, ResumeRoute> = { ...RESUME_ROUTES, 'reconcile-validation': { ...RESUME_ROUTES['reconcile-validation'], dispatch: 'all' } };
-    const w = await deployedWorld(stores, dbs), earlier = enqueueRequest(w.store, 'reconcile-validation', 'GH-1', 'worker-1');
-    earlier.status = 'completed';
-    w.store.save();
-    const saved = w.saved(), intent = w.intent('1', { binding: { ...w.binding('1'), route: { action: 'reconcile-validation', payload: { key: 'GH-1', head: 'worker-1' }, expectedStage: 'review' } } });
-    // Not even the unchanged state is written: the transaction the queue answered in is undone.
-    const save = w.store.save.bind(w.store);
-    let saves = 0;
-    w.store.save = () => { saves++; save(); };
-    expect(admitResume(w.store, intent, later(5), routes)).toEqual({ refused: 'already-reconciled', detail: 'reconcile-validation for GH-1 completed earlier and was not queued again.' });
-    w.store.save = save;
-    expect(saves).toBe(0);
-    expect(w.requests()).toEqual([earlier]);
-    expect(earlier.repairResume).toBeUndefined();
-    expect(Object.keys(w.waits())).toEqual(['delivery/1', 'delivery/2']);
-    expect(w.saved()).toBe(saved);
+test('an identical request that completed earlier and still answers for itself is not taken for a resume, on each route the queue answers that way', async () => {
+    // The queue's own rule (`enqueueRequest`): a completed request answers for these, and for no others.
+    const answered: [string, string, (job: Record<string, unknown>) => void][] = [
+        ['reconcile-validation', 'worker-1', () => {}], ['reconcile-validation', '', () => {}],
+        ['reconcile-implementation', 'worker-1', job => { job.savedPrerequisiteHandoff = { originalWorkId: 'worker-1' }; }],
+        ['reconcile-preparation', 'worker-1', () => {}], ['reconcile-scope-repair', 'worker-1', () => {}], ['reconcile-closeout', 'worker-1', () => {}],
+    ];
+    for (const [action, head, change] of answered) {
+        const w = await deployedWorld(stores, dbs), earlier = enqueueRequest(w.store, action, 'GH-1', head);
+        earlier.status = 'completed';
+        change(w.jobs()[0] as unknown as Record<string, unknown>);
+        w.store.save();
+        const saved = w.saved();
+        // Not even the unchanged state is written: the transaction the queue answered in is undone.
+        const save = w.store.save.bind(w.store);
+        let saves = 0;
+        w.store.save = () => { saves++; save(); };
+        expect(admitResume(w.store, routed(w, action, head), later(5), RESUME_ROUTES, taken), `${action} ${head}`).toEqual({ refused: 'already-reconciled', detail: `${action} for GH-1 completed earlier and was not queued again.` });
+        w.store.save = save;
+        expect(saves, action).toBe(0);
+        expect(w.requests(), action).toEqual([earlier]);
+        expect(earlier.repairResume, action).toBeUndefined();
+        expect(Object.keys(w.waits()), action).toEqual(['delivery/1', 'delivery/2']);
+        expect(w.saved(), action).toBe(saved);
+    }
+    // Elsewhere a completed request is history: the resume is its own new request.
+    const fresh: [string, string, (job: Record<string, unknown>) => void][] = [
+        ['reconcile-implementation', 'worker-1', () => {}], ['reconcile-implementation', 'worker-1', job => { job.savedPrerequisiteHandoff = { originalWorkId: 'worker-2' }; }],
+        ['reconcile-preparation', '', () => {}], ['reconcile-scope-repair', '', () => {}], ['reconcile-closeout', '', () => {}],
+        ['reconcile-closeout', 'worker-1', job => { job.closeoutRecovery = { status: 'cleanup-pending', originalWorkId: 'worker-1' }; }],
+        ['reconcile-base-update', 'worker-1', () => {}], ['reconcile-base-update', '', () => {}], ['reconcile-review', 'worker-1', () => {}], ['reconcile-review', '', () => {}],
+    ];
+    for (const [action, head, change] of fresh) {
+        const w = await deployedWorld(stores, dbs), earlier = enqueueRequest(w.store, action, 'GH-1', head);
+        earlier.status = 'completed';
+        change(w.jobs()[0] as unknown as Record<string, unknown>);
+        const outcome = admitResume(w.store, routed(w, action, head), later(5), RESUME_ROUTES, taken) as { admitted: { id: string; repairResume: unknown } };
+        expect(outcome, `${action} ${head}`).toMatchObject({ replayed: false, admitted: { action, key: 'GH-1', head } });
+        expect(outcome.admitted.id, action).not.toBe(earlier.id);
+        expect(earlier.repairResume, action).toBeUndefined();
+    }
 });
 
 test('an admission that fails part-way leaves no request, no admission row and the wait in place', async () => {
@@ -199,4 +234,148 @@ test('a resume is still the same resume after a restart, when the redaction of s
     expect(admitResume(w.store, w.intent('1'), later(6))).toMatchObject({ replayed: true, admitted: { id: first.admitted.id } });
     expect(w.requests()).toHaveLength(1);
     expect(w.admissions()).toEqual([first.admitted.id]);
+});
+
+test('each read-back route is queued with the action, key and head its fix bound, once its handler would take that head', async () => {
+    for (const action of READ_BACK) for (const head of ['worker-1', '', undefined]) {
+        const w = await deployedWorld(stores, dbs), asked: unknown[][] = [];
+        const outcome = admitResume(w.store, routed(w, action, head), later(5), RESUME_ROUTES, (...args) => { asked.push(args); return null; });
+        expect(outcome, `${action} ${head}`).toMatchObject({ replayed: false, admitted: { action, key: 'GH-1', head: head ?? '', lane: 'delivery', status: 'queued', repairResume: { action, subject: ONE, fix: 'cli-bind-1' } } });
+        // The rule is asked once, of this project's own job, for exactly what will be queued.
+        expect(asked, `${action} ${head}`).toEqual([[w.store, w.jobs()[0], action, head ?? '']]);
+        expect(asked[0][1]).toBe(w.jobs()[0]);
+        expect(w.requests()).toHaveLength(1);
+        expect(Object.keys(w.waits())).toEqual(['delivery/2']);
+    }
+});
+
+test('a head the handler would not take is refused with nothing written, and the same resume is admitted once the handler would take it', async () => {
+    for (const action of READ_BACK) {
+        const w = await deployedWorld(stores, dbs), saved = w.saved();
+        let fault: string | null = `${action} reads worker-2; the route names worker-1.`;
+        const outcome = () => admitResume(w.store, routed(w, action, 'worker-1'), later(5), RESUME_ROUTES, () => fault);
+        expect(outcome(), action).toEqual({ refused: 'head-mismatch', detail: `${action} reads worker-2; the route names worker-1.` });
+        expect(w.requests(), action).toEqual([]);
+        expect(w.admissions(), action).toEqual([]);
+        expect(Object.keys(w.waits()), action).toEqual(['delivery/1', 'delivery/2']);
+        expect(w.saved(), action).toBe(saved);
+        // The refusal consumed nothing.
+        fault = null;
+        expect(outcome(), action).toMatchObject({ replayed: false, admitted: { action, head: 'worker-1' } });
+    }
+});
+
+test('by default the head is put to the handlers\' own rules, and the rules a caller gives are the ones asked', async () => {
+    // The fixture's job holds no evidence of any original run, so the handlers' own rules name none.
+    const w = await deployedWorld(stores, dbs), saved = w.saved();
+    expect(admitResume(w.store, routed(w, 'reconcile-review', 'worker-1'), later(5))).toEqual({ refused: 'head-mismatch', detail: 'reconcile-review for GH-1 reads its saved result, with no head; the route names worker-1.' });
+    expect(admitResume(w.store, routed(w, 'reconcile-validation', 'worker-1'), later(5))).toEqual({ refused: 'head-mismatch', detail: 'reconcile-validation has nothing to read for GH-1 under worker-1 as the job stands.' });
+    expect(admitResume(w.store, routed(w, 'reconcile-closeout'), later(5))).toEqual({ refused: 'head-mismatch', detail: 'reconcile-closeout has nothing to read for GH-1 without a head as the job stands.' });
+    expect(w.saved()).toBe(saved);
+    // With the rule that names the run, the same route is admitted; another job of the same key stops it.
+    const named = (...args: Parameters<typeof routeHeadFault>) => routeHeadFault(args[0], args[1], args[2], args[3], rules({ validation: () => run('worker-1') }));
+    w.jobs().push({ ...w.jobs()[0], id: 'twin', status: 'queued' });
+    expect(admitResume(w.store, routed(w, 'reconcile-validation', 'worker-1'), later(5), RESUME_ROUTES, named)).toEqual({ refused: 'head-mismatch', detail: 'GH-1 has another job that is not cancelled; reconcile-validation finds its job by key.' });
+    w.jobs().pop();
+    expect(admitResume(w.store, routed(w, 'reconcile-validation', 'worker-2'), later(5), RESUME_ROUTES, named)).toEqual({ refused: 'head-mismatch', detail: 'reconcile-validation for GH-1 reads worker-1; the route names worker-2.' });
+    expect(admitResume(w.store, routed(w, 'reconcile-validation', 'worker-1'), later(5), RESUME_ROUTES, named)).toMatchObject({ replayed: false, admitted: { action: 'reconcile-validation', head: 'worker-1' } });
+});
+
+test('the handler\'s rule is asked last: not for a resume already bound, a paused project, a wait that ended, another key, or while a request is pending', async () => {
+    const unasked: typeof routeHeadFault = () => { throw new Error('not to be asked'); };
+    const cases: [string, (w: World) => void, string][] = [
+        ['paused', w => { w.store.state.paused = true; }, 'project-paused'],
+        ['wait ended', w => { w.waits()['delivery/1'].expiredAt = later(4).toISOString(); }, 'wait-ended'],
+        ['pending', w => { enqueueRequest(w.store, 'reconcile-pr-link', 'GH-1'); }, 'request-pending'],
+    ];
+    for (const [name, change, code] of cases) {
+        const w = await deployedWorld(stores, dbs);
+        change(w);
+        expect(admitResume(w.store, routed(w, 'reconcile-validation', 'worker-1'), later(5), RESUME_ROUTES, unasked), name).toMatchObject({ refused: code });
+    }
+    const w = await deployedWorld(stores, dbs);
+    expect(admitResume(w.store, w.intent('1', { binding: { ...w.binding('1'), route: { action: 'reconcile-validation', payload: { key: 'GH-9', head: 'worker-1' }, expectedStage: 'review' } } }), later(5), RESUME_ROUTES, unasked)).toMatchObject({ refused: 'key-mismatch' });
+    const first = admitResume(w.store, routed(w, 'reconcile-validation', 'worker-1'), later(5), RESUME_ROUTES, taken) as { admitted: { id: string } };
+    expect(admitResume(w.store, routed(w, 'reconcile-validation', 'worker-1'), later(6), RESUME_ROUTES, unasked)).toEqual({ admitted: first.admitted, replayed: true });
+});
+
+test('a wait that runs out while the handler\'s rule reads is over: nothing is queued, whatever the rule said', async () => {
+    const ended = { refused: 'wait-ended', detail: 'The repair wait no longer holds for this stop: it ran out, the stop changed, or something stronger explains it.' };
+    const second = 1000;
+    for (const [name, took, fault, outcome] of [
+        ['read past the deadline', 5 * second, null, ended], ['read to the deadline', 2 * second, null, ended], ['read past it and refused', 5 * second, 'another run', ended],
+        ['read short of it', 1 * second, null, { replayed: false, admitted: { action: 'reconcile-validation', head: 'worker-1' } }],
+        ['read short of it and refused', 1 * second, 'another run', { refused: 'head-mismatch', detail: 'another run' }],
+        // A clock that steps back takes nothing off the time already read.
+        ['a clock that stepped back', -60 * second, null, { replayed: false }],
+    ] as const) {
+        const w = await deployedWorld(stores, dbs), saved = w.saved(), clock = w.store.clock;
+        // The wait runs out 48 hours after the last progress its marker holds.
+        const deadline = new Date(Date.parse(w.waits()['delivery/1'].progressAt) + REPAIR_WAIT_MS);
+        let elapsed = 700;
+        w.store.clock = { now: clock.now, monotonic: () => elapsed };
+        const reads: typeof routeHeadFault = () => { elapsed += took; return fault; };
+        const result = admitResume(w.store, routed(w, 'reconcile-validation', 'worker-1'), new Date(deadline.getTime() - 2 * second), RESUME_ROUTES, reads);
+        w.store.clock = clock;
+        expect(result, name).toMatchObject(outcome);
+        if ('refused' in outcome) {
+            expect(w.requests(), name).toEqual([]);
+            expect(w.admissions(), name).toEqual([]);
+            expect(Object.keys(w.waits()), name).toEqual(['delivery/1', 'delivery/2']);
+            expect(w.saved(), name).toBe(saved);
+        } else expect(w.requests(), name).toHaveLength(1);
+    }
+});
+
+test('a run an earlier request already reconciled is one its handler no longer reads: the refusal is head-mismatch, ahead of the queue\'s own answer', async () => {
+    // The queue would answer each of these with its completed request (see the test above). The handlers' own rules come first, and name no such run.
+    const reconciled: [string, (job: Record<string, unknown>) => void][] = [
+        ['reconcile-implementation', job => { job.savedPrerequisiteHandoff = { originalWorkId: 'worker-1' }; }],
+        ['reconcile-scope-repair', job => { job.scopeRepairResumes = [{ originalWorkId: 'worker-1' }]; }],
+        ['reconcile-validation', () => {}], ['reconcile-preparation', () => {}], ['reconcile-closeout', () => {}],
+    ];
+    for (const [action, change] of reconciled) {
+        const w = await deployedWorld(stores, dbs), earlier = enqueueRequest(w.store, action, 'GH-1', 'worker-1');
+        earlier.status = 'completed';
+        change(w.jobs()[0] as unknown as Record<string, unknown>);
+        w.store.save();
+        const saved = w.saved();
+        expect(admitResume(w.store, routed(w, action, 'worker-1'), later(5)), action).toMatchObject({ refused: 'head-mismatch' });
+        expect(w.requests(), action).toEqual([earlier]);
+        expect(w.admissions(), action).toEqual([earlier.id]);
+        expect(earlier.repairResume, action).toBeUndefined();
+        expect(Object.keys(w.waits()), action).toEqual(['delivery/1', 'delivery/2']);
+        expect(w.saved(), action).toBe(saved);
+    }
+});
+
+test('the deadline counts every read from entry on: the wait lookup before the handler\'s rule, and the queue\'s own answer after it', async () => {
+    const ended = { refused: 'wait-ended', detail: 'The repair wait no longer holds for this stop: it ran out, the stop changed, or something stronger explains it.' };
+    // Milliseconds each read takes, with 10 left on the wait at entry: the Effects lookup behind the wait check, the handler's rule, the queue's answer.
+    for (const [name, lookup, rule, queue, outcome] of [
+        ['the lookup and the rule together cross it', 8, 5, 0, ended], ['the lookup alone crosses it', 10, 0, 0, ended],
+        ['the queue\'s answer crosses it', 2, 2, 6, ended], ['the queue\'s answer alone crosses it', 0, 0, 10, ended],
+        ['all three stay short of it', 3, 3, 3, { replayed: false, admitted: { action: 'reconcile-base-update', head: 'worker-1' } }],
+    ] as const) {
+        const w = await deployedWorld(stores, dbs), saved = w.saved(), clock = w.store.clock, prepare = w.store.db.prepare.bind(w.store.db);
+        const deadline = new Date(Date.parse(w.waits()['delivery/1'].progressAt) + REPAIR_WAIT_MS);
+        let elapsed = 40, stamped = false;
+        w.store.clock = { now: () => { if (!stamped) { stamped = true; elapsed += queue; } return clock.now(); }, monotonic: () => elapsed };
+        w.store.db.prepare = ((sql: string) => { if (/FROM effects/.test(sql)) elapsed += lookup; return prepare(sql); }) as typeof w.store.db.prepare;
+        const result = admitResume(w.store, routed(w, 'reconcile-base-update', 'worker-1'), new Date(deadline.getTime() - 10), RESUME_ROUTES, () => { elapsed += rule; return null; });
+        w.store.clock = clock; w.store.db.prepare = prepare;
+        expect(result, name).toMatchObject(outcome);
+        // The queue stamps a request only when it is about to add one, so its answer was reached exactly when the earlier reads left time.
+        expect(stamped, name).toBe(lookup + rule < 10);
+        if ('refused' in outcome) {
+            expect(w.requests(), name).toEqual([]);
+            expect(w.admissions(), name).toEqual([]);
+            expect(Object.keys(w.waits()), name).toEqual(['delivery/1', 'delivery/2']);
+            expect(w.saved(), name).toBe(saved);
+        } else {
+            expect(w.requests(), name).toHaveLength(1);
+            expect(w.admissions(), name).toHaveLength(1);
+            expect(Object.keys(w.waits()), name).toEqual(['delivery/2']);
+        }
+    }
 });

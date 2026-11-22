@@ -4,12 +4,16 @@ import { dispatchable, RESUME_ROUTES, routeFault, subjectParts } from '../../../
 const JOB = { subject: 'cms-field-vocabulary/delivery/job-1', stage: 'review', provider: 'github' };
 const route = (action: string, payload: Record<string, unknown>, expectedStage = 'review') => ({ action, payload, expectedStage });
 
-test('the inventory is the closed list of existing handlers, and only the saved-review reconciliation is dispatched', () => {
+test('the inventory is the closed list of existing handlers, and the seven GitHub read-back routes are dispatched in every form', () => {
     expect(Object.keys(RESUME_ROUTES).sort()).toEqual([
         'reconcile-base-update', 'reconcile-closeout', 'reconcile-implementation', 'reconcile-maintenance', 'reconcile-native-checkpoint', 'reconcile-preparation', 'reconcile-review',
         'reconcile-scope-repair', 'reconcile-validation', 'requeue-implement', 'resume-ticket', 'retry-checkpoint', 'review-assignment', 'review-candidate', 'review-pr',
     ]);
-    expect(Object.entries(RESUME_ROUTES).filter(([, known]) => known.dispatch !== 'none').map(([action, known]) => [action, known.dispatch])).toEqual([['reconcile-review', 'saved-result']]);
+    expect(Object.entries(RESUME_ROUTES).filter(([, known]) => known.dispatch !== 'none').map(([action, known]) => [action, known.dispatch]).sort()).toEqual([
+        ['reconcile-base-update', 'all'], ['reconcile-closeout', 'all'], ['reconcile-implementation', 'all'], ['reconcile-preparation', 'all'], ['reconcile-review', 'all'], ['reconcile-scope-repair', 'all'], ['reconcile-validation', 'all'],
+    ]);
+    // Every dispatched route resumes a GitHub delivery job; no other kind of subject is dispatched yet.
+    expect(Object.values(RESUME_ROUTES).filter(known => known.dispatch !== 'none').every(known => known.subject === 'job')).toBe(true);
 });
 
 test('an action outside the inventory is not a route, including a name every object carries', () => {
@@ -107,9 +111,11 @@ test('a route is dispatched in the forms its row names: none, only without a hea
     expect(dispatchable(row('saved-result'), { key: 'GH-12' })).toBe(true);
     expect(dispatchable(row('saved-result'), { key: 'GH-12', head: '' })).toBe(true);
     expect(dispatchable(row('saved-result'), { key: 'GH-12', head: 'worker-1' })).toBe(false);
-    // The Office's own inventory: the saved review, and nothing with a head.
-    expect(dispatchable(RESUME_ROUTES['reconcile-review'], { key: 'GH-12' })).toBe(true);
-    expect(dispatchable(RESUME_ROUTES['reconcile-review'], { key: 'GH-12', head: 'worker-1' })).toBe(false);
+    // The Office's own inventory: the read-back routes with a head and without, and nothing else.
+    for (const payload of [{ key: 'GH-12' }, { key: 'GH-12', head: 'worker-1' }]) {
+        for (const action of ['reconcile-review', 'reconcile-implementation', 'reconcile-validation', 'reconcile-scope-repair', 'reconcile-preparation', 'reconcile-base-update', 'reconcile-closeout']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(true);
+        for (const action of ['review-pr', 'review-candidate', 'requeue-implement', 'resume-ticket', 'review-assignment', 'reconcile-maintenance', 'retry-checkpoint', 'reconcile-native-checkpoint']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(false);
+    }
 });
 
 test('a subject key is read as its project, kind and ID', () => {
