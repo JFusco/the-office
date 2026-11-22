@@ -64,8 +64,11 @@ test('Node startup preserves a running owner, releases failed-start locks and st
     const request=(url:string,options:RequestInit={})=>fetch(url,{...options,signal:AbortSignal.timeout(Math.min(5000,remaining()))});
     const health=await(await request(`${base}/api/health`)).json();
     expect(health.pid).toBe(owner.child.pid);
-    // Measurement only: the timer steps and the main thread's lateness since this service started.
-    expect(health.stepTimings.timings).toBeTypeOf('object');expect(health.loopDelay).toMatchObject({sampleMS:20,late:{atLeast200MS:{samples:expect.any(Number)}}});
+    expect(health.stepTimings.timings).toBeTypeOf('object');
+    expect(health.loopDelay).toMatchObject({
+      since:expect.any(String),resolutionMS:20,count:expect.any(Number),
+      meanMS:expect.any(Number),medianMS:expect.any(Number),p99MS:expect.any(Number),maxMS:expect.any(Number),
+    });
     const html=await request(`${base}/`);expect(html.headers.get('content-type')).toContain('text/html');expect(html.headers.get('cache-control')).toBe('no-store');
     expect((await request(`${base}/api/office`,{headers:{Origin:'https://example.invalid'}})).status).toBe(403);
     const stream=await request(`${base}/api/events?project=brain`);expect(stream.headers.get('content-type')).toBe('text/event-stream');

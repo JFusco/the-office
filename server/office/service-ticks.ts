@@ -34,14 +34,15 @@ export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pic
     // What GitHub said of a release and a fix is kept by the comparison and read by the resume pass: a fix is resumed only in a release known to hold it.
     const release = releaseWatch({ ledger: offices.incidents, identity: () => releaseIdentity({ root: ROOT, dataRoot: DATA, loadedHash }), loadedHash, execute: command, allowed: () => !fenced() });
     const incidentTick = setInterval(() => {
-        if (fenced()) return;
+        if (timedStep(offices.stepTimings, 'incidents: fence', fenced)) return;
         try { timedStep(offices.stepTimings, 'incidents: observe', () => offices.observeIncidents()); } catch (e) { console.error(redactEvidence(String(e))); }
         try { timedStep(offices.stepTimings, 'incidents: dismissals', () => invalidateDismissals(offices.incidents, versions, new Date())); } catch (e) { console.error(redactEvidence(String(e))); }
         // Marks, in each project's own store, the stops a repair in progress covers.
         try { timedStep(offices.stepTimings, 'incidents: repair waits', () => admitRepairWaits(offices.incidents, [...offices.entries.values()], new Date(), fenced)); } catch (e) { console.error(redactEvidence(String(e))); }
         // Then queues, once per subject and fix, the resume a fix found in the running release bound for work still awaiting it. Local only.
         try { timedStep(offices.stepTimings, 'incidents: resumes', () => dispatchResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], control: offices.resumes, running: release.holding, now: () => new Date(), fenced })); } catch (e) { console.error(redactEvidence(String(e))); }
-        if (process.env.OFFICE_NO_POLL !== '1') void offices.operations.run(release.compare);
+        if (process.env.OFFICE_NO_POLL !== '1')
+            void timedStep(offices.stepTimings, 'incidents: release compare (start)', () => offices.operations.run(release.compare));
     }, 60000);
     const lastPoll = new Map<string, number>();
     const tick = setInterval(() => {

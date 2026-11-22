@@ -29,7 +29,6 @@ const releaseLock = acquireServiceLock(DATA);
 process.on('exit', releaseLock);
 // A capture directory a service that died left behind may hold a named clone of a session log.
 sweepStaleSessionSnapshots();
-const watchedLoop = loopDelay();
 const offices = new Offices();
 const loadedRevision = runtimeRevision();
 const serviceHealth = new ServiceHealthChecks();
@@ -45,6 +44,8 @@ function snapshot(project = 'cec') {
     const build = () => sanitizeObject(offices.snapshot(project)), timings = offices.entries.get(project)?.store.timings;
     return timings ? timings.time('browser snapshot: build and redact', build) : build();
 }
+// Started once the stores are open, so startup itself is not counted as a late main thread.
+const watchedLoop = loopDelay();
 let shutdown = false;
 const server = serve({ hostname: '127.0.0.1', port: PORT,
     async fetch(req) {

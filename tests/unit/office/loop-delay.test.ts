@@ -1,35 +1,49 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { LOOP_SAMPLE_MS, loopDelay } from '../../../server/office/loop-delay';
 
-function watched() {
-    let at = 0, stopped = false, tick = () => {};
-    const loop = loopDelay(() => at, '2026-11-22T00:00:00.000Z', sample => { tick = sample; return () => { stopped = true; }; });
-    return { loop, after: (ms: number) => { at += ms; tick(); }, stopped: () => stopped };
+function histogram() {
+    return {
+        count: 100,
+        mean: 26_860_000,
+        percentile: vi.fn((p: number) => p === 50 ? 21_140_000 : 48_960_000),
+        max: 62_240_000,
+        enable: vi.fn(() => true),
+        disable: vi.fn(() => true),
+    };
 }
 
-test('a sample on time adds nothing; a late one adds the time beyond the sample interval', () => {
-    const { loop, after } = watched();
-    after(LOOP_SAMPLE_MS); after(LOOP_SAMPLE_MS + 4.26); after(LOOP_SAMPLE_MS - 3);
-    expect(loop.report()).toEqual({ since: '2026-11-22T00:00:00.000Z', sampleMS: LOOP_SAMPLE_MS, samples: 3, lateMS: 4.3, slowestMS: 4.3,
-        late: { atLeast100MS: { samples: 0, ms: 0 }, atLeast200MS: { samples: 0, ms: 0 }, atLeast1000MS: { samples: 0, ms: 0 } } });
+test('the report converts histogram readings to milliseconds rounded to one decimal place', () => {
+    const source = histogram();
+    const since = '2026-11-22T00:00:00.000Z';
+    const loop = loopDelay(source, since);
+    expect(loop.report()).toEqual({
+        since, resolutionMS: LOOP_SAMPLE_MS, count: 100,
+        meanMS: 26.9, medianMS: 21.1, p99MS: 49, maxMS: 62.2,
+    });
+    expect(source.percentile.mock.calls).toEqual([[50], [99]]);
 });
 
-test('each late sample is counted in every band it reaches', () => {
-    const { loop, after } = watched();
-    for (const late of [99.9, 100, 250, 1200]) after(LOOP_SAMPLE_MS + late);
-    expect(loop.report()).toMatchObject({ samples: 4, lateMS: 1649.9, slowestMS: 1200,
-        late: { atLeast100MS: { samples: 3, ms: 1550 }, atLeast200MS: { samples: 2, ms: 1450 }, atLeast1000MS: { samples: 1, ms: 1200 } } });
+test('the report has numeric zero values before the first sample', () => {
+    const source = { ...histogram(), count: 0, mean: NaN };
+    const loop = loopDelay(source);
+    expect(loop.report()).toMatchObject({ count: 0, meanMS: 0, medianMS: 0, p99MS: 0, maxMS: 0 });
+    expect(source.percentile).not.toHaveBeenCalled();
 });
 
-test('stopping ends the sampling it started', () => {
-    const { loop, stopped } = watched();
+test('starting and stopping enable and disable the histogram', () => {
+    const source = histogram();
+    const loop = loopDelay(source);
+    expect(source.enable).toHaveBeenCalledOnce();
+    expect(source.disable).not.toHaveBeenCalled();
     loop.stop();
-    expect(stopped()).toBe(true);
+    expect(source.disable).toHaveBeenCalledOnce();
 });
 
-test('the default timer samples the real loop and does not keep the process alive', async () => {
+test('the default monitor samples the real loop', async () => {
     const loop = loopDelay();
-    await new Promise(resolve => setTimeout(resolve, LOOP_SAMPLE_MS * 4));
-    loop.stop();
-    expect(loop.report().samples).toBeGreaterThan(0);
+    try {
+        await expect.poll(() => loop.report().count).toBeGreaterThan(0);
+    } finally {
+        loop.stop();
+    }
 });
