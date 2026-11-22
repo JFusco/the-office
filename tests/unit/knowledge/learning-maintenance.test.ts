@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test, expect, vi } from 'vitest';
 import { existsSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { maintainLearning, expireLearningPackets, LEARNING_BASELINES } from '../../../server/knowledge/learning-maintenance';
@@ -69,5 +69,48 @@ test('aged packets expire one by one from their own references, without summarie
         expect(existsSync(resolve(root, unrelated, 'facts.json'))).toBe(false);
         for (const name of kept) expect(existsSync(resolve(root, name, 'facts.json'))).toBe(true);
         expect({ consumed: k.consumed, learningConsumed: k.learningConsumed, followups: k.followups, retrospectives: k.retrospectives, deliveryEvents: k.deliveryEvents }).toEqual(before);
+    } finally { close(); }
+});
+test('a pass with nothing to record or baseline neither serialises the record nor saves', () => {
+    const { store, close } = knowledgeStore();
+    try {
+        maintainLearning(store);
+        const saves = () => store.timings.report().timings['save: serialise']?.calls || 0, before = saves(), record = JSON.stringify(store.state.knowledge);
+        const stringify = vi.spyOn(JSON, 'stringify');
+        maintainLearning(store);
+        expect(stringify.mock.calls.filter(([value]) => value === store.state.knowledge)).toHaveLength(0);
+        stringify.mockRestore();
+        expect(saves()).toBe(before);
+        expect(JSON.stringify(store.state.knowledge)).toBe(record);
+    } finally { vi.restoreAllMocks(); close(); }
+});
+test.each<[string, (k: NonNullable<ReturnType<typeof knowledgeStore>['store']['state']['knowledge']>) => void]>([
+    ['a baseline is missing', k => { k.baselines = k.baselines!.filter(baseline => baseline !== LEARNING_BASELINES[0]); }],
+    ['a baseline is repeated', k => { k.baselines = [...k.baselines!, k.baselines![0]]; }],
+    ['there are no baselines', k => { delete k.baselines; }],
+    ['the start time is missing', k => { delete k.learningStartedAt; }],
+])('the record is still baselined and saved when %s', (_name, change) => {
+    const { store, close } = knowledgeStore();
+    try {
+        maintainLearning(store);
+        const k = store.state.knowledge!, saves = () => store.timings.report().timings['save: serialise']?.calls || 0;
+        change(k);
+        const before = saves();
+        maintainLearning(store);
+        expect(k.baselines).toEqual(expect.arrayContaining(LEARNING_BASELINES));
+        expect(new Set(k.baselines).size).toBe(k.baselines!.length);
+        expect(k.learningStartedAt).toBeTruthy();
+        expect(saves()).toBe(before + 1);
+    } finally { close(); }
+});
+test('a terminal job arriving after an idle pass is still recorded and saved', () => {
+    const { store, close } = knowledgeStore();
+    try {
+        maintainLearning(store); maintainLearning(store);
+        const saves = () => store.timings.report().timings['save: serialise']?.calls || 0, before = saves();
+        store.state.coordination!.jobs!.push(job({ status: 'completed' }));
+        maintainLearning(store);
+        expect(store.state.knowledge!.deliveryEvents).toHaveLength(1);
+        expect(saves()).toBe(before + 1);
     } finally { close(); }
 });

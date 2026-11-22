@@ -28,9 +28,13 @@ export function ownedPath(store: Pick<Store, 'dataRoot'>, path: string) {
 }
 export function artifact(store: Store, path: string) { return rootArtifact(store.dataRoot, path); }
 /** A separately verified candidate root may contain immutable tracked source references. */
-export function rootArtifact(dataRoot: string, path: string) {
+export function rootArtifact(dataRoot: string, path: string) { return readRootArtifact(dataRoot, path).file; }
+/** The same artifact with the bytes its hash was taken from, for a caller that goes on to parse what it verified. */
+export function readArtifact(store: Store, path: string) { return readRootArtifact(store.dataRoot, path); }
+function readRootArtifact(dataRoot: string, path: string) {
     const ownership = ownedPath({dataRoot}, path), stat = lstatSync(path);
     if (!stat.isFile() || stat.size > 8 * 1024 * 1024)
         throw new Error('Owned bounded validation artifact required');
-    return { path, sha256: createHash('sha256').update(readFileSync(path)).digest('hex'), ownership };
+    const bytes = readFileSync(path);
+    return { file: { path, sha256: createHash('sha256').update(bytes).digest('hex'), ownership }, bytes };
 }

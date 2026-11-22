@@ -14,13 +14,21 @@ export function baselineLearning(store: Store): void {
     knowledge.baselines = [...new Set([...(knowledge.baselines || []), ...LEARNING_BASELINES])];
     knowledge.learningStartedAt ??= store.clock.now().toISOString();
 }
+/** True when `baselineLearning` would leave the record exactly as it is. */
+function baselined(knowledge: NonNullable<Store['state']['knowledge']>): boolean {
+    const baselines = knowledge.baselines;
+    return !!baselines && new Set(baselines).size === baselines.length && LEARNING_BASELINES.every(baseline => baselines.includes(baseline)) && knowledge.learningStartedAt != null;
+}
 /** Record terminal contributions independently of model success, then coalesce with accepted stages. */
 export function maintainLearning(store: Store): void {
     const knowledge = store.state.knowledge;
     if (!knowledge) return;
+    const candidates = terminalCandidates(knowledge, store.state.coordination?.jobs || [], store.state.tickets, store.state.maintenance?.runs || []);
+    // Nothing to record and nothing to baseline: the record cannot change, so it is not serialised to find that out.
+    if (!candidates.length && baselined(knowledge)) return;
     const before = JSON.stringify(knowledge);
     baselineLearning(store);
-    for (const event of terminalCandidates(knowledge, store.state.coordination?.jobs || [], store.state.tickets, store.state.maintenance?.runs || [])) {
+    for (const event of candidates) {
         recordTrigger(store, { id: event.id, at: event.at, jobId: event.subjectId, key: event.key, subject: event.subject, trigger: event.trigger, event: { stage: event.stage, head: event.head, steps: event.steps, reason: event.reason } });
     }
     if (JSON.stringify(knowledge) !== before) store.save();

@@ -22,6 +22,8 @@ import * as processes from '../../../../../server/workers/process';
 import {artifact,rootArtifact,sha,digest} from '../../../../../server/store/readback-evidence';
 import type {TicketJob,StageResult,HarnessRequest} from '../../../../../src/shared';
 const env=vi.hoisted(()=>({home:''}));vi.mock('node:os',async original=>({...await original<typeof import('node:os')>(),homedir:()=>env.home}));
+// Counts reads of one path, for the test that a resolved request reads its proof once.
+const reads=vi.hoisted(()=>({path:'',count:0}));vi.mock('node:fs',async original=>{const fs=await original<typeof import('node:fs')>();return{...fs,readFileSync:((...args:Parameters<typeof fs.readFileSync>)=>{if(args[0]===reads.path)reads.count++;return fs.readFileSync(...args);})as typeof fs.readFileSync};});
 const roots:string[]=[],stores:Store[]=[];
 afterEach(()=>{delete HOLDS['GH-115'];vi.restoreAllMocks();stores.splice(0).forEach(s=>s.close());roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
 function fixture(){
@@ -145,6 +147,13 @@ test('complete cleanup resolves stale recovery projection only for the exact pro
  const a=fixture(),old={...a.intent,id:'old-failed',status:'blocked'}as HarnessRequest;
  expect(closeoutRequestResolved(a.store,old)).toBe(false);await a.reconcile();expect(closeoutRequestResolved(a.store,old)).toBe(false);await a.cleanup();expect(closeoutRequestResolved(a.store,old)).toBe(true);
  expect(closeoutRequestResolved(a.store,{...old,head:'other-original'})).toBe(false);a.store.updateEffect(a.job.closeoutRecovery!.operations.remote.effectId,'verified',e=>{e.status='uncertain';});expect(closeoutRequestResolved(a.store,old)).toBe(false);
+});
+
+test('a resolved request reads its proof once, and a proof changed on disk is refused',async()=>{
+ const a=fixture(),old={...a.intent,id:'old-failed',status:'blocked'}as HarnessRequest;await a.reconcile();await a.cleanup();
+ const proof=a.job.closeoutRecovery!.proofPath;reads.path=proof;reads.count=0;
+ try{expect(closeoutRequestResolved(a.store,old)).toBe(true);expect(reads.count).toBe(1);}finally{reads.path='';}
+ writeFileSync(proof,readFileSync(proof,'utf8')+' ');expect(closeoutRequestResolved(a.store,old)).toBe(false);
 });
 
 test('a mutable preflight blocker can clear without resetting or replaying an attempted effect',async()=>{
