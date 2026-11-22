@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { workKey, type TicketJob } from '../../../src/shared';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { completedPRReviews } from './completed-pr-review';
+import { ownerMergedWorkFinished } from './completed-preparation';
 import { settledExternalRepair } from './settled-external-repair';
 
 /** Only a read-only handoff of an existing PR can be retired by external completion. A park that never reached the board is not a human decision. */
@@ -24,7 +25,8 @@ function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
 
 /**
  * Joe's rule: a PR he merged himself is settled. Parks, review bookkeeping, a moved head and verified
- * writes do not hold a read-only handoff. A finished CI repair may also retire while retaining
+ * writes do not hold a read-only handoff, and neither does a PR preparation that ran to its end.
+ * A finished CI repair may also retire while retaining
  * its local worktree; unfinished workers, uncertain effects and recovery/merge work still block.
  */
 function ownerSettles(delivery: GitHubDelivery, job: TicketJob): boolean {
@@ -38,7 +40,7 @@ function ownerSettles(delivery: GitHubDelivery, job: TicketJob): boolean {
         !job.discoveryRecovery && !job.repairCycle && !job.candidateCleanup &&
         job.steps.every(step => ['prepare-pr', 'lead-pr'].includes(step.stage) &&
             step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain && /^(?:get|read|query|inspect)\b/i.test(receipt.action))) &&
-        completedPRReviews(store, job) &&
+        ownerMergedWorkFinished(store, job) &&
         !store.activeClaims().some(claim => claim.work.id === job.id) &&
         !store.db.prepare("SELECT id FROM effects WHERE work_key=? AND status!='verified' LIMIT 1").get(
             workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }));

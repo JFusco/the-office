@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Store } from '../../store/store';
-import type { TicketJob } from '../../../src/shared';
+import type { TicketJob, WorkTime } from '../../../src/shared';
 
 /** A completed reader is historical review evidence, not an unfinished delivery writer. */
 export function completedPRReviews(store: Store, job: TicketJob): boolean {
-    return (store.state.workLog || []).filter(work => work.requestId === job.id).every(work => {
+    return (store.state.workLog || []).filter(work => work.requestId === job.id).every(work => completedPRReview(store, job, work));
+}
+/** One work-log entry of the job: a read-only lead review that ran to its end. */
+export function completedPRReview(store: Store, job: TicketJob, work: WorkTime): boolean {
         if (work.stage !== 'github-lead-pr' || work.role !== 'lead' ||
             !['completed', 'blocked', 'failed'].includes(work.status) ||
             work.executionStatus !== 'completed' || !work.endedAt || !work.claimId)
@@ -21,5 +24,4 @@ export function completedPRReviews(store: Store, job: TicketJob): boolean {
                 capabilities.name === 'reader' && capabilities.readOnly === true;
         }
         catch { return false; }
-    });
 }
