@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {ResultSchema} from '../../../workers/agents';
-import {artifact,digest,sha,terminationObservation} from '../../../store/readback-evidence';
+import {artifact,digest,readArtifact,sha,terminationObservation} from '../../../store/readback-evidence';
 import {continuationArtifacts,continuationWorkerProof,continuationNativeReview} from '../implementation/continuation-evidence';
 import {preparationGateEvidence} from '../preparation/preparation-gates';
 import {workerProfile} from '../../../workers/worker-profiles';
@@ -143,8 +143,10 @@ export function closeoutRequestResolved(store:Store,request:import('../../../../
  try{
   if(request.action!=='reconcile-closeout'||!['blocked','interrupted'].includes(request.status))return false;
   const job=store.state.coordination?.jobs?.find(j=>j.key===request.key&&j.status==='completed'),r=job?.closeoutRecovery;
-  if(!job||!r||r.status!=='complete'||request.head&&request.head!==r.originalWorkId||artifact(store,r.proofPath).sha256!==r.proofSha256)return false;
-  const proof=JSON.parse(readFileSync(r.proofPath,'utf8'));
+  if(!job||!r||r.status!=='complete'||request.head&&request.head!==r.originalWorkId)return false;
+  // Read once: the bytes parsed are the bytes whose hash was compared.
+  const saved=readArtifact(store,r.proofPath);if(saved.file.sha256!==r.proofSha256)return false;
+  const proof=JSON.parse(saved.bytes.toString('utf8'));
   return proof.originalWorkId===r.originalWorkId&&proof.checkpointSha256===r.checkpointSha256&&['remote','worktree','branch'].every(name=>{const id=`closeout-cleanup:${job.id}:${r.originalWorkId}:${r.proofSha256}:${name}`;return r.operations[name]?.effectId===id&&store.getEffect(id)?.status==='verified';})&&
    !!store.state.coordination?.requests?.some(q=>q.id===r.cleanupRequestId&&q.action==='cleanup-merged-candidate'&&q.status==='completed')&&
    !!job.steps.some(s=>s.stage==='closeout-readback'&&s.result.outcome==='passed'&&s.result.receipts.some(receipt=>receipt.action==='original-cleanup-readback'&&receipt.target===r.originalWorkId&&receipt.verified&&!receipt.uncertain));
