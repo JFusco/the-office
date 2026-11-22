@@ -83,7 +83,7 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: im
     if (state.github?.status === 'blocked' && state.github.error && !teamOwnsIT('project-progress'))
         item('github', 'Restore the GitHub connection', state.github.error, 'pm');
     for (const run of state.maintenance?.runs || [])
-        if (maintenanceNeedsHumanFollowup(state, run) && !awaitingRepair('maintenance', run.id))
+        if (maintenanceNeedsHumanFollowup(state, run, at) && !awaitingRepair('maintenance', run.id))
             item(`maintenance:${run.id}`, `Read back ${state.project?.name || 'project'} maintenance`, `${run.stage}: ${run.error}`, 'pm');
     for (const t of state.tickets) {
         if (t.activity === 'blocked' && t.blocker && !awaitingRepair('delivery', `ticket:${t.key}`))
