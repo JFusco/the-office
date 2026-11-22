@@ -422,7 +422,7 @@ test('a routine watch beside a real recovery: only the recovery is counted, and 
     const report = a.state.it!.reports.at(-1)!;
     expect(report.followUps.map(f => [f.id, !!f.routine]).sort()).toEqual([['project-progress', false], ['session-visibility', true]]);
     expect(a.state.it!.status).toBe('retrying');
-    expect(report.summary).toMatch(/\b1 (?:operational )?follow-up remain/);
+    expect(report.summary).toMatch(/\b1 (?:operational )?follow-up remains\./);
 });
 test('one failed project refresh is retried by Ellis; Morgan is told only after three in a row', async () => {
     const a = setup(), start = 1793221200000;
