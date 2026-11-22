@@ -211,3 +211,44 @@ test('a timing that cannot be recorded rolls the claim back with it and frees th
     await scheduler.pump([{ store: a, items: [work] }]);
     expect(calls).toEqual(['brain:1']);
 });
+test.each<[string, number, 'delivery' | 'operations']>([
+    ['one worker, delivery lane', 1, 'delivery'],
+    ['a lane of its own', 1, 'operations'],
+    ['concurrent slots', 2, 'delivery'],
+])('a failure after the timing is saved undoes every part of the claim and frees the lane: %s', async (_name, limit, lane) => {
+    const a = store('brain'), capacity = officeCapacity(limit), scheduler = new Scheduler(capacity, undefined, lane), calls: string[] = [], work = item(a, '1', 3, calls);
+    const record = { timing: [] as unknown[] }, failure = new Error('identity unreadable'), heard: string[] = [];
+    a.state.messages.push(record as never);
+    a.listeners.add(event => heard.push(event.kind));
+    const scheduling = () => lane === 'delivery' ? a.state.scheduler! : a.state.schedulerLanes![lane]!;
+    // A first pump that claims nothing creates the lane's saved scheduling state and its queue observation.
+    work.claimEligible = () => false;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    const before = structuredClone(scheduling());
+    delete work.claimEligible;
+    work.saveTiming = timing => { record.timing.push(timing); throw failure; };
+    await expect(scheduler.pump([{ store: a, items: [work] }])).rejects.toBe(failure);
+    expect(calls).toEqual([]);
+    expect(claims(a)).toEqual([]);
+    // The saved record is restored, whether in place or as the saved copy.
+    expect((a.state.messages.at(-1) as unknown as typeof record).timing).toEqual([]);
+    expect(scheduling()).toEqual(before);
+    expect(a.db.prepare('SELECT COUNT(*) AS n FROM queue_observations').get()).toEqual({ n: 1 });
+    expect(a.db.prepare('SELECT COUNT(*) AS n FROM queue_timings').get()).toEqual({ n: 0 });
+    expect(heard).not.toContain('work-claimed');
+    expect([capacity.lane, capacity.active.size, capacity.slots.size]).toEqual(['', 0, 0]);
+    delete work.saveTiming;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual(['brain:1']);
+    expect(heard).toContain('work-claimed');
+    expect(scheduling().undispatchedCycles).toBe(0);
+});
+test('an identity that cannot be read after the claim rolls the claim back', async () => {
+    const a = store('brain'), scheduler = new Scheduler(officeCapacity()), calls: string[] = [], work = item(a, '1', 3, calls), failure = new Error('Ticket not found');
+    let reads = 0;
+    work.identity = () => { if (++reads === 2) throw failure; return '1'; };
+    await expect(scheduler.pump([{ store: a, items: [work] }])).rejects.toBe(failure);
+    expect(claims(a)).toEqual([]);
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual(['brain:1']);
+});
