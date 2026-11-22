@@ -12,8 +12,8 @@ export function maintenanceNeedsFollowup(state: OfficeSnapshot, run: Maintenance
  * One vendor evidence failure belongs to Morgan's maintenance view; a repeated one reaches Joe. Questions surface separately.
  * On a hands-off project one missed daily run is left to the next scheduled run; a second in a row reaches Joe.
  */
-export function maintenanceNeedsHumanFollowup(state: OfficeSnapshot, run: MaintenanceRun): boolean {
-    return maintenanceNeedsFollowup(state, run) && (run.stage !== 'vendor-review' || repeatedVendorReviewBlock(state, run)) && !leftToNextRun(state, run);
+export function maintenanceNeedsHumanFollowup(state: OfficeSnapshot, run: MaintenanceRun, now = new Date()): boolean {
+    return maintenanceNeedsFollowup(state, run) && (run.stage !== 'vendor-review' || repeatedVendorReviewBlock(state, run)) && !leftToNextRun(state, run, now);
 }
 
 /** A checkpoint and its failed run share one follow-up owner; neither history is removed. */
