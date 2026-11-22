@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { admitRepairWaits } from '../../../../server/incidents/repair/admit-repair-waits';
-import { REPAIR_WAIT_MS, repairWaitFor } from '../../../../server/incidents/repair/repair-wait';
+import { REPAIR_WAIT_MS, repairDigest, repairWaitFor } from '../../../../server/incidents/repair/repair-wait';
 import { recordDeployedFixes, compareMemory } from '../../../../server/incidents/deployed-fixes';
 import { recordWithdrawnFixes } from '../../../../server/incidents/withdrawn-fixes';
 import { projectOutbox } from '../../../../server/conversations/outbox';
@@ -18,6 +18,7 @@ import { blocked, HOUR, job, later, world } from './repair-wait-fixture';
 import { admitResume } from '../../../../server/incidents/repair/dispatch-resume';
 import { recordIncidentEvent } from '../../../../server/incidents/record-event';
 import { deployedWorld } from './resume-fixture';
+import { eventId } from '../../../../server/incidents/event-id';
 
 const stores: Store[] = [], dbs: DatabaseSync[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0).forEach(db => db.close()); });
@@ -32,7 +33,7 @@ test('nothing is marked until a repair starts; then every stop the repair record
     const started = w.start('cli-start-1', 2);
     expect(w.pass(3)).toEqual({ admitted: KEYS, expired: [], removed: [], unmarked: [] });
     expect(w.waits()['delivery/1']).toEqual({
-        incident: w.id, repair: 'cli-start-1', issue: { repository: REPO, number: 387, url: `https://github.com/${REPO}/issues/387` },
+        incident: w.id, repair: 'cli-start-1', repairDigest: repairDigest('cli-start-1'), issue: { repository: REPO, number: 387, url: `https://github.com/${REPO}/issues/387` },
         subject: KEYS[0], digest: started.incident.repair!.subjects[0].digest, stands: { stage: 'review', episode: 't1', stop: { kind: 'unclassified', at: 't1' }, head: 'abc1234' },
         since: later(3).toISOString(), progressAt: later(2).toISOString(),
     });
@@ -408,4 +409,83 @@ test('a resume for an earlier repair\'s fix does not keep a new repair\'s stops 
     expect(w.ledger.get(w.id)).toMatchObject({ state: 'fixing', fixes: [{ event: 'cli-bind-1' }] });
     expect(w.pass(61)).toEqual({ admitted: KEYS, expired: [], removed: [], unmarked: [] });
     expect(w.waits()['delivery/1']).toMatchObject({ repair: 'cli-start-2' });
+});
+
+/** The project's state as a restarted service reads it: the saved row, through the redaction every saved string gets. */
+const restart = (w: ReturnType<typeof world>) => { w.store.save(); Object.assign(w.store.state, JSON.parse(JSON.parse(w.saved()).body)); };
+const expiries = (w: ReturnType<typeof world>) => w.ledger.events(w.id).filter(event => event.kind === 'repair-wait-expired').map(event => event.id);
+
+test('a marker is still its repair\'s after a restart, when the redaction of saved text has changed the event ID a person chose', () => {
+    const w = world(stores, dbs);
+    w.start('cookie:start-1', 1);
+    expect(w.pass(2).admitted).toEqual(KEYS);
+    const marker = structuredClone(w.waits()['delivery/1']);
+    expect(marker).toMatchObject({ repair: 'cookie:start-1', repairDigest: repairDigest('cookie:start-1'), since: later(2).toISOString() });
+    restart(w);
+    expect(w.waits()['delivery/1'].repair).toBe('cookie:[redacted]');
+    const saved = w.saved();
+    // Not rebuilt: nothing is admitted, nothing is written, and it has waited since the same moment.
+    expect(w.pass(3)).toEqual({ admitted: [], expired: [], removed: [], unmarked: [] });
+    expect(w.saved()).toBe(saved);
+    expect(w.waits()['delivery/1']).toEqual({ ...marker, repair: 'cookie:[redacted]' });
+    // It runs out once, under one event per subject, however often the service restarts afterwards.
+    expect(w.pass(1 + 48 * HOUR).expired).toEqual(KEYS);
+    expect(expiries(w)).toEqual(KEYS.map(key => eventId(w.id, 'repair-wait-expired', 'repair-digest', repairDigest('cookie:start-1'), key)));
+    for (const minutes of [2, 3]) {
+        restart(w);
+        const history = JSON.stringify(w.ledger.events(w.id)), kept = w.saved();
+        expect(w.pass(minutes + 48 * HOUR)).toEqual({ admitted: [], expired: [], removed: [], unmarked: [] });
+        expect(JSON.stringify(w.ledger.events(w.id))).toBe(history);
+        expect(w.saved()).toBe(kept);
+    }
+    // Two IDs the redaction saves alike are still two repairs: the digest tells them apart.
+    expect(repairDigest('cookie:start-1')).not.toBe(repairDigest('cookie:start-2'));
+    w.waits()['delivery/1'].repairDigest = repairDigest('cookie:start-2');
+    expect(w.pass(4 + 48 * HOUR).admitted).toEqual([]);
+    expect(w.waits()['delivery/1']).toMatchObject({ repairDigest: repairDigest('cookie:start-1'), expiredAt: later(1 + 48 * HOUR).toISOString() });
+});
+
+test('a marker saved before it carried a digest is matched by its event ID, and an expiry recorded under that ID stands and is not recorded again', () => {
+    const w = world(stores, dbs);
+    w.start('cli-start-1', 1);
+    w.pass(2);
+    for (const wait of Object.values(w.waits())) delete wait.repairDigest;
+    w.store.save();
+    const saved = w.saved();
+    expect(w.pass(3)).toEqual({ admitted: [], expired: [], removed: [], unmarked: [] });
+    expect(w.saved()).toBe(saved);
+    // Another repair's marker of that kind is not this repair's.
+    w.waits()['delivery/1'].repair = 'cli-start-0';
+    expect(w.pass(4).admitted).toEqual([KEYS[0]]);
+    expect(w.waits()['delivery/1']).toMatchObject({ repair: 'cli-start-1', repairDigest: repairDigest('cli-start-1'), since: later(4).toISOString() });
+    delete w.waits()['delivery/1'].repairDigest;
+    // Its expiry is under the event ID itself.
+    expect(w.pass(1 + 48 * HOUR).expired).toEqual(KEYS);
+    expect(expiries(w)).toEqual(KEYS.map(key => eventId(w.id, 'repair-wait-expired', 'cli-start-1', key)));
+    // A marker lost afterwards is rebuilt from that expiry: expired, as it was, and with no second event.
+    delete w.store.state.coordination!.repairWaits;
+    const history = JSON.stringify(w.ledger.events(w.id));
+    expect(w.pass(2 + 48 * HOUR)).toEqual({ admitted: [], expired: [], removed: [], unmarked: [] });
+    expect(w.waits()['delivery/2']).toMatchObject({ repair: 'cli-start-1', since: later(2).toISOString(), expiredAt: later(1 + 48 * HOUR).toISOString() });
+    expect('repairDigest' in w.waits()['delivery/2']).toBe(false);
+    expect(JSON.stringify(w.ledger.events(w.id))).toBe(history);
+    expect(w.pass(3 + 48 * HOUR)).toEqual({ admitted: [], expired: [], removed: [], unmarked: [] });
+    expect(JSON.stringify(w.ledger.events(w.id))).toBe(history);
+});
+
+test('a later repair whose event ID is an earlier repair\'s digest is not taken for it: its wait is its own', () => {
+    const w = world(stores, dbs);
+    w.start('cli-start-1', 0);
+    w.pass(1);
+    expect(w.pass(48 * HOUR).expired).toEqual(KEYS);
+    const incident = w.ledger.get(w.id)!;
+    w.ledger.record({ events: [], incidents: [{ ...incident, state: 'recurred', revision: incident.revision + 1 }] });
+    expect(w.pass(50 * HOUR).removed).toEqual(KEYS);
+    // A 64-character digest is itself an event ID a person may choose.
+    const second = repairDigest('cli-start-1');
+    w.start(second, 51 * HOUR);
+    expect(w.pass(51 * HOUR + 1).admitted).toEqual(KEYS);
+    expect(w.waits()['delivery/1']).toMatchObject({ repair: second, repairDigest: repairDigest(second), since: later(51 * HOUR + 1).toISOString() });
+    expect(w.waits()['delivery/1'].expiredAt).toBeUndefined();
+    expect(expiries(w)).toHaveLength(2);
 });

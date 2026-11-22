@@ -146,15 +146,22 @@ test('a fix withdrawn and found again does not resume its subjects a second time
     expect(reading(w)).toEqual(['admitted', 'admitted']);
 });
 
-test('only what the reading calls due is put to admission: no route, a form this release does not dispatch, and a subject that is gone are left alone', async () => {
+test('only what the reading calls due is put to admission: no route and a subject that is gone are left alone; a head the handler would not take is refused and recorded', async () => {
     const w = await deployedWorld(stores, dbs, ['1', '2', '3'], jobId => jobId === '1' ? reviewRoute('1', { payload: { key: 'GH-1', head: 'worker-1' } }) : jobId === '2' ? reviewRoute('2', { action: 'review-pr' }) : reviewRoute('3'));
     // The third job stopped again since: it is gone as bound.
     w.jobs()[2].stop = { kind: 'unclassified', at: 't2' };
     w.observed(4);
-    expect(reading(w)).toEqual(['no-route', 'no-route', 'gone']);
-    const saved = [w.saved(), JSON.stringify(w.ledger.events(w.id))];
-    expect(pass(w)).toEqual({ admitted: [], refused: [], held: [] });
-    expect([w.saved(), JSON.stringify(w.ledger.events(w.id))]).toEqual(saved);
+    // The reading is of the ledger alone: a route with a head is due, and the project's own record decides at admission.
+    expect(reading(w)).toEqual(['due', 'no-route', 'gone']);
+    const saved = w.saved(), before = w.ledger.events(w.id).length;
+    expect(pass(w)).toEqual({ admitted: [], refused: [ONE], held: [] });
+    expect(w.saved()).toBe(saved);
+    expect(w.ledger.events(w.id).slice(before).map(event => [event.kind, event.body.subject, event.body.code, event.body.detail])).toEqual([
+        ['resume-refused', ONE, 'head-mismatch', 'reconcile-review for GH-1 reads its saved result, with no head; the route names worker-1.']]);
+    // Recorded once, and put to admission again each pass.
+    expect(pass(w, ENABLED, 6)).toEqual({ admitted: [], refused: [ONE], held: [] });
+    expect(w.ledger.events(w.id)).toHaveLength(before + 1);
+    expect(reading(w)).toEqual(['due', 'no-route', 'gone']);
 });
 
 test('a subject in a project this Office does not hold is refused; a project that fails is reported and the rest go on', async () => {

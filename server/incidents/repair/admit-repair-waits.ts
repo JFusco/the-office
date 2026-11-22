@@ -5,7 +5,7 @@ import { eventId } from '../event-id';
 import type { IncidentLedger } from '../incident-ledger';
 import { redactEvidence } from '../redact-evidence';
 import { repairSubject } from '../subject-digest';
-import { REPAIR_WAIT_MS, sameStop, standingStop, waitKey } from './repair-wait';
+import { REPAIR_WAIT_MS, repairDigest, sameStop, standingStop, waitKey } from './repair-wait';
 import { boundResume, resumeIdentity } from './resume-binding';
 
 /** While an incident is in one of these states its repair covers the stops it recorded. */
@@ -54,9 +54,15 @@ function lastProgress(from: string, progress: readonly string[]): string {
     return last;
 }
 
-const expiryId = (incident: string, repair: string, subject: string) => eventId(incident, 'repair-wait-expired', repair, subject);
+/**
+ * The expiry of one repair's wait for one subject. A marker saved before markers carried a digest
+ * is named by its repair's event ID. The two are different shapes, so a later repair whose event
+ * ID happens to be another repair's digest is never taken for it.
+ */
+const expiryId = (incident: string, repair: { digest: string } | { event: string }, subject: string) =>
+    'digest' in repair ? eventId(incident, 'repair-wait-expired', 'repair-digest', repair.digest, subject) : eventId(incident, 'repair-wait-expired', repair.event, subject);
 const expiryEvent = (project: string, wait: RepairWait): IncidentEvent => ({
-    id: expiryId(wait.incident, wait.repair, wait.subject), incident: wait.incident, at: wait.expiredAt!, kind: 'repair-wait-expired',
+    id: expiryId(wait.incident, wait.repairDigest ? { digest: wait.repairDigest } : { event: wait.repair }, wait.subject), incident: wait.incident, at: wait.expiredAt!, kind: 'repair-wait-expired',
     body: { repair: wait.repair, project, subject: wait.subject, since: wait.since, progressAt: wait.progressAt },
 });
 
@@ -104,12 +110,16 @@ export function admitRepairWaits(ledger: IncidentLedger, entries: readonly Repai
                 const work = { projectId: project, kind: subject.kind as WorkRef['kind'], id: subject.id }, slot = waitKey(work), stands = coordination ? standingStop(store.state, work, subject.stage) : null;
                 // The ledger keeps a subject as it last saw it while it cannot see the project; only a record that still stands that way is marked.
                 if (!stands || !sameStop(stands, { stage: subject.stage, episode: subject.episode, stop: subject.stop, head: subject.head })) { mine.unmarked.push(key); continue; }
-                const repair = incident.repair!, existing = before[slot], same = existing?.incident === incident.id && existing.repair === repair.event && existing.digest === digest;
+                const repair = incident.repair!, mark = repairDigest(repair.event), existing = before[slot];
+                // A saved marker is matched by the digest of its repair's event ID: the ID itself is redacted on save. One saved without a digest is matched by the ID, as it always was.
+                const same = existing?.incident === incident.id && existing.digest === digest && (existing.repairDigest ? existing.repairDigest === mark : existing.repair === repair.event);
                 let wait: RepairWait;
                 if (same) wait = existing.expiredAt ? existing : { ...existing, progressAt: lastProgress(existing.progressAt, progress) };
                 else {
                     // An expiry already on record for this repair and subject stands: the marker is rebuilt as expired, not admitted afresh.
-                    const past = ledger.event(expiryId(incident.id, repair.event, key)), fresh = { incident: incident.id, repair: repair.event, issue: repair.issue, subject: key, digest, stands };
+                    // An expiry recorded before markers carried a digest is under the event ID itself; a marker rebuilt from it stays one of that kind, so it is not recorded a second time.
+                    const recorded = ledger.event(expiryId(incident.id, { digest: mark }, key)), earlier = recorded ? undefined : ledger.event(expiryId(incident.id, { event: repair.event }, key)), past = recorded ?? earlier;
+                    const fresh = { incident: incident.id, repair: repair.event, ...(earlier ? {} : { repairDigest: mark }), issue: repair.issue, subject: key, digest, stands };
                     wait = past ? { ...fresh, since: String(past.body.since), progressAt: String(past.body.progressAt), expiredAt: past.at } : { ...fresh, since: at, progressAt: lastProgress(repair.startedAt, progress) };
                     if (!past) mine.admitted.push(key);
                 }

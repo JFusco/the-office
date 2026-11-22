@@ -23,18 +23,19 @@ const original = (stage: string) => `the ID of the original stopped ${stage} wor
  * Every route a fix may name: the closed list of existing handlers the Office intends to resume
  * stopped work through. An action that is not here is not a route. Each row states what the
  * handler's own signature establishes; its preconditions stay the handler's to check when it runs.
- * `dispatch` widens only with the change that ships that route's resume and its test.
+ * `dispatch` widens only with the change that ships that route's resume and its test. Which `head`
+ * a handler takes for a job at a given moment is its own rule to say (see route-head.ts).
  */
 export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
     'resume-ticket': { subject: 'ticket', keyed: 'ticket', head: null, dispatch: 'none' },
-    'reconcile-implementation': { subject: 'job', keyed: 'ticket', head: original('implementation'), dispatch: 'none' },
-    'reconcile-validation': { subject: 'job', keyed: 'ticket', head: original('validation'), dispatch: 'none' },
-    'reconcile-preparation': { subject: 'job', keyed: 'ticket', head: `${original('preparation')}; empty selects the saved-result reconciliation`, dispatch: 'none' },
+    'reconcile-implementation': { subject: 'job', keyed: 'ticket', head: `${original('implementation')}; where a saved prerequisite result stands, the ID of the latest completed writer of the job's stage`, dispatch: 'all' },
+    'reconcile-validation': { subject: 'job', keyed: 'ticket', head: original('validation'), dispatch: 'all' },
+    'reconcile-preparation': { subject: 'job', keyed: 'ticket', head: `${original('preparation')}; empty selects the saved-result reconciliation`, dispatch: 'all' },
     // Without a head: a saved independent review is verified against the unchanged pull request and issue. No model runs and no provider write is repeated.
-    'reconcile-review': { subject: 'job', keyed: 'ticket', head: 'the ID of the stopped base-update handoff worker or of the continuation\'s original worker; empty selects the saved-review reconciliation', dispatch: 'saved-result' },
-    'reconcile-base-update': { subject: 'job', keyed: 'ticket', head: `the job's head commit for a board preflight, or ${original('base-update')}; empty selects the saved-result reconciliation`, dispatch: 'none' },
-    'reconcile-scope-repair': { subject: 'job', keyed: 'ticket', head: original('scope-repair'), dispatch: 'none' },
-    'reconcile-closeout': { subject: 'job', keyed: 'ticket', head: `${original('closeout')}; empty selects the saved-closeout reconciliation`, dispatch: 'none' },
+    'reconcile-review': { subject: 'job', keyed: 'ticket', head: 'the ID of the stopped base-update handoff worker or of the continuation\'s original worker; empty selects the saved-review reconciliation', dispatch: 'all' },
+    'reconcile-base-update': { subject: 'job', keyed: 'ticket', head: `the job's head commit for a board preflight, or ${original('base-update')}; empty selects the saved-result reconciliation`, dispatch: 'all' },
+    'reconcile-scope-repair': { subject: 'job', keyed: 'ticket', head: original('scope-repair'), dispatch: 'all' },
+    'reconcile-closeout': { subject: 'job', keyed: 'ticket', head: `${original('closeout')}; empty selects the saved-closeout reconciliation`, dispatch: 'all' },
     'review-candidate': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
     'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
     'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
