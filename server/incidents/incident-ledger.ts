@@ -53,11 +53,19 @@ export class IncidentLedger {
         return this.read(() => { const row = this.db.prepare('SELECT body FROM incident_events WHERE id=?').get(id) as { body: string } | undefined; return row ? JSON.parse(row.body) as IncidentEvent : null; }, null);
     }
 
-    /** How often a subject was observed in an incident, and when first, from the event history; null if never. */
-    subjectHistory(incident: string, subject: string): { episodes: number; firstObservedAt: string } | null {
+    /** How often a subject was observed in an incident, and when first and when it last opened, from the event history; null if never. */
+    subjectHistory(incident: string, subject: string): { episodes: number; firstObservedAt: string; lastOpenedAt: string } | null {
         return this.read(() => {
-            const row = this.db.prepare("SELECT COUNT(*) AS episodes, MIN(at) AS first FROM incident_events WHERE incident=? AND kind IN ('subject-observed','episode-observed') AND json_extract(body,'$.body.subject')=?").get(incident, subject) as { episodes: number; first: string | null };
-            return row.episodes && row.first ? { episodes: row.episodes, firstObservedAt: row.first } : null;
+            const row = this.db.prepare(`
+                WITH openings AS (
+                    SELECT seq, at FROM incident_events
+                    WHERE incident=? AND kind IN ('subject-observed','episode-observed') AND json_extract(body,'$.body.subject')=?
+                )
+                SELECT COUNT(*) AS episodes, MIN(at) AS first,
+                       (SELECT at FROM openings ORDER BY seq DESC LIMIT 1) AS last
+                FROM openings
+            `).get(incident, subject) as { episodes: number; first: string | null; last: string | null };
+            return row.episodes && row.first && row.last ? { episodes: row.episodes, firstObservedAt: row.first, lastOpenedAt: row.last } : null;
         }, null);
     }
 

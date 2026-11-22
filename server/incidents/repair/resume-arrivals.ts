@@ -28,7 +28,8 @@ export interface ResumeArrivalsInput {
 /** `project/kind/id` of every subject one pass admitted or recorded as admitted, refused, or found held by the switch. A refusal already on record is listed again; it is recorded once. */
 export interface ResumeArrivals { admitted: string[]; refused: string[]; held: string[] }
 
-const admittedId = (incident: string, identity: string) => eventId(incident, 'resume-admitted', identity);
+/** The ID of the ledger's `resume-admitted` event for one resume (see resume-binding.ts for the identity). */
+export const admittedId = (incident: string, identity: string) => eventId(incident, 'resume-admitted', identity);
 const refusedId = (incident: string, identity: string, code: ResumeRefusal) => eventId(incident, 'resume-refused', identity, code);
 
 /** Whether the ledger holds an admission of this subject's resume for the latest fix of this incident. */

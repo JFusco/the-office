@@ -45,6 +45,7 @@ class Undone extends Error { constructor(readonly code: Refusal, readonly detail
  *
  * Then the existing recovery request is queued through `enqueueRequest`, bound to the fix, and the
  * subject's repair-wait marker is removed, in one transaction with the request's admission row.
+ * The binding also records how the job stood then, for the outcome to be judged against later.
  * A refusal writes nothing, the one the queue itself makes included: that transaction is undone.
  * The caller checks the deployment fence, the Office-wide switch and that the running release
  * holds the fix; the handler checks its own preconditions when the scheduler runs the request. No counter,
@@ -91,7 +92,9 @@ export function admitResume(store: Store, intent: ResumeIntent, now: Date, route
         const waits = state.coordination!.repairWaits!;
         delete waits[waitKey(ref)];
         if (!Object.keys(waits).length) delete state.coordination!.repairWaits;
-        store.emit('repair-resume-admitted', `${job.key}: ${action} queued to resume after harness fix ${fix.commit.slice(0, 7)} (${incident}).`, undefined, job.key);
+        const admission = store.emit('repair-resume-admitted', `${job.key}: ${action} queued to resume after harness fix ${fix.commit.slice(0, 7)} (${incident}).`, undefined, job.key);
+        // What the outcome is later judged against (see judge-resumes.ts): a job's steps carry no time, and neither does a stage.
+        request.repairResume.stood = { steps: job.steps.length, stage: job.stage, event: admission.id };
         return { admitted: request, replayed: false };
         });
     } catch (error) {

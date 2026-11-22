@@ -68,12 +68,20 @@ test('the history of an incident is its event count and its most recent events, 
     expect(ledger.history('inc-0000000000000001', 10).recent.map(e => e.id)).toEqual(['e1', 'e2', 'e3']);
 });
 
-test('the event history answers how often a subject was observed and when first', () => {
+test('the event history counts openings and takes the last opening in append order even when the clock steps back', () => {
     const ledger = new IncidentLedger(memory());
     expect(ledger.subjectHistory('inc-0000000000000001', 'brain/delivery/job-1')).toBeNull();
     const seen = (id: string, kind: 'subject-observed' | 'episode-observed' | 'subject-cleared', at: string, subject = 'brain/delivery/job-1') => event(id, { kind, at, body: { subject } });
-    ledger.record({ events: [event('e0'), seen('e1', 'subject-observed', '2026-11-20T12:00:00.000Z'), seen('e2', 'subject-cleared', '2026-11-20T12:01:00.000Z'), seen('e3', 'subject-observed', '2026-11-20T12:02:00.000Z'), seen('e4', 'episode-observed', '2026-11-20T12:03:00.000Z'), seen('e5', 'subject-observed', '2026-11-20T12:04:00.000Z', 'brain/delivery/job-2')], incidents: [incident()] });
-    expect(ledger.subjectHistory('inc-0000000000000001', 'brain/delivery/job-1')).toEqual({ episodes: 3, firstObservedAt: '2026-11-20T12:00:00.000Z' });
+    ledger.record({ events: [
+        event('e0'),
+        seen('e1', 'subject-observed', '2026-11-20T12:00:00.000Z'),
+        seen('e2', 'subject-cleared', '2026-11-20T12:01:00.000Z'),
+        seen('e3', 'subject-observed', '2026-11-20T12:10:00.000Z'),
+        seen('e4', 'episode-observed', '2026-11-20T12:02:00.000Z'),
+        seen('e5', 'subject-cleared', '2026-11-20T12:03:00.000Z'),
+        seen('e6', 'subject-observed', '2026-11-20T12:04:00.000Z', 'brain/delivery/job-2'),
+    ], incidents: [incident()] });
+    expect(ledger.subjectHistory('inc-0000000000000001', 'brain/delivery/job-1')).toEqual({ episodes: 3, firstObservedAt: '2026-11-20T12:00:00.000Z', lastOpenedAt: '2026-11-20T12:02:00.000Z' });
     expect(ledger.subjectHistory('inc-0000000000000001', 'brain/delivery/job-9')).toBeNull();
     expect(ledger.subjectHistory('inc-ffffffffffffffff', 'brain/delivery/job-1')).toBeNull();
 });

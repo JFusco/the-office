@@ -191,7 +191,7 @@ investigation and not dismissed, the third one incident with its event history.
 | `research` | Whether the incident may be investigated now, and why: no explanation, or an expected wait that came back after two resumes, holds three subjects or two projects, or stood 24 hours. Withdrawn as soon as none of those holds. |
 | `subjects` | Each affected piece of work: project, kind, ID, stage, saved stop, the run that last worked it, candidate head, whether a write is unsettled, `open` or `cleared`, and its episodes. Every return after a clear is one episode. |
 | `state` | `observed` until a repair starts, then `fixing`, then `shipped` once a bound fix is on `main`, then `deployed` once the Office finds that fix in the release it runs. It returns to `shipped` if the running release lacks the fix or can no longer be verified. `dismissed` while a false-positive verdict stands; back to `observed` when it lapses. The remaining states are set by later phases. |
-| `repair`, `fixes` | The repair issue and the subjects it is for; every fix bound so far, with what it declares per subject. A fix found in the running release carries `deployed`: the release commit, its hash, the deployment that activated it and when. |
+| `repair`, `fixes` | The repair issue and the subjects it is for; every fix bound so far, with what it declares per subject. A fix found in the running release carries `deployed`: the release commit, its hash, the deployment that activated it and when. The first recorded judgment adds `outcomes` to the fix, with one entry per subject judged so far. The field is absent while all admitted resumes for the fix are pending. See [What became of a resume](#what-became-of-a-resume). |
 | `dismissals` | Every false-positive verdict recorded: its reason, the evidence packet and source files it was tied to, the subjects it covered, and `lapsed` with the reason once it no longer holds. |
 
 ### Binding a fix you made by hand
@@ -233,8 +233,8 @@ resume from after the fix; see Resuming after a fix.
    ```json
    [
      { "subject": "brain/delivery/job-1", "digest": "<from repair.subjects>", "disposition": "route",
-       "route": { "action": "reconcile-review", "payload": { "key": "GH-12" }, "expectedStage": "review" },
-       "boundary": { "kind": "stage-result-passed", "stage": "review" } },
+       "route": { "action": "reconcile-review", "payload": { "key": "GH-12" }, "expectedStage": "lead-pr" },
+       "boundary": { "kind": "stage-left", "stage": "lead-pr" } },
      { "subject": "brain/delivery/job-2", "digest": "<from repair.subjects>", "disposition": "no-route",
        "reason": "merged by hand" }
    ]
@@ -243,7 +243,9 @@ resume from after the fix; see Resuming after a fix.
    The dispositions are `route` (with a `boundary` of `stage-result-passed`, `stage-left` or
    `record-settled`), `undeclared-boundary` (a route and a `reason`) and `no-route` (a `reason`).
    A route is checked as you bind it; the Office refuses one that could never resume its subject
-   and tells you why (see Resuming after a fix).
+   and tells you why (see Resuming after a fix). A boundary is not checked against its route.
+   One the route never reaches leaves the resume pending; a `stage-left` for a stage the job was
+   not at when it was resumed is recorded `untested` (see What became of a resume).
 
 Each write prints an event ID before it is sent. If no answer comes back, send the same command
 again with `--event` and that ID: it is recorded once. If the Office answers that the incident is
@@ -490,8 +492,56 @@ reason, as `resume-refused`:
 | `head-mismatch` | The route's `head` is not the run its handler would read for that job now, the handler has nothing to read for it (a run an earlier request already reconciled included), or another job that is not cancelled has the same ticket key. | The Office tries again each pass and queues it if that changes while the wait holds. Read the detail: it names what the handler reads. |
 | `key-mismatch`, `no-record`, `not-dispatchable`, `already-reconciled` | The route does not fit the work as it stands. | Not resumed; read the detail. |
 
-The Office does not yet judge whether a resume worked: the incident stays `deployed`. If the
-request it queued stops, that shows up like any other stopped request.
+### What became of a resume
+
+Once a resume is queued, the Office reads each minute what became of it and records the outcome
+once, in the incident's history as `resume-outcome` and on the fix as `outcomes`. It reads the
+project's own records and the ledger; nothing is asked of a model, and no project is written.
+The incident stays `deployed` whatever the outcome: the Office does not yet move it to `verified`
+or `recurred`, and no deadline applies to a resume that shows nothing.
+
+| Outcome | Meaning |
+| --- | --- |
+| `advanced` | The boundary the fix declared was crossed after the resume was queued. It counts whichever automatic path crossed it: the resume's request, a later recovery request or a restart. |
+| `recurred` | The work stopped again for this incident's cause after the resume, in a release that held the fix. This replaces any outcome recorded before it, and nothing replaces it. |
+| `chained` | Before anything else could be said, the job, or the request the resume queued, stopped for another cause; the detail names that incident. Not final: any other outcome replaces it. |
+| `moved-by-hand` | An operator's command for the ticket followed the resume (PR preparation, a candidate base update, a candidate or PR review recheck, a requeued implementation). The boundary is not read after that, and the move is found even if the job is gone since. |
+| `gone` | The job is missing or cancelled with the boundary not crossed, or the project no longer holds the request. |
+| `untested` | Nothing can show whether the repair worked: the fix declared the boundary undeclared; the boundary cannot be judged for this job; the release that held the fix stopped serving after the resume was queued; or the resume was queued by a release that did not yet record how the job stood. |
+
+A resume with no entry is still pending. `moved-by-hand`, `gone` and `untested` say nothing about
+the repair either way. An outcome other than `chained` stays as recorded unless the work recurs.
+
+What each boundary reads, for a delivery job:
+
+- `stage-result-passed`: a result of that stage that passed, saved after the resume was queued.
+  A result the job already had does not count.
+- `stage-left`: the job is at another stage and is not cancelled. The stage must be the one the
+  job was at when it was resumed; otherwise the outcome is `untested`.
+- `record-settled`: the job is completed.
+
+Declare a boundary the route can reach. What a read-back saves differs by route: some save the
+stage's own step, some a step under a read-back name of their own, some none. Where the read-back
+saves no step of the stage, that stage's passed result is saved only later, when the job next
+runs the stage in the ordinary way.
+
+| Route | Step the read-back itself saves |
+| --- | --- |
+| `reconcile-implementation` | `implementation-readback`; none where a saved prerequisite result is handed on, which only moves the job to `review` |
+| `reconcile-validation` | `validate`, the stage's own step |
+| `reconcile-scope-repair` | none; the job is queued again at the stage it stopped at |
+| `reconcile-preparation` | `prepare-pr`, the stage's own step; `conflict-readback` for a published draft's conflict; none for a completed conflict draft |
+| `reconcile-base-update` | `base-update-readback` for an unpublished candidate; none otherwise |
+| `reconcile-closeout` | `closeout-readback` for the saved closeout, where it reads the closeout's effects back. With a head it saves none itself and queues a separate cleanup request. The job stays at `closeout` either way and ends completed, so declare `record-settled` |
+| `reconcile-review` | `lead-pr`, the stage's own step, for the saved review; `review` for a continuation's saved review; none for a stopped base handoff |
+
+When in doubt, declare `stage-left` for the stage the job stopped at.
+
+Two limits. An operator who queues a recovery request by command leaves nothing that tells it
+from the Office's own, so that move is not seen. And a job cancelled because its pull request was
+merged by its owner is `gone`, not `advanced`, unless the boundary was crossed first.
+
+If the request a resume queued stops, that also shows up like any other stopped request.
 
 `resumes` goes away when the Office withdraws the deployment mark and returns the incident to
 `shipped` (see When a fix counts as deployed).

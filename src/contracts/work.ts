@@ -212,6 +212,13 @@ export interface RepairResume {
     /** The verified release that ran, and was known to hold the fix, when the resume was admitted. */
     release: { commit: string; operation: string };
     admittedAt: string;
+    /**
+     * How the job stood when the resume was admitted: how many steps it had, the stage it was at,
+     * and the ID of the project event the admission emitted. What happened afterwards is told
+     * from these: a step saved later, a stage left, a command recorded later. Absent on a binding
+     * saved before outcomes were judged.
+     */
+    stood?: { steps: number; stage: string; event: number };
 }
 export interface HarnessRequest {
     /** Last recorded stop; meaningful only while the request is blocked or interrupted. */

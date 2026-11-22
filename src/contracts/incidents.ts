@@ -124,7 +124,23 @@ export interface IncidentFix {
      * the commit was running.
      */
     withdrawn?: { event: string; reason: 'not-in-release' | 'release-identity-unknown'; release: { commit: string; hash: string; operation: string; activatedAt: string }; deployedAt: string; at: string };
+    /** What became of each resume admitted for this fix, one entry per subject judged so far (see server/incidents/repair/judge-resumes.ts). */
+    outcomes?: ResumeOutcome[];
 }
+
+/**
+ * What became of one admitted resume, as the project's own records and the ledger show it.
+ * `advanced`: the boundary the fix declared was crossed after the admission. `recurred`: the
+ * subject stopped again for this incident's cause after it. `chained`: the job, or the resume's
+ * own request, stopped for another cause first; the only outcome that is not final.
+ * `moved-by-hand`: an operator's command moved the job after the admission. `gone`: the request
+ * or the job is no longer there to be read. `untested`: nothing can show whether the repair
+ * worked. The last three say nothing about the repair either way.
+ */
+export type ResumeOutcomeKind = 'advanced' | 'recurred' | 'chained' | 'moved-by-hand' | 'gone' | 'untested';
+
+/** One subject's recorded outcome for a fix. Replaced only by `recurred`, or, while it is `chained`, by any other. */
+export interface ResumeOutcome { subject: string; outcome: ResumeOutcomeKind; detail: string; event: string; at: string }
 
 /**
  * The Office-wide switch for automatic repair resumes. Paused until a person enables it, and every
@@ -229,10 +245,10 @@ export interface EvidencePacket {
 /**
  * The first six are written by observation. `repair-started`, `fix-bound` and `dismissed` are
  * written by a person or the repair runner through the Office. `fix-deployed`, `fix-withdrawn`,
- * `release-identity-unknown`, `dismissal-invalidated`, `repair-wait-expired`, `resume-admitted`
- * and `resume-refused` are written by the Office itself.
+ * `release-identity-unknown`, `dismissal-invalidated`, `repair-wait-expired`, `resume-admitted`,
+ * `resume-refused` and `resume-outcome` are written by the Office itself.
  */
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired' | 'resume-admitted' | 'resume-refused';
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired' | 'resume-admitted' | 'resume-refused' | 'resume-outcome';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */
