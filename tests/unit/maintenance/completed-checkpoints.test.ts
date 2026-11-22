@@ -33,6 +33,32 @@ test.each(['cec', 'cms-field-vocabulary', 'brain'])('%s clears its stale checkpo
     await reconcileCompletedCheckpoints(store, read);
     expect(run.steps).toHaveLength(2);
 });
+test('a Brain checkpoint closes when its completed run records a write refused before it took effect', async () => {
+    const { store, run, checkpoint } = fixture('brain'), read = vi.fn();
+    checkpoint.status = 'interrupted';
+    run.steps[0].result.receipts = [{ id: 'merge', action: 'guarded merge', target: 'PR', verified: true, uncertain: false, detail: '' },
+        { id: 'prepare-schema-rejection', action: 'prepare refused', target: 'knowledge review report', verified: false, uncertain: false, detail: 'Rejected before publication; the next prepare passed.' }];
+    const receipts = structuredClone(run.steps[0].result.receipts);
+    await reconcileCompletedCheckpoints(store, read);
+    expect(checkpoint.status).toBe('completed');
+    expect(run.steps[0].result.receipts).toEqual(receipts);
+    expect(run.steps.at(-1)).toMatchObject({ stage: 'checkpoint-completion-readback', result: { outcome: 'passed' } });
+    expect(store.state.outbox.filter(item => item.status === 'open')).toEqual([]);
+    expect(read).not.toHaveBeenCalled();
+});
+test.each<[string, string, { verified: boolean; uncertain: boolean }]>([
+    ['a Brain run with a write of unknown outcome', 'brain', { verified: false, uncertain: true }],
+    ['a Brain run with a verified but uncertain write', 'brain', { verified: true, uncertain: true }],
+    ['another project\'s run with an unverified write', 'cms-field-vocabulary', { verified: false, uncertain: false }],
+    ['a CEC run with an unverified write', 'cec', { verified: false, uncertain: false }],
+])('keeps the checkpoint of %s', async (_name, project, receipt) => {
+    const { store, run, checkpoint } = fixture(project);
+    run.steps[0].result.receipts = [{ id: 'r', action: 'write', target: 't', detail: '', ...receipt }];
+    const before = structuredClone(store.state);
+    await reconcileCompletedCheckpoints(store, vi.fn());
+    expect(store.state).toEqual(before);
+    expect(checkpoint.status).toBe('blocked');
+});
 test.each(['unreconciled', 'reconciled-only', 'skipped', 'wrong-link', 'missing-run', 'uncertain', 'uncertain-effect', 'dispatching-effect', 'failed-result', 'active-worker', 'active-recovery', 'active-claim', 'repair', 'continuation', 'paused', 'draining', 'disabled'])('keeps unresolved checkpoint with %s', async scenario => {
     const { store, run, checkpoint } = fixture();
     if (scenario === 'unreconciled') run.status = 'blocked';

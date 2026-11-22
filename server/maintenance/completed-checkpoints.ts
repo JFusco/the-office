@@ -20,6 +20,16 @@ function settledRun(store: Store, checkpoint: DailyCheckpoint): MaintenanceRun |
     return run;
 }
 
+/**
+ * The receipt rule the run was accepted under. A Brain run completes with a write the worker reported as refused
+ * before it took effect (not verified, not uncertain): its outcome is known, nothing happened
+ * (`brain/brain-result-stop.ts`). Every other project's run completes only with every receipt verified. A write of
+ * unknown outcome never counts.
+ */
+function outcomeKnown(run: MaintenanceRun, receipt: { verified: boolean; uncertain: boolean }): boolean {
+    return !receipt.uncertain && (receipt.verified || run.stage === 'brain-completed');
+}
+
 /** The native check reads the repository and its remote, so one checkpoint is checked at most this often. A pacing aid only: nothing is decided from it. */
 const NATIVE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const nativeChecks = new WeakMap<Store, Map<string, number>>();
@@ -32,7 +42,7 @@ export async function reconcileCompletedCheckpoints(store: Store, read?: (path: 
         if (!run) continue;
         const finished = run.status === 'completed' && ['complete', 'brain-completed'].includes(run.stage) &&
             !!run.endedAt && run.steps.at(-1)?.result.outcome === 'passed' &&
-            run.steps.every(step => step.result.receipts.every(receipt => receipt.verified && !receipt.uncertain));
+            run.steps.every(step => step.result.receipts.every(receipt => outcomeKnown(run, receipt)));
         const checked = nativeChecks.get(store) ?? nativeChecks.set(store, new Map()).get(store)!;
         if (!finished && now - (checked.get(checkpoint.id) ?? -Infinity) < NATIVE_CHECK_INTERVAL_MS) continue;
         if (!finished) checked.set(checkpoint.id, now);
