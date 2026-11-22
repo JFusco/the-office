@@ -591,9 +591,11 @@ Morgan or Joe:
   projects with no automatic read-back and projects that are not hands-off are unchanged.
 - A daily checkpoint ends as its maintenance run did: the coordinator tick copies the run's status to it.
   That tick does not run while a deployment holds the fence, so a service that restarts after the run
-  completed and before the copy gives the checkpoint its run's result at start-up
-  (`server/store/interrupted-work-recovery.ts`, `server/maintenance/checkpoint-outcome.ts`). A
-  checkpoint still working whose run had not completed is interrupted for read-back, as before.
+  completed and before the copy gives the checkpoint its run's result and end time at start-up
+  (`server/store/interrupted-work-recovery.ts`, `server/maintenance/checkpoint-outcome.ts`); with
+  coordination off or the project paused it is left for the tick, which waits in the same cases. A
+  working checkpoint whose run is not completed, has no end time or belongs to another checkpoint is
+  handled as before: interrupted for read-back, unless its run is still queued and clean.
 - A stopped daily checkpoint whose one linked run the harness itself completed is closed by the harness
   on the next coordinator tick, keeping the earlier failure in the run's read-back step, when nothing of
   its own is in flight and no Office write is unsettled (`server/maintenance/completed-checkpoints.ts`).

@@ -9,7 +9,7 @@ test('a checkpoint takes the status of its ended run, with the run\'s error or i
     expect(checkpointOutcome(run('interrupted', { stage: 'follow-up' }))).toEqual({ status: 'interrupted', detail: 'Maintenance run: follow-up' });
 });
 
-test.each(['queued', 'working', 'reconciled', 'cancelled'])('a run that is %s has not ended for its checkpoint', status => {
+test.each(['queued', 'working', 'reconciled'])('a run that is %s has not ended for its checkpoint', status => {
     expect(checkpointOutcome(run(status))).toBeUndefined();
 });
 

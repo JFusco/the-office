@@ -41,11 +41,14 @@ export function recover(this: Store, fenced = false): void  {
             if (c.status === 'working') {
                 const run = this.state.maintenance?.runs.find(run => run.id === c.runId);
                 // The run finished before the service stopped, and only the coordinator tick that copies its result
-                // was missed (it does not run while a deployment holds the fence). The checkpoint ends as its run did.
+                // was missed (it does not run while a deployment holds the fence). The checkpoint ends as its run
+                // did, when its run did. Where that tick would itself be waiting (coordination off, or the project
+                // paused) the checkpoint is left for it.
                 const finished = run?.status === 'completed' && !!run.endedAt && run.checkpointId === c.id ? checkpointOutcome(run) : undefined;
                 if (finished) {
+                    if (!coordination?.enabled || this.state.paused) continue;
                     c.status = finished.status;
-                    c.endedAt = this.clock.now().toISOString();
+                    c.endedAt = run!.endedAt;
                     c.detail = finished.detail;
                     this.emit('checkpoint-finished', c.detail, 'pm');
                     continue;
