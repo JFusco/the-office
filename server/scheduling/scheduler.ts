@@ -102,18 +102,19 @@ export class Scheduler {
         let claim: ReturnType<Store['claimWork']> = null;
         try {
             const expected = item.identity();
-            claim = store.transaction(() => item.claimEligible && !item.claimEligible() ? null : store.claimWork(item.work, this.owner, item.stage, this.lane));
-            if (!claim) {
-                scheduling.undispatchedCycles++;
-                store.save();
-                return;
-            }
-            if ((!item.allowPaused && (store.state.paused || store.state.draining)) || item.identity() !== expected) {
-                store.finishClaim(claim.id, 'interrupted');
-                return;
-            }
-            const at = this.clock.now().toISOString();
-            store.transaction(() => {
+            // One transaction: the claim, the check that it may still run, and its queue timing. A failure in any
+            // of them leaves no claim behind; a claim that may not run is kept as interrupted and not executed.
+            claim = store.transaction(() => {
+                const made = item.claimEligible && !item.claimEligible() ? null : store.claimWork(item.work, this.owner, item.stage, this.lane);
+                if (!made) {
+                    scheduling.undispatchedCycles++;
+                    return null;
+                }
+                if ((!item.allowPaused && (store.state.paused || store.state.draining)) || item.identity() !== expected) {
+                    store.finishClaim(made.id, 'interrupted');
+                    return null;
+                }
+                const at = this.clock.now().toISOString();
                 const observed = store.db.prepare('SELECT enqueued_at,ready_at FROM queue_observations WHERE work_key=? AND stage=?').get(workKey(item.work), item.stage) as {
                     enqueued_at: string;
                     ready_at: string;
@@ -123,13 +124,16 @@ export class Scheduler {
                     item.saveTiming(timing);
                 else
                     item.timing?.push(timing);
-                store.db.prepare('INSERT INTO queue_timings VALUES(?,?,?)').run(claim!.id, workKey(item.work), JSON.stringify(timing));
+                store.db.prepare('INSERT INTO queue_timings VALUES(?,?,?)').run(made.id, workKey(item.work), JSON.stringify(timing));
                 store.db.prepare('DELETE FROM queue_observations WHERE work_key=? AND stage=?').run(workKey(item.work), item.stage);
                 scheduling.lastClaimAt = at;
                 scheduling.undispatchedCycles = 0;
                 scheduling.noticeClaims = item.rank === 4 ? 0 : items.some(candidate => candidate.rank === 4 && candidate.eligibility.state === 'runnable') ? scheduling.noticeClaims + 1 : 0;
                 store.emit('work-claimed', `${item.stage} claimed by the scheduler.`, undefined, item.work.id);
+                return made;
             });
+            if (!claim)
+                return;
             this.cursor = (index + 1) % count;
             try {
                 await withAssignment(claim, this.lane, () => item.execute());
