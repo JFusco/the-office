@@ -31,7 +31,9 @@ test('a due resume queues the bound request once, binds it to the fix and lifts 
     expect(outcome).toMatchObject({ replayed: false, admitted: { action: 'reconcile-review', key: 'GH-1', head: '', lane: 'delivery', status: 'queued' } });
     const request = (outcome as { admitted: { id: string; repairResume: unknown } }).admitted;
     expect(request.repairResume).toEqual({ id: resumeIdentity(w.id, ONE, 'cli-bind-1'), incident: w.id, subject: ONE, digest: w.binding('1').digest, fix: 'cli-bind-1', commit: FIX, action: 'reconcile-review',
-        payload: createHash('sha256').update(canonical({ key: 'GH-1' })).digest('hex'), release: { commit: RELEASE, operation: OPERATION }, admittedAt: later(5).toISOString() });
+        payload: createHash('sha256').update(canonical({ key: 'GH-1' })).digest('hex'), release: { commit: RELEASE, operation: OPERATION }, admittedAt: later(5).toISOString(),
+        // How the job stood, for its outcome to be judged against: its one step, its stage, and the project event this admission emitted.
+        stood: { steps: 1, stage: 'review', event: w.store.state.events.find(event => event.kind === 'repair-resume-admitted')!.id } });
     expect(w.requests()).toHaveLength(1);
     expect(w.admissions()).toEqual([request.id]);
     expect(Object.keys(w.waits())).toEqual(['delivery/2']);
@@ -41,6 +43,7 @@ test('a due resume queues the bound request once, binds it to the fix and lifts 
     // All of it is in the saved state.
     const saved = JSON.parse(JSON.parse(w.saved()).body);
     expect(saved.coordination.requests[0].repairResume.fix).toBe('cli-bind-1');
+    expect(saved.coordination.requests[0].repairResume.stood).toEqual((request.repairResume as { stood: unknown }).stood);
     expect(Object.keys(saved.coordination.repairWaits)).toEqual(['delivery/2']);
     // The last marker goes with its map.
     admitResume(w.store, w.intent('2'), later(5));
@@ -378,4 +381,24 @@ test('the deadline counts every read from entry on: the wait lookup before the h
             expect(Object.keys(w.waits()), name).toEqual(['delivery/2']);
         }
     }
+});
+
+test('the binding records how the job stood at that admission: its own step count and stage, and the event of that admission', async () => {
+    const w = await deployedWorld(stores, dbs);
+    const step = w.jobs()[0].steps[0];
+    w.jobs()[1].steps.push(step, step);
+    const ids = () => w.store.state.events.filter(event => event.kind === 'repair-resume-admitted').map(event => event.id);
+    const first = admitResume(w.store, w.intent('1'), later(5)) as { admitted: { repairResume: { stood: unknown } } };
+    expect(first.admitted.repairResume.stood).toEqual({ steps: 1, stage: 'review', event: ids()[0] });
+    // Whatever is recorded for the project in between is before the second admission's event, not after it.
+    w.store.emit('pr-review-recheck', 'an operator rechecked GH-2', 'lead', 'GH-2');
+    const second = admitResume(w.store, w.intent('2'), later(5)) as { admitted: { repairResume: { stood: { event: number } } } };
+    expect(second.admitted.repairResume.stood).toEqual({ steps: 3, stage: 'review', event: ids()[0] });
+    expect(ids()).toHaveLength(2);
+    expect(second.admitted.repairResume.stood.event).toBeGreaterThan(w.store.state.events.find(event => event.kind === 'pr-review-recheck')!.id);
+    // A replay returns the binding as it was made: the job is not read again, whatever it has done since.
+    w.jobs()[1].steps.push(step);
+    w.jobs()[1].stage = 'lead-pr';
+    expect(admitResume(w.store, w.intent('2'), later(6))).toMatchObject({ replayed: true, admitted: { repairResume: { stood: { steps: 3, stage: 'review', event: ids()[0] } } } });
+    expect(ids()).toHaveLength(2);
 });

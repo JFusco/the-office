@@ -1147,7 +1147,39 @@ prerequisite or unsettled write outranks for now. The refusal the queue itself m
 comes before it: a run an earlier request already reconciled is one its handler no longer reads,
 so that binding is refused `head-mismatch`, and `already-reconciled` is left for a head the
 handler would still take. A stop whose
-wait already ran out is not resumed; it has gone back to a person. Whether a resume worked is not judged yet: the incident stays `deployed`.
+wait already ran out is not resumed; it has gone back to a person.
+
+After that pass the Office judges what became of each resume it queued
+(`server/incidents/repair/judge-resumes.ts`): for every `deployed` incident, each subject of its
+latest fix whose admission the ledger holds. The reading (`resume-outcome.ts`) is pure and takes
+the first that applies: `recurred` (the subject opened again in the same incident after the
+admission and after the deployment mark that stands); an outcome already recorded, unless it is
+`chained`; `untested` (the mark is newer than the admission, so the release was withdrawn in
+between); `gone` (the project no longer holds the request); `untested` (the binding does not
+record how the job stood); `moved-by-hand` (an operator's command event for the request's ticket
+after the admission's own project event: `pr-preparation-queued`, `candidate-base-update`,
+`candidate-review-recheck`, `pr-review-recheck`, `implement-requeued`); `untested` (the boundary
+is undeclared); `advanced` (the declared boundary is crossed, `boundary-crossed.ts`) or `untested`
+when it cannot be judged; `gone` (the job is missing or cancelled); `chained` (the job, or the
+resume's own request, opened in another incident after the admission). A boundary crossed by any
+automatic path counts; the request's own end is never evidence, since a completed request can
+leave the job where it was. So that "after the admission" can be read at all, admission saves on
+the binding the job's step count and stage and the ID of the project event it emitted: a job's
+steps carry no time. A changed outcome is recorded as one `resume-outcome` event and as the
+subject's entry in the fix's `outcomes`, with the incident's revision advanced and the incident
+read again for every subject. When the projection has let a long-cleared subject go, when it last
+opened is taken from the event history. The project's events and the other incidents are read
+only while a subject's outcome is still open. The pass changes no incident state and writes no
+project store, asks the deployment fence before each subject is read and again before each write,
+and has no deadline: a resume that shows nothing stays pending, and the incident stays `deployed`.
+
+A boundary is read three ways, for a delivery job. `stage-result-passed`: a step of that stage
+whose result passed, saved after the step count the admission recorded; a job that now has fewer
+steps than that cannot be judged. `stage-left`: the job is at another stage and is not cancelled;
+a job that was not at that stage when it was resumed cannot be judged. `record-settled`: the job
+is completed. Which step each route's read-back saves, and which it leaves to later work, is
+listed in the [operator's guide](overseer.md#what-became-of-a-resume).
+
 `reconcile-review` without a head ends in the job's normal continuation under its existing merge
 authorization and readiness requirements. Once queued, a resume is an ordinary recovery request:
 with the wait lifted, IT's own recovery for that job finds the identical request, adopts it and

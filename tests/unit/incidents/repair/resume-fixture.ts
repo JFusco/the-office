@@ -19,10 +19,11 @@ export const reviewRoute = (jobId: string, over: Partial<RepairRoute> = {}): Rep
  * job, the repair-wait markers in place (minute 3) and the fix found in the running release
  * (minute 4): the state in which a resume is due.
  */
-export async function deployedWorld(stores: Store[], dbs: DatabaseSync[], ids = ['1', '2'], route: (jobId: string) => RepairRoute = jobId => reviewRoute(jobId), { fixEvent = 'cli-bind-1', bindMinute = 2 } = {}) {
+export async function deployedWorld(stores: Store[], dbs: DatabaseSync[], ids = ['1', '2'], route: (jobId: string) => RepairRoute = jobId => reviewRoute(jobId), { fixEvent = 'cli-bind-1', bindMinute = 2, declare = (bound: SubjectFix): SubjectFix => bound } = {}) {
     const w = world(stores, dbs, ids);
     w.start('cli-start-1', 1);
-    const bindings: SubjectFix[] = w.ledger.get(w.id)!.repair!.subjects.map(subject => ({ ...subject, disposition: 'route', route: route(subject.subject.split('/').at(-1)!), boundary: { kind: 'stage-left', stage: 'review' } }));
+    // `declare` replaces what the fix states for a subject: by default a route whose boundary is leaving `review`.
+    const bindings: SubjectFix[] = w.ledger.get(w.id)!.repair!.subjects.map(subject => declare({ ...subject, disposition: 'route', route: route(subject.subject.split('/').at(-1)!), boundary: { kind: 'stage-left', stage: 'review' } }));
     recordIncidentEvent(w.ledger, w.id, fixEvent, w.ledger.get(w.id)!.revision, { kind: 'fix-bound', request: { kind: 'fix-bound', reference: FIX, bindings }, fix: { commit: FIX, pullRequest: null, onMain: true } }, later(bindMinute));
     w.pass(3);
     const arrive = (identity: ReleaseIdentity = VERIFIED, minutes = 4) => recordDeployedFixes({ ledger: w.ledger, identity: () => identity, loadedHash: VERIFIED.hash, execute: fakeGitHub({ [historyCall(FIX, RELEASE)]: { status: 'ahead' } }).execute, now: later(minutes), memory: compareMemory() });

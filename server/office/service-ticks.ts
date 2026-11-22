@@ -5,6 +5,7 @@ import { sourceVersions } from '../incidents/cited-sources';
 import { invalidateDismissals } from '../incidents/dismissal-validity';
 import { redactEvidence } from '../incidents/redact-evidence';
 import { admitRepairWaits } from '../incidents/repair/admit-repair-waits';
+import { judgeResumes } from '../incidents/repair/judge-resumes';
 import { dispatchResumes } from '../incidents/repair/resume-arrivals';
 import { releaseWatch } from '../incidents/repair/running-release';
 import { command } from '../workers/process';
@@ -41,6 +42,8 @@ export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pic
         try { timedStep(offices.stepTimings, 'incidents: repair waits', () => admitRepairWaits(offices.incidents, [...offices.entries.values()], new Date(), fenced)); } catch (e) { console.error(redactEvidence(String(e))); }
         // Then queues, once per subject and fix, the resume a fix found in the running release bound for work still awaiting it. Local only.
         try { timedStep(offices.stepTimings, 'incidents: resumes', () => dispatchResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], control: offices.resumes, running: release.holding, now: () => new Date(), fenced })); } catch (e) { console.error(redactEvidence(String(e))); }
+        // Then reads, in each project, what became of the resumes already queued, and records it in the ledger. Local only: no project store is written.
+        try { timedStep(offices.stepTimings, 'incidents: resume outcomes', () => judgeResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], now: () => new Date(), fenced })); } catch (e) { console.error(redactEvidence(String(e))); }
         if (process.env.OFFICE_NO_POLL !== '1')
             void timedStep(offices.stepTimings, 'incidents: release compare (start)', () => offices.operations.run(release.compare));
     }, 60000);
