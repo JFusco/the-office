@@ -365,6 +365,15 @@ why on the record (`stop.kind`: provider checks, PR not ready, closed source, un
 pause, hold, authority or unclassified). The label is for counting stops (`pnpm office baseline`);
 it changes no status and grants no retry, resume or authority.
 
+A handoff of an existing pull request that was merged, with its issue closed as completed, outside the
+Office is retired by the harness from provider reads alone (`server/delivery/recovery/retire-external-delivery.ts`):
+the job is cancelled with its history kept, and no Office review or closeout is claimed. For a merge by
+anyone but the project owner, every worker the Office ran on it must have been a read-only review. For
+the owner's own merge a PR preparation also counts once it ran to its end, its process group is gone,
+and the result it saved passed at the job's head with no receipt other than a verified read
+(`completed-preparation.ts`). An unfinished worker, a saved or recorded write, an unverified effect, a
+worktree, a merge in flight or a recovery record still holds the handoff for read-back.
+
 A GitHub writer stage (implement or update base) on a hands-off project whose run died within
 the last six hours is restarted by the harness, not read back by a model. The harness first confirms the
 run's processes are gone and that the remote branch and PR are still at the accepted head. It

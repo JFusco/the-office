@@ -7,21 +7,22 @@ import type { TicketJob, WorkTime } from '../../../src/shared';
 export function completedPRReviews(store: Store, job: TicketJob): boolean {
     return (store.state.workLog || []).filter(work => work.requestId === job.id).every(work => completedPRReview(store, job, work));
 }
+
 /** One work-log entry of the job: a read-only lead review that ran to its end. */
 export function completedPRReview(store: Store, job: TicketJob, work: WorkTime): boolean {
-        if (work.stage !== 'github-lead-pr' || work.role !== 'lead' ||
-            !['completed', 'blocked', 'failed'].includes(work.status) ||
-            work.executionStatus !== 'completed' || !work.endedAt || !work.claimId)
-            return false;
-        try {
-            const directory = resolve(store.dataRoot, 'sessions', work.id);
-            const read = (name: string) => JSON.parse(readFileSync(resolve(directory, name), 'utf8'));
-            const assignment = read('assignment.json'), provider = read('provider.json'), capabilities = read('capabilities.json');
-            return assignment.id === work.id && assignment.claimId === work.claimId &&
-                assignment.work?.projectId === store.project.id && assignment.work?.kind === 'delivery' && assignment.work?.id === job.id &&
-                assignment.stage === work.stage && assignment.role === work.role && assignment.profile === 'reader' &&
-                provider.project === store.project.id && provider.repository === store.project.repository && provider.role === 'lead' && provider.readOnly === true &&
-                capabilities.name === 'reader' && capabilities.readOnly === true;
-        }
-        catch { return false; }
+    if (work.stage !== 'github-lead-pr' || work.role !== 'lead' ||
+        !['completed', 'blocked', 'failed'].includes(work.status) ||
+        work.executionStatus !== 'completed' || !work.endedAt || !work.claimId)
+        return false;
+    try {
+        const directory = resolve(store.dataRoot, 'sessions', work.id);
+        const read = (name: string) => JSON.parse(readFileSync(resolve(directory, name), 'utf8'));
+        const assignment = read('assignment.json'), provider = read('provider.json'), capabilities = read('capabilities.json');
+        return assignment.id === work.id && assignment.claimId === work.claimId &&
+            assignment.work?.projectId === store.project.id && assignment.work?.kind === 'delivery' && assignment.work?.id === job.id &&
+            assignment.stage === work.stage && assignment.role === work.role && assignment.profile === 'reader' &&
+            provider.project === store.project.id && provider.repository === store.project.repository && provider.role === 'lead' && provider.readOnly === true &&
+            capabilities.name === 'reader' && capabilities.readOnly === true;
+    }
+    catch { return false; }
 }
