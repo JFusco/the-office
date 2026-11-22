@@ -16,6 +16,7 @@ import {readValidationProviderContext,validationProviderVersion} from '../../../
 import {ITSpecialist} from '../../../../../server/it/it-specialist';
 import {enqueueRequest,executeRequest} from '../../../../../server/scheduling/requests';
 import type {StageResult,TicketJob} from '../../../../../src/shared';
+import { savedState, savedStateText } from '../../../store/saved-state-fixture';
 const roots:string[]=[],stores:Store[]=[],processes:number[]=[];
 function liveProcess(){const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});child.unref();processes.push(child.pid!);return child.pid!;}
 afterEach(()=>{for(const pid of processes.splice(0))try{process.kill(-pid,'SIGKILL');}catch{}vi.restoreAllMocks();stores.splice(0).forEach(s=>s.close());roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
@@ -196,7 +197,7 @@ test('commits the exact working intent and accepted QA together before any wrapp
  const old=JSON.stringify(a.original);
  await reconcileValidation(a.delivery,a.job.key,'original',a.ownership,request.id);
  expect(commits).toEqual([{stage:'draft',status:'completed'}]);
- const persisted=JSON.parse((a.store.db.prepare('SELECT body FROM state WHERE id=1').get() as any).body);
+ const persisted=savedState<any>(a.store);
  expect(persisted.coordination.requests[0]).toMatchObject({id:request.id,action:'reconcile-validation',head:'original',status:'completed'});
  expect(persisted.coordination.jobs[0]).toMatchObject({stage:'draft',status:'queued'});expect(persisted.coordination.jobs[0].steps.at(-1).result.receipts).toContainEqual(expect.objectContaining({action:'validation-readback',target:'original',verified:true}));
  expect(JSON.stringify(a.original)).toBe(old);
@@ -207,11 +208,11 @@ test('commits the exact working intent and accepted QA together before any wrapp
 });
 test('a precommit failure rolls back the intent and job together, keeping private proof non-authoritative',async()=>{
  const a=fixture(),request=enqueueRequest(a.store,'reconcile-validation',a.job.key,'original');request.status='working';a.store.save();
- const savedBefore=(a.store.db.prepare('SELECT body FROM state WHERE id=1').get() as any).body;
+ const savedBefore=savedStateText(a.store);
  vi.spyOn(a.store,'save').mockImplementation(()=>{expect(a.store.state.coordination!.jobs![0].stage).toBe('draft');expect(a.store.state.coordination!.requests![0].status).toBe('completed');throw new Error('Injected atomic persistence failure');});
  await expect(reconcileValidation(a.delivery,a.job.key,'original',a.ownership,request.id)).rejects.toThrow('Injected atomic');
  expect(a.store.state.coordination!.requests![0]).toMatchObject({id:request.id,status:'working'});expect(a.store.state.coordination!.jobs![0]).toMatchObject({stage:'validate',status:'blocked'});expect(a.store.state.coordination!.jobs![0].steps).toHaveLength(1);
- expect((a.store.db.prepare('SELECT body FROM state WHERE id=1').get() as any).body).toBe(savedBefore);expect(a.store.state.workLog!.find(w=>w.id==='original')!.status).toBe('failed');
+ expect(savedStateText(a.store)).toBe(savedBefore);expect(a.store.state.workLog!.find(w=>w.id==='original')!.status).toBe('failed');
 });
 test.each(['status','head','replacement'] as const)('a changed durable intent blocks QA adoption: %s',async change=>{
  const a=fixture(),request=enqueueRequest(a.store,'reconcile-validation',a.job.key,'original');request.status='working';

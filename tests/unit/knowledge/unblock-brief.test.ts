@@ -4,6 +4,7 @@ import { reconcileBlockerFollowups } from '../../../server/knowledge/blocker-fol
 import { catalogLine } from '../../../server/knowledge/lookup/catalog-line';
 import { unblockBrief } from '../../../server/knowledge/unblock-brief';
 import { job, knowledgeStore, learningLesson } from './knowledge-fixture';
+import { savedState } from '../store/saved-state-fixture';
 
 const unblock = { known: 'The live PR body fails lint:pr.', decision: 'A metadata-only blocker is not a source repair.', next: 'Morgan republishes the validated body.' };
 const catalog = { now: { kind: 'learning' as const, ref: 'now', url: '', detail: 'Current run' } };
@@ -41,7 +42,7 @@ test('a retrospective accepted after the blocker is confirmed resolved leaves no
         reconcileBlockerFollowups(store);
         expect(unblockBrief(k, { kind: 'job', id: blocked.id })).toBe('');
         expect(k.followups!.find(item => item.id === `job:${blocked.id}`)!.disposition).toBe('confirmed');
-        const persisted = JSON.parse((store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string }).body).knowledge;
+        const persisted = savedState<any>(store).knowledge;
         expect(persisted.unblockBriefs?.[`job:${blocked.id}`]).toBeUndefined();
     } finally { close(); }
 });

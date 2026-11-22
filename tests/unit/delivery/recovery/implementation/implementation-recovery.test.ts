@@ -31,6 +31,7 @@ import {coordination} from '../../../../../server/scheduling/coordination';
 import {implementationRecoveryCandidate,recoverImplementation,recoveredFindingsResolved} from '../../../../../server/delivery/recovery/implementation/implementation-recovery';
 import {ITSpecialist} from '../../../../../server/it/it-specialist';
 import type {StageResult,TicketJob} from '../../../../../src/shared';
+import { savedState } from '../../../store/saved-state-fixture';
 const roots:string[]=[],stores:Store[]=[];
 afterEach(()=>{vi.restoreAllMocks();stores.splice(0).forEach(s=>s.close());roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
 function fixture(kind:'candidate'|'preflight'='candidate'){
@@ -318,7 +319,7 @@ test('Brain scheduler request adopts the latest saved implementation after three
  await Promise.all([scheduler.pump([{store:a.store,items:[item]}]),scheduler.pump([{store:a.store,items:[item]}])]);
  expect(a.request.status).toBe('completed');expect(a.job).toMatchObject({stage:'review',status:'queued',head:a.result.commit,implementationContinuation:{phase:'technical-review',round:0,maxRounds:3,pendingFindingIds:['index-429'],noteIds:['scope-note','storage-note']}});
  expect(JSON.stringify(a.job.steps.slice(0,-1))).toBe(history);expect(JSON.stringify(a.original)).toBe(original);expect(a.job.head).not.toBe(a.job.discoveryRecovery!.baseline);
- const saved=JSON.parse((a.store.db.prepare('SELECT body FROM state WHERE id=1').get() as any).body);expect(saved.coordination.requests.at(-1).status).toBe('completed');expect(saved.coordination.jobs[0].implementationContinuation.phase).toBe('technical-review');
+ const saved=savedState<any>(a.store);expect(saved.coordination.requests.at(-1).status).toBe('completed');expect(saved.coordination.jobs[0].implementationContinuation.phase).toBe('technical-review');
  const calls=a.run.mock.calls.length;await expect(a.adopt()).rejects.toThrow();expect(a.run.mock.calls).toHaveLength(calls);
 });
 test('Brain without bound history and human approval stays excluded',()=>{const a=brainFixture();delete a.job.discoveryRecovery;delete a.job.discoveryRecoveryHistory;expect(implementationRecoveryCandidate(a.store,a.job)).toBeUndefined();});
@@ -741,7 +742,7 @@ test('IT preserves exhausted original counts and deduplicates one protocol/input
  requests[0].status='blocked';requests[0].detail='Saved native binding failed';await it.tick(new Date(now+180000),true);
  expect(a.store.state.coordination!.requests).toHaveLength(before+1);expect(a.store.state.it!.recoveries[bindingId]).toMatchObject({attempts:1,status:'needs-human',requestId:requests[0].id});
  expect(a.store.state.it!.reports.at(-1)!.followUps).toContainEqual(expect.objectContaining({id:bindingId,owner:'Morgan',detail:expect.stringContaining('Saved native binding failed')}));
- a.store.state=JSON.parse((a.store.db.prepare('SELECT body FROM state WHERE id=1').get()as any).body);
+ a.store.state=savedState<any>(a.store);
  const restarted=new ITSpecialist(offices as any,health as any);await restarted.tick(new Date(now+600000),true);
  expect(a.store.state.coordination!.requests).toHaveLength(before+1);expect(a.store.state.it!.recoveries[bindingId]).toMatchObject({attempts:1,status:'needs-human',requestId:requests[0].id});
  const job=a.store.state.coordination!.jobs![0];job.detail='Changed candidate input';

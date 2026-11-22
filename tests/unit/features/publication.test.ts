@@ -9,6 +9,7 @@ import { publishFeature, type FeaturePublisher } from '../../../server/features/
 import { featureGate } from '../../../server/features/enrollment-gate';
 import { fixture } from './test-store';
 import { commandFeature, featureById } from '../../../server/features/commands';
+import { savedState } from '../store/saved-state-fixture';
 test('an uncertain create retains its identity across approvals and is reconciled without dispatch', async () => {
     const root = mkdtempSync(resolve(tmpdir(), 'office-publication-')), store = new Store(':memory:', projectById('brain'), root);
     try {
@@ -97,7 +98,7 @@ for (const action of ['pause', 'revise'] as const) {
             expect(dispatches).toBe(1);
             expect(featureById(f.store, f.feature.id).publication[0]).toMatchObject({ key: 'GH-10', fence: false, verified: false });
             expect(f.store.getEffect('feature:' + f.feature.id + ':item:stable:create')?.status).toBe('verified');
-            const persisted = JSON.parse((f.store.db.prepare('SELECT body FROM state WHERE id=1').get() as any).body).features[0];
+            const persisted = savedState<any>(f.store).features[0];
             expect(persisted.publication[0].key).toBe('GH-10');
         } finally { f.close(); }
     });

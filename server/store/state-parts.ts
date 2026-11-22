@@ -1,9 +1,9 @@
 import type { StatementSync } from 'node:sqlite';
 import { sanitizeObject } from '../office/security';
 import type { StoreTimings } from './store-timings';
+import { joinParts, selectSaved, type PartRow } from './saved-state';
 
 interface WrittenPart { position: number; raw: string | undefined; redacted: string }
-type PartRow = { key: string; position: number; body: string };
 
 const ROW = 'INSERT OR REPLACE INTO state(id,body) VALUES(1,?)';
 
@@ -24,16 +24,16 @@ export class StateParts {
     constructor(private statement: (sql: string) => StatementSync, private exec: (sql: string) => void, private timings: StoreTimings) {}
 
     /**
-     * The saved state, or null when nothing was ever saved. Parts are used only when they are exactly what the
-     * `state` row holds; a row written without them (by the previous release, after a rollback) wins.
+     * The saved state, or null when nothing was ever saved, chosen by the one rule in `saved-state.ts`.
      */
     load(): unknown {
         const row = this.statement('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined;
         const rows = this.statement('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as PartRow[];
+        const saved = selectSaved(rows, row?.body);
         this.written = new Map();
-        this.rowMatchesParts = row !== undefined && row.body === whole(rows);
-        this.stale = rows.length > 0 && row !== undefined && !this.rowMatchesParts;
-        if (!rows.length || this.stale) return row ? JSON.parse(row.body) : null;
+        this.rowMatchesParts = saved.rowMatches;
+        this.stale = rows.length > 0 && saved.source === 'row';
+        if (saved.source !== 'parts') return saved.source === 'row' ? JSON.parse(saved.row!) : null;
         return Object.fromEntries(rows.map(({ key, position, body }) => {
             const value: unknown = JSON.parse(body);
             // A stored value becomes live again on load, and redacting it again can change its text.
@@ -106,7 +106,7 @@ export class StateParts {
             this.statement('INSERT OR REPLACE INTO state_parts(key,position,body) VALUES(?,?,?)').run(key, part.position, part.redacted);
         }
         for (const key of removed) this.statement('DELETE FROM state_parts WHERE key=?').run(key);
-        const body = whole([...next].map(([key, part]) => ({ key, position: part.position, body: part.redacted })));
+        const body = joinParts([...next].map(([key, part]) => ({ key, position: part.position, body: part.redacted })));
         this.statement(ROW).run(body);
         this.written = next; this.stale = false; this.rowMatchesParts = true;
         return body.length;
@@ -117,9 +117,4 @@ export class StateParts {
         for (const [key, part] of parts) size += JSON.stringify(key).length + 1 + part.redacted.length;
         return size;
     }
-}
-
-/** The text of the whole state from its redacted parts, in order: what serialising the redacted state gives. */
-function whole(rows: PartRow[]): string {
-    return `{${rows.map(({ key, body }) => `${JSON.stringify(key)}:${body}`).join(',')}}`;
 }

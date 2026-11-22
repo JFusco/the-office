@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { restoreInPlace } from '../../../server/store/restore-state';
 import { Store } from '../../../server/store/store';
+import { savedState } from './saved-state-fixture';
 
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));
@@ -38,7 +39,7 @@ test('a ticket held across a failed transaction still receives later writes', ()
     expect(held.activity).toBe('working');
     expect(store.ticket('CEC-1')).toBe(held);
     held.results.retest = { outcome: 'blocked' } as any; store.save();
-    const reopened = JSON.parse((store.db.prepare('SELECT body FROM state LIMIT 1').get() as { body: string }).body);
+    const reopened = savedState<any>(store);
     expect(reopened.tickets[0].results.retest.outcome).toBe('blocked');
 });
 

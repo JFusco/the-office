@@ -6,6 +6,7 @@ import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { createFeature, commandFeature, featureById } from '../../../server/features/commands';
 import { document } from '../../../server/features/documents';
+import { savedState } from '../store/saved-state-fixture';
 let store: Store, root: string;
 beforeEach(() => { root = mkdtempSync(resolve(tmpdir(), 'office-feature-command-')); store = new Store(':memory:', projectById('brain'), root); });
 afterEach(() => { store.close(); rmSync(root, { recursive: true, force: true }); });
@@ -15,7 +16,7 @@ test('creation is durable and duplicate requests cannot change content', () => {
     expect(() => createFeature(store, { action: 'create', requestId: 'create', title: 'Different', intent: 'Find articles' })).toThrow('different content');
     expect(store.state.features).toHaveLength(1);
     expect(store.state.agents.find(a => a.id === 'analyst')?.name).toBe('Casey');
-    expect(JSON.parse((store.db.prepare('SELECT body FROM state WHERE id=1').get() as any).body).features[0].id).toBe(f.id);
+    expect(savedState<any>(store).features[0].id).toBe(f.id);
 });
 test('answers identify the current round and all questions; replay stays idempotent', () => {
     const f = create();

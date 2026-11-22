@@ -10,7 +10,7 @@ import { projectById } from '../../../server/office/projects';
 import { coordination } from '../../../server/scheduling/coordination';
 import { Engine } from '../../../server/scheduling/engine';
 import { officeCapacity } from '../../../server/office/projects';
-import type { OfficeSnapshot } from '../../../src/shared';
+import { savedState, savedStateText } from './saved-state-fixture';
 
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
@@ -54,8 +54,7 @@ test('a delivery request journals once; the deduplicated repeat journals nothing
 test('a failed enqueue save rolls back the request and its admission before a successful retry', () => {
     const s = store('office.sqlite'), before = admissionCursor(s.db);
     const persistedRequests = () => {
-        const { body } = s.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string };
-        return (JSON.parse(body) as OfficeSnapshot).coordination?.requests ?? [];
+        return savedState(s).coordination?.requests ?? [];
     };
     const save = s.save.bind(s);
     vi.spyOn(s, 'save').mockImplementationOnce(() => {
@@ -96,6 +95,6 @@ test('journaling adds no state save: one enqueue and one claim save exactly as o
     save.mockClear();
     s.claimWork({ projectId: s.project.id, kind: 'issue', id: 'GH-9' }, 'owner', 'implement');
     expect(save).toHaveBeenCalledTimes(1);
-    const body = (s.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string }).body;
+    const body = savedStateText(s);
     expect(body).not.toContain('"admissions"');
 });

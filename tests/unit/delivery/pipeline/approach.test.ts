@@ -10,6 +10,7 @@ import { projectById } from '../../../../server/office/projects';
 import { publicationEvidenceGap, resultGate } from '../../../../server/cec/workflow';
 import { recordApproach, recordJobApproach, reroute, unresolvedVerification } from '../../../../server/delivery/pipeline/approach';
 import type { Evidence, Stage, StageResult, Ticket, WorkApproach } from '../../../../src/shared';
+import { savedState } from '../../store/saved-state-fixture';
 const sha = 'a'.repeat(40), roots: string[] = [], stores: Store[] = [];
 afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(p => rmSync(p, { recursive: true, force: true })); });
 const small: WorkApproach = { plan: 'none', review: 'none', validation: 'developer-checks', checks: ['Relevant build/typecheck'], reason: 'A small understood change is covered by focused checks.' };
@@ -188,10 +189,7 @@ test('a passed writer adding late gates is saved and resumes through those gates
         expect(t.stage).toBe('plan');
         expect(t.results[late]?.outcome).toBe('passed');
         store.save();
-        const saved = store.db.prepare('SELECT body FROM state WHERE id=1').get() as {
-            body: string;
-        };
-        Object.assign(t, JSON.parse(saved.body).tickets[0]);
+        Object.assign(t, savedState(store).tickets[0]);
         await drainStages(engine, t.key);
         expect(t.stage).toBe('ci');
         expect(calls.filter(s => s === 'implement')).toHaveLength(1);
