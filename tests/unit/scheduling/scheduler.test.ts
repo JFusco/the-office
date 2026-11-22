@@ -144,3 +144,111 @@ test('each project runs one of its own operations while the others run theirs; a
     releases.get('brain:refresh')!(); await last;
     expect([a, b, c].flatMap(s => s.activeClaims())).toEqual([]);
 });
+const transactions = (s: Store) => s.timings.report().timings['transaction: whole attempt']?.calls || 0;
+const saves = (s: Store) => s.timings.report().timings['save: serialise']?.calls || 0;
+const claims = (s: Store) => (s.db.prepare('SELECT status FROM work_claims ORDER BY rowid').all() as { status: string }[]).map(row => row.status);
+test('a claimed dispatch reaches its work after one transaction, with its claim, timing and event recorded together', async () => {
+    const a = store('brain'), scheduler = new Scheduler(officeCapacity()), calls: string[] = [], work = item(a, '1', 3, calls);
+    const before = transactions(a);
+    let atExecute = -1, claimedAtExecute: string[] = [], timings = 0;
+    work.execute = async () => { atExecute = transactions(a) - before; claimedAtExecute = claims(a); timings = (a.db.prepare('SELECT COUNT(*) AS n FROM queue_timings').get() as { n: number }).n; };
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(atExecute).toBe(1);
+    expect(claimedAtExecute).toEqual(['running']);
+    expect(timings).toBe(1);
+    expect(a.state.events.some(event => event.kind === 'work-claimed')).toBe(true);
+    expect(a.db.prepare('SELECT COUNT(*) AS n FROM queue_observations').get()).toEqual({ n: 0 });
+    expect(a.state.scheduler).toMatchObject({ undispatchedCycles: 0 });
+    expect(a.state.scheduler!.lastClaimAt).toBeTruthy();
+    expect(claims(a)).toEqual(['completed']);
+});
+test('work that is no longer eligible at the claim is not claimed or run, and counts one undispatched cycle in one save', async () => {
+    const a = store('brain'), scheduler = new Scheduler(officeCapacity()), calls: string[] = [], work = item(a, '1', 3, calls);
+    work.claimEligible = () => false;
+    const before = saves(a), cycles = a.state.scheduler!.undispatchedCycles;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual([]);
+    expect(claims(a)).toEqual([]);
+    expect(a.state.scheduler!.undispatchedCycles).toBe(cycles + 1);
+    expect(saves(a)).toBe(before + 1);
+    delete work.claimEligible;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual(['brain:1']);
+});
+test.each<[string, (s: Store, change: { id: string }) => void]>([
+    ['the project pauses', s => { s.state.paused = true; }],
+    ['the project starts draining', s => { s.state.draining = true; }],
+    ['the work changes identity', (_s, change) => { change.id = 'changed'; }],
+])('when %s during the claim, the claim is kept as interrupted and the work does not run', async (_name, during) => {
+    const a = store('brain'), scheduler = new Scheduler(officeCapacity()), calls: string[] = [], work = item(a, '1', 3, calls), identity = { id: '1' };
+    work.identity = () => identity.id;
+    work.claimEligible = () => { during(a, identity); return true; };
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual([]);
+    expect(claims(a)).toEqual(['interrupted']);
+    expect(a.activeClaims()).toEqual([]);
+    expect(a.db.prepare('SELECT COUNT(*) AS n FROM queue_timings').get()).toEqual({ n: 0 });
+    expect(a.state.events.some(event => event.kind === 'work-claimed')).toBe(false);
+    // The lane is free again: once the condition clears, the same work is claimed and run.
+    a.state.paused = false; a.state.draining = false; delete work.claimEligible;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual(['brain:1']);
+});
+test('work allowed while paused is claimed and run on a paused project', async () => {
+    const a = store('brain'), scheduler = new Scheduler(officeCapacity()), calls: string[] = [], work = item(a, '1', 3, calls);
+    a.state.paused = true; work.allowPaused = true;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual(['brain:1']);
+});
+test('a timing that cannot be recorded rolls the claim back with it and frees the lane', async () => {
+    const a = store('brain'), scheduler = new Scheduler(officeCapacity()), calls: string[] = [], work = item(a, '1', 3, calls), failure = new Error('timing refused');
+    work.saveTiming = () => { throw failure; };
+    await expect(scheduler.pump([{ store: a, items: [work] }])).rejects.toBe(failure);
+    expect(calls).toEqual([]);
+    expect(claims(a)).toEqual([]);
+    expect(a.state.events.some(event => event.kind === 'work-claimed')).toBe(false);
+    delete work.saveTiming;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual(['brain:1']);
+});
+test.each<[string, number, 'delivery' | 'operations']>([
+    ['one worker, delivery lane', 1, 'delivery'],
+    ['a lane of its own', 1, 'operations'],
+    ['concurrent slots', 2, 'delivery'],
+])('a failure after the timing is saved undoes every part of the claim and frees the lane: %s', async (_name, limit, lane) => {
+    const a = store('brain'), capacity = officeCapacity(limit), scheduler = new Scheduler(capacity, undefined, lane), calls: string[] = [], work = item(a, '1', 3, calls);
+    const record = { timing: [] as unknown[] }, failure = new Error('identity unreadable'), heard: string[] = [];
+    a.state.messages.push(record as never);
+    a.listeners.add(event => heard.push(event.kind));
+    const scheduling = () => lane === 'delivery' ? a.state.scheduler! : a.state.schedulerLanes![lane]!;
+    // A first pump that claims nothing creates the lane's saved scheduling state and its queue observation.
+    work.claimEligible = () => false;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    const before = structuredClone(scheduling());
+    delete work.claimEligible;
+    work.saveTiming = timing => { record.timing.push(timing); throw failure; };
+    await expect(scheduler.pump([{ store: a, items: [work] }])).rejects.toBe(failure);
+    expect(calls).toEqual([]);
+    expect(claims(a)).toEqual([]);
+    // The saved record is restored, whether in place or as the saved copy.
+    expect((a.state.messages.at(-1) as unknown as typeof record).timing).toEqual([]);
+    expect(scheduling()).toEqual(before);
+    expect(a.db.prepare('SELECT COUNT(*) AS n FROM queue_observations').get()).toEqual({ n: 1 });
+    expect(a.db.prepare('SELECT COUNT(*) AS n FROM queue_timings').get()).toEqual({ n: 0 });
+    expect(heard).not.toContain('work-claimed');
+    expect([capacity.lane, capacity.active.size, capacity.slots.size]).toEqual(['', 0, 0]);
+    delete work.saveTiming;
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual(['brain:1']);
+    expect(heard).toContain('work-claimed');
+    expect(scheduling().undispatchedCycles).toBe(0);
+});
+test('an identity that cannot be read after the claim rolls the claim back', async () => {
+    const a = store('brain'), scheduler = new Scheduler(officeCapacity()), calls: string[] = [], work = item(a, '1', 3, calls), failure = new Error('Ticket not found');
+    let reads = 0;
+    work.identity = () => { if (++reads === 2) throw failure; return '1'; };
+    await expect(scheduler.pump([{ store: a, items: [work] }])).rejects.toBe(failure);
+    expect(claims(a)).toEqual([]);
+    await scheduler.pump([{ store: a, items: [work] }]);
+    expect(calls).toEqual(['brain:1']);
+});
