@@ -2,16 +2,9 @@
   "1": "OrgChart.tsx",
   "12": "App.tsx",
   "15": "scheduled-captures.ts",
-  "16": "run-retrospective.ts",
   "17": "record-trigger.ts",
-  "26": "cost-ledger.ts",
-  "30": "metadata-assessment.ts",
-  "36": "scheduled-work.ts",
   "41": "time-scope.ts",
   "45": "harness-baseline.ts",
-  "66": "remove-candidate.ts",
-  "72": "work.ts",
-  "73": "report.ts",
   "95": "capture-session-clone.py",
   "105": "extract-worker.mjs"
 }
