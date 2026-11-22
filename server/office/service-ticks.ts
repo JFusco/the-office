@@ -1,4 +1,5 @@
 import { enqueueRequest } from '../scheduling/requests';
+import { timedStep } from '../scheduling/step-timings';
 import { sanitize } from './security';
 import { sourceVersions } from '../incidents/cited-sources';
 import { invalidateDismissals } from '../incidents/dismissal-validity';
@@ -15,15 +16,15 @@ import { releaseIdentity } from './release-identity';
 export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pick<ServiceContext, 'offices' | 'itSpecialist' | 'loadedRevision'>): () => void {
     // A fence that cannot be read counts as held, and never throws out of a timer callback.
     const fenced = () => { try { return offices.fenced(); } catch (e) { console.error(sanitize(String(e))); return true; } };
-    const conversationTick = setInterval(() => { void offices.pump().catch(e => console.error(sanitize(String(e)))); }, 2000);
+    const conversationTick = setInterval(() => { void timedStep(offices.stepTimings, 'timer: pump (start)', () => offices.pump()).catch(e => console.error(sanitize(String(e)))); }, 2000);
     const checkpointTick = setInterval(() => {
         if (process.env.OFFICE_NO_POLL !== '1')
-            void offices.tick().catch(e => console.error(sanitize(String(e))));
+            void timedStep(offices.stepTimings, 'timer: tick (start)', () => offices.tick()).catch(e => console.error(sanitize(String(e))));
     }, 15000);
     // ITSpecialist.tick checks the fence itself, before it advances its due marker.
     const itTick = setInterval(() => {
         if (process.env.OFFICE_NO_POLL !== '1')
-            void itSpecialist.tick().catch(e => console.error(sanitize(String(e))));
+            void timedStep(offices.stepTimings, 'timer: IT tick (start)', () => itSpecialist.tick()).catch(e => console.error(sanitize(String(e))));
     }, 15000);
     // Reads stopped work into the incident ledger. Local only: no provider is called and no project store is written.
     // Then compares the release this service runs with fixes bound to shipped incidents; that reads GitHub, once per release and fix.
@@ -33,14 +34,15 @@ export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pic
     // What GitHub said of a release and a fix is kept by the comparison and read by the resume pass: a fix is resumed only in a release known to hold it.
     const release = releaseWatch({ ledger: offices.incidents, identity: () => releaseIdentity({ root: ROOT, dataRoot: DATA, loadedHash }), loadedHash, execute: command, allowed: () => !fenced() });
     const incidentTick = setInterval(() => {
-        if (fenced()) return;
-        try { offices.observeIncidents(); } catch (e) { console.error(redactEvidence(String(e))); }
-        try { invalidateDismissals(offices.incidents, versions, new Date()); } catch (e) { console.error(redactEvidence(String(e))); }
+        if (timedStep(offices.stepTimings, 'incidents: fence', fenced)) return;
+        try { timedStep(offices.stepTimings, 'incidents: observe', () => offices.observeIncidents()); } catch (e) { console.error(redactEvidence(String(e))); }
+        try { timedStep(offices.stepTimings, 'incidents: dismissals', () => invalidateDismissals(offices.incidents, versions, new Date())); } catch (e) { console.error(redactEvidence(String(e))); }
         // Marks, in each project's own store, the stops a repair in progress covers.
-        try { admitRepairWaits(offices.incidents, [...offices.entries.values()], new Date(), fenced); } catch (e) { console.error(redactEvidence(String(e))); }
+        try { timedStep(offices.stepTimings, 'incidents: repair waits', () => admitRepairWaits(offices.incidents, [...offices.entries.values()], new Date(), fenced)); } catch (e) { console.error(redactEvidence(String(e))); }
         // Then queues, once per subject and fix, the resume a fix found in the running release bound for work still awaiting it. Local only.
-        try { dispatchResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], control: offices.resumes, running: release.holding, now: () => new Date(), fenced }); } catch (e) { console.error(redactEvidence(String(e))); }
-        if (process.env.OFFICE_NO_POLL !== '1') void offices.operations.run(release.compare);
+        try { timedStep(offices.stepTimings, 'incidents: resumes', () => dispatchResumes({ ledger: offices.incidents, entries: [...offices.entries.values()], control: offices.resumes, running: release.holding, now: () => new Date(), fenced })); } catch (e) { console.error(redactEvidence(String(e))); }
+        if (process.env.OFFICE_NO_POLL !== '1')
+            void timedStep(offices.stepTimings, 'incidents: release compare (start)', () => offices.operations.run(release.compare));
     }, 60000);
     const lastPoll = new Map<string, number>();
     const tick = setInterval(() => {

@@ -14,6 +14,8 @@ import { enqueueRequest } from '../../../server/scheduling/requests';
 import { DeploymentFence } from '../../../server/office/deployment-fence';
 import { InFlightOperations } from '../../../server/office/in-flight-operations';
 import { admissionCursor } from '../../../server/store/admission-journal';
+import { storeTimings } from '../../../server/store/store-timings';
+import { retainStoppingClaim } from '../../../server/scheduling/stopping-claims';
 import { initializeLanes } from '../../fixtures/scheduler';
 
 const TOKEN = 'deploy-token-0123456789';
@@ -80,6 +82,7 @@ test('releasing the fence lets the queued work run, once', async () => {
 
 test('a stopping worker is still settled while fenced, so owned work drains', async () => {
     const office = offices(), cms = office.get('cms-field-vocabulary'), store = cms.store;
+    office.stepTimings = storeTimings();
     const claim = store.claimWork({ projectId: store.project.id, kind: 'issue', id: 'GH-1' }, 'owner', 'implement')!;
     store.state.workLog = [{ id: 'w1', role: 'developer', stage: 'implement', ticket: 'GH-1', status: 'stopping', processId: 2 ** 22 + 12345, claimId: claim.id, startedAt: new Date().toISOString(), elapsedMs: 0 } as any];
     vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }); });
@@ -87,6 +90,12 @@ test('a stopping worker is still settled while fenced, so owned work drains', as
     await office.pump();
     expect(store.state.workLog![0].status).toBe('interrupted');
     expect(store.activeClaims()).toEqual([]);
+    await office.tick();
+    const { timings } = office.stepTimings.report();
+    expect(timings['pump: stopping workers'].calls).toBe(2);
+    expect(timings['pump: fence'].calls).toBe(1);
+    expect(timings['tick: fence'].calls).toBe(1);
+    expect(timings['tick: daily CTO collect']).toBeUndefined();
 });
 
 test('fixtures without a fence object stay unfenced', () => {
@@ -109,4 +118,42 @@ test('a tick that began before the fence was taken is counted in flight until it
     // A tick that starts while fenced registers nothing.
     await office.tick();
     expect(office.operations.count).toBe(0);
+});
+
+test('a pump and a tick record their steps when the Office has timings, and run without them', async () => {
+    const untimed = offices();
+    await untimed.pump();
+    const office = offices();
+    office.stepTimings = storeTimings();
+    const pending = vi.fn(() => undefined);
+    office.dailyCTO = { collect() {}, pending } as never;
+    office.sessions.refresh = (async () => {}) as never;
+    delete office.get('cms-field-vocabulary').coordinator;
+    const coordinatorTick = vi.spyOn(office.get('cec').coordinator!, 'tick').mockResolvedValue(undefined);
+    await office.pump(); await office.tick();
+    const { timings } = office.stepTimings.report();
+    for (const name of ['pump: recover features', 'pump: blocker follow-ups', 'pump: stopping claims', 'pump: projection delivery', 'pump: schedule delivery (start)', 'pump: assessment work', 'tick: daily CTO collect', 'tick: session refresh (start)'])
+        expect(timings).toHaveProperty(name);
+    for (const lane of ['cto', 'it', 'knowledge', 'delivery'])
+        expect(timings[`pump: stopping ${lane}`].calls).toBe(1);
+    expect(timings['pump: blocker follow-ups'].calls).toBe(2);
+    expect(pending).toHaveBeenCalledOnce();
+    expect(timings['pump: pending CTO report'].calls).toBe(1);
+    expect(coordinatorTick).toHaveBeenCalledOnce();
+    expect(timings['tick: coordinator (start)'].calls).toBe(1);
+});
+
+test('a stopping CTO lane records the scan and skips its pending report lookup', async () => {
+    const office = offices(), { store } = office.get('cms-field-vocabulary');
+    office.stepTimings = storeTimings();
+    const pending = vi.fn(() => undefined);
+    office.dailyCTO = { pending } as never;
+    const claim = store.claimWork({ projectId: store.project.id, kind: 'issue', id: 'GH-1' }, 'owner', 'implement', 'cto')!;
+    retainStoppingClaim(store, claim, [], 'process group could not be observed');
+    await office.pump();
+    const { timings } = office.stepTimings.report();
+    expect(timings['pump: stopping cto'].calls).toBe(1);
+    expect(timings['pump: projection cto']).toBeUndefined();
+    expect(timings['pump: pending CTO report']).toBeUndefined();
+    expect(pending).not.toHaveBeenCalled();
 });

@@ -42,6 +42,8 @@ import { IncidentLedger } from '../incidents/incident-ledger';
 import { ResumeControl } from '../incidents/repair/resume-control';
 import { observeProjects } from '../incidents/observe-projects';
 import { syncIncidents } from '../incidents/sync-incidents';
+import { storeTimings } from '../store/store-timings';
+import { timedStep } from './step-timings';
 export class Offices {
     capacity = officeCapacity(DELIVERY_CONCURRENCY);
     ctoCapacity = officeCapacity();
@@ -70,6 +72,9 @@ export class Offices {
     operations = new InFlightOperations();
     dailyCTO = new DailyCTO(this.control, () => [...this.entries.values()], () => knowledgeEntries([...this.entries.values()]));
     serviceInstanceId = randomUUID();
+    /** Main-thread time of each timer step since this service started (see ./step-timings). Fixtures built without the constructor have none. */
+    stepTimings = storeTimings();
+    step<T>(name: string, work: () => T): T { return timedStep(this.stepTimings, name, work); }
     snapshotSequence = 0;
     stores() { return new Map([...this.entries].map(([id, entry]) => [id, entry.store])); }
     projection(entry: typeof this.entries extends Map<string, infer E> ? E : never, lane = 'delivery') { return scheduledWork(entry, this.stores(), entry.store.clock.now(), lane, lane === 'knowledge' ? this.knowledgeOptions() : {}); }
@@ -149,22 +154,28 @@ export class Offices {
     }
     snapshot(id = PROJECTS[0].id) { const scoped=knowledgeOfficeState(id,this.get(id).store.state);return { ...scoped, featureQuestions: this.questions(), featurePlanning: { assessment: featurePolicy(id, FEATURE_PLANNING).assessment.enabled, progression: featurePolicy(id, FEATURE_PLANNING).progression, policyDigest: featurePolicy(id, FEATURE_PLANNING).digest }, slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: currentOutbox(this.get(id).store, scoped), dailyCTO: this.control.summaries(), officeKnowledge: officeKnowledgeSnapshot(id,this.control.knowledge?.()), progression: [...this.entries.values()].flatMap(entry => this.projection(entry)).map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
     async tick(now = new Date()) {
-        if (this.fenced()) return;
+        if (this.step('tick: fence', () => this.fenced())) return;
         // Registered before the first await: a fence taken meanwhile sees this tick as still busy.
-        const run = async () => { this.dailyCTO.collect(now); await this.sessions.refresh(); await Promise.allSettled([...this.entries.values()].map(e => e.coordinator?.tick(now))); };
+        const run = async () => {
+            this.step('tick: daily CTO collect', () => this.dailyCTO.collect(now));
+            await this.step('tick: session refresh (start)', () => this.sessions.refresh());
+            await Promise.allSettled([...this.entries.values()].map(({ coordinator }) =>
+                coordinator ? this.step('tick: coordinator (start)', () => coordinator.tick(now)) : undefined));
+        };
         return this.operations ? this.operations.run(run) : run();
     }
     async pump() {
         // While fenced only settlement of already-owned work runs: nothing is queued, offered or claimed.
-        const fenced = this.fenced();
+        const fenced = this.step('pump: fence', () => this.fenced());
         if (!fenced) {
-            try { this.questionEvents().refresh(); } catch { /* A malformed persisted round only delays question notifications. */ }
+            try { this.step('pump: question events', () => this.questionEvents().refresh()); } catch { /* A malformed persisted round only delays question notifications. */ }
             for (const { store } of this.entries.values()) {
-                recoverFeatures(store); maintainLearning(store); reconcileBlockerFollowups(store); queueImprovements(store); expireLessons(store); queueLessonIssueCheck(store); }
+                this.step('pump: recover features', () => recoverFeatures(store)); this.step('pump: maintain learning', () => maintainLearning(store)); this.step('pump: blocker follow-ups', () => reconcileBlockerFollowups(store));
+                this.step('pump: queue improvements', () => queueImprovements(store)); this.step('pump: expire lessons', () => expireLessons(store)); this.step('pump: lesson issue check', () => queueLessonIssueCheck(store)); }
         }
         // Runs finished outside a worker (restart recovery, dead process) get their accounting here; async, never awaited.
-        for (const { store } of this.entries.values()) void reconcileUncapturedRuns(store).catch(() => { /* reported per run */ });
-        for (const { store } of this.entries.values())
+        for (const { store } of this.entries.values()) void this.step('pump: uncaptured runs (start)', () => reconcileUncapturedRuns(store)).catch(() => { /* reported per run */ });
+        for (const { store } of this.entries.values()) this.step('pump: stopping workers', () => {
             for (const work of store.state.workLog || [])
                 if (work.status === 'stopping' && work.processId) {
                     try {
@@ -181,22 +192,26 @@ export class Offices {
                         }
                     }
                 }
+        });
         for (const {store} of this.entries.values()) {
-            reconcileStoppingClaims(store);
-            if (!fenced) for (const feature of store.state.features || []) { const owner=this.sessions.forProject(store,feature.sourceTicket).ownership; offerOrdinaryRelease(store,feature,{status:owner.status==='clear'?'clear':owner.status==='owned'?'owned':'unknown',reason:owner.detail}); }
+            this.step('pump: stopping claims', () => reconcileStoppingClaims(store));
+            if (!fenced) this.step('pump: ordinary releases', () => { for (const feature of store.state.features || []) { const owner=this.sessions.forProject(store,feature.sourceTicket).ownership; offerOrdinaryRelease(store,feature,{status:owner.status==='clear'?'clear':owner.status==='owned'?'owned':'unknown',reason:owner.detail}); } });
         }
         if (fenced) return;
         const entries = [...this.entries.values()];
         const queues = (lane: string) => {
-            const queues = entries.map(entry => ({ store: entry.store, items: this.projection(entry, lane) }));
-            const report = lane === 'cto' ? this.dailyCTO.pending() : undefined;
+            const queues = entries.map(entry => ({ store: entry.store, items: this.step(`pump: projection ${lane}`, () => this.projection(entry, lane)) }));
+            const report = lane === 'cto' ? this.step('pump: pending CTO report', () => this.dailyCTO.pending()) : undefined;
             if (report && queues[0])
                 queues[0].items.push({ store: entries[0].store, work: { projectId: entries[0].store.project.id, kind: 'daily-cto', id: report.id }, stage: 'daily-cto', rank: 3, enqueuedAt: report.collectedAt, eligibility: { state: 'runnable', reason: 'Daily all-project assessment is due', owner: 'Avery', nextCheckAt: null }, identity: () => String(this.control.get(report.id)?.revision), execute: () => this.dailyCTO.pump(report), allowPaused: true });
             return queues;
         };
         // Independent lanes are reserved synchronously before any model is invoked.
-        const stopping = (lane: import('../../src/shared').ExecutionLane) => entries.some(entry => entry.store.activeClaims().some(claim => claim.status === 'stopping' && (claim.lane || 'delivery') === lane) || entry.store.state.workLog?.some(work => work.status === 'stopping' && (work.lane || (work.role === 'cto' ? 'cto' : work.role === 'it' ? 'it' : work.role === 'knowledge' ? 'knowledge' : 'delivery')) === lane));
-        for (const entry of entries) maintainAssessmentWork(entry);
-        await Promise.allSettled([stopping('cto') ? Promise.resolve() : this.ctoScheduler.pump(queues('cto')), stopping('it') ? Promise.resolve() : this.itScheduler.pump(queues('it')), this.operationsScheduler.pump(queues('operations')), stopping('knowledge') ? Promise.resolve() : this.knowledgeScheduler.pump(queues('knowledge')), stopping('delivery') ? Promise.resolve() : this.scheduler.pump(queues('delivery'))]);
+        const stopping = (lane: import('../../src/shared').ExecutionLane) => this.step(`pump: stopping ${lane}`, () =>
+            entries.some(entry => entry.store.activeClaims().some(claim => claim.status === 'stopping' && (claim.lane || 'delivery') === lane)
+                || entry.store.state.workLog?.some(work => work.status === 'stopping' && (work.lane || (work.role === 'cto' ? 'cto' : work.role === 'it' ? 'it' : work.role === 'knowledge' ? 'knowledge' : 'delivery')) === lane)));
+        for (const entry of entries) this.step('pump: assessment work', () => maintainAssessmentWork(entry));
+        const schedule = (lane: string, scheduler: Scheduler) => { const items = queues(lane); return this.step(`pump: schedule ${lane} (start)`, () => scheduler.pump(items)); };
+        await Promise.allSettled([stopping('cto') ? Promise.resolve() : schedule('cto', this.ctoScheduler), stopping('it') ? Promise.resolve() : schedule('it', this.itScheduler), schedule('operations', this.operationsScheduler), stopping('knowledge') ? Promise.resolve() : schedule('knowledge', this.knowledgeScheduler), stopping('delivery') ? Promise.resolve() : schedule('delivery', this.scheduler)]);
     }
 }

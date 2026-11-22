@@ -4,6 +4,7 @@ import { ServiceHealthChecks } from '../service-health';
 import { createServer } from 'vite';
 import { Offices } from '../../scheduling/offices';
 import type { OfficeConfigInputs } from './office-config';
+import type { LoopDelay } from '../loop-delay';
 
-export interface ServiceContext { offices: Offices; serviceHealth: ServiceHealthChecks; itSpecialist: ITSpecialist; loadedRevision: ReturnType<typeof runtimeRevision>; snapshot: (project?: string) => unknown; vite: Awaited<ReturnType<typeof createServer>> | null; config: OfficeConfigInputs }
+export interface ServiceContext { offices: Offices; serviceHealth: ServiceHealthChecks; itSpecialist: ITSpecialist; loadedRevision: ReturnType<typeof runtimeRevision>; snapshot: (project?: string) => unknown; vite: Awaited<ReturnType<typeof createServer>> | null; config: OfficeConfigInputs; loopDelay?: LoopDelay }
 export type RequestContext = { project: string } & ReturnType<Offices['get']>;
