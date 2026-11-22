@@ -589,6 +589,12 @@ Morgan or Joe:
   reaches a person as one item, the later run's; a night that ended only in a read-back or in
   never-started retries counts as stopped (`server/maintenance/single-missed-run.ts`). Weekly runs,
   projects with no automatic read-back and projects that are not hands-off are unchanged.
+- A stopped daily checkpoint whose one linked run the harness itself completed is closed by the harness
+  on the next coordinator tick, keeping the earlier failure in the run's read-back step, when nothing of
+  its own is in flight and no Office write is unsettled (`server/maintenance/completed-checkpoints.ts`).
+  The run's receipts are judged by the rule it was accepted under: every receipt verified, except that a
+  completed Brain run may carry a write the worker reported as refused before it took effect. A write
+  of unknown outcome always leaves the checkpoint for read-back.
 - A blocked Brain nightly checkpoint whose own run did finish is closed by the harness, not by the
   worker's notes: Brain's gate file must show that date published by the run's own session, the
   accepted read-back must cover every call and receipt, and git itself must show each published pull
