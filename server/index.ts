@@ -21,6 +21,7 @@ import { telemetryRoute } from './telemetry/telemetry-route';
 import { deploymentFenceRoute } from './office/http/deployment-fence-route';
 import { deploymentFenceGate } from './office/http/deployment-fence-gate';
 import { startServiceTicks } from './office/service-ticks';
+import { loopDelay } from './office/loop-delay';
 import { incidentsRoute } from './incidents/routes';
 import { sweepStaleSessionSnapshots } from './workers/session-snapshot-cleanup';
 mkdirSync(DATA, { recursive: true, mode: 0o700 });
@@ -28,6 +29,7 @@ const releaseLock = acquireServiceLock(DATA);
 process.on('exit', releaseLock);
 // A capture directory a service that died left behind may hold a named clone of a session log.
 sweepStaleSessionSnapshots();
+const watchedLoop = loopDelay();
 const offices = new Offices();
 const loadedRevision = runtimeRevision();
 const serviceHealth = new ServiceHealthChecks();
@@ -52,7 +54,7 @@ const server = serve({ hostname: '127.0.0.1', port: PORT,
         let endWrite: (() => void) | undefined;
         try {
             // Office-wide routes run before project resolution: they need no project query.
-            const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, config, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
+            const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, config, loopDelay: watchedLoop, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
             // The fence's own endpoints, then its gate: while a deployment holds it, every other write is refused.
             for (const route of [deploymentFenceRoute, deploymentFenceGate]) {
                 const response = await route(req, url, service);

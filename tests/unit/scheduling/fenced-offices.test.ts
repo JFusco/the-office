@@ -110,3 +110,18 @@ test('a tick that began before the fence was taken is counted in flight until it
     await office.tick();
     expect(office.operations.count).toBe(0);
 });
+
+test('a pump and a tick record their steps when the Office has timings, and run without them', async () => {
+    const { storeTimings } = await import('../../../server/store/store-timings');
+    const untimed = offices();
+    await untimed.pump();
+    const office = offices();
+    office.stepTimings = storeTimings();
+    office.dailyCTO = { collect() {}, pending() { return undefined; } } as never;
+    office.sessions.refresh = (async () => {}) as never;
+    await office.pump(); await office.tick();
+    const names = Object.keys(office.stepTimings.report().timings);
+    for (const name of ['pump: recover features', 'pump: blocker follow-ups', 'pump: stopping claims', 'pump: projection delivery', 'pump: schedule delivery (start)', 'pump: assessment work', 'tick: daily CTO collect', 'tick: session refresh (start)', 'tick: coordinator (start)'])
+        expect(names).toContain(name);
+    expect(office.stepTimings.report().timings['pump: blocker follow-ups'].calls).toBe(2);
+});
