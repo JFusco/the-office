@@ -37,9 +37,10 @@ export function rollbackReleasedFence(ctx: DeployContext, deployment: DeployJour
 
 /**
  * Returns the service to the release it ran before a failed activation: code only. It stops whatever
- * the activation started, then goes on only when no work was admitted and every store holds exactly
- * what it held when the old service stopped. A complete snapshot and unchanged stores are the
- * proof that the previous release can still read its stores. Otherwise it ends failed with the
+ * the activation started, then goes on only when no work was admitted and every store holds what it
+ * held when the old service stopped, apart from what a start under the fence writes
+ * (`fenced-start-writes.ts`). A complete snapshot and unchanged stores are the proof that the
+ * previous release can still read its stores. Otherwise it ends failed with the
  * service stopped and the fence held, for a person. No step reads a backup.
  */
 export async function rollback(ctx: DeployContext, deployment: string, facts: DeployFacts, reason: string): Promise<{ operation: string; outcome: StepsOutcome }> {
@@ -69,7 +70,7 @@ export async function rollback(ctx: DeployContext, deployment: string, facts: De
         eligibility: async receipts => {
             try { await requireUnchangedStores(receipts.halt); }
             catch (error) { return { state: 'failed', reason: String(error).slice(0, 2000) }; }
-            return { state: 'done', receipt: { basis: 'no admission and no store change since the old service stopped' } };
+            return { state: 'done', receipt: { basis: 'no admission and no store change beyond a start under the fence since the old service stopped' } };
         },
         plist: async receipts => stepOf(await installPlist(ctx, operation, 'plist', prior, () => requireUnchangedStores(receipts.halt))),
         start: async receipts => stepOf(await startService(ctx, operation, 'start', prior.sha256, () => requireUnchangedStores(receipts.halt))),
