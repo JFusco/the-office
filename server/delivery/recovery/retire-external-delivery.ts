@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { workKey, type TicketJob } from '../../../src/shared';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
+import { mergedByOwner } from '../pipeline/merged-by-owner';
 import { completedPRReview, completedPRReviews } from './completed-pr-review';
 import { completedPreparation } from './completed-preparation';
 import { settledExternalRepair } from './settled-external-repair';
@@ -50,11 +51,6 @@ function ownerSettles(delivery: GitHubDelivery, job: TicketJob): boolean {
         !store.activeClaims().some(claim => claim.work.id === job.id) &&
         !store.db.prepare("SELECT id FROM effects WHERE work_key=? AND status!='verified' LIMIT 1").get(
             workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }));
-}
-
-function mergedByOwner(delivery: GitHubDelivery, pull: any): boolean {
-    const { store } = delivery, owner = store.project.githubProject?.owner || store.project.repository.split('/')[0];
-    return !!pull.merged_at && pull.merged_by?.login === owner;
 }
 
 /** Retire the Office handoff, not its evidence; no completion, CI or publication claim. */

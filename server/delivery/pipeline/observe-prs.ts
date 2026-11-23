@@ -5,6 +5,7 @@ import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { retireInactiveDeliveries } from '../recovery/retire-unstarted-delivery';
 import { retireExternalDeliveries } from '../recovery/retire-external-delivery';
+import { settleOwnerMergedStopped } from './owner-merged-stopped';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
 import { refreshConflicted, refreshEligible } from '../repairs/refresh-conflicted';
 import { deliveryInputSha256, deliveryResearchContext, deliveryResearchSha256 } from '../../github/github-context';
@@ -16,6 +17,7 @@ import type { GitHubDelivery } from './github-delivery';
 export async function observe(this: GitHubDelivery) {
     await retireInactiveDeliveries(this);
     await retireExternalDeliveries(this);
+    await settleOwnerMergedStopped(this);
     await resumeProviderReviews(this);
     await restartStoppedWriters(this);
     for (const job of this.jobs.filter(j => j.status === 'watching' || j.stage === 'merge' && ['blocked', 'interrupted'].includes(j.status))) {
