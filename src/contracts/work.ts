@@ -108,11 +108,13 @@ export interface AssignmentResult {
     nativeSessionId: string;
     observedAt: string;
 }
-export type FailureCategory = 'transient-read' | 'authentication' | 'permission' | 'ownership' | 'uncertain-effect' | 'cancelled' | 'timeout' | 'invalid-output' | 'other';
+export type FailureCategory = 'transient-read' | 'authentication' | 'permission' | 'ownership' | 'uncertain-effect' | 'cancelled' | 'timeout' | 'invalid-output' | 'provider-limit' | 'other';
 export interface WorkFailure {
     /** Harness-classified shutdown warning; never inferred from model prose. */
     code?: 'surviving-subprocesses';
     category: FailureCategory;
+    /** When the provider said to try again, for a `provider-limit` failure whose message stated it. */
+    retryAt?: string;
     detail: string;
     dispatched: boolean;
 }

@@ -4,6 +4,7 @@ import { lifecycleRecorder } from './lifecycle/recorder';
 import type { LifecycleDiagnostic } from './lifecycle/contract';
 import type { InventoryRunner } from './lifecycle/group-inventory';
 import { liveReach } from './live-reach';
+import { exitFailure } from './exit-failure';
 import { spawn } from 'node:child_process';
 import { sanitize } from '../office/security';
 export function workerFailure(program: string, code: number | null, stdout: string, stderr: string) {
@@ -33,6 +34,8 @@ export function workerFailure(program: string, code: number | null, stdout: stri
 export class CommandFailure extends Error {
     /** The runner interrupted the process to stop it; anything it reported afterwards answers that interrupt, not its assignment. */
     interrupted = false;
+    /** Set for a `provider-limit` (`exit-failure.ts`). */
+    retryAt?: string;
     constructor(message: string, public category: import('../../src/shared').FailureCategory, public dispatched: boolean, public code?: 'surviving-subprocesses') { super(message); }
 }
 /** Negative PID probes the entire owned group, not just the leader. */
@@ -152,7 +155,7 @@ export async function command(program: string, args: string[], options: {
             options.signal?.removeEventListener('abort', abort);
             if (stragglersTerminated && !failure && child.pid)
                 try { options.onStragglersTerminated?.(child.pid); } catch { }
-            const finalFailure = failure || (code === 0 ? undefined : new CommandFailure(workerFailure(program, code, out, err), options.readOnly ? 'other' : 'uncertain-effect', true));
+            const finalFailure = failure || (code === 0 ? undefined : exitFailure(program, workerFailure(program, code, out, err), !!options.readOnly));
             try {
                 const diagnostic = await lifecycle?.finish(finalFailure instanceof CommandFailure ? finalFailure.category : finalFailure ? 'other' : undefined);
                 if (diagnostic) options.onLifecycle?.(diagnostic);

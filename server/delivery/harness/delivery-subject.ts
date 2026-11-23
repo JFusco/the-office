@@ -1,6 +1,9 @@
 import type { Store } from '../../store/store';
 import type { HarnessRequest, TicketJob, WorkRef } from '../../../src/shared';
 import { digest } from '../../store/readback-evidence';
+import { captureRequest } from '../../features/handoff/capture-store';
+
+const CAPTURE = 'evidence-capture:';
 
 const accounting = new Set(['reconcile-time', 'reconcile-cost', 'apply-time-scope', 'correct-recovery-time']);
 const nonDelivery = new Set(['refresh', 'poll', 'observe-dependencies', 'check-it', 'retry-checkpoint', 'reconcile-maintenance',
@@ -64,7 +67,9 @@ export function resolveDeliveryWork(store: Store, work: WorkRef): DeliverySubjec
     if (work.kind === 'reconciliation' && (
         /^time(?:-readback)?:/.test(work.id) && store.state.coordination?.time?.entries.some(e => work.id.endsWith(`:${e.id}`)) ||
         /^cost(?:-readback)?:/.test(work.id) && store.state.coordination?.time?.cost?.entries.some(e => work.id.endsWith(`:${e.key}`)) ||
-        work.id.startsWith('recovery:') && store.state.maintenance?.runs.some(r => work.id === `recovery:${r.id}`))) return { kind: 'unrelated' };
+        work.id.startsWith('recovery:') && store.state.maintenance?.runs.some(r => work.id === `recovery:${r.id}`) ||
+        // A capture of ticket evidence (`scheduled-captures.ts`) reads the ticket; it holds no delivery.
+        work.id.startsWith(CAPTURE) && !!captureRequest(store, work.id.slice(CAPTURE.length)))) return { kind: 'unrelated' };
     if (work.kind === 'delivery' && (store.state.deliveryQueue?.some(r => r.id === work.id) || store.state.tickets.some(t => work.id === `ticket:${t.key}`))) return { kind: 'unrelated' };
     // CTO/knowledge/conversation/feature/etc. are not unknown delivery owners (plan FIND-013).
     if (work.kind !== 'delivery' && work.kind !== 'reconciliation') return { kind: 'unrelated' };
