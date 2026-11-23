@@ -100,3 +100,60 @@ test('nothing is learned from it: the queued lesson batch is dropped and the fol
         expect(followup.history.length).toBeGreaterThan(1);
     } finally { f.close(); }
 });
+
+test('a limit refusal closed by another rule also drops its queued retrospective, on every pass, and leaves other batches alone', () => {
+    const f = investigationFixture();
+    try {
+        const id = 'investigation:brain:worker:refused:other', other = 'investigation:brain:worker:real:other';
+        f.store.state.workLog = [refused(), run('real', { requestId: 'harper-followup:two', status: 'failed', failure: { category: 'other', dispatched: true, detail: 'codex exited 1: stream disconnected' } })];
+        f.store.state.slackDeliveries = [];
+        // Both already closed as history by the finished-subject rule, before the provider rule existed.
+        const closed = (key: string, source: string) => entry({ id: key, source: { ...entry().source, id: source }, status: 'resolved', resolution: { kind: 'superseded', sourceId: 'job-1', receipt: 'job:job-1:completed', at: '2026-11-23T10:00:00Z' } });
+        f.store.state.it!.investigations = [closed(id, 'refused'), closed(other, 'real')];
+        f.store.state.coordination!.jobs = [{ id: 'job-1', key: 'GH-1', status: 'completed' } as any];
+        for (const [key, investigation] of [['refused', id], ['real', other]]) (f.store.state.it!.investigations.find(e => e.id === investigation)!.source as any).requestId = 'job-1';
+        const batch = (key: string, subject: string, extra: object = {}): any => ({ id: key, jobId: subject, key: '', source: { kind: 'investigation', id: subject }, subject: 'investigation', trigger: 'learning', createdAt: '2026-11-23T09:06:00Z', attempts: 0, nextAt: '', lastError: '', eventIds: [], opportunities: [], ...extra });
+        const knowledge = f.store.state.knowledge!;
+        knowledge.pending.push(batch('learning:limit', id), batch('learning:real', other));
+        syncInvestigations(f.store);
+        expect(knowledge.pending.map(item => item.id)).toEqual(['learning:real']);
+        // A batch for the same refusal queued later (as the follow-up used to) is dropped on the next pass too.
+        knowledge.pending.push(batch('learning:limit-again', id));
+        syncInvestigations(f.store);
+        expect(knowledge.pending.map(item => item.id)).toEqual(['learning:real']);
+        // And the follow-up reconciliation records no lesson for it.
+        const consumed = [...(knowledge.learningConsumed || [])];
+        reconcileBlockerFollowups(f.store); reconcileBlockerFollowups(f.store);
+        expect((knowledge.learningConsumed || []).filter(entryId => entryId.includes(id))).toEqual(consumed.filter(entryId => entryId.includes(id)));
+        expect(knowledge.pending.map(item => item.id)).toEqual(['learning:real']);
+    } finally { f.close(); }
+});
+
+test('a retrospective already under way for a limit refusal is left to finish', () => {
+    const f = investigationFixture();
+    try {
+        const id = 'investigation:brain:worker:refused:other';
+        f.store.state.workLog = [refused(), run('later')]; f.store.state.slackDeliveries = [];
+        f.store.state.it!.investigations = [entry({ id, status: 'resolved', resolution: { kind: 'superseded', sourceId: 'later', receipt: 'provider:codex:later', at: '2026-11-23T14:00:00Z' } })];
+        f.store.state.knowledge!.pending.push({ id: 'learning:running', jobId: id, key: '', source: { kind: 'investigation', id }, subject: 'investigation', trigger: 'learning', createdAt: '2026-11-23T09:06:00Z', attempts: 1, nextAt: '', lastError: '', eventIds: [], opportunities: [], frozen: true } as any);
+        syncInvestigations(f.store);
+        expect(f.store.state.knowledge!.pending.map(item => item.id)).toEqual(['learning:running']);
+    } finally { f.close(); }
+});
+
+test('a limit refusal first closed by a rule that would otherwise record a lesson records none', () => {
+    const f = investigationFixture();
+    try {
+        const id = 'investigation:brain:worker:refused:other';
+        // The refused run also carries an accepted completion, so the accepted-completion rule closes it first.
+        f.store.state.workLog = [refused(undefined, { completionAccepted: true, failure: { category: 'other', dispatched: true, detail: LIMIT } })];
+        f.store.state.slackDeliveries = [];
+        const saved = entry({ id, createdAt: '2026-11-23T09:01:00Z', updatedAt: '2026-11-23T09:05:00Z', nextAt: '', lastError: LIMIT });
+        f.store.state.it!.investigations = [saved];
+        const consumed = [...(f.store.state.knowledge!.learningConsumed || [])];
+        syncInvestigations(f.store);
+        expect(saved).toMatchObject({ status: 'resolved', resolution: { receipt: 'sessions/refused/completed-output.json' } });
+        expect(f.store.state.knowledge!.learningConsumed || []).toEqual(consumed);
+        expect(f.store.state.knowledge!.pending.filter(item => item.source?.id === id)).toEqual([]);
+    } finally { f.close(); }
+});
