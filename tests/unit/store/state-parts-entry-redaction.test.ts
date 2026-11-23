@@ -59,7 +59,7 @@ test('a small key, an array and an object with its own toJSON are redacted whole
     expect(body(db, 'list')).toBe(whole(state.list));
 });
 
-test('a save that is rolled back forgets the entries it redacted', () => {
+test('after a save is rolled back, the same change is written again and later changes store what whole redaction stores', () => {
     const { db, stored } = writer();
     const state = { coordination: large('one') };
     stored.save(state, false);
@@ -76,6 +76,29 @@ test('a save that is rolled back forgets the entries it redacted', () => {
     expect(body(db, 'coordination')).toBe(whole(state.coordination));
     state.coordination.jobs[0].note = SECRET;
     stored.save(state, false);
+    expect(body(db, 'coordination')).toBe(whole(state.coordination));
+});
+
+test('a large object with its own toJSON, and a key that shrinks below the size and grows again, store what whole redaction stores', () => {
+    const { db, stored, redacted } = writer();
+    const own = { toJSON() { return { toJSON: 'Bearer abc.def', b: SECRET, pad: 'x'.repeat(LARGE_KEY_CHARS) }; } };
+    const state: { own: object; coordination: Record<string, unknown> } = { own, coordination: large('one') };
+    stored.save(state, false);
+    expect(body(db, 'own')).toBe(whole(own));
+    expect(body(db, 'own')).not.toContain('abc.def');
+    state.coordination = { lastTickAt: 'small', note: SECRET };
+    stored.save(state, false);
+    expect(body(db, 'coordination')).toBe(whole(state.coordination));
+    state.coordination = large('two', 'Bearer abc.def');
+    let before = redacted();
+    stored.save(state, false);
+    // Nothing remembered from before it shrank is used: all of it is redacted again.
+    expect(redacted() - before).toBe(whole(state.coordination).length - '{"jobs":,"time":,"lastTickAt":}'.length);
+    expect(body(db, 'coordination')).toBe(whole(state.coordination));
+    before = redacted();
+    state.coordination.lastTickAt = 'three';
+    stored.save(state, false);
+    expect(redacted() - before).toBe('"three"'.length);
     expect(body(db, 'coordination')).toBe(whole(state.coordination));
 });
 

@@ -70,6 +70,11 @@ test('what cannot be split is left to the caller: not a plain object, or entries
     // Its own toJSON decides the text, so the entries do not join to it.
     const own = { a: 1, toJSON: () => ({ b: 2 }) };
     expect(redactEntries(own, JSON.stringify(own))).toBeUndefined();
+    // One whose text would join by accident: its first key is named toJSON, so the wrapper's text looks like the whole.
+    const alike = { toJSON() { return { toJSON: 'Bearer abc.def', b: SECRET }; } };
+    expect(redactEntries(alike, JSON.stringify(alike))).toBeUndefined();
+    // A member that is merely named toJSON and is not a function is an entry like any other.
+    expect(run({ toJSON: SECRET, b: 1 })!.redacted).toBe(whole({ toJSON: SECRET, b: 1 }));
     // Text that is not this value's: same length, other content.
     expect(redactEntries({ a: 1 }, '{"a":2}')).toBeUndefined();
     expect(redactEntries({ a: 1 }, '{"a":1,"b":2}')).toBeUndefined();

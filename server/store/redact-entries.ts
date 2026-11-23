@@ -19,11 +19,12 @@ const plain = (value: unknown): value is Record<string, unknown> => {
  * (`security.ts`), so the entries joined are exactly what redacting the whole object gives.
  *
  * `raw` is the text already serialised for `value`. Returns undefined, for the caller to redact `raw` whole,
- * when `value` is not a plain object or its entries serialised one at a time are not exactly `raw` (a `toJSON`
- * of its own, a value that changes between two reads). `chars` counts the text actually redacted.
+ * when `value` is not a plain object, has a `toJSON` of its own (which would also run for the one-entry wrapper
+ * used here), or its entries serialised one at a time are not exactly `raw` (a value that changes between two
+ * reads). `chars` counts the text actually redacted.
  */
 export function redactEntries(value: unknown, raw: string, before?: ReadonlyMap<string, RedactedEntry>): RedactedEntries | undefined {
-    if (!plain(value)) return undefined;
+    if (!plain(value) || typeof value.toJSON === 'function') return undefined;
     const found: { head: string; raw: string }[] = [];
     let length = 1;
     for (const name of Object.keys(value)) {
