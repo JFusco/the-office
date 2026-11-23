@@ -13,7 +13,7 @@ import { bindDelivery } from '../../features/delivery-binding';
 import { scopeRepairResumeInstruction, scopeRepairResumeNextStage } from '../recovery/scope-repair/scope-repair-resume';
 import { retireUnstartedDelivery } from '../recovery/retire-unstarted-delivery';
 import { requireSavedPrerequisites } from '../recovery/implementation/saved-prerequisite-handoff';
-import { CurrentChecksWait } from '../readiness/github-check-selection';
+import { checksReadAgain } from '../readiness/github-check-selection';
 import { SourceClosed } from './source-closed';
 import { writerRestartInstruction } from '../attempts/restart-instruction';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
@@ -284,7 +284,7 @@ export class GitHubDelivery {
         catch (error) {
             job = this.jobs.find(current => current.id === job.id) || job;
             if (error instanceof FreshMergeReview && job.stage === 'lead-pr' && job.status === 'queued') return;
-            const waiting = error instanceof CurrentChecksWait && job.stage === 'merge' && !job.mergeAttempt && !this.store.state.paused;
+            const waiting = checksReadAgain(error) && job.stage === 'merge' && !job.mergeAttempt && !this.store.state.paused;
             job.status = this.store.state.paused ? 'interrupted' : waiting ? 'watching' : 'blocked';
             job.detail = String(error);
             job.stop = stopReason(error, this.store.state.paused, this.store.clock.now());

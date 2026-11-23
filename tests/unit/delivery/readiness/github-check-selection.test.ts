@@ -1,5 +1,7 @@
 import {expect,test,vi} from 'vitest';
-import {CurrentChecksWait,selectCurrentChecks,checksPassed,checksPending,checksFailed,currentMergeChecks} from '../../../../server/delivery/readiness/github-check-selection';
+import {CheckStillFinishing,checksReadAgain,CurrentChecksWait,selectCurrentChecks,checksPassed,checksPending,checksFailed,currentMergeChecks} from '../../../../server/delivery/readiness/github-check-selection';
+import {preparationChecksPending} from '../../../../server/delivery/readiness/preparation-checks';
+import {classifyStop} from '../../../../server/delivery/pipeline/stop-reason';
 const head='592066a0ef1383220c9a7169924b2ced958405e1',repo='JFusco/cms-field-vocabulary',branch='codex/114-cms13-element-content-options';
 function fixture(){
  const pr={number:117,head:{sha:head,ref:branch},base:{ref:'main',sha:'f'.repeat(40),repo:{full_name:repo}}},job:any={head,pr:117};
@@ -37,32 +39,35 @@ test.each(['wrong-repository-url','wrong-job-url','wrong-job-id','wrong-suite','
  if(kind==='inventory-ambiguous-order')f.inventory.workflow_runs[1].run_number=144;if(kind==='inventory-drift')f.inventory.workflow_runs[0].conclusion='failure';if(kind==='historical-inventory-drift')f.inventory.workflow_runs[1].conclusion='success';if(kind==='time-regression'){f.runs[0].created_at='2026-10-31T00:54:00Z';f.inventory.workflow_runs[0].created_at=f.runs[0].created_at;}
  await expect(f.select()).rejects.toThrow();
 });
-test.each([['the check run','raw'],['the Actions job','jobs']] as const)('a check that finishes between the two reads, seen running in %s, waits and is read again',async(_where,side)=>{
+test.each([['the check run','raw'],['the Actions job','jobs']] as const)('a check that finishes between the two reads, seen running in %s, is its own error that only the merge stage reads again on',async(_where,side)=>{
  const f=fixture(),stale=side==='raw'?f.raw.check_runs[0]:f.jobs[0];Object.assign(stale,{status:'in_progress',conclusion:null,completed_at:null});
- const error=await f.select().catch(e=>e);expect(error).toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain('Check commitlint is still finishing (status, conclusion, completed_at changed between reads)');
+ const error=await f.select().catch(e=>e);expect(error).toBeInstanceOf(CheckStillFinishing);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(checksReadAgain(error)).toBe(true);expect(String(error)).toContain('Check commitlint is still finishing (status, conclusion, completed_at changed between reads)');
 });
 test.each([['conclusion','failure'],['completed_at','2026-10-31T00:55:22Z'],['started_at','2026-10-31T00:55:02Z']])('two completed reads that differ in %s are a mismatch, never a wait, and the stop names the field',async(field,value)=>{
  const f=fixture();(f.jobs[0] as any)[field]=value;
- const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain(`Actions job does not match exact check-run: ${field} differ`);
+ const error=await f.select().catch(e=>e);expect(checksReadAgain(error)).toBe(false);expect(String(error)).toContain(`Actions job does not match exact check-run: ${field} differ`);
 });
-test.each(['check run','commit status'])('a check caught finishing is a stop, not a wait, when an independent %s on the head has failed',async kind=>{
+test.each(['check run','commit status'])('with an independent failed %s on the head it is still not a checks wait, so nothing takes the head for pending',async kind=>{
  const f=fixture();Object.assign(f.raw.check_runs[0],{status:'in_progress',conclusion:null,completed_at:null});
  if(kind==='check run'){f.raw.check_runs.push({id:999,name:'security',app:{id:57789,slug:'other-app'},head_sha:head,status:'completed',conclusion:'failure'});f.raw.total_count=3;}
  else Object.assign(f.statuses,{state:'failure',total_count:1,statuses:[{context:'external',state:'failure'}]});
- const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain('Actions job does not match exact check-run: status, conclusion, completed_at differ');
+ const error=await f.select().catch(e=>e);expect(error).toBeInstanceOf(CheckStillFinishing);expect(error).not.toBeInstanceOf(CurrentChecksWait);
+ // Preparation defers a checks finding only on a `CurrentChecksWait`; this error passes through it as any failed read does.
+ const delivery:any={...f.delivery,api:vi.fn(async(path:string)=>path.endsWith('/status')?structuredClone(f.statuses):path.includes('/check-runs')?structuredClone(f.raw):f.api(path)),verifyPR:async()=>f.pr};
+ await expect(preparationChecksPending.call(delivery,f.job,{findings:[{id:'checks',status:'open'}]} as any)).rejects.toBeInstanceOf(CheckStillFinishing);
 });
-test('an independent check that is passing or still running does not turn the wait into a stop',async()=>{
- const f=fixture();Object.assign(f.raw.check_runs[0],{status:'in_progress',conclusion:null,completed_at:null});
- f.raw.check_runs.push({id:998,name:'lint',app:{id:57789,slug:'other-app'},head_sha:head,status:'completed',conclusion:'success'},{id:997,name:'deploy',app:{id:57789,slug:'other-app'},head_sha:head,status:'queued',conclusion:null});f.raw.total_count=4;
- await expect(f.select()).rejects.toBeInstanceOf(CurrentChecksWait);
+test('both kinds of wait keep the merge stage watching; any other error does not',()=>{
+ expect(checksReadAgain(new CurrentChecksWait('queued'))).toBe(true);expect(checksReadAgain(new CheckStillFinishing('finishing'))).toBe(true);
+ expect(checksReadAgain(new Error('Actions job does not match exact check-run: conclusion differ'))).toBe(false);expect(checksReadAgain(undefined)).toBe(false);
+ expect(classifyStop(new CheckStillFinishing('finishing'))).toBe('provider-checks');expect(classifyStop(new CurrentChecksWait('queued'))).toBe('provider-checks');
 });
 test.each([['absent',undefined],['unknown','stale']])('a job whose status is %s gives no sign the check is unfinished: a mismatch, not a wait',async(_label,status)=>{
  const f=fixture();if(status===undefined)delete (f.jobs[0] as any).status;else f.jobs[0].status=status;
- const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain('Actions job does not match exact check-run: status differ');
+ const error=await f.select().catch(e=>e);expect(checksReadAgain(error)).toBe(false);expect(String(error)).toContain('Actions job does not match exact check-run: status differ');
 });
 test('a job that is not the check run it is read for is a mismatch even while the check is running',async()=>{
  const f=fixture();Object.assign(f.raw.check_runs[0],{status:'in_progress',conclusion:null,completed_at:null});f.jobs[0].name='other';
- const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toBe('Error: Actions job does not match exact check-run');
+ const error=await f.select().catch(e=>e);expect(checksReadAgain(error)).toBe(false);expect(String(error)).toBe('Error: Actions job does not match exact check-run');
 });
 test('a later completed_at cancellation cannot override positively newer workflow numbering',async()=>{
  const f=fixture();f.raw.check_runs[1].completed_at='2026-10-31T00:56:00Z';f.jobs[1].completed_at=f.raw.check_runs[1].completed_at;f.raw.check_runs.reverse();expect(checksPassed(await f.select(),f.statuses,head)).toBe(true);
