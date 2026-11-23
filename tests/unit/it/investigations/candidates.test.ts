@@ -15,9 +15,19 @@ test('only dispatched typed worker failures qualify; model outcomes, cancellatio
     const f = investigationFixture(); try {
         f.store.state.slackDeliveries = [];
         expect(investigationCandidates('brain', f.store.state)).toHaveLength(1);
-        for (const change of [{ failure: undefined }, { failure: { category: 'cancelled', dispatched: true } }, { failure: { category: 'provider-limit', dispatched: true } }, { failure: { category: 'provider-limit', dispatched: true, retryAt: '2026-11-24T16:50:00.000Z' }, stage: 'conversation-readback' }, { failure: { category: 'other', dispatched: false } }, { stage: 'it-investigation' }]) {
+        for (const change of [{ failure: undefined }, { failure: { category: 'cancelled', dispatched: true } }, { failure: { category: 'provider-limit', dispatched: true } }, { failure: { category: 'other', dispatched: false } }, { stage: 'it-investigation' }]) {
             f.store.state.workLog = [{ ...f.worker, ...change } as any]; expect(investigationCandidates('brain', f.store.state)).toEqual([]);
         }
+    } finally { f.close(); }
+});
+test('a read-back the provider refused at its usage limit is not investigated; the same run failing for another reason is', () => {
+    const f = investigationFixture(); try {
+        f.store.state.slackDeliveries = [];
+        const refused = { ...f.worker, id: 'read-back', requestId: 'harper-followup:one', stage: 'conversation-readback', status: 'failed', failure: { category: 'other', dispatched: true, detail: 'codex exited 1: stream disconnected' } } as any;
+        f.store.state.workLog = [refused];
+        expect(investigationCandidates('brain', f.store.state)).toEqual([expect.objectContaining({ kind: 'worker', id: 'read-back', failureKind: 'other', workerIds: ['read-back'] })]);
+        refused.failure = { category: 'provider-limit', dispatched: true, detail: 'codex exited 1: You’ve hit your usage limit.', retryAt: '2026-11-24T16:50:00.000Z' };
+        expect(investigationCandidates('brain', f.store.state)).toEqual([]);
     } finally { f.close(); }
 });
 test('workers without a request ID do not absorb unrelated empty-ID workers into their history', () => {
