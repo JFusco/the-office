@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { expect, test } from 'vitest';
-import { serialisedSnapshot } from '../../../server/office/http/serialised-snapshot';
+import { snapshotText } from '../../../server/office/http/snapshot-text';
 import { storeTimings } from '../../../server/store/store-timings';
 import { timeStatements } from '../../../server/store/timed-statements';
 
@@ -37,15 +37,14 @@ test('more than 200 SQL shapes and later snapshot steps keep distinct totals', (
     timeStatements(db, timings);
     const shapes = Array.from({ length: 201 }, (_, i) => `SELECT 'text' AS col_${i}`);
     for (const sql of shapes) db.prepare(sql).get();
-    const snapshot = timings.time('browser snapshot: build and redact', () => ({ revision: 1 }));
-    const body = serialisedSnapshot({ timings }, snapshot, 'a request');
-    serialisedSnapshot({ timings }, snapshot, 'a push');
+    const body = snapshotText({ timings }, () => ({ revision: 1 }), 'a request');
+    snapshotText({ timings }, () => ({ revision: 1 }), 'a push');
 
     const report = timings.report().timings;
     expect(Object.keys(report)).toHaveLength(204);
     for (let i = 0; i < shapes.length; i++)
         expect(report[`sql: SELECT ? AS col_${i}`]).toMatchObject({ calls: 1, chars: 4 });
-    expect(report['browser snapshot: build and redact']).toMatchObject({ calls: 1, chars: 0 });
-    expect(report['browser snapshot: serialise for a request']).toMatchObject({ calls: 1, chars: body.length });
-    expect(report['browser snapshot: serialise for a push']).toMatchObject({ calls: 1, chars: body.length });
+    expect(report['browser snapshot: build']).toMatchObject({ calls: 2, chars: 0 });
+    expect(report['browser snapshot: redact and serialise for a request']).toMatchObject({ calls: 1, chars: body.length });
+    expect(report['browser snapshot: redact and serialise for a push']).toMatchObject({ calls: 1, chars: body.length });
 });

@@ -9,7 +9,7 @@ import { createServer } from 'vite';
 import { Offices } from './scheduling/offices';
 import { DATA, ROOT, PORT, CEC, HOLDS } from './office/config';
 import { PROJECTS, PROJECT_BINDINGS, PROJECT_POLICY_INPUTS } from './office/projects';
-import { safeOrigin, sanitize, sanitizeObject } from './office/security';
+import { safeOrigin, sanitize } from './office/security';
 import { acquireServiceLock } from './office/service-lock';
 import { json } from './office/http/responses';
 import { apiRoute } from './office/http/api-routes';
@@ -40,10 +40,8 @@ const vite = built ? null : await createServer({ configFile: resolve(ROOT, 'vite
 if (vite)
     await vite.listen();
 const config = { projects: PROJECTS, cec: CEC, holds: HOLDS, bindings: PROJECT_BINDINGS, policies: PROJECT_POLICY_INPUTS };
-function snapshot(project = 'cec') {
-    const build = () => sanitizeObject(offices.snapshot(project)), timings = offices.entries.get(project)?.store.timings;
-    return timings ? timings.time('browser snapshot: build and redact', build) : build();
-}
+/** One project's snapshot as built, not yet redacted: it leaves the service only as the text `snapshotText` makes of it. */
+function snapshot(project = 'cec') { return offices.snapshot(project); }
 // Started once the stores are open, so startup itself is not counted as a late main thread.
 const watchedLoop = loopDelay();
 let shutdown = false;
