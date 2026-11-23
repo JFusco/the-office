@@ -1,4 +1,5 @@
 import { captureLearning } from '../../knowledge/learning-events';
+import { dropPendingLessons } from '../../knowledge/drop-pending-lessons';
 import { requeueInvestigationEvidence } from './requeue-evidence';
 import { supersedingDelivery } from '../../conversations/slack/supersession-proof';
 import { slackMessageUrl } from '../../../src/shared';
@@ -13,6 +14,7 @@ import { interruptedQARerunResolution } from './interrupted-qa-rerun-resolution'
 import type { Store } from '../../store/store';
 import { ctoReplacementResolution } from './cto-replacement-resolution';
 import { implementationReplacementResolution } from './implementation-replacement-resolution';
+import { PROVIDER_RECOVERED, providerLimitResolution } from './provider-limit-resolution';
 
 /** These saved receipts are populated by existing read-back contracts, never by Ellis's verdict. */
 export function investigationResolution(store: Store, entry: ITInvestigation) {
@@ -28,7 +30,7 @@ export function investigationResolution(store: Store, entry: ITInvestigation) {
     if (entry.source.failureKind === 'surviving-subprocesses') return notifyHelperResolution(store, entry) || finishedSubjectResolution(store, entry);
     const replacement = ctoReplacementResolution(store, entry) || implementationReplacementResolution(store, entry);
     if (replacement) return replacement;
-    const retried = retriedReadResolution(store, entry) || acceptedCompletionResolution(store, entry) || interruptedQARerunResolution(store, entry) || finishedSubjectResolution(store, entry);
+    const retried = retriedReadResolution(store, entry) || acceptedCompletionResolution(store, entry) || interruptedQARerunResolution(store, entry) || finishedSubjectResolution(store, entry) || providerLimitResolution(store, entry);
     if (retried) return retried;
     const recovery = store.state.workLog?.find(work => work.originalId === entry.source.id && work.requestId === entry.source.requestId && work.status === 'completed' && completedExecution(store, work));
     return recovery ? { kind: 'confirmed' as const, sourceId: recovery.id, receipt: `sessions/${recovery.id}/execution-completion.json` } : undefined;
@@ -53,9 +55,11 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
                 entry.status = 'resolved'; entry.nextAt = ''; entry.updatedAt = now.toISOString();
                 entry.resolution = { ...resolution, at: now.toISOString() };
                 // Closing with a finished subject verifies nothing and replaces nothing, so it is neither recorded as a lesson nor described as one.
-                const finished = /^(?:job|ticket):/.test(resolution.receipt);
-                if (!finished) captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
-                store.emit('it-investigation-resolved', finished ? 'Earlier warning kept as history: the work it concerned has finished. Its original outcome remains unknown.' : resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
+                const finished = /^(?:job|ticket):/.test(resolution.receipt), recovered = resolution.receipt.startsWith(PROVIDER_RECOVERED);
+                // Nor does a provider that works again: its refusal said nothing about the Office, and what was queued to be learned from it is dropped.
+                if (recovered) dropPendingLessons(store, { kind: 'investigation', id: entry.id });
+                if (!finished && !recovered) captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
+                store.emit('it-investigation-resolved', finished ? 'Earlier warning kept as history: the work it concerned has finished. Its original outcome remains unknown.' : recovered ? 'Earlier warning kept as history: the provider that refused the run is working again. The refused run was not repeated.' : resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
             }
         } else if (entry.status === 'resolved') {
             // A stale resolved flag cannot hide a reactivated source or lost receipt.

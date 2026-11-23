@@ -1,4 +1,5 @@
 import { freezeReads } from '../incidents/repair/freeze-reads';
+import { PROVIDER_RECOVERED } from '../it/investigations/provider-limit-resolution';
 import { repairFreeze } from '../incidents/repair/repair-freeze';
 import { investigationHeld } from '../it/investigations/held-investigation';
 import { recoveryRecord } from '../it/recovery-record';
@@ -52,7 +53,7 @@ export function reconcileBlockerFollowups(store: Store): void {
     if (!knowledge) return;
     const before = JSON.stringify([knowledge.followups, knowledge.unblockBriefs, store.state.messages.length]), now = store.clock.now().toISOString();
     const records = knowledge.followups ??= [], observed = new Set<string>();
-    const observe = (source: LearningSubject, key: string, detail: string, disposition: BlockerFollowup['disposition'], proof: unknown, refs: Partial<BlockerFollowup> = {}) => {
+    const observe = (source: LearningSubject, key: string, detail: string, disposition: BlockerFollowup['disposition'], proof: unknown, refs: Partial<BlockerFollowup> = {}, teaches = true) => {
         const id = `${source.kind}:${source.id}`, fingerprint = learningDigest([disposition, proof, detail]);
         observed.add(id);
         let item = records.find(item => item.id === id);
@@ -64,15 +65,16 @@ export function reconcileBlockerFollowups(store: Store): void {
             item.evidence = [{ kind: 'learning', ref: id, url: '', detail: JSON.stringify(proof).slice(0, 1500) }];
             // Initial unresolved inventory is baselined; subsequent material changes are learning. An unknown outcome proves nothing.
             // IT recovery records are excluded: they repeat the same condition and taught one lesson in 29 retrospectives.
-            if (item.history.length > 1 && disposition !== 'unknown' && source.kind !== 'recovery') captureLearning(store, source, key, 'recovery', fingerprint, { disposition, proof }, detail);
+            if (teaches && item.history.length > 1 && disposition !== 'unknown' && source.kind !== 'recovery') captureLearning(store, source, key, 'recovery', fingerprint, { disposition, proof }, detail);
         }
         // Checked every pass: a retrospective accepted after confirmation may still write a brief.
         if (item.disposition === 'confirmed') clearUnblockBrief(knowledge, source);
         return item;
     };
     for (const entry of store.state.it?.investigations || []) {
-        const proof = investigationResolution(store, entry);
-        const item = observe({ kind: 'investigation', id: entry.id }, entry.source.ticket, proof ? proof.kind === 'superseded' ? 'A verified replacement superseded this incident; original outcome remains unknown.' : 'Original source has verified resolution evidence.' : entry.lastError || entry.report?.summary || 'Ellis owns source diagnosis; wait for verified recovery.', proof?.kind || (entry.status === 'blocked' ? 'needs-input' : 'unresolved'), proof || { status: entry.status, attempts: entry.attempts }, { investigationId: entry.id, owner: proof ? 'Ellis' : entry.status === 'blocked' ? 'Morgan' : 'Ellis' });
+        const proof = investigationResolution(store, entry), recovered = !!proof?.receipt.startsWith(PROVIDER_RECOVERED);
+        // A provider that works again taught nothing about the Office: the follow-up closes without a lesson.
+        const item = observe({ kind: 'investigation', id: entry.id }, entry.source.ticket, recovered ? 'The provider that refused this run is working again; the refused run was not repeated.' : proof ? proof.kind === 'superseded' ? 'A verified replacement superseded this incident; original outcome remains unknown.' : 'Original source has verified resolution evidence.' : entry.lastError || entry.report?.summary || 'Ellis owns source diagnosis; wait for verified recovery.', proof?.kind || (entry.status === 'blocked' ? 'needs-input' : 'unresolved'), proof || { status: entry.status, attempts: entry.attempts }, { investigationId: entry.id, owner: proof ? 'Ellis' : entry.status === 'blocked' ? 'Morgan' : 'Ellis' }, !recovered);
         if (item.disposition === 'needs-input' && knowledge.enabled) handoff(store, item);
     }
     for (const [id, recovery] of Object.entries(store.state.it?.recoveries || {})) {
