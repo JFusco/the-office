@@ -5,11 +5,14 @@
  * these out, so a start alone does not count as a change; everything else must still match.
  */
 
+import { START_STATE_KEYS, startStateKey, type StartStateKey } from '../store/start-state-keys';
+
 /**
- * The state keys a start rewrites, each with the shape the previous release reads it in. They are
- * saved twice: in the whole `state` row and one row each in `state_parts` (`server/store/state-parts.ts`).
+ * The shape the previous release reads each start key in (`server/store/start-state-keys.ts` names the keys).
+ * They are saved one row each in `state_parts`, and also in the whole `state` row while a store still has one
+ * (`server/store/state-parts.ts`).
  */
-const START_STATE_KEYS: Record<string, (value: unknown) => boolean> = {
+const START_STATE_SHAPES: Record<StartStateKey, (value: unknown) => boolean> = {
     startedAt: value => typeof value === 'string',
     serverTime: value => typeof value === 'string',
     revision: value => Number.isSafeInteger(value) && (value as number) >= 0,
@@ -33,8 +36,8 @@ function withoutStartValues(body: unknown): unknown {
     try { state = JSON.parse(body); } catch { return body; }
     if (!state || typeof state !== 'object' || Array.isArray(state)) return body;
     const saved = state as Record<string, unknown>;
-    for (const [key, shaped] of Object.entries(START_STATE_KEYS))
-        if (Object.hasOwn(saved, key)) saved[key] = shaped(saved[key]) ? [] : [saved[key]];
+    for (const key of START_STATE_KEYS)
+        if (Object.hasOwn(saved, key)) saved[key] = START_STATE_SHAPES[key](saved[key]) ? [] : [saved[key]];
     return JSON.stringify(saved);
 }
 
@@ -43,8 +46,8 @@ function withoutStartValues(body: unknown): unknown {
  * never has. The row stays, so a removed part is a difference, and a value without its shape is compared whole.
  */
 function withoutStartValue(row: Record<string, unknown>): Record<string, unknown> {
-    if (typeof row.key !== 'string' || !Object.hasOwn(START_STATE_KEYS, row.key) || typeof row.body !== 'string') return row;
-    try { return START_STATE_KEYS[row.key](JSON.parse(row.body)) ? { ...row, body: null } : row; } catch { return row; }
+    if (typeof row.key !== 'string' || !startStateKey(row.key) || typeof row.body !== 'string') return row;
+    try { return START_STATE_SHAPES[row.key](JSON.parse(row.body)) ? { ...row, body: null } : row; } catch { return row; }
 }
 
 /**

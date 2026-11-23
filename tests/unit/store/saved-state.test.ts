@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { joinParts, readSaved, savedText, selectSaved, type PartRow } from '../../../server/store/saved-state';
+import { joinParts, readSaved, SavedStateConflict, savedText, selectSaved, type PartRow } from '../../../server/store/saved-state';
 
 const dbs: DatabaseSync[] = [];
 afterEach(() => { dbs.splice(0).forEach(db => db.close()); });
@@ -19,11 +19,20 @@ test.each<[string, PartRow[], string | undefined, 'none' | 'row' | 'parts', bool
     ['a saved empty object', [], '{}', 'row', true, '{}'],
     ['parts and no row', parts, undefined, 'parts', false, joined],
     ['a row equal to the parts', parts, joined, 'parts', true, joined],
-    ['a row that differs from the parts', parts, '{"a":2}', 'row', false, '{"a":2}'],
 ])('the one rule: %s', (_name, rows, row, source, rowMatches, text) => {
     const selection = selectSaved(rows, row);
     expect(selection).toEqual({ source, rows, row, rowMatches });
     expect(savedText(selection)).toBe(text);
+});
+
+test.each([
+    ['other content', '{"a":2}'],
+    ['the same content in other bytes', `${joined} `],
+    ['an empty object', '{}'],
+])('the one rule: parts and a row of %s are two copies that disagree, and neither is the state', (_name, row) => {
+    const selection = selectSaved(parts, row);
+    expect(selection).toEqual({ source: 'conflict', rows: parts, row, rowMatches: false });
+    expect(() => savedText(selection)).toThrow('Saved copies disagree');
 });
 
 function database(schema = true) {
@@ -38,8 +47,11 @@ test('a connection is read as its row and its parts in position order, and a dat
     const db = database();
     put(db, [...parts].reverse());
     expect(readSaved(db)).toEqual({ source: 'parts', rows: parts, row: undefined, rowMatches: false });
-    db.prepare('INSERT INTO state VALUES(1,?)').run('{"a":2}');
-    expect(savedText(readSaved(db))).toBe('{"a":2}');
+    db.prepare('INSERT INTO state VALUES(1,?)').run(joined);
+    expect(readSaved(db)).toEqual({ source: 'parts', rows: parts, row: joined, rowMatches: true });
+    db.exec('DELETE FROM state_parts');
+    db.prepare('INSERT OR REPLACE INTO state VALUES(1,?)').run('{}');
+    expect(readSaved(db)).toEqual({ source: 'row', rows: [], row: '{}', rowMatches: true });
     const legacy = database(false);
     expect(readSaved(legacy).source).toBe('none');
     legacy.prepare('INSERT INTO state VALUES(1,?)').run('{"old":true}');
@@ -57,6 +69,21 @@ test('a read leaves no transaction open, and inside the caller\'s transaction re
     expect(db.isTransaction).toBe(true);
     db.exec('ROLLBACK');
     expect(JSON.parse(savedText(readSaved(db))!).a).toBe(1);
+});
+
+test('a row that differs from the parts is refused by name, in its own read transaction or the caller\'s, and nothing is changed', () => {
+    const db = database();
+    put(db, parts);
+    db.prepare('INSERT INTO state VALUES(1,?)').run('{"a":2}');
+    const saved = () => [db.prepare('SELECT body FROM state').all(), db.prepare('SELECT * FROM state_parts ORDER BY position').all()], before = saved();
+    expect(() => readSaved(db)).toThrow(SavedStateConflict);
+    expect(() => readSaved(db)).toThrow(/in-memory database.*the whole state row and the state parts.*docs\/office-process\.md/);
+    expect(db.isTransaction).toBe(false);
+    db.exec('BEGIN IMMEDIATE');
+    expect(() => readSaved(db)).toThrow(SavedStateConflict);
+    expect(db.isTransaction).toBe(true); // The caller's transaction is the caller's to end.
+    db.exec('ROLLBACK');
+    expect(saved()).toEqual(before);
 });
 
 test('a failed read ends the read transaction it opened and reports the failure itself', () => {

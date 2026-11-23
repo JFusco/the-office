@@ -63,8 +63,10 @@ export class Store {
         initializeStoreSchema(this.db);
         optimizeOnOpen(this.db);
         this.statement = statementCache(this.db);
-        this.parts = new StateParts(this.statement, sql => this.db.exec(sql), this.timings);
-        this.state = (this.parts.load() ?? initialSnapshot()) as OfficeSnapshot;
+        this.parts = new StateParts(this.db, this.statement, this.timings);
+        // Two saved copies that disagree stop the store before anything is migrated or saved over either.
+        try { this.state = (this.parts.load() ?? initialSnapshot()) as OfficeSnapshot; }
+        catch (error) { this.db.close(); throw error; }
         this.state.project = project;
         migrateSnapshot(this.state, project, this.clock.now().toISOString());
         for (const role of ['cto', 'it', 'analyst', 'knowledge'] as const)
