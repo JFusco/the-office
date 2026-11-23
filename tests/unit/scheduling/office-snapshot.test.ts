@@ -9,7 +9,6 @@ import { Conversations } from '../../../server/conversations/conversations';
 import { Coordinator, coordination } from '../../../server/scheduling/coordination';
 import { SessionBridge } from '../../../server/workers/session-bridge';
 import { officeCapacity, projectById } from '../../../server/office/projects';
-import { enqueueRequest } from '../../../server/scheduling/requests';
 
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); stores.splice(0).forEach(store => store.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
@@ -30,20 +29,24 @@ function office() {
     return value;
 }
 
+const job = (id: string, key: string) => ({ id, key, requestedAt: '2026-11-22T10:00:00Z', status: 'queued', stage: 'implement', detail: 'Queued', head: 'a'.repeat(40), worktree: '', branch: '', pr: 0, prUrl: '', steps: [] }) as never;
+
 test('a snapshot computes each project\'s queue once and reports it in both places it appears', () => {
     const value = office();
-    enqueueRequest(value.get('brain').store, 'refresh');
-    enqueueRequest(value.get('cms-field-vocabulary').store, 'refresh');
-    enqueueRequest(value.get('cms-field-vocabulary').store, 'poll');
+    value.get('brain').store.state.coordination!.jobs = [job('brain-1', 'GH-1')];
+    value.get('cms-field-vocabulary').store.state.coordination!.jobs = [job('cms-1', 'GH-2'), job('cms-2', 'GH-3')];
     const projection = vi.spyOn(value, 'projection');
-    const snapshot = value.snapshot('brain') as unknown as { progression: { work: { projectId: string } }[]; projects: { id: string; queued: number; working: number }[] };
+    const snapshot = value.snapshot('brain') as unknown as { progression: { work: { projectId: string; id: string } }[]; projects: { id: string; queued: number; working: number }[] };
     expect(projection).toHaveBeenCalledTimes(2);
     expect(projection.mock.calls.map(([entry]) => entry.store.project.id)).toEqual(['brain', 'cms-field-vocabulary']);
     projection.mockRestore();
+    // Each project's own work, in project order: the queues differ, so a mix-up between projects would show.
+    const jobs = (project: string) => snapshot.progression.filter(item => item.work.projectId === project && /^(brain|cms)-\d$/.test(item.work.id)).map(item => item.work.id);
+    expect(jobs('brain')).toEqual(['brain-1']);
+    expect(jobs('cms-field-vocabulary')).toEqual(['cms-1', 'cms-2']);
     // The same figures as computing them separately, as before.
     expect(snapshot.projects).toEqual(value.summaries());
-    expect(snapshot.progression.map(item => item.work.projectId)).toEqual([...value.entries.values()].flatMap(entry => value.projection(entry)).map(item => item.work.projectId));
-    expect(snapshot.projects.map(project => project.id)).toEqual(['brain', 'cms-field-vocabulary']);
+    expect(snapshot.progression.map(item => `${item.work.projectId}:${item.work.id}`)).toEqual([...value.entries.values()].flatMap(entry => value.projection(entry)).map(item => `${item.work.projectId}:${item.work.id}`));
 });
 
 test('project summaries on their own still compute each project\'s queue', () => {

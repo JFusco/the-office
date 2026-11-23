@@ -21,6 +21,7 @@ import { telemetryRoute } from './telemetry/telemetry-route';
 import { deploymentFenceRoute } from './office/http/deployment-fence-route';
 import { deploymentFenceGate } from './office/http/deployment-fence-gate';
 import { startServiceTicks } from './office/service-ticks';
+import { snapshotText } from './office/http/snapshot-text';
 import { loopDelay } from './office/loop-delay';
 import { incidentsRoute } from './incidents/routes';
 import { sweepStaleSessionSnapshots } from './workers/session-snapshot-cleanup';
@@ -40,8 +41,8 @@ const vite = built ? null : await createServer({ configFile: resolve(ROOT, 'vite
 if (vite)
     await vite.listen();
 const config = { projects: PROJECTS, cec: CEC, holds: HOLDS, bindings: PROJECT_BINDINGS, policies: PROJECT_POLICY_INPUTS };
-/** One project's snapshot as built, not yet redacted: it leaves the service only as the text `snapshotText` makes of it. */
-function snapshot(project = 'cec') { return offices.snapshot(project); }
+/** One project's snapshot as the browser receives it: redacted text. The unredacted object is never handed to a route. */
+function snapshot(project: string, purpose: 'a request' | 'a push') { return snapshotText(offices.get(project).store, () => offices.snapshot(project), purpose); }
 // Started once the stores are open, so startup itself is not counted as a late main thread.
 const watchedLoop = loopDelay();
 let shutdown = false;
@@ -53,7 +54,7 @@ const server = serve({ hostname: '127.0.0.1', port: PORT,
         let endWrite: (() => void) | undefined;
         try {
             // Office-wide routes run before project resolution: they need no project query.
-            const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, config, loopDelay: watchedLoop, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
+            const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshotText: snapshot, vite, config, loopDelay: watchedLoop, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
             // The fence's own endpoints, then its gate: while a deployment holds it, every other write is refused.
             for (const route of [deploymentFenceRoute, deploymentFenceGate]) {
                 const response = await route(req, url, service);

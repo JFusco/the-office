@@ -15,10 +15,11 @@ test('a snapshot is built once and sent as the text that serialising its redacte
     expect(JSON.parse(text)).toEqual(sanitizeObject(build()));
     snapshotText(store, build, 'a request');
     const report = store.timings.report().timings;
-    expect(report['browser snapshot: build']).toMatchObject({ calls: 2, chars: 0 });
+    expect(report['browser snapshot: build for a push']).toMatchObject({ calls: 1, chars: 0 });
+    expect(report['browser snapshot: build for a request']).toMatchObject({ calls: 1, chars: 0 });
     expect(report['browser snapshot: redact and serialise for a push']).toMatchObject({ calls: 1, chars: text.length });
     expect(report['browser snapshot: redact and serialise for a request']).toMatchObject({ calls: 1, chars: text.length });
-    expect(Object.keys(report)).toHaveLength(3);
+    expect(Object.keys(report)).toHaveLength(4);
 });
 
 test('a snapshot that cannot be built or redacted is reported, and nothing is returned in its place', () => {
@@ -26,6 +27,11 @@ test('a snapshot that cannot be built or redacted is reported, and nothing is re
     expect(() => snapshotText(store, () => { throw failure; }, 'a push')).toThrow(failure);
     const circular: Record<string, unknown> = {}; circular.self = circular;
     expect(() => snapshotText(store, () => circular, 'a request')).toThrow();
+    // Each failure is counted under the step it failed in.
+    const report = store.timings.report().timings;
+    expect(report['browser snapshot: build for a push']).toMatchObject({ calls: 1 });
+    expect(report['browser snapshot: redact and serialise for a request']).toMatchObject({ calls: 1, chars: 0 });
+    expect(report['browser snapshot: redact and serialise for a push']).toBeUndefined();
 });
 
 test('redacted text is what the redacted object serialises to, for every shape redaction handles', () => {

@@ -32,19 +32,27 @@ test('character sizing is outside the recorded work duration', () => {
 });
 
 test('more than 200 SQL shapes and later snapshot steps keep distinct totals', () => {
-    const { timings } = clocked();
+    const store = clocked();
+    const { timings, pass } = store;
     using db = new DatabaseSync(':memory:');
     timeStatements(db, timings);
     const shapes = Array.from({ length: 201 }, (_, i) => `SELECT 'text' AS col_${i}`);
     for (const sql of shapes) db.prepare(sql).get();
-    const body = snapshotText({ timings }, () => ({ revision: 1 }), 'a request');
-    snapshotText({ timings }, () => ({ revision: 1 }), 'a push');
+    const requestText = snapshotText(store, () => {
+        pass(12);
+        return { toJSON() { pass(2); return { revision: 1 }; } };
+    }, 'a request');
+    const pushText = snapshotText(store, () => {
+        pass(25);
+        return { toJSON() { pass(4); return { revision: 12 }; } };
+    }, 'a push');
 
     const report = timings.report().timings;
-    expect(Object.keys(report)).toHaveLength(204);
+    expect(Object.keys(report)).toHaveLength(205);
     for (let i = 0; i < shapes.length; i++)
         expect(report[`sql: SELECT ? AS col_${i}`]).toMatchObject({ calls: 1, chars: 4 });
-    expect(report['browser snapshot: build']).toMatchObject({ calls: 2, chars: 0 });
-    expect(report['browser snapshot: redact and serialise for a request']).toMatchObject({ calls: 1, chars: body.length });
-    expect(report['browser snapshot: redact and serialise for a push']).toMatchObject({ calls: 1, chars: body.length });
+    expect(report['browser snapshot: build for a request']).toMatchObject({ calls: 1, ms: 12, chars: 0 });
+    expect(report['browser snapshot: build for a push']).toMatchObject({ calls: 1, ms: 25, chars: 0 });
+    expect(report['browser snapshot: redact and serialise for a request']).toMatchObject({ calls: 1, ms: 2, chars: requestText.length });
+    expect(report['browser snapshot: redact and serialise for a push']).toMatchObject({ calls: 1, ms: 4, chars: pushText.length });
 });

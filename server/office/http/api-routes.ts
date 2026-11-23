@@ -21,11 +21,10 @@ import { containedFile } from '../../cec/workflow';
 import { sanitizeObject } from '../security';
 import type { ServiceContext, RequestContext } from './context';
 import { json, jsonText, fileResponse } from './responses';
-import { snapshotText } from './snapshot-text';
 
 /** Read and write API routes other than office commands. */
 export async function apiRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
-    const { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator } = context;
+    const { offices, serviceHealth, itSpecialist, loadedRevision, snapshotText, vite, project, store, engine, conversations, coordinator } = context;
     const qaRetry = await qaPlanRetryRoute(req, url, store, DATA);
     if (qaRetry) return qaRetry;
     const continuation = await implementationContinuationRoute(req, url, store);
@@ -48,7 +47,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
     if (url.pathname === '/api/health')
         return json({ ok: true, loadedHash: loadedRevision.hash, release: releaseIdentity({ root: ROOT, dataRoot: DATA, loadedHash: loadedRevision.hash }), serviceInstanceId: offices.serviceInstanceId, startedAt: store.state.startedAt, readiness: [...offices.entries.values()].map(entry => projectReadiness(entry, offices.projection(entry), Date.now(), offices.sessions.forProject(entry.store))), dailyCTO: offices.control.summaries()[0] || null, mode: store.state.paused ? 'paused' : 'running', pid: process.pid, uptime: process.uptime(), busy: serviceBusy(offices.capacity,offices.entries.values()) || itSpecialist.running || offices.operations.count > 0, fence: offices.fence.read(), repairResumes: offices.resumes.read(), storeTimings: [...offices.entries.values()].map(e => ({ project: e.store.project.id, ...e.store.timings.report() })), stepTimings: offices.stepTimings?.report() ?? null, loopDelay: context.loopDelay?.report() ?? null, projects: [...offices.entries.values()].map(e => ({ id: e.store.project.id, busy: e.engine.busy, workers: e.store.state.workLog?.filter(w => w.status === 'running').length || 0, polling: !!e.coordinator?.polling })) });
     if (url.pathname === '/api/office')
-        return jsonText(snapshotText(store, () => snapshot(project), 'a request'));
+        return jsonText(snapshotText(project, 'a request'));
     if (url.pathname === '/api/sessions') {
         if (req.method !== 'GET')
             return json({ error: 'GET required' }, 405);
@@ -98,7 +97,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
         const stream = new ReadableStream({ start(c) {
                 const send = () => {
                     try {
-                        c.enqueue(new TextEncoder().encode(`id: ${store.state.revision}\nevent: snapshot\ndata: ${snapshotText(store, () => snapshot(project), 'a push')}\n\n`));
+                        c.enqueue(new TextEncoder().encode(`id: ${store.state.revision}\nevent: snapshot\ndata: ${snapshotText(project, 'a push')}\n\n`));
                     }
                     catch {
                         stop();

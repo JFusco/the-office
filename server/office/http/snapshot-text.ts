@@ -7,6 +7,6 @@ import type { StoreTimings } from '../../store/store-timings';
  * building that object first. Both steps are timed under their own names, the second sized by the text sent.
  */
 export function snapshotText(store: { timings: StoreTimings }, build: () => unknown, purpose: 'a request' | 'a push'): string {
-    const snapshot = store.timings.time('browser snapshot: build', build);
+    const snapshot = store.timings.time(`browser snapshot: build for ${purpose}`, build);
     return store.timings.time(`browser snapshot: redact and serialise for ${purpose}`, () => redactedText(snapshot), text => text.length);
 }
