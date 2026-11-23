@@ -6,6 +6,7 @@ import { syncIncidents } from '../../../server/incidents/sync-incidents';
 import type { Store } from '../../../server/store/store';
 import { AT, candidate, item, later, observe, office, projectStore } from './incident-fixture';
 import { savedFingerprint } from '../store/saved-fingerprint-fixture';
+import { savedStateText } from '../store/saved-state-fixture';
 
 const stores: Store[] = [], dbs: DatabaseSync[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0).forEach(db => db.close()); });
@@ -49,11 +50,12 @@ test('a sync reads project state and leaves every project store byte-identical',
     s.state.slackDeliveries = [{ id: 'd', requestId: 'm', targetType: 'person', targetName: 'Joe', status: 'uncertain', error: 'unconfirmed', createdAt: 'c' }] as any;
     s.save();
     // Everything saved for the project, every row of every table, as one digest.
-    const before = { memory: JSON.stringify(s.state), saved: savedFingerprint(s) };
+    const before = { memory: JSON.stringify(s.state), state: savedStateText(s), saved: savedFingerprint(s) };
     deepFreeze(s.state);
     const change = syncIncidents(l, office(observe(s, [blocked('1'), item('delivery', '2', 'merge', 'waiting', 'Work is watching')])), AT, undefined, loud);
     expect(change.incidents.length).toBeGreaterThanOrEqual(5);
     expect(JSON.stringify(s.state)).toBe(before.memory);
+    expect(savedStateText(s)).toBe(before.state);
     expect(savedFingerprint(s)).toBe(before.saved);
 });
 

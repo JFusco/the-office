@@ -821,8 +821,9 @@ reconfigures the service on its own; the deployment controller below sequences t
 
 A project's state is saved one row per top-level key (`state_parts`), and a save writes only the keys whose
 saved text changed (`server/store/state-parts.ts`). Earlier releases also wrote the whole state as one
-`state` row beside the parts on every save. The controller's own store, `deployments/controller.sqlite`, is a store of
-the same kind, opened by the release the controller pin names.
+`state` row beside the parts on every save. The deployment controller's own store,
+`deployments/controller.sqlite`, is a store of the same kind, opened by the release the controller pin
+names and not by the service.
 
 - **A store that still has the whole row** keeps it byte for byte equal to its parts while the only saved
   differences are in the keys a service start rewrites (`server/store/start-state-keys.ts`: start time,
@@ -830,36 +831,60 @@ the same kind, opened by the release the controller pin names.
   wrote, and the rollback comparison is unchanged. The first save that adds, removes, moves or changes any
   other saved key removes the row in the same transaction. The row is never created again, except as the
   literal `{}` for a saved empty state, which the parts cannot hold.
-- **Rollback to a release from 252f140 (2026-11-21) on needs no restore.** Those releases read the parts
-  when the row is absent, and their first save writes the row again. The controller's own rollback goes
-  back exactly one release, so it always lands on such a release.
-- **Below 252f140 a release reads only the row.** Started on a store without one, it begins from an empty
-  state and saves that. Do not start one on such a store. To go below the floor on purpose: stop the
-  writers of every affected database (each project store and the controller store), keep verified copies,
-  start the last release that writes the row once on each so it writes the row again, stop it, and confirm
-  read-only that the row equals the parts in order (`{}` for a saved empty state). Only then start the
-  older release or move the controller pin. A backup's date or checksum does not show whether it holds a
-  current row: the controller copies stores into `backups/<operation>/` as they are, and every copy taken
-  after the row was removed lacks it.
+- **The floor is 252f140 (2026-11-21).** Releases from that commit up to the one before this change read
+  the parts when the row is absent, and their first save writes the row again, so going back to one of them
+  needs no restore. The controller's own rollback reinstalls the release that was running before the
+  failed activation, under its usual eligibility checks; that release is above the floor as long as the
+  service was. Nothing in the deployment tooling checks a target against the floor: it is a rule for
+  whoever chooses the target.
+- **Below the floor a release reads only the row.** Started on a store without one, it begins from an
+  empty state and saves that as a new row, leaving the parts where they are. Do not start one on such a
+  store. To go below the floor on purpose:
+  1. Stop every writer of each affected database: the service for the project stores, and any controller
+     process for `deployments/controller.sqlite`.
+  2. Take a consistent copy of each (`sqlite3 <db> ".backup <copy>"`). The controller's backup under
+     `backups/<operation>/` holds the project stores and `office-control.sqlite`, not the controller's own
+     store, and copies each as it is: one taken after the row was removed has no row.
+  3. Have the last release that writes the row open and save each database once, with no work admitted
+     (the service under the deployment fence for the project stores; that release's controller for its
+     own store), and stop it.
+  4. Confirm read-only, on each database, that the row equals the parts in order (`{}` for a saved empty
+     state). A copy's date or checksum does not show this; read the row and the parts.
+  5. Only then start the older release or move the controller pin.
+- **Coming back from below the floor always meets the refusal below**, because such a release writes the
+  row at every start and never the parts. Come back up only through this release or a later one, and check
+  each database with it before any service start, controller pin change or deployment: `pnpm office
+  baseline` from this release's checkout reads the project stores, and the controller store is compared by
+  hand as in step 3 of the next list. A release from the floor up to the one before this change must not
+  be started first: it takes a differing row without asking and writes the parts over from it.
 
 #### A store whose saved copies disagree
 
-When a store holds parts and a whole row that differs from them, it is not opened: the service stops at
-start-up with an error naming the database, and `pnpm office baseline` fails with the same error. Nothing
-is changed. Only a release from before 252f140 writes the row alone, and it either started from a current
-row or, finding none, from nothing; the two copies cannot say which, so neither is taken.
+When a store holds parts and a whole row that differs from them, it is not opened, and nothing in the file
+is changed: no journal mode, table, index, migration or save. The error names the database. For a project
+store the service exits at start-up with it, and launchd starts the service again every 30 seconds with
+the same result; `pnpm office baseline` fails with the same error. For `deployments/controller.sqlite` it
+shows as a deployment controller that will not start, recorded in `deployments/STOP.json`. Only a release
+from below the floor writes the row alone, and it either started from a current row or, finding none,
+from nothing; the two copies cannot say which, so neither is taken.
 
-1. Keep every writer of that database stopped, and do not start a release older than this one on it: a
-   release that prefers the row would write the parts over from it.
-2. Take a consistent copy of the database (`sqlite3 <db> ".backup <copy>"`).
-3. Read both copies of the state from the copy: `SELECT body FROM state WHERE id=1` and
+1. Stop the service so it is not restarted (`launchctl bootout gui/$(id -u)/com.jfusco.living-office`),
+   keep every other writer of that database stopped, and do not start a release older than this one on
+   it.
+2. Take a consistent copy of the database (`sqlite3 <db> ".backup <copy>"`) and work on a second copy of
+   that.
+3. Read both copies of the state from the working copy: `SELECT body FROM state WHERE id=1` and
    `SELECT key, body FROM state_parts ORDER BY position, key`. Compare them with what is known of the
-   project's recent history and with earlier backups, and decide which is the project's state.
-4. On a working copy, in one transaction and touching no other table, make that choice the only one: to
-   keep the parts, `DELETE FROM state`; to keep the row, `DELETE FROM state_parts`, and the next start
+   project's recent history and with earlier backups, and decide which is the project's state. After a
+   run below the floor, the row is what that run saved and the parts are what was saved before it.
+4. On the working copy, in one transaction and touching no other table, make that choice the only one:
+   to keep the parts, `DELETE FROM state`; to keep the row, `DELETE FROM state_parts`, and the next start
    writes the parts from it.
-5. Confirm on the working copy that one copy of the state is left and that it is the one you chose, then
-   put the working copy in place and start the service.
+5. Still offline, confirm the working copy: the copy that is left is byte for byte the one you chose, and
+   this release's read-only reader (`readSavedState` in `server/store/read-saved-state.ts`, which
+   `pnpm office baseline` uses) reads it without error. If it does not, keep the writers stopped.
+6. Put the working copy in place of the database, removing any `-wal` and `-shm` files left beside the
+   old one and keeping the file's owner and mode, then start the service.
 
 If it cannot be decided which copy is the project's state, keep both and leave the service stopped.
 

@@ -3,11 +3,8 @@ import type { DatabaseSync } from 'node:sqlite';
 /** One top-level key of a saved state, as `state_parts` holds it: its place among the keys and its redacted JSON text. */
 export type PartRow = { key: string; position: number; body: string };
 
-/**
- * Which saved copy is the state, with what was read: `rowMatches` says the whole row is exactly the joined parts.
- * `conflict` means both copies exist and disagree, so neither can be taken as the state.
- */
-export interface SavedSelection { source: 'none' | 'row' | 'parts' | 'conflict'; rows: PartRow[]; row: string | undefined; rowMatches: boolean }
+/** Which saved copy is the state, with what was read: `rowMatches` says the whole row is exactly the joined parts. */
+export interface SavedSelection { source: 'none' | 'row' | 'parts'; rows: PartRow[]; row: string | undefined; rowMatches: boolean }
 
 /** A store whose two saved copies disagree. Nothing was changed; a person decides which copy is the state. */
 export class SavedStateConflict extends Error {
@@ -28,36 +25,34 @@ export function joinParts(rows: PartRow[]): string {
  * parts existed, or a saved empty object. With parts and no row, or a row that is byte for byte the joined parts,
  * the parts are the state. With parts and a row that differs, the two copies disagree. Only a release from before
  * parts existed writes the row alone, and it may have started from the row or, finding none, from nothing; the
- * bytes cannot say which, so neither copy is taken (`SavedStateConflict`).
+ * bytes cannot say which, so neither copy is taken: `SavedStateConflict`, naming `database`, is thrown.
  */
-export function selectSaved(rows: PartRow[], row: string | undefined): SavedSelection {
+export function selectSaved(rows: PartRow[], row: string | undefined, database: string): SavedSelection {
     const rowMatches = row !== undefined && row === joinParts(rows);
-    const source = !rows.length ? (row === undefined ? 'none' : 'row') : row === undefined || rowMatches ? 'parts' : 'conflict';
-    return { source, rows, row, rowMatches };
+    if (rows.length && row !== undefined && !rowMatches) throw new SavedStateConflict(database);
+    return { source: rows.length ? 'parts' : row === undefined ? 'none' : 'row', rows, row, rowMatches };
 }
 
-/** The saved state as text, or null when nothing was ever saved. A conflict has no saved state to give. */
+/** The saved state as text, or null when nothing was ever saved. */
 export function savedText(selection: SavedSelection): string | null {
-    if (selection.source === 'conflict') throw new Error('Saved copies disagree; there is no one saved state');
     return selection.source === 'none' ? null : selection.source === 'row' ? selection.row! : joinParts(selection.rows);
 }
 
 /**
  * Reads the whole row and the parts through `db` in one snapshot and selects between them. Inside the caller's
  * own transaction it reads that transaction's view; otherwise it opens a read transaction for the two reads. A
- * database from before parts existed has no `state_parts` table and reads as a row alone. Writes nothing. Throws
+ * database from before parts existed has no `state_parts` table and reads as a row alone, and one with no `state`
+ * table has nothing saved. Writes nothing, and sets nothing on the connection or the file. Throws
  * `SavedStateConflict`, naming the database, when the two copies disagree.
  */
 export function readSaved(db: DatabaseSync): SavedSelection {
     const own = !db.isTransaction;
     if (own) db.exec('BEGIN');
     try {
-        const row = db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined;
-        const parts = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='state_parts'").get()
-            ? db.prepare('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as PartRow[] : [];
-        const selection = selectSaved(parts, row?.body);
-        if (selection.source === 'conflict') throw new SavedStateConflict(db.location() ?? 'an in-memory database');
-        return selection;
+        const table = (name: string) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name);
+        const row = table('state') ? db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined : undefined;
+        const parts = table('state_parts') ? db.prepare('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as PartRow[] : [];
+        return selectSaved(parts, row?.body, db.location() ?? ':memory:');
     } finally {
         // SQLite may already have ended the transaction after a failed read: the first failure is the one to report.
         if (own && db.isTransaction) db.exec('ROLLBACK');

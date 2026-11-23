@@ -25,6 +25,10 @@ function openStore() {
 }
 
 const WRITE_ROW = 'sql: INSERT OR REPLACE INTO state(id,body) VALUES(?,?)';
+const UPDATE_ROW = 'sql: UPDATE state SET body=? WHERE id=?';
+const SAVED_PARTS = 'sql: SELECT key,position,body FROM state_parts ORDER BY position,key';
+/** Every statement of a save: it reads once whether the whole row is there, and `writes` are all it writes. */
+const saving = (writes: Record<string, number> = {}) => ({ 'sql: SELECT ? FROM state WHERE id=?': 1, ...writes });
 const WRITE_PART = 'sql: INSERT OR REPLACE INTO state_parts(key,position,body) VALUES(?,?,?)';
 const row = (store: Store) => (store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined)?.body;
 /** What a save must store, worked out without the writer: the redacted text of the whole state. */
@@ -72,24 +76,24 @@ test('a store reports what its saves and transactions cost, and writes its state
 test('in a store without the whole row a transaction writes one part row for each changed key and never puts the whole text together', () => {
     const { store } = openStore();
     const join = vi.spyOn(saved, 'joinParts');
-    expect(during(store, () => store.transaction(() => { store.state.pilotKey = 'CEC-1'; store.state.paused = true; }))).toEqual({ [WRITE_PART]: 2 });
+    expect(during(store, () => store.transaction(() => { store.state.pilotKey = 'CEC-1'; store.state.paused = true; }))).toEqual(saving({ [WRITE_PART]: 2 }));
     const state = store.state as unknown as Record<string, unknown>;
-    expect(during(store, () => store.transaction(() => { state.probe = 'added last'; }))).toEqual({ [WRITE_PART]: 1 });
-    expect(during(store, () => store.transaction(() => { delete state.probe; }))).toEqual({ 'sql: DELETE FROM state_parts WHERE key=?': 1 });
-    expect(during(store, () => store.transaction(() => {}))).toEqual({}); // Nothing changed: nothing written.
-    expect(during(store, () => store.save())).toEqual({});
+    expect(during(store, () => store.transaction(() => { state.probe = 'added last'; }))).toEqual(saving({ [WRITE_PART]: 1 }));
+    expect(during(store, () => store.transaction(() => { delete state.probe; }))).toEqual(saving({ 'sql: DELETE FROM state_parts WHERE key=?': 1 }));
+    expect(during(store, () => store.transaction(() => {}))).toEqual(saving()); // Nothing changed: nothing written.
+    expect(during(store, () => store.save())).toEqual(saving());
     expect(join).not.toHaveBeenCalled();
     expect([row(store), savedStateText(store)]).toEqual([undefined, expected(store)]);
 });
 
-test('a store opened with the whole row rewrites it for a start, equal to the parts, and removes it once with the first other change', () => {
+test('a store opened with the whole row updates it for a start, equal to the parts, and removes it once with the first other change', () => {
     const opened = openStore(), store = restartWithRow(opened.store, opened.path);
     store.state.startedAt = store.state.serverTime = '2026-11-22T09:00:00.000Z';
-    expect(during(store, () => store.save())).toEqual({ [WRITE_PART]: 2, [WRITE_ROW]: 1 });
+    expect(during(store, () => store.save())).toEqual(saving({ [WRITE_PART]: 2, [SAVED_PARTS]: 1, [UPDATE_ROW]: 1 })); // Updated from the saved parts, never inserted.
     expect([row(store), savedStateText(store)]).toEqual([expected(store), expected(store)]);
-    expect(during(store, () => store.transaction(() => { store.state.pilotKey = 'CEC-1'; }))).toEqual({ [WRITE_PART]: 1, 'sql: DELETE FROM state WHERE id=?': 1 });
+    expect(during(store, () => store.transaction(() => { store.state.pilotKey = 'CEC-1'; }))).toEqual(saving({ [WRITE_PART]: 1, 'sql: DELETE FROM state WHERE id=?': 1 }));
     expect([row(store), savedStateText(store)]).toEqual([undefined, expected(store)]);
-    expect(during(store, () => store.transaction(() => { store.state.pilotKey = 'CEC-2'; }))).toEqual({ [WRITE_PART]: 1 });
+    expect(during(store, () => store.transaction(() => { store.state.pilotKey = 'CEC-2'; }))).toEqual(saving({ [WRITE_PART]: 1 }));
     expect(row(store)).toBeUndefined();
 });
 
@@ -170,8 +174,9 @@ test('a failed rollback copy counts as a whole attempt without starting SQL or d
     const { store } = openStore();
     const failure = new Error('clone failed'), operation = vi.fn(), listener = vi.fn();
     const opened = store.timings.report().timings;
-    // The save at open ran in its own transaction; the read before it ended its read transaction.
-    const begun = opened['exec: BEGIN IMMEDIATE'].calls, rolledBack = opened['exec: ROLLBACK'].calls;
+    // The save at open ran in its own transaction. The read before it was made before statements were timed.
+    const begun = opened['exec: BEGIN IMMEDIATE'].calls;
+    expect([opened['exec: BEGIN'], opened['exec: ROLLBACK']]).toEqual([undefined, undefined]);
     store.commitListeners.add(listener);
     vi.spyOn(globalThis, 'structuredClone').mockImplementationOnce(() => { throw failure; });
     expect(() => store.transaction(operation)).toThrow(failure);
@@ -180,7 +185,7 @@ test('a failed rollback copy counts as a whole attempt without starting SQL or d
     expect(report['transaction: rollback copy']).toMatchObject({ calls: 1, chars: 0 });
     expect(report['transaction: whole attempt']).toMatchObject({ calls: 1 });
     expect(report['exec: BEGIN IMMEDIATE'].calls).toBe(begun);
-    expect(report['exec: ROLLBACK'].calls).toBe(rolledBack);
+    expect(report['exec: ROLLBACK']).toBeUndefined();
     expect(report['transaction: listeners after commit']).toBeUndefined();
     expect(operation).not.toHaveBeenCalled();
     expect(listener).not.toHaveBeenCalled();

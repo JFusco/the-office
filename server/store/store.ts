@@ -23,6 +23,7 @@ import { statementCache } from './statement-cache';
 import { storeTimings } from './store-timings';
 import { timeStatements } from './timed-statements';
 import { StateParts } from './state-parts';
+import { readSaved } from './saved-state';
 import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
@@ -43,7 +44,7 @@ export function initialSnapshot(): OfficeSnapshot {
 /** Project persistence. Async work and provider calls never run inside a transaction. */
 export class Store {
     db: DatabaseSync;
-    state: OfficeSnapshot;
+    state!: OfficeSnapshot;
     listeners = new Set<(event: OfficeEvent) => void>();
     commitListeners = new Set<() => void>();
     /** What this store's saves, transactions and statements have cost since it was opened. Measurement only. */
@@ -52,21 +53,28 @@ export class Store {
     private parts!: StateParts;
     private transactionDepth = 0;
     private pendingEvents: OfficeEvent[] = [];
-    private statement: (sql: string) => StatementSync;
+    private statement!: (sql: string) => StatementSync;
     constructor(path = `${DATA}/office.sqlite`, public project: OfficeProject = projectById(), public dataRoot = projectData(project), public clock: Clock = systemClock) {
         mkdirSync(dataRoot, { recursive: true, mode: 0o700 });
         // The database's own folder, never the global DATA: a Store writes only under the paths it was given.
         mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
         this.db = new DatabaseSync(path);
+        // A store that cannot be opened is closed again, whichever step refused it.
+        try { this.open(); }
+        catch (error) { try { this.db.close(); } catch { /* The refusal is the error to report. */ } throw error; }
+    }
+    private open(): void {
+        const { project, clock } = this;
+        // Read first, on the connection as it was opened: two saved copies that disagree stop the store before a
+        // journal mode, a table, an index, a migration or a save can touch the file.
+        const saved = readSaved(this.db);
         timeStatements(this.db, this.timings);
         applyConnectionSettings(this.db);
         initializeStoreSchema(this.db);
         optimizeOnOpen(this.db);
         this.statement = statementCache(this.db);
         this.parts = new StateParts(this.db, this.statement, this.timings);
-        // Two saved copies that disagree stop the store before anything is migrated or saved over either.
-        try { this.state = (this.parts.load() ?? initialSnapshot()) as OfficeSnapshot; }
-        catch (error) { this.db.close(); throw error; }
+        this.state = (this.parts.load(saved) ?? initialSnapshot()) as OfficeSnapshot;
         this.state.project = project;
         migrateSnapshot(this.state, project, this.clock.now().toISOString());
         for (const role of ['cto', 'it', 'analyst', 'knowledge'] as const)
