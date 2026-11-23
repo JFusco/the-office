@@ -861,7 +861,8 @@ names and not by the service.
   entering a deployment that could start an older writer, check every stopped database with this
   release's read-only reader. Run `pnpm office baseline` from this release's checkout for the project
   stores and use `readSavedState(path)` (`server/store/read-saved-state.ts`) for
-  `deployments/controller.sqlite`. Where it reports a disagreement, follow the next section.
+  `deployments/controller.sqlite`. Where it reports a disagreement, follow the next section; the
+  baseline command stops at the first project it refuses, so run it again after each is resolved.
   A release from the floor up to the one before this change must not be started first: it takes a
   differing row without asking and writes the parts over from it.
 

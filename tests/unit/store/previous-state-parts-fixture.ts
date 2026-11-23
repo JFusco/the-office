@@ -2,7 +2,7 @@
  * The loader and writer of the release before the whole `state` row was retired, kept to show that release still
  * reads and writes a store this one saved (a rollback needs no restore).
  *
- * Verbatim from `origin/main` at 7d89ca0 (unchanged since b948b75): the `StateParts` class of `server/store/state-parts.ts` (last changed in
+ * Verbatim from `origin/main` at 7d89ca0 (unchanged since b948b75, and the same at 22bd096): the `StateParts` class of `server/store/state-parts.ts` (last changed in
  * eec65d3) with the `joinParts` and `selectSaved` it used from `server/store/saved-state.ts`, whose rule was that
  * a row differing from the parts wins. Only the import paths differ. Do not modernise this file or point it at
  * the current `saved-state.ts`: it must stay independent of the code it is compared with.

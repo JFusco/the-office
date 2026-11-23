@@ -201,3 +201,32 @@ test('a row another connection writes after this one learned there was none is k
     expect(JSON.parse(joined(knowing.db))).toEqual({ revision: 3 });
     expect(writer().state).toEqual({ revision: 3 });
 });
+
+test('after another connection commits something unrelated, one save reads the saved parts and the next is back to writing only what changed', () => {
+    const db = connection(), timings = storeTimings();
+    timeStatements(db, timings);
+    const stored = new StateParts(db, statementCache(db), timings);
+    const state: Record<string, unknown> = { pilotKey: 'GH-1', paused: false, revision: 1 };
+    stored.save(state, false);
+    stored.save({ ...state, revision: 2 }, false);
+    const calls = () => Object.entries(timings.report().timings).map(([name, timing]) => [name, timing.calls] as const);
+    /** How many times `work` read every part row, and how many statements it ran against the whole row's table. */
+    const during = (work: () => unknown) => {
+        const before = new Map(calls());
+        work();
+        const ran = calls().map(([name, count]) => [name, count - (before.get(name) ?? 0)] as const).filter(([, count]) => count);
+        return { allParts: ran.filter(([name]) => name.startsWith('sql: SELECT key,position,body FROM state_parts')).reduce((sum, [, count]) => sum + count, 0),
+            wholeRow: ran.filter(([name]) => / state[ (]/.test(name)).reduce((sum, [, count]) => sum + count, 0),
+            upserts: ran.filter(([name]) => name.startsWith('sql: INSERT OR REPLACE INTO state_parts')).reduce((sum, [, count]) => sum + count, 0) };
+    };
+    // With nobody else writing, a save reads no part row it is not changing.
+    expect(during(() => stored.save({ ...state, revision: 3 }, false))).toEqual({ allParts: 0, wholeRow: 0, upserts: 1 });
+    // Another connection commits to a table that has nothing to do with the state.
+    connection().exec('CREATE TABLE unrelated(x); INSERT INTO unrelated VALUES(1)');
+    // That one save checks what is saved: one read of the part rows and one look for the whole row.
+    expect(during(() => stored.save({ ...state, revision: 4 }, false))).toEqual({ allParts: 1, wholeRow: 1, upserts: 1 });
+    // The saved parts matched this writer's input, so the next save is the ordinary one again.
+    expect(during(() => stored.save({ ...state, revision: 5 }, false))).toEqual({ allParts: 0, wholeRow: 0, upserts: 1 });
+    expect(during(() => stored.save({ ...state, revision: 5 }, false))).toEqual({ allParts: 0, wholeRow: 0, upserts: 0 });
+    expect(JSON.parse(joined(db))).toEqual({ pilotKey: 'GH-1', paused: false, revision: 5 });
+});
