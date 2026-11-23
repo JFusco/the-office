@@ -4,7 +4,7 @@ import { lifecycleRecorder } from './lifecycle/recorder';
 import type { LifecycleDiagnostic } from './lifecycle/contract';
 import type { InventoryRunner } from './lifecycle/group-inventory';
 import { liveReach } from './live-reach';
-import { providerLimit } from './provider-limit';
+import { exitFailure } from './exit-failure';
 import { spawn } from 'node:child_process';
 import { sanitize } from '../office/security';
 export function workerFailure(program: string, code: number | null, stdout: string, stderr: string) {
@@ -31,21 +31,10 @@ export function workerFailure(program: string, code: number | null, stdout: stri
     }
     return sanitize(`${program} exited ${code}: ${stderr.trim().slice(-2000) || 'No provider diagnostic was returned. Read the saved session before another attempt.'}`);
 }
-/**
- * The failure of a process that exited non-zero. A read-only stage the provider refused at its usage limit is a
- * `provider-limit`, which nothing investigates. A writer keeps `uncertain-effect`: it can reach the limit after
- * it has written, and the exit alone cannot tell that from a refusal before any work.
- */
-export function exitFailure(program: string, message: string, readOnly: boolean): CommandFailure {
-    const limit = readOnly ? providerLimit(program, message) : undefined;
-    const failure = new CommandFailure(message, limit ? 'provider-limit' : readOnly ? 'other' : 'uncertain-effect', true);
-    if (limit?.retryAt) failure.retryAt = limit.retryAt;
-    return failure;
-}
 export class CommandFailure extends Error {
     /** The runner interrupted the process to stop it; anything it reported afterwards answers that interrupt, not its assignment. */
     interrupted = false;
-    /** When the provider said to try again, for a `provider-limit` failure whose message stated it. */
+    /** Set for a `provider-limit` (`exit-failure.ts`). */
     retryAt?: string;
     constructor(message: string, public category: import('../../src/shared').FailureCategory, public dispatched: boolean, public code?: 'surviving-subprocesses') { super(message); }
 }

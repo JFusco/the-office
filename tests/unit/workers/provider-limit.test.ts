@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { exitFailure, workerFailure } from '../../../server/workers/process';
+import { exitFailure } from '../../../server/workers/exit-failure';
+import { workerFailure } from '../../../server/workers/process';
 import { providerLimit } from '../../../server/workers/provider-limit';
 
 /** The failure recorded on 2026-11-23, as the runner worded it. */
