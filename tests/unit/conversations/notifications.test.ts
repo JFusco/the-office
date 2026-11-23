@@ -36,6 +36,20 @@ test('only a proven interrupted recipient read without a send attempt can be ret
  n.status='blocked';n.detail='Error: Worker paused';store.state.slackDeliveries!.push({requestId:n.id} as any);
  expect(()=>retryRecipientLookup(store,n.key)).toThrow('no Slack delivery');
 });
+test('a recipient lookup that failed without an effect of unknown outcome can be retried; one that may have acted cannot',()=>{
+ const {store}=setup();configureNotices(store,{enabled:true,recipients:'both',workspace:'Fixture',mappings:''});queueMergeNotice(store,request);
+ const n=store.state.coordination!.notices!.entries[0],log=(store.state.workLog??=[]);
+ const block=()=>{n.status='blocked';n.detail='Error: codex exited 1: You’ve hit your usage limit.';};
+ const last=(failure?:object,stage='slack-recipient')=>{log.length=0;log.push({requestId:n.id,stage,status:'failed',failure} as any);};
+ for(const category of ['other','provider-limit','timeout','transient-read']){block();last({category,dispatched:true,detail:'refused'});retryRecipientLookup(store,n.key);expect(n.status,category).toBe('queued');}
+ block();last({category:'uncertain-effect',dispatched:true,detail:'Worker output limit exceeded'});expect(()=>retryRecipientLookup(store,n.key)).toThrow('evidence');
+ last({category:'other',dispatched:true,detail:'left subprocesses',code:'surviving-subprocesses'});expect(()=>retryRecipientLookup(store,n.key)).toThrow('evidence');
+ last(undefined);expect(()=>retryRecipientLookup(store,n.key)).toThrow('evidence');
+ last({category:'other',dispatched:true,detail:'refused'},'slack-send');expect(()=>retryRecipientLookup(store,n.key)).toThrow('evidence');
+ expect(n.status).toBe('blocked');
+ // A failed lookup after which a send was attempted is still refused.
+ last({category:'other',dispatched:true,detail:'refused'});store.state.slackDeliveries!.push({requestId:n.id} as any);expect(()=>retryRecipientLookup(store,n.key)).toThrow('no Slack delivery');
+});
 
 test('GitHub assignee email is read from the exact provider profile before Slack matching',async()=>{
  const store=new Store(':memory:',projectById('brain'));stores.push(store);store.state.coordination=coordination();const engine=new Engine(store);engine.slackIdentityContext=()=>[{targetId:'U123',workspaceId:'T123',permalink:'https://fixture.slack.com/archives/D123/p1',confirmedAt:'2026-10-28T00:00Z'}];
