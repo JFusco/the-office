@@ -24,6 +24,12 @@ export async function moveCardOnce(store: Store, execute: Execute, job: TicketJo
     const readLane = async () => await cardStatus(store, execute, item, field.fieldId) === option.id ? { item, option: option.id } : null;
     // A write sent earlier and still unread is what a failure here may leave open; without one, a refusal is just a refusal.
     const earlier = laneWrite(store, job, operation, item);
+    // A write sent earlier is settled only against the card, field and option it was sent to.
+    if (earlier === 'unread') {
+        const saved = store.getEffect<{ project: string; item: string; field: string; option: string }>(activeEffectId(store, `harness:${job.id}:${effectKey(operation, item)}`))?.payload;
+        if (!saved || saved.project !== field.projectId || saved.item !== item || saved.field !== field.fieldId || saved.option !== option.id)
+            throw new Error(`Board transition needs read-back: the earlier ${option.name} write was sent to another field or option; it is left unread`);
+    }
     let sent = false;
     try {
         await harnessEffect(store, job, { key: effectKey(operation, item), operation: 'github-project-status', target: `${field.projectId}:${item}`,

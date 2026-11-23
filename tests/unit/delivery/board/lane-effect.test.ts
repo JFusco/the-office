@@ -93,3 +93,20 @@ test('a refused guard sends nothing and leaves no pending board record', async (
     expect(sent).toEqual(['issue-card', 'pr-card']);
     expect(effects().map(effect => effect.status)).toEqual(['rejected', 'verified', 'verified']);
 });
+
+test('an earlier unread write is not confirmed against an option the board has since replaced', async () => {
+    const { f, job, sent, execute, effects, failAfter } = board();
+    // The first move lands but its read-back never happens, leaving the write unread.
+    failAfter(() => { failAfter(undefined); throw new Error('timeout after the write'); });
+    await expect(moveLane(f.store, execute as any, job, 'Done', () => {}, job.pr, operation)).rejects.toThrow('needs read-back');
+    const unread = effects()[0];
+    expect(unread).toMatchObject({ status: 'uncertain' });
+    // The process stopped after the intent was marked sent and before its board record was saved.
+    job.boardUpdates = (job.boardUpdates || []).filter(update => update.status !== 'uncertain');
+    // Done is replaced by a new option and the card shows it; the old write must not be confirmed against it.
+    f.state.lanes = f.state.lanes.map(lane => lane.name === 'Done' ? { id: 'done-2', name: 'Done' } : lane);
+    f.state.cards[0].status = 'done-2';
+    await expect(moveLane(f.store, execute as any, job, 'Done', () => {}, job.pr, operation)).rejects.toThrow('another field or option');
+    expect(sent).toEqual(['issue-card']);
+    expect(effects().find(effect => effect.id === unread.id)?.status).toBe('uncertain');
+});

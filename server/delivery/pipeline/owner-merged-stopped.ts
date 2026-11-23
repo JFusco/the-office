@@ -41,9 +41,11 @@ function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
         !store.activeClaims().some(claim => claim.work.id === job.id || claim.work.id === `ticket:${job.key}`) &&
         !store.state.coordination?.requests?.some(request => request.key === job.key && ['queued', 'working'].includes(request.status)) &&
         // Every worker of the job ran to its end: a crashed writer can leave PR writes no receipt records.
-        // A finished review that returned a blocking verdict ended normally too.
-        !store.state.workLog?.some(work => work.requestId === job.id && (work.executionStatus !== 'completed' || !work.endedAt)) &&
-        !job.prerequisites?.length && !job.parked && !job.mergeIntentId && !job.mergeAttempt && !job.mergeCommit && !job.mergeApprovalRequired &&
+        // A finished review that returned a blocking verdict ended normally too. The harness's own records (local
+        // validation, no provider write) carry no execution marker; their lifecycle shows that they ended.
+        !store.state.workLog?.some(work => work.requestId === job.id && (!work.endedAt || (work.provider === 'harness'
+            ? ['running', 'stopping', 'interrupted'].includes(work.status) : work.executionStatus !== 'completed'))) &&
+        !job.prerequisites?.length && !job.parked && !job.mergeIntentId && !job.mergeAttempt && !job.mergeCommit && !job.mergeApprovalRequired && !job.dependsOnPR &&
         !(job.prMetadataRepair && !['done', 'blocked'].includes(job.prMetadataRepair.phase)) &&
         !job.ciRepairs?.some(repair => !['done', 'blocked'].includes(repair.phase)) &&
         !(job.repairCycle && (job.repairCycle.pendingFindingIds.length || job.repairCycle.phase === 'repair')) && !job.stoppedBaseUpdate &&

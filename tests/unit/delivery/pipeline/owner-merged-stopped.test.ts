@@ -167,6 +167,13 @@ const refusals: [string, (fixture: ReturnType<typeof stopped>) => void][] = [
     ['a worker that crashed before it finished', ({ f, job }) => {
         f.store.state.workLog!.push({ ...structuredClone(f.store.state.workLog![0]), id: 'prepare-run', stage: 'github-prepare-pr', executionStatus: undefined, status: 'interrupted' } as any);
     }],
+    ['an unfinished parent pull request', ({ job }) => { job.dependsOnPR = 199; }],
+    ['harness validation still running', ({ f, job }) => {
+        f.store.state.workLog!.push({ ...structuredClone(f.store.state.workLog![0]), id: 'harness-validate', provider: 'harness', stage: 'harness-validate', executionStatus: undefined, status: 'running', endedAt: '' } as any);
+    }],
+    ['harness validation interrupted', ({ f, job }) => {
+        f.store.state.workLog!.push({ ...structuredClone(f.store.state.workLog![0]), id: 'harness-validate', provider: 'harness', stage: 'harness-validate', executionStatus: undefined, status: 'interrupted' } as any);
+    }],
     ['a claim taken during the provider read', ({ f, job }) => {
         const base = f.delivery.execute;
         f.delivery.execute = (async (program: string, args: string[], options: any) => {
@@ -232,4 +239,14 @@ test('the job must be registered once in the store', async () => {
     await f.delivery.observe();
     expect(job.mergeCommit).toBeUndefined();
     expect(settlements(f)).toEqual([]);
+});
+
+test('a candidate the harness validated settles: its own record ended without an execution marker', async () => {
+    const { f, job, writes } = stopped();
+    // What withHarnessWork leaves for a finished local validation: no execution marker, no provider write.
+    f.store.state.workLog!.push({ ...structuredClone(f.store.state.workLog![0]), id: 'harness-validate', role: 'qa', provider: 'harness', stage: 'harness-validate', executionStatus: undefined, status: 'completed' } as any);
+    await f.delivery.observe();
+    expect(job).toMatchObject({ stage: 'closeout', status: 'queued', mergeCommit: SQUASH });
+    expect(settlements(f)).toHaveLength(1);
+    expect(writes).toEqual([]);
 });
