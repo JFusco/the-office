@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { drainDelivery, requestDelivery } from '../../../server/cec/pilot-delivery';
 import { latestAssessment, openAssessment } from '../../../server/features/handoff/disposition-store';
+import { jiraBinding } from '../../../server/office/project-bindings';
 import type { RepairResume } from '../../../src/contracts/work';
 import type { DeliveryRequest } from '../../../src/shared';
 import { handoffFixture } from '../features/handoff/fixture';
@@ -76,8 +77,44 @@ test('a repair resume is a plain resume: with a feature binding, automatic intak
     expect(() => p.queue({ repairResume: BINDING, qaHandoff: {} })).toThrow(refusal);
     expect(() => p.queue({ repairResume: BINDING, qaHandoff: null })).toThrow(refusal);
     expect(() => p.queue({ repairResume: BINDING }, 'start-pilot')).toThrow(refusal);
+    // Nor is it an operator's command: the Office queues it, and it must never read as a move by hand.
+    expect(() => p.queue({ repairResume: BINDING, operator: true })).toThrow(refusal);
     expect(p.requests()).toEqual([]);
+    const request = p.queue({ repairResume: BINDING, operator: false });
+    expect(p.requests()).toEqual([request]);
+    expect(request).toMatchObject({ action: 'resume-ticket', repairResume: BINDING });
+    expect(request).not.toHaveProperty('operator');
     expect(p.episode()).toBeUndefined();
+});
+
+test('a request an operator\'s command creates is marked as the operator\'s; one any other path creates, and one that was already there, is not', () => {
+    const p = project();
+    const mine = p.queue({ operator: true });
+    expect(mine).toMatchObject({ key: KEY, action: 'resume-ticket', status: 'queued', operator: true });
+    // A second command finds that request and creates none; a path with no operator finds it too and does not take the mark off.
+    expect(p.queue({ operator: true })).toBe(mine);
+    expect(p.queue()).toBe(mine);
+    expect(p.requests()).toEqual([mine]);
+    mine.status = 'completed';
+    for (const routing of [undefined, {}, { operator: false }, { automatic: true }]) {
+        const theirs = p.queue(routing);
+        expect('operator' in theirs, JSON.stringify(routing)).toBe(false);
+        theirs.status = 'completed';
+    }
+    // An operator's command that finds an automatic request queued creates none: that request stays unmarked.
+    const automatic = p.queue();
+    expect(p.queue({ operator: true })).toBe(automatic);
+    expect('operator' in automatic).toBe(false);
+});
+
+test('an operator start-pilot marks the request it queues', () => {
+    const start = project({ stage: 'mailbox', activity: 'idle', blocker: '', pilot: false, boardMember: true, type: 'Story' });
+    const jira = jiraBinding(start.store.project);
+    const { name, id } = jira.statuses.intake[0];
+    Object.assign(start.store.ticket(KEY), { assignee: jira.account, status: name, statusId: id });
+    const request = start.queue({ operator: true }, 'start-pilot');
+    expect(request).toMatchObject({ action: 'start-pilot', operator: true });
+    expect(start.requests()).toEqual([request]);
 });
 
 test('a ticket at the mailbox, complete, or not a pilot has nothing to resume', () => {
