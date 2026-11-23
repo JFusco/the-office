@@ -28,6 +28,11 @@ test('an opened item with owner steps shows why, each step with its command and 
     expect(html.match(/<code/g)).toHaveLength(3);
 });
 
+test('an item only the owner can clear has no reply box: a reply would spend a run on something the team cannot do', () => {
+    expect(render('it-followup')).toContain('<textarea');
+    expect(render('only-you:login:atlassian')).not.toContain('<textarea');
+});
+
 test('an item without owner steps shows none', () => {
     expect(render('it-followup')).not.toContain('data-outbox-owner-steps');
 });
