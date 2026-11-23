@@ -4,12 +4,16 @@ import { eventId } from '../event-id';
 import type { IncidentLedger } from '../incident-ledger';
 import { redactEvidence } from '../redact-evidence';
 import { movedByHand } from './moved-by-hand';
-import { lastActivity } from './resume-activity';
+import { lastActivity, lastTicketActivity } from './resume-activity';
 import { admittedId } from './resume-arrivals';
-import { boundResume, resumeIdentity } from './resume-binding';
+import { boundResume, boundTicketResume, resumeIdentity } from './resume-binding';
 import { resumeOutcome } from './resume-outcome';
 import { subjectParts } from './resume-routes';
 import { stalledSince } from './stalled-resume';
+import { ticketMovedByHand } from './ticket-moved-by-hand';
+import { attemptsBegunBy, ticketProgress } from './ticket-progress';
+
+const TICKET = 'ticket:';
 
 export interface JudgeResumesInput {
     ledger: IncidentLedger;
@@ -80,14 +84,29 @@ export function judgeResumes({ ledger, entries, running, now, fenced, report = c
                 if (fenced()) return recorded;
                 const work = subjectParts(subject), store = work && stores.get(work.project);
                 if (!admission || !store) continue;
-                // A ticket's resume has no boundary reading yet: it is left pending, and its incident is not settled on it.
-                if (work.id.startsWith('ticket:')) continue;
                 const previous = fix.outcomes?.find(outcome => outcome.subject === subject)?.outcome;
                 if (previous === 'recurred') continue;
-                const request = boundResume(store.state, identity), stood = request?.repairResume?.stood;
-                const job = store.state.coordination?.jobs?.find(job => job.id === work.id);
-                // A recorded outcome gives way only to a recurrence, which the ledger alone shows: the project's events and the other incidents are read while the outcome is still open.
+                // A final outcome gives way only to recurrence, which the ledger alone shows.
                 const undecided = !previous || previous === 'chained' || previous === 'stalled';
+                // A CEC pilot ticket is read as a job is, from its own records: its delivery request, its stage attempts, its queue (see ticket-progress.ts).
+                const ticket = work.id.startsWith(TICKET) ? work.id.slice(TICKET.length) : null;
+                const held = ticket === null ? boundResume(store.state, identity) : boundTicketResume(store.state, identity);
+                const repair = held?.repairResume;
+                let request = held;
+                // An unmarked zero with earlier attempts means the admission did not record how the ticket stood.
+                if (undecided && ticket !== null && held && repair?.stood?.steps === 0 && !repair.stood.ticketAttemptsCounted) {
+                    const earlierAttempts = attemptsBegunBy(store, ticket, repair.admittedAt);
+                    if (fenced()) return recorded;
+                    if (earlierAttempts > 0) request = { ...held, repairResume: { ...repair, stood: undefined } };
+                }
+                const stood = request?.repairResume?.stood;
+                let job: ReturnType<typeof ticketProgress>;
+                if (ticket === null) {
+                    job = store.state.coordination?.jobs?.find(job => job.id === work.id);
+                } else if (undecided) {
+                    job = ticketProgress(store, ticket);
+                    if (fenced()) return recorded;
+                }
                 // By the ledger's own order of writing, not by clock: an opening counts when it was recorded after the mark that stands. A resume is admitted only for a subject that still stood as the fix bound it, so such an opening followed the admission too, unless the mark was made again after it.
                 const opening = ledger.openedAfter(incident.id, [fix.deployed.event]).find(opened => opened.subject === subject);
                 if (fenced()) return recorded;
@@ -106,19 +125,19 @@ export function judgeResumes({ ledger, entries, running, now, fenced, report = c
                 const moment = now();
                 let moved = null;
                 if (undecided && request && stood) {
-                    // By the request's own key: the job may be gone, and the move is still on record.
-                    moved = movedByHand(store, request.key, stood.event);
+                    // By the request's own key: the job may be gone, and the move is still on record. A ticket's is read from its delivery queue.
+                    moved = ticket === null ? movedByHand(store, request.key, stood.event) : ticketMovedByHand(store.state, request);
                     if (fenced()) return recorded;
                 }
                 const reading = resumeOutcome({
-                    binding, admittedAt: admission.at, deployedAt: fix.deployed.at, replacementMarkAfterAdmission, previous, request, job, moved,
+                    binding, admittedAt: admission.at, deployedAt: fix.deployed.at, replacementMarkAfterAdmission, previous, request, job, moved, noun: ticket === null ? 'job' : 'ticket',
                     // The project's own date for the stop is known while the projection holds the subject; once a long-cleared record is let go, the order of writing decides alone.
                     reopened: opening ? { at: opening.at, stoppedAt: incident.subjects.find(record => subjectKey(record) === subject)?.stop?.at ?? null } : null,
                     // Only a resume with nothing recorded can still be called chained.
-                    elsewhere: !previous ? [subject, ...(request ? [`${work.project}/reconciliation/${request.id}`] : [])].flatMap(key => open?.get(key) ?? []).filter(other => other.incident !== incident.id) : [],
+                    elsewhere: !previous ? [subject, ...(request ? [`${work.project}/${ticket === null ? 'reconciliation' : 'delivery'}/${request.id}`] : [])].flatMap(key => open?.get(key) ?? []).filter(other => other.incident !== incident.id) : [],
                     // An applicable wait suppresses the stalled judgment.
                     stalled: stallRequest ? stalledSince({
-                        admittedAt: admission.at, activity: [lastActivity(store.state, [work.id, stallRequest.id]), ledger.subjectChangedAt(subject)],
+                        admittedAt: admission.at, activity: [ticket === null ? lastActivity(store.state, [work.id, stallRequest.id]) : lastTicketActivity(store.state, ticket), ledger.subjectChangedAt(subject)],
                         waiting: projectWaiting || (open?.get(subject) ?? []).some(other => other.waiting),
                     }, moment) : null,
                 });

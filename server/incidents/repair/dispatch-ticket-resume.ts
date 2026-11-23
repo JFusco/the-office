@@ -10,6 +10,7 @@ import { freezeReads } from './freeze-reads';
 import { repairFreeze } from './repair-freeze';
 import { waitKey, waitOver } from './repair-wait';
 import { boundTicketResume, resumeIdentity } from './resume-binding';
+import { ticketAttempts } from './ticket-progress';
 import { dispatchable, RESUME_ROUTES, subjectParts, type ResumeRoute } from './resume-routes';
 import { PENDING, Undone, WAIT_ENDED, type AdmissionRefusal } from './undo-admission';
 
@@ -103,8 +104,8 @@ export function admitTicketResume(store: Store, queue: QueueTicketResume, intent
             delete waits[waitKey(ref)];
             if (!Object.keys(waits).length) delete state.coordination!.repairWaits;
             const admission = store.emit('repair-resume-admitted', `${key}: ${action} queued to resume after harness fix ${fix.commit.slice(0, 7)} (${incident}).`, undefined, key);
-            // What the outcome is later judged against: a ticket's results carry no time. A ticket has no steps.
-            request.repairResume!.stood = { steps: 0, stage: ticket.stage, event: admission.id };
+            // What the outcome is later judged against: a ticket's results carry no time, so its steps are its stage attempts, counted now.
+            request.repairResume!.stood = { steps: ticketAttempts(store, key), stage: ticket.stage, event: admission.id, ticketAttemptsCounted: true };
             return { admitted: request, replayed: false };
         });
     } catch (error) {

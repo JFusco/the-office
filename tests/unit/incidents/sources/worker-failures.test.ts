@@ -26,6 +26,16 @@ test('a dispatched failure is counted by its category for 24 hours', () => {
     expect(workerFailures(observe(s, [], later(24 * 60)))).toEqual([]);
 });
 
+test('a run the provider refused at its usage limit is an expected provider wait, under its own cause', () => {
+    const s = store(), refused = 'codex exited 1: You\u2019ve hit your usage limit. Visit https://chatgpt.com/settings/usage to purchase more credits or try again at Nov 24th, 2026 11:50 AM.';
+    const run = (id: string, failure: Record<string, unknown>) => ({ id, status: 'failed', stage: 'it-investigation', provider: 'codex', endedAt: ended(5), failure: { detail: refused, dispatched: true, ...failure } });
+    s.state.workLog = [run('typed', { category: 'provider-limit', retryAt: '2026-11-24T16:50:00.000Z' }), run('untyped', { category: 'other' }), run('writer', { category: 'uncertain-effect' })] as any;
+    const found = workerFailures(observe(s));
+    expect(found.map(f => [f.subject.id, f.cause.kind, f.expected])).toEqual([['typed', 'provider-limit', 'provider-wait'], ['untyped', 'other', null], ['writer', 'uncertain-effect', 'uncertain-effect']]);
+    // The words are the same; the harness's own category is what tells them apart.
+    expect(new Set(found.map(f => f.cause.text)).size).toBe(1);
+});
+
 const limit = { category: 'other', detail: 'codex exited 1: You have hit your usage limit. Try again at Nov 24th, 2026 11:50 AM.', dispatched: true };
 /** A failed run that ended `minutesAgo`; a lower number is a newer run. */
 const failedRun = (id: string, minutesAgo: number, over: Record<string, unknown> = {}) => ({ id, status: 'failed', stage: 'it-investigation', provider: 'codex', endedAt: ended(minutesAgo), failure: limit, ...over });

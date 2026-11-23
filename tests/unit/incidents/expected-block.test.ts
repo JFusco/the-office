@@ -20,6 +20,7 @@ test.each([
     [{ stopKind: 'provider-checks' }, 'provider-wait'],
     [{ stopKind: 'pr-not-ready' }, 'provider-wait'],
     [{ resolution: 'provider-wait' }, 'provider-wait'],
+    [{ failure: 'provider-limit' }, 'provider-wait'],
     [{ retrying: true }, 'retry'],
     [{ stopKind: 'transient' }, 'retry'],
     [{ failure: 'transient-read' }, 'retry'],
@@ -36,6 +37,16 @@ test('a person\'s restriction outranks a wait the Office could retry by itself',
     expect(expectedWait({ stopKind: 'hold', retrying: true })).toBe('hold');
     expect(expectedWait({ mergeApproval: true, stopKind: 'provider-checks' })).toBe('merge-approval');
     expect(expectedWait({ stopKind: 'authority', cause: 'needs-decision' })).toBe('authentication');
+});
+
+test('a provider\'s usage limit is a provider wait, below a person\'s restriction and an unsettled write, and above a retry', () => {
+    const limit = { failure: 'provider-limit' };
+    for (const [facts, expected] of [[{ mergeApproval: true }, 'merge-approval'], [{ hold: true }, 'hold'], [{ stopKind: 'paused' }, 'pause'], [{ stopKind: 'authority' }, 'authentication'], [{ stopKind: 'uncertain-effect' }, 'uncertain-effect'], [{ question: true }, 'question'], [{ cause: 'needs-decision' }, 'decision']] as const)
+        expect(expectedWait({ ...limit, ...facts }), JSON.stringify(facts)).toBe(expected);
+    expect(expectedWait({ ...limit, retrying: true })).toBe('provider-wait');
+    expect(expectedWait({ ...limit, exhausted: true })).toBe('provider-wait');
+    // The category alone decides: a failure of another kind beside the same words is not a wait.
+    for (const failure of ['other', 'timeout', 'invalid-output', 'provider', 'provider-limits', '']) expect(expectedWait({ failure }), failure).toBeNull();
 });
 
 test('a park on a provider\'s own wait is that wait, not a decision', () => {

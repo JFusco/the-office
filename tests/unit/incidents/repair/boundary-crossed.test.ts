@@ -49,3 +49,12 @@ test('stage-result-passed cannot be judged for a job that now has fewer steps th
     expect(boundaryCrossed(PASSED, job({ steps: [step('review')] }), { ...STOOD, steps: 2 })).toEqual({ unjudged: 'The job has 1 steps and had 2 when it was resumed.' });
     expect(boundaryCrossed(PASSED, job({ steps: [step('review'), step('review')] }), { ...STOOD, steps: 2 })).toEqual({ crossed: false });
 });
+
+test('a ticket is judged by the same rules and called a ticket in what is said', () => {
+    expect(boundaryCrossed(SETTLED, job({ status: 'completed' }), STOOD, 'ticket')).toEqual({ crossed: true, detail: 'The ticket completed after its resume.' });
+    expect(boundaryCrossed(LEFT, job({ stage: 'lead-pr', status: 'queued' }), STOOD, 'ticket')).toEqual({ crossed: true, detail: 'The ticket left review for lead-pr after its resume.' });
+    expect(boundaryCrossed(LEFT, job(), { ...STOOD, stage: 'validate' }, 'ticket')).toEqual({ unjudged: 'The ticket was at validate, not review, when it was resumed.' });
+    expect(boundaryCrossed(PASSED, job({ steps: [step('review')] }), { ...STOOD, steps: 2 }, 'ticket')).toEqual({ unjudged: 'The ticket has 1 steps and had 2 when it was resumed.' });
+    // Said of a job when nothing is given, as before.
+    expect(boundaryCrossed(SETTLED, job({ status: 'completed' }), STOOD)).toEqual(boundaryCrossed(SETTLED, job({ status: 'completed' }), STOOD, 'job'));
+});
