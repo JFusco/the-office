@@ -62,10 +62,27 @@ test('both kinds of wait keep the merge stage watching; any other error does not
  // The label follows the handler: a finishing read is a provider wait only where the merge stage keeps watching (`github-delivery.ts`).
  expect(classifyStop(new CheckStillFinishing('finishing'))).toBe('unclassified');expect(classifyStop(new CurrentChecksWait('queued'))).toBe('provider-checks');
 });
-test.each([['absent',undefined],['unknown','stale']])('an %s status on one side with the other still running is a mismatch too: both reads must be known',async(_label,status)=>{
- for(const side of ['raw','jobs'] as const){const f=fixture(),odd=side==='raw'?f.raw.check_runs[0]:f.jobs[0],other=side==='raw'?f.jobs[0]:f.raw.check_runs[0];
-  if(status===undefined)delete (odd as any).status;else odd.status=status;Object.assign(other,{status:'in_progress',conclusion:null,completed_at:null});
-  const error=await f.select().catch(e=>e);expect(checksReadAgain(error),side).toBe(false);expect(error,side).not.toBeInstanceOf(CheckStillFinishing);}
+test.each([['absent', undefined], ['unknown', 'stale']] as const)('an %s status on one side with the other still running is a mismatch too: both reads must be known', async (_label, status) => {
+ for (const side of ['raw', 'jobs'] as const) {
+  const f = fixture(), odd = side === 'raw' ? f.raw.check_runs[0] : f.jobs[0], other = side === 'raw' ? f.jobs[0] : f.raw.check_runs[0];
+  if (status === undefined) delete odd.status;
+  else odd.status = status;
+  Object.assign(other, { status: 'in_progress', conclusion: null, completed_at: null });
+  const selection = f.select();
+  await expect(selection, side).rejects.toThrow('Actions job does not match exact check-run: status, conclusion, completed_at differ');
+  expect(checksReadAgain(await selection.catch(error => error)), side).toBe(false);
+ }
+});
+test.each([['absent', undefined], ['unknown', 'stale']] as const)('an older check and job with matching %s statuses cannot be superseded by a passing duplicate', async (_label, status) => {
+ const f = fixture();
+ for (const row of [f.raw.check_runs[1], f.jobs[1]]) {
+  if (status === undefined) delete row.status;
+  else row.status = status;
+ }
+ const selection = f.select();
+ await expect(selection).rejects.toThrow('Actions job does not match exact check-run: missing or unknown status');
+ expect(checksReadAgain(await selection.catch(error => error))).toBe(false);
+ expect(f.api).not.toHaveBeenCalledWith(`actions/runs/${f.runs[1].id}/attempts/1`);
 });
 test.each([['absent',undefined],['unknown','stale']])('a job whose status is %s gives no sign the check is unfinished: a mismatch, not a wait',async(_label,status)=>{
  const f=fixture();if(status===undefined)delete (f.jobs[0] as any).status;else f.jobs[0].status=status;

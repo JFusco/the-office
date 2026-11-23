@@ -1,5 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
-import {checkJobAgreement} from './check-job-agreement';
+import {checkJobAgreement,isKnownCheckStatus} from './check-job-agreement';
 import { harnessMayMerge } from './merge-ceiling';
 import {teamReviewedHead} from './team-review';
 import {findingsBlock} from '../findings/advisory';
@@ -45,6 +45,7 @@ export async function selectCurrentChecks(delivery:GitHubDelivery,job:TicketJob,
    // nothing may take it as "checks are pending". Only the merge stage reads again on it (`checksReadAgain`).
    if(agreement.differing.length&&agreement.moving)throw new CheckStillFinishing(`Check ${c.name} is still finishing (${agreement.differing.join(', ')} changed between reads)`);
    requireThat(!agreement.differing.length,`Actions job does not match exact check-run: ${agreement.differing.join(', ')} differ`);
+   requireThat(isKnownCheckStatus(c.status),'Actions job does not match exact check-run: missing or unknown status');
    const r=await delivery.api(`actions/runs/${j.run_id}/attempts/${j.run_attempt}`);
    requireThat(r.id===j.run_id&&r.run_attempt===j.run_attempt&&r.check_suite_id===c.check_suite.id,'Actions run/attempt/suite identity differs');
    const identity=runIdentity(r,repo,head,pr);bound.push({check:c,job:j,run:r,identity});
