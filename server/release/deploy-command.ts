@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { DATA } from '../office/config';
+import { DATA, ROOT } from '../office/config';
 import { command } from '../workers/process';
 import { readControllerPin, writeControllerPin } from './controller-pin';
 import { DeployFacts, RollbackFacts, type DeployOutcome } from './deploy-facts';
@@ -10,13 +10,19 @@ import { deployPaths, operationPaths } from './deploy-paths';
 import { newOperationId, operationTime } from './operation-id';
 import { readDeployStop, standingStop } from './deploy-stop';
 import { launchController } from './launch-controller';
+import { RELEASE_FLOOR, readReleaseFloor } from './release-floor';
 import { assertCommit } from './release-paths';
 
-const USAGE = 'pnpm office deploy COMMIT [--idle-minutes N] | deploy status | deploy resume OPERATION | deploy end OPERATION | deploy pin COMMIT';
+const BELOW_FLOOR = '--below-floor';
+const USAGE = `pnpm office deploy COMMIT [--idle-minutes N] [${BELOW_FLOOR}] | deploy status | deploy resume OPERATION | deploy end OPERATION | deploy pin COMMIT`;
 /** Beyond the idle wait: stop, backup, start and verification, with room to roll back. */
 const MARGIN_MS = 30 * 60_000;
 
-export interface DeployCommandOptions { execute?: typeof command; dataRoot?: string; log?: (line: string) => void; now?: () => Date }
+export interface DeployCommandOptions {
+    execute?: typeof command; dataRoot?: string; log?: (line: string) => void; now?: () => Date;
+    /** The git checkout whose history says whether a target holds the release floor: the one this command runs from. */
+    repo?: string;
+}
 
 function report(log: (line: string) => void, outcome: DeployOutcome): number {
     log(JSON.stringify(outcome, null, 2));
@@ -63,11 +69,12 @@ function controllerOf(dataRoot: string, operation: string): string | null {
 
 /**
  * `pnpm office deploy …`. Deploying, resuming and ending run in the pinned controller; this process
- * only launches it and reports. `pin` and removing a STOP record are a person's decisions. Returns
- * the exit code: zero only when the release was deployed or the fence was ended as asked.
+ * only launches it and reports. Before a deploy it refuses a target below the release floor
+ * (`release-floor.ts`). `pin` and removing a STOP record are a person's decisions. Returns the
+ * exit code: zero only when the release was deployed or the fence was ended as asked.
  */
 export async function deployCommand(args: string[], options: DeployCommandOptions = {}): Promise<number> {
-    const { execute = command, dataRoot = DATA, log = console.log, now = () => new Date() } = options;
+    const { execute = command, dataRoot = DATA, log = console.log, now = () => new Date(), repo = ROOT } = options;
     const [verb, subject] = args, refuse = (reason: string) => { log(JSON.stringify({ status: 'refused', reason }, null, 2)); return 1; };
     try {
         if (verb === 'status') { log(JSON.stringify(status(dataRoot), null, 2)); return 0; }
@@ -97,6 +104,12 @@ export async function deployCommand(args: string[], options: DeployCommandOption
         }
         const target = assertCommit(verb), pin = readControllerPin(dataRoot);
         if (!pin) return refuse('No controller is pinned. The first pin is set by hand after the bootstrap deploy: pnpm office deploy pin COMMIT');
+        // A release directory carries no history of its own and is never rebuilt, so the check is made here, before the launch.
+        if (args.includes(BELOW_FLOOR)) log(JSON.stringify({ floor: RELEASE_FLOOR, checked: false, reason: `${BELOW_FLOOR} was given` }, null, 2));
+        else {
+            const floor = await readReleaseFloor(execute, repo, target);
+            if (!floor.holds) return refuse(`${floor.reason} ${BELOW_FLOOR} skips this check.`);
+        }
         const operation = newOperationId('deploy', now());
         return report(log, await launchController({ dataRoot, operation, controller: pin.commit, args: ['deploy', target, '--operation', operation, '--controller', pin.commit, '--idle-minutes', String(idle)], timeoutMs, execute, now, log }));
     } catch (error) {

@@ -78,9 +78,10 @@ server/
     sources/       one collector per signal: stopped work, worker failures, IT recoveries and
                    investigations, improvement proposals, provider errors, Slack deliveries, outbox
   release/         release builds and identity: exact-commit build, release.json manifest,
-                   the release launchd runs; deployment: controller pin and launcher, deploy
-                   lock and journal, fence hold, idle wait, stop, store backup and snapshot,
-                   plist install, start, verification, active-release record, rollback, STOP
+                   the release launchd runs; deployment: controller pin and launcher, the
+                   release floor a deploy does not go below, deploy lock and journal, fence
+                   hold, idle wait, stop, store backup and snapshot, plist install, start,
+                   verification, active-release record, rollback, STOP
 tests/unit/        mirrors server/ (plus ui/ for src/ logic)
 ```
 

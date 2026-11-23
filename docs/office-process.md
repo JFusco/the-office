@@ -835,8 +835,10 @@ names and not by the service.
   the parts when the row is absent, and their first save writes the row again, so going back to one of them
   needs no restore. The controller's own rollback reinstalls the release that was running before the
   failed activation, under its usual eligibility checks; that release is above the floor as long as the
-  service was. Nothing in the deployment tooling checks a target against the floor: it is a rule for
-  whoever chooses the target. One deployment does end differently than before: when the target is a
+  service was. `pnpm office deploy COMMIT` refuses a target below the floor unless `--below-floor` is
+  given ([Deployment](#deployment)). The controller's rollback, the controller pin and a release
+  activated by hand are not checked: there the floor is a rule for whoever chooses the target. One
+  deployment does end differently than before: when the target is a
   release from the floor up to the one before this change and the store had no row, the target's start
   writes the row again. A row that appears is a difference to the rollback comparison, so a failure after
   that start goes to STOP for a person, where a start that admitted nothing was rolled back before. No
@@ -854,7 +856,8 @@ names and not by the service.
      own store), and stop it.
   4. Confirm read-only, on each database, that the row equals the parts in order (`{}` for a saved empty
      state). A copy's date or checksum does not show this; read the row and the parts.
-  5. Only then start the older release or move the controller pin.
+  5. Only then start the older release or move the controller pin. `pnpm office deploy` launches a
+     target below the floor only with `--below-floor`.
 - **Coming back from below the floor**, come up only through this release or a later one. The reader
   refuses a database when it has at least one saved part and a whole row whose bytes differ from the
   parts joined in `position, key` order. Before starting any writer, moving the controller pin or
@@ -917,6 +920,15 @@ deployment holds the lock, and no earlier deployment is unfinished. A deployment
 plan and recorded no outcome is unfinished until it is resumed or a person ends it. A busy service
 is not refused: the fence stops new work being admitted so the work in flight can drain, and the
 service is stopped only after it reads idle.
+
+Before it launches the controller, the command refuses a target that is not the release floor or a
+descendant of it (`server/release/release-floor.ts`): the oldest commit whose release reads a
+project's state from its parts. An older release reads only the whole state row, which a store
+drops at its first saved change beyond what a start writes. The command reads the history of the
+invoking checkout, read-only and without contacting a remote, and refuses when that history cannot
+prove the target holds the floor: a shallow clone never can. `--below-floor` is a person's
+override; it skips the check and is not passed to the controller. Resuming, ending and pinning are
+not checked.
 
 It then runs these steps in order under the deploy lock. Each is journaled `intended` before it runs
 and settled after:

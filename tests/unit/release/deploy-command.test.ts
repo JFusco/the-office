@@ -8,6 +8,7 @@ import { recordDeployStep, startDeployJournal } from '../../../server/release/de
 import { concludeOperation } from '../../../server/release/deploy-outcome';
 import { deployPaths, operationPaths } from '../../../server/release/deploy-paths';
 import { newOperationId } from '../../../server/release/operation-id';
+import { RELEASE_FLOOR } from '../../../server/release/release-floor';
 import { writeDeployStop } from '../../../server/release/deploy-stop';
 import { releaseDirectory } from '../../../server/release/release-paths';
 import { buildFakeRelease, fakeRunner as runner, printedOutcome as outcome, sampleFacts as facts, type RunnerCall as Call } from './deploy-world';
@@ -21,10 +22,20 @@ function dataRoot() {
     return root;
 }
 
-const command = async (root: string, args: string[], answer: (call: Call) => string = () => outcome('deployed')) => {
-    const lines: string[] = [], { calls, execute } = runner(call => answer(call));
-    const code = await deployCommand(args, { execute, dataRoot: root, log: line => lines.push(line), now: () => new Date('2026-11-20T03:00:00.000Z') });
-    return { code, calls, text: lines.join('\n') };
+const REPO = '/checkout';
+/** What the checkout's history says of a target: it holds the floor, it is below it, the history is shallow, or git cannot say. */
+type History = 'holds' | 'below' | 'shallow' | 'unreadable';
+/** Runs the command with a fake machine: `calls` are the controller launches, `git` the history reads. */
+const command = async (root: string, args: string[], answer: (call: Call) => string = () => outcome('deployed'), history: History = 'holds') => {
+    const lines: string[] = [], git: Call[] = [], { calls, execute } = runner(call => {
+        if (call.program !== 'git') return answer(call);
+        git.push(call);
+        if (history === 'unreadable') throw new Error('git exited 128: fatal: not a git repository');
+        if (call.args.includes('--is-shallow-repository')) return `${history === 'shallow'}\n`;
+        return call.args[0] === 'rev-parse' ? `${call.args.at(-1)!.slice(0, 40)}\n` : history === 'below' ? `${RELEASE_FLOOR}\n` : '';
+    });
+    const code = await deployCommand(args, { execute, dataRoot: root, repo: REPO, log: line => lines.push(line), now: () => new Date('2026-11-20T03:00:00.000Z') });
+    return { code, calls: calls.filter(call => call.program !== 'git'), git, text: lines.join('\n') };
 };
 
 test('deploy COMMIT launches the pinned controller, even when the target carries newer controller code', async () => {
@@ -42,7 +53,7 @@ test('deploy COMMIT launches the pinned controller, even when the target carries
 
 test('deploy is refused without a pin, under a STOP record, or with a malformed commit or idle wait', async () => {
     const root = dataRoot();
-    expect(await command(root, [TARGET])).toMatchObject({ code: 1, calls: [], text: expect.stringContaining('No controller is pinned') });
+    expect(await command(root, [TARGET])).toMatchObject({ code: 1, calls: [], git: [], text: expect.stringContaining('No controller is pinned') });
     writeControllerPin(root, PIN);
     expect(await command(root, ['main'])).toMatchObject({ code: 1, calls: [], text: expect.stringContaining('40-character') });
     expect(await command(root, [TARGET, '--idle-minutes', '0'])).toMatchObject({ code: 1, calls: [] });
@@ -107,4 +118,54 @@ test('status lists the most recent operations of every kind, newest last', async
     startDeployJournal(root, `rollback-${stamp(10)}`, ['halt'], { kind: 'rollback', of: `deploy-${stamp(10)}`, reason: 'x', started: true });
     const { text } = await command(root, ['status']);
     expect(JSON.parse(text).operations.map((entry: { operation: string }) => entry.operation)).toEqual([11, 12, 13, 14, 15].map(day => `deploy-${stamp(day)}`));
+});
+
+/** A controller that reports the operation it was launched for as deployed. */
+const echoed = (call: Call) => outcome('deployed', call.args[call.args.indexOf('--operation') + 1]);
+
+test('deploy COMMIT reads the history of its checkout first and launches only a target that holds the release floor', async () => {
+    const root = dataRoot();
+    writeControllerPin(root, PIN);
+    const held = await command(root, [TARGET], echoed);
+    expect(held).toMatchObject({ code: 0, calls: [{ cwd: releaseDirectory(root, PIN) }] });
+    expect(held.git.map(call => [call.cwd, ...call.args])).toEqual([
+        [REPO, 'rev-parse', '--is-shallow-repository'],
+        [REPO, 'rev-parse', '--verify', `${TARGET}^{commit}`],
+        [REPO, 'rev-parse', '--verify', `${RELEASE_FLOOR}^{commit}`],
+        [REPO, 'rev-list', '--max-count=1', RELEASE_FLOOR, `^${TARGET}`],
+    ]);
+    const below = await command(root, [TARGET], undefined, 'below');
+    expect(below).toMatchObject({ code: 1, calls: [] });
+    expect(JSON.parse(below.text)).toEqual({ status: 'refused', reason: expect.stringMatching(new RegExp(`^Release ${TARGET} does not descend from the release floor ${RELEASE_FLOOR}\\..* --below-floor skips this check\\.$`)) });
+    expect(await command(root, [TARGET], undefined, 'shallow')).toMatchObject({ code: 1, calls: [], text: expect.stringContaining(`The history in ${REPO} is shallow`) });
+    const unreadable = await command(root, [TARGET], undefined, 'unreadable');
+    expect(unreadable).toMatchObject({ code: 1, calls: [], text: expect.stringContaining(`The history in ${REPO} could not be read to compare ${TARGET} with the release floor ${RELEASE_FLOOR}: git exited 128: fatal: not a git repository`) });
+});
+
+test('--below-floor launches the same controller command without reading history, and says the floor was not checked', async () => {
+    const root = dataRoot();
+    writeControllerPin(root, PIN);
+    const launched = (args: string[]) => args.slice(2).map((arg, i, all) => all[i - 1] === '--operation' ? 'OPERATION' : arg);
+    const plain = await command(root, [TARGET], echoed);
+    for (const args of [[TARGET, '--below-floor'], [TARGET, '--idle-minutes', '5', '--below-floor']]) {
+        const forced = await command(root, args, echoed, 'below');
+        expect(forced).toMatchObject({ code: 0, git: [] });
+        expect(forced.calls.map(call => launched(call.args))).toEqual(plain.calls.map(call => launched(call.args)));
+        expect(forced.calls).toHaveLength(1);
+        expect(forced.calls[0].args).not.toContain('--below-floor');
+        expect(JSON.parse(forced.text.slice(0, forced.text.indexOf('\n}') + 2))).toEqual({ floor: RELEASE_FLOOR, checked: false, reason: '--below-floor was given' });
+    }
+    // The flag does not stand in for a pin, and it is not a commit.
+    expect(await command(root, ['--below-floor', TARGET], undefined, 'below')).toMatchObject({ code: 1, calls: [], git: [], text: expect.stringContaining('40-character') });
+});
+
+test('only deploy COMMIT reads history: resume, end, pin and status launch or answer without it', async () => {
+    const root = dataRoot();
+    startDeployJournal(root, OP, ['fence', 'stop'], facts(PIN));
+    writeControllerPin(root, PIN);
+    expect(await command(root, ['resume', OP], undefined, 'below')).toMatchObject({ code: 0, git: [], calls: [{ cwd: releaseDirectory(root, PIN) }] });
+    expect(await command(root, ['end', OP], call => outcome('ended', call.args.at(-1)), 'below')).toMatchObject({ code: 0, git: [], calls: [{ cwd: releaseDirectory(root, PIN) }] });
+    expect(await command(root, ['pin', NEWER], undefined, 'below')).toMatchObject({ code: 0, git: [], calls: [] });
+    expect(await command(root, ['status'], undefined, 'below')).toMatchObject({ code: 0, git: [], calls: [] });
+    expect(await command(root, [], undefined, 'below')).toMatchObject({ code: 0, git: [], calls: [], text: expect.stringContaining('[--below-floor]') });
 });
