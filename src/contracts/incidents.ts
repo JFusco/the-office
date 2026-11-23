@@ -168,11 +168,16 @@ export type ResumeStanding = 'admitted' | 'no-route' | 'gone' | 'held' | 'due';
  * holds for that exact stop (it ran out, the stop changed, or something stronger explains it).
  * `no-record`: its project or its delivery job is not there. `key-mismatch`: the route's key is
  * not that job's. `head-mismatch`: the route's `head` is not the one its handler would take for
- * that job as it stands. `request-pending`: another request for that key is queued or working.
+ * that job as it stands. `request-pending`: another request for that key is queued or working,
+ * or, for a ticket, a scheduler claim is active for it or an approved QA handoff still waits on
+ * its ownership check.
  * `already-reconciled`: the same request completed earlier and stands as its own answer.
  * `not-dispatchable`: this release does not dispatch that route in that form.
+ * `ticket-not-resumable`: the ticket's own resume would refuse, or would spend a step that is a
+ * person's (the QA setup cap, a closed feature gate, a ticket that is not a resumable pilot), or
+ * its stop carries no date of its own, so a later stop of the same run could not be told from it.
  */
-export type ResumeRefusal = 'resumes-paused' | 'release-unconfirmed' | 'project-paused' | 'wait-ended' | 'no-record' | 'key-mismatch' | 'head-mismatch' | 'request-pending' | 'already-reconciled' | 'not-dispatchable';
+export type ResumeRefusal = 'resumes-paused' | 'release-unconfirmed' | 'project-paused' | 'wait-ended' | 'no-record' | 'key-mismatch' | 'head-mismatch' | 'request-pending' | 'already-reconciled' | 'not-dispatchable' | 'ticket-not-resumable';
 
 /** What the Office reads for one fix found in the running release. A reading only: it grants nothing and records nothing. */
 export interface ResumeAssessment {

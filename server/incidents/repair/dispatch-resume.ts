@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { IncidentFix, ResumeRefusal, SubjectFix } from '../../../src/contracts/incidents';
+import type { IncidentFix, SubjectFix } from '../../../src/contracts/incidents';
 import type { HarnessRequest, WorkRef } from '../../../src/contracts/work';
 import { enqueueRequest } from '../../scheduling/requests';
 import type { Store } from '../../store/store';
@@ -10,6 +10,7 @@ import { waitKey, waitOver } from './repair-wait';
 import { boundResume, resumeIdentity } from './resume-binding';
 import { dispatchable, RESUME_ROUTES, subjectParts, type ResumeRoute } from './resume-routes';
 import { routeHeadFault } from './route-head';
+import { PENDING, Undone, WAIT_ENDED, type AdmissionRefusal } from './undo-admission';
 
 /** One subject of a fix the running release holds, to be resumed by the route the fix bound for it. */
 export interface ResumeIntent {
@@ -21,13 +22,8 @@ export interface ResumeIntent {
 }
 
 /** `replayed`: the resume was admitted by an earlier pass; the request found is returned and nothing is queued. */
-export type ResumeAdmission = { admitted: HarnessRequest; replayed: boolean } | { refused: Exclude<ResumeRefusal, 'resumes-paused' | 'release-unconfirmed'>; detail: string };
+export type ResumeAdmission = { admitted: HarnessRequest; replayed: boolean } | { refused: AdmissionRefusal; detail: string };
 
-const PENDING: readonly string[] = ['queued', 'working'];
-const WAIT_ENDED = 'The repair wait no longer holds for this stop: it ran out, the stop changed, or something stronger explains it.';
-type Refusal = Exclude<ResumeRefusal, 'resumes-paused' | 'release-unconfirmed'>;
-/** Thrown inside the admitting transaction to undo it whole: the queue answered with a request it already held, or the wait ran out while it answered. */
-class Undone extends Error { constructor(readonly code: Refusal, readonly detail: string) { super(detail); } }
 
 /**
  * Admits one resume in its project, or says why not. A resume already bound for this incident,
@@ -55,7 +51,7 @@ export function admitResume(store: Store, intent: ResumeIntent, now: Date, route
     const state = store.state, { binding, incident, fix } = intent, { action, payload } = binding.route;
     // `now` is one instant, and the reads below take time it does not hold: the wait's deadline is put to the time that has passed since entry.
     const began = store.clock.monotonic(), sofar = () => new Date(now.getTime() + store.clock.monotonic() - began);
-    const refused = (code: Refusal, detail: string): ResumeAdmission => ({ refused: code, detail });
+    const refused = (code: AdmissionRefusal, detail: string): ResumeAdmission => ({ refused: code, detail });
     const identity = resumeIdentity(incident, binding.subject, fix.event), bound = boundResume(state, identity);
     if (bound) return { admitted: bound, replayed: true };
     if (state.paused || state.draining) return refused('project-paused', state.draining ? 'The project is draining.' : 'The project is paused.');

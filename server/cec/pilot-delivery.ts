@@ -4,6 +4,7 @@ import { confirmSetupStopCap } from './qa/setup-stop-cap';
 import { continueUnsealedQA } from './qa/continue-unsealed-qa';
 import { OfficeQAHandoffInput } from './qa/handoff-input';
 import type { FeatureBinding } from '../../src/contracts/features';
+import type { RepairResume } from '../../src/contracts/work';
 import type { DeliveryRequest } from '../../src/shared';
 import { intakeDisposition, closeIntakeEpisode } from '../features/handoff/intake-disposition';
 import { assessmentEnabled } from '../features/handoff/disposition-store';
@@ -34,9 +35,22 @@ import { reconcileRefusedCommentedPark } from './parking/refused-commented-park'
 import { continueAccessOnlyPlan } from './qa/continue-access-only-plan';
 import { recordAdmission } from '../store/admission-journal';
 
-export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean; qaHandoff?: unknown }) {
+/**
+ * `routing.repairResume` marks a resume the Office queues after a harness fix (see
+ * server/incidents/repair/dispatch-ticket-resume.ts). It is a plain resume of a pilot already
+ * under way, and neither a manual start nor a feature handoff: no intake episode is assessed,
+ * opened or closed for it, it is never combined with a binding, automatic intake or a QA handoff,
+ * and a request already queued or working for the ticket is a refusal, never its answer. Every
+ * other check, here and when the request runs, is the same as for any resume, with one exception
+ * when it runs: a failure under a closed feature gate ends it, where an ordinary request is
+ * queued again (see drainDelivery).
+ */
+export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean; qaHandoff?: unknown; repairResume?: RepairResume }) {
     return this.store.transaction(() => {
     assertFeatureGate(this.store, key);
+    const repair = routing?.repairResume;
+    if (repair && (action !== 'resume-ticket' || routing.binding || routing.automatic || routing.qaHandoff !== undefined))
+        throw new Error('A repair resume is a plain resume: it takes no feature binding, automatic intake or QA handoff');
     if (action === 'start-pilot' && !routing?.binding && assessmentEnabled(this.store) && enrolled(this.store,key)) throw new Error('Open the feature plan; its authorized handoff owns this ticket');
     if (this.store.project.provider !== 'azure')
         throw new Error('GitHub issues use project chat and maintenance');
@@ -52,6 +66,7 @@ export function requestDelivery(this: Engine, key: string, action: 'start-pilot'
     }
     const existing = queue.find(r => r.key === key && ['queued', 'working'].includes(r.status));
     if (existing) {
+        if (repair) throw new Error('Another delivery request owns this ticket');
         if (handoff) throw new Error('Another request owns the QA handoff');
         if (routing?.binding && JSON.stringify(existing.featureBinding) !== JSON.stringify(routing.binding)) throw new Error('Another delivery request owns this ticket');
         if (!routing?.binding && !routing?.automatic) closeIntakeEpisode(this.store, key, true);
@@ -67,14 +82,15 @@ export function requestDelivery(this: Engine, key: string, action: 'start-pilot'
         if (t.stage !== 'mailbox')
             throw new Error('Use resume for existing work');
     }
-    else if (!t.pilot || t.stage === 'complete')
+    else if (!t.pilot || t.stage === 'complete' || repair && t.stage === 'mailbox')
         throw new Error('Ticket has no resumable delivery');
     const request: DeliveryRequest = { id: randomUUID(), key, action, requestedAt: new Date(Math.max(this.store.clock.now().getTime(), Date.parse(queue.at(-1)?.requestedAt || '') + 1 || 0)).toISOString(), status: 'queued', error: '', intakeStatus };
     if (routing?.binding) Object.assign(request, {featureBinding: structuredClone(routing.binding)});
     if (handoff) Object.assign(request, {officeQAHandoff: handoff});
+    if (repair) Object.assign(request, {repairResume: structuredClone(repair)});
     queue.push(request);
     recordAdmission(this.store.db, 'delivery', request.id, request.requestedAt);
-    if (!routing?.binding) closeIntakeEpisode(this.store, key, !routing?.automatic);
+    if (!routing?.binding && !repair) closeIntakeEpisode(this.store, key, !routing?.automatic);
     this.store.emit('delivery-queued', `${key} queued for ${action === 'start-pilot' ? 'implementation' : 'live read-back and resume'}.`, 'pm', key);
     return request;
     });
@@ -100,7 +116,8 @@ export async function drainDelivery(this: Engine, selectedId?: string) {
             request.error = this.store.ticket(request.key).blocker;
     }
     catch (e) {
-        if (!request.qaPlanRetry && !request.officeQAHandoff && request.action !== 'continue-saved-implementation' && !featureGate(this.store, request.key).allowed) {
+        // A repair resume is one read-back per ticket and fix: it ends here, blocked, and is not run again when the gate reopens.
+        if (!request.qaPlanRetry && !request.officeQAHandoff && !request.repairResume && request.action !== 'continue-saved-implementation' && !featureGate(this.store, request.key).allowed) {
             request.status = 'queued';
             request.error = '';
             return;

@@ -27,7 +27,8 @@ const original = (stage: string) => `the ID of the original stopped ${stage} wor
  * a handler takes for a job at a given moment is its own rule to say (see route-head.ts).
  */
 export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
-    'resume-ticket': { subject: 'ticket', keyed: 'ticket', head: null, dispatch: 'none' },
+    // The ticket's own resume: a paid model read-back and, where the head moved, a Dev update, before the handler can refuse. Queued through the project's delivery queue (see dispatch-ticket-resume.ts).
+    'resume-ticket': { subject: 'ticket', keyed: 'ticket', head: null, dispatch: 'all' },
     'reconcile-implementation': { subject: 'job', keyed: 'ticket', head: `${original('implementation')}; where a saved prerequisite result stands, the ID of the latest completed writer of the job's stage`, dispatch: 'all' },
     'reconcile-validation': { subject: 'job', keyed: 'ticket', head: original('validation'), dispatch: 'all' },
     'reconcile-preparation': { subject: 'job', keyed: 'ticket', head: `${original('preparation')}; empty selects the saved-result reconciliation`, dispatch: 'all' },

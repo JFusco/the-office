@@ -904,8 +904,9 @@ and a fix binding on an incident (see Write-back below), and the Office compares
 runs with fixes that are on `main` (see Deployed fixes below); both read GitHub and write only the
 ledger. Two steps write a project store. While a repair is in progress, the stops it covers are
 marked in their project (see Repair wait below). And once the fix is found in the running release,
-the recovery request the fix bound for a marked stop is queued there, once, with the marker
-removed (see Resume after a fix below). An incident by itself describes a stop; it grants no
+the request the fix bound for a marked stop is queued there, once, with the marker removed: a
+recovery request for a job, the ticket's own `resume-ticket` delivery request for a Jira/Azure
+ticket (see Resume after a fix below). An incident by itself describes a stop; it grants no
 retry and no authority over the work, and nothing is resumed without a fix bound to a route, found
 in the running release, with automatic resumes enabled.
 
@@ -1060,18 +1061,62 @@ above is refused and nothing is saved. Observation changes neither the state the
 the repair and fixes they recorded.
 
 **Resume after a fix.** Once an incident's fix is found in the running release, the Office queues,
-once per subject and fix, the recovery request the fix bound for that subject, and lifts the repair
-wait from it. It does this through the inventory above, a switch, a reading and a pass. The seven
+once per subject and fix, the request the fix bound for that subject (a recovery request for a
+job, a delivery request for a ticket), and lifts the repair wait from it. It does this through the inventory above, a switch, a reading and a pass. The seven
 GitHub read-back routes are dispatched: `reconcile-implementation`, `reconcile-validation` and
 `reconcile-scope-repair`, which always need a head, and `reconcile-preparation`,
 `reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a head or as their
-saved-result form without one. Every other row is not dispatched yet.
+saved-result form without one. `resume-ticket` is dispatched for a Jira/Azure pilot ticket (see
+A ticket's resume, below). Every other row is not dispatched yet.
 `reconcile-review` without a head verifies a saved independent review against the unchanged pull
 request and issue and runs no model. Several of the other handlers start a model run when the
 scheduler runs the request (the implementation, validation, scope-repair, preparation, stopped
 base update and closeout read-backs), so a resume through them is a paid run no person started.
 A stopped base handoff is read from the run it already started; no other is started. A resume is
 still one per subject and fix, and none is admitted while the switch is paused.
+
+A ticket's resume. A subject whose route resumes a ticket (`cec/delivery/ticket:KEY`) is admitted
+by `server/incidents/repair/dispatch-ticket-resume.ts`, not by the job admission: same switch,
+same reading, same release check, same once per subject and fix, same repair wait in effect for
+the exact stop. It then requires that stop to carry a date the project saved (`ticket.stop.at`;
+below), the ticket to be there with the route's key, no delivery request
+for that ticket queued or working, no scheduler claim active for the ticket, its run or any of its
+delivery requests (a QA ownership check runs under a claim while its request stays blocked), no
+blocked delivery request of the ticket holding an unconsumed `officeQAHandoff` (between its
+checks an approved handoff holds no claim, and a plain resume would change the blocker it waits
+on), and the ticket not at the QA setup cap
+(`server/cec/qa/setup-stop-cap.ts`: three or more setup stops in a row on the candidate, whether
+or not the count was already shown). In one project transaction it calls the project's own
+`requestDelivery(key, 'resume-ticket', …, { repairResume })` (`server/cec/pilot-delivery.ts`),
+removes the wait marker and emits `repair-resume-admitted`; the binding is saved on the delivery
+request with the ticket's stage and that event's ID. `repairResume` is a routing of its own, never
+`automatic`: with it `requestDelivery` assesses, opens and closes no intake episode on any branch,
+refuses a feature binding, automatic intake or a QA handoff beside it, refuses a ticket at the
+mailbox, and refuses, instead of returning, a request already queued or working for the ticket.
+The feature gate and every other check are unchanged, as is the handler when the request runs,
+with one exception in `drainDelivery`: a repair resume that fails under a closed feature gate ends
+blocked, where an ordinary request is queued again, so its paid read-back runs once. Whatever `requestDelivery` refuses with is the refusal `ticket-not-resumable`, and the transaction
+is undone whole. The handler makes a paid model read-back, and where the head moved can post one
+Jira Dev update, before its last refusal point; that is accepted, one per ticket and fix, with no
+ceiling until budgets exist. No CEC path consults the repair wait today, so for a ticket the wait
+holds nothing back; admission still requires it. While a delivery request for a ticket is queued
+or working the scheduler gives the ticket no entry of its own (`server/scheduling/scheduled-work.ts`),
+so observation clears its subject and the marker pass removes its marker: a ticket another request
+takes while it awaits repair reads `gone` for that fix and is not resumed by the Office, and
+for a queued or working request `request-pending` is recorded only when that request arrives
+between observation and the resume pass of one tick. A claim, or a waiting handoff on a blocked
+request, leaves the ticket in view: `request-pending` is recorded once and the ticket is put to
+admission again each pass. A ticket's episode marker is its saved stop's date, or its run and
+attempt when it has none (`server/incidents/sources/stopped-record.ts`). A stage run removes the
+saved stop when it starts, so a stop after a run never carries the earlier date and the wait ends
+with it; run and attempt are repeated by a later stop of the same run, which is why a stop with no
+date is refused as `ticket-not-resumable`. A ticket the Office itself resumed also leaves view
+while its request is queued or working. If the handler refuses before a stage runs, the ticket
+returns with the stop it had and the ledger records an opening after the deployment mark; that
+stop is dated at or before the mark, so it is not a recurrence (`server/incidents/repair/verify-incident.ts`). The
+outcome pass passes over a ticket subject until its boundaries are defined,
+so that resume stays pending and the incident is never verified on it; the incident can still
+recur or be withdrawn by the ordinary rules.
 
 The switch (`server/incidents/repair/resume-control.ts`) says whether automatic repair resumes are
 admitted, office-wide. It is one row on the control database beside the fence and the ledger, and
@@ -1097,7 +1142,8 @@ the ledger on each read. An unadmitted subject with a route this release cannot 
 The pass (`server/incidents/repair/resume-arrivals.ts`) runs on the incident timer after the
 repair waits are kept, and never while a deployment holds the fence. For every `deployed`
 incident it puts each subject the reading calls `due` to admission in its own project
-(`server/incidents/repair/dispatch-resume.ts`), each at its own moment: the clock is read per
+(`server/incidents/repair/dispatch-resume.ts` for a job, `dispatch-ticket-resume.ts` for a
+ticket), each at its own moment: the clock is read per
 subject, so a wait that runs out during the pass is not admitted on an earlier reading.
 
 The deployment mark alone does not admit a resume. It says what was found when it was made, and
@@ -1108,8 +1154,8 @@ names, or GitHub was asked about it and said it contains the fix, by the answers
 keeps (see Deployed fixes). Otherwise the subject is refused as `release-unconfirmed` and tried
 again next pass. The request records the release that ran, not the one the mark names.
 
-Admission reads everything at that moment, with
-nothing awaited between the checks and the write, and refuses when: a resume is already bound for
+A job's admission (a ticket's is described under A ticket's resume, above) reads everything at
+that moment, with nothing awaited between the checks and the write, and refuses when: a resume is already bound for
 that incident, subject and fix (it is returned, never repeated); the project is paused or
 draining; the route is not dispatched in that form; the repair wait of that incident is not in
 effect for the subject's exact stop, because it ran out, the stop changed, or something stronger
@@ -1174,7 +1220,8 @@ so that binding is refused `head-mismatch`, and `already-reconciled` is left for
 handler would still take. A stop whose
 wait already ran out is not resumed; it has gone back to a person.
 
-After that pass the Office judges what became of each resume it queued
+After that pass the Office judges what became of each job's resume it queued (a ticket's resume
+is passed over for now; see A ticket's resume)
 (`server/incidents/repair/judge-resumes.ts`): for every `deployed` incident, each subject of its
 latest fix whose admission the ledger holds, and only while the release that runs now is verified
 and known to hold the fix (the deployment mark alone can outlast the release it names). The

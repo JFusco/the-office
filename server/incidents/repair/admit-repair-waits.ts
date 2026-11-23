@@ -6,7 +6,7 @@ import type { IncidentLedger } from '../incident-ledger';
 import { redactEvidence } from '../redact-evidence';
 import { repairSubject } from '../subject-digest';
 import { REPAIR_WAIT_MS, repairDigest, sameStop, standingStop, waitKey } from './repair-wait';
-import { boundResume, resumeIdentity } from './resume-binding';
+import { resumeIdentity, resumeRequest } from './resume-binding';
 
 /** While an incident is in one of these states its repair covers the stops it recorded. */
 const COVERING: readonly IncidentState[] = ['fixing', 'shipped', 'deployed'];
@@ -77,8 +77,8 @@ const expiryEvent = (project: string, wait: RepairWait): IncidentEvent => ({
  * repair or stop the ledger no longer holds is removed, after its expiry, if any, is on record.
  *
  * Here the incident domain writes only the marker map of a project store, in one transaction per
- * project; its one other write to a project is the admission of a resume (dispatch-resume.ts),
- * after which the resumed stop is not marked again. Nothing is read or written while `fenced` says so,
+ * project; its one other write to a project is the admission of a resume (dispatch-resume.ts for
+ * a job, dispatch-ticket-resume.ts for a ticket), after which the resumed stop is not marked again. Nothing is read or written while `fenced` says so,
  * and the fence is asked again before every write. A subject with no record of its own in a
  * project store, or whose record no longer stands as the ledger last saw it, is not marked.
  */
@@ -106,7 +106,7 @@ export function admitRepairWaits(ledger: IncidentLedger, entries: readonly Repai
                 // A stop already resumed for the repair's latest fix had its one resume: it is not held again, whatever became of that resume.
                 // While fixing, a new repair may still carry the previous repair's fix.
                 const fix = incident.state === 'fixing' ? undefined : incident.fixes?.at(-1);
-                if (fix && boundResume(store.state, resumeIdentity(incident.id, key, fix.event))) continue;
+                if (fix && resumeRequest(store.state, resumeIdentity(incident.id, key, fix.event))) continue;
                 const work = { projectId: project, kind: subject.kind as WorkRef['kind'], id: subject.id }, slot = waitKey(work), stands = coordination ? standingStop(store.state, work, subject.stage) : null;
                 // The ledger keeps a subject as it last saw it while it cannot see the project; only a record that still stands that way is marked.
                 if (!stands || !sameStop(stands, { stage: subject.stage, episode: subject.episode, stop: subject.stop, head: subject.head })) { mine.unmarked.push(key); continue; }
