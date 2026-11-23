@@ -213,8 +213,8 @@ export async function commandRoute(req: Request, url: URL, context: ServiceConte
             case 'resume':
                 engine.unpause();
                 break;
-            case 'start-pilot': return json({ accepted: true, request: engine.requestDelivery(key, 'start-pilot') }, 202);
-            case 'resume-ticket': return json({ accepted: true, request: engine.requestDelivery(key, 'resume-ticket', undefined, {qaHandoff}) }, 202);
+            case 'start-pilot': return json({ accepted: true, request: engine.requestDelivery(key, 'start-pilot', undefined, {operator: true}) }, 202);
+            case 'resume-ticket': return json({ accepted: true, request: engine.requestDelivery(key, 'resume-ticket', undefined, {qaHandoff, operator: true}) }, 202);
             case 'refresh-azure': return json({ accepted: true, id: enqueueRequest(store, 'refresh').id }, 202);
             case 'activate-nightly':
                 engine.enableNightly(authorization);
