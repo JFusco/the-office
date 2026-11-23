@@ -1655,3 +1655,7 @@ guidance](https://www.anthropic.com/research/building-effective-agents),
 and [AWS's retry/idempotency guidance](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/).
 These support the design distinctions; they do not prove improved Office
 throughput, a successful recovery or an applied lesson.
+
+## Accessibility Standards checkpoint
+
+The personal Accessibility Standards project reviews its source scanner daily at 4 p.m. America/New_York. The checkpoint downloads the latest successful main-branch freshness report, reconciles scanner issues against the official passages, and sends actionable work through the private board’s Ready lane. Retrieval failures keep the last reviewed baseline. Contract changes and verified no-impact baseline updates use normal independent review, current-head checks, harness merge and board closeout. The project’s registration selects the Pin Courier and wiki PR sources for adoption.

@@ -1,3 +1,4 @@
+import { accessibilitySources, sourceReview } from './accessibility-sources';
 import { captureMaintenanceStep } from '../knowledge/maintenance-learning';
 import {prepareMaintenanceReadback,maintenanceCoverageSchema,maintenanceCoveragePassed,MAINTENANCE_NATIVE_GUIDANCE} from './maintenance-readback';
 import { supersedablePriorRuns, unverifiedPriorRunNote } from './unverified-prior-runs';
@@ -96,13 +97,15 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
             return existing;
         const supersedes = supersedablePriorRuns(this.store, state.runs, scheduled);
         if (!supersedes)
-            throw new Error('Prior CMS maintenance needs read-back reconciliation in the outbox; it will not be replayed.');
-        if (scheduled && state.lastDaily === easternDate(now) && !weeklyDue(state.lastWeekly, now))
+            throw new Error('Prior project maintenance needs read-back reconciliation in the outbox; it will not be replayed.');
+        const accessibility = accessibilitySources(this.store.project);
+        const weekly = !accessibility && weeklyDue(state.lastWeekly, now);
+        if (scheduled && state.lastDaily === easternDate(now) && !weekly)
             return state.runs.at(-1)!;
-        maintenancePolicies(this.store);
-        const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly: weeklyDue(state.lastWeekly, now), stage: 'follow-up', error: '', steps: [], ...(supersedes.length ? { supersedes } : {}) };
+        if (!accessibility) maintenancePolicies(this.store);
+        const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly, stage: accessibility ? 'source-review' : 'follow-up', error: '', steps: [], ...(supersedes.length ? { supersedes } : {}) };
         state.runs.push(run);
-        this.store.emit('maintenance-queued', `CMS maintenance queued${run.weekly ? ' with the weekly vendor review' : ''}.`, 'pm');
+        this.store.emit('maintenance-queued', `${accessibility ? 'Accessibility Standards' : 'CMS'} maintenance queued${run.weekly ? ' with the weekly vendor review' : ''}.`, 'pm');
         return run;
     }
     async pump(selectedId?: string) {
@@ -115,7 +118,8 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
         const root = resolve(this.store.dataRoot, 'runs', run.id);
         mkdirSync(root, { recursive: true, mode: 0o700 });
         try {
-            const policies = maintenancePolicies(this.store);
+            const accessibility = accessibilitySources(this.store.project);
+            const policies = accessibility ? '' : maintenancePolicies(this.store);
             let cursor = 0;
             const step = async (role: Role, stage: string, instructions: string, readOnly = false, candidates: MaintenanceResult['candidates'] = []) => {
                 const saved = run.steps[cursor++];
@@ -128,7 +132,7 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
                     throw new Error('Project paused; reconcile any started effects.');
                 run.stage = stage;
                 this.store.emit('maintenance-stage', `${stage} · ${this.store.project.name}`, role);
-                const result = await this.agents.run(role, `CMS maintenance · ${stage}
+                const result = await this.agents.run(role, accessibility ? instructions : `CMS maintenance · ${stage}
 AUTHORITY: Joe directed both existing CMS automations into this office on 2026-10-27. Execute ONLY this stage. Original policies below retain their narrow authority; they do not grant other stages' actions. Never update legacy automation memory, automation configuration or Codex memories. Save project evidence only under ${root} and authorized owned worktrees. Return the compact follow-up ledger for the service to store. Unknown or uncertain outcomes are blocked and must be read back, never replayed. Read current repository AGENTS.md; preserve dirty/unrelated work. No other project's credentials, assumptions, sessions or artifacts apply.
 ORIGINAL POLICIES:\n${policies}\nPaths under /Users/joe.fusco/Projects/dev-team in those policies are the pre-rename alias of /Users/joe.fusco/Projects/the-office (.local/installation-rename.json); resolve them there.
 ${APPROACH_GUIDANCE}
@@ -159,8 +163,12 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                     state.ledger = result.ledger;
                 throw new StageYield('Stage persisted; waiting for the next scheduler claim');
             };
-            await step('pm', 'follow-up', cmsFollowUpInstructions({ unverifiedNote: unverifiedPriorRunNote(run), githubProjectUrl: this.store.project.githubProject?.url, repository: this.store.project.repository }));
-            if (run.weekly) {
+            if (accessibility) {
+                // A saved step resumes from its receipt without downloading a different run.
+                const instructions = run.steps.length ? '' : await sourceReview(this.store.project, root, this.execute);
+                await step('pm', 'source-review', instructions);
+            } else await step('pm', 'follow-up', cmsFollowUpInstructions({ unverifiedNote: unverifiedPriorRunNote(run), githubProjectUrl: this.store.project.githubProject?.url, repository: this.store.project.repository }));
+            if (!accessibility && run.weekly) {
                 const triage = await step('pm', 'vendor-review', VENDOR_REVIEW_INSTRUCTIONS, true);
                 const leftToDelivery = (index: number, checkpoint: 'triage' | 'proposal', issue: number) => {
                     const owned = skipOwnedCandidate(run, { index, checkpoint }, issue, cursor === run.steps.length, () => candidateOwner(this.store.state, holdsFor(this.store.project), issue));
@@ -296,7 +304,7 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
             state.lastDaily = easternDate();
             run.status = 'completed';
             run.stage = 'complete';
-            this.store.emit('maintenance-completed', 'CMS follow-up completed; pending maintainer decisions remain in the saved ledger.', 'pm');
+            this.store.emit('maintenance-completed', accessibility ? 'Accessibility source review completed. See the saved findings and delivery ledger.' : 'CMS follow-up completed; pending maintainer decisions remain in the saved ledger.', 'pm');
         }
         catch (e) {
             if (e instanceof StageYield) {
