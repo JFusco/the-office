@@ -9,8 +9,10 @@ export interface ObservedIncident { fingerprint: string; cause: IncidentCause; s
  * subject: a record that another candidate says it covers is folded into that candidate, and of two
  * candidates for the same subject the first reported wins. Candidates arrive in source order, so
  * the source that knows the work best is listed first. A folded report still tells what it knew:
- * an unsettled write, and an explanation where the owner has none. A record in `attributed` already
- * belongs to a subject whose own source could not be read this time, and is left with it.
+ * an unsettled write, and an explanation where the owner has none. A candidate reported as
+ * `foldedOnly` is nothing by itself: where no other candidate covers it, it is left out. A record
+ * in `attributed` already belongs to a subject whose own source could not be read this time, and
+ * is left with it.
  */
 export function groupCandidates(candidates: readonly IncidentCandidate[], attributed: ReadonlySet<string> = new Set()): Map<string, ObservedIncident> {
     const absorbed = new Map<string, string>();
@@ -20,6 +22,7 @@ export function groupCandidates(candidates: readonly IncidentCandidate[], attrib
         const key = subjectKey(candidate.subject), owner = absorbed.get(key);
         if (attributed.has(key)) continue;
         if (owner && owner !== key) { folded.push([owner, candidate]); continue; }
+        if (candidate.foldedOnly) continue;
         const seen = subjects.get(key);
         if (seen) folded.push([key, candidate]);
         else subjects.set(key, { candidate, subject: { ...candidate.subject }, sources: [candidate.cause.source], evidence: candidate.evidence, expected: candidate.expected });
