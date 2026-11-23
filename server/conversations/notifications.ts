@@ -1,4 +1,5 @@
 import { command } from '../workers/process';
+import { lookupSentNothing } from './recipient-lookup-evidence';
 import { z } from 'zod';
 import type { Store } from '../store/store';
 import type { Engine } from '../scheduling/engine';
@@ -56,10 +57,10 @@ const mergeText = (store: Store, input: { key: string; prUrl: string; summary: s
 export function retryRecipientLookup(store: Store, key: string) {
     const notice = noticeState(store).entries.find(n => n.key === key && n.status === 'blocked' && !n.channel);
     if (!notice || store.state.slackDeliveries?.some(d => d.requestId === notice.id))
-        throw new Error('Only an interrupted recipient lookup with no Slack delivery attempt can be retried');
+        throw new Error('Only a blocked notice with no Slack delivery attempt can be retried');
     const work = (store.state.workLog || []).filter(w => w.requestId === notice.id).at(-1);
-    if (!work || work.stage !== 'slack-recipient' || !['interrupted', 'completed', 'blocked'].includes(work.status))
-        throw new Error('Interrupted read-only recipient lookup evidence is required');
+    if (!work || !lookupSentNothing(work))
+        throw new Error('Only a recipient lookup that was interrupted, blocked, finished or failed without an effect of unknown outcome can be retried');
     notice.status = 'queued';
     notice.detail = 'Read-only recipient lookup requeued after verifying no Slack send was attempted.';
     store.emit('notice-recipient-recheck', notice.detail, 'pm', key);
