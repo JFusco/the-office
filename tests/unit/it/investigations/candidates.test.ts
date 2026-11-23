@@ -15,7 +15,7 @@ test('only dispatched typed worker failures qualify; model outcomes, cancellatio
     const f = investigationFixture(); try {
         f.store.state.slackDeliveries = [];
         expect(investigationCandidates('brain', f.store.state)).toHaveLength(1);
-        for (const change of [{ failure: undefined }, { failure: { category: 'cancelled', dispatched: true } }, { failure: { category: 'other', dispatched: false } }, { stage: 'it-investigation' }]) {
+        for (const change of [{ failure: undefined }, { failure: { category: 'cancelled', dispatched: true } }, { failure: { category: 'provider-limit', dispatched: true } }, { failure: { category: 'provider-limit', dispatched: true, retryAt: '2026-11-24T16:50:00.000Z' }, stage: 'conversation-readback' }, { failure: { category: 'other', dispatched: false } }, { stage: 'it-investigation' }]) {
             f.store.state.workLog = [{ ...f.worker, ...change } as any]; expect(investigationCandidates('brain', f.store.state)).toEqual([]);
         }
     } finally { f.close(); }

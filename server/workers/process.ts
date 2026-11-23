@@ -4,6 +4,7 @@ import { lifecycleRecorder } from './lifecycle/recorder';
 import type { LifecycleDiagnostic } from './lifecycle/contract';
 import type { InventoryRunner } from './lifecycle/group-inventory';
 import { liveReach } from './live-reach';
+import { providerLimit } from './provider-limit';
 import { spawn } from 'node:child_process';
 import { sanitize } from '../office/security';
 export function workerFailure(program: string, code: number | null, stdout: string, stderr: string) {
@@ -30,9 +31,22 @@ export function workerFailure(program: string, code: number | null, stdout: stri
     }
     return sanitize(`${program} exited ${code}: ${stderr.trim().slice(-2000) || 'No provider diagnostic was returned. Read the saved session before another attempt.'}`);
 }
+/**
+ * The failure of a process that exited non-zero. A read-only stage the provider refused at its usage limit is a
+ * `provider-limit`, which nothing investigates. A writer keeps `uncertain-effect`: it can reach the limit after
+ * it has written, and the exit alone cannot tell that from a refusal before any work.
+ */
+export function exitFailure(program: string, message: string, readOnly: boolean): CommandFailure {
+    const limit = readOnly ? providerLimit(program, message) : undefined;
+    const failure = new CommandFailure(message, limit ? 'provider-limit' : readOnly ? 'other' : 'uncertain-effect', true);
+    if (limit?.retryAt) failure.retryAt = limit.retryAt;
+    return failure;
+}
 export class CommandFailure extends Error {
     /** The runner interrupted the process to stop it; anything it reported afterwards answers that interrupt, not its assignment. */
     interrupted = false;
+    /** When the provider said to try again, for a `provider-limit` failure whose message stated it. */
+    retryAt?: string;
     constructor(message: string, public category: import('../../src/shared').FailureCategory, public dispatched: boolean, public code?: 'surviving-subprocesses') { super(message); }
 }
 /** Negative PID probes the entire owned group, not just the leader. */
@@ -152,7 +166,7 @@ export async function command(program: string, args: string[], options: {
             options.signal?.removeEventListener('abort', abort);
             if (stragglersTerminated && !failure && child.pid)
                 try { options.onStragglersTerminated?.(child.pid); } catch { }
-            const finalFailure = failure || (code === 0 ? undefined : new CommandFailure(workerFailure(program, code, out, err), options.readOnly ? 'other' : 'uncertain-effect', true));
+            const finalFailure = failure || (code === 0 ? undefined : exitFailure(program, workerFailure(program, code, out, err), !!options.readOnly));
             try {
                 const diagnostic = await lifecycle?.finish(finalFailure instanceof CommandFailure ? finalFailure.category : finalFailure ? 'other' : undefined);
                 if (diagnostic) options.onLifecycle?.(diagnostic);
