@@ -5,7 +5,7 @@ import type {HealthReport,OfficeSnapshot,ServiceHealth} from '../../src/shared';
 import {ProviderStatusChecks} from './provider-status';
 import {slackHealth} from './slack-health';
 import {listenerHealth} from './listener-health';
-import {MAX_SIGN_IN_DIAGNOSTIC_LENGTH,signInFailure} from './sign-in-failure';
+import {MAX_SIGN_IN_DIAGNOSTIC_LENGTH,signInFailure,stdoutSignInFailure} from './sign-in-failure';
 
 type ProbeResult=Pick<ServiceHealth,'status'|'detail'|'identity'|'failure'>;
 export type Probe={id:string;name:string;program:string;args:string[];parse:(raw:string,stderr?:string)=>ProbeResult;nextStep:string};
@@ -41,19 +41,19 @@ export class ServiceHealthChecks {
   if(this.pending)return this.pending;
   this.pending=Promise.all(probes.map(async (p):Promise<ServiceHealth>=>{
    const stamp=()=>({kind:'login' as const,checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+150000).toISOString()});
-   let stderr: string | undefined='';
+   let stdout='', stderr: string | undefined='';
    try {
     const raw=await this.execute(p.program,p.args,{timeout:60000,readOnly:true,onOutput:(stream,chunk)=>{
-     if(stream!=='stderr'||stderr===undefined)return;
+     if(stream==='stdout'){stdout+=chunk;return;}
+     if(stderr===undefined)return;
      // Discard the whole diagnostic on overflow, since a fragment can lose the credential label.
      stderr=stderr.length+chunk.length<=MAX_SIGN_IN_DIAGNOSTIC_LENGTH ? stderr+chunk : undefined;
     }});
     return {...p.parse(raw,stderr),id:p.id,name:p.name,...stamp(),nextStep:p.nextStep};
    } catch(error) {
     const text=String(error),auth=authFailure.test(text),timeout=/timed? out|timeout/i.test(text);
-    // The whole stderr when it was kept. When nothing came on stderr at all, the runner's own message, which carries an
-    // error a tool printed on stdout. Stderr that overflowed is quoted from neither: the message would be a fragment.
-    const failure=auth ? signInFailure(stderr==='' ? text : stderr) : '';
+    // Empty stderr allows the stdout fallback. Overflow discards the diagnostic.
+    const failure=auth ? (stderr==='' ? stdoutSignInFailure(p.program,text,stdout) : signInFailure(stderr)) : '';
     return {id:p.id,name:p.name,status:auth?'disconnected':'unknown',detail:auth?'The Office process could not authenticate.':timeout?'The read-only status check timed out after 60 seconds. Login status is unverified.':'The status command could not complete. Login status is unverified.',...(failure&&{failure}),...stamp(),nextStep:auth?p.nextStep:'Ellis owns the read-only checks; Morgan investigates persistent probe failures. No login change is indicated by this result.'};
    }
   })).then(services=>{this.cached={at:Date.now(),services};return services;}).finally(()=>{this.pending=undefined;});

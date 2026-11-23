@@ -11,12 +11,22 @@ async function checkedService(id: string, execute: typeof command) {
     return services.find(service => service.id === id)!;
 }
 
+const quotedPasswordChunks = ['Authentication failed. password="fixture, ', 'secret"\n\nYour OAuth session has expired.'];
+const stdoutEvent = (message: string) => JSON.stringify({ type: 'error', message }) + '\n';
+
+function checkedStdoutFailure(stdout: string, chunks = [stdout]) {
+    return checkedService('atlassian', async (program, _args, options) => {
+        if (program !== 'twg') throw new Error('command timed out');
+        for (const chunk of chunks) options?.onOutput?.('stdout', chunk);
+        throw new Error(workerFailure(program, 1, stdout, ''));
+    });
+}
+
 test('a refused sign-in check keeps the provider\'s own error; a timeout keeps none', async () => {
-    const chunks = ['Authentication failed. password="fixture, ', 'secret"\n\nYour OAuth session has expired.'];
     const checks = new ServiceHealthChecks(async (program, _args, options) => {
         if (program !== 'twg') throw new Error('command timed out');
-        for (const chunk of chunks) options?.onOutput?.('stderr', chunk);
-        throw new Error(workerFailure(program, 77, '', chunks.join('')));
+        for (const chunk of quotedPasswordChunks) options?.onOutput?.('stderr', chunk);
+        throw new Error(workerFailure(program, 77, '', quotedPasswordChunks.join('')));
     });
     const { services } = await checks.report([state()]);
     const atlassian = services.find(service => service.id === 'atlassian')!, github = services.find(service => service.id === 'github')!;
@@ -30,14 +40,38 @@ test('a refused sign-in check keeps the provider\'s own error; a timeout keeps n
 });
 
 test('an error a tool prints on stdout is kept when nothing came on stderr', async () => {
-    // twg reports a refused sign-in as a JSON error event; the runner puts its message in the thrown error.
-    const event = JSON.stringify({ type: 'error', message: 'GraphQL request failed: 401 Your OAuth session has expired.' });
-    const atlassian = await checkedService('atlassian', async program => {
-        if (program !== 'twg') throw new Error('command timed out');
-        throw new Error(workerFailure(program, 1, `${event}\n`, ''));
-    });
+    const atlassian = await checkedStdoutFailure(stdoutEvent('GraphQL request failed: 401 Your OAuth session has expired.'));
     expect(atlassian).toMatchObject({ status: 'disconnected', failure: 'Error: twg exited 1: GraphQL request failed: 401 Your OAuth session has expired.' });
 });
+
+test('a stdout sign-in error redacts the complete quoted password before displaying the reason', async () => {
+    const event = stdoutEvent(quotedPasswordChunks.join(''));
+    const split = event.indexOf('secret');
+    const atlassian = await checkedStdoutFailure(event, [event.slice(0, split), event.slice(split)]);
+    expect(atlassian).toMatchObject({
+        status: 'disconnected',
+        failure: 'Error: twg exited 1: Authentication failed. password="[redacted]" Your OAuth session has expired.',
+    });
+});
+
+test('an oversized decoded stdout error is omitted even when the runner shortens it below the limit', async () => {
+    const message = `401 Your OAuth session has expired. Bearer ${'x'.repeat(1500)}`;
+    const event = stdoutEvent(JSON.stringify({ error: { message } }));
+    expect(message.length).toBeGreaterThan(1500);
+    expect(workerFailure('twg', 1, event, '').length).toBeLessThan(1500);
+
+    const atlassian = await checkedStdoutFailure(event);
+    expect(atlassian.status).toBe('disconnected');
+    expect(atlassian).not.toHaveProperty('failure');
+});
+
+test('a runner error with an incomplete stdout event omits the diagnostic', async () => {
+    const event = stdoutEvent(quotedPasswordChunks.join(''));
+    const atlassian = await checkedStdoutFailure(event, [event.slice(0, -2)]);
+    expect(atlassian.status).toBe('disconnected');
+    expect(atlassian).not.toHaveProperty('failure');
+});
+
 test('oversized stderr is omitted even when the runner shortens the thrown error below the limit', async () => {
     const chunks = ['x'.repeat(1000), '\nBearer ' + 'x'.repeat(1400), '\nAuthentication failed.'];
     const stderr = chunks.join('');
