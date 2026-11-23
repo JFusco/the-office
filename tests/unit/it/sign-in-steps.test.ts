@@ -6,7 +6,7 @@ const runs = (id: string, name = 'Service') => signInSteps({ id, name }).steps.f
 test('each known service lists its own status and sign-in commands in order', () => {
     expect(runs('openai')).toEqual(['codex login status', 'codex login']);
     expect(runs('anthropic')).toEqual(['claude auth status', 'claude auth login']);
-    expect(runs('github')).toEqual(['gh auth status', 'gh auth login']);
+    expect(runs('github', 'GitHub')).toEqual(['gh auth status', 'gh auth login --scopes project']);
     expect(runs('atlassian')).toEqual(['twg doctor', 'twg login --force', 'twg doctor']);
     expect(runs('azure')).toEqual(['az account show', 'az login']);
     expect(runs('azure:second')).toEqual(['az account show', 'az login']);
@@ -38,9 +38,10 @@ test('the reason names the service and quotes the provider\'s error only when on
     expect('providerSaid' in plain).toBe(false);
 });
 
-test('it says how the item closes and why it may stay open', () => {
+test('it names the result that confirms sign-in and explains when the item closes', () => {
     const { doneWhen } = signInSteps({ id: 'github', name: 'GitHub' });
+    expect(doneWhen).toContain('Service health shows a fresh Connected result for GitHub.');
     expect(doneWhen).toContain('about once a minute');
-    expect(doneWhen).toContain('closes by itself');
+    expect(doneWhen).toContain('closes by itself when the Office no longer reports a confirmed sign-in failure');
     expect(doneWhen).toContain('different account or environment');
 });

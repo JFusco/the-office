@@ -25,7 +25,7 @@ export function actionSummary(id: string) {
     if (id.startsWith('maintenance:'))
         return 'Morgan must reconcile the original run. A reply alone does not finish maintenance or clear missing evidence.';
     if (id.startsWith('only-you:'))
-        return 'Follow the steps below in your terminal. This item closes by itself once the check passes.';
+        return 'Open this item for the terminal steps, then look for a fresh Connected result for this service in Service health.';
     if (id === 'it-followup')
         return 'Follow Ellis’s specific steps below, then open Service health and select Check IT again.';
     if (id.startsWith('checkpoint:'))

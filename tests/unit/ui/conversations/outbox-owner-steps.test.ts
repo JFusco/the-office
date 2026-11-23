@@ -22,7 +22,7 @@ test('an opened item with owner steps shows why, each step with its command and 
     expect(html).toContain('data-outbox-owner-steps');
     expect(html).toContain('What the provider said:');
     expect(html).toContain('Your OAuth session has expired.');
-    for (const text of ['Only you can do this', 'Your OAuth session has expired.', '<code', '>twg doctor</code>', '>twg login --force</code>', 'You&#x27;ll know it worked when:', 'closes by itself'])
+    for (const text of ['Only you can do this', 'Your OAuth session has expired.', '<code', '>twg doctor</code>', '>twg login --force</code>', 'You&#x27;ll know it worked when:', 'Service health shows a fresh Connected result for Atlassian · Jira &amp; Confluence.'])
         expect(html).toContain(text);
     expect(html.match(/<li/g)).toHaveLength(ownerSteps.steps.length);
     expect(html.match(/<code/g)).toHaveLength(3);
@@ -43,5 +43,6 @@ test('in the list, items with owner steps come first and are marked', () => {
     expect(first).toBeGreaterThan(-1);
     expect(first).toBeLessThan(html.indexOf('Title it-followup'));
     expect(html.match(/>Only you</g)).toHaveLength(1);
+    expect(html).toContain('look for a fresh Connected result for this service in Service health.');
     expect(ownerStepsFirst([action('a'), action('b', { ownerSteps }), action('c')]).map(item => item.id)).toEqual(['b', 'a', 'c']);
 });
