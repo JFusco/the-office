@@ -1,10 +1,12 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import { sanitizeObject } from '../office/security';
 import type { StoreTimings } from './store-timings';
+import { LARGE_KEY_CHARS, redactEntries, type RedactedEntry } from './redact-entries';
 import { joinParts, readSaved, type PartRow } from './saved-state';
 import { startStateKey } from './start-state-keys';
 
-interface WrittenPart { position: number; raw: string | undefined; redacted: string }
+/** `entries` is what `redact-entries.ts` remembers for a large object-valued key, so a change to one entry redacts that entry only. */
+interface WrittenPart { position: number; raw: string | undefined; redacted: string; entries?: ReadonlyMap<string, RedactedEntry> }
 
 const WRITE_EMPTY_ROW = "INSERT OR REPLACE INTO state(id,body) VALUES(1,'{}')";
 const UPDATE_ROW = 'UPDATE state SET body=? WHERE id=1';
@@ -106,24 +108,26 @@ export class StateParts {
             const entry = JSON.stringify({ [key]: value });
             if (entry === '{}') return [];
             const raw = entry.slice(JSON.stringify(key).length + 2, -1);
-            return [{ key, position, raw }];
+            return [{ key, position, raw, value: value as unknown }];
         }),
         found => found.reduce((sum, part) => sum + part.raw.length, 0));
         const next = new Map<string, WrittenPart>(), differing: string[] = [];
         this.timings.time('save: redact', () => {
             let chars = 0;
-            for (const { key, raw, position } of parts) {
+            for (const { key, raw, position, value } of parts) {
                 const before = this.written.get(key);
-                let redacted: string;
+                let redacted: string, entries = before?.entries;
                 if (before?.raw === raw) redacted = before.redacted;
                 else {
-                    redacted = JSON.stringify(sanitizeObject(JSON.parse(raw)));
-                    chars += redacted.length;
+                    const byEntry = raw.length >= LARGE_KEY_CHARS ? redactEntries(value, raw, entries) : undefined;
+                    redacted = byEntry?.redacted ?? JSON.stringify(sanitizeObject(JSON.parse(raw)));
+                    entries = byEntry?.entries;
+                    chars += byEntry?.chars ?? redacted.length;
                 }
                 // What is saved differs only when the redacted text or the place of the key does: a change that
                 // redaction hides leaves the stored bytes as they are.
                 if (before?.redacted !== redacted || before.position !== position) differing.push(key);
-                next.set(key, { position, raw, redacted });
+                next.set(key, { position, raw, redacted, entries });
             }
             return chars;
         }, chars => chars);
