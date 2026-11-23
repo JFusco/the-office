@@ -806,8 +806,8 @@ reconfigures the service on its own; the deployment controller below sequences t
 - **Store fingerprint** (`store-fingerprint.ts`). A digest of each store's schema and rows, read on
   a read-only connection. It leaves out what a release writes by starting under the fence and
   admitting nothing (`fenced-start-writes.ts`): planner statistics in any store and, in a project
-  store, the values of the start time, revision, clock and recent-event list (in the `state` row
-  and in their `state_parts` rows), `office-opened` events added after the earlier read, the event
+  store, the values of the start time, revision, clock and recent-event list (in their `state_parts`
+  rows, and in the `state` row of a store that still has one), `office-opened` events added after the earlier read, the event
   counter while it names the last event, and where the `state_parts` rows sit in their table.
   Events the earlier read held must still be there unchanged, and a later event of any other kind
   is a change. So are a new table or index, a migration that changes any other saved state, one of
@@ -816,6 +816,52 @@ reconfigures the service on its own; the deployment controller below sequences t
   data root. Only the working directory, the entry script and the release's own `node_modules/.bin`
   PATH entry change. Rendering requires a Node service with absolute data and working directories.
   Any reference to the current release commit outside those three locations causes refusal.
+
+### Saved state in parts, and the rollback floor
+
+A project's state is saved one row per top-level key (`state_parts`), and a save writes only the keys whose
+saved text changed (`server/store/state-parts.ts`). Earlier releases also wrote the whole state as one
+`state` row beside the parts on every save. The controller's own store, `deployments/controller.sqlite`, is a store of
+the same kind, opened by the release the controller pin names.
+
+- **A store that still has the whole row** keeps it byte for byte equal to its parts while the only saved
+  differences are in the keys a service start rewrites (`server/store/start-state-keys.ts`: start time,
+  revision, clock, recent events). So a start under the deployment fence writes exactly what it always
+  wrote, and the rollback comparison is unchanged. The first save that adds, removes, moves or changes any
+  other saved key removes the row in the same transaction. The row is never created again, except as the
+  literal `{}` for a saved empty state, which the parts cannot hold.
+- **Rollback to a release from 252f140 (2026-11-21) on needs no restore.** Those releases read the parts
+  when the row is absent, and their first save writes the row again. The controller's own rollback goes
+  back exactly one release, so it always lands on such a release.
+- **Below 252f140 a release reads only the row.** Started on a store without one, it begins from an empty
+  state and saves that. Do not start one on such a store. To go below the floor on purpose: stop the
+  writers of every affected database (each project store and the controller store), keep verified copies,
+  start the last release that writes the row once on each so it writes the row again, stop it, and confirm
+  read-only that the row equals the parts in order (`{}` for a saved empty state). Only then start the
+  older release or move the controller pin. A backup's date or checksum does not show whether it holds a
+  current row: the controller copies stores into `backups/<operation>/` as they are, and every copy taken
+  after the row was removed lacks it.
+
+#### A store whose saved copies disagree
+
+When a store holds parts and a whole row that differs from them, it is not opened: the service stops at
+start-up with an error naming the database, and `pnpm office baseline` fails with the same error. Nothing
+is changed. Only a release from before 252f140 writes the row alone, and it either started from a current
+row or, finding none, from nothing; the two copies cannot say which, so neither is taken.
+
+1. Keep every writer of that database stopped, and do not start a release older than this one on it: a
+   release that prefers the row would write the parts over from it.
+2. Take a consistent copy of the database (`sqlite3 <db> ".backup <copy>"`).
+3. Read both copies of the state from the copy: `SELECT body FROM state WHERE id=1` and
+   `SELECT key, body FROM state_parts ORDER BY position, key`. Compare them with what is known of the
+   project's recent history and with earlier backups, and decide which is the project's state.
+4. On a working copy, in one transaction and touching no other table, make that choice the only one: to
+   keep the parts, `DELETE FROM state`; to keep the row, `DELETE FROM state_parts`, and the next start
+   writes the parts from it.
+5. Confirm on the working copy that one copy of the state is left and that it is the one you chose, then
+   put the working copy in place and start the service.
+
+If it cannot be decided which copy is the project's state, keep both and leave the service stopped.
 
 ### Deployment
 
