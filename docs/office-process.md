@@ -855,13 +855,13 @@ names and not by the service.
   4. Confirm read-only, on each database, that the row equals the parts in order (`{}` for a saved empty
      state). A copy's date or checksum does not show this; read the row and the parts.
   5. Only then start the older release or move the controller pin.
-- **Coming back from below the floor**, come up only through this release or a later one. A release
-  below the floor writes the row at every start and never the parts, so a store it ran on is refused here
-  unless its row was written while the store had no parts. Before any service start, controller pin
-  change or deployment that could start an older writer, check every stopped database with this
-  release's read-only reader: `pnpm office baseline` from this release's checkout reads the project
-  stores, and `readSavedState(path)` (`server/store/read-saved-state.ts`) reads
-  `deployments/controller.sqlite` the same way. Where it reports a disagreement, follow the next section.
+- **Coming back from below the floor**, come up only through this release or a later one. The reader
+  refuses a database when it has at least one saved part and a whole row whose bytes differ from the
+  parts joined in `position, key` order. Before starting any writer, moving the controller pin or
+  entering a deployment that could start an older writer, check every stopped database with this
+  release's read-only reader. Run `pnpm office baseline` from this release's checkout for the project
+  stores and use `readSavedState(path)` (`server/store/read-saved-state.ts`) for
+  `deployments/controller.sqlite`. Where it reports a disagreement, follow the next section.
   A release from the floor up to the one before this change must not be started first: it takes a
   differing row without asking and writes the parts over from it.
 
@@ -880,20 +880,25 @@ from nothing; the two copies cannot say which, so neither is taken.
    it.
 2. Take a consistent copy of the database (`sqlite3 <db> ".backup <copy>"`) and work on a second copy of
    that.
-3. Read both copies of the state from the working copy: `SELECT body FROM state WHERE id=1` and
-   `SELECT key, body FROM state_parts ORDER BY position, key`. Compare them with what is known of the
-   project's recent history and with earlier backups, and decide which is the project's state. After a
-   run below the floor, the row is what that run saved and the parts are what was saved before it.
-4. On the working copy, in one transaction and touching no other table, make that choice the only one:
-   to keep the parts, `DELETE FROM state`; to keep the row, `DELETE FROM state_parts`, and the next start
-   writes the parts from it.
-5. Still offline, confirm the working copy: the copy that is left is byte for byte the one you chose, and
-   this release's read-only reader (`readSavedState` in `server/store/read-saved-state.ts`, which
-   `pnpm office baseline` uses) reads it without error. If it does not, keep the writers stopped.
-6. Put the working copy in place of the database, removing any `-wal` and `-shm` files left beside the
-   old one and keeping the file's owner and mode, then start the service.
+3. Read both copies of the state from the working copy using `SELECT body FROM state WHERE id=1`
+   and `SELECT key, body FROM state_parts ORDER BY position, key`. After a run below the floor, the
+   row is what that run saved and the parts are what was saved before it. Use verified project history
+   and backups to choose a complete copy or establish and approve a reconciled JSON object.
+4. On the working copy, apply the choice in one transaction and preserve all other tables.
+   - Keep the parts by running `DELETE FROM state WHERE id=1`.
+   - Keep the row by running `DELETE FROM state_parts`.
+   - For reconciled state, bind the approved JSON text to `UPDATE state SET body=? WHERE id=1`
+     and run `DELETE FROM state_parts` in the same transaction.
+5. After committing, create a standalone file at a new path with
+   `sqlite3 <working-copy> ".backup <install-copy>"`. On that install copy, check the remaining state
+   byte for byte against the chosen text and confirm this release's `readSavedState(path)` reads the
+   intended state. Keep all affected writers stopped if either check fails.
+6. With all affected writers still stopped, set aside any `-wal` and `-shm` files left by the old
+   database and put the verified install copy in its place, preserving the database's owner and mode.
+   Resume with this release or a later one after the checks pass for every affected database.
 
-If it cannot be decided which copy is the project's state, keep both and leave the service stopped.
+If the intended state cannot be established, retain both original representations in the preserved
+backup and keep all affected writers stopped.
 
 ### Deployment
 

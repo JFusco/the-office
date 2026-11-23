@@ -23,7 +23,6 @@ import { statementCache } from './statement-cache';
 import { storeTimings } from './store-timings';
 import { timeStatements } from './timed-statements';
 import { StateParts } from './state-parts';
-import { readSaved } from './saved-state';
 import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
@@ -67,14 +66,14 @@ export class Store {
         const { project, clock } = this;
         // Read first, on the connection as it was opened: two saved copies that disagree stop the store before a
         // journal mode, a table, an index, a migration or a save can touch the file.
-        const saved = readSaved(this.db);
+        this.statement = statementCache(this.db);
+        this.parts = new StateParts(this.db, this.statement, this.timings);
+        const saved = this.parts.load();
         timeStatements(this.db, this.timings);
         applyConnectionSettings(this.db);
         initializeStoreSchema(this.db);
         optimizeOnOpen(this.db);
-        this.statement = statementCache(this.db);
-        this.parts = new StateParts(this.db, this.statement, this.timings);
-        this.state = (this.parts.load(saved) ?? initialSnapshot()) as OfficeSnapshot;
+        this.state = (saved ?? initialSnapshot()) as OfficeSnapshot;
         this.state.project = project;
         migrateSnapshot(this.state, project, this.clock.now().toISOString());
         for (const role of ['cto', 'it', 'analyst', 'knowledge'] as const)
@@ -90,13 +89,18 @@ export class Store {
     }
     /** Writes the top-level keys of the state that changed since the last save (`state-parts.ts`). */
     save(): void {
-        const inTransaction = this.transactionDepth > 0;
-        if (inTransaction && !this.db.isTransaction) throw new Error('SQLite rolled back the active Store transaction');
-        this.savedChars = this.parts.save(this.state, inTransaction);
+        this.requireActiveTransaction();
+        this.savedChars = this.parts.save(this.state, this.transactionDepth > 0);
+    }
+    private requireActiveTransaction(): void {
+        if (this.transactionDepth && (!this.db.isOpen || !this.db.isTransaction))
+            throw new Error('SQLite rolled back the active Store transaction');
     }
     transaction<T>(operation: () => T): T {
-        if (this.transactionDepth)
+        if (this.transactionDepth) {
+            this.requireActiveTransaction();
             return operation();
+        }
         const began = performance.now();
         const previousSavedChars = this.savedChars, partsAsWritten = this.parts.mark();
         let previous: OfficeSnapshot;
@@ -122,8 +126,13 @@ export class Store {
         catch (error) {
             partsAsWritten();
             this.savedChars = previousSavedChars;
-            // A save that could not be undone closes the connection; there is then nothing left to roll back.
-            try { if (this.db.isTransaction) this.db.exec('ROLLBACK'); } catch { /* The operation's failure is the one to report. */ }
+            // If rollback fails with the transaction still open, closing discards its writes.
+            try {
+                if (this.db.isOpen && this.db.isTransaction) this.db.exec('ROLLBACK');
+            } catch {
+                try { if (this.db.isOpen && this.db.isTransaction) this.db.close(); }
+                catch { /* Preserve the operation's failure. */ }
+            }
             // In place: callers holding a ticket or job across an await keep the live record.
             // The saved copy is always a correct state, so it is the fallback if the in-place restore cannot finish.
             try { restoreInPlace(this.state, previous); } catch { this.state = previous; }
@@ -159,6 +168,7 @@ export class Store {
     emit(kind: string, message: string, role?: Role, ticket?: string): OfficeEvent {
         if (!this.transactionDepth)
             return this.transaction(() => this.emit(kind, message, role, ticket));
+        this.requireActiveTransaction();
         const event: OfficeEvent = { id: 0, at: this.clock.now().toISOString(), kind, message: sanitize(message).slice(0, 1500), role, ticket };
         const inserted = this.statement('INSERT INTO events(body) VALUES(?)').run(JSON.stringify(event));
         event.id = Number(inserted.lastInsertRowid);

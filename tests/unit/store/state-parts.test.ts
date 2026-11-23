@@ -23,7 +23,7 @@ const VERSION = 'sql: PRAGMA data_version';
 const saving = (writes: Record<string, number> = {}) => ({ [VERSION]: 1, ...writes });
 /** The first save after a load does not know yet, so it also reads once whether the whole row is there. */
 const first = (writes: Record<string, number> = {}) => saving({ [ROW_THERE]: 1, ...writes });
-/** A key removed where there is no whole row: its delete, and one read that some part is still saved. */
+/** A key removed on its own: its delete, and one read that some part is still saved. */
 const REMOVED = { [DELETE_PART]: 1, [ANY_PART]: 1 };
 /** The statements, by label, that touch the whole `state` row and not `state_parts`. */
 const onRow = (ran: Record<string, number>) => Object.keys(ran).filter(name => / state[ (]/.test(name));
@@ -202,7 +202,7 @@ test('a store opened with the whole row keeps it equal to the parts while only s
 const others = (): Record<string, unknown> => ({ startedAt: 't0', revision: 1, notes: [{ text: SECRET }], tickets: ['CEC-1'], flag: false });
 test.each<[string, (state: Record<string, unknown>) => Record<string, unknown>, Record<string, number>]>([
     ['added', state => ({ ...state, added: 1 }), { [WRITE_PART]: 1 }],
-    ['removed', state => Object.fromEntries(Object.entries(state).filter(([key]) => key !== 'flag')), { [DELETE_PART]: 1 }],
+    ['removed', state => Object.fromEntries(Object.entries(state).filter(([key]) => key !== 'flag')), REMOVED],
     ['moved', ({ tickets, flag, ...rest }) => ({ ...rest, flag, tickets }), { [WRITE_PART]: 2 }],
     ['given other content', state => ({ ...state, flag: true }), { [WRITE_PART]: 1 }],
 ])('the first save in which a key no start writes is %s removes the whole row, in one statement', (_name, change, writes) => {

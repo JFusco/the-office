@@ -141,6 +141,43 @@ test('catching a save that triggered a SQLite rollback cannot persist the final 
     expect([row(store), partsText(store)]).toEqual([undefined, expected(store)]);
 });
 
+test('after a failed savepoint undo rolls back the outer transaction, events and claims cannot autocommit', () => {
+    const { store, path } = openStore();
+    const reader = { db: new DatabaseSync(path, { readOnly: true }) };
+    stores.push(reader);
+    const persisted = () => [savedState(reader), reader.db.prepare(`SELECT
+        (SELECT COUNT(*) FROM events) AS events,
+        (SELECT COUNT(*) FROM work_claims) AS claims,
+        (SELECT COUNT(*) FROM admissions) AS admissions`).get()];
+    const before = persisted(), previous = structuredClone(store.state);
+    const notify = vi.fn(), committed = vi.fn();
+    store.listeners.add(notify);
+    store.commitListeners.add(committed);
+    store.db.exec(`CREATE TEMP TRIGGER refuse_part BEFORE INSERT ON state_parts
+        WHEN NEW.key = 'pilotKey' BEGIN SELECT RAISE(ABORT, 'part rejected'); END;`);
+    const exec = store.db.exec.bind(store.db);
+    const commands = vi.spyOn(store.db, 'exec').mockImplementation(sql => {
+        if (sql.startsWith('ROLLBACK TO')) throw new Error('savepoint undo failed');
+        return exec(sql);
+    });
+
+    const lost = 'SQLite rolled back the active Store transaction';
+    expect(() => store.transaction(() => {
+        expect(store.claimWork(work(store), 'owner', 'implement')).not.toBeNull();
+        store.emit('claimed', 'Claimed CEC-1');
+        store.state.pilotKey = 'CEC-1';
+        expect(() => store.save()).toThrow('part rejected');
+        expect(commands).toHaveBeenCalledWith('ROLLBACK');
+        expect([store.db.isOpen, store.db.isTransaction]).toEqual([true, false]);
+        expect(() => store.emit('claimed', 'Late event')).toThrow(lost);
+        expect(() => store.claimWork(work(store), 'owner', 'implement')).toThrow(lost);
+    })).toThrow(lost);
+    expect(persisted()).toEqual(before);
+    expect(store.state).toEqual(previous);
+    expect(notify).not.toHaveBeenCalled();
+    expect(committed).not.toHaveBeenCalled();
+});
+
 test('a commit that fails after SQLite has already rolled back does not leave the store believing its parts were written', () => {
     const { store } = openStore();
     store.transaction(() => { store.state.pilotKey = 'CEC-1'; });
@@ -181,6 +218,32 @@ test.each(['the transaction throws after an inner save removed the row', 'the co
     const reopened = openStore(path).store; // Two copies that disagreed would stop it here.
     expect(reopened.state.pilotKey).toBe('CEC-1');
     expect([row(reopened), partsText(reopened)]).toEqual([expected(reopened), expected(reopened)]);
+});
+
+test('an outer rollback failure after row retirement closes the transaction and restores memory', () => {
+    const { store, path } = inherited();
+    const before = [row(store), partRows(store)], previous = structuredClone(store.state), held = store.state;
+    const failure = new Error('outer operation failed'), exec = store.db.exec.bind(store.db);
+    const rollback = vi.fn(() => { throw new Error('rollback failed'); });
+    store.db.exec = sql => sql === 'ROLLBACK' ? rollback() : exec(sql);
+
+    expect(() => store.transaction(() => {
+        store.state.pilotKey = 'CEC-2';
+        store.save();
+        expect(row(store)).toBeUndefined();
+        expect(store.db.isTransaction).toBe(true);
+        throw failure;
+    })).toThrow(failure);
+    expect(rollback).toHaveBeenCalledOnce();
+    expect(store.state).toBe(held);
+    expect(store.state).toEqual(previous);
+    expect(store.db.isOpen).toBe(false);
+    expect(() => exec('COMMIT')).toThrow('database is not open');
+
+    const reader = { db: new DatabaseSync(path, { readOnly: true }) };
+    stores.push(reader);
+    expect([row(reader), partRows(reader)]).toEqual(before);
+    expect(savedState(reader)).toEqual(JSON.parse(before[0] as string));
 });
 
 test.each(['on its own', 'inside a transaction that then commits other work'])('a save %s that fails after removing the whole row leaves the row and the parts as they were, and a retry saves the change', owner => {

@@ -115,6 +115,22 @@ test('the rollback copy is sized by the state as last saved, and SQL run on the 
     expect(store.timings.report().timings['sql: SELECT body FROM effects WHERE status=?'].calls).toBe(1);
 });
 
+test('the next rollback copy uses the persisted length after an unchanged save sees another writer', () => {
+    const { store, path } = openStore();
+    const other = new Store(path, undefined, folder);
+    try {
+        other.state.revision = 100;
+        other.save();
+    } finally {
+        other.close();
+    }
+    const persisted = savedStateText(store);
+    expect(persisted.length).toBe(expected(store).length + 2);
+    store.save();
+    store.transaction(() => {});
+    expect(store.timings.report().timings['transaction: rollback copy'].chars).toBe(persisted.length);
+});
+
 test.each(['serialise', 'redact'])('a failed %s step writes nothing, and the next save still writes the change', step => {
     const { store } = openStore();
     const report = () => store.timings.report().timings, before = report(), failure = new Error('save step failed');

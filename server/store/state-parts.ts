@@ -1,7 +1,7 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import { sanitizeObject } from '../office/security';
 import type { StoreTimings } from './store-timings';
-import { joinParts, readSaved, type PartRow, type SavedSelection } from './saved-state';
+import { joinParts, readSaved, type PartRow } from './saved-state';
 import { startStateKey } from './start-state-keys';
 
 interface WrittenPart { position: number; raw: string | undefined; redacted: string }
@@ -9,7 +9,10 @@ interface WrittenPart { position: number; raw: string | undefined; redacted: str
 const WRITE_EMPTY_ROW = "INSERT OR REPLACE INTO state(id,body) VALUES(1,'{}')";
 const UPDATE_ROW = 'UPDATE state SET body=? WHERE id=1';
 const SAVED_PARTS = 'SELECT key,position,body FROM state_parts ORDER BY position,key';
+const ANY_PART = 'SELECT 1 FROM state_parts LIMIT 1';
+const DATA_VERSION = 'PRAGMA data_version';
 const SAVEPOINT = 'state_parts_save';
+const partSize = (key: string, body: string) => JSON.stringify(key).length + 1 + body.length;
 
 /**
  * A project's state saved as one row per top-level key (`state_parts`), so a save redacts and writes only the
@@ -35,20 +38,23 @@ export class StateParts {
     /** Whether the row exists, as of `seenVersion`; undefined until a write has read it. */
     private rowPresent: boolean | undefined;
     private seenVersion = -1;
-    /** The length of the saved text when it was joined from parts another connection also wrote; otherwise the parts this connection remembers give it. */
-    private joinedSize: number | undefined;
+    /** The saved text length when another writer's edits may make it differ from the last input. */
+    private persistedSize: number | undefined;
     /** The part rows in the database are not what `written` says, so the next save replaces them all. */
     private stale = false;
     constructor(private db: DatabaseSync, private statement: (sql: string) => StatementSync, private timings: StoreTimings) {}
 
     /**
      * The saved state, or null when nothing was ever saved, chosen by the one rule in `saved-state.ts`. Throws
-     * when the two saved copies disagree, before anything is changed. `saved` is what the caller already read.
+     * when the two saved copies disagree, before anything is changed.
      */
-    load(saved: SavedSelection = readSaved(this.db)): unknown {
+    load(): unknown {
+        // Sample before reading so a concurrent commit during the load also forces a refresh at save.
+        const version = this.dataVersion(this.db.prepare(DATA_VERSION));
+        const saved = readSaved(this.db);
         this.written = new Map();
         this.rowMatchesParts = saved.rowMatches;
-        this.stale = false; this.rowPresent = undefined; this.joinedSize = undefined;
+        this.stale = false; this.rowPresent = undefined; this.persistedSize = undefined; this.seenVersion = version;
         if (saved.source !== 'parts') return saved.source === 'row' ? JSON.parse(saved.row!) : null;
         return Object.fromEntries(saved.rows.map(({ key, position, body }) => {
             const value: unknown = JSON.parse(body);
@@ -61,8 +67,8 @@ export class StateParts {
 
     /** What is remembered as written, to put back when the database rolls those writes back. */
     mark(): () => void {
-        const { stale, rowMatchesParts, rowPresent, seenVersion, joinedSize } = this, written = new Map(this.written);
-        return () => { Object.assign(this, { written, stale, rowMatchesParts, rowPresent, seenVersion, joinedSize }); };
+        const { stale, rowMatchesParts, rowPresent, seenVersion, persistedSize } = this, written = new Map(this.written);
+        return () => { Object.assign(this, { written, stale, rowMatchesParts, rowPresent, seenVersion, persistedSize }); };
     }
 
     /**
@@ -122,67 +128,106 @@ export class StateParts {
             return chars;
         }, chars => chars);
         const removed = [...this.written.keys()].filter(key => !next.has(key));
-        if (!next.size) return this.writeEmpty(next);
-        const rowPresent = this.rowExists();
-        // `written` is the last state known to be saved, also while the part rows are stale, so it is what a
-        // previous release's row is judged against.
-        const otherChange = [...differing, ...removed].some(key => !startStateKey(key));
-        const changed = this.stale ? [...next.keys()] : differing;
-        if (this.stale) this.statement('DELETE FROM state_parts').run();
-        for (const key of changed) {
+        const version = this.dataVersion();
+        if (!next.size) {
+            if (this.statement(ANY_PART).get()) this.statement('DELETE FROM state_parts').run();
+            return this.writeEmpty(next, version);
+        }
+
+        const changedElsewhere = this.seenVersion !== -1 && version !== this.seenVersion;
+        // The last input tracks this writer's edits. Other connections may have changed the saved parts since.
+        const partsMayDiffer = changedElsewhere || this.persistedSize !== undefined;
+        const rowPresent = this.rowExists(version);
+        const changed = partsMayDiffer ? differing.filter(key => {
+            const { position, redacted } = next.get(key)!;
+            return !this.statement('SELECT 1 FROM state_parts WHERE key=? AND position=? AND body=?').get(key, position, redacted);
+        }) : differing;
+        let otherChange = changed.some(key => !startStateKey(key));
+        const writes = this.stale ? [...next.keys()] : changed;
+        if (this.stale) {
+            this.statement('DELETE FROM state_parts').run();
+            otherChange ||= removed.some(key => !startStateKey(key));
+        }
+        for (const key of writes) {
             const part = next.get(key)!;
             this.statement('INSERT OR REPLACE INTO state_parts(key,position,body) VALUES(?,?,?)').run(key, part.position, part.redacted);
         }
-        if (!this.stale) for (const key of removed) this.statement('DELETE FROM state_parts WHERE key=?').run(key);
+        let partsChanged = writes.length > 0;
+        if (!this.stale) for (const key of removed) {
+            if (!this.statement('DELETE FROM state_parts WHERE key=?').run(key).changes) continue;
+            partsChanged = true;
+            otherChange ||= !startStateKey(key);
+        }
+        // Another writer may have removed the keys that the last input still names.
+        if (!writes.length && removed.length && !this.statement(ANY_PART).get()) return this.writeEmpty(next, version);
+
+        let size = changedElsewhere || partsChanged ? undefined : this.persistedSize;
+        let savedParts: PartRow[] | undefined;
         if (rowPresent && otherChange) {
             this.statement('DELETE FROM state WHERE id=1').run();
-            this.rowPresent = false; this.rowMatchesParts = false; this.joinedSize = undefined;
-        } else if (rowPresent && (changed.length || removed.length || !this.rowMatchesParts)) {
-            // A start is all that has happened since this row was written: keep it as the previous release reads it.
-            // It is joined from the parts as saved, which may hold another connection's keys, and only updated.
-            const joined = joinParts(this.statement(SAVED_PARTS).all() as PartRow[]);
-            this.statement(UPDATE_ROW).run(joined);
-            this.rowMatchesParts = true; this.joinedSize = joined.length;
-        } else if (!rowPresent) {
+            this.rowPresent = false;
             this.rowMatchesParts = false;
-            if (changed.length || removed.length) this.joinedSize = undefined;
-            // Another connection may have removed every other part: no parts and no row would read as never saved.
-            if (removed.length && !this.statement('SELECT 1 FROM state_parts LIMIT 1').get()) return this.writeEmpty(new Map());
+        } else if (rowPresent && (partsChanged || (!partsMayDiffer && !this.rowMatchesParts))) {
+            // A start is all that has happened since this row was written. Join the parts as saved,
+            // including other writers' edits, and update only the existing row.
+            savedParts = this.statement(SAVED_PARTS).all() as PartRow[];
+            const joined = joinParts(savedParts);
+            this.statement(UPDATE_ROW).run(joined);
+            this.rowMatchesParts = true;
+            size = joined.length;
         }
         this.written = next; this.stale = false;
-        return this.joinedSize ?? this.size(next);
+        if (partsMayDiffer && (savedParts || size === undefined)) {
+            savedParts ??= this.statement('SELECT key,position,body FROM state_parts').all() as PartRow[];
+            size ??= this.measureParts(savedParts);
+            // Once the saved parts and the input agree again, use the ordinary path on subsequent saves.
+            this.persistedSize = this.partsMatch(savedParts, next) ? undefined : size;
+        }
+        return size ?? this.size(next);
     }
 
-    /** A saved empty object has no part rows, and no parts with no row would read as never saved: the row holds `{}`. */
-    private writeEmpty(next: Map<string, WrittenPart>): number {
-        // Judged on what is saved now, not on what is remembered: another connection may have written since.
-        if (this.statement('SELECT 1 FROM state_parts LIMIT 1').get()) this.statement('DELETE FROM state_parts').run();
+    /** Assumes there are no parts. Keep the last input so another writer's removals stay removed on repeat saves. */
+    private writeEmpty(next: Map<string, WrittenPart>, version: number): number {
         const row = this.statement('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined;
         if (row?.body !== '{}') this.statement(WRITE_EMPTY_ROW).run();
-        this.written = next; this.stale = false; this.rowMatchesParts = true; this.rowPresent = true; this.joinedSize = undefined;
-        this.seenVersion = this.dataVersion();
+        this.written = next; this.stale = false; this.rowMatchesParts = true; this.rowPresent = true;
+        this.persistedSize = next.size ? 2 : undefined;
+        this.seenVersion = version;
         return 2;
     }
 
     /** Changes when another connection commits, never for this connection's own writes. */
-    private dataVersion(): number {
-        return (this.statement('PRAGMA data_version').get() as { data_version: number }).data_version;
+    private dataVersion(statement = this.statement(DATA_VERSION)): number {
+        return (statement.get() as { data_version: number }).data_version;
     }
 
-    /** Whether the whole row exists: remembered while no other connection has committed since it was read, read again otherwise. */
-    private rowExists(): boolean {
-        const version = this.dataVersion();
+    /** Whether the whole row exists: remembered while no other connection has committed since it was read. */
+    private rowExists(version: number): boolean {
         if (this.rowPresent === undefined || version !== this.seenVersion) {
             this.rowPresent = this.statement('SELECT 1 FROM state WHERE id=1').get() !== undefined;
-            // What another connection saved may have changed the joined length too; it is measured again when next joined.
-            this.seenVersion = version; this.joinedSize = undefined;
+            this.seenVersion = version;
+            if (!this.rowPresent) this.rowMatchesParts = false;
         }
         return this.rowPresent;
     }
 
+    /** Measure in JavaScript string lengths, including JSON escaping of keys, without joining the parts. */
+    private measureParts(rows: PartRow[]): number {
+        let size = 2 + Math.max(0, rows.length - 1);
+        for (const { key, body } of rows) size += partSize(key, body);
+        return size;
+    }
+
+    private partsMatch(rows: PartRow[], parts: Map<string, WrittenPart>): boolean {
+        return rows.length === parts.size && rows.every(({ key, position, body }) => {
+            const part = parts.get(key);
+            return part?.position === position && part.redacted === body;
+        });
+    }
+
     private size(parts: Map<string, WrittenPart>): number {
         let size = 2 + Math.max(0, parts.size - 1);
-        for (const [key, part] of parts) size += JSON.stringify(key).length + 1 + part.redacted.length;
+        for (const [key, part] of parts) size += partSize(key, part.redacted);
         return size;
     }
 }

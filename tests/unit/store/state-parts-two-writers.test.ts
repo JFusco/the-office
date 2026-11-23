@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
+import * as savedState from '../../../server/store/saved-state';
 import { StateParts } from '../../../server/store/state-parts';
 import { statementCache } from '../../../server/store/statement-cache';
 import { initializeStoreSchema } from '../../../server/store/store-schema';
@@ -13,6 +14,7 @@ const WRITE_EMPTY_ROW = 'sql: INSERT OR REPLACE INTO state(id,body) VALUES(?,?)'
 const DELETE_PARTS = 'sql: DELETE FROM state_parts';
 let folder = '', open: DatabaseSync[] = [];
 afterEach(() => {
+    vi.restoreAllMocks();
     for (const db of open) db.close();
     open = [];
     if (folder) rmSync(folder, { recursive: true, force: true });
@@ -101,17 +103,72 @@ test('an empty state is saved over whatever another writer saved since: its part
     expect([row(b.db), joined(b.db)]).toEqual(['{}', '{}']);
 });
 
-test('two writers that each remove their own last key leave a saved empty object, not a store that was never saved', () => {
-    writer().stored.save({ a: 1, b: 2 }, false);
+test.each([true, false])('concurrent removals preserve saved empty state on repeat (inherited row: %s)', withRow => {
+    const first = writer(), input = { flag: true, revision: 1 };
+    first.stored.save(input, false);
+    if (withRow) first.db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(joined(first.db));
     const a = writer(), b = writer();
-    expect([a.state, b.state, row(a.db)]).toEqual([{ a: 1, b: 2 }, { a: 1, b: 2 }, undefined]);
-    a.state.b = undefined;
-    expect(a.stored.save(a.state, false)).toBe('{"a":1}'.length);
-    b.state.a = undefined; // It still remembers `b` as saved, so by its own memory a part remains.
-    let size = 0;
-    expect(b.writes(() => { size = b.stored.save(b.state, false); })).toEqual({ 'sql: DELETE FROM state_parts WHERE key=?': 1, [WRITE_EMPTY_ROW]: 1 });
-    expect([size, a.db.prepare('SELECT COUNT(*) AS n FROM state_parts').get(), row(a.db)]).toEqual([2, { n: 0 }, '{}']);
-    expect(writer().state).toEqual({}); // No parts and no row would load as null.
+    a.state.revision = undefined;
+    a.stored.save(a.state, false);
+    expect([row(a.db), joined(a.db)]).toEqual([withRow ? '{"flag":true}' : undefined, '{"flag":true}']);
+
+    b.state.flag = undefined;
+    for (const writes of [{ 'sql: DELETE FROM state_parts WHERE key=?': 1, [WRITE_EMPTY_ROW]: 1 }, {}]) {
+        expect(b.writes(() => expect(b.stored.save(b.state, false)).toBe(2))).toEqual(writes);
+        expect([row(a.db), a.db.prepare('SELECT COUNT(*) AS n FROM state_parts').get(), writer().state]).toEqual(['{}', { n: 0 }, {}]);
+    }
+});
+
+test('removing a part another writer already dropped keeps the whole row through a start-only save', () => {
+    const first = writer(), input = { revision: 1, flag: false };
+    first.stored.save(input, false);
+    first.db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(joined(first.db));
+    const a = writer(), b = writer();
+    a.stored.save({}, false);
+    a.stored.save({ revision: 1 }, false);
+
+    b.state.flag = undefined;
+    b.state.revision = 2;
+    expect(b.stored.save(b.state, false)).toBe('{"revision":2}'.length);
+    expect([row(a.db), joined(a.db)]).toEqual(['{"revision":2}', '{"revision":2}']);
+
+    b.state.flag = true;
+    b.stored.save(b.state, false);
+    expect([row(a.db), joined(a.db)]).toEqual([undefined, '{"revision":2,"flag":true}']);
+});
+
+test('a non-start edit already persisted with the same body and position keeps the whole row', () => {
+    const { a, b } = twoWriters();
+    // Reproduce the matching copies the previous writer would have committed for this edit.
+    a.db.exec('BEGIN IMMEDIATE');
+    a.db.prepare("UPDATE state_parts SET body='true' WHERE key='flag'").run();
+    a.db.prepare('UPDATE state SET body=? WHERE id=1').run(joined(a.db));
+    a.db.exec('COMMIT');
+    expect(b.writes(() => b.stored.save(b.state, false))).toEqual({});
+
+    b.state.flag = true;
+    expect(b.writes(() => b.stored.save(b.state, false))).toEqual({});
+    expect(row(a.db)).toBe(joined(a.db));
+
+    const { flag, ...rest } = b.state;
+    b.stored.save({ flag, ...rest }, false);
+    expect(row(a.db)).toBeUndefined(); // Moving the same body is a persisted difference.
+});
+
+test.each([true, false])('an unchanged writer returns the current saved length (inherited row: %s)', withRow => {
+    const first = writer(), input = { revision: 1, 'flag "😀"': '雪😀' };
+    first.stored.save(input, false);
+    if (withRow) first.db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(joined(first.db));
+    const a = writer(), b = writer();
+    a.state.revision = 100;
+    a.stored.save(a.state, false);
+    const text = joined(a.db);
+    expect(text.length).toBe(JSON.stringify(input).length + 2);
+    const joinParts = vi.spyOn(savedState, 'joinParts');
+    for (let i = 0; i < 2; i++)
+        expect(b.writes(() => expect(b.stored.save(b.state, false)).toBe(text.length))).toEqual({});
+    expect(joinParts).not.toHaveBeenCalled();
+    expect(row(a.db)).toBe(withRow ? text : undefined);
 });
 
 test('a save that refreshes the whole row returns the length of the text it joined from the saved parts, and so does the next unchanged save', () => {
