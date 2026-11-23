@@ -2,6 +2,7 @@ import type { Continuation, Prerequisite, QueueTiming, ReconciliationRequest, Sc
 import type { ConfirmedSegment, ObservationGap, TimeLedgerState } from './contracts/timing';
 import type { GoalProgress, DailyCTOSummary } from './contracts/leadership';
 import type { ProjectReadiness } from './contracts/health';
+import type { OwnerSteps } from './contracts/owner-steps';
 export type * from './contracts/health';
 export type * from './contracts/work';
 export { workKey } from './contracts/work';
@@ -831,6 +832,8 @@ export interface HumanAction {
     status: 'open' | 'resolved';
     createdAt: string;
     updatedAt: string;
+    /** Set when only the owner can clear this item: why, the steps and what shows it worked. */
+    ownerSteps?: OwnerSteps;
 }
 export interface TeamMessage {
     timing?: QueueTiming[];
@@ -1104,6 +1107,8 @@ export interface ServiceHealth {
     sourceUrl?: string;
     identity?: string;
     nextStep?: string;
+    /** The provider's own error for a failed sign-in check, with secrets removed and capped in length. */
+    failure?: string;
     lastFailure?: {
         at: string;
         detail: string;
@@ -1114,6 +1119,10 @@ export interface ITFollowUp {
     owner: 'IT' | 'Morgan' | 'You';
     detail: string;
     nextAt?: string;
+    /** The outbox title for a follow-up that carries owner steps. */
+    title?: string;
+    /** The steps only the owner can do; a follow-up that has them gets its own outbox item. */
+    ownerSteps?: OwnerSteps;
     /** An informational watch on the Office's own surroundings: listed, never counted. */
     routine?: boolean;
 }

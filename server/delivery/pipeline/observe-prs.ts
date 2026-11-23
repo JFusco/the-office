@@ -1,5 +1,5 @@
 import { observeAutomationMerge } from '../readiness/automation-merge';
-import { CurrentChecksWait, resumeReviewedMerge } from '../readiness/github-check-selection';
+import { checksReadAgain, resumeReviewedMerge } from '../readiness/github-check-selection';
 import { refreshMergeReview } from '../readiness/refresh-merge-review';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { returnDraftToPromotion } from '../publication/maintenance-verified-draft';
@@ -133,7 +133,7 @@ export async function observe(this: GitHubDelivery) {
             }
         }
         catch (error) {
-            if (error instanceof CurrentChecksWait) {
+            if (checksReadAgain(error)) {
                 job.status = 'watching';
                 job.detail = `Waiting for current GitHub check coverage: ${error.message}`;
             }
