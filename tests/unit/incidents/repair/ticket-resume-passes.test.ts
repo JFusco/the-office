@@ -115,24 +115,6 @@ test('a ticket that was resumed and stopped the same way again is not held for t
     expect(w.waits()).toEqual({});
 });
 
-test('a ticket\'s resume has no outcome yet: the outcome pass leaves it alone and its incident is not settled on it', async () => {
-    const w = await ticketWorld(stores, dbs, ['CEC-1']);
-    pass(w);
-    // Whatever became of the ticket and its request, nothing is read for it and nothing recorded.
-    Object.assign(w.tickets()[0], { stage: 'publish', activity: 'waiting' });
-    w.store.state.deliveryQueue = [];
-    let asked = 0;
-    const openedAfter = w.ledger.openedAfter.bind(w.ledger);
-    w.ledger.openedAfter = (id, since) => { asked += 1; return openedAfter(id, since); };
-    const judged = judgeResumes({ ledger: w.ledger, entries: [{ store: w.store }], running: () => HOLDS_IT, now: () => later(6 + 24 * 60), fenced: () => false, report: fail });
-    expect(judged).toEqual([]);
-    expect(asked).toBe(0);
-    expect(w.ledger.get(w.id)!.fixes!.at(-1)!.outcomes).toBeUndefined();
-    w.ledger.openedAfter = openedAfter;
-    expect(settleIncidents({ ledger: w.ledger, running: () => HOLDS_IT, now: () => later(7 + 24 * 60), fenced: () => false, report: fail })).toEqual({ verified: [], recurred: [] });
-    expect(w.ledger.get(w.id)!.state).toBe('deployed');
-});
-
 test('a ticket another request takes while it awaits its repair is no longer the Office\'s to resume for that fix', async () => {
     const w = await ticketWorld(stores, dbs, ['CEC-1']);
     // A person resumes the ticket. While that request is queued or working the scheduler shows no entry for the ticket, so the ledger sees its stop clear.

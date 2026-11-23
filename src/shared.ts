@@ -904,6 +904,8 @@ export interface DeliveryRequest {
     featureBinding?: import('./contracts/features').FeatureBinding;
     /** Set when the Office queued this resume as a repair resume (see server/incidents/repair/dispatch-ticket-resume.ts). It is not a manual start and not a feature handoff: no intake episode is touched for it. */
     repairResume?: import('./contracts/work').RepairResume;
+    /** Queued by an operator's own `start-pilot` or `resume-ticket` command, not by an automatic path. */
+    operator?: true;
     id: string;
     key: string;
     action: 'start-pilot' | 'resume-ticket' | 'continue-saved-implementation';

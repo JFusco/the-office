@@ -45,12 +45,12 @@ import { recordAdmission } from '../store/admission-journal';
  * when it runs: a failure under a closed feature gate ends it, where an ordinary request is
  * queued again (see drainDelivery).
  */
-export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean; qaHandoff?: unknown; repairResume?: RepairResume }) {
+export function requestDelivery(this: Engine, key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: FeatureBinding; automatic?: boolean; qaHandoff?: unknown; repairResume?: RepairResume; operator?: boolean }) {
     return this.store.transaction(() => {
     assertFeatureGate(this.store, key);
     const repair = routing?.repairResume;
-    if (repair && (action !== 'resume-ticket' || routing.binding || routing.automatic || routing.qaHandoff !== undefined))
-        throw new Error('A repair resume is a plain resume: it takes no feature binding, automatic intake or QA handoff');
+    if (repair && (action !== 'resume-ticket' || routing.binding || routing.automatic || routing.operator || routing.qaHandoff !== undefined))
+        throw new Error('A repair resume is a plain resume: it takes no feature binding, automatic intake or QA handoff, and is no operator\'s command');
     if (action === 'start-pilot' && !routing?.binding && assessmentEnabled(this.store) && enrolled(this.store,key)) throw new Error('Open the feature plan; its authorized handoff owns this ticket');
     if (this.store.project.provider !== 'azure')
         throw new Error('GitHub issues use project chat and maintenance');
@@ -88,6 +88,8 @@ export function requestDelivery(this: Engine, key: string, action: 'start-pilot'
     if (routing?.binding) Object.assign(request, {featureBinding: structuredClone(routing.binding)});
     if (handoff) Object.assign(request, {officeQAHandoff: handoff});
     if (repair) Object.assign(request, {repairResume: structuredClone(repair)});
+    // Only the request this command creates is the operator's; one it found already queued or working stays whose it was.
+    if (routing?.operator) Object.assign(request, {operator: true});
     queue.push(request);
     recordAdmission(this.store.db, 'delivery', request.id, request.requestedAt);
     if (!routing?.binding && !repair) closeIntakeEpisode(this.store, key, !routing?.automatic);

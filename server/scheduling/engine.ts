@@ -57,7 +57,7 @@ export class Engine {
     requestMail(scheduled = false) { return requestMail.call(this, scheduled); }
     async drainMail() { return drainMail.call(this); }
     async checkMail(scheduled = false) { return checkMail.call(this, scheduled); }
-    requestDelivery(key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: import('../../src/contracts/features').FeatureBinding; automatic?: boolean; qaHandoff?: unknown; repairResume?: import('../../src/contracts/work').RepairResume }) { return requestDelivery.call(this, key, action, intakeStatus, routing); }
+    requestDelivery(key: string, action: 'start-pilot' | 'resume-ticket', intakeStatus?: string, routing?: { binding?: import('../../src/contracts/features').FeatureBinding; automatic?: boolean; qaHandoff?: unknown; repairResume?: import('../../src/contracts/work').RepairResume; operator?: boolean }) { return requestDelivery.call(this, key, action, intakeStatus, routing); }
     async drainDelivery(selectedId?: string) { return drainDelivery.call(this, selectedId); }
     async startPilot(key: string, background = true, intakeStatus?: string) { return startPilot.call(this, key, background, intakeStatus); }
     enableNightly(authorization?: string) { return enableNightly.call(this, authorization); }

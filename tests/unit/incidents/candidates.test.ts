@@ -59,3 +59,19 @@ test('a record already attributed to a subject whose own source could not be rea
     const grouped = groupCandidates([failure('run-7'), failure('run-8')], new Set(['brain/worker/run-7']));
     expect([...grouped.values()].flatMap(incident => [...incident.subjects.keys()])).toEqual(['brain/worker/run-8']);
 });
+
+test('a candidate reported as folded only is taken in by the record that covers it, and is nothing where none does', () => {
+    const cause = { source: 'worker-failure' as const, provider: 'codex', stage: 'review', kind: 'other', text: 'usage limit', author: 'harness' as const };
+    const past = candidate({ kind: 'worker', id: 'run-old' }, { cause, expected: 'authentication', foldedOnly: true });
+    const kept = candidate({ kind: 'worker', id: 'run-new' }, { cause });
+    const job = candidate({ id: 'job-1', lastWorker: 'run-old' }, { absorbs: ['brain/worker/run-old'] });
+    for (const order of [[past, kept, job], [job, kept, past]]) {
+        const subjects = [...groupCandidates(order).values()].flatMap(incident => [...incident.subjects.entries()]);
+        expect(subjects.map(([key]) => key).sort()).toEqual(['brain/delivery/job-1', 'brain/worker/run-new']);
+        expect(subjects.find(([key]) => key === 'brain/delivery/job-1')![1]).toMatchObject({ sources: ['stopped-work', 'worker-failure'], expected: 'authentication' });
+    }
+    expect(groupCandidates([past]).size).toBe(0);
+    expect([...groupCandidates([past, kept]).values()].flatMap(incident => [...incident.subjects.keys()])).toEqual(['brain/worker/run-new']);
+    // The same candidate without the mark is a subject of its own.
+    expect(groupCandidates([{ ...past, foldedOnly: undefined }]).size).toBe(1);
+});

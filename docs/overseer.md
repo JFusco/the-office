@@ -555,14 +555,13 @@ a recurrence: the stop is dated before the fix was deployed (see When an inciden
 has recurred). A ticket whose stop has no date and returns to view does count as stopping again,
 because nothing tells it from a new stop.
 
-The Office does not yet read what became of a ticket's resume. It shows as queued for the fix,
-with no entry under `outcomes`, and the incident is never `verified` on it. The incident can still
-become `recurred`, if its cause stops work anew, or return to `shipped` on a rollback, as for any
-other (see When an incident is verified or has recurred).
+What became of a ticket's resume is read as a job's is (see What became of a resume). A resume
+the ticket's own handler refused before any stage ran has no outcome at once: nothing moved, so it
+is `stalled` once 24 hours have passed that way.
 
 ### What became of a resume
 
-Once a job's resume is queued, the Office reads each minute what became of it and records the
+Once a resume is queued, the Office reads each minute what became of it and records the
 outcome once, in the incident's history as `resume-outcome` and on the fix as `outcomes`. It does so only
 while the release it runs is verified and known to hold the fix. Judging pauses while a release
 comparison is pending. The pass uses the project's records and the ledger without asking a model,
@@ -576,8 +575,8 @@ verified or has recurred).
 | `recurred` | The ledger recorded the work stopping again for this incident's cause after the resume and after the fix was found in the running release. This replaces any outcome recorded before it, and nothing replaces it. |
 | `chained` | Before anything else could be said, the job, or the request the resume queued, stopped for another cause; the detail names that incident. Not final: any other outcome replaces it. |
 | `stalled` | Nothing has moved for 24 hours and no wait the Office understands explains it; the detail says since when. Not final: any outcome but `chained` replaces it, and it replaces `chained`. |
-| `moved-by-hand` | An operator's command for the ticket followed the resume (PR preparation, a candidate base update, a candidate or PR review recheck, a requeued implementation). The boundary is not read after that, and the move is found even if the job is gone since. |
-| `gone` | The job is missing or cancelled with the boundary not crossed, or the project no longer holds the request. |
+| `moved-by-hand` | An operator's command for the ticket followed the resume (PR preparation, a candidate base update, a candidate or PR review recheck, a requeued implementation). For a Jira/Azure ticket: a request your own command queued for it after the resume's (`start-pilot`, `resume-ticket`, a corrected QA plan, a saved-implementation continuation). The boundary is not read after that, and the move is found even if the job is gone since. |
+| `gone` | The job is missing or cancelled, or the ticket is missing, with the boundary not crossed; or the project no longer holds the request. |
 | `untested` | Nothing can show whether the repair worked: the fix declared the boundary undeclared; the boundary cannot be judged for this job; the release that held the fix stopped serving after the resume was queued; or the resume was queued by a release that did not yet record how the job stood. |
 
 A resume with no entry is still pending. `moved-by-hand`, `gone` and `untested` say nothing about
@@ -591,7 +590,9 @@ a `stalled` judgment while the project is paused or draining or the work is open
 under an `expected` wait such as a hold, a decision, a merge approval, a prerequisite or a
 provider wait. Time spent waiting still counts toward the 24 hours if nothing moves. A resume
 quiet since admission can be `stalled` at hour 24 even if its project was paused for the first
-20 hours.
+20 hours. For a Jira/Azure ticket the runs that count are its delivery work: a stage run, a
+read-back, a reconcile or a Jira transition filed under its key. A conversation, a Slack message,
+a retrospective or an investigation about the ticket does not start the 24 hours again.
 
 What each boundary reads, for a delivery job:
 
@@ -600,6 +601,18 @@ What each boundary reads, for a delivery job:
 - `stage-left`: the job is at another stage and is not cancelled. The stage must be the one the
   job was at when it was resumed; otherwise the outcome is `untested`.
 - `record-settled`: the job is completed.
+
+For a Jira/Azure ticket:
+
+- `stage-result-passed`: a run of that stage that began after the resume was queued, and passed.
+  A pass the ticket already had does not count. Nor does a read-back that accepts the earlier
+  run: it moves the ticket on without a run of the stage.
+- `stage-left`: the ticket is at another stage, whether a stage run or a read-back took it there.
+  The stage must be the one the ticket was at when it was resumed; otherwise the outcome is
+  `untested`.
+- `record-settled`: the ticket's stage is `complete`.
+
+For a ticket, declare `stage-left` unless the fix is only shown by the stage running again.
 
 Declare a boundary the route can reach. What a read-back saves differs by route: some save the
 stage's own step, some a step under a read-back name of their own, some none. Where the read-back
@@ -620,7 +633,9 @@ When in doubt, declare `stage-left` for the stage the job stopped at.
 
 Two limits. An operator who queues a recovery request by command leaves nothing that tells it
 from the Office's own, so that move is not seen. And a job cancelled because its pull request was
-merged by its owner is `gone`, not `advanced`, unless the boundary was crossed first.
+merged by its owner is `gone`, not `advanced`, unless the boundary was crossed first. For a
+ticket, a command of yours that finds a request already queued or working for it queues none, and
+is not seen either.
 
 If the request a resume queued stops, that also shows up like any other stopped request.
 
@@ -689,9 +704,16 @@ deployed), and after it becomes `verified` or `recurred`.
 - A paused or draining project shows as one subject. Its stopped work stays open until the project
   runs again and the ledger can see whether it cleared.
 - A failed run is counted for 24 hours, then clears by itself. One that belongs to a stopped job,
-  ticket, review or maintenance run is part of that subject instead.
+  ticket, review or maintenance run is part of that subject instead. Of the runs that failed for
+  one cause in a project, only the newest 20 are subjects of their own: an older one clears as
+  newer ones arrive, and still counts as part of the stopped work it belongs to. Every run that
+  was recorded stays in the incident's event history.
 - If a collector cannot read a project, the service log says which one each minute, and what that
   collector had reported for the project is left open until it can.
 - With three GitHub projects, ordinary provider waits will meet the two-project threshold often.
   That is the plan's threshold; it makes them eligible for research, nothing more.
+- A run a provider refused at its usage limit is a `provider-wait` when the harness typed the
+  failure as `provider-limit`, which it does for a stage that only reads. The ledger does not read
+  the reset time the provider stated: three such runs, or two projects, still cross the research
+  threshold before it. A writer stage refused the same way keeps `uncertain-effect`.
 - The repair runner's own failures are not recorded yet; the runner does not exist.

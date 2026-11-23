@@ -37,7 +37,8 @@ export function expectedWait(facts: StopFacts): ExpectedWait | null {
     if (facts.cause === 'dependency') return 'prerequisite';
     if (facts.question) return 'question';
     if (facts.cause === 'needs-decision' || facts.resolution === 'scope') return 'decision';
-    if (['provider-checks', 'pr-not-ready'].includes(facts.stopKind ?? '') || facts.resolution === 'provider-wait') return 'provider-wait';
+    // A provider that refused a run at its usage limit takes work again by itself, at a time it stated or not.
+    if (['provider-checks', 'pr-not-ready'].includes(facts.stopKind ?? '') || facts.resolution === 'provider-wait' || facts.failure === 'provider-limit') return 'provider-wait';
     if (facts.retrying || !facts.exhausted && (facts.stopKind === 'transient' || facts.failure === 'transient-read')) return 'retry';
     return null;
 }
