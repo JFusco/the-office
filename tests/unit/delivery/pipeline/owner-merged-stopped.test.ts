@@ -130,6 +130,8 @@ test('an open pull request changes nothing and queues nothing', async () => {
     expect(f.store.state.coordination!.requests?.length ?? 0).toBe(requests);
     expect(settlements(f)).toEqual([]);
     expect(writes).toEqual([]);
+    // An open PR costs one read per poll: its issue link is read only once it is merged.
+    expect(f.state.calls.filter(call => call.includes('closingIssuesReferences'))).toEqual([]);
 });
 
 const refusals: [string, (fixture: ReturnType<typeof stopped>) => void][] = [
@@ -146,6 +148,24 @@ const refusals: [string, (fixture: ReturnType<typeof stopped>) => void][] = [
     ['an unsettled Effect', ({ f, job }) => {
         f.store.putEffect({ id: `harness:${job.id}:closeout-comment`, work: { projectId: f.store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id, operation: 'github-issue-comment',
             target: f.issueUrl, authorization: 'office-harness', payload: {}, expectedState: {}, status: 'uncertain', createdAt: '2026-11-23T19:00:00Z', dispatchedAt: '2026-11-23T19:00:01Z', verifiedAt: '', receipt: null, error: 'timeout', elapsedMs: 1 });
+    }],
+    ['the linked issue is another one', ({ f }) => { f.state.issue.number = 6; }],
+    ['the issue closed as not planned', ({ f }) => { f.state.issue.state_reason = 'not_planned'; }],
+    ['a merge the Office itself sent', ({ f, job }) => {
+        f.store.putEffect({ id: `merge:${job.id}:${HEAD}`, work: { projectId: f.store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id, operation: 'github-merge',
+            target: PR_URL, authorization: 'office-harness', payload: {}, expectedState: {}, status: 'verified', createdAt: '2026-11-23T19:50:00Z', dispatchedAt: '2026-11-23T19:50:01Z', verifiedAt: '2026-11-23T19:50:02Z', receipt: {}, error: '', elapsedMs: 1 });
+    }],
+    ['a queued recovery request', ({ f }) => {
+        (f.store.state.coordination!.requests ??= []).push({ id: 'recovery', action: 'reconcile-review', key: 'GH-5', head: '', status: 'queued', requestedAt: '2026-11-23T19:49:00Z', detail: '' } as any);
+    }],
+    ['an uncertain step receipt', ({ job }) => {
+        job.steps.at(-1)!.result.receipts.push({ id: 'pr-edit', action: 'github-pr-edit', target: PR_URL, verified: false, uncertain: true, detail: 'timed out' });
+    }],
+    ['a merge attempt', ({ job }) => { job.mergeAttempt = { at: '2026-11-23T19:50:00Z' } as any; }],
+    ['a merge intent', ({ job }) => { job.mergeIntentId = `merge:${job.id}:${HEAD}`; }],
+    ['a merge approval wait', ({ job }) => { job.mergeApprovalRequired = true; }],
+    ['a worker that crashed before it finished', ({ f, job }) => {
+        f.store.state.workLog!.push({ ...structuredClone(f.store.state.workLog![0]), id: 'prepare-run', stage: 'github-prepare-pr', executionStatus: undefined, status: 'interrupted' } as any);
     }],
     ['a claim taken during the provider read', ({ f, job }) => {
         const base = f.delivery.execute;

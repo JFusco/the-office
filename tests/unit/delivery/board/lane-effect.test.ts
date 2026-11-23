@@ -78,13 +78,14 @@ test('a card a person moved after the verified move is left alone', async () => 
 
 test('a refused guard sends nothing and leaves no pending board record', async () => {
     const { f, job, sent, execute, effects } = board();
-    await expect(moveLane(f.store, execute as any, job, 'Done', () => { throw new Error('Office paused before a harness write'); }, job.pr, operation)).rejects.toThrow('paused');
+    // The refusal comes through as itself: nothing was sent, so nothing needs read-back.
+    await expect(moveLane(f.store, execute as any, job, 'Done', () => { throw new Error('Office paused before a harness write'); }, job.pr, operation)).rejects.toThrow(/^Office paused before a harness write$/);
     expect(sent).toEqual([]);
     expect(job.boardUpdates || []).toEqual([]);
     expect(effects()).toEqual([]);
     // Refused at the Effect's own preflight: the intent is rejected undispatched and the board has no record of it.
     let checks = 0;
-    await expect(moveLane(f.store, execute as any, job, 'Done', () => { if (++checks === 2) throw new Error('Delivery authority unavailable'); }, job.pr, operation)).rejects.toThrow('authority');
+    await expect(moveLane(f.store, execute as any, job, 'Done', () => { if (++checks === 2) throw new Error('Delivery authority unavailable'); }, job.pr, operation)).rejects.toThrow(/^Delivery authority unavailable$/);
     expect(sent).toEqual([]);
     expect(job.boardUpdates || []).toEqual([]);
     expect(effects().map(effect => [effect.status, effect.dispatchedAt])).toEqual([['rejected', '']]);

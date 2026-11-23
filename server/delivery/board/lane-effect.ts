@@ -22,6 +22,8 @@ export function laneWrite(store: Store, job: Pick<TicketJob, 'id'>, operation: L
  */
 export async function moveCardOnce(store: Store, execute: Execute, job: TicketJob, item: string, field: StatusField, option: { id: string; name: string }, operation: LaneOperation, guard: () => void, update: BoardUpdate): Promise<void> {
     const readLane = async () => await cardStatus(store, execute, item, field.fieldId) === option.id ? { item, option: option.id } : null;
+    // A write sent earlier and still unread is what a failure here may leave open; without one, a refusal is just a refusal.
+    const earlier = laneWrite(store, job, operation, item);
     let sent = false;
     try {
         await harnessEffect(store, job, { key: effectKey(operation, item), operation: 'github-project-status', target: `${field.projectId}:${item}`,
@@ -39,6 +41,8 @@ export async function moveCardOnce(store: Store, execute: Execute, job: TicketJo
     }
     catch (error) {
         if (sent) { update.status = 'uncertain'; update.detail = String(error); store.save(); }
+        // Nothing was sent now or before: a guard or preflight refused (a hold, a pause, a changed job). Say so as it is.
+        if (!sent && earlier !== 'unread') throw error;
         throw new Error(`Board transition needs read-back: ${String(error)}`);
     }
     update.status = 'verified';

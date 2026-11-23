@@ -40,8 +40,10 @@ function eligible(delivery: GitHubDelivery, job: TicketJob): boolean {
         assessDeliveryEligibility(store, job).eligible &&
         !store.activeClaims().some(claim => claim.work.id === job.id || claim.work.id === `ticket:${job.key}`) &&
         !store.state.coordination?.requests?.some(request => request.key === job.key && ['queued', 'working'].includes(request.status)) &&
-        !store.state.workLog?.some(work => work.requestId === job.id && (['running', 'stopping'].includes(work.status) || !work.endedAt)) &&
-        !job.prerequisites?.length && !job.parked && !job.mergeIntentId && !job.mergeAttempt && !job.mergeCommit &&
+        // Every worker of the job ran to its end: a crashed writer can leave PR writes no receipt records.
+        // A finished review that returned a blocking verdict ended normally too.
+        !store.state.workLog?.some(work => work.requestId === job.id && (work.executionStatus !== 'completed' || !work.endedAt)) &&
+        !job.prerequisites?.length && !job.parked && !job.mergeIntentId && !job.mergeAttempt && !job.mergeCommit && !job.mergeApprovalRequired &&
         !(job.prMetadataRepair && !['done', 'blocked'].includes(job.prMetadataRepair.phase)) &&
         !job.ciRepairs?.some(repair => !['done', 'blocked'].includes(repair.phase)) &&
         !(job.repairCycle && (job.repairCycle.pendingFindingIds.length || job.repairCycle.phase === 'repair')) && !job.stoppedBaseUpdate &&
@@ -71,6 +73,8 @@ function closeableIssue(delivery: GitHubDelivery, job: TicketJob, issue: any): b
 
 async function settle(delivery: GitHubDelivery, job: TicketJob): Promise<void> {
     const { store } = delivery, prior = structuredClone(job);
+    // The PR alone first: an open PR needs no further read on every poll.
+    if (!(await delivery.api(`pulls/${job.pr}`))?.merged_at) return;
     const pull = await delivery.verifyPR(job, true);
     if (!ownerMerged(delivery, job, pull)) return;
     const issue = await delivery.api(`issues/${Number(job.key.slice(3))}`);
