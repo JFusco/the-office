@@ -697,4 +697,8 @@ deployed), and after it becomes `verified` or `recurred`.
   collector had reported for the project is left open until it can.
 - With three GitHub projects, ordinary provider waits will meet the two-project threshold often.
   That is the plan's threshold; it makes them eligible for research, nothing more.
+- A run a provider refused at its usage limit is a `provider-wait` when the harness typed the
+  failure as `provider-limit`, which it does for a stage that only reads. The ledger does not read
+  the reset time the provider stated: three such runs, or two projects, still cross the research
+  threshold before it. A writer stage refused the same way keeps `uncertain-effect`.
 - The repair runner's own failures are not recorded yet; the runner does not exist.
