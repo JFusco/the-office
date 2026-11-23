@@ -80,6 +80,8 @@ export function judgeResumes({ ledger, entries, running, now, fenced, report = c
                 if (fenced()) return recorded;
                 const work = subjectParts(subject), store = work && stores.get(work.project);
                 if (!admission || !store) continue;
+                // A ticket's resume has no boundary reading yet: it is left pending, and its incident is not settled on it.
+                if (work.id.startsWith('ticket:')) continue;
                 const previous = fix.outcomes?.find(outcome => outcome.subject === subject)?.outcome;
                 if (previous === 'recurred') continue;
                 const request = boundResume(store.state, identity), stood = request?.repairResume?.stood;

@@ -3,10 +3,10 @@
 The Overseer is the repair engine for the harness and the Office. It is being delivered in phases;
 this guide covers what exists. Today that is deterministic deployment, the incident ledger and
 the mark the Office puts on stopped work a repair covers, which holds recovery back for it. Resume
-after a fix works for the seven GitHub read-back routes: once a fix you bound is running and you
-have enabled the switch for automatic resumes, which starts paused, the Office queues the
-recovery request that fix named for the work it stopped (see
-[Resuming after a fix](#resuming-after-a-fix)). The CEC route and the remaining routes follow.
+after a fix works for the seven GitHub read-back routes and for a Jira/Azure pilot ticket: once a
+fix you bound is running and you have enabled the switch for automatic resumes, which starts
+paused, the Office queues the request that fix named for the work it stopped (see
+[Resuming after a fix](#resuming-after-a-fix)). The remaining routes follow.
 The autonomous runner is a later phase and is not described here until it
 ships. The process rules are in the Office process, under
 [Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
@@ -161,8 +161,9 @@ deployment.
 The Office records every stop it can see in one ledger, grouped by cause across projects. By
 itself the ledger retries and repairs nothing. It writes two things to a project: while a repair
 is in progress, a mark on the stops that repair covers (see Work awaiting a repair); and, once
-the fix runs and you have enabled it, the one recovery request the fix named for a marked stop
-(see Resuming after a fix). Besides what it observes, it holds what you tell it about a repair:
+the fix runs and you have enabled it, the one request the fix named for a marked stop: a recovery
+request for a GitHub job, the ticket's own resume for a Jira/Azure ticket (see Resuming after a
+fix). Besides what it observes, it holds what you tell it about a repair:
 that one started, and which fix it is.
 
 ### Reading the ledger
@@ -367,13 +368,14 @@ fix, that job comes back to you as a "read back" request; it is not restarted by
 ### Resuming after a fix
 
 Once a fix you bound is running, the Office can resume the work it stopped: it queues the
-recovery request the fix named for each piece of work, once, and stops holding that work back. It
+request the fix named for each piece of work, once, and stops holding that work back. It
 does this only while the switch below is enabled, and the switch starts paused. The GitHub
 read-back routes are resumed this way: `reconcile-implementation`, `reconcile-validation` and
 `reconcile-scope-repair`, which always need a `head`, and `reconcile-preparation`,
 `reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a `head` or without.
-The other rows of the table are accepted by `bind-fix` but not resumed yet; their work is handed
-back to you when the wait runs out.
+A Jira/Azure pilot ticket is resumed through `resume-ticket`, its own resume (see A ticket's
+resume, below). The other rows of the table are accepted by `bind-fix` but not resumed yet; their
+work is handed back to you when the wait runs out.
 
 **Cost.** `reconcile-review` with no `head` checks a saved independent review against the
 unchanged pull request and runs no model. With the `head` of a stopped base handoff it reads the
@@ -387,7 +389,7 @@ a fix may name:
 
 | Action | Resumes | Payload | `head` |
 | --- | --- | --- | --- |
-| `resume-ticket` | a CEC pilot ticket (`cec/delivery/ticket:KEY`) | `{ key }`, the ticket's own key | none |
+| `resume-ticket` | a CEC pilot ticket (`cec/delivery/ticket:KEY`), stopped at any stage after the mailbox | `{ key }`, the ticket's own key | none |
 | `reconcile-implementation` | a GitHub delivery job | `{ key, head? }`, the ticket key | the original stopped worker's ID; where the job holds a saved prerequisite result, the ID of the latest completed writer of the job's stage (`implement` or `scope-repair`) |
 | `reconcile-validation`, `reconcile-scope-repair` | a GitHub delivery job | `{ key, head? }`, the ticket key | the original stopped worker's ID |
 | `reconcile-preparation`, `reconcile-closeout` | a GitHub delivery job | `{ key, head? }` | the original stopped worker's ID; empty for the saved-result route |
@@ -488,15 +490,65 @@ reason, as `resume-refused`:
 | `resumes-paused` | The switch is paused. | Queued once you enable it, if the work still waits. |
 | `release-unconfirmed` | The Office could not verify the running release or has yet to confirm that it contains the fix. | A rollback to a verified release known to contain the fix can still allow admission. If the running release lacks the fix or cannot be verified, the Office withdraws the deployment mark and returns the incident to `shipped`. |
 | `project-paused` | The project is paused or draining. | Queued when it runs again. |
-| `request-pending` | Another request for that ticket is queued or working. | Queued when that one ends. |
+| `request-pending` | Another request for that ticket is queued or working. For a Jira/Azure ticket also: a scheduler claim is active for it, or a QA handoff you approved is still waiting on its ownership check. | Tried again each pass, and queued when that is over if the work still waits for this repair. A Jira/Azure ticket someone else resumed does not: see A ticket's resume. |
 | `wait-ended` | The work is not being held for this repair right now. Either that is final: the wait ran out after 48 hours, or the work stopped again or was moved. Or it is temporary: something stronger explains the stop for now, such as a hold, a decision, a merge approval, a prerequisite or an unconfirmed write. | If final, not resumed; the item is yours. If temporary, the Office tries again each pass and queues it once that cause is gone, as long as the 48 hours have not run out. |
 | `head-mismatch` | The route's `head` is not the run its handler would read for that job now, the handler has nothing to read for it (a run an earlier request already reconciled included), or another job that is not cancelled has the same ticket key. | The Office tries again each pass and queues it if that changes while the wait holds. Read the detail: it names what the handler reads. |
+| `ticket-not-resumable` | For a ticket: its own resume would refuse, or would spend a step that is yours, or the Office could not tell this stop from a later one. QA setup has stopped three or more times in a row on the candidate; the feature gate is closed; the ticket is no resumable pilot (not a pilot, at the mailbox, complete); or its stop carries no date. | Tried again each pass, and queued if that changes while the wait holds. A stop with no date does not change: that ticket is yours. Read the detail. |
 | `key-mismatch`, `no-record`, `not-dispatchable`, `already-reconciled` | The route does not fit the work as it stands. | Not resumed; read the detail. |
+
+**A ticket's resume.** A Jira/Azure pilot ticket is resumed by queueing its own `resume-ticket`
+request, the one the Resume command queues, marked as a repair resume. It differs from a
+person's resume in five ways:
+
+- Intake is not touched. Where intake assessment is on and the ticket is not enrolled in a
+  feature, a person's resume counts as a manual start and closes the ticket's assessment; the
+  Office's never assesses, opens or closes one.
+- Only a stop the harness dated is resumed. When the harness itself stops a ticket (a stage that
+  threw, a worker that returned nothing it could verify) it saves when; a ticket stopped by its
+  stage's own verdict has no such date, and is marked only by its run and attempt. The same run
+  can stop that way twice and look the same, so the Office could resume a stop the fix was never
+  bound to. It records `ticket-not-resumable` and leaves that ticket to you.
+- It never rides on other work for the ticket. If a delivery request for it is queued or working,
+  a scheduler claim is active for the ticket or one of its requests (a QA ownership check runs
+  that way, with its request still blocked), or a QA handoff you approved is still waiting on
+  that check, the Office does not queue beside it or adopt it; it records `request-pending`.
+- It runs its read-back once. If it fails while the ticket's feature gate is closed it ends
+  blocked; an ordinary request in that case is queued again for when the gate reopens.
+- It stays out of the QA setup cap. After three setup stops in a row on one candidate, a first
+  resume only shows the count and the next one spends another attempt. Both are yours: the Office
+  records `ticket-not-resumable` and leaves the ticket's own record of the cap alone.
+
+Everything else is the ordinary resume, with its ordinary checks when the request runs: the
+feature gate, the read-back of the ticket and its pull request, the step it decides to resume at.
+That read-back is a paid model run, and where the candidate's head moved the resume can post one
+Dev update to Jira, before it can refuse. A ticket parked on the board for a decision or a
+release, held, or waiting on a prerequisite is never resumed: the repair wait does not hold for it
+(`wait-ended`).
+
+A ticket someone else resumes while it awaits its repair is no longer the Office's to resume for
+that fix. While any delivery request for a ticket is queued or working, the ticket has no entry of
+its own in the Office's schedule, so the ledger sees its stop clear and the repair's hold on it
+ends. If it stands stopped again afterwards, that is a later episode than the one the fix was
+bound to, and it reads `gone`. So a queued or working request is recorded as `request-pending`
+only when it arrives in the same minute. A scheduler claim or a waiting QA handoff leaves the
+ticket in view, and is recorded as `request-pending` once, however long it lasts; the ticket is
+resumed when it is over, if it still waits for this repair.
+
+A ticket the Office resumed leaves view the same way. If its resume refuses before any stage runs,
+the ticket returns with the stop it had, and the ledger records it as stopping again. That is not
+a recurrence: the stop is dated before the fix was deployed (see When an incident is verified or
+has recurred). A ticket whose stop has no date and returns to view does count as stopping again,
+because nothing tells it from a new stop.
+
+The Office does not yet read what became of a ticket's resume. It shows as queued for the fix,
+with no entry under `outcomes`, and the incident is never `verified` on it. The incident can still
+become `recurred`, if its cause stops work anew, or return to `shipped` on a rollback, as for any
+other (see When an incident is verified or has recurred).
 
 ### What became of a resume
 
-Once a resume is queued, the Office reads each minute what became of it and records the outcome
-once, in the incident's history as `resume-outcome` and on the fix as `outcomes`. It does so only
+Once a job's resume is queued, the Office reads each minute what became of it and records the
+outcome once, in the incident's history as `resume-outcome` and on the fix as `outcomes`. It does so only
 while the release it runs is verified and known to hold the fix. Judging pauses while a release
 comparison is pending. The pass uses the project's records and the ledger without asking a model,
 and writes outcomes only to the ledger.

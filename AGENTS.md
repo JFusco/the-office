@@ -71,9 +71,10 @@ server/
                    progress covers, its admission and 48-hour expiry, and the effective cause;
                    resume after a fix: the closed inventory of resume routes, the Office-wide
                    switch for automatic repair resumes, how each bound subject stands, the
-                   admission of one resume per subject and fix in its project, the outcome
-                   recorded for each resume admitted, and the move of an incident to verified
-                   or recurred from those outcomes
+                   admission of one resume per subject and fix in its project (a recovery
+                   request for a GitHub job, the ticket's own resume for a Jira/Azure ticket),
+                   the outcome recorded for each resume admitted, and the move of an incident
+                   to verified or recurred from those outcomes
     sources/       one collector per signal: stopped work, worker failures, IT recoveries and
                    investigations, improvement proposals, provider errors, Slack deliveries, outbox
   release/         release builds and identity: exact-commit build, release.json manifest,

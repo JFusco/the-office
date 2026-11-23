@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { HarnessRequest } from '../../../src/contracts/work';
-import type { OfficeSnapshot } from '../../../src/shared';
+import type { DeliveryRequest, OfficeSnapshot } from '../../../src/shared';
 
 /**
  * What one resume is: this subject, for this fix of this incident. A digest, because it is saved
@@ -21,3 +21,11 @@ export function resumeIdentity(incident: string, subject: string, fix: string): 
 export function boundResume(state: OfficeSnapshot, identity: string): HarnessRequest | undefined {
     return state.coordination?.requests?.find(request => request.repairResume?.id === identity);
 }
+
+/** The same for a ticket: the delivery request a project queued for this resume, or undefined. */
+export function boundTicketResume(state: OfficeSnapshot, identity: string): DeliveryRequest | undefined {
+    return state.deliveryQueue?.find(request => request.repairResume?.id === identity);
+}
+
+/** The request a project queued for this resume, whichever queue its route uses. */
+export const resumeRequest = (state: OfficeSnapshot, identity: string): HarnessRequest | DeliveryRequest | undefined => boundResume(state, identity) ?? boundTicketResume(state, identity);
