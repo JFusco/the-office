@@ -24,6 +24,8 @@ export function actionSummary(id: string) {
         return 'Read the proposed lesson below, then accept it for all projects or decline it.';
     if (id.startsWith('maintenance:'))
         return 'Morgan must reconcile the original run. A reply alone does not finish maintenance or clear missing evidence.';
+    if (id.startsWith('only-you:'))
+        return 'Open this item for the terminal steps, then look for a fresh Connected result for this service in Service health.';
     if (id === 'it-followup')
         return 'Follow Ellis’s specific steps below, then open Service health and select Check IT again.';
     if (id.startsWith('checkpoint:'))

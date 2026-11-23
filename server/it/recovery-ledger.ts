@@ -8,6 +8,7 @@ import { completedConflictDraftUnresolved } from '../delivery/recovery/preparati
 import { publishedDraftConflictUnresolved } from '../delivery/recovery/preparation/published-draft-conflict';
 import type { ITContext } from './context';
 import { nativeDeliveryResolved } from './native-delivery-resolved';
+import { signInSteps } from './sign-in-steps';
 
 /** Service probes, retained closeout partials and resolution of recoveries no longer observed. */
 export async function reconcileRecoveryLedger(context: ITContext): Promise<void> {
@@ -16,7 +17,7 @@ export async function reconcileRecoveryLedger(context: ITContext): Promise<void>
         // Public incidents and status-page read failures are monitored separately from account recovery.
         if (service.kind === 'provider') continue;
         if (service.status === 'disconnected')
-            followUps.push({ id: `login:${service.id}`, owner: 'You', detail: service.nextStep || `Restore ${service.name} access in the Office service account.` });
+            followUps.push({ id: `login:${service.id}`, owner: 'You', detail: service.nextStep || `Restore ${service.name} access in the Office service account.`, title: `Only you can do this: sign in to ${service.name}`, ownerSteps: signInSteps(service) });
         // Unknown is evidence of an incomplete probe, never proof of logout.
         // Informational, and only for services this project uses: a confirmed logout is raised above for Joe.
         if (service.status === 'unknown' && !['slack'].includes(service.id) && !service.id.startsWith('listener:') && !(store.project.provider === 'github' && ['atlassian', 'azure'].includes(service.id)))

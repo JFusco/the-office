@@ -13,6 +13,7 @@ import { knowledgeOutbox } from '../knowledge/knowledge-outbox';
 import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
 import { ctoInputRecovered } from './cto-input-resolution';
 import { isSavedPlanFollowup } from '../../src/conversations/saved-plan-followup';
+import { ownerStepItems, sameOwnerSteps } from './owner-step-items';
 export function conversationResolved(state: OfficeSnapshot, message: TeamMessage): boolean {
     return !!message.resolvedBy || ctoInputRecovered(state, message) || state.messages.some(reply => reply.actionId === `message:${message.id}` && reply.from === 'pm' && reply.status === 'answered' &&
         reply.receipts.every(receipt => receipt.verified && !receipt.uncertain) &&
@@ -27,17 +28,20 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: im
     // Work a harness repair in progress covers is not a person's to read back while that wait holds; its item returns when the wait ends.
     // Without the project's current writes and prerequisites to read, nothing is hidden.
     const awaitingRepair = (kind: Parameters<typeof repairFreeze>[1]['kind'], id: string) => !!repairFreeze(state, { kind, id }, at, reads);
-    function item(id: string, title: string, detail: string, role: Role, ticket = '', url = '') {
+    function item(id: string, title: string, detail: string, role: Role, ticket = '', url = '', ownerSteps?: HumanAction['ownerSteps']) {
         current.add(id);
         const old = outbox.find(a => a.id === id);
         if (old) {
-            if (old.detail !== detail || old.title !== title || old.status !== 'open')
-                Object.assign(old, { title, detail, role, ticket, url, status: 'open', updatedAt: now });
+            if (old.detail !== detail || old.title !== title || old.status !== 'open' || !sameOwnerSteps(old.ownerSteps, ownerSteps))
+                Object.assign(old, { title, detail, role, ticket, url, status: 'open', updatedAt: now }, ownerSteps && { ownerSteps });
         }
         else
-            outbox.unshift({ id, title, detail, role, ticket, url, status: 'open', createdAt: now, updatedAt: now });
+            outbox.unshift({ id, title, detail, role, ticket, url, status: 'open', createdAt: now, updatedAt: now, ...(ownerSteps && { ownerSteps }) });
     }
-    const itFollowUps = state.it?.reports.at(-1)?.followUps.filter(f => f.owner === 'You') || [];
+    // A follow-up with steps only the owner can do is its own item; the others stay joined below.
+    const { items: onlyYou, rest: itFollowUps } = ownerStepItems(state.it?.reports.at(-1)?.followUps.filter(f => f.owner === 'You') || []);
+    for (const step of onlyYou)
+        item(step.id, step.title, step.detail, 'pm', '', '', step.ownerSteps);
     const teamOwnsIT = (id: string) => state.it?.reports.at(-1)?.followUps.some(f => f.id === id && f.owner !== 'You');
     if (itFollowUps.length)
         item('it-followup', 'Ellis needs your help', itFollowUps.map(f => f.detail).join('\n'), 'pm');
