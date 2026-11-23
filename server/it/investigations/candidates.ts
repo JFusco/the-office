@@ -10,7 +10,7 @@ export function investigationCandidates(projectId: string, state: OfficeSnapshot
         ticket: state.coordination?.notices?.entries.find(notice => notice.id === delivery.requestId)?.key || state.messages.find(message => message.id === delivery.requestId)?.ticket || '',
         failureKind: 'unconfirmed-delivery', workerIds: workers.filter(work => work.requestId === delivery.requestId).map(work => work.id),
     }));
-    const process = workers.filter(work => work.stage !== 'it-investigation' && ['failed', 'interrupted'].includes(work.status) && work.failure?.dispatched && work.failure.category !== 'cancelled' && (work.failure.code === 'surviving-subprocesses' || !deliveries.some(delivery => delivery.requestId === work.requestId)))
+    const process = workers.filter(work => work.stage !== 'it-investigation' && ['failed', 'interrupted'].includes(work.status) && work.failure?.dispatched && work.failure.category !== 'cancelled' && work.failure.category !== 'provider-limit' && (work.failure.code === 'surviving-subprocesses' || !deliveries.some(delivery => delivery.requestId === work.requestId)))
         .map(work => ({ kind: 'worker' as const, id: work.id, requestId: work.requestId, ticket: work.ticket, failureKind: work.failure!.code || work.failure!.category,
             workerIds: work.requestId ? workers.filter(other => other.requestId === work.requestId).map(other => other.id) : [work.id] }));
     return [...slack, ...process];

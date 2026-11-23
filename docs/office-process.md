@@ -581,6 +581,10 @@ Morgan or Joe:
   completed or cancelled, or its Jira/Azure ticket is complete. A Jira/Azure stage worker is
   recorded without a request ID: it is investigated on its own, and a later completed run of the
   same ticket stage settles its read failure.
+- A read-only run that the provider refused because the account reached its usage limit is
+  recorded as a provider limit, with the time the provider says to try again, and is not
+  investigated: an investigation would run on the provider that is refusing work. A writer the
+  provider cut off the same way keeps its effect of unknown outcome and is investigated as before.
 - An old blocked nightly checkpoint is settled by a later night that completed.
 - On a hands-off project one stopped daily maintenance run whose automatic read-backs are used up is
   not put in the outbox while the next night's run is not yet overdue (26 hours), provided the night
