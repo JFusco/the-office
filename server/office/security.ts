@@ -6,8 +6,12 @@ export function sanitize(value: string): string {
     .replace(/((?:password|api[_-]?key|secret|authorization|cookie|connection[_-]?string)\s*[=:]\s*)[^\n,}]+/gi,'$1[redacted]')
     .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi,'[database redacted]');
 }
+/** The JSON text of a value with every string in it redacted: what `sanitizeObject` parses, for a caller that only needs the text. */
+export function redactedText(value: unknown): string {
+  return JSON.stringify(value,(_key,item)=>typeof item==='string'?sanitize(item):item);
+}
 export function sanitizeObject<T>(value:T):T {
-  return JSON.parse(JSON.stringify(value,(_key,item)=>typeof item==='string'?sanitize(item):item));
+  return JSON.parse(redactedText(value));
 }
 export function safeOrigin(request: Request): boolean {
   const url = new URL(request.url);

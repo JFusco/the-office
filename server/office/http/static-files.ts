@@ -7,7 +7,7 @@ import { json, fileResponse } from './responses';
 
 /** Unknown API paths 404; everything else is the built UI (or the Vite dev server). */
 export async function staticRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
-    const { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator } = context;
+    const { offices, serviceHealth, itSpecialist, loadedRevision, vite, project, store, engine, conversations, coordinator } = context;
     if (url.pathname.startsWith('/api/'))
         return json({ error: 'Not found' }, 404);
     if (vite) {

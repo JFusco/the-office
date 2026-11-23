@@ -10,7 +10,7 @@ test('project A SSE receives project B question changes and cancel unsubscribes'
  const a=fixture('cec'),b=knowledgeStore('brain','2026-11-06T23:00:00Z');b.store.state.knowledge!.enabled=true;const projectStores=[a.store,b.store];let sequence=0;
  const projection=()=>pendingQuestions(projectStores,{brain:{progression:'automatic'}}),events=new QuestionNotifications(projection);events.observe(projectStores);
  try{
- const context={store:a.store,project:'cec',offices:{stores:()=>new Map(projectStores.map(s=>[s.project.id,s])),preferences:{subscribe:()=>()=>{}},questionEvents:()=>events},snapshot:()=>({project:a.store.project,featureQuestions:projection(),snapshotSequence:++sequence})} as any;
+ const context={store:a.store,project:'cec',offices:{stores:()=>new Map(projectStores.map(s=>[s.project.id,s])),preferences:{subscribe:()=>()=>{}},questionEvents:()=>events},snapshotText:()=>JSON.stringify({project:a.store.project,featureQuestions:projection(),snapshotSequence:++sequence})} as any;
  const url=new URL('http://localhost/api/events'),response=await apiRoute(new Request(url),url,context),reader=response!.body!.getReader();
  // Drain retained create event and the initial snapshot.
  let text='';while(!text.includes('event: snapshot'))text=new TextDecoder().decode((await reader.read()).value);
