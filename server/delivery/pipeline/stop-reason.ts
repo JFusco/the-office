@@ -1,5 +1,5 @@
 import type { StopKind, StopReason } from '../../../src/contracts/work';
-import { checksReadAgain } from '../readiness/github-check-selection';
+import { CurrentChecksWait } from '../readiness/github-check-selection';
 import { EffectUncertainError } from '../../store/effects';
 import { CommandFailure } from '../../workers/process';
 import { incompleteReadOutput, temporaryReadFailure } from '../../scheduling/read-retries';
@@ -12,7 +12,7 @@ import { SourceClosed } from './source-closed';
  */
 export function classifyStop(error: unknown, paused = false): StopKind {
     const text = String(error);
-    if (checksReadAgain(error)) return 'provider-checks';
+    if (error instanceof CurrentChecksWait) return 'provider-checks';
     if (error instanceof SourceClosed) return 'source-closed';
     if (error instanceof EffectUncertainError) return 'uncertain-effect';
     if (error instanceof CommandFailure) {

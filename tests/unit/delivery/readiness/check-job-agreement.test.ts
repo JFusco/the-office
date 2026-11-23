@@ -23,6 +23,9 @@ test('a status that is missing or unknown is no sign the check is unfinished', (
     expect(compare(check(), withoutStatus)).toEqual({ identity: true, differing: ['status'], moving: false });
     expect(compare(check(), { ...job(), status: 'stale' })).toEqual({ identity: true, differing: ['status'], moving: false });
     expect(compare({ ...check(), status: undefined }, job()).moving).toBe(false);
+    // Nor when the other side is running: both reads must give a known status.
+    expect(compare({ ...check(), status: 'in_progress', conclusion: null, completed_at: null }, withoutStatus).moving).toBe(false);
+    expect(compare({ ...check(), status: 'stale' }, { ...job(), status: 'in_progress', conclusion: null, completed_at: null }).moving).toBe(false);
 });
 
 test('two finished reads that differ are not moving', () => {

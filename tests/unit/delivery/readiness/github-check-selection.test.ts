@@ -59,7 +59,13 @@ test.each(['check run','commit status'])('with an independent failed %s on the h
 test('both kinds of wait keep the merge stage watching; any other error does not',()=>{
  expect(checksReadAgain(new CurrentChecksWait('queued'))).toBe(true);expect(checksReadAgain(new CheckStillFinishing('finishing'))).toBe(true);
  expect(checksReadAgain(new Error('Actions job does not match exact check-run: conclusion differ'))).toBe(false);expect(checksReadAgain(undefined)).toBe(false);
- expect(classifyStop(new CheckStillFinishing('finishing'))).toBe('provider-checks');expect(classifyStop(new CurrentChecksWait('queued'))).toBe('provider-checks');
+ // The label follows the handler: a finishing read is a provider wait only where the merge stage keeps watching (`github-delivery.ts`).
+ expect(classifyStop(new CheckStillFinishing('finishing'))).toBe('unclassified');expect(classifyStop(new CurrentChecksWait('queued'))).toBe('provider-checks');
+});
+test.each([['absent',undefined],['unknown','stale']])('an %s status on one side with the other still running is a mismatch too: both reads must be known',async(_label,status)=>{
+ for(const side of ['raw','jobs'] as const){const f=fixture(),odd=side==='raw'?f.raw.check_runs[0]:f.jobs[0],other=side==='raw'?f.jobs[0]:f.raw.check_runs[0];
+  if(status===undefined)delete (odd as any).status;else odd.status=status;Object.assign(other,{status:'in_progress',conclusion:null,completed_at:null});
+  const error=await f.select().catch(e=>e);expect(checksReadAgain(error),side).toBe(false);expect(error,side).not.toBeInstanceOf(CheckStillFinishing);}
 });
 test.each([['absent',undefined],['unknown','stale']])('a job whose status is %s gives no sign the check is unfinished: a mismatch, not a wait',async(_label,status)=>{
  const f=fixture();if(status===undefined)delete (f.jobs[0] as any).status;else f.jobs[0].status=status;
