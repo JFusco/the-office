@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { IncidentLedger } from '../../../server/incidents/incident-ledger';
 import type { IncidentCollector } from '../../../server/incidents/observation';
+import { workerFailures } from '../../../server/incidents/sources/worker-failures';
 import { syncIncidents } from '../../../server/incidents/sync-incidents';
 import type { Store } from '../../../server/store/store';
 import { AT, candidate, item, later, observe, office, projectStore } from './incident-fixture';
@@ -39,6 +40,36 @@ test('a run failure and the stop of the job it ran for are one subject', () => {
     syncIncidents(l, office(observe(s, [blocked('1')])), AT, undefined, loud);
     expect(l.list()).toHaveLength(1);
     expect(l.list()[0].subjects).toEqual([expect.objectContaining({ kind: 'delivery', id: '1', sources: ['stopped-work', 'worker-failure'] })]);
+});
+
+test('a storm of one failure holds the newest twenty runs as subjects, clears the rest once, and keeps the run a stopped job belongs to', () => {
+    const { db, ledger: l } = ledger(), s = store();
+    const run = (id: string, minutesAgo: number, over: Record<string, unknown> = {}) => ({ id, requestId: 'x', ticket: '', status: 'failed', stage: 'review', provider: 'claude', endedAt: later(-minutesAgo).toISOString(), failure: { category: 'timeout', detail: 'no output', dispatched: true }, ...over });
+    const storm = Array.from({ length: 25 }, (_, i) => run(`run-${String(i).padStart(2, '0')}`, i + 1));
+    s.state.workLog = storm as any;
+    const workers = () => l.list().flatMap(incident => incident.subjects).filter(subject => subject.kind === 'worker');
+    const open = () => workers().filter(subject => subject.status === 'open').map(subject => subject.id).sort();
+    // A ledger from before the bound: every run is an open subject.
+    const unbounded: IncidentCollector = observation => workerFailures(observation).map(({ foldedOnly: _, ...rest }) => rest);
+    syncIncidents(l, office(observe(s)), AT, [unbounded], loud);
+    expect(open()).toHaveLength(25);
+    const first = syncIncidents(l, office(observe(s)), later(1), undefined, loud);
+    expect(first.events.map(event => event.kind)).toEqual(Array.from({ length: 5 }, () => 'subject-cleared'));
+    expect(open()).toEqual(storm.slice(0, 20).map(r => r.id));
+    const events = rows(db, 'incident_events');
+    expect(syncIncidents(l, office(observe(s)), later(2), undefined, loud)).toEqual({ events: [], incidents: [] });
+    expect(rows(db, 'incident_events')).toBe(events);
+    // One more failure: it is observed, and the oldest of the twenty gives way.
+    s.state.workLog = [run('run-new', -2.5), ...storm] as any;
+    expect(syncIncidents(l, office(observe(s)), later(3), undefined, loud).events.map(event => [event.kind, event.body.subject])).toEqual([['subject-observed', 'cms-field-vocabulary/worker/run-new'], ['subject-cleared', 'cms-field-vocabulary/worker/run-19']]);
+    expect(open()).toHaveLength(20);
+    // The oldest run of all is the one a stopped job last ran: it is past the newest twenty and still part of that job's subject.
+    s.state.coordination!.jobs = [job('1')];
+    s.state.workLog = [run('run-new', -2.5), ...storm.slice(0, 24), run('run-24', 25, { requestId: '1', ticket: 'GH-1' })] as any;
+    syncIncidents(l, office(observe(s, [blocked('1')])), later(4), undefined, loud);
+    expect(l.list().flatMap(incident => incident.subjects).find(subject => subject.kind === 'delivery')).toMatchObject({ id: '1', status: 'open', sources: ['stopped-work', 'worker-failure'], lastWorker: 'run-24' });
+    expect(open()).toHaveLength(20);
+    expect(open()).not.toContain('run-24');
 });
 
 test('a sync reads project state and leaves every project store byte-identical', () => {

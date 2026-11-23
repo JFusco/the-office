@@ -53,6 +53,8 @@ export interface IncidentCandidate {
     evidence: string;
     /** Subject keys of other sources' records of this same stop; they are folded into this one. */
     absorbs?: string[];
+    /** Reported only so that a record which covers it can take it in (see `absorbs`); it never becomes a subject of its own. */
+    foldedOnly?: true;
 }
 
 export interface IncidentSubjectRecord extends IncidentSubject {

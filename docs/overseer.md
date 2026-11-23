@@ -689,7 +689,10 @@ deployed), and after it becomes `verified` or `recurred`.
 - A paused or draining project shows as one subject. Its stopped work stays open until the project
   runs again and the ledger can see whether it cleared.
 - A failed run is counted for 24 hours, then clears by itself. One that belongs to a stopped job,
-  ticket, review or maintenance run is part of that subject instead.
+  ticket, review or maintenance run is part of that subject instead. Of the runs that failed for
+  one cause in a project, only the newest 20 are subjects of their own: an older one clears as
+  newer ones arrive, and still counts as part of the stopped work it belongs to. Every run that
+  was recorded stays in the incident's event history.
 - If a collector cannot read a project, the service log says which one each minute, and what that
   collector had reported for the project is left open until it can.
 - With three GitHub projects, ordinary provider waits will meet the two-project threshold often.
