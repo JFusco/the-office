@@ -1,4 +1,5 @@
 import { captureLearning } from '../../knowledge/learning-events';
+import { dropPendingLessons } from '../../knowledge/drop-pending-lessons';
 import { requeueInvestigationEvidence } from './requeue-evidence';
 import { supersedingDelivery } from '../../conversations/slack/supersession-proof';
 import { slackMessageUrl } from '../../../src/shared';
@@ -55,7 +56,8 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
                 entry.resolution = { ...resolution, at: now.toISOString() };
                 // Closing with a finished subject verifies nothing and replaces nothing, so it is neither recorded as a lesson nor described as one.
                 const finished = /^(?:job|ticket):/.test(resolution.receipt), recovered = resolution.receipt.startsWith(PROVIDER_RECOVERED);
-                // Nor does a provider that works again: its refusal said nothing about the Office.
+                // Nor does a provider that works again: its refusal said nothing about the Office, and what was queued to be learned from it is dropped.
+                if (recovered) dropPendingLessons(store, { kind: 'investigation', id: entry.id });
                 if (!finished && !recovered) captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
                 store.emit('it-investigation-resolved', finished ? 'Earlier warning kept as history: the work it concerned has finished. Its original outcome remains unknown.' : recovered ? 'Earlier warning kept as history: the provider that refused the run is working again. The refused run was not repeated.' : resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
             }

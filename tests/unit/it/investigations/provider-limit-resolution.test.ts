@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { investigationFixture } from './fixture';
 import { investigationResolution, syncInvestigations } from '../../../../server/it/investigations/ledger';
 import { providerLimitResolution } from '../../../../server/it/investigations/provider-limit-resolution';
+import { reconcileBlockerFollowups } from '../../../../server/knowledge/blocker-followups';
 
 const LIMIT = 'codex exited 1: You’ve hit your usage limit. Visit https://chatgpt.com/settings/usage to purchase more credits or try again at Nov 24th, 2026 11:50 AM.';
 const entry = (extra: object = {}): any => ({ id: 'investigation', source: { kind: 'worker', id: 'refused', requestId: 'harper-followup:one', ticket: '', failureKind: 'other', workerIds: ['refused'] }, status: 'blocked', attempts: 3, ...extra });
@@ -71,5 +72,31 @@ test('the ledger closes it as history: resolved, no lesson recorded, and said in
         expect(f.store.state.events.filter(event => /provider that refused the run is working again/.test(event.message))).toHaveLength(1);
         // A second pass changes nothing.
         const once = JSON.stringify(saved); syncInvestigations(f.store); expect(JSON.stringify(saved)).toBe(once);
+    } finally { f.close(); }
+});
+
+test('nothing is learned from it: the queued lesson batch is dropped and the follow-up closes without recording one', () => {
+    const f = investigationFixture();
+    try {
+        const id = 'investigation:brain:worker:refused:other';
+        f.store.state.workLog = [refused()]; f.store.state.slackDeliveries = [];
+        const saved = entry({ id, createdAt: '2026-11-23T09:01:00Z', updatedAt: '2026-11-23T09:05:00Z', nextAt: '', lastError: LIMIT });
+        f.store.state.it!.investigations = [saved];
+        const knowledge = f.store.state.knowledge!;
+        // While it is blocked the follow-up is recorded and, as the loop did, a lesson batch is queued for it.
+        reconcileBlockerFollowups(f.store);
+        knowledge.pending.push({ id: 'learning:queued', jobId: id, key: '', source: { kind: 'investigation', id }, subject: 'investigation', trigger: 'learning', createdAt: '2026-11-23T09:06:00Z', attempts: 0, nextAt: '', lastError: '', eventIds: [], opportunities: [] } as any);
+        knowledge.pending.push({ id: 'learning:other', jobId: 'other', key: '', source: { kind: 'investigation', id: 'another' }, subject: 'investigation', trigger: 'learning', createdAt: '2026-11-23T09:06:00Z', attempts: 0, nextAt: '', lastError: '', eventIds: [], opportunities: [] } as any);
+        const consumed = [...(knowledge.learningConsumed || [])];
+        // The provider completes a run; the ledger closes the investigation and the follow-up is reconciled.
+        f.store.state.workLog.push(run('later'));
+        syncInvestigations(f.store);
+        reconcileBlockerFollowups(f.store);
+        expect(saved.status).toBe('resolved');
+        expect(knowledge.pending.map(item => item.id)).toEqual(['learning:other']);
+        expect(knowledge.learningConsumed || []).toEqual(consumed);
+        const followup = knowledge.followups!.find(item => item.id === `investigation:${id}`)!;
+        expect(followup).toMatchObject({ disposition: 'superseded', nextAction: 'The provider that refused this run is working again; the refused run was not repeated.' });
+        expect(followup.history.length).toBeGreaterThan(1);
     } finally { f.close(); }
 });
