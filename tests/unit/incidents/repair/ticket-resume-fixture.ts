@@ -8,7 +8,7 @@ import type { QueueTicketResume } from '../../../../server/incidents/repair/disp
 import { recordIncidentEvent } from '../../../../server/incidents/record-event';
 import { syncIncidents } from '../../../../server/incidents/sync-incidents';
 import type { Store } from '../../../../server/store/store';
-import type { SubjectFix } from '../../../../src/contracts/incidents';
+import type { RepairBoundary, SubjectFix } from '../../../../src/contracts/incidents';
 import type { DeliveryRequest, Ticket } from '../../../../src/shared';
 import { savedFingerprint } from '../../store/saved-fingerprint-fixture';
 import { fakeGitHub, historyCall, REPO } from '../github-fake';
@@ -28,7 +28,7 @@ export const ticketSubject = (key: string) => `cec/delivery/ticket:${key}`;
  * `resume-ticket` route for every ticket, the repair-wait markers in place (minute 3) and the fix
  * found in the running release (minute 4): the state in which a ticket's resume is due.
  */
-export async function ticketWorld(stores: Store[], dbs: DatabaseSync[], keys = ['CEC-1', 'CEC-2'], fixEvent = 'cli-bind-1', over: Record<string, unknown> = {}) {
+export async function ticketWorld(stores: Store[], dbs: DatabaseSync[], keys = ['CEC-1', 'CEC-2'], fixEvent = 'cli-bind-1', over: Record<string, unknown> = {}, boundary: RepairBoundary = { kind: 'stage-left', stage: 'qa' }) {
     const store = projectStore('cec'); stores.push(store);
     const db = new DatabaseSync(':memory:'); dbs.push(db);
     const ledger = new IncidentLedger(db);
@@ -40,7 +40,7 @@ export async function ticketWorld(stores: Store[], dbs: DatabaseSync[], keys = [
     observed();
     const id = ledger.list()[0].id;
     recordIncidentEvent(ledger, id, 'cli-start-1', ledger.get(id)!.revision, { kind: 'repair-started', request: { kind: 'repair-started', issue: 387 }, issue: { repository: REPO, number: 387, url: `https://github.com/${REPO}/issues/387` } }, later(1));
-    const bindings: SubjectFix[] = ledger.get(id)!.repair!.subjects.map(subject => ({ ...subject, disposition: 'route', route: { action: 'resume-ticket', payload: { key: subject.subject.split('ticket:')[1] }, expectedStage: 'qa' }, boundary: { kind: 'stage-left', stage: 'qa' } }));
+    const bindings: SubjectFix[] = ledger.get(id)!.repair!.subjects.map(subject => ({ ...subject, disposition: 'route', route: { action: 'resume-ticket', payload: { key: subject.subject.split('ticket:')[1] }, expectedStage: 'qa' }, boundary }));
     recordIncidentEvent(ledger, id, fixEvent, ledger.get(id)!.revision, { kind: 'fix-bound', request: { kind: 'fix-bound', reference: FIX, bindings }, fix: { commit: FIX, pullRequest: null, onMain: true } }, later(2));
     admitRepairWaits(ledger, [{ store }], later(3), () => false, loud);
     await recordDeployedFixes({ ledger, identity: () => VERIFIED, loadedHash: VERIFIED.hash, execute: fakeGitHub({ [historyCall(FIX, RELEASE)]: { status: 'ahead' } }).execute, now: later(4), memory: compareMemory() });

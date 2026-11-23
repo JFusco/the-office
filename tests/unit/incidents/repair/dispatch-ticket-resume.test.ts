@@ -42,8 +42,8 @@ test('a due ticket resume queues the ticket\'s own resume once, bound to the fix
     expect(events.map(([kind]) => kind)).toEqual(['repair-resume-admitted', 'delivery-queued']);
     expect(outcome.admitted.repairResume).toEqual({ id: resumeIdentity(w.id, ONE, 'cli-bind-1'), incident: w.id, subject: ONE, digest: w.binding('CEC-1').digest, fix: 'cli-bind-1', commit: FIX, action: 'resume-ticket',
         payload: createHash('sha256').update(canonical({ key: 'CEC-1' })).digest('hex'), release: { commit: RELEASE, operation: OPERATION }, admittedAt: later(5).toISOString(),
-        // A ticket has no steps; its stage and the admission's own event are what its outcome is judged against.
-        stood: { steps: 0, stage: 'qa', event: events[0][1] } });
+        // How many stage attempts it had (none here), its stage and the admission's own event are what its outcome is judged against.
+        stood: { steps: 0, stage: 'qa', event: events[0][1], ticketAttemptsCounted: true } });
     expect(w.store.state.events[0].message).toBe(`CEC-1: resume-ticket queued to resume after harness fix ${FIX.slice(0, 7)} (${w.id}).`);
     expect(w.requests()).toEqual([outcome.admitted]);
     expect(w.admissions()).toEqual([outcome.admitted.id]);
@@ -258,4 +258,15 @@ test('a wait that runs out while the queue answers is over: the request is undon
     // The admission is dated at the instant it was given, not by how long its own reads took.
     w.store.clock = { ...w.store.clock, monotonic: () => clock += 7 };
     expect(admit(w, 'CEC-2')).toMatchObject({ replayed: false, admitted: { repairResume: { admittedAt: later(5).toISOString() } } });
+});
+
+test('the admission counts the ticket\'s own stage attempts as they stand at that moment', async () => {
+    const w = await ticketWorld(stores, dbs);
+    const begin = (key: string, stage: 'qa' | 'implement') => w.store.begin(w.tickets().find(held => held.key === key)!, stage);
+    w.store.finish(begin('CEC-1', 'implement'), { outcome: 'passed' } as never); begin('CEC-1', 'qa'); begin('CEC-2', 'qa');
+    expect((admit(w) as { admitted: DeliveryRequest }).admitted.repairResume!.stood).toMatchObject({ steps: 2, stage: 'qa' });
+    // An attempt begun afterwards is after the admission: the count saved does not move, and a replay answers with the same request.
+    begin('CEC-1', 'qa');
+    expect((admit(w, 'CEC-1', { minutes: 6 }) as { admitted: DeliveryRequest; replayed: boolean })).toMatchObject({ replayed: true, admitted: { repairResume: { stood: { steps: 2 } } } });
+    expect((admit(w, 'CEC-2', { minutes: 6 }) as { admitted: DeliveryRequest }).admitted.repairResume!.stood).toMatchObject({ steps: 1 });
 });

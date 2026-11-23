@@ -1,7 +1,6 @@
 import type { ResumeOutcomeKind, SubjectFix } from '../../../src/contracts/incidents';
 import type { HarnessRequest } from '../../../src/contracts/work';
-import type { TicketJob } from '../../../src/shared';
-import { boundaryCrossed } from './boundary-crossed';
+import { boundaryCrossed, type Progress } from './boundary-crossed';
 import { stopDatedBefore } from './stop-dated-before';
 
 /** Everything one resume's outcome is read from. Nothing here is a model's word. */
@@ -26,7 +25,10 @@ export interface OutcomeEvidence {
     reopened: { at: string; stoppedAt: string | null } | null;
     /** The resume's request as its project holds it. */
     request?: Pick<HarnessRequest, 'repairResume'>;
-    job?: Pick<TicketJob, 'stage' | 'status' | 'steps'>;
+    /** The job as its project holds it, or the ticket seen the same way (see ticket-progress.ts). */
+    job?: Progress;
+    /** What the subject is called in the words recorded; the rules are the same for both. A job when not given. */
+    noun?: 'job' | 'ticket';
     /** An operator's command recorded for the ticket after the admission (see moved-by-hand.ts). */
     moved: { kind: string; at: string } | null;
     /** Where else the job, or the resume's own request, is open: other incidents, each with when it opened there. */
@@ -67,7 +69,7 @@ const after = (at: string, than: string) => Date.parse(at) > Date.parse(than);
  * counts: the boundary is evidence about the fix, not about the request. Pure: the same evidence
  * gives the same reading, and nothing is read here (see judge-resumes.ts for what is read when).
  */
-export function resumeOutcome({ binding, admittedAt, deployedAt, replacementMarkAfterAdmission, previous, reopened, request, job, moved, elsewhere, stalled }: OutcomeEvidence): OutcomeReading | null {
+export function resumeOutcome({ binding, admittedAt, deployedAt, replacementMarkAfterAdmission, previous, reopened, request, job, noun = 'job', moved, elsewhere, stalled }: OutcomeEvidence): OutcomeReading | null {
     const say = (outcome: ResumeOutcomeKind, detail: string): OutcomeReading => ({ outcome, detail });
     if (previous === 'recurred') return null;
     if (reopened && !stopDatedBefore(reopened.stoppedAt, deployedAt)) return say('recurred', `The subject stopped again for this incident's cause, seen at ${reopened.at}, after its resume.`);
@@ -75,13 +77,13 @@ export function resumeOutcome({ binding, admittedAt, deployedAt, replacementMark
     if (replacementMarkAfterAdmission) return say('untested', 'The release that held the fix stopped serving after the resume was admitted; what happened since says nothing of the fix.');
     if (!request?.repairResume) return say('gone', 'The project no longer holds the request this resume queued.');
     const stood = request.repairResume.stood;
-    if (!stood) return say('untested', 'The resume was admitted before outcomes were judged: how the job stood then was not recorded.');
-    if (moved) return say('moved-by-hand', `An operator's command (${moved.kind}) moved the job at ${moved.at}, after its resume.`);
+    if (!stood) return say('untested', `The resume was admitted before outcomes were judged: how the ${noun} stood then was not recorded.`);
+    if (moved) return say('moved-by-hand', `An operator's command (${moved.kind}) moved the ${noun} at ${moved.at}, after its resume.`);
     if (binding.disposition === 'undeclared-boundary') return say('untested', `The fix declared no boundary to observe: ${binding.reason}`);
-    const crossing = boundaryCrossed(binding.boundary, job, stood);
+    const crossing = boundaryCrossed(binding.boundary, job, stood, noun);
     if ('unjudged' in crossing) return say('untested', crossing.unjudged);
     if (crossing.crossed) return say('advanced', crossing.detail);
-    if (!job || job.status === 'cancelled') return say('gone', job ? 'The job was cancelled before the boundary was crossed.' : 'The project no longer holds the job.');
+    if (!job || job.status === 'cancelled') return say('gone', job ? `The ${noun} was cancelled before the boundary was crossed.` : `The project no longer holds the ${noun}.`);
     if (previous === 'stalled') return null;
     if (stalled) return say('stalled', `Nothing has moved for this resume since ${stalled}: 24 hours without progress, and no wait that explains it.`);
     if (previous === 'chained') return null;

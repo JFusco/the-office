@@ -156,3 +156,15 @@ test('a stalled resume is not final: anything final replaces it; it is not said 
     expect(resumeOutcome(pending({ ...REMADE, previous: 'stalled' }))).toMatchObject({ outcome: 'untested' });
     expect(resumeOutcome(pending({ ...REOPENED, previous: 'stalled' }))).toMatchObject({ outcome: 'recurred' });
 });
+
+test('a ticket\'s outcome is read by the same rules and says ticket where a job\'s says job', () => {
+    const ticket = (over: Partial<OutcomeEvidence> = {}) => resumeOutcome(pending({ noun: 'ticket', ...over }));
+    expect(ticket({ request: request(null) })).toEqual({ outcome: 'untested', detail: 'The resume was admitted before outcomes were judged: how the ticket stood then was not recorded.' });
+    expect(ticket(MOVED)).toEqual({ outcome: 'moved-by-hand', detail: `An operator's command (pr-review-recheck) moved the ticket at ${LATER}, after its resume.` });
+    expect(ticket(LEFT)).toEqual({ outcome: 'advanced', detail: 'The ticket left review for lead-pr after its resume.' });
+    expect(ticket({ job: undefined })).toEqual({ outcome: 'gone', detail: 'The project no longer holds the ticket.' });
+    expect(ticket({ job: job({ status: 'cancelled' }) })).toEqual({ outcome: 'gone', detail: 'The ticket was cancelled before the boundary was crossed.' });
+    // Without the word the same evidence reads as it always did.
+    expect(resumeOutcome(pending({ job: undefined }))).toEqual({ outcome: 'gone', detail: 'The project no longer holds the job.' });
+    expect(resumeOutcome(pending({ noun: 'job', ...MOVED }))).toEqual(resumeOutcome(pending(MOVED)));
+});

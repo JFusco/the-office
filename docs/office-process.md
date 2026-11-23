@@ -1215,9 +1215,8 @@ date is refused as `ticket-not-resumable`. A ticket the Office itself resumed al
 while its request is queued or working. If the handler refuses before a stage runs, the ticket
 returns with the stop it had and the ledger records an opening after the deployment mark; that
 stop is dated at or before the mark, so it is not a recurrence (`server/incidents/repair/verify-incident.ts`). The
-outcome pass passes over a ticket subject until its boundaries are defined,
-so that resume stays pending and the incident is never verified on it; the incident can still
-recur or be withdrawn by the ordinary rules.
+outcome pass reads a ticket's resume by the rules it reads a job's by (see below); a resume the
+handler refused shows nothing that moved, and is `stalled` after 24 hours.
 
 The switch (`server/incidents/repair/resume-control.ts`) says whether automatic repair resumes are
 admitted, office-wide. It is one row on the control database beside the fence and the ledger, and
@@ -1321,8 +1320,7 @@ so that binding is refused `head-mismatch`, and `already-reconciled` is left for
 handler would still take. A stop whose
 wait already ran out is not resumed; it has gone back to a person.
 
-After that pass the Office judges what became of each job's resume it queued (a ticket's resume
-is passed over for now; see A ticket's resume)
+After that pass the Office judges what became of each resume it queued
 (`server/incidents/repair/judge-resumes.ts`): for every `deployed` incident, each subject of its
 latest fix whose admission the ledger holds, and only while the release that runs now is verified
 and known to hold the fix (the deployment mark alone can outlast the release it names). The
@@ -1352,6 +1350,25 @@ The project's events are read only while a subject's outcome is still open, and 
 incidents only while it can still be called chained or stalled. The pass changes no incident state and writes no
 project store, and asks the deployment fence before each subject is read and again before each
 write.
+
+A ticket subject (`project/delivery/ticket:KEY`) is read by the same rules from the ticket's own
+records. Its request is the delivery request bound to the resume. The ticket is seen as a job
+(`ticket-progress.ts`): its stage, completed at `complete`, and one step per row of the project's
+`attempts` table in the order saved, with the outcome the attempt ended with; admission saves the
+attempt count as the step count. A read-back that accepts the earlier run saves no attempt, so it
+crosses `stage-left` and not `stage-result-passed`. An operator's move is read from the delivery
+queue (`ticket-moved-by-hand.ts`): a later request for the same ticket that is marked `operator`,
+is a QA-plan retry or is a saved-implementation continuation. `DeliveryRequest.operator` is set
+only for a request the `start-pilot` or `resume-ticket` command creates
+(`server/office/http/commands.ts`); a command that finds one already queued or working creates
+none. Activity is the ticket's delivery work in the work log (a pipeline stage, `readback`,
+`reconcile`, `transition`), found by the ticket's key since those runs carry no request ID. The
+resume's own request is looked for elsewhere as `project/delivery/ID`. Admission marks that count as
+counted (`stood.ticketAttemptsCounted`), and a marked count is trusted as it is. A ticket's resume
+admitted before attempts were counted recorded none and carries no mark; where attempts had begun
+by its admission time it is read as not recording how the ticket stood, which is `untested`. The
+ticket's attempts are read only while its outcome is still open: a final outcome gives way only
+to a recurrence, which the ledger alone shows.
 
 A resume that shows nothing is `stalled` after 24 hours (`stalled-resume.ts`): asked after every
 final reading and before `chained`, which it replaces; like `chained` it gives way to any final
