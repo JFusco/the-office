@@ -5,6 +5,7 @@ import type { IncidentCollector } from '../../../server/incidents/observation';
 import { syncIncidents } from '../../../server/incidents/sync-incidents';
 import type { Store } from '../../../server/store/store';
 import { AT, candidate, item, later, observe, office, projectStore } from './incident-fixture';
+import { savedFingerprint } from '../store/saved-fingerprint-fixture';
 
 const stores: Store[] = [], dbs: DatabaseSync[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0).forEach(db => db.close()); });
@@ -47,14 +48,13 @@ test('a sync reads project state and leaves every project store byte-identical',
     s.state.it = { recoveries: { 'implementation:1': { attempts: 3, nextAt: '', status: 'needs-human', detail: 'gave up' } }, reports: [], investigations: [] } as any;
     s.state.slackDeliveries = [{ id: 'd', requestId: 'm', targetType: 'person', targetName: 'Joe', status: 'uncertain', error: 'unconfirmed', createdAt: 'c' }] as any;
     s.save();
-    const stateRow = () => JSON.stringify(s.db.prepare('SELECT * FROM state').all()), tables = () => JSON.stringify((s.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[]).map(({ name }) => [name, s.db.prepare(`SELECT * FROM "${name}"`).all()]));
-    const before = { memory: JSON.stringify(s.state), row: stateRow(), all: tables() };
+    // Everything saved for the project, every row of every table, as one digest.
+    const before = { memory: JSON.stringify(s.state), saved: savedFingerprint(s) };
     deepFreeze(s.state);
     const change = syncIncidents(l, office(observe(s, [blocked('1'), item('delivery', '2', 'merge', 'waiting', 'Work is watching')])), AT, undefined, loud);
     expect(change.incidents.length).toBeGreaterThanOrEqual(5);
     expect(JSON.stringify(s.state)).toBe(before.memory);
-    expect(stateRow()).toBe(before.row);
-    expect(tables()).toBe(before.all);
+    expect(savedFingerprint(s)).toBe(before.saved);
 });
 
 test('a subject cleared and stopped again for the same cause is a new episode of the same incident', () => {

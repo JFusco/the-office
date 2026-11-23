@@ -41,10 +41,10 @@ test('a due resume queues the bound request once, binds it to the fix and lifts 
     expect(JSON.stringify(w.jobs()[0])).toBe(job);
     expect(w.store.state.it?.recoveries ?? {}).toEqual({});
     // All of it is in the saved state.
-    const saved = JSON.parse(JSON.parse(w.saved()).body);
-    expect(saved.coordination.requests[0].repairResume.fix).toBe('cli-bind-1');
-    expect(saved.coordination.requests[0].repairResume.stood).toEqual((request.repairResume as { stood: unknown }).stood);
-    expect(Object.keys(saved.coordination.repairWaits)).toEqual(['delivery/2']);
+    const saved = w.savedState().coordination!;
+    expect(saved.requests![0].repairResume!.fix).toBe('cli-bind-1');
+    expect(saved.requests![0].repairResume!.stood).toEqual((request.repairResume as { stood: unknown }).stood);
+    expect(Object.keys(saved.repairWaits!)).toEqual(['delivery/2']);
     // The last marker goes with its map.
     admitResume(w.store, w.intent('2'), later(5));
     expect('repairWaits' in w.store.state.coordination!).toBe(false);
