@@ -8,6 +8,7 @@ import { projectById } from '../../../../server/office/projects';
 import { withAssignment } from '../../../../server/workers/assignment-context';
 import { assessDeliveryAuthority, assessDeliveryEligibility, resolveDeliveryWork } from '../../../../server/delivery/harness/delivery-authority';
 import { HOLDS } from '../../../../server/office/config';
+import { requestCapture } from '../../../../server/features/handoff/capture-store';
 import type { TicketJob, WorkKind } from '../../../../src/shared';
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(p => rmSync(p, { recursive: true, force: true })); delete HOLDS['GH-9999']; });
@@ -67,6 +68,19 @@ test('eligibility grants no write; drain permits existing stage, pause and hold 
     expect(withAssignment(claim, 'delivery', () => assessDeliveryAuthority(f.store, f.job).authorized)).toBe(true);
     f.store.state.paused = true; expect(withAssignment(claim, 'delivery', () => assessDeliveryAuthority(f.store, f.job).authorized)).toBe(false);
     f.store.state.paused = false; HOLDS[f.job.key] = 'human'; expect(withAssignment(claim, 'delivery', () => assessDeliveryAuthority(f.store, f.job).authorized)).toBe(false);
+});
+test('a capture of ticket evidence that is saved in the store is unrelated to a delivery; one that is not saved stays unknown', () => {
+    const f = fixture(), target = 'assessment:648da88b-75ea-47a1-acf5-2238e23fccbb', work = { projectId: f.store.project.id, kind: 'reconciliation' as const, id: `evidence-capture:${target}` };
+    expect(resolveDeliveryWork(f.store, work)).toEqual({ kind: 'unresolved', reason: 'Unidentified delivery or reconciliation claim' });
+    const live = f.store.claimWork(work, 'Office', 'evidence-capture', 'operations')!;
+    expect(f.run(() => assessDeliveryAuthority(f.store, f.job))).toMatchObject({ authorized: false, blockers: [`${live.id}: Unidentified delivery or reconciliation claim`] });
+    requestCapture(f.store, target, 'GH-9999', 'observation', 'v1');
+    expect(resolveDeliveryWork(f.store, work)).toEqual({ kind: 'unrelated' });
+    expect(f.run(() => assessDeliveryAuthority(f.store, f.job).authorized)).toBe(true);
+    // Only the saved target, under the kind its producer claims it with.
+    expect(resolveDeliveryWork(f.store, { ...work, id: `evidence-capture:${target}-other` }).kind).toBe('unresolved');
+    expect(resolveDeliveryWork(f.store, { ...work, id: 'evidence-capture:' }).kind).toBe('unresolved');
+    expect(resolveDeliveryWork(f.store, { ...work, kind: 'delivery' }).kind).toBe('unresolved');
 });
 test('accounting requests are unrelated, but a non-delivery kind borrowing a real job ID is unresolved', () => {
     const f = fixture(); f.store.state.coordination!.requests = [{ id: 'accounting', action: 'reconcile-time', key: f.job.key } as any];
