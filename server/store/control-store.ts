@@ -90,6 +90,10 @@ export class ControlStore {
             body: string;
         }[]).map(row => JSON.parse(row.body));
     }
+    /** The newest reports' identity and revision, newest first, without their bodies. */
+    revisions(limit: number): { id: string; date: string; revision: number }[] {
+        return this.statement('SELECT id,date,revision FROM daily_cto ORDER BY date DESC LIMIT ?').all(limit) as { id: string; date: string; revision: number }[];
+    }
     summaries(): DailyCTOSummary[] {
         return this.list(8).map(({ id, date, dueAt, collectedAt, status, detail, briefing }) => ({ id, date, dueAt, collectedAt, status, detail: briefing?.summary || detail }));
     }
