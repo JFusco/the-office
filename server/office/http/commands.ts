@@ -28,7 +28,7 @@ import { assertHarnessMayMerge } from '../../delivery/readiness/merge-ceiling';
 
 /** POST /api/commands: operator and harness commands for one project. */
 export async function commandRoute(req: Request, url: URL, context: ServiceContext & RequestContext): Promise<Response | undefined> {
-    const { offices, serviceHealth, itSpecialist, loadedRevision, snapshot, vite, project, store, engine, conversations, coordinator } = context;
+    const { offices, serviceHealth, itSpecialist, loadedRevision, vite, project, store, engine, conversations, coordinator } = context;
     if (url.pathname === '/api/commands') {
         if (req.method !== 'POST')
             return json({ error: 'POST required' }, 405);
