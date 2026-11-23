@@ -216,7 +216,7 @@ export interface RepairResume {
      * How the job stood when the resume was admitted: how many steps it had, the stage it was at,
      * and the ID of the project event the admission emitted. What happened afterwards is told
      * from these: a step saved later, a stage left, a command recorded later. Absent on a binding
-     * saved before outcomes were judged.
+     * saved before outcomes were judged. A ticket has no steps: its count is 0.
      */
     stood?: { steps: number; stage: string; event: number };
 }
