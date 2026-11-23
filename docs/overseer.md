@@ -40,7 +40,7 @@ Files, all under the data root (`.local/`):
 ```text
 pnpm office release build [COMMIT]   build .local/releases/<sha> (never activates)
 pnpm office release current          the release launchd runs, verified against its manifest
-pnpm office deploy COMMIT [--idle-minutes N]
+pnpm office deploy COMMIT [--idle-minutes N] [--below-floor]
 pnpm office deploy status            pin, lock, STOP record, last operations (reads files only)
 pnpm office deploy resume OPERATION  continue an operation whose controller died
 pnpm office deploy end OPERATION     release the fence that operation holds, nothing else
@@ -52,6 +52,20 @@ target serves and was verified. The service may be busy when it starts: the fenc
 being admitted, and `--idle-minutes` (default 5, at most 240) bounds how long the work already in
 flight may take to drain. No new work starts in any project while the fence is held, so a long wait
 is a long pause. If the service is not idle in time, the fence is released and nothing else changed.
+
+`deploy COMMIT` launches nothing unless the target is the **release floor** or descends from it.
+The floor (`server/release/release-floor.ts`, now `252f140`) is the oldest commit whose release can
+read the stores as they are saved. A store keeps its state in parts alone; an older release reads
+only the whole state row, so it would start from nothing, and a row it then saved would disagree
+with the parts and stop later releases opening that store
+([A store whose saved copies disagree](office-process.md#a-store-whose-saved-copies-disagree)).
+The command reads the history of the checkout it is typed in, since a release directory carries
+none of its own. It reads commits as they were made (no replacement refs or graft file) and fetches
+nothing. A shallow clone, a target or a floor that checkout does not have, and a git failure are
+refused as well: the floor holds only on proof from a complete history. `--below-floor` skips the check and prints that
+it did. It is a person's decision, for stores that still hold the whole state row, such as a backup
+from before the row was dropped. `resume`, `end`, `pin` and `status` are not checked, and a release
+activated by hand never passes through the command.
 
 ### Outcomes
 
