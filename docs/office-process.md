@@ -1658,3 +1658,38 @@ guidance](https://www.anthropic.com/research/building-effective-agents),
 and [AWS's retry/idempotency guidance](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/).
 These support the design distinctions; they do not prove improved Office
 throughput, a successful recovery or an applied lesson.
+
+## Accessibility Standards checkpoint
+
+The Accessibility Standards project's private Office registration sets
+`policy.checkpoint.hour` to `16` and `policy.checkpoint.weekends` to `true` for a
+daily 4 p.m. America/New_York checkpoint. It sets `policy.handsOff` to `true`
+and `policy.merge` to `harness`, and selects Pin Courier and wiki PRs for
+adoption. The operator read back the saved registration and resolved policy.
+Live service readback and observation of the scheduled checkpoint follow merge.
+
+The checkpoint requires the latest main-branch freshness workflow run to be a
+completed, successful scheduled or manually dispatched run created within the
+past 36 hours. If that run is missing, unfinished, failed, ineligible, stale, or
+its report cannot be read, the checkpoint blocks before dispatching the PM.
+The Office saves `source-scan` before reading GitHub and `source-review` before
+dispatching the PM. With the claim ended and no worker, saved step or unsettled
+Effect, outbox readback can settle an interrupted scan or a recorded scan failure
+as unfinished. It retains the error and allows a deliberate new request. A stopped
+`source-review` uses the original worker readback.
+
+The PM reads the saved report, official passages and existing scanner issues,
+then proposes a disposition for each open scanner issue. Before routing any work,
+the Office matches the workflow bot's login and numeric ID, issue number, exact
+marker and source URL. Coverage includes open issues from earlier scans. A closed
+issue is settled. Retaining the last reviewed baseline requires a retrieval-failure
+marker. A pull request into the configured target owns an issue only when GitHub
+reports its exact closing reference. A same-repository stacked pull request can
+also qualify by its closing directive.
+
+For eligible contract changes and verified no-impact decisions that require a
+baseline edit, the Office applies assignment and Ready-card changes through
+Effects. Before each write it checks the current pickup setting and assignee.
+It reads back the issue, assignee and lane on the configured board. Normal Ready
+intake owns delivery, including independent review, current-head checks, harness
+merge and board closeout.
