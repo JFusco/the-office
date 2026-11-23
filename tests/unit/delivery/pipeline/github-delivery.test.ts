@@ -1199,6 +1199,59 @@ function queuedWorkflowCoverage(a:ReturnType<typeof setup>){
  };
  return()=>{appeared=true;};
 }
+function finishingCheckCoverage(a: ReturnType<typeof setup>) {
+ const repo=a.store.project.repository,pr=a.pr,original=a.delivery.api.bind(a.delivery);let settled=false;
+ const makeRun=(n:number)=>({id:100+n,workflow_id:50,run_number:n,run_attempt:1,check_suite_id:200+n,path:'.github/workflows/check.yml',event:'pull_request',head_branch:pr.head.ref,head_sha:head,created_at:`2026-10-28T14:0${n}:00Z`,status:'completed',conclusion:n===1?'cancelled':'success',repository:{id:1,full_name:repo},head_repository:{id:1,full_name:repo},pull_requests:[{number:700,id:70,head:{sha:head,ref:pr.head.ref,repo:{id:1}},base:{sha:pr.base.sha,ref:'main',repo:{id:1}}}]});
+ const makeJob=(n:number)=>({id:300+n,name:'check',app:{id:15368,slug:'github-actions'},head_sha:head,status:'completed',conclusion:n===1?'cancelled':'success',started_at:`2026-10-28T14:0${n}:01Z`,completed_at:`2026-10-28T14:0${n}:05Z`,details_url:`https://github.com/${repo}/actions/runs/${100+n}/job/${300+n}`,check_suite:{id:200+n}});
+ // Until it settles, the list still shows the newer check running while its job already reports it finished.
+ const makeCheck=(n:number)=>n===2&&!settled?{...makeJob(n),status:'in_progress',conclusion:null,completed_at:null}:makeJob(n);
+ a.delivery.api=async path=>{
+  if(path.includes('/check-runs')){const check_runs=[1,2].map(makeCheck);return {total_count:2,check_runs};}
+  if(path.startsWith('actions/jobs/')){const n=Number(path.split('/').at(-1))-300,c=makeJob(n);return{id:c.id,run_id:100+n,run_attempt:1,head_sha:head,name:c.name,html_url:c.details_url,check_run_url:`https://api.github.com/repos/${repo}/check-runs/${c.id}`,status:c.status,conclusion:c.conclusion,started_at:c.started_at,completed_at:c.completed_at};}
+  if(path.startsWith('actions/runs/'))return makeRun(Number(path.split('/')[2])-100);
+  if(path.startsWith('actions/workflows/'))return{total_count:2,workflow_runs:[2,1].map(makeRun)};
+  if(path===`commits/${head}/status`)return{sha:head,state:'pending',total_count:0,statuses:[]};
+  return original(path);
+ };
+ return () => { settled = true; };
+}
+
+test('a finishing check saves a provider wait when the scheduler steps a retained merge', async () => {
+    const a = acceptedMergeResume();
+    finishingCheckCoverage(a);
+    a.job.status = 'queued';
+
+    await a.delivery.step(a.job);
+
+    expect(a.job).toMatchObject({ stage: 'merge', status: 'watching', stop: { kind: 'provider-checks' } });
+    expect(a.job.detail).toContain('Check check is still finishing');
+    expect(a.calls.some(c => c.includes('/merge --method PUT'))).toBe(false);
+    expect(a.run).not.toHaveBeenCalled();
+});
+
+test('a finishing check blocks preparation with an unclassified stop', async () => {
+    const a = setup();
+    Object.assign(a.job, { stage: 'prepare-pr', status: 'queued', pr: a.pr.number, head });
+    a.pr.draft = false;
+    finishingCheckCoverage(a);
+    const result = a.result();
+    result.findings = [{ id: 'checks', status: 'open', summary: 'Checks are running', actual: 'Check coverage unsettled', expected: 'Passing checks', attempts: 0 }];
+    const run = vi.spyOn(a.engine.agents, 'run').mockResolvedValue(result);
+
+    await a.delivery.step(a.job);
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(a.job).toMatchObject({ stage: 'prepare-pr', status: 'blocked', stop: { kind: 'unclassified' } });
+    expect(a.job.detail).toContain('Check check is still finishing');
+});
+
+test('a check read on either side of finishing keeps the retained merge watching, and its settled read releases it',async()=>{
+ const a=acceptedMergeResume(),settle=finishingCheckCoverage(a);
+ const before=JSON.stringify(a.job.steps);
+ for(let pass=0;pass<2;pass++){await a.delivery.observe();expect(a.job,`pass ${pass}`).toMatchObject({stage:'merge',status:'watching'});expect(a.job.detail).toContain('Check check is still finishing');}
+ expect(a.run).not.toHaveBeenCalled();expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+ settle();await a.delivery.observe();expect(a.job).toMatchObject({stage:'merge',status:'queued'});expect(JSON.stringify(a.job.steps)).toBe(before);expect(a.calls.some(c=>c.includes('/merge --method PUT'))).toBe(false);
+});
 test('positively bound newer queued workflow with no check row waits, then its actual check releases the retained merge',async()=>{
  const a=acceptedMergeResume(),appear=queuedWorkflowCoverage(a);
  const before=JSON.stringify(a.job.steps);await a.delivery.observe();expect(a.job).toMatchObject({stage:'merge',status:'watching'});expect(a.job.detail).toContain('matching check/job coverage');expect(a.run).not.toHaveBeenCalled();

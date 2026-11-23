@@ -1,4 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
+import {checkJobAgreement,isKnownCheckStatus} from './check-job-agreement';
 import { harnessMayMerge } from './merge-ceiling';
 import {teamReviewedHead} from './team-review';
 import {findingsBlock} from '../findings/advisory';
@@ -12,6 +13,10 @@ import type {GitHubDelivery} from '../pipeline/github-delivery';
 import type {TicketJob} from '../../../src/shared';
 function requireThat(value:unknown,message:string):asserts value{if(!value)throw new Error(message);}
 export class CurrentChecksWait extends Error {}
+/** A check run and its Actions job were read on either side of the check finishing. Nothing is known about the head from this read. */
+export class CheckStillFinishing extends Error {}
+/** Whether the merge stage should keep watching and read the checks again, where any other error stops it. */
+export const checksReadAgain=(error:unknown)=>error instanceof CurrentChecksWait||error instanceof CheckStillFinishing;
 const id=(n:unknown)=>Number.isSafeInteger(n)&&Number(n)>0;
 const time=(s:unknown)=>typeof s==='string'&&Number.isFinite(Date.parse(s));
 const pass=(c:any)=>c.status==='completed'&&['success','neutral','skipped'].includes(c.conclusion);
@@ -34,8 +39,13 @@ export async function selectCurrentChecks(delivery:GitHubDelivery,job:TicketJob,
    const match=typeof c.details_url==='string'&&c.details_url.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)\/job\/(\d+)$/);
    requireThat(match&&match[1]===repo&&Number(match[3])===c.id&&id(Number(match[2]))&&id(c.check_suite?.id)&&time(c.started_at)&&(!c.completed_at||time(c.completed_at)),'Canonical Actions job/run link required');
    const j=await delivery.api(`actions/jobs/${c.id}`);
-   requireThat(j.id===c.id&&j.run_id===Number(match[2])&&id(j.run_attempt)&&j.head_sha===head&&j.name===c.name&&j.html_url===c.details_url&&
-    j.check_run_url===`https://api.github.com/repos/${repo}/check-runs/${c.id}`&&j.status===c.status&&j.conclusion===c.conclusion&&j.started_at===c.started_at&&j.completed_at===c.completed_at,'Actions job does not match exact check-run');
+   const agreement=checkJobAgreement(c,j,{repository:repo,head,runId:Number(match[2])});
+   requireThat(agreement.identity,'Actions job does not match exact check-run');
+   // A check that finishes between the two reads was read mid-flight. That is its own error, not a `CurrentChecksWait`:
+   // nothing may take it as "checks are pending". Only the merge stage reads again on it (`checksReadAgain`).
+   if(agreement.differing.length&&agreement.moving)throw new CheckStillFinishing(`Check ${c.name} is still finishing (${agreement.differing.join(', ')} changed between reads)`);
+   requireThat(!agreement.differing.length,`Actions job does not match exact check-run: ${agreement.differing.join(', ')} differ`);
+   requireThat(isKnownCheckStatus(c.status),'Actions job does not match exact check-run: missing or unknown status');
    const r=await delivery.api(`actions/runs/${j.run_id}/attempts/${j.run_attempt}`);
    requireThat(r.id===j.run_id&&r.run_attempt===j.run_attempt&&r.check_suite_id===c.check_suite.id,'Actions run/attempt/suite identity differs');
    const identity=runIdentity(r,repo,head,pr);bound.push({check:c,job:j,run:r,identity});
