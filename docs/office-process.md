@@ -836,7 +836,11 @@ names and not by the service.
   needs no restore. The controller's own rollback reinstalls the release that was running before the
   failed activation, under its usual eligibility checks; that release is above the floor as long as the
   service was. Nothing in the deployment tooling checks a target against the floor: it is a rule for
-  whoever chooses the target.
+  whoever chooses the target. One deployment does end differently than before: when the target is a
+  release from the floor up to the one before this change and the store had no row, the target's start
+  writes the row again. A row that appears is a difference to the rollback comparison, so a failure after
+  that start goes to STOP for a person, where a start that admitted nothing was rolled back before. No
+  state is lost. A failure before the target opened the store is rolled back as usual.
 - **Below the floor a release reads only the row.** Started on a store without one, it begins from an
   empty state and saves that as a new row, leaving the parts where they are. Do not start one on such a
   store. To go below the floor on purpose:
@@ -851,12 +855,15 @@ names and not by the service.
   4. Confirm read-only, on each database, that the row equals the parts in order (`{}` for a saved empty
      state). A copy's date or checksum does not show this; read the row and the parts.
   5. Only then start the older release or move the controller pin.
-- **Coming back from below the floor always meets the refusal below**, because such a release writes the
-  row at every start and never the parts. Come back up only through this release or a later one, and check
-  each database with it before any service start, controller pin change or deployment: `pnpm office
-  baseline` from this release's checkout reads the project stores, and the controller store is compared by
-  hand as in step 3 of the next list. A release from the floor up to the one before this change must not
-  be started first: it takes a differing row without asking and writes the parts over from it.
+- **Coming back from below the floor**, come up only through this release or a later one. A release
+  below the floor writes the row at every start and never the parts, so a store it ran on is refused here
+  unless its row was written while the store had no parts. Before any service start, controller pin
+  change or deployment that could start an older writer, check every stopped database with this
+  release's read-only reader: `pnpm office baseline` from this release's checkout reads the project
+  stores, and `readSavedState(path)` (`server/store/read-saved-state.ts`) reads
+  `deployments/controller.sqlite` the same way. Where it reports a disagreement, follow the next section.
+  A release from the floor up to the one before this change must not be started first: it takes a
+  differing row without asking and writes the parts over from it.
 
 #### A store whose saved copies disagree
 
@@ -945,7 +952,8 @@ sent again, and the rollback's own separately identified steps settle the servic
 rollback is code only. It requires a complete, readable baseline taken after the old service
 stopped. The controller checks that every admission cursor and store fingerprint still matches
 before restoring the plist and before sending the restart. A target that started under the fence
-and admitted nothing still matches, so a failed verification after such a start is rolled back. A
+and admitted nothing still matches, so a failed verification after such a start is rolled back,
+unless that target wrote a whole `state` row the store did not have (see the rollback floor above). A
 target whose start added a table or index, migrated any other saved state or changed any other
 row does not match. A missing baseline, unreadable store, or difference goes to STOP. If the restarted previous release fails verification, the controller
 attempts a separate halt and records whether it was confirmed. Backups are for manual recovery.

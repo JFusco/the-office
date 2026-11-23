@@ -33,18 +33,18 @@ function writer() {
     timeStatements(db, timings);
     const stored = new StateParts(db, statementCache(db), timings), state = stored.load() as Record<string, unknown>;
     const counts = () => new Map(Object.entries(timings.report().timings).map(([name, timing]) => [name, timing.calls]));
-    /** The statements `work` ran that are not reads. */
+    /** The statements `work` ran that are not reads; `PRAGMA data_version` is a read. */
     const writes = (work: () => unknown) => {
         const before = counts();
         work();
         return Object.fromEntries([...counts()].map(([name, count]) => [name, count - (before.get(name) ?? 0)] as const)
-            .filter(([name, count]) => count && name.startsWith('sql: ') && !name.startsWith('sql: SELECT ')));
+            .filter(([name, count]) => count && name.startsWith('sql: ') && !name.startsWith('sql: SELECT ') && name !== 'sql: PRAGMA data_version'));
     };
     return { db, stored, state, writes };
 }
 const row = (db: DatabaseSync) => (db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined)?.body;
 /** The ordered parts as one text, joined here and not by the code under test. */
-const joined = (db: DatabaseSync) => `{${(db.prepare('SELECT key,body FROM state_parts ORDER BY position,key').all() as { key: string; body: string }[])
+const joined = (db: DatabaseSync) => `{${(db.prepare('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as { key: string; body: string }[])
     .map(part => `${JSON.stringify(part.key)}:${part.body}`).join(',')}}`;
 /** A store a previous release wrote, open in two processes: the whole row equal to the parts, and a writer on each of two connections. */
 function twoWriters() {
@@ -99,4 +99,48 @@ test('an empty state is saved over whatever another writer saved since: its part
     expect([row(b.db), joined(b.db), writer().state]).toEqual(['{}', '{}', {}]);
     expect(a.writes(() => a.stored.save({}, false))).toEqual({});
     expect([row(b.db), joined(b.db)]).toEqual(['{}', '{}']);
+});
+
+test('two writers that each remove their own last key leave a saved empty object, not a store that was never saved', () => {
+    writer().stored.save({ a: 1, b: 2 }, false);
+    const a = writer(), b = writer();
+    expect([a.state, b.state, row(a.db)]).toEqual([{ a: 1, b: 2 }, { a: 1, b: 2 }, undefined]);
+    a.state.b = undefined;
+    expect(a.stored.save(a.state, false)).toBe('{"a":1}'.length);
+    b.state.a = undefined; // It still remembers `b` as saved, so by its own memory a part remains.
+    let size = 0;
+    expect(b.writes(() => { size = b.stored.save(b.state, false); })).toEqual({ 'sql: DELETE FROM state_parts WHERE key=?': 1, [WRITE_EMPTY_ROW]: 1 });
+    expect([size, a.db.prepare('SELECT COUNT(*) AS n FROM state_parts').get(), row(a.db)]).toEqual([2, { n: 0 }, '{}']);
+    expect(writer().state).toEqual({}); // No parts and no row would load as null.
+});
+
+test('a save that refreshes the whole row returns the length of the text it joined from the saved parts, and so does the next unchanged save', () => {
+    const { a, b } = twoWriters();
+    a.state.revision = 100;
+    a.stored.save(a.state, false);
+    b.state.serverTime = 't1'; // Same length as before, and it still remembers `revision` as 1.
+    const size = b.stored.save(b.state, false), text = joined(a.db);
+    expect(text).toBe('{"startedAt":"t0","serverTime":"t1","revision":100,"events":[],"flag":false}');
+    // The length of what this writer remembers is two short of what is saved.
+    expect([size, b.stored.save(b.state, false), row(a.db)]).toEqual([text.length, text.length, text]);
+});
+
+test('a row another connection writes after this one learned there was none is kept in step, not left beside different parts', () => {
+    const first = writer();
+    first.stored.save({ pilotKey: 'GH-1', revision: 1 }, false);
+    // This writer now knows the store has no whole row.
+    const knowing = writer();
+    knowing.state.revision = 2;
+    knowing.stored.save(knowing.state, false);
+    expect(row(knowing.db)).toBeUndefined();
+    // Another connection saves an empty state: no parts, and the literal {} in the whole row.
+    first.stored.save({}, false);
+    expect(row(first.db)).toBe('{}');
+    // Only a start key differs from what this writer last saved, so nothing it writes would remove a row.
+    knowing.state.revision = 3;
+    knowing.stored.save(knowing.state, false);
+    // Would be {} beside one part if the earlier "no row" were trusted: a store that refuses to open.
+    expect(row(knowing.db)).toBe(joined(knowing.db));
+    expect(JSON.parse(joined(knowing.db))).toEqual({ revision: 3 });
+    expect(writer().state).toEqual({ revision: 3 });
 });

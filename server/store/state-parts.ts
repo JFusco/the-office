@@ -24,13 +24,19 @@ const SAVEPOINT = 'state_parts_save';
  * `position`.
  *
  * Another connection may have the same store open (the deployment controller's processes do). So whether the row
- * exists is read inside each write, never remembered, and a row kept in step is rebuilt from the parts as they
- * are saved, with an UPDATE that cannot create it.
+ * exists is trusted only while no other connection has committed since it was read (`PRAGMA data_version`), and
+ * is read again inside the write otherwise; a row kept in step is rebuilt from the parts as they are saved, with
+ * an UPDATE that cannot create it.
  */
 export class StateParts {
     private written = new Map<string, WrittenPart>();
-    /** The whole `state` row held exactly the joined parts when this connection last read or wrote it. Whether a row exists at all is read in each write. */
+    /** The whole `state` row held exactly the joined parts when this connection last read or wrote it. */
     private rowMatchesParts = false;
+    /** Whether the row exists, as of `seenVersion`; undefined until a write has read it. */
+    private rowPresent: boolean | undefined;
+    private seenVersion = -1;
+    /** The length of the saved text when it was joined from parts another connection also wrote; otherwise the parts this connection remembers give it. */
+    private joinedSize: number | undefined;
     /** The part rows in the database are not what `written` says, so the next save replaces them all. */
     private stale = false;
     constructor(private db: DatabaseSync, private statement: (sql: string) => StatementSync, private timings: StoreTimings) {}
@@ -42,7 +48,7 @@ export class StateParts {
     load(saved: SavedSelection = readSaved(this.db)): unknown {
         this.written = new Map();
         this.rowMatchesParts = saved.rowMatches;
-        this.stale = false;
+        this.stale = false; this.rowPresent = undefined; this.joinedSize = undefined;
         if (saved.source !== 'parts') return saved.source === 'row' ? JSON.parse(saved.row!) : null;
         return Object.fromEntries(saved.rows.map(({ key, position, body }) => {
             const value: unknown = JSON.parse(body);
@@ -55,8 +61,8 @@ export class StateParts {
 
     /** What is remembered as written, to put back when the database rolls those writes back. */
     mark(): () => void {
-        const written = new Map(this.written), stale = this.stale, rowMatchesParts = this.rowMatchesParts;
-        return () => { this.written = written; this.stale = stale; this.rowMatchesParts = rowMatchesParts; };
+        const { stale, rowMatchesParts, rowPresent, seenVersion, joinedSize } = this, written = new Map(this.written);
+        return () => { Object.assign(this, { written, stale, rowMatchesParts, rowPresent, seenVersion, joinedSize }); };
     }
 
     /**
@@ -79,9 +85,9 @@ export class StateParts {
             // A save that cannot be undone by itself must not stay committable: the caller's whole transaction goes.
             const undone = attempt(inTransaction ? `ROLLBACK TO ${SAVEPOINT}; RELEASE ${SAVEPOINT}` : 'ROLLBACK') || attempt('ROLLBACK');
             restore();
-            // Neither undo worked and the transaction is still open: nothing remembered can be trusted for the
-            // part rows, so the next save replaces them all.
-            if (!undone && this.db.isTransaction) this.stale = true;
+            // Neither undo worked and the transaction is still open with part of this save in it. It must not be
+            // committed: the connection is closed, which discards the transaction. The store is unusable after this.
+            if (!undone) { this.stale = true; try { if (this.db.isTransaction) this.db.close(); } catch { /* The save's failure is the one to report. */ } }
             throw error;
         }
     }
@@ -117,8 +123,7 @@ export class StateParts {
         }, chars => chars);
         const removed = [...this.written.keys()].filter(key => !next.has(key));
         if (!next.size) return this.writeEmpty(next);
-        // Read now, inside the write's transaction: another connection may have removed the row since it was last seen.
-        const rowPresent = this.statement('SELECT 1 FROM state WHERE id=1').get() !== undefined;
+        const rowPresent = this.rowExists();
         // `written` is the last state known to be saved, also while the part rows are stale, so it is what a
         // previous release's row is judged against.
         const otherChange = [...differing, ...removed].some(key => !startStateKey(key));
@@ -131,15 +136,21 @@ export class StateParts {
         if (!this.stale) for (const key of removed) this.statement('DELETE FROM state_parts WHERE key=?').run(key);
         if (rowPresent && otherChange) {
             this.statement('DELETE FROM state WHERE id=1').run();
-            this.rowMatchesParts = false;
+            this.rowPresent = false; this.rowMatchesParts = false; this.joinedSize = undefined;
         } else if (rowPresent && (changed.length || removed.length || !this.rowMatchesParts)) {
             // A start is all that has happened since this row was written: keep it as the previous release reads it.
             // It is joined from the parts as saved, which may hold another connection's keys, and only updated.
-            this.statement(UPDATE_ROW).run(joinParts(this.statement(SAVED_PARTS).all() as PartRow[]));
-            this.rowMatchesParts = true;
-        } else if (!rowPresent) this.rowMatchesParts = false;
+            const joined = joinParts(this.statement(SAVED_PARTS).all() as PartRow[]);
+            this.statement(UPDATE_ROW).run(joined);
+            this.rowMatchesParts = true; this.joinedSize = joined.length;
+        } else if (!rowPresent) {
+            this.rowMatchesParts = false;
+            if (changed.length || removed.length) this.joinedSize = undefined;
+            // Another connection may have removed every other part: no parts and no row would read as never saved.
+            if (removed.length && !this.statement('SELECT 1 FROM state_parts LIMIT 1').get()) return this.writeEmpty(new Map());
+        }
         this.written = next; this.stale = false;
-        return this.size(next);
+        return this.joinedSize ?? this.size(next);
     }
 
     /** A saved empty object has no part rows, and no parts with no row would read as never saved: the row holds `{}`. */
@@ -148,8 +159,25 @@ export class StateParts {
         if (this.statement('SELECT 1 FROM state_parts LIMIT 1').get()) this.statement('DELETE FROM state_parts').run();
         const row = this.statement('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined;
         if (row?.body !== '{}') this.statement(WRITE_EMPTY_ROW).run();
-        this.written = next; this.stale = false; this.rowMatchesParts = true;
+        this.written = next; this.stale = false; this.rowMatchesParts = true; this.rowPresent = true; this.joinedSize = undefined;
+        this.seenVersion = this.dataVersion();
         return 2;
+    }
+
+    /** Changes when another connection commits, never for this connection's own writes. */
+    private dataVersion(): number {
+        return (this.statement('PRAGMA data_version').get() as { data_version: number }).data_version;
+    }
+
+    /** Whether the whole row exists: remembered while no other connection has committed since it was read, read again otherwise. */
+    private rowExists(): boolean {
+        const version = this.dataVersion();
+        if (this.rowPresent === undefined || version !== this.seenVersion) {
+            this.rowPresent = this.statement('SELECT 1 FROM state WHERE id=1').get() !== undefined;
+            // What another connection saved may have changed the joined length too; it is measured again when next joined.
+            this.seenVersion = version; this.joinedSize = undefined;
+        }
+        return this.rowPresent;
     }
 
     private size(parts: Map<string, WrittenPart>): number {

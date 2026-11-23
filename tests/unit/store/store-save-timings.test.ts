@@ -27,8 +27,8 @@ function openStore() {
 const WRITE_ROW = 'sql: INSERT OR REPLACE INTO state(id,body) VALUES(?,?)';
 const UPDATE_ROW = 'sql: UPDATE state SET body=? WHERE id=?';
 const SAVED_PARTS = 'sql: SELECT key,position,body FROM state_parts ORDER BY position,key';
-/** Every statement of a save: it reads once whether the whole row is there, and `writes` are all it writes. */
-const saving = (writes: Record<string, number> = {}) => ({ 'sql: SELECT ? FROM state WHERE id=?': 1, ...writes });
+/** Every statement of a save in an open store, which knows since its start whether the whole row is there: it reads once whether another connection committed, and `writes` are all it writes. */
+const saving = (writes: Record<string, number> = {}) => ({ 'sql: PRAGMA data_version': 1, ...writes });
 const WRITE_PART = 'sql: INSERT OR REPLACE INTO state_parts(key,position,body) VALUES(?,?,?)';
 const row = (store: Store) => (store.db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined)?.body;
 /** What a save must store, worked out without the writer: the redacted text of the whole state. */
@@ -79,7 +79,7 @@ test('in a store without the whole row a transaction writes one part row for eac
     expect(during(store, () => store.transaction(() => { store.state.pilotKey = 'CEC-1'; store.state.paused = true; }))).toEqual(saving({ [WRITE_PART]: 2 }));
     const state = store.state as unknown as Record<string, unknown>;
     expect(during(store, () => store.transaction(() => { state.probe = 'added last'; }))).toEqual(saving({ [WRITE_PART]: 1 }));
-    expect(during(store, () => store.transaction(() => { delete state.probe; }))).toEqual(saving({ 'sql: DELETE FROM state_parts WHERE key=?': 1 }));
+    expect(during(store, () => store.transaction(() => { delete state.probe; }))).toEqual(saving({ 'sql: DELETE FROM state_parts WHERE key=?': 1, 'sql: SELECT ? FROM state_parts LIMIT ?': 1 })); // The read: some part is still saved.
     expect(during(store, () => store.transaction(() => {}))).toEqual(saving()); // Nothing changed: nothing written.
     expect(during(store, () => store.save())).toEqual(saving());
     expect(join).not.toHaveBeenCalled();

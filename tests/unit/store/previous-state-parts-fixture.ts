@@ -6,6 +6,13 @@
  * eec65d3) with the `joinParts` and `selectSaved` it used from `server/store/saved-state.ts`, whose rule was that
  * a row differing from the parts wins. Only the import paths differ. Do not modernise this file or point it at
  * the current `saved-state.ts`: it must stay independent of the code it is compared with.
+ *
+ * What it stands for, checked with `git log 252f140^..7d89ca0 -- server/store/state-parts.ts
+ * server/store/saved-state.ts` and `git show` of each: the file at 252f140 (the first release with parts) and at
+ * 39250fb is the same, and from there to 7d89ca0 only eec65d3 changed it, moving the choice between row and parts
+ * into `selectSaved` with the same rule. In all three, a store with parts and no row loads the parts (`stale`
+ * needs a row), and its first save writes the row, because the no-write shortcut needs `rowMatchesParts`, which is
+ * false without a row. So this fixture's behaviour for a row-absent store is that of every release from the floor.
  */
 import type { StatementSync } from 'node:sqlite';
 import { sanitizeObject } from '../../../server/office/security';

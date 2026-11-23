@@ -122,7 +122,8 @@ export class Store {
         catch (error) {
             partsAsWritten();
             this.savedChars = previousSavedChars;
-            if (this.db.isTransaction) this.db.exec('ROLLBACK');
+            // A save that could not be undone closes the connection; there is then nothing left to roll back.
+            try { if (this.db.isTransaction) this.db.exec('ROLLBACK'); } catch { /* The operation's failure is the one to report. */ }
             // In place: callers holding a ticket or job across an await keep the live record.
             // The saved copy is always a correct state, so it is the fallback if the in-place restore cannot finish.
             try { restoreInPlace(this.state, previous); } catch { this.state = previous; }
