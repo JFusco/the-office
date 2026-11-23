@@ -5,6 +5,7 @@ import type { DailyCTOReport, DailyCTOResult } from '../../src/shared';
 import { dailyReviewDate, reviewWeekday } from './daily-review-schedule';
 import { dailyReviewPrompt } from './daily-review-prompt';
 import { ControlStore } from '../store/control-store';
+import { type SeenReports, waitingReport } from './waiting-report';
 import { easternDay, easternInstant } from '../office/clock';
 import { collectCTOFacts } from './cto-collector';
 import { DailyResultSchema, FreshDailyResultSchema, GoalEvidenceRequestSchema, applyGoalReview } from './goal-reviews';
@@ -20,6 +21,7 @@ const evidenceRequestConflicts = new Set([
 export class DailyCTO {
     private running = false;
     private owner = randomUUID();
+    private seen: SeenReports = new Map();
     constructor(public control: ControlStore, private entries: () => OfficeEntry[], private readEntries = entries) { }
     collect(now = this.control.clock.now()): void {
         const config = this.control.configuration();
@@ -78,7 +80,7 @@ export class DailyCTO {
     }
     pending(): DailyCTOReport | undefined {
         if (!reviewWeekday(easternDay(this.control.clock.now()))) return;
-        return this.control.list(100).reverse().find(report => ['queued', 'recovery-queued', 'assessed'].includes(report.status) && (report.status !== 'queued' || reviewWeekday(report.date)));
+        return waitingReport(this.control, this.seen);
     }
     async pump(report: DailyCTOReport): Promise<void> {
         if (!reviewWeekday(easternDay(this.control.clock.now())) || this.running || !this.control.claimLease('cto', this.owner))
