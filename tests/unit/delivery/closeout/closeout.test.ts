@@ -27,6 +27,24 @@ test('closes an open issue once, posts one marker comment and moves the card to 
     expect(f.state.comments).toHaveLength(1);
     expect(f.state.calls.filter(c => c.startsWith('gh issue close')).length).toBe(1);
 });
+test('the move to Done is one read-back Effect per card bound to the merge commit, not sent again by a second closeout', async () => {
+    const { f, job } = merged();
+    f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'review' });
+    let mutations = 0;
+    const base = f.delivery.execute;
+    f.delivery.execute = (async (program: string, args: string[], options: any = {}) => {
+        if (args[1] === 'graphql' && String(JSON.parse(options.input).query).startsWith('mutation')) mutations++;
+        return base(program, args, options);
+    }) as typeof base;
+    await claimedDelivery(f.store, job, () => harnessCloseout(f.delivery, job, f.artifactRoot(job)));
+    const lanes = () => (f.store.db.prepare("SELECT body FROM effects WHERE body LIKE '%github-project-status%'").all() as { body: string }[]).map(row => JSON.parse(row.body));
+    expect(lanes().map(effect => [effect.id, effect.status])).toEqual(['issue-card', 'pr-card'].map(item => [`harness:${job.id}:closeout:${MERGE}:lane:${item}`, 'verified']));
+    expect(f.state.cards.map(card => card.status)).toEqual(['done', 'done']);
+    expect(job.boardUpdates!.map(update => [update.stage, update.status])).toEqual([['closeout', 'verified'], ['closeout', 'verified']]);
+    await claimedDelivery(f.store, job, () => harnessCloseout(f.delivery, job, f.artifactRoot(job)));
+    expect(mutations).toBe(2);
+    expect(lanes()).toHaveLength(2);
+});
 test('failed or missing merge Actions block closeout before any write', async () => {
     const { f, job } = merged();
     f.state.runs[0].conclusion = 'failure';

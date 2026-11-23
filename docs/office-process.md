@@ -374,6 +374,17 @@ and the result it saved passed at the job's head with no receipt other than a ve
 (`completed-preparation.ts`). An unfinished worker, a saved or recorded write, an unverified effect, a
 worktree, a merge in flight or a recovery record still holds the handoff for read-back.
 
+When the project owner merges a pull request the Office published itself, while its delivery is stopped
+at the Lead review or the PR preparation, the Office settles it (`server/delivery/pipeline/owner-merged-stopped.ts`).
+The candidate must be the one the Office created, its branch and worktree, with a passed harness draft that
+published the current head to that pull request. GitHub must show the PR closed and merged by the owner at
+that head into the project target, still linked to the job's issue. Nothing else of the job may be open: no
+claim, recovery request, worker that did not run to its end, hold, prerequisite, park, merge attempt or
+approval wait, repair in progress, stopped-base update, unverified board move or receipt, or unsettled effect. The Office then records the owner and both commits,
+clears the stop and watches the merge commit like any merge: its Actions decide between the existing CI route
+and the ordinary closeout. Closeout moves each card that is not yet in Done with one read-back effect bound to the merge commit.
+The finished review and its findings are kept; no merge, worker or provider write is sent to settle it.
+
 A GitHub writer stage (implement or update base) on a hands-off project whose run died within
 the last six hours is restarted by the harness, not read back by a model. The harness first confirms the
 run's processes are gone and that the remote branch and PR are still at the accepted head. It
