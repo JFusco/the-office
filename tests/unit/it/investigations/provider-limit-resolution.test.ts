@@ -61,7 +61,8 @@ test('the ledger closes it as history: resolved, no lesson recorded, and said in
     const f = investigationFixture();
     try {
         f.store.state.workLog = [refused(), run('later')]; f.store.state.slackDeliveries = [];
-        const saved = entry({ createdAt: '2026-11-23T09:01:00Z', updatedAt: '2026-11-23T09:05:00Z', nextAt: '', lastError: LIMIT });
+        // Saved under the id the ledger gives this source, as the loop's investigations are.
+        const saved = entry({ id: 'investigation:brain:worker:refused:other', createdAt: '2026-11-23T09:01:00Z', updatedAt: '2026-11-23T09:05:00Z', nextAt: '', lastError: LIMIT });
         f.store.state.it!.investigations = [saved];
         const lessons = () => JSON.stringify(f.store.state.knowledge ?? null), before = lessons();
         syncInvestigations(f.store);
