@@ -55,9 +55,10 @@ is a long pause. If the service is not idle in time, the fence is released and n
 
 `deploy COMMIT` launches nothing unless the target is the **release floor** or descends from it.
 The floor (`server/release/release-floor.ts`, now `252f140`) is the oldest commit whose release can
-read the stores as they are saved. A store keeps its state in parts alone; an older release reads
-only the whole state row, so it would start from nothing, and a row it then saved would disagree
-with the parts and stop later releases opening that store
+read the stores as they are saved. A store keeps its state in parts and drops the whole state row
+at its first saved change beyond what a start writes. An older release reads only that row: on a
+store without it, it would start from nothing, and a row it then saved would disagree with the
+parts and stop later releases opening that store
 ([A store whose saved copies disagree](office-process.md#a-store-whose-saved-copies-disagree)).
 The command reads the history of the checkout it is typed in, since a release directory carries
 none of its own. It reads commits as they were made (no replacement refs or graft file) and fetches

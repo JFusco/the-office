@@ -923,11 +923,12 @@ service is stopped only after it reads idle.
 
 Before it launches the controller, the command refuses a target that is not the release floor or a
 descendant of it (`server/release/release-floor.ts`): the oldest commit whose release reads a
-project's state from its parts. An older release reads only the whole state row, which a store no
-longer keeps. The command reads the history of the invoking checkout, read-only and without
-contacting a remote, and refuses when that history cannot prove the target holds the floor: a
-shallow clone never can. `--below-floor` is a person's override; it skips the check and is not
-passed to the controller. Resuming, ending and pinning are not checked.
+project's state from its parts. An older release reads only the whole state row, which a store
+drops at its first saved change beyond what a start writes. The command reads the history of the
+invoking checkout, read-only and without contacting a remote, and refuses when that history cannot
+prove the target holds the floor: a shallow clone never can. `--below-floor` is a person's
+override; it skips the check and is not passed to the controller. Resuming, ending and pinning are
+not checked.
 
 It then runs these steps in order under the deploy lock. Each is journaled `intended` before it runs
 and settled after:
