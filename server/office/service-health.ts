@@ -5,6 +5,7 @@ import type {HealthReport,OfficeSnapshot,ServiceHealth} from '../../src/shared';
 import {ProviderStatusChecks} from './provider-status';
 import {slackHealth} from './slack-health';
 import {listenerHealth} from './listener-health';
+import {signInFailure} from './sign-in-failure';
 
 export type Probe={id:string;name:string;program:string;args:string[];parse:(raw:string)=>Pick<ServiceHealth,'status'|'detail'|'identity'>;nextStep:string};
 const probes:Probe[]=[
@@ -28,7 +29,7 @@ export class ServiceHealthChecks {
   this.pending=Promise.all(probes.map(async (p):Promise<ServiceHealth>=>{
    const stamp=()=>({kind:'login' as const,checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+150000).toISOString()});
    try{return {...p.parse(await this.execute(p.program,p.args,{timeout:60000,readOnly:true})),id:p.id,name:p.name,...stamp(),nextStep:p.nextStep};}
-   catch(error){const text=String(error),auth=/not logged in|authentication|unauthorized|invalid.*token|expired.*token|login required|no active account|not authenticated|401\b/i.test(text),timeout=/timed? out|timeout/i.test(text);return {id:p.id,name:p.name,status:auth?'disconnected':'unknown',detail:auth?'The Office process could not authenticate.':timeout?'The read-only status check timed out after 60 seconds. Login status is unverified.':'The status command could not complete. Login status is unverified.',...stamp(),nextStep:auth?p.nextStep:'Ellis owns the read-only checks; Morgan investigates persistent probe failures. No login change is indicated by this result.'};}
+   catch(error){const text=String(error),auth=/not logged in|authentication|unauthorized|invalid.*token|expired.*token|login required|no active account|not authenticated|401\b/i.test(text),timeout=/timed? out|timeout/i.test(text);return {id:p.id,name:p.name,status:auth?'disconnected':'unknown',detail:auth?'The Office process could not authenticate.':timeout?'The read-only status check timed out after 60 seconds. Login status is unverified.':'The status command could not complete. Login status is unverified.',...(auth?{failure:signInFailure(error)}:{}),...stamp(),nextStep:auth?p.nextStep:'Ellis owns the read-only checks; Morgan investigates persistent probe failures. No login change is indicated by this result.'};}
   })).then(services=>{this.cached={at:Date.now(),services};return services;}).finally(()=>{this.pending=undefined;});
   return this.pending;
  }

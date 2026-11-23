@@ -67,7 +67,9 @@ test('unknown provider checks never request a login after retries, while confirm
     a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [{ id: 'anthropic', name: 'Claude', status: 'disconnected', detail: 'Not logged in', checkedAt: '', nextStep: 'Run /login' }] } as any);
     await a.it.tick(new Date(1793222000000), true);
     syncOutbox(a.state);
-    expect(a.state.outbox.find(o => o.status === 'open')?.detail).toContain('Run /login');
+    // A confirmed logout is the owner's alone: its own item with the steps, while the follow-up keeps the check's own next step.
+    expect(a.state.it!.reports.at(-1)!.followUps).toEqual([expect.objectContaining({ id: 'login:anthropic', owner: 'You', detail: 'Run /login' })]);
+    expect(a.state.outbox.filter(o => o.status === 'open')).toEqual([expect.objectContaining({ id: 'only-you:login:anthropic', title: 'Only you can do this: sign in to Claude', ownerSteps: expect.objectContaining({ steps: expect.arrayContaining([{ text: 'Check whether Claude is signed in.', run: 'claude auth status' }]) }) })]);
 });
 test('public provider incidents and unreadable status pages do not request credential recovery', async () => {
     const a = setup();
