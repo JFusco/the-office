@@ -20,3 +20,18 @@ test('the kept error is on one line, has no secrets and is at most 400 character
     expect(signInFailure(new Error('gh exited 1:\n  401   Bearer abc123\n'))).toBe('Error: gh exited 1: 401 Bearer [redacted]');
     expect(signInFailure('x'.repeat(900))).toHaveLength(400);
 });
+
+test('provider token formats the office-wide redaction does not cover are removed, with the useful words kept', () => {
+    const fine = 'github_pat_' + 'A1b2C3d4E5f6G7h8I9j0K1'.repeat(3);
+    const kept = signInFailure(new Error(`gh exited 1: HTTP 401: Bad credentials for ${fine} at https://someone:hunter2@example.invalid/api {"access_token":"abc.def-123","error":"invalid_grant"} eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl`));
+    expect(kept).toContain('HTTP 401: Bad credentials');
+    expect(kept).toContain('invalid_grant');
+    for (const secret of [fine, 'hunter2', 'abc.def-123', 'eyJhbGciOiJIUzI1NiJ9']) expect(kept, secret).not.toContain(secret);
+    expect(kept).not.toMatch(/\n/);
+});
+
+test('a failure long enough to be a cut-off fragment is not quoted at all', () => {
+    // The runner keeps the end of a long error: a credential there can have lost the start that marks it.
+    expect(signInFailure(`gh exited 1: ${'x'.repeat(1500)}`)).toBe('');
+    expect(signInFailure(`gh exited 1: ${'x'.repeat(1400)}`)).toHaveLength(400);
+});

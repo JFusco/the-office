@@ -6,6 +6,7 @@ export function OutboxOwnerSteps({ ownerSteps }: { ownerSteps: OwnerSteps }) {
     return <div className="grid gap-3" data-outbox-owner-steps>
         <p className="font-semibold">Only you can do this</p>
         <p className="text-13 leading-relaxed wrap-anywhere">{ownerSteps.why}</p>
+        {ownerSteps.providerSaid ? <p className="text-13 leading-relaxed wrap-anywhere"><b>What the provider said:</b> <q>{ownerSteps.providerSaid}</q></p> : null}
         <ol className="grid list-decimal gap-3 pl-5 text-13 leading-relaxed">{ownerSteps.steps.map((step, index) => <li key={index}>
             <span>{step.text}</span>
             {step.run ? <code className="mt-1.5 block rounded-6 border border-line bg-paper px-3 py-2 font-mono text-12 select-all wrap-anywhere">{step.run}</code> : null}

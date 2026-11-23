@@ -20,6 +20,8 @@ const render = (initialId?: string) => renderToStaticMarkup(createElement(Outbox
 test('an opened item with owner steps shows why, each step with its command and what shows it worked', () => {
     const html = render('only-you:login:atlassian');
     expect(html).toContain('data-outbox-owner-steps');
+    expect(html).toContain('What the provider said:');
+    expect(html).toContain('Your OAuth session has expired.');
     for (const text of ['Only you can do this', 'Your OAuth session has expired.', '<code', '>twg doctor</code>', '>twg login --force</code>', 'You&#x27;ll know it worked when:', 'closes by itself'])
         expect(html).toContain(text);
     expect(html.match(/<li/g)).toHaveLength(ownerSteps.steps.length);

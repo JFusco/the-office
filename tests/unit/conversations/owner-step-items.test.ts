@@ -22,7 +22,7 @@ test('a sign-in only the owner can do is its own open item with its steps, not p
     const item = byId(outbox, 'only-you:login:atlassian')!;
     expect(item).toMatchObject({ status: 'open', title: TITLE, role: 'pm' });
     expect(item.detail).toBe(item.ownerSteps!.why);
-    expect(item.detail).toContain('Your OAuth session has expired.');
+    expect(item.ownerSteps!.providerSaid).toBe('Error: twg exited 77: Your OAuth session has expired.');
     expect(item.ownerSteps!.steps.flatMap(step => step.run || [])).toEqual(['twg doctor', 'twg login --force', 'twg doctor']);
     expect(byId(outbox, 'it-followup')).toBeUndefined();
 });
@@ -55,4 +55,14 @@ test('the split keeps order and a missing title has a plain fallback', () => {
     expect(rest).toEqual([plain]);
     expect(sameOwnerSteps(undefined, undefined)).toBe(true);
     expect(sameOwnerSteps(signIn().ownerSteps, undefined)).toBe(false);
+});
+
+test('only a sign-in becomes its own item: another follow-up that carries steps stays in the joined one, in order', () => {
+    const other: ITFollowUp = { id: 'approval:budget', owner: 'You', detail: 'Approve the budget.', ownerSteps: signInSteps({ id: 'elsewhere', name: 'Budget' }) };
+    const split = ownerStepItems([plain, signIn(), other]);
+    expect(split.items.map(item => item.id)).toEqual(['only-you:login:atlassian']);
+    expect(split.rest.map(f => f.id)).toEqual(['other', 'approval:budget']);
+    const outbox = projectOutbox(withReport([plain, signIn(), other]));
+    expect(byId(outbox, 'it-followup')!.detail).toBe('Check the office printer.\nApprove the budget.');
+    expect(byId(outbox, 'only-you:approval:budget')).toBeUndefined();
 });

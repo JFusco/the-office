@@ -5,8 +5,7 @@ const runs = (id: string, name = 'Service') => signInSteps({ id, name }).steps.f
 
 test('each known service lists its own status and sign-in commands in order', () => {
     expect(runs('openai')).toEqual(['codex login status', 'codex login']);
-    expect(runs('anthropic')).toEqual(['claude auth status', 'claude']);
-    expect(signInSteps({ id: 'anthropic', name: 'Anthropic · Claude' }).steps[1].text).toContain('/login');
+    expect(runs('anthropic')).toEqual(['claude auth status', 'claude auth login']);
     expect(runs('github')).toEqual(['gh auth status', 'gh auth login']);
     expect(runs('atlassian')).toEqual(['twg doctor', 'twg login --force', 'twg doctor']);
     expect(runs('azure')).toEqual(['az account show', 'az login']);
@@ -30,10 +29,13 @@ test('the reason names the service and quotes the provider\'s error only when on
     const quoted = signInSteps({ id: 'atlassian', name, failure: 'Error: twg exited 77: Your OAuth session has expired.' });
     expect(quoted.why).toContain(`signed out of ${name}`);
     expect(quoted.why).toContain('It cannot sign in for you: the credentials are yours to enter.');
-    expect(quoted.why).toContain(`${name} refused the Office's sign-in: Error: twg exited 77: Your OAuth session has expired.`);
+    // The provider's words are kept apart from the Office's own, so each can be compared and shown on its own.
+    expect(quoted.providerSaid).toBe('Error: twg exited 77: Your OAuth session has expired.');
+    expect(quoted.why).not.toContain('OAuth session');
     const plain = signInSteps({ id: 'atlassian', name });
     expect(plain.why).toContain(`signed out of ${name}`);
-    expect(plain.why).not.toContain('refused');
+    expect(plain.why).toBe(quoted.why);
+    expect('providerSaid' in plain).toBe(false);
 });
 
 test('it says how the item closes and why it may stay open', () => {

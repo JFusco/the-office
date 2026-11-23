@@ -1,6 +1,7 @@
 import type { HumanAction } from '../shared';
 
-/** Items only the owner can clear come first; every other item keeps its place. */
+const waitsOnOwner = (item: HumanAction) => !!item.ownerSteps && item.status === 'open';
+/** Open items only the owner can clear come first; every other item, a resolved one included, keeps its place. */
 export function ownerStepsFirst(items: HumanAction[]): HumanAction[] {
-    return [...items.filter(item => item.ownerSteps), ...items.filter(item => !item.ownerSteps)];
+    return [...items.filter(waitsOnOwner), ...items.filter(item => !waitsOnOwner(item))];
 }

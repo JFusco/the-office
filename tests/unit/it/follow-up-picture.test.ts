@@ -7,7 +7,12 @@ const signIn = (failure?: string): ITFollowUp => ({ id: 'login:github', owner: '
 
 test('the provider\'s wording alone is not a change in what is outstanding', () => {
     expect(followUpPicture([signIn('HTTP 401 (request 111)')])).toBe(followUpPicture([signIn('HTTP 401 (request 222)')]));
-    expect(followUpPicture([signIn('HTTP 401')])).toBe(followUpPicture([signIn()]));
+    // Whether the provider said anything at all is a change; so is anything the Office itself wrote.
+    expect(followUpPicture([signIn('HTTP 401')])).not.toBe(followUpPicture([signIn()]));
+    const base = signIn('HTTP 401'), reworded = { ...base, ownerSteps: { ...base.ownerSteps!, why: 'The Office explains it another way.' } };
+    expect(followUpPicture([reworded])).not.toBe(followUpPicture([base]));
+    const plain = signIn(), plainReworded = { ...plain, ownerSteps: { ...plain.ownerSteps!, why: 'The Office explains it another way.' } };
+    expect(followUpPicture([plainReworded])).not.toBe(followUpPicture([plain]));
 });
 
 test('everything else about a follow-up is a change: its steps, its detail, its owner, whether it has steps at all', () => {
