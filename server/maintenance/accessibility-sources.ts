@@ -31,16 +31,25 @@ const observation = z.object({
 });
 const scan = z.object({ mode: z.enum(['index', 'full']), documents: z.array(observation).min(1) });
 const workflow = 'standards-freshness.yml';
+const sourceMarker = /^<!-- official-source:[a-f0-9]{64} -->$/;
 
 export const sourceFindings = z.array(z.object({
     issue: z.number().int().positive(),
     source: z.string().regex(/^https:\/\/\S+$/),
-    marker: z.string().regex(/^<!-- official-source:[a-f0-9]{64} -->$/),
+    marker: z.string().regex(sourceMarker),
     disposition: z.enum(['contract-change', 'baseline-update', 'retain-baseline', 'leave-unchanged']),
     evidence: z.string().trim().min(1),
 }).strict());
 type Finding = z.infer<typeof sourceFindings>[number];
 const actionable = (finding: Finding) => finding.disposition === 'contract-change' || finding.disposition === 'baseline-update';
+
+type SourceIssue = {
+    number: number; node_id: string; state: string; body: string | null; pull_request?: unknown;
+    user?: { login: string; id: number } | null;
+};
+const scannerAuthored = (issue: SourceIssue) => issue.user?.login === 'github-actions[bot]' && issue.user.id === 41898282;
+const issueLines = (issue: SourceIssue) => (issue.body || '').split(/\r?\n/);
+const issueSource = (lines: string[]) => lines.map(line => /^\S+ observation for (\S+)\.$/.exec(line)?.[1]).find(Boolean);
 
 export async function sourceReview(project: OfficeProject, root: string, execute = command, now = Date.now()) {
     const options = { cwd: project.repo, timeout: 60000, readOnly: true };
@@ -76,7 +85,7 @@ function sourceEffects(store: Store, id: string): EffectIntent[] {
 const unsettled = (effect: EffectIntent) => effect.status === 'dispatching' || effect.status === 'uncertain';
 
 export function reconcileSourceScan(store: Store, run: MaintenanceRun): boolean {
-    if (!accessibilitySources(store.project) || run.stage !== 'source-scan-failed') return false;
+    if (!accessibilitySources(store.project) || !['source-scan', 'source-scan-failed'].includes(run.stage)) return false;
     if (store.state.paused || run.steps.length || store.state.workLog?.some(work => work.requestId === run.id)
         || store.activeClaims().some(claim => claim.work.kind === 'maintenance' && claim.work.id === run.id)
         || sourceEffects(store, run.id).some(unsettled))
@@ -129,11 +138,15 @@ export async function reconcileSourceEffects(store: Store, run: MaintenanceRun, 
 }
 
 async function closingPull(store: Store, execute: typeof command, number: number, url: string): Promise<number | undefined> {
-    const pulls = await readRepo(store, execute, 'pulls?state=open&per_page=100', true) as { number: number; body: string | null }[];
+    const { repository, target } = store.project;
+    const pulls = await readRepo(store, execute, 'pulls?state=open&per_page=100', true) as {
+        number: number; body: string | null; base?: { ref: string; repo?: { full_name: string } };
+    }[];
     const directive = new RegExp(`(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+#${number}(?![0-9])`, 'i');
     for (const pull of pulls) {
-        if (directive.test(pull.body || '')) return pull.number;
-        const links = JSON.parse(await execute('gh', ['pr', 'view', String(pull.number), '--repo', store.project.repository, '--json', 'closingIssuesReferences'],
+        if (pull.base?.repo?.full_name === repository && pull.base.ref && pull.base.ref !== target && directive.test(pull.body || ''))
+            return pull.number;
+        const links = JSON.parse(await execute('gh', ['pr', 'view', String(pull.number), '--repo', repository, '--json', 'closingIssuesReferences'],
             { cwd: store.project.repo, timeout: 60000, readOnly: true })).closingIssuesReferences;
         if (!Array.isArray(links)) throw new Error('Closing pull request references are unavailable');
         if (links.some(link => link.url === url)) return pull.number;
@@ -145,17 +158,14 @@ async function handoffIssue(store: Store, run: MaintenanceRun, finding: Finding,
     const issueReader = new GitHubOperations(store, execute);
     const loadIssue = async () => {
         const issue = await issueReader.issue(number);
-        const lines: string[] = (issue.body || '').split(/\r?\n/);
-        const source = lines.map(line => /^\S+ observation for (\S+)\.$/.exec(line)?.[1]).find(Boolean);
-        if (issue.state !== 'open' || issue.node_id !== nodeId || !lines.includes(finding.marker) || source !== finding.source)
+        if (!scannerAuthored(issue)) throw new Error(`${key} does not have the trusted scanner author`);
+        const lines = issueLines(issue);
+        if (issue.state !== 'open' || issue.node_id !== nodeId || !lines.includes(finding.marker) || issueSource(lines) !== finding.source)
             throw new Error(`${key} no longer matches the open source finding`);
         return issue;
     };
     const issue = await loadIssue();
     if (!actionable(finding)) return issue.html_url;
-    const retrieval = createHash('sha256').update(JSON.stringify([finding.source, 'retrieval', []])).digest('hex');
-    if (finding.marker === `<!-- official-source:${retrieval} -->`)
-        throw new Error(`${key} records a retrieval failure and cannot be routed as changed evidence`);
 
     const pickup = store.state.coordination?.pickup;
     const lane = pickup?.status ?? defaultPickupStatus(store.project);
@@ -191,11 +201,17 @@ async function handoffIssue(store: Store, run: MaintenanceRun, finding: Finding,
         .some(effect => unsettled(effect) && targets.includes(effect.target))))
         throw new Error(`${key} has an unsettled Effect from an earlier source handoff. Read back the original write before dispatch.`);
 
+    const assertPickup = () => {
+        const current = store.state.coordination?.pickup;
+        if (current?.enabled === false || (current?.status ?? defaultPickupStatus(store.project)) !== lane)
+            throw new Error(`${key} pickup setting changed before source handoff`);
+    };
     const guard = async (assigning = false) => {
+        const owners = assignees(await loadIssue());
+        assertPickup();
         const reason = owner();
         if (store.state.paused || reason) throw new Error(reason || 'Project paused before source handoff');
-        const owners = assignees(await loadIssue());
-        if (owners.length && (assigning || !owners.includes(assignee))) throw new Error(`${key} changed owners before source handoff`);
+        if (assigning ? owners.length > 0 : !owners.includes(assignee)) throw new Error(`${key} changed owners before source handoff`);
     };
     if (!assignees(issue).includes(assignee)) {
         const effects = new Effects(store);
@@ -214,6 +230,7 @@ async function handoffIssue(store: Store, run: MaintenanceRun, finding: Finding,
     await ensurePickupCard(store, execute, run, { number, nodeId, url: issue.html_url, open: true }, lane, guard);
     if (!assignees(await loadIssue()).includes(assignee) || (await readCard())?.status !== ready.id)
         throw new Error(`${key} did not read back as assigned to ${assignee} in ${lane} on the configured board`);
+    assertPickup();
     return `${issue.html_url} verified in ${lane} and assigned to ${assignee}`;
 }
 
@@ -226,13 +243,36 @@ export async function sourceHandoff(store: Store, run: MaintenanceRun, assessmen
             || new Set(findings.map(finding => finding.issue)).size !== findings.length)
             throw new Error('Source review did not return a read-only disposition for each matched issue');
         await reconcileSourceEffects(store, run, execute);
-        const issues = findings.length ? await readRepo(store, execute, 'issues?state=open&per_page=100', true) as any[] : [];
+        const issues: SourceIssue[] = await readRepo(store, execute, 'issues?state=all&per_page=100', true);
+        const proposed = new Map(findings.map(finding => [finding.issue, finding]));
+        const matches = new Map<string, SourceIssue>();
+        for (const issue of issues) {
+            if (issue.pull_request || issue.state !== 'open' || !scannerAuthored(issue)) continue;
+            const markers = issueLines(issue).filter(line => sourceMarker.test(line));
+            if (!markers.length) continue;
+            const [marker] = markers;
+            if (markers.length !== 1 || matches.has(marker))
+                throw new Error(`GH-${issue.number} has an ambiguous open scanner issue marker`);
+            if (proposed.get(issue.number)?.marker !== marker)
+                throw new Error(`Source review is missing the exact disposition for open scanner issue GH-${issue.number}`);
+            matches.set(marker, issue);
+        }
+        const handoffs = findings.map(finding => {
+            const issue = matches.get(finding.marker);
+            const key = `GH-${finding.issue}`;
+            if (!issue?.node_id || issue.number !== finding.issue || issueSource(issueLines(issue)) !== finding.source)
+                throw new Error(`${key} is not the unique open issue from the trusted scanner for its source and marker`);
+            const retrieval = createHash('sha256').update(JSON.stringify([finding.source, 'retrieval', []])).digest('hex');
+            const failedRetrieval = finding.marker === `<!-- official-source:${retrieval} -->`;
+            if (finding.disposition === 'retain-baseline' && !failedRetrieval)
+                throw new Error(`${key} has a source classification mismatch. Retaining the baseline requires a recorded retrieval failure.`);
+            if (actionable(finding) && failedRetrieval)
+                throw new Error(`${key} records a retrieval failure and cannot be routed as changed evidence`);
+            return { finding, nodeId: issue.node_id };
+        });
         const ledger: string[] = [];
-        for (const finding of findings) {
-            const matches = issues.filter(issue => !issue.pull_request && issue.body?.split(/\r?\n/).includes(finding.marker));
-            if (matches.length !== 1 || matches[0].number !== finding.issue || !matches[0].node_id)
-                throw new Error(`GH-${finding.issue} is not the unique open issue for its source marker`);
-            const observed = await handoffIssue(store, run, finding, matches[0].node_id, execute);
+        for (const { finding, nodeId } of handoffs) {
+            const observed = await handoffIssue(store, run, finding, nodeId, execute);
             ledger.push(`${observed} · ${finding.disposition} · ${finding.evidence}`);
         }
         result.ledger = ledger.join('\n') || 'No matched source findings required a handoff.';

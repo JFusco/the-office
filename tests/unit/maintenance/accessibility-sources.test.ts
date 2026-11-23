@@ -3,11 +3,15 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { backup } from 'node:sqlite';
+import { savePickup } from '../../../server/delivery/intake/pickup';
 import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { projectPolicy } from '../../../server/office/project-policy';
 import { GitHubMaintenance } from '../../../server/maintenance/maintenance';
+import { coordination } from '../../../server/scheduling/coordination';
 import type { command } from '../../../server/workers/process';
+import { savedState } from '../store/saved-state-fixture';
 
 const project = {
     ...projectById('cms-field-vocabulary'), id: 'accessibility-standards', name: 'Accessibility Standards',
@@ -31,9 +35,16 @@ function setup({ status = 'completed', retrieval = false, wrongAssignee = false,
     const issue = {
         number: 7, node_id: 'source-issue-7', state: 'open', html_url: issueUrl, title: 'Review official source',
         body: `${retrieval ? 'unavailable' : 'changed'} observation for ${source}.\n${marker}`,
+        user: { login: 'github-actions[bot]', id: 41898282 },
         labels: [], assignees: [] as { login: string }[],
     };
-    const provider = { scanStatus: status, card: '', lane: '', writes: [] as string[], laneReadsSinceWrite: 0 };
+    const issues = [issue];
+    const pulls: { number: number; body: string; base: { ref: string; repo: { full_name: string } } }[] = [];
+    const closingIssuesReferences: { url: string }[] = [];
+    const provider = {
+        scanStatus: status, card: '', lane: '', writes: [] as string[], laneReadsSinceWrite: 0,
+        beforeDownload: (): void | Promise<void> => {}, beforePullList: () => {}, beforeBoardRead: () => {},
+    };
     const downloads: string[] = [];
     const execute = vi.fn<typeof command>(async (name, args, options) => {
         expect(name).toBe('gh');
@@ -44,19 +55,25 @@ function setup({ status = 'completed', retrieval = false, wrongAssignee = false,
         if (args[0] === 'run' && args[1] === 'download') {
             downloads.push(args[2]);
             expect(args).toEqual(['run', 'download', '17', '--repo', project.repository, '--name', 'standards-observations', '--dir', expect.any(String)]);
+            await provider.beforeDownload();
             writeFileSync(join(args.at(-1)!, 'standards-scan.json'), JSON.stringify({ mode: 'full', documents: [
                 { url: source, status: retrieval ? 'unavailable' : 'changed', baseline: 'a'.repeat(64),
                     locators: { focus: ['pattern.dialog'] }, ...(retrieval ? { error: '503' } : { sha256, missing_anchors: [] }) },
             ] }));
             return '';
         }
-        if (args[1] === `repos/${project.repository}/issues?state=open&per_page=100`) {
+        if (args[1] === `repos/${project.repository}/issues?state=all&per_page=100`) {
             expect(args.slice(2)).toEqual(['--paginate', '--slurp']);
-            return JSON.stringify([[issue]]);
+            return JSON.stringify(issues.map(listed => [listed]));
         }
         if (args[1] === `repos/${project.repository}/pulls?state=open&per_page=100`) {
             expect(args.slice(2)).toEqual(['--paginate', '--slurp']);
-            return JSON.stringify([[]]);
+            provider.beforePullList();
+            return JSON.stringify([pulls]);
+        }
+        if (args[0] === 'pr') {
+            expect(args).toEqual(['pr', 'view', '12', '--repo', project.repository, '--json', 'closingIssuesReferences']);
+            return JSON.stringify({ closingIssuesReferences });
         }
         if (args[1] === `repos/${project.repository}/issues/7`) {
             if (args[3] === 'PATCH') {
@@ -70,6 +87,7 @@ function setup({ status = 'completed', retrieval = false, wrongAssignee = false,
         const { query, variables } = JSON.parse(options!.input as string);
         let data;
         if (query.includes('projectV2(number:')) {
+            provider.beforeBoardRead();
             expect(variables).toEqual({ owner: project.githubProject.owner, number: project.githubProject.number });
             data = { user: { projectV2: { id: 'board', fields: {
                 nodes: [{ id: 'status', name: 'Status', options: [{ id: 'ready', name: 'Ready' }, { id: 'backlog', name: 'Backlog' }] }],
@@ -111,7 +129,7 @@ function setup({ status = 'completed', retrieval = false, wrongAssignee = false,
     };
     const runAgent = vi.fn(async () => assessment);
     const maintenance = new GitHubMaintenance(store, { active: new Set(), run: runAgent } as any, execute);
-    return { store, execute, runAgent, maintenance, issue, provider, downloads };
+    return { store, execute, runAgent, maintenance, issue, issues, pulls, closingIssuesReferences, provider, downloads, assessment };
 }
 
 test('the reported registration resolves to a daily hands-off 4 p.m. checkpoint and harness merge', () => {
@@ -161,6 +179,117 @@ test('the checkpoint saves a read-only assessment and verifies the issue, assign
     expect(runAgent).toHaveBeenCalledTimes(1);
 });
 
+test.each([
+    { login: 'outside-contributor', id: 41898282 },
+    { login: 'github-actions[bot]', id: 42 },
+])('a matching issue with the wrong scanner author ($login, $id) creates no Effects', async user => {
+    const { maintenance, store, issue, provider } = setup();
+    issue.user = user;
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(run).toMatchObject({ status: 'blocked', error: expect.stringContaining('trusted scanner') });
+    expect(provider.writes).toEqual([]);
+    expect(store.db.prepare('SELECT id FROM effects').all()).toEqual([]);
+    expect(store.state.maintenance?.lastDaily).toBe('');
+});
+
+test('a lookalike from another author does not count as a duplicate scanner issue', async () => {
+    const { maintenance, issue, issues, provider } = setup();
+    issues.push({ ...issue, number: 8, node_id: 'outside-issue-8', user: { login: 'contributor', id: 42 } });
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(run.status).toBe('completed');
+    expect(provider.writes).toEqual(['assign', 'add-card', 'move-card']);
+});
+
+test('the Effect guard checks scanner authorship on the fresh issue read', async () => {
+    const { maintenance, issue, provider } = setup();
+    provider.beforePullList = () => { issue.user = { login: 'contributor', id: 42 }; };
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(run).toMatchObject({ status: 'blocked', error: expect.stringContaining('trusted scanner author') });
+    expect(provider.writes).toEqual([]);
+});
+
+test.each(['open', 'closed'])('an empty assessment checks the inventory when the matching issue is %s', async state => {
+    const { maintenance, store, issue, provider, assessment } = setup();
+    issue.state = state;
+    assessment.findings = [];
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(provider.writes).toEqual([]);
+    if (state === 'open') {
+        expect(run).toMatchObject({ status: 'blocked', error: expect.stringContaining('open scanner issue GH-7') });
+        expect(store.state.maintenance?.lastDaily).toBe('');
+    } else {
+        expect(run.status).toBe('completed');
+        expect(store.state.maintenance?.lastDaily).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+});
+
+test('an omitted prior scanner issue with the same source blocks a partial assessment before writes', async () => {
+    const { maintenance, store, issue, issues, provider, assessment } = setup();
+    const priorMarker = `<!-- official-source:${'d'.repeat(64)} -->`;
+    issues.push({ ...issue, number: 8, node_id: 'source-issue-8', body: issue.body.replace(assessment.findings[0].marker, priorMarker) });
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(run).toMatchObject({ status: 'blocked', error: expect.stringContaining('open scanner issue GH-8') });
+    expect(store.state.maintenance?.lastDaily).toBe('');
+    expect(provider.writes).toEqual([]);
+});
+
+test.each([
+    { enabled: false, status: 'Ready' },
+    { enabled: true, status: 'Backlog' },
+])('changing pickup during PR discovery ($enabled, $status) stops stale writes', async pickup => {
+    const { maintenance, store, provider } = setup();
+    store.state.coordination = coordination();
+    savePickup(store, { enabled: true, status: 'Ready' });
+    provider.beforePullList = () => savePickup(store, pickup);
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(run).toMatchObject({ status: 'blocked', error: expect.stringContaining('pickup setting changed') });
+    expect(provider.writes).toEqual([]);
+    expect(store.state.maintenance?.lastDaily).toBe('');
+});
+
+test('losing the verified assignment before adding the card blocks board writes', async () => {
+    const { maintenance, store, issue, provider } = setup();
+    provider.beforeBoardRead = () => {
+        if (provider.writes.includes('assign')) issue.assignees = [];
+    };
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(run).toMatchObject({ status: 'blocked', error: expect.stringContaining('changed owners') });
+    expect(provider.writes).toEqual(['assign']);
+    expect(run.steps.at(-1)?.result.receipts).toEqual([expect.objectContaining({ action: 'github-issue-assign', verified: true })]);
+    expect(store.state.maintenance?.lastDaily).toBe('');
+});
+
+test.each([
+    { ref: 'main', link: '', ownsIssue: false },
+    { ref: 'main', link: 'https://github.com/another/repo/issues/7', ownsIssue: false },
+    { ref: 'main', link: issueUrl, ownsIssue: true },
+    { ref: 'stack-parent', link: '', ownsIssue: true },
+])('pull request ownership follows closing references and the stacked exception ($ref, $link)', async ({ ref, link, ownsIssue }) => {
+    const { maintenance, store, pulls, closingIssuesReferences, provider } = setup();
+    pulls.push({ number: 12, body: ref === project.target ? '> Closes #7' : 'Closes #7', base: { ref, repo: { full_name: project.repository } } });
+    if (link) closingIssuesReferences.push({ url: link });
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(run.status).toBe('completed');
+    expect(store.state.maintenance?.ledger).toContain(ownsIssue ? 'left to pull request #12' : 'verified in Ready');
+    expect(provider.writes).toEqual(ownsIssue ? [] : ['assign', 'add-card', 'move-card']);
+});
+
 test('a mismatched assignment readback blocks completion and keeps the write uncertain', async () => {
     const { maintenance, store, provider, issue } = setup({ wrongAssignee: true });
     const run = maintenance.request();
@@ -208,6 +337,50 @@ test('a recorded retrieval failure retains its baseline with zero writes', async
     expect(store.state.maintenance?.ledger).toContain('retain-baseline · HTTP 503');
 });
 
+test('a changed observation cannot be classified as a retrieval failure', async () => {
+    const { maintenance, store, provider, assessment } = setup();
+    assessment.findings[0].disposition = 'retain-baseline';
+    const run = maintenance.request();
+    await maintenance.pump(run.id);
+    await maintenance.pump(run.id);
+    expect(run).toMatchObject({ status: 'blocked', error: expect.stringContaining('classification mismatch') });
+    expect(provider.writes).toEqual([]);
+    expect(store.state.maintenance?.lastDaily).toBe('');
+});
+
+test('startup recovery can settle an interrupted scan captured during download', async () => {
+    const { maintenance, store, runAgent, provider, execute } = setup();
+    const path = join(store.dataRoot, 'interrupted-scan.sqlite');
+    provider.beforeDownload = async () => {
+        await backup(store.db, path);
+        throw new Error('Stopped during download');
+    };
+    const run = maintenance.request();
+    const claim = store.claimWork({ projectId: project.id, kind: 'maintenance', id: run.id }, 'scheduler', run.stage)!;
+    await maintenance.pump(run.id);
+
+    const recovered = new Store(path, store.project, store.dataRoot);
+    try {
+        expect(recovered.state.maintenance?.runs[0]).toMatchObject({ status: 'working', stage: 'source-scan', steps: [] });
+        expect(recovered.activeClaims().map(active => active.id)).toEqual([claim.id]);
+        recovered.recover();
+        const interrupted = recovered.state.maintenance!.runs[0];
+        expect(interrupted.status).toBe('interrupted');
+        expect(recovered.activeClaims()).toEqual([]);
+        const error = interrupted.error;
+        expect(error).toContain('Interrupted assignment');
+        const restarted = new GitHubMaintenance(recovered, maintenance.agents, execute);
+        await restarted.reconcile(run.id);
+        expect(interrupted).toMatchObject({ status: 'reconciled', error, steps: [] });
+        expect(recovered.state.maintenance?.lastDaily).toBe('');
+        expect(restarted.request().id).not.toBe(run.id);
+        expect(runAgent).not.toHaveBeenCalled();
+        expect(provider.writes).toEqual([]);
+    } finally {
+        recovered.close();
+    }
+});
+
 test('an unfinished scan is reconciled as unfinished before a deliberate new request', async () => {
     const { maintenance, runAgent, provider, downloads } = setup({ status: 'in_progress' });
     const run = maintenance.request();
@@ -234,8 +407,11 @@ test('an unfinished scan is reconciled as unfinished before a deliberate new req
 });
 
 test('a worker failure before a step was saved still requires original worker readback', async () => {
-    const { maintenance, runAgent } = setup();
-    runAgent.mockRejectedValueOnce(new Error('worker failed after dispatch'));
+    const { maintenance, store, runAgent } = setup();
+    runAgent.mockImplementationOnce(async () => {
+        expect(savedState(store).maintenance?.runs[0]).toMatchObject({ status: 'working', stage: 'source-review', steps: [] });
+        throw new Error('worker failed after dispatch');
+    });
     const run = maintenance.request();
     await maintenance.pump(run.id);
     expect(run).toMatchObject({ status: 'blocked', stage: 'source-review', steps: [], error: 'Error: worker failed after dispatch' });

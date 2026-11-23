@@ -110,7 +110,7 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
         if (scheduled && state.lastDaily === easternDate(now) && !weekly)
             return state.runs.at(-1)!;
         if (!accessibility) maintenancePolicies(this.store);
-        const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly, stage: accessibility ? 'source-review' : 'follow-up', error: '', steps: [], ...(supersedes.length ? { supersedes } : {}) };
+        const run: MaintenanceRun = { id: crypto.randomUUID(), requestedAt: now.toISOString(), startedAt: '', endedAt: '', status: 'queued', weekly, stage: accessibility ? 'source-scan' : 'follow-up', error: '', steps: [], ...(supersedes.length ? { supersedes } : {}) };
         state.runs.push(run);
         this.store.emit('maintenance-queued', `${accessibility ? 'Accessibility Standards' : 'CMS'} maintenance queued${run.weekly ? ' with the weekly vendor review' : ''}.`, 'pm');
         return run;
@@ -119,13 +119,14 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
         const state = this.store.state.maintenance, run = state?.runs.find(r => r.status === 'queued' && (!selectedId || r.id === selectedId));
         if (!state || !run || this.store.state.paused || this.agents.active.size)
             return;
+        const accessibility = accessibilitySources(this.store.project);
+        if (accessibility && !run.steps.length) run.stage = 'source-scan';
         run.status = 'working';
         run.startedAt ||= new Date().toISOString();
         this.store.save();
         const root = resolve(this.store.dataRoot, 'runs', run.id);
         mkdirSync(root, { recursive: true, mode: 0o700 });
         try {
-            const accessibility = accessibilitySources(this.store.project);
             const policies = accessibility ? '' : maintenancePolicies(this.store);
             let cursor = 0;
             const step = async (role: Role, stage: string, instructions: string, readOnly = false, candidates: MaintenanceResult['candidates'] = []) => {

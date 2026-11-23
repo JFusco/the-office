@@ -1669,13 +1669,24 @@ The checkpoint requires the latest main-branch freshness workflow run to be a
 completed, successful scheduled or manually dispatched run created within the
 past 36 hours. If that run is missing, unfinished, failed, ineligible, stale, or
 its report cannot be read, the checkpoint blocks before dispatching the PM.
-The outbox readback can settle a recorded pre-dispatch scan failure as
-unfinished, retaining its error and allowing a deliberate new request.
+The Office saves `source-scan` before reading GitHub and `source-review` before
+dispatching the PM. With the claim ended and no worker, saved step or unsettled
+Effect, outbox readback can settle an interrupted scan or a recorded scan failure
+as unfinished. It retains the error and allows a deliberate new request. A stopped
+`source-review` uses the original worker readback.
 
 The PM reads the saved report, official passages and existing scanner issues,
-then proposes a disposition for each matched issue. Recorded retrieval failures
-retain the last reviewed baseline. For eligible contract changes and verified
-no-impact decisions that require a baseline edit, the Office applies assignment
-and Ready-card changes through Effects and reads back the issue, assignee and
-lane on the configured board. Normal Ready intake owns delivery, including
-independent review, current-head checks, harness merge and board closeout.
+then proposes a disposition for each open scanner issue. Before routing any work,
+the Office matches the workflow bot's login and numeric ID, issue number, exact
+marker and source URL. Coverage includes open issues from earlier scans. A closed
+issue is settled. Retaining the last reviewed baseline requires a retrieval-failure
+marker. A pull request into the configured target owns an issue only when GitHub
+reports its exact closing reference. A same-repository stacked pull request can
+also qualify by its closing directive.
+
+For eligible contract changes and verified no-impact decisions that require a
+baseline edit, the Office applies assignment and Ready-card changes through
+Effects. Before each write it checks the current pickup setting and assignee.
+It reads back the issue, assignee and lane on the configured board. Normal Ready
+intake owns delivery, including independent review, current-head checks, harness
+merge and board closeout.
