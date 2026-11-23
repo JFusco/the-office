@@ -15,7 +15,14 @@ test('a check read running on one side and completed on the other is moving, wit
     expect(compare({ ...check(), ...running }, job())).toEqual({ identity: true, differing: ['status', 'conclusion', 'completed_at'], moving: true });
     expect(compare(check(), { ...job(), ...running })).toEqual({ identity: true, differing: ['status', 'conclusion', 'completed_at'], moving: true });
     expect(compare({ ...check(), ...running }, { ...job(), ...running })).toEqual({ identity: true, differing: [], moving: true });
-    expect(compare({ ...check(), status: 'queued', conclusion: null, started_at: null, completed_at: null }, job()).moving).toBe(true);
+    for (const status of ['queued', 'waiting', 'requested', 'pending']) expect(compare({ ...check(), status, conclusion: null, completed_at: null }, job()).moving, status).toBe(true);
+});
+
+test('a status that is missing or unknown is no sign the check is unfinished', () => {
+    const { status: _status, ...withoutStatus } = job();
+    expect(compare(check(), withoutStatus)).toEqual({ identity: true, differing: ['status'], moving: false });
+    expect(compare(check(), { ...job(), status: 'stale' })).toEqual({ identity: true, differing: ['status'], moving: false });
+    expect(compare({ ...check(), status: undefined }, job()).moving).toBe(false);
 });
 
 test('two finished reads that differ are not moving', () => {

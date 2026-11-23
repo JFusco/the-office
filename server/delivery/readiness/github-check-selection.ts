@@ -37,8 +37,9 @@ export async function selectCurrentChecks(delivery:GitHubDelivery,job:TicketJob,
    const j=await delivery.api(`actions/jobs/${c.id}`);
    const agreement=checkJobAgreement(c,j,{repository:repo,head,runId:Number(match[2])});
    requireThat(agreement.identity,'Actions job does not match exact check-run');
-   // A check that finishes between the two reads is still moving: read again, as for any pending check.
-   if(agreement.differing.length&&agreement.moving)throw new CurrentChecksWait(`Check ${c.name} is still finishing (${agreement.differing.join(', ')} changed between reads)`);
+   // A check that finishes between the two reads is still moving: read again, as for any pending check. Only when
+   // nothing else on this head has failed: a caller may take a wait as "checks are pending" (`preparation-checks.ts`).
+   if(agreement.differing.length&&agreement.moving&&raw.check_runs.filter((x:any)=>!group.includes(x)).every((x:any)=>pass(x)||pending(x))&&(!statuses||['success','pending'].includes(statuses.state)&&statuses.statuses.every((s:any)=>['success','pending'].includes(s.state))))throw new CurrentChecksWait(`Check ${c.name} is still finishing (${agreement.differing.join(', ')} changed between reads)`);
    requireThat(!agreement.differing.length,`Actions job does not match exact check-run: ${agreement.differing.join(', ')} differ`);
    const r=await delivery.api(`actions/runs/${j.run_id}/attempts/${j.run_attempt}`);
    requireThat(r.id===j.run_id&&r.run_attempt===j.run_attempt&&r.check_suite_id===c.check_suite.id,'Actions run/attempt/suite identity differs');

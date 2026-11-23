@@ -45,6 +45,21 @@ test.each([['conclusion','failure'],['completed_at','2026-10-31T00:55:22Z'],['st
  const f=fixture();(f.jobs[0] as any)[field]=value;
  const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain(`Actions job does not match exact check-run: ${field} differ`);
 });
+test.each(['check run','commit status'])('a check caught finishing is a stop, not a wait, when an independent %s on the head has failed',async kind=>{
+ const f=fixture();Object.assign(f.raw.check_runs[0],{status:'in_progress',conclusion:null,completed_at:null});
+ if(kind==='check run'){f.raw.check_runs.push({id:999,name:'security',app:{id:57789,slug:'other-app'},head_sha:head,status:'completed',conclusion:'failure'});f.raw.total_count=3;}
+ else Object.assign(f.statuses,{state:'failure',total_count:1,statuses:[{context:'external',state:'failure'}]});
+ const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain('Actions job does not match exact check-run: status, conclusion, completed_at differ');
+});
+test('an independent check that is passing or still running does not turn the wait into a stop',async()=>{
+ const f=fixture();Object.assign(f.raw.check_runs[0],{status:'in_progress',conclusion:null,completed_at:null});
+ f.raw.check_runs.push({id:998,name:'lint',app:{id:57789,slug:'other-app'},head_sha:head,status:'completed',conclusion:'success'},{id:997,name:'deploy',app:{id:57789,slug:'other-app'},head_sha:head,status:'queued',conclusion:null});f.raw.total_count=4;
+ await expect(f.select()).rejects.toBeInstanceOf(CurrentChecksWait);
+});
+test.each([['absent',undefined],['unknown','stale']])('a job whose status is %s gives no sign the check is unfinished: a mismatch, not a wait',async(_label,status)=>{
+ const f=fixture();if(status===undefined)delete (f.jobs[0] as any).status;else f.jobs[0].status=status;
+ const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain('Actions job does not match exact check-run: status differ');
+});
 test('a job that is not the check run it is read for is a mismatch even while the check is running',async()=>{
  const f=fixture();Object.assign(f.raw.check_runs[0],{status:'in_progress',conclusion:null,completed_at:null});f.jobs[0].name='other';
  const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toBe('Error: Actions job does not match exact check-run');
