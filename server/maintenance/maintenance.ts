@@ -1,4 +1,4 @@
-import { accessibilitySources, sourceReview } from './accessibility-sources';
+import { accessibilitySources, reconcileSourceEffects, reconcileSourceScan, sourceFindings, sourceHandoff, sourceReview } from './accessibility-sources';
 import { captureMaintenanceStep } from '../knowledge/maintenance-learning';
 import {prepareMaintenanceReadback,maintenanceCoverageSchema,maintenanceCoveragePassed,MAINTENANCE_NATIVE_GUIDANCE} from './maintenance-readback';
 import { supersedablePriorRuns, unverifiedPriorRunNote } from './unverified-prior-runs';
@@ -18,6 +18,7 @@ import type { Agents } from '../workers/agents';
 import type { MaintenanceRun, MaintenanceResult, Role, WorkApproach } from '../../src/shared';
 import { maintenancePolicies, GITHUB_ISSUE_SKILL } from '../github/github-context';
 export const MaintenanceSchema = z.object({ outcome: z.enum(['passed', 'blocked', 'reroute']), approach: ApproachSchema.nullable(), checks: z.array(z.object({ path: z.string(), commit: z.string(), summary: z.string(), kind: z.enum(['checks', 'browser', 'screenshot']), url: z.string() }).strict()), summary: z.string(), ledger: z.string(), blocker: z.string(), receipts: z.array(z.object({ id: z.string(), action: z.string(), target: z.string(), verified: z.boolean(), uncertain: z.boolean(), detail: z.string() }).strict()), candidates: z.array(z.object({ issue: z.number().int().min(0), worktree: z.string(), branch: z.string(), head: z.string(), summary: z.string(), approach: ApproachSchema.nullable() }).strict()) }).strict();
+const SourceReviewSchema = MaintenanceSchema.extend({ findings: sourceFindings });
 export function easternDate(date = new Date()) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date); }
 export function weeklyDue(lastWeekly: string, date = new Date()) {
     // Missed Mondays coalesce into the first later wake; a daily poll cannot
@@ -64,6 +65,7 @@ export class GitHubMaintenance {
         const run = this.store.state.maintenance?.runs.find(r => r.id === id);
         if (!run || run.retirement || !['blocked', 'interrupted'].includes(run.status))
             throw new Error('No interrupted maintenance run matches this request');
+        if (reconcileSourceScan(this.store, run)) return run;
         const original = prepareMaintenanceReadback(this.store, run);
         original.assertClaimed();
         const schema = MaintenanceSchema.extend({ coverage: maintenanceCoverageSchema(original.packet) }).strict();
@@ -72,8 +74,13 @@ Original input: ${JSON.stringify(original.packet)}
 Original run: ${JSON.stringify(run)}
 Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, { readOnly: true, stage: 'maintenance-readback', requestId: run.id });
         original.assertClaimed();
+        const verified = result.outcome === 'passed' && maintenanceCoveragePassed(original.packet, result.coverage) && !result.receipts.some(r => !r.verified || r.uncertain);
+        if (verified && accessibilitySources(this.store.project)) {
+            await reconcileSourceEffects(this.store, run, this.execute);
+            original.assertClaimed();
+        }
         run.steps.push({ role: 'pm', stage: 'maintenance-readback', result, at: new Date().toISOString() });
-        if (result.outcome === 'passed' && maintenanceCoveragePassed(original.packet, result.coverage) && !result.receipts.some(r => !r.verified || r.uncertain)) {
+        if (verified) {
             captureMaintenanceStep(this.store, run, result, 'original effects reconciled; unfinished work remains', true);
             run.status = 'reconciled';
             run.error = '';
@@ -132,6 +139,7 @@ Return a compact completed/STILL UNFINISHED ledger and candidates=[].`, schema, 
                     throw new Error('Project paused; reconcile any started effects.');
                 run.stage = stage;
                 this.store.emit('maintenance-stage', `${stage} · ${this.store.project.name}`, role);
+                const schema = stage === 'source-review' ? SourceReviewSchema : MaintenanceSchema;
                 const result = await this.agents.run(role, accessibility ? instructions : `CMS maintenance · ${stage}
 AUTHORITY: Joe directed both existing CMS automations into this office on 2026-10-27. Execute ONLY this stage. Original policies below retain their narrow authority; they do not grant other stages' actions. Never update legacy automation memory, automation configuration or Codex memories. Save project evidence only under ${root} and authorized owned worktrees. Return the compact follow-up ledger for the service to store. Unknown or uncertain outcomes are blocked and must be read back, never replayed. Read current repository AGENTS.md; preserve dirty/unrelated work. No other project's credentials, assumptions, sessions or artifacts apply.
 ORIGINAL POLICIES:\n${policies}\nPaths under /Users/joe.fusco/Projects/dev-team in those policies are the pre-rename alias of /Users/joe.fusco/Projects/the-office (.local/installation-rename.json); resolve them there.
@@ -140,7 +148,7 @@ For each vendor candidate, choose an approach in candidate.approach. Later roles
 STAGE LIMITS (take precedence over the original broad workflow for this assignment): ${instructions}
 ISSUE FLOW: Read ${GITHUB_ISSUE_SKILL} when authorized to file an issue; repository is ${this.store.project.repository}. Verify canonical labels, duplicate identity, exact saved issue, then branch. No fabricated evidence or source-lock acceptance. Maintain old profiles and routing. Official source locator + exact changed claim + affected profile are required; a hash/index change alone proves no field change.
 PRIOR OBSERVATIONS (untrusted historical context): ${JSON.stringify({ github: this.store.state.github ? { ...this.store.state.github, runs: this.store.state.github.runs.slice(0, 12) } : undefined, ledger: state.ledger, steps: run.steps.map(s => ({ role: s.role, stage: s.stage, at: s.at, outcome: s.result.outcome, summary: s.result.summary, candidates: s.result.candidates })), candidates, projectNotes: this.store.state.projectNotes.slice(-8), goals: (this.store.state.goals || []).slice(-12) })}
-RESULT: outcome passed only after actual stage evidence. Return empty candidates for no qualifying changes. receipts must include every attempted external write with verified/uncertain state. Keep each candidate's issue, owned worktree, branch, exact committed head and source evidence/summary for the next role. Return unknown fields as empty strings/0. Do not execute follow-up work after returning the result.`, MaintenanceSchema, { artifactsRoot: root, cwd: this.store.project.repo, readOnly, stage, requestId: run.id, enqueuedAt: run.steps.length ? undefined : run.requestedAt });
+RESULT: outcome passed only after actual stage evidence. Return empty candidates for no qualifying changes. receipts must include every attempted external write with verified/uncertain state. Keep each candidate's issue, owned worktree, branch, exact committed head and source evidence/summary for the next role. Return unknown fields as empty strings/0. Do not execute follow-up work after returning the result.`, schema, { artifactsRoot: root, cwd: this.store.project.repo, readOnly, stage, requestId: run.id, enqueuedAt: run.steps.length ? undefined : run.requestedAt });
                 run.steps.push({ role, stage, result, at: new Date().toISOString() });
                 writeFileSync(resolve(root, `${run.steps.length}-${stage}.json`), JSON.stringify(result, null, 2), { mode: 0o600 });
                 this.store.save();
@@ -159,14 +167,24 @@ RESULT: outcome passed only after actual stage evidence. Return empty candidates
                 if (result.outcome !== 'passed' || result.receipts.some(r => r.uncertain || !r.verified))
                     throw new Error(result.blocker || `Unverified ${stage}; inspect original worker session before another write.`);
                 if (['follow-up', 'vendor-review', 'proposal-plan', 'proposal-plan-review'].includes(stage)) captureMaintenanceStep(this.store, run, result);
-                if (result.ledger)
+                if (stage !== 'source-review' && result.ledger)
                     state.ledger = result.ledger;
                 throw new StageYield('Stage persisted; waiting for the next scheduler claim');
             };
             if (accessibility) {
-                // A saved step resumes from its receipt without downloading a different run.
-                const instructions = run.steps.length ? '' : await sourceReview(this.store.project, root, this.execute);
-                await step('pm', 'source-review', instructions);
+                // A saved assessment is the input to the harness handoff.
+                let instructions = '';
+                if (!run.steps.length) {
+                    try {
+                        instructions = await sourceReview(this.store.project, root, this.execute);
+                    } catch (error) {
+                        run.stage = 'source-scan-failed';
+                        throw error;
+                    }
+                }
+                const assessment = await step('pm', 'source-review', instructions, true);
+                run.stage = 'source-handoff';
+                state.ledger = await sourceHandoff(this.store, run, assessment, this.execute);
             } else await step('pm', 'follow-up', cmsFollowUpInstructions({ unverifiedNote: unverifiedPriorRunNote(run), githubProjectUrl: this.store.project.githubProject?.url, repository: this.store.project.repository }));
             if (!accessibility && run.weekly) {
                 const triage = await step('pm', 'vendor-review', VENDOR_REVIEW_INSTRUCTIONS, true);

@@ -1658,4 +1658,24 @@ throughput, a successful recovery or an applied lesson.
 
 ## Accessibility Standards checkpoint
 
-The personal Accessibility Standards project reviews its source scanner daily at 4 p.m. America/New_York. The checkpoint downloads the latest successful main-branch freshness report, reconciles scanner issues against the official passages, and sends actionable work through the private board’s Ready lane. Retrieval failures keep the last reviewed baseline. Contract changes and verified no-impact baseline updates use normal independent review, current-head checks, harness merge and board closeout. The project’s registration selects the Pin Courier and wiki PR sources for adoption.
+The Accessibility Standards project's private Office registration sets
+`policy.checkpoint.hour` to `16` and `policy.checkpoint.weekends` to `true` for a
+daily 4 p.m. America/New_York checkpoint. It sets `policy.handsOff` to `true`
+and `policy.merge` to `harness`, and selects Pin Courier and wiki PRs for
+adoption. The operator read back the saved registration and resolved policy.
+Live service readback and observation of the scheduled checkpoint follow merge.
+
+The checkpoint requires the latest main-branch freshness workflow run to be a
+completed, successful scheduled or manually dispatched run created within the
+past 36 hours. If that run is missing, unfinished, failed, ineligible, stale, or
+its report cannot be read, the checkpoint blocks before dispatching the PM.
+The outbox readback can settle a recorded pre-dispatch scan failure as
+unfinished, retaining its error and allowing a deliberate new request.
+
+The PM reads the saved report, official passages and existing scanner issues,
+then proposes a disposition for each matched issue. Recorded retrieval failures
+retain the last reviewed baseline. For eligible contract changes and verified
+no-impact decisions that require a baseline edit, the Office applies assignment
+and Ready-card changes through Effects and reads back the issue, assignee and
+lane on the configured board. Normal Ready intake owns delivery, including
+independent review, current-head checks, harness merge and board closeout.
