@@ -183,8 +183,12 @@ Stage capability records distinguish verified reader profiles from retained nati
 
 ### History kept out of live state
 
-A save writes the top-level parts of a project's state that changed. In this release, every changed save
-also writes the whole `state` row so the previous release can read it after a rollback. The rollback copy
+A save writes the top-level parts of a project's state that changed, and nothing else. A store last written
+by an earlier release still holds the whole state as one `state` row; it is kept in step while a service start
+is all that has changed and removed at the first other saved change. Releases from 252f140 (2026-11-21) on read
+the parts when that row is absent, so a rollback to one of them needs no restore; going further back, and what
+to do when a store's two copies disagree, are in
+[the process document](docs/office-process.md#saved-state-in-parts-and-the-rollback-floor). The rollback copy
 and every load still cover all of the state, so history nothing reads is moved beside the store instead
 of staying in it. Ellis's reports beyond the latest 50, and the task-level timing of builds that finished at
 least seven days ago (stage and job timing stays), are appended to monthly files under the project's data

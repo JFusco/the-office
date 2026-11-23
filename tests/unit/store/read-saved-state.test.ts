@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readSavedState } from '../../../server/store/read-saved-state';
+import { SavedStateConflict } from '../../../server/store/saved-state';
 import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { sanitizeObject } from '../../../server/office/security';
@@ -37,18 +38,35 @@ describe('readSavedState', () => {
     });
 
     it('reads a store the service wrote as the service would on restart, with or without its whole row', () => {
-        const dir = mkdtempSync(join(tmpdir(), 'office-saved-state-')); dirs.push(dir);
+        const dir = realpathSync(mkdtempSync(join(tmpdir(), 'office-saved-state-'))); dirs.push(dir);
         const path = join(dir, 'office.sqlite'), store = new Store(path, projectById('brain'), dir);
         store.state.pilotKey = 'GH-7'; store.save();
-        const expected = JSON.parse(JSON.stringify(sanitizeObject(store.state)));
+        const text = JSON.stringify(sanitizeObject(store.state)), expected = JSON.parse(text);
+        // The service writes no whole row: the parts are the state.
+        expect(store.db.prepare('SELECT COUNT(*) AS n FROM state').get()).toEqual({ n: 0 });
         expect(readSavedState(path)).toEqual(expected);
-        // Without the whole row the parts are the state.
-        store.db.exec('DELETE FROM state');
+        // A whole row a previous release left, equal to the parts, changes nothing.
+        store.db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(text);
         expect(readSavedState(path)).toEqual(expected);
-        // A row that differs from the parts was written without them, and is the state.
-        store.db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(JSON.stringify({ pilotKey: 'GH-8' }));
-        expect(readSavedState(path)).toEqual({ pilotKey: 'GH-8' });
         store.close();
+    });
+
+    it('refuses a store whose whole row differs from its parts, naming the database, and leaves the file as it was', () => {
+        const dir = realpathSync(mkdtempSync(join(tmpdir(), 'office-saved-state-'))); dirs.push(dir);
+        const path = join(dir, 'office.sqlite'), store = new Store(path, projectById('brain'), dir);
+        // A row written without the parts, by a release from before they existed.
+        store.db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(JSON.stringify({ pilotKey: 'GH-8' }));
+        store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        store.db.close();
+        const before = readFileSync(path);
+        expect(() => readSavedState(path)).toThrow(SavedStateConflict);
+        expect(() => readSavedState(path)).toThrow(path);
+        expect(() => readSavedState(path)).toThrow('docs/office-process.md');
+        expect(readFileSync(path).equals(before)).toBe(true);
+    });
+
+    it('reads a saved empty object as empty, not as never saved', () => {
+        expect(readSavedState(database('{}'))).toEqual({});
     });
 
     it('returns null when no state row or no database exists, and creates nothing', () => {

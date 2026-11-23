@@ -20,7 +20,7 @@ test('an admitted request, a changed row without an admission, and a change to t
     expect(storesChangedSince(w.ctx, snapshot)).toEqual(['brain: the cursor moved from 1 to 2', 'brain: its contents changed']);
     const quiet = make(), before = snapshotStores(quiet.ctx);
     // A requeue that changes an existing row leaves the admission cursor where it was.
-    change(quiet.projectDb, "UPDATE state SET body = json_set(body, '$.requeued', 1) WHERE id = 1");
+    change(quiet.projectDb, "UPDATE state_parts SET body = 'true' WHERE key = 'paused' AND body = 'false'");
     expect(storesChangedSince(quiet.ctx, before)).toEqual(['brain: its contents changed']);
     const control = make(), earlier = snapshotStores(control.ctx);
     control.fence.acquire('a-token-0123456789abcdef', 'deploy-x');

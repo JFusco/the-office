@@ -1,72 +1,141 @@
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { sanitizeObject } from '../../../server/office/security';
+import * as savedState from '../../../server/store/saved-state';
 import { StateParts } from '../../../server/store/state-parts';
 import { statementCache } from '../../../server/store/statement-cache';
 import { initializeStoreSchema } from '../../../server/store/store-schema';
 import { storeTimings } from '../../../server/store/store-timings';
 import { timeStatements } from '../../../server/store/timed-statements';
 
-const WRITE_ROW = 'sql: INSERT OR REPLACE INTO state(id,body) VALUES(?,?)';
+const WRITE_EMPTY_ROW = 'sql: INSERT OR REPLACE INTO state(id,body) VALUES(?,?)';
+const UPDATE_ROW = 'sql: UPDATE state SET body=? WHERE id=?';
+const ROW_THERE = 'sql: SELECT ? FROM state WHERE id=?';
+const ROW_BODY = 'sql: SELECT body FROM state WHERE id=?';
+const SAVED_PARTS = 'sql: SELECT key,position,body FROM state_parts ORDER BY position,key';
+const ANY_PART = 'sql: SELECT ? FROM state_parts LIMIT ?';
+const DELETE_ROW = 'sql: DELETE FROM state WHERE id=?';
 const WRITE_PART = 'sql: INSERT OR REPLACE INTO state_parts(key,position,body) VALUES(?,?,?)';
+const DELETE_PART = 'sql: DELETE FROM state_parts WHERE key=?';
+const DELETE_PARTS = 'sql: DELETE FROM state_parts';
+const VERSION = 'sql: PRAGMA data_version';
+/** Every statement of a save that knows whether the whole row is there: it reads once whether another connection committed, and `writes` are all it writes. */
+const saving = (writes: Record<string, number> = {}) => ({ [VERSION]: 1, ...writes });
+/** The first save after a load does not know yet, so it also reads once whether the whole row is there. */
+const first = (writes: Record<string, number> = {}) => saving({ [ROW_THERE]: 1, ...writes });
+/** A key removed on its own: its delete, and one read that some part is still saved. */
+const REMOVED = { [DELETE_PART]: 1, [ANY_PART]: 1 };
+/** The statements, by label, that touch the whole `state` row and not `state_parts`. */
+const onRow = (ran: Record<string, number>) => Object.keys(ran).filter(name => / state[ (]/.test(name));
+/** A row kept in step is joined from the parts as saved and only updated, never inserted. */
+const IN_STEP = { [SAVED_PARTS]: 1, [UPDATE_ROW]: 1 };
+/** Every statement of a save of an empty state: it reads whether any part is saved, what the row holds and the version it then knows the row at. */
+const emptying = (writes: Record<string, number> = {}) => ({ [ANY_PART]: 1, [ROW_BODY]: 1, [VERSION]: 1, ...writes });
 const SECRET = 'see postgres://user:pw@db.internal/app for details';
 let open: DatabaseSync[] = [];
-afterEach(() => { for (const db of open) db.close(); open = []; });
+afterEach(() => { vi.restoreAllMocks(); for (const db of open) db.close(); open = []; });
 
 function database() { const db = new DatabaseSync(':memory:'); open.push(db); initializeStoreSchema(db); return db; }
+/** A writer on `db` as a restart makes it, with the statements it runs counted under the store's own timing labels. */
 function parts(db: DatabaseSync) {
     const timings = storeTimings();
     timeStatements(db, timings);
-    const stored = new StateParts(statementCache(db), sql => db.exec(sql), timings);
+    const stored = new StateParts(db, statementCache(db), timings);
     const calls = (name: string) => timings.report().timings[name]?.calls ?? 0;
-    return { stored, calls, writes: () => [calls(WRITE_PART), calls(WRITE_ROW)], redactChars: () => timings.report().timings['save: redact']?.chars ?? 0 };
+    const statements = () => Object.entries(timings.report().timings).filter(([name]) => name.startsWith('sql: ')).map(([name, timing]) => [name, timing.calls] as const);
+    /** Every statement `work` ran, by label. Take it around the save alone: reading back runs statements too. */
+    const during = (work: () => unknown) => {
+        const before = new Map(statements());
+        work();
+        return Object.fromEntries(statements().map(([name, count]) => [name, count - (before.get(name) ?? 0)] as const).filter(([, count]) => count));
+    };
+    return { stored, calls, during, redactChars: () => timings.report().timings['save: redact']?.chars ?? 0 };
 }
+type Part = { key: string; position: number; body: string };
 const row = (db: DatabaseSync) => (db.prepare('SELECT body FROM state WHERE id=1').get() as { body: string } | undefined)?.body;
-const partRows = (db: DatabaseSync) => db.prepare('SELECT key,position,body FROM state_parts ORDER BY position,key').all();
-const keys = (db: DatabaseSync) => (db.prepare('SELECT key FROM state_parts ORDER BY position').all() as { key: string }[]).map(part => part.key);
-/** What the previous release wrote for the same state. */
-const before = (state: object) => JSON.stringify(sanitizeObject(state));
-const sample = () => ({ revision: 3, serverTime: '2026-11-21T10:00:00Z', notes: [{ id: 'n1', text: SECRET }], skipped: undefined as unknown,
+const partRows = (db: DatabaseSync) => db.prepare('SELECT key,position,body FROM state_parts ORDER BY position,key').all() as Part[];
+const keys = (db: DatabaseSync) => partRows(db).map(part => part.key);
+/** The ordered parts as one text, joined here and not by the code under test. */
+const joined = (db: DatabaseSync) => `{${partRows(db).map(part => `${JSON.stringify(part.key)}:${part.body}`).join(',')}}`;
+/** What is stored as the state: the ordered parts, or the whole row when there are none. */
+const persisted = (db: DatabaseSync) => partRows(db).length ? joined(db) : row(db);
+/** The whole row a previous release left beside the parts. */
+const giveRow = (db: DatabaseSync) => { db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(joined(db)); };
+/** What a save must store, worked out without the writer: the redacted text of the whole state. */
+const expected = (state: object) => JSON.stringify(sanitizeObject(state));
+const sample = (): Record<string, unknown> => ({ revision: 3, serverTime: '2026-11-21T10:00:00Z', notes: [{ id: 'n1', text: SECRET }], skipped: undefined,
     tickets: [{ key: 'CEC-1', title: 'First' }], '10': 'numeric-looking key', nothing: null, empty: {}, flag: false });
+/** A store with `state` saved in parts and no whole row. */
+function partsOnly(state: object) {
+    const db = database(), writer = parts(db);
+    writer.stored.save(state, false);
+    return { db, ...writer };
+}
+/** A store a previous release wrote: `state` in parts and the same text in the whole row, opened by a new writer. */
+function inherited(state: object) {
+    const { db } = partsOnly(state);
+    giveRow(db);
+    const writer = parts(db), loaded = writer.stored.load() as Record<string, unknown>;
+    return { db, loaded, ...writer };
+}
 
-test('the first save writes every key and the same whole row the previous release wrote; a load gives that state back in order', () => {
-    const db = database(), { stored, writes } = parts(db), state = sample();
+test('the first save writes every key as its own part and no whole row; a load gives that state back in order', () => {
+    const db = database(), { stored, during } = parts(db), state = sample(), text = expected(state);
     expect(stored.load()).toBeNull();
-    expect(stored.save(state, false)).toBe(before(state).length);
-    expect(row(db)).toBe(before(state));
-    expect(row(db)).not.toContain('user:pw');
-    expect(writes()).toEqual([8, 1]); // `skipped` has no JSON form, as in the whole row.
+    let size = 0;
+    expect(during(() => { size = stored.save(state, false); })).toEqual(first({ [WRITE_PART]: 8 })); // `skipped` has no JSON form.
+    expect([size, persisted(db), row(db)]).toEqual([text.length, text, undefined]);
+    expect(text).not.toContain('user:pw');
     const again = parts(db), loaded = again.stored.load() as Record<string, unknown>;
-    expect(JSON.stringify(loaded)).toBe(before(state));
-    expect(Object.keys(loaded)).toEqual(Object.keys(JSON.parse(before(state))));
+    expect(JSON.stringify(loaded)).toBe(text);
+    expect(Object.keys(loaded)).toEqual(Object.keys(JSON.parse(text)));
     // The loaded object has no `skipped` key, so the keys after it close up once; their text is not redacted again.
-    const writesBeforeClosing = again.writes(), redactedBeforeClosing = again.redactChars();
-    again.stored.save(loaded, false);
-    expect(row(db)).toBe(before(state));
-    const closed = again.writes();
-    expect(closed).toEqual([writesBeforeClosing[0] + 4, writesBeforeClosing[1] + 1]);
-    expect(again.redactChars() - redactedBeforeClosing).toBe(0);
-    again.stored.save(loaded, false);
-    expect(again.writes()).toEqual(closed);
+    const redacted = again.redactChars();
+    expect(again.during(() => again.stored.save(loaded, false))).toEqual(first({ [WRITE_PART]: 4 }));
+    expect(again.redactChars() - redacted).toBe(0);
+    expect([persisted(db), row(db)]).toEqual([text, undefined]);
+    expect(again.during(() => again.stored.save(loaded, false))).toEqual(saving());
     // A state with no such gap is exactly what was written: saving it after a load writes nothing.
-    const plain = database(), first = parts(plain);
-    first.stored.save({ a: 1, b: [SECRET], c: { d: null } }, false);
-    const next = parts(plain);
-    next.stored.save(next.stored.load() as object, false);
-    expect(next.writes()).toEqual([0, 0]);
+    const plain = partsOnly({ a: 1, b: [SECRET], c: { d: null } }).db;
+    const next = parts(plain), reloaded = next.stored.load() as object;
+    expect(next.during(() => next.stored.save(reloaded, false))).toEqual(first());
+});
+
+test('each save in a sequence stores exactly the redacted text of its input, returns that length and loads back the same', () => {
+    const db = database(), { stored } = parts(db);
+    let state = sample();
+    const steps: [string, () => void][] = [
+        ['the first save', () => {}],
+        ['a change deep inside one key', () => { (state.tickets as { title: string }[])[0].title = 'Renamed'; }],
+        ['a secret added inside a key', () => { (state.notes as object[]).push({ id: 'n2', text: `again ${SECRET}` }); }],
+        ['an added key', () => { state.added = { at: 'end' }; }],
+        ['a removed key', () => { delete state.nothing; }],
+        ['a key in front, which moves the others', () => { state = { first: 1, ...state }; }],
+        ['a value that lost its JSON form', () => { state.flag = undefined; }],
+        ['that value set again', () => { state.flag = true; }],
+        ['nothing changed', () => {}],
+    ];
+    for (const [step, change] of steps) {
+        change();
+        const text = expected(state); // Before the save, and never from what the writer made.
+        expect([step, stored.save(state, false)]).toEqual([step, text.length]);
+        expect([step, persisted(db), row(db)]).toEqual([step, text, undefined]);
+        expect([step, JSON.stringify(parts(db).stored.load())]).toEqual([step, text]);
+    }
+    expect(expected(state)).not.toContain('user:pw');
 });
 
 test('a reloaded part whose redaction changes again is rewritten on the next save', () => {
-    const db = database(), { stored } = parts(db);
-    const state = { revision: 3, note: '?secret=x y,z', stable: true };
-    stored.save(state, false);
+    const state = { revision: 3, note: '?secret=x y,z', stable: true }, { db } = partsOnly(state);
     const restarted = parts(db), loaded = restarted.stored.load() as typeof state;
     expect(loaded.note).toBe('?secret=[redacted],z');
     loaded.revision++;
-    restarted.stored.save(loaded, false);
-    expect(row(db)).toBe(before(loaded));
+    const text = expected(loaded);
+    let size = 0;
+    expect(restarted.during(() => { size = restarted.stored.save(loaded, false); })).toEqual(first({ [WRITE_PART]: 2 }));
+    expect([size, persisted(db), row(db)]).toEqual([text.length, text, undefined]);
     expect(partRows(db)).toContainEqual({ key: 'note', position: 1, body: '"?secret=[redacted]"' });
-    expect(restarted.writes()).toEqual([2, 1]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(text);
 });
 
 test('a property toJSON sees its owning key and runs once per save', () => {
@@ -75,91 +144,155 @@ test('a property toJSON sees its owning key and runs once per save', () => {
         let calls = 0;
         return { state: { probe: { toJSON: (key: string) => `${key}-${++calls}` } }, calls: () => calls };
     };
-    const live = fixture();
-    stored.save(live.state, false);
+    // The expected text comes from a second, equal fixture, so working it out does not use up the writer's call.
+    const live = fixture(), text = expected(fixture().state);
+    expect(stored.save(live.state, false)).toBe(text.length);
     expect(live.calls()).toBe(1);
-    expect(row(db)).toBe(before(fixture().state));
+    expect(persisted(db)).toBe(text);
     expect(partRows(db)).toEqual([{ key: 'probe', position: 0, body: '"probe-1"' }]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(text);
 });
 
-test('a save writes only the keys whose content changed, redacted, and the whole row stays what the previous release would write', () => {
-    const db = database(), { stored, writes, calls } = parts(db), state = sample();
-    stored.save(state, false);
-    const first = writes();
-    stored.save(state, false);
-    expect(writes()).toEqual(first); // Nothing changed: no part, no row.
-    state.revision = 4; state.notes.push({ id: 'n2', text: `again ${SECRET}` });
-    expect(stored.save(state, false)).toBe(before(state).length);
-    expect(writes()).toEqual([first[0] + 2, first[1] + 1]);
-    expect(row(db)).toBe(before(state));
-    expect(row(db)).not.toContain('user:pw');
-    state.tickets[0].title = 'Renamed'; // A change deep inside one key is that key's change.
-    stored.save(state, false);
-    expect(writes()).toEqual([first[0] + 3, first[1] + 2]);
-    expect(row(db)).toBe(before(state));
-    expect(calls('exec: BEGIN IMMEDIATE')).toBe(calls('exec: COMMIT')); // Each save outside a transaction is one unit.
+test('in a known store without the whole row and with no other writer, a save writes one part row for each changed key, deletes a removed one and runs nothing against the whole row', () => {
+    const state = sample(), { db, stored, during, calls } = partsOnly(state); // Its one save found no row, and that is now known.
+    const join = vi.spyOn(savedState, 'joinParts'), ran: Record<string, number>[] = [];
+    const save = () => { let size = 0; ran.push(during(() => { size = stored.save(state, false); })); return size; };
+    state.revision = 4; (state.notes as object[]).push({ id: 'n2', text: `again ${SECRET}` });
+    const changed = expected(state);
+    expect(save()).toBe(changed.length);
+    delete state.flag; // The last key: no other key moves.
+    const removed = expected(state);
+    expect(save()).toBe(removed.length);
+    expect(save()).toBe(removed.length); // Nothing changed: nothing written.
+    expect(ran).toEqual([saving({ [WRITE_PART]: 2 }), saving(REMOVED), saving()]);
+    // A save that read each time whether the row is there would run that read here.
+    expect(ran.flatMap(onRow)).toEqual([]);
+    // The whole text was never put together, and each save outside a transaction was one unit.
+    expect(join).not.toHaveBeenCalled();
+    expect(calls('exec: BEGIN IMMEDIATE')).toBe(calls('exec: COMMIT'));
+    expect([persisted(db), row(db)]).toEqual([removed, undefined]);
+    expect(removed).not.toContain('user:pw');
+    // Both checks do see a store that has the row: its start reads it, joins the whole text and updates it.
+    const kept = inherited({ revision: 1 });
+    kept.loaded.revision = 2;
+    expect(onRow(kept.during(() => kept.stored.save(kept.loaded, false))).sort()).toEqual([ROW_THERE, UPDATE_ROW]);
+    expect(join).toHaveBeenCalledTimes(1);
 });
 
-test('added, removed and reordered keys keep the stored parts and the whole row in step', () => {
-    const db = database(), { stored } = parts(db);
-    let state: Record<string, unknown> = sample();
-    stored.save(state, false);
-    delete state.nothing; state.added = { at: 'end' };
-    stored.save(state, false);
-    expect(row(db)).toBe(before(state));
-    expect(keys(db)).toEqual(Object.keys(JSON.parse(before(state))));
-    state = { first: 1, ...state }; // A key in front moves every other key.
-    stored.save(state, false);
-    expect(row(db)).toBe(before(state));
-    expect(keys(db)).toEqual(Object.keys(JSON.parse(before(state))));
-    expect(JSON.stringify(parts(db).stored.load())).toBe(before(state));
-    stored.save({}, false);
-    expect([row(db), keys(db)]).toEqual(['{}', []]);
+test('a store opened with the whole row keeps it equal to the parts while only start keys change, and never writes it again once it is gone', () => {
+    const { db, loaded: state, stored, during } = inherited({ startedAt: 't0', serverTime: 't0', revision: 1, events: [], notes: [{ text: SECRET }], flag: false });
+    const join = vi.spyOn(savedState, 'joinParts');
+    Object.assign(state, { startedAt: 't1', serverTime: 't1', revision: 2, events: [{ id: 2 }] });
+    const started = expected(state);
+    expect(during(() => stored.save(state, false))).toEqual(first({ [WRITE_PART]: 4, ...IN_STEP }));
+    expect([row(db), joined(db)]).toEqual([started, started]);
+    expect(join).toHaveBeenCalledTimes(1); // The row kept for the previous release is the one use of the whole text.
+    expect(during(() => stored.save(state, false))).toEqual(saving());
+    state.flag = true;
+    const changed = expected(state);
+    expect(during(() => stored.save(state, false))).toEqual(saving({ [WRITE_PART]: 1, [DELETE_ROW]: 1 }));
+    expect([row(db), joined(db)]).toEqual([undefined, changed]);
+    state.revision = 3; state.flag = false;
+    expect(during(() => stored.save(state, false))).toEqual(saving({ [WRITE_PART]: 2 }));
+    expect(join).toHaveBeenCalledTimes(1);
+    expect([row(db), joined(db)]).toEqual([undefined, expected(state)]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(expected(state));
 });
 
-test('a state row written without its parts, as the previous release writes it, wins over older parts', () => {
-    const db = database(), { stored } = parts(db), state: Record<string, unknown> = sample();
-    stored.save(state, false);
-    // The previous release runs after a rollback: it rewrites the row and knows nothing of parts.
-    const newer = { ...state, revision: 9, onlyInRow: true }; delete (newer as Record<string, unknown>).tickets;
-    db.prepare('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(before(newer));
-    const after = parts(db), loaded = after.stored.load() as Record<string, unknown>;
-    expect(JSON.stringify(loaded)).toBe(before(newer));
-    loaded.revision = 10;
-    after.stored.save(loaded, false);
-    expect(row(db)).toBe(before(loaded));
-    expect(keys(db)).toEqual(Object.keys(loaded)); // The stale `tickets` part is gone.
-    expect(JSON.stringify(parts(db).stored.load())).toBe(before(loaded));
+const others = (): Record<string, unknown> => ({ startedAt: 't0', revision: 1, notes: [{ text: SECRET }], tickets: ['CEC-1'], flag: false });
+test.each<[string, (state: Record<string, unknown>) => Record<string, unknown>, Record<string, number>]>([
+    ['added', state => ({ ...state, added: 1 }), { [WRITE_PART]: 1 }],
+    ['removed', state => Object.fromEntries(Object.entries(state).filter(([key]) => key !== 'flag')), REMOVED],
+    ['moved', ({ tickets, flag, ...rest }) => ({ ...rest, flag, tickets }), { [WRITE_PART]: 2 }],
+    ['given other content', state => ({ ...state, flag: true }), { [WRITE_PART]: 1 }],
+])('the first save in which a key no start writes is %s removes the whole row, in one statement', (_name, change, writes) => {
+    const { db, loaded, stored, during } = inherited(others());
+    const state = change(loaded), text = expected(state);
+    let size = 0;
+    expect(during(() => { size = stored.save(state, false); })).toEqual(first({ ...writes, [DELETE_ROW]: 1 }));
+    expect([size, row(db), joined(db)]).toEqual([text.length, undefined, text]);
+    state.revision = 2;
+    expect(during(() => stored.save(state, false))).toEqual(saving({ [WRITE_PART]: 1 }));
+    expect([row(db), joined(db)]).toEqual([undefined, expected(state)]);
 });
 
-test('a store that has only the old row loads from it and writes its parts on the first save', () => {
-    const db = database(), state = sample();
-    db.prepare('INSERT OR REPLACE INTO state(id,body) VALUES(1,?)').run(before(state));
-    const { stored, writes } = parts(db), loaded = stored.load() as Record<string, unknown>;
-    expect(JSON.stringify(loaded)).toBe(before(state));
-    stored.save(loaded, false);
-    expect(writes()).toEqual([8, 1]);
-    expect(row(db)).toBe(before(state));
+test('a change that redaction hides writes nothing and keeps the whole row', () => {
+    const { db, loaded, stored, during, redactChars } = inherited(others());
+    const before = [row(db), partRows(db)], text = expected(loaded), redacted = redactChars();
+    (loaded.notes as { text: string }[])[0].text = 'see postgres://user:another@db.internal/app for details';
+    expect(expected(loaded)).toBe(text);
+    let size = 0;
+    expect(during(() => { size = stored.save(loaded, false); })).toEqual(first());
+    expect(redactChars() - redacted).toBe(JSON.stringify(JSON.parse(text).notes).length); // It was redacted again, and came out the same.
+    expect([size, row(db), partRows(db)]).toEqual([text.length, ...before]);
+    // The row is still there for a start to keep in step.
+    loaded.revision = 2;
+    expect(during(() => stored.save(loaded, false))).toEqual(saving({ [WRITE_PART]: 1, ...IN_STEP }));
+    expect([row(db), joined(db)]).toEqual([expected(loaded), expected(loaded)]);
 });
 
-test('the first save of empty state creates a compatibility row and zero parts', () => {
-    const db = database(), { stored, writes } = parts(db);
-    expect(stored.save({}, false)).toBe(2);
-    expect([row(db), keys(db), writes()]).toEqual(['{}', [], [0, 1]]);
+test('a store that has only the old row loads from it, and its first save writes every part and removes the row', () => {
+    const db = database(), legacy = expected(sample());
+    db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(legacy);
+    const { stored, during } = parts(db), loaded = stored.load() as Record<string, unknown>;
+    expect(JSON.stringify(loaded)).toBe(legacy);
+    loaded.revision = 4; // The edit and the loaded state are saved together.
+    const text = expected(loaded);
+    let size = 0;
+    expect(during(() => { size = stored.save(loaded, false); })).toEqual(first({ [WRITE_PART]: 8, [DELETE_ROW]: 1 }));
+    expect([size, row(db), joined(db)]).toEqual([text.length, undefined, text]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(text);
+});
+
+test('a whole row that differs from the parts stops the load, and nothing is changed', () => {
+    const state = sample(), { db } = partsOnly(state);
+    db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(expected({ ...state, revision: 9 }));
+    const before = [row(db), partRows(db)], { stored } = parts(db);
+    expect(() => stored.load()).toThrow(savedState.SavedStateConflict);
+    expect(() => stored.load()).toThrow(/:memory:.*docs\/office-process\.md/);
+    expect([db.isTransaction, row(db), partRows(db)]).toEqual([false, ...before]);
+});
+
+test('a saved empty state is the literal {} in the whole row with no parts, and saving it again writes nothing', () => {
+    const db = database(), { stored, during } = parts(db);
+    expect(stored.load()).toBeNull(); // Never saved is not the same as saved empty.
+    let size = 0;
+    expect(during(() => { size = stored.save({}, false); })).toEqual(emptying({ [WRITE_EMPTY_ROW]: 1 }));
+    expect([size, row(db), keys(db)]).toEqual([2, '{}', []]);
+    expect(during(() => stored.save({}, false))).toEqual(emptying());
     const restarted = parts(db), loaded = restarted.stored.load();
     expect(loaded).toEqual({});
-    restarted.stored.save(loaded as object, false);
-    expect(restarted.writes()).toEqual([0, 0]);
+    expect(restarted.during(() => { size = restarted.stored.save(loaded as object, false); })).toEqual(emptying());
+    expect([size, row(db), keys(db)]).toEqual([2, '{}', []]);
+    // A state whose every value has no JSON form is saved as empty too.
+    const state = { gone: undefined, call: () => 1 };
+    expect(expected(state)).toBe('{}');
+    const omitted = database();
+    expect(parts(omitted).stored.save(state, false)).toBe(2);
+    expect([row(omitted), keys(omitted)]).toEqual(['{}', []]);
+});
+
+test('clearing the last key leaves the literal {} in the whole row, which a later save treats as any row a store was opened with', () => {
+    const { db, stored, during } = partsOnly({ flag: true });
+    let size = 0;
+    expect(during(() => { size = stored.save({}, false); })).toEqual(emptying({ [DELETE_PARTS]: 1, [WRITE_EMPTY_ROW]: 1 }));
+    expect([size, row(db), keys(db), parts(db).stored.load()]).toEqual([2, '{}', [], {}]);
+    // Only a start key: the row stays, equal to the parts.
+    expect(during(() => { size = stored.save({ revision: 1 }, false); })).toEqual(saving({ [WRITE_PART]: 1, ...IN_STEP }));
+    expect([size, row(db), joined(db)]).toEqual([14, '{"revision":1}', '{"revision":1}']);
+    // Another key: the row goes.
+    expect(during(() => stored.save({ revision: 1, flag: false }, false))).toEqual(saving({ [WRITE_PART]: 1, [DELETE_ROW]: 1 }));
+    expect([row(db), joined(db)]).toEqual([undefined, '{"revision":1,"flag":false}']);
 });
 
 test('clearing legacy-only state persists an empty row even after a rolled-back attempt', () => {
-    const db = database(), legacy = before(sample());
+    const db = database(), legacy = expected(sample());
     db.prepare('INSERT INTO state(id,body) VALUES(1,?)').run(legacy);
     const { stored } = parts(db);
     expect(JSON.stringify(stored.load())).toBe(legacy);
     const restore = stored.mark();
     db.exec('BEGIN IMMEDIATE');
-    stored.save({}, true);
+    expect(stored.save({}, true)).toBe(2);
     expect(row(db)).toBe('{}');
     db.exec('ROLLBACK');
     restore();
@@ -168,64 +301,126 @@ test('clearing legacy-only state persists an empty row even after a rolled-back 
     expect([row(db), keys(db), parts(db).stored.load()]).toEqual(['{}', [], {}]);
 });
 
-test('writes rolled back by the caller\'s transaction are forgotten, so the next save writes them again', () => {
-    const db = database(), { stored } = parts(db), state = sample();
-    stored.save(state, false);
-    const saved = row(db), asWritten = stored.mark();
+test.each(['no whole row', 'a whole row'])('writes rolled back by the caller\'s transaction are forgotten in a store with %s, so the next save writes them again', kind => {
+    const withRow = kind === 'a whole row', state = sample(), { db, stored } = withRow ? inherited(state) : partsOnly(state);
+    const before = [row(db), partRows(db)], asWritten = stored.mark();
     db.exec('BEGIN IMMEDIATE');
-    state.revision = 50;
+    state.flag = true;
     stored.save(state, true);
-    expect(row(db)).toBe(before(state));
+    expect([row(db), joined(db)]).toEqual([undefined, expected(state)]);
     db.exec('ROLLBACK'); asWritten();
-    expect(row(db)).toBe(saved);
-    stored.save(state, false); // Without the restore this would see nothing to write.
-    expect(row(db)).toBe(before(state));
-    expect(JSON.stringify(parts(db).stored.load())).toBe(before(state));
+    expect([row(db), partRows(db)]).toEqual(before);
+    // The row came back with the rollback, and so did the memory that it is there: a start still keeps it in step.
+    state.flag = false; state.revision = 50;
+    stored.save(state, false);
+    expect([row(db), joined(db)]).toEqual([withRow ? expected(state) : undefined, expected(state)]);
+    state.flag = true; // Without the restore this would see nothing to write.
+    stored.save(state, false);
+    expect([row(db), joined(db)]).toEqual([undefined, expected(state)]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(expected(state));
 });
 
 test('a save that fails part way leaves the database and what is remembered as they were', () => {
-    const db = database(), { stored } = parts(db), state = sample();
-    stored.save(state, false);
-    const saved = row(db), savedParts = partRows(db);
-    db.exec("CREATE TRIGGER refuse_state BEFORE INSERT ON state BEGIN SELECT RAISE(ABORT, 'rejected'); END;");
-    state.revision = 60; state.flag = true;
+    const state = sample(), { db, stored, during } = partsOnly(state);
+    const before = partRows(db), prior = structuredClone(state);
+    db.exec("CREATE TRIGGER refuse_part BEFORE INSERT ON state_parts WHEN NEW.key='flag' BEGIN SELECT RAISE(ABORT, 'rejected'); END;");
+    state.revision = 60; state.flag = true; // `revision` is written before `flag` is refused.
     expect(() => stored.save(state, false)).toThrow('rejected');
-    expect(row(db)).toBe(saved);
-    expect(partRows(db)).toEqual(savedParts);
-    db.exec('DROP TRIGGER refuse_state');
-    stored.save(state, false);
-    expect(row(db)).toBe(before(state));
+    expect([db.isTransaction, row(db), partRows(db)]).toEqual([false, undefined, before]);
+    let size = 0;
+    expect(during(() => { size = stored.save(prior, false); })).toEqual(saving()); // What was saved before is still what is remembered.
+    expect(size).toBe(expected(prior).length);
+    db.exec('DROP TRIGGER refuse_part');
+    expect(stored.save(state, false)).toBe(expected(state).length);
+    expect([row(db), joined(db)]).toEqual([undefined, expected(state)]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(expected(state));
+});
+
+test.each([['its own transaction', false], ['the caller\'s transaction', true]])('a failure after the whole row was removed, in %s, puts the row, the parts and what is remembered back', (_owner, inTransaction) => {
+    const state = sample(), { db, stored, during } = inherited(state);
+    const before = [row(db), partRows(db)], prior = structuredClone(state);
+    db.exec("CREATE TRIGGER refuse_retirement AFTER DELETE ON state BEGIN SELECT RAISE(ABORT, 'rejected after retirement'); END;");
+    state.revision = 60; state.flag = true;
+    if (inTransaction) db.exec('BEGIN IMMEDIATE');
+    expect(() => stored.save(state, inTransaction)).toThrow('rejected after retirement');
+    expect(db.isTransaction).toBe(inTransaction);
+    if (inTransaction) db.exec('COMMIT'); // The caller may still commit: the failed save undid itself.
+    expect([row(db), partRows(db)]).toEqual(before);
+    let size = 0;
+    expect(during(() => { size = stored.save(prior, false); })).toEqual(first()); // The failed save was this writer's first: what it read of the row went with it.
+    expect(size).toBe(expected(prior).length);
+    db.exec('DROP TRIGGER refuse_retirement');
+    expect(during(() => { size = stored.save(state, false); })).toEqual(saving({ [WRITE_PART]: 2, [DELETE_ROW]: 1 }));
+    expect([size, row(db), joined(db)]).toEqual([expected(state).length, undefined, expected(state)]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(expected(state));
+});
+
+test('a save that fails inside the caller\'s transaction is undone by itself: the caller commits its other work, and a retry saves everything', () => {
+    const state = sample(), { db, stored } = partsOnly(state);
+    const before = partRows(db), text = expected(state);
+    db.exec("CREATE TABLE other_work(n INTEGER); CREATE TRIGGER refuse_part BEFORE INSERT ON state_parts WHEN NEW.key='flag' BEGIN SELECT RAISE(ABORT, 'rejected'); END;");
+    db.exec('BEGIN IMMEDIATE');
+    db.exec('INSERT INTO other_work VALUES(1)');
+    state.revision = 70; state.flag = true; // Two changed parts: `revision` is written, then `flag` is refused.
+    expect(() => stored.save(state, true)).toThrow('rejected');
+    expect(db.isTransaction).toBe(true);
+    db.exec('INSERT INTO other_work VALUES(2)');
+    db.exec('COMMIT'); // No retry: what is committed is the other work and the state as it was.
+    expect([row(db), partRows(db), JSON.stringify(parts(db).stored.load())]).toEqual([undefined, before, text]);
+    expect(db.prepare('SELECT n FROM other_work ORDER BY n').all()).toEqual([{ n: 1 }, { n: 2 }]);
+    db.exec('DROP TRIGGER refuse_part');
+    expect(stored.save(state, false)).toBe(expected(state).length);
+    expect([row(db), joined(db)]).toEqual([undefined, expected(state)]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(expected(state));
+});
+
+test('a failed save whose own undo fails ends the caller\'s whole transaction, so nothing of it can be committed', () => {
+    const state = sample(), { db, stored, during } = partsOnly(state);
+    const before = partRows(db), text = expected(state);
+    db.exec("CREATE TABLE other_work(n INTEGER); CREATE TRIGGER refuse_part BEFORE INSERT ON state_parts WHEN NEW.key='flag' AND NEW.body='true' BEGIN SELECT RAISE(ABORT, 'rejected'); END;");
+    const exec = db.exec;
+    db.exec = (sql: string) => { if (sql.startsWith('ROLLBACK TO')) throw new Error('undo failed'); return exec(sql); };
+    db.exec('BEGIN IMMEDIATE');
+    db.exec('INSERT INTO other_work VALUES(1)');
+    state.revision = 70; state.flag = true; // Two changed parts: `revision` is written, then `flag` is refused.
+    expect(() => stored.save(state, true)).toThrow('rejected'); // The first failure is the one reported.
+    db.exec = exec;
+    // No retry. The half-written save went with the transaction, and so did the caller's other work.
+    expect(db.isTransaction).toBe(false);
+    expect(() => db.exec('COMMIT')).toThrow(/no transaction is active/);
+    expect([row(db), partRows(db), JSON.stringify(parts(db).stored.load())]).toEqual([undefined, before, text]);
+    expect(db.prepare('SELECT n FROM other_work').all()).toEqual([]);
+    // What is remembered is what is saved: the part rows are not replaced, and the change is written as any other.
+    db.exec('DROP TRIGGER refuse_part');
+    expect(during(() => stored.save(state, false))).toEqual(saving({ [WRITE_PART]: 2 }));
+    expect(JSON.stringify(parts(db).stored.load())).toBe(expected(state));
+});
+
+test('a rollback by the caller puts back that the whole row is known to be there, so the next start keeps it equal to the parts', () => {
+    const { db, loaded: state, stored, during } = inherited({ startedAt: 't0', revision: 1, flag: false });
+    state.revision = 2;
+    stored.save(state, false); // A start: from here the writer knows the row is there.
+    const asWritten = stored.mark();
+    db.exec('BEGIN IMMEDIATE');
+    state.flag = true; // No start writes this key: the row goes, and is remembered as gone.
+    stored.save(state, true);
+    expect(row(db)).toBeUndefined();
+    db.exec('ROLLBACK'); asWritten();
+    state.flag = false; state.startedAt = 't1';
+    // Still remembered as gone, the row would stay as the first start left it, beside parts that moved on.
+    expect(during(() => stored.save(state, false))).toEqual(saving({ [WRITE_PART]: 1, ...IN_STEP }));
+    expect([row(db), joined(db)]).toEqual([expected(state), expected(state)]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(expected(state)); // Two copies that disagreed would stop this load.
 });
 
 test('a key cleared and set again in place moves no other key', () => {
-    const db = database(), { stored, writes } = parts(db);
     const state: Record<string, unknown> = { first: 1, pendingMail: { id: 'm1' }, big: ['kept'], last: true };
-    stored.save(state, false);
-    const before1 = writes();
+    const { db, stored, during } = partsOnly(state);
     state.pendingMail = undefined; // Still a key of the object, with nothing to save.
-    stored.save(state, false);
-    expect(row(db)).toBe(before(state));
-    expect(writes()).toEqual([before1[0], before1[1] + 1]); // Its row is removed; `big` and `last` are not rewritten.
+    expect(during(() => stored.save(state, false))).toEqual(saving(REMOVED)); // `big` and `last` are not rewritten.
+    expect(joined(db)).toBe(expected(state));
     state.pendingMail = { id: 'm2' };
-    stored.save(state, false);
-    expect(writes()).toEqual([before1[0] + 1, before1[1] + 2]);
-    expect(row(db)).toBe(before(state));
-    expect(JSON.stringify(parts(db).stored.load())).toBe(before(state));
-});
-
-test('a save that fails on a write inside the caller\'s transaction makes the next save replace every part', () => {
-    const db = database(), { stored } = parts(db), state = sample();
-    stored.save(state, false);
-    db.exec('BEGIN IMMEDIATE');
-    db.exec("CREATE TEMP TRIGGER refuse_state BEFORE INSERT ON state BEGIN SELECT RAISE(ABORT, 'rejected'); END;");
-    state.revision = 70;
-    expect(() => stored.save(state, true)).toThrow('rejected'); // The part row for `revision` is written, the row is not.
-    db.exec('DROP TRIGGER refuse_state');
-    state.revision = 3; // Back to what is remembered: without the replacement this key would be skipped.
-    stored.save(state, true);
-    db.exec('COMMIT');
-    expect(row(db)).toBe(before(state));
-    expect(JSON.stringify(parts(db).stored.load())).toBe(before(state));
-    const rows = db.prepare('SELECT key,body FROM state_parts ORDER BY position').all() as { key: string; body: string }[];
-    expect(`{${rows.map(part => `${JSON.stringify(part.key)}:${part.body}`).join(',')}}`).toBe(before(state));
+    expect(during(() => stored.save(state, false))).toEqual(saving({ [WRITE_PART]: 1 }));
+    expect([row(db), joined(db)]).toEqual([undefined, expected(state)]);
+    expect(JSON.stringify(parts(db).stored.load())).toBe(expected(state));
 });

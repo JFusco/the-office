@@ -806,8 +806,8 @@ reconfigures the service on its own; the deployment controller below sequences t
 - **Store fingerprint** (`store-fingerprint.ts`). A digest of each store's schema and rows, read on
   a read-only connection. It leaves out what a release writes by starting under the fence and
   admitting nothing (`fenced-start-writes.ts`): planner statistics in any store and, in a project
-  store, the values of the start time, revision, clock and recent-event list (in the `state` row
-  and in their `state_parts` rows), `office-opened` events added after the earlier read, the event
+  store, the values of the start time, revision, clock and recent-event list (in their `state_parts`
+  rows, and in the `state` row of a store that still has one), `office-opened` events added after the earlier read, the event
   counter while it names the last event, and where the `state_parts` rows sit in their table.
   Events the earlier read held must still be there unchanged, and a later event of any other kind
   is a change. So are a new table or index, a migration that changes any other saved state, one of
@@ -816,6 +816,90 @@ reconfigures the service on its own; the deployment controller below sequences t
   data root. Only the working directory, the entry script and the release's own `node_modules/.bin`
   PATH entry change. Rendering requires a Node service with absolute data and working directories.
   Any reference to the current release commit outside those three locations causes refusal.
+
+### Saved state in parts, and the rollback floor
+
+A project's state is saved one row per top-level key (`state_parts`), and a save writes only the keys whose
+saved text changed (`server/store/state-parts.ts`). Earlier releases also wrote the whole state as one
+`state` row beside the parts on every save. The deployment controller's own store,
+`deployments/controller.sqlite`, is a store of the same kind, opened by the release the controller pin
+names and not by the service.
+
+- **A store that still has the whole row** keeps it byte for byte equal to its parts while the only saved
+  differences are in the keys a service start rewrites (`server/store/start-state-keys.ts`: start time,
+  revision, clock, recent events). So a start under the deployment fence writes exactly what it always
+  wrote, and the rollback comparison is unchanged. The first save that adds, removes, moves or changes any
+  other saved key removes the row in the same transaction. The row is never created again, except as the
+  literal `{}` for a saved empty state, which the parts cannot hold.
+- **The floor is 252f140 (2026-11-21).** Releases from that commit up to the one before this change read
+  the parts when the row is absent, and their first save writes the row again, so going back to one of them
+  needs no restore. The controller's own rollback reinstalls the release that was running before the
+  failed activation, under its usual eligibility checks; that release is above the floor as long as the
+  service was. Nothing in the deployment tooling checks a target against the floor: it is a rule for
+  whoever chooses the target. One deployment does end differently than before: when the target is a
+  release from the floor up to the one before this change and the store had no row, the target's start
+  writes the row again. A row that appears is a difference to the rollback comparison, so a failure after
+  that start goes to STOP for a person, where a start that admitted nothing was rolled back before. No
+  state is lost. A failure before the target opened the store is rolled back as usual.
+- **Below the floor a release reads only the row.** Started on a store without one, it begins from an
+  empty state and saves that as a new row, leaving the parts where they are. Do not start one on such a
+  store. To go below the floor on purpose:
+  1. Stop every writer of each affected database: the service for the project stores, and any controller
+     process for `deployments/controller.sqlite`.
+  2. Take a consistent copy of each (`sqlite3 <db> ".backup <copy>"`). The controller's backup under
+     `backups/<operation>/` holds the project stores and `office-control.sqlite`, not the controller's own
+     store, and copies each as it is: one taken after the row was removed has no row.
+  3. Have the last release that writes the row open and save each database once, with no work admitted
+     (the service under the deployment fence for the project stores; that release's controller for its
+     own store), and stop it.
+  4. Confirm read-only, on each database, that the row equals the parts in order (`{}` for a saved empty
+     state). A copy's date or checksum does not show this; read the row and the parts.
+  5. Only then start the older release or move the controller pin.
+- **Coming back from below the floor**, come up only through this release or a later one. The reader
+  refuses a database when it has at least one saved part and a whole row whose bytes differ from the
+  parts joined in `position, key` order. Before starting any writer, moving the controller pin or
+  entering a deployment that could start an older writer, check every stopped database with this
+  release's read-only reader. Run `pnpm office baseline` from this release's checkout for the project
+  stores and use `readSavedState(path)` (`server/store/read-saved-state.ts`) for
+  `deployments/controller.sqlite`. Where it reports a disagreement, follow the next section; the
+  baseline command stops at the first project it refuses, so run it again after each is resolved.
+  A release from the floor up to the one before this change must not be started first: it takes a
+  differing row without asking and writes the parts over from it.
+
+#### A store whose saved copies disagree
+
+When a store holds parts and a whole row that differs from them, it is not opened, and nothing in the file
+is changed: no journal mode, table, index, migration or save. The error names the database. For a project
+store the service exits at start-up with it, and launchd starts the service again every 30 seconds with
+the same result; `pnpm office baseline` fails with the same error. For `deployments/controller.sqlite` it
+shows as a deployment controller that will not start, recorded in `deployments/STOP.json`. Only a release
+from below the floor writes the row alone, and it either started from a current row or, finding none,
+from nothing; the two copies cannot say which, so neither is taken.
+
+1. Stop the service so it is not restarted (`launchctl bootout gui/$(id -u)/com.jfusco.living-office`),
+   keep every other writer of that database stopped, and do not start a release older than this one on
+   it.
+2. Take a consistent copy of the database (`sqlite3 <db> ".backup <copy>"`) and work on a second copy of
+   that.
+3. Read both copies of the state from the working copy using `SELECT body FROM state WHERE id=1`
+   and `SELECT key, body FROM state_parts ORDER BY position, key`. After a run below the floor, the
+   row is what that run saved and the parts are what was saved before it. Use verified project history
+   and backups to choose a complete copy or establish and approve a reconciled JSON object.
+4. On the working copy, apply the choice in one transaction and preserve all other tables.
+   - Keep the parts by running `DELETE FROM state WHERE id=1`.
+   - Keep the row by running `DELETE FROM state_parts`.
+   - For reconciled state, bind the approved JSON text to `UPDATE state SET body=? WHERE id=1`
+     and run `DELETE FROM state_parts` in the same transaction.
+5. After committing, create a standalone file at a new path with
+   `sqlite3 <working-copy> ".backup <install-copy>"`. On that install copy, check the remaining state
+   byte for byte against the chosen text and confirm this release's `readSavedState(path)` reads the
+   intended state. Keep all affected writers stopped if either check fails.
+6. With all affected writers still stopped, set aside any `-wal` and `-shm` files left by the old
+   database and put the verified install copy in its place, preserving the database's owner and mode.
+   Resume with this release or a later one after the checks pass for every affected database.
+
+If the intended state cannot be established, retain both original representations in the preserved
+backup and keep all affected writers stopped.
 
 ### Deployment
 
@@ -874,7 +958,8 @@ sent again, and the rollback's own separately identified steps settle the servic
 rollback is code only. It requires a complete, readable baseline taken after the old service
 stopped. The controller checks that every admission cursor and store fingerprint still matches
 before restoring the plist and before sending the restart. A target that started under the fence
-and admitted nothing still matches, so a failed verification after such a start is rolled back. A
+and admitted nothing still matches, so a failed verification after such a start is rolled back,
+unless that target wrote a whole `state` row the store did not have (see the rollback floor above). A
 target whose start added a table or index, migrated any other saved state or changed any other
 row does not match. A missing baseline, unreadable store, or difference goes to STOP. If the restarted previous release fails verification, the controller
 attempts a separate halt and records whether it was confirmed. Backups are for manual recovery.
