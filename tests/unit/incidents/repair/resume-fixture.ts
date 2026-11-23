@@ -32,7 +32,7 @@ export async function deployedWorld(stores: Store[], dbs: DatabaseSync[], ids = 
     const intent = (jobId: string, over: Partial<ResumeIntent> = {}): ResumeIntent => ({ incident: w.id, fix: { event: fixEvent, commit: FIX }, release: { commit: RELEASE, operation: OPERATION }, binding: binding(jobId), ...over });
     const requests = () => w.store.state.coordination!.requests ?? [];
     const admissions = () => (w.store.db.prepare('SELECT kind, ref FROM admissions ORDER BY seq').all() as { kind: string; ref: string }[]).filter(row => row.kind === 'request').map(row => row.ref);
-    /** The project's state as a restarted service reads it: the saved row, through the redaction every saved string gets. */
-    const reload = () => { w.store.save(); Object.assign(w.store.state, JSON.parse(JSON.parse(w.saved()).body)); };
+    /** Replaces the state in memory with what is saved, as a restarted service reads it: through the redaction every saved string gets. */
+    const reload = () => { w.store.save(); Object.assign(w.store.state, w.savedState()); };
     return { ...w, arrive, binding, intent, requests, admissions, reload, subject: (jobId: string) => `cms-field-vocabulary/delivery/${jobId}` };
 }

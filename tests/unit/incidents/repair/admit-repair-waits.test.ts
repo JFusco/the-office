@@ -38,7 +38,7 @@ test('nothing is marked until a repair starts; then every stop the repair record
         since: later(3).toISOString(), progressAt: later(2).toISOString(),
     });
     // Saved, not only held in memory.
-    expect(JSON.parse(JSON.parse(w.saved()).body).coordination.repairWaits['delivery/2'].subject).toBe(KEYS[1]);
+    expect(w.savedState().coordination!.repairWaits!['delivery/2'].subject).toBe(KEYS[1]);
     const saved = w.saved(), history = events(w);
     expect(w.pass(4)).toEqual({ admitted: [], expired: [], removed: [], unmarked: [] });
     expect(w.saved()).toBe(saved);
@@ -299,7 +299,7 @@ test('a marker is removed when its stop clears in the ledger or its incident lea
         other.ledger.record({ events: [], incidents: [{ ...incident, state, revision: incident.revision + 1 }] });
         expect(other.pass(3).removed).toEqual(KEYS);
         expect('repairWaits' in other.store.state.coordination!).toBe(false);
-        expect(JSON.parse(JSON.parse(other.saved()).body).coordination.repairWaits).toBeUndefined();
+        expect(other.savedState().coordination!.repairWaits).toBeUndefined();
     }
 });
 
@@ -411,8 +411,8 @@ test('a resume for an earlier repair\'s fix does not keep a new repair\'s stops 
     expect(w.waits()['delivery/1']).toMatchObject({ repair: 'cli-start-2' });
 });
 
-/** The project's state as a restarted service reads it: the saved row, through the redaction every saved string gets. */
-const restart = (w: ReturnType<typeof world>) => { w.store.save(); Object.assign(w.store.state, JSON.parse(JSON.parse(w.saved()).body)); };
+/** The project's state as a restarted service reads it: what is saved, through the redaction every saved string gets. */
+const restart = (w: ReturnType<typeof world>) => { w.store.save(); Object.assign(w.store.state, w.savedState()); };
 const expiries = (w: ReturnType<typeof world>) => w.ledger.events(w.id).filter(event => event.kind === 'repair-wait-expired').map(event => event.id);
 
 test('a marker is still its repair\'s after a restart, when the redaction of saved text has changed the event ID a person chose', () => {

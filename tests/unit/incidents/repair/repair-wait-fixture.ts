@@ -4,6 +4,9 @@ import { IncidentLedger } from '../../../../server/incidents/incident-ledger';
 import { recordIncidentEvent } from '../../../../server/incidents/record-event';
 import { syncIncidents } from '../../../../server/incidents/sync-incidents';
 import type { Store } from '../../../../server/store/store';
+import type { OfficeSnapshot } from '../../../../src/shared';
+import { savedFingerprint } from '../../store/saved-fingerprint-fixture';
+import { savedState as readSavedState } from '../../store/saved-state-fixture';
 import { AT, item, later, observe, office, projectStore } from '../incident-fixture';
 import { REPO, SHA } from '../github-fake';
 
@@ -31,7 +34,10 @@ export function world(stores: Store[], dbs: DatabaseSync[], ids = ['1', '2']) {
         return recordIncidentEvent(ledger, id, event, ledger.get(id)!.revision, { kind: 'fix-bound', request: { kind: 'fix-bound', reference: SHA('f'), bindings }, fix: { commit: SHA('f'), pullRequest: null, onMain } }, later(minutes));
     };
     const pass = (minutes: number, fenced = false) => admitRepairWaits(ledger, [{ store }], later(minutes), () => fenced, message => { throw new Error(message); });
-    const saved = () => JSON.stringify(store.db.prepare('SELECT body FROM state WHERE id=1').get());
-    return { store, db, ledger, id, jobs, observed, start, bind, pass, saved, waits: () => store.state.coordination!.repairWaits ?? {}, work: (jobId: string) => ({ projectId: store.project.id, kind: 'delivery' as const, id: jobId }) };
+    /** Everything saved for the project, as one digest: equal before and after means the project was not written. */
+    const saved = () => savedFingerprint(store);
+    /** The project's state as a restarted service reads it: what is saved, through the redaction every saved string gets. */
+    const savedState = () => readSavedState<OfficeSnapshot>(store);
+    return { store, db, ledger, id, jobs, observed, start, bind, pass, saved, savedState, waits: () => store.state.coordination!.repairWaits ?? {}, work: (jobId: string) => ({ projectId: store.project.id, kind: 'delivery' as const, id: jobId }) };
 }
 export { AT, later };
