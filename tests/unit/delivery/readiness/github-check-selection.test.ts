@@ -37,6 +37,18 @@ test.each(['wrong-repository-url','wrong-job-url','wrong-job-id','wrong-suite','
  if(kind==='inventory-ambiguous-order')f.inventory.workflow_runs[1].run_number=144;if(kind==='inventory-drift')f.inventory.workflow_runs[0].conclusion='failure';if(kind==='historical-inventory-drift')f.inventory.workflow_runs[1].conclusion='success';if(kind==='time-regression'){f.runs[0].created_at='2026-10-31T00:54:00Z';f.inventory.workflow_runs[0].created_at=f.runs[0].created_at;}
  await expect(f.select()).rejects.toThrow();
 });
+test.each([['the check run','raw'],['the Actions job','jobs']] as const)('a check that finishes between the two reads, seen running in %s, waits and is read again',async(_where,side)=>{
+ const f=fixture(),stale=side==='raw'?f.raw.check_runs[0]:f.jobs[0];Object.assign(stale,{status:'in_progress',conclusion:null,completed_at:null});
+ const error=await f.select().catch(e=>e);expect(error).toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain('Check commitlint is still finishing (status, conclusion, completed_at changed between reads)');
+});
+test.each([['conclusion','failure'],['completed_at','2026-10-31T00:55:22Z'],['started_at','2026-10-31T00:55:02Z']])('two completed reads that differ in %s are a mismatch, never a wait, and the stop names the field',async(field,value)=>{
+ const f=fixture();(f.jobs[0] as any)[field]=value;
+ const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toContain(`Actions job does not match exact check-run: ${field} differ`);
+});
+test('a job that is not the check run it is read for is a mismatch even while the check is running',async()=>{
+ const f=fixture();Object.assign(f.raw.check_runs[0],{status:'in_progress',conclusion:null,completed_at:null});f.jobs[0].name='other';
+ const error=await f.select().catch(e=>e);expect(error).not.toBeInstanceOf(CurrentChecksWait);expect(String(error)).toBe('Error: Actions job does not match exact check-run');
+});
 test('a later completed_at cancellation cannot override positively newer workflow numbering',async()=>{
  const f=fixture();f.raw.check_runs[1].completed_at='2026-10-31T00:56:00Z';f.jobs[1].completed_at=f.raw.check_runs[1].completed_at;f.raw.check_runs.reverse();expect(checksPassed(await f.select(),f.statuses,head)).toBe(true);
 });
