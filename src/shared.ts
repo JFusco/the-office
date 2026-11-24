@@ -995,6 +995,7 @@ export interface OfficeSnapshot {
         ledger: string;
     };
     coordination?: Coordination;
+    jiraQueueProgress?: import('./contracts/ticket-progress').JiraQueueProgress[];
     teamQueue?: {
         project: string;
         projectName: string;
