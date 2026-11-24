@@ -8,6 +8,7 @@ import type { StageResult } from '../../../../src/shared';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { workerFailure } from '../../../../server/workers/process';
+import { digest } from '../../../../server/store/readback-evidence';
 
 test.each(['content', 'auth', 'unknown', 'source', 'permission'])('ordinary metadata admission preserves the distinction: %s', async kind => {
     const f = metadataFixture(false); delete f.job.prMetadataRepair; f.store.finishClaim(f.claim.id, 'completed'); f.job.stage = 'lead-pr';
@@ -56,7 +57,7 @@ test('a native title-only rejection with a valid body admits the reserved metada
 });
 
 /** A saved blocked review whose metadata finding the repository lint accepts, with `extra` other open findings. */
-function accepted(extra = 0, edit?: () => void) {
+function accepted(extra = 0, edit?: () => void, onRead?: (reads: number) => void) {
     const f = metadataFixture(false); delete f.job.prMetadataRepair; f.store.finishClaim(f.claim.id, 'completed'); f.job.stage = 'lead-pr';
     const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'lead-fixture', 'lead-pr')!;
     const result = { outcome: 'blocked', commit: f.job.head, prId: f.job.pr, branch: f.job.branch, worktree: f.job.worktree, receipts: [], evidence: [], resolution: null,
@@ -66,7 +67,12 @@ function accepted(extra = 0, edit?: () => void) {
     f.job.steps.push({ stage: 'lead-pr', result });
     let lints = 0;
     const prior = f.delivery.execute;
-    f.delivery.execute = (async (program, args, options) => { if (program === 'pnpm' && args[0] === 'run') { lints++; edit?.(); } return prior(program, args, options); }) as typeof prior;
+    let reads = 0;
+    f.delivery.execute = (async (program, args, options) => {
+        if (program === 'pnpm' && args[0] === 'run') { lints++; edit?.(); }
+        if (program === 'gh' && args[0] === 'api' && args[1]?.endsWith('/pulls/200')) onRead?.(++reads);
+        return prior(program, args, options);
+    }) as typeof prior;
     const evaluate = (reviewed: any = structuredClone(f.pr)) => withAssignment(claim, 'delivery', () => evaluatePRMetadata(f.delivery, f.job, result, deliveryInputSha256(f.store, f.job.key), reviewed));
     return { f, result, evaluate, lints: () => lints };
 }
@@ -76,7 +82,8 @@ test('content the lint accepts, or other open findings, is a bound human edit of
         const { f, result, evaluate, lints } = accepted(extra);
         const decision = await evaluate();
         expect(decision).toEqual({ route: 'human-edit', why: extra ? 'other-findings' : 'lint-accepted', finding: result.findings[0], others: result.findings.slice(1), step: 0,
-            pr: { number: 200, url: f.job.prUrl, head: f.job.head, title: f.pr.title, body: f.pr.body } });
+            resultSha256: digest(result), inputSha256: deliveryInputSha256(f.store, f.job.key),
+            pr: { number: 200, url: f.job.prUrl, head: f.job.head, branch: f.job.branch, title: f.pr.title, body: f.pr.body } });
         // Only the sole finding needs the lint to tell takeover from a human edit.
         expect(lints()).toBe(extra ? 0 : 1);
         expect(f.job).toMatchObject({ stage: 'lead-pr' }); expect(f.job.prMetadataRepair).toBeUndefined(); expect(f.writes.patches).toBe(0);
@@ -91,4 +98,25 @@ test('a same-head edit during the review or the lint makes the decision stale; t
     const wrapper = accepted();
     expect(await wrapper.evaluate(null)).toEqual({ route: 'ineligible', reason: 'the pull request changed after the review started' });
     expect(await withAssignment(wrapper.f.store.activeClaims()[0], 'delivery', () => admitPRMetadata(wrapper.f.delivery, wrapper.f.job, wrapper.result, deliveryInputSha256(wrapper.f.store, wrapper.f.job.key)))).toBe(false);
+});
+
+test('a PR closed or merged without a text change on the second read gives no human edit, and refuses a takeover', async () => {
+    for (const close of [(pr: any) => { pr.state = 'closed'; }, (pr: any) => { pr.merged_at = '2026-11-24T00:00:00Z'; pr.state = 'closed'; }]) {
+        // The second read of the PR is the one after the lint, or after the binding when no lint runs.
+        for (const extra of [0, 1]) {
+            const run: { f?: any } = {};
+            const review = accepted(extra, undefined, reads => { if (reads === 2) close(run.f.pr); });
+            run.f = review.f;
+            expect(await review.evaluate()).toEqual({ route: 'ineligible', reason: 'the pull request is no longer the open pull request the review read' });
+            expect(review.f.job.prMetadataRepair).toBeUndefined(); expect(review.f.writes.patches).toBe(0);
+        }
+    }
+    const takeover = accepted(0, undefined, reads => { if (reads === 2) takeover.f.pr.state = 'closed'; });
+    const prior = takeover.f.delivery.execute;
+    takeover.f.delivery.execute = (async (program, args, options) => {
+        if (program === 'pnpm' && args[0] === 'run') throw new CommandFailure('pnpm exited 1: Pull request body does not match the repository contract:\n- Missing Summary', 'other', true);
+        return prior(program, args, options);
+    }) as typeof prior;
+    await expect(takeover.evaluate()).rejects.toThrow('Live metadata changed during content admission');
+    expect(takeover.f.job.prMetadataRepair).toBeUndefined(); expect(takeover.f.job.stage).toBe('lead-pr');
 });

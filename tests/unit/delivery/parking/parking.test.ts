@@ -2,7 +2,7 @@ import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
 afterEach(cleanupFakes);
-import { needsDecision, park } from '../../../../server/delivery/parking/park';
+import { decisionMarker, needsDecision, park } from '../../../../server/delivery/parking/park';
 import { resumeParked } from '../../../../server/delivery/parking/resume';
 import type { StageResult } from '../../../../src/shared';
 
@@ -63,24 +63,37 @@ test('a pause during parking stops the board write after the decision comment', 
     expect(f.state.cards[0].status).toBe('progress');
     expect(job.parked?.published).toBe(false);
 });
-test('a harness-worded park posts its own words and settles a comment that landed unread by reading it back, never posting it again', async () => {
+test('a model park keeps its marker lookup: a comment that already carries its marker is used, with no POST, before the card move', async () => {
     const f = fakeGitHub(), job = f.candidate({ stage: 'review', status: 'working' });
     f.state.cards[0].status = 'progress';
-    const original = f.execute, words = { reason: 'PR #200 needs an edit to its title.', instruction: 'Edit it, then move the issue card back to Ready.' };
-    let lose = true;
-    (f.delivery as any).execute = async (program: string, args: string[], options: any) => {
-        const out = await original(program, args, options);
-        if (lose && args.includes('-f')) { lose = false; throw new Error('gh: connection reset after the comment'); }
-        return out;
-    };
-    await expect(claimedDelivery(f.store, job, () => park(f.delivery, job, blocked('human-hold'), words))).rejects.toThrow('connection reset');
-    expect(f.state.comments).toHaveLength(1); expect(job.parked?.published).toBe(false); expect(f.state.cards[0].status).toBe('progress');
-    expect(f.store.getEffect(`harness:${job.id}:park-comment:0`)?.status).toBe('uncertain');
-    await claimedDelivery(f.store, job, () => park(f.delivery, job, blocked('human-hold'), words));
-    expect(f.state.comments).toHaveLength(1);
-    expect(f.state.comments[0].body).toBe(`Office decision ${job.id}:0: PR #200 needs an edit to its title.\n\nEdit it, then move the issue card back to Ready.`);
-    expect(f.store.getEffect(`harness:${job.id}:park-comment:0`)?.status).toBe('verified');
-    expect(f.store.getEffect(`harness:${job.id}:park:${job.id}:0:lane:issue-card`)?.status).toBe('verified');
-    expect(job).toMatchObject({ status: 'blocked', detail: `Decision needed: ${words.reason}`, parked: { published: true, reason: words.reason, instruction: words.instruction, marker: `Office decision ${job.id}:0` } });
+    f.state.comments.push({ id: 900, html_url: `${f.issueUrl}#issuecomment-900`, user: { login: 'JFusco' }, body: `${decisionMarker(job)}: an earlier decision` });
+    await claimedDelivery(f.store, job, () => park(f.delivery, job, blocked('human-hold')));
+    expect(f.state.calls.filter(call => call.includes('/comments -f'))).toEqual([]);
+    expect(f.store.getEffect(`harness:${job.id}:park-comment:0`)).toBeUndefined();
+    expect(job).toMatchObject({ status: 'blocked', parked: { published: true } });
+    expect(job.parked).not.toHaveProperty('metadata'); expect(job.parked).not.toHaveProperty('instruction');
     expect(f.state.cards[0].status).toBe('block');
+});
+test('a model park posts its comment first under a marker payload, and a failed comment leaves the card where it was', async () => {
+    const f = fakeGitHub(), job = f.candidate({ stage: 'review', status: 'working' }), order: string[] = [];
+    f.state.cards[0].status = 'progress';
+    const original = f.execute;
+    (f.delivery as any).execute = async (program: string, args: string[], options: any) => {
+        if (args.includes('-f')) order.push('comment');
+        if (args[1] === 'graphql' && JSON.parse(options.input).query.startsWith('mutation')) order.push('move');
+        return original(program, args, options);
+    };
+    await claimedDelivery(f.store, job, () => park(f.delivery, job, blocked('scope')));
+    expect(order).toEqual(['comment', 'move']);
+    expect(f.state.comments[0].body).toBe(`Office decision ${job.id}:0: Accept the new CMS 13 index identity?\n\nThe Office paused this ticket at review. Move the card back to Ready to resume from the same stage.`);
+    expect(f.store.getEffect(`harness:${job.id}:park-comment:0`)).toMatchObject({ status: 'verified', payload: { marker: `Office decision ${job.id}:0` } });
+    // The model park's lane call has no lane operation: its move is a board update, not a lane Effect.
+    expect(f.store.getEffect(`harness:${job.id}:park:${job.id}:0:lane:issue-card`)).toBeUndefined();
+    expect(job.boardUpdates?.at(-1)).toMatchObject({ item: 'issue-card', option: 'block', status: 'verified', detail: 'Block verified by read-back.' });
+    const failed = fakeGitHub(), other = failed.candidate({ stage: 'review', status: 'working' });
+    failed.state.cards[0].status = 'progress';
+    failed.state.fail = (_program, args) => args.includes('-f') ? 'gh: HTTP 502 posting the comment' : false;
+    await expect(claimedDelivery(failed.store, other, () => park(failed.delivery, other, blocked('human-hold')))).rejects.toThrow('502');
+    expect(failed.state.cards[0].status).toBe('progress'); expect(other).toMatchObject({ status: 'blocked', parked: { published: false } });
+    expect(failed.state.calls.filter(call => call.includes('mutation'))).toEqual([]);
 });

@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { workKey, type Finding, type StageResult, type TicketJob } from '../../../src/shared';
 import { deliveryInputSha256 } from '../../github/github-context';
+import { digest } from '../../store/readback-evidence';
 import { harnessDelivers } from '../harness/scope';
 import { assertMetadataBinding, bindMetadata } from './metadata-context';
 import { metadataWorkspace } from './metadata-workspace';
@@ -18,9 +19,13 @@ export interface MetadataHumanEdit {
     finding: Finding;
     /** Every other open finding of the same result, in its order. */
     others: Finding[];
-    /** Index of the saved `lead-pr` step this decision reads. */
+    /** Index of the saved `lead-pr` step this decision reads, and a digest of that saved result. */
     step: number;
-    pr: { number: number; url: string; head: string; title: string; body: string };
+    resultSha256: string;
+    /** The human-input digest the review read, as `acceptStageResult` supplied it; never computed again later. */
+    inputSha256: string;
+    /** The pull request Sam reviewed: its identity and the title and body the review started from. */
+    pr: { number: number; url: string; head: string; branch: string; title: string; body: string };
 }
 
 /** One reading of a readiness review's reserved metadata finding: the harness takes it over, a person edits the PR, or neither applies. */
@@ -46,8 +51,10 @@ function unbound(delivery: GitHubDelivery, job: TicketJob, result: StageResult, 
  * alone and the repository's own lint rejecting the live content: the bounded metadata handoff is then queued.
  * A finding the harness may not take over (the lint accepts the content, or other findings are open) is a
  * `human-edit`, only while the pull request still shows, after the last read, the head, title and body Sam's review
- * started from. A same-head edit during the review or the lint makes it `ineligible`. Narratives never select a
- * route. Tool, permission and unsettled-effect errors, and a refused binding, stay errors.
+ * started from. A same-head edit during the review or the lint makes it `ineligible`. The last read must also show
+ * the same open, unmerged pull request, repository, target and branch: a closed or changed one neither parks nor is
+ * taken over. Narratives never select a route. Tool, permission and unsettled-effect errors, and a refused binding,
+ * stay errors.
  */
 export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJob, result: StageResult, inputSha256: string, reviewed?: { title?: unknown; body?: unknown; head?: { sha?: unknown } }): Promise<MetadataDecision> {
     const { store } = delivery;
@@ -70,16 +77,20 @@ export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJo
     assertMetadataBinding(delivery, job, record, 'admission');
     const current = await delivery.verifyPR(job, true);
     assertMetadataBinding(delivery, job, record, 'admission');
-    const before = record.binding.before;
+    const before = record.binding.before, repository = store.project.repository;
     const moved = current.head.sha !== record.binding.head || current.head.ref !== record.binding.branch || current.title !== before.title || current.body !== before.body;
+    const closed = current.number !== job.pr || current.html_url !== job.prUrl || current.state !== 'open' || !!current.merged_at ||
+        current.head?.repo?.full_name !== repository || current.base?.repo?.full_name !== repository || current.base?.ref !== store.project.target;
     if (!rejected) {
+        if (closed) return ineligible('the pull request is no longer the open pull request the review read');
         if (moved) return ineligible('the pull request changed while its content was read');
         if (reviewed?.head?.sha !== record.binding.head || reviewed.title !== before.title || reviewed.body !== before.body)
             return ineligible('the pull request changed after the review started');
         return { route: 'human-edit', why: sole ? 'lint-accepted' : 'other-findings', finding, others: open.filter(f => f !== finding), step: job.steps.length - 1,
-            pr: { number: job.pr, url: job.prUrl, head: record.binding.head, title: before.title, body: before.body } };
+            resultSha256: digest(result), inputSha256,
+            pr: { number: job.pr, url: job.prUrl, head: record.binding.head, branch: record.binding.branch, title: before.title, body: before.body } };
     }
-    if (moved) throw new Error('Live metadata changed during content admission');
+    if (moved || closed) throw new Error('Live metadata changed during content admission');
     job.prMetadataRepair = record;
     delete job.reviewContext; delete job.reviewInputSha256; delete job.lastPRFingerprint;
     job.stage = 'prepare-pr'; job.status = 'queued'; job.detail = 'Exact metadata finding and repository content rejection recorded. One read-only Lead metadata assessment is queued; no source worker or repair budget was spent.';

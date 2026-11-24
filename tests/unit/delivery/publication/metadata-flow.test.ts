@@ -279,18 +279,18 @@ function humanEditFixture() {
     f.pr.title = TITLE;
     f.state.cards[0].status = 'review'; f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'review' });
     const moves: string[] = [], execute = f.delivery.execute;
-    let failRead: string | undefined;
+    let failRead: { item: string; nth: number } | undefined;
     f.delivery.execute = (async (program, args, options) => {
         const request = program === 'gh' && args[1] === 'graphql' ? JSON.parse(options!.input!) : undefined;
         if (String(request?.query).startsWith('mutation')) moves.push(request.variables.item);
-        if (failRead && String(request?.query).includes('fieldValues') && request.variables.item === failRead) { failRead = undefined; throw new Error('gh: HTTP 502 reading the card'); }
+        if (failRead && String(request?.query).includes('fieldValues') && request.variables.item === failRead.item && --failRead.nth === 0) { failRead = undefined; throw new Error('gh: HTTP 502 reading the card'); }
         return execute(program, args, options);
     }) as typeof execute;
     const api = f.delivery.api.bind(f.delivery);
     f.delivery.api = async path => path.includes('/check-runs') ? { total_count: 1, check_runs: [{ id: 10, head_sha: f.job.head, name: 'unit', status: 'completed', conclusion: 'success' }] } :
         path.endsWith('/status') ? { sha: f.job.head, total_count: 0, statuses: [], state: 'success' } : api(path);
     const parkEffects = () => (f.store.db.prepare('SELECT body FROM effects').all() as { body: string }[]).map(row => JSON.parse(row.body)).filter(e => e.id.includes(':park'));
-    return { ...f, moves, parkEffects, failCardRead: (item: string) => { failRead = item; } };
+    return { ...f, moves, parkEffects, failCardRead: (item: string, nth = 1) => { failRead = { item, nth }; } };
 }
 
 const stores = (f: ReturnType<typeof metadataFixture>) => new Map([[f.store.project.id, f.store]]);
@@ -304,7 +304,7 @@ test.each([true, false])('a current PR edit the harness may not make parks once 
     expect(f.state.comments).toHaveLength(1);
     const body = f.state.comments[0].body as string;
     expect(body.startsWith(`Office decision ${f.job.id}:${f.job.steps.length}: PR #200 needs an edit to its title`)).toBe(true);
-    expect(body).toContain('The edit it asks for: Remove [skip release] from the title; keep the issue link.');
+    expect(body).toContain("The edit Sam's review asks for: Remove [skip release] from the title; keep the issue link.");
     expect(body).toContain("Then move the issue card, not the pull request's card, back to Ready; the Office then runs a fresh review.");
     expect(body).toContain('A reply to Morgan does not resume it.');
     expect(body.includes('- review-note: Carried advisory: the OPERATING.md wording could be tighter.')).toBe(advisory);
@@ -356,16 +356,18 @@ test.each(['no board', 'no issue card'] as const)('with %s nothing promises a ca
     const f = humanEditFixture();
     if (kind === 'no board') delete (f.store.project as any).githubProject;
     else f.state.cards.splice(0, 1);
-    await expect(acceptLead(f, humanEditReview(f))).rejects.toThrow(`It was not parked: ${kind === 'no board' ? 'this project has no configured board' : 'the issue has no card on the board'}, so moving a card cannot resume it. Edit the PR, then ask for a fresh review with review-pr.`);
+    await expect(acceptLead(f, humanEditReview(f))).rejects.toThrow(kind === 'no board' ? 'It was not parked: this project has no configured board, so moving a card cannot resume it. Edit the PR, then ask for a fresh review with review-pr.'
+        : 'It was not parked: the issue has no card on the board, so moving a card cannot resume it. Put the issue card back on the board, edit the PR, then ask for a fresh review with review-pr.');
     expect(f.job.parked).toBeUndefined(); expect(f.state.comments).toEqual([]); expect(f.moves).toEqual([]); expect(f.parkEffects()).toEqual([]);
 });
 
-test('a park that stops after the first card keeps its evidence unpublished; the next pass finishes it without sending the comment or the first move again', async () => {
+test('a park that stops after the first card keeps its evidence unpublished and its comment unsent; the next pass finishes it without sending the first move again', async () => {
     const f = humanEditFixture(), model = vi.spyOn(f.engine.agents, 'run');
-    f.failCardRead('pr-card');
+    // The pull request's card is read once in the whole inventory before any move, then again just before its own move.
+    f.failCardRead('pr-card', 2);
     await expect(acceptLead(f, humanEditReview(f))).rejects.toThrow('HTTP 502');
     expect(f.job).toMatchObject({ status: 'blocked', parked: { published: false } });
-    expect(f.state.comments).toHaveLength(1); expect(f.moves).toEqual(['issue-card']);
+    expect(f.state.comments).toHaveLength(0); expect(f.moves).toEqual(['issue-card']);
     expect(f.state.cards.map(card => card.status)).toEqual(['block', 'review']);
     expect(resumeParked(f.store, f.delivery.jobs, [{ key: f.job.key, pickupStatus: 'Ready' }] as any, { enabled: true, status: 'Ready' }, stores(f), new Date())).toEqual([]);
     const steps = f.job.steps.length;

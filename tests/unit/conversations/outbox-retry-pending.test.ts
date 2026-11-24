@@ -119,3 +119,31 @@ test('a held intake review is not named in the shared session-visibility request
     markAwaitingRepair(state, 'brain', { kind: 'intake', id: 'GH-92' }, 'assignment-review');
     expect(shared()).toBe('');
 });
+
+const reason = "PR #176 needs an edit to its title that the Office may not make itself. The edit Sam's review asks for: Remove [skip release].";
+const instruction = "Sam's review found: [skip release].\n\nWhat's needed: edit the title of PR #176 on GitHub. Then move the issue card, not the pull request's card, back to In progress; the Office then runs a fresh review.";
+const harnessPark = (extra: Record<string, unknown> = {}) => ({ stage: 'lead-pr', reason, at: STOPPED, published: false, instruction, marker: 'Office decision job:1', metadata: { route: {} }, ...extra });
+const detail = (j: any) => { const state = { ...initialSnapshot(), coordination: coordination() } as any; state.coordination.jobs = [j]; return projectOutbox(state, SOON).find(action => action.id === 'ticket-job:job'); };
+
+test('a published harness-worded park shows its reason and its full instruction, with the pickup lane it names; a model park keeps the Ready wording', () => {
+    expect(detail(job({ detail: `Decision needed: ${reason}`, parked: harnessPark({ published: true }) }))).toMatchObject({ title: 'GH-173 needs a decision on the board', detail: `${reason}\n\n${instruction}` });
+    expect(detail(job({ detail: 'Decision needed: choose', parked: { stage: 'review', reason: 'choose', at: STOPPED, published: true } }))?.detail).toBe('choose\nMove the card back to Ready to resume review.');
+});
+
+test('an unpublished harness-worded park with an unconfirmed comment or card move is a visible stop with the edit, the write and its own error, even while a read retry is pending', () => {
+    const comment = detail(job({ parked: harnessPark({ unconfirmed: [{ write: 'the decision comment on issue #173', error: 'Error: gh: HTTP 502 after the comment' }] }) }))!;
+    expect(comment.title).toBe('GH-173 decision comment is not confirmed');
+    expect(comment.detail).toContain(reason);
+    expect(comment.detail).toContain('The Office has not confirmed its decision comment on the issue, and a card may already be in Block.');
+    expect(comment.detail).toContain('Not yet read back: the decision comment on issue #173. Error: gh: HTTP 502 after the comment');
+    expect(comment.detail).toContain(`Last stop: ${TIMED_OUT}`);
+    expect(comment.detail).toContain('Moving a card cannot resume this job until the comment is confirmed.');
+    // The outer board check said only that something is uncertain; the move's own provider error is what the item shows.
+    const lane = detail(job({ detail: 'Error: Previous board transition remains uncertain; read back the saved attempt before another write',
+        parked: harnessPark({ unconfirmed: [{ write: "the move of the pull request's card to Block", error: 'Error: gh: HTTP 502 Bad Gateway' }] }) }))!;
+    expect(lane.detail).toContain("Not yet read back: the move of the pull request's card to Block. Error: gh: HTTP 502 Bad Gateway");
+    expect(lane.detail).toContain('Last stop: Error: Previous board transition remains uncertain');
+    // A known route stop explains itself; an unpublished park with nothing unconfirmed and no stop keeps the default item.
+    expect(detail(job({ stop: undefined, detail: 'Error: x', parked: harnessPark({ stopped: 'The park sends nothing more: automatic pickup is turned off. Restore it, then ask for review-pr to finish the park.' }) }))?.detail).toContain('automatic pickup is turned off. Restore it');
+    expect(detail(job({ stop: undefined, detail: 'Error: x', parked: harnessPark() }))?.title).toBe('Read back GH-173 delivery');
+});

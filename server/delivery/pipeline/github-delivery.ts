@@ -21,6 +21,7 @@ import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication
 import { stopReason } from './stop-reason';
 import { redispatchSavedAssessment } from '../recovery/redispatch-assessment';
 import { finishMetadataPark } from '../parking/finish-metadata-park';
+import { inspectMetadataPark } from '../parking/inspect-metadata-park';
 import { retireRefusedQA, savedQAResult } from '../recovery/reaccept-qa-result';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
@@ -140,6 +141,7 @@ export class GitHubDelivery {
             }
             if (await routeAutomationMerge(this, job)) return;
             if (await runStoppedBaseReview(this, job)) return;
+            await inspectMetadataPark(this, job);
             await new ProjectProgress(this.store, this.execute).reconcile(job);
             const issue = await this.api(`issues/${Number(job.key.slice(3))}`);
             if (await retireUnstartedDelivery(this, job, issue)) return;

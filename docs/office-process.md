@@ -421,15 +421,43 @@ lint rejects the live content. When the lint accepts it, or other findings are o
 harness parks the job instead (`server/delivery/parking/park-unadmitted-metadata.ts`): one decision
 comment names the pull request, the field, the edit the finding asks for and every other open finding,
 and tells Joe to edit the pull request and then move the issue card back to the pickup lane, which
-resumes with a fresh readiness review; a reply to Morgan does not. It parks only while the pull request
-still shows the head, title and body the review started from, and only when the board has its pickup
-and Block lanes and the issue has its card. Otherwise nothing is written and the job stops saying what
-to edit and to ask for a fresh review with `review-pr`. Each card move is one Effect keyed to the park's
-step, the park is published only once the comment and the moves read back, and a park that stopped part
-way is finished on the job's next pass at the review without sending anything again
-(`server/delivery/parking/finish-metadata-park.ts`). Jobs the harness does not deliver, source
-resolutions, older metadata bindings and a saved conflict assessment acted on again keep the
-reconciliation stop.
+resumes with a fresh readiness review; a reply to Morgan does not. Model-written text in it is shown
+without hidden comments, markup, credentials or live mentions.
+
+It parks only while the decision holds: the saved review step and result, the human inputs that review
+read, and the same open, unmerged pull request with the head, branch, title and body it read. It parks
+only when a card can resume it (`server/delivery/parking/card-resume-route.ts`): the open issue assigned
+to the account the assignment poll reads, pickup turned on with a Ready, In progress or In review lane,
+one lane by the pickup name, one Block lane, one In review lane and one issue card. When a route is
+missing at the start, nothing is written and the job stops with the edit and `review-pr`, naming first
+anything a fresh review also needs, such as the issue card or a single In review lane.
+
+The park is recorded once, with what it was decided on, its exact route and cards and where its board
+updates start, before anything is written. The cards go first: the whole inventory and every lane is read
+before the first move, each move is one lane Effect keyed to the park's step, and the issue card and
+every card of the pull request (a new one included) are read back in Block and recorded before the
+decision comment is posted, last. Every write not yet sent is guarded by the live decision, route, Block
+lanes and claim. The comment is bound to its issue, author and full body, and is only ever read back
+against that original intent, across every page, or adopted when exactly it is there; a comment or move
+that was sent is never sent again. A park saved before this record existed is read back under its
+original marker and Effect, and sends nothing new (`server/delivery/parking/historical-metadata-park.ts`).
+
+A park that stopped part way stays unpublished and is finished on the job's next pass at the review
+(`server/delivery/parking/finish-metadata-park.ts`). That pass first reads each sent write back, before
+the generic board check can stop it (`server/delivery/parking/inspect-metadata-park.ts`). A sent write
+that cannot be observed is a visible manual stop: the outbox shows the edit, that the decision comment is
+not confirmed and a card may already be in Block, the write and its own provider error, and that moving a
+card cannot resume the job yet. Each observation pass reads it back against its original intent, and once
+every sent write reads back one finishing pass is queued (`server/delivery/parking/observe-metadata-parks.ts`);
+`review-pr` asks for the same pass. A changed pickup, assignment or board stops the park naming what to
+restore. Once the comment and the recorded Block lanes are confirmed the park is published, leaving the
+cards where they are, so an issue card Joe already returned to the pickup lane is resumed by the normal
+assignment poll. A park whose comment was never sent is released instead when its decision no longer
+holds or a person takes an issue card it had in Block out again
+(`server/delivery/parking/release-metadata-park.ts`): its never-sent intents are closed as rejected
+before dispatch, the record is kept, and `review-pr` then runs an ordinary review, after the issue card
+is returned to a lane a review starts from. Jobs the harness does not deliver, source resolutions, older
+metadata bindings and a saved conflict assessment acted on again keep the reconciliation stop.
 
 A hands-off job on an adopted pull request can also stop inside the harness after its conflict-only
 readiness assessment was accepted and recorded, before anything was written. Such a job is queued
