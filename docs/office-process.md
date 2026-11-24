@@ -234,6 +234,16 @@ sent again and stays with a person. No other effect is resent this way. A branch
 at the same head within those ten minutes is indistinguishable from a delete that never landed and is
 deleted; every commit on it is already merged.
 
+When a person moves a stopped, unpublished draft back to Backlog, retirement can settle its original push
+from the saved Git trace, process settlement and current repository and provider reads. The trace must
+prove the hook rejected the exact push before updating the remote. The Office also verifies the clean
+candidate at the recorded head and the absence of both the remote branch and prior PRs from or into it.
+Missing evidence or another uncertain effect preserves the job. The Office records the dispatch as a
+terminal rejection with its original error and capture. It checks the same candidate, capture, remote
+branch and PR history again if local cleanup is deferred. The failed push stays on its original intent
+even if the capture is lost or publication is entered again. Retirement removes only the local
+candidate. Moving the issue to Ready after retirement starts a fresh job on the normal delivery path.
+
 After staging QA passes on a project with production settings (CEC: branch `production`, pipeline
 `prod-deploy`), the harness follows the ticket to production without a model
 (`server/cec/production/`). When the ticket's commit is on staging and not on production it makes
