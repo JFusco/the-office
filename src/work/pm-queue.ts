@@ -10,6 +10,7 @@ export function prerequisiteKeys(review: AssignmentReview) {
 export interface PMQueueItem {
     id: string;
     blockedBy?: string[];
+    waitingOnPrerequisite?: boolean;
     project: string;
     projectName: string;
     key: string;
@@ -22,6 +23,10 @@ export interface PMQueueItem {
     paused: boolean;
     group: 'active' | 'queued' | 'waiting' | 'stopped';
 }
+export function waitingOnlyOnPrerequisites(rows: PMQueueItem[]) {
+    return rows.length > 0 && rows.every(row => row.blockedBy?.length || row.waitingOnPrerequisite);
+}
+
 export function pmQueueItems(snapshot: OfficeSnapshot) {
     const reviews = new Map((snapshot.pmQueue || []).map(r => [`${r.project}:${r.review.key}`, r]));
     const jobs = new Map((snapshot.teamQueue || []).filter(r => r.job.status !== 'cancelled').slice().sort((a, b) => a.job.requestedAt.localeCompare(b.job.requestedAt)).map(r => [`${r.project}:${r.job.key}`, r]));
@@ -31,7 +36,9 @@ export function pmQueueItems(snapshot: OfficeSnapshot) {
         if (job.status === 'completed')
             continue;
         const retry = job.retry?.nextAt, wait = job.status === 'watching' && !job.mergeCommit ? readinessWait(job) : undefined;
-        rows.push({ id: `delivery:${job.id}`, project, projectName, key: job.key, title: reviews.get(identity)?.review.summary || (project === snapshot.project?.id ? snapshot.tickets.find(t => t.key === job.key)?.summary : '') || `PR #${job.pr} delivery`, phase: wait ? wait.phase : retry ? `Read retry scheduled · ${new Date(retry).toLocaleTimeString()}` : deliveryLabel(job), detail: wait ? `${wait.summary} ${wait.next}` : job.status === 'working' ? `The team is working on ${deliveryLabel(job).replace(/^Working on /, '')}.` : shortSummary(job.detail), at: job.requestedAt, pr: job.pr, prUrl: job.prUrl, paused: paused(project), blockedBy: job.ciFollowupKey ? [job.ciFollowupKey] : job.dependsOnPR ? [(snapshot.teamQueue || []).find(row => row.project === project && row.job.pr === job.dependsOnPR)?.job.key || ''].filter(Boolean) : [], group: (job.prerequisites || []).some(dependency => !(snapshot.teamQueue || []).some(row => row.project === dependency.target.projectId && (row.job.id === dependency.target.id || row.job.key === dependency.target.id) && row.job.status === 'completed')) ? 'waiting' : wait ? 'stopped' : retry ? 'queued' : ['working', 'watching'].includes(job.status) ? 'active' : job.status === 'queued' ? 'queued' : 'stopped' });
+        const unmet = job.prerequisites?.some(dependency => !(snapshot.teamQueue || []).some(row =>
+            row.project === dependency.target.projectId && (row.job.id === dependency.target.id || row.job.key === dependency.target.id) && row.job.status === 'completed'));
+        rows.push({ id: `delivery:${job.id}`, project, projectName, key: job.key, title: reviews.get(identity)?.review.summary || (project === snapshot.project?.id ? snapshot.tickets.find(t => t.key === job.key)?.summary : '') || `PR #${job.pr} delivery`, phase: wait ? wait.phase : retry ? `Read retry scheduled · ${new Date(retry).toLocaleTimeString()}` : deliveryLabel(job), detail: wait ? `${wait.summary} ${wait.next}` : job.status === 'working' ? `The team is working on ${deliveryLabel(job).replace(/^Working on /, '')}.` : shortSummary(job.detail), at: job.requestedAt, pr: job.pr, prUrl: job.prUrl, paused: paused(project), blockedBy: job.ciFollowupKey ? [job.ciFollowupKey] : job.dependsOnPR ? [(snapshot.teamQueue || []).find(row => row.project === project && row.job.pr === job.dependsOnPR)?.job.key || ''].filter(Boolean) : [], waitingOnPrerequisite: !!(job.dependsOnPR || unmet), group: unmet ? 'waiting' : wait ? 'stopped' : retry ? 'queued' : ['working', 'watching'].includes(job.status) ? 'active' : job.status === 'queued' ? 'queued' : 'stopped' });
     }
     for (const [identity, { project, projectName, review: r }] of reviews) {
         // Delivery owns the current state, including completed delivery. An old intake
@@ -71,11 +78,23 @@ export function pmQueueItems(snapshot: OfficeSnapshot) {
         if (!item)
             continue;
         row.group = item.eligibility.state === 'running' ? 'active' : item.eligibility.state === 'runnable' ? 'queued' : item.eligibility.state === 'waiting' ? 'waiting' : 'stopped';
+        if (delivery)
+            row.waitingOnPrerequisite = !!(delivery.dependsOnPR || item.eligibility.cause === 'dependency' ||
+                (delivery.prerequisites?.length && item.eligibility.state === 'waiting' && item.eligibility.nextCheckAt));
         if (['blocked', 'waiting'].includes(item.eligibility.state)) {
             const job = kind === 'delivery' ? jobs.get(`${row.project}:${row.key}`)?.job : undefined;
             const blocker = job && ['blocked', 'interrupted'].includes(job.status) ? job.parked?.reason || job.detail : row.detail;
             row.detail = withoutIdentifiers(`${blocker || item.eligibility.reason}\n${item.eligibility.reason}. Next owner: ${item.eligibility.owner}`);
         }
+    }
+    for (const jira of snapshot.jiraQueueProgress || []) {
+        const previous = rows.findIndex(row => row.project === jira.project && row.key === jira.key);
+        if (previous >= 0) rows.splice(previous, 1);
+        const {state, phase, next} = jira.progress;
+        if (state === 'passed') continue;
+        rows.push({id: 'jira:' + jira.key, project: jira.project, projectName: jira.projectName, key: jira.key,
+            title: jira.title, phase, detail: next, at: jira.at, pr: 0, prUrl: '', paused: paused(jira.project),
+            group: state === 'working' ? 'active' : state === 'blocked' ? 'stopped' : state === 'queued' ? 'queued' : 'waiting'});
     }
     return rows.sort((a, b) => rank[a.group] - rank[b.group] || (a.at || '').localeCompare(b.at || ''));
 }

@@ -1,7 +1,7 @@
 import type { Role, TicketJob } from '../../../src/shared';
 import type { WorkSlot } from '../../scheduling/slot-policy';
 
-const ROLES: Partial<Record<TicketJob['stage'], Role>> = { 'ci-recovery': 'pm', implement: 'developer', 'scope-repair': 'developer', 'update-base': 'developer', review: 'lead', validate: 'qa', draft: 'developer', 'lead-pr': 'lead', 'prepare-pr': 'lead', closeout: 'pm' };
+import { deliveryRoles as ROLES } from '../../../src/contracts/ticket-progress';
 
 /** The worker role that runs a GitHub delivery stage; `merge` is harness-only and has none. */
 export function stageRole(stage: TicketJob['stage']): Role {
