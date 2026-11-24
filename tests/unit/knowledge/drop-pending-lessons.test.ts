@@ -19,12 +19,14 @@ test('the batch queued for the subject is removed; every other batch stays in it
     } finally { f.close(); }
 });
 
-test('a batch whose retrospective is under way is left to finish', () => {
+test('a batch whose retrospective holds its claim is left to finish; one only waiting to retry a failed attempt is removed', () => {
     const f = knowledgeStore();
     try {
-        f.store.state.knowledge!.pending.push(batch('running', 'investigation', 'one', { frozen: true }));
-        expect(dropPendingLessons(f.store, { kind: 'investigation', id: 'one' })).toBe(0);
-        expect(f.store.state.knowledge!.pending.some(item => item.id === 'running')).toBe(true);
+        const failed = { frozen: true, attempts: 1, lastError: 'codex exited 1: usage limit', nextAt: '2026-11-23T10:00:00Z' };
+        f.store.state.knowledge!.pending.push(batch('running', 'investigation', 'one', { frozen: true, attempts: 1 }), batch('retrying', 'investigation', 'one', failed));
+        f.store.claimWork({ projectId: f.store.project.id, kind: 'retrospective', id: 'running' }, 'fixture', 'retrospective');
+        expect(dropPendingLessons(f.store, { kind: 'investigation', id: 'one' })).toBe(1);
+        expect(f.store.state.knowledge!.pending.map(item => item.id)).toEqual(['running']);
     } finally { f.close(); }
 });
 
