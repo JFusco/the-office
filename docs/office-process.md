@@ -651,6 +651,12 @@ Morgan or Joe:
   most six times for one checkpoint; after that, and for any run that left a receipt or moved the gate,
   the ordinary read-back applies. A worker's session inventory request reads again for up to ten
   seconds while the inventory is incomplete; a newer incomplete read still replaces an older complete one.
+- A blocked Brain nightly checkpoint held for a harness repair is resumed, once the fix runs, only by
+  its native read-back (`reconcile-native-checkpoint`; see A checkpoint's resume under Incident
+  ledger): one read of the native gate, no model run, and the checkpoint is completed only from a
+  native completion that already exists. A checkpoint retry and a maintenance reconciliation are never
+  queued as a repair resume. Once the repair wait lifts, IT's ordinary checkpoint recovery applies again
+  and, with budget left, can queue a retry beside the resume, which can lead to a paid maintenance run.
 - A session log is read from a captured clone that shares the log's blocks: the service opens the clone
   inside a directory only it can read, removes its name at once and reads from that descriptor, so capture
   does not grow with the log's size and nothing is copied (`server/workers/session-context-clone.ts`).
@@ -1087,11 +1093,11 @@ runs with fixes that are on `main` (see Deployed fixes below); both read GitHub 
 ledger. Two steps write a project store. While a repair is in progress, the stops it covers are
 marked in their project (see Repair wait below). And once the fix is found in the running release,
 the Office resumes the marked stop once and removes the marker. It queues a recovery request for
-a GitHub read-back or a `resume-ticket` delivery request for a Jira/Azure pilot ticket, or
-requeues a GitHub review job, or an implement the approach guard rejected, directly (see Resume
-after a fix below). An incident by itself describes a stop and grants no retry or authority over
-the work. Resuming requires a fix bound to a route, that fix in the running release, and automatic
-resumes enabled.
+a GitHub read-back, a `resume-ticket` delivery request for a Jira/Azure pilot ticket, or the native
+read-back (`reconcile-native-checkpoint`) for a Brain checkpoint. It directly requeues GitHub
+review jobs or jobs the approach guard rejected at `implement` (see Resume after a fix below).
+An incident by itself describes a stop and grants no retry or authority over the work. Resuming
+requires a fix bound to a route, that fix in the running release, and automatic resumes enabled.
 
 **What is read.** Once a minute, unless a deployment holds the fence, one collector per signal
 reads every project:
@@ -1251,15 +1257,19 @@ routes are dispatched: `reconcile-implementation`, `reconcile-validation` and
 `reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a head or as their
 saved-result form without one. `resume-ticket` is dispatched for a Jira/Azure pilot ticket (see
 A ticket's resume, below). `review-pr`, `review-candidate` and `requeue-implement` are dispatched
-as synchronous transitions that requeue the job directly (see below). The remaining routes await
-dispatch support. `reconcile-review` without a head verifies a saved independent review against
-the unchanged pull request and issue and runs no model. Several of the other handlers start a
-model run when the scheduler runs the request (the implementation, validation, scope-repair,
-preparation, stopped base update and closeout read-backs), so a resume through them is a paid run
-no person started. `requeue-implement` starts no run itself, but the job it queues runs implement
-again on the same candidate, which is also a paid run no person started. A stopped base handoff is
-read from the run it already started; no other is started. A resume is still one per subject and
-fix, and none is admitted while the switch is paused.
+as synchronous transitions that requeue the job directly (see below). `reconcile-native-checkpoint`
+is dispatched for a Brain checkpoint (see A checkpoint's resume, below). `retry-checkpoint` and
+`reconcile-maintenance` are not dispatched, by decision, and their inventory rows say why: a
+checkpoint retry can start a paid maintenance run after the repair wait lifts, and a maintenance
+reconciliation can repeat a paid read-back on replay and can finish with the original run still
+blocked. The remaining routes await dispatch support. `reconcile-review` without a head verifies a
+saved independent review against the unchanged pull request and issue and runs no model. Several
+of the other handlers start a model run when the scheduler runs the request (the implementation,
+validation, scope-repair, preparation, stopped base update and closeout read-backs), so a resume
+through them is a paid run no person started. `requeue-implement` starts no run itself, but the job
+it queues runs implement again on the same candidate, which is also a paid run no person started. A
+stopped base handoff is read from the run it already started; no other is started. A resume is
+still one per subject and fix, and none is admitted while the switch is paused.
 
 A ticket's resume. A subject whose route resumes a ticket (`cec/delivery/ticket:KEY`) is admitted
 by `server/incidents/repair/dispatch-ticket-resume.ts`, not by the job admission: same switch,
@@ -1303,6 +1313,40 @@ stop is dated at or before the mark, so it is not a recurrence (`server/incident
 outcome pass reads a ticket's resume by the rules it reads a job's by (see below); a resume the
 handler refused shows nothing that moved, and is `stalled` after 24 hours.
 
+A checkpoint's resume. A subject whose route is `reconcile-native-checkpoint` is admitted by
+`server/incidents/repair/dispatch-checkpoint-resume.ts`: same switch, same reading, same release
+check, same once per subject and fix, same repair wait in effect for the exact stop. A checkpoint
+that is gone has no stop for the wait to hold, so it is refused `wait-ended`. The project must be
+Brain, the only one with a native gate. The route's key must be the checkpoint's own ID, and no
+request for that key may be queued or working, whatever its action or head. Then the store-side
+conditions of the native handler (`completeNativeCheckpoint`,
+`server/maintenance/brain/brain-checkpoint.ts`) are checked, with the same comparisons
+(`server/incidents/repair/checkpoint-eligibility.ts`): the checkpoint blocked or interrupted, its
+run linked back to it, reconciled and with no blocker follow-up, no older `repairResume` field and
+no continuation on the checkpoint, the run's latest maintenance read-back passed with at least one
+receipt and every one verified and certain, and no work under the run running or stopping. One
+more is the admission's own: no other checkpoint points to the same run. `checkpoint-retry-queued`
+names only the run, so this is what lets a later retry event be put to this checkpoint; the pump
+links a checkpoint only to a fresh, queued or working run, never to a reconciled one, so none comes
+to share it later. A failed condition is `not-dispatchable` with the condition named, writes
+nothing and keeps the wait. The wait's deadline is read again after these checks, as for a job.
+The native gate, its slot, the completion's identity and the completed wrapper run are left to the
+handler. In one project transaction the native read-back is queued through `enqueueRequest`, which
+writes its admission-journal row and `operation-queued`; the request carries `repairResume`; the
+wait marker is removed; and `repair-resume-admitted` is emitted. The binding saves the original
+run (`stood.run`), its step count and that event's ID. Nothing is written on the checkpoint,
+whose own `repairResume` is an older field of the refresh continuation. The wait is read once more
+before the transaction returns, and one that ran out undoes it whole. Before the scheduler calls
+the handler, it requires a marked request's `stood.run` to be the run the checkpoint links to now
+(`server/incidents/repair/bound-checkpoint-run.ts`); otherwise the request ends blocked through the
+ordinary failure path and nothing is read. An unmarked native read-back keeps its key-only call.
+The handler reads the native gate once, with no model run. Lifting the wait returns the checkpoint
+to IT's ordinary recovery (`server/it/delivery-recoveries.ts`): with budget left, IT can queue
+`retry-checkpoint` beside the resume, which can resolve the same native completion or queue a retry
+that leads to a paid maintenance run. With its retry budget spent, IT can reuse an identical
+native read-back request while it is queued or working. If the resume's request already ended
+blocked and the checkpoint remains eligible, IT can queue its own read-back.
+
 The switch (`server/incidents/repair/resume-control.ts`) says whether automatic repair resumes are
 admitted, office-wide. It is one row on the control database beside the fence and the ledger, and
 survives a restart and lease recovery. It starts paused, and a saved switch that cannot be read is
@@ -1317,7 +1361,8 @@ changes it (refused by the fence's gate like any other write), and `/api/health`
 The reading (`server/incidents/repair/assess-resumes.ts`) is returned as `resumes` by
 `GET /api/incidents/<id>` once the incident's latest fix is found in the running release. For each
 subject that fix bound it states one of: `no-route` (the fix declared none, the route is not valid
-for the subject, or this release cannot dispatch it), `gone` (the subject cleared, or no longer
+for the subject, or this release cannot dispatch it, with the reason its inventory row gives
+where it gives one), `gone` (the subject cleared, or no longer
 stands as the fix bound it; it is never resumed in a later form), `held` (it could be resumed and
 the switch is paused), `due` (it could be resumed and the switch is enabled) or `admitted` (its
 resume was queued for this fix; it stays so whatever the subject does next). It is computed from
@@ -1328,8 +1373,8 @@ The pass (`server/incidents/repair/resume-arrivals.ts`) runs on the incident tim
 repair waits are kept, and never while a deployment holds the fence. For every `deployed`
 incident it puts each subject the reading calls `due` to admission in its own project
 (`server/incidents/repair/dispatch-resume.ts` for GitHub read-backs, `dispatch-ticket-resume.ts`
-for `resume-ticket`, and `dispatch-transition-resume.ts` for `review-pr`, `review-candidate` and
-`requeue-implement`).
+for `resume-ticket`, `dispatch-transition-resume.ts` for `review-pr`, `review-candidate` and
+`requeue-implement`, and `dispatch-checkpoint-resume.ts` for `reconcile-native-checkpoint`).
 The pass reads the clock for each subject so admission uses that subject's current wait.
 
 The deployment mark alone does not admit a resume. It says what was found when it was made, and
@@ -1490,10 +1535,33 @@ by its admission time it is read as not recording how the ticket stood, which is
 ticket's attempts are read only while its outcome is still open: a final outcome gives way only
 to a recurrence, which the ledger alone shows.
 
+A checkpoint subject (`brain/checkpoint/ID`) is read by the same rules, as a checkpoint whatever
+its ID begins with, and its request is the native read-back bound to the resume. A checkpoint has
+no stage of its own and no steps, so in place of a job the pass supplies whether Brain still
+holds the checkpoint and the crossing read from the binding's original run
+(`checkpoint-progress.ts`). Only `record-settled` is judged; `stage-left` and
+`stage-result-passed` are `untested`, and so is a binding saved without `stood.run`. It is crossed
+when the checkpoint is completed and, among the steps the original run saved after the admission,
+there is a passed `checkpoint-native-readback` whose `native-checkpoint-readback` receipt is
+verified, certain and, read as JSON, names this checkpoint and that run. Whichever request made it
+counts. A checkpoint the ordinary completion read-back closed (`checkpoint-completion-readback`,
+`server/maintenance/completed-checkpoints.ts`), or any other completed checkpoint without that
+proof, is `untested`, so an ordinary completion alone never verifies an incident. For a
+checkpoint Brain still holds, a missing original run, one with fewer steps than at the
+admission, or a checkpoint and run that no longer name each other cannot be judged. A checkpoint
+that is gone, with nothing earlier deciding, is `gone`. The move is read from the project's
+events by ID (`checkpointRetried` in `moved-by-hand.ts`): the first `checkpoint-retry-queued`
+after the admission's event whose message begins, compared literally, with
+`Original maintenance <stood.run> reconciled. Brain checkpoint will retry after `. That event
+names no checkpoint and no actor; a person's retry, IT's, the not-started recovery and the
+refresh continuation emit it alike, and any of them reads `moved-by-hand`. The resume's own
+request is looked for elsewhere as `brain/reconciliation/ID`.
+
 A resume that shows nothing is `stalled` after 24 hours (`stalled-resume.ts`): asked after every
 final reading and before `chained`, which it replaces; like `chained` it gives way to any final
 outcome and to `recurred`. The 24 hours run from the latest of the admission, the last start,
-heartbeat or end of a run filed under the job or under the resume's own request
+heartbeat or end of a run filed under the job or under the resume's own request (for a
+checkpoint, also under its original run, where maintenance is filed)
 (`resume-activity.ts`; a job's `updatedAt` is not read, since many changes do not set it), and the
 subject's last standing change in any incident (`IncidentLedger.subjectChangedAt`). The Office
 suppresses a `stalled` judgment while the project is paused or draining or the subject is open

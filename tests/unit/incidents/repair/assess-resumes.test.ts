@@ -122,3 +122,40 @@ test('the reading changes nothing it was given', () => {
     assessResumes(bound, PAUSED, ROUTES);
     expect(JSON.stringify([bound, PAUSED, ROUTES])).toBe(before);
 });
+
+test('with the Office\'s own inventory a checkpoint\'s native read-back is held or due; the checkpoint retry and the maintenance reconciliation give their own reasons', () => {
+    // One cause for all three, as the ledger would group a Brain night's stops.
+    const cause = { ...candidate().cause, stage: 'checkpoint' };
+    const observed = planSync([], groupCandidates([
+        candidate({ kind: 'checkpoint', id: 'cp-1', stage: 'checkpoint' }, { cause }), candidate({ kind: 'checkpoint', id: 'cp-2', stage: 'checkpoint' }, { cause }), candidate({ kind: 'maintenance', id: 'run-1', stage: 'brain-maintenance' }, { cause }),
+    ]), AT).incidents[0];
+    const [native, retry, reconcile] = observed.subjects.map(repairSubject);
+    const settled = { kind: 'record-settled' } as const;
+    const retryRoute: RepairRoute = { action: 'retry-checkpoint', payload: { key: 'cp-2' }, expectedStage: 'checkpoint' };
+    const bindings: SubjectFix[] = [
+        { ...native, disposition: 'route', route: { action: 'reconcile-native-checkpoint', payload: { key: 'cp-1' }, expectedStage: 'checkpoint' }, boundary: settled },
+        { ...retry, disposition: 'route', route: retryRoute, boundary: settled },
+        { ...reconcile, disposition: 'route', route: { action: 'reconcile-maintenance', payload: { key: 'run-1' }, expectedStage: 'brain-maintenance' }, boundary: settled },
+    ];
+    const bound: Incident = { ...observed, state: 'deployed', fixes: [{ event: 'cli-bind-1', commit: 'b'.repeat(40), pullRequest: null, onMain: true, boundAt: later(2).toISOString(), bindings, deployed: { event: 'e-deployed', release: RELEASE, at: later(6).toISOString() } }] };
+    const retryReason = 'A checkpoint retry can start a paid maintenance run after the repair wait lifts.';
+    const reconcileReason = 'Maintenance reconciliation can repeat a paid read-back on replay and can finish with the original run still blocked.';
+    for (const [control, standing, reason] of [[PAUSED, 'held', 'Automatic repair resumes are paused: two rollbacks in a row'], [ENABLED, 'due', 'Automatic repair resumes are enabled.']] as const)
+        expect(assessResumes(bound, control)!.subjects).toEqual([
+            { subject: 'brain/checkpoint/cp-1', standing, reason, action: 'reconcile-native-checkpoint' },
+            { subject: 'brain/checkpoint/cp-2', standing: 'no-route', reason: retryReason, action: 'retry-checkpoint' },
+            { subject: 'brain/maintenance/run-1', standing: 'no-route', reason: reconcileReason, action: 'reconcile-maintenance' },
+        ]);
+    // The row's reason is said only where the route is otherwise sound: a declared no-route, an admission, a cleared or changed stop and a route fault each say their own.
+    const [one, two, three] = bound.subjects;
+    const moved: Incident = { ...bound, subjects: [one, { ...two, status: 'cleared', clearedAt: later(7).toISOString() }, { ...three, episode: 'later' }] };
+    expect(assessResumes(moved, ENABLED)!.subjects.map(subject => [subject.standing, subject.reason])).toEqual([
+        ['due', 'Automatic repair resumes are enabled.'], ['gone', 'The stop the fix was bound to has cleared.'], ['gone', 'The subject no longer stands as the fix bound it: another episode, stage, stop or head.']]);
+    expect(assessResumes(bound, ENABLED, undefined, subject => subject === 'brain/checkpoint/cp-2')!.subjects[1]).toMatchObject({ standing: 'admitted' });
+    const faulty: Incident = { ...bound, fixes: [{ ...bound.fixes![0], bindings: [bindings[0], { ...retry, disposition: 'route', route: { ...retryRoute, payload: { key: 'cp-9' } }, boundary: settled }, { ...reconcile, disposition: 'no-route', reason: 'read back by hand' }] }] };
+    expect(assessResumes(faulty, ENABLED)!.subjects.slice(1).map(subject => [subject.standing, subject.reason])).toEqual([
+        ['no-route', 'The bound route cannot resume it: the key of retry-checkpoint for brain/checkpoint/cp-2 is cp-2.'], ['no-route', 'The fix declared no route: read back by hand']]);
+    // A row's reason is the inventory's to give: without one, the generic reason stands.
+    const plain: Record<string, ResumeRoute> = { 'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none' } };
+    expect(assessResumes({ ...bound, fixes: [{ ...bound.fixes![0], bindings: [bindings[1]] }] }, ENABLED, plain)!.subjects).toEqual([{ subject: 'brain/checkpoint/cp-2', standing: 'no-route', reason: 'This release cannot dispatch retry-checkpoint.', action: 'retry-checkpoint' }]);
+});
