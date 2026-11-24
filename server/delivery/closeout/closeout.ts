@@ -53,7 +53,7 @@ export async function harnessCloseout(delivery: GitHubDelivery, job: TicketJob, 
         readBack: findComment });
     if (!comment)
         throw new Error('Closeout comment could not be read back');
-    const lane = await moveLane(store, execute, job, 'Done', guard);
+    const lane = await moveLane(store, execute, job, 'Done', guard, job.pr, { id: `closeout:${job.mergeCommit}` });
     // The merge is delivered; the candidate goes so the repository stays a clean slate. Cleanup
     // never holds a delivered closeout: a pending removal is reported and retried by the poll.
     recordCandidateCleanup(store, job, await removeCandidate(store, execute, job, guard, head).catch(error => error instanceof Error ? error : new Error(String(error))));

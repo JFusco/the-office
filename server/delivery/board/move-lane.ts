@@ -1,6 +1,7 @@
 import { ProjectProgress } from './project-progress';
 import { initialManualStart } from './manual-start';
 import { harnessParkedCard } from './harness-parked-card';
+import { laneWrite, moveCardOnce, type LaneOperation } from './lane-effect';
 import { cardStatus, projectCards, setCardStatus, statusField, type Execute, type StatusField } from './project-graphql';
 import type { Store } from '../../store/store';
 import type { BoardUpdate, TicketJob } from '../../../src/shared';
@@ -16,8 +17,11 @@ export function resolveLane(field: StatusField, lane: Lane): { id: string; name:
     return matches[0];
 }
 
-/** Moves the issue card (required) and any existing PR card, with persisted pending attempts and read-back. */
-export async function moveLane(store: Store, execute: Execute, job: TicketJob, lane: Lane, guard: () => void, prNumber = job.pr): Promise<string> {
+/**
+ * Moves the issue card (required) and any existing PR card, with persisted pending attempts and read-back.
+ * With `operation`, each actual card move is a harness Effect under that stable identity (`lane-effect.ts`).
+ */
+export async function moveLane(store: Store, execute: Execute, job: TicketJob, lane: Lane, guard: () => void, prNumber = job.pr, operation?: LaneOperation): Promise<string> {
     if (!store.project.githubProject)
         return '';
     await new ProjectProgress(store, execute).reconcile(job);
@@ -29,13 +33,18 @@ export async function moveLane(store: Store, execute: Execute, job: TicketJob, l
     for (const card of cards) {
         const current = await cardStatus(store, execute, card.id, field.fieldId);
         const update: BoardUpdate = { stage: job.stage, head: job.head, project: field.projectId, item: card.id, field: field.fieldId, option: option.id, target: option.name, at: new Date().toISOString(), status: 'verified', detail: `${option.name} already verified.` };
-        if (current === option.id) { (job.boardUpdates ??= []).push(update); continue; }
+        // An operation's write sent earlier is reconciled by reading, even when the card already shows the lane.
+        const written = operation && laneWrite(store, job, operation, card.id);
+        if (current === option.id && written !== 'unread') { (job.boardUpdates ??= []).push(update); continue; }
+        if (written === 'verified')
+            throw new Error(`${card.kind} card left ${option.name} after this operation's verified move; the harness will not move it again`);
         const currentName = field.options.find(o => o.id === current)?.name?.trim().toLowerCase() || '';
         // Project automation adds new PR cards in its default lane; that is not a human decision.
         const prDefault = card.kind === 'PullRequest' && (!currentName || currentName === 'backlog');
         const manualStart = card.kind === 'Issue' && currentName === 'backlog' && lane === 'In progress' && initialManualStart(store.project.id, job);
-        if (!MOVABLE.has(currentName) && !prDefault && !manualStart && !harnessParkedCard(job, card, current || '', currentName))
+        if (written !== 'unread' && !MOVABLE.has(currentName) && !prDefault && !manualStart && !harnessParkedCard(job, card, current || '', currentName))
             throw new Error(`${card.kind} card is in "${currentName || 'no status'}", a human lane; the harness will not move it to ${option.name}`);
+        if (operation) { await moveCardOnce(store, execute, job, card.id, field, option, operation, guard, update); continue; }
         guard();
         update.status = 'pending';
         update.detail = 'Harness board transition started; outcome requires read-back.';
