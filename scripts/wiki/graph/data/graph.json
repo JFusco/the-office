@@ -2,11 +2,11 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 35,
-    "edges": 70,
+    "nodes": 36,
+    "edges": 75,
     "byType": {
       "index": 4,
-      "journal": 2,
+      "journal": 3,
       "plan": 23,
       "topic": 6
     }
@@ -39,8 +39,27 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.936235,
-      "y": 0.351375,
+      "x": 0.939693,
+      "y": 0.34202,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-live-ticket-timeline.md",
+      "label": "Ship the live ticket timeline",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 550,
+          "url": "https://github.com/jfusco/the-office/pull/550"
+        }
+      ],
+      "bytes": 1837,
+      "degree": 4,
+      "x": 0.866025,
+      "y": 0.5,
       "size": 8
     },
     {
@@ -70,8 +89,8 @@
       ],
       "bytes": 1009,
       "degree": 3,
-      "x": 0.858449,
-      "y": 0.512899,
+      "x": 0.766044,
+      "y": 0.642788,
       "size": 8
     },
     {
@@ -82,8 +101,8 @@
       "githubRefs": [],
       "bytes": 3394,
       "degree": 4,
-      "x": 0.98393,
-      "y": 0.178557,
+      "x": 0.984808,
+      "y": 0.173648,
       "size": 12
     },
     {
@@ -94,8 +113,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": 0.753071,
-      "y": 0.657939,
+      "x": 0.642788,
+      "y": 0.766044,
       "size": 12
     },
     {
@@ -119,8 +138,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": 0.62349,
-      "y": 0.781831,
+      "x": 0.5,
+      "y": 0.866025,
       "size": 8
     },
     {
@@ -138,8 +157,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": 0.473869,
-      "y": 0.880596,
+      "x": 0.34202,
+      "y": 0.939693,
       "size": 8
     },
     {
@@ -157,8 +176,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": 0.309017,
-      "y": 0.951057,
+      "x": 0.173648,
+      "y": 0.984808,
       "size": 8
     },
     {
@@ -176,8 +195,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": 0.134233,
-      "y": 0.99095,
+      "x": 0,
+      "y": 1,
       "size": 8
     },
     {
@@ -195,8 +214,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": -0.044865,
-      "y": 0.998993,
+      "x": -0.173648,
+      "y": 0.984808,
       "size": 8
     },
     {
@@ -214,8 +233,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.222521,
-      "y": 0.974928,
+      "x": -0.34202,
+      "y": 0.939693,
       "size": 8
     },
     {
@@ -239,8 +258,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.393025,
-      "y": 0.919528,
+      "x": -0.5,
+      "y": 0.866025,
       "size": 8
     },
     {
@@ -258,8 +277,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.550897,
-      "y": 0.834573,
+      "x": -0.642788,
+      "y": 0.766044,
       "size": 8
     },
     {
@@ -283,8 +302,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.691063,
-      "y": 0.722795,
+      "x": -0.766044,
+      "y": 0.642788,
       "size": 8
     },
     {
@@ -326,8 +345,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.809017,
-      "y": 0.587785,
+      "x": -0.866025,
+      "y": 0.5,
       "size": 8
     },
     {
@@ -345,8 +364,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.900969,
-      "y": 0.433884,
+      "x": -0.939693,
+      "y": 0.34202,
       "size": 8
     },
     {
@@ -370,8 +389,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.963963,
-      "y": 0.266037,
+      "x": -0.984808,
+      "y": 0.173648,
       "size": 8
     },
     {
@@ -389,8 +408,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.995974,
-      "y": 0.089639,
+      "x": -1,
+      "y": 0,
       "size": 8
     },
     {
@@ -426,8 +445,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.995974,
-      "y": -0.089639,
+      "x": -0.984808,
+      "y": -0.173648,
       "size": 8
     },
     {
@@ -481,8 +500,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.963963,
-      "y": -0.266037,
+      "x": -0.939693,
+      "y": -0.34202,
       "size": 8
     },
     {
@@ -500,8 +519,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.900969,
-      "y": -0.433884,
+      "x": -0.866025,
+      "y": -0.5,
       "size": 8
     },
     {
@@ -519,8 +538,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.809017,
-      "y": -0.587785,
+      "x": -0.766044,
+      "y": -0.642788,
       "size": 8
     },
     {
@@ -544,8 +563,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.691063,
-      "y": -0.722795,
+      "x": -0.642788,
+      "y": -0.766044,
       "size": 8
     },
     {
@@ -563,8 +582,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.550897,
-      "y": -0.834573,
+      "x": -0.5,
+      "y": -0.866025,
       "size": 8
     },
     {
@@ -618,8 +637,8 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.393025,
-      "y": -0.919528,
+      "x": -0.34202,
+      "y": -0.939693,
       "size": 8
     },
     {
@@ -637,8 +656,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": -0.222521,
-      "y": -0.974928,
+      "x": -0.173648,
+      "y": -0.984808,
       "size": 8
     },
     {
@@ -655,9 +674,9 @@
         }
       ],
       "bytes": 751,
-      "degree": 2,
-      "x": -0.044865,
-      "y": -0.998993,
+      "degree": 5,
+      "x": 0,
+      "y": -1,
       "size": 8
     },
     {
@@ -681,8 +700,8 @@
       ],
       "bytes": 802,
       "degree": 3,
-      "x": 0.134233,
-      "y": -0.99095,
+      "x": 0.173648,
+      "y": -0.984808,
       "size": 8
     },
     {
@@ -976,8 +995,8 @@
       ],
       "bytes": 8315,
       "degree": 27,
-      "x": 0.309017,
-      "y": -0.951057,
+      "x": 0.34202,
+      "y": -0.939693,
       "size": 12
     },
     {
@@ -995,8 +1014,8 @@
       ],
       "bytes": 1429,
       "degree": 8,
-      "x": 0.473869,
-      "y": -0.880596,
+      "x": 0.5,
+      "y": -0.866025,
       "size": 8
     },
     {
@@ -1032,8 +1051,8 @@
       ],
       "bytes": 1324,
       "degree": 8,
-      "x": 0.62349,
-      "y": -0.781831,
+      "x": 0.642788,
+      "y": -0.766044,
       "size": 8
     },
     {
@@ -1079,10 +1098,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 909,
-      "degree": 6,
-      "x": 0.753071,
-      "y": -0.657939,
+      "bytes": 2044,
+      "degree": 9,
+      "x": 0.766044,
+      "y": -0.642788,
       "size": 8
     },
     {
@@ -1112,8 +1131,8 @@
       ],
       "bytes": 885,
       "degree": 11,
-      "x": 0.858449,
-      "y": -0.512899,
+      "x": 0.866025,
+      "y": -0.5,
       "size": 8
     },
     {
@@ -1155,8 +1174,8 @@
       ],
       "bytes": 1048,
       "degree": 3,
-      "x": 0.936235,
-      "y": -0.351375,
+      "x": 0.939693,
+      "y": -0.34202,
       "size": 8
     },
     {
@@ -1186,8 +1205,8 @@
       ],
       "bytes": 944,
       "degree": 2,
-      "x": 0.98393,
-      "y": -0.178557,
+      "x": 0.984808,
+      "y": -0.173648,
       "size": 8
     }
   ],
@@ -1230,6 +1249,20 @@
     {
       "id": "0e14877dd713ff57",
       "source": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "166d800c687c1e02",
+      "source": "wiki/journal/2026-11-24-live-ticket-timeline.md",
+      "target": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "1cca3de7c51cab63",
+      "source": "wiki/journal/2026-11-24-live-ticket-timeline.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
       "type": "topic",
       "relation": "topic"
@@ -1340,6 +1373,13 @@
       "relation": "topic"
     },
     {
+      "id": "420697d34b58d281",
+      "source": "wiki/topics/office-ui-and-telemetry.md",
+      "target": "wiki/journal/2026-11-24-live-ticket-timeline.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "45184852d65531ec",
       "source": "wiki/plans/2026-11-17-per-project-office-policy-8459206e6a.md",
       "target": "wiki/topics/delivery-and-recovery.md",
@@ -1359,6 +1399,13 @@
       "target": "wiki/topics/planning-and-learning.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "5534521de305d678",
+      "source": "wiki/topics/office-ui-and-telemetry.md",
+      "target": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "58cd6b605a61643b",
@@ -1604,6 +1651,13 @@
       "target": "wiki/topics/context-wiki-and-ci.md",
       "type": "link",
       "relation": "link"
+    },
+    {
+      "id": "cbacab63d24f2000",
+      "source": "wiki/journal/2026-11-24-live-ticket-timeline.md",
+      "target": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
+      "type": "plan",
+      "relation": "plan"
     },
     {
       "id": "cef9dc19b6d87e67",

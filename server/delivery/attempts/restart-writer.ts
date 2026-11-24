@@ -1,7 +1,8 @@
 import { holdReason } from '../../office/project-holds';
 import { processGroupAlive } from '../../workers/process';
 import { harnessDelivers } from '../harness/scope';
-import { nextAttemptAt } from './attempt-backoff';
+import { ATTEMPT_DELAYS_MS, nextAttemptAt } from './attempt-backoff';
+import { subjectKey } from '../../../src/contracts/incidents';
 import { workKey } from '../../../src/shared';
 import type { Store } from '../../store/store';
 import type { TicketJob, WorkTime } from '../../../src/shared';
@@ -15,7 +16,11 @@ const MAX_STOPPED_MS = 6 * 60 * 60 * 1000;
 /** A retry cannot fix a missing login, permission or owner. */
 const NOT_RETRYABLE: readonly string[] = ['authentication', 'permission', 'ownership'];
 
-export interface WriterRestartCandidate { work: WorkTime; accepted: string; attempt: number }
+/** A dead writer run and the accepted head a restart of it would start from. */
+export interface StoppedWriter { work: WorkTime; accepted: string }
+
+/** `released`: the attempt is past the ordinary allowance and funded by the job's repair release. */
+export interface WriterRestartCandidate extends StoppedWriter { attempt: number; released: boolean }
 
 /** Whether the harness already abandoned this run and restarted its stage. */
 export function writerRestarted(job: Pick<TicketJob, 'writerRestarts'>, workId: string): boolean {
@@ -24,10 +29,10 @@ export function writerRestarted(job: Pick<TicketJob, 'writerRestarts'>, workId: 
 
 /**
  * A hands-off writer stage whose last run died (interrupted or failed, never a returned verdict)
- * and may be re-run from the accepted head. Saved facts only; the caller still has to confirm the
- * remote branch and PR have not moved. Null means other handling owns the job.
+ * and that nothing else owns: everything a restart requires short of its allowance. Saved facts
+ * only. Null means other handling owns the job.
  */
-export function writerRestartCandidate(store: Store, job: TicketJob, now: Date, alive: (pid: number) => boolean = processGroupAlive): WriterRestartCandidate | null {
+export function stoppedWriter(store: Store, job: TicketJob, alive: (pid: number) => boolean = processGroupAlive): StoppedWriter | null {
     const state = store.state, accepted = job.head || job.candidateBase;
     if (!harnessDelivers(store, job) || !WRITER_STAGES.includes(job.stage) || !['blocked', 'interrupted'].includes(job.status)) return null;
     if (state.paused || state.draining || holdReason(store.project, job.key) || job.pr && holdReason(store.project, `GH-${job.pr}`) || !job.worktree || !job.branch || !accepted) return null;
@@ -45,10 +50,35 @@ export function writerRestartCandidate(store: Store, job: TicketJob, now: Date, 
     if (state.coordination?.requests?.some(request => request.key === job.key && (['queued', 'working'].includes(request.status) || request.head === work.id))) return null;
     const effects = store.db.prepare('SELECT body FROM effects WHERE work_key=?').all(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id })) as { body: string }[];
     if (effects.some(row => ['dispatching', 'uncertain'].includes(JSON.parse(row.body).status))) return null;
+    return { work, accepted };
+}
+
+/** Whether the job holds an unspent repair release for exactly this subject, run, stage and accepted head. */
+export function releaseFunds(store: Pick<Store, 'project'>, job: TicketJob, workId: string, accepted: string): boolean {
+    const grant = job.repairRelease;
+    return !!grant && !grant.consumedAt && grant.subject === subjectKey({ projectId: store.project.id, kind: 'delivery', id: job.id })
+        && grant.workId === workId && grant.stage === job.stage && grant.accepted === accepted;
+}
+
+/**
+ * A stopped writer (see stoppedWriter) whose restart is due now. The ordinary allowance is three
+ * restarts per stage and accepted head, each after its wait from the stop, within six hours of it;
+ * an attempt it still holds is waited out. Once it is spent or the six hours have passed, only an
+ * unspent repair release for this exact run, stage and accepted head grants one attempt more, the
+ * last ordinary wait after the same stop. The caller still has to confirm the remote branch and PR
+ * have not moved.
+ */
+export function writerRestartCandidate(store: Store, job: TicketJob, now: Date, alive: (pid: number) => boolean = processGroupAlive): WriterRestartCandidate | null {
+    const stopped = stoppedWriter(store, job, alive);
+    if (!stopped) return null;
+    const { work, accepted } = stopped;
     const attempt = job.writerRestarts?.filter(restart => restart.stage === job.stage && restart.accepted === accepted).length || 0;
-    const stoppedAt = new Date(work.endedAt || work.startedAt), due = nextAttemptAt(attempt, stoppedAt);
-    if (!due || now.getTime() < due.getTime() || now.getTime() - stoppedAt.getTime() > MAX_STOPPED_MS) return null;
-    return { work, accepted, attempt: attempt + 1 };
+    const stoppedAt = Date.parse(work.endedAt || work.startedAt);
+    if (!Number.isFinite(stoppedAt)) return null;
+    const elapsed = now.getTime() - stoppedAt, due = nextAttemptAt(attempt, new Date(stoppedAt));
+    if (due && elapsed <= MAX_STOPPED_MS) return now.getTime() < due.getTime() ? null : { work, accepted, attempt: attempt + 1, released: false };
+    if (!releaseFunds(store, job, work.id, accepted) || elapsed < ATTEMPT_DELAYS_MS.at(-1)!) return null;
+    return { work, accepted, attempt: attempt + 1, released: true };
 }
 
 /** The stopped run is the harness's to restart, now or after its wait; other recovery stays out. */
