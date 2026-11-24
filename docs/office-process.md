@@ -482,7 +482,10 @@ harness reads the tab URLs on that port and nothing else: no page content, no co
 tab is still on the sign-in page (`server/qa/sign-in-observed.ts`). For Jira/Azure work the Office
 then requests one resume of the ticket, the same resume a person asks for, so the setup-stop cap,
 the PM read-back and QA's own check of the signed-in actor still run
-(`server/cec/qa/resume-after-sign-in.ts`). For GitHub delivery, where the wait parks the card, the
+(`server/cec/qa/resume-after-sign-in.ts`). The ticket and its wait are read again after the
+browser read, and the request is saved together with the record that this sign-in was handled, so
+a restart between them loses neither. A request the queue refuses is recorded as handled and not
+asked again; a failure to save is not a refusal. For GitHub delivery, where the wait parks the card, the
 harness moves the card from Block back to the pickup lane with one issue comment, through Effects,
 and the ordinary parked resume follows (`server/delivery/parking/sign-in-unpark.ts`,
 `server/delivery/parking/return-to-pickup.ts`). Each is tried once per recorded wait, and a GitHub
@@ -614,8 +617,10 @@ Morgan or Joe:
   investigated: an investigation would run on the provider that is refusing work. A writer the
   provider cut off the same way keeps its effect of unknown outcome and is investigated as before.
 - An investigation of a run the provider refused at its usage limit is kept as history once a
-  later run on that provider has completed. The refused run is not repeated and no lesson is
-  recorded: the refusal was the provider's.
+  later run on that provider has completed. The refused run is not repeated, no lesson is
+  recorded, and a retrospective queued for it is dropped, whichever rule closed it, unless it is
+  running now; one waiting to retry a failed attempt is dropped too. The refusal was the
+  provider's.
 - An old blocked nightly checkpoint is settled by a later night that completed.
 - On a hands-off project one stopped daily maintenance run whose automatic read-backs are used up is
   not put in the outbox while the next night's run is not yet overdue (26 hours), provided the night
@@ -794,12 +799,13 @@ Only the token that acquired the fence releases it; the stored row keeps a diges
 The fence grants no authority and changes no recovery budget.
 
 Each project database keeps an append-only admission journal (`server/store/admission-journal.ts`).
-It records every new scheduler claim, effect intent, harness request and delivery request, in the
+It records new scheduler claims, effect intents, and queued harness and delivery requests in the
 same transaction as that write and outside the saved state. The journaled writers are
 `Store.claimWork`, `Effects.execute`, `enqueueRequest`, `requestDelivery`, the history-retirement,
 PR-metadata, QA plan-retry and saved-implementation operator commands, and the closeout cleanup
-request. One start-up migration that queues a legacy `adopt-candidate` request is not journaled; it
-runs identically in every release.
+request. The completed receipt of a synchronous review resume adds no admission-journal row.
+One start-up migration that queues a legacy `adopt-candidate` request is not journaled. It runs
+identically in every release.
 
 The journal omits status changes to existing records under a claim, during start-up recovery and
 through operator commands. An IT tick that began before the fence was taken can also requeue
@@ -1041,11 +1047,11 @@ and a fix binding on an incident (see Write-back below), and the Office compares
 runs with fixes that are on `main` (see Deployed fixes below); both read GitHub and write only the
 ledger. Two steps write a project store. While a repair is in progress, the stops it covers are
 marked in their project (see Repair wait below). And once the fix is found in the running release,
-the request the fix bound for a marked stop is queued there, once, with the marker removed: a
-recovery request for a job, the ticket's own `resume-ticket` delivery request for a Jira/Azure
-ticket (see Resume after a fix below). An incident by itself describes a stop; it grants no
-retry and no authority over the work, and nothing is resumed without a fix bound to a route, found
-in the running release, with automatic resumes enabled.
+the Office resumes the marked stop once and removes the marker. It queues a recovery request for
+a GitHub read-back or a `resume-ticket` delivery request for a Jira/Azure pilot ticket, or
+requeues a GitHub review job directly (see Resume after a fix below). An incident by itself
+describes a stop and grants no retry or authority over the work. Resuming requires a fix bound to a
+route, that fix in the running release, and automatic resumes enabled.
 
 **What is read.** Once a minute, unless a deployment holds the fence, one collector per signal
 reads every project:
@@ -1197,14 +1203,15 @@ another request, a stale revision, a transition not in the table or a binding th
 above is refused and nothing is saved. Observation changes neither the state these events set nor
 the repair and fixes they recorded.
 
-**Resume after a fix.** Once an incident's fix is found in the running release, the Office queues,
-once per subject and fix, the request the fix bound for that subject (a recovery request for a
-job, a delivery request for a ticket), and lifts the repair wait from it. It does this through the inventory above, a switch, a reading and a pass. The seven
-GitHub read-back routes are dispatched: `reconcile-implementation`, `reconcile-validation` and
+**Resume after a fix.** Once an incident's fix is found in the running release, the Office uses
+the bound route to resume the work once per subject and fix and lifts the repair wait. It does
+this through the inventory above, a switch, a reading and a pass. The seven GitHub read-back
+routes are dispatched: `reconcile-implementation`, `reconcile-validation` and
 `reconcile-scope-repair`, which always need a head, and `reconcile-preparation`,
 `reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a head or as their
 saved-result form without one. `resume-ticket` is dispatched for a Jira/Azure pilot ticket (see
-A ticket's resume, below). Every other row is not dispatched yet.
+A ticket's resume, below). `review-pr` and `review-candidate` are dispatched as synchronous
+transitions that requeue the job directly (see below). The remaining routes await dispatch support.
 `reconcile-review` without a head verifies a saved independent review against the unchanged pull
 request and issue and runs no model. Several of the other handlers start a model run when the
 scheduler runs the request (the implementation, validation, scope-repair, preparation, stopped
@@ -1278,9 +1285,9 @@ the ledger on each read. An unadmitted subject with a route this release cannot 
 The pass (`server/incidents/repair/resume-arrivals.ts`) runs on the incident timer after the
 repair waits are kept, and never while a deployment holds the fence. For every `deployed`
 incident it puts each subject the reading calls `due` to admission in its own project
-(`server/incidents/repair/dispatch-resume.ts` for a job, `dispatch-ticket-resume.ts` for a
-ticket), each at its own moment: the clock is read per
-subject, so a wait that runs out during the pass is not admitted on an earlier reading.
+(`server/incidents/repair/dispatch-resume.ts` for GitHub read-backs, `dispatch-ticket-resume.ts`
+for `resume-ticket`, and `dispatch-transition-resume.ts` for `review-pr` and `review-candidate`).
+The pass reads the clock for each subject so admission uses that subject's current wait.
 
 The deployment mark alone does not admit a resume. It says what was found when it was made, and
 in the tick after a rollback, before the withdrawal pass has run, it names a release that no
@@ -1305,6 +1312,18 @@ event and commit, action, a digest of the payload, the release, the time), and t
 repair-wait marker is removed. The request's admission-journal row commits with it. No counter,
 attempt count or budget of the job is changed; the scheduler runs the request under its existing
 ownership and the handler checks its own preconditions.
+
+Two routes are synchronous transitions rather than requests: `review-pr` and `review-candidate`
+(`server/incidents/repair/dispatch-transition-resume.ts`). Their admission makes the checks above,
+except the head and the earlier completed request, and also refuses while a scheduler claim is
+active for the job. Then, in one project transaction, it makes the transition the operator's
+recheck makes (`server/scheduling/review-transitions.ts`, shared with `recheckPR` and
+`recheckCandidate`: the same checks, the same status and detail on the job), saves a `completed`
+request as the receipt of the resume with `repairResume` and how the job stood, removes the
+repair-wait marker and emits `repair-resume-admitted`. It does not emit the operator's event, so a
+later recheck by a person reads as moved by hand. A transition its own checks refuse is
+`transition-refused` and writes nothing. No admission-journal row is written: the receipt is no
+queued work, and the scheduler reads a completed request as terminal.
 
 The head check (`server/incidents/repair/route-head.ts`) asks the handler's own admission rule,
 the function the handler itself calls when the request runs, so admission and execution cannot

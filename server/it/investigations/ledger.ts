@@ -14,7 +14,7 @@ import { interruptedQARerunResolution } from './interrupted-qa-rerun-resolution'
 import type { Store } from '../../store/store';
 import { ctoReplacementResolution } from './cto-replacement-resolution';
 import { implementationReplacementResolution } from './implementation-replacement-resolution';
-import { PROVIDER_RECOVERED, providerLimitResolution } from './provider-limit-resolution';
+import { investigatesLimitRefusal, PROVIDER_RECOVERED, providerLimitResolution } from './provider-limit-resolution';
 
 /** These saved receipts are populated by existing read-back contracts, never by Ellis's verdict. */
 export function investigationResolution(store: Store, entry: ITInvestigation) {
@@ -49,16 +49,18 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
     for (const entry of entries) {
         if (entry.retirement) continue;
         requeueInvestigationEvidence(store, entry);
-        const resolution = investigationResolution(store, entry);
+        const resolution = investigationResolution(store, entry), limitRefusal = investigatesLimitRefusal(store, entry);
         if (resolution) {
+            // What was queued to be learned from such a refusal is dropped, on every pass and whichever rule closed it,
+            // before the resolution is saved.
+            if (limitRefusal) dropPendingLessons(store, { kind: 'investigation', id: entry.id });
             if (entry.status !== 'resolved') {
                 entry.status = 'resolved'; entry.nextAt = ''; entry.updatedAt = now.toISOString();
                 entry.resolution = { ...resolution, at: now.toISOString() };
                 // Closing with a finished subject verifies nothing and replaces nothing, so it is neither recorded as a lesson nor described as one.
                 const finished = /^(?:job|ticket):/.test(resolution.receipt), recovered = resolution.receipt.startsWith(PROVIDER_RECOVERED);
-                // Nor does a provider that works again: its refusal said nothing about the Office, and what was queued to be learned from it is dropped.
-                if (recovered) dropPendingLessons(store, { kind: 'investigation', id: entry.id });
-                if (!finished && !recovered) captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
+                // Nor does a provider's refusal at its usage limit, however the investigation closed: it said nothing about the Office.
+                if (!finished && !recovered && !limitRefusal) captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
                 store.emit('it-investigation-resolved', finished ? 'Earlier warning kept as history: the work it concerned has finished. Its original outcome remains unknown.' : recovered ? 'Earlier warning kept as history: the provider that refused the run is working again. The refused run was not repeated.' : resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
             }
         } else if (entry.status === 'resolved') {

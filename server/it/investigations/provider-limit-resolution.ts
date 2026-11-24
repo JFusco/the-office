@@ -13,6 +13,13 @@ function refusedAtLimit(work: WorkTime): boolean {
     return failure.category === 'provider-limit' || failure.category === 'other' && !!work.provider && !!providerLimit(work.provider, failure.detail);
 }
 
+/** Whether the investigation's source is a worker run the provider refused at its usage limit: nothing about the Office to learn from it. */
+export function investigatesLimitRefusal(store: Store, entry: ITInvestigation): boolean {
+    if (entry.source.kind !== 'worker') return false;
+    const run = store.state.workLog?.find(item => item.id === entry.source.id);
+    return !!run && refusedAtLimit(run);
+}
+
 /**
  * A worker the provider refused at its usage limit, once that provider has completed a later run. The refusal
  * was the provider's own and says nothing about the Office, so there is nothing for a diagnosis to find: the

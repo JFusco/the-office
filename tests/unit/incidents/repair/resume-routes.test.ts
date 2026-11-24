@@ -4,13 +4,13 @@ import { dispatchable, RESUME_ROUTES, routeFault, subjectParts } from '../../../
 const JOB = { subject: 'cms-field-vocabulary/delivery/job-1', stage: 'review', provider: 'github' };
 const route = (action: string, payload: Record<string, unknown>, expectedStage = 'review') => ({ action, payload, expectedStage });
 
-test('the inventory is the closed list of existing handlers; the seven GitHub read-back routes and the ticket\'s own resume are dispatched in every form', () => {
+test('the inventory is the closed list of existing handlers; the seven GitHub read-back routes, the two review transitions and the ticket\'s own resume are dispatched in every form', () => {
     expect(Object.keys(RESUME_ROUTES).sort()).toEqual([
         'reconcile-base-update', 'reconcile-closeout', 'reconcile-implementation', 'reconcile-maintenance', 'reconcile-native-checkpoint', 'reconcile-preparation', 'reconcile-review',
         'reconcile-scope-repair', 'reconcile-validation', 'requeue-implement', 'resume-ticket', 'retry-checkpoint', 'review-assignment', 'review-candidate', 'review-pr',
     ]);
     expect(Object.entries(RESUME_ROUTES).filter(([, known]) => known.dispatch !== 'none').map(([action, known]) => [action, known.dispatch]).sort()).toEqual([
-        ['reconcile-base-update', 'all'], ['reconcile-closeout', 'all'], ['reconcile-implementation', 'all'], ['reconcile-preparation', 'all'], ['reconcile-review', 'all'], ['reconcile-scope-repair', 'all'], ['reconcile-validation', 'all'], ['resume-ticket', 'all'],
+        ['reconcile-base-update', 'all'], ['reconcile-closeout', 'all'], ['reconcile-implementation', 'all'], ['reconcile-preparation', 'all'], ['reconcile-review', 'all'], ['reconcile-scope-repair', 'all'], ['reconcile-validation', 'all'], ['resume-ticket', 'all'], ['review-candidate', 'all'], ['review-pr', 'all'],
     ]);
     // Every dispatched route resumes a GitHub delivery job or a Jira/Azure ticket; no other kind of subject is dispatched yet.
     expect(Object.entries(RESUME_ROUTES).filter(([, known]) => known.dispatch !== 'none' && known.subject !== 'job').map(([action, known]) => [action, known.subject])).toEqual([['resume-ticket', 'ticket']]);
@@ -111,10 +111,10 @@ test('a route is dispatched in the forms its row names: none, only without a hea
     expect(dispatchable(row('saved-result'), { key: 'GH-12' })).toBe(true);
     expect(dispatchable(row('saved-result'), { key: 'GH-12', head: '' })).toBe(true);
     expect(dispatchable(row('saved-result'), { key: 'GH-12', head: 'worker-1' })).toBe(false);
-    // The Office's own inventory: the read-back routes with a head and without, the ticket's own resume, and nothing else.
+    // The Office's own inventory: the read-back routes with a head and without, the ticket's own resume, the two review transitions, and nothing else.
     for (const payload of [{ key: 'GH-12' }, { key: 'GH-12', head: 'worker-1' }]) {
-        for (const action of ['reconcile-review', 'reconcile-implementation', 'reconcile-validation', 'reconcile-scope-repair', 'reconcile-preparation', 'reconcile-base-update', 'reconcile-closeout', 'resume-ticket']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(true);
-        for (const action of ['review-pr', 'review-candidate', 'requeue-implement', 'review-assignment', 'reconcile-maintenance', 'retry-checkpoint', 'reconcile-native-checkpoint']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(false);
+        for (const action of ['reconcile-review', 'reconcile-implementation', 'reconcile-validation', 'reconcile-scope-repair', 'reconcile-preparation', 'reconcile-base-update', 'reconcile-closeout', 'resume-ticket', 'review-pr', 'review-candidate']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(true);
+        for (const action of ['requeue-implement', 'review-assignment', 'reconcile-maintenance', 'retry-checkpoint', 'reconcile-native-checkpoint']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(false);
     }
 });
 
