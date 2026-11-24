@@ -3,9 +3,12 @@ import { Store } from '../../../server/store/store';
 import { Scheduler, selectWork, type ScheduledWork } from '../../../server/scheduling/scheduler';
 import { officeCapacity, projectById } from '../../../server/office/projects';
 import { Effects } from '../../../server/store/effects';
+import type { WorkSlot } from '../../../server/scheduling/slot-policy';
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));
 function store(id: string) { const value = new Store(':memory:', projectById(id)); stores.push(value); return value; }
+/** A store for a project id outside the configured three, for rotations that need more projects. */
+function office(id: string) { const value = new Store(':memory:', { ...projectById('brain'), id }); stores.push(value); return value; }
 function item(store: Store, id: string, rank: number, calls: string[], state: 'runnable' | 'blocked' = 'runnable'): ScheduledWork {
     return { store, work: { projectId: store.project.id, kind: 'delivery', id }, stage: 'fixture', rank, enqueuedAt: id, eligibility: { state, reason: 'fixture', owner: 'Morgan', nextCheckAt: null }, identity: () => id, execute: async () => { calls.push(`${store.project.id}:${id}`); } };
 }
@@ -114,6 +117,114 @@ test('exclusive work drains running slots, runs alone, then slotted work resumes
     releases.get('cec:implement')!();
     await last;
     expect(capacity.slots.size).toBe(0);
+});
+/** A project whose head is replaced by a fresh head of the same class as soon as it starts; each start records the project. */
+function stream(s: Store, starts: string[], slot?: WorkSlot) {
+    const project = { store: s, items: [] as ScheduledWork[] };
+    let n = 0;
+    const next = (): ScheduledWork => {
+        const work = item(s, String(++n), 3, []);
+        if (slot) work.slot = slot;
+        work.execute = async () => { starts.push(s.project.id); project.items = [next()]; };
+        return work;
+    };
+    project.items = [next()];
+    return project;
+}
+test('a slotted delivery head waiting behind two streams of exclusive heads starts on the fourth claim (2026-11-24)', async () => {
+    const brain = store('brain'), cms = store('cms-field-vocabulary'), a11y = office('accessibility-standards'), scheduler = new Scheduler(officeCapacity(3)), starts: string[] = [];
+    const projects = [stream(brain, starts, { role: 'developer' }), stream(cms, starts), stream(a11y, starts)];
+    for (let i = 0; i < 4; i++)
+        await scheduler.pump(projects);
+    expect(starts).toEqual(['cms-field-vocabulary', 'accessibility-standards', 'cms-field-vocabulary', 'brain']);
+});
+test.each<[string, [string, boolean][], string[]]>([
+    ['slotted heads take turns of their own', [['s1', true], ['s2', true], ['e', false]], ['e', 'e', 'e', 's1', 'e', 'e', 'e', 's2']],
+    ['exclusive heads keep their rotation across a slotted turn', [['e1', false], ['e2', false], ['e3', false], ['e4', false], ['s', true]], ['e1', 'e2', 'e3', 's', 'e4']],
+])('concurrent delivery rotates each class from its own cursor: %s', async (_name, order, expected) => {
+    const scheduler = new Scheduler(officeCapacity(3)), starts: string[] = [];
+    const projects = order.map(([id, slotted]) => stream(office(id), starts, slotted ? { role: 'developer' } : undefined));
+    for (let i = 0; i < expected.length; i++)
+        await scheduler.pump(projects);
+    expect(starts).toEqual(expected);
+});
+test('a slotted head that declines its turn lets an exclusive start, and starts on the next pump that it can claim', async () => {
+    const brain = store('brain'), cms = store('cms-field-vocabulary'), cec = store('cec'), capacity = officeCapacity(3), scheduler = new Scheduler(capacity), starts: string[] = [];
+    const projects = [stream(brain, starts, { role: 'developer' }), stream(cms, starts), stream(cec, starts)];
+    for (let i = 0; i < 3; i++)
+        await scheduler.pump(projects);
+    let attempts = 0;
+    const head = projects[0].items[0];
+    head.claimEligible = () => { attempts++; return false; };
+    await scheduler.pump(projects);
+    expect([attempts, starts]).toEqual([1, ['cms-field-vocabulary', 'cec', 'cms-field-vocabulary', 'cec']]);
+    await scheduler.pump(projects);
+    expect([attempts, starts.slice(4)]).toEqual([2, ['cms-field-vocabulary']]);
+    delete head.claimEligible;
+    await scheduler.pump(projects);
+    expect(starts.slice(5)).toEqual(['brain']);
+    expect(capacity.slots.size).toBe(0);
+});
+test('a declined head is passed over within the pump: a slotted peer on a slotted turn, a slot behind a declining sole exclusive', async () => {
+    const brain = store('brain'), cms = store('cms-field-vocabulary'), cec = store('cec'), turn = new Scheduler(officeCapacity(3)), starts: string[] = [];
+    const peers = [stream(brain, starts, { role: 'developer' }), stream(cms, starts, { role: 'lead' }), stream(cec, starts)];
+    for (let i = 0; i < 3; i++)
+        await turn.pump(peers);
+    peers[0].items[0].claimEligible = () => false;
+    await turn.pump(peers);
+    expect(starts).toEqual(['cec', 'cec', 'cec', 'cms-field-vocabulary']);
+
+    const sole = new Scheduler(officeCapacity(3)), solo: string[] = [], exclusive = stream(office('exclusive'), solo), slotted = stream(office('slotted'), solo, { role: 'developer' });
+    let attempts = 0;
+    exclusive.items[0].claimEligible = () => { attempts++; return false; };
+    await sole.pump([exclusive, slotted]);
+    expect([attempts, solo]).toEqual([1, ['slotted']]);
+});
+test.each(['already waiting', 'selected while the yielded slot runs'])('a yielded slot drains for an exclusive head %s: no second slot starts, then the exclusive runs alone', async when => {
+    const a = store('brain'), b = store('cms-field-vocabulary'), c = store('cec'), capacity = officeCapacity(3), scheduler = new Scheduler(capacity), calls: string[] = [], releases = new Map<string, () => void>(), starts: string[] = [];
+    const exclusive = stream(c, starts);
+    const projects = [{ store: a, items: [heldItem(a, 'S1', 'developer', calls, releases)] }, { store: b, items: [heldItem(b, 'S2', 'lead', calls, releases)] }, exclusive];
+    for (let i = 0; i < 3; i++)
+        await scheduler.pump(projects);
+    expect([starts, calls]).toEqual([['cec', 'cec', 'cec'], []]);
+    const head = exclusive.items;
+    if (when !== 'already waiting')
+        exclusive.items = [];
+    const yielded = scheduler.pump(projects);
+    exclusive.items = head;
+    // Stages start synchronously within a pump, so a second slot would already show here.
+    const extra = [scheduler.pump(projects), scheduler.pump(projects), scheduler.pump(projects)];
+    expect([starts.length, calls]).toEqual([3, ['start brain:S1']]);
+    await Promise.all(extra);
+    expect([starts.length, calls]).toEqual([3, ['start brain:S1']]);
+    releases.get('brain:S1')!();
+    await yielded;
+    const next = scheduler.pump(projects);
+    expect(starts).toEqual(['cec', 'cec', 'cec', 'cec']);
+    expect([...capacity.slots.values()]).toEqual([{ role: undefined, exclusive: true }]);
+    expect(calls).toEqual(['start brain:S1']);
+    await next;
+});
+test('a timing that cannot be recorded on a slotted turn rejects, frees the slot, and the same slotted head starts on retry', async () => {
+    const a = store('brain'), b = store('cms-field-vocabulary'), c = store('cec'), capacity = officeCapacity(3), scheduler = new Scheduler(capacity), starts: string[] = [], failure = new Error('timing refused');
+    const projects = [stream(a, starts, { role: 'developer' }), stream(b, starts, { role: 'lead' }), stream(c, starts)];
+    for (let i = 0; i < 3; i++)
+        await scheduler.pump(projects);
+    const head = projects[0].items[0];
+    head.saveTiming = () => { throw failure; };
+    await expect(scheduler.pump(projects)).rejects.toBe(failure);
+    expect([starts.length, capacity.slots.size, claims(a)]).toEqual([3, 0, []]);
+    delete head.saveTiming;
+    await scheduler.pump(projects);
+    expect(starts.at(-1)).toBe('brain');
+});
+test('the operations lane keeps draining for cross-project operations: a fourth still starts ahead of a waiting poll', async () => {
+    const { operationsSlot } = await import('../../../server/scheduling/operations-slot');
+    const scheduler = new Scheduler(officeCapacity(3), undefined, 'operations'), starts: string[] = [];
+    const projects = [stream(store('brain'), starts, operationsSlot('poll')), stream(store('cec'), starts, operationsSlot('observe-dependencies'))];
+    for (let i = 0; i < 4; i++)
+        await scheduler.pump(projects);
+    expect(starts).toEqual(['cec', 'cec', 'cec', 'cec']);
 });
 test('each project runs one of its own operations while the others run theirs; an operation that spans projects still runs alone', async () => {
     const { operationsSlot } = await import('../../../server/scheduling/operations-slot');
