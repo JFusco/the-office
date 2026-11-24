@@ -19,8 +19,8 @@ export const reviewRoute = (jobId: string, over: Partial<RepairRoute> = {}): Rep
  * job, the repair-wait markers in place (minute 3) and the fix found in the running release
  * (minute 4): the state in which a resume is due.
  */
-export async function deployedWorld(stores: Store[], dbs: DatabaseSync[], ids = ['1', '2'], route: (jobId: string) => RepairRoute = jobId => reviewRoute(jobId), { fixEvent = 'cli-bind-1', bindMinute = 2, declare = (bound: SubjectFix): SubjectFix => bound } = {}) {
-    const w = world(stores, dbs, ids);
+export async function deployedWorld(stores: Store[], dbs: DatabaseSync[], ids = ['1', '2'], route: (jobId: string) => RepairRoute = jobId => reviewRoute(jobId), { fixEvent = 'cli-bind-1', bindMinute = 2, declare = (bound: SubjectFix): SubjectFix => bound, job = {} as Record<string, unknown> } = {}) {
+    const w = world(stores, dbs, ids, job);
     w.start('cli-start-1', 1);
     // `declare` replaces what the fix states for a subject: by default a route whose boundary is leaving `review`.
     const bindings: SubjectFix[] = w.ledger.get(w.id)!.repair!.subjects.map(subject => declare({ ...subject, disposition: 'route', route: route(subject.subject.split('/').at(-1)!), boundary: { kind: 'stage-left', stage: 'review' } }));

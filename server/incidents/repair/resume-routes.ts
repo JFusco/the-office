@@ -37,8 +37,9 @@ export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
     'reconcile-base-update': { subject: 'job', keyed: 'ticket', head: `the job's head commit for a board preflight, or ${original('base-update')}; empty selects the saved-result reconciliation`, dispatch: 'all' },
     'reconcile-scope-repair': { subject: 'job', keyed: 'ticket', head: original('scope-repair'), dispatch: 'all' },
     'reconcile-closeout': { subject: 'job', keyed: 'ticket', head: `${original('closeout')}; empty selects the saved-closeout reconciliation`, dispatch: 'all' },
-    'review-candidate': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
-    'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
+    // Synchronous: the job is requeued at once, as an operator's recheck does, with a completed receipt carrying the binding (see dispatch-transition-resume.ts).
+    'review-candidate': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
+    'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
     'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
     'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: 'none' },
     'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: 'none' },

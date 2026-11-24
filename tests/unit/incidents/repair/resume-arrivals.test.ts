@@ -147,7 +147,7 @@ test('a fix withdrawn and found again does not resume its subjects a second time
 });
 
 test('only what the reading calls due is put to admission: no route and a subject that is gone are left alone; a head the handler would not take is refused and recorded', async () => {
-    const w = await deployedWorld(stores, dbs, ['1', '2', '3'], jobId => jobId === '1' ? reviewRoute('1', { payload: { key: 'GH-1', head: 'worker-1' } }) : jobId === '2' ? reviewRoute('2', { action: 'review-pr' }) : reviewRoute('3'));
+    const w = await deployedWorld(stores, dbs, ['1', '2', '3'], jobId => jobId === '1' ? reviewRoute('1', { payload: { key: 'GH-1', head: 'worker-1' } }) : jobId === '2' ? reviewRoute('2', { action: 'requeue-implement' }) : reviewRoute('3'));
     // The third job stopped again since: it is gone as bound.
     w.jobs()[2].stop = { kind: 'unclassified', at: 't2' };
     w.observed(4);

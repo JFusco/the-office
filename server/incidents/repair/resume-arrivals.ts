@@ -9,6 +9,7 @@ import { redactEvidence } from '../redact-evidence';
 import { assessResumes } from './assess-resumes';
 import { admitResume } from './dispatch-resume';
 import { admitTicketResume } from './dispatch-ticket-resume';
+import { admitTransitionResume, forTransition } from './dispatch-transition-resume';
 import { resumeIdentity, resumeRequest } from './resume-binding';
 import type { ResumeControl } from './resume-control';
 import { RESUME_ROUTES, subjectParts, type ResumeRoute } from './resume-routes';
@@ -49,15 +50,16 @@ export const resumeAdmitted = (ledger: IncidentLedger, incident: Pick<Incident, 
 /**
  * Resumes what is due, and keeps the ledger's record of what was resumed.
  *
- * First, every request a project holds that is bound as a resume, a recovery request for a job
- * or a delivery request for a ticket, has its `resume-admitted` event,
+ * First, every request a project holds that is bound as a resume, a recovery request for a job,
+ * a delivery request for a ticket or the completed receipt of a review resume, has its `resume-admitted` event,
  * taken from the request itself. The project's store decides whether a resume was admitted and
  * the ledger only records it, so an admission whose event was never written is made good here,
  * whatever state its incident is in by now and whatever its subject has done since, and nothing
  * is queued twice.
  *
  * Then, for every `deployed` incident, each subject the reading calls due is put to admission in
- * its own project (see dispatch-resume.ts for a job, dispatch-ticket-resume.ts for a ticket), but only while the release that runs now is verified
+ * its own project (see dispatch-transition-resume.ts for `review-pr` and `review-candidate`,
+ * dispatch-resume.ts for any other job route, dispatch-ticket-resume.ts for a ticket), but only while the release that runs now is verified
  * and known to hold the fix: the deployment mark alone can name a release that no longer serves.
  * The ledger records what happened: one `resume-admitted` event per subject and fix, and one
  * `resume-refused` event per subject, fix and reason, a subject held by the paused switch
@@ -116,6 +118,7 @@ export function dispatchResumes({ ledger, entries, control, running, now, fenced
                 }
                 const outcome = !release ? { refused: 'release-unconfirmed' as const, detail: 'The release that runs now is not verified, or is not yet known to hold the fix.' }
                     : !store ? { refused: 'no-record' as const, detail: `${standing.subject} is in no project this Office holds.` }
+                    : forTransition(binding.route.action) ? admitTransitionResume(store, { incident: incident.id, fix, release, binding }, at, routes)
                     : !forTicket(binding.route.action, routes) ? admitResume(store, { incident: incident.id, fix, release, binding }, at, routes)
                     : !project.engine ? { refused: 'not-dispatchable' as const, detail: `${store.project.id} has no delivery queue to resume a ticket through.` }
                     : admitTicketResume(store, (key, bound) => project.engine!.requestDelivery(key, 'resume-ticket', undefined, { repairResume: bound }), { incident: incident.id, fix, release, binding }, at, routes);
