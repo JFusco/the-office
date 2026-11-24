@@ -13,8 +13,11 @@ changes limited to `wiki/**/*.md` and `scripts/wiki/graph/data/graph.json`.
 Renames must stay within that scope. A numbered reconciliation must refer to a
 merged, non-wiki parent on the configured target. The workflow uses unsigned
 local Actions commits, so GitHub signature verification is not its provenance
-contract. These checks admit the PR for independent review; they are not proof
-that the diff is correct. There is no Dependabot lint/review waiver for wiki PRs.
+contract. These checks admit the PR for independent review.
+
+The Office repository validates the compact writer PR body against its
+canonical branch, account and Markdown/graph diff. Title and commit-message
+lint still run, as does independent review.
 
 The harness creates one assigned tracking issue using the durable wiki-specific
 marker, appends its closing reference, and puts both cards In review. The PR's

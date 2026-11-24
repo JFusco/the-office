@@ -1108,17 +1108,27 @@ reads every project:
   intake reviews, checkpoints, maintenance, notices and conversations), and waiting work whose own
   record is a stop (a pull request that is not ready, checks or required Azure policies still
   running, a merge waiting for approval, a pull-request review that needs follow-up) or that waits
-  on a configured hold, a retry the Office planned or an unfinished structured prerequisite;
+  on a configured hold, a retry the Office planned or an unfinished structured prerequisite; a
+  feature waiting on answers to its current question round, while the feature itself waits, is not
+  paused and is held neither by the automatic policy nor by configured intake, recorded in the
+  harness's own words with no question, answer or detail kept; and Harper's weekly roll-up while the
+  retry the Office saved for it is still ahead. A feature's recovery deadline alone is not read;
 - runs that failed after dispatch, by failure category, each counted for 24 hours;
 - IT recoveries handed to a person;
 - IT investigations that name the harness or propose an Office fix;
 - improvement proposals addressed to the Office harness;
 - the latest error of the assignment listener, the mailbox intake and the GitHub and Azure readers,
-  kept while the reader's next read is under way; a GitHub project's mailbox error is the GitHub
-  read's own and is reported once;
+  kept while the reader's next read is under way; a Jira mailbox blanks its error when a check is
+  queued or starts. Its subject stays open during that check unless a successful check was recorded
+  after the observed failure. A present error is read as usual. A GitHub project's mailbox error is
+  the GitHub read's own and is reported once;
 - Slack deliveries that could not be confirmed and were not replaced;
-- any other open outbox item, by its title only, including the item of a ticket or intake review
-  the scheduler does not project.
+- any other open outbox item, by its title only. The item of a ticket or intake review, and the
+  summary of reviews that cannot read session ownership, are kept only while stopped work reports
+  or keeps open none of their records: the ticket or a stopped request that only mirrors its
+  blocker, the review, or every review in the summary. Work the scheduler projects but stopped work
+  does not record, such as finished history or a review running again, covers nothing, and nor
+  does a stopped-work read that failed before the record was first seen.
 
 A saved stop is read only while the record's status makes it current; a watching job keeps only a
 wait's own stop. A record that could run but is held by the scheduler's condition, a prerequisite
@@ -1143,7 +1153,9 @@ subject, stage and typed cause, and its wording is evidence only:
 - `unknown`: the record does not say where its text came from: work with no retained record, a
   delivery request's error, a ticket blocker with no saved stop, result or failure behind it, what
   a run that completed handed back to a request, notice, conversation or Jira mailbox read, a
-  recovery's copied detail, and the outbox item of an unprojected ticket or review. For these the
+  mailbox checkpoint whose last intake run completed (whether or not the intake error still
+  stands; with no intake run or a typed failure its text is the harness's), a recovery's copied
+  detail, and the outbox item of an unprojected ticket or review. For these the
   scheduler's own cause, which can come from the text's wording, is neither kind nor explanation.
 
 A merge waiting for approval is identified by that restriction, not by the job's changing detail.
@@ -1157,15 +1169,36 @@ references is still unsettled. Two sources that report the same stop yield one s
 run is folded into the job, ticket, review or maintenance run it worked for, and an unconfirmed
 Slack delivery into its notice or conversation, which then carries the unsettled write and, when
 it has no explanation of its own, the delivery's; a delivery request that only mirrors its
-ticket's stop is folded into the ticket, and a checkpoint that only repeats its maintenance run's
-into the run. An exhausted recovery and the record it tried to recover stay separate subjects. A subject whose signal is gone is cleared. A subject that returns
+ticket's stop is folded into the ticket. If that request is the only subject covering an unprojected
+ticket, it takes in the ticket's stage run. A checkpoint that only repeats its maintenance run's
+stop folds into that run. A failed intake run is folded into the Jira mailbox error when the
+record proves it caused it: its standing typed failure is what the error says, it started after the last
+successful check and it ran wholly within the check that recorded the failure, as the project's
+persisted events show; otherwise the two stay apart. A kept ticket or review outbox item is bound
+to its record's saved stop, head and last run, which it takes in, and to that record's unsettled
+writes; its episode stays the item's own. An improvement proposal's write is unsettled only while
+one filed under its own issue work key is. An exhausted recovery and the record it tried to recover stay separate subjects. A subject whose signal is gone is cleared. A subject that returns
 after it cleared, or whose stop marker changed, is a new episode of the same incident and one
 observed resume, and how long it has stood is counted from that latest stop; the count survives
-the projection dropping an old cleared subject, because it is read back from the events. A subject is not cleared while its signal cannot be seen: stopped work
-while its project is paused or draining, a source whose collector failed for that project, and
-everything of a project that could not be read. While stopped work cannot be seen, the runs and
-deliveries its open subjects hold stay with them, and those a pause newly hides fold into the
-pause; while another source cannot be seen, what it had contributed to a subject stays on it.
+the projection dropping an old cleared subject, because it is read back from the events. A
+subject is open in one incident at a time: observed under another cause, it leaves the incident
+that held it in the same change, whatever cannot be seen. Two copies of one subject left open by
+an earlier release are both kept until it is observed again, which selects one. Otherwise a
+subject is not cleared while its signal cannot be seen: its owner's source while its project is
+paused or draining or its collector failed for that project, the mailbox subject while a check is
+under way without a newer success, and everything of a project that could not be read. While an
+owner cannot be seen, the runs and deliveries its open subjects hold stay with them. Those a
+pause newly hides fold into the pause. A readable outbox uses both fresh and retained stopped-work
+subjects as coverage.
+During an outbox outage, only fresh stopped-work reports can release its saved items and free their
+runs to fold into the subjects that now cover them. What each source says of a subject, whether a write
+it knows of is unsettled and its explanation, is recorded apart; the subject's own facts combine
+them with the owner first and the rest in collector order. While another source cannot be seen it
+keeps exactly its own part, wherever the subject's cause now puts it, and a readable source that
+reports nothing withdraws its part, the owner's included, so a fact only the owner gave goes when
+the owner drops it. A subject recorded before parts were kept retains its earlier aggregate
+alongside facts learned on partial reads. A pass that reads all of the original sources replaces
+that aggregate.
 
 **Expected waits.** Holds, decisions, merge approvals, prerequisites, pauses, authentication
 blocks, provider waits, planned retries, uncertain effects and questions are recognised from typed

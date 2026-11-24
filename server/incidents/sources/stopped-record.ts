@@ -157,9 +157,11 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
         if (!checkpoint) return null;
         // A checkpoint whose maintenance ended blocked repeats that run's error, which can be a model's blocker.
         const run = state.maintenance?.runs.find(run => run.id === checkpoint.runId), outcome = run ? stepBlocker(state, run, checkpoint.detail) : null;
-        // A mailbox checkpoint repeats the intake error, which a board-enumerating model may have written.
-        const intake = !run && state.intake?.error && includes(checkpoint.detail, state.intake.error) ? lastRun(state, worked => worked.stage === 'intake') : undefined;
-        return { ...base, standing: STOPPED.includes(checkpoint.status) ? 'stopped' : 'gated', text: checkpoint.detail, author: outcome ? 'model' : handedBack(intake), kind: outcome ?? '', episode: `${checkpoint.startRetries ?? 0}:${checkpoint.endedAt}`,
+        // Without a maintenance run a checkpoint is the mailbox's: the last intake run decides whether a board-enumerating model handed its text back, whether or not the intake error still stands.
+        const handed = !run ? lastRun(state, worked => worked.stage === 'intake') : undefined;
+        // A repair restriction comes only from the run behind an intake error the checkpoint still repeats.
+        const intake = handed && state.intake?.error && includes(checkpoint.detail, state.intake.error) ? handed : undefined;
+        return { ...base, standing: STOPPED.includes(checkpoint.status) ? 'stopped' : 'gated', text: checkpoint.detail, author: outcome ? 'model' : handedBack(handed), kind: outcome ?? '', episode: `${checkpoint.startRetries ?? 0}:${checkpoint.endedAt}`,
             failure: failed(intake) ? intake!.failure!.category : undefined, retryAt: checkpoint.retryAt || undefined, effects: [work, { projectId: project, kind: 'maintenance', id: checkpoint.runId }] };
     }
     if (work.kind === 'maintenance') {

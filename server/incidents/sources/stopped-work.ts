@@ -2,8 +2,11 @@ import type { IncidentCandidate, IncidentCause } from '../../../src/contracts/in
 import { boundedEvidence } from '../bounded-evidence';
 import { expectedWait } from '../expected-block';
 import { normalizeCause } from '../normalize-cause';
-import type { IncidentCollector } from '../observation';
+import type { IncidentCollector, ProjectObservation } from '../observation';
 import { touchesUnsettled } from '../../operations/stale-records';
+import { featureRecord } from './feature-record';
+import { foldMirroredTicketWorkers } from './mirrored-ticket-runs';
+import { rollupRecord } from './rollup-record';
 import { stoppedRecord } from './stopped-record';
 
 /**
@@ -16,6 +19,9 @@ import { stoppedRecord } from './stopped-record';
  * project, because the pause hides every other reason.
  */
 export const stoppedWork: IncidentCollector = ({ projectId, provider, state, progression, unsettled, holds, dependency, now }) => {
+    // A feature's question round and the roll-up's saved retry are read here only, never by the record reader repair waits share.
+    const read = ({ work, stage, eligibility }: ProjectObservation['progression'][number]) =>
+        work.kind === 'feature' ? featureRecord({ state, projectId, provider }, work, stage, eligibility) : work.kind === 'knowledge-rollup' ? rollupRecord(state, work, now) : stoppedRecord(state, work, stage);
     if (state.paused || state.draining) {
         // One cause for both: draining is a pause that lets running work finish. Records the pause hides keep what they cover.
         const absorbs = progression.filter(({ work }) => work.projectId === projectId).flatMap(({ work, stage }) => { const record = stoppedRecord(state, work, stage); return record?.standing === 'stopped' ? record.covers.map(([kind, id]) => `${projectId}/${kind}/${id}`) : []; });
@@ -23,9 +29,10 @@ export const stoppedWork: IncidentCollector = ({ projectId, provider, state, pro
             cause: { source: 'stopped-work', provider, stage: '', kind: 'paused', text: '', author: 'harness' }, expected: 'pause', evidence: state.draining ? 'Office is draining' : 'Project is paused', absorbs: [...new Set(absorbs)] }];
     }
     const candidates: IncidentCandidate[] = [];
-    for (const { work, stage, eligibility } of progression) {
+    for (const item of progression) {
+        const { work, stage, eligibility } = item;
         if (work.projectId !== projectId) continue;
-        const record = stoppedRecord(state, work, stage), own = record?.standing === 'stopped';
+        const record = read(item), own = record?.standing === 'stopped';
         if (record?.standing === 'ignored') continue;
         const waiting = eligibility.state === 'waiting', held = !!record && [record.key, ...(record.keys ?? [])].some(key => !!key && Object.hasOwn(holds, key)), retrying = !!record?.retryAt && Date.parse(record.retryAt) > now.getTime();
         // The scheduler's own reading of the record's structured prerequisites, never the wording of its reason.
@@ -46,5 +53,6 @@ export const stoppedWork: IncidentCollector = ({ projectId, provider, state, pro
             absorbs: own ? record.covers.map(([kind, id]) => `${projectId}/${kind}/${id}`) : undefined,
         });
     }
+    foldMirroredTicketWorkers(state, projectId, candidates);
     return candidates;
 };
