@@ -379,8 +379,10 @@ at the Lead review or the PR preparation, the Office settles it (`server/deliver
 The candidate must be the one the Office created, its branch and worktree, with a passed harness draft that
 published the current head to that pull request. GitHub must show the PR closed and merged by the owner at
 that head into the project target, still linked to the job's issue. Nothing else of the job may be open: no
-claim, recovery request, worker that did not run to its end, hold, prerequisite, park, merge attempt or
-approval wait, repair in progress, stopped-base update, unverified board move or receipt, or unsettled effect. The Office then records the owner and both commits,
+claim, recovery request, worker that did not run to its end, hold, unmet prerequisite, park, merge attempt or
+approval wait, repair in progress, stopped-base update, unverified board move or receipt, or unsettled effect.
+A prerequisite the job keeps must pass the scheduler's own prerequisite check, across the office's projects,
+before the Office reads GitHub for the job and again after GitHub answers. The Office then records the owner and both commits,
 clears the stop and watches the merge commit like any merge: its Actions decide between the existing CI route
 and the ordinary closeout. Closeout moves each card that is not yet in Done with one read-back effect bound to the merge commit.
 The finished review and its findings are kept; no merge, worker or provider write is sent to settle it.

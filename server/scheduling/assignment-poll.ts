@@ -168,7 +168,7 @@ export async function poll(this: Coordinator, now = new Date()) {
                 admitReadyCards(this, delivery, assigned, now);
             }
             await delivery.refreshDependencies();
-            await delivery.observe();
+            await delivery.observe(() => this.dependencyStores());
             await observeGitHubMergeNotices(delivery);
         }
         for (const review of listener.reviews) if (review.status === 'queued') holdAssessmentIntake(this.store, review);
