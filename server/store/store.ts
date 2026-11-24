@@ -27,6 +27,8 @@ import { migrateSnapshot } from './migrations';
 import { checkpointMeasurement, startMeasurement, type WorkOutcome } from '../time/work-time';
 import { recover } from './interrupted-work-recovery';
 import { recordAdmission } from './admission-journal';
+import { settleHandoffs } from '../knowledge/handoff-admission';
+import { unsettledEffects } from '../operations/unsettled-effects';
 export function initialSnapshot(): OfficeSnapshot {
     const now = new Date().toISOString();
     return {
@@ -76,6 +78,8 @@ export class Store {
         this.state = (saved ?? initialSnapshot()) as OfficeSnapshot;
         this.state.project = project;
         migrateSnapshot(this.state, project, this.clock.now().toISOString());
+        // Before start-up recovery can interrupt a working request or finish a claim: each follow-up keeps the hand-off in flight.
+        settleHandoffs(this.state.knowledge?.followups || [], { projectId: project.id, messages: this.state.messages, claims: this.activeClaims(), workLog: this.state.workLog || [], unsettled: unsettledEffects(this) });
         for (const role of ['cto', 'it', 'analyst', 'knowledge'] as const)
             if (!this.state.agents.some(agent => agent.id === role))
                 this.state.agents.push(initialSnapshot().agents.find(agent => agent.id === role)!);

@@ -218,9 +218,12 @@ export interface BlockerFollowup {
     owner: 'Ellis' | 'Morgan'; nextAction: string; evidence: LessonEvidence[];
     recoveryId?: string; investigationId?: string; requestId?: string; nudgeId?: string;
     improvementId?: string; handoffId?: string; handoffIds?: string[];
+    /** What Harper's last admitted hand-off was about (`server/knowledge/handoff-admission.ts`). Absent before it was first recorded. */
+    handoffMaterialKey?: string;
     disposition: 'confirmed' | 'superseded' | 'unresolved' | 'needs-input' | 'unknown';
     createdAt: string; updatedAt: string; resolvedAt?: string;
-    history: { at: string; disposition: BlockerFollowup['disposition']; fingerprint: string; detail?: string }[];
+    /** `ownerStatus`: IT's recovery status when a recovery source was present; absent on other entries and on older ones. */
+    history: { at: string; disposition: BlockerFollowup['disposition']; fingerprint: string; detail?: string; ownerStatus?: 'retrying' | 'needs-human' | 'resolved' }[];
 }
 export interface ImprovementGrant {
     policy: 'harper-improvement-queue-v1'; source: string; registeredAt: string;
