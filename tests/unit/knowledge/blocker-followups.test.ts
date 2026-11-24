@@ -3,6 +3,18 @@ import { reconcileBlockerFollowups, harperHandoff } from '../../../server/knowle
 import { job, knowledgeStore, maintenanceRun } from './knowledge-fixture';
 import { markAwaitingRepair, unmark } from '../incidents/repair/mark-fixture';
 import { learningMetrics } from '../../../server/knowledge/learning-metrics';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+import { Store } from '../../../server/store/store';
+import { projectById } from '../../../server/office/projects';
+import { coordination } from '../../../server/scheduling/coordination';
+import { learningDigest } from '../../../server/knowledge/learning-events';
+import { materialKey } from '../../../server/knowledge/handoff-admission';
+import { temporaryReadFailure } from '../../../server/scheduling/read-retries';
+import { readSavedState } from '../../../server/store/read-saved-state';
+import { scheduledWork, type OfficeEntry } from '../../../server/scheduling/scheduled-work';
+import type { TeamMessage } from '../../../src/shared';
 test('source loss records one unknown transition without rewriting prior confirmed coverage', () => {
     const f = knowledgeStore();
     try {
@@ -183,5 +195,246 @@ test.each([['permission', true], ['timeout', false]] as const)('a blocked invest
         const sent = f.store.state.messages.map(message => message.id).filter(id => id.startsWith('harper-followup:investigation:'));
         expect(sent).toHaveLength(handed ? 1 : 0);
         expect(f.store.state.knowledge!.followups!.map(item => item.id)).toContain('investigation:investigation:brain:worker:readback:x');
+    } finally { f.close(); }
+});
+
+// One open diagnosis per follow-up (issue 535).
+const footer = (n: number) => `HTTP 403: API rate limit exceeded for user ID 486049. If you reach out to GitHub Support for help, please include the request ID C8B2:${(0x369A92 + n).toString(16).toUpperCase()} and timestamp 2026-11-24 14:${String(n % 60).padStart(2, '0')}:36 UTC.`;
+const denied = (n = 0) => `HTTP 403: Resource not accessible by integration (permission denied). ${footer(n)}`;
+/** A disk-backed store with a clock the test moves; reopening reads only what was saved. */
+function diskStore(start = '2026-11-24T14:00:00.000Z') {
+    const root = mkdtempSync(resolve(tmpdir(), 'office-followups-')), path = resolve(root, 'office.sqlite');
+    let at = Date.parse(start);
+    const clock = { now: () => new Date(at), monotonic: () => 0 };
+    const open = () => { const store = new Store(path, projectById('brain'), root, clock); store.state.coordination ??= coordination(); store.state.coordination.jobs ??= []; return store; };
+    const f = { store: open(), path, advance: (ms: number) => { at += ms; }, reopen: () => { f.store.close(); f.store = open(); return f.store; }, close: () => { f.store.close(); rmSync(root, { recursive: true, force: true }); } };
+    return f;
+}
+function recovery(store: Store, id: string, status: 'retrying' | 'needs-human' | 'resolved', detail: string) {
+    store.state.it ??= { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], investigations: [], recoveries: {} } as never;
+    store.state.it!.recoveries[id] = { attempts: 3, nextAt: '', status, detail };
+}
+const sent = (store: Store, item: string) => store.state.messages.filter(message => message.from === 'knowledge' && message.id.startsWith(`harper-followup:${item}:`));
+const open = (store: Store, item: string) => sent(store, item).filter(message => ['queued', 'working'].includes(message.status));
+function answer(store: Store, request: TeamMessage) {
+    request.status = 'answered';
+    store.state.messages.push({ ...request, id: crypto.randomUUID(), from: 'pm', status: 'answered', createdAt: store.clock.now().toISOString(), body: 'Diagnosis recorded', receipts: [] });
+}
+const answerAll = (store: Store, item: string) => open(store, item).forEach(request => answer(store, request));
+const LISTENER = 'recovery:assignment-listener';
+const runnable = (store: Store) => scheduledWork({ store, engine: {}, conversations: {}, coordinator: {} } as OfficeEntry, new Map([[store.project.id, store]]), store.clock.now(), 'delivery')
+    .filter(item => item.work.kind === 'conversation' && item.eligibility.state === 'runnable').map(item => item.work.id);
+
+test('a recovery whose provider request ids and times change on every read opens one diagnosis, before and after it is answered', () => {
+    const f = knowledgeStore();
+    try {
+        for (let n = 0; n < 5; n++) { recovery(f.store, 'assignment-listener', 'needs-human', footer(n)); reconcileBlockerFollowups(f.store); f.advance(60000); }
+        expect(sent(f.store, LISTENER)).toHaveLength(1);
+        answer(f.store, sent(f.store, LISTENER)[0]);
+        for (let n = 5; n < 10; n++) { recovery(f.store, 'assignment-listener', 'needs-human', footer(n)); reconcileBlockerFollowups(f.store); f.advance(60000); }
+        expect(sent(f.store, LISTENER)).toHaveLength(1);
+        // Every raw observation is still recorded.
+        const item = f.store.state.knowledge!.followups!.find(item => item.id === LISTENER)!;
+        expect(item.history.map(entry => entry.detail)).toEqual([...Array(10).keys()].map(footer));
+        expect(item.history.every(entry => entry.ownerStatus === 'needs-human')).toBe(true);
+        expect(harperHandoff(f.store, sent(f.store, LISTENER)[0])).toBe(true);
+    } finally { f.close(); }
+});
+
+test.each(['assignment-listener', 'project-progress'])('an answered temporary failure of %s followed by the permissions action is two diagnoses', id => {
+    const f = knowledgeStore();
+    try {
+        recovery(f.store, id, 'needs-human', footer(1)); reconcileBlockerFollowups(f.store); answerAll(f.store, `recovery:${id}`); f.advance(60000);
+        recovery(f.store, id, 'needs-human', denied(2)); reconcileBlockerFollowups(f.store); f.advance(60000);
+        recovery(f.store, id, 'needs-human', denied(3)); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, `recovery:${id}`)).toHaveLength(2);
+        // Any other recovery has one category per episode.
+        recovery(f.store, 'implementation:job-1', 'needs-human', footer(1)); reconcileBlockerFollowups(f.store); answerAll(f.store, 'recovery:implementation:job-1');
+        recovery(f.store, 'implementation:job-1', 'needs-human', denied(2)); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, 'recovery:implementation:job-1')).toHaveLength(1);
+    } finally { f.close(); }
+});
+
+test.each([['advancing', 60000], ['frozen', 0]])('answered A, B, A within one assignment-listener episode is three diagnoses with distinct ids (%s clock)', (_clock, step) => {
+    const f = knowledgeStore();
+    try {
+        for (const detail of [footer(1), denied(2), footer(3)]) {
+            recovery(f.store, 'assignment-listener', 'needs-human', detail); reconcileBlockerFollowups(f.store); reconcileBlockerFollowups(f.store);
+            answerAll(f.store, LISTENER); f.advance(step);
+        }
+        const ids = sent(f.store, LISTENER).map(message => message.id);
+        expect(ids).toHaveLength(3); expect(new Set(ids).size).toBe(3);
+        expect(sent(f.store, LISTENER).map(message => message.requestId)).toEqual(ids);
+    } finally { f.close(); }
+});
+
+test('A returning while B is queued waits for B, then is diagnosed if still due; B coming and going while A is open is nothing new', () => {
+    const f = knowledgeStore();
+    try {
+        recovery(f.store, 'assignment-listener', 'needs-human', footer(1)); reconcileBlockerFollowups(f.store); answerAll(f.store, LISTENER);
+        recovery(f.store, 'assignment-listener', 'needs-human', denied(2)); reconcileBlockerFollowups(f.store);
+        recovery(f.store, 'assignment-listener', 'needs-human', footer(3)); reconcileBlockerFollowups(f.store); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, LISTENER)).toHaveLength(2);
+        answerAll(f.store, LISTENER); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, LISTENER)).toHaveLength(3);
+        const g = knowledgeStore();
+        try {
+            recovery(g.store, 'assignment-listener', 'needs-human', footer(1)); reconcileBlockerFollowups(g.store);
+            recovery(g.store, 'assignment-listener', 'needs-human', denied(2)); reconcileBlockerFollowups(g.store);
+            recovery(g.store, 'assignment-listener', 'needs-human', footer(3)); reconcileBlockerFollowups(g.store);
+            answerAll(g.store, LISTENER); reconcileBlockerFollowups(g.store); reconcileBlockerFollowups(g.store);
+            expect(sent(g.store, LISTENER)).toHaveLength(1);
+        } finally { g.close(); }
+    } finally { f.close(); }
+});
+
+test.each([['advancing', 60000], ['frozen', 0]])('an observed IT exit and a return with identical detail and category is a second diagnosis and no third (%s clock)', (_clock, step) => {
+    const f = diskStore();
+    try {
+        const pass = (status: 'retrying' | 'needs-human') => { recovery(f.store, 'assignment-listener', status, footer(1)); reconcileBlockerFollowups(f.store); f.advance(step); };
+        pass('needs-human'); answerAll(f.store, LISTENER);
+        pass('retrying'); pass('needs-human'); pass('needs-human'); pass('needs-human');
+        expect(sent(f.store, LISTENER).map(message => message.id)).toEqual([`harper-followup:${LISTENER}:send-1`, `harper-followup:${LISTENER}:send-2`]);
+        answerAll(f.store, LISTENER); f.store.save(); f.reopen();
+        pass('needs-human'); pass('needs-human');
+        expect(sent(f.store, LISTENER)).toHaveLength(2);
+    } finally { f.close(); }
+});
+
+test.each([[true, 2], [false, 1]])('a parked-ticket instruction that changes while its request is open is diagnosed once after it closes only if still due (still due: %s)', (stillDue, count) => {
+    const f = knowledgeStore();
+    try {
+        const ticket = { key: 'CEC-7', runId: 'run-7', stage: 'qa', pilot: true, parked: { stage: 'qa', reason: 'Needs a product decision', at: '', fromStatus: 'In Progress', marker: 'park-1', published: true } } as never as import('../../../src/shared').Ticket;
+        f.store.state.tickets.push(ticket); reconcileBlockerFollowups(f.store);
+        ticket.parked!.reason = 'Needs the staging URL from the client'; reconcileBlockerFollowups(f.store);
+        if (!stillDue) { ticket.parked!.reason = 'Needs a product decision'; reconcileBlockerFollowups(f.store); }
+        expect(sent(f.store, 'ticket:run-7')).toHaveLength(1);
+        answerAll(f.store, 'ticket:run-7'); reconcileBlockerFollowups(f.store); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, 'ticket:run-7')).toHaveLength(count);
+    } finally { f.close(); }
+});
+
+test('an answered maintenance diagnosis: a fresh provider footer is nothing new; a changed target or instruction is', () => {
+    const f = knowledgeStore();
+    try {
+        const run = maintenanceRun({ id: 'm-1', status: 'blocked', error: `Read back issue 7 on acme/site. ${footer(1)}` });
+        f.store.state.maintenance = { runs: [run], lastDaily: '', lastWeekly: '', ledger: '' };
+        reconcileBlockerFollowups(f.store); answerAll(f.store, 'maintenance:m-1');
+        run.error = `Read back issue 7 on acme/site. ${footer(2)}`; reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, 'maintenance:m-1')).toHaveLength(1);
+        run.error = `Read back issue 8 on acme/site. ${footer(3)}`; reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, 'maintenance:m-1')).toHaveLength(2);
+    } finally { f.close(); }
+});
+
+/**
+ * A listener follow-up as the earlier producer left it: no key, no owner status, one answered request under the old
+ * id bound singly. `variant` sets the history before the upgrade: a recorded exit (retrying, or resolved shown as
+ * unknown) and an identical-text return, or one of the ambiguous forms.
+ */
+function legacyListener(f: ReturnType<typeof diskStore>, variant: 'retrying' | 'resolved' | 'tie' | 'omitted' | 'missing') {
+    const step = variant === 'tie' ? 0 : 60000, D = footer(1), store = f.store;
+    store.state.knowledge!.enabled = false;
+    recovery(store, 'assignment-listener', 'needs-human', D); reconcileBlockerFollowups(store);
+    const id = `harper-followup:${LISTENER}:${learningDigest(D)}`;
+    const request: TeamMessage = { id, requestId: id, from: 'knowledge', to: 'pm', ticket: '', actionId: `harper:${LISTENER}`, body: 'Harper requests READ ONLY diagnosis and source read-back.', status: 'queued', createdAt: store.clock.now().toISOString(), sessionId: '', recheck: false, error: '', recipients: [], receipts: [] };
+    store.state.messages.push(request); f.advance(step); answer(store, request); f.advance(step);
+    if (variant === 'missing') { delete store.state.it!.recoveries['assignment-listener']; reconcileBlockerFollowups(store); }
+    else { recovery(store, 'assignment-listener', variant === 'resolved' ? 'resolved' : 'retrying', D); reconcileBlockerFollowups(store); }
+    f.advance(step); recovery(store, 'assignment-listener', 'needs-human', D); reconcileBlockerFollowups(store);
+    const item = store.state.knowledge!.followups!.find(item => item.id === LISTENER)!;
+    item.handoffId = id; delete item.handoffIds; delete item.handoffMaterialKey;
+    for (const entry of item.history) { delete entry.ownerStatus; if (variant === 'omitted') delete entry.detail; }
+    store.save(); f.reopen(); f.store.state.knowledge!.enabled = true;
+    return { request, step };
+}
+
+test.each([['retrying', 2], ['resolved', 2], ['tie', 1], ['omitted', 1], ['missing', 1]] as const)('legacy answered history with a %s observation is %i diagnoses in total after upgrade, and a later exit and return adds one', (variant, total) => {
+    const f = diskStore();
+    try {
+        const { request, step } = legacyListener(f, variant);
+        for (let pass = 0; pass < 3; pass++) { reconcileBlockerFollowups(f.store); f.advance(step); }
+        expect(sent(f.store, LISTENER)).toHaveLength(total);
+        expect(harperHandoff(f.store, f.store.state.messages.find(message => message.id === request.id)!)).toBe(true);
+        answerAll(f.store, LISTENER); f.store.save(); f.reopen();
+        for (let pass = 0; pass < 2; pass++) { recovery(f.store, 'assignment-listener', 'needs-human', footer(1)); reconcileBlockerFollowups(f.store); f.advance(step); }
+        expect(sent(f.store, LISTENER)).toHaveLength(total);
+        recovery(f.store, 'assignment-listener', 'retrying', footer(1)); reconcileBlockerFollowups(f.store); f.advance(step);
+        recovery(f.store, 'assignment-listener', 'needs-human', footer(1)); reconcileBlockerFollowups(f.store); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, LISTENER)).toHaveLength(total + 1);
+    } finally { f.close(); }
+});
+
+test('while an interrupted diagnosis\'s worker is still stopping, nothing is admitted and the key holds; a change still due afterwards is one send', () => {
+    const f = knowledgeStore();
+    try {
+        recovery(f.store, 'assignment-listener', 'needs-human', footer(1)); reconcileBlockerFollowups(f.store);
+        const [first] = sent(f.store, LISTENER), item = f.store.state.knowledge!.followups!.find(item => item.id === LISTENER)!, key = item.handoffMaterialKey;
+        first.status = 'interrupted';
+        f.store.state.workLog = [{ id: 'reader', requestId: first.requestId, ticket: '', role: 'pm', stage: 'conversation-readback', status: 'stopping', processId: 4242 } as never];
+        for (const detail of [denied(2), footer(3), denied(4)]) { recovery(f.store, 'assignment-listener', 'needs-human', detail); reconcileBlockerFollowups(f.store); }
+        expect(sent(f.store, LISTENER)).toHaveLength(1); expect(item.handoffMaterialKey).toBe(key);
+        f.store.state.workLog[0].status = 'interrupted'; reconcileBlockerFollowups(f.store); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, LISTENER)).toHaveLength(2); expect(item.handoffMaterialKey).not.toBe(key);
+        // A worker that shares only the ticket holds nothing back.
+        const ticket = { key: 'CEC-7', runId: 'run-7', stage: 'qa', pilot: true, parked: { stage: 'qa', reason: 'Needs a product decision', at: '', fromStatus: 'In Progress', marker: 'park-1', published: true } } as never as import('../../../src/shared').Ticket;
+        f.store.state.tickets.push(ticket); reconcileBlockerFollowups(f.store);
+        sent(f.store, 'ticket:run-7')[0].status = 'interrupted';
+        f.store.state.workLog.push({ id: 'other', requestId: 'another-request', ticket: 'CEC-7', role: 'pm', stage: 'qa', status: 'stopping', processId: 4243 } as never);
+        ticket.parked!.reason = 'Needs the staging URL from the client'; reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, 'ticket:run-7')).toHaveLength(2);
+    } finally { f.close(); }
+});
+
+/** The flood as saved before the guard: one bound queued request per failed read. */
+function flood(store: Store) {
+    store.state.knowledge!.enabled = false;
+    for (const id of ['project-progress', 'assignment-listener']) recovery(store, id, 'needs-human', footer(0));
+    reconcileBlockerFollowups(store);
+    const ids: string[] = [];
+    for (const [id, count] of [['project-progress', 103], ['assignment-listener', 84]] as const) {
+        const item = store.state.knowledge!.followups!.find(item => item.id === `recovery:${id}`)!;
+        for (let n = 0; n < count; n++) {
+            const message = `harper-followup:recovery:${id}:${learningDigest(footer(n))}`;
+            store.state.messages.push({ id: message, requestId: message, from: 'knowledge', to: 'pm', ticket: '', actionId: `harper:recovery:${id}`, body: 'Harper requests READ ONLY diagnosis', status: 'queued', createdAt: new Date(Date.parse('2026-11-24T12:00:00Z') + n * 60000).toISOString(), sessionId: '', recheck: false, error: '', recipients: [], receipts: [] });
+            item.handoffId = message; (item.handoffIds ??= []).push(message); ids.push(message);
+        }
+    }
+    return ids;
+}
+
+test('187 bound flood requests leave two queued survivors and 185 settled siblings, every id kept; answered survivors leave nothing runnable', () => {
+    const f = diskStore();
+    try {
+        const ids = flood(f.store); f.store.save();
+        const store = f.reopen(), harper = store.state.messages.filter(message => message.from === 'knowledge');
+        expect(harper.map(message => message.id)).toEqual(ids);
+        const survivors = harper.filter(message => message.status === 'queued'), settled = harper.filter(message => message.status === 'failed');
+        expect(survivors.map(message => message.id)).toEqual([ids[102], ids[186]]);
+        expect(settled).toHaveLength(185);
+        for (const message of settled) {
+            const survivor = message.id.includes('project-progress') ? ids[102] : ids[186];
+            expect(message).toMatchObject({ supersededByHandoffId: survivor, error: `Superseded by this follow-up's current hand-off (${survivor}); not run.`, sessionId: '', receipts: [] });
+        }
+        expect(runnable(store).sort()).toEqual([ids[102], ids[186]].sort());
+        survivors.forEach(message => answer(store, message)); store.save();
+        const reopened = f.reopen(); reopened.state.knowledge!.enabled = true;
+        reconcileBlockerFollowups(reopened); reconcileBlockerFollowups(reopened);
+        expect(runnable(reopened)).toEqual([]);
+        expect(reopened.state.messages.filter(message => message.from === 'knowledge')).toHaveLength(187);
+    } finally { f.close(); }
+});
+
+test('settling siblings in an open store whose keys, bindings and observations are current is saved by that one pass', () => {
+    const f = diskStore();
+    try {
+        const store = f.store, ids = flood(store);
+        for (const item of store.state.knowledge!.followups!) item.handoffMaterialKey = materialKey(item, item.nextAction, temporaryReadFailure);
+        store.save();
+        reconcileBlockerFollowups(store);
+        const saved = readSavedState(f.path)!.messages.filter(message => message.from === 'knowledge');
+        expect(saved.map(message => message.id)).toEqual(ids);
+        expect(saved.filter(message => message.status === 'failed' && message.supersededByHandoffId)).toHaveLength(185);
+        expect(saved.filter(message => message.status === 'queued').map(message => message.id)).toEqual([ids[102], ids[186]]);
     } finally { f.close(); }
 });

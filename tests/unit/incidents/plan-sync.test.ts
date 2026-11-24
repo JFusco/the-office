@@ -1,4 +1,8 @@
-import { expect, test } from 'vitest';
+import { afterEach, expect, test } from 'vitest';
+import type { DatabaseSync } from 'node:sqlite';
+import { recordIncidentEvent } from '../../../server/incidents/record-event';
+import { repairSubject } from '../../../server/incidents/subject-digest';
+import { ledgerOf } from './dismissal-fixture';
 import { groupCandidates } from '../../../server/incidents/candidates';
 import { frozenKey, planSync } from '../../../server/incidents/plan-sync';
 import type { Incident, IncidentCandidate, IncidentEvent } from '../../../src/contracts/incidents';
@@ -22,6 +26,8 @@ function ledger() {
 }
 const kinds = (change: { events: IncidentEvent[] }) => change.events.map(e => e.kind);
 const wait = { expected: 'provider-wait' as const };
+const dbs: DatabaseSync[] = [];
+afterEach(() => dbs.splice(0).forEach(db => db.close()));
 
 test('a first observation records the incident, its subject and, when unexplained, eligibility for research', () => {
     const l = ledger(), change = l.sync([candidate()]);
@@ -216,4 +222,163 @@ test('an incident that later phases moved on keeps its state when it is observed
     const moved = { ...l.incidents[0], state: 'verified' as const };
     const change = planSync([moved], groupCandidates([candidate({ episode: 'e2' })]), later(1));
     expect(change.incidents[0]).toMatchObject({ state: 'verified', revision: 2 });
+});
+
+const WORKER = { source: 'worker-failure' as const, provider: 'claude', stage: 'conversation', kind: 'authentication', text: 'signed out', author: 'harness' as const };
+const SLACK = { source: 'slack-delivery' as const, provider: 'slack', stage: 'person', kind: 'uncertain', text: 'read-back did not match', author: 'harness' as const };
+const ELSEWHERE = { source: 'stopped-work' as const, provider: 'github', stage: 'review', kind: 'unclassified', text: 'worktree was reset', author: 'harness' as const };
+const conversation = (over: Record<string, unknown> = {}, more: Partial<IncidentCandidate> = {}) => candidate({ kind: 'conversation', id: 'msg-1', lastWorker: 'run-1', ...over }, { absorbs: ['brain/worker/run-1', 'brain/slack-delivery/msg-1'], ...more });
+const workerReport = (expected: any = 'authentication') => candidate({ kind: 'worker', id: 'run-1' }, { cause: WORKER, expected });
+const slackReport = (unsettledEffect = true) => candidate({ kind: 'slack-delivery', id: 'msg-1', unsettledEffect }, { cause: SLACK, expected: 'uncertain-effect' });
+const openCopies = (l: ReturnType<typeof ledger>, id = 'msg-1') => l.incidents.flatMap(incident => incident.subjects.filter(subject => subject.status === 'open' && subject.id === id).map(subject => ({ incident, subject })));
+const one = (l: ReturnType<typeof ledger>, id?: string) => { const copies = openCopies(l, id); expect(copies).toHaveLength(1); return copies[0].subject; };
+
+test('a source that cannot be read keeps its own explanation where a full read would rank it, at no cost when nothing else changed', () => {
+    const l = ledger();
+    l.sync([conversation(), workerReport(), slackReport()]);
+    expect(one(l)).toMatchObject({ expected: 'authentication', unsettledEffect: true, sources: ['stopped-work', 'worker-failure', 'slack-delivery'] });
+    const revision = l.incidents[0].revision;
+    expect(l.sync([conversation(), slackReport()], later(1), [frozenKey('brain', 'worker-failure')])).toEqual({ events: [], incidents: [] });
+    expect(l.incidents[0].revision).toBe(revision);
+    // Read again and reporting nothing, the worker's part goes and the delivery's explanation shows.
+    l.sync([conversation(), slackReport()], later(2));
+    expect(one(l)).toMatchObject({ expected: 'uncertain-effect', unsettledEffect: true, sources: ['stopped-work', 'slack-delivery'] });
+});
+
+test('a fact only the readable owner gave goes when the owner drops it, or reports nothing, whatever else cannot be read', () => {
+    const owner = (facts: boolean) => candidate({ id: 'job-1', lastWorker: 'run-1', unsettledEffect: facts }, { absorbs: ['brain/worker/run-1'], expected: facts ? 'hold' : null });
+    const timeout = () => candidate({ kind: 'worker', id: 'run-1' }, { cause: { ...WORKER, kind: 'timeout' }, expected: null });
+    const frozenWorker = [frozenKey('brain', 'worker-failure')];
+    const neutral = ledger();
+    neutral.sync([owner(true), timeout()]);
+    expect(one(neutral, 'job-1')).toMatchObject({ expected: 'hold', unsettledEffect: true });
+    neutral.sync([owner(false)], later(1), frozenWorker);
+    expect(one(neutral, 'job-1')).toMatchObject({ expected: null, unsettledEffect: false, sources: ['stopped-work', 'worker-failure'] });
+    const silent = ledger();
+    silent.sync([owner(true), timeout()]);
+    expect(kinds(silent.sync([], later(1), frozenWorker))).not.toContain('subject-cleared');
+    expect(one(silent, 'job-1')).toMatchObject({ expected: null, unsettledEffect: false, sources: ['worker-failure'] });
+    expect(silent.sync([], later(2), frozenWorker)).toEqual({ events: [], incidents: [] });
+    // Read again and empty, nothing keeps it.
+    expect(kinds(silent.sync([], later(3)))).toContain('subject-cleared');
+});
+
+test('a subject saved before parts were kept keeps its whole fact through alternating outages, and loses it only after one full read', () => {
+    const l = ledger(), owner = (unsettledEffect: boolean) => conversation({ unsettledEffect });
+    l.sync([owner(true), workerReport(null), slackReport(false)]);
+    // As the projection held it before contributions were recorded.
+    for (const subject of l.incidents[0].subjects) delete subject.contributions;
+    l.sync([owner(false), slackReport(false)], later(1), [frozenKey('brain', 'worker-failure')]);
+    expect(one(l)).toMatchObject({ unsettledEffect: true });
+    l.sync([owner(false), workerReport(null)], later(2), [frozenKey('brain', 'slack-delivery')]);
+    expect(one(l)).toMatchObject({ unsettledEffect: true });
+    // One read of all of them records who said what: the owner alone had the fact.
+    l.sync([owner(true), workerReport(null), slackReport(false)], later(3));
+    expect(one(l).carried).toBeUndefined();
+    expect(one(l).contributions).toMatchObject({ 'stopped-work': { unsettledEffect: true }, 'worker-failure': { unsettledEffect: false }, 'slack-delivery': { unsettledEffect: false } });
+    l.sync([owner(false), workerReport(null)], later(4), [frozenKey('brain', 'slack-delivery')]);
+    expect(one(l)).toMatchObject({ unsettledEffect: false });
+});
+
+test('a known Slack contribution survives retiring the legacy carry during an alternating outage', () => {
+    const l = ledger();
+    const timeout = candidate({ kind: 'worker', id: 'run-1' }, { cause: { ...WORKER, kind: 'timeout', text: 'timed out' } });
+    l.sync([conversation(), timeout]);
+    delete one(l).contributions;
+    expect(one(l)).toMatchObject({ unsettledEffect: false, expected: null });
+
+    l.sync([conversation(), slackReport()], later(1), [frozenKey('brain', 'worker-failure')]);
+    expect(one(l)).toMatchObject({
+        carried: { unsettledEffect: false, expected: null, sources: ['stopped-work', 'worker-failure'] },
+        contributions: { 'slack-delivery': { unsettledEffect: true, expected: 'uncertain-effect' } },
+    });
+    l.sync([conversation(), timeout], later(2), [frozenKey('brain', 'slack-delivery')]);
+    expect(one(l)).toMatchObject({ unsettledEffect: true, expected: 'uncertain-effect', sources: ['stopped-work', 'worker-failure', 'slack-delivery'] });
+    expect(one(l).carried).toBeUndefined();
+
+    l.sync([conversation(), timeout], later(3));
+    expect(one(l)).toMatchObject({ unsettledEffect: false, expected: null, sources: ['stopped-work', 'worker-failure'] });
+});
+
+test('provenance backfill advances the revision and packet digest, keeping the v1 subjects and repair digest', () => {
+    const seen = [conversation(), workerReport(), slackReport()];
+    const l = ledgerOf(dbs, seen), historical = l.ledger.get(l.id)!;
+    delete historical.subjects[0].contributions;
+    l.ledger.record({ events: [], incidents: [{ ...historical, revision: historical.revision + 1 }] });
+
+    const before = l.packet(), oldRepair = repairSubject(historical.subjects[0]);
+    l.observe(seen, 1);
+    const after = l.packet(), current = l.ledger.get(l.id)!;
+    expect(after.version).toBe(1);
+    expect(after.incident.revision).toBe(before.incident.revision + 1);
+    expect(after.digest).not.toBe(before.digest);
+    expect(after.subjects).toEqual(before.subjects);
+    expect(after.events).toEqual(before.events);
+    expect(repairSubject(current.subjects[0])).toEqual(oldRepair);
+    expect(current.subjects[0].contributions).toBeDefined();
+
+    const saved = l.saved();
+    expect(() => recordIncidentEvent(l.ledger, l.id, 'stale-repair-start', before.incident.revision, {
+        kind: 'repair-started', request: { kind: 'repair-started', issue: 363 },
+        issue: { repository: 'JFusco/the-office', number: 363, url: 'https://github.com/JFusco/the-office/issues/363' },
+    }, later(2))).toThrow(/is at revision .*read it again/);
+    expect(() => l.dismiss('stale-dismissal', { revision: current.revision, packet: before.digest })).toThrow(/read the evidence again/);
+    l.observe(seen, 3);
+    expect(l.saved()).toBe(saved);
+});
+
+test('a subject whose cause changes while one of its sources cannot be read moves, with that source\'s part, in one change', () => {
+    const l = ledger(), slackFrozen = [frozenKey('brain', 'slack-delivery')];
+    l.sync([conversation(), slackReport()]);
+    const change = l.sync([conversation({}, { cause: ELSEWHERE })], later(1), slackFrozen);
+    expect(change.events.filter(event => event.body.subject === 'brain/conversation/msg-1').map(event => event.kind).sort()).toEqual(['subject-cleared', 'subject-observed']);
+    const [{ incident, subject }] = openCopies(l);
+    expect(incident.cause.text).toBe('worktree was reset');
+    expect(subject).toMatchObject({ sources: ['stopped-work', 'slack-delivery'], unsettledEffect: true, expected: 'uncertain-effect' });
+    expect(incident.research.eligible).toBe(false);
+    // Back to the first cause, still unreadable: it returns to that incident's own history.
+    l.sync([conversation()], later(2), slackFrozen);
+    const back = openCopies(l);
+    expect(back.map(({ incident, subject }) => [incident.cause.text, subject.episodeCount, subject.unsettledEffect])).toEqual([['worktree is missing', 2, true]]);
+});
+
+test('two saved copies of one subject both stand while it cannot be observed; the next observation keeps one, whatever the clock says', () => {
+    const l = ledger();
+    l.sync([candidate({ id: 'job-1' }, wait), candidate({ id: 'job-2' }, { cause: ELSEWHERE, ...wait })]);
+    // A duplicate left by the planner before a subject could move while a source was unreadable.
+    const first = l.incidents.find(incident => incident.cause.text === 'worktree is missing')!, second = l.incidents.find(incident => incident.cause.text === 'worktree was reset')!;
+    second.subjects.push(structuredClone(first.subjects[0]));
+    expect(l.sync([], later(1), [frozenKey('brain', '*')])).toEqual({ events: [], incidents: [] });
+    expect(openCopies(l, 'job-1')).toHaveLength(2);
+    const change = l.sync([candidate({ id: 'job-1' }, wait), candidate({ id: 'job-2' }, { cause: ELSEWHERE, ...wait })], new Date(AT.getTime() - 3_600_000));
+    expect(change.events.map(event => [event.kind, event.incident])).toEqual([['subject-cleared', second.id]]);
+    expect(openCopies(l, 'job-1').map(({ incident, subject }) => [incident.id, subject.episodeCount])).toEqual([[first.id, 1]]);
+    expect(l.sync([candidate({ id: 'job-1' }, wait), candidate({ id: 'job-2' }, { cause: ELSEWHERE, ...wait })], later(2))).toEqual({ events: [], incidents: [] });
+});
+
+test.each(['legacy aggregate', 'source contributions'])('different historical copies keep their facts through a Slack outage and transfer them on observation (%s)', format => {
+    const l = ledger(), winningReport = conversation({}, { cause: ELSEWHERE });
+    l.sync([conversation(), slackReport()]);
+    const loser = l.incidents[0];
+    if (format === 'legacy aggregate') delete loser.subjects[0].contributions;
+    const winner = planSync([], groupCandidates([winningReport]), AT).incidents[0];
+    l.incidents.push(winner);
+
+    const hiddenSlack = [frozenKey('brain', 'slack-delivery')];
+    const before = structuredClone(openCopies(l));
+    expect(l.sync([], later(1), hiddenSlack)).toEqual({ events: [], incidents: [] });
+    expect(openCopies(l)).toEqual(before);
+
+    const change = l.sync([winningReport], later(2), hiddenSlack);
+    expect(change.events.filter(event => event.body.subject).map(event => [event.kind, event.incident])).toEqual([['subject-cleared', loser.id]]);
+    expect(openCopies(l).map(({ incident }) => incident.id)).toEqual([winner.id]);
+    expect(one(l)).toMatchObject({ episodeCount: 1, openedAt: AT.toISOString(), sources: ['stopped-work', 'slack-delivery'], unsettledEffect: true, expected: 'uncertain-effect' });
+    expect(l.sync([winningReport], later(3), hiddenSlack)).toEqual({ events: [], incidents: [] });
+});
+
+test('a single subject that cannot be seen is kept; the rest clear', () => {
+    const l = ledger();
+    l.sync([candidate({ id: 'a' }, wait), candidate({ id: 'b' }, wait)]);
+    const change = l.sync([], later(1), ['brain/delivery/a']);
+    expect(change.events.filter(event => event.kind === 'subject-cleared').map(event => event.body.subject)).toEqual(['brain/delivery/b']);
 });

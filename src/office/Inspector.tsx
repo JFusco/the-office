@@ -4,9 +4,10 @@ import { withoutIdentifiers } from './without-identifiers';
 import {LoadingMark} from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import { panelMotion } from '../tokens/motion';
-import {MergeApproval} from '../work/MergeApproval';
+import { TicketTimeline } from '../work/timeline/TicketTimeline';
+import { currentJob } from '../work/timeline/ticket-progress';
 import { TelemetryPanel } from '../telemetry/TelemetryPanel';
-import {prerequisiteKeys} from '../work/pm-queue';
+import {pmQueueItems, prerequisiteKeys} from '../work/pm-queue';
 import {DependencyNotice} from '../work/DependencyNotice';
 import {ServiceHealthPanel} from '../health/ServiceHealthPanel';
 import {PMQueue} from '../work/PMQueue';
@@ -20,7 +21,7 @@ import type { OfficePreferencesController } from './settings/useOfficePreference
 import { motion, useIsPresent } from 'motion/react';
 import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullRequest, Inbox, X, AlertCircle, Camera, Clock3, Settings2, MessageCircle } from '../ui/icons';
 import { Button, Card, Count, IconButton, Notice, PanelIcon, PanelTitle, Section, SectionTitle, StatusDot, Tag, TextLink, cx, envelopeCard, eyebrow, interactive, mutedCopy, noticeIcon } from '../ui';
-import { STAGES, STAGE_LABELS, ROLE_NAMES, PERSONAS, type OfficeSnapshot, type Ticket, type Evidence, type Role } from '../shared';
+import { STAGE_LABELS, ROLE_NAMES, PERSONAS, officeUrl, type OfficeSnapshot, type Ticket, type TicketJob, type Evidence, type Role } from '../shared';
 import type { Selection } from '../scene/OfficeScene';
 import { Conversation, type SendMessage } from '../conversations/Conversation';
 import { Goals } from '../leadership/Goals';
@@ -33,8 +34,6 @@ import { LessonsPanel } from '../knowledge/LessonsPanel';
 import { ReportsTo } from '../people/ReportsTo';
 import { PeoplePanel } from '../people/PeoplePanel';
 const PORTRAIT:Record<Role,string>={pm:'bg-portrait-pm',lead:'bg-portrait-lead',qa:'bg-portrait-qa',developer:'bg-portrait-default',cto:'bg-portrait-default',it:'bg-portrait-default',analyst:'bg-portrait-default',knowledge:'bg-portrait-default'};
-const STEP={current:'font-semibold text-step-current-ink',passed:'text-step-passed-ink',skipped:'text-step-skipped-ink',pending:'text-step-ink'};
-const STEP_MARK={current:'border-step-current-line bg-step-current inset-ring-4 inset-ring-step-current-ring',passed:'border-step-passed-line bg-step-passed text-step-passed-mark',skipped:'border-dashed border-step-line bg-step',pending:'border-step-line bg-step'};
 const textRow=`-mx-2 flex w-[calc(100%+16px)] justify-between rounded-5 border-b border-row-rule px-2 py-2.5 text-left text-11 hover:bg-icon-hover ${interactive}`;
 const pipelineHeader='flex flex-wrap items-start justify-between gap-2.5';
 function Link({url,children}:{url:string;children:React.ReactNode}){return /^https:\/\//.test(url)||/^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)?<TextLink href={url} target="_blank" rel="noreferrer">{children}<ExternalLink size={12}/></TextLink>:<span>{children}</span>;}
@@ -44,23 +43,42 @@ function EvidenceCard({e}:{e:Evidence}){
 function TicketHeading({ticket,url,label,className}:{ticket:string;url:string;label:string;className?:string}){
   return <div className={cx('flex items-center justify-between text-10 text-ticket-heading',className)} data-ticket-heading><span>{ticket}</span><span className="text-9"><Link url={url}>{label}</Link></span></div>;
 }
-function TicketDetail({ticket:t,snapshot,act,onOpen}:{ticket:Ticket;snapshot:OfficeSnapshot;act:(action:string,key?:string)=>void;onOpen:(key:string)=>void}){
+function JobRecords({job, snapshot}: {job: TicketJob; snapshot: OfficeSnapshot}) {
+  const artifacts = new Map<string, string>();
+  const artifactUrl = (path: string) => officeUrl('/api/artifact?path=' + encodeURIComponent(path), snapshot.project?.id);
+  for (const step of job.steps || []) {
+    if (step.stage !== 'validate') continue;
+    for (const evidence of step.result.evidence) {
+      if (evidence.path) artifacts.set(artifactUrl(evidence.path), evidence.summary);
+      else if (/^https:\/\//.test(evidence.url || '')) artifacts.set(evidence.url, evidence.summary);
+    }
+    if (step.result.qaRunDir) artifacts.set(artifactUrl(step.result.qaRunDir + '/report.json'), 'View full QA report');
+  }
+  return <>
+    {job.prUrl && <Section><SectionTitle className="mb-3">Pull request</SectionTitle><Link url={job.prUrl}>PR #{job.pr}</Link></Section>}
+    {artifacts.size > 0 && <Section><SectionTitle className="mb-3">Verification evidence</SectionTitle>
+      <ul className="space-y-2 text-11">{[...artifacts].map(([url, label]) =>
+        <li key={url}><TextLink href={url} target="_blank" rel="noreferrer">{label}</TextLink></li>)}</ul>
+    </Section>}
+    <TimeBook snapshot={snapshot} ticket={job.key}/>
+  </>;
+}
+function TicketDetail({ticket:t,snapshot,act,onOpen,reduced}:{reduced:boolean;ticket:Ticket;snapshot:OfficeSnapshot;act:(action:string,key?:string)=>void;onOpen:(key:string)=>void}){
   const queued=snapshot.deliveryQueue?.find(r=>r.key===t.key&&['queued','working'].includes(r.status));
   const review=snapshot.coordination?.listener.reviews.slice().reverse().find(r=>r.key===t.key);
-  const job=snapshot.coordination?.jobs?.find(j=>j.key===t.key&&j.status!=='cancelled');
+  const job=currentJob(snapshot.coordination?.jobs || [],t.key);
   const dependency=<DependencyNotice keys={review?prerequisiteKeys(review):[]} snapshot={snapshot} onOpen={(_project,key)=>onOpen(key)}/>;
+  const timeline=<TicketTimeline ticket={t} snapshot={snapshot} job={job} reduced={reduced}/>;
   const assigned=snapshot.coordination?.listener.assigned.some(i=>i.key===t.key);
   const startAssigned=<Button variant="primary" disabled={snapshot.mode==='demo'||snapshot.paused||!assigned||!!queued||!!job||!!review&&prerequisiteKeys(review).length>0||!!review&&['owned','blocked','interrupted'].includes(review.status)||!!review?.workRequested&&['queued','working'].includes(review.status)} onClick={()=>act('start-assigned',t.key)}>Start ticket <ChevronRight size={15}/></Button>;
-  if(snapshot.project?.provider==='github')return <div className="flex min-w-0 flex-col gap-4" data-github-ticket><TicketHeading ticket={t.key} url={t.url} label="View GitHub issue"/><PanelTitle className="max-w-full break-words">{t.summary}</PanelTitle><Tag className="self-start" >{t.status}</Tag>{snapshot.github?.board?<p className={mutedCopy}>Project lane: {snapshot.github.board.items.find(i=>i.number===Number(t.key.slice(3))&&i.repository===snapshot.project?.repository)?.status||'Not on board'}{snapshot.github.board.error?' · last observation unavailable or stale':''}</p>:null}<div className="flex flex-wrap items-center gap-2">{startAssigned}</div>{dependency}<ApproachSummary approach={job?.approach} decisions={job?.decisions}/><QAResultsCard ticket={t} job={job}/>{review?<><Tag className="self-start">{review.status}</Tag><WorkSummary detail={withoutIdentifiers(review.detail)} flush/></>:null}{job?<Section><SectionTitle className="mb-4">Office delivery · {job.status}</SectionTitle><MergeApproval snapshot={snapshot} job={job}/><WorkSummary detail={withoutIdentifiers(job.detail)} flush/>{job.prUrl?<Link url={job.prUrl}>PR #{job.pr}</Link>:null}{job.stage==='lead-pr'&&['blocked','interrupted','watching'].includes(job.status)?<Button className="mt-5" onClick={()=>act('review-pr',t.key)}>Recheck PR</Button>:null}{job.steps.map((s,i)=><Card as="article" key={i}><strong className="text-11 leading-relaxed">{s.stage} · {s.result.outcome}</strong><p className="leading-relaxed">{s.result.summary}</p></Card>)}</Section>:null}<TimeBook snapshot={snapshot} ticket={t.key}/></div>;
-  const steps=STAGES.filter(s=>!['repair','repair-review','retest','staging-qa','complete'].includes(s));
+  if(snapshot.project?.provider==='github')return <div className="flex min-w-0 flex-col gap-4" data-github-ticket><TicketHeading ticket={t.key} url={t.url} label="View GitHub issue"/><PanelTitle className="max-w-full break-words">{t.summary}</PanelTitle>{timeline}<Tag className="self-start" >{t.status}</Tag>{snapshot.github?.board?<p className={mutedCopy}>Project lane: {snapshot.github.board.items.find(i=>i.number===Number(t.key.slice(3))&&i.repository===snapshot.project?.repository)?.status||'Not on board'}{snapshot.github.board.error?' · last observation unavailable or stale':''}</p>:null}<div className="flex flex-wrap items-center gap-2">{startAssigned}</div>{dependency}<ApproachSummary approach={job?.approach} decisions={job?.decisions}/><QAResultsCard ticket={t} job={job}/>{review?<><Tag className="self-start">{review.status}</Tag><WorkSummary detail={withoutIdentifiers(review.detail)} flush/></>:null}{job?<Section><SectionTitle className="mb-4">Office delivery · {job.status}</SectionTitle><WorkSummary detail={withoutIdentifiers(job.detail)} flush/>{job.prUrl?<Link url={job.prUrl}>PR #{job.pr}</Link>:null}{job.stage==='lead-pr'&&['blocked','interrupted','watching'].includes(job.status)?<Button className="mt-5" onClick={()=>act('review-pr',t.key)}>Recheck PR</Button>:null}</Section>:null}<TimeBook snapshot={snapshot} ticket={t.key}/></div>;
   return <>
-    <TicketHeading ticket={t.key} url={t.url} label="View in Jira"/><PanelTitle className="mt-3 mb-4">{t.summary}</PanelTitle>
-    <div className="flex flex-wrap gap-2"><Tag>{t.type}</Tag><Tag tone={t.activity}>{t.status}</Tag><Tag>{STAGE_LABELS[t.stage]}</Tag></div>
+    <TicketHeading ticket={t.key} url={t.url} label="View in Jira"/><PanelTitle className="mt-3 mb-4">{t.summary}</PanelTitle>{timeline}
+    <div className="flex flex-wrap gap-2"><Tag>{t.type}</Tag><Tag tone={t.activity}>Jira status · {t.status}</Tag><Tag>{STAGE_LABELS[t.stage]}</Tag></div>
     {t.blocker?<Notice className="mt-5"><AlertCircle className={noticeIcon} size={16}/><span>{t.blocker}</span></Notice>:null}
     {snapshot.mode==='demo'?<Notice tone="tour" className="mt-5">This is an illustrative ticket. No Jira, code, browser or Azure action is running.</Notice>:<div className="mt-5 flex flex-wrap items-center gap-2 empty:hidden">{queued?<Tag>{queued.status==='queued'?'Implementation queued':'Delivery in progress'}</Tag>:null}{t.stage==='mailbox'?startAssigned:null}{t.activity==='blocked'&&t.pilot?<Button disabled={!!queued} onClick={()=>act('resume-ticket',t.key)}>Check & resume</Button>:null}</div>}
     {dependency}
     <ApproachSummary approach={t.approach} decisions={t.decisions}/><QAResultsCard ticket={t}/>
-    <Section><SectionTitle className="mb-4">Delivery path</SectionTitle><ol>{steps.map((stage,i)=>{const state=t.stage===stage?'current':t.results[stage]?.outcome==='passed'?'passed':t.skippedStages?.[stage]?'skipped':'pending';const mark=t.results[stage]?.outcome==='passed'?'passed':t.skippedStages?.[stage]?'skipped':null;return <li key={stage} aria-current={t.stage===stage?'step':undefined} data-stage-state={state} className={cx('relative flex gap-3 pb-4 text-10 leading-normal',STEP[state])}>{i<steps.length-1?<span aria-hidden="true" className="absolute top-3.75 bottom-0 left-1.75 w-px bg-step-rule"/>:null}<span aria-hidden="true" className={cx('z-1 grid size-4 shrink-0 place-items-center rounded-full border',STEP_MARK[state==='current'?'current':mark||'pending'])}>{mark==='passed'?<Check size={11}/>:mark==='skipped'?'–':null}</span><div>{STAGE_LABELS[stage]}{state==='current'?<span className="sr-only"> (current stage)</span>:mark==='passed'?<span className="sr-only"> (passed)</span>:null}{t.results[stage]?<small className="mt-1 block text-9 leading-relaxed font-regular text-step-detail">{t.results[stage]?.summary}</small>:t.skippedStages?.[stage]?<small className="mt-1 block text-9 leading-relaxed font-regular text-step-detail" title={t.skippedStages[stage]}>Not needed for this task</small>:null}</div></li>;})}</ol></Section>
     {t.commit||t.prId||t.previewUrl?<Section><SectionTitle className="mb-4">Candidate</SectionTitle><dl className="my-2.5 grid grid-cols-[90px_1fr] gap-2.5 text-10 leading-relaxed"><dt className="text-dl-term">Branch</dt><dd className="break-all">{t.branch||'Not created'}</dd><dt className="text-dl-term">Fix cycles</dt><dd className="break-all">{t.attempt} · maximum 2 per finding</dd>{t.previewUrl?<><dt className="text-dl-term">Application</dt><dd className="break-all"><Link url={t.previewUrl}>Open candidate</Link></dd></>:null}</dl>{t.prId?<Link url={snapshot.azure.prs.find(pr=>pr.id===t.prId)?.url||t.results['draft-pr']?.evidence.find(e=>e.kind==='pr')?.url||'#'}><GitPullRequest size={14}/> PR {t.prId}</Link>:null}</Section>:null}
     {t.findings.length?<Section><SectionTitle className="mb-4">QA & review findings</SectionTitle>{t.findings.map(f=><Card key={f.id} tone="finding" className="mt-2.5"><Tag className="self-start" tone={f.status==='verified'?'passed':'blocked'}>{f.id} · {f.status}</Tag><h4 className="text-13 leading-relaxed font-semibold">{f.summary}</h4><p className="text-11 leading-body text-card-copy"><b className="font-medium">Expected:</b> {f.expected}</p><p className="text-11 leading-body text-card-copy"><b className="font-medium">Observed:</b> {f.actual}</p></Card>)}</Section>:null}
     {t.evidence.length?<Section><SectionTitle className="mb-4"><Camera size={14}/> Verification evidence</SectionTitle>{t.evidence.map((e,i)=><EvidenceCard key={`${e.id}-${i}`} e={e}/>)}</Section>:<Section className="flex gap-3 text-11 text-empty"><FileText className="shrink-0" size={22}/><p className="leading-body">Evidence will arrive here as the team works. A passed stage needs saved, current-candidate proof.</p></Section>}
@@ -93,6 +111,15 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
   },[present]);
   const agent=selection.kind==='agent'?snapshot.agents.find(a=>a.id===selection.id):null;
   const ticket=selection.kind==='ticket'?snapshot.tickets.find(t=>t.key===selection.id):null;
+  const queueTicket = selection.kind==='ticket' && !ticket ? pmQueueItems(snapshot).find(r=>r.project===snapshot.project?.id && r.key===selection.id) : undefined;
+  const queueJob = selection.kind==='ticket' && !ticket ? currentJob(
+    (snapshot.teamQueue || []).filter(row=>row.project===snapshot.project?.id).map(row=>row.job), selection.id) : undefined;
+  const fallbackKey = queueJob?.key || queueTicket?.key;
+  const issue = fallbackKey ? snapshot.github?.issues.find(item=>item.key===fallbackKey) : undefined;
+  const fallbackTitle = queueTicket?.title || issue?.title ||
+    snapshot.coordination?.listener.reviews.filter(review=>review.key===fallbackKey).at(-1)?.summary ||
+    (queueJob?.pr ? 'PR #' + queueJob.pr + ' delivery' : fallbackKey);
+  const discussionKey = ticket?.key || queueJob?.key;
   const github=snapshot.project?.provider==='github';
   const chat=selection.kind==='chat'||selection.kind==='cto-chat';
   const pmName=snapshot.agents.find(a=>a.id==='pm')?.name||names.pm,ctoName=snapshot.agents.find(a=>a.id==='cto')?.name||names.cto;
@@ -114,8 +141,12 @@ export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,o
       {selection.kind==='goals'?<Goals snapshot={snapshot} sendMessage={sendMessage} onDiscuss={()=>onSelect({kind:'cto-chat'})} onPlan={(project,goal)=>onOpenProject(project,'feature-goal:'+goal)}/>:null}
       {selection.kind==='cto-chat'?<><PanelHeader icon={<MessageCircle size={26}/>}>Chat with {ctoName}</PanelHeader><p className="text-11 leading-normal text-muted">Discuss any Office project and save goals or ideas in the existing panel. {pmName} brings delivery reports here.</p><Conversation snapshot={snapshot} names={names} sendMessage={sendMessage} role="cto" fill/></>:null}
       {selection.kind==='outbox'?<Outbox key={selection.id||'tray'} snapshot={snapshot} names={names} sendMessage={sendMessage} initialId={selection.id} refresh={refresh}/>:null}
-      {ticket?<><TicketPlanningAction snapshot={snapshot} ticket={ticket.key} open={id=>onSelect(id?{kind:'features',id}:{kind:'features',sourceTicket:ticket.key})}/><Button full className="mb-6" onClick={()=>onSelect({kind:'chat',ticket:ticket.key})}>Discuss {ticket.key} with {pmName}</Button><TicketDetail ticket={ticket} snapshot={snapshot} act={act} onOpen={key=>onSelect({kind:'ticket',id:key})}/></>:null}
-      {selection.kind==='pm-queue'?<PMQueue snapshot={snapshot} onOpen={onOpenProject}/>:null}
+      {ticket?<><TicketDetail reduced={reduced} ticket={ticket} snapshot={snapshot} act={act} onOpen={key=>onSelect({kind:'ticket',id:key})}/><TicketPlanningAction snapshot={snapshot} ticket={ticket.key} open={id=>onSelect(id?{kind:'features',id}:{kind:'features',sourceTicket:ticket.key})}/></>:null}
+      {fallbackKey && <><TicketHeading ticket={fallbackKey} url={issue?.url || ''} label={issue ? 'View GitHub issue' : ''}/><PanelTitle>{fallbackTitle}</PanelTitle>
+        <TicketTimeline reduced={reduced} snapshot={snapshot} ticket={{key:fallbackKey}} job={queueJob}/>
+        {queueJob && <JobRecords job={queueJob} snapshot={snapshot}/>}</>}
+      {discussionKey && <Button full className="mb-6" onClick={()=>onSelect({kind:'chat',ticket:discussionKey})}>Discuss {discussionKey} with {pmName}</Button>}
+      {selection.kind==='pm-queue'?<PMQueue reduced={reduced} snapshot={snapshot} onOpen={onOpenProject}/>:null}
       {selection.kind==='mailbox'?<>
         <PanelHeader icon={<Inbox size={26}/>}>PM mailbox</PanelHeader><InboxQueue snapshot={snapshot} onOpen={key=>onSelect({kind:'ticket',id:key})}/><p className={cx(mutedCopy,'mt-4')}>{github?`GitHub issues for this project. Ask ${pmName} to draft or create an issue using GitHub Issue Creator, or coordinate the daily maintenance review.`:'The PM receives CEC parent tickets assigned to you in To Do or Open. Every ticket is checked before it reaches a desk.'}</p>
         <Button variant="primary" full className="mt-5" disabled={busy||!!snapshot.pendingMail||snapshot.intake.status==='working'||snapshot.mode==='demo'||snapshot.paused} onClick={()=>act('check-mail')}>{snapshot.intake.status==='working'?<LoadingMark/>:<Inbox size={16}/>} {snapshot.pendingMail?'Mail check queued':'Check mail now'}</Button>

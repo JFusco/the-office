@@ -43,3 +43,40 @@ test('an assignment item is left to the stopped-work collector only when the sch
     expect(outboxItems(observe(s, [item('intake', 'rev-1', 'assignment-review', 'blocked', 'x', 'unclassified')]))).toEqual([]);
     expect(JSON.stringify(outboxItems(observe(s)))).not.toContain('PRIVATE');
 });
+
+const NO_VISIBILITY = 'Office must restore complete session visibility; inventory unavailable';
+
+test('a ticket item stays beside a request that is finished history, and goes once that request is a stopped-work subject', () => {
+    const s = store('cec'), blocker = 'Error: PRIVATE epic blocker';
+    s.state.tickets = [{ key: 'CEC-7', pilot: false, stage: 'mailbox', activity: 'blocked', blocker, results: {}, url: '', commit: 'c7', runId: 'r', attempt: 1 }] as any;
+    s.state.deliveryQueue = [{ id: 'req-1', key: 'CEC-7', action: 'start-pilot', status: 'blocked', error: blocker, requestedAt: 'r' }] as any;
+    const request = (state: 'terminal' | 'blocked') => item('delivery', 'req-1', 'start-pilot', state, 'x', state === 'blocked' ? 'unclassified' : undefined, 'cec');
+    expect(outboxItems(observe(s, [request('terminal')])).map(f => f.subject.id)).toEqual(['ticket:CEC-7:mailbox']);
+    expect(outboxItems(observe(s, [request('blocked')]))).toEqual([]);
+});
+
+test('the capability summary stays while any review in it is not a stopped-work subject', () => {
+    const s = store();
+    s.state.coordination!.listener.reviews = ['r1', 'r2'].map((id, n) => ({ id, key: `GH-${n + 1}`, status: 'blocked', detail: NO_VISIBILITY, queuedAt: 'q', endedAt: 'e', url: '' })) as any;
+    const review = (id: string, state: 'blocked' | 'running') => item('intake', id, 'assignment-review', state, 'x', state === 'blocked' ? 'unclassified' : undefined);
+    expect(outboxItems(observe(s, [review('r1', 'blocked'), review('r2', 'running')])).map(f => f.subject.id)).toEqual(['ownership-capability']);
+    expect(outboxItems(observe(s, [review('r1', 'blocked'), review('r2', 'blocked')]))).toEqual([]);
+    // The sync's own reading of stopped work decides when it supplies one: nothing it reported covers nothing.
+    expect(outboxItems({ ...observe(s, [review('r1', 'blocked'), review('r2', 'blocked')]), covered: new Set() }).map(f => f.subject.id)).toEqual(['ownership-capability']);
+});
+
+test('a kept ticket or review item is bound to its record: stop, head, last run and unsettled writes; its title is still the only evidence', () => {
+    const s = store('cec');
+    s.state.tickets = [{ key: 'CEC-7', pilot: false, stage: 'mailbox', activity: 'blocked', blocker: 'PRIVATE blocker', stop: { kind: 'unclassified', at: 't1' }, results: {}, url: '', commit: 'c7', runId: 'r', attempt: 1 }] as any;
+    s.state.coordination!.listener.reviews = [{ id: 'rev-1', key: 'CEC-13', queuedAt: 'q', endedAt: 'e', status: 'blocked', detail: 'PRIVATE review detail', url: '' }] as any;
+    s.state.workLog = [{ id: 'run-7', ticket: 'CEC-7', stage: 'mailbox', status: 'failed' }, { id: 'run-r', requestId: 'rev-1', stage: 'assignment-review', status: 'failed' }] as any;
+    const bound = () => Object.fromEntries(outboxItems(observe(s)).map(f => [f.subject.id, f]));
+    expect(bound()['ticket:CEC-7:mailbox']).toMatchObject({ subject: { stop: { kind: 'unclassified', at: 't1' }, head: 'c7', lastWorker: 'run-7', unsettledEffect: false, episode: '' }, absorbs: ['cec/worker/run-7'], cause: { author: 'unknown', text: '' }, evidence: 'CEC-7 needs your help' });
+    expect(bound()['assignment:rev-1']).toMatchObject({ subject: { stop: null, head: '', lastWorker: 'run-r', unsettledEffect: false }, absorbs: ['cec/worker/run-r'] });
+    // A write filed under the ticket's key and one under the review itself are each its record's.
+    const effect = (id: string, work: string) => s.db.prepare("INSERT INTO effects(id, work_key, status, body) VALUES(?, ?, 'uncertain', '{}')").run(id, work);
+    effect('e1', 'cec:delivery:CEC-7');
+    effect('e2', 'cec:intake:rev-1');
+    expect([bound()['ticket:CEC-7:mailbox'].subject.unsettledEffect, bound()['assignment:rev-1'].subject.unsettledEffect]).toEqual([true, true]);
+    expect(JSON.stringify(bound())).not.toContain('PRIVATE');
+});

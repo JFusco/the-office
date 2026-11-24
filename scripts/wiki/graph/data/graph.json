@@ -1,0 +1,1583 @@
+{
+  "version": 1,
+  "wikiRoot": "wiki",
+  "counts": {
+    "nodes": 33,
+    "edges": 65,
+    "byType": {
+      "index": 4,
+      "journal": 1,
+      "plan": 22,
+      "topic": 6
+    }
+  },
+  "nodes": [
+    {
+      "id": "wiki/INDEX.md",
+      "label": "Context wiki",
+      "type": "index",
+      "aliases": [],
+      "githubRefs": [],
+      "bytes": 1361,
+      "degree": 2,
+      "x": 1,
+      "y": 0,
+      "size": 12
+    },
+    {
+      "id": "wiki/journal/2026-11-24-context-wiki.md",
+      "label": "Install the context wiki and parallelize Quality",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 553,
+          "url": "https://github.com/jfusco/the-office/issues/553"
+        }
+      ],
+      "bytes": 1601,
+      "degree": 9,
+      "x": 0.928368,
+      "y": 0.371662,
+      "size": 8
+    },
+    {
+      "id": "wiki/MECHANICS.md",
+      "label": "Wiki mechanics",
+      "type": "index",
+      "aliases": [],
+      "githubRefs": [],
+      "bytes": 2904,
+      "degree": 4,
+      "x": 0.981929,
+      "y": 0.189251,
+      "size": 12
+    },
+    {
+      "id": "wiki/office.md",
+      "label": "The Office context wiki",
+      "type": "index",
+      "aliases": [],
+      "githubRefs": [],
+      "bytes": 738,
+      "degree": 9,
+      "x": 0.841254,
+      "y": 0.540641,
+      "size": 12
+    },
+    {
+      "id": "wiki/plans/2026-10-31-brain-hands-off-delivery-1a836f4fd6.md",
+      "label": "Brain hands-off delivery",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 19,
+          "url": "https://github.com/jfusco/the-office/pull/19"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 31,
+          "url": "https://github.com/jfusco/the-office/pull/31"
+        }
+      ],
+      "bytes": 802,
+      "degree": 2,
+      "x": 0.723734,
+      "y": 0.690079,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-10-31-repository-domain-layout-07c3aac605.md",
+      "label": "Repository domain layout",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 6,
+          "url": "https://github.com/jfusco/the-office/pull/6"
+        }
+      ],
+      "bytes": 640,
+      "degree": 2,
+      "x": 0.580057,
+      "y": 0.814576,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-05-feature-discovery-and-approved-planning-fb38b55de8.md",
+      "label": "Feature discovery and approved planning",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 39,
+          "url": "https://github.com/jfusco/the-office/pull/39"
+        }
+      ],
+      "bytes": 840,
+      "degree": 2,
+      "x": 0.415415,
+      "y": 0.909632,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-06-delivery-throughput-and-harness-validation-2c131f596e.md",
+      "label": "Delivery throughput and harness validation",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 65,
+          "url": "https://github.com/jfusco/the-office/pull/65"
+        }
+      ],
+      "bytes": 709,
+      "degree": 2,
+      "x": 0.235759,
+      "y": 0.971812,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-06-harper-lesson-follow-up-07f8652d10.md",
+      "label": "Harper lesson follow-up",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 59,
+          "url": "https://github.com/jfusco/the-office/pull/59"
+        }
+      ],
+      "bytes": 683,
+      "degree": 2,
+      "x": 0.047582,
+      "y": 0.998867,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-06-harper-role-and-first-lesson-workflow-db5ff32e89.md",
+      "label": "Harper role and first lesson workflow",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 57,
+          "url": "https://github.com/jfusco/the-office/pull/57"
+        }
+      ],
+      "bytes": 697,
+      "degree": 2,
+      "x": -0.142315,
+      "y": 0.989821,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-06-office-settings-drawer-80f69f7d0e.md",
+      "label": "Office settings drawer",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 52,
+          "url": "https://github.com/jfusco/the-office/pull/52"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 53,
+          "url": "https://github.com/jfusco/the-office/pull/53"
+        }
+      ],
+      "bytes": 712,
+      "degree": 2,
+      "x": -0.327068,
+      "y": 0.945001,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-06-people-directory-and-organization-chart-952ffc11ff.md",
+      "label": "People directory and organization chart",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 64,
+          "url": "https://github.com/jfusco/the-office/pull/64"
+        }
+      ],
+      "bytes": 649,
+      "degree": 2,
+      "x": -0.5,
+      "y": 0.866025,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-06-repository-graphify-setup-3e66cf6d6e.md",
+      "label": "Repository Graphify setup",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 54,
+          "url": "https://github.com/jfusco/the-office/pull/54"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 55,
+          "url": "https://github.com/jfusco/the-office/pull/55"
+        }
+      ],
+      "bytes": 752,
+      "degree": 2,
+      "x": -0.654861,
+      "y": 0.75575,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-07-model-cost-alongside-time-04ce361575.md",
+      "label": "Model cost alongside time",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 81,
+          "url": "https://github.com/jfusco/the-office/pull/81"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 82,
+          "url": "https://github.com/jfusco/the-office/pull/82"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 83,
+          "url": "https://github.com/jfusco/the-office/pull/83"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 84,
+          "url": "https://github.com/jfusco/the-office/pull/84"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 86,
+          "url": "https://github.com/jfusco/the-office/pull/86"
+        }
+      ],
+      "bytes": 1059,
+      "degree": 2,
+      "x": -0.786053,
+      "y": 0.618159,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-08-pin-courier-dependency-coordination-fe1efab227.md",
+      "label": "Pin Courier dependency coordination",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 96,
+          "url": "https://github.com/jfusco/the-office/pull/96"
+        }
+      ],
+      "bytes": 664,
+      "degree": 2,
+      "x": -0.888835,
+      "y": 0.458227,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-09-harper-continuous-learning-3de619a9eb.md",
+      "label": "Harper continuous learning",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 102,
+          "url": "https://github.com/jfusco/the-office/pull/102"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 177,
+          "url": "https://github.com/jfusco/the-office/pull/177"
+        }
+      ],
+      "bytes": 848,
+      "degree": 2,
+      "x": -0.959493,
+      "y": 0.281733,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-09-office-brain-integration-8c09c8b0d9.md",
+      "label": "Office Brain integration",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 120,
+          "url": "https://github.com/jfusco/the-office/pull/120"
+        }
+      ],
+      "bytes": 620,
+      "degree": 2,
+      "x": -0.995472,
+      "y": 0.095056,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-11-automatic-feature-planning-handoff-a10a899d30.md",
+      "label": "Automatic feature planning handoff",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 138,
+          "url": "https://github.com/jfusco/the-office/pull/138"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 141,
+          "url": "https://github.com/jfusco/the-office/pull/141"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 142,
+          "url": "https://github.com/jfusco/the-office/pull/142"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 146,
+          "url": "https://github.com/jfusco/the-office/pull/146"
+        }
+      ],
+      "bytes": 1030,
+      "degree": 2,
+      "x": -0.995472,
+      "y": -0.095056,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-11-narrower-engineering-lesson-workflow-1eb036e724.md",
+      "label": "Narrower engineering lesson workflow",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 150,
+          "url": "https://github.com/jfusco/the-office/pull/150"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 152,
+          "url": "https://github.com/jfusco/the-office/pull/152"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 153,
+          "url": "https://github.com/jfusco/the-office/pull/153"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 155,
+          "url": "https://github.com/jfusco/the-office/pull/155"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 156,
+          "url": "https://github.com/jfusco/the-office/pull/156"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 157,
+          "url": "https://github.com/jfusco/the-office/pull/157"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 165,
+          "url": "https://github.com/jfusco/the-office/pull/165"
+        }
+      ],
+      "bytes": 1178,
+      "degree": 2,
+      "x": -0.959493,
+      "y": -0.281733,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-12-demand-driven-harper-lookup-0cc7aa7075.md",
+      "label": "Demand-driven Harper lookup",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 177,
+          "url": "https://github.com/jfusco/the-office/pull/177"
+        }
+      ],
+      "bytes": 725,
+      "degree": 2,
+      "x": -0.888835,
+      "y": -0.458227,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-13-office-first-knowledge-view-e33a4019e3.md",
+      "label": "Office-first Knowledge view",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 183,
+          "url": "https://github.com/jfusco/the-office/pull/183"
+        }
+      ],
+      "bytes": 621,
+      "degree": 2,
+      "x": -0.786053,
+      "y": -0.618159,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-16-simpler-deterministic-delivery-e4e61761a2.md",
+      "label": "Simpler deterministic delivery",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 212,
+          "url": "https://github.com/jfusco/the-office/pull/212"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 335,
+          "url": "https://github.com/jfusco/the-office/pull/335"
+        }
+      ],
+      "bytes": 1040,
+      "degree": 2,
+      "x": -0.654861,
+      "y": -0.75575,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-17-per-project-office-policy-8459206e6a.md",
+      "label": "Per-project Office policy",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 234,
+          "url": "https://github.com/jfusco/the-office/pull/234"
+        }
+      ],
+      "bytes": 737,
+      "degree": 2,
+      "x": -0.5,
+      "y": -0.866025,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-22-overseer-release-and-incident-milestones-011af4318d.md",
+      "label": "Overseer release and incident milestones",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 318,
+          "url": "https://github.com/jfusco/the-office/pull/318"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 338,
+          "url": "https://github.com/jfusco/the-office/pull/338"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 361,
+          "url": "https://github.com/jfusco/the-office/pull/361"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 364,
+          "url": "https://github.com/jfusco/the-office/pull/364"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 373,
+          "url": "https://github.com/jfusco/the-office/pull/373"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 376,
+          "url": "https://github.com/jfusco/the-office/pull/376"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 462,
+          "url": "https://github.com/jfusco/the-office/pull/462"
+        }
+      ],
+      "bytes": 1166,
+      "degree": 2,
+      "x": -0.327068,
+      "y": -0.945001,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
+      "label": "Install the Office context wiki and split Quality",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 553,
+          "url": "https://github.com/jfusco/the-office/issues/553"
+        }
+      ],
+      "bytes": 884,
+      "degree": 3,
+      "x": -0.142315,
+      "y": -0.989821,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
+      "label": "Live ticket timeline",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 550,
+          "url": "https://github.com/jfusco/the-office/pull/550"
+        }
+      ],
+      "bytes": 751,
+      "degree": 2,
+      "x": 0.047582,
+      "y": -0.998867,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/INDEX.md",
+      "label": "Plan ledger",
+      "type": "index",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 553,
+          "url": "https://github.com/jfusco/the-office/issues/553"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 6,
+          "url": "https://github.com/jfusco/the-office/pull/6"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 19,
+          "url": "https://github.com/jfusco/the-office/pull/19"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 31,
+          "url": "https://github.com/jfusco/the-office/pull/31"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 39,
+          "url": "https://github.com/jfusco/the-office/pull/39"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 52,
+          "url": "https://github.com/jfusco/the-office/pull/52"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 53,
+          "url": "https://github.com/jfusco/the-office/pull/53"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 54,
+          "url": "https://github.com/jfusco/the-office/pull/54"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 55,
+          "url": "https://github.com/jfusco/the-office/pull/55"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 57,
+          "url": "https://github.com/jfusco/the-office/pull/57"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 59,
+          "url": "https://github.com/jfusco/the-office/pull/59"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 64,
+          "url": "https://github.com/jfusco/the-office/pull/64"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 65,
+          "url": "https://github.com/jfusco/the-office/pull/65"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 81,
+          "url": "https://github.com/jfusco/the-office/pull/81"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 82,
+          "url": "https://github.com/jfusco/the-office/pull/82"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 83,
+          "url": "https://github.com/jfusco/the-office/pull/83"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 84,
+          "url": "https://github.com/jfusco/the-office/pull/84"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 86,
+          "url": "https://github.com/jfusco/the-office/pull/86"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 96,
+          "url": "https://github.com/jfusco/the-office/pull/96"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 102,
+          "url": "https://github.com/jfusco/the-office/pull/102"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 120,
+          "url": "https://github.com/jfusco/the-office/pull/120"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 138,
+          "url": "https://github.com/jfusco/the-office/pull/138"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 141,
+          "url": "https://github.com/jfusco/the-office/pull/141"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 142,
+          "url": "https://github.com/jfusco/the-office/pull/142"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 146,
+          "url": "https://github.com/jfusco/the-office/pull/146"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 150,
+          "url": "https://github.com/jfusco/the-office/pull/150"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 152,
+          "url": "https://github.com/jfusco/the-office/pull/152"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 153,
+          "url": "https://github.com/jfusco/the-office/pull/153"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 155,
+          "url": "https://github.com/jfusco/the-office/pull/155"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 156,
+          "url": "https://github.com/jfusco/the-office/pull/156"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 157,
+          "url": "https://github.com/jfusco/the-office/pull/157"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 165,
+          "url": "https://github.com/jfusco/the-office/pull/165"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 177,
+          "url": "https://github.com/jfusco/the-office/pull/177"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 183,
+          "url": "https://github.com/jfusco/the-office/pull/183"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 212,
+          "url": "https://github.com/jfusco/the-office/pull/212"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 234,
+          "url": "https://github.com/jfusco/the-office/pull/234"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 318,
+          "url": "https://github.com/jfusco/the-office/pull/318"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 335,
+          "url": "https://github.com/jfusco/the-office/pull/335"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 338,
+          "url": "https://github.com/jfusco/the-office/pull/338"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 361,
+          "url": "https://github.com/jfusco/the-office/pull/361"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 364,
+          "url": "https://github.com/jfusco/the-office/pull/364"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 373,
+          "url": "https://github.com/jfusco/the-office/pull/373"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 376,
+          "url": "https://github.com/jfusco/the-office/pull/376"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 462,
+          "url": "https://github.com/jfusco/the-office/pull/462"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 550,
+          "url": "https://github.com/jfusco/the-office/pull/550"
+        }
+      ],
+      "bytes": 8049,
+      "degree": 26,
+      "x": 0.235759,
+      "y": -0.971812,
+      "size": 12
+    },
+    {
+      "id": "wiki/topics/context-wiki-and-ci.md",
+      "label": "Context wiki and GitHub verification",
+      "type": "topic",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 553,
+          "url": "https://github.com/jfusco/the-office/issues/553"
+        }
+      ],
+      "bytes": 1169,
+      "degree": 6,
+      "x": 0.415415,
+      "y": -0.909632,
+      "size": 8
+    },
+    {
+      "id": "wiki/topics/delivery-and-recovery.md",
+      "label": "GitHub delivery and recovery",
+      "type": "topic",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 1,
+          "url": "https://github.com/jfusco/the-office/pull/1"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 19,
+          "url": "https://github.com/jfusco/the-office/pull/19"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 212,
+          "url": "https://github.com/jfusco/the-office/pull/212"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 335,
+          "url": "https://github.com/jfusco/the-office/pull/335"
+        }
+      ],
+      "bytes": 1256,
+      "degree": 7,
+      "x": 0.580057,
+      "y": -0.814576,
+      "size": 8
+    },
+    {
+      "id": "wiki/topics/office-ui-and-telemetry.md",
+      "label": "Office interface and telemetry",
+      "type": "topic",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 52,
+          "url": "https://github.com/jfusco/the-office/pull/52"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 64,
+          "url": "https://github.com/jfusco/the-office/pull/64"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 81,
+          "url": "https://github.com/jfusco/the-office/pull/81"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 83,
+          "url": "https://github.com/jfusco/the-office/pull/83"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 84,
+          "url": "https://github.com/jfusco/the-office/pull/84"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 550,
+          "url": "https://github.com/jfusco/the-office/pull/550"
+        }
+      ],
+      "bytes": 909,
+      "degree": 6,
+      "x": 0.723734,
+      "y": -0.690079,
+      "size": 8
+    },
+    {
+      "id": "wiki/topics/planning-and-learning.md",
+      "label": "Feature planning and engineering lessons",
+      "type": "topic",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 39,
+          "url": "https://github.com/jfusco/the-office/pull/39"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 102,
+          "url": "https://github.com/jfusco/the-office/pull/102"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 177,
+          "url": "https://github.com/jfusco/the-office/pull/177"
+        }
+      ],
+      "bytes": 885,
+      "degree": 11,
+      "x": 0.841254,
+      "y": -0.540641,
+      "size": 8
+    },
+    {
+      "id": "wiki/topics/releases-and-incidents.md",
+      "label": "Releases and incident recovery",
+      "type": "topic",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 318,
+          "url": "https://github.com/jfusco/the-office/pull/318"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 338,
+          "url": "https://github.com/jfusco/the-office/pull/338"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 361,
+          "url": "https://github.com/jfusco/the-office/pull/361"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 364,
+          "url": "https://github.com/jfusco/the-office/pull/364"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 462,
+          "url": "https://github.com/jfusco/the-office/pull/462"
+        }
+      ],
+      "bytes": 1048,
+      "degree": 3,
+      "x": 0.928368,
+      "y": -0.371662,
+      "size": 8
+    },
+    {
+      "id": "wiki/topics/session-evidence.md",
+      "label": "Session evidence and ownership",
+      "type": "topic",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 21,
+          "url": "https://github.com/jfusco/the-office/pull/21"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 185,
+          "url": "https://github.com/jfusco/the-office/pull/185"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 196,
+          "url": "https://github.com/jfusco/the-office/pull/196"
+        }
+      ],
+      "bytes": 944,
+      "degree": 2,
+      "x": 0.981929,
+      "y": -0.189251,
+      "size": 8
+    }
+  ],
+  "edges": [
+    {
+      "id": "044ce2e0a57b663e",
+      "source": "wiki/journal/2026-11-24-context-wiki.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "046a9d63044c78ac",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-08-pin-courier-dependency-coordination-fe1efab227.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "064a54d88390a9ea",
+      "source": "wiki/office.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "06d22da1096e28e1",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-06-people-directory-and-organization-chart-952ffc11ff.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "0d88770926cba256",
+      "source": "wiki/office.md",
+      "target": "wiki/plans/INDEX.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "0e14877dd713ff57",
+      "source": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "1f5026a7b6fc9778",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-22-overseer-release-and-incident-milestones-011af4318d.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "1f8a3649d6722a6d",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "22230b25ab3ef7f4",
+      "source": "wiki/plans/2026-11-06-people-directory-and-organization-chart-952ffc11ff.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "23c7b0b1e29b39b1",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-06-harper-lesson-follow-up-07f8652d10.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "2420e6dd56ae8b86",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-10-31-brain-hands-off-delivery-1a836f4fd6.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "246f0f00c2253a3c",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-13-office-first-knowledge-view-e33a4019e3.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "24a5776571aa1256",
+      "source": "wiki/office.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "25158e44a6711366",
+      "source": "wiki/journal/2026-11-24-context-wiki.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "2ac21f71279e734d",
+      "source": "wiki/plans/2026-10-31-repository-domain-layout-07c3aac605.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "2c3e6634b7634d9b",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-09-harper-continuous-learning-3de619a9eb.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "355b085344694472",
+      "source": "wiki/INDEX.md",
+      "target": "wiki/MECHANICS.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "35cf8a6452a044e5",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-05-feature-discovery-and-approved-planning-fb38b55de8.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "3c830c7a810f2c05",
+      "source": "wiki/plans/2026-11-22-overseer-release-and-incident-milestones-011af4318d.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "40130e180be618e4",
+      "source": "wiki/journal/2026-11-24-context-wiki.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "45184852d65531ec",
+      "source": "wiki/plans/2026-11-17-per-project-office-policy-8459206e6a.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "5021430987d06575",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-06-harper-role-and-first-lesson-workflow-db5ff32e89.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "5139ccd070d652a7",
+      "source": "wiki/plans/2026-11-13-office-first-knowledge-view-e33a4019e3.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "58cd6b605a61643b",
+      "source": "wiki/office.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "5c9a49b200a470ea",
+      "source": "wiki/plans/2026-11-05-feature-discovery-and-approved-planning-fb38b55de8.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "5f482131d86c4ec4",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-10-31-repository-domain-layout-07c3aac605.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "5f7c8da512027533",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-09-office-brain-integration-8c09c8b0d9.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "6054eb89bc06ebe2",
+      "source": "wiki/INDEX.md",
+      "target": "wiki/plans/INDEX.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "66eb9efaf2348669",
+      "source": "wiki/plans/2026-11-11-automatic-feature-planning-handoff-a10a899d30.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "6d15c5e20f208326",
+      "source": "wiki/journal/2026-11-24-context-wiki.md",
+      "target": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
+      "id": "6ea4e2b57d0a0984",
+      "source": "wiki/office.md",
+      "target": "wiki/topics/session-evidence.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "74d50229fb62665d",
+      "source": "wiki/plans/2026-11-06-harper-lesson-follow-up-07f8652d10.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "7db2bbf0d28071df",
+      "source": "wiki/plans/2026-11-06-office-settings-drawer-80f69f7d0e.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "81487235f3fe0247",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-17-per-project-office-policy-8459206e6a.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "83b6ac46c8ec52fa",
+      "source": "wiki/plans/2026-11-06-harper-role-and-first-lesson-workflow-db5ff32e89.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "856ad35e5042e979",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-11-automatic-feature-planning-handoff-a10a899d30.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "91548b0b3d93db4c",
+      "source": "wiki/topics/context-wiki-and-ci.md",
+      "target": "wiki/MECHANICS.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "943b9e199eecebab",
+      "source": "wiki/journal/2026-11-24-context-wiki.md",
+      "target": "wiki/topics/session-evidence.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "95d9c960c28efa57",
+      "source": "wiki/office.md",
+      "target": "wiki/MECHANICS.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "9650367e1d45d70a",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-12-demand-driven-harper-lookup-0cc7aa7075.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "9d18ebb21947a1dd",
+      "source": "wiki/plans/2026-11-08-pin-courier-dependency-coordination-fe1efab227.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "9d922432b84e3a1e",
+      "source": "wiki/journal/2026-11-24-context-wiki.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "9e8fa3d92b5f7f9a",
+      "source": "wiki/office.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "9fe9a357cf53c18a",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-06-delivery-throughput-and-harness-validation-2c131f596e.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "a6b6aba6e298557b",
+      "source": "wiki/plans/2026-11-16-simpler-deterministic-delivery-e4e61761a2.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "a8e179482fd52cc0",
+      "source": "wiki/plans/2026-10-31-brain-hands-off-delivery-1a836f4fd6.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "aceb7969a3f634be",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-16-simpler-deterministic-delivery-e4e61761a2.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "b82b88b70d178698",
+      "source": "wiki/plans/2026-11-06-repository-graphify-setup-3e66cf6d6e.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "bcd4264a05183927",
+      "source": "wiki/plans/2026-11-07-model-cost-alongside-time-04ce361575.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "bced075bd9eca11a",
+      "source": "wiki/plans/2026-11-12-demand-driven-harper-lookup-0cc7aa7075.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "be83b6908835c7c2",
+      "source": "wiki/plans/2026-11-09-office-brain-integration-8c09c8b0d9.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "c3e7a4a7d0a8bba9",
+      "source": "wiki/plans/2026-11-09-harper-continuous-learning-3de619a9eb.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "c4a43a8cf11207b8",
+      "source": "wiki/office.md",
+      "target": "wiki/journal/2026-11-24-context-wiki.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "c55c82f45bfd9b54",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-07-model-cost-alongside-time-04ce361575.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "c7e1a59a86239cc8",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-06-repository-graphify-setup-3e66cf6d6e.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "ca014ba5935eb2b5",
+      "source": "wiki/office.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "cef9dc19b6d87e67",
+      "source": "wiki/plans/2026-11-06-delivery-throughput-and-harness-validation-2c131f596e.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "d0c766bcfa4bd7a3",
+      "source": "wiki/plans/2026-11-11-narrower-engineering-lesson-workflow-1eb036e724.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "d22254c0661a2f74",
+      "source": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "e56d58329e2a8982",
+      "source": "wiki/MECHANICS.md",
+      "target": "wiki/plans/INDEX.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "edef921871daf63a",
+      "source": "wiki/journal/2026-11-24-context-wiki.md",
+      "target": "wiki/topics/planning-and-learning.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "f216cb6962dcfec7",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-11-narrower-engineering-lesson-workflow-1eb036e724.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "faf3e5f3d6fdc51d",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "fb196837540fec46",
+      "source": "wiki/journal/2026-11-24-context-wiki.md",
+      "target": "wiki/plans/INDEX.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "fda44ff095a82358",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-06-office-settings-drawer-80f69f7d0e.md",
+      "type": "link",
+      "relation": "link"
+    }
+  ]
+}

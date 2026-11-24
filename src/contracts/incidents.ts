@@ -7,6 +7,8 @@ export type IncidentState = 'observed' | 'triaged' | 'fixing' | 'shipped' | 'dep
 
 /** Where a signal was read. `runner` is reserved for the repair runner's own failures. */
 export type IncidentSource = 'stopped-work' | 'worker-failure' | 'it-recovery' | 'it-investigation' | 'improvement' | 'provider-error' | 'slack-delivery' | 'outbox' | 'runner';
+/** Every source, in the order their reports are trusted when several describe one stop: the order the collectors run in. */
+export const INCIDENT_SOURCES: readonly IncidentSource[] = ['stopped-work', 'worker-failure', 'it-recovery', 'it-investigation', 'improvement', 'provider-error', 'slack-delivery', 'outbox', 'runner'];
 
 /** A stop the Office already understands. Recognised from typed fields only, never from wording. */
 export type ExpectedWait = 'hold' | 'decision' | 'merge-approval' | 'prerequisite' | 'pause' | 'authentication' | 'provider-wait' | 'retry' | 'uncertain-effect' | 'question';
@@ -43,6 +45,8 @@ export interface IncidentSubject {
     head: string;
     /** A write for this subject is still dispatching or uncertain: read-back only. */
     unsettledEffect: boolean;
+    /** On Jira intake errors, the latest completed mailbox event at the time of the reading, or zero if none. */
+    mailCheckOutcomeId?: number;
 }
 
 export interface IncidentCandidate {
@@ -56,6 +60,15 @@ export interface IncidentCandidate {
     /** Reported only so that a record which covers it can take it in (see `absorbs`); it never becomes a subject of its own. */
     foldedOnly?: true;
 }
+
+/** What one source said of a subject when it was read: whether a write it knows of is unsettled, and its explanation. */
+export interface IncidentContribution {
+    unsettledEffect: boolean;
+    expected: ExpectedWait | null;
+}
+
+/** The original aggregate of a historical subject and the sources needed to replace it. */
+export type IncidentLegacyCarry = IncidentContribution & { sources: IncidentSource[] };
 
 export interface IncidentSubjectRecord extends IncidentSubject {
     status: 'open' | 'cleared';
@@ -71,6 +84,19 @@ export interface IncidentSubjectRecord extends IncidentSubject {
     /** The most recent episodes, oldest first; `episodeCount` is the total, and every return after a clear is one. */
     episodes: string[];
     episodeCount: number;
+    /**
+     * What each source that reported this subject said of it when it was last read, the owner's own
+     * source included, so that a source which cannot be read keeps exactly its own part. Absent when a
+     * single source reports the whole subject, and on subjects recorded before contributions were kept.
+     * With a legacy carry, even one known contribution is stored separately.
+     */
+    contributions?: Partial<Record<IncidentSource, IncidentContribution>>;
+    /**
+     * A subject recorded before contributions were kept, read since while one of its sources could not
+     * be: what it said then and every source it had. Kept until one pass reads all of those sources.
+     * Historical copies with different source inventories can carry their aggregates independently.
+     */
+    carried?: IncidentLegacyCarry | IncidentLegacyCarry[];
 }
 
 /** Whether the incident may be investigated now. Withdrawn as soon as no reason for it holds. */

@@ -1,13 +1,19 @@
 import { existsSync } from 'node:fs';
-import { afterEach, expect, test } from 'vitest';
+import { resolve } from 'node:path';
+import { afterEach, expect, test, vi } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD, REPOSITORY } from '../support/fake-github';
 import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { HOLDS } from '../../../../server/office/config';
-import type { EffectIntent, Receipt, StageResult, TicketJob } from '../../../../src/shared';
+import { projectById } from '../../../../server/office/projects';
+import { Store } from '../../../../server/store/store';
+import { coordination, Coordinator } from '../../../../server/scheduling/coordination';
+import { GitHubDelivery } from '../../../../server/delivery/pipeline/github-delivery';
+import type { DependencyStores } from '../../../../server/delivery/pipeline/dependencies';
+import type { EffectIntent, Prerequisite, Receipt, StageResult, TicketJob } from '../../../../src/shared';
 
 const SQUASH = 'd'.repeat(40), EARLIER = 'e'.repeat(40), PR_URL = `https://github.com/${REPOSITORY}/pull/200`;
-const held: string[] = [];
-afterEach(() => { held.splice(0).forEach(key => delete HOLDS[key]); cleanupFakes(); });
+const held: string[] = [], others: Store[] = [];
+afterEach(() => { vi.restoreAllMocks(); held.splice(0).forEach(key => delete HOLDS[key]); others.splice(0).forEach(store => store.close()); cleanupFakes(); });
 
 const read = (id: string, action: string, target = PR_URL, detail = 'read back'): Receipt => ({ id, action, target, verified: true, uncertain: false, detail });
 function result(job: TicketJob, commit: string, extra: Partial<StageResult> = {}): StageResult {
@@ -249,4 +255,161 @@ test('a candidate the harness validated settles: its own record ended without an
     expect(job).toMatchObject({ stage: 'closeout', status: 'queued', mergeCommit: SQUASH });
     expect(settlements(f)).toHaveLength(1);
     expect(writes).toEqual([]);
+});
+
+// Issue 507: a prerequisite the job retains is checked by the scheduler's own gate, before and after the reads.
+type Fixture = ReturnType<typeof stopped>;
+const OWN = 'cms-field-vocabulary';
+/** The provider and git commands a pass sent, without the fixture's temporary root. */
+const trace = (f: Fixture['f']) => f.state.calls.map(call => call.replaceAll(f.root, '<root>'));
+/** The configured Brain project's store, holding the prerequisite's target job. */
+function brain(f: Fixture['f'], status = 'completed') {
+    const store = new Store(':memory:', projectById('brain'), resolve(f.root, 'brain-data'));
+    others.push(store);
+    store.state.coordination = coordination();
+    store.state.coordination.jobs = [{ id: 'parent', key: 'GH-1', status, stage: 'closeout', steps: [] } as any];
+    return store;
+}
+const needs = (projectId: string, id = 'parent', observedAt = new Date().toISOString()): Prerequisite =>
+    ({ target: { projectId, kind: 'delivery', id }, condition: 'job-completed', evidence: 'Synthetic record', observedAt });
+const office = (f: Fixture['f'], other?: Store): DependencyStores => new Map([[f.store.project.id, f.store], ...(other ? [['brain', other] as const] : [])]);
+/** Runs `hook` once, on the first read of `pulls/<pr>`. */
+function onPullRead(f: Fixture['f'], hook: () => void, pr = 200) {
+    const base = f.delivery.execute;
+    let ran = false;
+    f.delivery.execute = (async (program: string, args: string[], options: any) => {
+        if (!ran && args[1]?.endsWith(`/pulls/${pr}`)) { ran = true; hook(); }
+        return base(program, args, options);
+    }) as typeof base;
+    return () => ran;
+}
+/** A completed target job in this project, present in both fixtures so that only the prerequisite differs. */
+const parent = (f: Fixture['f']) => f.delivery.jobs.unshift({ id: 'parent', key: 'GH-9', status: 'completed', stage: 'closeout', requestedAt: '2026-11-20T12:00:00Z', detail: '', head: '', worktree: '', branch: '', pr: 0, prUrl: '', existingPR: false, steps: [] } as TicketJob);
+
+const satisfied: [string, (fixture: Fixture) => (() => DependencyStores) | undefined][] = [
+    ['in this project, through the default stores', ({ job }) => { job.prerequisites = [needs(OWN)]; return undefined; }],
+    ['in another project', ({ f, job }) => { const other = brain(f); job.prerequisites = [needs('brain')]; return () => office(f, other); }],
+];
+test.each(satisfied)('a completed job-completed prerequisite %s settles like a job without one', async (_name, given) => {
+    const baseline = stopped(), fixture = stopped(), { f, job, writes } = fixture, history = structuredClone(job.steps);
+    parent(baseline.f); parent(f);
+    const stores = given(fixture), prerequisites = structuredClone(job.prerequisites);
+    await baseline.f.delivery.observe();
+    await f.delivery.observe(stores);
+    expect(trace(f)).toEqual(trace(baseline.f));
+    expect(job).toMatchObject({ stage: 'closeout', status: 'queued', mergeCommit: SQUASH, prerequisites });
+    expect(settlements(f)).toHaveLength(1);
+    expect(f.state.calls.filter(call => call.includes(`actions/runs?head_sha=${SQUASH}`))).toHaveLength(1);
+    expect(writes).toEqual([]);
+    await claimedDelivery(f.store, job, () => f.delivery.step(job));
+    expect(job.status, job.detail).toBe('completed');
+    expect(job.prerequisites).toEqual(prerequisites);
+    expect(job.steps.slice(0, history.length)).toEqual(history);
+    await f.delivery.observe(stores);
+    expect(settlements(f)).toHaveLength(1);
+});
+
+const unmet: [string, (fixture: Fixture) => () => DependencyStores][] = [
+    ['an unfinished target', ({ f, job }) => { const other = brain(f, 'queued'); job.prerequisites = [needs('brain')]; return () => office(f, other); }],
+    ['a target that does not exist', ({ f, job }) => { const other = brain(f); job.prerequisites = [needs('brain', 'missing')]; return () => office(f, other); }],
+    ['a project missing from the dependency stores', ({ f, job }) => { brain(f); job.prerequisites = [needs('brain')]; return () => office(f); }],
+    ['a completed target the scheduler rejects (invalid observation time)', ({ f, job }) => {
+        const other = brain(f); job.prerequisites = [needs('brain', 'parent', 'not a time')]; return () => office(f, other);
+    }],
+];
+test.each(unmet)('%s settles nothing and costs no settlement read', async (_name, given) => {
+    const local = stopped(), fixture = stopped(), { f, job, writes } = fixture;
+    // The same job refused by a local guard: no settlement read at all.
+    local.job.mergeApprovalRequired = true;
+    const stores = given(fixture), stop = structuredClone(job.stop), detail = job.detail;
+    await local.f.delivery.observe();
+    await f.delivery.observe(stores);
+    expect(trace(f)).toEqual(trace(local.f));
+    expect(job).toMatchObject({ stage: 'lead-pr', status: 'blocked', detail });
+    expect(job.stop).toEqual(stop);
+    expect(job.mergeCommit).toBeUndefined();
+    expect(settlements(f)).toEqual([]);
+    expect(writes).toEqual([]);
+});
+
+test.each(['the target is reopened', 'its project leaves the office'])('a prerequisite that changes during the PR read (%s) settles nothing', async change => {
+    const { f, job, writes } = stopped(), other = brain(f), earlier = office(f, other);
+    job.prerequisites = [needs('brain')];
+    let current = earlier;
+    const ran = onPullRead(f, () => {
+        if (change === 'the target is reopened') other.state.coordination!.jobs![0].status = 'working';
+        else current = office(f);
+    });
+    const stop = structuredClone(job.stop), detail = job.detail;
+    await f.delivery.observe(() => current);
+    expect(ran()).toBe(true);
+    expect(earlier.has('brain')).toBe(true);
+    expect(job).toMatchObject({ stage: 'lead-pr', status: 'blocked', detail });
+    expect(job.stop).toEqual(stop);
+    expect(job.mergeCommit).toBeUndefined();
+    expect(settlements(f)).toEqual([]);
+    expect(writes).toEqual([]);
+});
+
+/** A second locally eligible stopped job, GH-6 on PR 201, published by the harness like the first. */
+function later(f: Fixture['f'], job: TicketJob): TicketJob {
+    const copy = JSON.parse(JSON.stringify(job).replaceAll(job.id, 'later-job').replaceAll('GH-5', 'GH-6').replaceAll('5-restore-release-scans', '6-restore-release-scans')
+        .replaceAll('pull/200', 'pull/201').replaceAll('PR #200', 'PR #201').replaceAll('"prId":200', '"prId":201').replaceAll('"pr":200', '"pr":201')) as TicketJob;
+    f.delivery.jobs.push(copy);
+    return copy;
+}
+test.each([[true], [false]])('a later job in the pass reads its PR only while its prerequisite holds (project kept: %s)', async keep => {
+    const { f, job } = stopped(), other = brain(f), second = later(f, job);
+    second.prerequisites = [needs('brain')];
+    let current = office(f, other);
+    const ran = onPullRead(f, () => { if (!keep) current = office(f); });
+    await f.delivery.observe(() => current);
+    expect(ran()).toBe(true);
+    expect(job).toMatchObject({ mergeCommit: SQUASH });
+    expect(f.state.calls.some(call => call.endsWith('/pulls/201'))).toBe(keep);
+    expect(second).toMatchObject({ stage: 'lead-pr', status: 'blocked' });
+    expect(second.mergeCommit).toBeUndefined();
+});
+
+test.each([[false], [true]])('a closed-issue prerequisite settles on a cached observation still fresh, not one that expires during the reads (expires: %s)', async expires => {
+    const baseline = stopped(), { f, job, writes } = stopped(), at = Date.parse('2026-11-23T20:05:00Z'), observedAt = new Date(at - 149_999).toISOString();
+    let now = at;
+    for (const store of [baseline.f.store, f.store]) { const real = store.clock; store.clock = { now: () => new Date(now), monotonic: () => real.monotonic() }; }
+    const target = { projectId: OWN, kind: 'issue' as const, id: '7' };
+    f.store.state.coordination!.dependencyObservations = [{ target, condition: 'issue-closed', exists: true, complete: true, version: '2026-11-23T19:00:00Z', observedAt, error: '' }];
+    job.prerequisites = [{ target, condition: 'issue-closed', evidence: 'Synthetic record', observedAt }];
+    const stop = structuredClone(job.stop);
+    const ran = onPullRead(f, () => { if (expires) now += 2; });
+    await baseline.f.delivery.observe();
+    await f.delivery.observe();
+    expect(ran()).toBe(true);
+    expect(f.state.calls.some(call => /issues\/7\b/.test(call))).toBe(false);
+    if (expires) {
+        expect(job).toMatchObject({ stage: 'lead-pr', status: 'blocked' });
+        expect(job.stop).toEqual(stop);
+        expect(settlements(f)).toEqual([]);
+    }
+    else {
+        expect(trace(f)).toEqual(trace(baseline.f));
+        expect(job).toMatchObject({ stage: 'closeout', status: 'queued', mergeCommit: SQUASH });
+        expect(settlements(f)).toHaveLength(1);
+    }
+    expect(writes).toEqual([]);
+});
+
+test("the poll hands the settlement the coordinator's current dependency stores", async () => {
+    const f = fakeGitHub(), other = brain(f), both = office(f, other), own = office(f);
+    const c = new Coordinator(f.store, f.engine, f.execute as any);
+    c.activate(new Date('2026-11-23T20:00:00Z'));
+    c.readAssignments = async () => [];
+    c.dependencyStores = () => both;
+    const observe = vi.spyOn(GitHubDelivery.prototype, 'observe').mockResolvedValue(undefined);
+    await c.poll(new Date('2026-11-23T20:01:00Z'));
+    expect(c.state.listener.error).toBe('');
+    expect(observe).toHaveBeenCalledTimes(1);
+    const supplied = observe.mock.calls[0][0];
+    expect(supplied).toBeTypeOf('function');
+    expect(supplied!()).toBe(both);
+    c.dependencyStores = () => own;
+    expect(supplied!()).toBe(own);
 });

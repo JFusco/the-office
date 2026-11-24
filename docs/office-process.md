@@ -389,8 +389,10 @@ at the Lead review or the PR preparation, the Office settles it (`server/deliver
 The candidate must be the one the Office created, its branch and worktree, with a passed harness draft that
 published the current head to that pull request. GitHub must show the PR closed and merged by the owner at
 that head into the project target, still linked to the job's issue. Nothing else of the job may be open: no
-claim, recovery request, worker that did not run to its end, hold, prerequisite, park, merge attempt or
-approval wait, repair in progress, stopped-base update, unverified board move or receipt, or unsettled effect. The Office then records the owner and both commits,
+claim, recovery request, worker that did not run to its end, hold, unmet prerequisite, park, merge attempt or
+approval wait, repair in progress, stopped-base update, unverified board move or receipt, or unsettled effect.
+A prerequisite the job keeps must pass the scheduler's own prerequisite check, across the office's projects,
+before the Office reads GitHub for the job and again after GitHub answers. The Office then records the owner and both commits,
 clears the stop and watches the merge commit like any merge: its Actions decide between the existing CI route
 and the ordinary closeout. Closeout moves each card that is not yet in Done with one read-back effect bound to the merge commit.
 The finished review and its findings are kept; no merge, worker or provider write is sent to settle it.
@@ -688,6 +690,30 @@ Morgan or Joe:
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after
   three failures in a row. The Azure monitor's reads are read-only, so a lingering helper is not
   treated as a possible write.
+- Harper hands a blocker follow-up to Morgan as one read-only diagnosis at a time
+  (`server/knowledge/handoff-admission.ts`, from `reconcileBlockerFollowups()`). While its request is
+  queued or working, or its claim or worker is still running or stopping, nothing more is sent for that
+  follow-up, whatever its detail says. Once it closes, another is sent only if what is due changed. For
+  an IT recovery that is a new needs-human episode: an observed exit (IT retrying, or resolved) and a
+  return. For the project refresh and assignment reads it is also a change between a temporary read
+  failure and any other failure, the two kinds of advice Ellis gives Morgan. For anything else it is the
+  requested action without provider occurrence details such as GitHub's request ID and timestamp.
+  Each send has its own id. A diagnosis that started is never settled: one a restart interrupts keeps
+  its session, any answer and the interruption, and unchanged material sends nothing more. Queued
+  requests that never started are settled as failed, with the reason and the id of the hand-off kept
+  (`supersededByHandoffId`), when the store opens (before start-up recovery) and on every
+  reconciliation; nothing is deleted. The scheduler reads them as history that only their own
+  conversation's writes, receipts and claims can hold back, not a write of their ticket's delivery
+  (`supersededHandoff` in `server/operations/stale-records.ts`, used by `scheduledWork()`). A failed
+  person's message is read back by whichever request is queued or working for exactly that original,
+  Harper's kept request first (`pendingReadback()` in `server/conversations/conversation-recovery.ts`).
+  One IT already tracks is read back through IT's recovery, with its backoff and three attempts
+  (`readBackConversations()`); IT adopts the live replacement of a settled request it remembered without
+  spending an attempt (`recoverAttempt()`), and neither Harper nor IT queues another while Harper's
+  earlier read-back of it is still stopping. The first open after upgrading changes an affected store,
+  so a failed activation then stops at rollback eligibility rather than rolling back; an older build
+  skips the settled rows but would send again for a new provider footer, so a downgraded store stays
+  fenced or offline until a build with this rule resumes it.
 - Session visibility and service status probes are informational and stay with Ellis. They are
   listed but not counted as follow-ups, and do not by themselves show Ellis as retrying, even while
   such a watch is being retried or once it names Morgan. Any other recovery in progress, and anything
@@ -1093,17 +1119,27 @@ reads every project:
   intake reviews, checkpoints, maintenance, notices and conversations), and waiting work whose own
   record is a stop (a pull request that is not ready, checks or required Azure policies still
   running, a merge waiting for approval, a pull-request review that needs follow-up) or that waits
-  on a configured hold, a retry the Office planned or an unfinished structured prerequisite;
+  on a configured hold, a retry the Office planned or an unfinished structured prerequisite; a
+  feature waiting on answers to its current question round, while the feature itself waits, is not
+  paused and is held neither by the automatic policy nor by configured intake, recorded in the
+  harness's own words with no question, answer or detail kept; and Harper's weekly roll-up while the
+  retry the Office saved for it is still ahead. A feature's recovery deadline alone is not read;
 - runs that failed after dispatch, by failure category, each counted for 24 hours;
 - IT recoveries handed to a person;
 - IT investigations that name the harness or propose an Office fix;
 - improvement proposals addressed to the Office harness;
 - the latest error of the assignment listener, the mailbox intake and the GitHub and Azure readers,
-  kept while the reader's next read is under way; a GitHub project's mailbox error is the GitHub
-  read's own and is reported once;
+  kept while the reader's next read is under way; a Jira mailbox blanks its error when a check is
+  queued or starts. Its subject stays open during that check unless a successful check was recorded
+  after the observed failure. A present error is read as usual. A GitHub project's mailbox error is
+  the GitHub read's own and is reported once;
 - Slack deliveries that could not be confirmed and were not replaced;
-- any other open outbox item, by its title only, including the item of a ticket or intake review
-  the scheduler does not project.
+- any other open outbox item, by its title only. The item of a ticket or intake review, and the
+  summary of reviews that cannot read session ownership, are kept only while stopped work reports
+  or keeps open none of their records: the ticket or a stopped request that only mirrors its
+  blocker, the review, or every review in the summary. Work the scheduler projects but stopped work
+  does not record, such as finished history or a review running again, covers nothing, and nor
+  does a stopped-work read that failed before the record was first seen.
 
 A saved stop is read only while the record's status makes it current; a watching job keeps only a
 wait's own stop. A record that could run but is held by the scheduler's condition, a prerequisite
@@ -1128,7 +1164,9 @@ subject, stage and typed cause, and its wording is evidence only:
 - `unknown`: the record does not say where its text came from: work with no retained record, a
   delivery request's error, a ticket blocker with no saved stop, result or failure behind it, what
   a run that completed handed back to a request, notice, conversation or Jira mailbox read, a
-  recovery's copied detail, and the outbox item of an unprojected ticket or review. For these the
+  mailbox checkpoint whose last intake run completed (whether or not the intake error still
+  stands; with no intake run or a typed failure its text is the harness's), a recovery's copied
+  detail, and the outbox item of an unprojected ticket or review. For these the
   scheduler's own cause, which can come from the text's wording, is neither kind nor explanation.
 
 A merge waiting for approval is identified by that restriction, not by the job's changing detail.
@@ -1142,15 +1180,36 @@ references is still unsettled. Two sources that report the same stop yield one s
 run is folded into the job, ticket, review or maintenance run it worked for, and an unconfirmed
 Slack delivery into its notice or conversation, which then carries the unsettled write and, when
 it has no explanation of its own, the delivery's; a delivery request that only mirrors its
-ticket's stop is folded into the ticket, and a checkpoint that only repeats its maintenance run's
-into the run. An exhausted recovery and the record it tried to recover stay separate subjects. A subject whose signal is gone is cleared. A subject that returns
+ticket's stop is folded into the ticket. If that request is the only subject covering an unprojected
+ticket, it takes in the ticket's stage run. A checkpoint that only repeats its maintenance run's
+stop folds into that run. A failed intake run is folded into the Jira mailbox error when the
+record proves it caused it: its standing typed failure is what the error says, it started after the last
+successful check and it ran wholly within the check that recorded the failure, as the project's
+persisted events show; otherwise the two stay apart. A kept ticket or review outbox item is bound
+to its record's saved stop, head and last run, which it takes in, and to that record's unsettled
+writes; its episode stays the item's own. An improvement proposal's write is unsettled only while
+one filed under its own issue work key is. An exhausted recovery and the record it tried to recover stay separate subjects. A subject whose signal is gone is cleared. A subject that returns
 after it cleared, or whose stop marker changed, is a new episode of the same incident and one
 observed resume, and how long it has stood is counted from that latest stop; the count survives
-the projection dropping an old cleared subject, because it is read back from the events. A subject is not cleared while its signal cannot be seen: stopped work
-while its project is paused or draining, a source whose collector failed for that project, and
-everything of a project that could not be read. While stopped work cannot be seen, the runs and
-deliveries its open subjects hold stay with them, and those a pause newly hides fold into the
-pause; while another source cannot be seen, what it had contributed to a subject stays on it.
+the projection dropping an old cleared subject, because it is read back from the events. A
+subject is open in one incident at a time: observed under another cause, it leaves the incident
+that held it in the same change, whatever cannot be seen. Two copies of one subject left open by
+an earlier release are both kept until it is observed again, which selects one. Otherwise a
+subject is not cleared while its signal cannot be seen: its owner's source while its project is
+paused or draining or its collector failed for that project, the mailbox subject while a check is
+under way without a newer success, and everything of a project that could not be read. While an
+owner cannot be seen, the runs and deliveries its open subjects hold stay with them. Those a
+pause newly hides fold into the pause. A readable outbox uses both fresh and retained stopped-work
+subjects as coverage.
+During an outbox outage, only fresh stopped-work reports can release its saved items and free their
+runs to fold into the subjects that now cover them. What each source says of a subject, whether a write
+it knows of is unsettled and its explanation, is recorded apart; the subject's own facts combine
+them with the owner first and the rest in collector order. While another source cannot be seen it
+keeps exactly its own part, wherever the subject's cause now puts it, and a readable source that
+reports nothing withdraws its part, the owner's included, so a fact only the owner gave goes when
+the owner drops it. A subject recorded before parts were kept retains its earlier aggregate
+alongside facts learned on partial reads. A pass that reads all of the original sources replaces
+that aggregate.
 
 **Expected waits.** Holds, decisions, merge approvals, prerequisites, pauses, authentication
 blocks, provider waits, planned retries, uncertain effects and questions are recognised from typed

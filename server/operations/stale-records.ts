@@ -59,6 +59,15 @@ export function retiredFollowup(message: Pick<TeamMessage, 'id' | 'from' | 'stat
     return readOnly || !unverified ? 'Advisory follow-up failed and is not retried; kept as history' : undefined;
 }
 
+/**
+ * A Harper request settled unstarted in favour of its follow-up's current hand-off (`server/knowledge/handoff-admission.ts`),
+ * known by its saved fields alone. It never ran, so a write of its ticket's delivery is not its own: only its own
+ * conversation's writes, receipts and claims can keep it stopped (`retiredFollowup` still decides whether it is history).
+ */
+export function supersededHandoff(message: Pick<TeamMessage, 'from' | 'to' | 'status' | 'supersededByHandoffId'>): boolean {
+    return message.from === 'knowledge' && message.to === 'pm' && message.status === 'failed' && !!message.supersededByHandoffId;
+}
+
 const FINISHED = new Set(['completed', 'cancelled']);
 
 /**

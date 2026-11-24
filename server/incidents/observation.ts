@@ -2,6 +2,7 @@ import type { IncidentCandidate } from '../../src/contracts/incidents';
 import type { Prerequisite, WorkEligibility, WorkRef } from '../../src/contracts/work';
 import type { OfficeSnapshot } from '../../src/shared';
 import type { UnsettledEffects } from '../operations/stale-records';
+import type { FailedMailCheck, MailCheckOutcome } from './mailbox-check-window';
 
 /** What one project shows at one moment. Collectors read it; nothing in it is written. */
 export interface ProjectObservation {
@@ -19,6 +20,15 @@ export interface ProjectObservation {
     holds: Readonly<Record<string, string>>;
     /** How the scheduler reads these structured prerequisites now, across every project; null when none gates. */
     dependency: (prerequisites: Prerequisite[]) => WorkEligibility | null;
+    /** The project's last mailbox check, when it ended blocked, read from its persisted events. */
+    lastFailedMailCheck: () => FailedMailCheck | null;
+    /** The last completed mailbox check, read from the project's persisted events. */
+    lastMailCheckOutcome: () => MailCheckOutcome | null;
+    /**
+     * Subject keys stopped work reports for this project in this pass, or keeps open while it cannot be
+     * read. The sync supplies it to the outbox reader; a direct reading derives it from stopped work.
+     */
+    covered?: ReadonlySet<string>;
     now: Date;
 }
 
