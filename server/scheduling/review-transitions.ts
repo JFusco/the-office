@@ -23,6 +23,10 @@ export function requeueCandidateReview(job: TicketJob): string {
  * changing nothing, otherwise. Emits nothing, as above.
  */
 export function requeuePRReview(store: Store, job: TicketJob): string {
+    // A published park waits for its issue card to come back (`server/delivery/parking/resume.ts`): a new review would
+    // leave the decision unanswered. A park that stopped part way may be rechecked, which finishes it first.
+    if (job.parked?.published)
+        throw new Error('Parked for a decision on the issue: do what its comment asks, then move the issue card back to the pickup lane to resume it. A new review does not resume a parked job');
     const mergePreflight = job.stage === 'merge' && !job.mergeAttempt && job.status === 'blocked';
     const mergeRecovery = job.stage === 'ci-recovery' && ['blocked', 'interrupted'].includes(job.status) && !!job.mergeCommit && !job.ciFollowupKey;
     if (!mergePreflight && !mergeRecovery && (job.stage !== 'lead-pr' || !['blocked', 'interrupted', 'watching'].includes(job.status)))
