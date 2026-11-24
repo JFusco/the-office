@@ -21,7 +21,8 @@ export interface Mutation {
 /**
  * One deployment mutation through Effects under a stable identity. Read-back comes first, so a step
  * whose outcome is already visible is not dispatched again; a dispatched step that read-back cannot
- * confirm is uncertain and stays that way.
+ * confirm is uncertain and stays that way. A first read that fails before anything was sent is a
+ * refusal: nothing changed. One that fails after an earlier run sent the step stays unknown.
  */
 export async function settle(mutation: Mutation): Promise<Settled> {
     const { effects, operation, step, payload, confirm } = mutation;
@@ -30,7 +31,14 @@ export async function settle(mutation: Mutation): Promise<Settled> {
     if (intent && JSON.stringify(intent.payload) !== JSON.stringify(payload))
         return { status: 'rejected', reason: 'Effect identity already belongs to a different operation' };
 
-    const already = await confirm();
+    let already: Record<string, unknown> | null;
+    try { already = await confirm(); }
+    catch (error) {
+        // Another run may have started dispatching while this read was pending.
+        const current = effects.readIntent(id);
+        if (current && current.status !== 'prepared' && current.status !== 'rejected') throw error;
+        return { status: 'rejected', reason: `the outcome of step ${step} could not be read before anything was sent: ${String(error)}`.slice(0, 500) };
+    }
     const reconcile = async (reason: string): Promise<Settled> => {
         let receipt = already;
         try {
