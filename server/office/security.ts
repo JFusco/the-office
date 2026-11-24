@@ -1,10 +1,29 @@
+function isJsonText(text: string): boolean {
+  try { JSON.parse(text); return true; } catch { return false; }
+}
+/** True when an odd run of backslashes ends just before `at`, so the character there is escaped. */
+function escapedAt(text: string, at: number): boolean {
+  let count = 0;
+  while (at - count > 0 && text[at - count - 1] === '\\') count++;
+  return count % 2 === 1;
+}
+/**
+ * Redacts credentials in a string. A value never ends inside an escape (`\` takes the next character with it)
+ * or takes an unescaped `"`, so JSON text stored in the string stays JSON. Whether the whole string is JSON
+ * text is checked once, only when a quote or a `\b` escape is ambiguous.
+ */
 export function sanitize(value: string): string {
+  let json: boolean | undefined;
+  const isJson = () => json ??= isJsonText(value);
   return value
-    .replace(/(?:Bearer\s+)[^\s"']+/gi, 'Bearer [redacted]')
+    // First, so its offset is the original string's: a `b` after an odd run of backslashes in JSON text is the `\b` escape.
+    .replace(/(?:Bearer\s+)(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi, (match: string, at: number) => match[0] === 'b' && escapedAt(value, at) && isJson() ? 'bearer [redacted]' : 'Bearer [redacted]')
     .replace(/\b(?:sk-[\w-]+|gh[oprs]_[\w]+)\b/g,'[redacted]')
-    .replace(/([?&](?:token|sig|key|secret|code|access_token|client_secret|password)=)[^&\s"']+/gi,'$1[redacted]')
-    .replace(/((?:password|api[_-]?key|secret|authorization|cookie|connection[_-]?string)\s*[=:]\s*)[^\n,}]+/gi,'$1[redacted]')
-    .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi,'[database redacted]');
+    .replace(/([?&](?:token|sig|key|secret|code|access_token|client_secret|password)=)(?:\\(?:[\s\S]|$)|[^&\s"'\\])+/gi,'$1[redacted]')
+    // In JSON text a label lies inside a string, so a quote right after it closes that string and is kept as it is.
+    .replace(/((?:password|api[_-]?key|secret|authorization|cookie|connection[_-]?string)\s*[=:]\s*)("?)(?:\\(?:[\s\S]|$)|[^\n,}"\\])+/gi,
+      (match: string, label: string, quote: string) => quote && isJson() ? match : `${label}${quote}[redacted]`)
+    .replace(/postgres(?:ql)?:\/\/(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi,'[database redacted]');
 }
 /** The JSON text of a value with every string in it redacted: what `sanitizeObject` parses, for a caller that only needs the text. */
 export function redactedText(value: unknown): string {
