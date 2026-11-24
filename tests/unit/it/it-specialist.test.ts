@@ -71,6 +71,18 @@ test('unknown provider checks never request a login after retries, while confirm
     expect(a.state.it!.reports.at(-1)!.followUps).toEqual([expect.objectContaining({ id: 'login:anthropic', owner: 'You', detail: 'Run /login' })]);
     expect(a.state.outbox.filter(o => o.status === 'open')).toEqual([expect.objectContaining({ id: 'only-you:login:anthropic', title: 'Only you can do this: sign in to Claude', ownerSteps: expect.objectContaining({ steps: expect.arrayContaining([{ text: 'Check whether Claude is signed in.', run: 'claude auth status' }]) }) })]);
 });
+test('a GitHub sign-in item raised for a sign-out resolves once a rate limit is all the check reports', async () => {
+    const a = setup();
+    a.store.emit.mockImplementation((kind: string) => { if (kind === 'it-report') syncOutbox(a.state); });
+    a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [{ id: 'github', name: 'GitHub', status: 'disconnected', detail: 'GitHub could not verify its active account.', checkedAt: '', nextStep: 'Check gh auth status in your terminal. Confirm repo and project scopes for the intended account.' }] } as any);
+    await a.it.tick(new Date(1793221200000), true);
+    expect(a.state.it!.reports.at(-1)!.followUps).toEqual([expect.objectContaining({ id: 'login:github', owner: 'You' })]);
+    expect(a.state.outbox.find(o => o.id === 'only-you:login:github')).toMatchObject({ status: 'open', ownerSteps: expect.objectContaining({ steps: expect.any(Array) }) });
+    a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [{ id: 'github', name: 'GitHub', status: 'unknown', detail: 'A GitHub API rate limit blocked this check. The Office could not verify sign-in.', checkedAt: '', nextStep: 'Ellis will check again automatically.' }] } as any);
+    await a.it.tick(new Date(1793221260000), true);
+    expect(a.state.it!.reports.at(-1)!.followUps).toEqual([expect.objectContaining({ id: 'probe:github', owner: 'IT', routine: true })]);
+    expect(a.state.outbox.find(o => o.id === 'only-you:login:github')?.status).toBe('resolved');
+});
 test('public provider incidents and unreadable status pages do not request credential recovery', async () => {
     const a = setup();
     a.health.report.mockResolvedValue({ checkedAt: '', context: '', services: [
