@@ -1,3 +1,4 @@
+import { sanitize } from '../office/security';
 import type { Store } from '../store/store';
 import type { Stage, StageResult, Ticket } from '../../src/shared';
 
@@ -21,6 +22,7 @@ export function unrecordedStageResult(store: Store, ticket: Ticket, stage: Stage
     if (!work || work.executionStatus !== 'completed' || work.failure || !work.endedAt || !startedAt || !endedAt) return;
     if (work.startedAt < startedAt || work.endedAt > endedAt || result.commit !== ticket.commit) return;
     const recorded = ticket.results[stage];
-    if (recorded && recorded.outcome === result.outcome && recorded.commit === result.commit && recorded.summary === result.summary) return;
+    // The ticket is saved redacted and the attempt is not, so its words are compared as both would be saved.
+    if (recorded && recorded.outcome === result.outcome && recorded.commit === result.commit && sanitize(recorded.summary) === sanitize(result.summary)) return;
     return { attemptId: row.id, result: result as StageResult };
 }

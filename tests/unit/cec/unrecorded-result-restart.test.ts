@@ -74,7 +74,8 @@ const creates = (jira: ReturnType<typeof fakeJira>) => jira.calls.filter(args =>
 
 test.each<[string, (f: Awaited<ReturnType<typeof returnedRetest>>) => void]>([
     ['before the result is applied', f => f.first.store.listeners.add(event => { if (event.kind === 'stage-result-recovered') f.crash(); })],
-    ['after the Jira comment is verified', f => { const post = f.first.engine.jira.qaComment.bind(f.first.engine.jira); f.first.engine.jira.qaComment = async (...args) => { const posted = await post(...args); f.crash(); return posted; }; }],
+    // The adoption's QA comment writes nothing (Effects returns the verified one), so the next window is the attempt rewritten with it.
+    ['after its attempt is rewritten with the verified comment', f => { const finish = f.first.store.finish.bind(f.first.store); f.first.store.finish = (id, result) => { finish(id, result); f.crash(); }; }],
     ['after the verdict is saved', f => f.first.store.listeners.add(event => { if (event.kind === 'stage-blocked') f.crash(); })],
 ])('a restart %s ends on the returned verdict, one Jira comment and receipt, and no further worker', async (_point, interrupt) => {
     const f = await returnedRetest();
@@ -97,7 +98,7 @@ test.each<[string, (f: Awaited<ReturnType<typeof returnedRetest>>) => void]>([
     expect(comments(live.results.retest!.receipts)).toHaveLength(1);
 });
 
-test('a restart on a candidate that moved does not apply the returned result; the resume reads it back', async () => {
+test('a restart on a candidate that moved does not apply the returned result; the resume reconstructs', async () => {
     const f = await returnedRetest();
     f.first.store.listeners.add(event => { if (event.kind === 'stage-result-recovered') f.crash(); });
     await f.first.engine.run(KEY);
@@ -106,7 +107,7 @@ test('a restart on a candidate that moved does not apply the returned result; th
     expect(resumeStep(after.store, t)).toBe('reconstruct');
 });
 
-test('a comment whose response was lost is never posted again when the returned result is applied; the next resume reads it back', async () => {
+test('a comment whose response was lost is never posted again when the returned result is applied; the next resume reconstructs', async () => {
     const f = await returnedRetest(jira => { jira.faults.loseCommentResponse = true; });
     expect(f.first.store.getEffect(`qa-comment:${f.attemptId}`)?.status).toBe('uncertain');
     f.first.store.listeners.add(event => { if (event.kind === 'stage-result-recovered') f.crash(); });
@@ -120,4 +121,21 @@ test('a comment whose response was lost is never posted again when the returned 
     expect(after.store.getEffect(`qa-comment:${f.attemptId}`)?.status).toBe('uncertain');
     expect(live).toMatchObject({ activity: 'blocked', recoveredAttemptId: f.attemptId });
     expect(resumeStep(after.store, live)).toBe('reconstruct');
+});
+
+test('a verdict whose summary the save redacts is not applied again after a restart', async () => {
+    const f = await returnedRetest();
+    const first = f.first, t = first.store.ticket(KEY);
+    const row = first.store.db.prepare('SELECT body FROM attempts WHERE id=?').get(f.attemptId) as { body: string };
+    const saved = { ...JSON.parse(row.body), summary: 'Hard-coded password: hunter2 in the staging config' };
+    first.store.db.prepare('UPDATE attempts SET body=? WHERE id=?').run(JSON.stringify(saved), f.attemptId);
+    const { startedAt: _s, endedAt: _e, elapsedMs: _m, ...result } = saved;
+    t.results.retest = result; t.activity = 'blocked';
+    first.store.save();
+    expect(unrecordedStageResult(first.store, t, 'retest')).toBeUndefined();
+    f.crash();
+    const after = f.restarted(), live = after.store.ticket(KEY);
+    expect(live.results.retest!.summary).toBe('Hard-coded password: [redacted]');
+    expect(unrecordedStageResult(after.store, live, 'retest')).toBeUndefined();
+    expect(resumeStep(after.store, live)).not.toBe('apply-returned-result');
 });
