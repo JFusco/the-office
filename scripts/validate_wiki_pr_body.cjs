@@ -3,11 +3,19 @@
 const { execFileSync } = require("node:child_process");
 const { readFileSync } = require("node:fs");
 
-const counts = "Processed \\d+ merged PRs: \\d+ changed, \\d+ unchanged, \\d+ errors\\.";
+const counts = "Processed (\\d+) merged PRs: (\\d+) changed, (\\d+) unchanged, 0 errors\\.";
 const maintenanceBodies = new Map([
   ["docs(wiki): reconcile missed merges", new RegExp("^Automated, reviewable batch wiki reconciliation\\. " + counts + "$")],
   ["docs(wiki): weekly issue and merge reconciliation", new RegExp("^Automated, reviewable weekly refresh of cited issue state and missed merge reconciliation\\. " + counts + "$")],
 ]);
+
+function matchesMaintenanceBody(title, body) {
+  const match = maintenanceBodies.get(title)?.exec(body);
+  if (!match) return false;
+
+  const [, processed, changed, unchanged] = match;
+  return BigInt(processed) === BigInt(changed) + BigInt(unchanged);
+}
 
 function hasCanonicalWikiBody(event, changedPaths) {
   const pull = event?.pull_request;
@@ -21,7 +29,7 @@ function hasCanonicalWikiBody(event, changedPaths) {
   const matches = parent
     ? pull.title === "docs(wiki): reconcile PR #" + parent
       && body === "Automated, reviewable wiki reconciliation for merged PR #" + parent + "."
-    : pull.head.ref === "bot/wiki-maintenance" && maintenanceBodies.get(pull.title)?.test(body);
+    : pull.head.ref === "bot/wiki-maintenance" && matchesMaintenanceBody(pull.title, body);
   if (!matches) return false;
 
   const base = pull.base.sha;

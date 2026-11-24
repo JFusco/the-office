@@ -26,15 +26,21 @@ describe('canonical wiki pull request body', () => {
         expect(files).toHaveBeenCalledWith(event.pull_request.base.sha, event.pull_request.head.sha);
     });
 
-    it.each([
+    describe.each([
         ['docs(wiki): reconcile missed merges', 'Automated, reviewable batch wiki reconciliation.'],
         ['docs(wiki): weekly issue and merge reconciliation', 'Automated, reviewable weekly refresh of cited issue state and missed merge reconciliation.'],
-    ])('accepts the canonical maintenance body for %s', (title, format) => {
-        const event = wikiEvent();
-        event.pull_request.head.ref = 'bot/wiki-maintenance';
-        event.pull_request.title = title;
-        event.pull_request.body = format + ' Processed 2 merged PRs: 1 changed, 1 unchanged, 0 errors.';
-        expect(hasCanonicalWikiBody(event, () => ['wiki/INDEX.md'])).toBe(true);
+    ])('%s', (title, prefix) => {
+        it.each([
+            ['accepts consistent successful counts', 'Processed 2 merged PRs: 1 changed, 1 unchanged, 0 errors.', true],
+            ['rejects nonzero errors', 'Processed 2 merged PRs: 1 changed, 1 unchanged, 1 errors.', false],
+            ['rejects inconsistent totals', 'Processed 3 merged PRs: 1 changed, 1 unchanged, 0 errors.', false],
+        ])('%s', (_name, counts, expected) => {
+            const event = wikiEvent();
+            event.pull_request.head.ref = 'bot/wiki-maintenance';
+            event.pull_request.title = title;
+            event.pull_request.body = prefix + ' ' + counts;
+            expect(hasCanonicalWikiBody(event, () => ['wiki/INDEX.md'])).toBe(expected);
+        });
     });
 
     it.each([

@@ -1,6 +1,6 @@
 # Plan ledger
 
-Executed-plan bodies are archived beside this file. Every historical candidate remains represented here after audit, including candidates that were not implemented or were outside this repository.
+The historical entries summarize recovered Office plans with public delivery evidence. The initial audit left some candidates unpublished.
 
 | Date | Plan | Status | Evidence | Topics |
 | --- | --- | --- | --- | --- |
