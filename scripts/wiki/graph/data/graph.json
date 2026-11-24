@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 33,
-    "edges": 65,
+    "nodes": 35,
+    "edges": 70,
     "byType": {
       "index": 4,
-      "journal": 1,
-      "plan": 22,
+      "journal": 2,
+      "plan": 23,
       "topic": 6
     }
   },
@@ -39,8 +39,39 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.928368,
-      "y": 0.371662,
+      "x": 0.936235,
+      "y": 0.351375,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-wiki-adoption-review.md",
+      "label": "Repair the Office wiki adoption",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/context-wiki",
+          "kind": "pull-request",
+          "number": 33,
+          "url": "https://github.com/jfusco/context-wiki/pull/33"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 562,
+          "url": "https://github.com/jfusco/the-office/issues/562"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 33,
+          "url": "https://github.com/jfusco/the-office/pull/33"
+        }
+      ],
+      "bytes": 1009,
+      "degree": 3,
+      "x": 0.858449,
+      "y": 0.512899,
       "size": 8
     },
     {
@@ -49,10 +80,10 @@
       "type": "index",
       "aliases": [],
       "githubRefs": [],
-      "bytes": 2904,
+      "bytes": 3394,
       "degree": 4,
-      "x": 0.981929,
-      "y": 0.189251,
+      "x": 0.98393,
+      "y": 0.178557,
       "size": 12
     },
     {
@@ -63,8 +94,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": 0.841254,
-      "y": 0.540641,
+      "x": 0.753071,
+      "y": 0.657939,
       "size": 12
     },
     {
@@ -88,8 +119,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": 0.723734,
-      "y": 0.690079,
+      "x": 0.62349,
+      "y": 0.781831,
       "size": 8
     },
     {
@@ -107,8 +138,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": 0.580057,
-      "y": 0.814576,
+      "x": 0.473869,
+      "y": 0.880596,
       "size": 8
     },
     {
@@ -126,8 +157,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": 0.415415,
-      "y": 0.909632,
+      "x": 0.309017,
+      "y": 0.951057,
       "size": 8
     },
     {
@@ -145,8 +176,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": 0.235759,
-      "y": 0.971812,
+      "x": 0.134233,
+      "y": 0.99095,
       "size": 8
     },
     {
@@ -164,8 +195,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": 0.047582,
-      "y": 0.998867,
+      "x": -0.044865,
+      "y": 0.998993,
       "size": 8
     },
     {
@@ -183,8 +214,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.142315,
-      "y": 0.989821,
+      "x": -0.222521,
+      "y": 0.974928,
       "size": 8
     },
     {
@@ -208,8 +239,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.327068,
-      "y": 0.945001,
+      "x": -0.393025,
+      "y": 0.919528,
       "size": 8
     },
     {
@@ -227,8 +258,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.5,
-      "y": 0.866025,
+      "x": -0.550897,
+      "y": 0.834573,
       "size": 8
     },
     {
@@ -252,8 +283,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.654861,
-      "y": 0.75575,
+      "x": -0.691063,
+      "y": 0.722795,
       "size": 8
     },
     {
@@ -295,8 +326,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.786053,
-      "y": 0.618159,
+      "x": -0.809017,
+      "y": 0.587785,
       "size": 8
     },
     {
@@ -314,8 +345,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.888835,
-      "y": 0.458227,
+      "x": -0.900969,
+      "y": 0.433884,
       "size": 8
     },
     {
@@ -339,8 +370,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.959493,
-      "y": 0.281733,
+      "x": -0.963963,
+      "y": 0.266037,
       "size": 8
     },
     {
@@ -358,8 +389,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.995472,
-      "y": 0.095056,
+      "x": -0.995974,
+      "y": 0.089639,
       "size": 8
     },
     {
@@ -395,8 +426,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.995472,
-      "y": -0.095056,
+      "x": -0.995974,
+      "y": -0.089639,
       "size": 8
     },
     {
@@ -450,8 +481,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.959493,
-      "y": -0.281733,
+      "x": -0.963963,
+      "y": -0.266037,
       "size": 8
     },
     {
@@ -469,8 +500,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.888835,
-      "y": -0.458227,
+      "x": -0.900969,
+      "y": -0.433884,
       "size": 8
     },
     {
@@ -488,8 +519,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.786053,
-      "y": -0.618159,
+      "x": -0.809017,
+      "y": -0.587785,
       "size": 8
     },
     {
@@ -513,8 +544,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.654861,
-      "y": -0.75575,
+      "x": -0.691063,
+      "y": -0.722795,
       "size": 8
     },
     {
@@ -532,8 +563,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.5,
-      "y": -0.866025,
+      "x": -0.550897,
+      "y": -0.834573,
       "size": 8
     },
     {
@@ -587,8 +618,8 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.327068,
-      "y": -0.945001,
+      "x": -0.393025,
+      "y": -0.919528,
       "size": 8
     },
     {
@@ -606,8 +637,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": -0.142315,
-      "y": -0.989821,
+      "x": -0.222521,
+      "y": -0.974928,
       "size": 8
     },
     {
@@ -625,8 +656,33 @@
       ],
       "bytes": 751,
       "degree": 2,
-      "x": 0.047582,
-      "y": -0.998867,
+      "x": -0.044865,
+      "y": -0.998993,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-repair-the-office-wiki-adoption-651b0935fc.md",
+      "label": "Repair the Office wiki adoption",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/context-wiki",
+          "kind": "pull-request",
+          "number": 33,
+          "url": "https://github.com/jfusco/context-wiki/pull/33"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 562,
+          "url": "https://github.com/jfusco/the-office/issues/562"
+        }
+      ],
+      "bytes": 802,
+      "degree": 3,
+      "x": 0.134233,
+      "y": -0.99095,
       "size": 8
     },
     {
@@ -636,10 +692,22 @@
       "aliases": [],
       "githubRefs": [
         {
+          "repository": "jfusco/context-wiki",
+          "kind": "pull-request",
+          "number": 33,
+          "url": "https://github.com/jfusco/context-wiki/pull/33"
+        },
+        {
           "repository": "jfusco/the-office",
           "kind": "issue",
           "number": 553,
           "url": "https://github.com/jfusco/the-office/issues/553"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 562,
+          "url": "https://github.com/jfusco/the-office/issues/562"
         },
         {
           "repository": "jfusco/the-office",
@@ -906,10 +974,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 7991,
-      "degree": 26,
-      "x": 0.235759,
-      "y": -0.971812,
+      "bytes": 8315,
+      "degree": 27,
+      "x": 0.309017,
+      "y": -0.951057,
       "size": 12
     },
     {
@@ -925,10 +993,10 @@
           "url": "https://github.com/jfusco/the-office/issues/553"
         }
       ],
-      "bytes": 1169,
-      "degree": 6,
-      "x": 0.415415,
-      "y": -0.909632,
+      "bytes": 1429,
+      "degree": 8,
+      "x": 0.473869,
+      "y": -0.880596,
       "size": 8
     },
     {
@@ -963,9 +1031,9 @@
         }
       ],
       "bytes": 1324,
-      "degree": 7,
-      "x": 0.580057,
-      "y": -0.814576,
+      "degree": 8,
+      "x": 0.62349,
+      "y": -0.781831,
       "size": 8
     },
     {
@@ -1013,8 +1081,8 @@
       ],
       "bytes": 909,
       "degree": 6,
-      "x": 0.723734,
-      "y": -0.690079,
+      "x": 0.753071,
+      "y": -0.657939,
       "size": 8
     },
     {
@@ -1044,8 +1112,8 @@
       ],
       "bytes": 885,
       "degree": 11,
-      "x": 0.841254,
-      "y": -0.540641,
+      "x": 0.858449,
+      "y": -0.512899,
       "size": 8
     },
     {
@@ -1087,8 +1155,8 @@
       ],
       "bytes": 1048,
       "degree": 3,
-      "x": 0.928368,
-      "y": -0.371662,
+      "x": 0.936235,
+      "y": -0.351375,
       "size": 8
     },
     {
@@ -1118,8 +1186,8 @@
       ],
       "bytes": 944,
       "degree": 2,
-      "x": 0.981929,
-      "y": -0.189251,
+      "x": 0.98393,
+      "y": -0.178557,
       "size": 8
     }
   ],
@@ -1179,6 +1247,13 @@
       "target": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
       "type": "link",
       "relation": "link"
+    },
+    {
+      "id": "21093fe2401b8d75",
+      "source": "wiki/journal/2026-11-24-wiki-adoption-review.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
     },
     {
       "id": "22230b25ab3ef7f4",
@@ -1342,6 +1417,13 @@
       "relation": "link"
     },
     {
+      "id": "6f87bf246a99178c",
+      "source": "wiki/journal/2026-11-24-wiki-adoption-review.md",
+      "target": "wiki/plans/2026-11-24-repair-the-office-wiki-adoption-651b0935fc.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "74d50229fb62665d",
       "source": "wiki/plans/2026-11-06-harper-lesson-follow-up-07f8652d10.md",
       "target": "wiki/topics/planning-and-learning.md",
@@ -1454,6 +1536,13 @@
       "relation": "link"
     },
     {
+      "id": "ad921c2e7e3ce62a",
+      "source": "wiki/plans/2026-11-24-repair-the-office-wiki-adoption-651b0935fc.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "b82b88b70d178698",
       "source": "wiki/plans/2026-11-06-repository-graphify-setup-3e66cf6d6e.md",
       "target": "wiki/topics/context-wiki-and-ci.md",
@@ -1536,6 +1625,20 @@
       "target": "wiki/topics/context-wiki-and-ci.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "dcd77f5c11bfbfa9",
+      "source": "wiki/journal/2026-11-24-wiki-adoption-review.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "ddac30da9d7f8a85",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-repair-the-office-wiki-adoption-651b0935fc.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "e56d58329e2a8982",
