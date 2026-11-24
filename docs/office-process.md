@@ -465,7 +465,9 @@ harness reads the tab URLs on that port and nothing else: no page content, no co
 tab is still on the sign-in page (`server/qa/sign-in-observed.ts`). For Jira/Azure work the Office
 then requests one resume of the ticket, the same resume a person asks for, so the setup-stop cap,
 the PM read-back and QA's own check of the signed-in actor still run
-(`server/cec/qa/resume-after-sign-in.ts`). For GitHub delivery, where the wait parks the card, the
+(`server/cec/qa/resume-after-sign-in.ts`). The ticket and its wait are read again after the browser,
+and the request is saved together with the record that this sign-in was handled, so a restart
+between them loses neither. A request the queue refuses is recorded as handled and not asked again. For GitHub delivery, where the wait parks the card, the
 harness moves the card from Block back to the pickup lane with one issue comment, through Effects,
 and the ordinary parked resume follows (`server/delivery/parking/sign-in-unpark.ts`,
 `server/delivery/parking/return-to-pickup.ts`). Each is tried once per recorded wait, and a GitHub
