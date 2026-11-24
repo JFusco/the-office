@@ -3,10 +3,10 @@
 The Overseer is the repair engine for the harness and the Office. It is being delivered in phases;
 this guide covers what exists. Today that is deterministic deployment, the incident ledger and
 the mark the Office puts on stopped work a repair covers, which holds recovery back for it. Resume
-after a fix works for the seven GitHub read-back routes and for a Jira/Azure pilot ticket: once a
-fix you bound is running and you have enabled the switch for automatic resumes, which starts
-paused, the Office queues the request that fix named for the work it stopped (see
-[Resuming after a fix](#resuming-after-a-fix)). The remaining routes follow.
+after a fix works for the seven GitHub read-back routes, `review-pr`, `review-candidate` and
+`resume-ticket` for a Jira/Azure pilot ticket. Once a fix you bound is running and you have enabled
+automatic resumes, the Office uses the route that fix named. The switch starts paused. See
+[Resuming after a fix](#resuming-after-a-fix). The remaining routes follow.
 The autonomous runner is a later phase and is not described here until it
 ships. The process rules are in the Office process, under
 [Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
@@ -182,10 +182,10 @@ deployment.
 The Office records every stop it can see in one ledger, grouped by cause across projects. By
 itself the ledger retries and repairs nothing. It writes two things to a project: while a repair
 is in progress, a mark on the stops that repair covers (see Work awaiting a repair); and, once
-the fix runs and you have enabled it, the one request the fix named for a marked stop: a recovery
-request for a GitHub job, the ticket's own resume for a Jira/Azure ticket (see Resuming after a
-fix). Besides what it observes, it holds what you tell it about a repair:
-that one started, and which fix it is.
+the fix runs and you have enabled automatic resumes, one resume for each marked stop. The Office
+queues a recovery request for a GitHub read-back or a delivery request for a Jira/Azure ticket,
+or requeues a GitHub review job directly. See [Resuming after a fix](#resuming-after-a-fix).
+Besides what it observes, the ledger records when you start a repair and which fix you bind.
 
 ### Reading the ledger
 
@@ -388,15 +388,16 @@ fix, that job comes back to you as a "read back" request; it is not restarted by
 
 ### Resuming after a fix
 
-Once a fix you bound is running, the Office can resume the work it stopped: it queues the
-request the fix named for each piece of work, once, and stops holding that work back. It
-does this only while the switch below is enabled, and the switch starts paused. The GitHub
-read-back routes are resumed this way: `reconcile-implementation`, `reconcile-validation` and
-`reconcile-scope-repair`, which always need a `head`, and `reconcile-preparation`,
+Once a fix you bound is running, the Office uses its route to resume each piece of work once and
+lifts its repair wait. It does this only while the switch below is enabled, and the switch starts
+paused. The Office queues recovery requests for the GitHub read-back routes
+`reconcile-implementation`, `reconcile-validation` and `reconcile-scope-repair`, which always need
+a `head`, and `reconcile-preparation`,
 `reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a `head` or without.
-A Jira/Azure pilot ticket is resumed through `resume-ticket`, its own resume (see A ticket's
-resume, below). The other rows of the table are accepted by `bind-fix` but not resumed yet; their
-work is handed back to you when the wait runs out.
+For a Jira/Azure pilot ticket, the Office queues the ticket's own `resume-ticket` request (see A
+ticket's resume, below). Through `review-pr` and `review-candidate` it requeues the GitHub job
+directly, as your recheck does (see A review's resume, below). The other rows of the table can be
+bound with `bind-fix` and await dispatch support. Their work returns to you when the wait runs out.
 
 **Cost.** `reconcile-review` with no `head` checks a saved independent review against the
 unchanged pull request and runs no model. With the `head` of a stopped base handoff it reads the
@@ -416,7 +417,9 @@ a fix may name:
 | `reconcile-preparation`, `reconcile-closeout` | a GitHub delivery job | `{ key, head? }` | the original stopped worker's ID; empty for the saved-result route |
 | `reconcile-review` | a GitHub delivery job | `{ key, head? }` | the stopped base-update handoff worker's ID or the continuation's original worker; empty for the saved-review route |
 | `reconcile-base-update` | a GitHub delivery job | `{ key, head? }` | the job's head commit for a board preflight, or the original base-update worker's ID; empty for the saved-result route |
-| `review-candidate`, `review-pr`, `requeue-implement` | a GitHub delivery job | `{ key }` | none |
+| `review-pr` | a GitHub delivery job stopped at `lead-pr`, at a merge preflight that sent no merge (`merge`), or at post-merge CI recovery (`ci-recovery`) | `{ key }` | none |
+| `review-candidate` | a GitHub delivery job stopped at candidate review (`review`) | `{ key }` | none |
+| `requeue-implement` | a GitHub delivery job | `{ key }` | none |
 | `review-assignment` | an assignment review | `{ key }`, the ticket key | none |
 | `reconcile-maintenance` | a maintenance run | `{ key }`, the run's own ID | none |
 | `retry-checkpoint`, `reconcile-native-checkpoint` | a checkpoint | `{ key }`, the checkpoint's own ID | none |
@@ -511,11 +514,28 @@ reason, as `resume-refused`:
 | `resumes-paused` | The switch is paused. | Queued once you enable it, if the work still waits. |
 | `release-unconfirmed` | The Office could not verify the running release or has yet to confirm that it contains the fix. | A rollback to a verified release known to contain the fix can still allow admission. If the running release lacks the fix or cannot be verified, the Office withdraws the deployment mark and returns the incident to `shipped`. |
 | `project-paused` | The project is paused or draining. | Queued when it runs again. |
-| `request-pending` | Another request for that ticket is queued or working. For a Jira/Azure ticket also: a scheduler claim is active for it, or a QA handoff you approved is still waiting on its ownership check. | Tried again each pass, and queued when that is over if the work still waits for this repair. A Jira/Azure ticket someone else resumed does not: see A ticket's resume. |
+| `request-pending` | Another request for that ticket key is queued or working. An active scheduler claim on the GitHub review job or a Jira/Azure ticket also blocks the resume, even with no queued or working request. For a Jira/Azure ticket, an approved QA handoff still awaiting its ownership check also blocks the resume. | Tried again each pass. The Office resumes the work when it clears if the repair wait still holds. See A ticket's resume for what happens when someone else resumes a Jira/Azure ticket. |
 | `wait-ended` | The work is not being held for this repair right now. Either that is final: the wait ran out after 48 hours, or the work stopped again or was moved. Or it is temporary: something stronger explains the stop for now, such as a hold, a decision, a merge approval, a prerequisite or an unconfirmed write. | If final, not resumed; the item is yours. If temporary, the Office tries again each pass and queues it once that cause is gone, as long as the 48 hours have not run out. |
 | `head-mismatch` | The route's `head` is not the run its handler would read for that job now, the handler has nothing to read for it (a run an earlier request already reconciled included), or another job that is not cancelled has the same ticket key. | The Office tries again each pass and queues it if that changes while the wait holds. Read the detail: it names what the handler reads. |
 | `ticket-not-resumable` | For a ticket: its own resume would refuse, or would spend a step that is yours, or the Office could not tell this stop from a later one. QA setup has stopped three or more times in a row on the candidate; the feature gate is closed; the ticket is no resumable pilot (not a pilot, at the mailbox, complete); or its stop carries no date. | Tried again each pass, and queued if that changes while the wait holds. A stop with no date does not change: that ticket is yours. Read the detail. |
+| `transition-refused` | Your recheck would also refuse `review-pr` or `review-candidate`. The job is outside an eligible inactive review state, a merge was already attempted, or the project's merge policy leaves the merge to a person. | Tried again each pass, and resumed if that changes while the wait lasts. |
 | `key-mismatch`, `no-record`, `not-dispatchable`, `already-reconciled` | The route does not fit the work as it stands. | Not resumed; read the detail. |
+
+**A review's resume.** `review-pr` and `review-candidate` are not requests: your recheck commands
+change the job at once. The Office makes the same change, with the same checks and the same detail
+on the job, and saves a completed request beside it as the record of the resume, so its outcome
+can be judged. Two things differ from your recheck:
+
+- It does not emit your command's event (`pr-review-recheck`, `candidate-review-recheck`). A
+  recheck you make afterwards therefore still reads as `moved-by-hand`.
+- It also refuses while a scheduler claim is active for the job, since nothing queued stands
+  between it and the job.
+
+The record is never run: the scheduler reads a completed request as finished. Nothing in the
+browser shows it, nor the Office's admission event, which has no role and so appears in no one's
+recent activity. The job's own row shows it queued again, as after your recheck. A job that left
+a write to read back is not resumed this way: that write explains the stop, so the wait does not
+stand for it (`wait-ended`).
 
 **A ticket's resume.** A Jira/Azure pilot ticket is resumed by queueing its own `resume-ticket`
 request, the one the Resume command queues, marked as a repair resume. It differs from a
@@ -634,6 +654,7 @@ runs the stage in the ordinary way.
 | `reconcile-base-update` | `base-update-readback` for an unpublished candidate; none otherwise |
 | `reconcile-closeout` | `closeout-readback` for the saved closeout, where it reads the closeout's effects back. With a head it saves none itself and queues a separate cleanup request. The job stays at `closeout` either way and ends completed, so declare `record-settled` |
 | `reconcile-review` | `lead-pr`, the stage's own step, for the saved review; `review` for a continuation's saved review; none for a stopped base handoff |
+| `review-pr`, `review-candidate` | none; the job is queued again at the stage it stopped at, and the stage's own run saves its step. For a merge preflight declare `stage-left` for `merge` or `record-settled` |
 
 When in doubt, declare `stage-left` for the stage the job stopped at.
 

@@ -7,6 +7,7 @@ import { canonical } from '../canonical-json';
 import { freezeReads } from './freeze-reads';
 import { repairFreeze } from './repair-freeze';
 import { waitKey, waitOver } from './repair-wait';
+import { forTransition } from './dispatch-transition-resume';
 import { boundResume, resumeIdentity } from './resume-binding';
 import { dispatchable, RESUME_ROUTES, subjectParts, type ResumeRoute } from './resume-routes';
 import { routeHeadFault } from './route-head';
@@ -56,7 +57,8 @@ export function admitResume(store: Store, intent: ResumeIntent, now: Date, route
     if (bound) return { admitted: bound, replayed: true };
     if (state.paused || state.draining) return refused('project-paused', state.draining ? 'The project is draining.' : 'The project is paused.');
     const known = Object.hasOwn(routes, action) ? routes[action] : undefined;
-    if (!known || known.subject !== 'job' || !dispatchable(known, payload)) return refused('not-dispatchable', `This release does not dispatch ${action}${payload.head ? ' with a head' : ''}.`);
+    // A synchronous transition is admitted by its own path (dispatch-transition-resume.ts); it has no request to queue.
+    if (!known || known.subject !== 'job' || !dispatchable(known, payload) || forTransition(action)) return refused('not-dispatchable', `This release does not dispatch ${action}${payload.head ? ' with a head' : ''}.`);
     const work = subjectParts(binding.subject);
     if (!work || work.project !== store.project.id || work.kind !== 'delivery') return refused('no-record', `${binding.subject} is not delivery work of ${store.project.id}.`);
     const ref = { kind: work.kind, id: work.id } as Pick<WorkRef, 'kind' | 'id'>;
