@@ -46,9 +46,10 @@ test('a stop that was sent and did not land is uncertain and never sent again, w
     expect(w.service.loaded).toBe(true);
 });
 
-test('an inconclusive launchd answer is not read as stopped', async () => {
+test('an inconclusive launchd answer is not read as stopped: before anything was sent it is a refusal', async () => {
     const w = make(), execute = w.ctx.execute;
     w.ctx.execute = (async (program: string, args: string[], options: any) => { if (args[0] === 'print') throw new Error('launchctl read timed out'); return execute(program, args, options); }) as typeof execute;
-    await expect(stopService(w.ctx, OP, 'stop', 4001)).rejects.toThrow('timed out');
+    expect(await stopService(w.ctx, OP, 'stop', 4001)).toEqual({ status: 'rejected', reason: expect.stringContaining('timed out') });
     expect(w.calls).toEqual([]);
+    expect(w.service.loaded).toBe(true);
 });
