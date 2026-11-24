@@ -1,6 +1,6 @@
 # Plan ledger
 
-Executed-plan bodies are archived beside this file. Every historical candidate remains represented here after audit, including candidates that were not implemented or were outside this repository.
+The historical entries summarize recovered Office plans with public delivery evidence. The initial audit left some candidates unpublished.
 
 | Date | Plan | Status | Evidence | Topics |
 | --- | --- | --- | --- | --- |
@@ -26,5 +26,6 @@ Executed-plan bodies are archived beside this file. Every historical candidate r
 | 2026-11-22 | [Overseer release and incident milestones](./2026-11-22-overseer-release-and-incident-milestones-011af4318d.md) | partial | https://github.com/JFusco/the-office/pull/318 (4209f1da2e); https://github.com/JFusco/the-office/pull/338 (49fc3e0a20); https://github.com/JFusco/the-office/pull/361 (925b3c7348); https://github.com/JFusco/the-office/pull/364 (990aa5c484); https://github.com/JFusco/the-office/pull/373 (e7fe90feda); https://github.com/JFusco/the-office/pull/376 (420a262743); https://github.com/JFusco/the-office/pull/462 (b948b7508b) | releases-and-incidents <!-- plan:011af4318dd50011e9c5380c0fe5c1dc7d1a84e4ecb1730dbb4ee835d01f1dbb --> |
 | 2026-11-24 | [Live ticket timeline](./2026-11-24-live-ticket-timeline-e55e366158.md) | implemented | https://github.com/JFusco/the-office/pull/550 (5b3ba3994b) | office-ui-and-telemetry <!-- plan:e55e366158d015d969fb5dae10197df696a2569c5e7aa8be2a94d3bc75917d26 --> |
 | 2026-11-24 | [Install the Office context wiki and split Quality](./2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md) | implemented | https://github.com/JFusco/the-office/issues/553 and .github/workflows/quality.yml | context-wiki-and-ci <!-- plan:bfa15636b4a0afd2486f7fac40268b7d53913e7e7ffefe4947d820f25428ffc4 --> |
+| 2026-11-24 | [Repair the Office wiki adoption](./2026-11-24-repair-the-office-wiki-adoption-651b0935fc.md) | implemented | https://github.com/JFusco/the-office/issues/562; https://github.com/JFusco/context-wiki/pull/33 | context-wiki-and-ci <!-- plan:651b0935fc4ee1a5f34cfbf77bd1fa2ce6ab190f64eb8cca0466c7e3695477e0 --> |
 | 2026-11-24 | [Group repeated GitHub rate-limit observations (#563)](./2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md) | implemented | https://github.com/JFusco/the-office/issues/563 and tests/unit/incidents/normalize-cause.test.ts | releases-and-incidents <!-- plan:6ca584f77ef076419230f17e03f4d6b971de01adcaaaeeb5d34df4177e1a4f10 --> |
 <!-- wiki-plan-rows -->

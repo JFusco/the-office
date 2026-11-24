@@ -4,7 +4,7 @@ The Office gives models implementation and review decisions. The harness owns ca
 
 The initial hands-off rollout introduced this division for Brain. Later changes extended retry and recovery without giving abandoned model runs authority to publish. The simplification in PR #212 and deterministic intake in PR #335 consolidated work around the ordinary delivery path. Approved prerequisites are evaluated as structured gates.
 
-The Office can adopt eligible Context Wiki reconciliation PRs when a project opts in. It validates the bot account, commit history, and Markdown and graph-data scope before the ordinary review process.
+The Office can adopt eligible Context Wiki reconciliation PRs when a project opts in. It validates the bot account, commit history, and Markdown and graph-data scope. Qualified wiki PRs proceed directly to required current-head GitHub checks and repository merge rules.
 
 ## Evidence
 
