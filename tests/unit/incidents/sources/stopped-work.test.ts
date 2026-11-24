@@ -1,7 +1,9 @@
 import { afterEach, expect, test } from 'vitest';
 import { stoppedWork } from '../../../../server/incidents/sources/stopped-work';
 import type { Store } from '../../../../server/store/store';
-import { item, observe, projectStore } from '../incident-fixture';
+import { AT, item, observe, projectStore } from '../incident-fixture';
+import { reconcileBlockerFollowups } from '../../../../server/knowledge/blocker-followups';
+import { scheduledWork, type OfficeEntry } from '../../../../server/scheduling/scheduled-work';
 
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));
@@ -410,4 +412,18 @@ test('a write still unsettled for the subject is found under every reference it 
 test('another project\'s items in the projection are ignored', () => {
     const s = store();
     expect(stoppedWork(observe(s, [item('delivery', 'job-x', 'review', 'blocked', 'x', 'unclassified', 'brain')]))).toEqual([]);
+});
+
+test('a settled Harper duplicate beside an unsettled write of its ticket\'s delivery is no incident; a diagnosis that ran and failed under it is', () => {
+    const s = store(), at = '2026-11-20T10:00:00.000Z';
+    const diagnosis = (id: string, over: Record<string, unknown> = {}) => ({ id, requestId: id, from: 'knowledge', to: 'pm', ticket: 'GH-12', actionId: 'harper:investigation:inv-1', body: 'Harper requests READ ONLY diagnosis', status: 'queued', createdAt: at, sessionId: '', recheck: false, error: '', recipients: [], receipts: [], ...over }) as any;
+    s.state.coordination!.jobs = [job()];
+    s.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e-job', `${P}:delivery:job-1`, 'uncertain', JSON.stringify({ attemptId: 'job-1' }));
+    s.state.messages.push(diagnosis('older'), diagnosis('newer'), diagnosis('ran', { status: 'failed', sessionId: 'native', error: 'Error: Harper follow-up authorizes read-only diagnosis only' }));
+    s.state.knowledge!.followups = [{ id: 'investigation:inv-1', source: { kind: 'investigation', id: 'inv-1' }, key: 'GH-12', fingerprint: '', owner: 'Morgan', nextAction: 'Ellis owns source diagnosis', evidence: [], disposition: 'needs-input', createdAt: at, updatedAt: at, history: [], handoffId: 'newer', handoffIds: ['ran', 'older', 'newer'] }];
+    reconcileBlockerFollowups(s);
+    const progression = scheduledWork({ store: s, engine: {}, conversations: {}, coordinator: {} } as OfficeEntry, new Map([[P, s]]), AT, 'delivery');
+    const found = stoppedWork(observe(s, progression)).filter(candidate => candidate.subject.kind === 'conversation').map(candidate => candidate.subject.id);
+    expect(s.state.messages.find(message => message.id === 'older')).toMatchObject({ status: 'failed', supersededByHandoffId: 'newer' });
+    expect(found).toEqual(['ran']);
 });

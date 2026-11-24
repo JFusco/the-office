@@ -91,3 +91,27 @@ test('an earlier snapshot whose marked entry has no counterpart counts as change
         "cec: the earlier snapshot's cursor and fingerprint disagree on whether the store exists",
     ]);
 });
+
+/** A project store as the earlier producer left it: three queued Harper requests bound to one follow-up. */
+function seedDuplicates(path: string, dataRoot: string) {
+    const store = new Store(path, projectById('brain'), dataRoot);
+    const request = (id: string) => ({ id, requestId: id, from: 'knowledge' as const, to: 'pm' as const, ticket: '', actionId: 'harper:recovery:assignment-listener', body: 'Harper requests READ ONLY diagnosis', status: 'queued' as const, createdAt: '2026-11-20T02:00:00.000Z', sessionId: '', recheck: false, error: '', recipients: [], receipts: [] });
+    store.state.messages.push(request('a'), request('b'), request('c'));
+    store.state.knowledge!.followups = [{ id: 'recovery:assignment-listener', source: { kind: 'recovery', id: 'assignment-listener' }, key: '', fingerprint: '', owner: 'Morgan', nextAction: 'Listener read failed', evidence: [], disposition: 'needs-input', createdAt: '', updatedAt: '', history: [], handoffId: 'c', handoffIds: ['a', 'b', 'c'] }];
+    store.save(); store.close();
+}
+/** What a start under the deployment fence does to a project store (`deploy-world.ts`). */
+const fencedStart = (path: string, dataRoot: string) => { const store = new Store(path, projectById('brain'), dataRoot); store.recover(true); store.emit('office-opened', 'Brain office is open.'); store.close(); };
+
+test('the first upgraded open settling queued duplicates changes the store\'s contents and leaves its admission cursor where it was', () => {
+    const w = make();
+    seedDuplicates(w.projectDb, w.dataRoot);
+    const before = snapshotStores(w.ctx);
+    fencedStart(w.projectDb, w.dataRoot);
+    expect(storesChangedSince(w.ctx, before)).toEqual(['brain: its contents changed']);
+    expect(snapshotStores(w.ctx).admissions).toEqual(before.admissions);
+    // The same start on a store with nothing to settle compares unchanged.
+    const clean = make(), earlier = snapshotStores(clean.ctx);
+    fencedStart(clean.projectDb, clean.dataRoot);
+    expect(storesChangedSince(clean.ctx, earlier)).toEqual([]);
+});
