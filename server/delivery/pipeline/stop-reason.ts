@@ -3,6 +3,7 @@ import { CurrentChecksWait } from '../readiness/github-check-selection';
 import { EffectUncertainError } from '../../store/effects';
 import { CommandFailure } from '../../workers/process';
 import { incompleteReadOutput, temporaryReadFailure } from '../../scheduling/read-retries';
+import { APPROACH_GUARD_REJECTION } from './approach';
 import { SourceClosed } from './source-closed';
 
 /**
@@ -21,6 +22,9 @@ export function classifyStop(error: unknown, paused = false): StopKind {
         if (error.category === 'cancelled') return 'paused';
         if (error.category === 'transient-read') return 'transient';
     }
+    // The approach guard's refusal names uncertain effects among its reasons but reports no write. Only its exact
+    // message, bare or as a stage saves it, is excepted; a real unconfirmed write on that job is read from its receipts.
+    if (text === APPROACH_GUARD_REJECTION || text === `Error: ${APPROACH_GUARD_REJECTION}`) return 'unclassified';
     if (/uncertain|external effects require reconciliation|needs read-back|cannot be resent/i.test(text)) return 'uncertain-effect';
     if (paused) return 'paused';
     if (/\bis held:|\bpaused or held\b/.test(text)) return 'hold';

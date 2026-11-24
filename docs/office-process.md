@@ -789,9 +789,9 @@ It records new scheduler claims, effect intents, and queued harness and delivery
 same transaction as that write and outside the saved state. The journaled writers are
 `Store.claimWork`, `Effects.execute`, `enqueueRequest`, `requestDelivery`, the history-retirement,
 PR-metadata, QA plan-retry and saved-implementation operator commands, and the closeout cleanup
-request. The completed receipt of a synchronous review resume adds no admission-journal row.
-One start-up migration that queues a legacy `adopt-candidate` request is not journaled. It runs
-identically in every release.
+request. The completed receipt of a synchronous review or implement resume adds no
+admission-journal row. One start-up migration that queues a legacy `adopt-candidate` request is
+not journaled. It runs identically in every release.
 
 The journal omits status changes to existing records under a claim, during start-up recovery and
 through operator commands. An IT tick that began before the fence was taken can also requeue
@@ -1054,9 +1054,10 @@ ledger. Two steps write a project store. While a repair is in progress, the stop
 marked in their project (see Repair wait below). And once the fix is found in the running release,
 the Office resumes the marked stop once and removes the marker. It queues a recovery request for
 a GitHub read-back or a `resume-ticket` delivery request for a Jira/Azure pilot ticket, or
-requeues a GitHub review job directly (see Resume after a fix below). An incident by itself
-describes a stop and grants no retry or authority over the work. Resuming requires a fix bound to a
-route, that fix in the running release, and automatic resumes enabled.
+requeues a GitHub review job, or an implement the approach guard rejected, directly (see Resume
+after a fix below). An incident by itself describes a stop and grants no retry or authority over
+the work. Resuming requires a fix bound to a route, that fix in the running release, and automatic
+resumes enabled.
 
 **What is read.** Once a minute, unless a deployment holds the fence, one collector per signal
 reads every project:
@@ -1215,14 +1216,16 @@ routes are dispatched: `reconcile-implementation`, `reconcile-validation` and
 `reconcile-scope-repair`, which always need a head, and `reconcile-preparation`,
 `reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a head or as their
 saved-result form without one. `resume-ticket` is dispatched for a Jira/Azure pilot ticket (see
-A ticket's resume, below). `review-pr` and `review-candidate` are dispatched as synchronous
-transitions that requeue the job directly (see below). The remaining routes await dispatch support.
-`reconcile-review` without a head verifies a saved independent review against the unchanged pull
-request and issue and runs no model. Several of the other handlers start a model run when the
-scheduler runs the request (the implementation, validation, scope-repair, preparation, stopped
-base update and closeout read-backs), so a resume through them is a paid run no person started.
-A stopped base handoff is read from the run it already started; no other is started. A resume is
-still one per subject and fix, and none is admitted while the switch is paused.
+A ticket's resume, below). `review-pr`, `review-candidate` and `requeue-implement` are dispatched
+as synchronous transitions that requeue the job directly (see below). The remaining routes await
+dispatch support. `reconcile-review` without a head verifies a saved independent review against
+the unchanged pull request and issue and runs no model. Several of the other handlers start a
+model run when the scheduler runs the request (the implementation, validation, scope-repair,
+preparation, stopped base update and closeout read-backs), so a resume through them is a paid run
+no person started. `requeue-implement` starts no run itself, but the job it queues runs implement
+again on the same candidate, which is also a paid run no person started. A stopped base handoff is
+read from the run it already started; no other is started. A resume is still one per subject and
+fix, and none is admitted while the switch is paused.
 
 A ticket's resume. A subject whose route resumes a ticket (`cec/delivery/ticket:KEY`) is admitted
 by `server/incidents/repair/dispatch-ticket-resume.ts`, not by the job admission: same switch,
@@ -1291,7 +1294,8 @@ The pass (`server/incidents/repair/resume-arrivals.ts`) runs on the incident tim
 repair waits are kept, and never while a deployment holds the fence. For every `deployed`
 incident it puts each subject the reading calls `due` to admission in its own project
 (`server/incidents/repair/dispatch-resume.ts` for GitHub read-backs, `dispatch-ticket-resume.ts`
-for `resume-ticket`, and `dispatch-transition-resume.ts` for `review-pr` and `review-candidate`).
+for `resume-ticket`, and `dispatch-transition-resume.ts` for `review-pr`, `review-candidate` and
+`requeue-implement`).
 The pass reads the clock for each subject so admission uses that subject's current wait.
 
 The deployment mark alone does not admit a resume. It says what was found when it was made, and
@@ -1318,17 +1322,39 @@ repair-wait marker is removed. The request's admission-journal row commits with 
 attempt count or budget of the job is changed; the scheduler runs the request under its existing
 ownership and the handler checks its own preconditions.
 
-Two routes are synchronous transitions rather than requests: `review-pr` and `review-candidate`
-(`server/incidents/repair/dispatch-transition-resume.ts`). Their admission makes the checks above,
-except the head and the earlier completed request, and also refuses while a scheduler claim is
-active for the job. Then, in one project transaction, it makes the transition the operator's
-recheck makes (`server/scheduling/review-transitions.ts`, shared with `recheckPR` and
-`recheckCandidate`: the same checks, the same status and detail on the job), saves a `completed`
-request as the receipt of the resume with `repairResume` and how the job stood, removes the
-repair-wait marker and emits `repair-resume-admitted`. It does not emit the operator's event, so a
-later recheck by a person reads as moved by hand. A transition its own checks refuse is
-`transition-refused` and writes nothing. No admission-journal row is written: the receipt is no
-queued work, and the scheduler reads a completed request as terminal.
+Three routes are synchronous transitions rather than requests: `review-pr`, `review-candidate` and
+`requeue-implement` (`server/incidents/repair/dispatch-transition-resume.ts`). Their admission
+makes the checks above, except the head and the earlier completed request, and also refuses while
+a scheduler claim is active for the job. Then, in one project transaction, it makes the transition
+the operator's command makes, with the same checks and the same status and detail on the job: for
+the reviews `server/scheduling/review-transitions.ts`, shared with `recheckPR` and
+`recheckCandidate`; for an implement `requeueImplement`
+(`server/delivery/recovery/implementation/requeue-waited-implement.ts`), shared with the
+operator's `requeue-implement`. It then saves a `completed` request as the receipt of the resume
+with `repairResume` and how the job stood, removes the repair-wait marker and emits
+`repair-resume-admitted`. It does not emit the operator's event, so a later recheck or requeue by a
+person reads as moved by hand. A transition its own checks refuse is `transition-refused` and
+writes nothing. No admission-journal row is written: the receipt is no queued work, and the
+scheduler reads a completed request as terminal. The admission finds the job by the bound ID; the
+operator's command finds the first job of the key that is not cancelled. Both refuse while a
+scheduler claim is active on the job as delivery work, by kind and ID.
+
+`requeueImplement` requeues a job blocked at `implement` with the approach guard's message, whose
+last two implement results are a structured wait or decision and then a passed result the guard
+rejected. It refuses a job with a pull request, a hold, a write to read back or an active worker,
+and a legacy recovery job. It runs the guard on a copy without the rejected result and requeues
+only if the guard accepts it; the scheduler then runs implement again, a paid model run. A job
+whose pair a later run replaced is refused, so a resume under a later fix is `transition-refused`.
+The guard's rejection (`APPROACH_GUARD_REJECTION`, `server/delivery/pipeline/approach.ts`) names
+uncertain effects among its reasons but reports no write. `classifyStop` therefore labels a new
+stop with exactly that message, bare or as saved, `unclassified`, after the typed errors and
+before the uncertain-write wording. A longer message and a typed uncertain effect stay `uncertain-effect`,
+and a write still unconfirmed on the job is read from its receipts, which keeps the repair wait
+from holding it. A stop saved before this rule keeps its saved kind, `uncertain-effect`, so its
+resume is `wait-ended`. The transition saves no stage step, so declare `stage-left` for
+`implement`. Acceptance saves a rejected passed result as a step before it rethrows
+(`server/delivery/pipeline/accept-stage-result.ts`), so `stage-result-passed` for `implement` can
+read as crossed while the job is still blocked at `implement`.
 
 The head check (`server/incidents/repair/route-head.ts`) asks the handler's own admission rule,
 the function the handler itself calls when the request runs, so admission and execution cannot

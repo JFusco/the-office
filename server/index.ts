@@ -20,6 +20,7 @@ import { officeConfigRoute } from './office/http/office-config';
 import { telemetryRoute } from './telemetry/telemetry-route';
 import { deploymentFenceRoute } from './office/http/deployment-fence-route';
 import { deploymentFenceGate } from './office/http/deployment-fence-gate';
+import { keepAliveThroughStalls } from './office/http/keep-alive';
 import { startServiceTicks } from './office/service-ticks';
 import { snapshotText } from './office/http/snapshot-text';
 import { loopDelay } from './office/loop-delay';
@@ -82,6 +83,7 @@ const server = serve({ hostname: '127.0.0.1', port: PORT,
     } }) as Server;
 await new Promise<void>((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
 server.requestTimeout = 255000;
+keepAliveThroughStalls(server);
 for (const { store } of offices.entries.values())
     store.emit('office-opened', `${store.project.name} office is open. Saved work has been recovered; remote evidence still needs current verification.`);
 console.log(`\n  The Office is open → http://127.0.0.1:${PORT}\n  ${built ? 'Production build' : 'Development preview'} · Local only\n`);
