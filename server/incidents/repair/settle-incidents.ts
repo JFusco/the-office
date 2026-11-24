@@ -5,6 +5,7 @@ import { redactEvidence } from '../redact-evidence';
 import { nextState } from '../transitions';
 import { assessResumes } from './assess-resumes';
 import { resumeAdmitted } from './resume-arrivals';
+import { RESUME_ROUTES, type ResumeRoute } from './resume-routes';
 import { incidentVerdict } from './verify-incident';
 
 export interface SettleIncidentsInput {
@@ -14,6 +15,8 @@ export interface SettleIncidentsInput {
     now: () => Date;
     /** Asked before every listing, incident, admission lookup, opening history read and write. */
     fenced: () => boolean;
+    /** The route inventory the reading is taken against; the Office's own by default. */
+    routes?: Readonly<Record<string, ResumeRoute>>;
     report?: (message: string) => void;
 }
 
@@ -44,7 +47,7 @@ export interface SettledIncidents { verified: string[]; recurred: string[] }
  * afresh before it is judged. One that cannot be judged is reported and leaves the others
  * unaffected.
  */
-export function settleIncidents({ ledger, running, now, fenced, report = console.error }: SettleIncidentsInput): SettledIncidents {
+export function settleIncidents({ ledger, running, now, fenced, routes = RESUME_ROUTES, report = console.error }: SettleIncidentsInput): SettledIncidents {
     const settled: SettledIncidents = { verified: [], recurred: [] };
     for (const listed of ['deployed', 'verified'] as const) {
         if (fenced()) return settled;
@@ -57,7 +60,7 @@ export function settleIncidents({ ledger, running, now, fenced, report = console
                 const fix = incident?.fixes?.at(-1);
                 if (!incident || !fix || incident.state === 'deployed' && !(fix.deployed && running(fix))) continue;
                 let held = false;
-                const standings = assessResumes(incident, ANY_SWITCH, undefined, subject => !(held ||= fenced()) && resumeAdmitted(ledger, incident, subject))?.subjects ?? null;
+                const standings = assessResumes(incident, ANY_SWITCH, routes, subject => !(held ||= fenced()) && resumeAdmitted(ledger, incident, subject))?.subjects ?? null;
                 if (held || fenced()) return settled;
                 // What opened since the event the incident is measured from, by the ledger's own order of writing.
                 const since = incident.state === 'verified' ? incident.verified?.event : fix.deployed?.event;

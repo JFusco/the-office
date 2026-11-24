@@ -1,12 +1,15 @@
 import { afterEach, expect, test } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
+import { APPROACH_GUARD_REJECTION } from '../../../../server/delivery/pipeline/approach';
+import { stopReason } from '../../../../server/delivery/pipeline/stop-reason';
+import { requeueWaitedImplement } from '../../../../server/delivery/recovery/implementation/requeue-waited-implement';
 import { judgeResumes } from '../../../../server/incidents/repair/judge-resumes';
 import { dispatchResumes } from '../../../../server/incidents/repair/resume-arrivals';
 import { settleIncidents } from '../../../../server/incidents/repair/settle-incidents';
 import { recheckCandidate, recheckPR } from '../../../../server/scheduling/operator-commands';
 import type { Store } from '../../../../server/store/store';
 import type { RepairRoute, SubjectFix } from '../../../../src/contracts/incidents';
-import { later } from './repair-wait-fixture';
+import { AT, later } from './repair-wait-fixture';
 import { deployedWorld, ENABLED, OPERATION, PAUSED, RELEASE } from './resume-fixture';
 
 const stores: Store[] = [], dbs: DatabaseSync[] = [];
@@ -74,4 +77,34 @@ test('a resume the transition refuses is recorded once with its reason, and admi
         ['transition-refused', 'The handler\'s own check refused it: Only an inactive PR review or a merge preflight with no attempted write can be rechecked']]);
     delete w.jobs()[0].mergeAttempt;
     expect(pass(w, 7)).toEqual({ admitted: [ONE], refused: [], held: [] });
+});
+
+test('an implement resume is judged by the job leaving implement, and a person\'s later requeue reads as moved by hand', async () => {
+    const result = (over: Record<string, unknown> = {}) => ({ outcome: 'passed', summary: 'Fixture', commit: 'a'.repeat(40), evidence: [], findings: [], receipts: [], previewUrl: '', worktree: '/wt', branch: 'codex/1', prId: 0, qaRunDir: '', paidRuns: 0, blocker: '', ...over });
+    const small = { plan: 'brief', review: 'focused', validation: 'developer-checks', checks: ['pnpm run verify:ci'], reason: 'Data-only profile.' };
+    const waited = () => ({ stage: 'implement', result: result({ outcome: 'blocked', resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [] } }) }), passed = () => ({ stage: 'implement', result: result({ approach: small }) });
+    const guard = `Error: ${APPROACH_GUARD_REJECTION}`;
+    const declare = (bound: SubjectFix): SubjectFix => bound.disposition === 'route' ? { ...bound, boundary: { kind: 'stage-left', stage: 'implement' } } : bound;
+    const w = await deployedWorld(stores, dbs, ['1', '2'], route('requeue-implement', 'implement'), { declare,
+        job: { stage: 'implement', detail: guard, head: 'a'.repeat(40), worktree: '/wt', branch: 'codex/1', pr: 0, stop: stopReason(new Error(APPROACH_GUARD_REJECTION), false, AT), steps: [waited(), passed()] } });
+    expect(pass(w)).toEqual({ admitted: [ONE, TWO], refused: [], held: [] });
+    expect(w.jobs().map(job => [job.stage, job.status])).toEqual([['implement', 'queued'], ['implement', 'queued']]);
+    // The Office's own admission is no person's move.
+    expect(w.store.state.events.filter(event => event.kind === 'implement-requeued')).toEqual([]);
+    // Queued and still at implement: pending.
+    expect(judge(w, 6)).toEqual([]);
+    expect(outcomes(w)).toEqual([]);
+    // The first job's re-run is accepted and it moves on to review. The second waits again, passes, is rejected by the guard again, and a person requeues it.
+    Object.assign(w.jobs()[0], { stage: 'review', status: 'queued' });
+    Object.assign(w.jobs()[1], { status: 'blocked', detail: guard, steps: [...w.jobs()[1].steps, waited(), passed()] });
+    requeueWaitedImplement(w.store, 'GH-2');
+    const stood = w.requests().find(request => request.key === 'GH-2')!.repairResume!.stood!.event!;
+    const requeued = w.store.state.events.filter(event => event.kind === 'implement-requeued');
+    expect(requeued.map(event => [event.ticket, event.role])).toEqual([['GH-2', 'pm']]);
+    expect(requeued[0].id).toBeGreaterThan(stood);
+    expect(judge(w, 7)).toEqual([ONE, TWO]);
+    expect(outcomes(w)).toEqual([
+        [ONE, 'advanced', 'The job left implement for review after its resume.'],
+        [TWO, 'moved-by-hand', expect.stringMatching(/^An operator's command \(implement-requeued\) moved the job at .*, after its resume\.$/)],
+    ]);
 });

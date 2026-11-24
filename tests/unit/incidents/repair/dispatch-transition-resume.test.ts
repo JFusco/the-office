@@ -2,10 +2,15 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { canonical } from '../../../../server/incidents/canonical-json';
+import { APPROACH_GUARD_REJECTION } from '../../../../server/delivery/pipeline/approach';
+import { stopReason } from '../../../../server/delivery/pipeline/stop-reason';
+import { recordIncidentEvent } from '../../../../server/incidents/record-event';
 import { admitTransitionResume, forTransition } from '../../../../server/incidents/repair/dispatch-transition-resume';
-import { REPAIR_WAIT_MS } from '../../../../server/incidents/repair/repair-wait';
+import { REPAIR_WAIT_MS, repairWaitFor } from '../../../../server/incidents/repair/repair-wait';
 import { resumeIdentity } from '../../../../server/incidents/repair/resume-binding';
 import { RESUME_ROUTES, type ResumeRoute } from '../../../../server/incidents/repair/resume-routes';
+import { settleIncidents } from '../../../../server/incidents/repair/settle-incidents';
+import { WAIT_ENDED } from '../../../../server/incidents/repair/undo-admission';
 import * as mergeCeiling from '../../../../server/delivery/readiness/merge-ceiling';
 import * as policy from '../../../../server/office/project-policy';
 import { recheckCandidate } from '../../../../server/scheduling/operator-commands';
@@ -13,7 +18,7 @@ import { enqueueRequest } from '../../../../server/scheduling/requests';
 import { scheduledWork, type OfficeEntry } from '../../../../server/scheduling/scheduled-work';
 import type { Store } from '../../../../server/store/store';
 import type { RepairRoute, SubjectFix } from '../../../../src/contracts/incidents';
-import { later } from './repair-wait-fixture';
+import { AT, later } from './repair-wait-fixture';
 import { deployedWorld, FIX, OPERATION, RELEASE } from './resume-fixture';
 
 const stores: Store[] = [], dbs: DatabaseSync[] = [];
@@ -212,7 +217,113 @@ test.each([
     }
 });
 
-test('only the two review routes are transitions', () => {
-    expect(Object.keys(RESUME_ROUTES).filter(forTransition).sort()).toEqual(['review-candidate', 'review-pr']);
-    for (const action of ['constructor', 'toString', 'hasOwnProperty', 'requeue-implement', 'review-assignment', 'resume-ticket']) expect(forTransition(action), action).toBe(false);
+test('only the two review routes and the implement requeue are transitions', () => {
+    expect(Object.keys(RESUME_ROUTES).filter(forTransition).sort()).toEqual(['requeue-implement', 'review-candidate', 'review-pr']);
+    for (const action of ['constructor', 'toString', 'hasOwnProperty', 'review-assignment', 'resume-ticket', 'reconcile-implementation']) expect(forTransition(action), action).toBe(false);
+});
+
+const HEAD = 'a'.repeat(40), GUARD = `Error: ${APPROACH_GUARD_REJECTION}`, REQUEUED = 'Implement requeued on the same candidate after the provider-wait result; the earlier and rejected results are retained.';
+const small = { plan: 'brief', review: 'focused', validation: 'developer-checks', checks: ['pnpm run verify:ci'], reason: 'Data-only profile.' };
+const stepResult = (over: Record<string, unknown> = {}) => ({ outcome: 'passed', summary: 'Fixture', commit: HEAD, evidence: [], findings: [], receipts: [], previewUrl: '', worktree: '/wt', branch: 'codex/1', prId: 0, qaRunDir: '', paidRuns: 0, blocker: '', ...over });
+const waitedStep = (over: Record<string, unknown> = {}) => ({ stage: 'implement', result: stepResult({ outcome: 'blocked', resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [] }, ...over }) });
+const passedStep = () => ({ stage: 'implement', result: stepResult({ approach: small }) });
+/** The stop the harness saves when the approach guard rejects a passed implement, dated `at`. */
+const guardStop = (at: Date) => stopReason(new Error(APPROACH_GUARD_REJECTION), false, at);
+const implementRoute = route('requeue-implement', 'implement');
+/** Harness-owned jobs the approach guard stopped at implement right after a structured wait, bound to `requeue-implement` and declared to leave implement. */
+const guarded = (job: Record<string, unknown> = {}, ids = ['1']) => deployedWorld(stores, dbs, ids, implementRoute, {
+    job: { stage: 'implement', detail: GUARD, head: HEAD, worktree: '/wt', branch: 'codex/1', pr: 0, stop: guardStop(AT), steps: [waitedStep(), passedStep()], ...job }, declare: leaving('implement') });
+
+test('a due implement resume requeues only the bound job as the operator\'s requeue does, saves one completed receipt with the binding and lifts that wait alone', async () => {
+    const w = await guarded({}, ['1', '2']);
+    expect(w.jobs()[0].stop).toEqual({ kind: 'unclassified', at: AT.toISOString() });
+    // Another job for the same ticket, just as eligible, ahead of the bound one.
+    w.jobs().unshift({ ...structuredClone(w.jobs()[0]), id: '9' });
+    const sibling = structuredClone(w.jobs()[0]), bound = structuredClone(w.jobs()[1]), before = w.admissions(), events = w.store.state.events.length;
+    expect(Object.keys(w.waits())).toEqual(['delivery/1', 'delivery/2']);
+    const outcome = admit(w) as { admitted: Record<string, any>; replayed: boolean };
+    expect(outcome).toMatchObject({ replayed: false, admitted: { action: 'requeue-implement', key: 'GH-1', head: '', lane: 'delivery', status: 'completed', requestedAt: later(5).toISOString(), detail: `Repair resume: ${REQUEUED}` } });
+    // Only the job the binding names moves, and only its status and detail.
+    expect(w.jobs()[0]).toEqual(sibling);
+    expect(w.jobs()[1]).toEqual({ ...bound, status: 'queued', detail: REQUEUED });
+    expect(w.jobs()[1]).toMatchObject({ id: '1', stage: 'implement', head: HEAD, worktree: '/wt', branch: 'codex/1' });
+    expect(w.jobs()[1].steps).toEqual(bound.steps);
+    expect(w.jobs()[2]).toMatchObject({ id: '2', status: 'blocked', detail: GUARD });
+    // Exactly one project event, the Office's own: the operator's `implement-requeued` would read as a person's move.
+    const added = w.store.state.events.slice(0, w.store.state.events.length - events);
+    expect(added.map(event => [event.kind, event.message, event.ticket])).toEqual([['repair-resume-admitted', `GH-1: requeue-implement resumed after harness fix ${FIX.slice(0, 7)} (${w.id}).`, 'GH-1']]);
+    const resume = { id: resumeIdentity(w.id, ONE, 'cli-bind-1'), incident: w.id, subject: ONE, digest: w.binding('1').digest, fix: 'cli-bind-1', commit: FIX, action: 'requeue-implement',
+        payload: createHash('sha256').update(canonical({ key: 'GH-1' })).digest('hex'), release: { commit: RELEASE, operation: OPERATION }, admittedAt: later(5).toISOString(),
+        // How the job stood before the transition.
+        stood: { steps: 2, stage: 'implement', event: added[0].id } };
+    expect(outcome.admitted.repairResume).toEqual(resume);
+    expect(w.requests()).toEqual([outcome.admitted]);
+    // The receipt is no queued work: nothing is journaled as admitted for it.
+    expect(w.admissions()).toEqual(before);
+    expect(Object.keys(w.waits())).toEqual(['delivery/2']);
+    // All of it is saved.
+    const saved = w.savedState().coordination!;
+    expect(saved.requests).toHaveLength(1);
+    expect(saved.requests![0]).toMatchObject({ action: 'requeue-implement', key: 'GH-1', status: 'completed', repairResume: resume });
+    expect(saved.jobs!.map(job => [job.id, job.status, job.detail])).toEqual([['9', 'blocked', GUARD], ['1', 'queued', REQUEUED], ['2', 'blocked', GUARD]]);
+    expect(Object.keys(saved.repairWaits!)).toEqual(['delivery/2']);
+    // Bound once: the same intent again answers with the same receipt and writes nothing.
+    const unchanged = untouched(w);
+    expect(admit(w, '1', 6)).toEqual({ admitted: outcome.admitted, replayed: true });
+    expect(w.store.state.events).toHaveLength(events + 1);
+    unchanged();
+});
+
+test('a fix resumes an implement once: after the re-run, a later guard stop under a fresh binding is refused transition-refused, and nothing is written', async () => {
+    const w = await guarded();
+    const first = (admit(w) as { admitted: Record<string, any> }).admitted;
+    // The queued job leaves view, re-runs implement, passes, and is rejected by the guard again.
+    w.observed(6);
+    const job = w.jobs()[0];
+    Object.assign(job, { status: 'blocked', detail: GUARD, stop: guardStop(later(7)), steps: [...job.steps, passedStep()] });
+    w.observed(7);
+    expect(settleIncidents({ ledger: w.ledger, running: () => ({ commit: RELEASE, operation: OPERATION }), now: () => later(8), fenced: () => false, report: message => { throw new Error(message); } })).toEqual({ verified: [], recurred: [w.id] });
+    // A fresh repair of that stop, a second fix bound to it, its wait, and the fix found in the running release.
+    w.start('cli-start-2', 9);
+    const bindings: SubjectFix[] = w.ledger.get(w.id)!.repair!.subjects.map(subject => ({ ...subject, disposition: 'route', route: implementRoute('1'), boundary: { kind: 'stage-left', stage: 'implement' } }));
+    recordIncidentEvent(w.ledger, w.id, 'cli-bind-2', w.ledger.get(w.id)!.revision, { kind: 'fix-bound', request: { kind: 'fix-bound', reference: FIX, bindings }, fix: { commit: FIX, pullRequest: null, onMain: true } }, later(10));
+    w.pass(11);
+    await w.arrive(undefined, 12);
+    expect(w.ledger.get(w.id)).toMatchObject({ state: 'deployed', fixes: [{ event: 'cli-bind-1' }, { event: 'cli-bind-2' }] });
+    const marker = repairWaitFor(w.store.state, w.work('1'), 'implement', later(13));
+    expect(marker).toMatchObject({ incident: w.id, digest: w.binding('1').digest });
+    expect(marker!.expiredAt).toBeUndefined();
+    expect(w.binding('1').digest).not.toBe(first.repairResume.digest);
+    const unchanged = untouched(w), waits = structuredClone(w.waits()), events = w.store.state.events.length;
+    const second = admitTransitionResume(w.store, w.intent('1', { fix: { event: 'cli-bind-2', commit: FIX } }), later(13));
+    expect(second).toEqual({ refused: 'transition-refused', detail: 'The handler\'s own check refused it: The rejected implement must directly follow a structured wait or decision' });
+    unchanged();
+    expect(w.waits()).toEqual(waits);
+    expect(w.requests()).toEqual([first]);
+    expect(w.store.state.events).toHaveLength(events);
+    expect(w.jobs()[0]).toMatchObject({ status: 'blocked', detail: GUARD });
+});
+
+test('a guard stop saved as an uncertain effect before this release, or a guard stop with a write still unconfirmed, is refused wait-ended', async () => {
+    const cases = {
+        // Saved by an earlier release: the kind it was saved with stands.
+        legacy: { stop: { kind: 'uncertain-effect', at: AT.toISOString() } },
+        // Classified anew, but a step reports a push that was never confirmed.
+        unconfirmed: { steps: [waitedStep({ receipts: [{ id: 'push', action: 'git push', target: 'origin', verified: false, uncertain: false, detail: 'unconfirmed' }] }), passedStep()] },
+    };
+    for (const [name, job] of Object.entries(cases)) {
+        const w = await guarded(job);
+        if (name === 'unconfirmed') expect(w.jobs()[0].stop).toEqual({ kind: 'unclassified', at: AT.toISOString() });
+        // The repair's marker stands for this very stop: the refusal is the stronger cause's, not a stale wait's.
+        const marker = repairWaitFor(w.store.state, w.work('1'), 'implement', later(5));
+        expect(marker, name).toMatchObject({ incident: w.id, digest: w.binding('1').digest });
+        expect(marker!.expiredAt, name).toBeUndefined();
+        const unchanged = untouched(w), events = w.store.state.events.length;
+        expect(admit(w), name).toEqual({ refused: 'wait-ended', detail: WAIT_ENDED });
+        unchanged();
+        expect(w.jobs()[0], name).toMatchObject({ status: 'blocked', detail: GUARD });
+        expect(Object.keys(w.waits()), name).toEqual(['delivery/1']);
+        expect(w.requests(), name).toEqual([]);
+        expect(w.store.state.events, name).toHaveLength(events);
+    }
 });

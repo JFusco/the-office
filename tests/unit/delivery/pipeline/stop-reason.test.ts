@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { APPROACH_GUARD_REJECTION, recordJobApproach } from '../../../../server/delivery/pipeline/approach';
 import { classifyStop, stopReason } from '../../../../server/delivery/pipeline/stop-reason';
+import type { TicketJob } from '../../../../src/shared';
 import { SourceClosed } from '../../../../server/delivery/pipeline/source-closed';
 import { CurrentChecksWait } from '../../../../server/delivery/readiness/github-check-selection';
 import { EffectUncertainError } from '../../../../server/store/effects';
@@ -27,6 +29,26 @@ describe('classifyStop', () => {
     it('never treats a hold, permission or uncertain write as a temporary read', () => {
         expect(classifyStop(new Error('permission denied after timeout'))).toBe('unclassified');
         expect(classifyStop(new Error('uncertain effect after connection reset'))).toBe('uncertain-effect');
+    });
+
+    it('leaves the approach guard\'s exact rejection unclassified, as thrown, as saved and bare; longer wording and a typed uncertain effect stay uncertain', () => {
+        let thrown: unknown;
+        // The guard's own refusal: a reduced approach after a failed worker.
+        try { recordJobApproach({ id: 'job1', key: 'GH-1', stage: 'implement', steps: [] } as unknown as TicketJob, { plan: 'brief', review: 'focused', validation: 'developer-checks', checks: ['pnpm test'], reason: 'Small.' }, 'developer', true); }
+        catch (error) { thrown = error; }
+        expect(thrown).toBeInstanceOf(Error);
+        expect((thrown as Error).message).toBe(APPROACH_GUARD_REJECTION);
+        expect(classifyStop(thrown)).toBe('unclassified');
+        // The text a blocked job saves (`String(error)`), and the bare message.
+        expect(classifyStop(String(thrown))).toBe('unclassified');
+        expect(classifyStop(`Error: ${APPROACH_GUARD_REJECTION}`)).toBe('unclassified');
+        expect(classifyStop(APPROACH_GUARD_REJECTION)).toBe('unclassified');
+        expect(stopReason(thrown, false, new Date('2026-11-15T12:00:00Z'))).toEqual({ kind: 'unclassified', at: '2026-11-15T12:00:00.000Z' });
+        // Anything more than the exact message keeps the uncertain-write rule.
+        expect(classifyStop(new Error(`${APPROACH_GUARD_REJECTION}; the merge needs read-back`))).toBe('uncertain-effect');
+        expect(classifyStop(new Error('Prior publication cannot be resent'))).toBe('uncertain-effect');
+        // A type says more than the words it carries.
+        expect(classifyStop(new EffectUncertainError('merge:1', APPROACH_GUARD_REJECTION))).toBe('uncertain-effect');
     });
 
     it('labels a pause only when nothing more specific is known, and leaves the rest unclassified', () => {

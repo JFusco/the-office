@@ -11,6 +11,7 @@ import { resumeIdentity } from '../../../../server/incidents/repair/resume-bindi
 import { releaseHolding } from '../../../../server/incidents/repair/running-release';
 import { comparison } from '../../../../server/incidents/deployed-fixes';
 import { admitRepairWaits } from '../../../../server/incidents/repair/admit-repair-waits';
+import { RESUME_ROUTES, type ResumeRoute } from '../../../../server/incidents/repair/resume-routes';
 import { HOUR } from './repair-wait-fixture';
 import { VERIFIED } from './resume-fixture';
 import { SHA } from '../github-fake';
@@ -23,11 +24,11 @@ afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0
 type World = Awaited<ReturnType<typeof deployedWorld>>;
 const ONE = 'cms-field-vocabulary/delivery/1', TWO = 'cms-field-vocabulary/delivery/2';
 const HOLDS_IT = { commit: RELEASE, operation: OPERATION };
-type More = { fenced?: () => boolean; entries?: { store: Store }[]; report?: (message: string) => void; running?: (fix: IncidentFix) => { commit: string; operation: string } | null; now?: () => Date };
+type More = { fenced?: () => boolean; entries?: { store: Store }[]; report?: (message: string) => void; running?: (fix: IncidentFix) => { commit: string; operation: string } | null; now?: () => Date; routes?: Readonly<Record<string, ResumeRoute>> };
 const pass = (w: World, control: ResumeSwitch = ENABLED, minutes = 5, more: More = {}) =>
-    dispatchResumes({ ledger: w.ledger, entries: more.entries ?? [{ store: w.store }], control: { read: () => control }, running: more.running ?? (() => HOLDS_IT), now: more.now ?? (() => later(minutes)), fenced: more.fenced ?? (() => false), report: more.report ?? (message => { throw new Error(message); }) });
+    dispatchResumes({ ledger: w.ledger, entries: more.entries ?? [{ store: w.store }], control: { read: () => control }, running: more.running ?? (() => HOLDS_IT), now: more.now ?? (() => later(minutes)), fenced: more.fenced ?? (() => false), routes: more.routes, report: more.report ?? (message => { throw new Error(message); }) });
 const events = (w: World, kind: string) => w.ledger.events(w.id).filter(event => event.kind === kind);
-const reading = (w: World, control: ResumeSwitch = ENABLED) => assessResumes(w.ledger.get(w.id)!, control, undefined, subject => resumeAdmitted(w.ledger, w.ledger.get(w.id)!, subject))!.subjects.map(subject => subject.standing);
+const reading = (w: World, control: ResumeSwitch = ENABLED, routes?: Readonly<Record<string, ResumeRoute>>) => assessResumes(w.ledger.get(w.id)!, control, routes, subject => resumeAdmitted(w.ledger, w.ledger.get(w.id)!, subject))!.subjects.map(subject => subject.standing);
 
 test('with resumes enabled, every due subject is resumed once and the ledger records each admission once', async () => {
     const w = await deployedWorld(stores, dbs), revision = w.ledger.get(w.id)!.revision;
@@ -148,20 +149,22 @@ test('a fix withdrawn and found again does not resume its subjects a second time
 
 test('only what the reading calls due is put to admission: no route and a subject that is gone are left alone; a head the handler would not take is refused and recorded', async () => {
     const w = await deployedWorld(stores, dbs, ['1', '2', '3'], jobId => jobId === '1' ? reviewRoute('1', { payload: { key: 'GH-1', head: 'worker-1' } }) : jobId === '2' ? reviewRoute('2', { action: 'requeue-implement' }) : reviewRoute('3'));
+    // The Office's inventory with one job route this release does not dispatch.
+    const routes: Record<string, ResumeRoute> = { ...RESUME_ROUTES, 'requeue-implement': { ...RESUME_ROUTES['requeue-implement'], dispatch: 'none' } };
     // The third job stopped again since: it is gone as bound.
     w.jobs()[2].stop = { kind: 'unclassified', at: 't2' };
     w.observed(4);
     // The reading is of the ledger alone: a route with a head is due, and the project's own record decides at admission.
-    expect(reading(w)).toEqual(['due', 'no-route', 'gone']);
+    expect(reading(w, ENABLED, routes)).toEqual(['due', 'no-route', 'gone']);
     const saved = w.saved(), before = w.ledger.events(w.id).length;
-    expect(pass(w)).toEqual({ admitted: [], refused: [ONE], held: [] });
+    expect(pass(w, ENABLED, 5, { routes })).toEqual({ admitted: [], refused: [ONE], held: [] });
     expect(w.saved()).toBe(saved);
     expect(w.ledger.events(w.id).slice(before).map(event => [event.kind, event.body.subject, event.body.code, event.body.detail])).toEqual([
         ['resume-refused', ONE, 'head-mismatch', 'reconcile-review for GH-1 reads its saved result, with no head; the route names worker-1.']]);
     // Recorded once, and put to admission again each pass.
-    expect(pass(w, ENABLED, 6)).toEqual({ admitted: [], refused: [ONE], held: [] });
+    expect(pass(w, ENABLED, 6, { routes })).toEqual({ admitted: [], refused: [ONE], held: [] });
     expect(w.ledger.events(w.id)).toHaveLength(before + 1);
-    expect(reading(w)).toEqual(['due', 'no-route', 'gone']);
+    expect(reading(w, ENABLED, routes)).toEqual(['due', 'no-route', 'gone']);
 });
 
 test('a subject in a project this Office does not hold is refused; a project that fails is reported and the rest go on', async () => {

@@ -6,6 +6,8 @@ import { admitResume } from '../../../../server/incidents/repair/dispatch-resume
 import { judgeResumes } from '../../../../server/incidents/repair/judge-resumes';
 import { dispatchResumes } from '../../../../server/incidents/repair/resume-arrivals';
 import { settleIncidents } from '../../../../server/incidents/repair/settle-incidents';
+import { assessResumes } from '../../../../server/incidents/repair/assess-resumes';
+import { RESUME_ROUTES, type ResumeRoute } from '../../../../server/incidents/repair/resume-routes';
 import { recordWithdrawnFixes } from '../../../../server/incidents/withdrawn-fixes';
 import type { Store } from '../../../../server/store/store';
 import type { ResumeSwitch } from '../../../../src/contracts/incidents';
@@ -18,10 +20,10 @@ afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0
 type World = Awaited<ReturnType<typeof deployedWorld>>;
 const ONE = 'cms-field-vocabulary/delivery/1', TWO = 'cms-field-vocabulary/delivery/2', THREE = 'cms-field-vocabulary/delivery/3';
 const fail = (message: string) => { throw new Error(message); };
-type More = { fenced?: () => boolean; report?: (message: string) => void; running?: () => unknown };
+type More = { fenced?: () => boolean; report?: (message: string) => void; running?: () => unknown; routes?: Readonly<Record<string, ResumeRoute>> };
 const HOLDS_IT = { commit: RELEASE, operation: OPERATION };
-const settle = (w: World, minutes: number, more: More = {}) => settleIncidents({ ledger: w.ledger, running: more.running ?? (() => HOLDS_IT), now: () => later(minutes), fenced: more.fenced ?? (() => false), report: more.report ?? fail });
-const admit = (w: World, control: ResumeSwitch = ENABLED) => dispatchResumes({ ledger: w.ledger, entries: [{ store: w.store }], control: { read: () => control }, running: () => HOLDS_IT, now: () => later(5), fenced: () => false, report: fail }).admitted;
+const settle = (w: World, minutes: number, more: More = {}) => settleIncidents({ ledger: w.ledger, running: more.running ?? (() => HOLDS_IT), now: () => later(minutes), fenced: more.fenced ?? (() => false), routes: more.routes, report: more.report ?? fail });
+const admit = (w: World, control: ResumeSwitch = ENABLED, routes?: Readonly<Record<string, ResumeRoute>>) => dispatchResumes({ ledger: w.ledger, entries: [{ store: w.store }], control: { read: () => control }, running: () => HOLDS_IT, now: () => later(5), fenced: () => false, routes, report: fail }).admitted;
 const judge = (w: World, minutes: number) => judgeResumes({ ledger: w.ledger, entries: [{ store: w.store }], running: () => HOLDS_IT, now: () => later(minutes), fenced: () => false, report: fail });
 const leave = (w: World, n: number) => Object.assign(w.jobs()[n], { stage: 'lead-pr', status: 'queued' });
 const stopAgain = (w: World, n: number, at: string) => Object.assign(w.jobs()[n], { stage: 'review', status: 'blocked', stop: { kind: 'unclassified', at } });
@@ -352,14 +354,19 @@ test('a stop the project dated before the deployment mark, first seen after it, 
 
 test('a subject the fix gave a route this release cannot dispatch keeps the incident deployed while it is still stopped', async () => {
     const w = await deployedWorld(stores, dbs, ['1', '2'], jobId => jobId === '2' ? { action: 'requeue-implement', payload: { key: 'GH-2' }, expectedStage: 'review' } : { action: 'reconcile-review', payload: { key: 'GH-1' }, expectedStage: 'review' });
-    expect(admit(w)).toEqual([ONE]);
+    // The Office's inventory with one job route this release does not dispatch.
+    const routes: Record<string, ResumeRoute> = { ...RESUME_ROUTES, 'requeue-implement': { ...RESUME_ROUTES['requeue-implement'], dispatch: 'none' } };
+    expect(admit(w, ENABLED, routes)).toEqual([ONE]);
+    expect(assessResumes(w.ledger.get(w.id)!, ENABLED, routes)!.subjects.find(subject => subject.subject === TWO)).toMatchObject({ standing: 'no-route', reason: 'This release cannot dispatch requeue-implement.' });
+    expect(w.jobs()[1].status).toBe('blocked');
     leave(w, 0);
     expect(judge(w, 6)).toEqual([ONE]);
-    expect(settle(w, 7)).toEqual({ verified: [], recurred: [] });
+    expect(settle(w, 7, { routes })).toEqual({ verified: [], recurred: [] });
+    expect(w.ledger.get(w.id)!.state).toBe('deployed');
     // Its stop clears without a resume: now it is accounted for.
     leave(w, 1);
     w.observed(8);
-    expect(settle(w, 9)).toEqual({ verified: [w.id], recurred: [] });
+    expect(settle(w, 9, { routes })).toEqual({ verified: [w.id], recurred: [] });
 });
 
 test('an incident that cannot be settled is reported and leaves the others unaffected', async () => {
