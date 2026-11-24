@@ -7,6 +7,7 @@ import { workKey, type AssignedIssue, type TicketJob } from '../../../src/shared
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import { likePrefix } from '../../store/like-prefix';
+import { draftPushEffectId, readBackRejectedDraftPush, rejectedDraftPushes } from '../publication/rejected-draft-push';
 
 const STOPPED = ['blocked', 'interrupted'];
 
@@ -21,12 +22,28 @@ export async function retireBacklogged(store: Store, execute: typeof command, jo
     for (const job of jobs.filter(job => job.candidateCleanup?.status === 'pending' && job.status !== 'completed' && (!STOPPED.includes(job.status) || !backlog(job))))
         delete job.candidateCleanup;
     for (const job of jobs.filter(job => STOPPED.includes(job.status))) {
-        if (!backlog(job) || initialManualStart(store.project.id, job) || needsReconciliation(store, job))
+        if (!backlog(job) || initialManualStart(store.project.id, job))
             continue;
-        const head = job.head;
+        const { head, branch, worktree } = job;
+        const rejected = rejectedDraftPushes(store, job);
+        if (rejected.length > 1) continue;
+        const current = store.getEffect(draftPushEffectId(job));
+        const unsettled = current?.status === 'uncertain' || current?.status === 'dispatching' ? current : undefined;
+        const push = rejected[0] ?? unsettled;
+        const unpublished = !!push;
+        let settlingPushId = !rejected.length && unsettled?.status === 'uncertain' ? unsettled.id : '';
+        if (needsReconciliation(store, job, unpublished, settlingPushId)) continue;
         // Cleanup awaits Git and GitHub; a job requeued meanwhile is no longer this decision's to retire.
-        const guard = () => { assertMayMutate(store, jobs, job, head); if (!STOPPED.includes(job.status)) throw new Error(`${job.key} is ${job.status} again; retirement withdrawn`); };
-        const removal = await removeCandidate(store, execute, job, guard).catch(error => error instanceof Error ? error : new Error(String(error)));
+        const guard = () => {
+            assertMayMutate(store, jobs, job, head);
+            if (!STOPPED.includes(job.status) || (unpublished && (job.branch !== branch || job.worktree !== worktree)) ||
+                needsReconciliation(store, job, unpublished, settlingPushId))
+                throw new Error(`${job.key} changed before Backlog retirement`);
+        };
+        if (push && !await readBackRejectedDraftPush(store, execute, job, push, guard))
+            continue;
+        settlingPushId = '';
+        const removal = await removeCandidate(store, execute, job, guard, unpublished ? head : '', unpublished).catch(error => error instanceof Error ? error : new Error(String(error)));
         if (!STOPPED.includes(job.status))
             continue; // Requeued while cleanup ran; nothing to record against this decision.
         recordCandidateCleanup(store, job, removal);
@@ -43,13 +60,16 @@ export async function retireBacklogged(store: Store, execute: typeof command, jo
 // A published PR, a live worker, a pending operator request or any unconfirmed
 // effect (stage receipts, harness effects, board moves, source-configuration attempts)
 // still needs its own reconciliation, so the job is kept.
-function needsReconciliation(store: Store, job: TicketJob): boolean {
+function needsReconciliation(store: Store, job: TicketJob, unpublished: boolean, settlingPushId: string): boolean {
     const source = job.implementationContinuation?.sourceConfig;
+    const work = workKey({ projectId: store.project.id, kind: 'delivery', id: job.id });
     return !!(job.pr || job.prUrl || source?.attemptOpen || source?.reservation)
         || !!store.state.workLog?.some(w => w.requestId === job.id && ['running', 'stopping'].includes(w.status))
         || !!store.state.coordination?.requests?.some(r => r.key === job.key && ['queued', 'working'].includes(r.status))
+        || store.activeClaims().some(claim => claim.work.kind === 'delivery' && claim.work.id === job.id)
         || !!job.boardUpdates?.some(update => update.status !== 'verified')
-        // Its own earlier remote-branch delete is settled by the cleanup's read-back, not here.
-        || !!store.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain') AND id NOT LIKE ? ESCAPE '\\'").get(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }), likePrefix(`harness:${job.id}:remove-remote:`))
+        // Only ordinary cleanup can read back an earlier remote-branch delete.
+        || !!store.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain') AND id != ? AND (? OR id NOT LIKE ? ESCAPE '\\')")
+            .get(work, settlingPushId, unpublished ? 1 : 0, likePrefix(`harness:${job.id}:remove-remote:`))
         || job.steps.some(step => hasUncertainEffects(step.stage, step.result));
 }
