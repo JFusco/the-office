@@ -106,6 +106,9 @@ jobs:
       - *pnpm-store
       - *cache
       - *install
+      # The startup test serves the production HTML from dist/.
+      - name: Build the startup test UI
+        run: pnpm exec vite build
       - run: pnpm test
 
   quality:
