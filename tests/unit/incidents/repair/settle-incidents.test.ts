@@ -351,7 +351,7 @@ test('a stop the project dated before the deployment mark, first seen after it, 
 });
 
 test('a subject the fix gave a route this release cannot dispatch keeps the incident deployed while it is still stopped', async () => {
-    const w = await deployedWorld(stores, dbs, ['1', '2'], jobId => jobId === '2' ? { action: 'review-pr', payload: { key: 'GH-2' }, expectedStage: 'review' } : { action: 'reconcile-review', payload: { key: 'GH-1' }, expectedStage: 'review' });
+    const w = await deployedWorld(stores, dbs, ['1', '2'], jobId => jobId === '2' ? { action: 'requeue-implement', payload: { key: 'GH-2' }, expectedStage: 'review' } : { action: 'reconcile-review', payload: { key: 'GH-1' }, expectedStage: 'review' });
     expect(admit(w)).toEqual([ONE]);
     leave(w, 0);
     expect(judge(w, 6)).toEqual([ONE]);

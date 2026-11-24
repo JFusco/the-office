@@ -4,7 +4,7 @@ import { assessmentEnabled } from '../features/handoff/disposition-store';
 import { enrolled, assertFeatureGate } from '../features/enrollment-gate';
 import { hasUncertainEffects } from '../delivery/pipeline/github-delivery';
 import type { Coordinator } from './coordination';
-import { assertHarnessMayMerge } from '../delivery/readiness/merge-ceiling';
+import { requeueCandidateReview, requeuePRReview } from './review-transitions';
 
 export function requestWork(this: Coordinator, key: string, binding?: FeatureBinding) {
     return this.store.transaction(() => {
@@ -56,25 +56,14 @@ export function updateCandidateBase(this: Coordinator, key: string) {
 
 export function recheckCandidate(this: Coordinator, key: string) {
     const job = this.state.jobs!.find(j => j.key === key && j.stage === 'review' && ['blocked', 'interrupted'].includes(j.status));
-    if (!job || job.steps.some(s => hasUncertainEffects(s.stage, s.result)))
-        throw new Error('A certain inactive read-only candidate review is required');
-    job.status = 'queued';
-    job.detail = 'Independent candidate review requeued; prior provider failures retained. No source work replayed.';
-    this.store.emit('candidate-review-recheck', job.detail, 'lead', key);
+    if (!job) throw new Error('A certain inactive read-only candidate review is required');
+    this.store.emit('candidate-review-recheck', requeueCandidateReview(job), 'lead', key);
 }
 
 export function recheckPR(this: Coordinator, key: string) {
     const job = this.state.jobs!.find(j => j.key === key && j.status !== 'cancelled');
-    const mergePreflight = job?.stage === 'merge' && !job.mergeAttempt && job.status === 'blocked';
-    const mergeRecovery = job?.stage === 'ci-recovery' && ['blocked', 'interrupted'].includes(job.status) && !!job.mergeCommit && !job.ciFollowupKey;
-    if (!job || !mergePreflight && !mergeRecovery && (job.stage !== 'lead-pr' || !['blocked', 'interrupted', 'watching'].includes(job.status)))
-        throw new Error('Only an inactive PR review or a merge preflight with no attempted write can be rechecked');
-    if (mergePreflight) assertHarnessMayMerge(this.store);
-    if (job.steps.some(s => hasUncertainEffects(s.stage, s.result)))
-        throw new Error('Original effects must be reconciled before a new review');
-    job.status = 'queued';
-    job.detail = mergeRecovery ? 'Post-merge CI recovery queued; the harness verifies the original failure and bounded retry state before effects.' : ['apply', 'publish'].includes(job.ciRepairs?.at(-1)?.phase || '') ? 'Saved CI repair requeued for guarded reconciliation; diagnosis and prior evidence retained.' : mergePreflight ? 'Merge preflight queued; no prior merge request was sent. Current head and checks will be verified again.' : 'Read-only PR reassessment queued. Prior sessions and results retained; source/publication stages will not replay.';
-    this.store.emit('pr-review-recheck', job.detail, 'lead', key);
+    if (!job) throw new Error('Only an inactive PR review or a merge preflight with no attempted write can be rechecked');
+    this.store.emit('pr-review-recheck', requeuePRReview(this.store, job), 'lead', key);
 }
 
 export function recheck(this: Coordinator, key: string) {

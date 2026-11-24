@@ -13,19 +13,19 @@ import { REPO, SHA } from '../github-fake';
 export const HOUR = 60;
 /** A delivery job the harness stopped; `stop.at` marks the episode. */
 export const job = (id: string, over: Record<string, unknown> = {}) => ({ id, key: `GH-${id}`, status: 'blocked', stage: 'review', detail: `Error: Worktree /tmp/w/${id} is missing`, head: 'abc1234', requestedAt: 'r', updatedAt: 'u', steps: [{ stage: 'review', result: { outcome: 'passed', blocker: '', summary: 'ok', evidence: [], findings: [], receipts: [] } }], stop: { kind: 'unclassified', at: 't1' }, ...over }) as any;
-export const blocked = (id: string, projectId = 'cms-field-vocabulary', cause: 'unclassified' | 'failed' | 'interrupted' | 'needs-decision' = 'unclassified') => item('delivery', id, 'review', 'blocked', 'Blocked', cause, projectId);
+export const blocked = (id: string, projectId = 'cms-field-vocabulary', cause: 'unclassified' | 'failed' | 'interrupted' | 'needs-decision' = 'unclassified', stage = 'review') => item('delivery', id, stage, 'blocked', 'Blocked', cause, projectId);
 
 /**
  * One project with stopped delivery jobs, observed into a ledger. `observed` syncs the ledger with
  * the jobs as they stand; `start` records a repair for the incident; `pass` runs the marker pass.
  */
-export function world(stores: Store[], dbs: DatabaseSync[], ids = ['1', '2']) {
+export function world(stores: Store[], dbs: DatabaseSync[], ids = ['1', '2'], over: Record<string, unknown> = {}) {
     const store = projectStore(); stores.push(store);
     const db = new DatabaseSync(':memory:'); dbs.push(db);
     const ledger = new IncidentLedger(db);
-    store.state.coordination!.jobs = ids.map(id => job(id));
+    store.state.coordination!.jobs = ids.map(id => job(id, over));
     const jobs = () => store.state.coordination!.jobs!;
-    const observed = (minutes = 0) => syncIncidents(ledger, office(observe(store, jobs().filter(j => ['blocked', 'interrupted'].includes(j.status)).map(j => blocked(j.id)))), later(minutes), undefined, message => { throw new Error(message); });
+    const observed = (minutes = 0) => syncIncidents(ledger, office(observe(store, jobs().filter(j => ['blocked', 'interrupted'].includes(j.status)).map(j => blocked(j.id, undefined, undefined, j.stage)))), later(minutes), undefined, message => { throw new Error(message); });
     observed();
     const id = ledger.list()[0].id;
     const start = (event = 'cli-start-1', minutes = 1, revision = ledger.get(id)!.revision) => recordIncidentEvent(ledger, id, event, revision, { kind: 'repair-started', request: { kind: 'repair-started', issue: 387 }, issue: { repository: REPO, number: 387, url: `https://github.com/${REPO}/issues/387` } }, later(minutes));
