@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 const Commit = z.string().regex(/^[0-9a-f]{40}$/), Digest = z.string().regex(/^[0-9a-f]{64}$/);
 
+/** The steps of a deployment, in order. A rollback reads a deployment's journal against them. */
+export const DEPLOY_STEPS = ['fence', 'idle', 'stop', 'backup', 'snapshot', 'plist', 'start', 'verify', 'record', 'release'];
+
 /** What a deployment fixes before its first step. A resumed controller reads these, never the live service, to know its plan. */
 export const DeployFacts = z.object({
     kind: z.literal('deploy'),

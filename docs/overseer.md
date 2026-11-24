@@ -32,7 +32,7 @@ Files, all under the data root (`.local/`):
 | `deployments/<operation>.launch.json`, `.outcome.json` | That the controller was launched, and how it ended |
 | `deployments/controller.sqlite` | The controller's Effects: one record per mutation |
 | `deployments/STOP.json` | Present when a deployment needs a person |
-| `backups/<operation>/` | Store copies and `inventory.json`, for recovery by hand |
+| `backups/<operation>/` | Store copies and `inventory.json`, for recovery by hand. A configured project with no store file yet is listed under `absent`, not copied |
 | `active-release.json` | The receipt of the last verified activation |
 
 ### Commands
@@ -75,7 +75,7 @@ activated by hand never passes through the command.
 | `deployed` | The target serves; `/api/health` confirmed its hash and a new instance | Target | Released |
 | `refused` | A precondition failed before anything changed, including a read of the service that failed before the fence was taken | Unchanged | Untouched |
 | `aborted` | The service did not become idle in time, or could not be read before the stop was sent; it was left running | Unchanged | Released |
-| `rolled-back` | Activation failed and the previous release serves again | Previous | Released |
+| `rolled-back` | Activation failed, or the store backup or snapshot before it failed, and the previous release serves again | Previous | Released |
 | `stopped` | A person is needed; `deployments/STOP.json` says where | See the record | Usually held |
 | `ended` | A person had that operation's fence released with `deploy end` | Unchanged | Released |
 
@@ -135,14 +135,20 @@ The record names the operation and the last journaled step. Then, by case:
   `rollback-…:<step>`). Look at what launchd runs
   and what the fence says, put the service in the state you want by hand, then
   `pnpm office deploy end <operation>` and remove the STOP record. `<operation>` is always the
-  deployment's ID, also when the step named is a rollback's.
+  deployment's ID, also when the step named is a rollback's. A `backup` or `snapshot` here is
+  uncertain: the service was no longer confirmed stopped, or the step's outcome is unknown. A
+  backup or snapshot that failed for a known reason is not this case. No target plist was intended,
+  so the deployment rolls back once the service is confirmed stopped and ends `rolled-back` with no
+  STOP.
 - **The journal ends in a cut-short line**: its last step is unknown, so nothing is undone on its
   word. Treat it as the case above.
-- **A rollback could not prove the stores were unchanged.** A missing baseline, an unreadable
-  store, an admission, or a changed store blocks restoration. A target that only started under the
-  fence is not a change; one that added a table or index, migrated saved state beyond what a start
-  rewrites or wrote any other row is, so a release with a store change is not rolled back once it
-  has opened the stores.
+- **A rollback could not prove the stores were unchanged.** From target plist intent onward the
+  rollback needs a complete baseline. A missing baseline, an unreadable store, an admission, or a
+  changed store blocks restoration. A target that only started under the fence is not a change; one
+  that added a table or index, migrated saved state beyond what a start rewrites or wrote any other
+  row is, so a release with a store change is not rolled back once it has opened the stores. A
+  project store that was absent at the snapshot and exists now is also a change. The snapshot has
+  nothing to compare it with, so nothing shows the previous release can read what it now holds.
   Check the STOP reason, confirm the service is down and the fence is held, then decide between
   fixing forward and restoring a complete backup from `backups/<operation>/` by hand. When the
   service runs what you want, run `pnpm office deploy end <operation>` and remove the record.

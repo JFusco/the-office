@@ -113,3 +113,51 @@ test('planner statistics are no part of any fingerprint, and an unusable earlier
     for (const eventsThrough of [undefined, -1, 1.5, '1'])
         expect(changedStores(before, project(path, [{ ...before[0], eventsThrough } as any]))).toEqual([{ name: 'cec', reason: 'its contents changed' }]);
 });
+
+test('a missing project store is marked absent; a missing store that is not a project and an unreachable project path are not', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'office-fingerprint-')); roots.push(dir);
+    const plain = resolve(dir, 'plain');
+    writeFileSync(plain, 'a regular file where a directory is expected');
+    expect(fingerprintStores([
+        { name: 'cec', path: resolve(dir, 'gone.sqlite') }, { name: 'office-control', path: resolve(dir, 'control.sqlite') }, { name: 'brain', path: resolve(plain, 'office.sqlite') },
+    ], { projects: ['cec', 'brain'] })).toEqual([
+        { name: 'cec', digest: null, absent: true, reason: expect.stringContaining('does not exist') },
+        { name: 'office-control', digest: null, reason: expect.stringContaining('does not exist') },
+        { name: 'brain', digest: null, reason: expect.stringContaining('ENOTDIR') },
+    ]);
+});
+
+test('a store absent in both reads is unchanged; one created or gone since, or unreadable now, is a change', () => {
+    const absent = { name: 'cec', digest: null, absent: true as const, reason: 'missing' }, control = { name: 'office-control', digest: '2'.repeat(64) }, cec = { name: 'cec', digest: '1'.repeat(64) };
+    expect(changedStores([absent, control], JSON.parse(JSON.stringify([control, absent])))).toEqual([]);
+    expect(changedStores([absent, control], [cec, control])).toEqual([{ name: 'cec', reason: 'created since the old service stopped' }]);
+    expect(changedStores([cec, control], [absent, control])).toEqual([{ name: 'cec', reason: 'its store no longer exists' }]);
+    expect(changedStores([absent], [{ name: 'cec', digest: null, reason: 'locked' }])).toEqual([{ name: 'cec', reason: 'the later fingerprint is unreadable: locked' }]);
+    expect(changedStores([absent, control], [control])).toEqual([{ name: 'cec', reason: 'the later fingerprint is unreadable: not covered' }]);
+    // A missing control store is read unmarked, so it never matches.
+    const missingControl = { name: 'office-control', digest: null, reason: 'does not exist' };
+    expect(changedStores([missingControl], [missingControl])).toEqual([{ name: 'office-control', reason: 'the earlier fingerprint is unreadable: does not exist' }]);
+});
+
+test.each<[string, unknown]>([
+    ['a marker that is not literally true', { name: 'cec', digest: null, absent: 'true' }],
+    ['a false marker', { name: 'cec', digest: null, absent: false }],
+    ['a null marker', { name: 'cec', digest: null, absent: null }],
+    ['a marked entry with a digest', { name: 'cec', digest: '1'.repeat(64), absent: true }],
+    ['a marked entry with no digest', { name: 'cec', absent: true }],
+])('%s blocks the comparison on either side', (_, entry) => {
+    const absent = { name: 'cec', digest: null, absent: true as const }, readable = { name: 'cec', digest: '1'.repeat(64) };
+    for (const other of [absent, readable]) {
+        expect(changedStores([entry] as never, [other])).toEqual([{ name: 'cec', reason: 'the earlier fingerprint has a malformed absent marker' }]);
+        expect(changedStores([other], [entry] as never)).toEqual([{ name: 'cec', reason: 'the later fingerprint has a malformed absent marker' }]);
+    }
+});
+
+test('receipts without a marker read as before: a readable digest matches, an unmarked null for a missing file does not', () => {
+    const path = database(), readable = JSON.parse(JSON.stringify(fingerprintStores([{ name: 'cec', path }])));
+    expect(readable[0]).not.toHaveProperty('absent');
+    expect(changedStores(readable, fingerprintStores([{ name: 'cec', path }]))).toEqual([]);
+    const old = JSON.parse(JSON.stringify([{ name: 'cec', digest: null, reason: '/x/office.sqlite does not exist' }]));
+    for (const now of [{ name: 'cec', digest: null, absent: true as const }, readable[0], ...old])
+        expect(changedStores(old, [now])).toEqual([{ name: 'cec', reason: 'the earlier fingerprint is unreadable: /x/office.sqlite does not exist' }]);
+});
