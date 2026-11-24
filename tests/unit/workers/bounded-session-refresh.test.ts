@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { refreshWithin } from '../../../server/workers/bounded-session-refresh';
+import { refreshUntilComplete, refreshWithin } from '../../../server/workers/bounded-session-refresh';
 
 afterEach(() => vi.useRealTimers());
 
@@ -29,14 +29,22 @@ test('a refresh that fails after the limit is not an unhandled rejection', async
 });
 
 test('an incomplete inventory is read again until it is complete or the time is up', async () => {
-    const { refreshUntilComplete } = await import('../../../server/workers/bounded-session-refresh');
+    vi.useFakeTimers();
     const answers = [false, false, true, false], bridge = { reads: 0, current: { complete: false, expiresAt: new Date(Date.now() + 45000).toISOString() }, async refresh() { this.current = { complete: answers[this.reads++] ?? false, expiresAt: new Date(Date.now() + 45000).toISOString() }; return {} as never; } };
-    await refreshUntilComplete(bridge, 5000);
+    const bridgeResult = refreshUntilComplete(bridge, 5000);
+    await vi.runAllTimersAsync();
+    await bridgeResult;
     expect([bridge.reads, bridge.current.complete]).toEqual([3, true]);
     const never = { reads: 0, current: { complete: false, expiresAt: '' }, async refresh() { this.reads++; return {} as never; } };
-    await refreshUntilComplete(never, 5000);
+    const neverResult = refreshUntilComplete(never, 5000);
+    await vi.runAllTimersAsync();
+    await neverResult;
     expect(never.reads).toBe(4);
-    let clock = 0; const slow = { reads: 0, current: { complete: false, expiresAt: '' }, async refresh() { this.reads++; clock += 6000; return {} as never; } };
-    await refreshUntilComplete(slow, 10000, () => clock);
-    expect(slow.reads).toBe(2);
+    const limited = { ...never, reads: 0 };
+    const start = Date.now();
+    const limitedResult = refreshUntilComplete(limited, 1500);
+    await vi.runAllTimersAsync();
+    await limitedResult;
+    expect(limited.reads).toBe(2);
+    expect(Date.now() - start).toBe(1500);
 });

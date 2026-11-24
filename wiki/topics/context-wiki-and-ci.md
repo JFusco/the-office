@@ -4,6 +4,8 @@ The Office records project rationale in the Markdown context wiki and uses Graph
 
 Quality classifies the tested revision once. For code changes, the Ubuntu build and macOS unit tests run independently and the final `quality` check requires both. The macOS job bundles the UI for the startup test, which exercises the production HTML response. Documentation and generated graph changes can skip those jobs and still receive a Quality result. Markdown used by repository automation counts as code. Local and harness verification use `pnpm run verify:ci`.
 
+The unit suite checks malformed GitHub fields directly at the provider reader. Recovery tests exercise one issue and one comment failure on each side of the worker call. Tests for simulated retries advance a fake clock, while the Office HTTP test uses a real socket to check behavior during a stall. [Unit suite maintenance](../journal/2026-11-24-trim-unit-suite.md)
+
 ## Evidence
 
 - [Wiki mechanics](../MECHANICS.md), [Quality workflow](../../.github/workflows/quality.yml), and [installation issue](https://github.com/JFusco/the-office/issues/553)
