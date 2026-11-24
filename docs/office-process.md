@@ -677,6 +677,30 @@ Morgan or Joe:
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after
   three failures in a row. The Azure monitor's reads are read-only, so a lingering helper is not
   treated as a possible write.
+- Harper hands a blocker follow-up to Morgan as one read-only diagnosis at a time
+  (`server/knowledge/handoff-admission.ts`, from `reconcileBlockerFollowups()`). While its request is
+  queued or working, or its claim or worker is still running or stopping, nothing more is sent for that
+  follow-up, whatever its detail says. Once it closes, another is sent only if what is due changed. For
+  an IT recovery that is a new needs-human episode: an observed exit (IT retrying, or resolved) and a
+  return. For the project refresh and assignment reads it is also a change between a temporary read
+  failure and any other failure, the two kinds of advice Ellis gives Morgan. For anything else it is the
+  requested action without provider occurrence details such as GitHub's request ID and timestamp.
+  Each send has its own id. A diagnosis that started is never settled: one a restart interrupts keeps
+  its session, any answer and the interruption, and unchanged material sends nothing more. Queued
+  requests that never started are settled as failed, with the reason and the id of the hand-off kept
+  (`supersededByHandoffId`), when the store opens (before start-up recovery) and on every
+  reconciliation; nothing is deleted. The scheduler reads them as history that only their own
+  conversation's writes, receipts and claims can hold back, not a write of their ticket's delivery
+  (`supersededHandoff` in `server/operations/stale-records.ts`, used by `scheduledWork()`). A failed
+  person's message is read back by whichever request is queued or working for exactly that original,
+  Harper's kept request first (`pendingReadback()` in `server/conversations/conversation-recovery.ts`).
+  One IT already tracks is read back through IT's recovery, with its backoff and three attempts
+  (`readBackConversations()`); IT adopts the live replacement of a settled request it remembered without
+  spending an attempt (`recoverAttempt()`), and neither Harper nor IT queues another while Harper's
+  earlier read-back of it is still stopping. The first open after upgrading changes an affected store,
+  so a failed activation then stops at rollback eligibility rather than rolling back; an older build
+  skips the settled rows but would send again for a new provider footer, so a downgraded store stays
+  fenced or offline until a build with this rule resumes it.
 - Session visibility and service status probes are informational and stay with Ellis. They are
   listed but not counted as follow-ups, and do not by themselves show Ellis as retrying, even while
   such a watch is being retried or once it names Morgan. Any other recovery in progress, and anything

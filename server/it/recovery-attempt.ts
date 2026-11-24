@@ -1,4 +1,5 @@
 import type { TeamMessage } from '../../src/shared';
+import { replacedReadback } from '../conversations/conversation-recovery';
 import { recoveryHeld } from './held-recovery';
 import { informationalRecovery } from './informational-recovery';
 import type { ITFollowUp } from '../../src/shared';
@@ -13,6 +14,15 @@ export async function recoverAttempt(context: ITContext, id: string, detail: str
         if (recoveryHeld(context, id)) return;
         const r = it.recoveries[id] ??= { attempts: 0, nextAt: '', status: 'retrying', detail };
         r.detail = detail;
+        // The remembered read-back was settled unstarted in favour of a live one for the same original: that one is
+        // adopted before any reset, budget or backoff, and what was counted stays counted.
+        const replacement = replacedReadback(store, id, r.requestId);
+        if (replacement) {
+            r.requestId = replacement.id;
+            r.status = 'retrying';
+            followUps.push({ id, owner: 'IT', detail: `conversation-readback is ${replacement.status}; scheduler owns execution.` });
+            return;
+        }
         const auditBinding = id.startsWith('stopped-base-handoff:') || id.startsWith('implementation-audit-binding:')||id.startsWith('saved-candidate-adoption:'), oneShot = auditBinding || id.startsWith('partial-local-cleanup:') || id.startsWith('post-conflict-draft:') || id.startsWith('initial-draft-conflict:') || id.startsWith('closeout-core:') || id.startsWith('scope-repair-resume:');
         const originalBudget=activationBudget(id), stoppedOriginal = id.startsWith('stopped-base-update:');
         if(stoppedOriginal){

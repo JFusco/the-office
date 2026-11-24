@@ -7,6 +7,7 @@ import { Engine } from '../../../server/scheduling/engine';
 import { Conversations } from '../../../server/conversations/conversations';
 import { coordination } from '../../../server/scheduling/coordination';
 import { projectById } from '../../../server/office/projects';
+import { supersededError } from '../../../server/knowledge/handoff-admission';
 import type { TeamMessage } from '../../../src/shared';
 
 const stores: Store[] = [], roots: string[] = [];
@@ -21,8 +22,8 @@ function setup(message: Partial<TeamMessage>, bound: boolean, reply: object = fa
     store.state.messages = [queued];
     store.state.knowledge = { ...store.state.knowledge!, followups: bound ? [{ handoffId: queued.id } as never] : [] };
     const engine = new Engine(store), conversations = new Conversations(store, engine, root);
-    vi.spyOn(engine.agents, 'followup').mockResolvedValue(reply as never);
-    return { queued, conversations };
+    const agent = vi.spyOn(engine.agents, 'followup').mockResolvedValue(reply as never);
+    return { queued, conversations, store, agent };
 }
 
 test("a failed read in Harper's read-only diagnosis hand-off is an answer, not an unverified write", async () => {
@@ -43,4 +44,21 @@ test.each([
     const { queued, conversations } = setup(message, bound);
     await conversations.pump(queued.id);
     expect(queued.status).toBe('failed'); expect(queued.error).toContain(error);
+});
+
+test('a settled Harper sibling is never claimed or run; the pump takes its eligible neighbour once', async () => {
+    const answered = { ...failedRead, reply: 'The listener read is rate limited; the dependency is unchanged.', receipts: [] };
+    const { queued: neighbour, conversations, store, agent } = setup({ id: 'neighbour', requestId: 'neighbour' }, true, answered);
+    const settled: TeamMessage = { ...neighbour, id: 'settled', requestId: 'settled', status: 'failed', supersededByHandoffId: 'neighbour', error: supersededError('neighbour') };
+    store.state.messages.unshift(settled);
+    store.state.knowledge!.followups = [{ handoffId: 'neighbour', handoffIds: ['settled', 'neighbour'] } as never];
+    const claim = vi.spyOn(store, 'claim');
+    await conversations.pump(settled.id);
+    expect(claim).not.toHaveBeenCalled(); expect(agent).not.toHaveBeenCalled();
+    await conversations.pump();
+    expect(agent).toHaveBeenCalledTimes(1); expect(agent.mock.calls[0][1]).toMatchObject({ id: 'neighbour' });
+    expect(neighbour.status).toBe('answered');
+    expect(settled).toMatchObject({ status: 'failed', supersededByHandoffId: 'neighbour', sessionId: '' });
+    await conversations.pump();
+    expect(agent).toHaveBeenCalledTimes(1);
 });
