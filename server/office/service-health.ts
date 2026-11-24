@@ -6,6 +6,7 @@ import {ProviderStatusChecks} from './provider-status';
 import {slackHealth} from './slack-health';
 import {listenerHealth} from './listener-health';
 import {MAX_SIGN_IN_DIAGNOSTIC_LENGTH,signInFailure,stdoutSignInFailure} from './sign-in-failure';
+import {claudeLoginRefusal,refusedClaudeRow} from './claude-login-refusal';
 
 type ProbeResult=Pick<ServiceHealth,'status'|'detail'|'identity'|'failure'|'nextStep'>;
 /** `signedOut` reads the CLI's own sign-out statement when its status command exits non-zero (Claude exits 1 after printing it). */
@@ -62,6 +63,8 @@ probes.push(...azureProbes(PROJECT_BINDINGS));
 export class ServiceHealthChecks {
  private cached?:{at:number;services:ServiceHealth[]};private pending?:Promise<ServiceHealth[]>;
  private providers:ProviderStatusChecks;
+ /** A worker's Claude login refusal counts only after this process started and after the check's own latest signed-out reading (#552). */
+ private readonly startedAt=performance.timeOrigin;private claudeSignedOutAt=0;
  constructor(private execute:typeof command=command){this.providers=new ProviderStatusChecks(execute);}
  private async logins(){
   if(this.cached&&Date.now()-this.cached.at<60000)return this.cached.services;
@@ -86,7 +89,10 @@ export class ServiceHealthChecks {
     const failure=auth ? (stderr==='' ? stdoutSignInFailure(p.program,text,stdout) : signInFailure(stderr)) : '';
     return {id:p.id,name:p.name,status:auth?'disconnected':'unknown',detail:auth?'The Office process could not authenticate.':timeout?'The read-only status check timed out after 60 seconds. Login status is unverified.':'The status command could not complete. Login status is unverified.',...(failure&&{failure}),...stamp(),nextStep:auth?p.nextStep:UNVERIFIED_NEXT_STEP};
    }
-  })).then(services=>{this.cached={at:Date.now(),services};return services;}).finally(()=>{this.pending=undefined;});
+  })).then(services=>{
+   const claude=services.find(s=>s.id==='anthropic');if(claude?.status==='disconnected')this.claudeSignedOutAt=Date.parse(claude.checkedAt);
+   this.cached={at:Date.now(),services};return services;
+  }).finally(()=>{this.pending=undefined;});
   return this.pending;
  }
  async report(snapshots:OfficeSnapshot[]):Promise<HealthReport>{
@@ -97,6 +103,8 @@ export class ServiceHealthChecks {
    if(!failure)continue;
    const row=services.find(s=>s.id===id)!;row.lastFailure={at:failure.endedAt,detail:`${failure.ticket||'Office'} · ${failure.stage} failed. Read the original session before retrying its work.`};
   }
+  const claude=services.findIndex(s=>s.id==='anthropic'),refusal=services[claude]?.status==='connected'?claudeLoginRefusal(snapshots.flatMap(s=>s.workLog??[]),this.startedAt,this.claudeSignedOutAt):undefined;
+  if(refusal)services[claude]=refusedClaudeRow(services[claude],refusal);
   services.push({id:'office',name:'Office service',status:'connected',detail:'Local service is responding.',checkedAt,expiresAt:new Date(Date.parse(checkedAt)+150000).toISOString()});
   for(const s of snapshots){const listener=listenerHealth(s);if(listener)services.push(listener);}
   services.push(slackHealth(snapshots));
