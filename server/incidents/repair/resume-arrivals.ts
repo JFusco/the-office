@@ -7,6 +7,7 @@ import { eventId } from '../event-id';
 import type { IncidentLedger } from '../incident-ledger';
 import { redactEvidence } from '../redact-evidence';
 import { assessResumes } from './assess-resumes';
+import { admitCheckpointResume, forCheckpoint } from './dispatch-checkpoint-resume';
 import { admitResume } from './dispatch-resume';
 import { admitTicketResume } from './dispatch-ticket-resume';
 import { admitTransitionResume, forTransition } from './dispatch-transition-resume';
@@ -60,7 +61,8 @@ export const resumeAdmitted = (ledger: IncidentLedger, incident: Pick<Incident, 
  *
  * Then, for every `deployed` incident, each subject the reading calls due is put to admission in
  * its own project (see dispatch-transition-resume.ts for `review-pr`, `review-candidate` and `requeue-implement`,
- * dispatch-writer-release.ts for `release-writer`, dispatch-resume.ts for any other job route, dispatch-ticket-resume.ts for a ticket), but only while the release that runs now is verified
+ * dispatch-writer-release.ts for `release-writer`, dispatch-checkpoint-resume.ts for a Brain checkpoint's native read-back,
+ * dispatch-resume.ts for any other job route, dispatch-ticket-resume.ts for a ticket), but only while the release that runs now is verified
  * and known to hold the fix: the deployment mark alone can name a release that no longer serves.
  * The ledger records what happened: one `resume-admitted` event per subject and fix, and one
  * `resume-refused` event per subject, fix and reason, a subject held by the paused switch
@@ -121,6 +123,7 @@ export function dispatchResumes({ ledger, entries, control, running, now, fenced
                     : !store ? { refused: 'no-record' as const, detail: `${standing.subject} is in no project this Office holds.` }
                     : forTransition(binding.route.action) ? admitTransitionResume(store, { incident: incident.id, fix, release, binding }, at, routes)
                     : forWriterRelease(binding.route.action) ? admitWriterRelease(store, { incident: incident.id, fix, release, binding }, at, routes)
+                    : forCheckpoint(binding.route.action) ? admitCheckpointResume(store, { incident: incident.id, fix, release, binding }, at, routes)
                     : !forTicket(binding.route.action, routes) ? admitResume(store, { incident: incident.id, fix, release, binding }, at, routes)
                     : !project.engine ? { refused: 'not-dispatchable' as const, detail: `${store.project.id} has no delivery queue to resume a ticket through.` }
                     : admitTicketResume(store, (key, bound) => project.engine!.requestDelivery(key, 'resume-ticket', undefined, { repairResume: bound }), { incident: incident.id, fix, release, binding }, at, routes);

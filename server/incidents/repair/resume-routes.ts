@@ -15,6 +15,8 @@ export interface ResumeRoute {
      * only its form without a `head`, which reconciles a saved result. `all`: every form.
      */
     dispatch: 'none' | 'saved-result' | 'all';
+    /** Why this release does not dispatch the route, where that was decided and is not support still to come. Said in place of the generic reason. */
+    reason?: string;
 }
 
 const original = (stage: string) => `the ID of the original stopped ${stage} worker`;
@@ -44,9 +46,10 @@ export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
     // Grants one restart of a dead hands-off writer past its ordinary allowance and restarts nothing itself; the harness's own restart spends it at a later poll (see dispatch-writer-release.ts).
     'release-writer': { subject: 'job', keyed: 'ticket', head: 'the ID of the dead writer run the restart is for; required', dispatch: 'all' },
     'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: 'none' },
-    'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: 'none' },
-    'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none' },
-    'reconcile-native-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none' },
+    'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: 'none', reason: 'Maintenance reconciliation can repeat a paid read-back on replay and can finish with the original run still blocked.' },
+    'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none', reason: 'A checkpoint retry can start a paid maintenance run after the repair wait lifts.' },
+    // Brain only: one model-free read of the native gate, and the checkpoint is completed only from a native completion that already exists. Admitted by its own path (see dispatch-checkpoint-resume.ts).
+    'reconcile-native-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'all' },
 };
 
 /** Compared and saved exactly as sent: a key with space around it names nothing, so it is refused, not trimmed. */

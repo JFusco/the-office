@@ -13,7 +13,8 @@ type Standing = ResumeAssessment['subjects'][number];
  * admitted for this fix stays admitted, whatever it does next. A subject the ledger no longer
  * holds open exactly as the fix bound it is gone, and is never resumed in its later form. A route
  * the inventory does not hold, or cannot be for this subject, or that this release does not
- * dispatch in that form, is no route. What is left could be resumed: held while automatic
+ * dispatch in that form, is no route; for the last, the reason is the row's own where it gives
+ * one. What is left could be resumed: held while automatic
  * resumes are paused, due otherwise.
  *
  * Pure. It reads the ledger's own copy of each subject, not the project; whoever admits a resume
@@ -35,7 +36,7 @@ export function assessResumes(incident: Incident, control: ResumeSwitch, routes:
         if (repairSubject(record).digest !== binding.digest) return stand('gone', 'The subject no longer stands as the fix bound it: another episode, stage, stop or head.');
         const fault = routeFault(binding.route, { subject: binding.subject, stage: record.stage, provider: incident.cause.provider }, routes);
         if (fault) return stand('no-route', `The bound route cannot resume it: ${fault}.`);
-        if (!dispatchable(routes[binding.route.action], binding.route.payload)) return stand('no-route', `This release cannot dispatch ${binding.route.action}${binding.route.payload.head ? ' with a head' : ''}.`);
+        if (!dispatchable(routes[binding.route.action], binding.route.payload)) return stand('no-route', routes[binding.route.action].reason ?? `This release cannot dispatch ${binding.route.action}${binding.route.payload.head ? ' with a head' : ''}.`);
         return control.enabled ? stand('due', 'Automatic repair resumes are enabled.') : stand('held', `Automatic repair resumes are paused: ${control.reason}`);
     });
     return { fix: fix.event, commit: fix.commit, release: fix.deployed.release, subjects };

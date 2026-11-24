@@ -449,3 +449,70 @@ test('one failed project refresh is retried by Ellis; Morgan is told only after 
     expect(a.state.it!.recoveries['project-progress'].attempts).toBe(3);
     expect(a.state.it!.reports.at(-1)!.followUps.find(f => f.id === 'project-progress')).toMatchObject({ owner: 'Morgan' });
 });
+
+import { ServiceHealthChecks } from '../../../server/office/service-health';
+import { workerFailure, type command } from '../../../server/workers/process';
+import { AZURE_SIGNED_OUT, CLAUDE_SIGNED_OUT, GITHUB_BAD_TOKEN, GITHUB_NO_ACCOUNT, READ_TIMED_OUT, type RecordedRun } from '../office/signed-out-fixture';
+
+/** The real sign-in checks with every command healthy, as in service-health.test.ts, except `target`, which replays `run`. */
+function checksReplaying(target: string, run: RecordedRun | Error): ServiceHealthChecks {
+    const healthy: Record<string, string> = {
+        curl: JSON.stringify({ status: { indicator: 'none', description: 'All Systems Operational' }, components: [], incidents: [] }),
+        claude: JSON.stringify({ loggedIn: true, email: 'fixture@example.test' }),
+        codex: '',
+        gh: JSON.stringify({ hosts: { 'github.com': [{ active: true, state: 'success', login: 'fixture' }] } }),
+        twg: JSON.stringify({ data: { accountId: 'fixture', name: 'Fixture User' } }),
+    };
+    const execute: typeof command = async (program, _args, options) => {
+        if (program !== target) return healthy[program] ?? '"project-id"';
+        if (run instanceof Error) throw run;
+        if (run.stdout) options?.onOutput?.('stdout', run.stdout);
+        if (run.stderr) options?.onOutput?.('stderr', run.stderr);
+        if (run.code !== 0) throw new Error(workerFailure(program, run.code, run.stdout, run.stderr));
+        return run.stdout;
+    };
+    return new ServiceHealthChecks(execute);
+}
+
+async function checkedBy(target: string, run: RecordedRun | Error) {
+    const a = setup(), checks = checksReplaying(target, run);
+    a.health.report.mockImplementation((() => checks.report([a.state])) as any);
+    await a.it.tick(new Date(1793222000000), true);
+    syncOutbox(a.state);
+    return { a, ownerItems: a.state.outbox.filter(o => o.status === 'open' && o.id.startsWith('only-you:')) };
+}
+
+const planted = (run: RecordedRun, add: (document: any) => void): RecordedRun => {
+    const document = JSON.parse(run.stdout);
+    add(document);
+    return { ...run, stdout: JSON.stringify(document, null, 2) + '\n' };
+};
+
+test.each([
+    { id: 'github', program: 'gh', name: 'a rejected token', run: planted(GITHUB_BAD_TOKEN, d => { d.hosts['github.com'][0].token = 'never-return-this'; }), quote: '401 Unauthorized' },
+    { id: 'github', program: 'gh', name: 'no account', run: GITHUB_NO_ACCOUNT, quote: 'You are not logged into any GitHub hosts' },
+    { id: 'anthropic', program: 'claude', name: 'no login', run: planted(CLAUDE_SIGNED_OUT, d => { d.accessToken = 'never-return-this'; }), quote: 'loggedIn: false, authMethod: none' },
+    { id: 'azure', program: 'az', name: 'no credentials', run: AZURE_SIGNED_OUT, quote: 'you need to run the login command' },
+])('a recorded $id sign-out ($name) opens the owner item in the provider\'s words', async ({ id, program, run, quote }) => {
+    const { a, ownerItems } = await checkedBy(program, run);
+    const row = a.state.it!.services.find(service => service.id === id)!;
+    expect(row).toMatchObject({ status: 'disconnected', failure: expect.stringContaining(quote) });
+    expect(a.state.it!.reports.at(-1)!.followUps).toContainEqual(expect.objectContaining({ id: `login:${id}`, owner: 'You' }));
+    expect(ownerItems).toEqual([expect.objectContaining({ id: `only-you:login:${id}`, ownerSteps: expect.objectContaining({ providerSaid: row.failure }) })]);
+    expect(JSON.stringify(a.state)).not.toContain('never-return-this');
+});
+
+test.each([
+    { id: 'github', program: 'gh', name: 'a host timeout', run: { code: 0, stdout: JSON.stringify({ hosts: { 'github.com': [{ active: true, state: 'timeout', login: 'fixture', error: 'Get "https://api.github.com/": context deadline exceeded (Client.Timeout exceeded while awaiting headers)' }] } }), stderr: '' } },
+    { id: 'github', program: 'gh', name: 'a DNS failure', run: { code: 0, stdout: JSON.stringify({ hosts: { 'github.com': [{ active: true, state: 'error', login: 'fixture', error: 'Get "https://api.github.com/": dial tcp: lookup api.github.com: no such host' }] } }), stderr: '' } },
+    { id: 'anthropic', program: 'claude', name: 'the runner deadline', run: new Error(READ_TIMED_OUT('claude')) },
+    { id: 'anthropic', program: 'claude', name: 'an unrelated failure', run: { code: 1, stdout: '{"error": "Internal failure"}\n', stderr: '' } },
+    { id: 'azure', program: 'az', name: 'the runner deadline', run: new Error(READ_TIMED_OUT('az')) },
+    { id: 'azure', program: 'az', name: 'a missing project', run: { code: 1, stdout: '', stderr: 'ERROR: TF200016: The following project does not exist: Fixture.\n' } },
+])('a $id check that ended in $name opens no owner item', async ({ id, program, run }) => {
+    const { a, ownerItems } = await checkedBy(program, run);
+    const row = a.state.it!.services.find(service => service.id === id)!;
+    expect(row.status).toBe('unknown');
+    expect(row).not.toHaveProperty('failure');
+    expect(ownerItems).toEqual([]);
+});
