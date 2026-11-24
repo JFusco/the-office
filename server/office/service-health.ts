@@ -7,15 +7,21 @@ import {slackHealth} from './slack-health';
 import {listenerHealth} from './listener-health';
 import {MAX_SIGN_IN_DIAGNOSTIC_LENGTH,signInFailure,stdoutSignInFailure} from './sign-in-failure';
 
-type ProbeResult=Pick<ServiceHealth,'status'|'detail'|'identity'|'failure'>;
+type ProbeResult=Pick<ServiceHealth,'status'|'detail'|'identity'|'failure'|'nextStep'>;
 export type Probe={id:string;name:string;program:string;args:string[];parse:(raw:string,stderr?:string)=>ProbeResult;nextStep:string};
 const authFailure=/not logged in|authentication|unauthorized|invalid.*token|expired.*token|login required|no active account|not authenticated|401\b/i;
+/** The stated cause of a GitHub rate-limit refusal: a bare status code or quota advice is not one. */
+const rateLimitRefusal=/API rate limit exceeded|exceeded a secondary rate limit|\bHTTP (?:403|429)\b[^\n]*\brate limit/i;
+const credentialFailure=/\bHTTP 401\b|bad credentials|invalid.*token|expired.*token|not logged in/i;
 
 function githubStatus(raw:string,stderr=''):ProbeResult {
  const hosts: { active: boolean; state: string; login?: string; error?: unknown }[] | undefined=JSON.parse(raw).hosts?.['github.com'];
  const host=hosts?.find(account=>account.active);
  if(host?.state==='success')
   return {status:'connected',identity:host.login,detail:'GitHub verified the active account. Repository and Projects permissions can still differ.'};
+ // GitHub's own statement that a rate limit refused the check says nothing about sign-in; a credential failure in the same text still wins.
+ if(typeof host?.error==='string'&&rateLimitRefusal.test(host.error)&&!credentialFailure.test(host.error))
+  return {status:'unknown',identity:host.login,detail:'A GitHub API rate limit blocked this check. The Office could not verify sign-in.',nextStep:'Ellis will check again automatically.'};
  const diagnostic=host ? host.error : authFailure.test(stderr) && stderr;
  const failure=typeof diagnostic==='string' ? signInFailure(diagnostic) : '';
  return {status:'disconnected',identity:host?.login,detail:'GitHub could not verify its active account.',...(failure&&{failure})};
@@ -49,7 +55,7 @@ export class ServiceHealthChecks {
      // Discard the whole diagnostic on overflow, since a fragment can lose the credential label.
      stderr=stderr.length+chunk.length<=MAX_SIGN_IN_DIAGNOSTIC_LENGTH ? stderr+chunk : undefined;
     }});
-    return {...p.parse(raw,stderr),id:p.id,name:p.name,...stamp(),nextStep:p.nextStep};
+    return {nextStep:p.nextStep,...p.parse(raw,stderr),id:p.id,name:p.name,...stamp()};
    } catch(error) {
     const text=String(error),auth=authFailure.test(text),timeout=/timed? out|timeout/i.test(text);
     // Empty stderr allows the stdout fallback. Overflow discards the diagnostic.
