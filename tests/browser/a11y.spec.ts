@@ -67,7 +67,7 @@ test('delivery drawers pass the WCAG 2.2 AA audit',async({page})=>{
   }
   await page.getByRole('button',{name:/^PM queue \d+:/}).click();await expect(page.getByRole('complementary')).toBeVisible();await audit(page,'drawer-pm-queue');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('button',{name:/CEC-102/}).first().click();
-  await expect(page.getByRole('heading',{name:'Delivery path'})).toBeVisible();await audit(page,'drawer-ticket');
+  await expect(page.getByRole('heading',{name:'Ticket timeline'})).toBeVisible();await audit(page,'drawer-ticket');
 });
 test('GitHub project, CTO floor and popovers pass the WCAG 2.2 AA audit',async({page})=>{
   await ready(page);await page.getByLabel('Office project').selectOption('brain');

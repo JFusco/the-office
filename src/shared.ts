@@ -847,6 +847,8 @@ export interface TeamMessage {
         project: string;
         verifiedAt: string;
     };
+    /** A Harper request settled unstarted in favour of this follow-up's current hand-off; it never ran. */
+    supersededByHandoffId?: string;
     contextProject?: string;
     id: string;
     requestId: string;
@@ -993,6 +995,7 @@ export interface OfficeSnapshot {
         ledger: string;
     };
     coordination?: Coordination;
+    jiraQueueProgress?: import('./contracts/ticket-progress').JiraQueueProgress[];
     teamQueue?: {
         project: string;
         projectName: string;

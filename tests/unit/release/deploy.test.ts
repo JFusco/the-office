@@ -13,6 +13,9 @@ import { readActiveRelease } from '../../../server/release/record-active';
 import { releaseDirectory, releasePaths } from '../../../server/release/release-paths';
 import { rollbackOperation } from '../../../server/release/rollback-operation';
 import { FROM, PIN, TO, world, type Behaviour, type World } from './deploy-world';
+import { projectById } from '../../../server/office/projects';
+import { readSavedState } from '../../../server/store/read-saved-state';
+import { Store } from '../../../server/store/store';
 
 const OP = 'deploy-20261120t030000z-0a0b0c0d';
 const worlds: World[] = [];
@@ -534,4 +537,24 @@ test('a launchd read that fails before the stop is sent aborts with the service 
     expect(w.service).toMatchObject({ loaded: true, instance: 'instance-1' });
     expect(w.fence.read()).toEqual({ status: 'open' });
     expect(readDeployStop(w.dataRoot)).toBeNull();
+});
+
+test('a failed activation whose first open settled queued duplicates stops at rollback eligibility, fenced, with the settled store kept', async () => {
+    const w = make(), health = w.ctx.office.health;
+    // The project store as the earlier release left it: three queued Harper requests bound to one follow-up.
+    const seeded = new Store(w.projectDb, projectById('brain'), w.dataRoot);
+    const request = (id: string) => ({ id, requestId: id, from: 'knowledge' as const, to: 'pm' as const, ticket: '', actionId: 'harper:recovery:assignment-listener', body: 'Harper requests READ ONLY diagnosis', status: 'queued' as const, createdAt: '2026-11-20T02:00:00.000Z', sessionId: '', recheck: false, error: '', recipients: [], receipts: [] });
+    seeded.state.messages.push(request('a'), request('b'), request('c'));
+    seeded.state.knowledge!.followups = [{ id: 'recovery:assignment-listener', source: { kind: 'recovery', id: 'assignment-listener' }, key: '', fingerprint: '', owner: 'Morgan', nextAction: 'Listener read failed', evidence: [], disposition: 'needs-input', createdAt: '', updatedAt: '', history: [], handoffId: 'c', handoffIds: ['a', 'b', 'c'] }];
+    seeded.save(); seeded.close();
+    // The target starts, which settles the duplicates, then fails verification.
+    w.ctx.office.health = async () => { const answer = await health() as Record<string, unknown>; return answer.serviceInstanceId === 'instance-1' ? answer : { ...answer, loadedHash: 'e'.repeat(64) }; };
+    const outcome = await run(w);
+    expect(outcome).toMatchObject({ status: 'stopped', step: `${rollbackOperation(OP)}:eligibility` });
+    expect(outcome.reason).toMatch(/brain: its contents changed/); expect(outcome.reason).not.toMatch(/cursor moved/);
+    expect(w.calls).toEqual(['acquire', 'bootout', 'bootstrap', 'bootout']);
+    expect(w.service.loaded).toBe(false);
+    expect(w.fence.read()).toMatchObject({ status: 'held', deployment: OP });
+    expect(readDeployStop(w.dataRoot)).toMatchObject({ operation: OP, step: `${rollbackOperation(OP)}:eligibility`, instruction: expect.stringContaining(`deploy end ${OP}`) });
+    expect(readSavedState(w.projectDb)!.messages.map(message => [message.id, message.status, message.supersededByHandoffId])).toEqual([['a', 'failed', 'c'], ['b', 'failed', 'c'], ['c', 'queued', undefined]]);
 });

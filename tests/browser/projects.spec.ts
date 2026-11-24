@@ -75,7 +75,7 @@ test('ticket drawer shows the team decision and skipped steps distinctly from pa
   state.tickets=[{key:'CEC-999',summary:'Synthetic approach display fixture',type:'Task',status:'In Progress',stage:'ci',activity:'waiting',blocker:'',commit:'',branch:'',prId:0,previewUrl:'',attempt:0,findings:[],evidence:[],results:{},approach,decisions:[{role:'pm',stage:'understand',at:new Date().toISOString(),approach}],skippedStages:Object.fromEntries(['plan','plan-review','code-review','preview','qa'].map(s=>[s,reason]))}];
   await page.route('**/api/office',r=>r.fulfill({json:state}));await page.route('**/api/events',r=>r.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
   await page.goto('/');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('button',{name:/CEC-999 Synthetic approach display fixture/}).click();
-  await expect(page.getByRole('heading',{name:'Team approach',exact:true})).toBeVisible();await expect(page.getByText('No separate plan',{exact:true})).toBeVisible();await expect(page.getByText('Developer checks',{exact:true})).toBeVisible();await expect(page.getByText('Not needed for this task',{exact:true})).toHaveCount(5);await expect(page.locator('[data-stage-state=passed]')).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Team approach',exact:true})).toBeVisible();await expect(page.getByText('No separate plan',{exact:true})).toBeVisible();await expect(page.getByText('Developer checks',{exact:true})).toBeVisible();await expect(page.getByRole('region',{name:'Ticket timeline'}).getByText(/ · skipped$/)).toHaveCount(5);await expect(page.locator('[data-stage-state=passed]')).toHaveCount(0);
 });
 
 test('Brain is selectable with its own maintenance control and schedule',async({page,request})=>{
@@ -110,7 +110,7 @@ test('Brain board lanes and ticket spacing reflect live project observations',as
   expect(await page.locator('[data-inspector-scroll]').evaluate(el=>el.scrollTop)).toBe(0);
   const button=await page.getByRole('button',{name:`Discuss GH-${card.number} with Morgan`,exact:true}).boundingBox();
   const heading=await page.locator('[data-github-ticket] [data-ticket-heading]').boundingBox();
-  expect(heading!.y-(button!.y+button!.height)).toBeGreaterThanOrEqual(23);
+  expect(heading!.y).toBeLessThan(button!.y);
   const badge=await page.locator('[data-github-ticket]').getByText('open',{exact:true}).boundingBox();
   const description=await page.locator('[data-github-ticket]').getByText(/^Project lane:/).boundingBox();
   expect(description!.y-(badge!.y+badge!.height)).toBeGreaterThanOrEqual(13);
