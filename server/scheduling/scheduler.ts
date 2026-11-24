@@ -28,10 +28,17 @@ export function selectWork(items: ScheduledWork[], noticesSince: number): Schedu
 }
 // Stable sort retains durable insertion order when enqueue timestamps tie.
 const fifo = (a: ProgressionItem, b: ProgressionItem) => a.enqueuedAt.localeCompare(b.enqueuedAt);
+/** Exclusive delivery starts in a row while a slotted head waits; the same three as the notice threshold. */
+const EXCLUSIVE_BOUND = 3;
 export class Scheduler {
     private owner = randomUUID();
     private running = false;
+    /** Project rotation; on concurrent delivery, the rotation of exclusive heads only. */
     private cursor = 0;
+    /** Concurrent delivery only: the rotation of slotted heads, apart from the exclusive one. */
+    private slottedCursor = 0;
+    /** Concurrent delivery only: exclusive starts since the last slotted start, at most EXCLUSIVE_BOUND. */
+    private exclusiveStreak = 0;
     constructor(private capacity: OfficeCapacity, private clock: Clock = systemClock, private lane: ExecutionLane = 'delivery') { }
     private state(store: Store) {
         return this.lane === 'delivery' ? store.state.scheduler! : ((store.state.schedulerLanes ??= {})[this.lane] ??= { noticeClaims: 0, lastClaimAt: '', lastProgressAt: '', undispatchedCycles: 0 });
@@ -70,15 +77,18 @@ export class Scheduler {
             // Reserve synchronously before any await; duplicate ticks cannot claim.
             this.running = true;
             this.capacity.lane = store.project.id;
-            return this.dispatch(store, items, item, index, projects.length, () => {
+            return this.dispatch(store, items, item, () => {
                 // Worker promises settle only after confirmed process termination.
                 if (this.capacity.lane === store.project.id)
                     this.capacity.lane = '';
                 this.running = false;
-            });
+            }, () => { this.cursor = (index + 1) % projects.length; }) ?? undefined;
         }
     }
-    /** Concurrent delivery: one claim per pump into a free slot; overlapping ticks fill the rest. */
+    /**
+     * Concurrent stages: one claim per pump into a free slot; overlapping ticks fill the rest. On delivery, after
+     * EXCLUSIVE_BOUND exclusive starts in a row a waiting slotted head goes first, so neither class starves the other.
+     */
     private async pumpSlots(projects: {
         store: Store;
         items: ScheduledWork[];
@@ -87,17 +97,55 @@ export class Scheduler {
             return;
         const selected = projects.map(({ store, items }) => selectWork(items.filter(item => item.allowPaused || !store.state.paused && !store.state.draining), this.state(store).noticeClaims));
         const exclusivePending = selected.some(item => item && !item.slot);
-        for (let offset = 0; offset < projects.length; offset++) {
-            const index = (this.cursor + offset) % projects.length;
-            const { store, items } = projects[index], item = selected[index];
-            if (!item || !canDispatch({ projectId: store.project.id, slot: item.slot }, this.capacity, exclusivePending))
-                continue;
-            // Reserve synchronously before any await; duplicate ticks cannot claim the same slot.
-            this.capacity.slots.set(store.project.id, { role: item.slot?.role, exclusive: !item.slot });
-            return this.dispatch(store, items, item, index, projects.length, () => this.capacity.slots.delete(store.project.id));
+        if (this.lane !== 'delivery') {
+            for (let offset = 0; offset < projects.length; offset++) {
+                const index = (this.cursor + offset) % projects.length;
+                const { store, items } = projects[index], item = selected[index];
+                if (!item || !canDispatch({ projectId: store.project.id, slot: item.slot }, this.capacity, exclusivePending))
+                    continue;
+                // Reserve synchronously before any await; duplicate ticks cannot claim the same slot.
+                this.capacity.slots.set(store.project.id, { role: item.slot?.role, exclusive: !item.slot });
+                return this.dispatch(store, items, item, () => this.capacity.slots.delete(store.project.id), () => { this.cursor = (index + 1) % projects.length; }) ?? undefined;
+            }
+            return;
+        }
+        const slottedWaiting = selected.some(item => item?.slot);
+        const classes = slottedWaiting && (!exclusivePending || this.exclusiveStreak >= EXCLUSIVE_BOUND) ? [true, false] : [false, true];
+        for (const slotted of classes) {
+            // The second class is tried only on a lane the first left empty: occupied slots still drain toward a waiting exclusive.
+            if (slotted !== classes[0] && this.capacity.slots.size)
+                return;
+            const start = slotted ? this.slottedCursor : this.cursor;
+            for (let offset = 0; offset < projects.length; offset++) {
+                const index = (start + offset) % projects.length;
+                const { store, items } = projects[index], item = selected[index];
+                // A slotted head is tried here only on its turn, with no exclusive selected, or after every exclusive
+                // declined on an empty lane, so none of them is pending against it.
+                if (!item || Boolean(item.slot) !== slotted || !canDispatch({ projectId: store.project.id, slot: item.slot }, this.capacity, false))
+                    continue;
+                // Reserve synchronously before any await; duplicate ticks cannot claim the same slot.
+                this.capacity.slots.set(store.project.id, { role: item.slot?.role, exclusive: !item.slot });
+                const started = this.dispatch(store, items, item, () => this.capacity.slots.delete(store.project.id), () => {
+                    if (slotted) {
+                        this.slottedCursor = (index + 1) % projects.length;
+                        this.exclusiveStreak = 0;
+                    }
+                    else {
+                        this.cursor = (index + 1) % projects.length;
+                        this.exclusiveStreak = Math.min(EXCLUSIVE_BOUND, this.exclusiveStreak + 1);
+                    }
+                });
+                // A declined or interrupted claim has released its slot; the next head of the class is tried.
+                if (started)
+                    return started;
+            }
         }
     }
-    private async dispatch(store: Store, items: ScheduledWork[], item: ScheduledWork, index: number, count: number, release: () => void): Promise<void> {
+    /**
+     * Claims synchronously. Returns null when the claim is declined or interrupted, its reservation already released,
+     * and otherwise the running stage. `committed` runs once the claim holds, before the stage starts.
+     */
+    private dispatch(store: Store, items: ScheduledWork[], item: ScheduledWork, release: () => void, committed: () => void): Promise<void> | null {
         const scheduling = this.state(store);
         let claim: ReturnType<Store['claimWork']> = null;
         try {
@@ -132,23 +180,33 @@ export class Scheduler {
                 store.emit('work-claimed', `${item.stage} claimed by the scheduler.`, undefined, item.work.id);
                 return made;
             });
-            if (!claim)
-                return;
-            this.cursor = (index + 1) % count;
-            try {
-                await withAssignment(claim, this.lane, () => item.execute());
-            }
-            finally {
-                store.transaction(() => {
-                    item.afterStage?.();
-                    if (!store.activeClaims().some(c => c.id === claim!.id && c.status === 'stopping')) store.finishClaim(claim!.id, 'completed');
-                    scheduling.lastProgressAt = this.clock.now().toISOString();
-                    store.save();
-                });
-            }
         }
         finally {
-            releaseOrRetain(store, claim?.id, release);
+            // A claim that does not hold, or a transaction that failed, frees its reservation before anything else runs.
+            if (!claim)
+                release();
         }
+        if (!claim)
+            return null;
+        committed();
+        const held = claim;
+        return (async () => {
+            try {
+                try {
+                    await withAssignment(held, this.lane, () => item.execute());
+                }
+                finally {
+                    store.transaction(() => {
+                        item.afterStage?.();
+                        if (!store.activeClaims().some(c => c.id === held.id && c.status === 'stopping')) store.finishClaim(held.id, 'completed');
+                        scheduling.lastProgressAt = this.clock.now().toISOString();
+                        store.save();
+                    });
+                }
+            }
+            finally {
+                releaseOrRetain(store, held.id, release);
+            }
+        })();
     }
 }

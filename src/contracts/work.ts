@@ -220,9 +220,13 @@ export interface RepairResume {
      * from these: a step saved later, a stage left, a command recorded later. Absent on a binding
      * saved before outcomes were judged. A ticket has no steps of its own: its count is that of its
      * stage attempts (see server/incidents/repair/ticket-progress.ts). A ticket's resume admitted
-     * before those were counted recorded 0 without the ticketAttemptsCounted marker.
+     * before those were counted recorded 0 without the ticketAttemptsCounted marker. A checkpoint
+     * has no steps of its own either: `run` is the original maintenance run it was linked to at the
+     * admission, and `steps` counts that run's steps (see server/incidents/repair/checkpoint-progress.ts).
+     * A checkpoint's resume saved without `run` cannot be judged. This is not
+     * `DailyCheckpoint.repairResume`, an older field of the refresh continuation.
      */
-    stood?: { steps: number; stage: string; event: number; ticketAttemptsCounted?: true };
+    stood?: { steps: number; stage: string; event: number; ticketAttemptsCounted?: true; run?: string };
 }
 export interface HarnessRequest {
     /** Last recorded stop; meaningful only while the request is blocked or interrupted. */
