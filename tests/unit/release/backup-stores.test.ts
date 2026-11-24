@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { backupStores, INVENTORY_FILE } from '../../../server/release/backup-stores';
+import { snapshotGaps, snapshotStores } from '../../../server/release/snapshot-stores';
 
 vi.mock('../../../server/office/config', () => { throw new Error('backup must run without loading Office configuration'); });
 
@@ -65,6 +66,14 @@ test('staging left by a crashed attempt is cleared, and an archive lists files o
     expect(readdirSync(resolve(dataRoot, 'backups'))).toEqual([OP]);
 });
 
+test('staging left by a crashed attempt is cleared while a project store does not exist yet', async () => {
+    const { dataRoot, databases } = fixture(), missing = resolve(dataRoot, 'new-project.sqlite');
+    mkdirSync(resolve(dataRoot, 'backups', `.staging-${OP}`), { recursive: true });
+    const { inventory } = await backupStores({ dataRoot, operation: OP, databases: [...databases, { name: 'new-project', path: missing }], mayBeMissing: ['new-project'] });
+    expect(inventory.absent).toEqual([{ name: 'new-project', source: missing }]);
+    expect(readdirSync(resolve(dataRoot, 'backups'))).toEqual([OP]);
+});
+
 test.each([false, true])('a source inside staging is preserved on refusal (symlink alias: %s)', async alias => {
     const { dataRoot, databases } = fixture();
     const staging = resolve(dataRoot, 'backups', `.staging-${OP}`);
@@ -110,6 +119,38 @@ test('a failed copy or a missing database leaves no backup and no staging direct
     await expect(backupStores({ dataRoot, operation: OP, databases: [...databases, { name: 'brain', path: resolve(dataRoot, 'missing.sqlite') }] })).rejects.toThrow('Database brain is missing');
     expect(existsSync(resolve(dataRoot, 'backups', OP))).toBe(false);
     expect(readdirSync(resolve(dataRoot, 'backups'))).toEqual([]);
+});
+
+test('a project store that does not exist yet is listed as absent and not copied; the other stores are copied', async () => {
+    const { dataRoot, databases } = fixture(), missing = resolve(dataRoot, 'projects', 'brain', 'office.sqlite');
+    const { directory, inventory } = await backupStores({ dataRoot, operation: OP, databases: [...databases, { name: 'brain', path: missing }], mayBeMissing: ['cec', 'brain'] });
+    expect(readdirSync(directory).sort()).toEqual(['cec.sqlite', INVENTORY_FILE, 'office-control.sqlite'].sort());
+    expect(JSON.parse(readFileSync(resolve(directory, INVENTORY_FILE), 'utf8'))).toMatchObject({ absent: [{ name: 'brain', source: missing }] });
+    expect(inventory.absent).toEqual([{ name: 'brain', source: missing }]);
+    expect(inventory.databases.map(entry => entry.name)).toEqual(['cec', 'office-control']);
+    for (const entry of inventory.databases) expect(rowsOf(resolve(directory, entry.file))).toEqual(rowsOf(databases.find(database => database.name === entry.name)!.path));
+    // With nothing absent the inventory has no absent list.
+    const again = await backupStores({ dataRoot, operation: 'deploy-20261120-b', databases, mayBeMissing: ['cec'] });
+    expect(again.inventory).not.toHaveProperty('absent');
+});
+
+test('a missing control store fails the backup even with the project stores allowed to be missing', async () => {
+    const { dataRoot, databases } = fixture();
+    rmSync(databases[1].path);
+    await expect(backupStores({ dataRoot, operation: OP, databases, mayBeMissing: ['cec'] })).rejects.toThrow('Database office-control is missing');
+    expect(readdirSync(resolve(dataRoot, 'backups'))).toEqual([]);
+});
+
+test('a project path that cannot be looked up fails the backup and is a gap in both snapshot readings, not absent', async () => {
+    const { dataRoot, databases } = fixture(), parent = resolve(dataRoot, 'plain');
+    writeFileSync(parent, 'a regular file where a directory is expected');
+    const brain = { name: 'brain', path: resolve(parent, 'office.sqlite') };
+    await expect(backupStores({ dataRoot, operation: OP, databases: [...databases, brain], mayBeMissing: ['cec', 'brain'] })).rejects.toThrow(/ENOTDIR/);
+    expect(readdirSync(resolve(dataRoot, 'backups'))).toEqual([]);
+    const snapshot = snapshotStores({ projects: [brain], databases: [...databases, brain] });
+    expect(snapshot.admissions.find(entry => entry.name === 'brain')).toEqual({ name: 'brain', cursor: null, reason: expect.stringContaining('ENOTDIR') });
+    expect(snapshot.fingerprints.find(entry => entry.name === 'brain')).toEqual({ name: 'brain', digest: null, reason: expect.stringContaining('ENOTDIR') });
+    expect(snapshotGaps(snapshot)).toEqual([expect.stringContaining('brain: admission cursor unreadable'), expect.stringContaining('brain: contents unreadable')]);
 });
 
 test('unsafe or repeated names and an empty list are refused before anything is created', async () => {
