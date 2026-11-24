@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { DeployContext } from './deploy-context';
-import { RollbackFacts, type DeployFacts } from './deploy-facts';
+import { DEPLOY_STEPS, RollbackFacts, type DeployFacts } from './deploy-facts';
 import { deployJournalPath, readDeployJournal, startDeployJournal, type DeployJournalView } from './deploy-journal';
 import { operationPaths } from './deploy-paths';
 import { endDeployment } from './end-deployment';
@@ -36,15 +36,26 @@ export function rollbackReleasedFence(ctx: DeployContext, deployment: DeployJour
 }
 
 /**
+ * True when an intact journal with the deployment's own steps ends at `backup` or `snapshot`,
+ * intended, done or failed. Its order then proves the stop completed and no target plist was intended.
+ */
+function endsBeforePlist(deployed: DeployJournalView): boolean {
+    const { torn, steps, last } = deployed;
+    return !torn && steps.length === DEPLOY_STEPS.length && steps.every((step, index) => step === DEPLOY_STEPS[index]) &&
+        last !== null && (last.step === 'backup' || last.step === 'snapshot') && ['intended', 'done', 'failed'].includes(last.state);
+}
+
+/**
  * Returns the service to the release it ran before a failed activation: code only. It stops whatever
  * the activation started, then goes on only when no work was admitted and every store holds what it
  * held when the old service stopped, apart from what a start under the fence writes
  * (`fenced-start-writes.ts`). A complete snapshot and unchanged stores are the proof that the
- * previous release can still read its stores. Otherwise it ends failed with the
- * service stopped and the fence held, for a person. No step reads a backup.
+ * previous release can still read its stores. When the deployment's journal ends before target
+ * plist intent, no snapshot is compared: the service confirmed stopped is enough. Otherwise it ends
+ * failed with the service stopped and the fence held, for a person. No step reads a backup.
  */
 export async function rollback(ctx: DeployContext, deployment: string, facts: DeployFacts, reason: string): Promise<{ operation: string; outcome: StepsOutcome }> {
-    const operation = rollbackOperation(deployment), deployed = readDeployJournal(ctx.dataRoot, deployment);
+    const operation = rollbackOperation(deployment), deployed = readDeployJournal(ctx.dataRoot, deployment), beforePlist = endsBeforePlist(deployed);
     if (!existsSync(deployJournalPath(ctx.dataRoot, operation))) {
         const reached = deployed.last ? deployed.steps.indexOf(deployed.last.step) : -1;
         startDeployJournal(ctx.dataRoot, operation, ROLLBACK_STEPS, RollbackFacts.parse({ kind: 'rollback', of: deployment, reason: reason.slice(0, 2000), started: reached >= deployed.steps.indexOf('start') }), ctx.now);
@@ -55,6 +66,7 @@ export async function rollback(ctx: DeployContext, deployment: string, facts: De
     const requireUnchangedStores = async (halt: Record<string, unknown>) => {
         if (!await readStoppedService(ctx, typeof halt.pid === 'number' ? halt.pid : null))
             throw new Error('the service is no longer confirmed stopped for rollback');
+        if (beforePlist) return;
         const changed = storesChangedSince(ctx, deployed.receipts.snapshot);
         if (changed.length)
             throw new Error(`the stores cannot be shown unchanged since the old service stopped: ${changed.join('; ')}`.slice(0, 2000));
@@ -70,7 +82,7 @@ export async function rollback(ctx: DeployContext, deployment: string, facts: De
         eligibility: async receipts => {
             try { await requireUnchangedStores(receipts.halt); }
             catch (error) { return { state: 'failed', reason: String(error).slice(0, 2000) }; }
-            return { state: 'done', receipt: { basis: 'no admission and no store change beyond a start under the fence since the old service stopped' } };
+            return { state: 'done', receipt: { basis: beforePlist ? 'the deployment journal ends before target plist intent and the service was confirmed stopped' : 'no admission and no store change beyond a start under the fence since the old service stopped' } };
         },
         plist: async receipts => stepOf(await installPlist(ctx, operation, 'plist', prior, () => requireUnchangedStores(receipts.halt))),
         start: async receipts => stepOf(await startService(ctx, operation, 'start', prior.sha256, () => requireUnchangedStores(receipts.halt))),

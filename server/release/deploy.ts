@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { backupStores, INVENTORY_FILE } from './backup-stores';
 import type { DeployContext } from './deploy-context';
-import { DeployFacts, type DeployOutcome } from './deploy-facts';
+import { DEPLOY_STEPS, DeployFacts, type DeployOutcome } from './deploy-facts';
 import { deployJournalPath, readDeployJournal, startDeployJournal } from './deploy-journal';
 import { exclusively } from './deploy-exclusion';
 import { concludeOperation, readOutcome } from './deploy-outcome';
@@ -24,7 +24,7 @@ import { readStoppedService, stopService } from './stop-service';
 import { requireVerifiedInstance, verifyLoaded } from './verify-loaded';
 import { waitIdle } from './wait-idle';
 
-export const DEPLOY_STEPS = ['fence', 'idle', 'stop', 'backup', 'snapshot', 'plist', 'start', 'verify', 'record', 'release'];
+export { DEPLOY_STEPS };
 
 /** Steps after which the service is stopped or replaced, so a failure is undone by the rollback operation. */
 const ROLLED_BACK = new Set(['backup', 'snapshot', 'plist', 'start', 'verify']);
@@ -71,7 +71,7 @@ export async function advance(ctx: DeployContext, operation: string): Promise<De
             const directory = resolve(releasePaths(ctx.dataRoot).backups, operation), inventory = resolve(directory, INVENTORY_FILE);
             try {
                 // A backup this operation already completed is kept; it is never taken twice or overwritten.
-                const saved = existsSync(inventory) ? JSON.parse(readFileSync(inventory, 'utf8')) : (await backupStores({ dataRoot: ctx.dataRoot, operation, databases: ctx.databases, archives: ctx.archives, now: ctx.now })).inventory;
+                const saved = existsSync(inventory) ? JSON.parse(readFileSync(inventory, 'utf8')) : (await backupStores({ dataRoot: ctx.dataRoot, operation, databases: ctx.databases, archives: ctx.archives, mayBeMissing: ctx.projects.map(project => project.name), now: ctx.now })).inventory;
                 return { state: 'done', receipt: { directory, databases: saved.databases.length } };
             } catch (error) { return { state: 'failed', reason: `the stores were not backed up: ${String(error).slice(0, 500)}` }; }
         },

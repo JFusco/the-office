@@ -820,12 +820,21 @@ reconfigures the service on its own; the deployment controller below sequences t
   and no idle receipt.
 - **Store backup** (`backup-stores.ts`). Copies each store database into `backups/<operation>/` with
   an inventory of sizes, digests and schema, and lists the archive files beside the stores without
-  copying them. A retry clears stale staging after checking it contains no declared database. The
-  backup is for recovery by a person. No deployment or rollback restores from it.
+  copying them. A configured project whose store file does not exist is listed under `absent` with
+  the path looked up, and is not copied. Only a lookup that reports no file (`ENOENT`) counts as
+  absent; any other lookup error, or a file that cannot be opened, fails the backup. A missing
+  control store (`office-control.sqlite`) always fails it. A missing configured path can also be a
+  configuration mistake, so the inventory records the path it observed. A retry clears stale
+  staging after checking it contains no declared database. The backup is for recovery by a person.
+  No deployment or rollback restores from it.
 - **Admission snapshot** (`admission-snapshot.ts`). Reads each project's journal cursor on a
-  read-only connection; the database file is not written. Two snapshots compare as unchanged only
-  when both name the same projects and every cursor is readable and equal; anything else, including
-  an entry with no project name, counts as admitted or unknown.
+  read-only connection; the database file is not written. A project whose store file does not exist
+  is recorded absent, with no cursor; that is not a gap. Two snapshots compare as unchanged only
+  when both name the same projects and every cursor is readable and equal, or the store is absent in
+  both. A store absent before and present after was created since the old service stopped, and is a
+  change. Anything else, including a store that disappeared, a malformed absent marker or an entry
+  with no project name, counts as admitted or unknown. Entries from older journals carry no marker
+  and compare as before.
 - **Store fingerprint** (`store-fingerprint.ts`). A digest of each store's schema and rows, read on
   a read-only connection. It leaves out what a release writes by starting under the fence and
   admitting nothing (`fenced-start-writes.ts`): planner statistics in any store and, in a project
@@ -834,7 +843,10 @@ reconfigures the service on its own; the deployment controller below sequences t
   counter while it names the last event, and where the `state_parts` rows sit in their table.
   Events the earlier read held must still be there unchanged, and a later event of any other kind
   is a change. So are a new table or index, a migration that changes any other saved state, one of
-  those four state keys removed or no longer in its shape, and a change to any other row.
+  those four state keys removed or no longer in its shape, and a change to any other row. A project
+  store whose file does not exist is recorded absent and compared as the cursor is. Any other
+  missing store is unreadable. A snapshot's cursors and fingerprints must agree on which project
+  stores are absent; when they do not, the snapshot has a gap and never compares as unchanged.
 - **Plist rendering** (`render-plist.ts`). Derives the service plist for another release of the same
   data root. Only the working directory, the entry script and the release's own `node_modules/.bin`
   PATH entry change. Rendering requires a Node service with absolute data and working directories.
@@ -961,8 +973,10 @@ and settled after:
 2. `idle`: wait for two idle `/api/health` reads of the same instance with the fence held.
 3. `stop`: `launchctl bootout`, then confirm launchd no longer has the service and its process is
    gone.
-4. `backup`: copy every store into `backups/<operation>/`.
-5. `snapshot`: record every project's admission cursor and a content fingerprint of every store.
+4. `backup`: copy every store into `backups/<operation>/`. A configured project with no store file
+   yet is listed as absent; the control store must exist.
+5. `snapshot`: record every project's admission cursor and a content fingerprint of every store. A
+   project with no store file yet is recorded absent, which is no gap.
 6. `plist`: install the plist rendered for the target, after re-verifying the target against the
    manifest digest frozen at the start.
 7. `start`: recheck the frozen target before sending `launchctl bootstrap`.
@@ -995,13 +1009,18 @@ with its own journal (`rollback-…`). The rollback halts the service, checks el
 the saved plist, restarts the previous release, verifies its hash under the fence and releases
 the fence. This includes a plist install or a start that read-back could not confirm: the step is not
 sent again, and the rollback's own separately identified steps settle the service by read-back. The
-rollback is code only. It requires a complete, readable baseline taken after the old service
-stopped. The controller checks that every admission cursor and store fingerprint still matches
-before restoring the plist and before sending the restart. A target that started under the fence
+rollback is code only. When the deployment's journal is intact, has the deployment's own steps and
+ends at `backup` or `snapshot` (intended, done or failed), no target plist was intended. Then the
+rollback needs only the service confirmed stopped. It checks that at eligibility, before restoring
+the plist and before sending the restart, and records that basis. From target plist intent onward it
+requires a complete, matching baseline taken after the old service stopped. The controller checks
+that the service is still stopped and that every admission cursor and store fingerprint still
+matches before restoring the plist and before sending the restart. A target that started under the fence
 and admitted nothing still matches, so a failed verification after such a start is rolled back,
 unless that target wrote a whole `state` row the store did not have (see the rollback floor above). A
 target whose start added a table or index, migrated any other saved state or changed any other
-row does not match. A missing baseline, unreadable store, or difference goes to STOP. If the restarted previous release fails verification, the controller
+row does not match. Nor does a project store that was absent at the snapshot and exists now. A
+missing baseline, unreadable store, or difference goes to STOP. If the restarted previous release fails verification, the controller
 attempts a separate halt and records whether it was confirmed. Backups are for manual recovery.
 
 **STOP.** These each leave `deployments/STOP.json` naming the operation and its last journaled
