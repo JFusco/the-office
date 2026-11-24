@@ -15,7 +15,7 @@ type Execute = typeof command;
 export interface CandidateRemoval { worktree: boolean; local: boolean; remote: boolean; skipped?: string; /** The candidate was one a maintenance run created (`maintenance-candidate.ts`). */ created?: boolean }
 
 /** Only a candidate the Office created for this issue is removable: never an adopted PR branch or another checkout. */
-function notOwned(store: Store, job: TicketJob): string {
+export function notOwned(store: Store, job: TicketJob): string {
     const repo = store.project.repo, worktrees = resolve(dirname(repo), `${basename(repo)}-worktrees`) + sep;
     // Discovery marks every PR-linked job existingPR, including the Office's own; only candidate creation records a base.
     if (!job.candidateBase)
