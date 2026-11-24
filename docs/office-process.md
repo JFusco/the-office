@@ -491,7 +491,9 @@ A stage runner holds its ticket or job for the whole run. When a store transacti
 store restores its saved contents in place, so that record stays the live one and nothing the
 runner writes afterwards is lost. If a Jira/Azure stage result was saved to its attempt but is
 not on the ticket, the next run of that stage applies it under the same attempt: no worker runs
-again and writes already verified for that attempt are not repeated.
+again and writes already verified for that attempt are not repeated. The attempt is marked as
+applied only once applying it has ended, so a restart part way through applies it again; if applying
+it failed, the stage runs again instead.
 
 The move to Jira Blocked is the one Jira write that does not go through TWG. The workflow requires
 a comment in the transition request itself, as Jira's own dialog sends it, and TWG posts a
