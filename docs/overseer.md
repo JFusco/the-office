@@ -808,12 +808,16 @@ deployed), and after it becomes `verified` or `recurred`.
 - A paused or draining project shows as one subject. Its stopped work stays open until the project
   runs again and the ledger can see whether it cleared.
 - A failed run is counted for 24 hours, then clears by itself. One that belongs to a stopped job,
-  ticket, review or maintenance run is part of that subject instead. Of the runs that failed for
+  ticket, review or maintenance run, to the outbox item kept for a ticket or review, or to the Jira
+  mailbox error its check recorded, is part of that subject instead. Of the runs that failed for
   one cause in a project, only the newest 20 are subjects of their own: an older one clears as
   newer ones arrive, and still counts as part of the stopped work it belongs to. Every run that
   was recorded stays in the incident's event history.
 - If a collector cannot read a project, the service log says which one each minute, and what that
-  collector had reported for the project is left open until it can.
+  collector had reported for the project is left open until it can. A subject whose cause changes
+  meanwhile still moves to its new incident. An unreadable outbox releases an item only when fresh
+  stopped-work reports cover it. A Jira mailbox error stays open while a check is queued or running
+  unless a successful check has been recorded since the observed failure.
 - With three GitHub projects, ordinary provider waits will meet the two-project threshold often.
   That is the plan's threshold; it makes them eligible for research, nothing more.
 - A run a provider refused at its usage limit is a `provider-wait` when the harness typed the
