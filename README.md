@@ -6,6 +6,15 @@ A local workplace for autonomous engineering agents. Models analyze tasks, chang
 
 The delivery team shares one fair project queue. CTO and IT work use separate capacity. The interface shows current owners, blockers, acceptance evidence, live timers, Goals & Ideas, and project operations in a shared 3D office.
 
+## Project history and verification
+
+Start at the [context wiki](wiki/office.md) for decisions, executed plans, and the
+history of substantive changes. Run `node scripts/wiki/check.cjs` after editing
+the wiki and `node scripts/wiki/serve-graph.cjs` to open its local graph.
+
+On GitHub, Quality runs the build and macOS unit tests in parallel when code
+changes. Run `pnpm run verify:ci` locally to execute both.
+
 ## Requirements and setup
 
 - Node.js 24.14–24.x and pnpm 10.

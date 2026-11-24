@@ -1,6 +1,6 @@
-import {expect,test} from 'vitest';
+import {afterEach,expect,test,vi} from 'vitest';
 import {ServiceHealthChecks} from '../../../server/office/service-health';
-import type {OfficeSnapshot} from '../../../src/shared';
+import type {HealthReport,OfficeSnapshot} from '../../../src/shared';
 const state=(workLog:any[]=[])=>({project:{id:'brain',name:'Brain'},paused:false,coordination:{listener:{lastCheckedAt:new Date().toISOString(),error:''}},workLog,slackDeliveries:[]} as unknown as OfficeSnapshot);
 function fixture(){
  const calls:{program:string;args:string[]}[]=[];
@@ -30,4 +30,45 @@ test('authentication denial differs from a timeout or unavailable status command
  const checks=new ServiceHealthChecks(async(program)=>{throw new Error(program==='claude'?'Not logged in':'command timed out');});
  const report=await checks.report([state()]);expect(report.services.find(s=>s.id==='anthropic')?.status).toBe('disconnected');expect(report.services.find(s=>s.id==='github')?.status).toBe('unknown');
  expect(report.services.find(s=>s.id==='github')?.nextStep).not.toContain('gh auth');expect(report.services.find(s=>s.id==='github')?.detail).toContain('timed out');
+});
+const REFUSED='Failed to authenticate: OAuth session expired and could not be refreshed';
+const refusal=(offset:number)=>({provider:'claude',status:'failed',stage:'implement',ticket:'GH-552',endedAt:since(offset),failure:{category:'uncertain-effect',dispatched:true,detail:`claude exited 1: ${REFUSED}`}});
+/** A moment `offset` ms after this process started, which is when a worker's refusal starts to count. */
+const since=(offset:number)=>new Date(performance.timeOrigin+offset).toISOString();
+const anthropic=(report:HealthReport)=>report.services.find(s=>s.id==='anthropic');
+const startAfterOrigin=()=>vi.useFakeTimers({toFake:['Date'],now:performance.timeOrigin+60000});
+afterEach(()=>{vi.useRealTimers();});
+test('a worker’s Claude login refusal counts only after the process started, even before the checks existed',async()=>{
+ startAfterOrigin();const checks=new ServiceHealthChecks(fixture().execute as any);
+ expect(anthropic(await checks.report([state([refusal(-1000)])]))?.status).toBe('connected');
+ expect(anthropic(await checks.report([state([refusal(30000)])]))).toMatchObject({status:'disconnected',failure:REFUSED});
+});
+test('a refusal in any project signs Claude out on the cached reading until a later completed run',async()=>{
+ startAfterOrigin();const f=fixture(),checks=new ServiceHealthChecks(f.execute as any),first=anthropic(await checks.report([state(),state()]))!;
+ expect(first.status).toBe('connected');vi.setSystemTime(performance.timeOrigin+70000);
+ const refused=refusal(65000),network={...refused,endedAt:since(68000),failure:{...refused.failure,detail:'claude exited 1: API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)'}};
+ expect(anthropic(await checks.report([state([refused]),state([network])]))).toEqual({...first,status:'disconnected',detail:'Claude refused the Office’s login during a worker run. Its status command still reports a configured login.',failure:REFUSED,lastFailure:{at:network.endedAt,detail:expect.stringContaining('GH-552')}});
+ const cleared=anthropic(await checks.report([state([refused]),state([network,{...network,status:'completed',failure:undefined,endedAt:since(69000)}])]));
+ expect(cleared).toMatchObject({status:'connected',detail:first.detail});expect(cleared?.failure).toBeUndefined();
+ expect(f.calls.filter(c=>c.program==='claude')).toHaveLength(1);
+});
+test('the check’s own signed-out reading supersedes an earlier refusal once Claude is signed in again',async()=>{
+ startAfterOrigin();let loggedIn=false,release=()=>{};const held=new Promise<void>(resolve=>{release=resolve;}),f=fixture();
+ const checks=new ServiceHealthChecks((async(program:string,args:string[])=>{
+  if(program==='claude')return JSON.stringify(loggedIn?{loggedIn:true,email:'fixture@example.test'}:{loggedIn:false,authMethod:'none'});
+  if(program==='az')await held;
+  return f.execute(program,args);
+ }) as any);
+ // Claude reads signed out at +60 s while Azure holds the batch open until +65 s.
+ const pending=checks.report([state()]);await new Promise(resolve=>setImmediate(resolve));
+ vi.setSystemTime(performance.timeOrigin+65000);release();
+ expect(anthropic(await pending)).toMatchObject({status:'disconnected',failure:'loggedIn: false, authMethod: none'});
+ loggedIn=true;vi.setSystemTime(performance.timeOrigin+130000);
+ expect(anthropic(await checks.report([state([refusal(60000)])]))?.status).toBe('connected');
+ expect(anthropic(await checks.report([state([refusal(62000)])]))).toMatchObject({status:'disconnected',failure:REFUSED});
+});
+test('a refusal leaves an unverified Claude check as the check reported it',async()=>{
+ startAfterOrigin();const f=fixture(),checks=new ServiceHealthChecks((async(program:string,args:string[])=>{if(program==='claude')throw new Error('command timed out');return f.execute(program,args);}) as any);
+ const row=anthropic(await checks.report([state([refusal(30000)])]));
+ expect(row).toMatchObject({status:'unknown',detail:'The read-only status check timed out after 60 seconds. Login status is unverified.'});expect(row?.failure).toBeUndefined();
 });

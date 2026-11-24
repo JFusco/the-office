@@ -1,20 +1,20 @@
 import { expect, test } from 'vitest';
-import { dispatchable, RESUME_ROUTES, routeFault, subjectParts } from '../../../../server/incidents/repair/resume-routes';
+import { dispatchable, forWriterRelease, RESUME_ROUTES, routeFault, subjectParts, writerReleasePayload } from '../../../../server/incidents/repair/resume-routes';
 
 const JOB = { subject: 'cms-field-vocabulary/delivery/job-1', stage: 'review', provider: 'github' };
 const route = (action: string, payload: Record<string, unknown>, expectedStage = 'review') => ({ action, payload, expectedStage });
 
-test('the inventory is the closed list of existing handlers; the seven GitHub read-back routes, the three synchronous job transitions, the assignment review\'s requeue, the ticket\'s own resume and the native checkpoint read-back are dispatched in every form', () => {
+test('the inventory is the closed list of existing handlers; the seven GitHub read-back routes, the three synchronous job transitions, the writer release, the assignment review\'s requeue, the ticket\'s own resume and the native checkpoint read-back are dispatched in every form', () => {
     expect(Object.keys(RESUME_ROUTES).sort()).toEqual([
         'reconcile-base-update', 'reconcile-closeout', 'reconcile-implementation', 'reconcile-maintenance', 'reconcile-native-checkpoint', 'reconcile-preparation', 'reconcile-review',
-        'reconcile-scope-repair', 'reconcile-validation', 'requeue-implement', 'resume-ticket', 'retry-checkpoint', 'review-assignment', 'review-candidate', 'review-pr',
+        'reconcile-scope-repair', 'reconcile-validation', 'release-writer', 'requeue-implement', 'resume-ticket', 'retry-checkpoint', 'review-assignment', 'review-candidate', 'review-pr',
     ]);
     expect(Object.entries(RESUME_ROUTES).filter(([, known]) => known.dispatch !== 'none').map(([action, known]) => [action, known.dispatch]).sort()).toEqual([
-        ['reconcile-base-update', 'all'], ['reconcile-closeout', 'all'], ['reconcile-implementation', 'all'], ['reconcile-native-checkpoint', 'all'], ['reconcile-preparation', 'all'], ['reconcile-review', 'all'], ['reconcile-scope-repair', 'all'], ['reconcile-validation', 'all'], ['requeue-implement', 'all'], ['resume-ticket', 'all'], ['review-assignment', 'all'], ['review-candidate', 'all'], ['review-pr', 'all'],
+        ['reconcile-base-update', 'all'], ['reconcile-closeout', 'all'], ['reconcile-implementation', 'all'], ['reconcile-native-checkpoint', 'all'], ['reconcile-preparation', 'all'], ['reconcile-review', 'all'], ['reconcile-scope-repair', 'all'], ['reconcile-validation', 'all'], ['release-writer', 'all'], ['requeue-implement', 'all'], ['resume-ticket', 'all'], ['review-assignment', 'all'], ['review-candidate', 'all'], ['review-pr', 'all'],
     ]);
     // Every dispatched route resumes a GitHub delivery job, a Jira/Azure ticket, an assignment review or, by its native read-back alone, a checkpoint.
     expect(Object.entries(RESUME_ROUTES).filter(([, known]) => known.dispatch !== 'none' && known.subject !== 'job').map(([action, known]) => [action, known.subject])).toEqual([['resume-ticket', 'ticket'], ['review-assignment', 'intake'], ['reconcile-native-checkpoint', 'checkpoint']]);
-    // The two other maintenance routes are not dispatched, for reasons of their own; the rows awaiting support give none.
+    // The two other maintenance routes are not dispatched, for reasons of their own; every other route is dispatched.
     expect(Object.entries(RESUME_ROUTES).filter(([, known]) => known.reason !== undefined).map(([action, known]) => [action, known.dispatch, known.reason])).toEqual([
         ['reconcile-maintenance', 'none', 'Maintenance reconciliation can repeat a paid read-back on replay and can finish with the original run still blocked.'],
         ['retry-checkpoint', 'none', 'A checkpoint retry can start a paid maintenance run after the repair wait lifts.'],
@@ -40,6 +40,26 @@ test('a payload carries the key, and a head only where the handler takes one', (
     const implement = { ...JOB, stage: 'implement' };
     expect(routeFault(route('requeue-implement', { key: 'GH-12' }, 'implement'), implement)).toBeNull();
     expect(routeFault(route('requeue-implement', { key: 'GH-12', head: 'worker-1' }, 'implement'), implement)).toBe('the payload of requeue-implement is { key }');
+});
+
+test('a writer release takes the key and the dead run\'s ID, which is required and compared as sent', () => {
+    const implement = { ...JOB, stage: 'implement' };
+    expect(routeFault(route('release-writer', { key: 'GH-12', head: 'worker-1' }, 'implement'), implement)).toBeNull();
+    expect(routeFault(route('release-writer', { key: 'GH-12', head: 'w'.repeat(200) }, 'implement'), implement)).toBeNull();
+    // Space around a worker ID is the ID's own: it is compared as sent, and names no run.
+    expect(routeFault(route('release-writer', { key: 'GH-12', head: ' worker-1' }, 'implement'), implement)).toBeNull();
+    for (const payload of [{ key: 'GH-12' }, { key: 'GH-12', head: '' }, { key: 'GH-12', head: '   ' }, { key: 'GH-12', head: 7 }, { key: 'GH-12', head: 'w'.repeat(201) }, { key: 'GH-12', head: 'worker-1', extra: true }, { key: ' GH-12', head: 'worker-1' }, { head: 'worker-1' }])
+        expect(routeFault(route('release-writer', payload, 'implement'), implement), JSON.stringify(payload)).toBe('the payload of release-writer is { key, head }');
+    expect(writerReleasePayload({ key: 'GH-12', head: 'worker-1' })).toEqual({ key: 'GH-12', head: 'worker-1' });
+    for (const payload of [{ key: 'GH-12' }, { key: 'GH-12', head: ' ' }, null, 'GH-12']) expect(writerReleasePayload(payload), JSON.stringify(payload)).toBeNull();
+    // The other routes keep their forms.
+    expect(routeFault(route('reconcile-review', { key: 'GH-12' }), JOB)).toBeNull();
+    expect(routeFault(route('review-pr', { key: 'GH-12', head: 'worker-1' }), JOB)).toBe('the payload of review-pr is { key }');
+    // A job route, at the stage the stop was recorded, in a GitHub project.
+    expect(routeFault(route('release-writer', { key: 'CEC-154', head: 'worker-1' }, 'qa'), { subject: 'cec/delivery/ticket:CEC-154', stage: 'qa', provider: 'azure' })).toMatch(/resumes a GitHub delivery job, which/);
+    expect(routeFault(route('release-writer', { key: 'GH-12', head: 'worker-1' }, 'update-base'), implement)).toBe('cms-field-vocabulary/delivery/job-1 was recorded at stage implement, not update-base');
+    expect(forWriterRelease('release-writer')).toBe(true);
+    for (const action of ['requeue-implement', 'reconcile-implementation', 'constructor']) expect(forWriterRelease(action), action).toBe(false);
 });
 
 test('a key is taken exactly as sent: space around it is refused, never trimmed away', () => {
@@ -121,7 +141,7 @@ test('a route is dispatched in the forms its row names: none, only without a hea
     expect(dispatchable(row('saved-result'), { key: 'GH-12', head: 'worker-1' })).toBe(false);
     // The Office's own inventory: the read-back routes with a head and without, the ticket's own resume, the three synchronous job transitions, the assignment review's requeue, the native checkpoint read-back, and nothing else.
     for (const payload of [{ key: 'GH-12' }, { key: 'GH-12', head: 'worker-1' }]) {
-        for (const action of ['reconcile-review', 'reconcile-implementation', 'reconcile-validation', 'reconcile-scope-repair', 'reconcile-preparation', 'reconcile-base-update', 'reconcile-closeout', 'resume-ticket', 'review-pr', 'review-candidate', 'requeue-implement', 'review-assignment', 'reconcile-native-checkpoint']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(true);
+        for (const action of ['reconcile-review', 'reconcile-implementation', 'reconcile-validation', 'reconcile-scope-repair', 'reconcile-preparation', 'reconcile-base-update', 'reconcile-closeout', 'resume-ticket', 'review-pr', 'review-candidate', 'requeue-implement', 'review-assignment', 'reconcile-native-checkpoint', 'release-writer']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(true);
         for (const action of ['reconcile-maintenance', 'retry-checkpoint']) expect(dispatchable(RESUME_ROUTES[action], payload), action).toBe(false);
     }
     // The assignment review's requeue takes its strict `{ key }`, the review's ticket, which only the admission can compare: a head is refused before dispatch is asked.

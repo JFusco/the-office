@@ -3,6 +3,7 @@ import { dependencyEligibility, type DependencyStores } from '../delivery/pipeli
 import { holdsFor } from '../office/project-holds';
 import { unsettledEffects } from '../operations/unsettled-effects';
 import type { Store } from '../store/store';
+import { lastFailedMailCheck, lastMailCheckOutcome } from './mailbox-check-window';
 import type { ProjectObservation } from './observation';
 import { redactEvidence } from './redact-evidence';
 
@@ -28,7 +29,9 @@ export function observeProjects<Entry extends { store: Pick<Store, 'project' | '
             observations.push({
                 projectId: project.id, provider: project.provider, repository: project.repository, state: entry.store.state,
                 progression: LANES.flatMap(lane => projection(entry, lane).map(({ work, stage, eligibility }) => ({ work, stage, eligibility }))),
-                unsettled: unsettledEffects(entry.store), holds: holdsFor(project), dependency: prerequisites => dependencyEligibility(prerequisites, stores, now), now,
+                unsettled: unsettledEffects(entry.store), holds: holdsFor(project), dependency: prerequisites => dependencyEligibility(prerequisites, stores, now),
+                lastFailedMailCheck: () => lastFailedMailCheck(entry.store.db),
+                lastMailCheckOutcome: () => lastMailCheckOutcome(entry.store.db), now,
             });
         } catch (error) { unreadable.push({ projectId: project.id, error: redactEvidence(String(error)).slice(0, 300) }); }
     }

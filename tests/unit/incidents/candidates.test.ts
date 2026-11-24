@@ -75,3 +75,12 @@ test('a candidate reported as folded only is taken in by the record that covers 
     // The same candidate without the mark is a subject of its own.
     expect(groupCandidates([{ ...past, foldedOnly: undefined }]).size).toBe(1);
 });
+
+test('what each source said is kept apart, the owner\'s included, even where an earlier report masks it', () => {
+    const worker = candidate({ kind: 'worker', id: 'run-1' }, { expected: 'authentication', cause: { source: 'worker-failure', provider: 'claude', stage: 'conversation', kind: 'authentication', text: 'signed out', author: 'harness' } });
+    const delivery = candidate({ kind: 'slack-delivery', id: 'msg-1', unsettledEffect: true }, { expected: 'uncertain-effect', cause: { source: 'slack-delivery', provider: 'slack', stage: 'person', kind: 'uncertain', text: 'read-back did not match', author: 'harness' } });
+    const conversation = candidate({ kind: 'conversation', id: 'msg-1', lastWorker: 'run-1' }, { absorbs: ['brain/worker/run-1', 'brain/slack-delivery/msg-1'] });
+    const subject = [...groupCandidates([conversation, worker, delivery]).values()][0].subjects.get('brain/conversation/msg-1')!;
+    expect(subject).toMatchObject({ expected: 'authentication', sources: ['stopped-work', 'worker-failure', 'slack-delivery'], subject: { unsettledEffect: true } });
+    expect(subject.contributions).toEqual({ 'stopped-work': { unsettledEffect: false, expected: null }, 'worker-failure': { unsettledEffect: false, expected: 'authentication' }, 'slack-delivery': { unsettledEffect: true, expected: 'uncertain-effect' } });
+});

@@ -1,5 +1,6 @@
 import type { IncidentCandidate, IncidentSubject } from '../../../src/contracts/incidents';
 import type { BlockedCause, WorkKind } from '../../../src/contracts/work';
+import { lastFailedMailCheck, lastMailCheckOutcome } from '../../../server/incidents/mailbox-check-window';
 import type { ProjectObservation } from '../../../server/incidents/observation';
 import type { OfficeObservation } from '../../../server/incidents/observe-projects';
 import { projectById } from '../../../server/office/projects';
@@ -22,7 +23,7 @@ export const item = (kind: WorkKind, id: string, stage: string, state: Item['eli
     ({ work: { projectId, kind, id }, stage, eligibility: { state, reason, owner: 'Morgan', nextCheckAt: null, ...(cause ? { cause } : {}) } });
 
 export function observe(store: Store, progression: Item[] = [], now = AT, holds: Record<string, string> = {}): ProjectObservation {
-    return { projectId: store.project.id, provider: store.project.provider, repository: store.project.repository, state: store.state, progression, unsettled: unsettledEffects(store), holds, dependency: () => null, now };
+    return { projectId: store.project.id, provider: store.project.provider, repository: store.project.repository, state: store.state, progression, unsettled: unsettledEffects(store), holds, dependency: () => null, lastFailedMailCheck: () => lastFailedMailCheck(store.db), lastMailCheckOutcome: () => lastMailCheckOutcome(store.db), now };
 }
 
 /** Observations of readable projects, as the sync receives them. */
