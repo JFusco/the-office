@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, expectTypeOf, test } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
@@ -7,6 +7,7 @@ import { resumeAfterSignIn } from '../../../../server/cec/qa/resume-after-sign-i
 import { SIGN_IN_WAIT_FILE } from '../../../../server/qa/sign-in-wait';
 import { HOLDS } from '../../../../server/office/config';
 import { Engine } from '../../../../server/scheduling/engine';
+import { admissionsSince } from '../../../../server/store/admission-journal';
 import { Store } from '../../../../server/store/store';
 import { projectById } from '../../../../server/office/projects';
 import { ticket } from '../parking/fixtures';
@@ -44,15 +45,26 @@ function open(path: string, dataRoot: string) { const store = new Store(path, pr
 /** The Office's own queue admission, as the provider observation passes it. */
 const admit = (store: Store) => { const engine = new Engine(store); return (key: string) => engine.requestDelivery(key, 'resume-ticket'); };
 const resumes = (store: Store) => (store.state.deliveryQueue || []).filter(request => request.key === KEY && request.action === 'resume-ticket' && request.status === 'queued');
-const asks = (store: Store) => store.state.outbox.some(item => JSON.stringify(item).includes(KEY));
+const asks = (store: Store) => store.state.outbox.some(item =>
+    item.id === `ticket:${KEY}:staging-qa` && item.status === 'open' && item.detail === 'Joe completes sign-in');
 
-test('a restart before the resume is queued leaves the wait open, and the next observation queues one resume', async () => {
+test('a restart after admission writes but before commit leaves the wait open for one resume', async () => {
     const f = waiting();
+    const admitResume = admit(f.store);
     let restarted: Store | undefined;
-    await resumeAfterSignIn(f.store, () => { restarted = f.crash('before-commit'); throw new Error('process died'); }, SIGNED_IN);
+    await expect(resumeAfterSignIn(f.store, key => {
+        const request = admitResume(key);
+        expect(resumes(f.store)).toEqual([request]);
+        expect(admissionsSince(f.store.db, 0)).toEqual([expect.objectContaining({ kind: 'delivery', ref: request.id })]);
+        expect(f.store.replay(0)).toContainEqual(expect.objectContaining({ kind: 'delivery-queued', ticket: key }));
+        restarted = f.crash('before-commit');
+        throw new Error('process died');
+    }, SIGNED_IN)).rejects.toThrow('process died');
     const after = restarted!;
     expect(after.ticket(KEY).signInResumedFor).toBeUndefined();
     expect([resumes(after).length, asks(after)]).toEqual([0, true]);
+    expect(admissionsSince(after.db, 0)).toEqual([]);
+    expect(after.replay(0)).not.toContainEqual(expect.objectContaining({ kind: 'delivery-queued', ticket: KEY }));
     expect(await resumeAfterSignIn(after, admit(after), SIGNED_IN)).toEqual([KEY]);
     expect(resumes(after)).toHaveLength(1);
     // Queuing the resume is not the sign-in: the ticket still asks until QA checks the signed-in account and tenant.
@@ -73,12 +85,23 @@ test.each<[string, (f: ReturnType<typeof waiting>) => void, number]>([
     ['the Office is draining', f => { f.store.state.draining = true; }, 0],
     ['the ticket is held', () => { HOLDS[KEY] = 'Held for the test'; }, 0],
     ['the ticket was resumed by hand', f => { f.t.activity = 'working'; }, 0],
+    ['the ticket was parked', f => { f.t.parked = { marker: 'Office decision', reason: 'Parked for the test', fromStatus: 'Ready for Staging', at: '', published: true } as unknown as Ticket['parked']; }, 0],
+    ['the stage moved on', f => { f.t.stage = 'complete'; }, 0],
+    ['a working pilot replaces the ticket at the same key', f => {
+        f.store.state.tickets = [{ ...f.t, activity: 'working' }];
+    }, 0],
+    ['the wait directory changes in place', f => {
+        f.t.results['staging-qa']!.qaRunDir = resolve(f.qaRunDir, '..', 'staging-qa-2');
+    }, 0],
     ['the candidate moved', f => { f.t.commit = 'b'.repeat(40); }, 0],
+    ['the candidate and wait move to a new commit at the same directory', f => {
+        f.t.commit = f.t.results['staging-qa']!.commit = 'b'.repeat(40);
+    }, 0],
     ['another request was queued', f => { admit(f.store)(KEY); }, 1],
 ])('nothing stale is queued or marked when, during the browser read, %s', async (_name, change, queued) => {
     const f = waiting();
     expect(await resumeAfterSignIn(f.store, admit(f.store), async () => { change(f); return SIGNED_IN(); })).toEqual([]);
-    expect(f.t.signInResumedFor).toBeUndefined();
+    expect(f.store.ticket(KEY).signInResumedFor).toBeUndefined();
     expect(resumes(f.store)).toHaveLength(queued);
     expect(f.store.state.events.some(event => event.kind === 'qa-sign-in-observed')).toBe(false);
 });
@@ -93,4 +116,39 @@ test('a resume the queue refuses is recorded on disk with its marker, and not as
     expect(after.state.events.some(event => event.kind === 'qa-sign-in-resume-refused')).toBe(true);
     expect(await resumeAfterSignIn(after, refuse, SIGNED_IN)).toEqual([]);
     expect(calls).toBe(1);
+});
+
+test('a failed admission journal insert leaves the wait eligible after restart', async () => {
+    const f = waiting();
+    f.store.db.exec(`CREATE TEMP TRIGGER fail_admission BEFORE INSERT ON admissions
+        WHEN NEW.kind = 'delivery' BEGIN SELECT RAISE(ABORT, 'admission journal failed'); END`);
+    await expect(resumeAfterSignIn(f.store, admit(f.store), SIGNED_IN)).rejects.toThrow('admission journal failed');
+    f.store.db.exec('DROP TRIGGER fail_admission');
+
+    const after = f.crash('after-admission-failure');
+    expect(after.ticket(KEY).signInResumedFor).toBeUndefined();
+    expect(resumes(after)).toEqual([]);
+    expect(after.replay(0)).not.toContainEqual(expect.objectContaining({ kind: 'qa-sign-in-resume-refused', ticket: KEY }));
+    expect(await resumeAfterSignIn(after, admit(after), SIGNED_IN)).toEqual([KEY]);
+    expect(resumes(after)).toHaveLength(1);
+});
+
+test('a failed refusal event insert leaves no marker to persist on a later save', async () => {
+    const f = waiting();
+    f.store.db.exec(`CREATE TEMP TRIGGER fail_refusal BEFORE INSERT ON events
+        WHEN json_extract(NEW.body, '$.kind') = 'qa-sign-in-resume-refused'
+        BEGIN SELECT RAISE(ABORT, 'refusal event failed'); END`);
+    const refuse = () => { throw new Error('Ticket has no resumable delivery'); };
+    await expect(resumeAfterSignIn(f.store, refuse, SIGNED_IN)).rejects.toThrow('refusal event failed');
+    expect(f.store.ticket(KEY).signInResumedFor).toBeUndefined();
+    f.store.db.exec('DROP TRIGGER fail_refusal');
+    f.store.save();
+
+    const after = f.crash('after-refusal-failure');
+    expect(after.ticket(KEY).signInResumedFor).toBeUndefined();
+    expect(after.replay(0)).not.toContainEqual(expect.objectContaining({ kind: 'qa-sign-in-resume-refused', ticket: KEY }));
+});
+
+test('requires a synchronous resume callback', () => {
+    expectTypeOf<() => Promise<void>>().not.toExtend<Parameters<typeof resumeAfterSignIn>[1]>();
 });
