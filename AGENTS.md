@@ -126,7 +126,9 @@ src/
   The delete goes through the provider API, not a push, so no repository hook runs.
 - A hands-off GitHub writer stage whose run died restarts from the accepted head
   (`server/delivery/attempts/`): the abandoned work is kept under a local ref, the worktree is
-  reset, and nothing is pushed. This re-runs a model stage; it never resends an Effect.
+  reset, and nothing is pushed. This re-runs a model stage; it never resends an Effect. A
+  `release-writer` repair resume after a verified fix grants that run one restart beyond the
+  ordinary allowance, spent in the same write that records it; counters and salvage refs are kept.
 - Only `holds` in the local office config and structured `prerequisites` gate work.
   Model-written findings are advisory unless the model returns a blocking `outcome`.
 
@@ -249,7 +251,10 @@ the harness's delivery worktrees; refresh the canonical map from the primary che
 Commit only `graph.json`, `graph.html`, `GRAPH_REPORT.md`, `.graphify_analysis.json`,
 `.graphify_labels.json` and its `.sig`; `manifest.json`, caches and backups stay local.
 Keep `graphify-out/memory/` empty and review background graph changes before staging.
-Do not install Graphify agent tool hooks.
+Do not install Graphify agent tool hooks. The
+[Graphify refresh workflow](.github/workflows/graphify-refresh.yml) publishes
+the shared map after mapped source reaches `main`. Local hooks also support
+working-copy previews.
 
 <!-- wiki-skill:start -->
 ## Context wiki

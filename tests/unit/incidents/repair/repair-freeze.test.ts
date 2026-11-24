@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { projectOutbox } from '../../../../server/conversations/outbox';
+import { APPROACH_GUARD_REJECTION } from '../../../../server/delivery/pipeline/approach';
 import { freezeReads } from '../../../../server/incidents/repair/freeze-reads';
 import { heldFor, repairFreeze } from '../../../../server/incidents/repair/repair-freeze';
 import { repairWaitFor } from '../../../../server/incidents/repair/repair-wait';
@@ -280,4 +281,104 @@ test('a marker is honoured only for the project the snapshot names', () => {
     w.store.state.coordination!.repairWaits!['delivery/1'] = { ...w.waits()['delivery/1'], subject: 'brain/delivery/1' };
     expect(repairFreeze({ ...w.store.state, project: w.store.project }, ONE, later(3), NOTHING_STRONGER)).toBeNull();
     expect(repairFreeze({ ...w.store.state, project: w.store.project }, TWO, later(3), NOTHING_STRONGER)).not.toBeNull();
+});
+
+/** A hands-off job whose implement run died of its own process (a timeout), stopped `uncertain-effect` as the harness labels it, and marked. */
+function deadWriter() {
+    const w = world(stores, dbs, ['1', '2'], { stage: 'implement', stop: { kind: 'uncertain-effect', at: 't1' }, detail: 'Error: codex timed out; previous action outcome must be reconciled', steps: [] });
+    const run = { id: 'run-1', requestId: '1', stage: 'github-implement', status: 'failed', processId: 4242, startedAt: 's', endedAt: 'e', failure: { category: 'uncertain-effect', dispatched: true, detail: 'codex timed out' } } as any;
+    w.store.state.workLog = [run];
+    markAwaitingRepair(w.store.state, PROJECT, ONE, 'implement', { since: later(1).toISOString(), progressAt: later(1).toISOString() });
+    return { w, run, job: w.jobs()[0] };
+}
+
+test('a dead hands-off writer is held: its own process failure is not an unsettled write, and its stop is kept as it was', () => {
+    const { w, job, run } = deadWriter(), stop = structuredClone(job.stop);
+    expect(frozen(w)).toMatchObject({ subject: `${PROJECT}/delivery/1` });
+    expect(job.stop).toEqual(stop);
+    // Interrupted the same way, it is held the same way.
+    run.status = 'interrupted';
+    expect(frozen(w)).not.toBeNull();
+});
+
+test('an unsettled write still outranks the wait for a dead writer: a job or issue Effect, or a saved result that reports one', () => {
+    for (const [workKey, status] of [['cms-field-vocabulary:delivery:1', 'dispatching'], ['cms-field-vocabulary:delivery:1', 'uncertain'], ['cms-field-vocabulary:issue:1', 'uncertain']]) {
+        const { w } = deadWriter();
+        w.store.db.prepare('INSERT INTO effects(id, work_key, status, body) VALUES(?, ?, ?, ?)').run('e1', workKey, status, JSON.stringify({ attemptId: 'attempt-1' }));
+        expect(frozen(w), `${workKey} ${status}`).toBeNull();
+        w.store.db.prepare("UPDATE effects SET status='verified' WHERE id='e1'").run();
+        expect(frozen(w), `${workKey} settled`).not.toBeNull();
+    }
+    const saved = deadWriter();
+    saved.job.steps = [{ stage: 'draft', result: { outcome: 'passed', blocker: '', summary: 'ok', evidence: [], findings: [], receipts: [{ action: 'git-push', target: 'origin', verified: false, uncertain: true }] } }] as any;
+    expect(frozen(saved.w)).toBeNull();
+    // Without the ledger to read, nothing is established.
+    expect(repairFreeze(saved.w.store.state, ONE, later(3), null)).toBeNull();
+    const broken = deadWriter();
+    expect(repairFreeze(broken.w.store.state, ONE, later(3), { unsettled: () => { throw new Error('database is locked'); }, gated: () => false })).toBeNull();
+});
+
+test('every other cause still outranks the wait for a dead writer', () => {
+    const published = deadWriter();
+    published.job.parked = { stage: 'implement', reason: 'choose', at: 't1', published: true };
+    expect(frozen(published.w)).toBeNull();
+    const held = deadWriter();
+    HOLDS['GH-1'] = 'held for a release';
+    expect(frozen(held.w)).toBeNull();
+    delete HOLDS['GH-1'];
+    const paused = deadWriter();
+    paused.w.store.state.paused = true;
+    expect(frozen(paused.w)).toBeNull();
+    // A saved stop of another kind names its own cause, whatever the run's failure says.
+    for (const kind of ['paused', 'authority', 'hold'] as const) {
+        const saved = deadWriter();
+        saved.job.stop = { kind, at: 't2' };
+        markAwaitingRepair(saved.w.store.state, PROJECT, ONE, 'implement', { since: later(1).toISOString(), progressAt: later(1).toISOString() });
+        expect(frozen(saved.w), kind).toBeNull();
+    }
+    const gated = deadWriter();
+    gated.job.prerequisites = [{ target: { projectId: PROJECT, kind: 'delivery', id: '2' }, condition: 'job-completed', evidence: 'x', observedAt: later(1).toISOString() }] as any;
+    expect(frozen(gated.w)).toBeNull();
+    // A run that failed for a missing login is a person's to settle, whatever stage it worked.
+    const login = deadWriter();
+    login.run.failure.category = 'authentication';
+    expect(frozen(login.w)).toBeNull();
+    // A writer that returned a verdict reporting an unknown write: the result names it, and the exception is the process's alone.
+    const verdict = deadWriter();
+    Object.assign(verdict.run, { status: 'blocked', executionStatus: 'completed' });
+    delete verdict.run.failure;
+    verdict.job.steps = [{ stage: 'implement', workerId: 'run-1', result: { outcome: 'blocked', blocker: 'codex timed out; previous action outcome must be reconciled', summary: '', evidence: [], findings: [], receipts: [], resolution: { kind: 'uncertain-effect', findingIds: [], evidenceIds: ['e'] } } }] as any;
+    expect(frozen(verdict.w)).toBeNull();
+});
+
+test('a writer\'s uncertain-effect label is set aside only where the dead run is established from typed records', () => {
+    const cases: [string, (x: ReturnType<typeof deadWriter>) => void][] = [
+        ['snapshot without its project', x => { delete (x.w.store.state as any).project; }],
+        ['no run on record', x => { x.w.store.state.workLog = []; }],
+        ['a newer run of another stage', x => { x.w.store.state.workLog!.push({ id: 'run-2', requestId: '1', stage: 'github-scope-repair', status: 'failed', failure: { category: 'uncertain-effect', dispatched: true, detail: 'x' } } as any); }],
+        ['a returned verdict', x => { x.run.executionStatus = 'completed'; }],
+        ['an accepted completion', x => { x.run.completionAccepted = true; }],
+        ['a saved result of the run', x => { x.job.steps = [{ stage: 'implement', workerId: 'run-1', result: { outcome: 'passed', blocker: '', summary: '', evidence: [], findings: [], receipts: [] } }] as any; }],
+        ['a failure of another kind', x => { x.run.failure.category = 'timeout'; }],
+        ['legacy recovery', x => { x.job.candidateRecovery = { head: 'abc1234', findingIds: [], summary: '' }; }],
+        ['a reader stage', x => { x.job.stage = 'review'; x.run.stage = 'github-review'; }],
+        ['a completed run', x => { x.run.status = 'completed'; }],
+    ];
+    for (const [name, arrange] of cases) {
+        const x = deadWriter();
+        arrange(x);
+        // Re-marked as it stands, so only the cause decides: a changed stage is a new stop.
+        delete x.w.store.state.coordination!.repairWaits;
+        markAwaitingRepair(x.w.store.state, PROJECT, ONE, x.job.stage, { since: later(1).toISOString(), progressAt: later(1).toISOString() });
+        expect(frozen(x.w), name).toBeNull();
+    }
+});
+
+test('the historical approach-guard stop, saved as an uncertain write after a passed implement, is still not held', () => {
+    const { w, job, run } = deadWriter();
+    Object.assign(run, { status: 'completed', executionStatus: 'completed' });
+    delete run.failure;
+    job.steps = [{ stage: 'implement', workerId: 'run-1', result: { outcome: 'passed', blocker: '', summary: 'ok', evidence: [], findings: [], receipts: [] } }] as any;
+    job.detail = `Error: ${APPROACH_GUARD_REJECTION}`;
+    expect(frozen(w)).toBeNull();
 });

@@ -1,6 +1,6 @@
 # Plan ledger
 
-Executed-plan bodies are archived beside this file. Every historical candidate remains represented here after audit, including candidates that were not implemented or were outside this repository.
+The historical entries summarize recovered Office plans with public delivery evidence. The initial audit left some candidates unpublished.
 
 | Date | Plan | Status | Evidence | Topics |
 | --- | --- | --- | --- | --- |
@@ -27,4 +27,6 @@ Executed-plan bodies are archived beside this file. Every historical candidate r
 | 2026-11-24 | [Live ticket timeline](./2026-11-24-live-ticket-timeline-e55e366158.md) | implemented | https://github.com/JFusco/the-office/pull/550 (5b3ba3994b) | office-ui-and-telemetry <!-- plan:e55e366158d015d969fb5dae10197df696a2569c5e7aa8be2a94d3bc75917d26 --> |
 | 2026-11-24 | [Install the Office context wiki and split Quality](./2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md) | implemented | https://github.com/JFusco/the-office/issues/553 and .github/workflows/quality.yml | context-wiki-and-ci <!-- plan:bfa15636b4a0afd2486f7fac40268b7d53913e7e7ffefe4947d820f25428ffc4 --> |
 | 2026-11-24 | [Drill-down navigation for Office drawers](./2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md) | implemented | tests/browser/drawers.spec.ts | office-ui-and-telemetry <!-- plan:7f263c6ae4a7983e4f75b30d603bdaeab00b736d9e2a7186dab243785478b88c --> |
+| 2026-11-24 | [Repair the Office wiki adoption](./2026-11-24-repair-the-office-wiki-adoption-651b0935fc.md) | implemented | https://github.com/JFusco/the-office/issues/562; https://github.com/JFusco/context-wiki/pull/33 | context-wiki-and-ci <!-- plan:651b0935fc4ee1a5f34cfbf77bd1fa2ce6ab190f64eb8cca0466c7e3695477e0 --> |
+| 2026-11-24 | [Refresh the shared Office code map after merges](./2026-11-24-refresh-the-shared-office-code-map-after-merges-708032e283.md) | implemented | https://github.com/JFusco/the-office/issues/573 and .github/workflows/graphify-refresh.yml | context-wiki-and-ci <!-- plan:708032e283b37ada30811196ad5a02e2b4d8e3b48a270854e3835789b3b4c69f --> |
 <!-- wiki-plan-rows -->

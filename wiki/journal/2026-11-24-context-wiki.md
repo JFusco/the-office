@@ -1,6 +1,8 @@
 ---
 topics: [context-wiki-and-ci, delivery-and-recovery, session-evidence, planning-and-learning, releases-and-incidents, office-ui-and-telemetry]
 plans: [2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md]
+issue: 'https://github.com/jfusco/the-office/issues/553'
+issues: ['https://github.com/jfusco/the-office/issues/553']
 ---
 
 # Install the context wiki and parallelize Quality

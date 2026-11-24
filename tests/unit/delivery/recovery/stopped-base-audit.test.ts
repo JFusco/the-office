@@ -93,6 +93,19 @@ test('semantic output views remove credentials while their original source hash 
     expect(() => assertStoppedBaseAudit(input, response)).toThrow();
 });
 
+test.each(['\n', '\t', '\r', '\b', '\f', '\u001b'].map(separator => [JSON.stringify(separator), separator]))(
+    'semantic output views remove a token right after a %s escape in JSON text', (_, separator) => {
+        const tokens = ['github_pat_11ABCDEF_xyz', 'ghu_abcdef123', ...['a', 'b', 'p', 'r'].map(kind => `xox${kind}-123-abc`), 'AKIAABCDEFGHIJKLMNOP',
+            'ASIAABCDEFGHIJKLMNOP', `eyJhbGciOiJIUzI1NiJ9.${'e'.repeat(20)}.${'f'.repeat(20)}`];
+        const f = fixture(), output = f.native.outputs.get('read');
+        output.content = JSON.stringify({ lines: tokens.map(token => `line${separator}${token}`) });
+        const input = f.input(), view = input.rows.find(r => r.id === 'read:result')!.view as any;
+        const expected = JSON.stringify({ lines: tokens.map(() => `line${separator}[redacted]`) });
+        expect(view.result.content).toBe(expected); expect(view.records[0].value.content).toBe(expected);
+        expect(JSON.parse(view.result.content)).toEqual(JSON.parse(expected));
+        for (const token of tokens) expect(JSON.stringify(input)).not.toContain(token);
+    });
+
 test.each(['Bash', 'Write'])('redaction of %s executable text fails closed even when a model asserts it is safe', name => {
     const f = fixture(), call = f.native.calls.get('pending'); call.name = name;
     const executable = 'TOKEN=private-value; git push origin HEAD';

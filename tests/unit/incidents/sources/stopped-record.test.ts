@@ -76,3 +76,16 @@ test('text a completed run handed back to a request, notice or conversation is o
 test('the receipt wording the collector knows a cut-short stage by is the one the stage runner writes', () => {
     expect(readFileSync(resolve(import.meta.dirname, '../../../../server/cec/ticket-stage-runner.ts'), 'utf8')).toContain(`'${INTERRUPTED_RECEIPT}'`);
 });
+
+test('a mailbox checkpoint takes a repair restriction only from the run behind an intake error it still repeats', () => {
+    const s = store('cec'), said = 'Error: Mailbox read stopped';
+    s.state.coordination!.checkpoints = [{ id: 'cp-1', status: 'blocked', detail: said, endedAt: 'e', runId: '' }] as any;
+    s.state.workLog = [{ id: 'run-i', stage: 'intake', status: 'failed', failure: { category: 'authentication', detail: 'Mailbox read stopped', dispatched: true } }] as any;
+    const read = () => stoppedRecord(s.state, { projectId: 'cec', kind: 'checkpoint', id: 'cp-1' }, 'checkpoint');
+    for (const error of ['', 'Error: an unrelated failure']) {
+        s.state.intake = { status: error ? 'blocked' : 'idle', lastChecked: 'o', error } as any;
+        expect(read()).toMatchObject({ author: 'harness', failure: undefined });
+    }
+    s.state.intake = { status: 'blocked', lastChecked: 'o', error: said } as any;
+    expect(read()).toMatchObject({ author: 'harness', failure: 'authentication' });
+});
