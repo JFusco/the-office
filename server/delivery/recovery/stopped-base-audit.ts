@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { digest } from '../../store/readback-evidence';
-import { sanitizeObject } from '../../office/security';
+import { sanitizeObject, TOKEN_START } from '../../office/security';
 import type { EffectIntent } from '../../../src/shared';
 import type { readStoppedBaseOriginal } from './stopped-base-original';
 import type { readStoppedClaudeNative } from './stopped-base-native';
@@ -15,6 +15,9 @@ type Kind = 'input' | 'result' | 'missing-result' | 'cwd' | 'durable-effect';
 type CoverageRow = { id: string; kind: Kind; sha256: string; redacted: boolean; redactionBlocksSemantics: boolean; historicalVerified: boolean; view: unknown };
 type Original = ReturnType<typeof readStoppedBaseOriginal>;
 type Native = ReturnType<typeof readStoppedClaudeNative>;
+const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|xox[abpr]-[A-Za-z0-9-]+)\b`, 'g');
+const AWS_KEY_ID = new RegExp(String.raw`${TOKEN_START}(?:AKIA|ASIA)[A-Z0-9]{16}\b`, 'g');
+const JSON_WEB_TOKEN = new RegExp(String.raw`${TOKEN_START}eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b`, 'g');
 
 function redact(value: unknown) {
     return JSON.parse(JSON.stringify(sanitizeObject(value), (key, item) => {
@@ -22,9 +25,9 @@ function redact(value: unknown) {
         if (typeof item !== 'string') return item;
         return item.replace(/((?:https?|socks5?):\/\/)[^\s/@]+@/gi, '$1[redacted]@')
             .replace(/(\b[A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIALS?)\s*=)[^\r\n]*/gi, '$1[redacted]')
-            .replace(/\b(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|xox[abpr]-[A-Za-z0-9-]+)\b/g, '[redacted]')
-            .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '[redacted]')
-            .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted]');
+            .replace(PROVIDER_TOKEN, '[redacted]')
+            .replace(AWS_KEY_ID, '[redacted]')
+            .replace(JSON_WEB_TOKEN, '[redacted]');
     }));
 }
 

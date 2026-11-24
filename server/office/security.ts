@@ -8,6 +8,15 @@ function escapedAt(text: string, at: number): boolean {
   return count % 2 === 1;
 }
 /**
+ * A lookbehind that passes right after a JSON escape (`\n`, `\u001b`): in JSON text the escape's last letter or digit
+ * is not part of the word that follows. The spelling counts even after a literal backslash or for a `\u` escape of a
+ * word character, so a token there is redacted too.
+ */
+export const AFTER_JSON_ESCAPE = String.raw`(?<=\\[bfnrt]|\\u[\dA-Fa-f]{4})`;
+/** Where a provider token can start: not inside a word, or right after a JSON escape. Use it in place of a leading `\b`. */
+export const TOKEN_START = String.raw`(?:(?<!\w)|${AFTER_JSON_ESCAPE})`;
+const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:sk-[\w-]+|gh[oprs]_[\w]+)\b`, 'g');
+/**
  * Redacts credentials in a string. A value never ends inside an escape (`\` takes the next character with it)
  * or takes an unescaped `"`, so JSON text stored in the string stays JSON. Whether the whole string is JSON
  * text is checked once, only when a quote or a `\b` escape is ambiguous.
@@ -18,7 +27,7 @@ export function sanitize(value: string): string {
   return value
     // First, so its offset is the original string's: a `b` after an odd run of backslashes in JSON text is the `\b` escape.
     .replace(/(?:Bearer\s+)(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi, (match: string, at: number) => match[0] === 'b' && escapedAt(value, at) && isJson() ? 'bearer [redacted]' : 'Bearer [redacted]')
-    .replace(/\b(?:sk-[\w-]+|gh[oprs]_[\w]+)\b/g,'[redacted]')
+    .replace(PROVIDER_TOKEN,'[redacted]')
     .replace(/([?&](?:token|sig|key|secret|code|access_token|client_secret|password)=)(?:\\(?:[\s\S]|$)|[^&\s"'\\])+/gi,'$1[redacted]')
     // In JSON text a label lies inside a string, so a quote right after it closes that string and is kept as it is.
     .replace(/((?:password|api[_-]?key|secret|authorization|cookie|connection[_-]?string)\s*[=:]\s*)("?)(?:\\(?:[\s\S]|$)|[^\n,}"\\])+/gi,
