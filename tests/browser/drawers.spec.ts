@@ -126,19 +126,31 @@ async function sampleSlide(trigger: Locator) {
         const start = performance.now();
         const incoming: number[] = [], outgoing: number[] = [];
         let stationary = true, inert = true, paired = false;
+        const slide = (element: Element) => element.getAnimations().find(animation =>
+          (animation.effect as KeyframeEffect).getKeyframes().some(keyframe => 'transform' in keyframe));
         function sample() {
           const entering = shell.querySelector<HTMLElement>('[data-inspector-scroll]');
-          stationary &&= bounds(shell) === frame && bounds(canvas) === scene;
-          if (entering && entering !== leaving && leaving.isConnected) {
-            const from = (leaving.getBoundingClientRect().x - x) / width;
-            const to = (entering.getBoundingClientRect().x - x) / width;
-            outgoing.push(from);
-            incoming.push(to);
-            paired ||= Math.abs(from) > .01 && Math.abs(to) > .01;
-            inert &&= leaving.inert && !entering.inert;
+          const from = slide(leaving), to = entering && slide(entering);
+          if (entering && entering !== leaving && from && to) {
+            // Motion uses native transforms. Seek the two real animations together
+            // before the outgoing page unmounts, even on a busy test machine.
+            from.pause(); to.pause();
+            for (const elapsed of [0, 70, 140, 210, 280]) {
+              from.currentTime = to.currentTime = elapsed;
+              const oldPage = (leaving.getBoundingClientRect().x - x) / width;
+              const newPage = (entering.getBoundingClientRect().x - x) / width;
+              outgoing.push(oldPage);
+              incoming.push(newPage);
+              paired ||= Math.abs(oldPage) > .01 && Math.abs(newPage) > .01;
+              stationary &&= bounds(shell) === frame && bounds(canvas) === scene;
+              inert &&= leaving.inert && !entering.inert;
+            }
+            from.play(); to.play();
+          } else if (performance.now() - start < 420) {
+            requestAnimationFrame(sample);
+            return;
           }
-          if (performance.now() - start < 420) requestAnimationFrame(sample);
-          else resolve({incoming, outgoing, paired, stationary, inert});
+          resolve({incoming, outgoing, paired, stationary, inert});
         }
         requestAnimationFrame(sample);
       }, {once:true});
@@ -192,7 +204,10 @@ for (const width of [390,1440]) {
     await page.keyboard.press('Enter');
     const backToMailbox = drawer.getByRole('button',{name:'Back to PM mailbox'});
     await expect(backToMailbox).toBeVisible();
-    await expect(drawer.locator('[data-drawer-page]')).toHaveCount(2);
+    await backToMailbox.click();
+    await expect(first).toBeFocused();
+    await expect(backToMailbox).toHaveCount(0);
+    await first.press('Enter');
     await evidence.press('Enter');
     await expect(drawer.getByRole('heading',{name:'Evidence',exact:true}).first()).toBeFocused();
     await drawer.getByRole('button',{name:/^Back to CEC-/}).evaluate(async button => {
