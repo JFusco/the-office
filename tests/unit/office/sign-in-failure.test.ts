@@ -109,6 +109,35 @@ test('GitHub sign-out stderr is kept when there is no active host', async () => 
     expect(github).toMatchObject({ status: 'disconnected', failure: 'You are not logged into any GitHub hosts. Token: "[redacted]"' });
 });
 
+const RATE_LIMITED = { status: 'unknown', identity: 'fixture', detail: 'A GitHub API rate limit blocked this check. The Office could not verify sign-in.', nextStep: 'Ellis will check again automatically.' };
+const GITHUB_SIGN_IN = 'Check gh auth status in your terminal. Confirm repo and project scopes for the intended account.';
+
+test.each([
+    ['the primary limit', 'HTTP 403: API rate limit exceeded for user ID 486049. If you reach out to GitHub Support for help, please include the request ID C8B2:369A92 and timestamp 2026-11-24 13:36:36 UTC.'],
+    ['a secondary limit', 'HTTP 429: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.'],
+    ['an unprefixed secondary limit', 'You have exceeded a secondary rate limit and have been temporarily blocked from content creation.'],
+    ['a limit reached', 'HTTP 429: Rate limit reached'],
+])('an active GitHub host refused by %s is unverified, not signed out', async (_name, error) => {
+    const github = await githubService({ 'github.com': [{ active: true, state: 'error', login: 'fixture', error }] });
+    expect(github).toMatchObject(RATE_LIMITED);
+    expect(github).not.toHaveProperty('failure');
+    expect(github.nextStep).not.toMatch(/gh auth|scopes/);
+});
+
+test('a credential failure that mentions rate limits, or a permission refusal that mentions quota, is still a sign-out', async () => {
+    const credential = await githubService({ 'github.com': [
+        { active: true, state: 'error', login: 'fixture', error: 'HTTP 401: Bad credentials. If you see API rate limit exceeded, wait for the hour to reset.' },
+    ] });
+    expect(credential).toMatchObject({ status: 'disconnected', failure: 'HTTP 401: Bad credentials. If you see API rate limit exceeded, wait for the hour to reset.', nextStep: GITHUB_SIGN_IN });
+    const permission = await githubService({ 'github.com': [
+        { active: true, state: 'error', login: 'fixture', error: 'HTTP 403: Resource not accessible by integration. Your quota resets hourly.' },
+    ] });
+    expect(permission).toMatchObject({ status: 'disconnected', nextStep: GITHUB_SIGN_IN });
+    expect(permission.detail).not.toContain('rate limit');
+    const signedOut = await githubService({}, 'You are not logged into any GitHub hosts.');
+    expect(signedOut).toMatchObject({ status: 'disconnected', nextStep: GITHUB_SIGN_IN });
+});
+
 test('a successful GitHub host omits diagnostics', async () => {
     const github = await githubService({ 'github.com': [
         { active: true, state: 'success', error: 'HTTP 401: Stale error' },
