@@ -990,7 +990,12 @@ and settled after:
 active-release record each go through Effects on the controller's own store
 (`deployments/controller.sqlite`) under one identity per operation and step. Read-back comes first,
 so a step whose outcome is already visible is not dispatched again. A dispatched step that read-back
-cannot confirm is uncertain and is never resent.
+cannot confirm is uncertain and is never resent. A first read that fails while nothing of the step
+has been sent (no intent, or one still prepared or refused) changed nothing, so the step is refused.
+The deployment ends `refused` at `fence` or `aborted` at `stop` with the fence released. It enters
+rollback at `plist` or `start` and ends `stopped` with a STOP record at `record` or `release`.
+Once a run has sent the step, a failed read leaves its outcome unknown, as before
+(`server/release/settle-mutation.ts`).
 
 **Before the stop.** A service that does not become idle, or is no longer the idle fenced instance
 when the stop is about to be dispatched, is left running; the deployment releases its own fence and

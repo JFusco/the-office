@@ -472,3 +472,33 @@ test('a busy service is fenced so its work can drain, and is stopped only once i
     expect(w.calls).toEqual(['acquire', 'bootout', 'bootstrap', 'release']);
     expect(readDeployJournal(w.dataRoot, OP).receipts.idle.observations).toHaveLength(2);
 });
+
+test('a fence read that fails before the fence is taken refuses with nothing held, and a later deployment goes ahead', async () => {
+    const w = make(), fence = w.ctx.office.fence;
+    let reads = 0;
+    w.ctx.office.fence = async () => { if (reads++ === 0) throw new Error('TypeError: fetch failed'); return fence(); };
+    expect(await run(w)).toEqual({ status: 'refused', operation: OP, step: 'fence', reason: 'the outcome of step fence could not be read before anything was sent: Error: TypeError: fetch failed' });
+    expect(w.calls).toEqual([]);
+    expect(w.fence.read()).toEqual({ status: 'open' });
+    expect(readDeployStop(w.dataRoot)).toBeNull();
+    expect(existsSync(operationPaths(w.dataRoot, OP).token)).toBe(false);
+    expect(w.service).toMatchObject({ loaded: true, instance: 'instance-1' });
+    expect(w.plist().WorkingDirectory).toBe(releaseDirectory(w.dataRoot, FROM));
+    // Nothing waits on a person: the next deployment runs.
+    expect(await deploy(w.ctx, { operation: 'deploy-20261120t031000z-0a0b0c0d', target: TO, controller: PIN })).toMatchObject({ status: 'deployed' });
+});
+
+test('a launchd read that fails before the stop is sent aborts with the service running and the fence released', async () => {
+    const w = make(), execute = w.ctx.execute;
+    let failing = false;
+    w.ctx.observe = event => { if (event.step === 'stop' && event.phase === 'intended') failing = true; };
+    w.ctx.execute = (async (program: string, args: string[], options?: unknown) => {
+        if (failing && program === 'launchctl' && args[0] === 'print') { failing = false; throw new Error('launchctl exited 5: Input/output error'); }
+        return execute(program, args, options as never);
+    }) as typeof w.ctx.execute;
+    expect(await run(w)).toMatchObject({ status: 'aborted', step: 'stop', reason: expect.stringContaining('could not be read before anything was sent') });
+    expect(w.calls).toEqual(['acquire', 'release']);
+    expect(w.service).toMatchObject({ loaded: true, instance: 'instance-1' });
+    expect(w.fence.read()).toEqual({ status: 'open' });
+    expect(readDeployStop(w.dataRoot)).toBeNull();
+});
