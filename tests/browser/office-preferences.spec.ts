@@ -11,7 +11,7 @@ test('all five preferences save through the service, survive reload and are shar
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   const posts = preferencePosts(page);
   await live(page); expect(posts).toEqual([]);
-  await gear(page).click();
+  await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click();
   await page.getByLabel('Graphics').selectOption('low');
   for (const label of ['Reduced motion', 'Keyboard shortcuts', 'Delivery toasts', 'Coffee-break coworkers']) {
     const box = page.getByLabel(label, { exact: true }), was = await box.isChecked();
@@ -20,7 +20,7 @@ test('all five preferences save through the service, survive reload and are shar
   await expect.poll(async () => { const p = await (await request.get('/api/preferences')).json(); return [p.quality, p.reducedMotion, p.keyboardShortcuts, p.deliveryToasts, p.coffeeBreaks, p.revision]; }).toEqual(['low', true, false, false, false, 5]);
   expect(posts.map(p => Object.keys(JSON.parse(p)))).toEqual([['quality'], ['reducedMotion'], ['keyboardShortcuts'], ['deliveryToasts'], ['coffeeBreaks']]);
   const expectSaved = async (target: Page) => {
-    await target.getByRole('button', { name: 'Office settings' }).click();
+    await target.getByRole('button', { name: 'Office settings' }).click(); await target.getByRole('button',{name:'Office preferences'}).click();
     await expect(target.getByLabel('Graphics')).toHaveValue('low');
     await expect(target.getByLabel('Reduced motion', { exact: true })).toBeChecked();
     for (const label of ['Keyboard shortcuts', 'Delivery toasts', 'Coffee-break coworkers']) await expect(target.getByLabel(label, { exact: true })).not.toBeChecked();
@@ -38,7 +38,7 @@ test('turning shortcuts off disables M/O/C/0 while Escape and hidden phrases kee
   await live(page);
   await page.keyboard.press('m'); await page.keyboard.press('o'); await page.keyboard.press('c');
   await expect(page.getByRole('complementary')).toHaveCount(0);
-  await gear(page).click(); await expect(page.getByRole('complementary', { name: 'Settings' })).toBeVisible();
+  await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click(); await expect(page.getByRole('complementary', { name: 'Settings' })).toBeVisible();
   await page.keyboard.press('Escape'); await expect(page.getByRole('complementary')).toHaveCount(0);
   await page.keyboard.type('dance');
   await expect(page.getByRole('region', { name: 'Interactive isometric office' })).toHaveAttribute('data-party', 'active');
@@ -57,7 +57,7 @@ test('delivery toasts can be suppressed and re-enabled without replaying earlier
   await setJob('blocked', 'Fixture stop while toasts are off.');
   await expect(page.getByText(/Fixture stop while toasts are off/).first()).toBeVisible();
   await expect(dismiss).toHaveCount(0);
-  await gear(page).click(); await page.getByLabel('Delivery toasts', { exact: true }).check(); await expect(page.getByLabel('Delivery toasts', { exact: true })).toBeEnabled();
+  await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click(); await page.getByLabel('Delivery toasts', { exact: true }).check(); await expect(page.getByLabel('Delivery toasts', { exact: true })).toBeEnabled();
   await page.keyboard.press('Escape');
   await expect(dismiss).toHaveCount(0);
   await setJob('completed', 'Fixture closeout verified.');
@@ -78,7 +78,7 @@ test('a held save disables the Office controls and a failed save keeps the accep
     if (fail) return route.fulfill({ status: 500, json: { error: 'Fixture: preference storage unavailable' } });
     await held; await route.continue();
   });
-  await live(page); await gear(page).click();
+  await live(page); await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click();
   const coffee = page.getByLabel('Coffee-break coworkers', { exact: true }), graphics = page.getByLabel('Graphics');
   await coffee.uncheck({ noWaitAfter: true });
   await expect(office(page).locator('[data-save-feedback="pending"]')).toBeVisible();
@@ -104,7 +104,7 @@ test('a restarted service is accepted at a lower revision and a late old-service
   let release!: () => void, posts = 0;
   const held = new Promise<void>(resolve => { release = resolve; });
   await page.route('**/api/preferences', async route => { posts++; await held; await route.fulfill({ json: { ...original.preferences, quality: 'low', revision: 6, serviceInstanceId: original.serviceInstanceId } }); });
-  await live(page); await gear(page).click();
+  await live(page); await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click();
   await page.getByLabel('Graphics').selectOption('low', { noWaitAfter: true });
   await expect(office(page).locator('[data-save-feedback="pending"]')).toBeVisible();
   // The service restarts: a new instance with a lower revision and different values.
@@ -129,7 +129,7 @@ test('the shell stays still with no scene until saved preferences arrive, then a
   await expect(page.locator('canvas')).toHaveCount(0); await expect(gear(page)).toBeDisabled();
   release();
   await expect(page.locator('canvas')).toBeVisible(); await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
-  await gear(page).click(); await expect(page.getByLabel('Graphics')).toHaveValue('low'); await expect(page.getByLabel('Reduced motion', { exact: true })).toBeChecked();
+  await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click(); await expect(page.getByLabel('Graphics')).toHaveValue('low'); await expect(page.getByLabel('Reduced motion', { exact: true })).toBeChecked();
   expect(posts).toEqual([]);
 });
 
@@ -151,8 +151,9 @@ test('the tour keeps saved preferences, never writes them, and shows a project n
   await page.getByRole('button', { name: 'Tour the office' }).click();
   await expect(page.getByText('ILLUSTRATIVE TOUR', { exact: true })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
-  await gear(page).click();
+  await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click();
   await expect(page.getByLabel('Reduced motion', { exact: true })).toBeChecked();
+  await page.getByRole('button',{name:'Back to Settings'}).click();await page.getByRole('button',{name:/^Project settings/}).click();
   await expect(page.getByText('Project settings are unavailable during the illustrative tour.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save pickup rule' })).toHaveCount(0);
   expect(posts).toEqual([]);
@@ -164,7 +165,7 @@ test('turning coffee breaks off ends an outing while the party still dances', as
   await live(page);
   const coffee = page.locator('[data-office-life]');
   await expect(coffee).toContainText('Coffee break', { timeout: 25000 });
-  await gear(page).click(); await page.getByLabel('Coffee-break coworkers', { exact: true }).uncheck();
+  await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click(); await page.getByLabel('Coffee-break coworkers', { exact: true }).uncheck();
   await expect(coffee).toHaveCount(0);
   await page.keyboard.press('Escape'); await page.keyboard.type('dance');
   await expect(page.getByRole('region', { name: 'Interactive isometric office' })).toHaveAttribute('data-party', 'active');
@@ -174,9 +175,16 @@ test('turning coffee breaks off ends an outing while the party still dances', as
 test('a configuration read failure affects only its block and can be retried', async ({ page }) => {
   let fail = true;
   await page.route('**/api/office-config', route => fail ? route.fulfill({ status: 503, json: { error: 'down' } }) : route.continue());
-  await live(page); await gear(page).click();
+  await live(page); await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click();
+  await expect(page.getByLabel('Graphics')).toBeEnabled();
+  await page.getByRole('button',{name:'Back to Settings'}).click();
+  await page.getByRole('button',{name:/CEC.*Project settings/}).click();
+  await page.getByRole('button',{name:'Pickup',exact:true}).click();
+  await expect(page.getByRole('button', { name: 'Save pickup rule' })).toBeEnabled();
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:'Back to Settings'}).click();
+  await page.getByRole('button',{name:'Office configuration'}).click();
   await expect(page.getByText(/Office configuration is unavailable/)).toBeVisible();
-  await expect(page.getByLabel('Graphics')).toBeEnabled(); await expect(page.getByRole('button', { name: 'Save pickup rule' })).toBeEnabled();
   fail = false; await page.getByRole('button', { name: 'Retry' }).click();
   const config = page.locator('[data-office-config]');
   await expect(config).toContainText('CEC Jira board'); await expect(config).toContainText('CEC-108');
@@ -186,7 +194,7 @@ test('a configuration read failure affects only its block and can be retried', a
 test('the system reduced-motion setting still wins after the saved toggle is cleared', async ({ page, request }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await setPreferences(request, { reducedMotion: true });
-  await live(page); await gear(page).click();
+  await live(page); await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click();
   await page.getByLabel('Reduced motion', { exact: true }).uncheck();
   await expect.poll(async () => (await (await request.get('/api/preferences')).json()).reducedMotion).toBe(false);
   await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');

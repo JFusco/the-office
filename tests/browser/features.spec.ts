@@ -47,7 +47,7 @@ test('document tabs support keyboard navigation and revision returns to discover
     await expect(page.getByRole('button', { name: 'Approve & start delivery' })).toHaveCount(0);
 });
 
-test('narrow workspace uses manual keyboard tabs and keeps inactive answers out of navigation', async ({ page }) => {
+test('narrow workspace uses topic pages and keeps inactive answers out of navigation', async ({ page }) => {
     await page.setViewportSize({width:390,height:844});
     await page.goto('/');
     await page.getByRole('button',{name:'Features',exact:true}).click();
@@ -55,11 +55,12 @@ test('narrow workspace uses manual keyboard tabs and keeps inactive answers out 
     await page.getByLabel('Feature name',{exact:true}).fill('Mobile planning');
     await page.getByLabel('What should this accomplish?').fill('Plan with a keyboard on a narrow screen.');
     await page.getByRole('button',{name:'Start discovery',exact:true}).click();
-    const conversation=page.getByRole('tab',{name:'Conversation',exact:true}), document=page.getByRole('tab',{name:'Document',exact:true});
-    await conversation.focus();await page.keyboard.press('End');
-    await expect(document).toBeFocused();await expect(conversation).toHaveAttribute('aria-selected','true');
-    await page.keyboard.press('Enter');await expect(page.getByLabel('Your answer',{exact:true})).toBeHidden();
-    await expect(document).toHaveAttribute('aria-selected','true');
+    const conversation=page.getByRole('button',{name:/^Conversation/});
+    await conversation.focus();await conversation.press('Enter');
+    await expect(page.getByLabel('Your answer',{exact:true})).toBeVisible();
+    await page.getByRole('button',{name:/^Back to /}).click();await expect(conversation).toBeFocused();
+    await page.getByRole('button',{name:'Documents and delivery'}).click();
+    await expect(page.getByLabel('Your answer',{exact:true})).toBeHidden();
     const panel=page.getByRole('complementary',{name:'Features',exact:true});
     expect(await panel.evaluate(element=>element.scrollWidth<=element.clientWidth+1)).toBe(true);
     await page.screenshot({path:'/private/tmp/office-feature-planning-review-20261104/feature-mobile.png'});

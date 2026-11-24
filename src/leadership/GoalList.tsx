@@ -2,11 +2,11 @@ import type { ProjectGoal } from '../shared';
 import { Count, Section, SectionTitle, cx, eyebrow, interactive, mutedCopy } from '../ui';
 import { reviewExcerpt } from './ReviewText';
 
-export function GoalList({ goals, disabled, onEdit }: { goals: ProjectGoal[]; disabled: boolean; onEdit: (goal: ProjectGoal) => void }) {
+export function GoalList({ goals, disabled, onEdit }: { goals: ProjectGoal[]; disabled: boolean; onEdit: (goal: ProjectGoal, source: HTMLElement) => void }) {
   const current = goals.filter(goal => goal.status !== 'done');
   const completed = goals.filter(goal => goal.status === 'done');
   function card(goal: ProjectGoal) {
-    return <button type="button" key={`${goal.projectId}:${goal.id}`} disabled={disabled} onClick={() => onEdit(goal)} className={cx('my-2.5 flex w-full flex-col gap-2 rounded-8 border border-l-3 border-goal-line bg-goal p-4 text-left enabled:hover:border-goal-hover-line enabled:hover:bg-goal-hover', goal.priority === 1 ? 'border-l-goal-first' : 'border-l-goal-rank', interactive)}>
+    return <button type="button" key={`${goal.projectId}:${goal.id}`} disabled={disabled} onClick={event => onEdit(goal,event.currentTarget)} className={cx('my-2.5 flex w-full flex-col gap-2 rounded-8 border border-l-3 border-goal-line bg-goal p-4 text-left enabled:hover:border-goal-hover-line enabled:hover:bg-goal-hover', goal.priority === 1 ? 'border-l-goal-first' : 'border-l-goal-rank', interactive)}>
       <span className={cx(eyebrow, 'text-9')}>{goal.project} · {goal.status === 'done' ? 'Completed' : `${['', 'First', 'Next', 'Later', 'Someday'][goal.priority]} · ${goal.status}`}</span>
       <strong className="text-14">{goal.title}</strong>
       <span className="text-12 leading-relaxed">{reviewExcerpt(goal.detail, 180)}</span>

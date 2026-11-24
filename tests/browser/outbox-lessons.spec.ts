@@ -9,7 +9,7 @@ async function seed(request: APIRequestContext) {
 }
 async function open(page: Page) {
     await page.goto('/'); await page.getByLabel('Office project').selectOption('brain');
-    await page.getByRole('button', { name: /^Open your outbox,/ }).click();
+    await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.getByRole('button',{name:/^Needs your reply/}).click();
     await page.locator('[data-outbox-item]').click();
     return page.locator('[data-outbox-lesson-decision]');
 }
@@ -35,7 +35,7 @@ test('approval stays pending across reopening and shows success only after the f
     });
     let decision = await open(page); await decision.getByRole('button', { name: 'Approve — file issue', exact: true }).click();
     await expect(decision).toContainText('Approval queued.'); await expect(decision.getByRole('button', { name: 'Approve — file issue', exact: true })).toBeDisabled();
-    await page.getByRole('button', { name: 'Back to all items' }).click(); await page.locator('[data-outbox-item]').click();
+    await page.getByRole('button', { name: 'Back to Needs your reply' }).click(); await page.locator('[data-outbox-item]').click();
     decision = page.locator('[data-outbox-lesson-decision]'); await expect(decision.getByRole('button', { name: 'Decline', exact: true })).toBeDisabled();
     snapshot.knowledge.lessons[0].repositoryInstruction = { status: 'filed', issueUrl: 'https://github.com/fixture/brain/issues/99' };
     await request.post('/__fixture/snapshot?project=brain', { data: snapshot });

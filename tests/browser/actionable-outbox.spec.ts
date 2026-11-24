@@ -10,7 +10,7 @@ test(`saved plan follow-up survives ${blocker.startsWith('Error:') ? 'interrupte
     snapshot.tickets = [ticket]; snapshot.outbox = [{ id: 'ticket:CEC-154:plan', role: 'developer', ticket: ticket.key, title: 'CEC-154 needs Office follow-up', detail: ticket.blocker, status: 'open', url: '', createdAt: '', updatedAt: '' }];
     await request.post('/__fixture/snapshot?project=cec', { data: snapshot });
     let posts = 0; await page.route('**/api/commands', async route => { posts++; expect(route.request().postDataJSON()).toEqual({ action: 'resume-ticket', key: 'CEC-154' }); await route.abort(); });
-    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click();
+    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.getByRole('button',{name:/^Needs your reply/}).click();
     await page.getByRole('button', { name: /CEC-154.*Open follow-up/ }).click();
     const detail = page.locator('[data-saved-plan-followup]'); await expect(detail).toContainText('No product answer or approval is needed');
     await detail.getByText('Read Alex’s saved plan', { exact: true }).click(); await expect(detail).toContainText('Preserve saved Page Fields');
@@ -40,7 +40,7 @@ test('product question opens from outbox with recommendation first, three choice
 
 test('ordinary follow-up exposes its reply field above history and sends to the displayed owner', async ({ page, request }) => {
     await request.post('/__fixture/snapshot?project=cec', { data: { outbox: [{ id: 'question:clarification', role: 'lead', ticket: '', title: 'Sam has a question', detail: 'Which environment should be used?', status: 'open', url: '', createdAt: '', updatedAt: '' }] } });
-    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.locator('[data-outbox-item]').click();
+    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.getByRole('button',{name:/^Needs your reply/}).click(); await page.locator('[data-outbox-item]').click();
     await expect(page.getByRole('textbox', { name: 'Your reply to Sam' })).toBeInViewport(); await page.getByRole('textbox', { name: 'Your reply to Sam' }).fill('Use the lower environment only.');
     await page.getByRole('button', { name: 'Send reply', exact: true }).click();
     const writes = await (await request.get('/__fixture/writes')).json(); expect(writes.some((item: any) => item.body.role === 'lead' && item.body.actionId === 'question:clarification' && item.body.body === 'Use the lower environment only.')).toBe(true);
@@ -50,7 +50,7 @@ test('Avery input failure offers original-message recovery instead of a duplicat
     const message = { id: 'avery-original', requestId: 'avery-original', from: 'human', to: 'cto', status: 'failed', body: 'The walkthrough videos are complete.', error: '{"input_error_code":"input_too_large"}', ticket: '', actionId: '', receipts: [], recipients: [], createdAt: '', sessionId: '', recheck: false };
     await request.post('/__fixture/snapshot?project=cec', { data: { messages: [message], outbox: [{ id: 'message:avery-original', role: 'cto', ticket: '', title: 'Avery’s reply needs Office recovery', detail: 'Context exceeded the input limit', status: 'open', url: '', createdAt: '', updatedAt: '' }] } });
     let posts = 0; await page.route('**/api/commands', async route => { posts++; expect(route.request().postDataJSON()).toEqual({ action: 'recover-cto-input', messageId: message.id }); await route.abort(); });
-    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.locator('[data-outbox-item]').click();
+    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.getByRole('button',{name:/^Needs your reply/}).click(); await page.locator('[data-outbox-item]').click();
     const followup = page.locator('[data-cto-input-followup]'); await expect(followup).toContainText('Your message was retained');
     await followup.getByRole('button', { name: 'Recover original message' }).click(); await expect(followup.getByRole('alert')).toContainText('do not send your original message again');
     await expect(followup.getByRole('button', { name: 'Recovery requested — check status' })).toBeDisabled(); expect(posts).toBe(1);

@@ -1,3 +1,4 @@
+import { DrawerTopic } from '../office/drawer/DrawerTopic';
 import { subjectLabel, withoutIdentifiers } from '../office/without-identifiers';
 import { LessonCard, LessonShape } from './LessonCard';
 import { BlockerFollowups } from './BlockerFollowups';
@@ -22,30 +23,30 @@ export function LessonsPanel({ snapshot, refresh, titled = true }: { snapshot: O
   const act = (action: string, lessonId: string) => void save(action, { lessonId }).then(saved => { if (saved) document.getElementById(headingId)?.focus(); });
   return <Section data-lessons-panel>
     {titled ? <SectionTitle className="mb-2">Lessons</SectionTitle> : null}
-    <p className={mutedCopy}>{harper} learns from accepted research, plans, reviews, implementation, delivery and orchestration, including successes and blockers. Relevant guidance is supplied automatically; that does not prove it was applied. Ellis owns supported recovery and Morgan handles missing decisions. Proven requirements belong in harness code or tests. Friday reports close at 17:00 Eastern, with bounded retries.</p>
-    <form className="mt-5 grid gap-3" onSubmit={event => { event.preventDefault(); void save('configure-knowledge', { knowledge: { enabled } }).then(saved => { if (saved) setDraft(null); }); }}>
+
+    <DrawerTopic title="Lesson settings"><form className="mt-5 grid gap-3" onSubmit={event => { event.preventDefault(); void save('configure-knowledge', { knowledge: { enabled } }).then(saved => { if (saved) setDraft(null); }); }}>
       <CheckField checked={enabled} disabled={disabled} onChange={event => setDraft(event.target.checked)}>Let {harper} write retrospectives for this project</CheckField>
       <Button type="submit" className="justify-self-start" disabled={disabled || draft === null || draft === view.enabled}>Save</Button>
-    </form>
+    </form></DrawerTopic>
     <SaveFeedback message={message} error={error} pending={pending} />
-    <Section>
+    <DrawerTopic title="Active lessons" detail={view.active.length}><Section>
       <SectionTitle id={headingId} tabIndex={-1} className="mb-2">Active lessons <Count>{view.active.length}</Count></SectionTitle>
       <p className={cx(mutedCopy, 'mb-2')}>Each stage receives up to 10 relevant lessons within a fixed context budget, ranked by stage, path and scope. Retire any that no longer hold.</p>
       {view.active.length ? view.active.map(lesson => <LessonCard key={lesson.id} lesson={lesson} actions={<>
         <Button disabled={disabled} onClick={() => act('retire-lesson', lesson.id)} aria-label={`Retire lesson: ${lesson.statement}`}>Retire</Button></>} />) : <p className={mutedCopy}>No lessons yet. They appear after {harper}'s first retrospective.</p>}
-    </Section>
-    {view.hypotheses.length ? <Section data-lessons-hypotheses>
+    </Section></DrawerTopic>
+    {view.hypotheses.length ? <DrawerTopic title="Observations"><Section data-lessons-hypotheses>
       <SectionTitle className="mb-2">Hypotheses (reports only; not supplied to prompts) <Count>{view.hypotheses.length}</Count></SectionTitle>
       {view.hypotheses.map(lesson => <LessonCard key={lesson.id} lesson={lesson} actions={<Button disabled={disabled} onClick={() => act('retire-lesson', lesson.id)} aria-label={`Retire lesson: ${lesson.statement}`}>Retire</Button>} />)}
-    </Section> : null}
-    {view.agentsSuggestions.length ? <Section data-lessons-agents>
+    </Section></DrawerTopic> : null}
+    {view.agentsSuggestions.length ? <DrawerTopic title="Suggested changes"><Section data-lessons-agents>
       <SectionTitle className="mb-2">Durable improvement suggestions <Count>{view.agentsSuggestions.filter(lesson => lesson.repositoryInstruction?.status === 'proposed').length}</Count></SectionTitle>
       <p className={cx(mutedCopy, 'mb-2')}>Review the appropriate destination: concise repository guidance, documentation, a regression test or an existing harness operation. Filing opens a normal GitHub issue, so the change goes through ordinary delivery and review.</p>
       {view.agentsSuggestions.map(lesson => <LessonCard key={lesson.id} lesson={lesson}
         actions={lesson.repositoryInstruction?.status === 'proposed' ? <>{github ? <Button variant="primary" disabled={disabled} onClick={() => act('file-lesson-issue', lesson.id)} aria-label={`File AGENTS.md issue: ${lesson.statement}`}>File issue</Button> : null}<Button disabled={disabled} onClick={() => act('decline-lesson-issue', lesson.id)} aria-label={`Decline AGENTS.md suggestion: ${lesson.statement}`}>Decline</Button></> : undefined}
         footer={lesson.repositoryInstruction?.status === 'filed' && lesson.repositoryInstruction.issueUrl ? <TextLink href={lesson.repositoryInstruction.issueUrl} target="_blank" rel="noreferrer">Issue filed<ExternalLink size={11} /></TextLink> : !github ? 'Add it to the repository instructions yourself; issues are filed for GitHub projects only.' : undefined} />)}
-    </Section> : null}
-    <Section data-lessons-office>
+    </Section></DrawerTopic> : null}
+    <DrawerTopic title="Shared lessons" detail={view.officeProposals.length ? view.officeProposals.length+" to review" : view.officeLessons.length}><Section data-lessons-office>
       <SectionTitle className="mb-2">Office-wide lessons <Count>{view.officeLessons.length}</Count></SectionTitle>
       <p className={cx(mutedCopy, 'mb-2')}>Shared by every project. {harper} proposes one when a project learns a lesson another project already holds, or from the weekly roll-up; nothing becomes office-wide until you accept it.</p>
       {view.officeProposals.map(proposal => <Card as="article" key={proposal.id}>
@@ -56,9 +57,9 @@ export function LessonsPanel({ snapshot, refresh, titled = true }: { snapshot: O
       </Card>)}
       {view.officeLessons.map(lesson => <LessonCard key={lesson.id} lesson={lesson} actions={<Button disabled={disabled} onClick={() => act('retire-office-lesson', lesson.id)} aria-label={`Retire office-wide lesson: ${lesson.statement}`}>Retire</Button>} />)}
       {!view.officeProposals.length && !view.officeLessons.length ? <p className={mutedCopy}>None yet.</p> : null}
-    </Section>
+    </Section></DrawerTopic>
     <BlockerFollowups knowledge={snapshot.knowledge} />
-    <Section data-lessons-rollup>
+    <DrawerTopic title="Weekly report"><Section data-lessons-rollup>
       <SectionTitle className="mb-2">Weekly roll-up</SectionTitle>
       {view.rollups.length ? <>
         <p className="text-11 leading-relaxed">{view.rollups[0].summary}</p><LearningCoverage rollup={view.rollups[0]} />
@@ -69,16 +70,16 @@ export function LessonsPanel({ snapshot, refresh, titled = true }: { snapshot: O
         </table></div>
       </> : <p className={mutedCopy}>The first roll-up arrives on Friday after Avery's review.</p>}
       {view.rollupError ? <p className="mt-2 text-10 text-card-detail wrap-anywhere">Last roll-up attempt: {view.rollupError}. At most five narrative attempts; exhaustion retains the deterministic metrics.</p> : null}
-    </Section>
-    {view.pending.length ? <Section>
+    </Section></DrawerTopic>
+    {view.pending.length ? <DrawerTopic title="Upcoming retrospectives"><Section>
       <SectionTitle className="mb-2">Queued retrospectives <Count>{view.pending.length}</Count></SectionTitle>
       {view.pending.map(entry => <p key={entry.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{subjectLabel(entry.key, entry.source?.kind || entry.subject)} · {TRIGGER_LABEL[entry.trigger]}</span>{entry.attempts ? `Attempt ${entry.attempts}${entry.nextAt ? ` · next try ${when(entry.nextAt)}` : ''}` : `Waiting for ${harper}`}{entry.lastError ? <small className="block text-10 text-card-detail wrap-anywhere">Last attempt: {withoutIdentifiers(entry.lastError)}</small> : null}</p>)}
-    </Section> : null}
-    <Section>
+    </Section></DrawerTopic> : null}
+    <DrawerTopic title="Retrospectives"><Section>
       <SectionTitle className="mb-2">Recent retrospectives</SectionTitle>
       {view.recent.length ? view.recent.map(record => <p key={record.id} className={row}><span className={cx(eyebrow, 'block text-9')}>{subjectLabel(record.key, record.source?.kind || record.subject)} · {TRIGGER_LABEL[record.trigger]} · {when(record.at)}</span>{withoutIdentifiers(record.summary)}<small className="block text-10 text-card-detail">{record.lessonIds.length} {record.lessonIds.length === 1 ? 'lesson' : 'lessons'} added or changed</small></p>) : <p className={mutedCopy}>None yet.</p>}
       {view.retired.length ? <details className="my-4"><summary className={cx('cursor-pointer text-13 font-semibold', interactive)}>Retired lessons ({view.retired.length})</summary>{view.retired.map(lesson => <LessonCard key={lesson.id} lesson={lesson} footer={`Retired ${when(lesson.retiredAt || lesson.updatedAt)}`}
         actions={lesson.supersededBy ? undefined : <Button disabled={disabled} onClick={() => act('reactivate-lesson', lesson.id)} aria-label={`Reactivate lesson: ${lesson.statement}`}>Reactivate</Button>} />)}</details> : null}
-    </Section>
+    </Section></DrawerTopic>
   </Section>;
 }

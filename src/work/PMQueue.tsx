@@ -1,3 +1,4 @@
+import { DrawerTopic } from '../office/drawer/DrawerTopic';
 import { motion } from 'motion/react';
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { withoutIdentifiers } from '../office/without-identifiers';
@@ -64,7 +65,7 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
         {(['active','queued','waiting','stopped'] as const).map(group => {
             const items = rows.filter(r => r.group === group);
             if (!items.length) return null;
-            return <Section key={group} aria-label={titles[group]}>
+            return <DrawerTopic key={group} title={titles[group]} detail={items.length}><Section aria-label={titles[group]}>
                 <SectionTitle className="mb-4">{titles[group]} <Count>{items.length}</Count></SectionTitle>
                 {group === 'waiting' && dependencyOnly && <p className={mutedCopy}>These tickets are waiting on linked work. Morgan rechecks them when their prerequisites complete.</p>}
                 {group === 'stopped' && <p className={mutedCopy}>These tickets are stopped, not queued for new work. Read the blocker before continuing.</p>}
@@ -87,7 +88,7 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
                         <OpenTicketButton identity={row.identity} projectName={row.projectName} onClick={() => onOpen(row.project,row.key)} focusToRestore={focusToRestore}/>
                     </Card>;
                 })}
-            </Section>;
+            </Section></DrawerTopic>;
         })}
         {!rows.length ? <p className={mutedCopy}>No remaining Office work is recorded. Check project lanes for assignments and GitHub operations for open PRs.</p> :
             !rows.some(r => r.group === 'active' || r.group === 'queued') && <p className={mutedCopy}>Nothing can run yet: {waiting.length} waiting{dependencyOnly ? ' on prerequisites' : ''} · {rows.filter(r => r.group === 'stopped').length} stopped for follow-up. Work remains open.</p>}

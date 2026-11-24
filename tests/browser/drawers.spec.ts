@@ -62,8 +62,9 @@ test('opening another panel closes the current drawer first, then slides the nex
 test('a drawer opened from inside another drawer returns focus to the original trigger',async({page})=>{
   await page.goto('/');await expect(page.locator('canvas')).toBeVisible();
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();const mailbox=page.getByRole('complementary',{name:'PM mailbox'});await expect(mailbox).toBeVisible();
-  await mailbox.locator('section',{hasText:'Already with the team'}).getByRole('button').first().click();
-  await expect(page.getByRole('complementary',{name:'Ticket'})).toBeVisible();await expect(page.getByRole('button',{name:'Close details'})).toBeFocused();
+  await mailbox.getByRole('button',{name:/Already with the team/}).click();
+  await page.locator('[data-inspector-scroll]').getByRole('button').first().click();
+  await expect(page.getByRole('button',{name:'Back to Already with the team'})).toBeVisible();await expect(page.locator('[data-inspector] h2').first()).toBeFocused();
   await page.keyboard.press('Escape');await expect(page.locator('[data-inspector]')).toHaveCount(0);
   await expect(page.getByRole('button',{name:/^Open PM mailbox,/})).toBeFocused();
 });
@@ -73,7 +74,7 @@ test('Settings opened from the mailbox closes help, and waits for preferences li
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await expect(page.getByRole('dialog',{name:'Office controls'})).toBeVisible();
   await page.getByRole('complementary',{name:'PM mailbox'}).getByRole('button',{name:'Project settings'}).click();
   await expect(page.getByRole('complementary',{name:'Settings'})).toBeVisible();await expect(page.getByRole('dialog',{name:'Office controls'})).toHaveCount(0);
-  await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Office settings'})).toBeFocused();
+  await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:/^Open PM mailbox,/})).toBeFocused();
 });
 test('before preferences load, neither the gear nor the mailbox can open Settings',async({page})=>{
   await page.route('**/api/events*',route=>route.abort());
@@ -87,7 +88,66 @@ test('cancelling a drawer swap with Escape returns focus to the original trigger
   await page.goto('/');await expect(page.locator('canvas')).toBeVisible();
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();const mailbox=page.getByRole('complementary',{name:'PM mailbox'});await expect(mailbox).toBeVisible();
   // Escape lands while the mailbox is still sliding out for the ticket drawer.
-  await mailbox.locator('section',{hasText:'Already with the team'}).getByRole('button').first().click();await page.keyboard.press('Escape');
+  await mailbox.getByRole('button',{name:/Already with the team/}).click();
+  await page.locator('[data-inspector-scroll]').getByRole('button').first().click();await page.keyboard.press('Escape');
   await expect(page.locator('[data-inspector]')).toHaveCount(0);await expect(page.getByRole('complementary',{name:'Ticket'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:/^Open PM mailbox,/})).toBeFocused();
+});
+
+for (const width of [390,1440]) {
+  test(`ticket evidence returns to the same mailbox row at ${width}px`,async({page,request})=>{
+    await page.setViewportSize({width,height:844});
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await setPreferences(request,{reducedMotion:false,quality:'low'});
+    await page.goto('/');
+    const mailbox=page.getByRole('button',{name:/^Open PM mailbox,/});
+    await mailbox.click();
+    const drawer=page.locator('[data-inspector]'),active=drawer.locator('[data-inspector-scroll]');
+    await expect.poll(()=>drawer.evaluate(el=>el.getBoundingClientRect().right)).toBeCloseTo(width,0);
+    const office=await geometry(page),original=await drawer.elementHandle();
+    const group=drawer.getByRole('button',{name:/Already with the team/});
+    await group.click();
+    const first=active.getByRole('button').first();
+    await first.click();
+    const evidence=active.getByRole('button',{name:/^Evidence/});
+    await evidence.scrollIntoViewIfNeeded();
+    const offset=await active.evaluate(el=>el.scrollTop);
+    await evidence.press('Enter');
+    await expect(drawer.getByRole('heading',{name:'Evidence',exact:true}).first()).toBeFocused();
+    await expect(active.locator('[data-qa-results]')).toBeVisible();
+    await drawer.getByRole('button',{name:/^Back to /}).click();
+    await expect(evidence).toBeFocused();
+    expect(await active.evaluate(el=>el.scrollTop)).toBe(offset);
+    await drawer.getByRole('button',{name:'Back to Already with the team'}).click();
+    await expect(first).toBeFocused();
+    await drawer.getByRole('button',{name:'Back to PM mailbox'}).click();
+    await expect(group).toBeFocused();
+    expect(await original!.evaluate(el=>el===document.querySelector('[data-inspector]'))).toBe(true);
+    expect(await geometry(page)).toEqual(office);
+    await page.keyboard.press('Escape');await expect(mailbox).toBeFocused();
+  });
+}
+test('returning to a conversation restores its draft',async({page})=>{
+  await page.goto('/');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+  await page.getByRole('button',{name:/Already with the team/}).click();
+  await page.locator('[data-inspector-scroll]').getByRole('button').first().click();
+  const discuss=page.getByRole('button',{name:/^Discuss .* with /});
+  await discuss.click();const compose=page.getByRole('textbox',{name:'Message Morgan'});
+  await compose.fill('Can you check the latest update?');
+  await page.getByRole('button',{name:/^Back to /}).click();await expect(discuss).toBeFocused();
+  await discuss.click();await expect(compose).toHaveValue('Can you check the latest update?');
+});
+
+test('an unsaved notification setting survives Back and a live update',async({page,request})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Office settings'}).click();
+  await page.getByRole('button',{name:/Project settings/}).click();
+  const notifications=page.getByRole('button',{name:'Notifications',exact:true});
+  await notifications.click();
+  const channel=page.getByRole('textbox',{name:'Channel name',exact:true});
+  await channel.fill('delivery-updates-draft');
+  const snapshot=await (await request.get('/api/office')).json();
+  await request.post('/__fixture/snapshot',{data:{events:snapshot.events}});
+  await page.getByRole('button',{name:/^Back to /}).click();await expect(notifications).toBeFocused();
+  await notifications.press('Enter');await expect(channel).toHaveValue('delivery-updates-draft');
 });

@@ -17,7 +17,7 @@ for (const decision of ['continue', 'hold', 'lost']) {
                 implementationContinuation: { workerId, fingerprint, decision: decision === 'hold' ? 'hold' : 'continue', acknowledgeUncertainHistory: decision !== 'hold', note: 'Preserve saved edits.' } });
             if (decision === 'lost') await route.abort(); else await route.fulfill({ status: 202, json: decision === 'hold' ? { accepted: true, held: true } : { accepted: true, request: { id: 'same-request' } } });
         });
-        await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.locator('[data-outbox-item]').click();
+        await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.getByRole('button',{name:/^Needs your reply/}).click(); await page.locator('[data-outbox-item]').click();
         const form = page.locator('[data-saved-implementation-followup]');
         expect(reads).toBe(0); await form.getByRole('button', { name: 'Review saved work', exact: true }).click();
         await expect(form).toContainText('76 changed files saved'); await expect(form.getByRole('radio')).toHaveCount(2);
