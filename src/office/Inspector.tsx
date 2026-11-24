@@ -57,7 +57,7 @@ export default function Inspector(props: InspectorProps) {
     parent = path.entries.at(-2);
   const title = current.id === 'root' ? rootTitle : current.title;
   const selectedPage=path.entries.map(entry=>records.find(record=>record.id===entry.id)?.selection).filter(Boolean).at(-1) || selection;
-  const regionTitle=selectedPage.kind==='agent' ? snapshot.agents.find(agent=>agent.id===selectedPage.id)?.title : selectedPage.kind==='ticket'?'Ticket':selectionTitle(selectedPage,snapshot,names);
+  const regionTitle=selectedPage.kind==='agent' ? snapshot.agents.find(agent=>agent.id===selectedPage.id)?.title : selectedPage.kind==='ticket'?'Ticket':selectedPage.kind==='features'?'Features':selectionTitle(selectedPage,snapshot,names);
   const visibleRecord=records.find(record=>record.id===current.id)?.selection;
   const visibleTicket=present && visibleRecord?.kind==='ticket' ? visibleRecord.id : '';
   useLayoutEffect(()=>{
@@ -74,7 +74,10 @@ export default function Inspector(props: InspectorProps) {
     const id = prior?.id ?? crypto.randomUUID(),
       depth = path.entries.length;
     const focused = document.activeElement;
-    const trigger = pointerTrigger.current || (focused instanceof HTMLElement && focused.closest('[data-inspector-scroll]') ? focused : null);
+    const activated = pointerTrigger.current;
+    pointerTrigger.current = null;
+    const trigger = activated?.closest('[data-inspector-scroll]') ? activated :
+      focused instanceof HTMLElement && focused.closest('[data-inspector-scroll]') ? focused : null;
     setRecords((old) =>
       old.some((record) => record.id === id) ? old : [...old, { id, selection: next, depth, parentId: current.id }],
     );
@@ -123,7 +126,6 @@ export default function Inspector(props: InspectorProps) {
       onClickCapture={event => {
         const source = event.target instanceof Element ? event.target.closest<HTMLElement>('button, a, [role="button"]') : null;
         pointerTrigger.current = source;
-        queueMicrotask(() => { if (pointerTrigger.current === source) pointerTrigger.current = null; });
       }}
       className={cx(
         'fixed top-topbar right-0 bottom-dock z-45 flex flex-col border-l border-drawer-line bg-drawer shadow-drawer backdrop-blur-drawer will-change-transform overscroll-contain max-compact:top-topbar-compact max-compact:bottom-dock-compact max-compact:w-full',

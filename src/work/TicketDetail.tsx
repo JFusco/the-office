@@ -211,7 +211,7 @@ export function TicketDetail({
       <TicketTimeline ticket={t} snapshot={snapshot} job={job} reduced={reduced}/>
       <div className="flex flex-wrap gap-2">
         <Tag>{t.type}</Tag>
-        <Tag tone={t.activity}>{t.status}</Tag>
+        <Tag tone={t.activity}>Jira status · {t.status}</Tag>
         <Tag>{STAGE_LABELS[t.stage]}</Tag>
       </div>
       {t.blocker ? (

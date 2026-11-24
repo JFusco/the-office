@@ -13,7 +13,7 @@ test('outbox shows an explicit action and keeps evidence collapsed; mailbox coun
 });
 
 test('time report task options include issue titles (UI fixture)',async({page,request})=>{
- const state=await(await request.get('/api/office?project=brain')).json();state.tickets=[{key:'GH-254',summary:'Refresh official reference catalogs',stage:'mailbox',status:'open'}];state.coordination.listener.reviews=[];
+ const state=await(await request.get('/api/office?project=brain')).json();state.tickets=[{...state.tickets[0],key:'GH-254',summary:'Refresh official reference catalogs',stage:'mailbox',status:'open'}];state.coordination.listener.reviews=[];
  await page.route('**/api/office*',r=>r.fulfill({json:state}));await page.route('**/api/events*',r=>r.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));await page.goto('/');await page.getByLabel('Office project').selectOption('brain');await page.getByRole('button',{name:'Visit Morgan, PM',exact:true}).click();
  await page.getByRole('button',{name:/^Time/}).click();const select=page.getByRole('combobox',{name:'Time report task'});await expect(select.locator('option[value="GH-254"]')).toHaveText('GH-254 · Refresh official reference catalogs');await select.selectOption('GH-254');await expect(select).toHaveValue('GH-254');await page.screenshot({path:evidence('office-time-task-titles.png')});
 });
