@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { storeMissing } from './backup-stores';
 import { APPENDED_TABLE, comparableOrder, comparableRow, startEvent } from './fenced-start-writes';
 
 export interface StoreFingerprint {
     name: string; digest: string | null; reason?: string;
+    /** A project store whose file did not exist, so it has no digest. Older receipts never carry it. */
+    absent?: true;
     /** A project store: the last event the digest covers. Of later events, only those a start does not account for are part of it. */
     eventsThrough?: number;
 }
@@ -35,14 +37,15 @@ const coversEvents = (value: unknown): value is number => Number.isSafeInteger(v
  * event counts only when it is not one a start records. So a release that started and admitted
  * nothing compares as unchanged. Equal digests are the proof that
  * the release that ran before can still read the store. A reorganised but logically equal database
- * may differ; that errs towards "changed". Unreadable is null with the reason.
+ * may differ; that errs towards "changed". Unreadable is null with the reason. A project store
+ * whose file does not exist is null marked absent; any other missing store is unreadable.
  */
 export function fingerprintStores(databases: { name: string; path: string }[], scope: FingerprintScope = {}): StoreFingerprint[] {
     const projects = new Set(scope.projects), earlier = new Map((scope.since ?? []).map(entry => [entry?.name, entry?.eventsThrough]));
     return databases.map(({ name, path }) => {
-        if (!existsSync(path)) return { name, digest: null, reason: `${path} does not exist` };
         let db: DatabaseSync | null = null;
         try {
+            if (storeMissing(path)) return { name, digest: null, ...(projects.has(name) ? { absent: true as const } : {}), reason: `${path} does not exist` };
             db = new DatabaseSync(path, { readOnly: true, timeout: 5000 });
             db.exec('BEGIN');
             const hash = createHash('sha256'), version = db.prepare('PRAGMA user_version').get(), project = projects.has(name);
@@ -78,17 +81,31 @@ export function fingerprintStores(databases: { name: string; path: string }[], s
     });
 }
 
-/** The stores that cannot be shown unchanged: a different digest, an unreadable one, or one read only once. */
+/** A well-formed absent entry: a named store, the marker literally `true` and the digest an explicit null. */
+export const absentFingerprint = (entry: StoreFingerprint) => typeof entry?.name === 'string' && entry.absent === true && entry.digest === null;
+
+/**
+ * The stores that cannot be shown unchanged: a different digest, an unreadable one, one read only
+ * once, a store created or gone since the earlier read, or a malformed absent marker. A store absent
+ * in both reads is unchanged.
+ */
 export function changedStores(before: StoreFingerprint[], after: StoreFingerprint[]): { name: string; reason: string }[] {
     const valid = (entry: StoreFingerprint) => typeof entry?.name === 'string' && typeof entry.digest === 'string' && /^[0-9a-f]{64}$/.test(entry.digest);
+    const malformed = (entry: StoreFingerprint) => entry?.absent !== undefined && !absentFingerprint(entry);
     const changed: { name: string; reason: string }[] = [], later = new Map(after.map(entry => [entry?.name, entry]));
     if (!before.length) changed.push({ name: '*', reason: 'the earlier fingerprint covers no store' });
     if (new Set(before.map(entry => entry?.name)).size !== before.length || later.size !== after.length) changed.push({ name: '*', reason: 'a fingerprint names a store twice' });
     for (const entry of before) {
         const now = later.get(entry?.name);
         later.delete(entry?.name);
-        if (!valid(entry)) changed.push({ name: String(entry?.name), reason: `the earlier fingerprint is unreadable: ${entry?.reason ?? 'no digest'}` });
-        else if (!now || !valid(now)) changed.push({ name: entry.name, reason: `the later fingerprint is unreadable: ${now?.reason ?? 'not covered'}` });
+        if (malformed(entry)) changed.push({ name: String(entry?.name), reason: 'the earlier fingerprint has a malformed absent marker' });
+        else if (!absentFingerprint(entry) && !valid(entry)) changed.push({ name: String(entry?.name), reason: `the earlier fingerprint is unreadable: ${entry?.reason ?? 'no digest'}` });
+        else if (!now) changed.push({ name: entry.name, reason: 'the later fingerprint is unreadable: not covered' });
+        else if (malformed(now)) changed.push({ name: entry.name, reason: 'the later fingerprint has a malformed absent marker' });
+        else if (absentFingerprint(entry) && absentFingerprint(now)) continue;
+        else if (absentFingerprint(now)) changed.push({ name: entry.name, reason: 'its store no longer exists' });
+        else if (!valid(now)) changed.push({ name: entry.name, reason: `the later fingerprint is unreadable: ${now.reason ?? 'not covered'}` });
+        else if (absentFingerprint(entry)) changed.push({ name: entry.name, reason: 'created since the old service stopped' });
         else if (now.digest !== entry.digest) changed.push({ name: entry.name, reason: 'its contents changed' });
     }
     for (const name of later.keys()) changed.push({ name: String(name), reason: 'the earlier fingerprint does not cover it' });

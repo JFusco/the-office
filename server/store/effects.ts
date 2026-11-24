@@ -108,6 +108,16 @@ export class Effects {
         this.store.transition('effect-reconciled', `${intent.operation} verified by read-back; no operation repeated.`, () => this.store.putEffect(intent));
         return true;
     }
+    /** Retain a conclusively rejected dispatch on its original intent, without admitting a resend. */
+    rejectDispatched(id: string, detail: string, receipt: unknown, failure: string): void {
+        const intent = this.store.getEffect(id);
+        if (intent?.status !== 'uncertain' || !intent.dispatchedAt || intent.notLandedAt)
+            throw new Error('Only an unsettled dispatch can be read back as rejected');
+        intent.status = 'rejected';
+        intent.receipt = receipt;
+        intent.error ||= sanitize(failure);
+        this.store.transition('effect-rejected', detail, () => this.store.putEffect(intent));
+    }
     /**
      * Settles an attempted effect that an independent read-back showed never landed. Only its caller can
      * know that: the write must be absolute, so that the state read back excludes the write having applied.

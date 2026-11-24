@@ -15,6 +15,8 @@ export interface ResumeRoute {
      * only its form without a `head`, which reconciles a saved result. `all`: every form.
      */
     dispatch: 'none' | 'saved-result' | 'all';
+    /** Why this release does not dispatch the route, where that was decided and is not support still to come. Said in place of the generic reason. */
+    reason?: string;
 }
 
 const original = (stage: string) => `the ID of the original stopped ${stage} worker`;
@@ -37,14 +39,15 @@ export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
     'reconcile-base-update': { subject: 'job', keyed: 'ticket', head: `the job's head commit for a board preflight, or ${original('base-update')}; empty selects the saved-result reconciliation`, dispatch: 'all' },
     'reconcile-scope-repair': { subject: 'job', keyed: 'ticket', head: original('scope-repair'), dispatch: 'all' },
     'reconcile-closeout': { subject: 'job', keyed: 'ticket', head: `${original('closeout')}; empty selects the saved-closeout reconciliation`, dispatch: 'all' },
-    // Synchronous: the job is requeued at once, as an operator's recheck does, with a completed receipt carrying the binding (see dispatch-transition-resume.ts).
+    // Synchronous: the job is requeued at once, as an operator's recheck or requeue does, with a completed receipt carrying the binding (see dispatch-transition-resume.ts).
     'review-candidate': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
     'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
-    'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'none' },
+    'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
     'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: 'none' },
-    'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: 'none' },
-    'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none' },
-    'reconcile-native-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none' },
+    'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: 'none', reason: 'Maintenance reconciliation can repeat a paid read-back on replay and can finish with the original run still blocked.' },
+    'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none', reason: 'A checkpoint retry can start a paid maintenance run after the repair wait lifts.' },
+    // Brain only: one model-free read of the native gate, and the checkpoint is completed only from a native completion that already exists. Admitted by its own path (see dispatch-checkpoint-resume.ts).
+    'reconcile-native-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'all' },
 };
 
 /** Compared and saved exactly as sent: a key with space around it names nothing, so it is refused, not trimmed. */

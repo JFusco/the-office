@@ -168,3 +168,22 @@ test('a ticket\'s outcome is read by the same rules and says ticket where a job\
     expect(resumeOutcome(pending({ job: undefined }))).toEqual({ outcome: 'gone', detail: 'The project no longer holds the job.' });
     expect(resumeOutcome(pending({ noun: 'job', ...MOVED }))).toEqual(resumeOutcome(pending(MOVED)));
 });
+
+test('a checkpoint is judged from the record it supplies in place of a job: its crossing, then whether the project holds it', () => {
+    const settled = { ...BOUND, boundary: { kind: 'record-settled' as const } };
+    const checkpoint = (over: Partial<OutcomeEvidence>) => resumeOutcome(pending({ binding: settled, job: undefined, noun: 'checkpoint', ...over }));
+    expect(checkpoint({ record: { exists: true, crossing: { crossed: true, detail: 'native proof' } } })).toEqual({ outcome: 'advanced', detail: 'native proof' });
+    expect(checkpoint({ record: { exists: true, crossing: { unjudged: 'ordinary completion' } } })).toEqual({ outcome: 'untested', detail: 'ordinary completion' });
+    // A crossing that cannot be judged is untested even for a checkpoint that is gone.
+    expect(checkpoint({ record: { exists: false, crossing: { unjudged: 'no run recorded' } } })).toEqual({ outcome: 'untested', detail: 'no run recorded' });
+    expect(checkpoint({ record: { exists: false, crossing: { crossed: false } } })).toEqual({ outcome: 'gone', detail: 'The project no longer holds the checkpoint.' });
+    // An open checkpoint with nothing crossed has no outcome yet, and the quiet clock and chains still apply; a job given beside it is not read.
+    expect(checkpoint({ record: { exists: true, crossing: { crossed: false } } })).toBeNull();
+    expect(checkpoint({ record: { exists: true, crossing: { crossed: false } }, ...LEFT })).toBeNull();
+    expect(checkpoint({ record: { exists: true, crossing: { crossed: false } }, ...STALLED })).toMatchObject({ outcome: 'stalled' });
+    expect(checkpoint({ record: { exists: true, crossing: { crossed: false } }, ...ELSEWHERE })).toMatchObject({ outcome: 'chained' });
+    // A retry queued for its original run moves it, ahead of the crossing and of its absence, and is said without naming an operator.
+    for (const record of [{ exists: true, crossing: { crossed: true, detail: 'native proof' } }, { exists: false, crossing: { crossed: false } }] as const)
+        expect(checkpoint({ record, moved: { kind: 'checkpoint-retry-queued', at: LATER } })).toEqual({ outcome: 'moved-by-hand', detail: `A retry of the checkpoint's original run was queued at ${LATER}, after its resume.` });
+    expect(checkpoint({ request: { repairResume: {} } as OutcomeEvidence['request'] })).toEqual({ outcome: 'untested', detail: 'The resume was admitted before outcomes were judged: how the checkpoint stood then was not recorded.' });
+});

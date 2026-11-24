@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { HarnessRequest, WorkRef } from '../../../src/contracts/work';
 import type { TicketJob } from '../../../src/shared';
+import { requeueImplement } from '../../delivery/recovery/implementation/requeue-waited-implement';
 import { requeueCandidateReview, requeuePRReview } from '../../scheduling/review-transitions';
 import type { Store } from '../../store/store';
 import { canonical } from '../canonical-json';
@@ -13,10 +14,11 @@ import { boundResume, resumeIdentity } from './resume-binding';
 import { dispatchable, RESUME_ROUTES, subjectParts, type ResumeRoute } from './resume-routes';
 import { PENDING, Undone, WAIT_ENDED, type AdmissionRefusal } from './undo-admission';
 
-/** The routes whose handler changes the job at once rather than queueing a request: the same transition an operator's recheck makes. */
+/** The routes whose handler changes the job at once rather than queueing a request: the same transition an operator's recheck or requeue makes. */
 const TRANSITIONS: Readonly<Record<string, (store: Store, job: TicketJob) => string>> = {
     'review-pr': requeuePRReview,
     'review-candidate': (_store, job) => requeueCandidateReview(job),
+    'requeue-implement': requeueImplement,
 };
 
 /** Whether a route is resumed by a synchronous transition (see admitTransitionResume). */
@@ -32,11 +34,13 @@ export const forTransition = (action: string) => Object.hasOwn(TRANSITIONS, acti
  * key is queued or working; and no scheduler claim is active for the job, since nothing queued
  * stands between this transition and the job.
  *
- * Then, in one project transaction: the transition the operator's recheck makes, with its own
- * checks (`server/scheduling/review-transitions.ts`); a completed harness request that is only the
- * receipt of this resume, carrying the binding and how the job stood; the removal of the subject's
- * repair-wait marker; and the `repair-resume-admitted` event. The operator's own event is not
- * emitted, so a person's later recheck still reads as moved by hand. The receipt is never run: the
+ * Then, in one project transaction: the transition the operator's recheck or requeue makes, with
+ * its own checks (`server/scheduling/review-transitions.ts`, and for `requeue-implement`
+ * `server/delivery/recovery/implementation/requeue-waited-implement.ts`); a completed harness
+ * request that is only the receipt of this resume, carrying the binding and how the job stood; the
+ * removal of the subject's repair-wait marker; and the `repair-resume-admitted` event. The
+ * operator's own event is not emitted, so a person's later recheck or requeue still reads as moved
+ * by hand. The receipt is never run: the
  * scheduler reads a completed request as terminal. A transition its checks refuse, or a wait that
  * ran out meanwhile, writes nothing. No counter, attempt or budget of the job is touched.
  */

@@ -53,3 +53,44 @@ test.each([undefined, '', '   ', 1])('equal cursors cannot match an unidentified
     const receipt = [{ ...(name === undefined ? {} : { name }), cursor: 0 }] as never;
     expect(compareAdmissions(receipt, receipt)).toMatchObject({ status: 'admitted-or-unknown' });
 });
+
+test('a project file that does not exist is marked absent; one that cannot be looked up is not', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'office-admission-snapshot-')); roots.push(dir);
+    const plain = resolve(dir, 'plain');
+    writeFileSync(plain, 'a regular file where a directory is expected');
+    expect(snapshotAdmissions([{ name: 'gone', path: resolve(dir, 'gone.sqlite') }, { name: 'blocked', path: resolve(plain, 'office.sqlite') }])).toEqual([
+        { name: 'gone', cursor: null, absent: true, reason: expect.stringContaining('does not exist') },
+        { name: 'blocked', cursor: null, reason: expect.stringContaining('ENOTDIR') },
+    ]);
+});
+
+test('a store absent in both snapshots is unchanged; one created or gone since, or unreadable now, is not', () => {
+    const absent = { name: 'brain', cursor: null, absent: true as const, reason: 'missing' }, cec = { name: 'cec', cursor: 0 };
+    expect(compareAdmissions([absent, cec], JSON.parse(JSON.stringify([cec, absent])))).toEqual({ status: 'unchanged' });
+    expect(compareAdmissions([absent, cec], [{ name: 'brain', cursor: 0 }, cec])).toEqual({ status: 'admitted-or-unknown', projects: [{ name: 'brain', reason: 'created since the old service stopped' }] });
+    expect(compareAdmissions([{ name: 'brain', cursor: 0 }, cec], [absent, cec])).toEqual({ status: 'admitted-or-unknown', projects: [{ name: 'brain', reason: 'its store no longer exists' }] });
+    expect(compareAdmissions([absent], [{ name: 'brain', cursor: null, reason: 'locked' }])).toEqual({ status: 'admitted-or-unknown', projects: [{ name: 'brain', reason: 'the later cursor is unknown: locked' }] });
+    expect(compareAdmissions([absent, cec], [cec])).toEqual({ status: 'admitted-or-unknown', projects: [{ name: 'brain', reason: 'the later snapshot does not cover it' }] });
+});
+
+test.each<[string, unknown]>([
+    ['a marker that is not literally true', { name: 'brain', cursor: null, absent: 'true' }],
+    ['a false marker', { name: 'brain', cursor: null, absent: false }],
+    ['a null marker', { name: 'brain', cursor: null, absent: null }],
+    ['a marked entry with a cursor', { name: 'brain', cursor: 2, absent: true }],
+    ['a marked entry with no cursor', { name: 'brain', absent: true }],
+])('%s blocks the comparison on either side', (_, entry) => {
+    const absent = { name: 'brain', cursor: null, absent: true as const }, readable = { name: 'brain', cursor: 2 };
+    for (const other of [absent, readable]) {
+        expect(compareAdmissions([entry] as never, [other])).toEqual({ status: 'admitted-or-unknown', projects: [{ name: 'brain', reason: 'the earlier entry has a malformed absent marker' }] });
+        expect(compareAdmissions([other], [entry] as never)).toEqual({ status: 'admitted-or-unknown', projects: [{ name: 'brain', reason: 'the later entry has a malformed absent marker' }] });
+    }
+});
+
+test('receipts without a marker read as before: a readable cursor matches, an unmarked null for a missing file does not', () => {
+    const readable = JSON.parse(JSON.stringify([{ name: 'brain', cursor: 1 }]));
+    expect(compareAdmissions(readable, [{ name: 'brain', cursor: 1 }])).toEqual({ status: 'unchanged' });
+    const old = JSON.parse(JSON.stringify([{ name: 'brain', cursor: null, reason: '/x/office.sqlite does not exist' }]));
+    for (const now of [{ name: 'brain', cursor: null, absent: true as const }, { name: 'brain', cursor: 0 }, ...old])
+        expect(compareAdmissions(old, [now])).toEqual({ status: 'admitted-or-unknown', projects: [{ name: 'brain', reason: 'the earlier cursor is unknown: /x/office.sqlite does not exist' }] });
+});

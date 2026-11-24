@@ -129,6 +129,8 @@ export function reviewInstructions(mode: WorkApproach['review'] = 'full') {
         return 'QUICK REVIEW: Inspect the exact changed code, acceptance criteria, adjacent callers and selected check evidence in this assigned session. Report concrete defects. Do not start nested models or a full implementation-review chain. Escalate to full with a reason if inspection warrants it.';
     return 'FULL IMPLEMENTATION REVIEW: Independently audit the exact implementation against requirements and repository rules, including affected callers, integration boundaries, error and recovery paths, security/data integrity and regression evidence. Trace consequential behavior beyond the edited lines. Report concrete findings with evidence; unresolved findings block publication. Use this assigned Lead session without nested model processes or automatic Claude delegation.';
 }
+/** What the approach guard below throws when it refuses a reduced approach. */
+export const APPROACH_GUARD_REJECTION = 'Reconcile failed work, findings and uncertain effects before reducing review or verification';
 /** `advisoryFindings`: hands-off projects let a passed outcome decide; open findings on it are not a veto.
  * `incoming`: the result being accepted. A passed implement supersedes an earlier implement that was blocked on a
  * structured wait or decision (`needsDecision`), not a defect; every other earlier result keeps guarding. */
@@ -143,7 +145,7 @@ export function recordJobApproach(job: TicketJob, approach: WorkApproach, role: 
     const superseding = job.stage === 'implement' && incoming?.outcome === 'passed' && waited && needsDecision(waited) ? incoming : undefined;
     const latest = [...new Map([...job.steps, ...(superseding ? [{ stage: job.stage, result: superseding }] : [])].map(s => [s.stage, s.result])).values()];
     if (reducing && (workerFailure || latest.some(r => ['failed', 'blocked'].includes(r.outcome) || !advisoryFindings && r.findings.some(f => f.status !== 'verified')) || [...job.steps.map(s => s.result), ...(superseding ? [superseding] : [])].some(r => r.receipts.some(receipt => receipt.uncertain || !receipt.verified))))
-        throw new Error('Reconcile failed work, findings and uncertain effects before reducing review or verification');
+        throw new Error(APPROACH_GUARD_REJECTION);
     job.approach = next;
     job.decisions ??= [];
     job.decisions.push({ role, stage: job.stage, at: new Date().toISOString(), approach: next });
