@@ -49,3 +49,15 @@ test('quoted and bare assignments and cookie properties preserve surrounding tex
     expect(redactEvidence(redacted)).toBe(redacted);
     expect(redactEvidence('Cookie: name=fixture; token="fixture"; session=fixture')).toBe('Cookie: [redacted]');
 });
+
+/** The characters `JSON.stringify` writes as an escape: `\n`, `\t`, `\r`, `\b`, `\f` and `\u001b`. */
+const ESCAPED = ['\n', '\t', '\r', '\b', '\f', '\u001b'];
+const PREFIXED = [`sk-${'g'.repeat(40)}`, `github_pat_${'A1b2'.repeat(10)}_${'z9'.repeat(20)}`, ...['p', 'o', 'u', 's', 'r'].map(kind => `gh${kind}_${'h'.repeat(36)}`),
+    ...['a', 'b', 'p', 'r', 's'].map(kind => `xox${kind}-1234567890-${'i'.repeat(24)}`), 'AKIAIOSFODNN7EXAMPLE', 'ASIAIOSFODNN7EXAMPLE',
+    `eyJhbGciOiJIUzI1NiJ9.${'e'.repeat(20)}.${'f'.repeat(20)}`];
+const jsonLine = (separator: string, tail: string) => JSON.stringify({ prior: `line${separator}${tail}` });
+
+test.each(ESCAPED.map(separator => [JSON.stringify(separator), separator]))('a provider token right after a %s escape in JSON text is removed', (_, separator) => {
+    for (const token of PREFIXED) expect(redactEvidence(jsonLine(separator, token))).toBe(jsonLine(separator, '[redacted]'));
+    for (const word of ['ghost', 'gh-pages', 'task-runner', 'skip']) expect(redactEvidence(jsonLine(separator, word))).toBe(jsonLine(separator, word));
+});

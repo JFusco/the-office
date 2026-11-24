@@ -1,8 +1,46 @@
 import { describe, expect, test } from 'vitest';
-import { sanitize, sanitizeObject } from '../../../server/office/security';
+import { redactedText, sanitize, sanitizeObject } from '../../../server/office/security';
 
 /** A string holding JSON text, redacted and parsed again, as a reader of a saved receipt detail would. */
 const reparsed = (value: unknown) => JSON.parse(sanitize(JSON.stringify(value)));
+
+/** The characters `JSON.stringify` writes as an escape: `\n`, `\t`, `\r`, `\b`, `\f` and `\u001b`. */
+const ESCAPED = ['\n', '\t', '\r', '\b', '\f', '\u001b'];
+const CLASSIC_TOKEN = `ghp_${'a'.repeat(36)}`;
+const TOKENS = [`sk-${'b'.repeat(40)}`, `gho_${'c'.repeat(36)}`, CLASSIC_TOKEN, `ghr_${'d'.repeat(36)}`, `ghs_${'e'.repeat(36)}`];
+/** JSON text holding `line`, the separator, then the tail: what `sanitize` sees in a string whose content is JSON. */
+const jsonLine = (separator: string, tail: string) => JSON.stringify({ prior: `line${separator}${tail}` });
+
+describe('a token right after a JSON escape', () => {
+    test.each(ESCAPED.map(separator => [JSON.stringify(separator), separator]))('is redacted after %s', (_, separator) => {
+        for (const token of TOKENS) expect(sanitize(jsonLine(separator, token))).toBe(jsonLine(separator, '[redacted]'));
+    });
+
+    test('is redacted inside a stored string whose content is JSON text', () => {
+        const value = { detail: jsonLine('\n', CLASSIC_TOKEN) };
+        expect(redactedText(value)).toBe(JSON.stringify({ detail: jsonLine('\n', '[redacted]') }));
+        expect(sanitizeObject(value).detail).toBe(jsonLine('\n', '[redacted]'));
+        expect(JSON.parse(sanitizeObject(value).detail)).toEqual({ prior: 'line\n[redacted]' });
+    });
+
+    test('counts a written \\u escape even when it stands for a word character', () => {
+        expect(sanitize(String.raw`{"m":"\u005Fghp_fixture"}`)).toBe(String.raw`{"m":"\u005F[redacted]"}`);
+        expect(sanitize('_ghp_fixture')).toBe('_ghp_fixture');
+    });
+
+    test('counts an escape letter after a literal backslash too, keeping the backslashes', () => {
+        expect(sanitize(JSON.stringify({ m: `\\n${CLASSIC_TOKEN}` }))).toBe(JSON.stringify({ m: '\\n[redacted]' }));
+    });
+
+    test.each(['ghost', 'gh-pages', 'task-runner', 'skip'])('keeps the ordinary word %j', word => {
+        for (const separator of ESCAPED) expect(sanitize(jsonLine(separator, word))).toBe(jsonLine(separator, word));
+    });
+
+    test('still needs a separator in plain text', () => {
+        expect(sanitize(`line\n${CLASSIC_TOKEN}`)).toBe('line\n[redacted]');
+        expect(sanitize(`linen${CLASSIC_TOKEN}`)).toBe(`linen${CLASSIC_TOKEN}`);
+    });
+});
 
 describe('JSON text stored in a string stays JSON', () => {
     test.each([
@@ -98,6 +136,7 @@ test.each([
     JSON.stringify({ prior: 'password="hunter2" expired', id: 'c1' }),
     JSON.stringify(['secret:']),
     JSON.stringify({ m: '\bearer sample' }),
+    JSON.stringify({ prior: `line\n${CLASSIC_TOKEN}` }),
 ])('redacting %j again changes nothing', text => {
     expect(sanitize(sanitize(text))).toBe(sanitize(text));
 });
