@@ -242,19 +242,52 @@ test('an unfinished deployment refuses every later one, not only the first, unti
     expect(await deploy(w.ctx, { operation: 'deploy-20261120t050000z-0e0f0a0b', target: TO, controller: PIN })).toMatchObject({ status: 'deployed' });
 });
 
-test.each(['backup', 'snapshot'])('a failed %s leaves the service down when there is no complete store baseline', async phase => {
+test.each(['backup', 'snapshot'])('a failed %s with nothing installed rolls back to the previous release without STOP', async phase => {
+    const w = make(), rb = rollbackOperation(OP);
+    if (phase === 'backup') writeFileSync(releasePaths(w.dataRoot).backups, 'a regular file where the backups directory belongs');
+    else {
+        const saved = readFileSync(w.projectDb);
+        w.ctx.observe = event => {
+            if (event.operation === OP && event.step === 'snapshot' && event.phase === 'intended') writeFileSync(w.projectDb, 'not a database '.repeat(40));
+            if (event.operation === rb && event.step === 'plist' && event.phase === 'intended') writeFileSync(w.projectDb, saved);
+        };
+    }
+    expect(await run(w)).toMatchObject({ status: 'rolled-back', step: phase, rollback: rb });
+    expect(readDeployJournal(w.dataRoot, OP).last).toMatchObject({ step: phase, state: 'failed' });
+    expect(readDeployJournal(w.dataRoot, rb).receipts.eligibility).toEqual({ basis: 'the deployment journal ends before target plist intent and the service was confirmed stopped' });
+    expect(readDeployJournal(w.dataRoot, rb).receipts.verify).toMatchObject({ serviceInstanceId: 'instance-2' });
+    expect(w.service).toMatchObject({ loaded: true, instance: 'instance-2', hash: w.hashOf(FROM) });
+    expect(w.fence.read()).toEqual({ status: 'open' });
+    expect(readDeployStop(w.dataRoot)).toBeNull();
+    expect(w.calls).toEqual(['acquire', 'bootout', 'bootstrap', 'release']);
+});
+
+test('a configured project with no store yet deploys, and the backup lists that store as absent', async () => {
     const w = make();
-    const removeStore = () => rmSync(w.projectDb);
-    if (phase === 'backup') removeStore();
-    else w.ctx.observe = event => {
-        if (event.operation === OP && event.step === phase && event.phase === 'intended') removeStore();
-    };
-    expect(await run(w)).toMatchObject({ status: 'stopped', step: `${rollbackOperation(OP)}:eligibility`, reason: expect.stringContaining('no store snapshot') });
-    expect(w.calls).toEqual(['acquire', 'bootout']);
-    expect(w.service.loaded).toBe(false);
+    rmSync(w.projectDb);
+    expect(await run(w)).toMatchObject({ status: 'deployed', operation: OP });
+    const directory = resolve(releasePaths(w.dataRoot).backups, OP), inventory = JSON.parse(readFileSync(resolve(directory, 'inventory.json'), 'utf8'));
+    expect(inventory.absent).toEqual([{ name: 'brain', source: w.projectDb }]);
+    expect(inventory.databases.map((entry: { name: string }) => entry.name)).toEqual(['office-control']);
+    expect(readdirSync(directory).sort()).toEqual(['inventory.json', 'office-control.sqlite']);
+    const { receipts } = readDeployJournal(w.dataRoot, OP);
+    expect(receipts.snapshot.admissions).toEqual([{ name: 'brain', cursor: null, absent: true, reason: expect.stringContaining('does not exist') }]);
+    expect(receipts.snapshot.fingerprints).toContainEqual({ name: 'brain', digest: null, absent: true, reason: expect.stringContaining('does not exist') });
+    expect(receipts.verify).toMatchObject({ serviceInstanceId: 'instance-2' });
+    expect(w.service).toMatchObject({ loaded: true, instance: 'instance-2', hash: w.hashOf(TO) });
+    expect(readDeployStop(w.dataRoot)).toBeNull();
+});
+
+test('a project store created by a target that then fails verification blocks the rollback', async () => {
+    const w = make({ bootstrap: 'wrong-hash' }), rb = rollbackOperation(OP);
+    rmSync(w.projectDb);
+    const outcome = await run(w);
+    expect(readDeployJournal(w.dataRoot, OP).last).toMatchObject({ step: 'verify', state: 'failed' });
+    expect(existsSync(w.projectDb)).toBe(true);
+    expect(outcome).toMatchObject({ status: 'stopped', step: `${rb}:eligibility`, reason: expect.stringContaining('brain: created since the old service stopped') });
+    expect(readDeployStop(w.dataRoot)).toMatchObject({ operation: OP, step: `${rb}:eligibility` });
     expect(w.fence.read()).toMatchObject({ status: 'held', deployment: OP });
-    expect(existsSync(operationPaths(w.dataRoot, OP).token)).toBe(true);
-    expect(readDeployStop(w.dataRoot)).toMatchObject({ operation: OP });
+    expect(w.calls).toEqual(['acquire', 'bootout', 'bootstrap', 'bootout']);
 });
 
 test('target drift before plist installation rolls back without starting the target', async () => {

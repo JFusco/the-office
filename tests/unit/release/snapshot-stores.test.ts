@@ -1,7 +1,10 @@
 import { expect, test } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { projectById } from '../../../server/office/projects';
 import { snapshotGaps, snapshotStores, storesChangedSince } from '../../../server/release/snapshot-stores';
+import { Store } from '../../../server/store/store';
 import { make } from './step-fixture';
 
 const change = (path: string, sql: string) => { const db = new DatabaseSync(path); db.exec(sql); db.close(); };
@@ -28,11 +31,63 @@ test('an admitted request, a changed row without an admission, and a change to t
 });
 
 test('a store that cannot be read is a gap, and a missing or malformed earlier snapshot counts as changed', () => {
-    const w = make();
-    w.ctx.databases = [...w.ctx.databases, { name: 'gone', path: resolve(w.dataRoot, 'gone.sqlite') }];
-    w.ctx.projects = [...w.ctx.projects, { name: 'gone', path: resolve(w.dataRoot, 'gone.sqlite') }];
-    expect(snapshotGaps(snapshotStores(w.ctx))).toEqual([expect.stringContaining('gone: admission cursor unreadable'), expect.stringContaining('gone: contents unreadable')]);
+    const w = make(), junk = resolve(w.dataRoot, 'junk.sqlite');
+    writeFileSync(junk, 'not a database '.repeat(40));
+    w.ctx.databases = [...w.ctx.databases, { name: 'junk', path: junk }];
+    w.ctx.projects = [...w.ctx.projects, { name: 'junk', path: junk }];
+    expect(snapshotGaps(snapshotStores(w.ctx))).toEqual([expect.stringContaining('junk: admission cursor unreadable'), expect.stringContaining('junk: contents unreadable')]);
     const clean = make();
     expect(storesChangedSince(clean.ctx, undefined)).toEqual(['no store snapshot was recorded before the start']);
     expect(storesChangedSince(clean.ctx, { admissions: 'x' })).toEqual(['no store snapshot was recorded before the start']);
+});
+
+test('a project with no store yet is absent, not a gap, and compares unchanged until its store is created', () => {
+    const w = make(), path = resolve(w.dataRoot, 'projects', 'cec', 'office.sqlite');
+    w.ctx.projects = [...w.ctx.projects, { name: 'cec', path }];
+    w.ctx.databases = [...w.ctx.databases, { name: 'cec', path }];
+    const snapshot = snapshotStores(w.ctx);
+    expect(snapshot.admissions).toContainEqual({ name: 'cec', cursor: null, absent: true, reason: expect.stringContaining('does not exist') });
+    expect(snapshot.fingerprints).toContainEqual({ name: 'cec', digest: null, absent: true, reason: expect.stringContaining('does not exist') });
+    expect(snapshotGaps(snapshot)).toEqual([]);
+    const saved = JSON.parse(JSON.stringify(snapshot));
+    expect(storesChangedSince(w.ctx, saved)).toEqual([]);
+    mkdirSync(resolve(path, '..'), { recursive: true });
+    new Store(path, projectById('cec'), resolve(path, '..')).close();
+    expect(storesChangedSince(w.ctx, saved)).toEqual(['cec: created since the old service stopped', 'cec: created since the old service stopped']);
+});
+
+test('a missing control store is a gap, not absent', () => {
+    const w = make(), control = w.ctx.databases.find(database => database.name === 'office-control')!;
+    w.ctx.databases = w.ctx.databases.map(database => database === control ? { ...control, path: resolve(w.dataRoot, 'no-control.sqlite') } : database);
+    const snapshot = snapshotStores(w.ctx);
+    expect(snapshot.fingerprints.find(entry => entry.name === 'office-control')).not.toHaveProperty('absent');
+    expect(snapshotGaps(snapshot)).toEqual([expect.stringContaining('office-control: contents unreadable')]);
+});
+
+test.each(['cursor', 'fingerprint'])('a project marked absent only by its %s is a gap, and never compares unchanged', side => {
+    const w = make(), missing = { name: 'brain', path: resolve(w.dataRoot, 'missing.sqlite') }, readable = { name: 'brain', path: w.projectDb };
+    // The same project name, one descriptor at a missing path and the other at the readable store.
+    w.ctx.projects = [side === 'cursor' ? missing : readable];
+    w.ctx.databases = [side === 'cursor' ? readable : missing, ...w.ctx.databases.filter(database => database.name !== 'brain')];
+    const snapshot = snapshotStores(w.ctx);
+    expect(snapshot.admissions[0].absent === true).toBe(side === 'cursor');
+    expect(snapshot.fingerprints[0].absent === true).toBe(side === 'fingerprint');
+    expect(snapshotGaps(snapshot)).toEqual(['brain: the admission cursor and the fingerprint disagree on whether the store exists']);
+    // A repeated read disagrees the same way, and the comparison still refuses.
+    expect(storesChangedSince(w.ctx, JSON.parse(JSON.stringify(snapshot)))).toEqual([
+        "brain: the earlier snapshot's cursor and fingerprint disagree on whether the store exists",
+        "brain: the later snapshot's cursor and fingerprint disagree on whether the store exists",
+    ]);
+});
+
+test('an earlier snapshot whose marked entry has no counterpart counts as changed', () => {
+    const w = make(), path = resolve(w.dataRoot, 'projects', 'cec', 'office.sqlite');
+    w.ctx.projects = [...w.ctx.projects, { name: 'cec', path }];
+    w.ctx.databases = [...w.ctx.databases, { name: 'cec', path }];
+    const snapshot = JSON.parse(JSON.stringify(snapshotStores(w.ctx)));
+    snapshot.fingerprints = snapshot.fingerprints.filter((entry: { name: string }) => entry.name !== 'cec');
+    expect(storesChangedSince(w.ctx, snapshot)).toEqual([
+        'cec: the earlier fingerprint does not cover it',
+        "cec: the earlier snapshot's cursor and fingerprint disagree on whether the store exists",
+    ]);
 });
