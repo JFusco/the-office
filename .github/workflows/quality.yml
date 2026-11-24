@@ -59,48 +59,59 @@ jobs:
           done < "$RUNNER_TEMP/quality-paths"
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
-  verify:
-    name: ${{ matrix.name }}
+  build:
+    name: build
     needs: scope
     if: needs.scope.outputs.code == 'true'
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: build
-            runner: ubuntu-latest
-            script: build
-          # The unit suite exercises macOS service and Keychain behavior.
-          - name: unit tests (macOS)
-            runner: macos-15
-            script: test
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - &setup-node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24.14.0'
-      - name: Install declared pnpm
+      - &setup-pnpm
+        name: Install declared pnpm
         run: corepack enable && corepack install
-      - name: Locate pnpm store
+      - &pnpm-store
+        name: Locate pnpm store
         id: pnpm-store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      - &cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
-      - name: Install frozen dependencies
+      - &install
+        name: Install frozen dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm run ${{ matrix.script }}
+      - run: pnpm build
+
+  unit-tests:
+    name: unit tests (macOS)
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
+    # The unit suite exercises macOS service and Keychain behavior.
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      - *setup-node
+      - *setup-pnpm
+      - *pnpm-store
+      - *cache
+      - *install
+      - run: pnpm test
 
   quality:
     name: quality
     if: ${{ always() }}
-    needs: [scope, verify]
+    needs: [scope, build, unit-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -108,12 +119,13 @@ jobs:
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
           CODE_CHANGED: ${{ needs.scope.outputs.code }}
-          VERIFY_RESULT: ${{ needs.verify.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.unit-tests.result }}
         run: |
           if [ "$SCOPE_RESULT" = 'success' ]; then
-            case "$CODE_CHANGED:$VERIFY_RESULT" in
-              true:success|false:skipped) exit 0 ;;
+            case "$CODE_CHANGED:$BUILD_RESULT:$TEST_RESULT" in
+              true:success:success|false:skipped:skipped) exit 0 ;;
             esac
           fi
-          echo "Quality incomplete: scope=$SCOPE_RESULT code=$CODE_CHANGED verification=$VERIFY_RESULT"
+          echo "Quality incomplete: scope=$SCOPE_RESULT code=$CODE_CHANGED build=$BUILD_RESULT tests=$TEST_RESULT"
           exit 1
