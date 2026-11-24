@@ -51,6 +51,9 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
         requeueInvestigationEvidence(store, entry);
         const resolution = investigationResolution(store, entry), limitRefusal = investigatesLimitRefusal(store, entry);
         if (resolution) {
+            // What was queued to be learned from such a refusal is dropped, on every pass and whichever rule closed it,
+            // before the resolution is saved.
+            if (limitRefusal) dropPendingLessons(store, { kind: 'investigation', id: entry.id });
             if (entry.status !== 'resolved') {
                 entry.status = 'resolved'; entry.nextAt = ''; entry.updatedAt = now.toISOString();
                 entry.resolution = { ...resolution, at: now.toISOString() };
@@ -60,8 +63,6 @@ export function syncInvestigations(store: Store, now = store.clock.now()): void 
                 if (!finished && !recovered && !limitRefusal) captureLearning(store, { kind: 'investigation', id: entry.id }, entry.source.ticket, 'recovery', resolution.sourceId, resolution, 'Source-bound operational resolution verified.', 'work', true);
                 store.emit('it-investigation-resolved', finished ? 'Earlier warning kept as history: the work it concerned has finished. Its original outcome remains unknown.' : recovered ? 'Earlier warning kept as history: the provider that refused the run is working again. The refused run was not repeated.' : resolution.kind === 'superseded' ? 'Earlier warning closed by a verified replacement; original outcome remains unknown.' : 'Original operational failure reconciled against a verified receipt.', 'it', entry.source.ticket);
             }
-            // What was queued to be learned from such a refusal is dropped, on every pass and whichever rule closed it.
-            if (limitRefusal) dropPendingLessons(store, { kind: 'investigation', id: entry.id });
         } else if (entry.status === 'resolved') {
             // A stale resolved flag cannot hide a reactivated source or lost receipt.
             entry.status = 'blocked'; entry.resolution = undefined; entry.lastError = 'Resolution receipt no longer matches the original source; Morgan must reconcile it.';
