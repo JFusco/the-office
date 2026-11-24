@@ -84,12 +84,13 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         detail?: unknown;
         error?: unknown;
     }, stage: string, at: string, rank: number, execute: () => Promise<unknown>, condition?: WorkEligibility | null, timing?: ScheduledWork['timing']) => {
-        const status = record.status;
+        const status = record.status, own = condition || recordEligibility(status, record);
         items.push({ store, work: { projectId: store.project.id, kind, id: record.id }, stage, rank, enqueuedAt: record.stageEnqueuedAt || at, afterStage: () => {
                 if (record.status === 'queued')
                     record.stageEnqueuedAt = store.clock.now().toISOString();
             }, timing, saveTiming: measurement => (record.timing ??= []).push(measurement),
-            eligibility: store.state.paused || store.state.draining ? eligible('blocked', store.state.draining ? 'Office is draining' : 'Project is paused', 'Morgan', 'paused') : condition || recordEligibility(status, record),
+            // A pause holds back only work that could still run or wait; finished work keeps its own terminal reading.
+            eligibility: own.state !== 'terminal' && (store.state.paused || store.state.draining) ? eligible('blocked', store.state.draining ? 'Office is draining' : 'Project is paused', 'Morgan', 'paused') : own,
             identity: () => JSON.stringify([record.status, stage, 'head' in record ? record.head : null, 'stage' in record ? record.stage : null]), execute });
     };
     for (const message of store.state.messages.filter(message => ['human', 'cto', 'it', 'pm', 'knowledge'].includes(message.from))) {
