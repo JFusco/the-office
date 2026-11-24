@@ -1,6 +1,8 @@
 ---
 topics: [context-wiki-and-ci]
 plans: [2026-11-24-refresh-the-shared-office-code-map-after-merges-708032e283.md]
+issue: 'https://github.com/jfusco/the-office/issues/573'
+issues: ['https://github.com/jfusco/the-office/issues/573']
 ---
 
 # Refresh the shared Graphify map after source merges
