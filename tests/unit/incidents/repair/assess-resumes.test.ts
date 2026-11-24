@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { groupCandidates } from '../../../../server/incidents/candidates';
 import { planSync } from '../../../../server/incidents/plan-sync';
 import { assessResumes } from '../../../../server/incidents/repair/assess-resumes';
-import type { ResumeRoute } from '../../../../server/incidents/repair/resume-routes';
+import { RESUME_ROUTES, type ResumeRoute } from '../../../../server/incidents/repair/resume-routes';
 import { repairSubject } from '../../../../server/incidents/subject-digest';
 import type { Incident, IncidentFix, RepairRoute, ResumeSwitch, SubjectFix } from '../../../../src/contracts/incidents';
 import { AT, candidate, later } from '../incident-fixture';
@@ -76,10 +76,12 @@ test('a job route bound to work in a project of another provider is no route, by
     expect(standings(assessResumes(bound, ENABLED, ROUTES))).toEqual([['job-1', 'due'], ['job-2', 'due'], ['job-3', 'due']]);
 });
 
-test('with the Office\'s own inventory a read-back route is held or due with a head and without; a route not dispatched yet is no route', () => {
+test('with the Office\'s own inventory a read-back route is held or due with a head and without; a route not dispatched is no route', () => {
+    // The Office's inventory with one job route this release does not dispatch.
+    const routes: Record<string, ResumeRoute> = { ...RESUME_ROUTES, 'requeue-implement': { ...RESUME_ROUTES['requeue-implement'], dispatch: 'none' } };
     const bound = incident(([a, b, c]) => [routed(a), routed(b, { ...review, payload: { key: 'GH-12', head: 'worker-1' } }), routed(c, { action: 'requeue-implement', payload: { key: 'GH-12' }, expectedStage: 'review' })]);
     for (const [control, standing, reason] of [[PAUSED, 'held', 'Automatic repair resumes are paused: two rollbacks in a row'], [ENABLED, 'due', 'Automatic repair resumes are enabled.']] as const)
-        expect(assessResumes(bound, control)!.subjects.map(subject => [subject.standing, subject.reason])).toEqual([
+        expect(assessResumes(bound, control, routes)!.subjects.map(subject => [subject.standing, subject.reason])).toEqual([
             [standing, reason], [standing, reason], ['no-route', 'This release cannot dispatch requeue-implement.']]);
 });
 
