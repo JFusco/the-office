@@ -224,7 +224,9 @@ export interface RepairResume {
      * has no steps of its own either: `run` is the original maintenance run it was linked to at the
      * admission, and `steps` counts that run's steps (see server/incidents/repair/checkpoint-progress.ts).
      * A checkpoint's resume saved without `run` cannot be judged. This is not
-     * `DailyCheckpoint.repairResume`, an older field of the refresh continuation.
+     * `DailyCheckpoint.repairResume`, an older field of the refresh continuation. An assignment
+     * review has no steps and one stage: its baseline is 0 steps at `assignment-review` (see
+     * server/incidents/repair/review-progress.ts).
      */
     stood?: { steps: number; stage: string; event: number; ticketAttemptsCounted?: true; run?: string };
 }
