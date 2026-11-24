@@ -13,6 +13,7 @@ import { Offices } from '../../../server/scheduling/offices';
 import type { ExecutionLane, Role, WorkRef } from '../../../src/shared';
 import {artifact,digest} from '../../../server/store/readback-evidence';
 import * as closeoutEvidence from '../../../server/delivery/recovery/closeout/closeout-recovery-evidence';
+import { reconcileBlockerFollowups } from '../../../server/knowledge/blocker-followups';
 
 const roots:string[]=[], stores:Store[]=[];
 afterEach(()=>{vi.restoreAllMocks();stores.splice(0).forEach(store=>store.close());roots.splice(0).forEach(root=>rmSync(root,{recursive:true,force:true}));});
@@ -303,4 +304,36 @@ test('a status that names its own cause keeps it, whatever stop was recorded wit
     ] as any;
     const cause=(id:string)=>project().find(item=>item.work.id===id)!.eligibility.cause;
     expect([cause('cut-off'),cause('bare')]).toEqual(['interrupted','needs-decision']);
+});
+
+/** Two queued diagnoses bound to one follow-up about GH-12, whose delivery has an unsettled write, and one that ran and failed. */
+function ticketedDuplicates(store: Store) {
+    const at = '2026-10-29T21:00:00Z', diagnosis = (id: string, over: Record<string, unknown> = {}) => ({ id, requestId: id, from: 'knowledge', to: 'pm', ticket: 'GH-12', actionId: 'harper:investigation:inv-1', body: 'Harper requests READ ONLY diagnosis', status: 'queued', createdAt: at, sessionId: '', recheck: false, error: '', recipients: [], receipts: [], ...over }) as any;
+    store.state.coordination!.jobs = [{ id: 'job-12', key: 'GH-12', status: 'blocked', stage: 'review', steps: [], requestedAt: at, detail: 'Review stopped' } as any];
+    store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e-job', `${store.project.id}:delivery:job-12`, 'uncertain', JSON.stringify({ attemptId: 'job-12' }));
+    store.state.messages.push(diagnosis('older'), diagnosis('newer'), diagnosis('ran', { status: 'failed', sessionId: 'native', error: 'Error: Harper follow-up authorizes read-only diagnosis only' }));
+    store.state.knowledge!.followups = [{ id: 'investigation:inv-1', source: { kind: 'investigation', id: 'inv-1' }, key: 'GH-12', fingerprint: '', owner: 'Morgan', nextAction: 'Ellis owns source diagnosis', evidence: [], disposition: 'needs-input', createdAt: at, updatedAt: at, history: [], handoffId: 'newer', handoffIds: ['ran', 'older', 'newer'] }];
+    reconcileBlockerFollowups(store);
+}
+
+test('a settled duplicate is terminal beside an unsettled write of its ticket\'s delivery; one that ran and failed under it stays blocked', () => {
+    const {store,project}=fixture(), find=(id:string)=>project().find(item=>item.work.id===id)!.eligibility;
+    ticketedDuplicates(store);
+    expect(store.state.messages.find(message=>message.id==='older')).toMatchObject({status:'failed',supersededByHandoffId:'newer'});
+    expect(find('older')).toMatchObject({state:'terminal',reason:expect.stringMatching(/Advisory follow-up failed/)});
+    expect(find('newer').state).toBe('runnable');
+    expect(find('ran')).toMatchObject({state:'blocked'});
+    // Its own conversation's unsettled write still keeps it stopped.
+    store.db.prepare('INSERT INTO effects (id, work_key, status, body) VALUES (?, ?, ?, ?)').run('e-own',`${store.project.id}:conversation:older`,'uncertain','{}');
+    expect(find('older').state).toBe('blocked');
+    store.db.prepare("UPDATE effects SET status='verified' WHERE id='e-own'").run();
+    expect(find('older').state).toBe('terminal');
+    // So does an unverified receipt on a read-back of an original's writes, and a claim still outranks the record.
+    const older=store.state.messages.find(message=>message.id==='older')!;
+    older.actionId='message:original';
+    store.state.messages.push({...older,id:'reply',from:'pm',status:'answered',receipts:[{id:'r',action:'conversation-readback',target:'original',verified:true,uncertain:true,detail:''}]});
+    expect(find('older').state).toBe('blocked');
+    store.state.messages.pop(); older.actionId='harper:investigation:inv-1';
+    claim(store,{projectId:'brain',kind:'conversation',id:'older'},'conversation:pm');
+    expect(find('older').state).toBe('running');
 });

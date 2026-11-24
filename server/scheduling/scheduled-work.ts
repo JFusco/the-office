@@ -41,7 +41,7 @@ import { scheduledRetrospectives } from '../knowledge/scheduled-retrospectives';
 import { scheduledRollup, type RollupHooks } from '../knowledge/weekly-rollup';
 import { stoppedReason } from './stopped-reason';
 import { stopCause } from './stop-cause';
-import { closedTicketReport, closedTicketRequest, finishedJobsRequest, retiredFollowup, settledNotice, supersededCheckpoint, supersededDeliveryRequest, supersededEvidenceRequest, supersededRun, touchesUnsettled, type UnsettledEffects } from '../operations/stale-records';
+import { closedTicketReport, closedTicketRequest, finishedJobsRequest, retiredFollowup, settledNotice, supersededCheckpoint, supersededDeliveryRequest, supersededEvidenceRequest, supersededHandoff, supersededRun, touchesUnsettled, type UnsettledEffects } from '../operations/stale-records';
 import { slackRequestSettled } from '../conversations/slack/supersession-proof';
 import { unsettledEffects } from '../operations/unsettled-effects';
 import type { WorkRef } from '../../src/contracts/work';
@@ -98,11 +98,13 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         if (messageLane !== lane) continue;
         const original = message.from === 'human' ? message : message.from === 'it' && message.actionId.startsWith('message:')
             ? store.state.messages.find(original => original.id === message.actionId.slice(8)) : undefined;
+        // A settled duplicate never ran: a write of its ticket's delivery is not its own.
+        const unstarted = supersededHandoff(message);
         add('conversation', message, `conversation:${message.to}`, message.createdAt, 3, () => message.to === 'cto' ? conversations.pumpCTO() : message.to === 'it' ? conversations.pumpIT() : message.to === 'knowledge' ? conversations.pumpKnowledge() : conversations.pump(message.id),
             ['failed', 'interrupted'].includes(message.status) && original && conversationResolved(store.state, original) ? eligible('terminal', 'Original conversation has a verified read-back; failure history retained')
                 // The same rule the outbox applies: a failed Slack read-back is history once its delivery is confirmed.
                 : ['failed', 'interrupted'].includes(message.status) && settledSlackReadback(store.state, message) ? eligible('terminal', 'The Slack delivery this was about is confirmed; the failed request is kept as history') : history(retiredFollowup(message, store.state.messages) || closedTicketReport(message, store.state.tickets) || supersededEvidenceRequest(message, store.state.messages), ['conversation', message.id],
-                ...(message.ticket ? (c.jobs || []).filter(job => job.key === message.ticket).map(job => ['delivery', job.id] as [WorkRef['kind'], string]) : [])));
+                ...(message.ticket && !unstarted ? (c.jobs || []).filter(job => job.key === message.ticket).map(job => ['delivery', job.id] as [WorkRef['kind'], string]) : [])));
     }
     if (lane === 'it') items.push(...scheduledInvestigations(store, (prompt, schema, options) => engine.itAgents.run('it', prompt, schema, options), now));
     if (lane === 'knowledge') {

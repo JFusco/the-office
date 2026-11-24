@@ -11,7 +11,9 @@ import { projectById } from '../../../server/office/projects';
 import { projectOutbox } from '../../../server/conversations/outbox';
 import { scheduledWork } from '../../../server/scheduling/scheduled-work';
 import { canFileGithubIssue } from '../../../server/github/github-context';
-import { uncertainConversations, conversationReadbackReady, queueConversationReadback } from '../../../server/conversations/conversation-recovery';
+import { uncertainConversations, conversationReadbackReady, pendingReadback, queueConversationReadback } from '../../../server/conversations/conversation-recovery';
+import { harperHandoff, reconcileBlockerFollowups } from '../../../server/knowledge/blocker-followups';
+import { supersededError } from '../../../server/knowledge/handoff-admission';
 import type { TeamMessage } from '../../../src/shared';
 const stores: Store[] = [], roots: string[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
@@ -139,4 +141,110 @@ test('native issue filing and its read-back keep capabilities while recording ad
     const recovery = queueConversationReadback(a.store, a.original);
     await a.engine.agents.followup('pm', recovery);
     expect(run.mock.calls[1][3]).toMatchObject({ readOnly: true, effortKind: 'administrative' });
+});
+
+// One open read-back per original while Harper's earlier requests are settled or still ending (issue 535).
+type Setup = ReturnType<typeof setup>;
+const harper = (a: Setup, id: string, over: Partial<TeamMessage> = {}): TeamMessage => ({ ...a.original, id, requestId: id, from: 'knowledge', to: 'pm', actionId: 'message:original', body: 'Harper requests READ ONLY diagnosis and source read-back.', status: 'queued', error: '', sessionId: '', ...over });
+function bind(a: Setup, handoffId: string | undefined, handoffIds: string[]) {
+    a.store.state.knowledge!.followups = [{ id: 'message:original', source: { kind: 'message', id: 'original' }, key: '', fingerprint: '', owner: 'Morgan', nextAction: '', evidence: [], disposition: 'unresolved', createdAt: '', updatedAt: '', history: [], handoffIds, ...(handoffId ? { handoffId } : {}) }];
+    return a.store.state.knowledge!.followups[0];
+}
+const tracked = (a: Setup, recovery: Partial<NonNullable<Setup['store']['state']['it']>['recoveries'][string]>) => {
+    a.store.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { 'conversation:original': { attempts: 1, nextAt: '', status: 'retrying', detail: a.original.error, ...recovery } } };
+    return a.store.state.it.recoveries['conversation:original'];
+};
+const sameOriginal = (a: Setup) => a.store.state.messages.filter(message => message.actionId === 'message:original' && ['queued', 'working'].includes(message.status));
+
+test('the exact-original lookup passes a settled sibling and an unbound lookalike, prefers the pinned survivor, and leaves a person\'s request alone', () => {
+    const a = setup();
+    const settled = harper(a, 'settled', { status: 'failed', supersededByHandoffId: 'live', error: supersededError('live') }), lookalike = harper(a, 'lookalike');
+    const manual: TeamMessage = { ...a.original, id: 'manual', requestId: 'manual', actionId: 'message:original', status: 'queued', error: '' }, live = harper(a, 'live');
+    a.store.state.messages.push(settled, lookalike, manual, live);
+    const item = bind(a, 'live', ['settled', 'live']);
+    expect(pendingReadback(a.store, a.original)).toBe(live);
+    expect(queueConversationReadback(a.store, a.original)).toBe(live);
+    expect(harperHandoff(a.store, settled)).toBe(true); expect(harperHandoff(a.store, lookalike)).toBe(false);
+    reconcileBlockerFollowups(a.store);
+    expect(item.handoffId).toBe('live');
+    expect([manual, lookalike, live].map(message => message.status)).toEqual(['queued', 'queued', 'queued']);
+    expect(a.store.state.messages).toHaveLength(5);
+    // Without a pin a person's request is found in message order; Harper's unbound lookalike never is.
+    item.handoffId = 'settled';
+    expect(pendingReadback(a.store, a.original)).toBe(manual);
+});
+
+test('after an adopted request closes, Harper sends its own first read-back when its fallback still qualifies', () => {
+    const a = setup();
+    a.original.error = 'Permission denied before dispatch';
+    const manual: TeamMessage = { ...a.original, id: 'manual', requestId: 'manual', actionId: 'message:original', status: 'queued', error: '' };
+    a.store.state.messages.push(manual);
+    reconcileBlockerFollowups(a.store);
+    const item = a.store.state.knowledge!.followups!.find(item => item.id === 'message:original')!;
+    expect(item.handoffId).toBe('manual'); expect(a.store.state.messages.filter(message => message.from === 'knowledge')).toEqual([]);
+    manual.status = 'answered';
+    reconcileBlockerFollowups(a.store); reconcileBlockerFollowups(a.store);
+    const sent = a.store.state.messages.filter(message => message.from === 'knowledge');
+    expect(sent).toHaveLength(1); expect(sent[0]).toMatchObject({ actionId: 'message:original', status: 'queued' });
+    expect(harperHandoff(a.store, sent[0])).toBe(true); expect(item.handoffIds).toEqual(['manual', sent[0].id]);
+});
+
+test.each([[1, 'retrying'], [3, 'needs-human']] as const)('IT adopts the live replacement of its settled remembered read-back and keeps %i attempts', async (attempts, status) => {
+    const a = setup(), live = harper(a, 'live');
+    a.store.state.messages.push(harper(a, 'settled', { status: 'failed', supersededByHandoffId: 'live', error: supersededError('live') }), live);
+    bind(a, 'live', ['settled', 'live']);
+    const recovery = tracked(a, { attempts, status, requestId: 'settled' });
+    await a.it.tick(new Date('2026-10-29T23:00:00Z'), true);
+    expect(recovery).toMatchObject({ attempts, status: 'retrying', requestId: 'live' });
+    expect(a.store.state.it!.reports.at(-1)!.followUps).toContainEqual(expect.objectContaining({ id: 'conversation:original', owner: 'IT', detail: 'conversation-readback is queued; scheduler owns execution.' }));
+    expect(sameOriginal(a)).toEqual([live]);
+});
+
+test.each([['backoff', 1, '2026-10-29T23:30:00.000Z', 0, 1], ['exhaustion', 3, '', 0, 3], ['a due retry', 1, '', 1, 2]] as const)('with only a different original\'s request pending, Harper then IT queue no same-original read-back during %s', async (_case, attempts, nextAt, queued, after) => {
+    const a = setup();
+    a.store.state.messages.push(harper(a, 'kept', { status: 'answered' }), harper(a, 'settled', { status: 'failed', supersededByHandoffId: 'kept', error: supersededError('kept') }),
+        { ...a.original, id: 'other', requestId: 'other', from: 'it', actionId: 'message:another-original', status: 'queued', error: '' });
+    bind(a, 'kept', ['kept', 'settled']);
+    const recovery = tracked(a, { attempts, nextAt, status: attempts >= 3 ? 'needs-human' : 'retrying', requestId: 'settled' });
+    reconcileBlockerFollowups(a.store);
+    expect(sameOriginal(a)).toEqual([]);
+    await a.it.tick(new Date('2026-10-29T23:00:00Z'), true);
+    expect(sameOriginal(a)).toHaveLength(queued); expect(recovery.attempts).toBe(after);
+    if (queued) expect(recovery.requestId).toBe(sameOriginal(a)[0].id);
+});
+
+test('an untracked original keeps Harper\'s first read-back route', () => {
+    const a = setup();
+    reconcileBlockerFollowups(a.store);
+    expect(sameOriginal(a)).toEqual([expect.objectContaining({ from: 'it', actionId: 'message:original' })]);
+});
+
+test('while Harper\'s bound read-back is still stopping, Harper and then IT both wait without a message or an attempt, and IT reads once it has stopped', async () => {
+    const a = setup(), reader = harper(a, 'reader', { status: 'interrupted', error: 'Session interrupted.' });
+    a.store.state.messages.push(reader);
+    bind(a, 'reader', ['reader']);
+    a.store.state.workLog!.push({ id: 'reader-run', requestId: 'reader', role: 'pm', stage: 'conversation-readback', status: 'stopping', processId: 4242 } as any);
+    const recovery = tracked(a, { attempts: 1, requestId: 'reader' });
+    expect(conversationReadbackReady(a.store, a.original, () => false)).toBe(true);
+    reconcileBlockerFollowups(a.store);
+    await a.it.tick(new Date('2026-10-29T23:00:00Z'), true);
+    expect(a.store.state.messages).toHaveLength(2); expect(recovery.attempts).toBe(1);
+    expect(a.store.state.it!.reports.at(-1)!.followUps).toContainEqual(expect.objectContaining({ id: 'conversation:original', detail: expect.stringContaining('earlier read-back') }));
+    expect(() => queueConversationReadback(a.store, a.original)).toThrow('still stopping');
+    a.store.state.workLog!.at(-1)!.status = 'interrupted';
+    reconcileBlockerFollowups(a.store);
+    expect(a.store.state.messages).toHaveLength(2);
+    await a.it.tick(new Date('2026-10-29T23:01:00Z'), true);
+    expect(sameOriginal(a)).toEqual([expect.objectContaining({ from: 'it' })]); expect(recovery.attempts).toBe(2);
+});
+
+test.each(['wrong-target', 'uncertain'])('a Harper-bound read-back with a %s receipt keeps the original open', async scenario => {
+    const a = setup(), readback = harper(a, 'readback'), answer: any = reply();
+    a.store.state.messages.push(readback); bind(a, 'readback', ['readback']);
+    if (scenario === 'wrong-target') answer.receipts[0].target = 'different-request'; else answer.receipts[0].uncertain = true;
+    vi.spyOn(a.engine.agents, 'followup').mockResolvedValue(answer);
+    await a.conversations.pump(readback.id);
+    expect(readback.status).toBe('failed');
+    expect(projectOutbox(a.store.state).find(item => item.id === 'message:original')?.status).toBe('open');
+    expect(a.original.status).toBe('failed');
 });
