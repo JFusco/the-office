@@ -82,12 +82,18 @@
       "githubRefs": [
         {
           "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 560,
+          "url": "https://github.com/jfusco/the-office/issues/560"
+        },
+        {
+          "repository": "jfusco/the-office",
           "kind": "pull-request",
           "number": 550,
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 1837,
+      "bytes": 1954,
       "degree": 4,
       "x": 0.809017,
       "y": 0.587785,
