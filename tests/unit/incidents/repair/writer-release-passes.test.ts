@@ -23,7 +23,7 @@ const leaving = (bound: SubjectFix): SubjectFix => bound.disposition === 'route'
 
 test('a release is granted once, spent by exactly one more harness restart, and judged by the stage it was bound to', async () => {
     const worktree = mkdtempSync(resolve(tmpdir(), 'office-release-')); roots.push(worktree);
-    const spent = [1, 2, 3].map(n => ({ workId: `old-${n}`, stage: 'implement', at: later(-30).toISOString(), accepted: HEAD, abandoned: PARTIAL, ref: `refs/office/salvage/1/old-${n}` }));
+    const spent = [1, 2, 3].map(n => ({ workId: `old-${n}`, stage: 'implement', at: later(-30).toISOString(), accepted: HEAD, abandoned: String(n).repeat(40), ref: `refs/office/salvage/1/old-${n}` }));
     const w = await deployedWorld(stores, dbs, ['1'], route, { job: { stage: 'implement', stop: { kind: 'uncertain-effect', at: 't1' }, branch: 'codex/1-fix', worktree, head: HEAD, steps: [], writerRestarts: structuredClone(spent) }, declare: leaving });
     // Dead of its own process ten minutes before the fixture's hour: never dispatched again, so no process probe is asked.
     w.store.state.workLog = [{ id: 'run-1', requestId: '1', stage: 'github-implement', status: 'failed', startedAt: later(-20).toISOString(), endedAt: later(-10).toISOString(), failure: { category: 'uncertain-effect', dispatched: false, detail: 'codex timed out' } } as any];
@@ -31,6 +31,8 @@ test('a release is granted once, spent by exactly one more harness restart, and 
     let minute = 4;
     w.store.clock = { now: () => later(minute), monotonic: () => 0 };
     const { git, answer } = salvageGit({ head: PARTIAL, branch: 'codex/1-fix' });
+    const earlierRefs = spent.map(({ ref, abandoned }) => [ref, abandoned] as const);
+    for (const [ref, object] of earlierRefs) git.refs.set(ref, object);
     const delivery = {
         store: w.store, get jobs() { return w.store.state.coordination!.jobs!; },
         // An unpublished candidate: no remote branch and no pull request to read.
@@ -64,7 +66,7 @@ test('a release is granted once, spent by exactly one more harness restart, and 
     expect(job()).toMatchObject({ stage: 'implement', status: 'queued', repairRelease: { consumedAt: later(6).toISOString() } });
     expect(restarted()).toHaveLength(1);
     expect(git.writes.filter(write => write.startsWith('reset'))).toEqual([`reset --hard ${HEAD}`]);
-    expect([...git.refs]).toEqual([['refs/office/salvage/1/run-1', PARTIAL]]);
+    expect(git.refs).toEqual(new Map([...earlierRefs, ['refs/office/salvage/1/run-1', PARTIAL]]));
 
     // Still at implement: the outcome waits. Once the restarted job leaves implement, it advanced.
     minute = 7;

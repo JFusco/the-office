@@ -3,7 +3,7 @@ import { repairFreeze } from '../../incidents/repair/repair-freeze';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SalvageRetry, salvageWorktree } from './salvage-worktree';
-import { writerRestartCandidate } from './restart-writer';
+import { writerRestartCandidate, writerRestarted } from './restart-writer';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
 
@@ -83,22 +83,23 @@ export async function restartStoppedWriters(delivery: GitHubDelivery) {
         }
         catch (error) {
             // A pass whose job, run, head or release changed meanwhile, or that a wait held before the reset, writes nothing.
-            if (!current()) continue;
-            delete job.writerRestartReadError;
-            if (stopped) continue;
+            if (stopped || !current()) continue;
             if (error instanceof SalvageRetry) unreadable(error);
-            else decline(String(error));
+            else {
+                delete job.writerRestartReadError;
+                decline(String(error));
+            }
             continue;
         }
+        // The final reads can yield to another poll or to a newly effective wait.
+        const queue = current();
+        const cancelledAfterCleanup = resetDispatched && job.status === 'cancelled' && same() && !writerRestarted(job, work.id);
+        if (!queue && !cancelledAfterCleanup) continue;
+        // No await separates live admission from the transaction.
         store.transaction(() => {
-            if (!same()) return;
-            // A job cancelled while its worktree was cleaned keeps that status; the reset is still recorded, and no release is spent.
-            const stillStopped = ['blocked', 'interrupted'].includes(job.status);
-            // Asked before the restart is recorded, which takes this run out of candidacy.
-            if (stillStopped && !eligible()) return;
             delete job.writerRestartReadError;
             (job.writerRestarts ??= []).push({ workId: work.id, stage: pass.stage, at: at(), accepted, abandoned: saved.abandoned, ref: saved.ref });
-            if (!stillStopped) return;
+            if (!queue) return;
             job.status = 'queued';
             delete job.stop;
             const kept = `Its work is ${saved.ref ? `kept at ${saved.ref}` : 'unchanged from the accepted head'}`;

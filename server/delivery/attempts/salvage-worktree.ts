@@ -1,9 +1,12 @@
+import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import type { command } from '../../workers/process';
 
 type Execute = typeof command;
 type Read = (...args: string[]) => Promise<string>;
 
-/** Nothing was changed and the cause may pass (for example a leftover index lock); try again later. */
+/** An operation could not establish the salvage outcome and may succeed on a later poll. */
 export class SalvageRetry extends Error {}
 
 /** The message of the commit the harness makes from a stopped run's uncommitted work. */
@@ -27,8 +30,8 @@ async function keptWork(read: Read, object: string): Promise<{ abandoned: string
 /**
  * Keeps whatever a stopped writer left in its worktree under a local ref, then returns the
  * worktree to the accepted commit. Nothing is pushed. Ignored files (installed dependencies)
- * are neither saved nor removed. Every refusal happens before the first write, and `guard`
- * runs before each write so a hold, pause or new owner stops the salvage where it is.
+ * are neither saved nor removed. The guard runs before each Git write so a hold, pause or
+ * new owner stops the salvage where it is.
  *
  * The ref is created once, against an empty old value, and never moved: the first object kept for
  * a run is the one kept. A later salvage of the same run (its restart was never recorded, or
@@ -41,64 +44,98 @@ async function keptWork(read: Read, object: string): Promise<{ abandoned: string
  */
 export async function salvageWorktree(execute: Execute, input: { worktree: string; branch: string; accepted: string; ref: string }, guard: () => void = () => {}): Promise<{ abandoned: string; ref: string }> {
     const { worktree, branch, accepted, ref } = input;
-    const read: Read = async (...args) => (await execute('git', args, { cwd: worktree, timeout: 30000, readOnly: true })).trim();
-    const write = async (...args: string[]) => { guard(); return (await execute('git', args, { cwd: worktree, timeout: 120000 })).trim(); };
-    if (await read('branch', '--show-current') !== branch) throw new Error('Worktree is not on the delivery branch');
-    await read('cat-file', '-e', `${accepted}^{commit}`);
-    const head = await read('rev-parse', 'HEAD'), status = await read('status', '--porcelain=v1', '--untracked-files=all');
-    // A nested repository or submodule holds work that an index snapshot cannot keep and a clean cannot remove.
-    if (status.split('\n').some(line => line.startsWith('?? ') && line.endsWith('/')) || await read('submodule', 'status'))
-        throw new Error('Worktree holds a nested repository or submodule; its work cannot be saved by the harness');
-    /** The tree of the worktree's contents as they stand, untracked files included, from the index. */
-    const snapshotTree = async () => {
-        try { await write('add', '-A'); return await write('write-tree'); }
-        catch (error) { throw new SalvageRetry(String(error), { cause: error }); }
+    const read: Read = async (...args) => (await execute('git', args, {
+        cwd: worktree, timeout: 30000, readOnly: true, env: { GIT_OPTIONAL_LOCKS: '0' },
+    })).trimEnd();
+    const write = async (args: string[], env?: Record<string, string>) => {
+        guard();
+        return (await execute('git', args, { cwd: worktree, timeout: 120000, env })).trim();
     };
-    /** Whether the worktree, not yet reset, holds exactly the work kept at the ref. */
-    const agrees = async (object: string, kept: { abandoned: string; snapshot: boolean }) => {
-        if (!status) return !kept.snapshot && head === object;
-        return kept.snapshot && kept.abandoned === head && await snapshotTree() === await read('rev-parse', `${object}^{tree}`);
+    const retry = async <T>(operation: string, attempt: () => Promise<T>): Promise<T> => {
+        try { return await attempt(); }
+        catch (error) { throw new SalvageRetry(`${ref}: ${operation}: ${String(error)}`, { cause: error }); }
     };
+    const readKept: Read = (...args) => retry(`could not read ${args.join(' ')}`, () => read(...args));
     const disagrees = (what: string) => new Error(`${what}; nothing was reset. The stopped run's work is kept at ${ref}.`);
-    let object = await refObject(read, ref), abandoned = head;
-    if (object) {
-        const kept = await keptWork(read, object);
-        if (head === accepted && !status) {
-            let before = '';
-            try { before = await read('rev-parse', '--verify', 'ORIG_HEAD^{commit}'); } catch { /* No pre-reset head to corroborate. */ }
-            if (before !== kept.abandoned) throw disagrees(`The worktree is at the accepted commit, but its pre-reset head ${before || '(none)'} is not the head ${kept.abandoned} kept at ${ref}`);
-            return { abandoned: kept.abandoned, ref };
+    const observe = async (hasKept: boolean) => {
+        const git = hasKept ? readKept : read;
+        const refuse = hasKept ? disagrees : (reason: string) => new Error(reason);
+        if (await git('branch', '--show-current') !== branch) throw refuse('Worktree is not on the delivery branch');
+        await git('cat-file', '-e', `${accepted}^{commit}`);
+        const head = await git('rev-parse', 'HEAD'), status = await git('status', '--porcelain=v1', '--untracked-files=all');
+        // A nested repository or submodule holds work an index snapshot cannot keep.
+        if (status.split('\n').some(line => line.startsWith('?? ') && line.endsWith('/')) || await git('submodule', 'status'))
+            throw refuse('Worktree holds a nested repository or submodule; its work cannot be saved by the harness');
+        return { head, status };
+    };
+    const snapshotTree = async (env?: Record<string, string>) => {
+        await write(['add', '-A'], env);
+        return write(['write-tree'], env);
+    };
+    const reset = async (abandoned: string, kept: string) => {
+        const at = kept ? ` Unfinished work is kept at ${kept}.` : '';
+        try {
+            await write(['reset', '--hard', accepted]);
+            await write(['clean', '-fd']);
         }
-        if (!await agrees(object, kept)) throw disagrees(`The worktree at ${head} does not hold the work kept at ${ref}`);
-        abandoned = kept.abandoned;
-    } else {
-        let saved = head;
-        if (status) {
+        catch (error) { throw new Error(`Worktree reset did not finish.${at} ${String(error)}`, { cause: error }); }
+        if (await read('rev-parse', 'HEAD') !== accepted || await read('status', '--porcelain=v1', '--untracked-files=all'))
+            throw new Error(`Worktree did not return to the accepted commit.${at}`);
+        return { abandoned, ref: kept };
+    };
+    let object = await refObject(read, ref);
+    let { head, status } = await observe(!!object);
+    if (!object) {
+        // A commit object made directly from the index leaves the branch in place.
+        const saved = status
+            ? await retry('could not snapshot the worktree', async () => write(['commit-tree', await snapshotTree(), '-p', head, '-m', SNAPSHOT]))
+            : head;
+        if (saved === accepted) return reset(head, '');
+        try { await write(['update-ref', ref, saved, '']); }
+        catch (error) {
+            object = await refObject(read, ref);
+            if (!object) throw new SalvageRetry(`${ref} could not be created: ${String(error)}`, { cause: error });
+        }
+        if (!object) return reset(head, ref);
+        // The winner may have reset while this pass was creating the ref.
+        ({ head, status } = await observe(true));
+    }
+
+    const kept = await keptWork(readKept, object);
+    if (head === accepted && !status) {
+        // Git can return no revision for both a missing pseudoref and an unreadable file.
+        const before = await readKept('rev-parse', '--revs-only', '--end-of-options', 'ORIG_HEAD^{commit}');
+        if (!before) await retry('could not verify ORIG_HEAD', async () => {
+            const path = resolve(worktree, await read('rev-parse', '--git-path', 'ORIG_HEAD'));
+            const raw = await readFile(path, 'utf8').catch(error => {
+                if (error.code === 'ENOENT') return '';
+                throw error;
+            });
+            if (raw.trim() === kept.abandoned) throw new Error('the pre-reset commit could not be resolved');
+        });
+        if (before !== kept.abandoned) throw disagrees(`The worktree is at the accepted commit, but its pre-reset head ${before || '(none)'} is not the head ${kept.abandoned}`);
+        return { abandoned: kept.abandoned, ref };
+    }
+    const mismatch = () => disagrees(`The worktree at ${head} does not match the saved work`);
+    if (head !== kept.abandoned || !!status !== kept.snapshot) throw mismatch();
+    if (kept.snapshot) {
+        const tree = await readKept('rev-parse', `${object}^{tree}`);
+        const current = await retry('could not compare worktree contents', async () => {
+            const index = resolve(worktree, await read('rev-parse', '--git-path', 'index'));
+            const scratch = await mkdtemp(resolve(tmpdir(), 'office-salvage-index-'));
             try {
-                // A commit object made directly from the index: no hooks run and the branch does not move.
-                saved = await write('commit-tree', await snapshotTree(), '-p', head, '-m', SNAPSHOT);
-            }
-            catch (error) { throw error instanceof SalvageRetry ? error : new SalvageRetry(String(error), { cause: error }); }
-        }
-        if (saved !== accepted) {
-            try { await write('update-ref', ref, saved, ''); object = saved; }
-            catch (error) {
-                // Created first by another pass: its object is the one kept, and the worktree must agree with it.
-                object = await refObject(read, ref);
-                if (!object) throw new SalvageRetry(`${ref} could not be created: ${String(error)}`, { cause: error });
-                const kept = await keptWork(read, object);
-                if (!await agrees(object, kept)) throw disagrees(`${ref} was created by another pass and the worktree at ${head} does not hold its work`);
-                abandoned = kept.abandoned;
-            }
+                const copy = resolve(scratch, 'index');
+                await copyFile(index, copy);
+                return await snapshotTree({ GIT_INDEX_FILE: copy });
+            } finally { await rm(scratch, { recursive: true, force: true }); }
+        });
+        if (current !== tree) throw mismatch();
+        // A staged change can differ from the kept work even when its working file matches.
+        const staged = await readKept('diff', '--cached', '--no-renames', '--name-only', '-z', head);
+        if (staged) {
+            const differs = new Set((await readKept('diff', '--cached', '--no-renames', '--name-only', '-z', tree)).split('\0').filter(Boolean));
+            if (staged.split('\0').some(path => differs.has(path))) throw mismatch();
         }
     }
-    const at = object ? ` Unfinished work is kept at ${ref}.` : '';
-    try {
-        await write('reset', '--hard', accepted);
-        await write('clean', '-fd');
-    }
-    catch (error) { throw new Error(`Worktree reset did not finish.${at} ${String(error)}`, { cause: error }); }
-    if (await read('rev-parse', 'HEAD') !== accepted || await read('status', '--porcelain=v1', '--untracked-files=all'))
-        throw new Error(`Worktree did not return to the accepted commit.${at}`);
-    return { abandoned, ref: object ? ref : '' };
+    return reset(kept.abandoned, ref);
 }

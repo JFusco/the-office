@@ -117,6 +117,9 @@ test('a spent count releases one attempt only with a matching release, after the
     expect(writerRestartCandidate(x.f.store, x.job, LATER, gone)).toBeNull();
     expect(writerRestartPending(x.f.store, x.job, gone)).toBe(false);
     x.job.repairRelease = grant(x);
+    x.work.endedAt = 'invalid stop timestamp';
+    expect(writerRestartCandidate(x.f.store, x.job, LATER, gone)).toBeNull();
+    x.work.endedAt = STOPPED;
     expect(writerRestartCandidate(x.f.store, x.job, at(299_999), gone)).toBeNull();
     expect(writerRestartCandidate(x.f.store, x.job, at(300_000), gone)).toEqual({ work: x.work, accepted: HEAD, attempt: 4, released: true });
     // Neither the count nor the earlier restarts change.

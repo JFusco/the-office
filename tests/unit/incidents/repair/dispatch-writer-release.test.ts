@@ -154,6 +154,27 @@ test('a wait that runs out while the admission reads, or before it commits, is o
     unchanged();
 });
 
+test.each([false, true])('a failed candidate Effects read refuses without writing (expired: %s)', async expired => {
+    const w = await releases(['1']), clock = w.store.clock, prepare = w.store.db.prepare.bind(w.store.db);
+    const when = new Date(Date.parse(w.waits()['delivery/1'].progressAt) + REPAIR_WAIT_MS - 60_000);
+    let elapsed = 0, attempted = false;
+    w.store.clock = { now: clock.now, monotonic: () => elapsed };
+    const unchanged = untouched(w);
+    w.store.db.prepare = (sql: string) => {
+        if (sql.startsWith('SELECT body FROM effects WHERE work_key')) {
+            attempted = true;
+            if (expired) elapsed = 60_000;
+            throw new Error('Synthetic Effects read failure');
+        }
+        return prepare(sql);
+    };
+    try {
+        expect(admitWriterRelease(w.store, w.intent('1'), when, undefined, gone)).toMatchObject({ refused: expired ? 'wait-ended' : 'head-mismatch' });
+    } finally { w.store.db.prepare = prepare; }
+    expect(attempted).toBe(true);
+    unchanged();
+});
+
 test('the bound job is found by its ID: a sibling with the same key, listed first, receives nothing', async () => {
     const w = await releases(['2', '1']);
     w.jobs()[0].key = 'GH-1';

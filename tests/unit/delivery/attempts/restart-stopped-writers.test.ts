@@ -5,6 +5,7 @@ import { restartStoppedWriters } from '../../../../server/delivery/attempts/rest
 import { HOLDS } from '../../../../server/office/config';
 import { markAwaitingRepair, unmark } from '../../incidents/repair/mark-fixture';
 import { savedState } from '../../store/saved-state-fixture';
+import type { TicketJob } from '../../../../src/shared';
 afterEach(cleanupFakes);
 
 const PARTIAL = 'e'.repeat(40);
@@ -17,9 +18,13 @@ function stopped() {
     // No process id and dispatched=false: nothing is left running, so the real process probe is not consulted.
     f.store.state.workLog = [{ id: 'run-1', requestId: job.id, stage: 'github-update-base', status: 'interrupted', startedAt: new Date(Date.now() - 900000).toISOString(), endedAt: new Date(Date.now() - 600000).toISOString(), failure: { category: 'cancelled', dispatched: false, detail: 'cancelled' } } as any];
     // The worktree's own Git, held in memory with its refs; everything else goes to the fake provider.
-    const { git, answer } = salvageGit({ head: PARTIAL, branch: job.branch! }), base = f.delivery.execute, hooks: { onWrite?: (command: string) => void } = {};
+    const { git, answer } = salvageGit({ head: PARTIAL, branch: job.branch! }), base = f.delivery.execute;
+    const hooks: { onWrite?: (command: string) => void; onRead?: (args: string[]) => void } = {};
     git.onWrite = command => hooks.onWrite?.(command);
-    f.delivery.execute = (async (program: string, args: string[], options: any) => answer(program, args) ?? base(program, args, options)) as any;
+    f.delivery.execute = async (program, args, options) => {
+        if (program === 'git' && options?.readOnly) hooks.onRead?.(args);
+        return answer(program, args) ?? base(program, args, options);
+    };
     return { f, job, git, writes: git.writes, hooks, ref: `refs/office/salvage/${job.id}/run-1` };
 }
 /** Three restarts spent from the accepted head and a repair release for run-1: the next attempt is the released one. */
@@ -138,6 +143,86 @@ test('a repair wait arriving after reset is dispatched lets cleanup finish and k
         status: 'queued',
         writerRestarts: [expect.objectContaining({ workId: 'run-1', abandoned: PARTIAL, ref: `refs/office/salvage/${job.id}/run-1` })],
     });
+});
+
+test('a wait arriving during a completed reset readback defers recording and spending the grant', async () => {
+    const x = released();
+    x.job.stop = { kind: 'unclassified', at: '2026-11-16T12:00:00.000Z' };
+    x.git.refs.set(x.ref, PARTIAL);
+    Object.assign(x.git, { head: HEAD, origHead: PARTIAL });
+    const at = x.f.store.clock.now().toISOString(), grant = structuredClone(x.job.repairRelease);
+    x.hooks.onRead = args => {
+        if (args.at(-1) === 'ORIG_HEAD^{commit}') {
+            markAwaitingRepair(x.f.store.state, x.f.store.project.id, { kind: 'delivery', id: x.job.id }, x.job.stage, { since: at, progressAt: at });
+        }
+    };
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job).toMatchObject({ status: 'blocked', writerRestarts: x.earlier });
+    expect(x.job.repairRelease).toEqual(grant);
+    expect(x.restarted()).toHaveLength(0);
+
+    unmark(x.f.store.state);
+    delete x.hooks.onRead;
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job).toMatchObject({ status: 'queued', repairRelease: { consumedAt: expect.any(String) } });
+    expect(x.job.writerRestarts).toEqual([...x.earlier, expect.objectContaining({ workId: 'run-1', abandoned: PARTIAL, ref: x.ref })]);
+    expect(x.restarted()).toHaveLength(1);
+    expect(x.writes.filter(write => /^(reset|clean)/.test(write))).toEqual([]);
+});
+
+test('a job cancelled while a pass only corroborates an earlier reset records nothing and spends no release', async () => {
+    const x = released();
+    x.git.refs.set(x.ref, PARTIAL);
+    Object.assign(x.git, { head: HEAD, origHead: PARTIAL });
+    x.hooks.onRead = args => { if (args.at(-1) === 'ORIG_HEAD^{commit}') x.job.status = 'cancelled'; };
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job).toMatchObject({ status: 'cancelled', writerRestarts: x.earlier });
+    expect(x.job.repairRelease).toEqual(x.grant());
+    expect(x.restarted()).toHaveLength(0);
+    expect(x.writes.filter(write => /^(reset|clean)/.test(write))).toEqual([]);
+});
+
+test.each(['queued', 'cancelled'] as const)('a stale final read makes no write after the same restart was recorded (%s)', async status => {
+    const x = stopped(), { store } = x.f;
+    let cleaned = false, commits = 0;
+    store.commitListeners.add(() => { commits++; });
+    x.hooks.onWrite = command => { if (command === 'clean') cleaned = true; };
+    const recorded = { workId: 'run-1', stage: x.job.stage, at: store.clock.now().toISOString(), accepted: HEAD, abandoned: PARTIAL, ref: x.ref };
+    x.hooks.onRead = args => {
+        if (!cleaned || args[0] !== 'status') return;
+        store.transaction(() => {
+            Object.assign(x.job, { status, writerRestarts: [recorded], writerRestartReadError: 'Read error from the live job' });
+        });
+    };
+    await restartStoppedWriters(x.f.delivery);
+    const expected = { status, writerRestarts: [recorded], writerRestartReadError: 'Read error from the live job' };
+    expect(x.job).toMatchObject(expected);
+    expect(savedState(store).coordination!.jobs!.find(job => job.id === x.job.id)).toMatchObject(expected);
+    expect(commits).toBe(1);
+    expect(store.state.events.filter(event => event.kind === 'writer-restarted')).toEqual([]);
+});
+
+test.each(['show', 'ORIG_HEAD^{commit}'])('a transient %s failure leaves an already-reset writer eligible', async read => {
+    const x = released();
+    x.git.refs.set(x.ref, PARTIAL);
+    Object.assign(x.git, { head: HEAD, origHead: PARTIAL });
+    x.hooks.onRead = args => {
+        if (args[0] === read || args.at(-1) === read) throw new Error('Synthetic Git read timeout');
+    };
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job).toMatchObject({ status: 'blocked', writerRestarts: x.earlier });
+    expect(x.job.repairRelease).toEqual(x.grant());
+    expect(x.job.writerRestartReadError).toContain(x.ref);
+    expect(x.job.writerRestartReadError).toContain('Synthetic Git read timeout');
+    expect(x.job.writerRestartDeclined).toBeUndefined();
+
+    delete x.hooks.onRead;
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job).toMatchObject({ status: 'queued', repairRelease: { consumedAt: expect.any(String) } });
+    expect(x.job.writerRestartReadError).toBeUndefined();
+    expect(x.job.writerRestarts).toEqual([...x.earlier, expect.objectContaining({ workId: 'run-1', abandoned: PARTIAL, ref: x.ref })]);
+    expect(x.restarted()).toHaveLength(1);
+    expect(x.writes.filter(write => /^(reset|clean)/.test(write))).toEqual([]);
 });
 
 test('a genuine cleanup failure after reset is recorded even if a repair wait arrived', async () => {
@@ -278,13 +363,16 @@ test('a release replaced during the last read leaves the replacement, the read e
 
 test('a write that fails after the salvage changes nothing in the project, and the retry records the first salvage once', async () => {
     const x = released(), save = x.f.store.save.bind(x.f.store);
+    const grant = structuredClone(x.job.repairRelease);
     let fail = false;
     x.f.store.save = () => { if (fail) { fail = false; throw new Error('disk I/O error'); } save(); };
     x.hooks.onWrite = command => { if (command === 'clean') fail = true; };
     await expect(restartStoppedWriters(x.f.delivery)).rejects.toThrow('disk I/O error');
-    const stands = (job: any) => expect(job).toMatchObject({ status: 'blocked', writerRestarts: x.earlier, repairRelease: { id: 'g'.repeat(64) } });
+    const stands = (job: TicketJob | undefined) => {
+        expect(job).toMatchObject({ status: 'blocked', writerRestarts: x.earlier });
+        expect(job!.repairRelease).toStrictEqual(grant);
+    };
     stands(x.job);
-    expect(x.job.repairRelease!.consumedAt).toBeUndefined();
     stands(savedState(x.f.store).coordination!.jobs!.find(job => job.id === x.job.id));
     expect(x.restarted()).toHaveLength(0);
     expect(x.f.store.db.prepare("SELECT count(*) AS n FROM events WHERE json_extract(body,'$.kind')='writer-restarted'").get()).toEqual({ n: 0 });

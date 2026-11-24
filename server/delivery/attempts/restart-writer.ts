@@ -73,9 +73,11 @@ export function writerRestartCandidate(store: Store, job: TicketJob, now: Date, 
     if (!stopped) return null;
     const { work, accepted } = stopped;
     const attempt = job.writerRestarts?.filter(restart => restart.stage === job.stage && restart.accepted === accepted).length || 0;
-    const stoppedAt = new Date(work.endedAt || work.startedAt), due = nextAttemptAt(attempt, stoppedAt);
-    if (due && now.getTime() - stoppedAt.getTime() <= MAX_STOPPED_MS) return now.getTime() < due.getTime() ? null : { work, accepted, attempt: attempt + 1, released: false };
-    if (!releaseFunds(store, job, work.id, accepted) || now.getTime() < stoppedAt.getTime() + ATTEMPT_DELAYS_MS.at(-1)!) return null;
+    const stoppedAt = Date.parse(work.endedAt || work.startedAt);
+    if (!Number.isFinite(stoppedAt)) return null;
+    const elapsed = now.getTime() - stoppedAt, due = nextAttemptAt(attempt, new Date(stoppedAt));
+    if (due && elapsed <= MAX_STOPPED_MS) return now.getTime() < due.getTime() ? null : { work, accepted, attempt: attempt + 1, released: false };
+    if (!releaseFunds(store, job, work.id, accepted) || elapsed < ATTEMPT_DELAYS_MS.at(-1)!) return null;
     return { work, accepted, attempt: attempt + 1, released: true };
 }
 

@@ -36,9 +36,9 @@ export function salvageGit(start: { head: string; branch: string; contents?: str
             case 'submodule': return '';
             case 'status': return git.contents;
             case 'rev-parse': {
-                const name = rest.filter(arg => arg !== '--verify').at(-1)!;
+                const name = rest.at(-1)!;
                 if (name === 'HEAD') return git.head;
-                if (name === 'ORIG_HEAD^{commit}') { if (!git.origHead) throw new Error('fatal: Needed a single revision'); return git.origHead; }
+                if (name === 'ORIG_HEAD^{commit}') return git.origHead;
                 if (name.endsWith('^{tree}')) { const object = name.slice(0, -'^{tree}'.length); return git.commits.get(object)?.tree ?? `tree-of-${object}`; }
                 return undefined;
             }

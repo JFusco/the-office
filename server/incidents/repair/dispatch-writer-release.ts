@@ -55,7 +55,9 @@ export function admitWriterRelease(store: Store, intent: ResumeIntent, now: Date
     if (requests.some(request => request.key === job.key && PENDING.includes(request.status))) return refused('request-pending', `Another request for ${job.key} is queued or working.`);
     const claim = store.activeClaims().find(active => active.work.kind === ref.kind && active.work.id === ref.id);
     if (claim) return refused('request-pending', `${job.key} has work in flight under a scheduler claim (${claim.stage}).`);
-    const stopped = stoppedWriter(store, job, alive);
+    let stopped: ReturnType<typeof stoppedWriter> = null;
+    try { stopped = stoppedWriter(store, job, alive); }
+    catch { /* A failed candidate read leaves the worker unestablished. */ }
     // The rule reads the Effects ledger: a wait that ran out while it read is over, whatever the rule said.
     if (waitOver(wait, sofar())) return refused('wait-ended', WAIT_ENDED);
     if (!stopped) return refused('head-mismatch', `The harness's restart rule names no dead ${job.stage} run of ${job.key}.`);
