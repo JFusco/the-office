@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 43,
-    "edges": 79,
+    "nodes": 45,
+    "edges": 84,
     "byType": {
       "index": 4,
-      "journal": 9,
-      "plan": 24,
+      "journal": 10,
+      "plan": 25,
       "topic": 6
     }
   },
@@ -51,8 +51,8 @@
       ],
       "bytes": 1102,
       "degree": 2,
-      "x": 0.957601,
-      "y": 0.288099,
+      "x": 0.961262,
+      "y": 0.275637,
       "size": 8
     },
     {
@@ -70,8 +70,8 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.905448,
-      "y": 0.424457,
+      "x": 0.913545,
+      "y": 0.406737,
       "size": 8
     },
     {
@@ -95,8 +95,8 @@
       ],
       "bytes": 1954,
       "degree": 4,
-      "x": 0.833998,
-      "y": 0.551768,
+      "x": 0.848048,
+      "y": 0.529919,
       "size": 8
     },
     {
@@ -120,8 +120,8 @@
       ],
       "bytes": 1611,
       "degree": 0,
-      "x": 0.744772,
-      "y": 0.667319,
+      "x": 0.766044,
+      "y": 0.642788,
       "size": 8
     },
     {
@@ -145,8 +145,8 @@
       ],
       "bytes": 975,
       "degree": 0,
-      "x": 0.639673,
-      "y": 0.768647,
+      "x": 0.669131,
+      "y": 0.743145,
       "size": 8
     },
     {
@@ -170,8 +170,8 @@
       ],
       "bytes": 1728,
       "degree": 0,
-      "x": 0.52094,
-      "y": 0.853593,
+      "x": 0.559193,
+      "y": 0.829038,
       "size": 8
     },
     {
@@ -195,8 +195,8 @@
       ],
       "bytes": 585,
       "degree": 0,
-      "x": 0.391105,
-      "y": 0.920346,
+      "x": 0.438371,
+      "y": 0.898794,
       "size": 8
     },
     {
@@ -214,8 +214,27 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.252933,
-      "y": 0.967484,
+      "x": 0.309017,
+      "y": 0.951057,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-trim-unit-suite.md",
+      "label": "Trim repeated recovery and publication checks",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 565,
+          "url": "https://github.com/jfusco/the-office/issues/565"
+        }
+      ],
+      "bytes": 820,
+      "degree": 3,
+      "x": 0.173648,
+      "y": 0.984808,
       "size": 8
     },
     {
@@ -245,8 +264,8 @@
       ],
       "bytes": 1126,
       "degree": 3,
-      "x": 0.109371,
-      "y": 0.994001,
+      "x": 0.034899,
+      "y": 0.999391,
       "size": 8
     },
     {
@@ -257,8 +276,8 @@
       "githubRefs": [],
       "bytes": 3394,
       "degree": 4,
-      "x": 0.989343,
-      "y": 0.145601,
+      "x": 0.990268,
+      "y": 0.139173,
       "size": 12
     },
     {
@@ -269,8 +288,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": -0.036522,
-      "y": 0.999333,
+      "x": -0.104528,
+      "y": 0.994522,
       "size": 12
     },
     {
@@ -294,8 +313,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": -0.181637,
-      "y": 0.983366,
+      "x": -0.241922,
+      "y": 0.970296,
       "size": 8
     },
     {
@@ -313,8 +332,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": -0.32288,
-      "y": 0.94644,
+      "x": -0.374607,
+      "y": 0.927184,
       "size": 8
     },
     {
@@ -332,8 +351,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": -0.457242,
-      "y": 0.889342,
+      "x": -0.5,
+      "y": 0.866025,
       "size": 8
     },
     {
@@ -351,8 +370,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": -0.581859,
-      "y": 0.81329,
+      "x": -0.615661,
+      "y": 0.788011,
       "size": 8
     },
     {
@@ -370,8 +389,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": -0.694074,
-      "y": 0.719903,
+      "x": -0.71934,
+      "y": 0.694658,
       "size": 8
     },
     {
@@ -389,8 +408,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.791496,
-      "y": 0.611174,
+      "x": -0.809017,
+      "y": 0.587785,
       "size": 8
     },
     {
@@ -414,8 +433,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.872049,
-      "y": 0.489418,
+      "x": -0.882948,
+      "y": 0.469472,
       "size": 8
     },
     {
@@ -433,8 +452,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.934016,
-      "y": 0.357231,
+      "x": -0.939693,
+      "y": 0.34202,
       "size": 8
     },
     {
@@ -458,8 +477,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.976076,
-      "y": 0.21743,
+      "x": -0.978148,
+      "y": 0.207912,
       "size": 8
     },
     {
@@ -501,8 +520,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.997332,
-      "y": 0.072995,
+      "x": -0.997564,
+      "y": 0.069756,
       "size": 8
     },
     {
@@ -520,8 +539,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.997332,
-      "y": -0.072995,
+      "x": -0.997564,
+      "y": -0.069756,
       "size": 8
     },
     {
@@ -545,8 +564,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.976076,
-      "y": -0.21743,
+      "x": -0.978148,
+      "y": -0.207912,
       "size": 8
     },
     {
@@ -564,8 +583,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.934016,
-      "y": -0.357231,
+      "x": -0.939693,
+      "y": -0.34202,
       "size": 8
     },
     {
@@ -601,8 +620,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.872049,
-      "y": -0.489418,
+      "x": -0.882948,
+      "y": -0.469472,
       "size": 8
     },
     {
@@ -656,8 +675,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.791496,
-      "y": -0.611174,
+      "x": -0.809017,
+      "y": -0.587785,
       "size": 8
     },
     {
@@ -675,8 +694,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.694074,
-      "y": -0.719903,
+      "x": -0.71934,
+      "y": -0.694658,
       "size": 8
     },
     {
@@ -694,8 +713,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.581859,
-      "y": -0.81329,
+      "x": -0.615661,
+      "y": -0.788011,
       "size": 8
     },
     {
@@ -719,8 +738,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.457242,
-      "y": -0.889342,
+      "x": -0.5,
+      "y": -0.866025,
       "size": 8
     },
     {
@@ -738,8 +757,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.32288,
-      "y": -0.94644,
+      "x": -0.374607,
+      "y": -0.927184,
       "size": 8
     },
     {
@@ -793,8 +812,8 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.181637,
-      "y": -0.983366,
+      "x": -0.241922,
+      "y": -0.970296,
       "size": 8
     },
     {
@@ -812,8 +831,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": -0.036522,
-      "y": -0.999333,
+      "x": -0.104528,
+      "y": -0.994522,
       "size": 8
     },
     {
@@ -831,8 +850,8 @@
       ],
       "bytes": 751,
       "degree": 5,
-      "x": 0.109371,
-      "y": -0.994001,
+      "x": 0.034899,
+      "y": -0.999391,
       "size": 8
     },
     {
@@ -850,8 +869,8 @@
       ],
       "bytes": 826,
       "degree": 3,
-      "x": 0.252933,
-      "y": -0.967484,
+      "x": 0.173648,
+      "y": -0.984808,
       "size": 8
     },
     {
@@ -875,8 +894,20 @@
       ],
       "bytes": 802,
       "degree": 3,
-      "x": 0.391105,
-      "y": -0.920346,
+      "x": 0.309017,
+      "y": -0.951057,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
+      "label": "Trim the Office unit suite",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [],
+      "bytes": 9984,
+      "degree": 3,
+      "x": 0.438371,
+      "y": -0.898794,
       "size": 8
     },
     {
@@ -1174,10 +1205,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 8666,
-      "degree": 28,
-      "x": 0.52094,
-      "y": -0.853593,
+      "bytes": 8917,
+      "degree": 29,
+      "x": 0.559193,
+      "y": -0.829038,
       "size": 12
     },
     {
@@ -1193,10 +1224,10 @@
           "url": "https://github.com/jfusco/the-office/issues/553"
         }
       ],
-      "bytes": 1965,
-      "degree": 10,
-      "x": 0.639673,
-      "y": -0.768647,
+      "bytes": 2333,
+      "degree": 13,
+      "x": 0.669131,
+      "y": -0.743145,
       "size": 8
     },
     {
@@ -1232,8 +1263,8 @@
       ],
       "bytes": 1324,
       "degree": 8,
-      "x": 0.744772,
-      "y": -0.667319,
+      "x": 0.766044,
+      "y": -0.642788,
       "size": 8
     },
     {
@@ -1281,8 +1312,8 @@
       ],
       "bytes": 2044,
       "degree": 9,
-      "x": 0.833998,
-      "y": -0.551768,
+      "x": 0.848048,
+      "y": -0.529919,
       "size": 8
     },
     {
@@ -1312,8 +1343,8 @@
       ],
       "bytes": 885,
       "degree": 11,
-      "x": 0.905448,
-      "y": -0.424457,
+      "x": 0.913545,
+      "y": -0.406737,
       "size": 8
     },
     {
@@ -1355,8 +1386,8 @@
       ],
       "bytes": 1048,
       "degree": 3,
-      "x": 0.957601,
-      "y": -0.288099,
+      "x": 0.961262,
+      "y": -0.275637,
       "size": 8
     },
     {
@@ -1386,8 +1417,8 @@
       ],
       "bytes": 944,
       "degree": 2,
-      "x": 0.989343,
-      "y": -0.145601,
+      "x": 0.990268,
+      "y": -0.139173,
       "size": 8
     }
   ],
@@ -1398,6 +1429,13 @@
       "target": "wiki/topics/delivery-and-recovery.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "044df719cafe1ebc",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "046a9d63044c78ac",
@@ -1431,6 +1469,13 @@
       "id": "0e14877dd713ff57",
       "source": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "13d9913dce9dd17f",
+      "source": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
       "type": "topic",
       "relation": "topic"
     },
@@ -1477,6 +1522,13 @@
       "relation": "topic"
     },
     {
+      "id": "23117bbd16beddef",
+      "source": "wiki/topics/context-wiki-and-ci.md",
+      "target": "wiki/journal/2026-11-24-trim-unit-suite.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "23c7b0b1e29b39b1",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-06-harper-lesson-follow-up-07f8652d10.md",
@@ -1508,6 +1560,13 @@
       "id": "25158e44a6711366",
       "source": "wiki/journal/2026-11-24-context-wiki.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "298d214ea74a4352",
+      "source": "wiki/journal/2026-11-24-trim-unit-suite.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
       "type": "topic",
       "relation": "topic"
     },
@@ -1895,6 +1954,13 @@
       "target": "wiki/plans/2026-11-24-repair-the-office-wiki-adoption-651b0935fc.md",
       "type": "link",
       "relation": "link"
+    },
+    {
+      "id": "e4bb97dc64446849",
+      "source": "wiki/journal/2026-11-24-trim-unit-suite.md",
+      "target": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
+      "type": "plan",
+      "relation": "plan"
     },
     {
       "id": "e56d58329e2a8982",
