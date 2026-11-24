@@ -41,7 +41,7 @@ jobs:
       - name: Validate PR body
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: node scripts/validate_wiki_pr_body.cjs || pnpm run lint:pr
+        run: node scripts/validate_wiki_pr_body.cjs || node scripts/graphify/refresh-pr.cjs || pnpm run lint:pr
       - name: Lint PR title
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}

@@ -8,6 +8,16 @@ Quality classifies the tested revision once. For code changes, the Ubuntu build 
 
 The unit suite checks malformed GitHub fields directly at the provider reader. Recovery tests exercise one issue and one comment failure on each side of the worker call. Tests for simulated retries advance a fake clock, while the Office HTTP test uses a real socket to check behavior during a stall. [Unit suite maintenance](../journal/2026-11-24-trim-unit-suite.md)
 
+## Shared code-map refresh
+
+The shared Graphify map refreshes after mapped source reaches `main`. The
+workflow compares the source revision in the checked-in graph with the latest
+`main`, runs pinned code-only extraction when needed, and publishes changed
+artifacts through `bot/graphify-refresh`. The generated PR merges only after
+Quality, commit lint, and Wiki integrity succeed for its exact head. The map
+commit does not trigger a second publication. Use **Run workflow** on
+`main` to retry after a failed or interrupted refresh.
+
 ## Evidence
 
 - [Wiki mechanics](../MECHANICS.md), [Quality workflow](../../.github/workflows/quality.yml), and [installation issue](https://github.com/JFusco/the-office/issues/553)

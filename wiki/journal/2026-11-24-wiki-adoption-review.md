@@ -1,6 +1,8 @@
 ---
 topics: [context-wiki-and-ci, delivery-and-recovery]
 plans: [2026-11-24-repair-the-office-wiki-adoption-651b0935fc.md]
+issue: 'https://github.com/jfusco/the-office/issues/562'
+issues: ['https://github.com/jfusco/the-office/issues/562']
 ---
 
 # Repair the Office wiki adoption

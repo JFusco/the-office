@@ -16,9 +16,11 @@ replace the design notes in `docs/` or the boundaries in `AGENTS.md`.
 - Follow returned file and line references into source. Confirm `INFERRED`
   and `AMBIGUOUS` relationships there. For an exact file or command question,
   inspect source directly; read `docs/` and `AGENTS.md` for rationale.
-- After eligible code changes, pulls, or merges, run
-  `PYTHONHASHSEED=0 graphify update .`. Native post-commit and post-checkout
-  hooks refresh the map in the background; review output before staging.
+- GitHub refreshes the shared map after source merges to `main`. Use the
+  **Refresh Office Graphify map** workflow on `main` to retry it.
+- For local previews, run `PYTHONHASHSEED=0 graphify update .`. Native
+  post-commit and post-checkout hooks refresh local outputs in the background.
+  Review output before staging.
 - To rebuild without model calls, run
   `PYTHONHASHSEED=0 GRAPHIFY_MAX_WORKERS=1 graphify extract . --code-only --force`
   and then `PYTHONHASHSEED=0 graphify update .`.
