@@ -131,6 +131,7 @@ export function InspectorContent(props: InspectorProps) {
       ) : null}
       {selection.kind==='ticket' && !ticket && <QueueTicketDetail pmName={pmName} reduced={props.reduced} snapshot={snapshot} ticketKey={selection.id} onDiscuss={key=>onSelect({kind:'chat',ticket:key})}/>}
       {selection.kind === 'pm-queue' ? <PMQueue reduced={props.reduced} snapshot={snapshot} onOpen={onOpenProject} /> : null}
+      {selection.kind === 'agent' && <AgentDesk {...props} />}
       {selection.kind === 'mailbox' && <Mailbox snapshot={snapshot} act={act} busy={busy} preferences={preferences} onSelect={onSelect}/>}
       {selection.kind === 'azure' && github ? <GitHubPanel snapshot={snapshot} act={act} busy={busy} /> : null}
       {selection.kind === 'azure' && !github && <AzureOperations {...props} />}

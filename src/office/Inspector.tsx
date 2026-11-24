@@ -36,7 +36,7 @@ export default function Inspector(props: InspectorProps) {
       return;
     }
     // Keep the original trigger across drawer swaps: a replacement opens with focus on the body.
-    const active = document.activeElement;
+    const active = props.source || document.activeElement;
     if (active instanceof HTMLElement && active !== document.body && !active.closest('[data-inspector]'))
       opener.current = active;
     close.current?.focus({ preventScroll: true });

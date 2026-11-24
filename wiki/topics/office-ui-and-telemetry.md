@@ -5,6 +5,8 @@ The directory and org chart use a single persona registry. Settings and
 operational views have distinct drawer entry points. The PM queue and ticket
 drawer surface live stage events from the delivery record.
 
+A global control opens a fresh drawer. Inside it, a topic or record opens on a new page and Back names the parent. The Office frame stays in place while the pages slide. Reduced motion switches pages immediately. Returning restores the originating row and its reading position. A project or floor change starts a fresh path. See the [drawer navigation decision](../journal/2026-11-24-drawer-navigation.md).
+
 Estimated model cost comes from worker accounting. The Office records its
 estimates alongside time and publishes board cost through Effects with
 provider read-back.

@@ -19,6 +19,7 @@ export type InspectorProps = {
   osReduced?: boolean;
   refresh?: () => Promise<void>;
   settingsReturn?: RefObject<HTMLElement | null>;
+  source?: HTMLElement | null;
   drawerOpener?: MutableRefObject<HTMLElement | null>;
   replacing?: RefObject<boolean>;
   ticketSnapshot?: OfficeSnapshot;

@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 33,
-    "edges": 65,
+    "nodes": 35,
+    "edges": 70,
     "byType": {
       "index": 4,
-      "journal": 1,
-      "plan": 22,
+      "journal": 2,
+      "plan": 23,
       "topic": 6
     }
   },
@@ -39,8 +39,27 @@
       ],
       "bytes": 1484,
       "degree": 9,
-      "x": 0.928368,
-      "y": 0.371662,
+      "x": 0.936235,
+      "y": 0.351375,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-drawer-navigation.md",
+      "label": "Drawer navigation",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 551,
+          "url": "https://github.com/jfusco/the-office/issues/551"
+        }
+      ],
+      "bytes": 611,
+      "degree": 3,
+      "x": 0.858449,
+      "y": 0.512899,
       "size": 8
     },
     {
@@ -51,8 +70,8 @@
       "githubRefs": [],
       "bytes": 2904,
       "degree": 4,
-      "x": 0.981929,
-      "y": 0.189251,
+      "x": 0.98393,
+      "y": 0.178557,
       "size": 12
     },
     {
@@ -63,8 +82,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": 0.841254,
-      "y": 0.540641,
+      "x": 0.753071,
+      "y": 0.657939,
       "size": 12
     },
     {
@@ -88,8 +107,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": 0.723734,
-      "y": 0.690079,
+      "x": 0.62349,
+      "y": 0.781831,
       "size": 8
     },
     {
@@ -107,8 +126,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": 0.580057,
-      "y": 0.814576,
+      "x": 0.473869,
+      "y": 0.880596,
       "size": 8
     },
     {
@@ -126,8 +145,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": 0.415415,
-      "y": 0.909632,
+      "x": 0.309017,
+      "y": 0.951057,
       "size": 8
     },
     {
@@ -145,8 +164,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": 0.235759,
-      "y": 0.971812,
+      "x": 0.134233,
+      "y": 0.99095,
       "size": 8
     },
     {
@@ -164,8 +183,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": 0.047582,
-      "y": 0.998867,
+      "x": -0.044865,
+      "y": 0.998993,
       "size": 8
     },
     {
@@ -183,8 +202,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.142315,
-      "y": 0.989821,
+      "x": -0.222521,
+      "y": 0.974928,
       "size": 8
     },
     {
@@ -208,8 +227,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.327068,
-      "y": 0.945001,
+      "x": -0.393025,
+      "y": 0.919528,
       "size": 8
     },
     {
@@ -227,8 +246,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.5,
-      "y": 0.866025,
+      "x": -0.550897,
+      "y": 0.834573,
       "size": 8
     },
     {
@@ -252,8 +271,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.654861,
-      "y": 0.75575,
+      "x": -0.691063,
+      "y": 0.722795,
       "size": 8
     },
     {
@@ -295,8 +314,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.786053,
-      "y": 0.618159,
+      "x": -0.809017,
+      "y": 0.587785,
       "size": 8
     },
     {
@@ -314,8 +333,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.888835,
-      "y": 0.458227,
+      "x": -0.900969,
+      "y": 0.433884,
       "size": 8
     },
     {
@@ -339,8 +358,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.959493,
-      "y": 0.281733,
+      "x": -0.963963,
+      "y": 0.266037,
       "size": 8
     },
     {
@@ -358,8 +377,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.995472,
-      "y": 0.095056,
+      "x": -0.995974,
+      "y": 0.089639,
       "size": 8
     },
     {
@@ -395,8 +414,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.995472,
-      "y": -0.095056,
+      "x": -0.995974,
+      "y": -0.089639,
       "size": 8
     },
     {
@@ -450,8 +469,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.959493,
-      "y": -0.281733,
+      "x": -0.963963,
+      "y": -0.266037,
       "size": 8
     },
     {
@@ -469,8 +488,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.888835,
-      "y": -0.458227,
+      "x": -0.900969,
+      "y": -0.433884,
       "size": 8
     },
     {
@@ -488,8 +507,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.786053,
-      "y": -0.618159,
+      "x": -0.809017,
+      "y": -0.587785,
       "size": 8
     },
     {
@@ -513,8 +532,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.654861,
-      "y": -0.75575,
+      "x": -0.691063,
+      "y": -0.722795,
       "size": 8
     },
     {
@@ -532,8 +551,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.5,
-      "y": -0.866025,
+      "x": -0.550897,
+      "y": -0.834573,
       "size": 8
     },
     {
@@ -587,8 +606,20 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.327068,
-      "y": -0.945001,
+      "x": -0.393025,
+      "y": -0.919528,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md",
+      "label": "Drill-down navigation for Office drawers",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [],
+      "bytes": 4584,
+      "degree": 3,
+      "x": -0.222521,
+      "y": -0.974928,
       "size": 8
     },
     {
@@ -606,8 +637,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": -0.142315,
-      "y": -0.989821,
+      "x": -0.044865,
+      "y": -0.998993,
       "size": 8
     },
     {
@@ -625,8 +656,8 @@
       ],
       "bytes": 751,
       "degree": 2,
-      "x": 0.047582,
-      "y": -0.998867,
+      "x": 0.134233,
+      "y": -0.99095,
       "size": 8
     },
     {
@@ -906,10 +937,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 8049,
-      "degree": 26,
-      "x": 0.235759,
-      "y": -0.971812,
+      "bytes": 8329,
+      "degree": 27,
+      "x": 0.309017,
+      "y": -0.951057,
       "size": 12
     },
     {
@@ -927,8 +958,8 @@
       ],
       "bytes": 1169,
       "degree": 6,
-      "x": 0.415415,
-      "y": -0.909632,
+      "x": 0.473869,
+      "y": -0.880596,
       "size": 8
     },
     {
@@ -964,8 +995,8 @@
       ],
       "bytes": 1256,
       "degree": 7,
-      "x": 0.580057,
-      "y": -0.814576,
+      "x": 0.62349,
+      "y": -0.781831,
       "size": 8
     },
     {
@@ -1011,10 +1042,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 909,
-      "degree": 6,
-      "x": 0.723734,
-      "y": -0.690079,
+      "bytes": 1317,
+      "degree": 9,
+      "x": 0.753071,
+      "y": -0.657939,
       "size": 8
     },
     {
@@ -1044,8 +1075,8 @@
       ],
       "bytes": 885,
       "degree": 11,
-      "x": 0.841254,
-      "y": -0.540641,
+      "x": 0.858449,
+      "y": -0.512899,
       "size": 8
     },
     {
@@ -1087,8 +1118,8 @@
       ],
       "bytes": 1048,
       "degree": 3,
-      "x": 0.928368,
-      "y": -0.371662,
+      "x": 0.936235,
+      "y": -0.351375,
       "size": 8
     },
     {
@@ -1118,12 +1149,19 @@
       ],
       "bytes": 944,
       "degree": 2,
-      "x": 0.981929,
-      "y": -0.189251,
+      "x": 0.98393,
+      "y": -0.178557,
       "size": 8
     }
   ],
   "edges": [
+    {
+      "id": "030a9403e0fe041b",
+      "source": "wiki/plans/2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
     {
       "id": "044ce2e0a57b663e",
       "source": "wiki/journal/2026-11-24-context-wiki.md",
@@ -1377,6 +1415,13 @@
       "relation": "link"
     },
     {
+      "id": "86219057cd5d3eb8",
+      "source": "wiki/journal/2026-11-24-drawer-navigation.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "91548b0b3d93db4c",
       "source": "wiki/topics/context-wiki-and-ci.md",
       "target": "wiki/MECHANICS.md",
@@ -1429,6 +1474,13 @@
       "id": "9fe9a357cf53c18a",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-06-delivery-throughput-and-harness-validation-2c131f596e.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "a30f9728b96a2141",
+      "source": "wiki/topics/office-ui-and-telemetry.md",
+      "target": "wiki/journal/2026-11-24-drawer-navigation.md",
       "type": "link",
       "relation": "link"
     },
@@ -1531,11 +1583,25 @@
       "relation": "topic"
     },
     {
+      "id": "d0ce53f61c7e9ad1",
+      "source": "wiki/journal/2026-11-24-drawer-navigation.md",
+      "target": "wiki/plans/2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "d22254c0661a2f74",
       "source": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
       "target": "wiki/topics/context-wiki-and-ci.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "d98551306294cb4b",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "e56d58329e2a8982",
