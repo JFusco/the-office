@@ -45,6 +45,7 @@ export function LessonsPanel({ snapshot, refresh, titled = true }: { snapshot: O
     {feedback('Active lessons')}</Section></DrawerTopic>
     <DrawerTopic available={view.hypotheses.length > 0} title="Observations"><Section data-lessons-hypotheses>
       <SectionTitle tabIndex={-1} className="mb-2">Observations to review <Count>{view.hypotheses.length}</Count></SectionTitle>
+      <p className={mutedCopy}>These observations appear in reports. They are still awaiting confirmation.</p>
       {view.hypotheses.map(lesson => <LessonCard key={lesson.id} lesson={lesson} actions={<Button disabled={disabled} onClick={() => act('Observations', 'retire-lesson', lesson.id)} aria-label={`Retire lesson: ${lesson.statement}`}>Retire</Button>} />)}
     {feedback('Observations')}</Section></DrawerTopic>
     <DrawerTopic available={view.agentsSuggestions.length > 0} title="Suggested changes"><Section data-lessons-agents>

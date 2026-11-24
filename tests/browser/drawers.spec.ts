@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './fixture-test';
-import { evidence, setPreferences } from './support';
+import { evidence as screenshotPath, setPreferences } from './support';
 async function geometry(page:Page){return page.evaluate(()=>{
   const box=(selector:string)=>{const r=document.querySelector(selector)!.getBoundingClientRect();return [r.x,r.y,r.width,r.height];};
   return {world:box('main'),canvas:box('canvas'),header:box('header'),dock:box('[data-surface=dock]'),scroll:[scrollX,scrollY],width:document.documentElement.scrollWidth};
@@ -106,7 +106,7 @@ for (const width of [390,1440]) {
     await expect.poll(()=>drawer.evaluate(el=>el.getBoundingClientRect().right)).toBeCloseTo(width,0);
     const office=await geometry(page),original=await drawer.elementHandle();
     const first=active.getByRole('button',{name:/^CEC-\d+ · /}).first();
-    if (width === 390) await drawer.screenshot({path:evidence('mailbox-navigation-phone.png')});
+    if (width === 390) await drawer.screenshot({path:screenshotPath('mailbox-navigation-phone.png')});
     const samples = first.evaluate(button => new Promise<{stationary:boolean; outgoingInert:boolean; moved:boolean}>(resolve => {
       button.addEventListener('click', () => {
         const shell = button.closest('[data-inspector]')!;
@@ -195,5 +195,5 @@ test('phone settings topics form one aligned list', async ({page}) => {
     expect(row.chevron).toBeCloseTo(boxes[0].chevron);
     if (i) expect(row.top).toBeCloseTo(boxes[i-1].bottom);
   }
-  await page.locator('[data-inspector]').screenshot({path:evidence('settings-navigation-phone.png')});
+  await page.locator('[data-inspector]').screenshot({path:screenshotPath('settings-navigation-phone.png')});
 });
