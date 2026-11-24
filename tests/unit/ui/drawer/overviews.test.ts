@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { createConversationDrafts } from '../../../../src/conversations/Conversation';
 import { DrawerNavigation } from '../../../../src/office/drawer/DrawerTopic';
 import { InspectorContent } from '../../../../src/office/drawer/InspectorContent';
 import type { InspectorProps } from '../../../../src/office/drawer/inspector-props';
@@ -10,7 +11,7 @@ import { demoSnapshot } from '../../../../src/office/useOffice';
 const snapshot = demoSnapshot(null, 1);
 const navigation = {
   path: { entries: [{ id: 'root', title: '', trigger: null }], previous: null, returning: false },
-  viewport: null, drafts: new Map<string, string>(), reduced: true,
+  viewport: null, drafts: createConversationDrafts(), reduced: true,
   push: vi.fn(), back: vi.fn(), remove: vi.fn(),
 };
 function overview(selection: InspectorProps['selection']) {

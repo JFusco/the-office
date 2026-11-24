@@ -4,10 +4,11 @@ import { motion } from 'motion/react';
 import { ChevronRight } from '../../ui/icons';
 import { interactive } from '../../ui';
 import { drawerPageMotion } from '../../tokens/motion';
+import type { createConversationDrafts } from '../../conversations/Conversation';
 import type { DrawerEntry, DrawerPath } from './navigation';
 
 export const DrawerNavigation = createContext<{
-  drafts: Map<string, string>;
+  drafts: ReturnType<typeof createConversationDrafts>;
   path: DrawerPath;
   viewport: HTMLDivElement | null;
   reduced: boolean;

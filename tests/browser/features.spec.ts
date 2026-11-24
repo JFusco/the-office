@@ -1,5 +1,5 @@
 import { test, expect } from './fixture-test';
-import { setPreferences } from './support';
+import { evidence, setPreferences } from './support';
 
 test.beforeEach(async ({ page, request }) => {
 
@@ -12,6 +12,8 @@ test('discovery drafts survive reload and approval submits the displayed plan an
     await page.getByLabel('Feature name', { exact: true }).fill('Editor search');
     await page.getByLabel('What should this accomplish?').fill('Help editors find content.');
     await page.getByRole('button', { name: 'Start discovery', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Editor search', exact: true }).first()).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Back to Features' })).toBeVisible();
     await page.getByLabel('Your answer', { exact: true }).fill('Editors only, with keyboard access.');
     await page.reload();
     await page.getByRole('button', { name: 'Features', exact: true }).click();
@@ -45,6 +47,29 @@ test('document tabs support keyboard navigation and revision returns to discover
     await page.getByRole('button', { name: 'Save decision & revise' }).click();
     await expect(page.getByText('Include archived content.', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Approve & start delivery' })).toHaveCount(0);
+
+    const drawer = page.getByRole('complementary', { name: 'Features', exact: true });
+    const directory = drawer.getByRole('navigation', { name: 'Features' });
+    const back = drawer.getByRole('button', { name: 'Back to Features' });
+    await expect(directory).toBeHidden();
+    await back.click();
+    const search = directory.getByRole('button', { name: /^Search/ });
+    await search.click();
+    await expect(directory).toBeHidden();
+    const conversation = await drawer.getByRole('region', { name: 'Feature conversation' }).boundingBox();
+    const documents = await drawer.getByRole('tablist').boundingBox();
+    expect(documents!.x).toBeGreaterThan(conversation!.x + conversation!.width);
+    await back.click();
+    await expect(search).toBeFocused();
+    await directory.getByRole('button', { name: 'New feature' }).click();
+    await page.getByLabel('Feature name', { exact: true }).fill('Saved filters');
+    await page.getByLabel('What should this accomplish?').fill('Store a default query.');
+    await page.getByRole('button', { name: 'Start discovery', exact: true }).click();
+    await expect(drawer.getByRole('heading', { name: 'Saved filters', exact: true }).first()).toBeFocused();
+    await back.click();
+    await directory.getByRole('button', { name: /^Saved filters/ }).click();
+    await expect(back).toBeVisible();
+    await expect(drawer.locator('[data-drawer-page]')).toHaveCount(2);
 });
 
 test('narrow workspace uses topic pages and keeps inactive answers out of navigation', async ({ page }) => {
@@ -55,6 +80,10 @@ test('narrow workspace uses topic pages and keeps inactive answers out of naviga
     await page.getByLabel('Feature name',{exact:true}).fill('Mobile planning');
     await page.getByLabel('What should this accomplish?').fill('Plan with a keyboard on a narrow screen.');
     await page.getByRole('button',{name:'Start discovery',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'Mobile planning',exact:true}).first()).toBeFocused();
+    await page.getByRole('button',{name:'Back to Features'}).click();
+    await page.getByRole('button',{name:/^Mobile planning/}).click();
+    await expect(page.getByRole('button',{name:'Back to Features'})).toBeVisible();
     const conversation=page.getByRole('button',{name:/^Conversation/});
     await conversation.focus();await conversation.press('Enter');
     await expect(page.getByLabel('Your answer',{exact:true})).toBeVisible();
@@ -63,5 +92,5 @@ test('narrow workspace uses topic pages and keeps inactive answers out of naviga
     await expect(page.getByLabel('Your answer',{exact:true})).toBeHidden();
     const panel=page.getByRole('complementary',{name:'Features',exact:true});
     expect(await panel.evaluate(element=>element.scrollWidth<=element.clientWidth+1)).toBe(true);
-    await page.screenshot({path:'/private/tmp/office-feature-planning-review-20261104/feature-mobile.png'});
+    await page.screenshot({path:evidence('feature-mobile.png')});
 });

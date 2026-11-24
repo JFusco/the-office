@@ -25,17 +25,26 @@ function ProjectForms({ snapshot, refresh }: { snapshot: OfficeSnapshot; refresh
   </div>;
 }
 
+export function ProjectSettings({ snapshot, refresh }: { snapshot: OfficeSnapshot; refresh?: () => Promise<void> }) {
+  const tour = snapshot.mode === 'demo';
+  return <Section data-settings-block="project">
+    <SectionTitle className="mb-4">{tour ? 'Project' : `Project · ${snapshot.project?.name || 'Loading'}`}</SectionTitle>
+    {tour
+      ? <Notice tone="tour">Project settings are unavailable during the illustrative tour. Return to the live office to change them.</Notice>
+      : <ProjectForms key={snapshot.project?.id} snapshot={snapshot} refresh={refresh} />}
+  </Section>;
+}
+
 /** Settings drawer: Office preferences, read-only Office configuration, then this project's settings. */
 export function SettingsPanel({ snapshot, preferences, osReduced, refresh }: { snapshot: OfficeSnapshot; preferences: OfficePreferencesController; osReduced: boolean; refresh?: () => Promise<void> }) {
-  const tour = snapshot.mode === 'demo';
   return <>
     <PanelHeader icon={<Settings2 size={26}/>}>Settings</PanelHeader>
     <DrawerTopic title="Office preferences"><Section data-settings-block="office"><SectionTitle className="mb-4">Office</SectionTitle>
       {preferences.displayed ? <OfficePreferencesForm preferences={preferences.displayed} osReduced={osReduced} pending={preferences.pending} feedback={preferences.feedback} writable={preferences.writable} onChange={patch => void preferences.save(patch)} /> : <LoadingState className={mutedCopy} >Loading Office preferences…</LoadingState>}
     </Section></DrawerTopic>
     <DrawerTopic title="Office configuration"><Section data-settings-block="configuration"><SectionTitle className="mb-4">Office configuration</SectionTitle><OfficeConfigSection /></Section></DrawerTopic>
-    <DrawerTopic title="Project settings" detail={tour ? undefined : snapshot.project?.name}><Section data-settings-block="project"><SectionTitle className="mb-4">{tour ? 'Project' : `Project · ${snapshot.project?.name || 'Loading'}`}</SectionTitle>
-      {tour ? <Notice tone="tour">Project settings are unavailable during the illustrative tour. Return to the live office to change them.</Notice> : <ProjectForms key={snapshot.project?.id} snapshot={snapshot} refresh={refresh} />}
-    </Section></DrawerTopic>
+    <DrawerTopic title="Project settings" detail={snapshot.mode === 'demo' ? undefined : snapshot.project?.name}>
+      <ProjectSettings snapshot={snapshot} refresh={refresh} />
+    </DrawerTopic>
   </>;
 }

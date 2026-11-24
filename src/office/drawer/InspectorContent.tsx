@@ -7,7 +7,7 @@ import { TelemetryPanel } from '../../telemetry/TelemetryPanel';
 import { ServiceHealthPanel } from '../../health/ServiceHealthPanel';
 import { PMQueue } from '../../work/PMQueue';
 import { WorkSummary } from '../../work/WorkSummary';
-import { SettingsPanel } from '../settings/SettingsPanel';
+import { ProjectSettings, SettingsPanel } from '../settings/SettingsPanel';
 import { FileText, MessageCircle } from '../../ui/icons';
 import { Section, SectionTitle, mutedCopy } from '../../ui';
 import { ROLE_NAMES } from '../../shared';
@@ -47,14 +47,19 @@ export function InspectorContent(props: InspectorProps) {
           key={[snapshot.project?.id, selection.id, selection.sourceGoalId, selection.sourceTicket].join(':')}
           snapshot={snapshot}
           initialId={selection.id}
+          initialFeature={selection.initialFeature}
           sourceGoalId={selection.sourceGoalId}
           sourceTicket={selection.sourceTicket}
-          onOpen={(project, id) => onOpenProject(project, 'feature:' + id)}
+          onOpen={(project, id, created) => created
+            ? onSelect({kind: 'features', id, initialFeature: created})
+            : onOpenProject(project, 'feature:' + id)}
         />
       ) : null}
       {selection.kind === 'people' ? <PeoplePanel snapshot={snapshot} names={names} onSelect={onSelect} /> : null}
       {selection.kind === 'settings' && preferences ? (
-        <SettingsPanel snapshot={snapshot} preferences={preferences} osReduced={osReduced} refresh={refresh} />
+        selection.page === 'project'
+          ? <ProjectSettings snapshot={snapshot} refresh={refresh} />
+          : <SettingsPanel snapshot={snapshot} preferences={preferences} osReduced={osReduced} refresh={refresh} />
       ) : null}
       {selection.kind === 'telemetry' ? (
         <TelemetryPanel projects={snapshot.projects || []} defaultProject={snapshot.project?.id} />

@@ -5,7 +5,7 @@ import type { InspectorProps } from './inspector-props';
 export function selectionTitle(selection: InspectorProps['selection'], snapshot: OfficeSnapshot, names = ROLE_NAMES) {
   switch (selection.kind) {
     case 'features':
-      return snapshot.features?.find((feature) => feature.id === selection.id)?.title || 'Features';
+      return snapshot.features?.find((feature) => feature.id === selection.id)?.title || selection.initialFeature?.title || 'Features';
     case 'agent':
       return snapshot.agents.find((agent) => agent.id === selection.id)?.name || names[selection.id];
     case 'azure':
@@ -27,7 +27,7 @@ export function selectionTitle(selection: InspectorProps['selection'], snapshot:
     case 'goals':
       return 'Project goals';
     case 'settings':
-      return 'Settings';
+      return selection.page === 'project' ? 'Project settings' : 'Settings';
     case 'people':
       return 'People';
     case 'telemetry':

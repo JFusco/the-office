@@ -95,7 +95,7 @@ export function AgentDesk({
           </DrawerTopic>
           <DrawerRow title="Open Harper’s knowledge" onOpen={() => onOpenBrain?.()} />
           <DrawerTopic title="Lessons" detail={awaiting ? awaiting + ' to review' : lessons.active.length || undefined}>
-            <LessonsPanel snapshot={snapshot} refresh={refresh} />
+            <LessonsPanel snapshot={snapshot} refresh={refresh} titled={false} />
           </DrawerTopic>
         </>
       ) : (

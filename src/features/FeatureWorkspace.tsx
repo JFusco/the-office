@@ -13,12 +13,12 @@ import { LinkedFeatures } from './LinkedFeatures';
 import { QuestionRound } from './QuestionRound';
 const phases = ['discovery', 'plan', 'review', 'approval', 'delivery'] as const;
 async function hash(value: unknown) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value))))].map(v => v.toString(16).padStart(2, '0')).join(''); }
-export function FeatureWorkspace({ snapshot, initialId = '', sourceGoalId = '', sourceTicket = '', onOpen = () => {} }: { snapshot: OfficeSnapshot; initialId?: string; sourceGoalId?: string; sourceTicket?: string; onOpen?: (project: string, id: string) => void }) {
+export function FeatureWorkspace({ snapshot, initialId = '', initialFeature, sourceGoalId = '', sourceTicket = '', onOpen = () => {} }: { snapshot: OfficeSnapshot; initialId?: string; initialFeature?: Feature; sourceGoalId?: string; sourceTicket?: string; onOpen?: (project: string, id: string, created?: Feature) => void }) {
     const container=useRef<HTMLDivElement>(null), [wide,setWide]=useState(false);
     useEffect(()=>{const el=container.current;if(!el)return;const observer=new ResizeObserver(([entry])=>setWide(entry.contentRect.width>=900));observer.observe(el);return ()=>observer.disconnect();},[]);
     const requestVersion = useRef(0);
     const project = snapshot.project!.id;
-    const [features, setFeatures] = useState<Feature[]>(snapshot.features || []), [selected, setSelected] = useState(initialId), [creating, setCreating] = useState(!!sourceGoalId || !!sourceTicket);
+    const [features, setFeatures] = useState<Feature[]>(snapshot.features || []), [creating, setCreating] = useState(!!sourceGoalId || !!sourceTicket);
     const goal = (snapshot.goals || []).find(g => g.id === sourceGoalId), ticket = snapshot.tickets.find(t => t.key === sourceTicket);
     const [title, setTitle] = useState(goal?.title || ticket?.summary || ''), [intent, setIntent] = useState(goal?.detail || ''), [revision, setRevision] = useState('');
     const [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -28,20 +28,25 @@ export function FeatureWorkspace({ snapshot, initialId = '', sourceGoalId = '', 
         fetch(officeUrl('/api/features', project), { signal: controller.signal }).then(async r => { const body = await r.json(); if (!r.ok) throw new Error(body.error); if (version === requestVersion.current) setFeatures(body.features); }).catch(e => { if (!controller.signal.aborted) setError(String(e)); });
         return () => controller.abort();
     }, [project]);
-    const feature = features.find(f => f.id === selected);
+    const feature = features.find(f => f.id === initialId) ?? initialFeature;
     async function send(action: string, values: Record<string, unknown> = {}) {
         requestVersion.current++; setBusy(true); setError('');
         try {
             const payload = { action, requestId: crypto.randomUUID(), ...(feature && action !== 'create' ? { expectedRevision: feature.revision } : {}), ...values };
             const response = await fetch(officeUrl('/api/features' + (action === 'create' ? '' : '/' + feature!.id), project), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Feature operation failed');
-            setFeatures(current => [...current.filter(f => f.id !== body.id), body]); setSelected(body.id); setCreating(false); return true;
+            setFeatures(current => [...current.filter(f => f.id !== body.id), body]);
+            if (action === 'create') {
+                onOpen(project, body.id, body);
+                setCreating(false);
+            }
+            return true;
         } catch (e) { setError(String(e)); return false; } finally { setBusy(false); }
     }
     const round = feature && pendingRounds(feature)[0], pending = !!round;
-    return <div ref={container} className={wide ? "grid grid-cols-[220px_minmax(0,1fr)] gap-section-gap text-13" : "space-y-section-gap text-13"}>
-        {(!initialId || wide) && <nav aria-label="Features" className="flex flex-col gap-2 max-compact:mb-5 max-compact:flex-row max-compact:overflow-x-auto"><Button disabled={busy || snapshot.mode === 'demo'} onClick={() => { setCreating(true); setSelected(''); }}>New feature</Button>
-            {features.map(f => <button className={interactive + " rounded-8 border border-drawer-line p-3 text-left aria-current:bg-roster-hover max-compact:min-w-36"} key={f.id} type="button" aria-current={selected === f.id ? 'page' : undefined} onClick={() => { if (f.id !== selected) onOpen(project,f.id); }}><strong className="block">{f.title}</strong><span className="block">{f.paused ? 'Paused' : f.phase} · {f.status}</span>{pendingRounds(f).length > 0 && <small>Questions waiting</small>}</button>)}
+    return <div ref={container} className={wide && !initialId ? "grid grid-cols-[220px_minmax(0,1fr)] gap-section-gap text-13" : "space-y-section-gap text-13"}>
+        {!initialId && <nav aria-label="Features" className="flex flex-col gap-2 max-compact:mb-5 max-compact:flex-row max-compact:overflow-x-auto"><Button disabled={busy || snapshot.mode === 'demo'} onClick={() => setCreating(true)}>New feature</Button>
+            {features.map(f => <button className={interactive + " rounded-8 border border-drawer-line p-3 text-left max-compact:min-w-36"} key={f.id} type="button" disabled={busy} onClick={() => onOpen(project, f.id)}><strong className="block">{f.title}</strong><span className="block">{f.paused ? 'Paused' : f.phase} · {f.status}</span>{pendingRounds(f).length > 0 && <small>Questions waiting</small>}</button>)}
         </nav>}
         {creating ? <form className="min-w-0" onSubmit={e => { e.preventDefault(); void send('create', { title, intent, sourceGoalId, sourceTicket }); }}><PanelHeader icon={<FileText size={26}/>}>Plan a feature with Casey</PanelHeader><p>Start with the problem you want solved. Casey will research the project and bring you the decisions.</p><label className="my-3 grid gap-2">Feature name<input className={field + " " + fieldFocus + " rounded-6 p-3"} required maxLength={200} value={title} onChange={e => setTitle(e.target.value)} /></label><label className="my-3 grid gap-2">What should this accomplish?<textarea className={field + " " + fieldFocus + " rounded-6 p-3"} required maxLength={20000} rows={7} value={intent} onChange={e => setIntent(e.target.value)} /></label><Button variant="primary" type="submit" disabled={busy}>Start discovery</Button></form> : feature ? <main className="min-w-0">
             <header><PanelHeader icon={<FileText size={26}/>}>{feature.title}</PanelHeader><ol className="flex list-none flex-wrap gap-3 p-0 capitalize" aria-label="Feature progress">{phases.map(phase => <li className="aria-current:border-b-2 aria-current:font-bold" key={phase} aria-current={feature.phase === phase ? 'step' : undefined}>{phase}</li>)}</ol><p role="status">{feature.detail}</p>

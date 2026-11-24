@@ -45,6 +45,9 @@ for (const mode of ['animated desktop','system reduced mobile','Office reduced d
         await push('qa','QA received the change');
         const card = queued.locator('[data-card]').filter({hasText:ticket.key});
         await expect(card).toContainText('Riley');
+        await expect(queued.getByRole('heading',{name:'Queued next 0',exact:true})).toBeVisible();
+        const overviewRow = page.locator('[data-drawer-page="root"] [data-drawer-row]').filter({hasText:'Queued next'});
+        await expect(overviewRow.getByText('0',{exact:true})).toHaveText('0');
         await expect(openTicket).toBeFocused();
         expect(await scroll.evaluate(el => el.scrollTop)).toBe(initialScroll);
         await openTicket.click();

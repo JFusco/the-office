@@ -48,15 +48,16 @@ test('system and Office reduced motion both remove transitions',async({page,requ
   await page.getByRole('button',{name:'Office settings'}).click();await page.getByRole('button',{name:/^Office preferences/}).click();await page.getByLabel('Reduced motion').uncheck();
   await expect(page.locator('html')).toHaveAttribute('data-motion','full');expect((await look(page.getByRole('button',{name:'Office help'}))).property).not.toBe('none');
 });
-test('settings is a named non-modal drawer that returns focus to the gear from both entry paths',async({page})=>{
+test('settings is non-modal and Escape restores focus to the drawer opener',async({page})=>{
   await ready(page);
   const gear=page.getByRole('button',{name:'Office settings'}),drawer=page.getByRole('complementary',{name:'Settings'}),close=page.getByRole('button',{name:'Close details'});
   await gear.click();await expect(drawer).toBeVisible();await expect(drawer).not.toHaveAttribute('aria-modal');await expect(gear).toHaveAttribute('aria-expanded','true');await expect(close).toBeFocused();
   await page.keyboard.press('Escape');await expect(drawer).toHaveCount(0);await expect(gear).toHaveAttribute('aria-expanded','false');await expect(gear).toBeFocused();
   await gear.click();await expect(drawer).toBeVisible();await close.click();await expect(drawer).toHaveCount(0);await expect(gear).toBeFocused();
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('complementary',{name:'PM mailbox'}).getByRole('button',{name:'Project settings'}).click();
-  await expect(drawer).toBeVisible();await expect(drawer.getByRole('button',{name:'Back to PM mailbox'})).toBeVisible();
-  await page.keyboard.press('Escape');await expect(drawer).toHaveCount(0);await expect(page.getByRole('button',{name:/^Open PM mailbox,/})).toBeFocused();
+  const project=page.getByRole('complementary',{name:'Project settings'});
+  await expect(project.getByRole('button',{name:'Back to PM mailbox'})).toBeVisible();
+  await page.keyboard.press('Escape');await expect(project).toHaveCount(0);await expect(page.getByRole('button',{name:/^Open PM mailbox,/})).toBeFocused();
   await expect(page.locator('[aria-modal]')).toHaveCount(0);
 });
 test('help is a named non-modal panel that takes and returns focus',async({page})=>{

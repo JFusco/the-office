@@ -4,6 +4,7 @@ import { drawerPageMotion, panelMotion } from '../tokens/motion';
 import { IconButton, cx, interactive } from '../ui';
 import { ChevronRight, X } from '../ui/icons';
 import { ROLE_NAMES } from '../shared';
+import { createConversationDrafts } from '../conversations/Conversation';
 import type { InspectorProps } from './drawer/inspector-props';
 import { DrawerNavigation, DrawerPage } from './drawer/DrawerTopic';
 import { popPage, pushPage, type DrawerPath, type DrawerEntry } from './drawer/navigation';
@@ -49,7 +50,7 @@ export default function Inspector(props: InspectorProps) {
     returning: false,
   }));
   const [records, setRecords] = useState([{ id: 'root', selection, depth: 0, parentId: '' }]);
-  const drafts = useRef(new Map<string, string>());
+  const [drafts] = useState(createConversationDrafts);
   const pointerTrigger = useRef<HTMLElement | null>(null);
   const heading = useRef<HTMLElement | null>(null),
     restore = useRef<HTMLElement | null>(null);
@@ -163,7 +164,7 @@ export default function Inspector(props: InspectorProps) {
         </IconButton>
       </div>
       <div ref={setViewport} className="relative min-h-0 flex-1 overflow-hidden" />
-      <DrawerNavigation.Provider value={{ drafts: drafts.current, path, viewport, reduced, push, back, remove }}>
+      <DrawerNavigation.Provider value={{ drafts, path, viewport, reduced, push, back, remove }}>
         {records.map((record) => (
           <DrawerPage
             key={record.id}

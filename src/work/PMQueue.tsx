@@ -64,9 +64,10 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
             <> · <time dateTime={time}>{new Date(time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</time></>}</p>}
         <p className={mutedCopy}>Work across all projects.</p>
         {(['active','queued','waiting','stopped'] as const).map(group => {
+            const count = rows.filter(row => row.group === group).length;
             const items = rows.filter(r => r.group === group || (reading?.group === group && reading.identity === r.identity));
-            return <DrawerTopic available={items.length > 0} key={group} title={titles[group]} onOpen={() => setReading(null)} detail={rows.filter(row => row.group === group).length}><Section aria-label={titles[group]}>
-                <SectionTitle className="mb-4">{titles[group]} <Count>{items.length}</Count></SectionTitle>
+            return <DrawerTopic available={items.length > 0} key={group} title={titles[group]} onOpen={() => setReading(null)} detail={count}><Section aria-label={titles[group]}>
+                <SectionTitle className="mb-4">{titles[group]} <Count>{count}</Count></SectionTitle>
                 {group === 'waiting' && dependencyOnly && <p className={mutedCopy}>These tickets are waiting on linked work. Morgan rechecks them when their prerequisites complete.</p>}
                 {group === 'stopped' && <p className={mutedCopy}>These tickets are stopped, not queued for new work. Read the blocker before continuing.</p>}
                 {!items.length && <p className={mutedCopy}>No tickets in this group.</p>}
