@@ -597,8 +597,10 @@ Morgan or Joe:
   investigated: an investigation would run on the provider that is refusing work. A writer the
   provider cut off the same way keeps its effect of unknown outcome and is investigated as before.
 - An investigation of a run the provider refused at its usage limit is kept as history once a
-  later run on that provider has completed. The refused run is not repeated and no lesson is
-  recorded: the refusal was the provider's.
+  later run on that provider has completed. The refused run is not repeated, no lesson is
+  recorded, and a retrospective queued for it is dropped, whichever rule closed it, unless it is
+  running now; one waiting to retry a failed attempt is dropped too. The refusal was the
+  provider's.
 - An old blocked nightly checkpoint is settled by a later night that completed.
 - On a hands-off project one stopped daily maintenance run whose automatic read-backs are used up is
   not put in the outbox while the next night's run is not yet overdue (26 hours), provided the night
