@@ -61,6 +61,28 @@ test('done is refused on pull request observations alone, on work that is not ac
     for (const f of [only, unaccepted, blocked]) expect(f.goal.status).toBe('active');
 });
 
+test('done stands on the accepted ticket when a cited pull request observation is no longer current, and the record lists what was left out', () => {
+    // The 2026-11-23 proposal: the ticket at its current version, beside PR 41448 re-cited from the 2026-11-19 read.
+    const old = { ...setup().pr, version: '2026-11-19T21:59:28.675Z' };
+    const { store, goal, work, update } = setup();
+    const application = applyGoalReview(store, 'review-1', update([work, { ...old }]));
+    expect(goal.status).toBe('done');
+    expect(goal.progress).toMatchObject({ evidence: [work], linkedWork: [work] });
+    expect(application.dropped).toEqual([{ ref: old, reason: 'not a current provider observation of this pull request' }]);
+    expect(store.state.events[0].message).toContain('no longer current was left out');
+    // The same when the provider read itself reports an error at that moment.
+    const failed = setup();
+    failed.store.state.azure.error = 'Running staging version not refreshed';
+    applyGoalReview(failed.store, 'review-1', failed.update([failed.pr, failed.work]));
+    expect(failed.goal.status).toBe('done');
+});
+
+test('an update resting only on pull request observations that are no longer current is refused as before', () => {
+    const { store, goal, pr, update } = setup();
+    expect(() => applyGoalReview(store, 'review-1', update([{ ...pr, version: '2026-11-19T21:59:28.675Z' }]))).toThrow('stale or unsupported');
+    expect(goal.status).toBe('active');
+});
+
 test('a stale ticket reference still refuses the whole update', () => {
     const { store, goal, pr, work, update } = setup();
     expect(() => applyGoalReview(store, 'review-1', update([pr, { ...work, version: '2026-11-19T00:13:24.266-0500' }]))).toThrow('stale or unsupported');
@@ -78,6 +100,11 @@ test('a blocked goal whose earlier links included the pull request can leave blo
     again.goal.status = 'blocked';
     again.goal.progress = { note: '', blockers: ['x'], evidence: [again.pr, again.work], linkedWork: [again.pr, again.work], lastReviewId: 'earlier', reviewedAt: '' } as any;
     expect(() => applyGoalReview(again.store, 'review-2', again.update([again.work]))).toThrow('lack positive resolution evidence');
+    // Nor does citing that earlier pull request again from a read that is no longer current: leaving blocked is unchanged.
+    const stale = setup();
+    stale.goal.status = 'blocked';
+    stale.goal.progress = { note: '', blockers: ['x'], evidence: [stale.pr, stale.work], linkedWork: [stale.pr, stale.work], lastReviewId: 'earlier', reviewedAt: '' } as any;
+    expect(() => applyGoalReview(stale.store, 'review-2', stale.update([{ ...stale.pr, version: '2026-11-19T21:59:28.675Z' }, stale.work]))).toThrow('lack positive resolution evidence');
 });
 
 test('a pull request the Office is delivering is that delivery\'s work however it is cited, and vetoes done until the delivery is accepted', () => {
