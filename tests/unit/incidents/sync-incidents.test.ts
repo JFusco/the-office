@@ -1,13 +1,21 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
+import { sourceVersions } from '../../../server/incidents/cited-sources';
+import { invalidateDismissals } from '../../../server/incidents/dismissal-validity';
 import { IncidentLedger } from '../../../server/incidents/incident-ledger';
 import type { IncidentCollector } from '../../../server/incidents/observation';
+import { outboxItems } from '../../../server/incidents/sources/outbox-items';
+import { stoppedWork } from '../../../server/incidents/sources/stopped-work';
 import { workerFailures } from '../../../server/incidents/sources/worker-failures';
+import { repairSubject } from '../../../server/incidents/subject-digest';
 import { syncIncidents } from '../../../server/incidents/sync-incidents';
 import type { Store } from '../../../server/store/store';
 import { AT, candidate, item, later, observe, office, projectStore } from './incident-fixture';
 import { savedFingerprint } from '../store/saved-fingerprint-fixture';
 import { savedStateText } from '../store/saved-state-fixture';
+import { ledgerOf, manifest } from './dismissal-fixture';
+
+vi.mock('../../../server/incidents/sources/worker-failures', { spy: true });
 
 const stores: Store[] = [], dbs: DatabaseSync[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); dbs.splice(0).forEach(db => db.close()); });
@@ -253,4 +261,248 @@ test('evidence is sanitized and bounded before it is stored', () => {
     for (const secret of ['ghp_', 'github_pat_', 'xoxb-']) expect(stored).not.toContain(secret);
     expect(l.list()[0].subjects[0].evidence.length).toBeLessThanOrEqual(301);
     expect(l.list()[0].cause.text.length).toBeLessThanOrEqual(200);
+});
+
+const LIMIT = 'Codex usage limit reached; try again at 13:00';
+const minute = (n: number) => new Date(AT.getTime() + n * 60_000).toISOString();
+const mailEvent = (s: Store, kind: string, at: string) => s.db.prepare('INSERT INTO events(body) VALUES(?)').run(JSON.stringify({ id: 0, at, kind, message: 'm' }));
+const intakeRun = (id: string, startedAt: string, endedAt: string, over: Record<string, unknown> = {}) =>
+    ({ id, stage: 'intake', status: 'failed', provider: 'codex', startedAt, endedAt, failure: { category: 'provider-limit', detail: LIMIT, dispatched: true }, ...over }) as any;
+/** A Jira mailbox whose check failed at `at` minutes, with its intake run inside it. */
+function failedCheck(s: Store, at: number, run = `run-${at}`, over: Record<string, unknown> = {}) {
+    mailEvent(s, 'mail-check', minute(at - 4));
+    s.state.workLog = [...(s.state.workLog ?? []), intakeRun(run, minute(at - 3), minute(at - 1), over)];
+    mailEvent(s, 'mail-blocked', minute(at));
+    s.state.intake = { status: 'blocked', lastChecked: minute(-600), error: `Error: ${LIMIT}` } as any;
+    s.state.pendingMail = undefined;
+}
+const mailboxSubject = (l: IncidentLedger) => l.list().flatMap(i => i.subjects).find(s => s.kind === 'provider' && s.id === 'intake');
+
+test('a failed intake run and the mailbox error it caused are one subject carrying the run and its wait, under the error\'s own cause', () => {
+    const { ledger: l } = ledger(), s = store('cec');
+    failedCheck(s, -10, 'run-i');
+    syncIncidents(l, office(observe(s)), AT, undefined, loud);
+    expect(subjects(l)).toEqual(['provider/intake:open']);
+    expect(mailboxSubject(l)).toMatchObject({ lastWorker: 'run-i', sources: ['provider-error', 'worker-failure'], expected: 'provider-wait' });
+    // The cause is the error's, as it was before the run was bound.
+    const { ledger: unbound } = ledger(), other = store('cec');
+    other.state.intake = s.state.intake;
+    syncIncidents(unbound, office(observe(other)), AT, undefined, loud);
+    expect(l.list()[0].fingerprint).toBe(unbound.list()[0].fingerprint);
+});
+
+test('the run a failed check proved folds in even past the count of runs kept apart; one never dispatched contributes nothing', () => {
+    const { ledger: l } = ledger(), s = store('cec');
+    // Twenty newer runs of the same cause stand apart; the run the check proved is older than all of them.
+    s.state.workLog = Array.from({ length: 20 }, (_, n) => intakeRun(`newer-${n}`, minute(-9), minute(-8 + n * 0.01)));
+    failedCheck(s, -10, 'run-proved');
+    syncIncidents(l, office(observe(s)), AT, undefined, loud);
+    expect(mailboxSubject(l)).toMatchObject({ lastWorker: 'run-proved', sources: ['provider-error', 'worker-failure'] });
+    expect(subjects(l)).not.toContain('worker/run-proved:open');
+    const { ledger: m } = ledger(), t = store('cec');
+    failedCheck(t, -10, 'run-quiet', { failure: { category: 'provider-limit', detail: LIMIT, dispatched: false } });
+    syncIncidents(m, office(observe(t)), AT, undefined, loud);
+    expect(mailboxSubject(m)).toMatchObject({ lastWorker: 'run-quiet', sources: ['provider-error'], expected: null });
+});
+
+test('a Jira mailbox failure that persists across a check in progress is one episode', () => {
+    const { ledger: l } = ledger(), s = store('cec');
+    failedCheck(s, -10, 'run-a');
+    s.state.azure = { ...s.state.azure, status: 'blocked', error: 'Error: Azure returned 503' } as any;
+    syncIncidents(l, office(observe(s)), AT, undefined, loud);
+    expect(subjects(l)).toEqual(['provider/azure:open', 'provider/intake:open']);
+    // A check is queued: the mailbox blanks its error before it reads anything. The Azure reader recovers meanwhile.
+    s.state.intake = { ...s.state.intake, status: 'idle', error: '' };
+    s.state.pendingMail = { id: 'mail-1', requestedAt: minute(1), scheduled: false } as any;
+    s.state.azure = { ...s.state.azure, status: 'idle', error: '' } as any;
+    const queued = syncIncidents(l, office(observe(s, [], later(1))), later(1), undefined, loud);
+    expect(queued.events.filter(event => event.body.subject).map(event => [event.kind, event.body.subject])).toEqual([['subject-cleared', 'cec/provider/azure']]);
+    expect(mailboxSubject(l)).toMatchObject({ status: 'open', lastWorker: 'run-a', episodeCount: 1, sources: ['provider-error', 'worker-failure'] });
+    // The check runs.
+    s.state.intake = { ...s.state.intake, status: 'working' };
+    s.state.pendingMail = undefined;
+    expect(syncIncidents(l, office(observe(s, [], later(2))), later(2), undefined, loud)).toEqual({ events: [], incidents: [] });
+    expect(subjects(l)).toEqual(['provider/azure:cleared', 'provider/intake:open']);
+    // It fails the same way again: still the same episode, now bound to this check's run.
+    failedCheck(s, 6, 'run-b');
+    const again = syncIncidents(l, office(observe(s, [], later(7))), later(7), undefined, loud);
+    expect(again.events.map(event => event.kind)).not.toContain('episode-observed');
+    expect(mailboxSubject(l)).toMatchObject({ status: 'open', lastWorker: 'run-b', episodeCount: 1 });
+    // A failure that is present is read as usual while yet another check waits: its run is still its own.
+    s.state.pendingMail = { id: 'mail-2', requestedAt: minute(8), scheduled: false } as any;
+    syncIncidents(l, office(observe(s, [], later(8))), later(8), undefined, loud);
+    expect(mailboxSubject(l)).toMatchObject({ status: 'open', lastWorker: 'run-b', sources: ['provider-error', 'worker-failure'] });
+    // A check that completes clears it.
+    s.state.intake = { ...s.state.intake, status: 'idle', error: '', lastChecked: minute(9) };
+    s.state.pendingMail = undefined;
+    syncIncidents(l, office(observe(s, [], later(9))), later(9), undefined, loud);
+    expect(mailboxSubject(l)?.status).toBe('cleared');
+});
+
+test.each([2, -20])('a success clears the Jira intake subject even if another check is queued (success timestamp offset: %s)', offset => {
+    const { ledger: l } = ledger(), s = store('cec');
+    failedCheck(s, -10);
+    syncIncidents(l, office(observe(s)), AT, undefined, loud);
+    expect(mailboxSubject(l)).toMatchObject({ status: 'open', episodeCount: 1 });
+
+    // The clock may have stepped back since the failure was observed.
+    mailEvent(s, 'mail-check', minute(offset - 1));
+    mailEvent(s, 'mail-delivered', minute(offset));
+    s.state.intake = { ...s.state.intake, status: 'idle', error: '', lastChecked: minute(offset) };
+    s.state.pendingMail = { id: 'queued', requestedAt: minute(3), scheduled: false };
+    const change = syncIncidents(l, office(observe(s, [], later(3))), later(3), undefined, loud);
+    expect(change.events).toContainEqual(expect.objectContaining({ kind: 'subject-cleared', body: expect.objectContaining({ subject: 'cec/provider/intake' }) }));
+    expect(mailboxSubject(l)?.status).toBe('cleared');
+
+    failedCheck(s, 7);
+    s.state.intake.lastChecked = minute(offset);
+    syncIncidents(l, office(observe(s, [], later(8))), later(8), undefined, loud);
+    expect(mailboxSubject(l)).toMatchObject({ status: 'open', episodeCount: 2 });
+});
+
+test.each([false, true])('a queued check keeps an observed interrupted mailbox failure without a newer success (older success: %s)', olderSuccess => {
+    const { ledger: l } = ledger(), s = store('cec');
+    if (olderSuccess) mailEvent(s, 'mail-delivered', minute(-10));
+    mailEvent(s, 'mail-check', minute(-5));
+    s.state.intake = { ...s.state.intake, status: 'blocked', error: 'Previous mail check was interrupted. Safe to check again (read-only).' };
+    syncIncidents(l, office(observe(s)), AT, undefined, loud);
+    s.state.intake = { ...s.state.intake, status: 'idle', error: '' };
+    s.state.pendingMail = { id: 'queued', requestedAt: minute(1), scheduled: false };
+    expect(syncIncidents(l, office(observe(s, [], later(1))), later(1), undefined, loud)).toEqual({ events: [], incidents: [] });
+    expect(mailboxSubject(l)).toMatchObject({ status: 'open', episodeCount: 1 });
+});
+
+test('an intervening success already seen alongside an interrupted mailbox failure cannot clear it', () => {
+    const { ledger: l } = ledger(), s = store('cec');
+    const error = 'Previous mail check was interrupted. Safe to check again (read-only).';
+    s.state.intake = { ...s.state.intake, status: 'blocked', error };
+    syncIncidents(l, office(observe(s)), AT, undefined, loud);
+
+    mailEvent(s, 'mail-delivered', minute(1));
+    mailEvent(s, 'mail-check', minute(2));
+    s.state.intake.lastChecked = minute(1);
+    syncIncidents(l, office(observe(s, [], later(3))), later(3), undefined, loud);
+    expect(mailboxSubject(l)).toMatchObject({ status: 'open', lastObservedAt: AT.toISOString(), episodeCount: 1 });
+
+    s.state.intake = { ...s.state.intake, status: 'idle', error: '' };
+    s.state.pendingMail = { id: 'queued', requestedAt: minute(4), scheduled: false };
+    expect(syncIncidents(l, office(observe(s, [], later(4))), later(4), undefined, loud)).toEqual({ events: [], incidents: [] });
+});
+
+const NO_VISIBILITY = 'Office must restore complete session visibility; inventory unavailable';
+const review = (id: string, detail = 'Scope needs a decision') => ({ id, key: `GH-${id}`, status: 'blocked', detail, queuedAt: 'q', endedAt: 'e', url: '' });
+const reviewRun = (id: string) => ({ id: `run-${id}`, requestId: id, stage: 'assignment-review', status: 'failed', provider: 'claude', endedAt: AT.toISOString(), failure: { category: 'timeout', detail: 'no output', dispatched: true } }) as any;
+const reviewing = (id: string) => item('intake', id, 'assignment-review', 'blocked', 'x', 'unclassified');
+const withoutProgression = (observation: ReturnType<typeof observe>) => {
+    Object.defineProperty(observation, 'progression', { get() { throw new Error('projection unavailable'); } });
+    return observation;
+};
+const withoutOutbox = (observation: ReturnType<typeof observe>) => {
+    Object.defineProperty(observation, 'state', { value: new Proxy(observation.state, { get(target, key) { if (key === 'outbox') throw new Error('outbox unreadable'); return Reflect.get(target, key); } }) });
+    return observation;
+};
+
+test('while the outbox cannot be read, its saved item for a review stopped work now holds leaves, and its run folds into the review', () => {
+    const { ledger: l } = ledger(), s = store();
+    s.state.coordination!.listener.reviews = [review('11')] as any;
+    s.state.coordination!.adoptions = [{ id: 'a', pr: 41, url: '', title: 't', issue: 0, status: 'refused', detail: 'refused', at: AT.toISOString() }] as any;
+    s.state.workLog = [reviewRun('11')];
+    // The scheduler first leaves the review out, so the outbox's item stands for it, with the review's run.
+    syncIncidents(l, office(observe(s)), AT, undefined, loud);
+    expect(subjects(l)).toEqual(['outbox/assignment:11:open', 'outbox/dependabot:41:open']);
+    const change = syncIncidents(l, office(withoutOutbox(observe(s, [reviewing('11')], later(1)))), later(1), undefined, () => {});
+    expect(change.events.filter(event => event.kind === 'subject-cleared').map(event => event.body.subject)).toEqual(['cms-field-vocabulary/outbox/assignment:11']);
+    expect(subjects(l)).toEqual(['intake/11:open', 'outbox/assignment:11:cleared', 'outbox/dependabot:41:open']);
+    expect(l.list().flatMap(i => i.subjects).find(subject => subject.kind === 'intake')).toMatchObject({ lastWorker: 'run-11', sources: ['stopped-work', 'worker-failure'] });
+});
+
+test('an intake review is reported once, by stopped work when it can, and by the outbox when stopped work never could', () => {
+    const first = ledger(), s = store();
+    s.state.coordination!.listener.reviews = [review('12'), review('13', NO_VISIBILITY)] as any;
+    syncIncidents(first.ledger, office(withoutProgression(observe(s))), AT, undefined, () => {});
+    expect(subjects(first.ledger)).toEqual(['outbox/assignment:12:open', 'outbox/ownership-capability:open']);
+    const later_ = ledger();
+    syncIncidents(later_.ledger, office(observe(s, [reviewing('12'), reviewing('13')])), AT, undefined, loud);
+    expect(subjects(later_.ledger)).toEqual(['intake/12:open', 'intake/13:open']);
+    expect(syncIncidents(later_.ledger, office(withoutProgression(observe(s, [], later(1)))), later(1), undefined, () => {})).toEqual({ events: [], incidents: [] });
+});
+
+test('unreadable stopped work supplies no fresh coverage for an unreadable outbox', () => {
+    const { ledger: l } = ledger(), s = store();
+    s.state.coordination!.listener.reviews = [review('11')] as any;
+    // Seed the historical coexistence of both subjects for the same review.
+    syncIncidents(l, office(observe(s, [reviewing('11')])), AT, [stoppedWork, () => outboxItems(observe(s))], loud);
+    expect(subjects(l)).toEqual(['intake/11:open', 'outbox/assignment:11:open']);
+
+    const report = vi.fn(), observation = withoutOutbox(withoutProgression(observe(s, [], later(1))));
+    const change = syncIncidents(l, office(observation), later(1), undefined, report);
+    expect(report).toHaveBeenCalledWith(expect.stringMatching(/stoppedWork.*projection unavailable/));
+    expect(report).toHaveBeenCalledWith(expect.stringMatching(/outboxItems.*outbox unreadable/));
+    expect(change.events.map(event => event.kind)).not.toContain('subject-cleared');
+    expect(subjects(l)).toEqual(['intake/11:open', 'outbox/assignment:11:open']);
+});
+
+test.each([false, true])('only one review subject stands through a worker collector outage (review newly projected: %s)', nowProjected => {
+    const { ledger: l } = ledger(), s = store();
+    s.state.coordination!.listener.reviews = [review('11')] as any;
+    s.state.workLog = [reviewRun('11')];
+    syncIncidents(l, office(observe(s, nowProjected ? [] : [reviewing('11')])), AT, undefined, loud);
+    expect(subjects(l)).toEqual([nowProjected ? 'outbox/assignment:11:open' : 'intake/11:open']);
+
+    vi.mocked(workerFailures).mockImplementationOnce(() => { throw new Error('worker collection failed'); });
+    const report = vi.fn();
+    const change = syncIncidents(l, office(observe(s, nowProjected ? [reviewing('11')] : [], later(1))), later(1), undefined, report);
+    expect(report).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('worker collection failed'));
+    expect(subjects(l).filter(row => row.endsWith(':open'))).toEqual(['intake/11:open']);
+    if (nowProjected) expect(change.events).toContainEqual(expect.objectContaining({ kind: 'subject-cleared', body: expect.objectContaining({ subject: `${s.project.id}/outbox/assignment:11` }) }));
+    else expect(l.list()[0].subjects[0]).toMatchObject({ sources: ['worker-failure'], unsettledEffect: false, expected: null });
+});
+
+const ticket = (over: Record<string, unknown> = {}) => ({
+    key: 'CEC-7', pilot: false, stage: 'mailbox', activity: 'blocked', blocker: 'Error: Board read stopped',
+    results: {}, url: '', commit: 'c7', runId: 'r', attempt: 1, ...over,
+}) as Store['state']['tickets'][number];
+
+test('a mirrored delivery request takes over the ticket stage worker when an unreadable fallback clears', () => {
+    const { ledger: l } = ledger(), s = store('cec');
+    s.state.tickets = [ticket()];
+    s.state.workLog = [{ ...intakeRun('run-ticket', minute(-2), minute(-1)), ticket: 'CEC-7', stage: 'mailbox' }];
+    syncIncidents(l, office(observe(s)), AT, undefined, loud);
+    expect(subjects(l)).toEqual(['outbox/ticket:CEC-7:mailbox:open']);
+    expect(l.list()[0].subjects[0]).toMatchObject({ lastWorker: 'run-ticket', sources: ['outbox', 'worker-failure'], expected: 'provider-wait' });
+
+    s.state.deliveryQueue = [{ id: 'req-1', key: 'CEC-7', action: 'start-pilot', status: 'blocked', error: s.state.tickets[0].blocker, requestedAt: minute(-3) }] as Store['state']['deliveryQueue'];
+    const progression = [item('delivery', 'req-1', 'start-pilot', 'blocked', 'x', 'unclassified', 'cec')];
+    const sync = (n: number) => syncIncidents(l, office(withoutOutbox(observe(s, progression, later(n)))), later(n), undefined, () => {});
+    const change = sync(1);
+    expect(change.events).toContainEqual(expect.objectContaining({ kind: 'subject-cleared', body: expect.objectContaining({ subject: 'cec/outbox/ticket:CEC-7:mailbox' }) }));
+    expect(subjects(l)).toEqual(['delivery/req-1:open', 'outbox/ticket:CEC-7:mailbox:cleared']);
+    expect(l.list().flatMap(incident => incident.subjects).find(subject => subject.id === 'req-1')).toMatchObject({
+        lastWorker: 'run-ticket', sources: ['stopped-work', 'worker-failure'], expected: 'provider-wait',
+    });
+    expect(sync(2)).toEqual({ events: [], incidents: [] });
+});
+
+test('filling historical fallback bindings lapses a matching dismissal without opening a new episode', () => {
+    const s = store('cec');
+    const stop = { kind: 'unclassified' as const, at: minute(-2) };
+    s.state.tickets = [ticket({ stop })];
+    const [current] = outboxItems(observe(s));
+    const l = ledgerOf(dbs, [{ ...current, subject: { ...current.subject, stop: null, head: '' } }]);
+    const before = l.packet(), repair = repairSubject(l.ledger.get(l.id)!.subjects[0]);
+    expect(before.subjects.included[0]).toMatchObject({ digest: repair.digest, stop: null, head: '', episodeCount: 1 });
+    const dismissed = l.dismiss();
+    const versions = sourceVersions(manifest());
+    expect(dismissed.incident.dismissals?.[0].subjects).toEqual([repair]);
+    expect(invalidateDismissals(l.ledger, versions, later(1))).toEqual([]);
+
+    const change = syncIncidents(l.ledger, office(observe(s, [], later(2))), later(2), undefined, loud);
+    expect(change.events).toEqual([]);
+    const corrected = l.ledger.get(l.id)!.subjects[0], after = l.packet();
+    expect(corrected).toMatchObject({ stop, head: 'c7', status: 'open', episodeCount: 1, openedAt: AT.toISOString() });
+    expect(repairSubject(corrected).digest).not.toBe(repair.digest);
+    expect(after.subjects.included[0]).toMatchObject({ digest: repairSubject(corrected).digest, stop, head: 'c7' });
+    expect(invalidateDismissals(l.ledger, versions, later(2))).toEqual([l.id]);
+    expect(l.ledger.get(l.id)).toMatchObject({ state: 'observed', dismissals: [{ lapsed: { reason: expect.stringContaining('stands differently') } }] });
+    expect(syncIncidents(l.ledger, office(observe(s, [], later(3))), later(3), undefined, loud)).toEqual({ events: [], incidents: [] });
 });

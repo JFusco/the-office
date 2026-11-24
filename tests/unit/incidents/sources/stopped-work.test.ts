@@ -1,7 +1,10 @@
 import { afterEach, expect, test } from 'vitest';
+import { normalizeCause } from '../../../../server/incidents/normalize-cause';
+import { standingStop } from '../../../../server/incidents/repair/repair-wait';
+import { FEATURE_QUESTIONS } from '../../../../server/incidents/sources/feature-record';
 import { stoppedWork } from '../../../../server/incidents/sources/stopped-work';
 import type { Store } from '../../../../server/store/store';
-import { item, observe, projectStore } from '../incident-fixture';
+import { AT, item, observe, projectStore } from '../incident-fixture';
 
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));
@@ -410,4 +413,42 @@ test('a write still unsettled for the subject is found under every reference it 
 test('another project\'s items in the projection are ignored', () => {
     const s = store();
     expect(stoppedWork(observe(s, [item('delivery', 'job-x', 'review', 'blocked', 'x', 'unclassified', 'brain')]))).toEqual([]);
+});
+
+test('a feature waiting on answers is a question in the harness\'s words; no question, answer or detail is kept, and a repair wait does not read it', () => {
+    const s = store();
+    s.state.features = [{ id: 'f-1', projectId: P, title: 't', status: 'waiting', paused: false, revision: 1, phase: 'discovery', detail: 'PRIVATE detail', approvals: [], publication: [], sourceTicket: '',
+        rounds: [{ id: 'round-1', revision: 1, questions: [{ id: 'q1', question: 'PRIVATE question', recommendation: 'PRIVATE', choices: [] }], answers: {}, createdAt: 'c' }] }] as any;
+    const projected = item('feature', 'f-1', 'feature-discovery', 'waiting', 'PRIVATE detail');
+    const found = stoppedWork(observe(s, [projected]));
+    expect(found).toEqual([expect.objectContaining({ subject: expect.objectContaining({ kind: 'feature', id: 'f-1', episode: 'round-1' }), cause: expect.objectContaining({ kind: 'question', author: 'harness', text: normalizeCause(FEATURE_QUESTIONS) }), expected: 'question', evidence: FEATURE_QUESTIONS })]);
+    expect(JSON.stringify(found)).not.toContain('PRIVATE');
+    expect(standingStop(s.state, projected.work, 'feature-discovery')).toBeNull();
+});
+
+test('the weekly roll-up waiting on its saved retry is a retry the Office planned, in the scheduler\'s words and without the earlier error', () => {
+    const s = store(), id = 'rollup:2026-11-20', nextAt = new Date(AT.getTime() + 60_000).toISOString();
+    s.state.knowledge = { enabled: true, rollupRetry: { id, attempts: 1, nextAt, lastError: 'PRIVATE model error' } } as any;
+    const projected = item('knowledge-rollup', id, 'knowledge-rollup', 'waiting', 'Retrying the weekly roll-up after an earlier attempt');
+    const found = stoppedWork(observe(s, [projected]));
+    expect(found).toEqual([expect.objectContaining({ cause: expect.objectContaining({ kind: 'retry', author: 'harness', text: 'retrying the weekly roll-up after an earlier attempt' }), expected: 'retry' })]);
+    expect(JSON.stringify(found)).not.toContain('PRIVATE');
+    // Once the retry is due the roll-up is ordinary waiting work.
+    expect(stoppedWork(observe(s, [projected], new Date(Date.parse(nextAt) + 1)))).toEqual([]);
+});
+
+test('a mailbox checkpoint\'s author follows the last intake run alone, whatever the intake error says now', () => {
+    const s = store('cec'), said = 'Error: The board shows 40 of an unknown number of tickets';
+    s.state.coordination!.checkpoints = [{ id: 'cp-1', status: 'blocked', detail: said, endedAt: 'e', runId: '' }] as any;
+    const checkpoint = item('checkpoint', 'cp-1', 'checkpoint', 'blocked', 'x', 'unclassified', 'cec');
+    const cause = () => stoppedWork(observe(s, [checkpoint]))[0].cause;
+    for (const error of ['', 'Error: an unrelated failure', said]) {
+        s.state.intake = { status: error ? 'blocked' : 'idle', lastChecked: 'o', error } as any;
+        s.state.workLog = [];
+        expect(cause()).toMatchObject({ author: 'harness', text: normalizeCause(said) });
+        s.state.workLog = [{ id: 'run-i', stage: 'intake', status: 'completed' }] as any;
+        expect(cause()).toMatchObject({ author: 'unknown', text: '' });
+        s.state.workLog = [{ id: 'run-i', stage: 'intake', status: 'failed', failure: { category: 'timeout', detail: 'x', dispatched: true } }] as any;
+        expect(cause().author).toBe('harness');
+    }
 });

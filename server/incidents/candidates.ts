@@ -1,7 +1,9 @@
 import { subjectKey, type IncidentCandidate, type IncidentCause, type IncidentSource, type ExpectedWait, type IncidentSubject } from '../../src/contracts/incidents';
 import { fingerprint } from './fingerprint';
+import type { Contributions } from './subject-contributions';
 
-export interface ObservedSubject { subject: IncidentSubject; sources: IncidentSource[]; evidence: string; expected: ExpectedWait | null }
+/** One subject as the readable sources reported it, with what each of them said of it (`contributions`, owner included). */
+export interface ObservedSubject { subject: IncidentSubject; sources: IncidentSource[]; evidence: string; expected: ExpectedWait | null; contributions: Contributions }
 export interface ObservedIncident { fingerprint: string; cause: IncidentCause; subjects: Map<string, ObservedSubject> }
 
 /**
@@ -9,7 +11,9 @@ export interface ObservedIncident { fingerprint: string; cause: IncidentCause; s
  * subject: a record that another candidate says it covers is folded into that candidate, and of two
  * candidates for the same subject the first reported wins. Candidates arrive in source order, so
  * the source that knows the work best is listed first. A folded report still tells what it knew:
- * an unsettled write, and an explanation where the owner has none. A candidate reported as
+ * an unsettled write, and an explanation where the owner has none. What each source said is also kept
+ * apart, before it is combined, so that a source the next pass cannot read keeps exactly its own part
+ * (see `subject-contributions.ts`). A candidate reported as
  * `foldedOnly` is nothing by itself: where no other candidate covers it, it is left out. A record
  * in `attributed` already belongs to a subject whose own source could not be read this time, and
  * is left with it.
@@ -25,7 +29,8 @@ export function groupCandidates(candidates: readonly IncidentCandidate[], attrib
         if (candidate.foldedOnly) continue;
         const seen = subjects.get(key);
         if (seen) folded.push([key, candidate]);
-        else subjects.set(key, { candidate, subject: { ...candidate.subject }, sources: [candidate.cause.source], evidence: candidate.evidence, expected: candidate.expected });
+        else subjects.set(key, { candidate, subject: { ...candidate.subject }, sources: [candidate.cause.source], evidence: candidate.evidence, expected: candidate.expected,
+            contributions: { [candidate.cause.source]: { unsettledEffect: candidate.subject.unsettledEffect, expected: candidate.expected } } });
     }
     for (const [owner, other] of folded) {
         const seen = subjects.get(owner);
@@ -33,13 +38,17 @@ export function groupCandidates(candidates: readonly IncidentCandidate[], attrib
         if (!seen.sources.includes(other.cause.source)) seen.sources.push(other.cause.source);
         seen.subject.unsettledEffect ||= other.subject.unsettledEffect;
         seen.expected ??= other.expected;
+        // Kept even where an earlier report's explanation masks it, so the trusted order can be rebuilt when one of them cannot be read.
+        const part = seen.contributions[other.cause.source] ??= { unsettledEffect: false, expected: null };
+        part.unsettledEffect ||= other.subject.unsettledEffect;
+        part.expected ??= other.expected;
     }
     const incidents = new Map<string, ObservedIncident>();
-    for (const [key, { candidate, subject, sources, evidence, expected }] of subjects) {
+    for (const [key, { candidate, subject, sources, evidence, expected, contributions }] of subjects) {
         const print = fingerprint(candidate.cause, candidate.subject);
         let incident = incidents.get(print);
         if (!incident) incidents.set(print, incident = { fingerprint: print, cause: candidate.cause, subjects: new Map() });
-        incident.subjects.set(key, { subject, sources, evidence, expected });
+        incident.subjects.set(key, { subject, sources, evidence, expected, contributions });
     }
     return incidents;
 }
