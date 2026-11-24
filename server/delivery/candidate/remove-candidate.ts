@@ -37,13 +37,13 @@ export function notOwned(store: Store, job: TicketJob): string {
  * A candidate a completed maintenance run created for this issue is the Office's own too: after the
  * job's private repair clone, if it has one, the run's worktree and branches are removed the same way.
  */
-export async function removeCandidate(store: Store, execute: Execute, job: TicketJob, guard: () => void, tip = ''): Promise<CandidateRemoval> {
+export async function removeCandidate(store: Store, execute: Execute, job: TicketJob, guard: () => void, tip = '', unpublished = false): Promise<CandidateRemoval> {
     const removed: CandidateRemoval = { worktree: false, local: false, remote: false };
     if (!job.branch && !job.worktree)
         return removed;
     // A candidate the job created itself keeps its own exact-head rule, whatever a maintenance run also recorded.
     if (!job.adoptedRepairCheckout && !notOwned(store, job))
-        return removeOwned(store, execute, job, job.worktree, guard, tip, false);
+        return removeOwned(store, execute, job, job.worktree, guard, tip, false, unpublished);
     // Without a delivered head there is nothing to hold a maintenance run's copy to, so it is not taken as owned.
     const created = tip ? maintenanceCandidate(store, job) : '';
     if (job.adoptedRepairCheckout) {
@@ -61,7 +61,7 @@ export async function removeCandidate(store: Store, execute: Execute, job: Ticke
  * local branch, which a later repair in the job's private clone leaves behind the delivered head: they may
  * be at it or an ancestor of it, never ahead or diverged. The remote branch is always at the delivered head.
  */
-async function removeOwned(store: Store, execute: Execute, job: TicketJob, worktree: string, guard: () => void, tip: string, behind: boolean): Promise<CandidateRemoval> {
+async function removeOwned(store: Store, execute: Execute, job: TicketJob, worktree: string, guard: () => void, tip: string, behind: boolean, unpublished = false): Promise<CandidateRemoval> {
     const repo = store.project.repo, branch = job.branch, removed: CandidateRemoval = { worktree: false, local: false, remote: false };
     const git = (args: string[], write = false) => execute('git', args, { cwd: repo, timeout: 120000, readOnly: !write }).then(out => out.trim());
     const atTip = (sha: string, what: string) => { if (tip && sha !== tip) throw new Error(`${what} is at ${sha.slice(0, 7)}, not the delivered ${tip.slice(0, 7)}; preserved`); };
@@ -91,6 +91,9 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
         await delivered(await read('rev-parse', 'HEAD'), worktree);
     }
     const local = await localRef(), remote = await remoteSha();
+    const pendingRemoteDelete = () => store.db.prepare("SELECT 1 FROM effects WHERE id LIKE ? ESCAPE '\\' AND status IN ('dispatching','uncertain')").get(likePrefix(`harness:${job.id}:remove-remote:${branch}`));
+    if (unpublished && (remote || pendingRemoteDelete()))
+        throw new Error(`Remote branch ${branch} is no longer verified as unpublished; preserved`);
     if (local)
         await delivered(local, `Local branch ${branch}`);
     if (remote) {
@@ -108,6 +111,7 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
         const now = await execute('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: worktree, timeout: 30000, readOnly: true });
         if (now.trim() && !(interrupted && interruptedRemoval(now)))
             throw new Error(`${worktree} changed during cleanup; preserved`);
+        if (unpublished && await localRef() !== local) throw new Error(`Local branch ${branch} changed during cleanup; preserved`);
         const registration = (await git(['worktree', 'list', '--porcelain'])).split('\n\n').find(block => block.split('\n')[0] === `worktree ${worktree}`) || '';
         if (/^locked/m.test(registration))
             throw new Error(`${worktree} is locked; preserved`);
@@ -135,14 +139,14 @@ async function removeOwned(store: Store, execute: Execute, job: TicketJob, workt
     }
     if (local) {
         guard();
-        await git(['branch', '-D', branch], true);
+        if (unpublished) await git(['update-ref', '-d', `refs/heads/${branch}`, local], true);
+        else await git(['branch', '-D', branch], true);
         if (await localRef())
             throw new Error(`Local branch ${branch} remains after deletion`);
         removed.local = true;
     }
     // An earlier uncertain delete (including a `:retry-N` intent) is settled by read-back, even when the branch is already gone.
-    const unsettled = store.db.prepare("SELECT 1 FROM effects WHERE id LIKE ? ESCAPE '\\' AND status IN ('dispatching','uncertain')").get(likePrefix(`harness:${job.id}:remove-remote:${branch}`));
-    if (remote || unsettled) {
+    if (!unpublished && (remote || pendingRemoteDelete())) {
         const absent = async () => await remoteSha() ? null : { deleted: true };
         await harnessEffect(store, job, { key: `remove-remote:${branch}`, operation: 'git-remote-branch-delete', target: `refs/heads/${branch}`, payload: { branch }, guard,
             // Through the provider, not a push: a push runs the repository's pre-push hook, which has nothing to check on a delete.

@@ -114,13 +114,14 @@ export class Effects {
      * The intent keeps its dispatch time and becomes `rejected` with `notLandedAt`; it is never dispatched
      * again, and a caller that may send once more does so under a fresh intent id.
      */
-    notLanded(id: string, detail: string): void {
+    notLanded(id: string, detail: string, receipt?: unknown): void {
         const intent = this.store.getEffect(id);
         if (!intent || !['dispatching', 'uncertain'].includes(intent.status))
             throw new Error('Only an attempted effect can be read back as not landed');
         intent.status = 'rejected';
         intent.notLandedAt = this.store.clock.now().toISOString();
         intent.error = sanitize(`Read back as never landed: ${detail}`);
+        if (receipt !== undefined) intent.receipt = receipt;
         this.store.transition('effect-not-landed', `${intent.operation} for ${intent.target} was read back as never landed.`, () => this.store.putEffect(intent));
     }
 }

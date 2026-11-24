@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { claimedDelivery } from '../../../fixtures/delivery-claim';
 import { cleanupFakes, fakeGitHub } from '../support/fake-github';
 import { publishCandidate } from '../../../../server/delivery/publication/publish-pr';
+import { retireBacklogged } from '../../../../server/delivery/parking/retire-backlogged';
 
 afterEach(cleanupFakes);
 const at = '2026-11-11T19:05:00.000Z';
@@ -88,4 +89,54 @@ test.each(['spawn.json', 'lifecycle.json'])('changed native %s cannot become a b
     const effect = f.store.getEffect(`harness:${job.id}:push:${job.head}`)!;
     expect(effect.status).toBe('uncertain');
     expect(effect.error).toContain('capture identity changed');
+});
+
+test.each(['retired', 'changed-artifact', 'nested-push', 'remote-ref', 'late-remote-ref', 'old-pr', 'dirty', 'advanced'])('Backlog resolves a rejected draft push conservatively: %s', async scenario => {
+    const f = fakeGitHub(), job = f.candidate({ stage: 'draft' }), root = f.artifactRoot(job);
+    f.state.localBranches.add(job.branch);
+    let pushes = 0, remoteReads = 0;
+    const execute: typeof f.execute = async (program, args, options) => {
+        if (program === 'git' && args[0] === 'update-ref' && args[1] === '-d') {
+            expect(args.slice(2)).toEqual([`refs/heads/${job.branch}`, job.head]);
+            f.state.localBranches.delete(job.branch);
+            return '';
+        }
+        if (program === 'git' && args[0] === 'ls-remote' && ++remoteReads === 3 && scenario === 'late-remote-ref')
+            f.state.remote[job.branch] = job.head;
+        if (program !== 'git' || args[0] !== 'push') return f.execute(program, args, options);
+        pushes++;
+        options.onSpawn(87767);
+        const rows = trace(87767, realpathSync(job.worktree), args[2]).trim().split('\n').map(line => JSON.parse(line));
+        rows[3].argv = ['.husky/_/pre-push', 'origin', `https://github.com/${f.store.project.repository}.git`];
+        const sid = rows[0].sid + '/hook-child';
+        const nested = scenario === 'nested-push' ? ['push', 'origin', args[2]] : ['commit', '--allow-empty', '-q', '-m', 'chore: fixture'];
+        rows.splice(4, 0, { event: 'start', sid, argv: ['git', ...nested] }, { event: 'cmd_name', sid, name: nested[0] }, { event: 'exit', sid, code: 0 });
+        writeFileSync(options.env.GIT_TRACE2_EVENT, rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+        options.onLifecycle(diagnostic(87767));
+        throw new Error('Original hook failure');
+    };
+    await expect(claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root))).rejects.toThrow('Original hook failure');
+    Object.assign(job, { status: 'blocked', stop: { kind: 'uncertain-effect' } });
+    if (scenario === 'changed-artifact') writeFileSync(resolve(root, `push-${job.head}`, 'spawn.json'), '{}');
+    if (scenario === 'remote-ref') f.state.remote[job.branch] = job.head;
+    if (scenario === 'old-pr') f.state.prs.push({ number: 1, state: 'closed', head: { ref: job.branch }, base: { ref: 'main' } });
+    if (scenario === 'dirty') f.state.local.dirty = true;
+    if (scenario === 'advanced') f.state.local.head = 'f'.repeat(40);
+
+    const retired = await retireBacklogged(f.store, execute as any, f.delivery.jobs, [{ key: job.key, pickupStatus: 'Backlog' }] as any);
+    const effect = f.store.getEffect(`harness:${job.id}:push:${job.head}`);
+    expect(pushes).toBe(1);
+    expect(f.state.calls.some(call => call.startsWith('gh api -X DELETE'))).toBe(false);
+    if (scenario === 'retired') {
+        expect(retired).toEqual([job.key]);
+        expect(job.status).toBe('cancelled');
+        expect(existsSync(job.worktree)).toBe(false);
+        expect(f.state.localBranches.has(job.branch)).toBe(false);
+        expect(effect).toMatchObject({ status: 'rejected', receipt: { kind: 'rejected-draft-push', head: job.head } });
+    } else {
+        expect(retired).toEqual([]);
+        expect(job.status).toBe('blocked');
+        expect(existsSync(job.worktree)).toBe(true);
+        expect(effect?.status).toBe(scenario === 'late-remote-ref' ? 'rejected' : 'uncertain');
+    }
 });

@@ -7,6 +7,7 @@ import { workKey, type AssignedIssue, type TicketJob } from '../../../src/shared
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import { likePrefix } from '../../store/like-prefix';
+import { draftPushEffectId, readBackRejectedDraftPush, rejectedDraftPush } from '../publication/rejected-draft-push';
 
 const STOPPED = ['blocked', 'interrupted'];
 
@@ -25,8 +26,16 @@ export async function retireBacklogged(store: Store, execute: typeof command, jo
             continue;
         const head = job.head;
         // Cleanup awaits Git and GitHub; a job requeued meanwhile is no longer this decision's to retire.
-        const guard = () => { assertMayMutate(store, jobs, job, head); if (!STOPPED.includes(job.status)) throw new Error(`${job.key} is ${job.status} again; retirement withdrawn`); };
-        const removal = await removeCandidate(store, execute, job, guard).catch(error => error instanceof Error ? error : new Error(String(error)));
+        const guard = () => {
+            assertMayMutate(store, jobs, job, head);
+            if (!STOPPED.includes(job.status) || needsReconciliation(store, job))
+                throw new Error(`${job.key} changed before Backlog retirement`);
+        };
+        const uncertainPush = store.getEffect(draftPushEffectId(job))?.status;
+        if (uncertainPush === 'dispatching' || (uncertainPush === 'uncertain' && !await readBackRejectedDraftPush(store, execute, job, guard)))
+            continue;
+        const unpublished = rejectedDraftPush(store, job);
+        const removal = await removeCandidate(store, execute, job, guard, unpublished ? head : '', unpublished).catch(error => error instanceof Error ? error : new Error(String(error)));
         if (!STOPPED.includes(job.status))
             continue; // Requeued while cleanup ran; nothing to record against this decision.
         recordCandidateCleanup(store, job, removal);
@@ -48,8 +57,9 @@ function needsReconciliation(store: Store, job: TicketJob): boolean {
     return !!(job.pr || job.prUrl || source?.attemptOpen || source?.reservation)
         || !!store.state.workLog?.some(w => w.requestId === job.id && ['running', 'stopping'].includes(w.status))
         || !!store.state.coordination?.requests?.some(r => r.key === job.key && ['queued', 'working'].includes(r.status))
+        || store.activeClaims().some(claim => claim.work.kind === 'delivery' && claim.work.id === job.id)
         || !!job.boardUpdates?.some(update => update.status !== 'verified')
         // Its own earlier remote-branch delete is settled by the cleanup's read-back, not here.
-        || !!store.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain') AND id NOT LIKE ? ESCAPE '\\'").get(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }), likePrefix(`harness:${job.id}:remove-remote:`))
+        || !!store.db.prepare("SELECT 1 FROM effects WHERE work_key=? AND status IN ('dispatching','uncertain') AND id != ? AND id NOT LIKE ? ESCAPE '\\'").get(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id }), draftPushEffectId(job), likePrefix(`harness:${job.id}:remove-remote:`))
         || job.steps.some(step => hasUncertainEffects(step.stage, step.result));
 }
