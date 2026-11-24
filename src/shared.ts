@@ -215,8 +215,12 @@ export interface TicketJob {
         at: string;
     };
     boardUpdates?: BoardUpdate[];
-    /** A model returned a genuine human decision; the card sits in Block until Joe moves it back to Ready. */
-    parked?: { stage: string; reason: string; at: string; published: boolean; release?: ReleaseWait; releaseCheckedAt?: string; releaseBaselineAt?: string; releaseFound?: string };
+    /**
+     * A model returned a genuine human decision, or the harness parked a pull request edit it may not make; the
+     * card sits in Block until Joe moves it back to Ready. A harness-worded park also keeps the resume instruction
+     * its comment gives and that comment's decision marker (`server/delivery/parking/park-unadmitted-metadata.ts`).
+     */
+    parked?: { stage: string; reason: string; at: string; published: boolean; release?: ReleaseWait; releaseCheckedAt?: string; releaseBaselineAt?: string; releaseFound?: string; instruction?: string; marker?: string };
     /** Times the harness returned this job to the pickup lane after its npm release wait was met. */
     releaseUnparks?: number;
     /** The step whose sign-in wait the harness already returned to pickup once (`server/delivery/parking/sign-in-unpark.ts`). */

@@ -63,3 +63,24 @@ test('a pause during parking stops the board write after the decision comment', 
     expect(f.state.cards[0].status).toBe('progress');
     expect(job.parked?.published).toBe(false);
 });
+test('a harness-worded park posts its own words and settles a comment that landed unread by reading it back, never posting it again', async () => {
+    const f = fakeGitHub(), job = f.candidate({ stage: 'review', status: 'working' });
+    f.state.cards[0].status = 'progress';
+    const original = f.execute, words = { reason: 'PR #200 needs an edit to its title.', instruction: 'Edit it, then move the issue card back to Ready.' };
+    let lose = true;
+    (f.delivery as any).execute = async (program: string, args: string[], options: any) => {
+        const out = await original(program, args, options);
+        if (lose && args.includes('-f')) { lose = false; throw new Error('gh: connection reset after the comment'); }
+        return out;
+    };
+    await expect(claimedDelivery(f.store, job, () => park(f.delivery, job, blocked('human-hold'), words))).rejects.toThrow('connection reset');
+    expect(f.state.comments).toHaveLength(1); expect(job.parked?.published).toBe(false); expect(f.state.cards[0].status).toBe('progress');
+    expect(f.store.getEffect(`harness:${job.id}:park-comment:0`)?.status).toBe('uncertain');
+    await claimedDelivery(f.store, job, () => park(f.delivery, job, blocked('human-hold'), words));
+    expect(f.state.comments).toHaveLength(1);
+    expect(f.state.comments[0].body).toBe(`Office decision ${job.id}:0: PR #200 needs an edit to its title.\n\nEdit it, then move the issue card back to Ready.`);
+    expect(f.store.getEffect(`harness:${job.id}:park-comment:0`)?.status).toBe('verified');
+    expect(f.store.getEffect(`harness:${job.id}:park:${job.id}:0:lane:issue-card`)?.status).toBe('verified');
+    expect(job).toMatchObject({ status: 'blocked', detail: `Decision needed: ${words.reason}`, parked: { published: true, reason: words.reason, instruction: words.instruction, marker: `Office decision ${job.id}:0` } });
+    expect(f.state.cards[0].status).toBe('block');
+});

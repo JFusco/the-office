@@ -13,6 +13,10 @@ import { deliveryInputSha256 } from '../../../../server/github/github-context';
 import { publishMetadata } from '../../../../server/delivery/publication/publish-metadata';
 import { metadataAppliesToHead } from '../../../../server/delivery/publication/metadata-context';
 import { plan } from '../../../fixtures/ci-repair';
+import { resumeParked } from '../../../../server/delivery/parking/resume';
+import { expectedWait } from '../../../../server/incidents/expected-block';
+import { stoppedRecord } from '../../../../server/incidents/sources/stopped-record';
+import { CommandFailure } from '../../../../server/workers/process';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -24,16 +28,17 @@ function leadResult(f: ReturnType<typeof metadataFixture>, changes: Partial<Stag
         ...changes };
 }
 
-async function acceptLead(f: ReturnType<typeof metadataFixture>, result: StageResult) {
+async function acceptLead(f: ReturnType<typeof metadataFixture>, result: StageResult, reviewStart: any = f.pr) {
     f.job.stage = 'lead-pr'; f.job.status = 'working';
     const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'native-lead', 'lead-pr')!;
     const beforeWorkers = new Set(f.store.state.workLog?.map(w => w.id));
     const native = f.nativeAssessment(result, { stage: 'github-lead-pr', claim });
-    await withAssignment(claim, 'delivery', () => acceptStageResult.call(f.delivery, { job: f.job, result, root: f.root, project: f.store.project,
-        role: 'lead', issue: f.state.issue, continuation: undefined, reviewStart: f.pr, beforeWorkers,
-        inputSha256: deliveryInputSha256(f.store, f.job.key), technicalPhase: false,
-        candidateAtStart: JSON.stringify({ id: f.job.id, stage: f.job.stage, head: f.job.head, branch: f.job.branch, worktree: f.job.worktree }) }));
-    f.store.finishClaim(claim.id, 'completed');
+    try {
+        await withAssignment(claim, 'delivery', () => acceptStageResult.call(f.delivery, { job: f.job, result, root: f.root, project: f.store.project,
+            role: 'lead', issue: f.state.issue, continuation: undefined, reviewStart, beforeWorkers,
+            inputSha256: deliveryInputSha256(f.store, f.job.key), technicalPhase: false,
+            candidateAtStart: JSON.stringify({ id: f.job.id, stage: f.job.stage, head: f.job.head, branch: f.job.branch, worktree: f.job.worktree }) }));
+    } finally { f.store.finishClaim(claim.id, 'completed'); }
     return native;
 }
 
@@ -258,4 +263,117 @@ test('publication alone cannot merge; a new native Lead must explicitly verify t
     await withAssignment(claim, 'delivery', () => claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job)));
     f.pr.body += '\nNew human edit';
     await expect(withAssignment(claim, 'delivery', () => claimedDelivery(f.store,f.job,()=>requireMetadataReview(f.delivery, f.job)))).rejects.toThrow('Reviewed metadata changed');
+});
+
+const TITLE = 'docs(operating): require explicit source acceptance [skip release]';
+/** A current blocked readiness review of a title the repository's lint accepts; with `advisory`, a carried note beside it (the GH-189 shape). */
+function humanEditReview(f: ReturnType<typeof metadataFixture>, advisory = true): StageResult {
+    return leadResult(f, { outcome: 'blocked', resolution: null, summary: 'Release marker in the PR title', blocker: 'Remove [skip release] from the PR title',
+        findings: [{ id: 'pr-metadata', status: 'open', summary: 'Release marker in the PR title', expected: 'Remove [skip release] from the title; keep the issue link', actual: '[skip release]', attempts: 0 },
+            ...(advisory ? [{ id: 'review-note', status: 'open' as const, summary: 'Carried advisory: the OPERATING.md wording could be tighter', expected: 'Optional wording change', actual: 'Current wording', attempts: 0 }] : [])] });
+}
+
+/** An unbound published PR in review with both cards on the board; counts card writes by item. */
+function humanEditFixture() {
+    const f = metadataFixture(false); delete f.job.prMetadataRepair; f.store.finishClaim(f.claim.id, 'completed');
+    f.pr.title = TITLE;
+    f.state.cards[0].status = 'review'; f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'review' });
+    const moves: string[] = [], execute = f.delivery.execute;
+    let failRead: string | undefined;
+    f.delivery.execute = (async (program, args, options) => {
+        const request = program === 'gh' && args[1] === 'graphql' ? JSON.parse(options!.input!) : undefined;
+        if (String(request?.query).startsWith('mutation')) moves.push(request.variables.item);
+        if (failRead && String(request?.query).includes('fieldValues') && request.variables.item === failRead) { failRead = undefined; throw new Error('gh: HTTP 502 reading the card'); }
+        return execute(program, args, options);
+    }) as typeof execute;
+    const api = f.delivery.api.bind(f.delivery);
+    f.delivery.api = async path => path.includes('/check-runs') ? { total_count: 1, check_runs: [{ id: 10, head_sha: f.job.head, name: 'unit', status: 'completed', conclusion: 'success' }] } :
+        path.endsWith('/status') ? { sha: f.job.head, total_count: 0, statuses: [], state: 'success' } : api(path);
+    const parkEffects = () => (f.store.db.prepare('SELECT body FROM effects').all() as { body: string }[]).map(row => JSON.parse(row.body)).filter(e => e.id.includes(':park'));
+    return { ...f, moves, parkEffects, failCardRead: (item: string) => { failRead = item; } };
+}
+
+const stores = (f: ReturnType<typeof metadataFixture>) => new Map([[f.store.project.id, f.store]]);
+
+test.each([true, false])('a current PR edit the harness may not make parks once with one actionable comment; the edit and the issue card return run a fresh lead-pr (advisory=%s)', async advisory => {
+    const f = humanEditFixture(), ci = vi.spyOn(f.delivery, 'queueCIRepair'), source = vi.spyOn(f.delivery, 'queueSourceRepair');
+    const model = vi.spyOn(f.engine.agents, 'run');
+    const result = humanEditReview(f, advisory);
+    await acceptLead(f, result);
+    expect(f.job).toMatchObject({ status: 'blocked', stage: 'lead-pr', parked: { stage: 'lead-pr', published: true } });
+    expect(f.state.comments).toHaveLength(1);
+    const body = f.state.comments[0].body as string;
+    expect(body.startsWith(`Office decision ${f.job.id}:${f.job.steps.length}: PR #200 needs an edit to its title`)).toBe(true);
+    expect(body).toContain('The edit it asks for: Remove [skip release] from the title; keep the issue link.');
+    expect(body).toContain("Then move the issue card, not the pull request's card, back to Ready; the Office then runs a fresh review.");
+    expect(body).toContain('A reply to Morgan does not resume it.');
+    expect(body.includes('- review-note: Carried advisory: the OPERATING.md wording could be tighter.')).toBe(advisory);
+    expect(f.job.parked!.instruction).toBe(body.slice(body.indexOf('\n\n') + 2));
+    expect(f.state.cards.map(card => card.status)).toEqual(['block', 'block']);
+    expect(f.moves).toEqual(['issue-card', 'pr-card']);
+    expect(f.parkEffects().map(e => [e.id.replaceAll(f.job.id, 'job'), e.status]).sort()).toEqual([
+        [`harness:job:park-comment:${f.job.steps.length}`, 'verified'],
+        [`harness:job:park:job:${f.job.steps.length}:lane:issue-card`, 'verified'],
+        [`harness:job:park:job:${f.job.steps.length}:lane:pr-card`, 'verified']]);
+    expect(expectedWait(stoppedRecord(f.store.state, { projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, 'lead-pr')!.facts)).toBe('decision');
+    expect(ci).not.toHaveBeenCalled(); expect(source).not.toHaveBeenCalled(); expect(model).not.toHaveBeenCalled(); expect(f.writes.patches).toBe(0);
+    expect(f.job.prMetadataRepair).toBeUndefined();
+
+    // A reply is not a resume; the edit and the issue card back in Ready are.
+    const assigned = [{ key: f.job.key, pickupStatus: 'Block' }] as any;
+    expect(resumeParked(f.store, f.delivery.jobs, assigned, { enabled: true, status: 'Ready' }, stores(f), new Date())).toEqual([]);
+    f.pr.title = 'docs(operating): require explicit source acceptance';
+    f.state.cards[0].status = 'ready'; assigned[0].pickupStatus = 'Ready';
+    expect(resumeParked(f.store, f.delivery.jobs, assigned, { enabled: true, status: 'Ready' }, stores(f), new Date())).toEqual([f.job.key]);
+    expect(f.job).toMatchObject({ status: 'queued', stage: 'lead-pr' }); expect(f.job.parked).toBeUndefined();
+    const steps = f.job.steps.length;
+    model.mockImplementation(async () => leadResult(f) as any);
+    await claimedDelivery(f.store, f.job, () => f.delivery.step(f.job));
+    expect(model).toHaveBeenCalledOnce(); expect(model.mock.calls[0][3]).toMatchObject({ stage: 'github-lead-pr', readOnly: true, requestId: f.job.id });
+    expect(f.job.steps).toHaveLength(steps + 1); expect(f.job.steps.at(-1)).toMatchObject({ stage: 'lead-pr', result: { outcome: 'passed' } });
+    expect(f.state.comments).toHaveLength(1); expect(f.writes.patches).toBe(0);
+});
+
+test.each(['edited during the lint', 'edited during the review', 'lint tool error', 'not a harness delivery'] as const)('no park is written when the decision is stale or not the harness\'s: %s', async kind => {
+    const f = humanEditFixture(), model = vi.spyOn(f.engine.agents, 'run');
+    const lint = f.delivery.execute;
+    f.delivery.execute = (async (program, args, options) => {
+        if (program === 'pnpm' && args[0] === 'run' && kind === 'edited during the lint') f.pr.title = 'Joe edited the title';
+        if (program === 'pnpm' && args[0] === 'run' && kind === 'lint tool error') throw new CommandFailure('pnpm exited 1: missing helper', 'other', true);
+        return lint(program, args, options);
+    }) as typeof lint;
+    if (kind === 'not a harness delivery') (f.job as any).closeoutRecovery = { id: 'legacy-closeout' };
+    // What the review read is its own copy of the pull request, not the live object.
+    const reviewStart = { ...structuredClone(f.pr), ...(kind === 'edited during the review' ? { title: 'What Sam read' } : {}) };
+    const run = acceptLead(f, humanEditReview(f, false), reviewStart);
+    await expect(run).rejects.toThrow(kind === 'lint tool error' ? 'missing helper' : 'Unadmitted reserved PR metadata');
+    expect(f.job.parked).toBeUndefined(); expect(f.state.comments).toEqual([]); expect(f.moves).toEqual([]); expect(f.parkEffects()).toEqual([]);
+    expect(f.state.cards.map(card => card.status)).toEqual(['review', 'review']);
+    expect(model).not.toHaveBeenCalled(); expect(f.writes.patches).toBe(0);
+});
+
+test.each(['no board', 'no issue card'] as const)('with %s nothing promises a card-driven resume: the job stops with the edit and the fresh-review route', async kind => {
+    const f = humanEditFixture();
+    if (kind === 'no board') delete (f.store.project as any).githubProject;
+    else f.state.cards.splice(0, 1);
+    await expect(acceptLead(f, humanEditReview(f))).rejects.toThrow(`It was not parked: ${kind === 'no board' ? 'this project has no configured board' : 'the issue has no card on the board'}, so moving a card cannot resume it. Edit the PR, then ask for a fresh review with review-pr.`);
+    expect(f.job.parked).toBeUndefined(); expect(f.state.comments).toEqual([]); expect(f.moves).toEqual([]); expect(f.parkEffects()).toEqual([]);
+});
+
+test('a park that stops after the first card keeps its evidence unpublished; the next pass finishes it without sending the comment or the first move again', async () => {
+    const f = humanEditFixture(), model = vi.spyOn(f.engine.agents, 'run');
+    f.failCardRead('pr-card');
+    await expect(acceptLead(f, humanEditReview(f))).rejects.toThrow('HTTP 502');
+    expect(f.job).toMatchObject({ status: 'blocked', parked: { published: false } });
+    expect(f.state.comments).toHaveLength(1); expect(f.moves).toEqual(['issue-card']);
+    expect(f.state.cards.map(card => card.status)).toEqual(['block', 'review']);
+    expect(resumeParked(f.store, f.delivery.jobs, [{ key: f.job.key, pickupStatus: 'Ready' }] as any, { enabled: true, status: 'Ready' }, stores(f), new Date())).toEqual([]);
+    const steps = f.job.steps.length;
+    f.job.status = 'queued';
+    await claimedDelivery(f.store, f.job, () => f.delivery.step(f.job));
+    expect(f.job).toMatchObject({ status: 'blocked', parked: { published: true } });
+    expect(f.state.comments).toHaveLength(1); expect(f.moves).toEqual(['issue-card', 'pr-card']);
+    expect(f.state.cards.map(card => card.status)).toEqual(['block', 'block']);
+    expect(f.parkEffects().every(e => e.status === 'verified')).toBe(true); expect(f.parkEffects()).toHaveLength(3);
+    expect(f.job.steps).toHaveLength(steps); expect(model).not.toHaveBeenCalled();
 });

@@ -20,6 +20,7 @@ import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { stopReason } from './stop-reason';
 import { redispatchSavedAssessment } from '../recovery/redispatch-assessment';
+import { finishMetadataPark } from '../parking/finish-metadata-park';
 import { retireRefusedQA, savedQAResult } from '../recovery/reaccept-qa-result';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
@@ -188,6 +189,7 @@ export class GitHubDelivery {
                 return;
             }
             if (job.stage === 'lead-pr') {
+                if (await finishMetadataPark(this, job)) return;
                 if (await runCIRepair(this, job, issue, root)) return;
                 const reviewed = await this.verifyPR(job);
                 // A draft a maintenance run already reviewed and verified is marked ready by the harness, not waited on.

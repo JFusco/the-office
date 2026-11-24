@@ -404,6 +404,23 @@ A hands-off job that stopped at the start of update-base because that move was r
 again once; the board move comes before any source work, so nothing is repeated
 (`server/delivery/recovery/parked-card-refusal.ts`).
 
+A hands-off readiness review that blocks on the pull request's title or body (the reserved
+`pr-metadata` finding, no resolution) is read once (`server/delivery/publication/metadata-admission.ts`).
+The harness takes the edit over only when that finding is the only one open and the repository's own PR
+lint rejects the live content. When the lint accepts it, or other findings are open beside it, the
+harness parks the job instead (`server/delivery/parking/park-unadmitted-metadata.ts`): one decision
+comment names the pull request, the field, the edit the finding asks for and every other open finding,
+and tells Joe to edit the pull request and then move the issue card back to the pickup lane, which
+resumes with a fresh readiness review; a reply to Morgan does not. It parks only while the pull request
+still shows the head, title and body the review started from, and only when the board has its pickup
+and Block lanes and the issue has its card. Otherwise nothing is written and the job stops saying what
+to edit and to ask for a fresh review with `review-pr`. Each card move is one Effect keyed to the park's
+step, the park is published only once the comment and the moves read back, and a park that stopped part
+way is finished on the job's next pass at the review without sending anything again
+(`server/delivery/parking/finish-metadata-park.ts`). Jobs the harness does not deliver, source
+resolutions, older metadata bindings and a saved conflict assessment acted on again keep the
+reconciliation stop.
+
 A hands-off job on an adopted pull request can also stop inside the harness after its conflict-only
 readiness assessment was accepted and recorded, before anything was written. Such a job is queued
 again at most once per running revision of the Office, because a refusal by the harness only ends
