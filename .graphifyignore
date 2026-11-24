@@ -26,3 +26,4 @@
 **/.env*
 **/*.json
 **/*.css
+scripts/wiki/graph/viewer/vendor/
