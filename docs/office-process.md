@@ -597,8 +597,10 @@ Morgan or Joe:
   investigated: an investigation would run on the provider that is refusing work. A writer the
   provider cut off the same way keeps its effect of unknown outcome and is investigated as before.
 - An investigation of a run the provider refused at its usage limit is kept as history once a
-  later run on that provider has completed. The refused run is not repeated and no lesson is
-  recorded: the refusal was the provider's.
+  later run on that provider has completed. The refused run is not repeated, no lesson is
+  recorded, and a retrospective queued for it is dropped, whichever rule closed it, unless it is
+  running now; one waiting to retry a failed attempt is dropped too. The refusal was the
+  provider's.
 - An old blocked nightly checkpoint is settled by a later night that completed.
 - On a hands-off project one stopped daily maintenance run whose automatic read-backs are used up is
   not put in the outbox while the next night's run is not yet overdue (26 hours), provided the night
@@ -974,7 +976,12 @@ and settled after:
 active-release record each go through Effects on the controller's own store
 (`deployments/controller.sqlite`) under one identity per operation and step. Read-back comes first,
 so a step whose outcome is already visible is not dispatched again. A dispatched step that read-back
-cannot confirm is uncertain and is never resent.
+cannot confirm is uncertain and is never resent. A first read that fails while nothing of the step
+has been sent (no intent, or one still prepared or refused) changed nothing, so the step is refused.
+The deployment ends `refused` at `fence` or `aborted` at `stop` with the fence released. It enters
+rollback at `plist` or `start` and ends `stopped` with a STOP record at `record` or `release`.
+Once a run has sent the step, a failed read leaves its outcome unknown, as before
+(`server/release/settle-mutation.ts`).
 
 **Before the stop.** A service that does not become idle, or is no longer the idle fenced instance
 when the stop is about to be dispatched, is left running; the deployment releases its own fence and

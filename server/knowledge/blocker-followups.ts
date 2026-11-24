@@ -1,5 +1,5 @@
 import { freezeReads } from '../incidents/repair/freeze-reads';
-import { PROVIDER_RECOVERED } from '../it/investigations/provider-limit-resolution';
+import { investigatesLimitRefusal, PROVIDER_RECOVERED } from '../it/investigations/provider-limit-resolution';
 import { repairFreeze } from '../incidents/repair/repair-freeze';
 import { investigationHeld } from '../it/investigations/held-investigation';
 import { recoveryRecord } from '../it/recovery-record';
@@ -72,9 +72,9 @@ export function reconcileBlockerFollowups(store: Store): void {
         return item;
     };
     for (const entry of store.state.it?.investigations || []) {
-        const proof = investigationResolution(store, entry), recovered = !!proof?.receipt.startsWith(PROVIDER_RECOVERED);
+        const proof = investigationResolution(store, entry), recovered = !!proof?.receipt.startsWith(PROVIDER_RECOVERED), limitRefusal = investigatesLimitRefusal(store, entry);
         // A provider that works again taught nothing about the Office: the follow-up closes without a lesson.
-        const item = observe({ kind: 'investigation', id: entry.id }, entry.source.ticket, recovered ? 'The provider that refused this run is working again; the refused run was not repeated.' : proof ? proof.kind === 'superseded' ? 'A verified replacement superseded this incident; original outcome remains unknown.' : 'Original source has verified resolution evidence.' : entry.lastError || entry.report?.summary || 'Ellis owns source diagnosis; wait for verified recovery.', proof?.kind || (entry.status === 'blocked' ? 'needs-input' : 'unresolved'), proof || { status: entry.status, attempts: entry.attempts }, { investigationId: entry.id, owner: proof ? 'Ellis' : entry.status === 'blocked' ? 'Morgan' : 'Ellis' }, !recovered);
+        const item = observe({ kind: 'investigation', id: entry.id }, entry.source.ticket, recovered ? 'The provider that refused this run is working again; the refused run was not repeated.' : proof ? proof.kind === 'superseded' ? 'A verified replacement superseded this incident; original outcome remains unknown.' : 'Original source has verified resolution evidence.' : entry.lastError || entry.report?.summary || 'Ellis owns source diagnosis; wait for verified recovery.', proof?.kind || (entry.status === 'blocked' ? 'needs-input' : 'unresolved'), proof || { status: entry.status, attempts: entry.attempts }, { investigationId: entry.id, owner: proof ? 'Ellis' : entry.status === 'blocked' ? 'Morgan' : 'Ellis' }, !limitRefusal);
         if (item.disposition === 'needs-input' && knowledge.enabled) handoff(store, item);
     }
     for (const [id, recovery] of Object.entries(store.state.it?.recoveries || {})) {

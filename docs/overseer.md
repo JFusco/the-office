@@ -73,8 +73,8 @@ activated by hand never passes through the command.
 | Outcome | Meaning | Service | Fence |
 |---|---|---|---|
 | `deployed` | The target serves; `/api/health` confirmed its hash and a new instance | Target | Released |
-| `refused` | A precondition failed before anything changed | Unchanged | Untouched |
-| `aborted` | The service did not become idle in time; it was left running | Unchanged | Released |
+| `refused` | A precondition failed before anything changed, including a read of the service that failed before the fence was taken | Unchanged | Untouched |
+| `aborted` | The service did not become idle in time, or could not be read before the stop was sent; it was left running | Unchanged | Released |
 | `rolled-back` | Activation failed and the previous release serves again | Previous | Released |
 | `stopped` | A person is needed; `deployments/STOP.json` says where | See the record | Usually held |
 | `ended` | A person had that operation's fence released with `deploy end` | Unchanged | Released |
