@@ -1,6 +1,6 @@
 import { subjectKey, type Incident, type ResumeAssessment, type ResumeSwitch } from '../../../src/contracts/incidents';
 import { repairSubject } from '../subject-digest';
-import { dispatchable, RESUME_ROUTES, routeFault, type ResumeRoute } from './resume-routes';
+import { dispatchable, forWriterRelease, RESUME_ROUTES, routeFault, type ResumeRoute } from './resume-routes';
 
 type Standing = ResumeAssessment['subjects'][number];
 
@@ -27,7 +27,9 @@ export function assessResumes(incident: Incident, control: ResumeSwitch, routes:
     const subjects = fix.bindings.map((binding): Standing => {
         if (binding.disposition === 'no-route') return { subject: binding.subject, standing: 'no-route', reason: `The fix declared no route: ${binding.reason}` };
         const stand = (standing: Standing['standing'], reason: string): Standing => ({ subject: binding.subject, standing, reason, action: binding.route.action });
-        if (admitted(binding.subject)) return stand('admitted', 'Its resume was queued for this fix; a fix resumes a subject once.');
+        if (admitted(binding.subject)) return stand('admitted', forWriterRelease(binding.route.action)
+            ? `One more restart of worker ${String(binding.route.payload.head)} was granted for this fix; the harness restarts it, and a fix resumes a subject once.`
+            : 'Its resume was queued for this fix; a fix resumes a subject once.');
         const record = held.get(binding.subject);
         if (!record || record.status !== 'open') return stand('gone', 'The stop the fix was bound to has cleared.');
         if (repairSubject(record).digest !== binding.digest) return stand('gone', 'The subject no longer stands as the fix bound it: another episode, stage, stop or head.');

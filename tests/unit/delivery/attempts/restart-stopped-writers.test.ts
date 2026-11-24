@@ -1,7 +1,10 @@
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, HEAD } from '../support/fake-github';
+import { salvageGit } from '../support/salvage-git';
 import { restartStoppedWriters } from '../../../../server/delivery/attempts/restart-stopped-writers';
+import { HOLDS } from '../../../../server/office/config';
 import { markAwaitingRepair, unmark } from '../../incidents/repair/mark-fixture';
+import { savedState } from '../../store/saved-state-fixture';
 afterEach(cleanupFakes);
 
 const PARTIAL = 'e'.repeat(40);
@@ -9,22 +12,26 @@ const PARTIAL = 'e'.repeat(40);
 function stopped() {
     const f = fakeGitHub(), job = f.candidate({ stage: 'update-base', status: 'blocked', pr: 200, prUrl: 'https://github.com/JFusco/cms-field-vocabulary/pull/200', detail: 'Error: codex timed out; previous action outcome must be reconciled' });
     job.stop = { kind: 'uncertain-effect', at: '2026-11-16T12:00:00.000Z' };
-    f.state.remote[job.branch!] = HEAD; f.state.local.head = PARTIAL;
+    f.state.remote[job.branch!] = HEAD;
     f.state.prs.push({ number: 200, html_url: job.prUrl, state: 'open', draft: false, mergeable: true, body: 'Closes #5', head: { sha: HEAD, ref: job.branch, repo: { full_name: 'JFusco/cms-field-vocabulary' } }, base: { ref: 'main', sha: 'b'.repeat(40), repo: { full_name: 'JFusco/cms-field-vocabulary' } }, merged_at: null, merge_commit_sha: null, updated_at: '2026-11-01T16:15:30Z' });
     // No process id and dispatched=false: nothing is left running, so the real process probe is not consulted.
     f.store.state.workLog = [{ id: 'run-1', requestId: job.id, stage: 'github-update-base', status: 'interrupted', startedAt: new Date(Date.now() - 900000).toISOString(), endedAt: new Date(Date.now() - 600000).toISOString(), failure: { category: 'cancelled', dispatched: false, detail: 'cancelled' } } as any];
-    const writes: string[] = [], base = f.delivery.execute, hooks: { onWrite?: (command: string) => void } = {};
-    f.delivery.execute = (async (program: string, args: string[], options: any) => {
-        if (program === 'git' && args[0] === 'submodule') return '';
-        if (program === 'git' && ['cat-file', 'add', 'write-tree', 'commit-tree', 'update-ref', 'reset', 'clean'].includes(args[0])) {
-            writes.push(args.join(' '));
-            hooks.onWrite?.(args[0]);
-            if (args[0] === 'reset') Object.assign(f.state.local, { head: args[2], dirty: false });
-            return '';
-        }
-        return base(program, args, options);
-    }) as any;
-    return { f, job, writes, hooks };
+    // The worktree's own Git, held in memory with its refs; everything else goes to the fake provider.
+    const { git, answer } = salvageGit({ head: PARTIAL, branch: job.branch! }), base = f.delivery.execute, hooks: { onWrite?: (command: string) => void } = {};
+    git.onWrite = command => hooks.onWrite?.(command);
+    f.delivery.execute = (async (program: string, args: string[], options: any) => answer(program, args) ?? base(program, args, options)) as any;
+    return { f, job, git, writes: git.writes, hooks, ref: `refs/office/salvage/${job.id}/run-1` };
+}
+/** Three restarts spent from the accepted head and a repair release for run-1: the next attempt is the released one. */
+function released() {
+    const x = stopped();
+    x.job.writerRestarts = [1, 2, 3].map(n => ({ workId: `old-${n}`, stage: 'update-base', at: '2026-11-16T12:00:00.000Z', accepted: HEAD, abandoned: HEAD, ref: `refs/office/salvage/${x.job.id}/old-${n}` }));
+    const grant = (id = 'g') => ({ id: id.repeat(64), incident: 'inc-1', subject: `${x.f.store.project.id}/delivery/${x.job.id}`, fix: 'cli-bind-1', commit: 'f'.repeat(40), workId: 'run-1', stage: 'update-base', accepted: HEAD, grantedAt: '2026-11-16T12:30:00.000Z' });
+    x.job.repairRelease = grant();
+    // Saved as the poll finds it, so what is saved afterwards can be compared.
+    x.f.store.save();
+    const earlier = structuredClone(x.job.writerRestarts), restarted = () => x.f.store.state.events.filter(event => event.kind === 'writer-restarted');
+    return { ...x, grant, earlier, restarted };
 }
 
 test('a stopped writer whose branch and PR have not moved is saved, reset and queued again', async () => {
@@ -33,7 +40,8 @@ test('a stopped writer whose branch and PR have not moved is saved, reset and qu
     expect(job).toMatchObject({ stage: 'update-base', status: 'queued' });
     expect(job.stop).toBeUndefined();
     expect(job.writerRestarts).toEqual([expect.objectContaining({ workId: 'run-1', stage: 'update-base', accepted: HEAD, abandoned: PARTIAL, ref: `refs/office/salvage/${job.id}/run-1` })]);
-    expect(writes).toEqual([`cat-file -e ${HEAD}^{commit}`, `update-ref refs/office/salvage/${job.id}/run-1 ${PARTIAL}`, `reset --hard ${HEAD}`, 'clean -fd']);
+    // The ref is created against an empty old value, so it can never be moved.
+    expect(writes).toEqual([`cat-file -e ${HEAD}^{commit}`, `update-ref refs/office/salvage/${job.id}/run-1 ${PARTIAL} `, `reset --hard ${HEAD}`, 'clean -fd']);
     expect(f.state.calls.some(call => /^git push|^gh pr (create|ready|merge)/.test(call))).toBe(false);
     // The same stopped run is never restarted twice.
     job.status = 'blocked';
@@ -65,7 +73,7 @@ test('an unreadable remote decides nothing, and a salvage that fails declines wi
     await restartStoppedWriters(unread.f.delivery);
     expect(unread.job).toMatchObject({ status: 'queued' });
     expect(unread.job.writerRestartReadError).toBeUndefined();
-    const wrong = stopped(); wrong.f.state.local.branch = 'someone-elses-branch';
+    const wrong = stopped(); wrong.git.branch = 'someone-elses-branch';
     await restartStoppedWriters(wrong.f.delivery);
     expect(wrong.job).toMatchObject({ status: 'blocked', writerRestartDeclined: { reason: expect.stringContaining('not on the delivery branch') } });
     expect(wrong.writes).toEqual([]);
@@ -191,4 +199,136 @@ test('a failed remote read after admission preserves the last restart read error
     expect(job.writerRestartReadError).toBe('Earlier read failure');
     expect(f.store.state.events.some(event => event.kind === 'writer-restart-unreadable')).toBe(false);
     expect(writes).toEqual([]);
+});
+
+test('a released attempt is recorded, queued and spends its release in one write, keeping the earlier restarts', async () => {
+    const x = released();
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job).toMatchObject({ status: 'queued', repairRelease: { id: 'g'.repeat(64), consumedAt: expect.any(String) } });
+    expect(x.job.writerRestarts).toEqual([...x.earlier, expect.objectContaining({ workId: 'run-1', accepted: HEAD, abandoned: PARTIAL, ref: x.ref })]);
+    expect(x.job.detail).toContain(`attempt 4, released by harness fix ${'f'.repeat(7)}`);
+    expect(x.job.detail).not.toContain('of 3');
+    expect(x.restarted()).toHaveLength(1);
+    expect(savedState(x.f.store).coordination!.jobs!.find(job => job.id === x.job.id)).toMatchObject({ status: 'queued', repairRelease: { consumedAt: x.job.repairRelease!.consumedAt } });
+    // Spent: the same run is never restarted again, and the release funds nothing more.
+    x.job.status = 'blocked';
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job.writerRestarts).toHaveLength(4);
+    expect(x.restarted()).toHaveLength(1);
+});
+
+test('an ordinary restart leaves a matching release unspent, and the run it was for is never restarted again', async () => {
+    const x = released();
+    x.job.writerRestarts = x.earlier.slice(0, 2);
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job).toMatchObject({ status: 'queued', repairRelease: { id: 'g'.repeat(64) } });
+    expect(x.job.repairRelease!.consumedAt).toBeUndefined();
+    expect(x.job.detail).toContain('attempt 3 of 3 restarts');
+    x.job.status = 'blocked';
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job.writerRestarts).toHaveLength(3);
+});
+
+test('a pass whose accepted head changed during its last read records nothing, and the next pass declines before any second reset', async () => {
+    const x = released(), NEW = 'c'.repeat(40);
+    x.hooks.onWrite = command => { if (command === 'clean') x.job.head = NEW; };
+    await restartStoppedWriters(x.f.delivery);
+    // The worktree was saved and reset; nothing about the stale pass was recorded.
+    expect(x.git.refs.get(x.ref)).toBe(PARTIAL);
+    expect(x.job).toMatchObject({ status: 'blocked', writerRestarts: x.earlier });
+    expect(x.job.repairRelease!.consumedAt).toBeUndefined();
+    expect(x.job.writerRestartDeclined).toBeUndefined();
+    expect(x.restarted()).toHaveLength(0);
+    // Unpublished at the new head: an ordinary attempt is due and reaches the salvage, which finds the tree at the old head, not the work kept.
+    delete x.hooks.onWrite;
+    delete x.f.state.remote[x.job.branch!];
+    delete (x.job as { pr?: number }).pr;
+    x.git.writes.length = 0;
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job.writerRestartDeclined).toMatchObject({ workId: 'run-1', reason: expect.stringContaining(x.ref) });
+    expect(x.git.writes.filter(write => /^(reset|clean|update-ref)/.test(write))).toEqual([]);
+    expect(x.git.refs.get(x.ref)).toBe(PARTIAL);
+    expect(x.job.writerRestarts).toEqual(x.earlier);
+});
+
+test('a release replaced during the last read leaves the replacement, the read error and the decline state alone, and a later pass spends it once', async () => {
+    for (const finalRead of ['succeeds', 'fails'] as const) {
+        const x = released();
+        x.job.writerRestartReadError = 'Earlier read failure';
+        x.hooks.onWrite = command => {
+            if (command !== 'clean') return;
+            x.job.repairRelease = x.grant('h');
+            if (finalRead === 'fails') x.git.contents = '?? left-behind.txt';
+        };
+        await restartStoppedWriters(x.f.delivery);
+        expect(x.job.repairRelease, finalRead).toEqual(x.grant('h'));
+        expect(x.job, finalRead).toMatchObject({ status: 'blocked', writerRestartReadError: 'Earlier read failure', writerRestarts: x.earlier });
+        expect(x.job.writerRestartDeclined, finalRead).toBeUndefined();
+        expect(x.f.store.state.events.filter(event => event.kind.startsWith('writer-restart')), finalRead).toEqual([]);
+        // The next pass finds the worktree reset by the first, corroborates the kept work and resets nothing again.
+        delete x.hooks.onWrite;
+        x.git.contents = '';
+        await restartStoppedWriters(x.f.delivery);
+        expect(x.job, finalRead).toMatchObject({ status: 'queued', repairRelease: { id: 'h'.repeat(64), consumedAt: expect.any(String) } });
+        expect(x.job.writerRestarts, finalRead).toEqual([...x.earlier, expect.objectContaining({ workId: 'run-1', abandoned: PARTIAL, ref: x.ref })]);
+        expect(x.git.writes.filter(write => write.startsWith('reset')), finalRead).toHaveLength(1);
+        expect(x.restarted(), finalRead).toHaveLength(1);
+    }
+});
+
+test('a write that fails after the salvage changes nothing in the project, and the retry records the first salvage once', async () => {
+    const x = released(), save = x.f.store.save.bind(x.f.store);
+    let fail = false;
+    x.f.store.save = () => { if (fail) { fail = false; throw new Error('disk I/O error'); } save(); };
+    x.hooks.onWrite = command => { if (command === 'clean') fail = true; };
+    await expect(restartStoppedWriters(x.f.delivery)).rejects.toThrow('disk I/O error');
+    const stands = (job: any) => expect(job).toMatchObject({ status: 'blocked', writerRestarts: x.earlier, repairRelease: { id: 'g'.repeat(64) } });
+    stands(x.job);
+    expect(x.job.repairRelease!.consumedAt).toBeUndefined();
+    stands(savedState(x.f.store).coordination!.jobs!.find(job => job.id === x.job.id));
+    expect(x.restarted()).toHaveLength(0);
+    expect(x.f.store.db.prepare("SELECT count(*) AS n FROM events WHERE json_extract(body,'$.kind')='writer-restarted'").get()).toEqual({ n: 0 });
+    expect(x.git.refs.get(x.ref)).toBe(PARTIAL);
+    delete x.hooks.onWrite;
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job.writerRestarts).toEqual([...x.earlier, expect.objectContaining({ workId: 'run-1', abandoned: PARTIAL, ref: x.ref })]);
+    expect(x.job).toMatchObject({ status: 'queued', repairRelease: { consumedAt: expect.any(String) } });
+    expect(x.git.writes.filter(write => write.startsWith('reset'))).toHaveLength(1);
+    expect(x.restarted()).toHaveLength(1);
+});
+
+test('a job cancelled while its worktree is cleaned keeps its status, records the reset and spends no release', async () => {
+    const x = released();
+    x.hooks.onWrite = command => { if (command === 'clean') x.job.status = 'cancelled'; };
+    await restartStoppedWriters(x.f.delivery);
+    expect(x.job).toMatchObject({ status: 'cancelled', writerRestarts: [...x.earlier, expect.objectContaining({ workId: 'run-1', abandoned: PARTIAL, ref: x.ref })] });
+    expect(x.job.repairRelease!.consumedAt).toBeUndefined();
+    expect(x.restarted()).toHaveLength(0);
+    // Cancelled and given another accepted head meanwhile: nothing about this pass is recorded.
+    const moved = released();
+    moved.hooks.onWrite = command => { if (command === 'clean') Object.assign(moved.job, { status: 'cancelled', head: 'c'.repeat(40) }); };
+    await restartStoppedWriters(moved.f.delivery);
+    expect(moved.job.writerRestarts).toEqual(moved.earlier);
+});
+
+test('a pass whose worktree or branch was replaced, or that became ineligible, after its last guard records nothing', async () => {
+    for (const change of ['worktree', 'branch', 'hold'] as const) {
+        const x = released();
+        x.hooks.onWrite = command => {
+            if (command !== 'clean') return;
+            if (change === 'hold') HOLDS[x.job.key] = 'Synthetic hold';
+            else x.job[change] = `${x.job[change]}-replaced`;
+        };
+        try { await restartStoppedWriters(x.f.delivery); }
+        finally { delete HOLDS[x.job.key]; }
+        expect(x.job, change).toMatchObject({ status: 'blocked', writerRestarts: x.earlier });
+        expect(x.job.repairRelease!.consumedAt, change).toBeUndefined();
+        expect(x.restarted(), change).toHaveLength(0);
+        if (change !== 'hold') continue;
+        // Released again, the next pass finds the reset already done and records it once.
+        delete x.hooks.onWrite;
+        await restartStoppedWriters(x.f.delivery);
+        expect(x.job).toMatchObject({ status: 'queued', writerRestarts: [...x.earlier, expect.objectContaining({ workId: 'run-1', abandoned: PARTIAL, ref: x.ref })] });
+        expect(x.git.writes.filter(write => write.startsWith('reset'))).toHaveLength(1);
+    }
 });

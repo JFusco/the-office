@@ -126,7 +126,9 @@ src/
   The delete goes through the provider API, not a push, so no repository hook runs.
 - A hands-off GitHub writer stage whose run died restarts from the accepted head
   (`server/delivery/attempts/`): the abandoned work is kept under a local ref, the worktree is
-  reset, and nothing is pushed. This re-runs a model stage; it never resends an Effect.
+  reset, and nothing is pushed. This re-runs a model stage; it never resends an Effect. A
+  `release-writer` repair resume after a verified fix grants that run one restart beyond the
+  ordinary allowance, spent in the same write that records it; counters and salvage refs are kept.
 - Only `holds` in the local office config and structured `prerequisites` gate work.
   Model-written findings are advisory unless the model returns a blocking `outcome`.
 
