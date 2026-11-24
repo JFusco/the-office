@@ -25,6 +25,7 @@ export function Outbox({snapshot,names=ROLE_NAMES,sendMessage,initialId,refresh,
   const [chosen,setChosen]=useState(initialId||'');
   const open=snapshot.outbox.filter(a=>a.status==='open'),items=ownerStepsFirst(snapshot.outbox);
   const selected=snapshot.outbox.find(a=>a.id===chosen);
+  const beingHandled = (id:string) => snapshot.messages.some(m=>m.from==='human' && m.actionId===id && ['queued','working'].includes(m.status));
   const rounds=(snapshot.featureQuestions||[]).filter(round=>round.projectId===snapshot.project?.id);
   const question=rounds.find(round=>'feature-round:'+round.roundId===chosen);
   const plan=selected&&savedPlanFollowup(snapshot,selected.id);
@@ -33,11 +34,17 @@ export function Outbox({snapshot,names=ROLE_NAMES,sendMessage,initialId,refresh,
   return <>{selected||question?<p className="text-18 font-semibold">Your outbox</p>:<><PanelHeader icon={<Send size={26}/>}>Your outbox</PanelHeader><p className={mutedCopy}>Open an item to answer its question or see the next action.</p></>}
 
     {!open.length&&!rounds.length&&!selected&&!question?<div className="rounded-8 border border-dashed border-mail-empty-line bg-mail-empty px-4 py-6 text-center text-mail-empty-ink"><Check size={30} className="mx-auto mt-0.75 mb-4 block text-mail-empty-icon"/><strong className="block text-12 font-medium text-mail-empty-title">Nothing needs you right now.</strong><p className="mt-2 text-10 leading-body">Questions and blockers that need your input will arrive here.</p></div>:null}
-    {!selected&&!question&&(['open','resolved'] as const).map(status=>{
-      const group=items.filter(item=>item.status===status);
-      return group.length ? <DrawerTopic key={status} title={status==='open'?'Needs your reply':'Resolved items'} detail={group.length}>
+    {!selected&&!question&&(['open','handling','approval','resolved'] as const).map(status=>{
+      const group=items.filter(item => {
+        if (item.status === 'resolved') return status === 'resolved';
+        if (beingHandled(item.id)) return status === 'handling';
+        if (item.id.startsWith('merge-approval:')) return status === 'approval';
+        return status === 'open';
+      });
+      return <DrawerTopic available={group.length > 0} key={status} title={{open:'Needs your reply',handling:'With the team',approval:'Awaiting approval',resolved:'Resolved items'}[status]} detail={group.length}>
+        {!group.length && <p className={mutedCopy}>No items in this group.</p>}
         {group.map(a=><button type="button" key={a.id} data-outbox-item className={cx(cardButton,chosen===a.id?cardButtonSelected:cardButtonIdle)} onClick={()=>onOpen ? onOpen(a.id) : setChosen(a.id)} aria-pressed={chosen===a.id}><span className={cx(eyebrow,'text-9')}>{a.ticket||'Office'} · {a.status==='resolved'?'Resolved':`From ${snapshot.agents.find(agent=>agent.id===a.role)?.name||names[a.role]}`}{a.ownerSteps&&a.status==='open'?<> <Tag tone="waiting">Only you</Tag></>:null}</span><strong className="text-14">{a.title}</strong><span className="text-13 leading-relaxed">{shortSummary(a.detail)}</span><small className="mt-1 block text-11 leading-relaxed"><b>{snapshot.messages.some(m=>m.from==='human'&&m.actionId===a.id&&['queued','working'].includes(m.status))?'Team handling:':'Action:'}</b> {snapshot.messages.some(m=>m.from==='human'&&m.actionId===a.id&&['queued','working'].includes(m.status))?'Read-back is queued or running; no additional reply needed.':savedImplementationFollowup(snapshot,a.id)?'Review the saved draft and choose whether Office should continue.':savedPlanFollowup(snapshot,a.id)?'Office must verify and link the original saved plan. No product answer is needed.':actionSummary(a.id)}</small><span className="mt-2 font-semibold underline">{a.status==='resolved'?'View details':isLessonDecision(a.id)?'Review lesson':'Open follow-up'} →</span></button>)}
-      </DrawerTopic> : null;
+      </DrawerTopic>;
     })}
     {!selected&&!question&&rounds.map(round=><button type="button" key={round.roundId} data-outbox-question className={cx(cardButton,cardButtonIdle)} onClick={()=>(onOpen || setChosen)('feature-round:'+round.roundId)}><span className={eyebrow}>{round.ticket||round.projectName} · Question for you</span><strong>{round.title}</strong><span>{round.questions[0]?.question}</span><span className="mt-2 font-semibold underline">Answer question →</span></button>)}
     {question?<Section><OutboxQuestionRound key={question.roundId} round={question} disabled={snapshot.mode==='demo'} refresh={refresh}/></Section>:null}

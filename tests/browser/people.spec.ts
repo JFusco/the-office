@@ -26,11 +26,13 @@ test('the People drawer finds employees, shows the org chart and opens each desk
   await chart.locator('[data-org-node="lead"]').click();
   const sam = page.getByRole('complementary', { name: 'Lead developer' });
   await expect(sam).toBeVisible();
+  await page.getByRole('button',{name:/^Responsibilities/}).click();
   await expect(sam.locator('[data-reports-to]')).toContainText('Reports to Avery');
   await expect(sam.locator('[data-reports-to]')).toContainText('Direct reports: Alex, Riley');
   await sam.locator('[data-reports-to]').getByRole('button', { name: 'Avery' }).click();
-  await expect(page.locator('[data-reports-to]')).toContainText('Reports to Joe');
-  await expect(page.locator('[data-reports-to]')).toContainText('Direct reports: Morgan, Sam, Ellis, Harper');
+  await page.getByRole('button',{name:/^Responsibilities/}).click();
+  await expect(page.locator('[data-inspector-scroll] [data-reports-to]')).toContainText('Reports to Joe');
+  await expect(page.locator('[data-inspector-scroll] [data-reports-to]')).toContainText('Direct reports: Morgan, Sam, Ellis, Harper');
 
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-inspector]')).toHaveCount(0);
@@ -74,6 +76,7 @@ test('during the tour People only opens desks present in the sample snapshot', a
       await expect(agent).toBeVisible();
       await expect(page.getByRole('complementary', { name: 'Ticket', exact: true })).toHaveCount(0);
       if (id === 'lead') {
+        await page.getByRole('button',{name:'Responsibilities'}).click();
         await expect(agent.locator('[data-reports-to]')).toContainText('Reports to Avery');
         await expect(agent.locator('[data-reports-to]').getByRole('button', { name: 'Avery', exact: true })).toHaveCount(0);
       }
@@ -85,5 +88,5 @@ test('during the tour People only opens desks present in the sample snapshot', a
   }
 
   await page.getByRole('button', { name: 'Office settings', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: 'Settings', exact: true }).getByText('Turns M, O, C, P, U and 0 on or off. Escape always closes details.', { exact: true })).toBeVisible();
+  await page.getByRole('button',{name:/^Office preferences/}).click();await expect(page.getByRole('complementary', { name: 'Settings', exact: true }).getByText('Turns M, O, C, P, U and 0 on or off. Escape always closes details.', { exact: true })).toBeVisible();
 });

@@ -11,6 +11,10 @@ const installed=existsSync(cache)?readdirSync(cache).filter(x=>/^chromium-\d+$/.
 const fixturePort=Number(process.env.OFFICE_FIXTURE_PORT||4460);
 const external=process.env.OFFICE_TEST_BASE_URL;
 export default defineConfig({testDir:'tests/browser',workers:1,timeout:60000,
-  use:{baseURL:external||`http://127.0.0.1:${fixturePort}`,viewport:{width:1440,height:1000},reducedMotion:'reduce',headless:true,launchOptions:{executablePath:process.env.PLAYWRIGHT_EXECUTABLE_PATH||installed,args:['--enable-unsafe-swiftshader']},trace:'retain-on-failure'},
+  projects:[
+    {name:'chromium',use:{browserName:'chromium',launchOptions:{executablePath:process.env.PLAYWRIGHT_EXECUTABLE_PATH||installed,args:['--enable-unsafe-swiftshader']}}},
+    {name:'webkit',testMatch:'**/drawers.spec.ts',grep:/ticket evidence returns to the same mailbox row/,use:{browserName:'webkit'}},
+  ],
+  use:{baseURL:external||`http://127.0.0.1:${fixturePort}`,viewport:{width:1440,height:1000},reducedMotion:'reduce',headless:true,trace:'retain-on-failure'},
   webServer:external?undefined:{command:`node --import tsx tests/browser/fixture-server.ts --port ${fixturePort} --dist ${process.env.OFFICE_FIXTURE_DIST||'dist'}`,url:`http://127.0.0.1:${fixturePort}/api/health`,reuseExistingServer:false,stdout:'ignore',stderr:'pipe'},
   reporter:'list'});

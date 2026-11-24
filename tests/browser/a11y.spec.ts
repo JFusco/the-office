@@ -58,15 +58,16 @@ for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
   });
 }
 test('delivery drawers pass the WCAG 2.2 AA audit',async({page})=>{
+  test.slow();
   await ready(page);
   for(const [button,name] of [['Open PM mailbox','mailbox'],['Open your outbox','outbox'],['Chat with Morgan','chat'],['Azure operations','azure'],['Service health','health'],['People','people'],['Telemetry','telemetry'],['Visit Riley, QA','agent']] as const){
     await page.getByRole('button',{name:new RegExp(`^${button}`)}).click();await expect(page.getByRole('complementary')).toBeVisible();
-    if(name==='outbox')await page.getByRole('button',{name:/CEC-102 needs a test account/}).click();
+    if(name==='outbox'){await page.getByRole('button',{name:/^Needs your reply/}).click();await page.getByRole('button',{name:/CEC-102 needs a test account/}).click();}
     await audit(page,`drawer-${name}`);
     if(name==='people'){await page.getByRole('tab',{name:'Org chart'}).click();await expect(page.getByRole('list',{name:'Org chart'})).toBeVisible();await audit(page,'drawer-people-org-chart');await page.getByRole('tab',{name:'Directory'}).click();}await page.keyboard.press('Escape');await expect(page.getByRole('complementary')).toHaveCount(0);
   }
   await page.getByRole('button',{name:/^PM queue \d+:/}).click();await expect(page.getByRole('complementary')).toBeVisible();await audit(page,'drawer-pm-queue');await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('button',{name:/CEC-102/}).first().click();
+  await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('button',{name:/^Already with the team/}).click();await page.getByRole('button',{name:/CEC-102/}).first().click();
   await expect(page.getByRole('heading',{name:'Ticket timeline'})).toBeVisible();await audit(page,'drawer-ticket');
 });
 test('GitHub project, CTO floor and popovers pass the WCAG 2.2 AA audit',async({page})=>{
@@ -74,7 +75,7 @@ test('GitHub project, CTO floor and popovers pass the WCAG 2.2 AA audit',async({
   await page.getByRole('button',{name:'GitHub operations',exact:true}).click();await expect(page.getByRole('heading',{name:'GitHub & Actions'})).toBeVisible();await audit(page,'drawer-github');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:/^Go to Floor 2, CTO Office/}).click();await expect(page.getByRole('heading',{level:1,name:'CTO Office'})).toBeVisible();await audit(page,'cto-floor');
   await page.getByRole('button',{name:/^Open project goals/}).click();await expect(page.getByRole('complementary')).toBeVisible();await audit(page,'drawer-goals');await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:'Office settings',exact:true}).click();await expect(page.getByRole('complementary',{name:'Settings'})).toBeVisible();await expect(page.locator('[data-office-config]')).toBeVisible();await audit(page,'settings');await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Office settings',exact:true}).click();await expect(page.getByRole('complementary',{name:'Settings'})).toBeVisible();await page.getByRole('button',{name:/^Office configuration/}).click();await expect(page.locator('[data-office-config]')).toBeVisible();await audit(page,'settings');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'Office help',exact:true}).click();await expect(page.getByRole('dialog',{name:'Office controls'})).toBeVisible();await audit(page,'help');await page.keyboard.press('Escape');
 });
 test('loading and error states pass the WCAG 2.2 AA audit',async({page})=>{
@@ -94,6 +95,6 @@ test('Harper\'s drawer with chat, lessons, office proposals and the roll-up tabl
       rollups:[{id:'rollup:2026-11-06',weekEnding:'2026-11-06',summary:'Two runs shipped.',officeProposalIds:[],at,metrics:{from:at,to:at,completed:2,retired:0,parked:1,repairBudgets:0,repairAttempts:3,reroutes:1,ciRepairs:0,medianQueueMinutes:4,medianBlockHours:26,stillParked:0,retrospectives:3,lessonsAdded:2,lessonsRetired:0}}]}}});
   await ready(page);
   await page.getByRole('button',{name:/^Visit Harper, .*knowledge engineer$/}).click();
-  await expect(page.getByRole('table',{name:/Delivery metrics/})).toBeVisible();
+  await page.getByRole('button',{name:/^Lessons/}).click();await page.getByRole('button',{name:/^Weekly report/}).click();await expect(page.getByRole('table',{name:/Delivery metrics/})).toBeVisible();
   await audit(page,'drawer-harper');
 });

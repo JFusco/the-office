@@ -38,7 +38,7 @@ export function ServiceHealthPanel({project='cec',liveIT,onChat}:{project?:strin
  useEffect(()=>{if(loading)return;const timer=setTimeout(()=>setRefresh(n=>n+1),60000);return()=>clearTimeout(timer);},[loading,project,refresh]);
  async function checkIT(){setLoading(true);setError('');try{const response=await fetch(`/api/commands?project=${encodeURIComponent(project)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'check-it'})});if(!response.ok)throw new Error('IT check could not finish; refresh health to read the current state.');setRefresh(n=>n+1);}catch(e){setError(String(e));setLoading(false);}}
  function followUp(f:ITFollowUp){return <p className={next} key={f.id}><b>Next owner: {f.owner}</b><br/>{withoutIdentifiers(f.detail)}</p>;}
- return <><PanelHeader icon={<HeartPulse size={26}/>}>Service health</PanelHeader><p className={mutedCopy}>Login checks, assignment polling, confirmed Slack activity, and public provider status. Each uses its own evidence and timestamp.</p>
+ return <><PanelHeader icon={<HeartPulse size={26}/>}>Service health</PanelHeader><p className={mutedCopy}>Connections, availability and outstanding follow-ups.</p>
   <div className="mt-5 flex flex-wrap gap-2">{onChat?<Button onClick={onChat}>Chat with Ellis</Button>:null}
   <Button disabled={loading} onClick={()=>setRefresh(n=>n+1)}>{loading?<LoadingMark/>:<RefreshCw size={14}/>}{loading?'Checking connections…':'Refresh health'}</Button></div>
   {loading?<LoadingState className="mt-3">Checking login status and read access. Checks can take up to a minute; no model calls or login changes.</LoadingState>:null}

@@ -43,7 +43,7 @@ export function TelemetryPanel({ projects, defaultProject = '' }: { projects: { 
   const navigation=useContext(DrawerNavigation);
   const drill = (next: Scope) => {
     setScope(next);
-    if(navigation && navigation.path.entries.length>1) navigation.back();
+    if(navigation && navigation.path.entries.length>1) navigation.back(document.getElementById(SCOPE_ID));
   };
   const ticketKeys = tickets.project === scope.project ? tickets.keys : [];
   return <>

@@ -17,7 +17,7 @@ test('living office renders, opens contextual rooms and supports keyboard naviga
   await page.keyboard.press('Escape');await page.getByRole('button',{name:'Visit Riley, QA'}).click();
   await expect(page.getByRole('heading',{name:'Riley',exact:true})).toBeVisible();
   const qa=(await(await page.request.get('/api/office')).json()).agents.find((a:any)=>a.id==='qa');
-  await expect(page.locator('[data-panel-foot]')).toContainText(qa.sessionId?'Session running':'No session running');
+  await page.getByRole('button',{name:/^Responsibilities/}).click();await expect(page.locator('[data-panel-foot]')).toContainText(qa.sessionId?'Session running':'No session running');
   expect(errors).toEqual([]);
 });
 test('explicit tour is local, animated, and cannot execute real ticket actions',async({page})=>{
@@ -29,7 +29,7 @@ test('explicit tour is local, animated, and cannot execute real ticket actions',
   await page.getByRole('button',{name:'Next step',exact:true}).click();
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
   await expect(page.getByRole('button',{name:'Check mail now'})).toBeDisabled();
-  await page.getByRole('complementary',{name:'PM mailbox',exact:true}).getByRole('button',{name:/^DEMO-01/}).click();
+  await page.getByRole('button',{name:/^Already with the team/}).click();await page.getByRole('complementary',{name:'PM mailbox',exact:true}).getByRole('button',{name:/^DEMO-01/}).click();
   await expect(page.getByRole('heading',{name:'Make the save confirmation accessible'})).toBeVisible();
   await expect(page.getByText('This is an illustrative ticket. No Jira, code, browser or Azure action is running.')).toBeVisible();
   expect(writes).toEqual([]);
@@ -39,11 +39,11 @@ test('explicit tour is local, animated, and cannot execute real ticket actions',
 test('settings persist and keyboard focus is visible',async({page,request})=>{
   await page.emulateMedia({reducedMotion:'no-preference'});
   await page.goto('/');await page.getByRole('button',{name:'Office settings'}).click();
-  await page.getByLabel('Reduced motion').check();await page.getByLabel('Graphics').selectOption('low');
+  await page.getByRole('button',{name:/^Office preferences/}).click();await page.getByLabel('Reduced motion').check();await page.getByLabel('Graphics').selectOption('low');
   // Office preferences are saved by the service, not the browser.
   await expect.poll(async()=>{const p=await(await request.get('/api/preferences')).json();return [p.reducedMotion,p.quality];}).toEqual([true,'low']);
   await page.reload();await expect(page.locator('html')).toHaveAttribute('data-motion','reduced');
-  await page.getByRole('button',{name:'Office settings'}).click();await expect(page.getByLabel('Graphics')).toHaveValue('low');await expect(page.getByLabel('Reduced motion')).toBeChecked();
+  await page.getByRole('button',{name:'Office settings'}).click();await page.getByRole('button',{name:/^Office preferences/}).click();await expect(page.getByLabel('Graphics')).toHaveValue('low');await expect(page.getByLabel('Reduced motion')).toBeChecked();
   await page.keyboard.press('Escape');await page.keyboard.press('m');await expect(page.getByRole('button',{name:'Close details'})).toBeFocused();
 });
 test('compact viewport keeps the office and contextual controls usable',async({page})=>{
@@ -58,7 +58,7 @@ test('shows connection loss and reconnects without inventing worker activity',as
   await context.setOffline(false);await expect(page.getByText('OFFICE LIVE',{exact:true})).toBeVisible({timeout:20000});
   await page.getByRole('button',{name:'Azure operations',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Azure pipelines'})).toBeVisible();
-  await expect(page.getByRole('heading',{name:'Running environments'})).toBeVisible();
+  await page.getByRole('button',{name:/^Environments/}).click();await expect(page.getByRole('heading',{name:'Running environments'})).toBeVisible();
 });
 test('human outbox and PM conversation are accessible and preserve ticket context',async({page,request})=>{
   const state=await(await request.get('/api/office')).json();
@@ -70,7 +70,7 @@ test('human outbox and PM conversation are accessible and preserve ticket contex
   await page.route('**/api/events',route=>route.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
   await page.route('**/api/messages',async route=>{const data=route.request().postDataJSON();writes.push(data);state.messages.push({...data,requestId:data.id,from:'human',to:data.role,status:'queued',createdAt:state.serverTime,sessionId:'',recipients:[],receipts:[],error:''});await route.fulfill({status:202,json:{accepted:true,id:data.id}});});
   await page.goto('/');await page.getByRole('button',{name:/^Open your outbox,/}).click();
-  await expect(page.getByRole('complementary',{name:'Your outbox'})).toBeVisible();await page.getByRole('button',{name:/CEC-999 needs your help/}).click();
+  await expect(page.getByRole('complementary',{name:'Your outbox'})).toBeVisible();await page.getByRole('button',{name:/^Needs your reply/}).click();await page.getByRole('button',{name:/CEC-999 needs your help/}).click();
   await page.getByRole('textbox',{name:'Your reply to Riley'}).fill('Synthetic test reply: please recheck access.');await page.getByRole('button',{name:'Send & recheck',exact:true}).click();
   await expect(page.getByText('Queued · waiting for a free desk')).toBeVisible();expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({role:'qa',ticket:'CEC-999',actionId:'ticket:CEC-999:qa',recheck:true});
   // Outbox replies go to the item's displayed owner (#188), so the reply is threaded with Riley, not Morgan.

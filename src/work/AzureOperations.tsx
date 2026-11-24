@@ -37,7 +37,7 @@ export function AzureOperations({ snapshot, act, busy }: InspectorProps) {
         Azure pipelines
       </PanelHeader>
       <p className={mutedCopy}>
-        Current PRs, policy builds, merges and deployments. Each observation stays tied to its actual commit.
+        Pull requests, builds and deployments.
       </p>
       <Button disabled={busy || snapshot.mode === 'demo'} onClick={() => act('refresh-azure')}>
         Refresh Azure
@@ -49,7 +49,7 @@ export function AzureOperations({ snapshot, act, busy }: InspectorProps) {
       </Tag>
       {snapshot.azure.observedAt && Date.now() - Date.parse(snapshot.azure.observedAt) > 150000 ? (
         <Notice className="mt-5">
-          Azure observations are stale. These results are from an earlier checkpoint and cannot clear a delivery gate.
+          These results may be out of date. Refresh Azure for the latest status.
         </Notice>
       ) : null}
       {snapshot.azure.error ? (

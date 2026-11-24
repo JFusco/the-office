@@ -15,12 +15,12 @@ import { TimeForm } from './TimeForm';
 import type { OfficePreferencesController } from './useOfficePreferences';
 
 function ProjectForms({ snapshot, refresh }: { snapshot: OfficeSnapshot; refresh?: () => Promise<void> }) {
-  return <div className="grid gap-6">
+  return <div>
     <DrawerTopic title="Pickup"><PickupForm snapshot={snapshot} refresh={refresh} /></DrawerTopic>
     {snapshot.project?.provider === 'github' ? <DrawerTopic title="Delivery"><MergeCloseoutForm snapshot={snapshot} refresh={refresh} /></DrawerTopic> : null}
-    <DrawerTopic title="Notifications"><SlackNoticesForm snapshot={snapshot} refresh={refresh} />
+    <DrawerTopic title="Notifications"><div className="grid gap-section-gap"><SlackNoticesForm snapshot={snapshot} refresh={refresh} />
     <SlackChannelForm snapshot={snapshot} refresh={refresh} />
-    <GoalNoticeForm snapshot={snapshot} refresh={refresh} /></DrawerTopic>
+    <GoalNoticeForm snapshot={snapshot} refresh={refresh} /></div></DrawerTopic>
     <DrawerTopic title="Time"><TimeForm snapshot={snapshot} refresh={refresh} /></DrawerTopic>
   </div>;
 }
@@ -34,7 +34,7 @@ export function SettingsPanel({ snapshot, preferences, osReduced, refresh }: { s
       {preferences.displayed ? <OfficePreferencesForm preferences={preferences.displayed} osReduced={osReduced} pending={preferences.pending} feedback={preferences.feedback} writable={preferences.writable} onChange={patch => void preferences.save(patch)} /> : <LoadingState className={mutedCopy} >Loading Office preferences…</LoadingState>}
     </Section></DrawerTopic>
     <DrawerTopic title="Office configuration"><Section data-settings-block="configuration"><SectionTitle className="mb-4">Office configuration</SectionTitle><OfficeConfigSection /></Section></DrawerTopic>
-    <DrawerTopic title={tour ? "Project settings" : snapshot.project?.name || "Project settings"} detail="Project settings"><Section data-settings-block="project"><SectionTitle className="mb-4">{tour ? 'Project' : `Project · ${snapshot.project?.name || 'Loading'}`}</SectionTitle>
+    <DrawerTopic title="Project settings" detail={tour ? undefined : snapshot.project?.name}><Section data-settings-block="project"><SectionTitle className="mb-4">{tour ? 'Project' : `Project · ${snapshot.project?.name || 'Loading'}`}</SectionTitle>
       {tour ? <Notice tone="tour">Project settings are unavailable during the illustrative tour. Return to the live office to change them.</Notice> : <ProjectForms key={snapshot.project?.id} snapshot={snapshot} refresh={refresh} />}
     </Section></DrawerTopic>
   </>;

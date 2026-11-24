@@ -57,7 +57,8 @@ test('pending project fetch and SSE snapshots cannot open stale drawers or dispa
     await page.getByRole('button',{name:/^(Pause|Resume) office$/}).dispatchEvent('click');expect(writes).toHaveLength(0);
     release();await expect(page.locator('[data-project-loading]')).toHaveCount(0);
     await page.keyboard.press('m');await expect(page.getByRole('heading',{name:'PM mailbox',exact:true})).toBeVisible();
-    await expect(page.getByText('GitHub issues for this project.',{exact:false})).toBeVisible();
+    await expect(page.getByLabel('Office project')).toHaveValue('cms-field-vocabulary');
+    await expect(page.getByRole('button',{name:'Project board',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Check mail now',exact:true}).click();
     expect(writes).toHaveLength(1);expect(writes[0].url).toContain('project=cms-field-vocabulary');expect(writes[0].body.action).toBe('check-mail');
     expect(await page.locator('canvas').getAttribute('data-project-canvas')).toBe('preserved');
@@ -74,8 +75,8 @@ test('ticket drawer shows the team decision and skipped steps distinctly from pa
   const approach={plan:'none',review:'none',validation:'developer-checks',checks:['Focused build/typecheck'],reason};
   state.tickets=[{key:'CEC-999',summary:'Synthetic approach display fixture',type:'Task',status:'In Progress',stage:'ci',activity:'waiting',blocker:'',commit:'',branch:'',prId:0,previewUrl:'',attempt:0,findings:[],evidence:[],results:{},approach,decisions:[{role:'pm',stage:'understand',at:new Date().toISOString(),approach}],skippedStages:Object.fromEntries(['plan','plan-review','code-review','preview','qa'].map(s=>[s,reason]))}];
   await page.route('**/api/office',r=>r.fulfill({json:state}));await page.route('**/api/events',r=>r.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
-  await page.goto('/');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('button',{name:/CEC-999 Synthetic approach display fixture/}).click();
-  await expect(page.getByRole('heading',{name:'Team approach',exact:true})).toBeVisible();await expect(page.getByText('No separate plan',{exact:true})).toBeVisible();await expect(page.getByText('Developer checks',{exact:true})).toBeVisible();await expect(page.getByRole('region',{name:'Ticket timeline'}).getByText(/ · skipped$/)).toHaveCount(5);await expect(page.locator('[data-stage-state=passed]')).toHaveCount(0);
+  await page.goto('/');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('button',{name:/^Project board/}).click();await page.getByRole('button',{name:/CEC-999 Synthetic approach display fixture/}).click();await page.getByRole('button',{name:'Approach and decisions'}).click();
+  await expect(page.getByRole('heading',{name:'Team approach',exact:true})).toBeVisible();await expect(page.getByText('No separate plan',{exact:true})).toBeVisible();await expect(page.getByText('Developer checks',{exact:true})).toBeVisible();await page.getByRole('button',{name:/^Back to /}).click();await expect(page.getByRole('region',{name:'Ticket timeline'}).getByText(/ · skipped$/)).toHaveCount(5);await expect(page.locator('[data-stage-state=passed]')).toHaveCount(0);
 });
 
 test('Brain is selectable with its own maintenance control and schedule',async({page,request})=>{
@@ -84,6 +85,7 @@ test('Brain is selectable with its own maintenance control and schedule',async({
   await page.goto('/');await page.getByLabel('Office project').selectOption('brain');
   await page.getByRole('button',{name:'GitHub operations',exact:true}).click();
   await expect(page.getByRole('button',{name:'Run Brain maintenance',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:/^Maintenance/}).click();
   await expect(page.getByText(/Daily maintenance and capture review at 5 PM Eastern/)).toBeVisible();
   await page.reload();await expect(page.getByLabel('Office project')).toHaveValue('brain');
 });
@@ -98,6 +100,7 @@ test('Brain board lanes and ticket spacing reflect live project observations',as
   await expect(dropdown).toHaveCSS('appearance','none');await expect(dropdown).toHaveCSS('padding-right','38px');
   await expect(dropdown.locator('xpath=following-sibling::*[local-name()="svg"]')).toHaveAttribute('aria-hidden','true');
   await page.getByRole('button',{name:'GitHub operations',exact:true}).click();
+  await page.getByRole('button',{name:/^Project board/}).click();
   await expect(page.getByRole('heading',{name:'GitHub Project',exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Brain board ↗',exact:true})).toHaveAttribute('href',brain.project.githubProject.url);
   for(const lane of brain.github.board.lanes)await expect(page.getByRole('heading',{name:`${lane} · ${brain.github.board.items.filter((i:any)=>i.status===lane&&i.repository==='JFusco/brain').length}`,exact:true})).toBeVisible();
@@ -105,6 +108,7 @@ test('Brain board lanes and ticket spacing reflect live project observations',as
   await page.keyboard.press('Escape');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
   const card=brain.github.board.items.find((i:any)=>i.repository==='JFusco/brain'&&brain.tickets.some((t:any)=>t.key===`GH-${i.number}`&&t.status==='open'));
   expect(card).toBeTruthy();
+  await page.getByRole('button',{name:/^Project board/}).click();
   await page.getByRole('button',{name:new RegExp(`GH-${card.number}\\b`)}).click();
   await expect(page.getByText(`Project lane: ${card.status}`,{exact:true})).toBeVisible();
   expect(await page.locator('[data-inspector-scroll]').evaluate(el=>el.scrollTop)).toBe(0);
@@ -125,7 +129,7 @@ test('Open board follows the selected project for Jira and GitHub and remains vi
   }
   const cms=await(await request.get('/api/office?project=cms-field-vocabulary')).json();expect(cms.github.board.error).toBe('');
   await page.getByRole('button',{name:'GitHub operations',exact:true}).click();
-  await expect(page.getByRole('link',{name:'CMS Field Vocabulary board ↗',exact:true})).toHaveAttribute('href','https://github.com/users/JFusco/projects/6');
+  await page.getByRole('button',{name:/^Project board/}).click();await expect(page.getByRole('link',{name:'CMS Field Vocabulary board ↗',exact:true})).toHaveAttribute('href','https://github.com/users/JFusco/projects/6');
   for(const lane of cms.github.board.lanes)await expect(page.getByRole('heading',{name:`${lane} · ${cms.github.board.items.filter((i:any)=>i.status===lane&&i.repository===cms.project.repository).length}`,exact:true})).toBeVisible();
   await page.screenshot({path:evidence('cms-project-board.png')});
   await page.keyboard.press('Escape');await page.setViewportSize({width:390,height:844});
@@ -142,6 +146,7 @@ test('PM queue shows another project without switching views, then opens its pro
   await page.route('**/api/events*',async r=>r.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(new URL(r.request().url()).searchParams.get('project')==='brain'?brain:cec)}\n\n`}));
   await page.goto('/');await page.getByLabel('Office project').selectOption('cec');
   await page.getByRole('button',{name:'PM queue 1: 1 active or queued, 0 waiting on prerequisites, 0 stopped',exact:true}).click();
+  await page.getByRole('button',{name:/^Queued next/}).click();
   await expect(page.getByLabel('Office project')).toHaveValue('cec');await expect(page.getByText('Brain · GH-255',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Open Brain ticket',exact:true}).click();
   await expect(page.getByLabel('Office project')).toHaveValue('brain');await expect(page.getByRole('button',{name:'Discuss GH-255 with Morgan',exact:true})).toBeVisible();

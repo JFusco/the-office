@@ -38,7 +38,7 @@ const STEP_MARK = {
   skipped: 'border-dashed border-step-line bg-step',
   pending: 'border-step-line bg-step',
 };
-function Link({ url, children }: { url: string; children: React.ReactNode }) {
+export function Link({ url, children }: { url: string; children: React.ReactNode }) {
   return /^https:\/\//.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url) ? (
     <TextLink href={url} target="_blank" rel="noreferrer">
       {children}
@@ -190,7 +190,7 @@ export function TicketDetail({
               {job.steps.map((s, i) => (
                 <Card as="article" key={i}>
                   <strong className="text-11 leading-relaxed">
-                    {s.stage} · {s.result.outcome}
+                    {s.stage} · {s.stage === 'validate' && job.qaGateRefusal?.step === i ? 'QA evidence gate refused' : s.result.outcome}
                   </strong>
                   <p className="leading-relaxed">{s.result.summary}</p>
                 </Card>

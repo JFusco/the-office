@@ -178,7 +178,7 @@ test('a configuration read failure affects only its block and can be retried', a
   await live(page); await gear(page).click(); await page.getByRole('button',{name:'Office preferences',exact:true}).click();
   await expect(page.getByLabel('Graphics')).toBeEnabled();
   await page.getByRole('button',{name:'Back to Settings'}).click();
-  await page.getByRole('button',{name:/CEC.*Project settings/}).click();
+  await page.getByRole('button',{name:/Project settings.*CEC/}).click();
   await page.getByRole('button',{name:'Pickup',exact:true}).click();
   await expect(page.getByRole('button', { name: 'Save pickup rule' })).toBeEnabled();
   await page.getByRole('button',{name:/^Back to /}).click();

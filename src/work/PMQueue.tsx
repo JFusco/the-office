@@ -1,6 +1,6 @@
 import { DrawerTopic } from '../office/drawer/DrawerTopic';
 import { motion } from 'motion/react';
-import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { withoutIdentifiers } from '../office/without-identifiers';
 import type { OfficeSnapshot } from '../shared';
 import { Button, Card, Count, Section, SectionTitle, Tag, TextLink, mutedCopy } from '../ui';
@@ -47,6 +47,7 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
         return {...row, progress, identity: row.project + ':' + row.key, signature: transitionKey(progress)};
     });
     const changes = useTransitions(snapshot, new Map(rows.map(r => [r.identity,r.signature])), reduced);
+    const [reading, setReading] = useState<{group: (typeof rows)[number]['group']; identity: string} | null>(null);
     const waiting = rows.filter(r => r.group === 'waiting');
     const dependencyOnly = waitingOnlyOnPrerequisites(waiting);
     const titles = {active:'With the team now', queued:'Queued next',
@@ -61,14 +62,14 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
         <PanelHeader icon={<Inbox size={26}/>}>PM queue</PanelHeader>
         {snapshot.mode === 'live' && !live && <p className={mutedCopy}>Last confirmed{time &&
             <> · <time dateTime={time}>{new Date(time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</time></>}</p>}
-        <p className={mutedCopy}>Remaining work across all projects, including stopped deliveries and prerequisite waits. Automatic pickup follows each project’s status rule; an explicit Start can queue another assignment.</p>
+        <p className={mutedCopy}>Work across all projects.</p>
         {(['active','queued','waiting','stopped'] as const).map(group => {
-            const items = rows.filter(r => r.group === group);
-            if (!items.length) return null;
-            return <DrawerTopic key={group} title={titles[group]} detail={items.length}><Section aria-label={titles[group]}>
+            const items = rows.filter(r => r.group === group || (reading?.group === group && reading.identity === r.identity));
+            return <DrawerTopic available={items.length > 0} key={group} title={titles[group]} onOpen={() => setReading(null)} detail={rows.filter(row => row.group === group).length}><Section aria-label={titles[group]}>
                 <SectionTitle className="mb-4">{titles[group]} <Count>{items.length}</Count></SectionTitle>
                 {group === 'waiting' && dependencyOnly && <p className={mutedCopy}>These tickets are waiting on linked work. Morgan rechecks them when their prerequisites complete.</p>}
                 {group === 'stopped' && <p className={mutedCopy}>These tickets are stopped, not queued for new work. Read the blocker before continuing.</p>}
+                {!items.length && <p className={mutedCopy}>No tickets in this group.</p>}
                 {items.map(row => {
                     const pulse = !reduced && changes.get(row.identity) === row.signature;
                     return <Card as="article" key={row.identity}>
@@ -85,12 +86,12 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
                         {row.detail !== row.progress.next && <p className="text-12 leading-relaxed">{withoutIdentifiers(row.detail)}</p>}
                         <DependencyNotice keys={row.blockedBy || []} snapshot={snapshot} project={row.project} onOpen={onOpen}/>
                         {row.prUrl && <div className="self-start text-10"><TextLink href={row.prUrl} target="_blank" rel="noreferrer">PR #{row.pr} ↗</TextLink></div>}
-                        <OpenTicketButton identity={row.identity} projectName={row.projectName} onClick={() => onOpen(row.project,row.key)} focusToRestore={focusToRestore}/>
+                        <div onFocusCapture={() => setReading({group,identity:row.identity})}><OpenTicketButton identity={row.identity} projectName={row.projectName} onClick={() => onOpen(row.project,row.key)} focusToRestore={focusToRestore}/></div>
                     </Card>;
                 })}
             </Section></DrawerTopic>;
         })}
-        {!rows.length ? <p className={mutedCopy}>No remaining Office work is recorded. Check project lanes for assignments and GitHub operations for open PRs.</p> :
+        {!rows.length ? <p className={mutedCopy}>The queue is empty.</p> :
             !rows.some(r => r.group === 'active' || r.group === 'queued') && <p className={mutedCopy}>Nothing can run yet: {waiting.length} waiting{dependencyOnly ? ' on prerequisites' : ''} · {rows.filter(r => r.group === 'stopped').length} stopped for follow-up. Work remains open.</p>}
     </>;
 }

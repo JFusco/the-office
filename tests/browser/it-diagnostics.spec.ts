@@ -10,10 +10,10 @@ test('IT separates current session access from retained shutdown investigations 
  await page.route('**/api/office*',route=>route.fulfill({json:s}));await page.route('**/api/events*',route=>route.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(s)}\n\n`}));
  let checks=0;await page.route('**/api/commands*',route=>{checks++;return route.fulfill({json:{ok:true}});});
  await page.route('**/api/service-health*',route=>route.fulfill({json:{checkedAt:s.it.checkedAt,services:[],context:'Synthetic fixture',it:s.it}}));
- await page.goto('/');await page.getByRole('button',{name:'Service health',exact:true}).click();
+ await page.goto('/');await page.getByRole('button',{name:'Service health',exact:true}).click();await page.getByRole('button',{name:/^IT follow-ups/}).click();
  const current=page.getByRole('region',{name:'Ellis IT specialist',exact:true});
  await expect(current.getByText('Active-session check unavailable',{exact:true})).toBeVisible();
- await expect(current.getByText(/New development waits for a complete check/)).toBeVisible();
+ await expect(current.getByText(/Work that needs a complete check reports its own block/)).toBeVisible();
  await expect(current.getByText('3 earlier worker investigations remain unresolved',{exact:true})).toBeVisible();
  await expect(current.getByRole('region',{name:'Unresolved worker investigations'})).toBeVisible();
  await expect(current.getByText('Original technical diagnostic for GH-145',{exact:true})).toBeHidden();
@@ -38,10 +38,10 @@ test('current IT diagnostics do not repeat historical findings and expire when r
  await page.clock.install({time:now});
  await page.route('**/api/office*',route=>route.fulfill({json:s}));await page.route('**/api/events*',route=>route.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(s)}\n\n`}));
  let calls=0;await page.route('**/api/service-health*',route=>++calls===1?route.fulfill({json:{checkedAt:s.it.checkedAt,services:[],context:'Synthetic fixture',it:s.it}}):route.fulfill({status:503,json:{error:'Synthetic unavailable'}}));
- await page.goto('/');await page.getByRole('button',{name:'Service health',exact:true}).click();
+ await page.goto('/');await page.getByRole('button',{name:'Service health',exact:true}).click();await page.getByRole('button',{name:/^IT follow-ups/}).click();
  const current=page.getByRole('region',{name:'Ellis IT specialist',exact:true});await expect(current.getByText('No current IT follow-up.',{exact:true})).toBeVisible();await expect(current.getByText(/GH-310/)).toHaveCount(0);
- await page.getByText('IT report history',{exact:true}).click();await expect(page.getByText(/GH-310 historical waiting record/)).toBeVisible();
- await page.clock.fastForward(165000);await expect(current.getByText('Update overdue',{exact:true})).toBeVisible();await expect(current.getByText(/current status is unverified/)).toBeVisible();await expect(current.getByText('No current IT follow-up.',{exact:true})).toHaveCount(0);await expect(page.getByText(/GH-310 historical waiting record/)).toBeVisible();
+ await page.getByRole('button',{name:/^Back to /}).click();await page.getByRole('button',{name:/^Report history/}).click();await expect(page.getByText(/GH-310 historical waiting record/)).toBeVisible();
+ await page.getByRole('button',{name:/^Back to /}).click();await page.getByRole('button',{name:/^IT follow-ups/}).click();await page.clock.fastForward(165000);await expect(current.getByText('Update overdue',{exact:true})).toBeVisible();await expect(current.getByText(/current status is unverified/)).toBeVisible();await expect(current.getByText('No current IT follow-up.',{exact:true})).toHaveCount(0);await page.getByRole('button',{name:/^Back to /}).click();await page.getByRole('button',{name:/^Report history/}).click();await expect(page.getByText(/GH-310 historical waiting record/)).toBeVisible();
 });
 
 test('project switches discard a newer health response from the previous project while the new check waits',async({page,request})=>{
@@ -52,9 +52,9 @@ test('project switches discard a newer health response from the previous project
  await page.route('**/api/office*',route=>route.fulfill({json:choose(route.request().url())}));await page.route('**/api/events*',route=>route.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(choose(route.request().url()))}\n\n`}));
  let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
  await page.route('**/api/service-health*',async route=>{const s=choose(route.request().url());if(s===cms)await pending;try{await route.fulfill({json:{checkedAt:new Date(now).toISOString(),services:[],context:'Synthetic fixture',it:{...s.it,checkedAt:new Date(now).toISOString()}}});}catch{}});
- await page.goto('/');await page.getByRole('button',{name:'Service health',exact:true}).click();await expect(page.getByText(/CEC-only diagnostic/)).toBeVisible();
+ await page.goto('/');await page.getByRole('button',{name:'Service health',exact:true}).click();await page.getByRole('button',{name:/^IT follow-ups/}).click();await expect(page.getByText(/CEC-only diagnostic/)).toBeVisible();
  await page.getByLabel('Office project').selectOption('cms-field-vocabulary');await expect(page.getByRole('button',{name:'GitHub operations',exact:true})).toBeVisible();
- if(!await page.getByRole('region',{name:'Ellis IT specialist',exact:true}).isVisible())await page.getByRole('button',{name:'Service health',exact:true}).click();
+ if(!await page.getByRole('region',{name:'Ellis IT specialist',exact:true}).isVisible())await page.getByRole('button',{name:'Service health',exact:true}).click();await page.getByRole('button',{name:/^IT follow-ups/}).click();
  const current=page.getByRole('region',{name:'Ellis IT specialist',exact:true});await expect(current.getByText('No current IT follow-up.',{exact:true})).toBeVisible();await expect(page.getByText(/CEC-only diagnostic/)).toHaveCount(0);release();
  await expect(current.getByText('Monitoring',{exact:true})).toBeVisible();
 });

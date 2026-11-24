@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, useIsPresent } from 'motion/react';
-import { panelMotion } from '../tokens/motion';
+import { drawerPageMotion, panelMotion } from '../tokens/motion';
 import { IconButton, cx, interactive } from '../ui';
 import { ChevronRight, X } from '../ui/icons';
 import { ROLE_NAMES } from '../shared';
@@ -49,7 +49,9 @@ export default function Inspector(props: InspectorProps) {
     returning: false,
   }));
   const [records, setRecords] = useState([{ id: 'root', selection, depth: 0, parentId: '' }]);
-  const heading = useRef<HTMLHeadingElement>(null),
+  const drafts = useRef(new Map<string, string>());
+  const pointerTrigger = useRef<HTMLElement | null>(null);
+  const heading = useRef<HTMLElement | null>(null),
     restore = useRef<HTMLElement | null>(null);
   const current = path.entries.at(-1)!,
     parent = path.entries.at(-2);
@@ -71,7 +73,8 @@ export default function Inspector(props: InspectorProps) {
     );
     const id = prior?.id ?? crypto.randomUUID(),
       depth = path.entries.length;
-    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focused = document.activeElement;
+    const trigger = pointerTrigger.current || (focused instanceof HTMLElement && focused.closest('[data-inspector-scroll]') ? focused : null);
     setRecords((old) =>
       old.some((record) => record.id === id) ? old : [...old, { id, selection: next, depth, parentId: current.id }],
     );
@@ -82,19 +85,30 @@ export default function Inspector(props: InspectorProps) {
     (id: string) =>
       setPath((old) => {
         const index = old.entries.findIndex((entry) => entry.id === id);
-        return index > 0 ? { entries: old.entries.slice(0, index), previous: id, returning: false } : old;
+        return index > 0 ? { entries: old.entries.filter(entry => entry.id !== id), previous: id, returning: false } : old;
       }),
     [],
   );
-  function back() {
-    restore.current = current.trigger;
+  function back(focus?: HTMLElement | null) {
+    restore.current = focus || current.trigger;
     setPath(popPage);
   }
   useLayoutEffect(() => {
     if (!path.previous) return;
-    const target = path.returning && restore.current?.isConnected ? restore.current : heading.current;
+    const origin = restore.current;
+    const target = path.returning && origin?.isConnected && !origin.closest('[inert]') ? origin : heading.current;
     target?.focus({ preventScroll: true });
   }, [path]);
+  useEffect(() => {
+    if (!path.previous) return;
+    const settle = () => {
+      setRecords(old => old.filter(record => path.entries.some(entry => entry.id === record.id)));
+      setPath(old => old === path ? { ...old, previous: null } : old);
+    };
+    const timer = window.setTimeout(settle, drawerPageMotion(reduced).duration * 1000);
+    return () => window.clearTimeout(timer);
+  }, [path, reduced]);
+  const Heading = parent ? 'h2' : 'span';
   function openProject(project: string, key: string) {
     const feature = key.startsWith('feature:') || key.startsWith('feature-goal:');
     if (project !== snapshot.project?.id || (feature && props.floor === 'cto'))
@@ -106,6 +120,11 @@ export default function Inspector(props: InspectorProps) {
   return (
     <motion.aside
       data-inspector
+      onClickCapture={event => {
+        const source = event.target instanceof Element ? event.target.closest<HTMLElement>('button, a, [role="button"]') : null;
+        pointerTrigger.current = source;
+        queueMicrotask(() => { if (pointerTrigger.current === source) pointerTrigger.current = null; });
+      }}
       className={cx(
         'fixed top-topbar right-0 bottom-dock z-45 flex flex-col border-l border-drawer-line bg-drawer shadow-drawer backdrop-blur-drawer will-change-transform overscroll-contain max-compact:top-topbar-compact max-compact:bottom-dock-compact max-compact:w-full',
         selection.kind === 'features' || selection.kind === 'people' || selection.kind === 'telemetry'
@@ -118,14 +137,15 @@ export default function Inspector(props: InspectorProps) {
       inert={!present}
       aria-hidden={!present}
     >
-      <div className="flex h-drawer-head shrink-0 items-center gap-control-gap border-b border-drawer-rule px-panel-padding max-compact:px-card-padding">
+      <div className={cx('grid h-drawer-head shrink-0 items-center gap-control-gap border-b border-drawer-rule px-panel-padding max-compact:px-card-padding',
+        parent ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)]' : 'grid-cols-[1fr_auto]')}>
         {parent && (
           <button
             type="button"
-            onClick={back}
+            onClick={() => back()}
             aria-label={`Back to ${parent.title}`}
             className={cx(
-              'flex min-h-control-height min-w-0 max-w-1/2 items-center gap-1 rounded-4 text-12 text-link',
+              'flex min-h-control-height min-w-0 max-w-full justify-self-start items-center gap-1 rounded-4 text-12 text-link',
               interactive,
             )}
           >
@@ -133,15 +153,15 @@ export default function Inspector(props: InspectorProps) {
             <span className="truncate">{parent.title}</span>
           </button>
         )}
-        <h2 role={parent ? undefined : "presentation"} ref={heading} tabIndex={-1} className="min-w-0 flex-1 truncate text-13 font-semibold">
+        <Heading ref={element => { heading.current = element; }} tabIndex={-1} className={cx("min-w-0 truncate text-13 font-semibold", parent && "text-center")}>
           {title}
-        </h2>
-        <IconButton ref={close} aria-label="Close details" onClick={onClose}>
+        </Heading>
+        <IconButton className="justify-self-end" ref={close} aria-label="Close details" onClick={onClose}>
           <X size={19} />
         </IconButton>
       </div>
       <div ref={setViewport} className="relative min-h-0 flex-1 overflow-hidden" />
-      <DrawerNavigation.Provider value={{ path, viewport, reduced, push, back, remove }}>
+      <DrawerNavigation.Provider value={{ drafts: drafts.current, path, viewport, reduced, push, back, remove }}>
         {records.map((record) => (
           <DrawerPage
             key={record.id}

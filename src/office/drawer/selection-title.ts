@@ -11,7 +11,7 @@ export function selectionTitle(selection: InspectorProps['selection'], snapshot:
     case 'azure':
       return snapshot.project?.provider === 'github' ? 'GitHub operations' : 'Azure operations';
     case 'chat':
-      return 'Chat with ' + names.pm;
+      return 'Chat with ' + names[selection.role || 'pm'];
     case 'cto-chat':
       return 'Chat with ' + names.cto;
     case 'outbox':

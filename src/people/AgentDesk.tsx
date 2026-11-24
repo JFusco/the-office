@@ -3,14 +3,14 @@ import { withoutIdentifiers } from '../office/without-identifiers';
 import { WorkSummary } from '../work/WorkSummary';
 import { useIsPresent } from 'motion/react';
 import { ArrowUpRight } from '../ui/icons';
-import { Button, PanelTitle, Section, SectionTitle, StatusDot, Tag, cx, envelopeCard, eyebrow, mutedCopy } from '../ui';
+import { PanelTitle, Section, SectionTitle, StatusDot, Tag, cx, envelopeCard, eyebrow, mutedCopy } from '../ui';
 import { ROLE_NAMES, PERSONAS, type Role } from '../shared';
 import { Conversation } from '../conversations/Conversation';
 import { TimeBook } from '../timing/TimeBook';
 import { LiveAgentTask } from '../scene/LiveAgentTask';
 import { LessonsPanel } from '../knowledge/LessonsPanel';
 import { ReportsTo } from './ReportsTo';
-import { DrawerTopic } from '../office/drawer/DrawerTopic';
+import { DrawerRow, DrawerTopic } from '../office/drawer/DrawerTopic';
 import type { InspectorProps } from '../office/drawer/inspector-props';
 const PORTRAIT: Record<Role, string> = {
   pm: 'bg-portrait-pm',
@@ -86,32 +86,29 @@ export function AgentDesk({
           <DrawerTopic title="Conversation">
             <Conversation snapshot={snapshot} names={names} sendMessage={sendMessage} role="it" />
           </DrawerTopic>
-          <Button full className="mt-5" onClick={() => onSelect({ kind: 'health' })}>
-            Open Service health
-          </Button>
+          <DrawerRow title="Service health" onOpen={() => onSelect({ kind: 'health' })} />
         </>
       ) : agent.id === 'knowledge' ? (
         <>
           <DrawerTopic title="Conversation">
             <Conversation snapshot={snapshot} names={names} sendMessage={sendMessage} role="knowledge" />
           </DrawerTopic>
-          <Button full onClick={onOpenBrain}>
-            Open Harper’s knowledge
-          </Button>
+          <DrawerRow title="Open Harper’s knowledge" onOpen={() => onOpenBrain?.()} />
           <DrawerTopic title="Lessons" detail={awaiting ? awaiting + ' to review' : lessons.active.length || undefined}>
             <LessonsPanel snapshot={snapshot} refresh={refresh} />
           </DrawerTopic>
         </>
       ) : (
-        <Button full className="mt-5" onClick={() => onSelect({ kind: 'chat', ticket: agent.ticket || undefined })}>
-          Chat with {pmName}
-          {agent.id !== 'pm' ? ` about ${agent.name}’s work` : ''}
-        </Button>
+        <DrawerRow title="Conversation" detail={pmName} onOpen={() => onSelect({ kind: 'chat', ticket: agent.ticket || undefined })} />
       )}
       <DrawerTopic title="Responsibilities">
         <Section>
           <SectionTitle className="mb-4">Responsibilities</SectionTitle>
           <p className={mutedCopy}>{PERSONAS[agent.id].responsibilities}</p>
+          <div data-panel-foot className="my-3 text-12 text-muted">
+            {agent.id === 'developer' && agent.model && <p>Configured model: {agent.model === 'claude-opus-5-5' ? 'Opus 5.5' : agent.model} · {agent.effort} effort</p>}
+            <p>{agent.sessionId ? 'Session running' : 'No session running'}</p>
+          </div>
           <ReportsTo id={agent.id} snapshot={snapshot} names={names} onSelect={onSelect} />
         </Section>
       </DrawerTopic>

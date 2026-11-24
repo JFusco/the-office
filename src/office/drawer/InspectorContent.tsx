@@ -1,31 +1,27 @@
+import { Mailbox } from '../../work/Mailbox';
 import {QueueTicketDetail} from '../../work/QueueTicketDetail';
 import { Outbox } from '../../conversations/Outbox';
 import { withoutIdentifiers } from '../without-identifiers';
-import { LoadingMark } from '../../ui/LoadingState';
 import { PanelHeader } from '../../ui/PanelHeader';
 import { TelemetryPanel } from '../../telemetry/TelemetryPanel';
 import { ServiceHealthPanel } from '../../health/ServiceHealthPanel';
 import { PMQueue } from '../../work/PMQueue';
-import { InboxQueue } from '../../work/InboxQueue';
-import { ProjectWork } from '../../work/ProjectWork';
 import { WorkSummary } from '../../work/WorkSummary';
-import { Checkpoints } from '../../work/Checkpoints';
 import { SettingsPanel } from '../settings/SettingsPanel';
-import { ChevronRight, FileText, Inbox, AlertCircle, Clock3, Settings2, MessageCircle } from '../../ui/icons';
-import { Button, Notice, Section, SectionTitle, cx, interactive, mutedCopy, noticeIcon } from '../../ui';
-import { STAGE_LABELS, ROLE_NAMES } from '../../shared';
+import { FileText, MessageCircle } from '../../ui/icons';
+import { Section, SectionTitle, mutedCopy } from '../../ui';
+import { ROLE_NAMES } from '../../shared';
 import { Conversation } from '../../conversations/Conversation';
 import { Goals } from '../../leadership/Goals';
 import { GitHubPanel } from '../../work/GitHubPanel';
 import { PeoplePanel } from '../../people/PeoplePanel';
 import { TicketPlanningAction } from '../../features/questions/TicketPlanningAction';
 import { FeatureWorkspace } from '../../features/FeatureWorkspace';
-import { DrawerTopic } from './DrawerTopic';
+import { DrawerRow } from './DrawerTopic';
 import type { InspectorProps } from './inspector-props';
 import { AgentDesk } from '../../people/AgentDesk';
 import { AzureOperations } from '../../work/AzureOperations';
 import { TicketDetail } from '../../work/TicketDetail';
-const textRow = `-mx-2 flex w-[calc(100%+16px)] justify-between rounded-5 border-b border-row-rule px-2 py-2.5 text-left text-11 hover:bg-icon-hover ${interactive}`;
 export function InspectorContent(props: InspectorProps) {
   const {
     selection,
@@ -67,16 +63,17 @@ export function InspectorContent(props: InspectorProps) {
         <ServiceHealthPanel
           project={snapshot.project?.id}
           liveIT={snapshot.it}
-          onChat={() => onSelect({ kind: 'agent', id: 'it' })}
+          onChat={() => onSelect({ kind: 'chat', role: 'it' })}
         />
       ) : null}
       {selection.kind === 'chat' ? (
         <>
-          <PanelHeader icon={<MessageCircle size={26} />}>Chat with {pmName}</PanelHeader>
+          <PanelHeader icon={<MessageCircle size={26} />}>Chat with {selection.role ? names[selection.role] : pmName}</PanelHeader>
           <p className="text-11 leading-normal text-muted">
-            Your PM coordinates the team and keeps the work up to date.
+            {selection.role === 'it' ? 'Talk through a service issue with your IT specialist.' : 'Your PM coordinates the team and keeps the work up to date.'}
           </p>
           <Conversation
+            role={selection.role || 'pm'}
             key={selection.ticket || 'office'}
             snapshot={snapshot}
             names={names}
@@ -129,95 +126,12 @@ export function InspectorContent(props: InspectorProps) {
             ticket={ticket.key}
             open={(id) => onSelect(id ? { kind: 'features', id } : { kind: 'features', sourceTicket: ticket.key })}
           />
-          <Button full className="mb-6" onClick={() => onSelect({ kind: 'chat', ticket: ticket.key })}>
-            Discuss {ticket.key} with {pmName}
-          </Button>
+          <DrawerRow title={`Discuss ${ticket.key} with ${pmName}`} onOpen={() => onSelect({ kind: 'chat', ticket: ticket.key })} />
         </>
       ) : null}
-      {selection.kind==='ticket' && !ticket && <QueueTicketDetail reduced={props.reduced} snapshot={snapshot} ticketKey={selection.id} onDiscuss={key=>onSelect({kind:'chat',ticket:key})}/>}
+      {selection.kind==='ticket' && !ticket && <QueueTicketDetail pmName={pmName} reduced={props.reduced} snapshot={snapshot} ticketKey={selection.id} onDiscuss={key=>onSelect({kind:'chat',ticket:key})}/>}
       {selection.kind === 'pm-queue' ? <PMQueue reduced={props.reduced} snapshot={snapshot} onOpen={onOpenProject} /> : null}
-      {selection.kind === 'mailbox' ? (
-        <>
-          <PanelHeader icon={<Inbox size={26} />}>PM mailbox</PanelHeader>
-          <Button
-            variant="primary"
-            full
-            className="mt-5"
-            disabled={
-              busy ||
-              !!snapshot.pendingMail ||
-              snapshot.intake.status === 'working' ||
-              snapshot.mode === 'demo' ||
-              snapshot.paused
-            }
-            onClick={() => act('check-mail')}
-          >
-            {snapshot.intake.status === 'working' ? <LoadingMark /> : <Inbox size={16} />}{' '}
-            {snapshot.pendingMail ? 'Mail check queued' : 'Check mail now'}
-          </Button>
-          <div className="mt-4 flex items-start gap-2 text-9 text-schedule">
-            <Clock3 size={14} />
-            <span>
-              {snapshot.intake.schedule}
-              <small className="mt-1 block text-8 leading-relaxed text-schedule-detail">
-                {snapshot.intake.lastChecked
-                  ? `Last checked ${new Date(snapshot.intake.lastChecked).toLocaleString()}`
-                  : 'Mailbox has not been checked yet'}
-              </small>
-            </span>
-          </div>
-          {snapshot.intake.error ? (
-            <Notice className="mt-5">
-              <AlertCircle className={noticeIcon} size={17} />
-              <span>{snapshot.intake.error}</span>
-            </Notice>
-          ) : null}
-          <InboxQueue snapshot={snapshot} onOpen={(key) => onSelect({ kind: 'ticket', id: key })} />
-          <Button
-            full
-            className="mt-5"
-            disabled={!preferences?.preferences}
-            onClick={() => onSelect({ kind: 'settings' })}
-          >
-            <Settings2 size={16} /> Project settings
-          </Button>
-          <DrawerTopic title="Checkpoints">
-            <Checkpoints snapshot={snapshot} />
-          </DrawerTopic>
-          <DrawerTopic title="Project board">
-            <ProjectWork snapshot={snapshot} onOpen={(key) => onSelect({ kind: 'ticket', id: key })} />
-          </DrawerTopic>
-          {snapshot.tickets.some((t) => t.stage !== 'mailbox') ? (
-            <DrawerTopic
-              title="Already with the team"
-              detail={snapshot.tickets.filter((t) => t.stage !== 'mailbox').length}
-            >
-              <Section>
-                <SectionTitle className="mb-4">Already with the team</SectionTitle>
-                {snapshot.tickets
-                  .filter((t) => t.stage !== 'mailbox')
-                  .map((t) => (
-                    <button
-                      type="button"
-                      key={t.key}
-                      className={textRow}
-                      onClick={() => onSelect({ kind: 'ticket', id: t.key })}
-                    >
-                      <span>
-                        {t.key}
-                        <small className="mt-1 block text-9 leading-relaxed text-row-detail">
-                          {STAGE_LABELS[t.stage]}
-                        </small>
-                      </span>
-                      <ChevronRight size={15} />
-                    </button>
-                  ))}
-              </Section>
-            </DrawerTopic>
-          ) : null}
-        </>
-      ) : null}
-      {selection.kind === 'agent' && <AgentDesk {...props} />}
+      {selection.kind === 'mailbox' && <Mailbox snapshot={snapshot} act={act} busy={busy} preferences={preferences} onSelect={onSelect}/>}
       {selection.kind === 'azure' && github ? <GitHubPanel snapshot={snapshot} act={act} busy={busy} /> : null}
       {selection.kind === 'azure' && !github && <AzureOperations {...props} />}
       {selection.kind === 'meeting' ? (

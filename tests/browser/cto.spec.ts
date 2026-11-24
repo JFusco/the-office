@@ -19,7 +19,9 @@ test('CTO reviews are compact, weekday-only, and expand goal details on demand (
  await expect(page.getByRole('combobox',{name:'State',exact:true})).toHaveValue('done');
  await expect(page.getByRole('textbox',{name:'Why it matters',exact:true})).toHaveValue('The complete saved scope.');
  await page.getByRole('button',{name:'Cancel edit',exact:true}).click();
+ await page.getByRole('button',{name:/^Back to /}).click();
  await page.getByText('Completed (1)',{exact:true}).click();
+ await page.getByRole('button',{name:/^Daily review/}).click();
  await expect(page.getByText('Avery reviews every project Monday–Friday at 5 PM Eastern. Weekends are off.')).toBeVisible();
  await expect(page.getByText('Project review · Nov 2, 2026',{exact:true})).not.toBeVisible();
  await expect(page.getByText(summary,{exact:true})).toHaveCount(0);
@@ -52,10 +54,11 @@ test('new CTO goals choose configured projects by canonical ID while preserving 
  const writes:any[]=[];
  await page.route('**/api/goals*',async route=>{writes.push({url:route.request().url(),body:route.request().postDataJSON()});await route.fulfill({json:{ok:true}});});
  await page.goto('/');await page.getByRole('button',{name:/^Go to Floor 2, CTO Office/}).click();await page.getByRole('button',{name:/^Open project goals/}).click();
+ await page.getByRole('button',{name:/^Add a goal or idea/}).click();
  const project=page.getByRole('combobox',{name:'Project',exact:true});await expect(project).toHaveValue('cec');
  await expect(project.locator('option')).toHaveText(['Choose a configured project','CEC','Brain','CMS field vocabulary']);
  await expect(page.getByRole('textbox',{name:'Project',exact:true})).toHaveCount(0);await project.selectOption('brain');
- await page.getByLabel('Goal',{exact:true}).fill('Synthetic Brain goal');await page.getByRole('button',{name:'Save goal',exact:true}).click();await expect(page.getByText('Goal saved.',{exact:true})).toBeVisible();
+ await page.getByLabel('Goal',{exact:true}).fill('Synthetic Brain goal');await page.getByRole('button',{name:'Save goal',exact:true}).click();await expect(page.locator('[data-inspector-scroll]').getByText('Goal saved.',{exact:true})).toBeVisible();
  expect(writes).toHaveLength(1);expect(new URL(writes[0].url).searchParams.get('project')).toBe('brain');expect(writes[0].body).toMatchObject({project:'Brain',title:'Synthetic Brain goal'});
  await expect(page.getByLabel('Office project')).toHaveValue('cec');await expect(project).toHaveValue('cec');
 });
@@ -85,6 +88,7 @@ test('historical review has a real short summary, named goals, and a separate cu
  await page.route('**/api/events*',route=>route.fulfill({contentType:'text/event-stream',body:`event: snapshot\ndata: ${JSON.stringify(state)}\n\n`}));
  await page.route('**/api/daily-cto?*',route=>route.fulfill({json:{report}}));
  await page.goto('/');await page.getByRole('button',{name:/^Go to Floor 2, CTO Office/}).click();await page.getByRole('button',{name:/^Open project goals/}).click();
+ await page.getByRole('button',{name:/^Daily review/}).click();
  await expect(page.getByText('Project review · Nov 1, 2026',{exact:true})).toBeVisible();
  await expect(page.getByText('Review finished',{exact:true})).toBeVisible();
  await expect(page.getByText(`${title}: hosted creation worked, but recovery acceptance was missing.`,{exact:true})).toBeVisible();

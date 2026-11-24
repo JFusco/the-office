@@ -11,14 +11,22 @@ test('telemetry opens from the header, reports every project, drills into a proj
   const totals = panel.getByLabel('Telemetry totals');
   await expect(totals).toContainText('$7.09'); // 2.41 + 1.02 partial + 3.11 + 0.55 overhead; harness excluded
   await expect(totals).toContainText('Subtotal · 1 partial · 2 unpriced'); // GH-255's uncaptured run and CEC's pre-capture session
+  await page.getByRole('button',{name:/^Projects/}).click();
   await expect(panel.getByRole('table', { name: 'By project' })).toBeVisible();
+  await page.getByRole('button',{name:/^Back to /}).click();
   await expect(panel.getByText(/Overhead with no ticket .*1 run · \$0\.55/)).toBeVisible();
+  await page.getByRole('button',{name:/^Model and effort/}).click();
   await expect(panel.getByRole('table', { name: 'By model and requested effort' }).getByRole('rowheader', { name: 'claude-haiku-5-5 · effort unknown' })).toBeVisible();
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Tickets/}).click();
   await expect(panel.getByRole('table', { name: 'By ticket (all projects)' }).getByRole('row', { name: /CEC · CEC-102/ })).toContainText('Not priced');
   await page.screenshot({ path: evidence('telemetry-office.png') });
 
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Projects/}).click();
   await panel.getByRole('table', { name: 'By project' }).getByRole('button', { name: 'Brain' }).click();
   await expect(panel.getByLabel('Telemetry scope')).toHaveValue('brain');
+  await page.getByRole('button',{name:/^Tickets/}).click();
   await panel.getByRole('table', { name: 'By ticket' }).getByRole('button', { name: 'GH-255' }).click();
   await expect(panel.getByLabel('Telemetry ticket')).toHaveValue('GH-255');
   await expect(totals).toContainText('1 unpriced');
@@ -45,8 +53,10 @@ test('a slow response for an earlier scope never replaces the selected one', asy
   await page.getByRole('button', { name: 'Telemetry', exact: true }).click();
   const panel = page.getByRole('complementary', { name: 'Telemetry', exact: true });
   await panel.getByLabel('Telemetry scope').selectOption('cec');
+  await page.getByRole('button',{name:/^Sync status/}).click();
   await expect(panel.getByText('Est. cost is tracked in the Office; Jira sync is not enabled yet.')).toBeVisible();
   releaseOffice();
+  await page.getByRole('button',{name:/^Back to /}).click();
   await page.waitForTimeout(300);
   await expect(panel.getByLabel('Telemetry scope')).toHaveValue('cec');
   await expect(panel.getByRole('table', { name: 'By project' })).toHaveCount(0);
@@ -72,6 +82,7 @@ test('publication status discloses posted subtotals and confirms policy adoption
   await page.goto('/');
   await page.getByRole('button', { name: 'Telemetry', exact: true }).click();
   const panel = page.getByRole('complementary', { name: 'Telemetry', exact: true });
+  await page.getByRole('button',{name:/^Sync status/}).click();
   await expect(panel.getByText(/Est\. cost: 2 posted .*1 posted as subtotals \(some runs unpriced\)/)).toBeVisible();
   await expect(panel.getByText(/Existing hours totals will remain unchanged/)).toBeVisible();
   await panel.getByRole('button', { name: 'Review and apply…' }).click();

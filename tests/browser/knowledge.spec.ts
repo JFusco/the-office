@@ -15,19 +15,27 @@ test('Harper opens from the dock, retires a lesson with focus kept, and saves th
   await page.getByLabel('Office project').selectOption('brain');
   await page.getByRole('button', { name: 'Visit Harper, 2 lessons, knowledge engineer' }).click();
   const drawer = page.getByRole('complementary', { name: 'Knowledge engineer' });
-  await expect(drawer.getByRole('heading', { name: /Active lessons/ })).toContainText('2');
+  await page.getByRole('button',{name:/^Lessons/}).click();
+  await page.getByRole('button',{name:/^Active lessons/}).click();
+  await expect(page.locator('[data-inspector-scroll]').getByRole('heading', { name: /Active lessons/ })).toContainText('2');
 
   await drawer.getByRole('button', { name: 'Retire lesson: Retry the flaky link check once' }).click();
-  await expect(drawer.getByRole('heading', { name: /Active lessons/ })).toContainText('1');
-  await expect(drawer.getByRole('heading', { name: /Active lessons/ })).toBeFocused();
+  await expect(page.locator('[data-inspector-scroll]').getByRole('heading', { name: /Active lessons/ })).toContainText('1');
+  await expect(page.locator('[data-inspector-scroll]').getByRole('heading', { name: /Active lessons/ })).toBeFocused();
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Retrospectives/}).click();
   await expect(drawer.getByText('Retired lessons (1)')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Visit Harper, 1 lesson, knowledge engineer' })).toBeVisible();
   await drawer.getByText('Retired lessons (1)').click();
   await expect(drawer.getByText('retired by you')).toBeVisible();
   await drawer.getByRole('button', { name: 'Reactivate lesson: Retry the flaky link check once' }).click();
-  await expect(drawer.getByRole('heading', { name: /Active lessons/ })).toContainText('2');
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Active lessons/}).click();
+  await expect(page.locator('[data-inspector-scroll]').getByRole('heading', { name: /Active lessons/ })).toContainText('2');
   await expect(page.getByRole('button', { name: 'Visit Harper, 2 lessons, knowledge engineer' })).toBeVisible();
 
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Lesson settings/}).click();
   const save = drawer.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
   await drawer.getByLabel('Let Harper write retrospectives for this project').uncheck();
@@ -50,20 +58,30 @@ test('Harper works on CEC too: office proposals, AGENTS.md filing and the weekly
   await page.goto('/');
   await page.getByRole('button', { name: /^Visit Harper, .*knowledge engineer$/ }).click();
   const drawer = page.getByRole('complementary', { name: 'Knowledge engineer' });
+  await page.getByRole('button',{name:/^Conversation/}).click();
   await expect(drawer.getByRole('textbox', { name: /Message Harper/ })).toBeVisible();
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Lessons/}).click();
+  await page.getByRole('button',{name:/^Weekly report/}).click();
   await expect(drawer.getByRole('table', { name: /Delivery metrics/ })).toContainText('26');
   await expect(drawer.getByText('Two runs shipped; one park waited a day.')).toBeVisible();
 
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Shared lessons/}).click();
   await drawer.getByRole('button', { name: 'Accept office-wide lesson: Run the wiki build before every review' }).click();
   await expect(drawer.getByRole('button', { name: 'Retire office-wide lesson: Run the wiki build before every review' })).toBeVisible();
   const brain = await (await request.get('/api/office?project=brain')).json();
   expect(brain.officeKnowledge.lessons.map((l: { statement: string }) => l.statement)).toContain('Run the wiki build before every review');
 
   // CEC is not a GitHub project: the suggestion can be declined but not filed.
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Suggested changes/}).click();
   await expect(drawer.getByRole('button', { name: /^File AGENTS.md issue/ })).toHaveCount(0);
   await drawer.getByRole('button', { name: 'Decline AGENTS.md suggestion: Use the shared fixture data' }).click();
   await expect(drawer.getByRole('button', { name: /^Decline AGENTS.md suggestion/ })).toHaveCount(0);
+  await page.getByRole('button',{name:'Back to Lessons'}).click();
 
+  await page.getByRole('button',{name:/^Active lessons/}).click();
   await expect(drawer.getByRole('button', { name: 'Retire lesson: Commit generated artifacts' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Visit Harper, 2 lessons, knowledge engineer' })).toBeVisible();
 });
@@ -79,6 +97,8 @@ test('a GitHub AGENTS.md suggestion files with one click and links the issue', a
   await page.getByLabel('Office project').selectOption('brain');
   await page.getByRole('button', { name: /^Visit Harper, / }).click();
   const drawer = page.getByRole('complementary', { name: 'Knowledge engineer' });
+  await page.getByRole('button',{name:/^Lessons/}).click();
+  await page.getByRole('button',{name:/^Suggested changes/}).click();
   await drawer.getByRole('button', { name: 'File AGENTS.md issue: Regenerate the catalog before committing' }).click();
   await expect(drawer.getByRole('link', { name: /Issue filed/ })).toHaveAttribute('href', 'https://github.com/JFusco/brain/issues/999');
 });
@@ -87,6 +107,8 @@ test('merge posts can go to a Slack channel and tag people by member ID', async 
   await setPreferences(request, { reducedMotion: true, quality: 'low' });
   await page.goto('/');
   await page.getByRole('button', { name: 'Office settings' }).click();
+  await page.getByRole('button',{name:/^.*Project settings/}).click();
+  await page.getByRole('button',{name:/^Notifications/}).click();
   await page.getByLabel('Post to a channel when a watched PR merges').check();
   await page.getByLabel('Channel ID').fill('c0deliver');
   await page.getByLabel('Channel name').fill('#delivery');
@@ -108,8 +130,13 @@ test('Harper shows active guidance, original failure history, uncertain publicat
   await page.goto('/'); await page.getByLabel('Office project').selectOption('brain');
   await page.getByRole('button', { name: /^Visit Harper, / }).click();
   const drawer = page.getByRole('complementary', { name: 'Knowledge engineer' });
+  await page.getByRole('button',{name:/^Lessons/}).click();
+  await page.getByRole('button',{name:/^Active lessons/}).click();
   await expect(drawer.getByText('guidance · revision 3')).toBeVisible();
+  await page.getByRole('button',{name:/^Back to /}).click();
+  await page.getByRole('button',{name:/^Weekly report/}).click();
   await expect(drawer.getByText('Partial learning coverage: recorded since 2026-11-03T12:00:00Z.')).toBeVisible();
+  await page.getByRole('button',{name:/^Back to /}).click();
   await expect(drawer.getByText('The original create must not be resent')).toBeVisible();
   await drawer.getByText('Original history (1)').click();
   await expect(drawer.getByText('Original failure: response lost')).toBeVisible();

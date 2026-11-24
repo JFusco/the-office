@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './fixture-test';
-import { setPreferences } from './support';
+import { evidence, setPreferences } from './support';
 async function geometry(page:Page){return page.evaluate(()=>{
   const box=(selector:string)=>{const r=document.querySelector(selector)!.getBoundingClientRect();return [r.x,r.y,r.width,r.height];};
   return {world:box('main'),canvas:box('canvas'),header:box('header'),dock:box('[data-surface=dock]'),scroll:[scrollX,scrollY],width:document.documentElement.scrollWidth};
@@ -105,10 +105,35 @@ for (const width of [390,1440]) {
     const drawer=page.locator('[data-inspector]'),active=drawer.locator('[data-inspector-scroll]');
     await expect.poll(()=>drawer.evaluate(el=>el.getBoundingClientRect().right)).toBeCloseTo(width,0);
     const office=await geometry(page),original=await drawer.elementHandle();
-    const group=drawer.getByRole('button',{name:/Already with the team/});
-    await group.click();
-    const first=active.getByRole('button').first();
+    const first=active.getByRole('button',{name:/^CEC-\d+ · /}).first();
+    if (width === 390) await drawer.screenshot({path:evidence('mailbox-navigation-phone.png')});
+    const samples = first.evaluate(button => new Promise<{stationary:boolean; outgoingInert:boolean; moved:boolean}>(resolve => {
+      button.addEventListener('click', () => {
+        const shell = button.closest('[data-inspector]')!;
+        const outgoing = button.closest<HTMLElement>('[data-drawer-page]')!;
+        const canvas = document.querySelector('canvas')!;
+        const bounds = (element: Element) => {
+          const box = element.getBoundingClientRect();
+          return [box.x, box.y, box.width, box.height].join(',');
+        };
+        const frame = bounds(shell), scene = bounds(canvas), start = performance.now();
+        let stationary = true, moved = false, outgoingInert = true;
+        function sample() {
+          const incoming = shell.querySelector<HTMLElement>('[data-inspector-scroll]');
+          stationary &&= bounds(shell) === frame && bounds(canvas) === scene;
+          if (incoming && incoming !== outgoing) {
+            outgoingInert &&= outgoing.inert && !incoming.inert;
+            moved ||= incoming.getBoundingClientRect().x > shell.getBoundingClientRect().x + 2;
+          }
+          if (performance.now() - start < 420) requestAnimationFrame(sample);
+          else resolve({stationary, outgoingInert, moved});
+        }
+        requestAnimationFrame(sample);
+      }, {once:true});
+    }));
+    // Tapping a button in Safari can leave focus on the previous control.
     await first.click();
+    expect(await samples).toEqual({stationary:true,outgoingInert:true,moved:true});
     const evidence=active.getByRole('button',{name:/^Evidence/});
     await evidence.scrollIntoViewIfNeeded();
     const offset=await active.evaluate(el=>el.scrollTop);
@@ -118,10 +143,8 @@ for (const width of [390,1440]) {
     await drawer.getByRole('button',{name:/^Back to /}).click();
     await expect(evidence).toBeFocused();
     expect(await active.evaluate(el=>el.scrollTop)).toBe(offset);
-    await drawer.getByRole('button',{name:'Back to Already with the team'}).click();
-    await expect(first).toBeFocused();
     await drawer.getByRole('button',{name:'Back to PM mailbox'}).click();
-    await expect(group).toBeFocused();
+    await expect(first).toBeFocused();
     expect(await original!.evaluate(el=>el===document.querySelector('[data-inspector]'))).toBe(true);
     expect(await geometry(page)).toEqual(office);
     await page.keyboard.press('Escape');await expect(mailbox).toBeFocused();
@@ -135,6 +158,7 @@ test('returning to a conversation restores its draft',async({page})=>{
   await discuss.click();const compose=page.getByRole('textbox',{name:'Message Morgan'});
   await compose.fill('Can you check the latest update?');
   await page.getByRole('button',{name:/^Back to /}).click();await expect(discuss).toBeFocused();
+  await expect(page.locator('[data-drawer-page] textarea')).toHaveCount(0);
   await discuss.click();await expect(compose).toHaveValue('Can you check the latest update?');
 });
 
@@ -150,4 +174,26 @@ test('an unsaved notification setting survives Back and a live update',async({pa
   await request.post('/__fixture/snapshot',{data:{events:snapshot.events}});
   await page.getByRole('button',{name:/^Back to /}).click();await expect(notifications).toBeFocused();
   await notifications.press('Enter');await expect(channel).toHaveValue('delivery-updates-draft');
+});
+
+test('phone settings topics form one aligned list', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Office settings'}).click();
+  await page.getByRole('button',{name:/Project settings/}).click();
+  const rows = page.locator('[data-inspector-scroll] [data-drawer-row]');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first()).toBeInViewport();
+  const boxes = await rows.evaluateAll(elements => elements.map(element => {
+    const row = element.getBoundingClientRect();
+    return {left:row.left,right:row.right,top:row.top,bottom:row.bottom,height:row.height,chevron:element.querySelector('svg')!.getBoundingClientRect().right};
+  }));
+  for (const [i,row] of boxes.entries()) {
+    expect(row.height).toBeGreaterThanOrEqual(44);
+    expect(row.left).toBeCloseTo(boxes[0].left);
+    expect(row.right).toBeCloseTo(boxes[0].right);
+    expect(row.chevron).toBeCloseTo(boxes[0].chevron);
+    if (i) expect(row.top).toBeCloseTo(boxes[i-1].bottom);
+  }
+  await page.locator('[data-inspector]').screenshot({path:evidence('settings-navigation-phone.png')});
 });

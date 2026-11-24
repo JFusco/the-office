@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, useId, useState, type ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, useId, useState, type Ref, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { ChevronRight } from '../../ui/icons';
@@ -7,10 +7,11 @@ import { drawerPageMotion } from '../../tokens/motion';
 import type { DrawerEntry, DrawerPath } from './navigation';
 
 export const DrawerNavigation = createContext<{
+  drafts: Map<string, string>;
   path: DrawerPath;
   viewport: HTMLDivElement | null;
   reduced: boolean;
-  back: () => void;
+  back: (focus?: HTMLElement | null) => void;
   remove: (id: string) => void;
   push: (entry: DrawerEntry) => void;
 } | null>(null);
@@ -41,19 +42,43 @@ export function DrawerPage({
       data-drawer-page={id}
       data-inspector-scroll={current || undefined}
       initial={depth && !nav.reduced ? { x: '100%' } : false}
-      animate={{ x: current ? '0%' : behind ? '-20%' : '100%' }}
+      animate={{ x: current || nav.reduced ? '0%' : behind ? '-20%' : '100%' }}
       transition={drawerPageMotion(nav.reduced)}
       inert={!current}
       aria-hidden={!current}
-      style={{ zIndex: depth, visibility: visible ? 'visible' : 'hidden' }}
       className={
         'absolute inset-0 [&>section:first-child]:mt-0 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0 overflow-x-hidden overflow-y-auto overscroll-contain bg-paper p-panel-padding wrap-anywhere scrollbar-thin scrollbar-thumb-scrollbar max-compact:p-card-padding' +
-        (fill ? ' flex flex-col' : '')
+        (fill ? ' flex flex-col' : '') +
+        (visible ? ' visible' : ' invisible') +
+        ((current && !nav.path.returning) || (!current && nav.path.returning && visible) ? ' z-10' : ' z-0')
       }
     >
       {children}
     </motion.div>,
     nav.viewport,
+  );
+}
+
+export function DrawerRow({title, detail, onOpen, disabled, ref}: {
+  title: string;
+  detail?: ReactNode;
+  onOpen: (source: HTMLElement) => void;
+  disabled?: boolean;
+  ref?: Ref<HTMLButtonElement>;
+}) {
+  return (
+    <button
+      ref={ref}
+      data-drawer-row
+      type="button"
+      className={`flex min-h-11 w-full items-center gap-control-gap border-b border-row-rule bg-field px-card-padding py-2.5 text-left text-13 font-medium enabled:hover:bg-icon-hover ${interactive}`}
+      disabled={disabled}
+      onClick={event => onOpen(event.currentTarget)}
+    >
+      <span className="min-w-0 flex-1">{title}</span>
+      {detail != null && <span className="max-w-1/2 text-right text-12 font-normal text-muted">{detail}</span>}
+      <ChevronRight size={16} className="shrink-0 text-muted" />
+    </button>
   );
 }
 
@@ -64,7 +89,9 @@ export function DrawerTopic({
   onOpen,
   trigger,
   initial,
+  available = true,
 }: {
+  available?: boolean;
   initial?: boolean;
   title: string;
   detail?: ReactNode;
@@ -85,8 +112,9 @@ export function DrawerTopic({
     }
   }, [initial, nav, id, title]);
   const remove = nav?.remove;
-  useLayoutEffect(() => () => remove?.(id), [id, remove]);
+  useLayoutEffect(() => () => { entered.current = false; remove?.(id); }, [id, remove]);
   // Shared domain views also render in the stand-alone Brain workspace.
+  if (!available && !depth) return null;
   if (!nav) return <>{children}</>;
   function open(source: HTMLElement) {
     onOpen?.();
@@ -98,16 +126,7 @@ export function DrawerTopic({
       {trigger ? (
         trigger(open)
       ) : (
-        <button
-          ref={row}
-          type="button"
-          className={`flex min-h-control-height w-full items-center gap-control-gap border-b border-row-rule py-3 text-left text-13 font-medium hover:bg-icon-hover ${interactive}`}
-          onClick={(event) => open(event.currentTarget)}
-        >
-          <span className="min-w-0 flex-1">{title}</span>
-          {detail != null && <span className="text-right text-11 font-regular text-muted">{detail}</span>}
-          <ChevronRight size={16} className="shrink-0 text-muted" />
-        </button>
+        <DrawerRow ref={row} title={title} detail={detail} onOpen={open}/>
       )}
       {depth > 0 && (
         <DrawerPage id={id} depth={depth}>
