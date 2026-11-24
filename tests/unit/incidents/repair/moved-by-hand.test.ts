@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { APPROACH_GUARD_REJECTION, requeueWaitedImplement } from '../../../../server/delivery/recovery/implementation/requeue-waited-implement';
-import { movedByHand, OPERATOR_MOVES } from '../../../../server/incidents/repair/moved-by-hand';
+import { checkpointRetried, movedByHand, OPERATOR_MOVES } from '../../../../server/incidents/repair/moved-by-hand';
 import { projectById } from '../../../../server/office/projects';
 import { coordination } from '../../../../server/scheduling/coordination';
 import { preparePR, recheckCandidate, recheckPR, updateCandidateBase } from '../../../../server/scheduling/operator-commands';
@@ -68,4 +68,26 @@ test('the five commands that move a delivery job emit exactly the events read he
         steps: [{ stage: 'implement', result: result({ outcome: 'blocked', resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [] } }) }, { stage: 'implement', result: result({ approach: small }) }] }, store => requeueWaitedImplement(store, 'GH-1'));
     expect(seen).toEqual(['pr-preparation-queued', 'candidate-base-update', 'candidate-review-recheck', 'pr-review-recheck', 'implement-requeued']);
     expect([...seen].sort()).toEqual([...OPERATOR_MOVES].sort());
+});
+
+test('a retry queued for a checkpoint\'s original run after the given event moves it, found by the run its message names, literally', () => {
+    const store = project();
+    const message = (run: string) => `Original maintenance ${run} reconciled. Brain checkpoint will retry after 2026-11-20T12:10:00.000Z; the nightly gate remains authoritative.`;
+    const earlier = store.emit('checkpoint-retry-queued', message('original-1'), 'pm');
+    const admission = store.emit('repair-resume-admitted', 'cp-1: queued');
+    // Another run, a run whose ID only begins the same, a pattern that would match as LIKE, the same words under another kind, and the run named elsewhere in the message.
+    for (const run of ['original-2', 'original-10', 'original_1', 'original%']) store.emit('checkpoint-retry-queued', message(run), 'pm');
+    store.emit('checkpoint-native-reconciled', message('original-1'), 'pm');
+    store.emit('checkpoint-retry-queued', `Retried: ${message('original-1')}`, 'pm');
+    expect(checkpointRetried(store, 'original-1', admission.id)).toBeNull();
+    expect(checkpointRetried(store, 'originalX1', admission.id)).toBeNull();
+    // The earlier retry is a move only for something before it.
+    expect(checkpointRetried(store, 'original-1', earlier.id - 1)).toEqual({ kind: 'checkpoint-retry-queued', at: earlier.at });
+    const retried = store.emit('checkpoint-retry-queued', message('original-1'), 'pm');
+    store.emit('checkpoint-retry-queued', message('original-1'), 'pm');
+    expect(checkpointRetried(store, 'original-1', admission.id)).toEqual({ kind: 'checkpoint-retry-queued', at: retried.at });
+    // An ID holding LIKE's wildcards matches only itself.
+    expect(checkpointRetried(store, 'original_1', admission.id)).toMatchObject({ kind: 'checkpoint-retry-queued' });
+    expect(checkpointRetried(store, 'original%', admission.id)).toMatchObject({ kind: 'checkpoint-retry-queued' });
+    expect(checkpointRetried(store, 'original', admission.id)).toBeNull();
 });
