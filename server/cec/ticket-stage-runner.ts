@@ -33,6 +33,8 @@ export async function run(this: Engine, key: string) {
         return;
     this.busy = true;
     this.heartbeat = setInterval(() => this.store.claim(this.owner), 20000);
+    // The returned result this run applies. Marked once applying it has ended, never before: a restart part way through applies it again.
+    let adopted: string | undefined;
     try {
         const t = this.store.ticket(key);
         if (!this.store.state.paused) delete t.stop;
@@ -79,7 +81,7 @@ export async function run(this: Engine, key: string) {
             this.store.emit('stage-started', STAGE_LABELS[stage], role, key);
             // A result this stage's worker already returned, saved to its attempt but never to the ticket, is taken as is.
             const unrecorded = unrecordedStageResult(this.store, t, stage);
-            if (unrecorded) { t.recoveredAttemptId = unrecorded.attemptId; this.store.save(); }
+            adopted = unrecorded?.attemptId;
             if (unrecorded) this.store.emit('stage-result-recovered', `${key}: the ${stage} result its worker returned was not on the ticket; it is applied now. No work is run again.`, role, key);
             // A pass the QA gate refused and accepts now is taken as saved, under a new attempt with its own QA comment.
             const refusedPass = unrecorded ? undefined : gateRefusedPass(this.store, t, stage);
@@ -294,6 +296,7 @@ export async function run(this: Engine, key: string) {
                 break;
             }
         }
+        if (adopted) t.recoveredAttemptId = adopted;
         if (t.stage === 'complete') {
             t.activity = 'idle';
             this.store.emit('staging-verified', `Deployed change verified using ${t.approach?.validation || 'browser'} evidence. Human release/closure remains separate.`, 'pm', key);
@@ -301,6 +304,8 @@ export async function run(this: Engine, key: string) {
     }
     catch (e) {
         const t = this.store.ticket(key);
+        // Applying it failed: the stage runs again rather than applying it a second time.
+        if (adopted) t.recoveredAttemptId = adopted;
         t.activity = 'blocked';
         t.blocker = String(e);
         t.stop = stopReason(e, this.store.state.paused, this.store.clock.now());
