@@ -108,20 +108,29 @@ export class Effects {
         this.store.transition('effect-reconciled', `${intent.operation} verified by read-back; no operation repeated.`, () => this.store.putEffect(intent));
         return true;
     }
+    /** Retain a conclusively rejected dispatch on its original intent, without admitting a resend. */
+    rejectDispatched(id: string, detail: string, receipt: unknown, failure: string): void {
+        const intent = this.store.getEffect(id);
+        if (intent?.status !== 'uncertain' || !intent.dispatchedAt || intent.notLandedAt)
+            throw new Error('Only an unsettled dispatch can be read back as rejected');
+        intent.status = 'rejected';
+        intent.receipt = receipt;
+        intent.error ||= sanitize(failure);
+        this.store.transition('effect-rejected', detail, () => this.store.putEffect(intent));
+    }
     /**
      * Settles an attempted effect that an independent read-back showed never landed. Only its caller can
      * know that: the write must be absolute, so that the state read back excludes the write having applied.
      * The intent keeps its dispatch time and becomes `rejected` with `notLandedAt`; it is never dispatched
      * again, and a caller that may send once more does so under a fresh intent id.
      */
-    notLanded(id: string, detail: string, receipt?: unknown): void {
+    notLanded(id: string, detail: string): void {
         const intent = this.store.getEffect(id);
         if (!intent || !['dispatching', 'uncertain'].includes(intent.status))
             throw new Error('Only an attempted effect can be read back as not landed');
         intent.status = 'rejected';
         intent.notLandedAt = this.store.clock.now().toISOString();
         intent.error = sanitize(`Read back as never landed: ${detail}`);
-        if (receipt !== undefined) intent.receipt = receipt;
         this.store.transition('effect-not-landed', `${intent.operation} for ${intent.target} was read back as never landed.`, () => this.store.putEffect(intent));
     }
 }

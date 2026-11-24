@@ -2,6 +2,14 @@ import { createHash } from 'node:crypto';
 
 type PushIdentity = { pid: number; cwd: string; head: string; branch: string };
 type Event = Record<string, unknown>;
+type TraceRow = { event: Event; index: number };
+type Invocation = { sid: string; start: TraceRow; command: TraceRow; end: TraceRow };
+
+function exactCommand(argv: unknown, command: string, args: string[]): boolean {
+    return Array.isArray(argv) && argv.length === args.length + 1 && typeof argv[0] === 'string' &&
+        argv[0].split('/').at(-1) === command && args.every((arg, index) => argv[index + 1] === arg);
+}
+
 function localHookCommand(command: unknown, argv: unknown): boolean {
     if (!Array.isArray(argv) || typeof argv[0] !== 'string' || argv[0].split('/').at(-1) !== 'git' || argv[1] !== command)
         return false;
@@ -19,11 +27,29 @@ function localHookCommand(command: unknown, argv: unknown): boolean {
     }
 }
 
+/** Join a traced HTTPS session to the exact child launch and exit reported by its parent. */
+function transportChild(events: Event[], parent: string, parentExit: number, child: Invocation,
+    childClass: string, program: string, args: string[], hook?: Event) {
+    const childStarts = events.filter(row => row.sid === parent && row.event === 'child_start' && row !== hook);
+    const launch = childStarts[0];
+    const pid = /-P([a-f0-9]{8})$/.exec(child.sid);
+    if (childStarts.length !== 1 || !pid || child.sid.slice(0, child.sid.lastIndexOf('/')) !== parent ||
+        launch.child_class !== childClass || !Number.isSafeInteger(launch.child_id) || launch.use_shell !== false ||
+        !exactCommand(launch.argv, program, args) || !exactCommand(child.start.event.argv, program, args) ||
+        events.indexOf(launch) >= child.start.index)
+        throw new Error('Native HTTPS transport launch does not match the original push');
+    const exits = events.filter(row => row.sid === parent && row.event === 'child_exit' && row.child_id === launch.child_id);
+    if (exits.length !== 1 || exits[0].pid !== Number.parseInt(pid[1], 16) ||
+        events.indexOf(exits[0]) <= child.end.index || events.indexOf(exits[0]) >= parentExit)
+        throw new Error('Native HTTPS transport did not settle in its original push');
+    return events.indexOf(launch);
+}
+
 function retirementBoundary(events: Event[], sid: string, hook: Event, end: Event, remote: string) {
     const start = events.indexOf(hook), finish = events.indexOf(end);
     if (!Array.isArray(hook.argv) || hook.argv.length !== 3 || hook.argv[1] !== 'origin' || hook.argv[2] !== remote)
         throw new Error('The original hook remote does not match the current GitHub remote');
-    const commands = new Map<unknown, { event: Event; index: number }[]>();
+    const commands = new Map<string, TraceRow[]>();
     for (const [index, event] of events.entries()) {
         if (event.sid === sid || !['start', 'cmd_name', 'exit'].includes(String(event.event))) continue;
         if (typeof event.sid !== 'string' || !event.sid.startsWith(sid + '/'))
@@ -32,16 +58,27 @@ function retirementBoundary(events: Event[], sid: string, hook: Event, end: Even
         rows.push({ event, index });
         commands.set(event.sid, rows);
     }
-    // Only the existing HTTPS discovery helper may communicate with the remote. Treat any
-    // other nested Git command during the hook as a possible separate remote writer.
-    for (const calls of commands.values()) {
+    const transport: Invocation[] = [];
+    for (const [childSid, calls] of commands) {
         const [nestedStart, command, nestedEnd] = calls;
         if (calls.length !== 3 || nestedStart.event.event !== 'start' || command.event.event !== 'cmd_name' || nestedEnd.event.event !== 'exit')
             throw new Error('A nested Git command lacks a complete native trace');
-        if (command.index < start && ['_run_dashed_', 'remote-curl'].includes(String(command.event.name))) continue;
+        if (command.index < start && ['_run_dashed_', 'remote-curl'].includes(String(command.event.name))) {
+            transport.push({ sid: childSid, start: nestedStart, command, end: nestedEnd });
+            continue;
+        }
         if (nestedStart.index <= start || nestedEnd.index >= finish || !localHookCommand(command.event.name, nestedStart.event.argv))
             throw new Error('A nested Git command may have reached another ref-update boundary');
     }
+    const dashed = transport.find(call => call.command.event.name === '_run_dashed_');
+    const curl = transport.find(call => call.command.event.name === 'remote-curl');
+    if (transport.length !== 2 || !dashed || !curl)
+        throw new Error('One native HTTPS transport chain is required');
+    const pushExit = events.findIndex(row => row.sid === sid && row.event === 'exit');
+    transportChild(events, sid, pushExit, dashed, 'remote-https', 'git', ['remote-https', 'origin', remote], hook);
+    const curlLaunch = transportChild(events, dashed.sid, dashed.end.index, curl, 'dashed', 'git-remote-https', ['origin', remote]);
+    if (curlLaunch <= dashed.command.index)
+        throw new Error('Native HTTPS transport child launched outside the original discovery chain');
     if (events.slice(start + 1, finish).some(event => event.event === 'child_start' && !localHookCommand('maintenance', event.argv)))
         throw new Error('A native hook child requires separate reconciliation');
 }
