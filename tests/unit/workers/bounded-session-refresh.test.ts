@@ -40,11 +40,18 @@ test('an incomplete inventory is read again until it is complete or the time is 
     await vi.runAllTimersAsync();
     await neverResult;
     expect(never.reads).toBe(4);
-    const limited = { ...never, reads: 0 };
+    const limited = {
+        ...never,
+        reads: 0,
+        async refresh() {
+            this.reads++;
+            await new Promise(resolve => setTimeout(resolve, 200));
+            return {} as never;
+        },
+    };
     const start = Date.now();
-    const limitedResult = refreshUntilComplete(limited, 1500);
+    const elapsed = refreshUntilComplete(limited, 1500).then(() => Date.now() - start);
     await vi.runAllTimersAsync();
-    await limitedResult;
+    expect(await elapsed).toBe(1500);
     expect(limited.reads).toBe(2);
-    expect(Date.now() - start).toBe(1500);
 });

@@ -295,7 +295,11 @@ test.each([
  const a=fixture(),comment=commentFor(a,1),prior=JSON.stringify(a.job),original=JSON.stringify(a.original),checkpoint=readFileSync(resolve(a.root,'sessions/original/completed-output.json'),'utf8');
  const invalidate=()=>{const record=resource==='issue'?a.issue:comment;delete (record as any)[field];};
  vi.spyOn(a.delivery,'api').mockImplementation(async path=>path.includes('/comments?')?[structuredClone(comment)]:structuredClone(a.issue));
- if(after)a.run.mockImplementation(async()=>{const result=a.readback();invalidate();return result as any;});else invalidate();
+ if(after)a.run.mockImplementation(async()=>{
+  const result=a.readback();
+  if(resource==='comment')comment.created_at='';else invalidate();
+  return result as any;
+ });else invalidate();
  await expect(reconcileValidation(a.delivery,a.job.key,'original',a.ownership)).rejects.toThrow(resource==='issue'?'Current issue scope is unavailable':'Current issue comment identity or pagination is unverified');
  expect(a.run).toHaveBeenCalledTimes(after?1:0);expect(a.job.stage).toBe('validate');expect(JSON.stringify(a.job)).toBe(prior);expect(JSON.stringify(a.original)).toBe(original);
  expect(readFileSync(resolve(a.root,'sessions/original/completed-output.json'),'utf8')).toBe(checkpoint);expect(readdirSync(resolve(a.root,'ticket-work/job'))).toEqual(['checks.log']);

@@ -27,7 +27,9 @@ test.each([
     await expect(effects.execute({ ...original, ...change })).rejects.toThrow('different operation');
     expect(original.preflight).toHaveBeenCalledOnce();
     expect(original.dispatch).toHaveBeenCalledOnce();
-    expect(store.getEffect(original.id)).toMatchObject({ status: 'verified', receipt });
+    const persisted = store.getEffect(original.id);
+    expect(persisted?.status).toBe('verified');
+    expect(persisted?.receipt).toStrictEqual(receipt);
 });
 
 test('two concurrent preflights for one intent dispatch exactly once', async () => {
