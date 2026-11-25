@@ -2,6 +2,7 @@
 topics: [context-wiki-and-ci]
 plans: [2026-11-24-trim-the-office-unit-suite-03daf197c2.md]
 issue: 'https://github.com/jfusco/the-office/issues/565'
+issues: ['https://github.com/jfusco/the-office/issues/565']
 ---
 
 # Trim repeated recovery and publication checks
