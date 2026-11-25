@@ -1,4 +1,4 @@
-import { test, expect } from './fixture-test';
+import { test, expect, type APIRequestContext, type Page } from './fixture-test';
 import { setPreferences } from './support';
 
 test.beforeEach(async ({ page, request }) => { await setPreferences(request, { reducedMotion: true }); await page.addInitScript(() => localStorage.setItem('office.floor', 'delivery')); });
@@ -67,8 +67,20 @@ test('a stale outbox answer refreshes its question without losing the typed draf
     expect(await page.evaluate(() => Object.values(localStorage).includes('Keep the authored Page Fields.'))).toBe(true); expect(posts).toBe(1);
 });
 
+const reply = {id:'fixture-reply',role:'lead',ticket:'',title:'Confirm the test environment',detail:'Choose a fixture environment.',url:'',createdAt:'',updatedAt:''};
+
+async function openAndRemoveResolvedItem(page: Page, request: APIRequestContext) {
+    const active = page.locator('[data-inspector-scroll]');
+    await active.getByRole('button',{name:'Resolved items 1',exact:true}).click();
+    await active.locator('[data-outbox-item]').click();
+    await expect(active.locator('[data-outbox-detail]')).toBeVisible();
+    expect((await request.post('/__fixture/snapshot',{data:{outbox:[]}})).ok()).toBe(true);
+    await expect(active.getByText('This item is no longer in the outbox.',{exact:true})).toBeVisible();
+    return active;
+}
+
 test('a resolved outbox item stays available for Back focus only', async ({page,request}) => {
-    const item = {id:'fixture-reply',role:'lead',ticket:'',title:'Confirm the test environment',detail:'Choose a fixture environment.',status:'open',url:'',createdAt:'',updatedAt:''};
+    const item = {...reply,status:'open'};
     const publish = async () => expect((await request.post('/__fixture/snapshot',{data:{outbox:[item]}})).ok()).toBe(true);
     await publish();
     await page.goto('/');
@@ -87,11 +99,18 @@ test('a resolved outbox item stays available for Back focus only', async ({page,
     await expect(row).toHaveCount(0);
     await page.getByRole('button',{name:'Back to Your outbox',exact:true}).click();
     await expect(page.getByRole('button',{name:'Needs your reply 0',exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'Resolved items 1',exact:true}).click();
-    await row.click();
-    expect((await request.post('/__fixture/snapshot',{data:{outbox:[]}})).ok()).toBe(true);
-    const active = page.locator('[data-inspector-scroll]');
-    await expect(active.getByText('This item is no longer in the outbox.')).toBeVisible();
+    const active = await openAndRemoveResolvedItem(page, request);
     await expect(active.getByRole('button')).toHaveCount(0);
-    await page.getByRole('button',{name:'Back to Resolved items'}).click();
+    await page.getByRole('button',{name:'Back to Resolved items',exact:true}).click();
+    await expect(active.getByText('No items in this group.',{exact:true})).toBeVisible();
+});
+
+test('Close dismisses the outbox drawer when the open item is removed', async ({page,request}) => {
+    expect((await request.post('/__fixture/snapshot',{data:{outbox:[{...reply,status:'resolved'}]}})).ok()).toBe(true);
+    await page.goto('/');
+    await page.getByRole('button',{name:/^Open your outbox,/}).click();
+    await openAndRemoveResolvedItem(page, request);
+    const drawer = page.locator('[data-inspector]');
+    await drawer.getByRole('button',{name:'Close details',exact:true}).click();
+    await expect(drawer).toHaveCount(0);
 });
