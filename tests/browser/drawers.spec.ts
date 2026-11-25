@@ -497,9 +497,9 @@ for (const destination of ['Evidence without a saved artifact', 'Evidence', 'Tim
         await page.goto('/');
         await page.getByLabel('Office project').selectOption('brain');
         await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
-        await page.getByRole('button',{name:new RegExp('^' + ticket.key + ' ·')}).click();
         const drawer = page.locator('[data-inspector]');
         const active = drawer.locator('[data-drawer-page]:not([inert])');
+        await active.getByRole('button',{name:new RegExp('^' + ticket.key + ' ·')}).click();
         const timeline = active.getByRole('region',{name:'Ticket timeline'});
         await timeline.getByRole('button',{name:'Show earlier activity'}).click();
         const parent = await active.elementHandle();
