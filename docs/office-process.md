@@ -842,9 +842,9 @@ It records new scheduler claims, effect intents, and queued harness and delivery
 same transaction as that write and outside the saved state. The journaled writers are
 `Store.claimWork`, `Effects.execute`, `enqueueRequest`, `requestDelivery`, the history-retirement,
 PR-metadata, QA plan-retry and saved-implementation operator commands, and the closeout cleanup
-request. The completed receipt of a synchronous review or implement resume adds no
-admission-journal row. One start-up migration that queues a legacy `adopt-candidate` request is
-not journaled. It runs identically in every release.
+request. The completed receipt of a synchronous review, implement or assignment-review resume,
+or of a writer release, adds no admission-journal row. One start-up migration that queues a legacy `adopt-candidate`
+request is not journaled. It runs identically in every release.
 
 The journal omits status changes to existing records under a claim, during start-up recovery and
 through operator commands. An IT tick that began before the fence was taken can also requeue
@@ -1108,7 +1108,8 @@ marked in their project (see Repair wait below). And once the fix is found in th
 the Office resumes the marked stop once and removes the marker. It queues a recovery request for
 a GitHub read-back, a `resume-ticket` delivery request for a Jira/Azure pilot ticket, or the native
 read-back (`reconcile-native-checkpoint`) for a Brain checkpoint. It directly requeues GitHub
-review jobs or jobs the approach guard rejected at `implement` (see Resume after a fix below).
+review jobs, jobs the approach guard rejected at `implement` and stopped assignment reviews, and
+grants a dead writer run one more harness restart (`release-writer`) (see Resume after a fix below).
 An incident by itself describes a stop and grants no retry or authority over the work. Resuming
 requires a fix bound to a route, that fix in the running release, and automatic resumes enabled.
 
@@ -1306,20 +1307,24 @@ saved-result form without one. `resume-ticket` is dispatched for a Jira/Azure pi
 A ticket's resume, below). `review-pr`, `review-candidate` and `requeue-implement` are dispatched
 as synchronous transitions that requeue the job directly (see below). `release-writer` is
 dispatched as a grant of one more harness restart to a dead writer run (see A writer release,
-below); it restarts nothing itself, and the restart it allows is a paid run.
-`reconcile-native-checkpoint` is dispatched for a Brain checkpoint (see A checkpoint's resume,
-below). `retry-checkpoint` and `reconcile-maintenance` are not dispatched, by decision, and their
-inventory rows say why: a checkpoint retry can start a paid maintenance run after the repair wait
-lifts, and a maintenance reconciliation can repeat a paid read-back on replay and can finish with
-the original run still blocked. The remaining routes await dispatch support. `reconcile-review`
+below); it restarts nothing itself, and the restart it allows is a paid run. `review-assignment` is
+dispatched as a synchronous transition that requeues a stopped assignment review directly (see An
+assignment review's resume, below). `reconcile-native-checkpoint` is dispatched for a Brain
+checkpoint (see A checkpoint's resume, below). `retry-checkpoint` and `reconcile-maintenance` are
+not dispatched, by decision, and their inventory rows say why: a checkpoint retry can start a paid
+maintenance run after the repair wait lifts, and a maintenance reconciliation can repeat a paid
+read-back on replay and can finish with the original run still blocked. `reconcile-review`
 without a head verifies a saved independent review against the unchanged pull request and issue
 and runs no model. Several of the other handlers start a model run when the scheduler runs the
 request (the implementation, validation, scope-repair, preparation, stopped base update and
 closeout read-backs), so a resume through them is a paid run no person started.
 `requeue-implement` starts no run itself, but the job it queues runs implement again on the same
-candidate, which is also a paid run no person started. A stopped base handoff is read from the run
-it already started; no other is started. A resume is still one per subject and fix, and none is
-admitted while the switch is paused.
+candidate, which is also a paid run no person started. `review-assignment` starts no run itself
+either. It requeues the review locally. On a project that is not hands-off, the ordinary pump then
+checks the review's assessment, its assignment, holds and pilot ownership, and may reach a paid
+read-only PM run with a 15-minute timeout. Hands-off intake takes its existing deterministic path.
+A stopped base handoff is read from the run it already started; no other is started. A resume is
+still one per subject and fix, and none is admitted while the switch is paused.
 
 A ticket's resume. A subject whose route resumes a ticket (`cec/delivery/ticket:KEY`) is admitted
 by `server/incidents/repair/dispatch-ticket-resume.ts`, not by the job admission: same switch,
@@ -1424,7 +1429,8 @@ repair waits are kept, and never while a deployment holds the fence. For every `
 incident it puts each subject the reading calls `due` to admission in its own project
 (`server/incidents/repair/dispatch-resume.ts` for GitHub read-backs, `dispatch-ticket-resume.ts`
 for `resume-ticket`, `dispatch-transition-resume.ts` for `review-pr`, `review-candidate` and
-`requeue-implement`, `dispatch-writer-release.ts` for `release-writer`, and
+`requeue-implement`, `dispatch-writer-release.ts` for `release-writer`, `dispatch-assignment-resume.ts` for
+`review-assignment`, and
 `dispatch-checkpoint-resume.ts` for `reconcile-native-checkpoint`).
 The pass reads the clock for each subject so admission uses that subject's current wait.
 
@@ -1452,7 +1458,7 @@ repair-wait marker is removed. The request's admission-journal row commits with 
 attempt count or budget of the job is changed; the scheduler runs the request under its existing
 ownership and the handler checks its own preconditions.
 
-Three routes are synchronous transitions rather than requests: `review-pr`, `review-candidate` and
+Three job routes are synchronous transitions rather than requests: `review-pr`, `review-candidate` and
 `requeue-implement` (`server/incidents/repair/dispatch-transition-resume.ts`). Their admission
 makes the checks above, except the head and the earlier completed request, and also refuses while
 a scheduler claim is active for the job. Then, in one project transaction, it makes the transition
@@ -1501,6 +1507,39 @@ resume is `wait-ended`. The transition saves no stage step, so declare `stage-le
 `implement`. Acceptance saves a rejected passed result as a step before it rethrows
 (`server/delivery/pipeline/accept-stage-result.ts`), so `stage-result-passed` for `implement` can
 read as crossed while the job is still blocked at `implement`.
+
+An assignment review's resume. `review-assignment` is a synchronous transition too
+(`server/incidents/repair/dispatch-assignment-resume.ts`), for a subject `project/intake/ID`. A
+resume already bound for that incident, subject and fix is returned first, even once the review is
+gone. Then its admission refuses when: the project is paused or draining (`project-paused`); the
+route is not `review-assignment` dispatched for an assignment review (`not-dispatchable`); the
+subject is not an assignment review of this project, or the project does not hold that review
+(`no-record`); the repair wait of that incident is not in effect for the review's exact stop, or a
+later review of the same ticket supersedes it (`wait-ended`), since the scheduler and observation
+read only the last review stored for a ticket; the route's key is not the review's ticket
+(`key-mismatch`); a request for that ticket is queued or working, in the recovery queue or in the
+delivery queue, where a Jira/Azure `start-pilot` waits, or a scheduler claim is active for the
+review itself (`request-pending`). The wait's deadline is read again just before the write. Then,
+in one project transaction, `requeueAssignmentReview` (`server/scheduling/assignment-transition.ts`)
+refuses a review that is queued or working, or whose ticket a delivery job holds in any status but
+`cancelled` (`transition-refused`); otherwise it sets the review `queued` with `queuedAt` from the
+store's clock and changes nothing else. The admission reads the wait again, and one that ran out
+undoes the transaction. It saves a `completed` delivery-lane request as the receipt with
+`repairResume` and the review's baseline (no steps, at `assignment-review`), removes that review's
+repair-wait marker and emits `repair-resume-admitted`, the only event, with no role. The baseline
+records that event's ID. No admission-journal row is written and the receipt is never run.
+
+The review keeps its IT ownership-recovery count (`itRecoveryAttempts`) and its read-retry record
+(`retry`) exactly as they were. A spent budget does not refuse the resume: a review whose read
+retries are marked exhausted, whose three retries are spent before the flag is set, or whose IT
+recoveries are at their cap of three is resumed once per fix (Joe, 2026-11-24, "Resume it once").
+No budget is reset or replenished, so the ordinary retry planner and IT's ownership recovery keep
+their own limits; the receipt is what limits the Office to one resume per fix. The operator's
+`review-assignment` command (`recheck`, `server/scheduling/operator-commands.ts`) is not changed and
+is not this transition: it picks the latest review of the key, returns without a word while that
+review is queued or working, resets the IT count, stamps the wall clock and emits
+`assignment-recheck` as the PM. A person's `review-assignment` or `defer-non-ready` command after
+the resume reads as moved by hand.
 
 The head check (`server/incidents/repair/route-head.ts`) asks the handler's own admission rule,
 the function the handler itself calls when the request runs, so admission and execution cannot
@@ -1566,7 +1605,9 @@ replacement followed the admission in ledger order or is dated after the saved a
 which also covers late admission records); `gone` (the project no longer holds the request);
 `untested` (the binding does not record how the job stood); `moved-by-hand` (an operator's command
 event for the request's ticket after the admission's own project event: `pr-preparation-queued`,
-`candidate-base-update`, `candidate-review-recheck`, `pr-review-recheck`, `implement-requeued`);
+`candidate-base-update`, `candidate-review-recheck`, `pr-review-recheck`, `implement-requeued`;
+for an assignment review only `assignment-recheck` and `pickup-deferred`, so neither list moves
+the other's subject);
 `untested` (the boundary is undeclared); `advanced` (the declared boundary is crossed,
 `boundary-crossed.ts`) or `untested` when it cannot be judged; `gone` (the job is missing or
 cancelled); `stalled` (see below), which replaces `chained` and is not followed by it; `chained`
@@ -1623,6 +1664,21 @@ after the admission's event whose message begins, compared literally, with
 names no checkpoint and no actor; a person's retry, IT's, the not-started recovery and the
 refresh continuation emit it alike, and any of them reads `moved-by-hand`. The resume's own
 request is looked for elsewhere as `brain/reconciliation/ID`.
+
+An assignment-review subject (`project/intake/ID`) is read by the same rules, as a review whatever
+its ID begins with, and its request is the completed receipt. A review has no steps, so in place of
+a job the pass supplies the bound review's status, read by its ID, and a crossing read from that
+review and from delivery of the receipt's ticket (`review-progress.ts`). The review's own
+decision counts once its intake claim ends. `stage-left` for `assignment-review` is crossed when
+the review ends `ready` or a non-cancelled delivery job holds the ticket. The job proves departure
+even while the claim is active or after the review is cancelled or removed. `record-settled` is
+crossed only by the bound review's own decision of `ready`, `owned` or `held`. A later review of
+the ticket, a delivery job or the receipt is no such decision. `stage-result-passed`, another
+stage and a baseline at another stage are `untested` on
+the first pass. A review that is missing or cancelled, with nothing crossed and nothing earlier
+deciding, is `gone`. The move is read by the receipt's ticket after the admission's event, so it is
+found once the review is gone; a later review of the ticket shares that key. Activity is the work
+log under the review's ID and the receipt's.
 
 A resume that shows nothing is `stalled` after 24 hours (`stalled-resume.ts`): asked after every
 final reading and before `chained`, which it replaces; like `chained` it gives way to any final
