@@ -27,3 +27,10 @@ export function removePage(path: DrawerPath, id: string, focus?: HTMLElement | n
     returnFocus: focus || path.entries[index].trigger,
   };
 }
+
+
+export function renamePage(path: DrawerPath, id: string, title: string): DrawerPath {
+  const page = path.entries.find(entry => entry.id === id);
+  if (!page || page.title === title) return path;
+  return { ...path, entries: path.entries.map(entry => entry === page ? { ...entry, title } : entry) };
+}

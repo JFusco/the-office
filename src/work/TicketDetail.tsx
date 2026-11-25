@@ -92,6 +92,27 @@ export function TicketHeading({
     </div>
   );
 }
+export function GitHubJobTopics({ job }: { job: TicketJob }) {
+  const steps = job.steps ?? [];
+  return <>
+    {job.approach && (
+      <DrawerTopic title="Approach and decisions">
+        <ApproachSummary approach={job.approach} decisions={job.decisions} />
+      </DrawerTopic>
+    )}
+    <DrawerTopic title="Delivery history" detail={steps.length}>
+      {steps.map((step, i) => (
+        <Card as="article" key={i}>
+          <strong className="text-11 leading-relaxed">
+            {step.stage} · {step.stage === 'validate' && job.qaGateRefusal?.step === i ? 'QA evidence gate refused' : step.result.outcome}
+          </strong>
+          <p className="leading-relaxed">{step.result.summary}</p>
+        </Card>
+      ))}
+    </DrawerTopic>
+  </>;
+}
+
 export function TicketDetail({
   ticket: t,
   snapshot,
@@ -151,11 +172,6 @@ export function TicketDetail({
         ) : null}
         <div className="flex flex-wrap items-center gap-2">{startAssigned}</div>
         {dependency}
-        {job?.approach && (
-          <DrawerTopic title="Approach and decisions">
-            <ApproachSummary approach={job.approach} decisions={job.decisions} />
-          </DrawerTopic>
-        )}
         {review ? (
           <>
             <Tag className="self-start">{review.status}</Tag>
@@ -173,16 +189,7 @@ export function TicketDetail({
                 Recheck PR
               </Button>
             ) : null}
-            <DrawerTopic title="Delivery history" detail={job.steps.length}>
-              {job.steps.map((s, i) => (
-                <Card as="article" key={i}>
-                  <strong className="text-11 leading-relaxed">
-                    {s.stage} · {s.stage === 'validate' && job.qaGateRefusal?.step === i ? 'QA evidence gate refused' : s.result.outcome}
-                  </strong>
-                  <p className="leading-relaxed">{s.result.summary}</p>
-                </Card>
-              ))}
-            </DrawerTopic>
+
           </Section>
         ) : null}
       </>

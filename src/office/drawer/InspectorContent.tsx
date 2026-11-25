@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Mailbox } from '../../work/Mailbox';
 import { QueueEvidenceLinks, QueueTicketDetail, queueTicketRecord, queueValidationArtifacts } from '../../work/QueueTicketDetail';
 import { Outbox } from '../../conversations/Outbox';
@@ -21,7 +22,7 @@ import { DrawerRow, DrawerTopic } from './DrawerTopic';
 import type { InspectorProps } from './inspector-props';
 import { AgentDesk } from '../../people/AgentDesk';
 import { AzureOperations } from '../../work/AzureOperations';
-import { TicketDetail, TicketEvidence, TicketHeading } from '../../work/TicketDetail';
+import { GitHubJobTopics, TicketDetail, TicketEvidence, TicketHeading } from '../../work/TicketDetail';
 import { TicketTimeline } from '../../work/timeline/TicketTimeline';
 import { currentJob } from '../../work/timeline/ticket-progress';
 import { TimeBook } from '../../timing/TimeBook';
@@ -165,6 +166,7 @@ function SelectedTicket({ selection, snapshot, reduced, act, onSelect, pmName }:
   pmName: string;
 }) {
   const key = selection.id;
+  const initialEvidence = useRef(selection.page === 'evidence');
   const github = snapshot.project?.provider === 'github';
   const ticket = snapshot.tickets.find(ticket => ticket.key === key);
   const queue = ticket ? undefined : queueTicketRecord(snapshot, key);
@@ -182,8 +184,9 @@ function SelectedTicket({ selection, snapshot, reduced, act, onSelect, pmName }:
       {ticket
         ? <TicketDetail ticket={ticket} snapshot={snapshot} job={job} act={act} onOpen={id => onSelect({ kind: 'ticket', id })} />
         : <QueueTicketDetail job={job} />}
+      {github && job && <GitHubJobTopics job={job} />}
       {(ticket || !!artifacts?.size) && (
-        <DrawerTopic initial={selection.page === 'evidence'} title="Evidence"
+        <DrawerTopic initial={initialEvidence.current} onOpen={() => { initialEvidence.current = false; }} title="Evidence"
           detail={ticket && !github ? ticket.evidence.length || undefined : undefined}>
           {ticket ? <TicketEvidence ticket={ticket} job={job} github={github} /> :
             artifacts && <QueueEvidenceLinks artifacts={artifacts} />}

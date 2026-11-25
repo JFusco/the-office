@@ -55,5 +55,12 @@ test('a queued GitHub ticket opens Evidence directly from a QA notification', as
     await expect(active.getByRole('link',{name:'Queued QA artifact'})).toHaveAttribute('href','/api/artifact?path=' + encodeURIComponent(artifact) + '&project=brain');
     await page.getByRole('button',{name:'Back to ' + original.key,exact:true}).click();
     await expect(active.getByRole('heading',{name:'PR #42 delivery',exact:true})).toBeVisible();
-    await expect(active.getByRole('button',{name:'Evidence',exact:true})).toBeFocused();
+    const rowAfterBack = active.getByRole('button',{name:'Evidence',exact:true});
+    await expect(rowAfterBack).toBeFocused();
+    const steps = job.steps;
+    job.steps = []; await publish([]);
+    await expect(rowAfterBack).toHaveCount(0);
+    job.steps = steps; await publish([]);
+    await expect(rowAfterBack).toBeVisible();
+    await expect(active.getByRole('heading',{name:'PR #42 delivery'})).toBeVisible();
 });

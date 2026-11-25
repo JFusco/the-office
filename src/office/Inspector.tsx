@@ -7,7 +7,7 @@ import { ROLE_NAMES } from '../shared';
 import { createConversationDrafts } from '../conversations/Conversation';
 import type { InspectorProps } from './drawer/inspector-props';
 import { DrawerNavigation, DrawerPage } from './drawer/DrawerTopic';
-import { popPage, pushPage, removePage, type DrawerPath, type DrawerEntry } from './drawer/navigation';
+import { popPage, pushPage, removePage, renamePage, type DrawerPath, type DrawerEntry } from './drawer/navigation';
 import { InspectorContent } from './drawer/InspectorContent';
 import { selectionTitle } from './drawer/selection-title';
 
@@ -84,6 +84,7 @@ export default function Inspector(props: InspectorProps) {
     if (next.kind === 'settings') props.onSettings?.();
     push({ id, title: selectionTitle(next, snapshot, names), trigger });
   }
+  const rename = useCallback((id: string, title: string) => setPath(old => renamePage(old, id, title)), []);
   const remove = useCallback(
     (id: string) => setPath(old => removePage(old, id)),
     [],
@@ -99,7 +100,7 @@ export default function Inspector(props: InspectorProps) {
       if (document.activeElement === origin) return;
     }
     heading.current?.focus({ preventScroll: true });
-  }, [path]);
+  }, [current.id, path.previous, path.returning, path.returnFocus]);
   useEffect(() => {
     if (!path.previous) return;
     const settle = () => {
@@ -161,7 +162,7 @@ export default function Inspector(props: InspectorProps) {
         </IconButton>
       </div>
       <div ref={setViewport} className="relative min-h-0 flex-1 overflow-hidden" />
-      <DrawerNavigation.Provider value={{ drafts, path, viewport, reduced, push, back, remove }}>
+      <DrawerNavigation.Provider value={{ drafts, path, viewport, reduced, push, back, remove, rename }}>
         {records.map((record) => (
           <DrawerPage
             key={record.id}

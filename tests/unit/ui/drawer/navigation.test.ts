@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {popPage,pushPage,removePage,type DrawerPath} from '../../../../src/office/drawer/navigation';
+import {popPage,pushPage,renamePage,removePage,type DrawerPath} from '../../../../src/office/drawer/navigation';
 import {drawerPageMotion} from '../../../../src/tokens/motion';
 const root={id:'root',title:'Mailbox',trigger:null};
 const initial:DrawerPath={entries:[root],previous:null,returning:false};
@@ -25,6 +25,15 @@ describe('drawer navigation',()=>{
   it('ignores repeat activation and Back at the root',()=>{
     expect(pushPage(initial,root)).toBe(initial);
     expect(popPage(initial)).toBe(initial);
+  });
+  it('keeps the current page and original Back target when a live group is renamed', () => {
+    const group = { id:'waiting', title:'Waiting on prerequisites', trigger:root.trigger };
+    const ticket = { id:'ticket', title:'CEC-101', trigger:root.trigger };
+    const path = pushPage(pushPage(initial, group), ticket);
+    const updated = renamePage(path, group.id, 'Waiting for the next step');
+    expect(updated.entries.at(-1)).toBe(ticket);
+    expect(popPage(updated).entries.at(-1)).toEqual({ ...group, title:'Waiting for the next step' });
+    expect(renamePage(updated, 'absent', 'New title')).toBe(updated);
   });
   it('uses the same easing in either direction and skips reduced motion',()=>{
     expect(drawerPageMotion(false)).toEqual({duration:.28,ease:[.22,1,.36,1]});

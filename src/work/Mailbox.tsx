@@ -13,11 +13,16 @@ const textRow = `-mx-2 flex w-[calc(100%+16px)] justify-between rounded-5 border
 
 export function Mailbox({snapshot,act,busy,preferences,onSelect}: Pick<InspectorProps,'snapshot'|'act'|'busy'|'preferences'|'onSelect'>) {
   const { opened: openedPriority, remember, release } = useDrawerReturnRow<string>();
+  const teamReturn = useDrawerReturnRow<InspectorProps['snapshot']['tickets'][number]>();
   const priority = snapshot.tickets.find(ticket => ticket.activity === 'blocked') || snapshot.tickets.find(ticket => ticket.activity === 'working') || snapshot.tickets.find(ticket => ticket.stage !== 'complete');
   const previousPriority = openedPriority !== priority?.key
     ? snapshot.tickets.find(ticket => ticket.key === openedPriority)
     : undefined;
   const withTeam = snapshot.tickets.filter(ticket => ticket.stage !== 'mailbox');
+  const previousTeam = teamReturn.opened;
+  const teamRows = previousTeam && !withTeam.some(ticket => ticket.key === previousTeam.key)
+    ? [...withTeam, snapshot.tickets.find(ticket => ticket.key === previousTeam.key) ?? previousTeam]
+    : withTeam;
   return (
     <>
       <PanelHeader icon={<Inbox size={26} />}>PM mailbox</PanelHeader>
@@ -75,12 +80,16 @@ export function Mailbox({snapshot,act,busy,preferences,onSelect}: Pick<Inspector
         <Section>
           <SectionTitle className="mb-4">Already with the team</SectionTitle>
           {!withTeam.length && <p className={mutedCopy}>No tickets with the team.</p>}
-          {withTeam.map((ticket) => (
+          {teamRows.map((ticket) => (
             <button
               type="button"
               key={ticket.key}
               className={textRow}
-              onClick={() => onSelect({ kind: 'ticket', id: ticket.key })}
+              onBlur={teamReturn.release}
+              onClick={event => {
+                teamReturn.remember(ticket, event.currentTarget);
+                onSelect({ kind: 'ticket', id: ticket.key });
+              }}
             >
               <span>
                 {ticket.key}

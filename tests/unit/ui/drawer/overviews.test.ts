@@ -12,7 +12,7 @@ const snapshot = demoSnapshot(null, 1);
 const navigation = {
   path: { entries: [{ id: 'root', title: '', trigger: null }], previous: null, returning: false },
   viewport: null, drafts: createConversationDrafts(), reduced: true,
-  push: vi.fn(), back: vi.fn(), remove: vi.fn(),
+  push: vi.fn(), back: vi.fn(), remove: vi.fn(), rename: vi.fn(),
 };
 function overview(selection: InspectorProps['selection']) {
   return renderToStaticMarkup(createElement(DrawerNavigation.Provider, {value:navigation},

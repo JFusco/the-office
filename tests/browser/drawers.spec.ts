@@ -129,20 +129,27 @@ async function sampleSlide(trigger: Locator) {
         let stationary = true, inert = true, paired = false;
         const slide = (element: Element) => element.getAnimations().find(animation =>
           (animation.effect as KeyframeEffect).getKeyframes().some(keyframe => 'transform' in keyframe));
-        function sample() {
+        async function sample() {
           const entering = shell.querySelector<HTMLElement>('[data-inspector-scroll]');
           const from = slide(leaving), to = entering && slide(entering);
           if (entering && entering !== leaving && from && to) {
             // Motion uses native transforms. Seek the two real animations together
             // before the outgoing page unmounts, even on a busy test machine.
+            await Promise.all([from.ready, to.ready]);
+            const fromStart = Number(from.startTime), toStart = Number(to.startTime);
+            const firstStart = Math.min(fromStart, toStart);
+            const sameTiming = Math.abs(fromStart - toStart) < 20 &&
+              from.effect?.getTiming().duration === to.effect?.getTiming().duration;
             from.pause(); to.pause();
             for (const elapsed of [0, 70, 140, 210, 280]) {
-              from.currentTime = to.currentTime = elapsed;
+              from.currentTime = firstStart + elapsed - fromStart;
+              to.currentTime = firstStart + elapsed - toStart;
+              await new Promise(requestAnimationFrame);
               const oldPage = (leaving.getBoundingClientRect().x - x) / width;
               const newPage = (entering.getBoundingClientRect().x - x) / width;
               outgoing.push(oldPage);
               incoming.push(newPage);
-              paired ||= Math.abs(oldPage) > .01 && Math.abs(newPage) > .01;
+              paired ||= sameTiming && Math.abs(oldPage) > .01 && Math.abs(newPage) > .01;
               stationary &&= bounds(shell) === frame && bounds(canvas) === scene;
               inert &&= leaving.inert && !entering.inert;
             }
@@ -343,7 +350,10 @@ test('a changed mailbox priority keeps the original Back target', async ({page,r
   expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
   const priority = root.getByRole('heading',{name:'Needs attention'}).locator('..');
   await expect(priority.getByRole('button',{name:new RegExp('^' + replacement.key + ' ·')})).toBeVisible();
-  await page.keyboard.press('Tab');
+  await root.getByRole('button',{name:/^Queued for Morgan/}).click({delay:120});
+  const backToMailbox = page.getByRole('button',{name:'Back to PM mailbox',exact:true});
+  await expect(backToMailbox).toBeVisible();
+  await backToMailbox.click();
   await expect(root.getByRole('heading',{name:'Previously opened'})).toHaveCount(0);
   await expect(priority.getByRole('button',{name:new RegExp('^' + replacement.key + ' ·')})).toBeVisible();
 });
@@ -379,6 +389,26 @@ for (const [topic, empty] of [
     await expect(page.getByRole('button',{name:topic + ' 0',exact:true})).toBeFocused();
   });
 }
+
+test('Already with the team restores a ticket that moved back to the mailbox', async ({page, request}) => {
+  const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
+  const ticket = snapshot.tickets.find(item => item.stage !== 'mailbox')!;
+  await page.goto('/');
+  await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+  const active = page.locator('[data-inspector-scroll]');
+  await active.getByRole('button',{name:/^Already with the team/}).click();
+  const row = active.getByRole('button',{name:new RegExp('^' + ticket.key)});
+  const original = await row.elementHandle();
+  await row.click();
+  ticket.stage = 'mailbox';
+  expect((await request.post('/__fixture/snapshot',{data:{tickets:snapshot.tickets}})).ok()).toBe(true);
+  await expect(page.locator('[data-drawer-page="root"] [data-drawer-row]').filter({hasText:'Already with the team'})).toHaveText(/0$/);
+  await page.getByRole('button',{name:'Back to Already with the team'}).click();
+  await expect(row).toBeFocused();
+  expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+  await page.keyboard.press('Tab');
+  await expect(row).toHaveCount(0);
+});
 
 test('phone settings topics form one aligned list', async ({page}) => {
   await page.setViewportSize({width:390,height:844});
@@ -474,7 +504,7 @@ test('PM queue restores the button after activation without pointer focus', asyn
   await expect(row).toHaveCount(0);
 });
 
-for (const destination of ['Evidence without a saved artifact', 'Evidence', 'Time', 'Discussion'] as const) {
+for (const destination of ['Evidence without a saved artifact', 'Evidence', 'Time', 'Discussion', 'Delivery history', 'Approach and decisions'] as const) {
     test(`a live ticket can fall back to its queue record while reading ${destination}`, async ({page,request}) => {
         await page.setViewportSize({width:900,height:620});
         const snapshot: OfficeSnapshot = await (await request.get('/api/office?project=brain')).json();
@@ -486,6 +516,7 @@ for (const destination of ['Evidence without a saved artifact', 'Evidence', 'Tim
             findings:[],receipts:[],previewUrl:'',worktree:'',branch:'',prId:42,qaRunDir:'',paidRuns:null,blocker:''};
         const job: TicketJob = {id:'fallback-job',key:ticket.key,stage:'validate',status:'working',pr:42,
             prUrl:'https://example.org/pull/42',requestedAt:snapshot.serverTime,head:'fixture',worktree:'',branch:'',detail:'Run fixture checks.',
+            approach:{plan:'brief',review:'focused',validation:'browser',checks:[],reason:'Check the saved approach.'},
             steps:destination === 'Evidence without a saved artifact' ? [] : [{stage:'validate',result:proof,workerId:worker.id}]};
         const events = Array.from({length:8},(_,i) => ({id:100+i,at:new Date(Date.parse(snapshot.serverTime)+i).toISOString(),
             kind:'stage-started',ticket:ticket.key,message:'Saved handoff ' + i}));
@@ -522,7 +553,9 @@ for (const destination of ['Evidence without a saved artifact', 'Evidence', 'Tim
             return;
         }
 
-        const row = active.getByRole('button',{name:destination === 'Discussion' ? 'Discuss ' + ticket.key + ' with Morgan' : destination,exact:true});
+        const label = destination === 'Discussion' ? 'Discuss ' + ticket.key + ' with Morgan' :
+            destination === 'Delivery history' ? 'Delivery history 1' : destination;
+        const row = active.getByRole('button',{name:label,exact:true});
         const original = await row.elementHandle();
         await row.click();
         const child = await active.elementHandle();
@@ -538,6 +571,8 @@ for (const destination of ['Evidence without a saved artifact', 'Evidence', 'Tim
             await expect(active.getByRole('link',{name:'Saved verification artifact'})).toHaveAttribute('href','/api/artifact?path=' + encodeURIComponent(artifact) + '&project=brain');
         }
         if (destination === 'Time') await expect(active.getByText(worker.task,{exact:true})).toBeVisible();
+        if (destination === 'Delivery history') await expect(active.getByText(proof.summary,{exact:true})).toBeVisible();
+        if (destination === 'Approach and decisions') await expect(active.getByText('Check the saved approach.',{exact:true})).toBeVisible();
         await back.click();
         await expect(timeline.getByText('Saved handoff 0',{exact:true})).toBeVisible();
         await expect(row).toBeFocused();
