@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 47,
-    "edges": 90,
+    "nodes": 49,
+    "edges": 96,
     "byType": {
       "index": 4,
-      "journal": 11,
-      "plan": 26,
+      "journal": 12,
+      "plan": 27,
       "topic": 6
     }
   },
@@ -23,6 +23,25 @@
       "x": 1,
       "y": 0,
       "size": 12
+    },
+    {
+      "id": "wiki/journal/2026-11-24-assignment-review-resume.md",
+      "label": "Resume a stopped assignment review after a fix",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 524,
+          "url": "https://github.com/jfusco/the-office/issues/524"
+        }
+      ],
+      "bytes": 2261,
+      "degree": 4,
+      "x": 0.967295,
+      "y": 0.253655,
+      "size": 8
     },
     {
       "id": "wiki/journal/2026-11-24-automatic-graphify-refresh.md",
@@ -51,8 +70,8 @@
       ],
       "bytes": 1102,
       "degree": 2,
-      "x": 0.964469,
-      "y": 0.264195,
+      "x": 0.926917,
+      "y": 0.375267,
       "size": 8
     },
     {
@@ -70,8 +89,8 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.92065,
-      "y": 0.390389,
+      "x": 0.871319,
+      "y": 0.490718,
       "size": 8
     },
     {
@@ -95,8 +114,8 @@
       ],
       "bytes": 1954,
       "degree": 4,
-      "x": 0.860402,
-      "y": 0.509617,
+      "x": 0.801414,
+      "y": 0.598111,
       "size": 8
     },
     {
@@ -120,8 +139,8 @@
       ],
       "bytes": 1611,
       "degree": 0,
-      "x": 0.784799,
-      "y": 0.61975,
+      "x": 0.718349,
+      "y": 0.695683,
       "size": 8
     },
     {
@@ -145,8 +164,8 @@
       ],
       "bytes": 975,
       "degree": 0,
-      "x": 0.695192,
-      "y": 0.718824,
+      "x": 0.62349,
+      "y": 0.781831,
       "size": 8
     },
     {
@@ -170,8 +189,8 @@
       ],
       "bytes": 1728,
       "degree": 0,
-      "x": 0.59318,
-      "y": 0.80507,
+      "x": 0.518393,
+      "y": 0.855143,
       "size": 8
     },
     {
@@ -195,8 +214,8 @@
       ],
       "bytes": 585,
       "degree": 0,
-      "x": 0.480582,
-      "y": 0.87695,
+      "x": 0.404783,
+      "y": 0.914413,
       "size": 8
     },
     {
@@ -214,8 +233,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.359408,
-      "y": 0.933181,
+      "x": 0.284528,
+      "y": 0.958668,
       "size": 8
     },
     {
@@ -233,8 +252,8 @@
       ],
       "bytes": 1680,
       "degree": 4,
-      "x": 0.23182,
-      "y": 0.972759,
+      "x": 0.1596,
+      "y": 0.987182,
       "size": 8
     },
     {
@@ -252,8 +271,8 @@
       ],
       "bytes": 820,
       "degree": 3,
-      "x": 0.100096,
-      "y": 0.994978,
+      "x": 0.032052,
+      "y": 0.999486,
       "size": 8
     },
     {
@@ -283,8 +302,8 @@
       ],
       "bytes": 1126,
       "degree": 3,
-      "x": -0.033415,
-      "y": 0.999442,
+      "x": -0.096023,
+      "y": 0.995379,
       "size": 8
     },
     {
@@ -295,8 +314,8 @@
       "githubRefs": [],
       "bytes": 3394,
       "degree": 4,
-      "x": 0.991077,
-      "y": 0.133287,
+      "x": 0.99179,
+      "y": 0.127877,
       "size": 12
     },
     {
@@ -307,8 +326,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": -0.166329,
-      "y": 0.98607,
+      "x": -0.222521,
+      "y": 0.974928,
       "size": 12
     },
     {
@@ -332,8 +351,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": -0.296276,
-      "y": 0.955102,
+      "x": -0.345365,
+      "y": 0.938468,
       "size": 8
     },
     {
@@ -351,8 +370,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": -0.420935,
-      "y": 0.907091,
+      "x": -0.462538,
+      "y": 0.886599,
       "size": 8
     },
     {
@@ -370,8 +389,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": -0.538082,
-      "y": 0.842892,
+      "x": -0.572117,
+      "y": 0.820172,
       "size": 8
     },
     {
@@ -389,8 +408,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": -0.645628,
-      "y": 0.763652,
+      "x": -0.672301,
+      "y": 0.740278,
       "size": 8
     },
     {
@@ -408,8 +427,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": -0.741652,
-      "y": 0.670785,
+      "x": -0.761446,
+      "y": 0.648228,
       "size": 8
     },
     {
@@ -427,8 +446,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.824442,
-      "y": 0.565947,
+      "x": -0.838088,
+      "y": 0.545535,
       "size": 8
     },
     {
@@ -452,8 +471,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.892519,
-      "y": 0.45101,
+      "x": -0.900969,
+      "y": 0.433884,
       "size": 8
     },
     {
@@ -471,8 +490,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.944669,
-      "y": 0.328025,
+      "x": -0.949056,
+      "y": 0.315108,
       "size": 8
     },
     {
@@ -496,8 +515,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.979962,
-      "y": 0.199186,
+      "x": -0.981559,
+      "y": 0.191159,
       "size": 8
     },
     {
@@ -539,8 +558,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.997767,
-      "y": 0.066793,
+      "x": -0.997945,
+      "y": 0.06407,
       "size": 8
     },
     {
@@ -558,8 +577,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.997767,
-      "y": -0.066793,
+      "x": -0.997945,
+      "y": -0.06407,
       "size": 8
     },
     {
@@ -583,8 +602,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.979962,
-      "y": -0.199186,
+      "x": -0.981559,
+      "y": -0.191159,
       "size": 8
     },
     {
@@ -602,8 +621,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.944669,
-      "y": -0.328025,
+      "x": -0.949056,
+      "y": -0.315108,
       "size": 8
     },
     {
@@ -639,8 +658,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.892519,
-      "y": -0.45101,
+      "x": -0.900969,
+      "y": -0.433884,
       "size": 8
     },
     {
@@ -694,8 +713,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.824442,
-      "y": -0.565947,
+      "x": -0.838088,
+      "y": -0.545535,
       "size": 8
     },
     {
@@ -713,8 +732,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.741652,
-      "y": -0.670785,
+      "x": -0.761446,
+      "y": -0.648228,
       "size": 8
     },
     {
@@ -732,8 +751,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.645628,
-      "y": -0.763652,
+      "x": -0.672301,
+      "y": -0.740278,
       "size": 8
     },
     {
@@ -757,8 +776,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.538082,
-      "y": -0.842892,
+      "x": -0.572117,
+      "y": -0.820172,
       "size": 8
     },
     {
@@ -776,8 +795,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.420935,
-      "y": -0.907091,
+      "x": -0.462538,
+      "y": -0.886599,
       "size": 8
     },
     {
@@ -831,8 +850,27 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.296276,
-      "y": -0.955102,
+      "x": -0.345365,
+      "y": -0.938468,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-524-resume-a-stopped-assignment-review-after-a-fix-093b51f84f.md",
+      "label": "#524 — Resume a stopped assignment review after a fix",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 524,
+          "url": "https://github.com/jfusco/the-office/issues/524"
+        }
+      ],
+      "bytes": 11453,
+      "degree": 4,
+      "x": -0.222521,
+      "y": -0.974928,
       "size": 8
     },
     {
@@ -850,8 +888,8 @@
       ],
       "bytes": 3712,
       "degree": 4,
-      "x": -0.166329,
-      "y": -0.98607,
+      "x": -0.096023,
+      "y": -0.995379,
       "size": 8
     },
     {
@@ -869,8 +907,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": -0.033415,
-      "y": -0.999442,
+      "x": 0.032052,
+      "y": -0.999486,
       "size": 8
     },
     {
@@ -888,8 +926,8 @@
       ],
       "bytes": 751,
       "degree": 5,
-      "x": 0.100096,
-      "y": -0.994978,
+      "x": 0.1596,
+      "y": -0.987182,
       "size": 8
     },
     {
@@ -907,8 +945,8 @@
       ],
       "bytes": 826,
       "degree": 3,
-      "x": 0.23182,
-      "y": -0.972759,
+      "x": 0.284528,
+      "y": -0.958668,
       "size": 8
     },
     {
@@ -932,8 +970,8 @@
       ],
       "bytes": 802,
       "degree": 3,
-      "x": 0.359408,
-      "y": -0.933181,
+      "x": 0.404783,
+      "y": -0.914413,
       "size": 8
     },
     {
@@ -944,8 +982,8 @@
       "githubRefs": [],
       "bytes": 9984,
       "degree": 3,
-      "x": 0.480582,
-      "y": -0.87695,
+      "x": 0.518393,
+      "y": -0.855143,
       "size": 8
     },
     {
@@ -959,6 +997,12 @@
           "kind": "pull-request",
           "number": 33,
           "url": "https://github.com/jfusco/context-wiki/pull/33"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 524,
+          "url": "https://github.com/jfusco/the-office/issues/524"
         },
         {
           "repository": "jfusco/the-office",
@@ -1249,10 +1293,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 9284,
-      "degree": 30,
-      "x": 0.59318,
-      "y": -0.80507,
+      "bytes": 9673,
+      "degree": 31,
+      "x": 0.62349,
+      "y": -0.781831,
       "size": 12
     },
     {
@@ -1270,8 +1314,8 @@
       ],
       "bytes": 2333,
       "degree": 13,
-      "x": 0.695192,
-      "y": -0.718824,
+      "x": 0.718349,
+      "y": -0.695683,
       "size": 8
     },
     {
@@ -1307,8 +1351,8 @@
       ],
       "bytes": 1324,
       "degree": 8,
-      "x": 0.784799,
-      "y": -0.61975,
+      "x": 0.801414,
+      "y": -0.598111,
       "size": 8
     },
     {
@@ -1356,8 +1400,8 @@
       ],
       "bytes": 2044,
       "degree": 9,
-      "x": 0.860402,
-      "y": -0.509617,
+      "x": 0.871319,
+      "y": -0.490718,
       "size": 8
     },
     {
@@ -1387,8 +1431,8 @@
       ],
       "bytes": 885,
       "degree": 11,
-      "x": 0.92065,
-      "y": -0.390389,
+      "x": 0.926917,
+      "y": -0.375267,
       "size": 8
     },
     {
@@ -1428,10 +1472,10 @@
           "url": "https://github.com/jfusco/the-office/pull/462"
         }
       ],
-      "bytes": 1464,
-      "degree": 6,
-      "x": 0.964469,
-      "y": -0.264195,
+      "bytes": 1931,
+      "degree": 9,
+      "x": 0.967295,
+      "y": -0.253655,
       "size": 8
     },
     {
@@ -1461,8 +1505,8 @@
       ],
       "bytes": 944,
       "degree": 2,
-      "x": 0.991077,
-      "y": -0.133287,
+      "x": 0.99179,
+      "y": -0.127877,
       "size": 8
     }
   ],
@@ -1499,6 +1543,13 @@
       "id": "06d22da1096e28e1",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-06-people-directory-and-organization-chart-952ffc11ff.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "0863091edee992a8",
+      "source": "wiki/topics/releases-and-incidents.md",
+      "target": "wiki/journal/2026-11-24-assignment-review-resume.md",
       "type": "link",
       "relation": "link"
     },
@@ -1557,6 +1608,13 @@
       "target": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
       "type": "link",
       "relation": "link"
+    },
+    {
+      "id": "1fd0eaff2acd2556",
+      "source": "wiki/plans/2026-11-24-524-resume-a-stopped-assignment-review-after-a-fix-093b51f84f.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
     },
     {
       "id": "21093fe2401b8d75",
@@ -1923,6 +1981,13 @@
       "relation": "topic"
     },
     {
+      "id": "be756821d090e027",
+      "source": "wiki/journal/2026-11-24-assignment-review-resume.md",
+      "target": "wiki/plans/2026-11-24-524-resume-a-stopped-assignment-review-after-a-fix-093b51f84f.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "be83b6908835c7c2",
       "source": "wiki/plans/2026-11-09-office-brain-integration-8c09c8b0d9.md",
       "target": "wiki/topics/planning-and-learning.md",
@@ -1972,6 +2037,13 @@
       "relation": "link"
     },
     {
+      "id": "cb350843ab01be95",
+      "source": "wiki/journal/2026-11-24-assignment-review-resume.md",
+      "target": "wiki/plans/2026-11-24-524-resume-a-stopped-assignment-review-after-a-fix-093b51f84f.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "cbacab63d24f2000",
       "source": "wiki/journal/2026-11-24-live-ticket-timeline.md",
       "target": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
@@ -2014,6 +2086,13 @@
       "relation": "link"
     },
     {
+      "id": "d9ac4d1aff622666",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-524-resume-a-stopped-assignment-review-after-a-fix-093b51f84f.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "dcd77f5c11bfbfa9",
       "source": "wiki/journal/2026-11-24-wiki-adoption-review.md",
       "target": "wiki/topics/context-wiki-and-ci.md",
@@ -2047,6 +2126,13 @@
       "target": "wiki/plans/INDEX.md",
       "type": "link",
       "relation": "link"
+    },
+    {
+      "id": "e5e45e0d41ce7631",
+      "source": "wiki/journal/2026-11-24-assignment-review-resume.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
     },
     {
       "id": "ede6fcb5753507bf",

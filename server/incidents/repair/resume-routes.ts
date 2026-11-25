@@ -45,7 +45,8 @@ export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
     'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
     // Grants one restart of a dead hands-off writer past its ordinary allowance and restarts nothing itself; the harness's own restart spends it at a later poll (see dispatch-writer-release.ts).
     'release-writer': { subject: 'job', keyed: 'ticket', head: 'the ID of the dead writer run the restart is for; required', dispatch: 'all' },
-    'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: 'none' },
+    // Synchronous: the bound review is requeued at once with its recovery counts kept, beside a completed receipt carrying the binding (see dispatch-assignment-resume.ts).
+    'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: 'all' },
     'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: 'none', reason: 'Maintenance reconciliation can repeat a paid read-back on replay and can finish with the original run still blocked.' },
     'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none', reason: 'A checkpoint retry can start a paid maintenance run after the repair wait lifts.' },
     // Brain only: one model-free read of the native gate, and the checkpoint is completed only from a native completion that already exists. Admitted by its own path (see dispatch-checkpoint-resume.ts).

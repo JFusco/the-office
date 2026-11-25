@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { APPROACH_GUARD_REJECTION, requeueWaitedImplement } from '../../../../server/delivery/recovery/implementation/requeue-waited-implement';
-import { checkpointRetried, movedByHand, OPERATOR_MOVES } from '../../../../server/incidents/repair/moved-by-hand';
+import { checkpointRetried, movedByHand, OPERATOR_MOVES, REVIEW_MOVES } from '../../../../server/incidents/repair/moved-by-hand';
 import { projectById } from '../../../../server/office/projects';
 import { coordination } from '../../../../server/scheduling/coordination';
-import { preparePR, recheckCandidate, recheckPR, updateCandidateBase } from '../../../../server/scheduling/operator-commands';
+import { deferNonReady, preparePR, recheck, recheckCandidate, recheckPR, updateCandidateBase } from '../../../../server/scheduling/operator-commands';
 import { Store } from '../../../../server/store/store';
 
 const stores: Store[] = [], roots: string[] = [];
@@ -68,6 +68,30 @@ test('the five commands that move a delivery job emit exactly the events read he
         steps: [{ stage: 'implement', result: result({ outcome: 'blocked', resolution: { kind: 'provider-wait', findingIds: [], evidenceIds: [] } }) }, { stage: 'implement', result: result({ approach: small }) }] }, store => requeueWaitedImplement(store, 'GH-1'));
     expect(seen).toEqual(['pr-preparation-queued', 'candidate-base-update', 'candidate-review-recheck', 'pr-review-recheck', 'implement-requeued']);
     expect([...seen].sort()).toEqual([...OPERATOR_MOVES].sort());
+});
+
+test('the two commands that move an assignment review emit exactly the review moves, each with the ticket key, and the two lists share nothing', async () => {
+    const reviewed = (status: string) => {
+        const store = project();
+        store.state.coordination!.listener.reviews = [{ id: 'review-1', key: 'GH-1', summary: '', url: '', queuedAt: '', startedAt: '', endedAt: '', status, detail: 'Error: stopped', owner: '' }] as never;
+        return store;
+    };
+    const seen: string[] = [];
+    const rechecked = reviewed('blocked'), before = rechecked.state.revision;
+    recheck.call({ store: rechecked, state: rechecked.state.coordination } as never, 'GH-1');
+    seen.push(movedByHand(rechecked, 'GH-1', before, REVIEW_MOVES)!.kind);
+    const deferred = reviewed('blocked');
+    await deferNonReady.call({ store: deferred, state: deferred.state.coordination, pickup: { status: 'Ready' }, readAssignments: async () => [{ key: 'GH-1', status: 'Backlog' }] } as never, 'GH-1');
+    seen.push(movedByHand(deferred, 'GH-1', before, REVIEW_MOVES)!.kind);
+    expect(seen).toEqual(['assignment-recheck', 'pickup-deferred']);
+    expect([...seen].sort()).toEqual([...REVIEW_MOVES].sort());
+    // A job is never moved by a review's command, nor a review by a job's.
+    expect(movedByHand(rechecked, 'GH-1', before)).toBeNull();
+    expect(movedByHand(deferred, 'GH-1', before)).toBeNull();
+    const store = project(), admission = store.emit('repair-resume-admitted', 'GH-1: resumed', undefined, 'GH-1');
+    for (const kind of OPERATOR_MOVES) store.emit(kind, 'a job command', 'lead', 'GH-1');
+    expect(movedByHand(store, 'GH-1', admission.id, REVIEW_MOVES)).toBeNull();
+    expect(REVIEW_MOVES.filter(kind => OPERATOR_MOVES.includes(kind))).toEqual([]);
 });
 
 test('a retry queued for a checkpoint\'s original run after the given event moves it, found by the run its message names, literally', () => {

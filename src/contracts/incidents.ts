@@ -205,6 +205,12 @@ export type ResumeStanding = 'admitted' | 'no-route' | 'gone' | 'held' | 'due';
  * `ticket-not-resumable`: the ticket's own resume would refuse, or would spend a step that is a
  * person's (the QA setup cap, a closed feature gate, a ticket that is not a resumable pilot), or
  * its stop carries no date of its own, so a later stop of the same run could not be told from it.
+ * For an assignment review: `no-record`, the project does not hold the review the subject names;
+ * `wait-ended` also when a later review supersedes it or an ordinary retry already requeued it,
+ * ending the wait before the transition; `key-mismatch`, the route's key differs from the
+ * review's ticket; `request-pending`, a request for that ticket is queued or working in either
+ * queue, or a scheduler claim is active for the review; `transition-refused`, a non-cancelled
+ * delivery job holds the otherwise eligible review's ticket.
  */
 export type ResumeRefusal = 'resumes-paused' | 'release-unconfirmed' | 'project-paused' | 'wait-ended' | 'no-record' | 'key-mismatch' | 'head-mismatch' | 'request-pending' | 'already-reconciled' | 'not-dispatchable' | 'ticket-not-resumable' | 'transition-refused';
 
