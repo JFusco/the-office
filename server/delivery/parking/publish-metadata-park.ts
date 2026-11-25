@@ -14,7 +14,7 @@ export function publishMetadataPark(store: Store, job: TicketJob, parked: NonNul
         assertParkAuthority(store, job, expectedHead);
         assertParkPickup(store, pickup);
         parked.published = true;
-        delete parked.unconfirmed; delete parked.stopped; delete parked.readBackQueued; delete parked.commentReadError; delete parked.readBackChecked;
+        delete parked.unconfirmed; delete parked.stopped; delete parked.readBackQueued; delete parked.commentReadError; delete parked.readBackChecked; delete parked.continuationQueued;
         job.status = 'blocked';
         job.detail = `Decision needed: ${parked.reason}`;
         recordParked(store, job, parked.reason);

@@ -154,6 +154,30 @@ test('a restart after a landed lane write is settled can continue before a comme
     expect(f.writes.posts).toHaveLength(1);
 });
 
+test('a continuation with nothing left to read is queued once for its sent writes, not again after it fails', async () => {
+    const f = metadataParkFixture();
+    f.hooks.after = call => {
+        if (call.request?.query.startsWith('mutation') && call.request.variables.item === 'pr-card') throw new Error('Lost lane response');
+    };
+    await expect(f.parkNow()).rejects.toThrow('Lost lane response');
+    f.hooks.after = undefined;
+    await f.run(() => inspectMetadataPark(f.delivery, f.job));
+    f.job.status = 'interrupted';
+    Reflect.deleteProperty(f.pr, 'state');
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('queued');
+    await f.pass().catch(() => undefined);
+    expect(f.job.status).toBe('blocked');
+    expect(f.job.detail).toContain('identity or state');
+    await observeMetadataParks(f.delivery);
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('blocked');
+    expect(f.job.detail).toContain('identity or state');
+    expect(f.store.state.events.filter(event => event.kind === 'metadata-park-readback')).toHaveLength(1);
+    expect(f.blockMoves()).toEqual(['issue-card>block', 'pr-card>block']);
+    expect(f.writes.posts).toHaveLength(0);
+});
+
 test('observation bounds comment reads and rotates past parks with missing receipts', async () => {
     const { f, comment } = await lostComment();
     const extras = Array.from({ length: METADATA_PARKS_PER_OBSERVATION + 1 }, (_, index) => {

@@ -22,6 +22,10 @@ const idle = (store: Store, job: TicketJob) => ['blocked', 'interrupted'].includ
 const intentState = (intents: ReturnType<typeof parkIntents>) =>
     JSON.stringify(intents.map(intent => [intent.id, intent.status]).sort());
 
+/** The writes the park has sent or verified. A row refused before dispatch, or a retry not yet sent, does not change it. */
+const sentState = (intents: ReturnType<typeof parkIntents>) =>
+    intentState(intents.filter(intent => intent.status === 'verified' || !!intent.dispatchedAt));
+
 /**
  * Observe a bounded number of inactive parks in least-recently-checked order. A sent write reads against its
  * original intent. If all sent writes are observable, one ordinary claimed pass will settle and finish the park.
@@ -38,7 +42,10 @@ export async function observeMetadataParks(delivery: GitHubDelivery): Promise<vo
         const parked = job.parked!, intents = parkIntents(store, job), state = intentState(intents);
         const pending = intents.filter(intent => ['dispatching', 'uncertain'].includes(intent.status) || intent.operation === 'github-issue-comment' && intent.status === 'verified');
         const verifiedLanes = intents.some(intent => intent.operation === 'github-project-status' && intent.status === 'verified');
-        if (!pending.length && !verifiedLanes || job.status === 'blocked' && parked.readBackQueued === state) continue;
+        // With nothing to read there is no new provider evidence, so such a continuation is queued once per sent-write state.
+        const continuation = pending.length ? undefined : sentState(intents);
+        if (!pending.length && !verifiedLanes || job.status === 'blocked' && parked.readBackQueued === state ||
+            continuation !== undefined && parked.continuationQueued === continuation) continue;
 
         ++checked;
         parked.readBackChecked = ++order;
@@ -68,7 +75,8 @@ export async function observeMetadataParks(delivery: GitHubDelivery): Promise<vo
         try { requeuePRReview(store, job); }
         catch { continue; }
         parked.readBackQueued = state;
-        job.detail ='Every write the unfinished park sent now reads back; one pass is queued to settle and finish it.';
+        if (continuation !== undefined) parked.continuationQueued = continuation;
+        job.detail = 'Every write the unfinished park sent now reads back; one pass is queued to settle and finish it.';
         store.emit('metadata-park-readback', `${job.key}: ${job.detail}`, 'pm', job.key);
     }
 }
