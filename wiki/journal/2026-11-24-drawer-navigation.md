@@ -1,6 +1,8 @@
 ---
 topics: [office-ui-and-telemetry]
 plans: [2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md]
+issue: 'https://github.com/jfusco/the-office/issues/551'
+issues: ['https://github.com/jfusco/the-office/issues/551']
 ---
 
 # Drawer navigation
