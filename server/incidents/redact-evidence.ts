@@ -1,10 +1,13 @@
 import { AFTER_JSON_ESCAPE, isJsonText, sanitize, TOKEN_START } from '../office/security';
 
-const CREDENTIAL_NAME = '(?:access|refresh|id|auth|bearer|session|api)?[_-]?token|client[_-]?secret|secret|password|passwd|api[_-]?key|private[_-]?key|authorization|cookie';
-// The name may end a longer identifier (GITHUB_TOKEN, X-Auth-Token, --token); only a letter or digit before it rules it out.
+const CREDENTIAL_NAME = '(?:access|refresh|id|auth|bearer|session|api)?[_-]?token|client[_-]?secret|secret[_-]?(?:access[_-]?)?key|secret|password|passwd|api[_-]?key|private[_-]?key|authorization|cookie|credentials';
+// The name may end a longer identifier (GITHUB_TOKEN, X-Auth-Token, --token); only a letter or digit before it rules it out,
+// unless the name starts a camelCase word (githubToken, userPassword, JWTToken): a lower-case letter or digit, then an
+// upper-case one, or an upper-case letter, then an upper-case and a lower-case one.
 // It may also follow a JSON escape (\n, \u001b), whose letters stay case-sensitive under the `i` flag.
 // So may a terminal colour code (\u001b[33m) right before it.
-const NAME_START = String.raw`(?:(?<![A-Za-z0-9])|(?-i:${AFTER_JSON_ESCAPE})|(?<=(?:\\u001b|\x1b)\[[\d;]*m))`;
+const CAMEL_START = String.raw`(?-i:(?<=[a-z0-9])(?=[A-Z]))|(?-i:(?<=[A-Z])(?=[A-Z][a-z]))`;
+const NAME_START = String.raw`(?:(?<![A-Za-z0-9])|${CAMEL_START}|(?-i:${AFTER_JSON_ESCAPE})|(?<=(?:\\u001b|\x1b)\[[\d;]*m))`;
 const ASSIGNMENT = String.raw`${NAME_START}(?:${CREDENTIAL_NAME})\s*[=:]\s*`;
 // A property name starts right after its quote, and an escaped one takes a value escaped as deeply.
 const PROPERTY = String.raw`${NAME_START}(?=${CREDENTIAL_NAME})(?<=["'][\w-]{0,64})(?:${CREDENTIAL_NAME})(?<nameRun>\\*)["']\s*:\s*(?=\k<nameRun>["'])`;
@@ -31,7 +34,7 @@ const CONTROL_ESCAPE = String.raw`\\(?-i:[bfnrt]|u00[01][\dA-Fa-f]|u007[fF])`;
 const BARE_UNIT = String.raw`(?:[^\s&,;}"'\\\0]+|(?!(?<!\\)(?:\\\\)*\\")(?:\\\\|(?!${CONTROL_ESCAPE})\\))`;
 const BARE_VALUE = String.raw`(?:${CONTROL_ESCAPE})*${BARE_UNIT}+`;
 // After whitespace or an escape, another credential label is the next assignment, not this one's value.
-const BARE_CREDENTIAL = new RegExp(String.raw`(${ASSIGNMENT})(?!\[redacted\]|(?:(?<=\s)|${CONTROL_ESCAPE})(?:${CONTROL_ESCAPE})*(?:[\w-]*[_-])?(?:${CREDENTIAL_NAME})\s*[=:])${BARE_VALUE}`, 'gi');
+const BARE_CREDENTIAL = new RegExp(String.raw`(${ASSIGNMENT})(?!\[redacted\]|(?:(?<=\s)|${CONTROL_ESCAPE})(?:${CONTROL_ESCAPE})*(?:[\w-]*(?:[_-]|${CAMEL_START}))?(?:${CREDENTIAL_NAME})\s*[=:])${BARE_VALUE}`, 'gi');
 const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|xox[abprs]-[A-Za-z0-9-]+)`, 'g');
 const AWS_KEY_ID = new RegExp(String.raw`${TOKEN_START}(?:AKIA|ASIA)[A-Z0-9]{16}\b`, 'g');
 const JSON_WEB_TOKEN = new RegExp(String.raw`${TOKEN_START}eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`, 'g');

@@ -72,6 +72,31 @@ test('a credential name that ends a longer identifier is redacted, and one insid
     expect(redactEvidence(kept)).toBe(kept);
 });
 
+test('a secret key or credentials name is redacted, and a longer name that only contains one is not', () => {
+    expect(redactEvidence('export AWS_SECRET_ACCESS_KEY=fixture; aws_secret_access_key = fixture SECRET_KEY: fixture secretKey="two words" done'))
+        .toBe('export AWS_SECRET_ACCESS_KEY=[redacted]; aws_secret_access_key = [redacted] SECRET_KEY: [redacted] secretKey="[redacted]" done');
+    expect(redactEvidence('credentials=fixture {"secretAccessKey":"fixture","credentials":"fixture","n":1}'))
+        .toBe('credentials=[redacted] {"secretAccessKey":"[redacted]","credentials":"[redacted]","n":1}');
+    expect(JSON.parse(redactEvidence(JSON.stringify({ log: 'line\nAWS_SECRET_ACCESS_KEY=fixture more' })))).toEqual({ log: 'line\nAWS_SECRET_ACCESS_KEY=[redacted] more' });
+    const kept = 'secretKeyRef: abc secretName: abc SECRET_KEY_ID=abc credential.helper=osxkeychain credentials_file=abc issue_key=CEC-12 sort_key=abc';
+    expect(redactEvidence(kept)).toBe(kept);
+});
+
+test('a camelCase name that ends in a credential name is redacted, and a lower-case or upper-case run is not', () => {
+    const text = 'githubToken=fixture oauth2Token: fixture rsaPrivateKey="two words" {"githubToken":"fixture","userPassword":"fixture","webhookSecret":"fixture","n":1}';
+    const redacted = redactEvidence(text);
+    expect(redacted).toBe('githubToken=[redacted] oauth2Token: [redacted] rsaPrivateKey="[redacted]" {"githubToken":"[redacted]","userPassword":"[redacted]","webhookSecret":"[redacted]","n":1}');
+    expect(redactEvidence(redacted)).toBe(redacted);
+    const nested = JSON.stringify({ d: JSON.stringify({ githubToken: 'fixture', n: 1 }) });
+    expect(redactEvidence(nested)).toBe(JSON.stringify({ d: JSON.stringify({ githubToken: '[redacted]', n: 1 }) }));
+    expect(redactEvidence('JWTToken=fixture {"AWSSecretKey":"fixture"}')).toBe('JWTToken=[redacted] {"AWSSecretKey":"[redacted]"}');
+    // A camelCase label is the next assignment, not the value of an empty one before it; a lower-case run is a value.
+    expect(redactEvidence('token= githubToken=fixture token= oauth2Token=fixture token= JWTToken=fixture')).toBe('token= githubToken=[redacted] token= oauth2Token=[redacted] token= JWTToken=[redacted]');
+    expect(redactEvidence('token= mytoken=fixture')).toBe('token= [redacted]');
+    const kept = 'maxTokens=5 myTokenCount=3 passwordHash=abc tokensUsed: 9 mytoken=abc MYTOKEN=abc {"tokenBudget": 5, "inputTokens": 9}';
+    expect(redactEvidence(kept)).toBe(kept);
+});
+
 test('the value of an escaped credential property is removed at any depth and ends at its own quote', () => {
     const nested = (value: object) => JSON.stringify({ d: JSON.stringify(value) });
     const cases: Array<[string, string]> = [
