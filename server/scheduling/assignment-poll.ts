@@ -28,6 +28,7 @@ import { noticeState, queueMergeNotice } from '../conversations/notifications';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import type { AssignedIssue } from '../../src/shared';
 import type { Coordinator } from './coordination';
+import { withGitHubSource } from '../github/call-scope';
 
 export async function readAssignments(this: Coordinator): Promise<AssignedIssue[]>  {
     if (this.store.project.provider === 'github') {
@@ -150,12 +151,14 @@ export async function poll(this: Coordinator, now = new Date()) {
         if (this.store.project.provider === 'github') {
             const delivery = new GitHubDelivery(this.store, this.engine, this.execute);
             // Adoption creates the tracking issue; discovery routes the linked PR once the issue is assigned.
-            await adoptDependabot(this.store, this.execute, this.state.jobs ??= [], this.pickup);
-            await adoptDependencyBot(this.store, this.execute, this.state.jobs, this.pickup, pinCourier);
-            await adoptDependencyBot(this.store, this.execute, this.state.jobs, this.pickup, wikiSync);
+            await withGitHubSource('bot-adoption', async () => {
+                await adoptDependabot(this.store, this.execute, this.state.jobs ??= [], this.pickup);
+                await adoptDependencyBot(this.store, this.execute, this.state.jobs!, this.pickup, pinCourier);
+                await adoptDependencyBot(this.store, this.execute, this.state.jobs!, this.pickup, wikiSync);
+            });
             // An alert Dependabot left without a pull request becomes an issue; admission below picks it up like any other.
-            await trackDependabotAlerts(this.store, this.execute, this.state.jobs, this.pickup);
-            await delivery.discover(assigned);
+            await withGitHubSource('alerts', () => trackDependabotAlerts(this.store, this.execute, this.state.jobs!, this.pickup));
+            await withGitHubSource('discovery', () => delivery.discover(assigned));
             if (handsOff(this.store)) {
                 await unparkReleasedWaits(this.store, this.execute, this.state.jobs!, this.pickup, now);
                 await unparkSignedIn(this.store, this.execute, this.state.jobs!, this.pickup);
@@ -167,9 +170,9 @@ export async function poll(this: Coordinator, now = new Date()) {
                 await retryCandidateCleanup(this.store, this.execute, this.state.jobs!);
                 admitReadyCards(this, delivery, assigned, now);
             }
-            await delivery.refreshDependencies();
-            await delivery.observe(() => this.dependencyStores());
-            await observeGitHubMergeNotices(delivery);
+            await withGitHubSource('dependency-refresh', () => delivery.refreshDependencies());
+            await withGitHubSource('pr-observation', () => delivery.observe(() => this.dependencyStores()));
+            await withGitHubSource('merge-notices', () => observeGitHubMergeNotices(delivery));
         }
         for (const review of listener.reviews) if (review.status === 'queued') holdAssessmentIntake(this.store, review);
         listener.assigned = assigned;

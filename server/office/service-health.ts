@@ -7,6 +7,7 @@ import {slackHealth} from './slack-health';
 import {listenerHealth} from './listener-health';
 import {MAX_SIGN_IN_DIAGNOSTIC_LENGTH,signInFailure,stdoutSignInFailure} from './sign-in-failure';
 import {claudeLoginRefusal,refusedClaudeRow} from './claude-login-refusal';
+import {withGitHubSource} from '../github/call-scope';
 
 type ProbeResult=Pick<ServiceHealth,'status'|'detail'|'identity'|'failure'|'nextStep'>;
 /** `signedOut` reads the CLI's own sign-out statement when its status command exits non-zero (Claude exits 1 after printing it). */
@@ -15,15 +16,19 @@ const authFailure=/not logged in|authentication|unauthorized|invalid.*token|expi
 /** The azure-devops extension's own words when it has no credentials at all. */
 const azureNoCredentials=/Before you can run Azure DevOps commands, you need to run the login command/i;
 /** The stated cause of a GitHub rate-limit refusal: a bare status code or quota advice is not one. */
-const rateLimitRefusal=/API rate limit exceeded|exceeded a secondary rate limit|\bHTTP (?:403|429)\b[^\n]*\brate limit/i;
-const credentialFailure=/\bHTTP 401\b|bad credentials|invalid.*token|expired.*token|not logged in/i;
+export const rateLimitRefusal=/API rate limit exceeded|exceeded a secondary rate limit|\bHTTP (?:403|429)\b[^\n]*\brate limit/i;
+export const credentialFailure=/\bHTTP 401\b|bad credentials|invalid.*token|expired.*token|not logged in/i;
 /** GitHub refusing the account: a 401 in either of gh's error formats, or a stated permission or SAML refusal. A bare 403 has other causes. */
 const githubRefusal=/(?:\bHTTP|status code:) 401\b|Resource not accessible by integration|\bSAML\b/i;
 const UNVERIFIED_NEXT_STEP='Ellis owns the read-only checks; Morgan investigates persistent probe failures. No login change is indicated by this result.';
 
-function githubStatus(raw:string,stderr=''):ProbeResult {
+export function activeGitHubAccount(raw:string) {
  const hosts: { active: boolean; state: string; login?: string; error?: unknown }[] | undefined=JSON.parse(raw).hosts?.['github.com'];
- const host=hosts?.find(account=>account.active);
+ return hosts?.find(account=>account.active);
+}
+
+function githubStatus(raw:string,stderr=''):ProbeResult {
+ const host=activeGitHubAccount(raw);
  if(host?.state==='success')
   return {status:'connected',identity:host.login,detail:'GitHub verified the active account. Repository and Projects permissions can still differ.'};
  // GitHub's own statement that a rate limit refused the check says nothing about sign-in; a credential failure in the same text still wins.
@@ -65,15 +70,17 @@ export class ServiceHealthChecks {
  private providers:ProviderStatusChecks;
  /** A worker's Claude login refusal counts only after this process started and after the check's own latest signed-out reading (#552). */
  private readonly startedAt=performance.timeOrigin;private claudeSignedOutAt=0;
- constructor(private execute:typeof command=command){this.providers=new ProviderStatusChecks(execute);}
+ /** `githubExecute` runs only the GitHub login probe (the Office's metered runner in service); public status and other probes keep `execute`. */
+ constructor(private execute:typeof command=command,private githubExecute:typeof command=execute){this.providers=new ProviderStatusChecks(execute);}
  private async logins(){
   if(this.cached&&Date.now()-this.cached.at<60000)return this.cached.services;
   if(this.pending)return this.pending;
   this.pending=Promise.all(probes.map(async (p):Promise<ServiceHealth>=>{
    const stamp=()=>({kind:'login' as const,checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+150000).toISOString()});
    let stdout='', stderr: string | undefined='';
+   const execute:typeof command=p.id==='github'?(program,args,options)=>withGitHubSource('health',()=>this.githubExecute(program,args,options)):this.execute;
    try {
-    const raw=await this.execute(p.program,p.args,{timeout:60000,readOnly:true,onOutput:(stream,chunk)=>{
+    const raw=await execute(p.program,p.args,{timeout:60000,readOnly:true,onOutput:(stream,chunk)=>{
      if(stream==='stdout'){stdout+=chunk;return;}
      if(stderr===undefined)return;
      // Discard the whole diagnostic on overflow, since a fragment can lose the credential label.

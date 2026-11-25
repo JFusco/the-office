@@ -860,6 +860,48 @@ holds the day until `reconcile-time`, which requeues it with no Jira call unless
 has a known worklog, which stays held for a person. Publications saved before this change keep
 their original read-back. The GitHub absolute-hours exception above is unchanged.
 
+### GitHub call accounting
+
+Each running Office instance counts its own GitHub CLI calls over a rolling hour (`server/github/`).
+It only measures: nothing is deferred, refused or reordered by it, and the work cadence is unchanged.
+
+- **One spawn path.** `server/workers/spawn-command.ts` is the only place a subprocess is spawned, behind
+  the pre-dispatch cancellation and live-provider guards. `command` (`server/workers/process.ts`) sends a
+  `gh` call made inside a bound Office context to that Office's metered runner, and spawns everything else
+  directly. The metered runner (`metered-runner.ts`) hands each `gh` call to the raw executor exactly once,
+  with the caller's hooks, and never consults the context, so a process is counted once whether it came
+  through `command` or through the injected runner. Other programs pass through uncounted.
+- **Binding.** HTTP requests and the service timers run with the runner bound (`server/index.ts`,
+  `call-scope.ts`). `Offices` also passes the same runner to each Engine's GitHub monitor and to each
+  Coordinator, which hands it on to delivery, merge notices and the rest. The GitHub login probe uses it;
+  public status checks and the other login probes keep the base executor. A call made outside a bound
+  context (start-up) is spawned directly and not counted. A worker's own `gh` calls are not seen.
+- **Sources.** Work is labelled where it runs, and nested reads and Effect read-backs inherit their owner:
+  `monitor` (the GitHub monitor's poll), `pipelines` (the workflow read after it), `assignments` (the
+  assignment poll and assignment reads), `bot-adoption`, `alerts`, `discovery`, `dependency-refresh`,
+  `pr-observation` (the poll's PR observation), `merge-notices`, `pump`, `delivery:<stage>` (a delivery step,
+  by the stage it started in), `it`, `health` (the GitHub login probe), `quota` (rate-limit samples) and
+  `other` (a bound call no scope named). Ellis's tick is `it`, and so is every call of a harness request IT
+  saved as its recovery, through any scope nested in it; a request IT's recovery joined is counted once.
+- **Units.** For each source and endpoint family (fixed labels such as `pulls`, `pull`, `check-runs`,
+  `graphql`, `gh-pr`): CLI invocations, observed HTTP attempts and successful pages, full responses,
+  authorized 304s (each a response and a revalidation), stated rate-limit refusals, other failures, opaque
+  operations, and invocations whose traffic is unknown. Slurped pages are counted from the outer envelope.
+  High-level `gh pr`, `gh issue`, `gh auth` and `gh run`, and a failure with no stated answer, record the
+  invocation and mark its traffic unknown. A refusal is GitHub's stated rate-limit refusal, by the rule the
+  login check uses, with a credential failure taking precedence. No argument, path, header, body, field or
+  credential is kept.
+- **Rate limits.** One `gh api rate_limit` sample serves every project, at most once a minute while the
+  Office has a GitHub project, and none while the fence is held or polling is off; GitHub does not count that
+  endpoint against the REST limit. It reads core and GraphQL `limit`, `used`, `remaining` and `reset` with
+  the time observed. Headers on an `--include` response count for the resource they name. A failed sample
+  keeps the last reading and records only that it failed.
+- **Report.** `/api/health` carries a `github` block: the service instance, when collection started, the
+  covered interval and whether it spans the full hour, totals, sources with their families, and the same
+  counts by configured project ID. Calls without a project scope appear under `office`. It also reports
+  the latest core and GraphQL readings and what was used within each reset window seen. It is read from memory, so
+  reading it calls no provider. A restart starts a new ledger: the first hour after a deploy is partial.
+
 ### Deployment fence and admission journal
 
 A deployment holds the Office-wide deployment fence (`server/office/deployment-fence.ts`) while it

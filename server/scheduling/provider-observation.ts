@@ -6,6 +6,7 @@ import { azurePipelines } from '../pipelines/azure-pipelines';
 import { githubWorkflows } from '../pipelines/github-workflows';
 import { azureBinding } from '../office/project-bindings';
 import { command } from '../workers/process';
+import { withGitHubSource } from '../github/call-scope';
 import { reconcileAndResumeParked } from '../cec/parking/resume-parked';
 import type { Engine } from './engine';
 
@@ -15,7 +16,9 @@ export async function observe(this: Engine) {
         const github = this.store.state.github;
         // Workflows are grouped from the runs just read, so a failed read leaves the last pipelines in place.
         if (github?.status === 'idle' && !github.error)
-            await observePipelines(this.store, known => githubWorkflows(this.store.project.repository, path => this.github.api(path), github.runs, known)).catch(() => undefined);
+            await observePipelines(this.store, known => withGitHubSource('pipelines', () =>
+                githubWorkflows(this.store.project.repository, path => this.github.api(path), github.runs, known),
+            { project: this.store.project.id })).catch(() => undefined);
         return;
     }
     // Beside the PR and build read, never in its way: a pipeline read that fails keeps the last pipelines.

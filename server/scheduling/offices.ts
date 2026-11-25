@@ -45,6 +45,8 @@ import { observeProjects } from '../incidents/observe-projects';
 import { syncIncidents } from '../incidents/sync-incidents';
 import { storeTimings } from '../store/store-timings';
 import { timedStep } from './step-timings';
+import { spawnCommand } from '../workers/spawn-command';
+import { GitHubCalls } from '../github/github-calls';
 export class Offices {
     capacity = officeCapacity(DELIVERY_CONCURRENCY);
     ctoCapacity = officeCapacity();
@@ -73,6 +75,8 @@ export class Offices {
     operations = new InFlightOperations();
     dailyCTO = new DailyCTO(this.control, () => [...this.entries.values()], () => knowledgeEntries([...this.entries.values()]));
     serviceInstanceId = randomUUID();
+    /** This instance's GitHub calls by source over the last hour, beside the account's rate limits (server/github/). Fixtures built without the constructor have none. */
+    githubCalls: GitHubCalls;
     /** Main-thread time of each timer step since this service started (see ./step-timings). Fixtures built without the constructor have none. */
     stepTimings = storeTimings();
     step<T>(name: string, work: () => T): T { return timedStep(this.stepTimings, name, work); }
@@ -99,14 +103,16 @@ export class Offices {
         return this.questionNotifications;
     }
     dispose() { this.questionNotifications?.dispose(); }
-    constructor() {
+    constructor(raw: typeof spawnCommand = spawnCommand) {
+        this.githubCalls = new GitHubCalls(raw, this.serviceInstanceId);
+        const execute = this.githubCalls.run;
         this.control.recover();
         for (const project of PROJECTS) {
             const root = projectData(project), store = new Store(resolve(root, 'office.sqlite'), project, root);
             store.recover(this.fenced());
             try { markCaptureStart(store); backfillClaudeCost(store); } catch (error) { store.emit('accounting-unavailable', `Saved Claude cost estimates were not imported: ${String(error).slice(0, 300)}`); } // idempotent
-            const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity), conversations = new Conversations(store, engine, root);
-            this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine) });
+            const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity, execute), conversations = new Conversations(store, engine, root);
+            this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine, execute) });
         }
         for (const entry of this.entries.values()) {
             for(const runtime of [entry.engine.agents,entry.engine.knowledgeAgents,entry.engine.itAgents,entry.engine.ctoAgents])runtime.knowledgeContext={stores:this.stores(),brain:new CommittedBrain()};
