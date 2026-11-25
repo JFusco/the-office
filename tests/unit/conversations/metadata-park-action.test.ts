@@ -12,7 +12,7 @@ test('only a harness-worded park gets its own item: published and blocked on its
     expect(metadataParkAction(job({ parked: parked({ published: true }) }))).toBeUndefined();
     expect(metadataParkAction(job({ status: 'queued', parked: parked({ stopped: 's' }) }))).toBeUndefined();
     expect(metadataParkAction(job({ parked: parked() }))).toBeUndefined();
-    expect(metadataParkAction(job({ status: 'interrupted', parked: parked({ stopped: 'Restore it.' }) }))?.title).toBe('GH-5 decision comment is not confirmed');
+    expect(metadataParkAction(job({ status: 'interrupted', parked: parked({ stopped: 'Restore it.' }) }))?.title).toBe('GH-5 metadata park needs a prerequisite restored');
 });
 
 test('a park saved before its reason named the edit shows the first part of its instruction with the reason', () => {

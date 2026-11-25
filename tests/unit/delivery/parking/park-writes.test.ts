@@ -48,3 +48,17 @@ test('a card move intent that is not to the park\'s field and Block lane is refu
     await expect(readParkWrite(f.store, f.delivery.execute, f.job, f.store.getEffect<Record<string, unknown>>(intent.id)!)).rejects.toThrow("is not this park's");
     expect(f.state.calls.length).toBe(calls);
 });
+
+test('a PR lane intent with an issue-card payload fails before any provider read, while a correctly bound retry settles', async () => {
+    const f = await unreadMove(true), intent = f.effects().find(e => e.id.endsWith(':pr-card'))!;
+    f.store.putEffect({ ...intent, target: 'project:issue-card', payload: { ...intent.payload, item: 'issue-card' } });
+    const reads = f.state.calls.length;
+    await expect(settleParkWrites(f.store, f.delivery.execute, f.job)).rejects.toThrow('is not this park');
+    expect(f.state.calls).toHaveLength(reads);
+    expect(f.store.getEffect(intent.id)?.status).toBe('uncertain');
+    f.store.putEffect({ ...intent, status: 'rejected', dispatchedAt: '' });
+    f.store.putEffect({ ...intent, id: `${intent.id}:retry-1` });
+    expect(await settleParkWrites(f.store, f.delivery.execute, f.job)).toEqual([]);
+    expect(f.store.getEffect(`${intent.id}:retry-1`)?.status).toBe('verified');
+    expect(f.blockMoves()).toEqual(['issue-card>block', 'pr-card>block']);
+});

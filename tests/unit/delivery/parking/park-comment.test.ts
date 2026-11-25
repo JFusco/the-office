@@ -64,3 +64,14 @@ test('a park that may not post sends nothing when no comment is there, and a sav
     await expect(s.settle()).rejects.toThrow("is not this park's");
     expect(s.f.state.calls.length).toBe(reads); expect(s.posts()).toBe(0);
 });
+
+test('a listed comment with no body cannot prove absence, and the restored exact body is adopted', async () => {
+    const s = setup(), exact = s.exact();
+    const { body, ...partial } = exact;
+    s.f.state.comments.push(partial);
+    await expect(s.settle()).rejects.toThrow('Complete issue comment bodies');
+    expect(s.posts()).toBe(0);
+    s.f.state.comments[0] = { ...partial, body };
+    expect(await s.settle()).toEqual({ id: exact.id, url: exact.html_url });
+    expect(s.posts()).toBe(0);
+});

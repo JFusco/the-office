@@ -120,3 +120,12 @@ test('a PR closed or merged without a text change on the second read gives no hu
     await expect(takeover.evaluate()).rejects.toThrow('Live metadata changed during content admission');
     expect(takeover.f.job.prMetadataRepair).toBeUndefined(); expect(takeover.f.job.stage).toBe('lead-pr');
 });
+
+test('replacing the saved finding during the final PR read invalidates the original decision', async () => {
+    const review = accepted(1, undefined, reads => {
+        if (reads === 2) review.result.findings = review.result.findings.map(finding => ({ ...finding, expected: 'Use a new title' }));
+    });
+    expect(await review.evaluate()).toMatchObject({ route: 'ineligible', reason: 'the saved review changed while the pull request was read' });
+    expect(review.f.job.parked).toBeUndefined();
+    expect(review.f.state.calls.filter(call => call.includes('mutation') || call.includes('--method POST'))).toEqual([]);
+});

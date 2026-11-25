@@ -70,3 +70,21 @@ test.each([
     await expect(f.parkNow()).rejects.toThrow(error);
     expect(f.job.parked).toBeUndefined(); expect(f.writes.moves).toEqual([]); expect(f.writes.posts).toEqual([]);
 });
+
+test('a missing issue card does not report an obsolete edit when the title changes during discovery', async () => {
+    const f = metadataParkFixture();
+    f.state.cards = f.state.cards.filter(card => card.kind !== 'Issue');
+    f.hooks.after = call => { if (call.request?.query.includes('items(first:100')) f.pr.title = 'Joe edited the title'; };
+    await expect(f.parkNow()).rejects.toThrow('it was edited after the review');
+    expect(f.job.parked).toBeUndefined();
+    expect(f.writes).toEqual({ posts: [], moves: [] });
+});
+
+test('an absent In review pickup identifies what must be restored before requesting review-pr', async () => {
+    const f = metadataParkFixture();
+    f.store.state.coordination!.pickup!.status = 'In review';
+    f.state.lanes = f.state.lanes.filter(lane => lane.id !== 'review');
+    await expect(f.parkNow()).rejects.toThrow(/Remove \[skip release\].*Leave exactly one In review lane.*review-pr/);
+    expect(f.job.parked).toBeUndefined();
+    expect(f.writes).toEqual({ posts: [], moves: [] });
+});

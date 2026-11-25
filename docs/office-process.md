@@ -437,7 +437,9 @@ updates start, before anything is written. The cards go first: the whole invento
 before the first move, each move is one lane Effect keyed to the park's step, and the issue card and
 every card of the pull request (a new one included) are read back in Block and recorded before the
 decision comment is posted, last. Every write not yet sent is guarded by the live decision, route, Block
-lanes and claim. The comment is bound to its issue, author and full body, and is only ever read back
+lanes and claim. The move guard reads the target lanes again so it respects human changes made
+during preflight. The comment guard verifies that the current card set matches the saved Block proof
+and that pickup still names the recorded lane. The comment is bound to its issue, author and full body, and is only ever read back
 against that original intent, across every page, or adopted when exactly it is there; a comment or move
 that was sent is never sent again. A park saved before this record existed is read back under its
 original marker and Effect, and sends nothing new (`server/delivery/parking/historical-metadata-park.ts`).
@@ -447,16 +449,19 @@ A park that stopped part way stays unpublished and is finished on the job's next
 the generic board check can stop it (`server/delivery/parking/inspect-metadata-park.ts`). A sent write
 that cannot be observed is a visible manual stop: the outbox shows the edit, that the decision comment is
 not confirmed and a card may already be in Block, the write and its own provider error, and that moving a
-card cannot resume the job yet. Each observation pass reads it back against its original intent, and once
-every sent write reads back one finishing pass is queued (`server/delivery/parking/observe-metadata-parks.ts`);
-`review-pr` asks for the same pass. A changed pickup, assignment or board stops the park naming what to
-restore. Once the comment and the recorded Block lanes are confirmed the park is published, leaving the
+card cannot resume the job yet. Each observation pass reads a rotating group of up to four idle parks
+against their original intents. Once every sent write reads back, one finishing pass is queued (`server/delivery/parking/observe-metadata-parks.ts`);
+`review-pr` asks for the same pass. A changed pickup, assignment or board stops the park with an outbox
+item naming what to restore. A missing live copy of a saved receipt remains eligible for observation.
+The finishing claim must still be current when the park is published or released. After comment
+read-back, publication rechecks the route and the identities of the cards recorded in Block, leaving the
 cards where they are, so an issue card Joe already returned to the pickup lane is resumed by the normal
 assignment poll. A park whose comment was never sent is released instead when its decision no longer
 holds or a person takes an issue card it had in Block out again
 (`server/delivery/parking/release-metadata-park.ts`): its never-sent intents are closed as rejected
 before dispatch, the record is kept, and `review-pr` then runs an ordinary review, after the issue card
-is returned to a lane a review starts from. Jobs the harness does not deliver, source resolutions, older
+is returned to a lane a review starts from, when a fresh review still applies. A historical park also
+needs every recorded card and the enabled pickup lane named in its original instruction. Jobs the harness does not deliver, source resolutions, older
 metadata bindings and a saved conflict assessment acted on again keep the reconciliation stop.
 
 A hands-off job on an adopted pull request can also stop inside the harness after its conflict-only

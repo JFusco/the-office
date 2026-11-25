@@ -2,7 +2,7 @@ import { cardStatus, projectCards, statusField, type Execute, type ProjectCard, 
 import { ParkNeedsRestore, ParkSuperseded } from './metadata-park-freshness';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
-import type { MetadataParkBinding } from '../../../src/contracts/metadata-park';
+import type { MetadataParkBinding, MetadataParkRoute } from '../../../src/contracts/metadata-park';
 
 /** The park's whole board inventory: the Status field, the issue's and the pull request's cards, and the lane each card reads in. */
 export interface ParkInventory { field: StatusField; cards: ProjectCard[]; lanes: Map<string, string | undefined> }
@@ -33,7 +33,7 @@ export function assertRecordedBoard(binding: MetadataParkBinding, inventory: Par
  * move or a note that the card was already there. Only the park's own board updates count, never one from before it.
  */
 export function recordedInBlock(job: TicketJob, binding: MetadataParkBinding): Set<string> {
-    const items = new Set(binding.observed), route = binding.route;
+    const items = new Set([...binding.observed, ...(binding.verified?.items ?? [])]), route = binding.route;
     for (const update of (job.boardUpdates || []).slice(binding.boardStart))
         if (update.status === 'verified' && update.project === route.project && update.field === route.field && update.option === route.block.id) items.add(update.item);
     return items;
@@ -61,7 +61,14 @@ export function assertRecordedInBlock(job: TicketJob, binding: MetadataParkBindi
     }
 }
 
-/** Reads the lanes of the cards this park has on record in Block again, for the guard of each write it has not sent. */
+/** Confirms the identities of all cards with recorded Block proof without requiring them to stay in Block. */
+export function assertPresentBlockProof(job: TicketJob, binding: MetadataParkBinding, live: MetadataParkRoute): void {
+    const items = new Set([live.issue, ...live.prs]);
+    if ([...recordedInBlock(job, binding)].some(item => !items.has(item)))
+        throw new ParkNeedsRestore(`a card this park had in ${binding.route.block.name} is no longer on the board`);
+}
+
+/** Reads the current lanes of the cards this park previously confirmed in Block. */
 export async function assertStillInBlock(store: Store, execute: Execute, job: TicketJob, binding: MetadataParkBinding): Promise<void> {
     for (const item of recordedInBlock(job, binding))
         if (await cardStatus(store, execute, item, binding.route.field) !== binding.route.block.id)
@@ -76,7 +83,7 @@ export function assertMovable(binding: MetadataParkBinding, inventory: ParkInven
         if (current === binding.route.block.id) continue;
         const name = inventory.field.options.find(option => option.id === current)?.name?.trim().toLowerCase() || '';
         if (MOVABLE.has(name) || card.kind === 'PullRequest' && (!name || name === 'backlog')) continue;
-        throw new Error(`${card.kind} card is in "${name || 'no status'}", a human lane; the harness will not move it to ${binding.route.block.name}`);
+        throw new ParkNeedsRestore(`${card.kind} card is in "${name || 'no status'}", a human lane; the harness will not move it to ${binding.route.block.name}`);
     }
 }
 

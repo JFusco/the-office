@@ -74,3 +74,13 @@ test('an empty expected edit falls back to the cleaned summary, in the park and 
     expect(metadataParkWords(empty, 'Ready').reason).toContain("The edit Sam's review asks for: Remove the release marker from the title.");
     expect(metadataStopWords(empty, 'pickup is off')).toContain("The edit Sam's review asks for: Remove the release marker from the title.");
 });
+
+test('markup flattened in displayed fields cannot create a live mention', () => {
+    const input = decision({ finding: finding({ expected: 'Remove @**octocat** from the title', actual: 'Found @`octocat`' }),
+        others: [finding({ id: '@**octocat**', summary: 'Notify @**octocat**' })] });
+    const words = metadataParkWords(input, 'Ready');
+    for (const text of [words.reason, words.instruction, metadataStopWords(input, 'the issue card is missing')]) {
+        expect(text).toContain(`@${ZWJ}octocat`);
+        expect(text).not.toContain('@octocat');
+    }
+});

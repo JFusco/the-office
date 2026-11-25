@@ -279,18 +279,21 @@ function humanEditFixture() {
     f.pr.title = TITLE;
     f.state.cards[0].status = 'review'; f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'review' });
     const moves: string[] = [], execute = f.delivery.execute;
-    let failRead: { item: string; nth: number } | undefined;
+    let failPRReadAfterIssueMove = false;
     f.delivery.execute = (async (program, args, options) => {
         const request = program === 'gh' && args[1] === 'graphql' ? JSON.parse(options!.input!) : undefined;
         if (String(request?.query).startsWith('mutation')) moves.push(request.variables.item);
-        if (failRead && String(request?.query).includes('fieldValues') && request.variables.item === failRead.item && --failRead.nth === 0) { failRead = undefined; throw new Error('gh: HTTP 502 reading the card'); }
+        if (failPRReadAfterIssueMove && String(request?.query).includes('fieldValues') && request.variables.item === 'pr-card' && f.state.cards[0].status === 'block') {
+            failPRReadAfterIssueMove = false;
+            throw new Error('gh: HTTP 502 reading the card');
+        }
         return execute(program, args, options);
     }) as typeof execute;
     const api = f.delivery.api.bind(f.delivery);
     f.delivery.api = async path => path.includes('/check-runs') ? { total_count: 1, check_runs: [{ id: 10, head_sha: f.job.head, name: 'unit', status: 'completed', conclusion: 'success' }] } :
         path.endsWith('/status') ? { sha: f.job.head, total_count: 0, statuses: [], state: 'success' } : api(path);
     const parkEffects = () => (f.store.db.prepare('SELECT body FROM effects').all() as { body: string }[]).map(row => JSON.parse(row.body)).filter(e => e.id.includes(':park'));
-    return { ...f, moves, parkEffects, failCardRead: (item: string, nth = 1) => { failRead = { item, nth }; } };
+    return { ...f, moves, parkEffects, failNextPRReadAfterIssueMove: () => { failPRReadAfterIssueMove = true; } };
 }
 
 const stores = (f: ReturnType<typeof metadataFixture>) => new Map([[f.store.project.id, f.store]]);
@@ -363,8 +366,7 @@ test.each(['no board', 'no issue card'] as const)('with %s nothing promises a ca
 
 test('a park that stops after the first card keeps its evidence unpublished and its comment unsent; the next pass finishes it without sending the first move again', async () => {
     const f = humanEditFixture(), model = vi.spyOn(f.engine.agents, 'run');
-    // The pull request's card is read once in the whole inventory before any move, then again just before its own move.
-    f.failCardRead('pr-card', 2);
+    f.failNextPRReadAfterIssueMove();
     await expect(acceptLead(f, humanEditReview(f))).rejects.toThrow('HTTP 502');
     expect(f.job).toMatchObject({ status: 'blocked', parked: { published: false } });
     expect(f.state.comments).toHaveLength(0); expect(f.moves).toEqual(['issue-card']);

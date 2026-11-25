@@ -70,3 +70,17 @@ test('a historical park whose comment is confirmed but whose card move was never
     expect(h.f.writes.moves).toEqual([]); expect(h.f.writes.posts).toEqual([]);
     expect(h.f.job.parked).toMatchObject({ published: false, stopped: expect.stringContaining('saved before parks kept the review and route') });
 });
+
+test.each([
+    ['lost original card', (h: ReturnType<typeof historical>) => { h.f.state.cards.splice(1, 1); }, 'a card this park recorded is no longer on the board'],
+    ['disabled pickup', (h: ReturnType<typeof historical>) => { h.f.store.state.coordination!.pickup!.enabled = false; }, 'automatic pickup is turned off'],
+    ['missing named pickup', (h: ReturnType<typeof historical>) => { h.f.state.lanes = h.f.state.lanes.filter(lane => lane.id !== 'ready'); }, 'the pickup lane named in its instruction is unavailable'],
+] as const)('historical publication preserves the proof and stops for %s', async (_name, change, reason) => {
+    const h = historical('verified');
+    h.f.state.comments.push(h.exact);
+    change(h);
+    await expect(h.finish()).rejects.toThrow(reason);
+    expect(h.f.job.parked).toMatchObject({ published: false, stopped: expect.stringContaining(reason) });
+    expect(h.commentIntent()).toMatchObject({ status: 'verified', receipt: { id: 900, url: h.exact.html_url } });
+    expect(h.f.writes).toEqual({ posts: [], moves: [] });
+});

@@ -1,5 +1,6 @@
 import { sanitize } from '../../office/security';
-import { parkIntents } from './park-writes';
+import { assertParkAuthority } from './metadata-park-freshness';
+import { boundParkComment, lanePayload, parkIntents } from './park-writes';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
@@ -12,18 +13,21 @@ import type { TicketJob } from '../../../src/shared';
  * review step, the Effects and the board updates stay. Throws `words`, which the pass stops with.
  */
 export function releaseMetadataPark(store: Store, job: TicketJob, parked: NonNullable<TicketJob['parked']>, words: string): never {
-    const intents = parkIntents(store, job);
-    if (job.parked !== parked || parked.published || intents.some(intent => ['dispatching', 'uncertain'].includes(intent.status) || intent.operation === 'github-issue-comment' && intent.dispatchedAt))
-        throw new Error('The park has a write that was sent; it is read back, not released');
-    const at = store.clock.now().toISOString();
     store.transaction(() => {
+        if (job.parked !== parked || parked.published) throw new Error('The park changed before it was released');
+        assertParkAuthority(store, job, parked.metadata!.pr.head);
+        const intents = parkIntents(store, job);
+        if (intents.some(intent => ['dispatching', 'uncertain'].includes(intent.status) || intent.operation === 'github-issue-comment' && intent.dispatchedAt))
+            throw new Error('The park has a write that was sent; it is read back, not released');
         for (const intent of intents.filter(intent => intent.status === 'prepared' && !intent.dispatchedAt)) {
+            if (intent.operation === 'github-issue-comment') boundParkComment(store, job, intent);
+            else lanePayload(store, job, intent);
             if (store.updateEffect(intent.id, 'prepared', current => { current.status = 'rejected'; current.error = sanitize('Retired before dispatch: the park was released for a fresh review'); })) continue;
             const current = store.getEffect(intent.id);
             if (current?.status !== 'rejected' || current.dispatchedAt)
                 throw new Error(`The park's write ${intent.id} was dispatched while the park was being released; it is read back, not released`);
         }
-        (job.releasedParks ??= []).push({ ...structuredClone(parked), releasedAt: at, releaseReason: words });
+        (job.releasedParks ??= []).push({ ...structuredClone(parked), releasedAt: store.clock.now().toISOString(), releaseReason: words });
         delete job.parked;
         job.status = 'blocked';
         job.detail = words;

@@ -1,8 +1,9 @@
 import { deliveryInputSha256 } from '../../github/github-context';
 import { digest } from '../../store/readback-evidence';
-import { assertDeliveryMayMutate } from '../harness/guards';
+import { assertDeliveryMayMutate, assertMayMutate } from '../harness/guards';
+import { requireDeliveryAuthority } from '../harness/delivery-authority';
 import { harnessDelivers } from '../harness/scope';
-import { cardResumeRoute } from './card-resume-route';
+import { cardResumeRoute, effectiveParkPickup } from './card-resume-route';
 import { decisionMarker } from './decision-marker';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
@@ -11,9 +12,25 @@ import type { MetadataParkRoute } from '../../../src/contracts/metadata-park';
 type Parked = NonNullable<TicketJob['parked']>;
 
 /** The park's decision no longer holds, or a person took the issue card out of Block before its comment was sent: the park is released for a fresh review, never finished. */
-export class ParkSuperseded extends Error {}
+export class ParkSuperseded extends Error {
+    constructor(message: string, readonly freshReview = true) { super(message); }
+}
 /** Something the park's route needs changed: the park sends nothing more until Joe restores it. */
 export class ParkNeedsRestore extends Error {}
+
+export function assertParkAuthority(store: GitHubDelivery['store'], job: TicketJob, expectedHead: string): void {
+    assertMayMutate(store, store.state.coordination?.jobs ?? [], job, expectedHead);
+    requireDeliveryAuthority(store, job);
+}
+
+export const parkRestoreWords = (fact: string) =>
+    `The park sends nothing more: ${fact}. Restore it, then ask for review-pr to finish the park.`;
+
+export function assertParkPickup(store: GitHubDelivery['store'], name: string): void {
+    const pickup = effectiveParkPickup(store);
+    if (!pickup.enabled) throw new ParkNeedsRestore('automatic pickup is turned off');
+    if (pickup.status !== name) throw new ParkNeedsRestore(`the pickup lane changed from ${name} to ${pickup.status}`);
+}
 
 /**
  * Throws unless the pass still holds the job's delivery claim and the saved review step, its result, the human
@@ -30,10 +47,29 @@ export function assertParkLocal(delivery: GitHubDelivery, job: TicketJob, parked
 
 /** Throws unless the live pull request is the open, unmerged one the review read, at its head and with the title and body it read. */
 export async function assertParkDecision(delivery: GitHubDelivery, job: TicketJob, parked: Parked): Promise<void> {
-    const { store } = delivery, binding = parked.metadata!, pr = await delivery.verifyPR(job, true), name = `PR #${binding.pr.number}`;
-    if (pr.number !== binding.pr.number || pr.html_url !== binding.pr.url || pr.state !== 'open' || pr.merged_at) throw new ParkSuperseded(`${name} is no longer open`);
-    if (pr.head?.sha !== binding.pr.head || pr.head?.ref !== binding.pr.branch || pr.head?.repo?.full_name !== store.project.repository) throw new ParkSuperseded(`${name} has a new head`);
-    if (digest({ title: pr.title, body: pr.body }) !== binding.pr.contentSha256) throw new ParkSuperseded(`${name} was edited after the review`);
+    const { store } = delivery, binding = parked.metadata!, name = `PR #${binding.pr.number}`;
+    const repository = store.project.repository;
+    await delivery.verifyPR(job, true, async kind => {
+        if (kind === 'issue-links') {
+            return JSON.parse(await delivery.execute('gh', ['pr', 'view', String(job.pr), '--repo', repository, '--json', 'closingIssuesReferences'],
+                { cwd: store.project.repo, timeout: 60000, readOnly: true }));
+        }
+        const pr = await delivery.api(`pulls/${binding.pr.number}`);
+        if (pr?.number !== binding.pr.number || pr.html_url !== binding.pr.url || pr.state !== 'open' && pr.state !== 'closed')
+            throw new Error(`Canonical identity or state of ${name} is unavailable for the park`);
+        if (pr.merged_at) throw new ParkSuperseded(`${name} is no longer open because it was merged`, false);
+        if (pr.state === 'closed') throw new ParkSuperseded(`${name} is no longer open`, false);
+        if (!pr.base?.repo?.full_name || !pr.base.ref || !pr.head?.sha || !pr.head.ref || !pr.head.repo?.full_name ||
+            typeof pr.title !== 'string' || pr.body !== null && typeof pr.body !== 'string')
+            throw new Error(`Canonical identity or content of ${name} is unavailable for the park`);
+        if (pr.base.repo.full_name !== repository || pr.base.ref !== store.project.target)
+            throw new ParkSuperseded(`${name} was retargeted after the review`);
+        if (pr.head.sha !== binding.pr.head || pr.head.ref !== binding.pr.branch || pr.head.repo.full_name !== repository)
+            throw new ParkSuperseded(`${name} has a new head`);
+        if (digest({ title: pr.title, body: pr.body }) !== binding.pr.contentSha256)
+            throw new ParkSuperseded(`${name} was edited after the review`);
+        return pr;
+    });
 }
 
 /**
@@ -57,10 +93,11 @@ export async function assertParkRoute(delivery: GitHubDelivery, job: TicketJob, 
  * The guard of a write the park has not sent: the local state, then the live pull request and route, then the local
  * state again, since the reads await. `alsoCheck` runs after the reads, before the last local check.
  */
-export async function assertParkCurrent(delivery: GitHubDelivery, job: TicketJob, parked: Parked, alsoCheck?: () => Promise<void>): Promise<void> {
+export async function assertParkCurrent(delivery: GitHubDelivery, job: TicketJob, parked: Parked, alsoCheck?: (live: MetadataParkRoute) => Promise<void>): Promise<void> {
     assertParkLocal(delivery, job, parked);
     await assertParkDecision(delivery, job, parked);
-    await assertParkRoute(delivery, job, parked);
-    await alsoCheck?.();
+    const live = await assertParkRoute(delivery, job, parked);
+    await alsoCheck?.(live);
     assertParkLocal(delivery, job, parked);
+    assertParkPickup(delivery.store, parked.metadata!.route.pickup.name);
 }

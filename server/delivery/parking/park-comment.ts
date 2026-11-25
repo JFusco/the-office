@@ -9,7 +9,8 @@ export interface ParkComment { issue: number; marker: string; body: string; auth
 export interface CommentReceipt { id: number; url: string }
 
 /** The park's comment Effect key: the job's step count when it parked, as its marker has it. */
-export const parkCommentKey = (job: Pick<TicketJob, 'steps'>) => `park-comment:${job.steps.length}`;
+export const parkCommentKey = (job: Pick<TicketJob, 'steps' | 'parked'>) =>
+    `park-comment:${job.parked?.metadata ? job.parked.metadata.step + 1 : job.steps.length}`;
 /** The full body a harness-worded park posts: the marker and reason, a blank line, the instruction. */
 export const parkCommentBody = (parked: Pick<NonNullable<TicketJob['parked']>, 'marker' | 'reason' | 'instruction'>) => `${parked.marker}: ${parked.reason}\n\n${parked.instruction}`;
 const issueUrl = (store: Store, issue: number) => `https://github.com/${store.project.repository}/issues/${issue}`;
@@ -31,7 +32,10 @@ export async function readParkComment(store: Store, execute: Execute, comment: P
     const pages = JSON.parse(await execute('gh', ['api', `repos/${store.project.repository}/issues/${comment.issue}/comments?per_page=100`, '--paginate', '--slurp'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
     if (!Array.isArray(pages) || !pages.length || pages.some(page => !Array.isArray(page) || page.length > 100))
         throw new Error('Complete issue comment pages are required to read the decision comment');
-    const marked = pages.flat().filter((item: any) => typeof item?.body === 'string' && item.body.startsWith(`${comment.marker}:`));
+    const comments = pages.flat();
+    if (comments.some((item: any) => typeof item?.body !== 'string'))
+        throw new Error('Complete issue comment bodies are required to read the decision comment');
+    const marked = comments.filter((item: any) => item.body.startsWith(`${comment.marker}:`));
     if (!marked.length) return null;
     if (marked.length > 1) throw new Error(`${marked.length} comments start with ${comment.marker}; the decision comment needs reconciliation`);
     const found = marked[0], url = issueUrl(store, comment.issue);
@@ -44,8 +48,10 @@ export async function readParkComment(store: Store, execute: Execute, comment: P
 
 /** Throws unless a saved comment intent is this park's: the job's work and attempt, the comment operation, the issue, the key and `payload` exactly. */
 export function assertCommentIntent(store: Store, job: TicketJob, intent: EffectIntent, issue: number, payload: Record<string, unknown>): void {
-    if (intent.work.projectId !== store.project.id || intent.work.kind !== 'delivery' || intent.work.id !== job.id || intent.attemptId !== job.id || intent.operation !== 'github-issue-comment' ||
-        intent.target !== issueUrl(store, issue) || JSON.stringify(intent.payload) !== JSON.stringify(payload) || JSON.stringify(intent.expectedState) !== JSON.stringify({ key: parkCommentKey(job) }))
+    const key = parkCommentKey(job), base = `harness:${job.id}:${key}`;
+    const retry = intent.id.startsWith(`${base}:retry-`) && /^[1-9][0-9]*$/.test(intent.id.slice(base.length + 7));
+    if (intent.id !== base && !retry || intent.work.projectId !== store.project.id || intent.work.kind !== 'delivery' || intent.work.id !== job.id || intent.attemptId !== job.id || intent.operation !== 'github-issue-comment' ||
+        intent.target !== issueUrl(store, issue) || JSON.stringify(intent.payload) !== JSON.stringify(payload) || JSON.stringify(intent.expectedState) !== JSON.stringify({ key }))
         throw new Error(`The saved decision comment intent ${intent.id} is not this park's; it needs reconciliation`);
 }
 

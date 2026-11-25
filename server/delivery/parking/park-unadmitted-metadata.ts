@@ -30,7 +30,6 @@ export async function parkUnadmittedMetadata(delivery: GitHubDelivery, job: Tick
     };
     saved();
     const route = await cardResumeRoute(store, execute, job);
-    if ('missing' in route) throw new Error(metadataStopWords(decision, route.missing, route.restore));
     const pr = await delivery.verifyPR(job, true);
     const changed = pr.number !== decision.pr.number || pr.html_url !== decision.pr.url || pr.state !== 'open' || pr.merged_at ? 'it is no longer open'
         : pr.head?.sha !== decision.pr.head || pr.head?.ref !== decision.pr.branch || pr.head?.repo?.full_name !== store.project.repository ? 'it has a new head'
@@ -38,6 +37,7 @@ export async function parkUnadmittedMetadata(delivery: GitHubDelivery, job: Tick
     if (changed) throw new Error(`${name} changed before the park was recorded (${changed}); the decision is no longer current and nothing was parked. Ask for a fresh review with review-pr.`);
     saved();
     assertDeliveryMayMutate(store, delivery.jobs, job, decision.pr.head);
+    if ('missing' in route) throw new Error(metadataStopWords(decision, route.missing, route.restore));
     await park(delivery, job, result, { ...metadataParkWords(decision, route.pickup.name), metadata: {
         step: decision.step, resultSha256: decision.resultSha256, inputSha256: decision.inputSha256,
         pr: { number: decision.pr.number, url: decision.pr.url, head: decision.pr.head, branch: decision.pr.branch, contentSha256: digest({ title: decision.pr.title, body: decision.pr.body }) },

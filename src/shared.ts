@@ -221,10 +221,11 @@ export interface TicketJob {
      * its comment gives and that comment's decision marker (`server/delivery/parking/park-unadmitted-metadata.ts`),
      * and, from issue 511 on, what it was decided on and its route (`metadata`). While it is unpublished it keeps
      * the writes sent and not yet read back with their errors (`unconfirmed`), why it sends nothing more
-     * (`stopped`), and the read-back state the observer last queued a finishing pass for (`readBackQueued`).
+     * (`stopped`), a failed live check of its decision comment (`commentReadError`), the observation order
+     * (`readBackChecked`), and the read-back state of an outstanding finishing pass (`readBackQueued`).
      */
     parked?: { stage: string; reason: string; at: string; published: boolean; release?: ReleaseWait; releaseCheckedAt?: string; releaseBaselineAt?: string; releaseFound?: string; instruction?: string; marker?: string;
-        metadata?: import('./contracts/metadata-park').MetadataParkBinding; unconfirmed?: { write: string; error: string }[]; stopped?: string; readBackQueued?: string };
+        metadata?: import('./contracts/metadata-park').MetadataParkBinding; unconfirmed?: { write: string; error: string }[]; stopped?: string; commentReadError?: string; readBackChecked?: number; readBackQueued?: string };
     /** Unpublished harness-worded parks released for a fresh review, each with when and why (`server/delivery/parking/release-metadata-park.ts`). */
     releasedParks?: (NonNullable<TicketJob['parked']> & { releasedAt: string; releaseReason: string })[];
     /** Times the harness returned this job to the pickup lane after its npm release wait was met. */

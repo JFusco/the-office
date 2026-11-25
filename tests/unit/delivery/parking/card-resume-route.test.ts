@@ -48,3 +48,9 @@ test('a provider read that fails or comes back without the issue\'s identity is 
     delete partial.state.issue.assignees;
     await expect(cardResumeRoute(partial.store, partial.execute as any, other)).rejects.toThrow('Canonical issue identity is unavailable');
 });
+
+test.each([undefined, 'unknown'])('issue state %s is incomplete provider evidence', async state => {
+    const f = fakeGitHub(), job = f.candidate({ pr: 200 });
+    f.state.issue.state = state;
+    await expect(cardResumeRoute(f.store, f.execute as any, job)).rejects.toThrow('Issue state is unavailable');
+});

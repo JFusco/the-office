@@ -21,7 +21,7 @@ import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication
 import { stopReason } from './stop-reason';
 import { redispatchSavedAssessment } from '../recovery/redispatch-assessment';
 import { finishMetadataPark } from '../parking/finish-metadata-park';
-import { inspectMetadataPark } from '../parking/inspect-metadata-park';
+import { inspectMetadataPark, recordMetadataParkIssueStop } from '../parking/inspect-metadata-park';
 import { retireRefusedQA, savedQAResult } from '../recovery/reaccept-qa-result';
 import { verifyInitialDraftConflictPreparation } from '../recovery/preparation/post-conflict-preparation';
 import { runSourceConfiguration } from '../recovery/implementation/activation-recovery';
@@ -145,8 +145,10 @@ export class GitHubDelivery {
             await new ProjectProgress(this.store, this.execute).reconcile(job);
             const issue = await this.api(`issues/${Number(job.key.slice(3))}`);
             if (await retireUnstartedDelivery(this, job, issue)) return;
-            if (issue.pull_request || !['closeout', 'ci-recovery'].includes(job.stage) && issue.state !== 'open' || !job.existingPR && !issue.assignees?.some((a: any) => a.login === 'JFusco'))
+            if (issue.pull_request || !['closeout', 'ci-recovery'].includes(job.stage) && issue.state !== 'open' || !job.existingPR && !issue.assignees?.some((a: any) => a.login === 'JFusco')) {
+                recordMetadataParkIssueStop(this, job, issue);
                 throw new SourceClosed('Issue is closed or no longer assigned to Joe; delivery stopped');
+            }
             if (job.stage === 'implement' && job.automaticStatus) {
                 const rule = this.store.state.coordination!.pickup, board = await this.engine.github.board();
                 if (!board || board.error)

@@ -21,7 +21,8 @@ function shown(text: string, sentences: number, max: number): string {
         .replace(/<\/?[a-z][^<>]*>/gi, ' ').replace(/<(?=[a-z/!?])/gi, '')
         .replace(/[​-‏‪-‮⁠-⁤﻿]/g, '')
         .replace(/\s+/g, ' ').trim();
-    return plainWords(redactEvidence(visible).replace(/@(?=\w)/g, '@‍'), sentences, max);
+    const words = plainWords(redactEvidence(visible), sentences, Number.MAX_SAFE_INTEGER);
+    return plainWords(words.replace(/@(?=\w)/g, '@‍'), sentences, max);
 }
 
 /**

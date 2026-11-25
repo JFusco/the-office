@@ -1,8 +1,11 @@
 import { expect, test, vi } from 'vitest';
 import { metadataParkFixture } from '../../../fixtures/metadata-park';
-import { observeMetadataParks } from '../../../../server/delivery/parking/observe-metadata-parks';
+import { METADATA_PARKS_PER_OBSERVATION, observeMetadataParks } from '../../../../server/delivery/parking/observe-metadata-parks';
 import { resumeParked } from '../../../../server/delivery/parking/resume';
 import { projectOutbox } from '../../../../server/conversations/outbox';
+import { inspectMetadataPark } from '../../../../server/delivery/parking/inspect-metadata-park';
+import { parkCommentBody } from '../../../../server/delivery/parking/park-comment';
+import type { HarnessRequest } from '../../../../src/shared';
 
 /** Parks with both cards confirmed in Block and a comment POST that GitHub took but does not list yet. */
 async function lostComment() {
@@ -73,4 +76,148 @@ test('a park stopped on a known missing prerequisite, a claimed job, a pause or 
         await observeMetadataParks(f.delivery);
         expect(f.job.status, name).toBe('blocked');
     }
+});
+
+test('an interrupted park reconstructs its missing outbox detail and continues once the original comment appears', async () => {
+    const { f, appear } = await lostComment();
+    f.job.status = 'interrupted';
+    delete f.job.parked!.unconfirmed;
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('interrupted');
+    expect(projectOutbox(f.store.state).find(item => item.id === `ticket-job:${f.job.id}`)).toMatchObject({
+        title: 'GH-5 decision comment is not confirmed', detail: expect.stringContaining('the decision comment on issue #5'),
+    });
+    appear();
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('queued');
+    await f.pass();
+    expect(f.job.parked?.published).toBe(true);
+    expect(f.writes.posts).toHaveLength(1);
+});
+
+test('a claimed pass that loses sight of the queued receipt can be queued again', async () => {
+    const { f, appear } = await lostComment();
+    appear();
+    await observeMetadataParks(f.delivery);
+    await observeMetadataParks(f.delivery);
+    expect(f.store.state.events.filter(event => event.kind === 'metadata-park-readback')).toHaveLength(1);
+    f.state.comments.length = 0;
+    await f.pass();
+    expect(f.job.status).toBe('blocked');
+    expect(f.job.parked!.readBackQueued).toBeUndefined();
+    appear();
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('queued');
+    await f.pass();
+    expect(f.job.parked!.published).toBe(true);
+    expect(f.writes.posts).toHaveLength(1);
+    expect(f.store.state.events.filter(event => event.kind === 'metadata-park-readback')).toHaveLength(2);
+});
+
+test.each(['already held', 'starts during read'])('a reconciliation claim that %s prevents the observer from queueing', async timing => {
+    const { f, appear } = await lostComment();
+    appear();
+    const { worker } = f.nativeAssessment();
+    const request = { id: 'review-recovery', action: 'reconcile-review', key: f.job.key, head: worker.id } as HarnessRequest;
+    (f.store.state.coordination!.requests ??= []).push(request);
+    const hold = () => f.store.claimWork({ kind: 'reconciliation', id: request.id, projectId: f.store.project.id }, 'bound recovery', request.action, 'delivery')!;
+    let claim: ReturnType<typeof hold> | undefined;
+    if (timing === 'already held') claim = hold();
+    f.hooks.before = call => {
+        if (!claim && call.args[1]?.includes('/comments?')) claim = hold();
+    };
+    await observeMetadataParks(f.delivery);
+    expect(claim).toBeDefined();
+    expect(f.job.status).toBe('blocked');
+    f.store.finishClaim(claim!.id, 'completed');
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('queued');
+    expect(f.store.state.events.filter(event => event.kind === 'metadata-park-readback')).toHaveLength(1);
+});
+
+test('a restart after a landed lane write is settled can continue before a comment intent exists', async () => {
+    const f = metadataParkFixture();
+    f.hooks.after = call => {
+        if (call.request?.query.startsWith('mutation') && call.request.variables.item === 'pr-card') throw new Error('Lost lane response');
+    };
+    await expect(f.parkNow()).rejects.toThrow('Lost lane response');
+    f.hooks.after = undefined;
+    await f.run(() => inspectMetadataPark(f.delivery, f.job));
+    f.job.status = 'interrupted';
+    expect(f.effects().map(effect => [effect.operation, effect.status])).toEqual([['github-project-status', 'verified'], ['github-project-status', 'verified']]);
+    expect(f.job.parked!.unconfirmed).toBeUndefined();
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('queued');
+    await f.pass();
+    expect(f.job.parked!.published).toBe(true);
+    expect(f.blockMoves()).toEqual(['issue-card>block', 'pr-card>block']);
+    expect(f.writes.posts).toHaveLength(1);
+});
+
+test('observation bounds comment reads and rotates past parks with missing receipts', async () => {
+    const { f, comment } = await lostComment();
+    const extras = Array.from({ length: METADATA_PARKS_PER_OBSERVATION + 1 }, (_, index) => {
+        const job = structuredClone(f.job), issue = 10 + index, marker = `Office decision parked-${issue}:1`;
+        job.id = `parked-${issue}`;
+        job.key = `GH-${issue}`;
+        job.parked!.marker = marker;
+        const body = parkCommentBody(job.parked!), target = `https://github.com/${f.store.project.repository}/issues/${issue}`;
+        f.delivery.jobs.push(job);
+        f.store.putEffect({ ...comment, id: `harness:${job.id}:park-comment:1`, work: { ...comment.work, id: job.id }, attemptId: job.id,
+            target, payload: { marker, issue, body, author: 'JFusco' } });
+        return { job, issue, body, target };
+    });
+    const last = extras.at(-1)!;
+    let reads = 0;
+    f.hooks.respond = call => {
+        if (!call.args[1]?.includes('/comments?')) return;
+        ++reads;
+        return call.args[1].startsWith(`repos/${f.store.project.repository}/issues/${last.issue}/`)
+            ? JSON.stringify([[{ id: 900, html_url: `${last.target}#issuecomment-900`, body: last.body, user: { login: 'JFusco' } }]])
+            : '[[]]';
+    };
+    await observeMetadataParks(f.delivery);
+    expect(reads).toBe(METADATA_PARKS_PER_OBSERVATION);
+    expect(last.job.status).toBe('blocked');
+    reads = 0;
+    await observeMetadataParks(f.delivery);
+    expect(reads).toBeLessThanOrEqual(METADATA_PARKS_PER_OBSERVATION);
+    expect(last.job.status).toBe('queued');
+    await observeMetadataParks(f.delivery);
+    expect(f.store.state.events.filter(event => event.kind === 'metadata-park-readback')).toHaveLength(1);
+    expect(f.writes.posts).toHaveLength(1);
+});
+
+test('a missing live copy of a verified receipt has its own read-back detail and can finish later', async () => {
+    const { f, appear, comment } = await lostComment();
+    appear();
+    await f.run(() => inspectMetadataPark(f.delivery, f.job));
+    f.state.comments.length = 0;
+    await f.pass();
+    expect(f.store.getEffect(comment.id)?.status).toBe('verified');
+    expect(f.job.parked).toMatchObject({ published: false, commentReadError: expect.stringContaining('no longer on the issue') });
+    expect(projectOutbox(f.store.state).find(item => item.id === `ticket-job:${f.job.id}`)?.detail).toMatch(/Remove \[skip release\].*\n[\s\S]*Read-back of the decision comment on issue #5 failed/);
+    appear();
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('queued');
+    await f.pass();
+    expect(f.job.parked!.published).toBe(true);
+    expect(f.writes.posts).toHaveLength(1);
+});
+
+test('the ordinary issue gate records known assignment loss before a confirmed park can publish', async () => {
+    const { f, appear, comment } = await lostComment();
+    appear();
+    await f.run(() => inspectMetadataPark(f.delivery, f.job));
+    f.job.existingPR = false;
+    f.state.issue.assignees = [];
+    await f.pass();
+    expect(f.job.parked).toMatchObject({ published: false, stopped: expect.stringContaining('not assigned to JFusco') });
+    expect(f.store.getEffect(comment.id)?.status).toBe('verified');
+    const outbox = projectOutbox(f.store.state).find(item => item.id === `ticket-job:${f.job.id}`)!;
+    expect(outbox.title).toBe('GH-5 metadata park needs a prerequisite restored');
+    expect(outbox.detail).toContain('not assigned to JFusco');
+    await observeMetadataParks(f.delivery);
+    expect(f.job.status).toBe('blocked');
+    expect(f.writes.posts).toHaveLength(1);
 });

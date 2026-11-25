@@ -12,7 +12,8 @@ type Intent = EffectIntent<Record<string, unknown>>;
 type LanePayload = { project: string; item: string; field: string; option: string };
 
 /** The park's lane operation: the existing `moveLane` identity, keyed to the job's step count when it parked. */
-export const parkLaneOperation = (job: Pick<TicketJob, 'id' | 'steps'>) => ({ id: `park:${job.id}:${job.steps.length}` });
+export const parkLaneOperation = (job: Pick<TicketJob, 'id' | 'steps' | 'parked'>) =>
+    ({ id: `park:${job.id}:${job.parked?.metadata ? job.parked.metadata.step + 1 : job.steps.length}` });
 const laneBase = (job: TicketJob, item: string) => `harness:${job.id}:${parkLaneOperation(job).id}:lane:${item}`;
 const attempted = (intent: Intent) => ['dispatching', 'uncertain'].includes(intent.status);
 
@@ -50,22 +51,21 @@ export function unreadStopWords(unread: UnconfirmedWrite[]): string {
 }
 
 /** The comment a saved comment intent of the park was sent as. A new intent carries its body and author; one saved as `{ marker }` before that is the park's stored words by the Office's account. */
-async function intendedComment(store: Store, execute: Execute, job: TicketJob, intent: Intent): Promise<ParkComment> {
+export function boundParkComment(store: Store, job: TicketJob, intent: Intent): ParkComment {
     const parked = job.parked!, issue = Number(job.key.slice(3)), marker = parked.marker!, body = parkCommentBody(parked), author = intent.payload?.author;
-    if (!parked.metadata) {
-        assertCommentIntent(store, job, intent, issue, { marker });
-        return { issue, marker, body, author: await commentAuthor(store, execute) };
-    }
     if (typeof author !== 'string' || !author) throw new Error(`The saved decision comment intent ${intent.id} names no author; it needs reconciliation`);
     assertCommentIntent(store, job, intent, issue, { marker, issue, body, author });
     return { issue, marker, body, author };
 }
 
 /** The saved target of a card-move intent of the park, after checking it is this park's: the job's work, a status write to the target it names, and for a recorded park its route's field and Block lane. */
-function lanePayload(store: Store, job: TicketJob, intent: Intent): LanePayload {
-    const p = intent.payload as Partial<LanePayload>, route = job.parked?.metadata?.route;
+export function lanePayload(store: Store, job: TicketJob, intent: Intent): LanePayload {
+    const p = (intent.payload ?? {}) as Partial<LanePayload>, route = job.parked?.metadata?.route;
+    const key = `${parkLaneOperation(job).id}:lane:${p.item}`, base = `harness:${job.id}:${key}`;
+    const retry = intent.id.startsWith(`${base}:retry-`) && /^[1-9][0-9]*$/.test(intent.id.slice(base.length + 7));
     if (intent.work.projectId !== store.project.id || intent.work.kind !== 'delivery' || intent.work.id !== job.id || intent.attemptId !== job.id || intent.operation !== 'github-project-status' ||
         ![p.project, p.item, p.field, p.option].every(value => typeof value === 'string' && value) || intent.target !== `${p.project}:${p.item}` ||
+        JSON.stringify(intent.expectedState) !== JSON.stringify({ key }) || intent.id !== base && !retry ||
         route && (p.project !== route.project || p.field !== route.field || p.option !== route.block.id))
         throw new Error(`The saved card move intent ${intent.id} is not this park's; it needs reconciliation`);
     return p as LanePayload;
@@ -73,7 +73,12 @@ function lanePayload(store: Store, job: TicketJob, intent: Intent): LanePayload 
 
 /** Reads one attempted or verified write of the park back against its own saved intent: its receipt when it is observable now, otherwise null. Read-only. */
 export async function readParkWrite(store: Store, execute: Execute, job: TicketJob, intent: Intent): Promise<unknown | null> {
-    if (intent.operation === 'github-issue-comment') return readParkComment(store, execute, await intendedComment(store, execute, job, intent), intent.receipt);
+    if (intent.operation === 'github-issue-comment') {
+        if (job.parked!.metadata) return readParkComment(store, execute, boundParkComment(store, job, intent), intent.receipt);
+        const parked = job.parked!, issue = Number(job.key.slice(3)), marker = parked.marker!;
+        assertCommentIntent(store, job, intent, issue, { marker });
+        return readParkComment(store, execute, { issue, marker, body: parkCommentBody(parked), author: await commentAuthor(store, execute) }, intent.receipt);
+    }
     const p = lanePayload(store, job, intent);
     return await cardStatus(store, execute, p.item, p.field) === p.option ? { item: p.item, option: p.option } : null;
 }
@@ -91,7 +96,8 @@ export async function settleParkWrites(store: Store, execute: Execute, job: Tick
     }
     for (const update of parkUpdates(job).filter(update => update.status !== 'verified')) {
         const intent = store.getEffect<Partial<LanePayload>>(activeEffectId(store, laneBase(job, update.item)));
-        const proved = intent?.status === 'verified' && intent.payload.project === update.project && intent.payload.item === update.item && intent.payload.field === update.field && intent.payload.option === update.option;
+        const lane = intent?.status === 'verified' ? lanePayload(store, job, intent) : undefined;
+        const proved = lane?.project === update.project && lane.item === update.item && lane.field === update.field && lane.option === update.option;
         if (!proved && await cardStatus(store, execute, update.item, update.field) !== update.option) continue;
         update.status = 'verified';
         update.detail = 'Original board transition verified by read-back; no mutation repeated.';

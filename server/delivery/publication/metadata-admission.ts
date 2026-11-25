@@ -61,6 +61,7 @@ export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJo
     const ineligible = (reason: string): MetadataDecision => ({ route: 'ineligible', reason });
     const gate = unbound(delivery, job, result, inputSha256);
     if (gate) return ineligible(gate);
+    const step = job.steps.length - 1, resultSha256 = digest(job.steps[step].result);
     const open = result.findings.filter(f => f.status === 'open'), finding = open.find(f => f.id === METADATA_FINDING);
     if (!finding) return ineligible('no open pr-metadata finding');
     if (new Set(result.findings.map(f => f.id)).size !== result.findings.length) return ineligible('duplicate finding ids');
@@ -77,6 +78,8 @@ export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJo
     assertMetadataBinding(delivery, job, record, 'admission');
     const current = await delivery.verifyPR(job, true);
     assertMetadataBinding(delivery, job, record, 'admission');
+    if (job.steps.length - 1 !== step || digest(job.steps[step]?.result) !== resultSha256 || digest(result) !== resultSha256)
+        return ineligible('the saved review changed while the pull request was read');
     const before = record.binding.before, repository = store.project.repository;
     const moved = current.head.sha !== record.binding.head || current.head.ref !== record.binding.branch || current.title !== before.title || current.body !== before.body;
     const closed = current.number !== job.pr || current.html_url !== job.prUrl || current.state !== 'open' || !!current.merged_at ||
@@ -86,8 +89,7 @@ export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJo
         if (moved) return ineligible('the pull request changed while its content was read');
         if (reviewed?.head?.sha !== record.binding.head || reviewed.title !== before.title || reviewed.body !== before.body)
             return ineligible('the pull request changed after the review started');
-        return { route: 'human-edit', why: sole ? 'lint-accepted' : 'other-findings', finding, others: open.filter(f => f !== finding), step: job.steps.length - 1,
-            resultSha256: digest(result), inputSha256,
+        return { route: 'human-edit', why: sole ? 'lint-accepted' : 'other-findings', finding, others: open.filter(f => f !== finding), step, resultSha256, inputSha256,
             pr: { number: job.pr, url: job.prUrl, head: record.binding.head, branch: record.binding.branch, title: before.title, body: before.body } };
     }
     if (moved || closed) throw new Error('Live metadata changed during content admission');

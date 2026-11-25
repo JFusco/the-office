@@ -1,40 +1,74 @@
+import { isDeepStrictEqual } from 'node:util';
 import { holdReason } from '../../office/project-holds';
 import { requeuePRReview } from '../../scheduling/review-transitions';
+import { resolveDeliveryWork } from '../harness/delivery-subject';
 import { activeMetadataPark } from './finish-metadata-park';
-import { parkIntents, readParkWrite } from './park-writes';
+import { parkIntents, readParkWrite, unconfirmedWrites } from './park-writes';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
-/** A stopped, unpublished harness-worded park nothing is working on, under controls that let a pass run, and not stopped on a known missing prerequisite. */
-const idle = (store: Store, job: TicketJob) => job.status === 'blocked' && activeMetadataPark(store, job) && !job.parked!.stopped &&
+export const METADATA_PARKS_PER_OBSERVATION = 4;
+
+/** An unpublished park waiting for read-back, without a claim or a known missing prerequisite. */
+const idle = (store: Store, job: TicketJob) => ['blocked', 'interrupted'].includes(job.status) && activeMetadataPark(store, job) && !job.parked!.stopped &&
     !store.state.paused && !store.state.draining && !holdReason(store.project, job.key) && !(job.pr && holdReason(store.project, `GH-${job.pr}`)) &&
-    !store.activeClaims().some(claim => claim.work.kind === 'delivery' && claim.work.id === job.id) &&
+    !store.activeClaims().some(claim => {
+        const subject = resolveDeliveryWork(store, claim.work);
+        return subject.kind === 'job' && subject.job === job;
+    }) &&
     !store.state.workLog?.some(work => work.requestId === job.id && ['running', 'stopping'].includes(work.status));
 
+const intentState = (intents: ReturnType<typeof parkIntents>) =>
+    JSON.stringify(intents.map(intent => [intent.id, intent.status]).sort());
+
 /**
- * From the ordinary observation pass: a stopped, unpublished harness-worded park with writes it sent and never read
- * back, or with a verified comment whose publication save was interrupted, is read against those writes' original
- * intents. Provider reads only. When every one reads back now, the job, park, controls and the absence of a claim
- * are checked again and one ordinary claimed pass is queued through the review transition, which settles and
- * finishes the park. An inconclusive read leaves the job and its outbox item as they are; the same read-back state
- * is queued once, and a park stopped on a known missing prerequisite waits for `review-pr`.
+ * Observe a bounded number of inactive parks in least-recently-checked order. A sent write reads against its
+ * original intent. If all sent writes are observable, one ordinary claimed pass will settle and finish the park.
  */
 export async function observeMetadataParks(delivery: GitHubDelivery): Promise<void> {
-    const { store, execute } = delivery;
-    for (const job of delivery.jobs) {
+    const { store, execute, jobs } = delivery;
+    let order = jobs.reduce((max, job) => Math.max(max, job.parked?.readBackChecked ?? 0), 0);
+    const candidates = jobs.filter(job => idle(store, job))
+        .sort((a, b) => (a.parked?.readBackChecked ?? 0) - (b.parked?.readBackChecked ?? 0));
+    let checked = 0;
+    for (const job of candidates) {
+        if (checked === METADATA_PARKS_PER_OBSERVATION) break;
         if (!idle(store, job)) continue;
-        const parked = job.parked!, intents = parkIntents(store, job);
+        const parked = job.parked!, intents = parkIntents(store, job), state = intentState(intents);
         const pending = intents.filter(intent => ['dispatching', 'uncertain'].includes(intent.status) || intent.operation === 'github-issue-comment' && intent.status === 'verified');
-        const state = JSON.stringify(intents.map(intent => [intent.id, intent.status]).sort());
-        if (!pending.length || parked.readBackQueued === state) continue;
-        try { for (const intent of pending) if (await readParkWrite(store, execute, job, intent) === null) throw new Error('A write of the park is not observable yet'); }
-        catch { continue; }
-        if (job.parked !== parked || !idle(store, job)) continue;
+        const verifiedLanes = intents.some(intent => intent.operation === 'github-project-status' && intent.status === 'verified');
+        if (!pending.length && !verifiedLanes || job.status === 'blocked' && parked.readBackQueued === state) continue;
+
+        ++checked;
+        parked.readBackChecked = ++order;
+        const unconfirmed = unconfirmedWrites(store, job);
+        if (!isDeepStrictEqual(parked.unconfirmed ?? [], unconfirmed)) {
+            if (unconfirmed.length) parked.unconfirmed = unconfirmed;
+            else delete parked.unconfirmed;
+        }
+        store.save();
+
+        let complete = true;
+        for (const intent of pending) {
+            if (job.parked !== parked || !idle(store, job)) { complete = false; break; }
+            try {
+                if (await readParkWrite(store, execute, job, intent) === null)
+                    throw new Error('The original write is no longer observable');
+            }
+            catch (error) {
+                complete = false;
+                if (intent.status === 'verified' && job.parked === parked && idle(store, job) && parked.commentReadError !== String(error)) {
+                    parked.commentReadError = String(error);
+                    store.save();
+                }
+            }
+        }
+        if (!complete || job.parked !== parked || !idle(store, job) || intentState(parkIntents(store, job)) !== state) continue;
         try { requeuePRReview(store, job); }
         catch { continue; }
         parked.readBackQueued = state;
-        job.detail = 'Every write the unfinished park sent now reads back; one pass is queued to settle and finish it.';
+        job.detail ='Every write the unfinished park sent now reads back; one pass is queued to settle and finish it.';
         store.emit('metadata-park-readback', `${job.key}: ${job.detail}`, 'pm', job.key);
     }
 }

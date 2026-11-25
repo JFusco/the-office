@@ -26,7 +26,15 @@ export function activeMetadataPark(store: Store, job: TicketJob): boolean {
  */
 export async function finishMetadataPark(delivery: GitHubDelivery, job: TicketJob): Promise<boolean> {
     if (!activeMetadataPark(delivery.store, job)) return false;
+    startMetadataParkReadBack(delivery.store, job.parked!);
     try { await (job.parked!.metadata ? advanceMetadataPark(delivery, job) : advanceHistoricalPark(delivery, job)); }
     finally { job.status = 'blocked'; delivery.store.save(); }
     return true;
+}
+
+/** The queued read-back has been claimed. A failed pass may be queued again on fresh provider evidence. */
+export function startMetadataParkReadBack(store: Store, parked: NonNullable<TicketJob['parked']>): void {
+    if (parked.readBackQueued === undefined) return;
+    delete parked.readBackQueued;
+    store.save();
 }

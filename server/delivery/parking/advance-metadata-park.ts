@@ -1,10 +1,10 @@
 import { moveLane } from '../board/move-lane';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { REVIEWABLE } from './card-resume-route';
-import { assertParkCurrent, assertParkRoute, ParkNeedsRestore, ParkSuperseded } from './metadata-park-freshness';
-import { assertMovable, assertRecordedBoard, assertRecordedInBlock, assertStillInBlock, observeInBlock, readParkInventory, recordBlockCoverage } from './metadata-park-inventory';
+import { assertParkCurrent, assertParkRoute, parkRestoreWords, ParkNeedsRestore, ParkSuperseded } from './metadata-park-freshness';
+import { assertMovable, assertPresentBlockProof, assertRecordedBoard, assertRecordedInBlock, assertStillInBlock, observeInBlock, readParkInventory, recordBlockCoverage } from './metadata-park-inventory';
 import { commentAuthor, parkCommentBody, settleParkComment } from './park-comment';
-import { parkIntents, parkLaneOperation, settleParkWrites, unconfirmedWrites, unreadStopWords } from './park-writes';
+import { boundParkComment, parkIntents, parkLaneOperation, settleParkWrites, unconfirmedWrites, unreadStopWords } from './park-writes';
 import { publishMetadataPark } from './publish-metadata-park';
 import { releaseMetadataPark } from './release-metadata-park';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -17,7 +17,9 @@ const sentAnything = (delivery: GitHubDelivery, job: TicketJob) => parkIntents(d
     .some(intent => ['dispatching', 'uncertain'].includes(intent.status) || intent.operation === 'github-issue-comment' && !!intent.dispatchedAt);
 
 /** The release words: the superseding fact, the edit, `review-pr`, and which lane to return the issue card from first when a review cannot start where it is. */
-async function releaseWords(delivery: GitHubDelivery, job: TicketJob, parked: Parked, fact: string): Promise<string> {
+async function releaseWords(delivery: GitHubDelivery, job: TicketJob, parked: Parked, fact: ParkSuperseded): Promise<string> {
+    const released = `The park of PR #${parked.metadata!.pr.number} was released before its decision comment was sent: ${fact.message}. Nothing more was sent for it.`;
+    if (!fact.freshReview) return released;
     const route = parked.metadata!.route;
     let lane: string | undefined;
     try {
@@ -26,7 +28,7 @@ async function releaseWords(delivery: GitHubDelivery, job: TicketJob, parked: Pa
     } catch { /* The lane could not be read; the words say what to check instead. */ }
     const first = lane === undefined ? ` If the issue card is in ${route.block.name} or another lane a review does not start from, move it back to ${route.pickup.name} first.`
         : REVIEWABLE.has(lane.toLowerCase()) ? '' : ` Move the issue card from ${lane} back to ${route.pickup.name} first; a review does not start from ${lane}.`;
-    return `The park of PR #${parked.metadata!.pr.number} was released before its decision comment was sent: ${fact}. Nothing more was sent for it. ${parked.reason} Ask for a fresh review with review-pr.${first}`;
+    return `${released} ${parked.reason} Ask for a fresh review with review-pr.${first}`;
 }
 
 /**
@@ -41,39 +43,59 @@ async function releaseWords(delivery: GitHubDelivery, job: TicketJob, parked: Pa
  */
 export async function advanceMetadataPark(delivery: GitHubDelivery, job: TicketJob): Promise<void> {
     const { store, execute } = delivery, parked = job.parked!, binding = parked.metadata!, route = binding.route, issue = Number(job.key.slice(3));
+    const publishConfirmed = async () => {
+        const live = await assertParkRoute(delivery, job, parked);
+        if (!binding.verified) throw new ParkNeedsRestore('the confirmed decision comment has no recorded Block proof; the park needs reconciliation');
+        assertPresentBlockProof(job, binding, live);
+        publishMetadataPark(store, job, parked, binding.pr.head, route.pickup.name);
+    };
     try {
         assertDeliveryMayMutate(store, delivery.jobs, job, binding.pr.head);
         const unread = await settleParkWrites(store, execute, job);
         if (unread.length) throw new Error(unreadStopWords(unread));
         const body = parkCommentBody(parked), verified = parkIntents(store, job).find(intent => intent.operation === 'github-issue-comment' && intent.status === 'verified');
         if (verified) {
-            const author = String(verified.payload?.author || '');
-            await settleParkComment(store, execute, job, { issue, marker: parked.marker!, body, author }, { payload: { marker: parked.marker, issue, body, author }, guard: () => {}, post: false });
-            const live = await assertParkRoute(delivery, job, parked);
-            delete parked.stopped;
-            if (!binding.verified || binding.verified.items.some(item => item !== live.issue && !live.prs.includes(item)))
-                throw new Error('The decision comment is confirmed, but the Block lane of every card was not on record before it was sent; the park needs reconciliation');
-            return publishMetadataPark(store, job, parked);
+            try {
+                const comment = boundParkComment(store, job, verified);
+                await settleParkComment(store, execute, job, comment, { payload: verified.payload, guard: () => {}, post: false });
+            }
+            catch (error) {
+                parked.commentReadError = String(error);
+                throw error;
+            }
+            delete parked.commentReadError;
+            return await publishConfirmed();
         }
         const inventory = await readParkInventory(store, execute, job);
         assertRecordedBoard(binding, inventory);
         assertRecordedInBlock(job, binding, inventory);
         observeInBlock(store, job, binding, inventory);
-        const guard = () => assertParkCurrent(delivery, job, parked, () => assertStillInBlock(store, execute, job, binding));
-        await guard();
+        const laneGuard = () => assertParkCurrent(delivery, job, parked, async () => {
+            const current = await readParkInventory(store, execute, job);
+            assertRecordedBoard(binding, current);
+            assertRecordedInBlock(job, binding, current);
+            assertMovable(binding, current);
+        });
+        await laneGuard();
         delete parked.stopped;
-        assertMovable(binding, inventory);
-        if (await moveLane(store, execute, job, 'Block', guard, job.pr, parkLaneOperation(job)) !== route.block.name)
+        if (await moveLane(store, execute, job, 'Block', laneGuard, job.pr, parkLaneOperation(job)) !== route.block.name)
             throw new ParkNeedsRestore('the configured board did not confirm the Block lane');
         await recordBlockCoverage(store, execute, job, binding);
         const author = await commentAuthor(store, execute);
-        await settleParkComment(store, execute, job, { issue, marker: parked.marker!, body, author }, { payload: { marker: parked.marker, issue, body, author }, guard, post: true });
-        publishMetadataPark(store, job, parked);
+        const commentGuard = () => assertParkCurrent(delivery, job, parked, async live => {
+            assertPresentBlockProof(job, binding, live);
+            const covered = new Set(binding.verified!.items);
+            if (live.prs.some(item => !covered.has(item)))
+                throw new Error('The pull request card inventory changed before the decision comment was sent; another pass must confirm every card in Block');
+            await assertStillInBlock(store, execute, job, binding);
+        });
+        await settleParkComment(store, execute, job, { issue, marker: parked.marker!, body, author }, { payload: { marker: parked.marker, issue, body, author }, guard: commentGuard, post: true });
+        await publishConfirmed();
     }
     catch (error) {
         if (job.parked !== parked) throw error;
-        if (error instanceof ParkSuperseded && !sentAnything(delivery, job)) releaseMetadataPark(store, job, parked, await releaseWords(delivery, job, parked, error.message));
-        if (error instanceof ParkNeedsRestore) parked.stopped = `The park sends nothing more: ${error.message}. Restore it, then ask for review-pr to finish the park.`;
+        if (error instanceof ParkSuperseded && !sentAnything(delivery, job)) releaseMetadataPark(store, job, parked, await releaseWords(delivery, job, parked, error));
+        if (error instanceof ParkNeedsRestore) parked.stopped = parkRestoreWords(error.message);
         const unconfirmed = unconfirmedWrites(store, job);
         if (unconfirmed.length) parked.unconfirmed = unconfirmed; else delete parked.unconfirmed;
         store.save();
