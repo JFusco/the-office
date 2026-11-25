@@ -1,6 +1,8 @@
 ---
 topics: [office-ui-and-telemetry]
 plans: [2026-11-24-live-ticket-timeline-e55e366158.md]
+issue: 'https://github.com/jfusco/the-office/issues/560'
+issues: ['https://github.com/jfusco/the-office/issues/560']
 ---
 
 # Ship the live ticket timeline

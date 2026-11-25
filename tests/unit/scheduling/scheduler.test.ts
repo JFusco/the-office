@@ -2,7 +2,6 @@ import { afterEach, expect, test } from 'vitest';
 import { Store } from '../../../server/store/store';
 import { Scheduler, selectWork, type ScheduledWork } from '../../../server/scheduling/scheduler';
 import { officeCapacity, projectById } from '../../../server/office/projects';
-import { Effects } from '../../../server/store/effects';
 import type { WorkSlot } from '../../../server/scheduling/slot-policy';
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));
@@ -40,18 +39,6 @@ test('duplicate ticks cannot execute twice and drain prevents only future claims
     await first;
     await scheduler.pump([{ store: a, items: [work] }]);
     expect(calls).toEqual(['claimed', 'finished']);
-});
-test('concurrent effect preflights permit one dispatch and preserve uncertain writes', async () => {
-    const a = store('brain'), effects = new Effects(a);
-    let release!: () => void, writes = 0;
-    const gate = new Promise<void>(resolve => { release = resolve; });
-    const operation = { id: 'same', work: { projectId: 'brain', kind: 'delivery' as const, id: 'work' }, attemptId: 'attempt', operation: 'fixture', target: 'fixed', authorization: 'human', payload: { value: 1 }, expectedState: {}, preflight: async () => gate, dispatch: async () => { writes++; return { ok: true }; }, verify: async () => true };
-    const attempts = [effects.execute(operation), effects.execute(operation)];
-    release();
-    const results = await Promise.allSettled(attempts);
-    expect(writes).toBe(1);
-    expect(results.some(result => result.status === 'fulfilled')).toBe(true);
-    expect(a.getEffect('same')?.status).toBe('verified');
 });
 test('observations and leadership claims cannot reset delivery notice fairness', async () => {
     const a = store('brain'), delivery = new Scheduler(officeCapacity()), operations = new Scheduler(officeCapacity(), a.clock, 'operations'), cto = new Scheduler(officeCapacity(), a.clock, 'cto'), calls: string[] = [];

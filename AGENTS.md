@@ -251,7 +251,10 @@ the harness's delivery worktrees; refresh the canonical map from the primary che
 Commit only `graph.json`, `graph.html`, `GRAPH_REPORT.md`, `.graphify_analysis.json`,
 `.graphify_labels.json` and its `.sig`; `manifest.json`, caches and backups stay local.
 Keep `graphify-out/memory/` empty and review background graph changes before staging.
-Do not install Graphify agent tool hooks.
+Do not install Graphify agent tool hooks. The
+[Graphify refresh workflow](.github/workflows/graphify-refresh.yml) publishes
+the shared map after mapped source reaches `main`. Local hooks also support
+working-copy previews.
 
 <!-- wiki-skill:start -->
 ## Context wiki
