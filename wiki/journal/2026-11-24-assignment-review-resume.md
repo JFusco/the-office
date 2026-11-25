@@ -1,6 +1,8 @@
 ---
 topics: [releases-and-incidents]
 plans: [2026-11-24-524-resume-a-stopped-assignment-review-after-a-fix-093b51f84f.md]
+issue: 'https://github.com/jfusco/the-office/issues/524'
+issues: ['https://github.com/jfusco/the-office/issues/524']
 ---
 
 # Resume a stopped assignment review after a fix
