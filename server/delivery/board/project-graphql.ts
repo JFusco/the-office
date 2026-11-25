@@ -15,8 +15,9 @@ export interface StatusField { projectId: string; fieldId: string; options: { id
 export async function statusField(store: Store, execute: Execute): Promise<StatusField> {
     const config = store.project.githubProject!;
     const data = await projectGraphql(store, execute, `query($owner:String!,$number:Int!){user(login:$owner){projectV2(number:$number){id fields(first:100){nodes{... on ProjectV2SingleSelectField{id name options{id name}}} pageInfo{hasNextPage}}}}}`, { owner: config.owner, number: config.number });
-    const project = data.user?.projectV2, fields = project?.fields.nodes.filter((f: any) => f?.name === 'Status');
-    if (!project?.id || project.fields.pageInfo.hasNextPage || fields?.length !== 1)
+    const project = data?.user?.projectV2, page = project?.fields;
+    const fields = Array.isArray(page?.nodes) ? page.nodes.filter((f: any) => f?.name === 'Status') : [];
+    if (!project?.id || page?.pageInfo?.hasNextPage !== false || fields.length !== 1)
         throw new Error('Project Status metadata is incomplete');
     return { projectId: project.id, fieldId: fields[0].id, options: fields[0].options };
 }
@@ -29,15 +30,15 @@ export async function projectCards(store: Store, execute: Execute, projectId: st
     let after = '';
     do {
         const page = (await projectGraphql(store, execute, `query($project:ID!,$after:String){node(id:$project){... on ProjectV2{items(first:100,after:$after){nodes{id content{__typename ... on Issue{number repository{nameWithOwner}} ... on PullRequest{number repository{nameWithOwner}}}} pageInfo{hasNextPage endCursor}}}}}`, { project: projectId, ...(after ? { after } : {}) })).node?.items;
-        if (!page?.nodes)
-            throw new Error('Project items are unavailable');
+        if (!Array.isArray(page?.nodes) || typeof page.pageInfo?.hasNextPage !== 'boolean')
+            throw new Error('Project items are unavailable or incomplete');
         for (const item of page.nodes) {
             const content = item.content;
             if (content?.repository?.nameWithOwner !== store.project.repository) continue;
             if (wanted.some(w => w.kind === content.__typename && w.number === content.number))
                 found.push({ id: item.id, kind: content.__typename, number: content.number });
         }
-        if (page.pageInfo.hasNextPage && (!page.pageInfo.endCursor || seen.has(page.pageInfo.endCursor)))
+        if (page.pageInfo.hasNextPage && (typeof page.pageInfo.endCursor !== 'string' || !page.pageInfo.endCursor || seen.has(page.pageInfo.endCursor)))
             throw new Error('Project item pagination did not advance');
         after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : '';
         seen.add(after);
@@ -47,9 +48,10 @@ export async function projectCards(store: Store, execute: Execute, projectId: st
 
 export async function cardStatus(store: Store, execute: Execute, item: string, field: string): Promise<string | undefined> {
     const data = await projectGraphql(store, execute, `query($item:ID!){node(id:$item){... on ProjectV2Item{id fieldValues(first:100){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2SingleSelectField{id}}}} pageInfo{hasNextPage}}}}}`, { item });
-    if (data.node?.id !== item || data.node.fieldValues.pageInfo.hasNextPage)
+    const page = data?.node?.fieldValues;
+    if (data?.node?.id !== item || page?.pageInfo?.hasNextPage !== false || !Array.isArray(page.nodes))
         throw new Error('Board status read-back coverage is incomplete');
-    return data.node.fieldValues.nodes.find((n: any) => n.field?.id === field)?.optionId;
+    return page.nodes.find((n: any) => n?.field?.id === field)?.optionId;
 }
 
 export async function setCardStatus(store: Store, execute: Execute, projectId: string, item: string, field: string, option: string): Promise<void> {

@@ -11,6 +11,7 @@ import { refreshConflicted, refreshEligible } from '../repairs/refresh-conflicte
 import { deliveryInputSha256, deliveryResearchContext, deliveryResearchSha256 } from '../../github/github-context';
 import { restartStoppedWriters } from '../attempts/restart-stopped-writers';
 import { resumeProviderReviews } from '../parking/resume-provider-review';
+import { observeMetadataParks } from '../parking/observe-metadata-parks';
 import { queueMergeNotice } from '../../conversations/notifications';
 import type { GitHubDelivery } from './github-delivery';
 import type { DependencyStores } from './dependencies';
@@ -20,6 +21,7 @@ export async function observe(this: GitHubDelivery, dependencyStores?: () => Dep
     await retireExternalDeliveries(this);
     await settleOwnerMergedStopped(this, dependencyStores);
     await resumeProviderReviews(this);
+    await observeMetadataParks(this);
     await restartStoppedWriters(this);
     for (const job of this.jobs.filter(j => j.status === 'watching' || j.stage === 'merge' && ['blocked', 'interrupted'].includes(j.status))) {
         try {

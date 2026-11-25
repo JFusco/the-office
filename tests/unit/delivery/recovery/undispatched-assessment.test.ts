@@ -159,3 +159,14 @@ test('mergeability that GitHub has not worked out yet is read again before the s
     expect(await claimedDelivery(f.store, f.job, () => redispatchSavedAssessment(f.delivery, f.job, f.artifactRoot, 0))).toBe(true);
     expect(f.job.stage).toBe('update-base');
 });
+
+test('a saved conflict assessment with an open PR metadata finding carries no metadata authority: it stops and nothing is parked', async () => {
+    const f = stopped();
+    f.result.findings.push({ id: 'pr-metadata', summary: 'Release marker in the PR title', expected: 'No marker in the title', actual: '[skip release]', status: 'open', attempts: 0 });
+    f.result.evidence = [{ id: 'conflict', kind: 'provider', commit: oldHead, path: '', url: f.pr.html_url, summary: 'GitHub reports a conflict with main', environment: 'fixture', observedAt: '' }];
+    f.result.resolution = { kind: 'conflict-repair', findingIds: ['main-integration-conflict', 'pr-metadata'], evidenceIds: ['conflict'], release: null };
+    expect(requeue(f)).toEqual([f.job.key]);
+    await expect(claimedDelivery(f.store, f.job, () => redispatchSavedAssessment(f.delivery, f.job, f.artifactRoot, 0))).rejects.toThrow('Unadmitted reserved PR metadata');
+    expect(f.job.parked).toBeUndefined();
+    expect(f.calls.some(call => call.args.includes('-f') || call.args[0] === 'clone' || String(call.options?.input).includes('mutation'))).toBe(false);
+});

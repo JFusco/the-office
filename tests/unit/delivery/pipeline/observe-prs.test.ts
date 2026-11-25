@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
+import { metadataParkFixture } from '../../../fixtures/metadata-park';
 import type { StageResult } from '../../../../src/shared';
 afterEach(cleanupFakes);
 
@@ -21,4 +22,17 @@ test('a PR whose mergeability GitHub is still computing keeps the reviewed-merge
     await f.delivery.observe();
     expect(job.stage).toBe('merge');
     expect(job.detail).toContain('Team-reviewed PR is not ready to merge');
+});
+
+test('the ordinary observation pass reads an unfinished metadata park back and queues one pass once its comment shows, sending nothing', async () => {
+    const f = metadataParkFixture();
+    f.hooks.before = call => { if (call.args.includes('-f')) throw new Error('gh: HTTP 502 after the comment'); };
+    await expect(f.parkNow()).rejects.toThrow('502');
+    f.hooks.before = undefined;
+    await f.delivery.observe();
+    expect(f.job.status).toBe('blocked');
+    f.state.comments.push({ id: 900, html_url: `${f.issueUrl}#issuecomment-900`, user: { login: 'JFusco' }, body: f.writes.posts[0] });
+    await f.delivery.observe();
+    expect(f.job).toMatchObject({ status: 'queued', stage: 'lead-pr', parked: { published: false } });
+    expect(f.writes.posts).toHaveLength(1); expect(f.blockMoves()).toHaveLength(2);
 });

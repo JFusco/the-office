@@ -217,8 +217,20 @@ export interface TicketJob {
         at: string;
     };
     boardUpdates?: BoardUpdate[];
-    /** A model returned a genuine human decision; the card sits in Block until Joe moves it back to Ready. */
-    parked?: { stage: string; reason: string; at: string; published: boolean; release?: ReleaseWait; releaseCheckedAt?: string; releaseBaselineAt?: string; releaseFound?: string };
+    /**
+     * A model returned a genuine human decision, or the harness parked a pull request edit it may not make; the
+     * card sits in Block until Joe moves it back to Ready. A harness-worded park also keeps the resume instruction
+     * its comment gives and that comment's decision marker (`server/delivery/parking/park-unadmitted-metadata.ts`),
+     * and, from issue 511 on, what it was decided on and its route (`metadata`). While it is unpublished it keeps
+     * the writes sent and not yet read back with their errors (`unconfirmed`), why it sends nothing more
+     * (`stopped`), a failed live check of its decision comment (`commentReadError`), the observation order
+     * (`readBackChecked`), the read-back state of an outstanding finishing pass (`readBackQueued`), and the
+     * sent-write state a continuation with nothing left to read was last queued for (`continuationQueued`).
+     */
+    parked?: { stage: string; reason: string; at: string; published: boolean; release?: ReleaseWait; releaseCheckedAt?: string; releaseBaselineAt?: string; releaseFound?: string; instruction?: string; marker?: string;
+        metadata?: import('./contracts/metadata-park').MetadataParkBinding; unconfirmed?: { write: string; error: string }[]; stopped?: string; commentReadError?: string; readBackChecked?: number; readBackQueued?: string; continuationQueued?: string };
+    /** Unpublished harness-worded parks released for a fresh review, each with when and why (`server/delivery/parking/release-metadata-park.ts`). */
+    releasedParks?: (NonNullable<TicketJob['parked']> & { releasedAt: string; releaseReason: string })[];
     /** Times the harness returned this job to the pickup lane after its npm release wait was met. */
     releaseUnparks?: number;
     /** The step whose sign-in wait the harness already returned to pickup once (`server/delivery/parking/sign-in-unpark.ts`). */

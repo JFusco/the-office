@@ -78,3 +78,11 @@ test('the operator\'s recheck commands keep their refusals and emit their own ev
     expect(() => recheckPR.call(coordinator(job({ status: 'cancelled' })), 'GH-1')).toThrow('Only an inactive PR review or a merge preflight with no attempted write can be rechecked');
     expect(emitted).toEqual([]);
 });
+
+test('a published park is refused for a new review and left as it was; a park that stopped part way may be rechecked', () => {
+    const parked = { stage: 'lead-pr', reason: 'PR #192 needs an edit', at: '2026-11-24T00:00:00Z', published: true, instruction: 'Edit the title', marker: 'Office decision job-1:1' };
+    refuses(held => requeuePRReview(STORE, held), job({ parked }), 'move the issue card back to the pickup lane');
+    const partial = job({ parked: { ...parked, published: false } });
+    requeuePRReview(STORE, partial);
+    expect(partial.status).toBe('queued');
+});
