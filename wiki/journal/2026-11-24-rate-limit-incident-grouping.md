@@ -1,6 +1,8 @@
 ---
 topics: [releases-and-incidents]
 plans: [2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md]
+issue: 'https://github.com/jfusco/the-office/issues/563'
+issues: ['https://github.com/jfusco/the-office/issues/563']
 ---
 
 # Group repeated GitHub rate-limit stops as one incident
