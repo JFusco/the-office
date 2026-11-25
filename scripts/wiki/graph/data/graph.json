@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 45,
-    "edges": 84,
+    "nodes": 47,
+    "edges": 90,
     "byType": {
       "index": 4,
-      "journal": 10,
-      "plan": 25,
+      "journal": 11,
+      "plan": 26,
       "topic": 6
     }
   },
@@ -51,8 +51,8 @@
       ],
       "bytes": 1102,
       "degree": 2,
-      "x": 0.961262,
-      "y": 0.275637,
+      "x": 0.964469,
+      "y": 0.264195,
       "size": 8
     },
     {
@@ -70,8 +70,8 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.913545,
-      "y": 0.406737,
+      "x": 0.92065,
+      "y": 0.390389,
       "size": 8
     },
     {
@@ -95,8 +95,8 @@
       ],
       "bytes": 1954,
       "degree": 4,
-      "x": 0.848048,
-      "y": 0.529919,
+      "x": 0.860402,
+      "y": 0.509617,
       "size": 8
     },
     {
@@ -120,8 +120,8 @@
       ],
       "bytes": 1611,
       "degree": 0,
-      "x": 0.766044,
-      "y": 0.642788,
+      "x": 0.784799,
+      "y": 0.61975,
       "size": 8
     },
     {
@@ -145,8 +145,8 @@
       ],
       "bytes": 975,
       "degree": 0,
-      "x": 0.669131,
-      "y": 0.743145,
+      "x": 0.695192,
+      "y": 0.718824,
       "size": 8
     },
     {
@@ -170,8 +170,8 @@
       ],
       "bytes": 1728,
       "degree": 0,
-      "x": 0.559193,
-      "y": 0.829038,
+      "x": 0.59318,
+      "y": 0.80507,
       "size": 8
     },
     {
@@ -195,8 +195,8 @@
       ],
       "bytes": 585,
       "degree": 0,
-      "x": 0.438371,
-      "y": 0.898794,
+      "x": 0.480582,
+      "y": 0.87695,
       "size": 8
     },
     {
@@ -214,8 +214,27 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.309017,
-      "y": 0.951057,
+      "x": 0.359408,
+      "y": 0.933181,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "label": "Group repeated GitHub rate-limit stops as one incident",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 563,
+          "url": "https://github.com/jfusco/the-office/issues/563"
+        }
+      ],
+      "bytes": 1680,
+      "degree": 4,
+      "x": 0.23182,
+      "y": 0.972759,
       "size": 8
     },
     {
@@ -233,8 +252,8 @@
       ],
       "bytes": 820,
       "degree": 3,
-      "x": 0.173648,
-      "y": 0.984808,
+      "x": 0.100096,
+      "y": 0.994978,
       "size": 8
     },
     {
@@ -264,8 +283,8 @@
       ],
       "bytes": 1126,
       "degree": 3,
-      "x": 0.034899,
-      "y": 0.999391,
+      "x": -0.033415,
+      "y": 0.999442,
       "size": 8
     },
     {
@@ -276,8 +295,8 @@
       "githubRefs": [],
       "bytes": 3394,
       "degree": 4,
-      "x": 0.990268,
-      "y": 0.139173,
+      "x": 0.991077,
+      "y": 0.133287,
       "size": 12
     },
     {
@@ -288,8 +307,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": -0.104528,
-      "y": 0.994522,
+      "x": -0.166329,
+      "y": 0.98607,
       "size": 12
     },
     {
@@ -313,8 +332,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": -0.241922,
-      "y": 0.970296,
+      "x": -0.296276,
+      "y": 0.955102,
       "size": 8
     },
     {
@@ -332,8 +351,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": -0.374607,
-      "y": 0.927184,
+      "x": -0.420935,
+      "y": 0.907091,
       "size": 8
     },
     {
@@ -351,8 +370,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": -0.5,
-      "y": 0.866025,
+      "x": -0.538082,
+      "y": 0.842892,
       "size": 8
     },
     {
@@ -370,8 +389,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": -0.615661,
-      "y": 0.788011,
+      "x": -0.645628,
+      "y": 0.763652,
       "size": 8
     },
     {
@@ -389,8 +408,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": -0.71934,
-      "y": 0.694658,
+      "x": -0.741652,
+      "y": 0.670785,
       "size": 8
     },
     {
@@ -408,8 +427,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.809017,
-      "y": 0.587785,
+      "x": -0.824442,
+      "y": 0.565947,
       "size": 8
     },
     {
@@ -433,8 +452,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.882948,
-      "y": 0.469472,
+      "x": -0.892519,
+      "y": 0.45101,
       "size": 8
     },
     {
@@ -452,8 +471,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.939693,
-      "y": 0.34202,
+      "x": -0.944669,
+      "y": 0.328025,
       "size": 8
     },
     {
@@ -477,8 +496,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.978148,
-      "y": 0.207912,
+      "x": -0.979962,
+      "y": 0.199186,
       "size": 8
     },
     {
@@ -520,8 +539,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.997564,
-      "y": 0.069756,
+      "x": -0.997767,
+      "y": 0.066793,
       "size": 8
     },
     {
@@ -539,8 +558,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.997564,
-      "y": -0.069756,
+      "x": -0.997767,
+      "y": -0.066793,
       "size": 8
     },
     {
@@ -564,8 +583,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.978148,
-      "y": -0.207912,
+      "x": -0.979962,
+      "y": -0.199186,
       "size": 8
     },
     {
@@ -583,8 +602,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.939693,
-      "y": -0.34202,
+      "x": -0.944669,
+      "y": -0.328025,
       "size": 8
     },
     {
@@ -620,8 +639,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.882948,
-      "y": -0.469472,
+      "x": -0.892519,
+      "y": -0.45101,
       "size": 8
     },
     {
@@ -675,8 +694,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.809017,
-      "y": -0.587785,
+      "x": -0.824442,
+      "y": -0.565947,
       "size": 8
     },
     {
@@ -694,8 +713,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.71934,
-      "y": -0.694658,
+      "x": -0.741652,
+      "y": -0.670785,
       "size": 8
     },
     {
@@ -713,8 +732,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.615661,
-      "y": -0.788011,
+      "x": -0.645628,
+      "y": -0.763652,
       "size": 8
     },
     {
@@ -738,8 +757,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.5,
-      "y": -0.866025,
+      "x": -0.538082,
+      "y": -0.842892,
       "size": 8
     },
     {
@@ -757,8 +776,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.374607,
-      "y": -0.927184,
+      "x": -0.420935,
+      "y": -0.907091,
       "size": 8
     },
     {
@@ -812,8 +831,27 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.241922,
-      "y": -0.970296,
+      "x": -0.296276,
+      "y": -0.955102,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "label": "Group repeated GitHub rate-limit observations (#563)",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 563,
+          "url": "https://github.com/jfusco/the-office/issues/563"
+        }
+      ],
+      "bytes": 3712,
+      "degree": 4,
+      "x": -0.166329,
+      "y": -0.98607,
       "size": 8
     },
     {
@@ -831,8 +869,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": -0.104528,
-      "y": -0.994522,
+      "x": -0.033415,
+      "y": -0.999442,
       "size": 8
     },
     {
@@ -850,8 +888,8 @@
       ],
       "bytes": 751,
       "degree": 5,
-      "x": 0.034899,
-      "y": -0.999391,
+      "x": 0.100096,
+      "y": -0.994978,
       "size": 8
     },
     {
@@ -869,8 +907,8 @@
       ],
       "bytes": 826,
       "degree": 3,
-      "x": 0.173648,
-      "y": -0.984808,
+      "x": 0.23182,
+      "y": -0.972759,
       "size": 8
     },
     {
@@ -894,8 +932,8 @@
       ],
       "bytes": 802,
       "degree": 3,
-      "x": 0.309017,
-      "y": -0.951057,
+      "x": 0.359408,
+      "y": -0.933181,
       "size": 8
     },
     {
@@ -906,8 +944,8 @@
       "githubRefs": [],
       "bytes": 9984,
       "degree": 3,
-      "x": 0.438371,
-      "y": -0.898794,
+      "x": 0.480582,
+      "y": -0.87695,
       "size": 8
     },
     {
@@ -933,6 +971,12 @@
           "kind": "issue",
           "number": 562,
           "url": "https://github.com/jfusco/the-office/issues/562"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 563,
+          "url": "https://github.com/jfusco/the-office/issues/563"
         },
         {
           "repository": "jfusco/the-office",
@@ -1205,10 +1249,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 8917,
-      "degree": 29,
-      "x": 0.559193,
-      "y": -0.829038,
+      "bytes": 9284,
+      "degree": 30,
+      "x": 0.59318,
+      "y": -0.80507,
       "size": 12
     },
     {
@@ -1226,8 +1270,8 @@
       ],
       "bytes": 2333,
       "degree": 13,
-      "x": 0.669131,
-      "y": -0.743145,
+      "x": 0.695192,
+      "y": -0.718824,
       "size": 8
     },
     {
@@ -1263,8 +1307,8 @@
       ],
       "bytes": 1324,
       "degree": 8,
-      "x": 0.766044,
-      "y": -0.642788,
+      "x": 0.784799,
+      "y": -0.61975,
       "size": 8
     },
     {
@@ -1312,8 +1356,8 @@
       ],
       "bytes": 2044,
       "degree": 9,
-      "x": 0.848048,
-      "y": -0.529919,
+      "x": 0.860402,
+      "y": -0.509617,
       "size": 8
     },
     {
@@ -1343,8 +1387,8 @@
       ],
       "bytes": 885,
       "degree": 11,
-      "x": 0.913545,
-      "y": -0.406737,
+      "x": 0.92065,
+      "y": -0.390389,
       "size": 8
     },
     {
@@ -1384,10 +1428,10 @@
           "url": "https://github.com/jfusco/the-office/pull/462"
         }
       ],
-      "bytes": 1048,
-      "degree": 3,
-      "x": 0.961262,
-      "y": -0.275637,
+      "bytes": 1464,
+      "degree": 6,
+      "x": 0.964469,
+      "y": -0.264195,
       "size": 8
     },
     {
@@ -1417,8 +1461,8 @@
       ],
       "bytes": 944,
       "degree": 2,
-      "x": 0.990268,
-      "y": -0.139173,
+      "x": 0.991077,
+      "y": -0.133287,
       "size": 8
     }
   ],
@@ -1487,6 +1531,13 @@
       "relation": "link"
     },
     {
+      "id": "1bda58858aa455be",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "1cca3de7c51cab63",
       "source": "wiki/journal/2026-11-24-live-ticket-timeline.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
@@ -1518,6 +1569,13 @@
       "id": "22230b25ab3ef7f4",
       "source": "wiki/plans/2026-11-06-people-directory-and-organization-chart-952ffc11ff.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "22b882a546ccc4e1",
+      "source": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "target": "wiki/topics/releases-and-incidents.md",
       "type": "topic",
       "relation": "topic"
     },
@@ -1872,6 +1930,13 @@
       "relation": "topic"
     },
     {
+      "id": "c14c2fa5f06cdac5",
+      "source": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "target": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "c3e7a4a7d0a8bba9",
       "source": "wiki/plans/2026-11-09-harper-continuous-learning-3de619a9eb.md",
       "target": "wiki/topics/planning-and-learning.md",
@@ -1912,6 +1977,13 @@
       "target": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
       "type": "plan",
       "relation": "plan"
+    },
+    {
+      "id": "ccb91f1e42139862",
+      "source": "wiki/topics/releases-and-incidents.md",
+      "target": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "cef9dc19b6d87e67",
@@ -1956,6 +2028,13 @@
       "relation": "link"
     },
     {
+      "id": "e14d6b9b05256ed1",
+      "source": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "e4bb97dc64446849",
       "source": "wiki/journal/2026-11-24-trim-unit-suite.md",
       "target": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
@@ -1982,6 +2061,13 @@
       "target": "wiki/topics/planning-and-learning.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "f15efea091ec1496",
+      "source": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "target": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "f216cb6962dcfec7",
