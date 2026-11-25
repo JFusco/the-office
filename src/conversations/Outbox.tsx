@@ -33,6 +33,7 @@ export function Outbox({snapshot,names=ROLE_NAMES,sendMessage,initialId,refresh,
   const plan=selected&&savedPlanFollowup(snapshot,selected.id);
   const implementation=selected&&savedImplementationFollowup(snapshot,selected.id);
   const ctoInput=selected&&ctoInputFailure(snapshot,selected.id);
+  if (initialId && !selected && !question) return <p className={mutedCopy}>This item is no longer in the outbox.</p>;
   return <>{selected||question?<p className="text-18 font-semibold">Your outbox</p>:<><PanelHeader icon={<Send size={26}/>}>Your outbox</PanelHeader><p className={mutedCopy}>Open an item to answer its question or see the next action.</p></>}
 
     {!open.length&&!rounds.length&&!selected&&!question?<div className="rounded-8 border border-dashed border-mail-empty-line bg-mail-empty px-4 py-6 text-center text-mail-empty-ink"><Check size={30} className="mx-auto mt-0.75 mb-4 block text-mail-empty-icon"/><strong className="block text-12 font-medium text-mail-empty-title">Nothing needs you right now.</strong><p className="mt-2 text-10 leading-body">Questions and blockers that need your input will arrive here.</p></div>:null}

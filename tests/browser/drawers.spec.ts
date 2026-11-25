@@ -402,7 +402,7 @@ test('phone settings topics form one aligned list', async ({page}) => {
   await page.locator('[data-inspector]').screenshot({path:screenshotPath('settings-navigation-phone.png')});
 });
 
-for (const group of ['Ready for pickup', 'Queued for Morgan'] as const) {
+for (const group of ['Ready for pickup', 'Queued for Morgan', 'In progress'] as const) {
   test(`mailbox preserves the activated row when work leaves ${group}`, async ({page, request}) => {
     const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
     const coordination = snapshot.coordination!;
@@ -412,7 +412,8 @@ for (const group of ['Ready for pickup', 'Queued for Morgan'] as const) {
       queuedAt: snapshot.serverTime, detail: 'Waiting for intake.', url: assigned.url, startedAt: '', endedAt: '', owner: '',
     };
     const intake = group === 'Queued for Morgan';
-    if (intake) coordination.listener.reviews = [review];
+    if (group === 'In progress') review.status = 'working';
+    if (intake || group === 'In progress') coordination.listener.reviews = [review];
     const publish = async () => expect((await request.post('/__fixture/snapshot', {data:{coordination}})).ok()).toBe(true);
     await publish();
     await page.goto('/');
@@ -423,11 +424,13 @@ for (const group of ['Ready for pickup', 'Queued for Morgan'] as const) {
     const row = active.getByRole('button',{name:new RegExp(assigned.summary)});
     const original = await row.elementHandle();
     await row.click();
-    if (intake) review.status = 'working';
+    if (group === 'In progress') coordination.listener.reviews = [];
+    else if (intake) review.status = 'working';
     else assigned.pickupStatus = 'Backlog';
     await publish();
     await expect(root.locator('[data-drawer-row]').filter({hasText:group})).toContainText('0');
-    await expect(root.locator('[data-drawer-row]').filter({hasText:intake ? 'In progress' : 'Waiting for pickup'})).toContainText('1');
+    const nextGroup = group === 'In progress' ? 'Ready for pickup' : intake ? 'In progress' : 'Waiting for pickup';
+    await expect(root.locator('[data-drawer-row]').filter({hasText:nextGroup})).toContainText('1');
     await page.getByRole('button',{name:'Back to ' + group,exact:true}).click();
     await expect(row).toBeFocused();
     expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);

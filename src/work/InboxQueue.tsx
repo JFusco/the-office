@@ -8,11 +8,19 @@ const card = cx('my-2.5 flex w-full flex-col gap-2 rounded-8 border border-secon
 const meta = 'block text-11 leading-relaxed text-muted';
 
 export function InboxQueue({ snapshot, onOpen }: { snapshot: OfficeSnapshot; onOpen: (key: string) => void }) {
-  const { opened, remember, release } = useDrawerReturnRow<{ group: 'intake' | 'ready' | 'waiting'; key: string }>();
+  const { opened, remember, release } = useDrawerReturnRow<
+    { group: 'active'; key: string; row: ReturnType<typeof ticketUpdates>[number] } |
+    { group: 'intake' | 'ready' | 'waiting'; key: string }
+  >();
   const coordination = snapshot.coordination;
   const latest = [...new Map((coordination?.listener.reviews || []).map(review => [review.key, review])).values()];
   const queued = latest.filter(review => review.status === 'queued').sort((a, b) => a.queuedAt.localeCompare(b.queuedAt));
-  const active = ticketUpdates(snapshot).filter(row => ['working', 'watching', 'retrying'].includes(row.status));
+  const updates = ticketUpdates(snapshot);
+  const active = updates.filter(row => ['working', 'watching', 'retrying'].includes(row.status));
+  const retainedActive = opened?.group === 'active' && !active.some(row => row.key === opened.key)
+    ? updates.find(row => row.key === opened.key) ?? opened.row
+    : undefined;
+  const activeRows = retainedActive ? [...active, retainedActive] : active;
   const remainingWorking = latest.filter(review => review.status === 'working' && !active.some(row => row.key === review.key));
   const intake = [...remainingWorking, ...queued];
   const retainedIntake = opened?.group === 'intake' && !intake.some(review => review.key === opened.key)
@@ -34,7 +42,10 @@ export function InboxQueue({ snapshot, onOpen }: { snapshot: OfficeSnapshot; onO
     <DrawerTopic title="In progress" detail={active.length}>
       <Section aria-label="In progress">
         <SectionTitle className="mb-4">In progress <Count>{active.length}</Count></SectionTitle>
-        {active.map(row => <button type="button" className={card} key={row.key} onClick={() => onOpen(row.key)}>
+        {activeRows.map(row => <button type="button" className={card} key={row.key} onBlur={release} onClick={event => {
+          remember({ group: 'active', key: row.key, row }, event.currentTarget);
+          onOpen(row.key);
+        }}>
           <small className={meta}>{row.key} · {row.phase}</small>
           <strong className="text-13 leading-normal">{row.title}</strong>
           <span className="text-12 leading-normal">{row.summary}</span>

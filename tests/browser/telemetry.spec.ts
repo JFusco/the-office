@@ -33,6 +33,9 @@ test('telemetry opens from the header, reports every project, drills into a proj
   await expect(panel.getByText('Est. cost is tracked in the Office; Jira sync is not enabled yet.')).toHaveCount(0); // Brain is GitHub
 
   await expect(panel.getByLabel('Telemetry scope')).toBeFocused(); // drilling in keeps keyboard focus in the panel
+  await panel.getByRole('button', { name: 'This project' }).press('Enter');
+  await expect(panel.getByLabel('Telemetry scope')).toHaveValue('cec');
+  await expect(panel.getByLabel('Telemetry scope')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
   await expect(opener).toBeFocused();

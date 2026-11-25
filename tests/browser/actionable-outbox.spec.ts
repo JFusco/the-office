@@ -87,5 +87,11 @@ test('a resolved outbox item stays available for Back focus only', async ({page,
     await expect(row).toHaveCount(0);
     await page.getByRole('button',{name:'Back to Your outbox',exact:true}).click();
     await expect(page.getByRole('button',{name:'Needs your reply 0',exact:true})).toBeVisible();
-    await expect(page.getByRole('button',{name:'Resolved items 1',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Resolved items 1',exact:true}).click();
+    await row.click();
+    expect((await request.post('/__fixture/snapshot',{data:{outbox:[]}})).ok()).toBe(true);
+    const active = page.locator('[data-inspector-scroll]');
+    await expect(active.getByText('This item is no longer in the outbox.')).toBeVisible();
+    await expect(active.getByRole('button')).toHaveCount(0);
+    await page.getByRole('button',{name:'Back to Resolved items'}).click();
 });
