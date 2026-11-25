@@ -17,7 +17,7 @@ const authFailure=/not logged in|authentication|unauthorized|invalid.*token|expi
 const azureNoCredentials=/Before you can run Azure DevOps commands, you need to run the login command/i;
 /** The stated cause of a GitHub rate-limit refusal: a bare status code or quota advice is not one. */
 export const rateLimitRefusal=/API rate limit exceeded|exceeded a secondary rate limit|\bHTTP (?:403|429)\b[^\n]*\brate limit/i;
-export const credentialFailure=/(?:\bHTTP |status code:\s*)401\b|bad credentials|invalid.*token|expired.*token|not logged in/i;
+export const credentialFailure=/\bHTTP 401\b|bad credentials|invalid.*token|expired.*token|not logged in/i;
 /** GitHub refusing the account: a 401 in either of gh's error formats, or a stated permission or SAML refusal. A bare 403 has other causes. */
 const githubRefusal=/(?:\bHTTP|status code:) 401\b|Resource not accessible by integration|\bSAML\b/i;
 const UNVERIFIED_NEXT_STEP='Ellis owns the read-only checks; Morgan investigates persistent probe failures. No login change is indicated by this result.';

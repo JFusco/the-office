@@ -30,7 +30,8 @@ test('with production executors the GitHub probe is metered once as health and n
 
 test.each([
     { error: 'status code: 403 API rate limit exceeded', status: 'unknown', refusals: 1, failures: 0 },
-    { error: 'status code: 401 API rate limit exceeded', status: 'disconnected', refusals: 0, failures: 1 },
+    // The login row keeps its existing reading (unknown); only the ledger counts the stated 401 as a failure.
+    { error: 'status code: 401 API rate limit exceeded', status: 'unknown', refusals: 0, failures: 1 },
 ])('meters the active host error reported by a successful auth status command ($status)', async ({ error, status, refusals, failures }) => {
     const raw = async () => JSON.stringify({ hosts: {
         'github.com': [

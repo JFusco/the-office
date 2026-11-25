@@ -9,7 +9,9 @@ import type { GitHubCall } from './endpoint-family';
 export type CallCounts = { invocations: number; attempts: number; pages: number; responses: number; fullResponses: number; revalidations: number; refusals: number; failures: number; opaque: number; unknown: number };
 export const noCalls = (): CallCounts => ({ invocations: 0, attempts: 0, pages: 0, responses: 0, fullResponses: 0, revalidations: 0, refusals: 0, failures: 0, opaque: 0, unknown: 0 });
 const statedHttpStatus = /(?:\bHTTP |status code:\s*)[1-5]\d\d\b/i;
-const refusedByRateLimit = (text: string) => rateLimitRefusal.test(text) && !credentialFailure.test(text);
+/** gh's other error format for a 401. Kept local: the login health check's own classification is unchanged here. */
+const statedCredential401 = /status code:\s*401\b/i;
+const refusedByRateLimit = (text: string) => rateLimitRefusal.test(text) && !credentialFailure.test(text) && !statedCredential401.test(text);
 const revalidated = { attempts: 1, responses: 1, revalidations: 1 };
 
 function githubAuthError(stdout: string): string | undefined {
