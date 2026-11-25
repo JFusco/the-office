@@ -1,5 +1,3 @@
-import {currentJob} from './timeline/ticket-progress';
-import {TicketTimeline} from './timeline/TicketTimeline';
 import { QAResultsCard } from './QAResultsCard';
 import { withoutIdentifiers } from '../office/without-identifiers';
 import { prerequisiteKeys } from './pm-queue';
@@ -10,7 +8,6 @@ import {
   Button,
   Card,
   Notice,
-  PanelTitle,
   Section,
   SectionTitle,
   Tag,
@@ -21,9 +18,8 @@ import {
   mutedCopy,
   noticeIcon,
 } from '../ui';
-import { STAGES, STAGE_LABELS, type OfficeSnapshot, type Ticket, type Evidence } from '../shared';
+import { STAGES, STAGE_LABELS, type OfficeSnapshot, type Ticket, type Evidence, type TicketJob } from '../shared';
 import { ApproachSummary } from './ApproachSummary';
-import { TimeBook } from '../timing/TimeBook';
 import { DrawerTopic } from '../office/drawer/DrawerTopic';
 
 const STEP = {
@@ -101,12 +97,10 @@ export function TicketDetail({
   snapshot,
   act,
   onOpen,
-  showEvidence,
-  reduced,
+  job,
 }: {
   ticket: Ticket;
-  showEvidence?: boolean;
-  reduced:boolean;
+  job?: TicketJob;
   snapshot: OfficeSnapshot;
   act: (action: string, key?: string) => void;
   onOpen: (key: string) => void;
@@ -116,7 +110,6 @@ export function TicketDetail({
     .slice()
     .reverse()
     .find((r) => r.key === t.key);
-  const job = currentJob(snapshot.coordination?.jobs || [], t.key);
   const dependency = (
     <DependencyNotice
       keys={review ? prerequisiteKeys(review) : []}
@@ -145,10 +138,7 @@ export function TicketDetail({
   );
   if (snapshot.project?.provider === 'github')
     return (
-      <div className="flex min-w-0 flex-col gap-4" data-github-ticket>
-        <TicketHeading ticket={t.key} url={t.url} label="View GitHub issue" />
-        <PanelTitle className="max-w-full break-words">{t.summary}</PanelTitle>
-      <TicketTimeline ticket={t} snapshot={snapshot} job={job} reduced={reduced}/>
+      <>
         <Tag className="self-start">{t.status}</Tag>
         {snapshot.github?.board ? (
           <p className={mutedCopy}>
@@ -166,9 +156,6 @@ export function TicketDetail({
             <ApproachSummary approach={job.approach} decisions={job.decisions} />
           </DrawerTopic>
         )}
-        <DrawerTopic initial={showEvidence} title="Evidence">
-          <QAResultsCard ticket={t} job={job} />
-        </DrawerTopic>
         {review ? (
           <>
             <Tag className="self-start">{review.status}</Tag>
@@ -198,17 +185,11 @@ export function TicketDetail({
             </DrawerTopic>
           </Section>
         ) : null}
-        <DrawerTopic title="Time">
-          <TimeBook snapshot={snapshot} ticket={t.key} />
-        </DrawerTopic>
-      </div>
+      </>
     );
   const steps = STAGES.filter((s) => !['repair', 'repair-review', 'retest', 'staging-qa', 'complete'].includes(s));
   return (
     <>
-      <TicketHeading ticket={t.key} url={t.url} label="View in Jira" />
-      <PanelTitle className="mt-3 mb-4">{t.summary}</PanelTitle>
-      <TicketTimeline ticket={t} snapshot={snapshot} job={job} reduced={reduced}/>
       <div className="flex flex-wrap gap-2">
         <Tag>{t.type}</Tag>
         <Tag tone={t.activity}>Jira status · {t.status}</Tag>
@@ -354,29 +335,29 @@ export function TicketDetail({
           </Section>
         </DrawerTopic>
       ) : null}
-      <DrawerTopic initial={showEvidence} title="Evidence" detail={t.evidence.length || undefined}>
-        <QAResultsCard ticket={t} />
-        {t.evidence.length ? (
-          <Section>
-            <SectionTitle className="mb-4">
-              <Camera size={14} /> Verification evidence
-            </SectionTitle>
-            {t.evidence.map((e, i) => (
-              <EvidenceCard key={`${e.id}-${i}`} e={e} />
-            ))}
-          </Section>
-        ) : (
-          <Section className="flex gap-3 text-11 text-empty">
-            <FileText className="shrink-0" size={22} />
-            <p className="leading-body">
-              Evidence will arrive here as the team works. A passed stage needs saved, current-candidate proof.
-            </p>
-          </Section>
-        )}
-      </DrawerTopic>
-      <DrawerTopic title="Time">
-        <TimeBook snapshot={snapshot} ticket={t.key} />
-      </DrawerTopic>
     </>
   );
+}
+
+export function TicketEvidence({ ticket, job, github }: { ticket: Ticket; job?: TicketJob; github: boolean }) {
+  return <>
+    <QAResultsCard ticket={ticket} job={github ? job : undefined} />
+    {!github && (ticket.evidence.length ? (
+      <Section>
+        <SectionTitle className="mb-4">
+          <Camera size={14} /> Verification evidence
+        </SectionTitle>
+        {ticket.evidence.map((e, i) => (
+          <EvidenceCard key={`${e.id}-${i}`} e={e} />
+        ))}
+      </Section>
+    ) : (
+      <Section className="flex gap-3 text-11 text-empty">
+        <FileText className="shrink-0" size={22} />
+        <p className="leading-body">
+          Evidence will arrive here as the team works. A passed stage needs saved, current-candidate proof.
+        </p>
+      </Section>
+    ))}
+  </>;
 }

@@ -10,7 +10,7 @@ import { TimeBook } from '../timing/TimeBook';
 import { LiveAgentTask } from '../scene/LiveAgentTask';
 import { LessonsPanel } from '../knowledge/LessonsPanel';
 import { ReportsTo } from './ReportsTo';
-import { DrawerRow, DrawerTopic } from '../office/drawer/DrawerTopic';
+import { DrawerRow, DrawerTopic, useDrawerReturnRow } from '../office/drawer/DrawerTopic';
 import type { InspectorProps } from '../office/drawer/inspector-props';
 const PORTRAIT: Record<Role, string> = {
   pm: 'bg-portrait-pm',
@@ -32,6 +32,7 @@ export function AgentDesk({
   refresh,
 }: InspectorProps) {
   const agent = selection.kind === 'agent' ? snapshot.agents.find((a) => a.id === selection.id) : undefined;
+  const { opened, remember, release } = useDrawerReturnRow<string>();
   const present = useIsPresent(),
     pmName = names.pm;
   const lessons = lessonsView(snapshot.knowledge, snapshot.officeKnowledge);
@@ -69,14 +70,18 @@ export function AgentDesk({
           </Section>
         </DrawerTopic>
       ) : null}
-      {agent.ticket ? (
-        <button type="button" className={envelopeCard} onClick={() => onSelect({ kind: 'ticket', id: agent.ticket })}>
-          <span className={cx(eyebrow, 'text-8 text-envelope-label')}>At this desk</span>
-          <strong className="max-w-57.5 text-13 leading-relaxed font-emphasis">{agent.ticket}</strong>
-          <span>{snapshot.tickets.find((t) => t.key === agent.ticket)?.summary}</span>
+      {[agent.ticket, opened === agent.ticket ? undefined : opened].map(ticket => ticket && (
+        <button key={ticket} type="button" className={envelopeCard} onBlur={release} onClick={event => {
+          remember(ticket, event.currentTarget);
+          onSelect({ kind: 'ticket', id: ticket });
+        }}>
+          <span className={cx(eyebrow, 'text-8 text-envelope-label')}>{ticket === agent.ticket ? 'At this desk' : 'Previously opened'}</span>
+          <strong className="max-w-57.5 text-13 leading-relaxed font-emphasis">{ticket}</strong>
+          <span>{snapshot.tickets.find((t) => t.key === ticket)?.summary}</span>
           <ArrowUpRight size={18} className="absolute right-4 bottom-4 text-envelope-icon" />
         </button>
-      ) : (
+      ))}
+      {!agent.ticket && (
         <Section className="flex gap-3 text-11 text-empty">
           <p className="leading-body">{PERSONAS[agent.id].summary}</p>
         </Section>

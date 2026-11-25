@@ -1,5 +1,5 @@
 import { Mailbox } from '../../work/Mailbox';
-import {QueueTicketDetail} from '../../work/QueueTicketDetail';
+import { QueueEvidenceLinks, QueueTicketDetail, queueTicketRecord, queueValidationArtifacts } from '../../work/QueueTicketDetail';
 import { Outbox } from '../../conversations/Outbox';
 import { withoutIdentifiers } from '../without-identifiers';
 import { PanelHeader } from '../../ui/PanelHeader';
@@ -9,7 +9,7 @@ import { PMQueue } from '../../work/PMQueue';
 import { WorkSummary } from '../../work/WorkSummary';
 import { ProjectSettings, SettingsPanel } from '../settings/SettingsPanel';
 import { FileText, MessageCircle } from '../../ui/icons';
-import { Section, SectionTitle, mutedCopy } from '../../ui';
+import { PanelTitle, Section, SectionTitle, mutedCopy } from '../../ui';
 import { ROLE_NAMES } from '../../shared';
 import { Conversation } from '../../conversations/Conversation';
 import { Goals } from '../../leadership/Goals';
@@ -17,11 +17,14 @@ import { GitHubPanel } from '../../work/GitHubPanel';
 import { PeoplePanel } from '../../people/PeoplePanel';
 import { TicketPlanningAction } from '../../features/questions/TicketPlanningAction';
 import { FeatureWorkspace } from '../../features/FeatureWorkspace';
-import { DrawerRow } from './DrawerTopic';
+import { DrawerRow, DrawerTopic } from './DrawerTopic';
 import type { InspectorProps } from './inspector-props';
 import { AgentDesk } from '../../people/AgentDesk';
 import { AzureOperations } from '../../work/AzureOperations';
-import { TicketDetail } from '../../work/TicketDetail';
+import { TicketDetail, TicketEvidence, TicketHeading } from '../../work/TicketDetail';
+import { TicketTimeline } from '../../work/timeline/TicketTimeline';
+import { currentJob } from '../../work/timeline/ticket-progress';
+import { TimeBook } from '../../timing/TimeBook';
 export function InspectorContent(props: InspectorProps) {
   const {
     selection,
@@ -36,7 +39,6 @@ export function InspectorContent(props: InspectorProps) {
     osReduced = false,
     refresh,
   } = props;
-  const ticket = selection.kind === 'ticket' ? snapshot.tickets.find((t) => t.key === selection.id) : null;
   const github = snapshot.project?.provider === 'github';
   const pmName = snapshot.agents.find((a) => a.id === 'pm')?.name || names.pm,
     ctoName = snapshot.agents.find((a) => a.id === 'cto')?.name || names.cto;
@@ -117,24 +119,7 @@ export function InspectorContent(props: InspectorProps) {
           refresh={refresh}
         />
       ) : null}
-      {ticket ? (
-        <>
-          <TicketDetail reduced={props.reduced}
-            showEvidence={selection.kind === 'ticket' && selection.page === 'evidence'}
-            ticket={ticket}
-            snapshot={snapshot}
-            act={act}
-            onOpen={(key) => onSelect({ kind: 'ticket', id: key })}
-          />
-          <TicketPlanningAction
-            snapshot={snapshot}
-            ticket={ticket.key}
-            open={(id) => onSelect(id ? { kind: 'features', id } : { kind: 'features', sourceTicket: ticket.key })}
-          />
-          <DrawerRow title={`Discuss ${ticket.key} with ${pmName}`} onOpen={() => onSelect({ kind: 'chat', ticket: ticket.key })} />
-        </>
-      ) : null}
-      {selection.kind==='ticket' && !ticket && <QueueTicketDetail pmName={pmName} reduced={props.reduced} snapshot={snapshot} ticketKey={selection.id} onDiscuss={key=>onSelect({kind:'chat',ticket:key})}/>}
+      {selection.kind === 'ticket' && <SelectedTicket key={selection.id} {...props} selection={selection} pmName={pmName} />}
       {selection.kind === 'pm-queue' ? <PMQueue reduced={props.reduced} snapshot={snapshot} onOpen={onOpenProject} /> : null}
       {selection.kind === 'agent' && <AgentDesk {...props} />}
       {selection.kind === 'mailbox' && <Mailbox snapshot={snapshot} act={act} busy={busy} preferences={preferences} onSelect={onSelect}/>}
@@ -172,5 +157,43 @@ export function InspectorContent(props: InspectorProps) {
         </>
       ) : null}
     </>
+  );
+}
+
+function SelectedTicket({ selection, snapshot, reduced, act, onSelect, pmName }: Pick<InspectorProps, 'snapshot' | 'reduced' | 'act' | 'onSelect'> & {
+  selection: Extract<InspectorProps['selection'], { kind: 'ticket' }>;
+  pmName: string;
+}) {
+  const key = selection.id;
+  const github = snapshot.project?.provider === 'github';
+  const ticket = snapshot.tickets.find(ticket => ticket.key === key);
+  const queue = ticket ? undefined : queueTicketRecord(snapshot, key);
+  const job = ticket ? currentJob(snapshot.coordination?.jobs || [], key) : queue?.job;
+  const artifacts = !ticket && job ? queueValidationArtifacts(job, snapshot.project?.id) : undefined;
+
+  if (!ticket && !queue) return <p className={mutedCopy}>This ticket is no longer in the queue.</p>;
+
+  return (
+    <div className={github ? 'flex min-w-0 flex-col gap-4' : undefined} data-github-ticket={github || undefined}>
+      <TicketHeading ticket={key} url={ticket?.url || queue?.issue?.url || ''}
+        label={ticket && !github ? 'View in Jira' : ticket || queue?.issue ? 'View GitHub issue' : ''} />
+      <PanelTitle className={github ? 'max-w-full break-words' : 'mt-3 mb-4'}>{ticket?.summary || queue?.title}</PanelTitle>
+      <TicketTimeline ticket={ticket || { key }} snapshot={snapshot} job={job} reduced={reduced} />
+      {ticket
+        ? <TicketDetail ticket={ticket} snapshot={snapshot} job={job} act={act} onOpen={id => onSelect({ kind: 'ticket', id })} />
+        : <QueueTicketDetail job={job} />}
+      {(ticket || !!artifacts?.size) && (
+        <DrawerTopic initial={selection.page === 'evidence'} title="Evidence"
+          detail={ticket && !github ? ticket.evidence.length || undefined : undefined}>
+          {ticket ? <TicketEvidence ticket={ticket} job={job} github={github} /> :
+            artifacts && <QueueEvidenceLinks artifacts={artifacts} />}
+        </DrawerTopic>
+      )}
+      {(ticket || job) && <DrawerTopic title="Time"><TimeBook snapshot={snapshot} ticket={key} /></DrawerTopic>}
+      {ticket && <TicketPlanningAction snapshot={snapshot} ticket={key}
+        open={id => onSelect(id ? { kind: 'features', id } : { kind: 'features', sourceTicket: key })} />}
+      {(ticket || job) && <DrawerRow title={`Discuss ${key} with ${pmName}`}
+        onOpen={() => onSelect({ kind: 'chat', ticket: key })} />}
+    </div>
   );
 }

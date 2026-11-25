@@ -1,10 +1,9 @@
-import { useState } from 'react';
 import { LoadingMark } from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import { Button, Notice, Section, SectionTitle, interactive, mutedCopy, noticeIcon } from '../ui';
 import { AlertCircle, Clock3, ChevronRight, Inbox } from '../ui/icons';
 import { STAGE_LABELS } from '../shared';
-import { DrawerRow, DrawerTopic } from '../office/drawer/DrawerTopic';
+import { DrawerRow, DrawerTopic, useDrawerReturnRow } from '../office/drawer/DrawerTopic';
 import type { InspectorProps } from '../office/drawer/inspector-props';
 import { Checkpoints } from './Checkpoints';
 import { InboxQueue } from './InboxQueue';
@@ -13,7 +12,7 @@ import { ProjectWork } from './ProjectWork';
 const textRow = `-mx-2 flex w-[calc(100%+16px)] justify-between rounded-5 border-b border-row-rule px-2 py-2.5 text-left text-11 hover:bg-icon-hover ${interactive}`;
 
 export function Mailbox({snapshot,act,busy,preferences,onSelect}: Pick<InspectorProps,'snapshot'|'act'|'busy'|'preferences'|'onSelect'>) {
-  const [openedPriority, setOpenedPriority] = useState<string>();
+  const { opened: openedPriority, remember, release } = useDrawerReturnRow<string>();
   const priority = snapshot.tickets.find(ticket => ticket.activity === 'blocked') || snapshot.tickets.find(ticket => ticket.activity === 'working') || snapshot.tickets.find(ticket => ticket.stage !== 'complete');
   const previousPriority = openedPriority !== priority?.key
     ? snapshot.tickets.find(ticket => ticket.key === openedPriority)
@@ -58,8 +57,8 @@ export function Mailbox({snapshot,act,busy,preferences,onSelect}: Pick<Inspector
       {[priority, previousPriority].map(ticket => ticket && (
         <div className="my-section-gap" key={ticket.key}>
           <SectionTitle className="mb-2">{ticket !== priority ? 'Previously opened' : ticket.activity === 'blocked' ? 'Needs attention' : 'Current ticket'}</SectionTitle>
-          <DrawerRow title={ticket.key + ' · ' + ticket.summary} detail={STAGE_LABELS[ticket.stage]} onOpen={() => {
-            setOpenedPriority(ticket.key);
+          <DrawerRow title={ticket.key + ' · ' + ticket.summary} detail={STAGE_LABELS[ticket.stage]} onBlur={release} onOpen={source => {
+            remember(ticket.key, source);
             onSelect({kind: 'ticket', id: ticket.key});
           }}/>
         </div>

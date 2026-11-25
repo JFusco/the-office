@@ -1,14 +1,25 @@
-import {officeUrl,type OfficeSnapshot,type TicketJob} from '../shared';
-import {PanelTitle,Section,SectionTitle,TextLink,mutedCopy} from '../ui';
-import {DrawerRow,DrawerTopic} from '../office/drawer/DrawerTopic';
-import {currentJob} from './timeline/ticket-progress';
-import {TicketTimeline} from './timeline/TicketTimeline';
-import {Link,TicketHeading} from './TicketDetail';
-import {pmQueueItems} from './pm-queue';
-import {TimeBook} from '../timing/TimeBook';
-function JobRecords({job, snapshot}: {job: TicketJob; snapshot: OfficeSnapshot}) {
+import { officeUrl, type OfficeSnapshot, type TicketJob } from '../shared';
+import { Section, SectionTitle, TextLink } from '../ui';
+import { currentJob } from './timeline/ticket-progress';
+import { Link } from './TicketDetail';
+import { pmQueueItems } from './pm-queue';
+
+export function queueTicketRecord(snapshot: OfficeSnapshot, key: string) {
+  const project = snapshot.project?.id;
+  const row = pmQueueItems(snapshot).find(row => row.project === project && row.key === key);
+  const job = currentJob((snapshot.teamQueue || []).filter(row => row.project === project).map(row => row.job), key);
+  if (!row && !job) return undefined;
+
+  const issue = snapshot.github?.issues.find(item => item.key === key);
+  const title = row?.title || issue?.title ||
+    snapshot.coordination?.listener.reviews.filter(review => review.key === key).at(-1)?.summary ||
+    (job?.pr ? 'PR #' + job.pr + ' delivery' : key);
+  return { title, issue, job };
+}
+
+export function queueValidationArtifacts(job: TicketJob, project?: string) {
   const artifacts = new Map<string, string>();
-  const artifactUrl = (path: string) => officeUrl('/api/artifact?path=' + encodeURIComponent(path), snapshot.project?.id);
+  const artifactUrl = (path: string) => officeUrl('/api/artifact?path=' + encodeURIComponent(path), project);
   for (const step of job.steps || []) {
     if (step.stage !== 'validate') continue;
     for (const evidence of step.result.evidence) {
@@ -17,26 +28,19 @@ function JobRecords({job, snapshot}: {job: TicketJob; snapshot: OfficeSnapshot})
     }
     if (step.result.qaRunDir) artifacts.set(artifactUrl(step.result.qaRunDir + '/report.json'), 'View full QA report');
   }
-  return <>
-    {job.prUrl && <Section><SectionTitle className="mb-3">Pull request</SectionTitle><Link url={job.prUrl}>PR #{job.pr}</Link></Section>}
-    {artifacts.size > 0 && <Section><SectionTitle className="mb-3">Verification evidence</SectionTitle>
-      <DrawerTopic title="Evidence"><ul className="space-y-2 text-11">{[...artifacts].map(([url, label]) =>
-        <li key={url}><TextLink href={url} target="_blank" rel="noreferrer">{label}</TextLink></li>)}</ul></DrawerTopic>
-    </Section>}
-    <DrawerTopic title="Time"><TimeBook snapshot={snapshot} ticket={job.key}/></DrawerTopic>
-  </>;
+  return artifacts;
 }
-export function QueueTicketDetail({ticketKey,snapshot,reduced,onDiscuss,pmName}:{pmName:string;ticketKey:string;snapshot:OfficeSnapshot;reduced:boolean;onDiscuss:(key:string)=>void}){
-  const queueTicket = pmQueueItems(snapshot).find(r=>r.project===snapshot.project?.id && r.key===ticketKey);
-  const queueJob = currentJob(
-    (snapshot.teamQueue || []).filter(row=>row.project===snapshot.project?.id).map(row=>row.job), ticketKey);
-  const fallbackKey = queueJob?.key || queueTicket?.key;
-  const issue = fallbackKey ? snapshot.github?.issues.find(item=>item.key===fallbackKey) : undefined;
-  const fallbackTitle = queueTicket?.title || issue?.title ||
-    snapshot.coordination?.listener.reviews.filter(review=>review.key===fallbackKey).at(-1)?.summary ||
-    (queueJob?.pr ? 'PR #' + queueJob.pr + ' delivery' : fallbackKey);
-  if(!fallbackKey) return <p className={mutedCopy}>This ticket is no longer in the queue.</p>;
-  return <><TicketHeading ticket={fallbackKey} url={issue?.url || ''} label={issue ? 'View GitHub issue' : ''}/><PanelTitle>{fallbackTitle}</PanelTitle>
-    <TicketTimeline reduced={reduced} snapshot={snapshot} ticket={{key:fallbackKey}} job={queueJob}/>
-    {queueJob && <><JobRecords job={queueJob} snapshot={snapshot}/><DrawerRow title={`Discuss ${fallbackKey} with ${pmName}`} onOpen={()=>onDiscuss(fallbackKey)}/></>}</>;
+
+export function QueueEvidenceLinks({ artifacts }: { artifacts: Map<string, string> }) {
+  return <ul className="space-y-2 text-11">{[...artifacts].map(([url, label]) =>
+    <li key={url}><TextLink href={url} target="_blank" rel="noreferrer">{label}</TextLink></li>
+  )}</ul>;
+}
+
+export function QueueTicketDetail({ job }: { job?: TicketJob }) {
+  if (!job?.prUrl) return null;
+  return <Section>
+    <SectionTitle className="mb-3">Pull request</SectionTitle>
+    <Link url={job.prUrl}>PR #{job.pr}</Link>
+  </Section>;
 }

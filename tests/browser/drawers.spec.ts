@@ -1,6 +1,7 @@
 import { type Locator } from '@playwright/test';
 import { expect, test, type Page } from './fixture-test';
-import type { OfficeSnapshot } from '../../src/shared';
+import { jiraQueueProgress } from '../../server/cec/queue-progress';
+import type { AssignmentReview, OfficeSnapshot, StageResult, TicketJob } from '../../src/shared';
 import { evidence as screenshotPath, setPreferences } from './support';
 async function geometry(page:Page){return page.evaluate(()=>{
   const box=(selector:string)=>{const r=document.querySelector(selector)!.getBoundingClientRect();return [r.x,r.y,r.width,r.height];};
@@ -342,7 +343,9 @@ test('a changed mailbox priority keeps the original Back target', async ({page,r
   expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
   const priority = root.getByRole('heading',{name:'Needs attention'}).locator('..');
   await expect(priority.getByRole('button',{name:new RegExp('^' + replacement.key + ' ·')})).toBeVisible();
-
+  await page.keyboard.press('Tab');
+  await expect(root.getByRole('heading',{name:'Previously opened'})).toHaveCount(0);
+  await expect(priority.getByRole('button',{name:new RegExp('^' + replacement.key + ' ·')})).toBeVisible();
 });
 
 for (const [topic, empty] of [
@@ -398,3 +401,143 @@ test('phone settings topics form one aligned list', async ({page}) => {
   }
   await page.locator('[data-inspector]').screenshot({path:screenshotPath('settings-navigation-phone.png')});
 });
+
+for (const group of ['Ready for pickup', 'Queued for Morgan'] as const) {
+  test(`mailbox preserves the activated row when work leaves ${group}`, async ({page, request}) => {
+    const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
+    const coordination = snapshot.coordination!;
+    const assigned = coordination.listener.assigned[0];
+    const review: AssignmentReview = {
+      id: 'fixture-intake', key: assigned.key, summary: assigned.summary, status: 'queued',
+      queuedAt: snapshot.serverTime, detail: 'Waiting for intake.', url: assigned.url, startedAt: '', endedAt: '', owner: '',
+    };
+    const intake = group === 'Queued for Morgan';
+    if (intake) coordination.listener.reviews = [review];
+    const publish = async () => expect((await request.post('/__fixture/snapshot', {data:{coordination}})).ok()).toBe(true);
+    await publish();
+    await page.goto('/');
+    await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+    const root = page.locator('[data-drawer-page="root"]');
+    const active = page.locator('[data-inspector-scroll]');
+    await active.getByRole('button',{name:group + ' 1',exact:true}).click();
+    const row = active.getByRole('button',{name:new RegExp(assigned.summary)});
+    const original = await row.elementHandle();
+    await row.click();
+    if (intake) review.status = 'working';
+    else assigned.pickupStatus = 'Backlog';
+    await publish();
+    await expect(root.locator('[data-drawer-row]').filter({hasText:group})).toContainText('0');
+    await expect(root.locator('[data-drawer-row]').filter({hasText:intake ? 'In progress' : 'Waiting for pickup'})).toContainText('1');
+    await page.getByRole('button',{name:'Back to ' + group,exact:true}).click();
+    await expect(row).toBeFocused();
+    expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(row).toHaveCount(0);
+  });
+}
+
+test('PM queue restores the button after activation without pointer focus', async ({page,request}) => {
+  const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
+  const ticket = snapshot.tickets[1];
+  const publish = async () => expect((await request.post('/__fixture/snapshot', {data:{
+    tickets:snapshot.tickets,
+    jiraQueueProgress:jiraQueueProgress(snapshot.project!,snapshot,new Date()).filter(row => row.key === ticket.key),
+  }})).ok()).toBe(true);
+  ticket.stage = 'mailbox';
+  ticket.pilot = true;
+  await publish();
+  await page.goto('/');
+  await page.getByRole('button',{name:/^PM queue \d+:/}).click();
+  await page.getByRole('button',{name:/^Queued next/}).click();
+  const active = page.locator('[data-inspector-scroll]');
+  const row = active.locator('[data-card]').filter({hasText:ticket.key}).getByRole('button',{name:'Open CEC ticket'});
+  const close = page.getByRole('button',{name:'Close details'});
+  await close.focus();
+  const original = await row.elementHandle();
+  // WebKit can activate a button without shifting focus to it first.
+  await original!.evaluate((button, previous) => {
+    if (button.ownerDocument.activeElement !== previous) throw new Error('Expected focus on Close');
+    (button as HTMLButtonElement).click();
+  }, (await close.elementHandle())!);
+  await expect(active.getByRole('heading',{name:ticket.summary,exact:true})).toBeVisible();
+  ticket.stage = 'qa';
+  ticket.activity = 'working';
+  await publish();
+  await expect(page.locator('[data-drawer-page="root"] [data-drawer-row]').filter({hasText:'Queued next'})).toContainText('0');
+  await page.getByRole('button',{name:'Back to Queued next'}).click();
+  await expect(row).toBeFocused();
+  expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+  await page.keyboard.press('Tab');
+  await expect(row).toHaveCount(0);
+});
+
+for (const destination of ['Evidence without a saved artifact', 'Evidence', 'Time', 'Discussion'] as const) {
+    test(`a live ticket can fall back to its queue record while reading ${destination}`, async ({page,request}) => {
+        await page.setViewportSize({width:900,height:620});
+        const snapshot: OfficeSnapshot = await (await request.get('/api/office?project=brain')).json();
+        const ticket = snapshot.tickets[0];
+        const worker = {...snapshot.workLog![0],id:'fallback-worker',ticket:ticket.key,task:'Queue validation worker',stage:'validate'};
+        const artifact = '/fixture/brain/validation/report.json';
+        const proof: StageResult = {outcome:'passed',summary:'Saved verification result',commit:'fixture',
+            evidence:[{id:'fallback-artifact',kind:'checks',summary:'Saved verification artifact',path:artifact,commit:'fixture',environment:'fixture',url:'',observedAt:snapshot.serverTime}],
+            findings:[],receipts:[],previewUrl:'',worktree:'',branch:'',prId:42,qaRunDir:'',paidRuns:null,blocker:''};
+        const job: TicketJob = {id:'fallback-job',key:ticket.key,stage:'validate',status:'working',pr:42,
+            prUrl:'https://example.org/pull/42',requestedAt:snapshot.serverTime,head:'fixture',worktree:'',branch:'',detail:'Run fixture checks.',
+            steps:destination === 'Evidence without a saved artifact' ? [] : [{stage:'validate',result:proof,workerId:worker.id}]};
+        const events = Array.from({length:8},(_,i) => ({id:100+i,at:new Date(Date.parse(snapshot.serverTime)+i).toISOString(),
+            kind:'stage-started',ticket:ticket.key,message:'Saved handoff ' + i}));
+        const publish = async (withTicket: boolean) => {
+            const response = await request.post('/__fixture/snapshot?project=brain',{data:{
+                tickets:withTicket ? [ticket] : [],events,teamQueue:[{project:'brain',projectName:'Brain',job}],
+                coordination:{...snapshot.coordination,jobs:[job]},workLog:[...snapshot.workLog!,worker],
+            }});
+            expect(response.ok()).toBe(true);
+        };
+        await publish(true);
+        await page.goto('/');
+        await page.getByLabel('Office project').selectOption('brain');
+        await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+        await page.getByRole('button',{name:new RegExp('^' + ticket.key + ' ·')}).click();
+        const drawer = page.locator('[data-inspector]');
+        const active = drawer.locator('[data-drawer-page]:not([inert])');
+        const timeline = active.getByRole('region',{name:'Ticket timeline'});
+        await timeline.getByRole('button',{name:'Show earlier activity'}).click();
+        const parent = await active.elementHandle();
+        const back = drawer.getByRole('button',{name:'Back to ' + ticket.key,exact:true});
+
+        if (destination === 'Evidence without a saved artifact') {
+            const offset = await parent!.evaluate(el => {el.scrollTop = 24; return el.scrollTop;});
+            expect(offset).toBe(24);
+            await active.getByRole('button',{name:'Evidence',exact:true}).evaluate(el => (el as HTMLButtonElement).click());
+            await expect(active.locator('[data-qa-results]')).toBeVisible();
+            await publish(false);
+            await expect(active.getByRole('heading',{name:'PR #42 delivery',exact:true})).toBeVisible();
+            await expect(active).toHaveCount(1);
+            expect(await active.evaluate((el,original) => el === original,parent!)).toBe(true);
+            expect(await active.evaluate(el => el.scrollTop)).toBe(offset);
+            await expect(drawer.getByRole('heading',{name:ticket.key,exact:true})).toBeFocused();
+            return;
+        }
+
+        const row = active.getByRole('button',{name:destination === 'Discussion' ? 'Discuss ' + ticket.key + ' with Morgan' : destination,exact:true});
+        const original = await row.elementHandle();
+        await row.click();
+        const child = await active.elementHandle();
+        const sessions = active.getByText(/^Worker sessions/);
+        if (destination === 'Time') {
+            await sessions.click();
+            await expect(active.getByText(worker.task,{exact:true})).toBeVisible();
+        }
+        await publish(false);
+        await expect(drawer.locator('[data-drawer-page][inert]').getByText('PR #42 delivery',{exact:true})).toHaveCount(1);
+        expect(await active.evaluate((el,original) => el === original,child!)).toBe(true);
+        if (destination === 'Evidence') {
+            await expect(active.getByRole('link',{name:'Saved verification artifact'})).toHaveAttribute('href','/api/artifact?path=' + encodeURIComponent(artifact) + '&project=brain');
+        }
+        if (destination === 'Time') await expect(active.getByText(worker.task,{exact:true})).toBeVisible();
+        await back.click();
+        await expect(timeline.getByText('Saved handoff 0',{exact:true})).toBeVisible();
+        await expect(row).toBeFocused();
+        expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+    });
+}

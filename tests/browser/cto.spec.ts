@@ -100,3 +100,28 @@ test('historical review has a real short summary, named goals, and a separate cu
  await expect(page.getByText('Original detailed goal evidence.',{exact:true})).not.toBeVisible();
  await page.screenshot({path:evidence('office-cto-rewritten-summary.png')});
 });
+
+test('completing an open goal preserves the priority row until focus leaves it', async ({page,request}) => {
+ const goal = {id:'goal-back',project:'CEC',projectId:'cec',mapping:'mapped',title:'Ship the fixture goal',detail:'Fixture work.',priority:1,status:'active',updatedAt:'2026-11-03T22:00:00Z'};
+ const publish = async () => expect((await request.post('/__fixture/snapshot',{data:{ctoGoals:[goal]}})).ok()).toBe(true);
+ await publish();
+ await page.goto('/');
+ await page.getByRole('button',{name:/^Go to Floor 2, CTO Office/}).click();
+ await page.getByRole('button',{name:/^Open project goals/}).click();
+ const active = page.locator('[data-inspector-scroll]');
+ const row = active.getByRole('button',{name:/Ship the fixture goal/});
+ const original = await row.elementHandle();
+ await row.click();
+ await expect(active.getByLabel('State')).toHaveValue('active');
+ goal.status = 'done';
+ await publish();
+ await expect(page.locator('[data-drawer-page="root"]').getByText('Completed (1)',{exact:true})).toHaveCount(1);
+ await page.getByRole('button',{name:/^Back to /}).click();
+ await expect(row).toBeFocused();
+ expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+ await expect(active.getByRole('heading',{name:'Project priorities 0',exact:true})).toBeVisible();
+ await page.keyboard.press('Tab');
+ await expect(row).toHaveCount(0);
+ await active.getByText('Completed (1)',{exact:true}).click();
+ await expect(row).toBeVisible();
+});

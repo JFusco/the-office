@@ -94,3 +94,43 @@ test('narrow workspace uses topic pages and keeps inactive answers out of naviga
     expect(await panel.evaluate(element=>element.scrollWidth<=element.clientWidth+1)).toBe(true);
     await page.screenshot({path:evidence('feature-mobile.png')});
 });
+
+test('a create response arriving after Back leaves the ticket and its focus in place', async ({page,request}) => {
+    await request.post('/__fixture/snapshot',{data:{featurePlanning:{assessment:false}}});
+    let release!: () => void;
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/features*', async route => {
+        if (route.request().method() !== 'POST') return route.continue();
+        const response = await route.fetch();
+        await hold;
+        await route.fulfill({response});
+    });
+    await page.goto('/');
+    await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+    const active = page.locator('[data-inspector-scroll]');
+    await active.getByRole('button',{name:/^CEC-\d+ · /}).first().click();
+    const plan = active.getByRole('button',{name:'Plan a feature from this ticket'});
+    await plan.click();
+    await page.getByLabel('Feature name').fill('Delayed fixture feature');
+    await page.getByLabel('What should this accomplish?').fill('Record the plan without moving the user.');
+    const sent = page.waitForRequest(req => req.method() === 'POST' && req.url().includes('/api/features'));
+    try {
+        await page.getByRole('button',{name:'Start discovery'}).click();
+        await sent;
+        await page.getByRole('button',{name:/^Back to CEC-/}).click();
+        await expect(plan).toBeFocused();
+        await expect(page.getByText('Plan a feature with Casey',{exact:true})).toHaveCount(0);
+        const received = page.waitForResponse(res => res.request().method() === 'POST' && res.url().includes('/api/features'));
+        release();
+        const response = await received;
+        expect(response.ok()).toBe(true);
+        expect(await response.finished()).toBeNull();
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        await expect(plan).toBeFocused();
+        await expect(active.getByRole('heading',{name:'Delayed fixture feature',exact:true})).toHaveCount(0);
+        await page.getByRole('button',{name:'Features',exact:true}).click();
+        await expect(active.getByRole('navigation',{name:'Features'}).getByRole('button',{name:/^Delayed fixture feature/})).toBeVisible();
+    } finally {
+        release();
+    }
+});

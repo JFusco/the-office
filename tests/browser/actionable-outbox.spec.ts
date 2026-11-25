@@ -66,3 +66,26 @@ test('a stale outbox answer refreshes its question without losing the typed draf
     await form.getByRole('button', { name: 'Send answers', exact: true }).click(); await expect(form).toHaveCount(0);
     expect(await page.evaluate(() => Object.values(localStorage).includes('Keep the authored Page Fields.'))).toBe(true); expect(posts).toBe(1);
 });
+
+test('a resolved outbox item stays available for Back focus only', async ({page,request}) => {
+    const item = {id:'fixture-reply',role:'lead',ticket:'',title:'Confirm the test environment',detail:'Choose a fixture environment.',status:'open',url:'',createdAt:'',updatedAt:''};
+    const publish = async () => expect((await request.post('/__fixture/snapshot',{data:{outbox:[item]}})).ok()).toBe(true);
+    await publish();
+    await page.goto('/');
+    await page.getByRole('button',{name:/^Open your outbox,/}).click();
+    await page.getByRole('button',{name:'Needs your reply 1',exact:true}).click();
+    const row = page.locator('[data-inspector-scroll] [data-outbox-item]');
+    const original = await row.elementHandle();
+    await row.click();
+    item.status = 'resolved';
+    await publish();
+    await expect(page.locator('[data-outbox-detail]').getByText('Resolved',{exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Back to Needs your reply',exact:true}).click();
+    await expect(row).toBeFocused();
+    expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(row).toHaveCount(0);
+    await page.getByRole('button',{name:'Back to Your outbox',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Needs your reply 0',exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Resolved items 1',exact:true})).toBeVisible();
+});

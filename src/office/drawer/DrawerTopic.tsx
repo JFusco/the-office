@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, useId, useState, type Ref, type ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, useId, useState, type FocusEvent, type Ref, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { ChevronRight } from '../../ui/icons';
@@ -16,6 +16,20 @@ export const DrawerNavigation = createContext<{
   remove: (id: string) => void;
   push: (entry: DrawerEntry) => void;
 } | null>(null);
+
+export function useDrawerReturnRow<T>() {
+  const [opened, setOpened] = useState<{ value: T; source: HTMLElement }>();
+  function remember(value: T, source: HTMLElement) {
+    setOpened({ value, source });
+  }
+  function release({ currentTarget, relatedTarget }: FocusEvent<HTMLElement>) {
+    // Blur during a push comes from the page becoming inert. Keep its Back target.
+    if (currentTarget.closest('[data-inspector-scroll]') && !currentTarget.contains(relatedTarget)) {
+      setOpened(old => old && currentTarget.contains(old.source) ? undefined : old);
+    }
+  }
+  return { opened: opened?.value, remember, release, clear: () => setOpened(undefined) };
+}
 
 export function DrawerPage({
   id,
@@ -60,10 +74,11 @@ export function DrawerPage({
   );
 }
 
-export function DrawerRow({title, detail, onOpen, disabled, ref}: {
+export function DrawerRow({title, detail, onOpen, onBlur, disabled, ref}: {
   title: string;
   detail?: ReactNode;
   onOpen: (source: HTMLElement) => void;
+  onBlur?: (event: FocusEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }) {
@@ -75,6 +90,7 @@ export function DrawerRow({title, detail, onOpen, disabled, ref}: {
       className={`flex min-h-11 w-full items-center gap-control-gap border-b border-row-rule bg-field px-card-padding py-2.5 text-left text-13 font-medium enabled:hover:bg-icon-hover ${interactive}`}
       disabled={disabled}
       onClick={event => onOpen(event.currentTarget)}
+      onBlur={onBlur}
     >
       <span className="min-w-0 flex-1">{title}</span>
       {detail != null && <span className="max-w-1/2 text-right text-12 font-normal text-muted">{detail}</span>}
@@ -106,7 +122,7 @@ export function DrawerTopic({
   const row = useRef<HTMLButtonElement>(null),
     entered = useRef(false);
   useLayoutEffect(() => {
-    if (initial && !entered.current && nav && row.current) {
+    if (initial && !entered.current && nav && row.current?.closest('[data-inspector-scroll]')) {
       entered.current = true;
       setDepth(nav.path.entries.length);
       nav.push({ id, title, trigger: row.current });

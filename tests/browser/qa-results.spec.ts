@@ -1,3 +1,4 @@
+import type { OfficeSnapshot, StageResult, TicketJob } from '../../src/shared';
 import { test, expect } from './fixture-test';
 import { evidence, setPreferences } from './support';
 const head='a'.repeat(40);
@@ -19,4 +20,40 @@ for(const switchProject of [false,true]) test(`QA results open the originating t
     await expect(card.getByRole('link',{name:'View full report'})).toHaveAttribute('href',/api\/artifact\?path=/);
     await card.screenshot({path:evidence(`office-single-qa-results-${switchProject?'cross-project':'same-project'}.png`)});
     expect(await request.get('/__fixture/writes').then(r=>r.json())).toEqual([]);
+});
+
+test('a queued GitHub ticket opens Evidence directly from a QA notification', async ({page,request}) => {
+    await setPreferences(request,{quality:'low',reducedMotion:true});
+    const snapshot: OfficeSnapshot = await (await request.get('/api/office?project=brain')).json();
+    const original = snapshot.tickets[0];
+    const artifact = '/fixture/brain/queued-qa/report.json';
+    const proof: StageResult = {outcome:'passed',summary:'Synthetic queued result',commit:head,
+        evidence:[{id:'queued-proof',kind:'checks',summary:'Queued QA artifact',path:artifact,url:'',commit:head,environment:'fixture',observedAt:snapshot.serverTime}],
+        findings:[],receipts:[],previewUrl:'',worktree:'',branch:'',prId:42,qaRunDir:'',paidRuns:null,blocker:''};
+    const job: TicketJob = {id:'queued-qa',key:original.key,stage:'validate',status:'working',pr:42,prUrl:'',
+        requestedAt:snapshot.serverTime,head,worktree:'',branch:'',detail:'Fixture validation',steps:[]};
+    const publish = async (tickets: OfficeSnapshot['tickets']) => {
+        const update = await request.post('/__fixture/snapshot?project=brain',{data:{
+            tickets,teamQueue:[{project:'brain',projectName:'Brain',job}],coordination:{...snapshot.coordination,jobs:[job]},
+        }});
+        expect(update.ok()).toBe(true);
+    };
+    await publish([original]);
+    await page.goto('/');
+    await page.getByLabel('Office project').selectOption('brain');
+    await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+    const active = page.locator('[data-inspector-scroll]');
+    const row = active.getByRole('button',{name:new RegExp('^' + original.key + ' ·')});
+    await expect(row).toBeVisible();
+    job.steps = [{stage:'validate',result:proof}];
+    await publish([original]);
+    const toast = page.getByRole('button',{name:'View results',exact:true});
+    await expect(toast).toBeVisible();
+    await publish([]);
+    await expect(row).toHaveCount(0);
+    await toast.click();
+    await expect(active.getByRole('link',{name:'Queued QA artifact'})).toHaveAttribute('href','/api/artifact?path=' + encodeURIComponent(artifact) + '&project=brain');
+    await page.getByRole('button',{name:'Back to ' + original.key,exact:true}).click();
+    await expect(active.getByRole('heading',{name:'PR #42 delivery',exact:true})).toBeVisible();
+    await expect(active.getByRole('button',{name:'Evidence',exact:true})).toBeFocused();
 });

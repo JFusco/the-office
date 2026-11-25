@@ -7,7 +7,7 @@ import { ROLE_NAMES } from '../shared';
 import { createConversationDrafts } from '../conversations/Conversation';
 import type { InspectorProps } from './drawer/inspector-props';
 import { DrawerNavigation, DrawerPage } from './drawer/DrawerTopic';
-import { popPage, pushPage, type DrawerPath, type DrawerEntry } from './drawer/navigation';
+import { popPage, pushPage, removePage, type DrawerPath, type DrawerEntry } from './drawer/navigation';
 import { InspectorContent } from './drawer/InspectorContent';
 import { selectionTitle } from './drawer/selection-title';
 
@@ -52,8 +52,7 @@ export default function Inspector(props: InspectorProps) {
   const [records, setRecords] = useState([{ id: 'root', selection, depth: 0, parentId: '' }]);
   const [drafts] = useState(createConversationDrafts);
   const pointerTrigger = useRef<HTMLElement | null>(null);
-  const heading = useRef<HTMLElement | null>(null),
-    restore = useRef<HTMLElement | null>(null);
+  const heading = useRef<HTMLElement | null>(null);
   const current = path.entries.at(-1)!,
     parent = path.entries.at(-2);
   const title = current.id === 'root' ? rootTitle : current.title;
@@ -86,28 +85,26 @@ export default function Inspector(props: InspectorProps) {
     push({ id, title: selectionTitle(next, snapshot, names), trigger });
   }
   const remove = useCallback(
-    (id: string) =>
-      setPath((old) => {
-        const index = old.entries.findIndex((entry) => entry.id === id);
-        return index > 0 ? { entries: old.entries.filter(entry => entry.id !== id), previous: id, returning: false } : old;
-      }),
+    (id: string) => setPath(old => removePage(old, id)),
     [],
   );
   function back(focus?: HTMLElement | null) {
-    restore.current = focus || current.trigger;
-    setPath(popPage);
+    setPath(old => popPage(old, focus));
   }
   useLayoutEffect(() => {
     if (!path.previous) return;
-    const origin = restore.current;
-    const target = path.returning && origin?.isConnected && !origin.closest('[inert]') ? origin : heading.current;
-    target?.focus({ preventScroll: true });
+    const origin = path.returnFocus;
+    if (path.returning && origin?.isConnected && !origin.closest('[inert]')) {
+      origin.focus({ preventScroll: true });
+      if (document.activeElement === origin) return;
+    }
+    heading.current?.focus({ preventScroll: true });
   }, [path]);
   useEffect(() => {
     if (!path.previous) return;
     const settle = () => {
       setRecords(old => old.filter(record => path.entries.some(entry => entry.id === record.id)));
-      setPath(old => old === path ? { ...old, previous: null } : old);
+      setPath(old => old === path ? { ...old, previous: null, returnFocus: null } : old);
     };
     const timer = window.setTimeout(settle, drawerPageMotion(reduced).duration * 1000);
     return () => window.clearTimeout(timer);

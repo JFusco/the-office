@@ -1,9 +1,9 @@
-import { DrawerTopic } from '../office/drawer/DrawerTopic';
+import { DrawerNavigation, DrawerTopic } from '../office/drawer/DrawerTopic';
 import { pendingRounds } from './questions/pending-round';
 import { LoadingState } from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
 import { FileText } from '../ui/icons';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import type { Feature } from '../contracts/features';
 import type { OfficeSnapshot } from '../shared';
 import { officeUrl } from '../shared';
@@ -15,6 +15,7 @@ const phases = ['discovery', 'plan', 'review', 'approval', 'delivery'] as const;
 async function hash(value: unknown) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value))))].map(v => v.toString(16).padStart(2, '0')).join(''); }
 export function FeatureWorkspace({ snapshot, initialId = '', initialFeature, sourceGoalId = '', sourceTicket = '', onOpen = () => {} }: { snapshot: OfficeSnapshot; initialId?: string; initialFeature?: Feature; sourceGoalId?: string; sourceTicket?: string; onOpen?: (project: string, id: string, created?: Feature) => void }) {
     const container=useRef<HTMLDivElement>(null), [wide,setWide]=useState(false);
+    const navigation = useContext(DrawerNavigation);
     useEffect(()=>{const el=container.current;if(!el)return;const observer=new ResizeObserver(([entry])=>setWide(entry.contentRect.width>=900));observer.observe(el);return ()=>observer.disconnect();},[]);
     const requestVersion = useRef(0);
     const project = snapshot.project!.id;
@@ -30,6 +31,7 @@ export function FeatureWorkspace({ snapshot, initialId = '', initialFeature, sou
     }, [project]);
     const feature = features.find(f => f.id === initialId) ?? initialFeature;
     async function send(action: string, values: Record<string, unknown> = {}) {
+        const submittingPage = navigation ? container.current?.closest('[data-drawer-page]') : null;
         requestVersion.current++; setBusy(true); setError('');
         try {
             const payload = { action, requestId: crypto.randomUUID(), ...(feature && action !== 'create' ? { expectedRevision: feature.revision } : {}), ...values };
@@ -37,7 +39,9 @@ export function FeatureWorkspace({ snapshot, initialId = '', initialFeature, sou
             const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Feature operation failed');
             setFeatures(current => [...current.filter(f => f.id !== body.id), body]);
             if (action === 'create') {
-                onOpen(project, body.id, body);
+                if (!navigation || (submittingPage?.isConnected && !submittingPage.closest('[inert]'))) {
+                    onOpen(project, body.id, body);
+                }
                 setCreating(false);
             }
             return true;
