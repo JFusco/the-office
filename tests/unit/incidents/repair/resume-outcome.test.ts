@@ -169,6 +169,28 @@ test('a ticket\'s outcome is read by the same rules and says ticket where a job\
     expect(resumeOutcome(pending({ noun: 'job', ...MOVED }))).toEqual(resumeOutcome(pending(MOVED)));
 });
 
+test('an assignment review is judged from the review it supplies in place of a job: its crossing, then its status, and its moves are its ticket\'s', () => {
+    const left = { ...BOUND, boundary: { kind: 'stage-left' as const, stage: 'assignment-review' } };
+    const reviewed = (over: Partial<OutcomeEvidence>) => resumeOutcome(pending({ binding: left, job: undefined, noun: 'review', request: request({ steps: 0, stage: 'assignment-review', event: 7 }), ...over }));
+    const open = { status: 'queued', crossing: { crossed: false } } as const;
+    expect(reviewed({ review: { status: 'ready', crossing: { crossed: true, detail: 'left ready' } } })).toEqual({ outcome: 'advanced', detail: 'left ready' });
+    expect(reviewed({ review: { status: 'blocked', crossing: { unjudged: 'no stage results' } } })).toEqual({ outcome: 'untested', detail: 'no stage results' });
+    // A crossing delivery proved stands for a review that is gone or cancelled.
+    for (const status of [undefined, 'cancelled']) expect(reviewed({ review: { status, crossing: { crossed: true, detail: 'delivery took it' } } }), status).toEqual({ outcome: 'advanced', detail: 'delivery took it' });
+    expect(reviewed({ review: { crossing: { crossed: false } } })).toEqual({ outcome: 'gone', detail: 'The project no longer holds the review.' });
+    expect(reviewed({ review: { status: 'cancelled', crossing: { crossed: false } } })).toEqual({ outcome: 'gone', detail: 'The review was cancelled before the boundary was crossed.' });
+    // An open review with nothing crossed has no outcome yet, and the quiet clock and chains still apply; a job given beside it is not read.
+    expect(reviewed({ review: open })).toBeNull();
+    expect(reviewed({ review: open, ...LEFT })).toBeNull();
+    expect(reviewed({ review: { crossing: { crossed: false } }, job: job() })).toMatchObject({ outcome: 'gone' });
+    expect(reviewed({ review: open, ...STALLED })).toMatchObject({ outcome: 'stalled' });
+    expect(reviewed({ review: open, ...ELSEWHERE })).toMatchObject({ outcome: 'chained' });
+    // A command for its ticket moves it, ahead of the crossing and of its absence, and is said as the ticket's.
+    for (const review of [{ status: 'ready', crossing: { crossed: true, detail: 'left ready' } }, { crossing: { crossed: false } }] as const)
+        expect(reviewed({ review, moved: { kind: 'pickup-deferred', at: LATER } })).toEqual({ outcome: 'moved-by-hand', detail: `An operator's command (pickup-deferred) for the review's ticket was recorded at ${LATER}, after its resume.` });
+    expect(reviewed({ request: request(null) })).toEqual({ outcome: 'untested', detail: 'The resume was admitted before outcomes were judged: how the review stood then was not recorded.' });
+});
+
 test('a checkpoint is judged from the record it supplies in place of a job: its crossing, then whether the project holds it', () => {
     const settled = { ...BOUND, boundary: { kind: 'record-settled' as const } };
     const checkpoint = (over: Partial<OutcomeEvidence>) => resumeOutcome(pending({ binding: settled, job: undefined, noun: 'checkpoint', ...over }));

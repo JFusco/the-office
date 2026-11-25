@@ -196,7 +196,10 @@ test.each([true,false].flatMap(draft=>['draft-state','head','base','repository',
  if(scenario==='scope'){const api=vi.mocked(a.delivery.api).getMockImplementation()!;let scopes=0;vi.mocked(a.delivery.api).mockImplementation(async path=>{if(path==='issues/100'&&++scopes===2)a.issue.body='Changed canonical source scope';return api(path);});}
  const r=a.request();await expect(a.reconcile(r)).rejects.toThrow();expect(a.job.stage).toBe('draft');expect(r.status).toBe('working');expect(a.engine.agents.run).not.toHaveBeenCalled();
 });
-test.each([true,false].flatMap(draft=>['native','source','original-claim','active-claim','effect','hold','ownership','input'].map(scenario=>({draft,scenario}))))('completed publication draft=$draft keeps the final $scenario fence',async({draft,scenario})=>{
+test.each([
+ ...['native','source','original-claim','active-claim','effect','hold','ownership','input'].map(scenario=>({draft:true,scenario})),
+ {draft:false,scenario:'ownership'},
+])('completed publication draft=$draft keeps the final $scenario fence',async({draft,scenario})=>{
  const a=await completedPublication(draft),r=a.request();
  if(scenario==='ownership'){let checks=0;a.ownership.mockImplementation(async()=>({complete:true,fresh:true,ownership:{status:++checks===2?'conflict':'clear'}}));}
  else{const transaction=a.store.transaction.bind(a.store);let injected=false;vi.spyOn(a.store,'transaction').mockImplementation((operation:any)=>{

@@ -4,12 +4,13 @@ import { eventId } from '../event-id';
 import type { IncidentLedger } from '../incident-ledger';
 import { redactEvidence } from '../redact-evidence';
 import { checkpointProgress, type CheckpointProgress } from './checkpoint-progress';
-import { checkpointRetried, movedByHand } from './moved-by-hand';
+import { checkpointRetried, movedByHand, REVIEW_MOVES } from './moved-by-hand';
 import { lastActivity, lastTicketActivity } from './resume-activity';
 import { admittedId } from './resume-arrivals';
 import { boundResume, boundTicketResume, resumeIdentity } from './resume-binding';
 import { resumeOutcome } from './resume-outcome';
 import { subjectParts } from './resume-routes';
+import { reviewProgress, type ReviewProgress } from './review-progress';
 import { stalledSince } from './stalled-resume';
 import { ticketMovedByHand } from './ticket-moved-by-hand';
 import { attemptsBegunBy, ticketProgress } from './ticket-progress';
@@ -91,8 +92,10 @@ export function judgeResumes({ ledger, entries, running, now, fenced, report = c
                 const undecided = !previous || previous === 'chained' || previous === 'stalled';
                 // A checkpoint is read from its own record and its original run (see checkpoint-progress.ts), whatever its ID begins with.
                 const checkpoint = work.kind === 'checkpoint';
+                // An assignment review is read from its own record and from delivery of its ticket (see review-progress.ts), whatever its ID begins with.
+                const intake = work.kind === 'intake';
                 // A CEC pilot ticket is read as a job is, from its own records: its delivery request, its stage attempts, its queue (see ticket-progress.ts).
-                const ticket = !checkpoint && work.id.startsWith(TICKET) ? work.id.slice(TICKET.length) : null;
+                const ticket = !checkpoint && !intake && work.id.startsWith(TICKET) ? work.id.slice(TICKET.length) : null;
                 const held = ticket === null ? boundResume(store.state, identity) : boundTicketResume(store.state, identity);
                 const repair = held?.repairResume;
                 let request = held;
@@ -103,9 +106,15 @@ export function judgeResumes({ ledger, entries, running, now, fenced, report = c
                     if (earlierAttempts > 0) request = { ...held, repairResume: { ...repair, stood: undefined } };
                 }
                 const stood = request?.repairResume?.stood;
-                let job: ReturnType<typeof ticketProgress>, record: CheckpointProgress | undefined;
+                let job: ReturnType<typeof ticketProgress>, record: CheckpointProgress | undefined, review: ReviewProgress | undefined;
                 if (checkpoint) {
                     if (undecided && stood && binding.disposition === 'route') record = checkpointProgress(store.state, work.id, binding.boundary, stood);
+                } else if (intake) {
+                    if (undecided && request && stood && binding.disposition === 'route') {
+                        const claimActive = store.activeClaims().some(claim => claim.work.kind === 'intake' && claim.work.id === work.id);
+                        if (fenced()) return recorded;
+                        review = reviewProgress(store.state, work.id, request.key, binding.boundary, stood, claimActive);
+                    }
                 } else if (ticket === null) {
                     job = store.state.coordination?.jobs?.find(job => job.id === work.id);
                 } else if (undecided) {
@@ -130,12 +139,12 @@ export function judgeResumes({ ledger, entries, running, now, fenced, report = c
                 const moment = now();
                 let moved = null;
                 if (undecided && request && stood) {
-                    // By the request's own key: the job may be gone, and the move is still on record. A ticket's is read from its delivery queue; a checkpoint's, by its original run.
-                    moved = checkpoint ? (stood.run ? checkpointRetried(store, stood.run, stood.event) : null) : ticket === null ? movedByHand(store, request.key, stood.event) : ticketMovedByHand(store.state, request);
+                    // By the request's own key: the job may be gone, and the move is still on record. A ticket's is read from its delivery queue; a checkpoint's, by its original run; a review's, among the review commands alone.
+                    moved = checkpoint ? (stood.run ? checkpointRetried(store, stood.run, stood.event) : null) : intake ? movedByHand(store, request.key, stood.event, REVIEW_MOVES) : ticket === null ? movedByHand(store, request.key, stood.event) : ticketMovedByHand(store.state, request);
                     if (fenced()) return recorded;
                 }
                 const reading = resumeOutcome({
-                    binding, admittedAt: admission.at, deployedAt: fix.deployed.at, replacementMarkAfterAdmission, previous, request, job, record, moved, noun: checkpoint ? 'checkpoint' : ticket === null ? 'job' : 'ticket',
+                    binding, admittedAt: admission.at, deployedAt: fix.deployed.at, replacementMarkAfterAdmission, previous, request, job, record, review, moved, noun: checkpoint ? 'checkpoint' : intake ? 'review' : ticket === null ? 'job' : 'ticket',
                     // The project's own date for the stop is known while the projection holds the subject; once a long-cleared record is let go, the order of writing decides alone.
                     reopened: opening ? { at: opening.at, stoppedAt: incident.subjects.find(record => subjectKey(record) === subject)?.stop?.at ?? null } : null,
                     // Only a resume with nothing recorded can still be called chained.

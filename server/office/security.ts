@@ -1,4 +1,4 @@
-function isJsonText(text: string): boolean {
+export function isJsonText(text: string): boolean {
   try { JSON.parse(text); return true; } catch { return false; }
 }
 /** True when an odd run of backslashes ends just before `at`, so the character there is escaped. */
