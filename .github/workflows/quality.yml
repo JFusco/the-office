@@ -22,10 +22,12 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  quality:
-    # macOS on purpose: some tests exercise macOS paths (launchd service, Keychain argv).
-    runs-on: macos-15
-    timeout-minutes: 30
+  scope:
+    name: verification scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
     steps:
       # Pull requests test the merge result (the default ref), since PRs merge automatically.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,47 +39,96 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
-          # Documentation and Graphify map changes skip the code gate. Markdown under
+          # Documentation and generated maps skip the code gate. Markdown under
           # skills/, .agents/ and .github/ is read by code or tests (runtime prompts,
           # pinned hashes, the PR template), so it counts as code. An unknown range or
           # any other changed file runs the gate.
           if [ "$EVENT_NAME" = 'workflow_dispatch' ] || [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = '0000000000000000000000000000000000000000' ] \
-            || ! files=$(git diff --name-only --no-renames "$BASE_SHA" "$HEAD_SHA" 2>/dev/null); then
+            || ! git diff --name-only --no-renames -z "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/quality-paths"; then
             echo 'code=true' >> "$GITHUB_OUTPUT"; exit 0
           fi
-          printf '%s\n' "$files"
           code=false
-          while IFS= read -r file; do
-            [ -z "$file" ] && continue
+          while IFS= read -r -d '' file; do
             case "$file" in
               skills/*|.agents/*|.github/*) code=true ;;
-              docs/*|graphify-out/*|*.md) ;;
+              docs/*|graphify-out/*|*.md|scripts/wiki/graph/data/graph.json) ;;
               *) code=true ;;
             esac
-          done <<< "$files"
+          done < "$RUNNER_TEMP/quality-paths"
           echo "code=$code" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        if: steps.changes.outputs.code == 'true'
+
+  build:
+    name: build
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - &setup-node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24.14.0'
-      - name: Install declared pnpm
-        if: steps.changes.outputs.code == 'true'
+      - &setup-pnpm
+        name: Install declared pnpm
         run: corepack enable && corepack install
-      - name: Locate pnpm store
-        if: steps.changes.outputs.code == 'true'
+      - &pnpm-store
+        name: Locate pnpm store
         id: pnpm-store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        if: steps.changes.outputs.code == 'true'
+      - &cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
-      - name: Install frozen dependencies
-        if: steps.changes.outputs.code == 'true'
+      - &install
+        name: Install frozen dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Build and unit tests (isolated stores, fake command runners)
-        if: steps.changes.outputs.code == 'true'
-        run: pnpm run verify:ci
+      - run: pnpm build
+
+  unit-tests:
+    name: unit tests (macOS)
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
+    # The unit suite exercises macOS service and Keychain behavior.
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      - *setup-node
+      - *setup-pnpm
+      - *pnpm-store
+      - *cache
+      - *install
+      # The startup test serves the production HTML from dist/.
+      - name: Build the startup test UI
+        run: pnpm exec vite build
+      - run: pnpm test
+
+  quality:
+    name: quality
+    if: ${{ always() }}
+    needs: [scope, build, unit-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the selected verification
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          CODE_CHANGED: ${{ needs.scope.outputs.code }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.unit-tests.result }}
+        run: |
+          if [ "$SCOPE_RESULT" = 'success' ]; then
+            case "$CODE_CHANGED:$BUILD_RESULT:$TEST_RESULT" in
+              true:success:success|false:skipped:skipped) exit 0 ;;
+            esac
+          fi
+          echo "Quality incomplete: scope=$SCOPE_RESULT code=$CODE_CHANGED build=$BUILD_RESULT tests=$TEST_RESULT"
+          exit 1

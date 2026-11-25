@@ -4,11 +4,12 @@ The Overseer is the repair engine for the harness and the Office. It is being de
 this guide covers what exists. Today that is deterministic deployment, the incident ledger and
 the mark the Office puts on stopped work a repair covers, which holds recovery back for it. Resume
 after a fix works for the seven GitHub read-back routes, `review-pr`, `review-candidate`,
-`requeue-implement` and `resume-ticket` for a Jira/Azure pilot ticket. For a Brain checkpoint the
+`requeue-implement`, `release-writer` for a dead writer run, `review-assignment` for a stopped
+assignment review and `resume-ticket` for a Jira/Azure pilot ticket. For a Brain checkpoint the
 Office queues its native read-back (`reconcile-native-checkpoint`). Once a fix you bound is
 running and you have enabled automatic resumes, the Office uses the route that fix named. The
 switch starts paused. The Office reports `no-route` for `retry-checkpoint` and
-`reconcile-maintenance`, and `review-assignment` awaits dispatch support.
+`reconcile-maintenance`.
 See [Resuming after a fix](#resuming-after-a-fix).
 The autonomous runner is a later phase and is not described here until it
 ships. The process rules are in the Office process, under
@@ -188,7 +189,8 @@ is in progress, a mark on the stops that repair covers (see Work awaiting a repa
 the fix runs and you have enabled automatic resumes, one resume for each marked stop. The Office
 queues a recovery request for a GitHub read-back, a delivery request for a Jira/Azure ticket,
 or the native read-back (`reconcile-native-checkpoint`) for a Brain checkpoint. It directly
-requeues GitHub review jobs or jobs the approach guard rejected at `implement`. See
+requeues GitHub review jobs, jobs the approach guard rejected at `implement` and stopped
+assignment reviews, and grants a dead writer run one more harness restart (`release-writer`). See
 [Resuming after a fix](#resuming-after-a-fix).
 Besides what it observes, the ledger records when you start a repair and which fix you bind.
 
@@ -213,7 +215,7 @@ investigation and not dismissed, the third one incident with its event history.
 
 | Field | Meaning |
 |---|---|
-| `cause` | Where the signal was read, the provider, the stage, the typed cause and, for a cause the harness wrote, its normalized text. `author: model` means the stop repeats what a model's saved result said; `author: unknown` means the record does not say who wrote it. In both cases the words are in `evidence` only and the incident belongs to that one subject. |
+| `cause` | Where the signal was read, the provider, the stage, the typed cause and, for a cause the harness wrote, its normalized text. A run of three or more colon-separated groups of two or more hex digits (a GitHub request ID, an address) reads `<id>`, so harness causes that differ only in such an identifier group as one incident. `author: model` means the stop repeats what a model's saved result said; `author: unknown` means the record does not say who wrote it. In both cases the words are in `evidence` only and the incident belongs to that one subject. |
 | `expected` | The kind of wait when the stop is one the Office already understands (`hold`, `decision`, `merge-approval`, `prerequisite`, `pause`, `authentication`, `provider-wait`, `retry`, `uncertain-effect`, `question`). Each subject has its own; the incident's is the one every open subject shares, or `null`. |
 | `research` | Whether the incident may be investigated now, and why: no explanation, or an expected wait that came back after two resumes, holds three subjects or two projects, or stood 24 hours. Withdrawn as soon as none of those holds. |
 | `subjects` | Each affected piece of work: project, kind, ID, stage, saved stop, the run that last worked it, candidate head, whether a write is unsettled, `open` or `cleared`, and its episodes. Every return after a clear is one episode. |
@@ -387,9 +389,21 @@ way: a decision, a merge approval, a question, a hold, a pause, missing authorit
 that is not finished, or a write whose outcome is unconfirmed. That last one is checked against
 the project's current writes each time, so a write that turns uncertain shows up at once.
 
+A dead writer is the one exception to how an unconfirmed write is read. When an `implement` or
+`update-base` run on a hands-off project times out, goes quiet or exits non-zero, the harness
+labels the run and the job's stop `uncertain-effect`, although such a writer only commits on its
+own branch. For that run alone the mark ignores the label and asks the project's Effects ledger
+and the job's saved results instead: a write of the job or its issue still sending or unconfirmed,
+or a saved result that owes a read-back, still keeps the stop from being held. The run must be
+the job's latest run of that stage, and must have failed without returning a verdict or saving a
+result. The saved stop keeps its label. IT judges an investigation by the run's own failure, so
+it can still investigate that failure while the job's recovery and restart are held.
+
 One limit to know: the hold does not stretch any other clock. The harness restarts a dead writer
-only within six hours of the stop. If a repair takes longer than that and then runs out without a
-fix, that job comes back to you as a "read back" request; it is not restarted by itself.
+only within six hours of the stop, at most three times. If a repair takes longer than that and then
+runs out without a fix, that job comes back to you as a "read back" request; it is not restarted by
+itself. A fix that binds `release-writer` for that run can grant it one more restart (see Resuming
+after a fix).
 
 ### Resuming after a fix
 
@@ -402,11 +416,14 @@ a `head`, and `reconcile-preparation`,
 For a Jira/Azure pilot ticket, the Office queues the ticket's own `resume-ticket` request (see A
 ticket's resume, below). Through `review-pr` and `review-candidate` it requeues the GitHub job
 directly, as your recheck does. Through `requeue-implement` it requeues an implement the approach
-guard rejected, as your `requeue-implement` command does (see A direct requeue, below). For a Brain
-nightly checkpoint it queues `reconcile-native-checkpoint` (see A checkpoint's resume, below).
-`retry-checkpoint` and `reconcile-maintenance` are not resumed, and each says why (see the table
-below). The other rows of the table can be bound with `bind-fix` and await dispatch support. Their
-work returns to you when the wait runs out.
+guard rejected, as your `requeue-implement` command does (see A direct requeue, below). Through
+`release-writer` it grants a dead writer run one restart beyond the harness's three, which the
+harness itself then makes (see A writer release, below). Through `review-assignment` it requeues
+a stopped assignment review directly, once per fix, with its recovery counts kept (see An
+assignment review's resume, below). For a Brain nightly checkpoint it queues
+`reconcile-native-checkpoint` (see A checkpoint's resume, below). `retry-checkpoint` and
+`reconcile-maintenance` are not resumed, and each says why (see the table below). Their work
+returns to you when the wait runs out.
 
 **Cost.** `reconcile-review` with no `head` checks a saved independent review against the
 unchanged pull request and runs no model. With the `head` of a stopped base handoff it reads the
@@ -414,11 +431,17 @@ run that handoff already started and starts no other. Treat every other form as 
 start a model run when its request runs: the implementation, validation, scope-repair,
 preparation, stopped base update and closeout read-backs each can. `requeue-implement` starts no
 run itself, but the job it queues runs implement again on the same candidate, which is a paid
-model run. With the switch enabled the Office starts those runs by itself, one per piece of work
-and fix. Nothing caps their cost yet. `reconcile-native-checkpoint` reads Brain's native gate once
-and runs no model; it completes the checkpoint only from a native run that already completed that
-date. Once its wait lifts, though, IT's own checkpoint recovery can queue `retry-checkpoint` beside
-it, and that can start a paid maintenance run (see A checkpoint's resume).
+model run. `release-writer` starts no run when it is admitted, but the harness's next poll can
+restart the writer stage, which is a paid model run. `review-assignment` starts no run itself
+either: it requeues the review in the Office. On a project that is not hands-off, the scheduler's
+ordinary intake then checks the review's assessment, its assignment, holds and pilot ownership,
+and may reach a paid read-only PM run with a 15-minute timeout. Hands-off intake keeps its
+existing deterministic path. With the switch enabled the Office starts those runs by itself, one
+per piece of work and fix. Nothing caps their cost yet.
+`reconcile-native-checkpoint` reads Brain's native gate once and runs no model; it completes the
+checkpoint only from a native run that already completed that date. Once its wait lifts, though,
+IT's own checkpoint recovery can queue `retry-checkpoint` beside it, and that can start a paid
+maintenance run (see A checkpoint's resume).
 
 **Routes.** A route names one of the Office's existing recovery handlers. These are the only ones
 a fix may name:
@@ -434,7 +457,8 @@ a fix may name:
 | `review-pr` | a GitHub delivery job stopped at `lead-pr`, at a merge preflight that sent no merge (`merge`), or at post-merge CI recovery (`ci-recovery`) | `{ key }` | none |
 | `review-candidate` | a GitHub delivery job stopped at candidate review (`review`) | `{ key }` | none |
 | `requeue-implement` | a GitHub delivery job stopped at `implement` by the approach guard, right after a structured wait or decision | `{ key }` | none |
-| `review-assignment` | an assignment review | `{ key }`, the ticket key | none |
+| `release-writer` | a GitHub delivery job on a hands-off project whose `implement` or `update-base` run died | `{ key, head }`, the ticket key | required: the dead writer run's ID, exactly as recorded |
+| `review-assignment` | a stopped assignment review (`project/intake/ID`), the last one stored for its ticket | `{ key }`, the ticket key | none |
 | `reconcile-maintenance` | a maintenance run; not resumed: it can repeat a paid read-back on replay and can finish with the original run still blocked | `{ key }`, the run's own ID | none |
 | `retry-checkpoint` | a checkpoint; not resumed: it can start a paid maintenance run after the repair wait lifts | `{ key }`, the checkpoint's own ID | none |
 | `reconcile-native-checkpoint` | a checkpoint; resumed for Brain only | `{ key }`, the checkpoint's own ID | none |
@@ -503,8 +527,8 @@ pause it once to rewrite it, then enable it at the revision that pause returns.
 **What happens.** Once a fix is found in the running release, `incident status` adds `resumes`:
 for each subject the fix bound, one of these, with the reason.
 
-- `admitted`: its resume was queued. This happens once per subject and fix and stays on record,
-  whatever the work does next.
+- `admitted`: its resume was queued, or for `release-writer` its one more restart was granted.
+  This happens once per subject and fix and stays on record, whatever the work does next.
 - `due`: it can be resumed and the switch is enabled. The Office puts it to admission on its next
   pass, about a minute apart; whether it is queued then depends on the checks below.
 - `held`: it can be resumed and the switch is paused. Nothing is queued until you enable it.
@@ -530,11 +554,11 @@ reason, as `resume-refused`:
 | `resumes-paused` | The switch is paused. | Queued once you enable it, if the work still waits. |
 | `release-unconfirmed` | The Office could not verify the running release or has yet to confirm that it contains the fix. | A rollback to a verified release known to contain the fix can still allow admission. If the running release lacks the fix or cannot be verified, the Office withdraws the deployment mark and returns the incident to `shipped`. |
 | `project-paused` | The project is paused or draining. | Queued when it runs again. |
-| `request-pending` | Another request for that ticket key is queued or working. An active scheduler claim on a GitHub job the Office requeues directly (a review or an implement) or on a Jira/Azure ticket also blocks the resume, even with no queued or working request. For a Jira/Azure ticket, an approved QA handoff still awaiting its ownership check also blocks the resume. | Tried again each pass. The Office resumes the work when it clears if the repair wait still holds. See A ticket's resume for what happens when someone else resumes a Jira/Azure ticket. |
-| `wait-ended` | The work is not being held for this repair right now. Either that is final: the wait ran out after 48 hours, or the work stopped again or was moved. Or it is temporary: something stronger explains the stop for now, such as a hold, a decision, a merge approval, a prerequisite or an unconfirmed write. An approach-guard stop that an earlier release saved as an unconfirmed write keeps that label, and so reads `wait-ended`; so does a guard stop whose job has a write that was never confirmed. | If final, not resumed; the item is yours. If temporary, the Office tries again each pass and queues it once that cause is gone, as long as the 48 hours have not run out. |
+| `request-pending` | Another request for that ticket key is queued or working. An active scheduler claim on a GitHub job the Office requeues directly (a review or an implement) or on a Jira/Azure ticket also blocks the resume, even with no queued or working request. For a Jira/Azure ticket, an approved QA handoff still awaiting its ownership check also blocks the resume. For an assignment review: a request for its ticket queued or working in either queue, a Jira/Azure `start-pilot` included, or a scheduler claim on the review. | Tried again each pass. The Office resumes the work when it clears if the repair wait still holds. See A ticket's resume for what happens when someone else resumes a Jira/Azure ticket. |
+| `wait-ended` | The work is not being held for this repair right now. Either that is final: the wait ran out after 48 hours, or the work stopped again or was moved. Or it is temporary: something stronger explains the stop for now, such as a hold, a decision, a merge approval, a prerequisite or an unconfirmed write. An approach-guard stop that an earlier release saved as an unconfirmed write keeps that label, and so reads `wait-ended`; so does a guard stop whose job has a write that was never confirmed. A dead writer bound to `release-writer` reads `wait-ended` while a write of the job or its issue is unconfirmed in the Effects ledger, or a saved result owes a read-back; its own process failure does not count (see Work awaiting a repair). For an assignment review, the wait also ends if a later review supersedes it or an ordinary retry has already requeued it. The Office checks the wait before it tries the transition. | If final, not resumed; the item is yours. If temporary, the Office tries again each pass and queues it once that cause is gone, as long as the 48 hours have not run out. |
 | `head-mismatch` | The route's `head` is not the run its handler would read for that job now, the handler has nothing to read for it (a run an earlier request already reconciled included), or another job that is not cancelled has the same ticket key. | The Office tries again each pass and queues it if that changes while the wait holds. Read the detail: it names what the handler reads. |
 | `ticket-not-resumable` | For a ticket: its own resume would refuse, or would spend a step that is yours, or the Office could not tell this stop from a later one. QA setup has stopped three or more times in a row on the candidate; the feature gate is closed; the ticket is no resumable pilot (not a pilot, at the mailbox, complete); or its stop carries no date. | Tried again each pass, and queued if that changes while the wait holds. A stop with no date does not change: that ticket is yours. Read the detail. |
-| `transition-refused` | Your recheck or requeue would also refuse `review-pr`, `review-candidate` or `requeue-implement`. The job is outside an eligible inactive review state, a merge was already attempted, or the project's merge policy leaves the merge to a person. For `requeue-implement`: the job is not blocked at implement by the approach guard right after a structured wait, for example because a later run replaced that pair; the guard would still reject the result; or the job has a pull request or a hold. | Tried again each pass, and resumed if that changes while the wait lasts. |
+| `transition-refused` | Your recheck or requeue would also refuse `review-pr`, `review-candidate` or `requeue-implement`. The job is outside an eligible inactive review state, a merge was already attempted, or the project's merge policy leaves the merge to a person. For `requeue-implement`: the job is not blocked at implement by the approach guard right after a structured wait, for example because a later run replaced that pair; the guard would still reject the result; or the job has a pull request or a hold. For `review-assignment`, a non-cancelled delivery job holds the otherwise eligible review's ticket. A completed job counts. | Tried again each pass, and resumed if that changes while the wait lasts. |
 | `key-mismatch`, `no-record`, `not-dispatchable`, `already-reconciled` | The route does not fit the work as it stands. | Not resumed; read the detail. |
 | `not-dispatchable`, for a checkpoint, with "Checkpoint repair admission refused" | The checkpoint failed a repair admission check. For example, another checkpoint points to the same original run, so a later retry event that names only the run would be ambiguous (see A checkpoint's resume). | Tried again each pass, and queued once that clears while the wait holds. Only the first such detail is recorded: the history keeps one refusal per code. |
 
@@ -567,6 +591,61 @@ The Office resumes such a stop once per fix. If the re-run is rejected again, it
 implement results are no longer that pair, so a resume under a later fix is refused
 `transition-refused`. The harness saves a guard stop as `unclassified`. One that an earlier
 release saved keeps its saved kind, an unconfirmed write, and is refused `wait-ended`.
+
+**A writer release.** `release-writer` is for a GitHub writer stage (`implement` or
+`update-base`) on a hands-off project whose run died and that the harness would restart but for
+its allowance: three restarts, within six hours of the stop. Its `head` is required: the ID of the
+dead run, exactly as the Office recorded it. The Office checks what it checks for any job's
+resume, refuses while a scheduler claim is active for the job, and asks the harness's own restart
+rule whether this run is one it would restart if its allowance allowed. A run that returned a
+verdict, still has a live process, was already restarted or declined, has its result saved, or
+belongs to a job with a hold, a recovery record of its own or an unconfirmed write is refused
+(`head-mismatch` or `wait-ended`). Then, in one step, the Office saves the grant on the job (bound to
+the fix, the run, its stage and the accepted head), saves a completed request beside it as the
+record of the resume, and lifts the wait. It restarts nothing: the job stays stopped.
+
+At its next poll the harness restarts that run as it restarts any dead writer, with every one of
+its checks: the branch and pull request have not moved, the worktree can be saved, nothing is
+held. The grant allows one attempt once the three are spent or the six hours have passed, five
+minutes after the stop; while an ordinary attempt is still due, that one is taken and the grant
+is not spent. It is spent in the same write that records the restart. The earlier restarts and
+their `refs/office/salvage/<job>/<run>` refs stay as they were; nothing is reset or counted again.
+The restarted run is a paid model run. If the job's accepted head, the run or the grant changes
+while the harness reads, that pass records nothing and the next one decides. The harness never
+moves a salvage ref once made, so a later pass for the same run either finds the worktree still
+holding exactly that work, or already reset by it, or declines and names the ref.
+
+**An assignment review's resume.** `review-assignment` is a direct requeue too. The Office
+requeues the stopped review the fix was bound to, which must be the last one stored for its
+ticket, and saves a completed request beside it as the record of the resume. It changes only the
+review's status and its queue time. It is not your `review-assignment` command, which rechecks the
+ticket's latest review:
+
+- It keeps the review's IT ownership-recovery count. Your command resets it to 0.
+- It keeps the review's read retries as they are. A review whose three read retries are spent,
+  marked exhausted or not, or whose IT recoveries are at their cap of three, is still resumed,
+  once per fix. No budget is reset or replenished. The record of the resume is what stops a
+  second one, and the ordinary read retries and IT's recovery keep their own limits.
+- It does not emit your command's event (`assignment-recheck`). Your `review-assignment` or
+  `defer-non-ready` afterwards emits `assignment-recheck` or `pickup-deferred`, and reads as
+  `moved-by-hand`.
+- It refuses while a request for the ticket is queued or working in either queue, while a
+  scheduler claim is active for the review, and while a delivery job that is not cancelled holds
+  the ticket.
+
+Once requeued, the review runs as any queued review does. On a project that is not hands-off that
+can be a paid read-only PM run with a 15-minute timeout, after the ordinary checks of its
+assessment, assignment, holds and pilot ownership. Hands-off intake keeps its own deterministic
+path.
+
+Declare `stage-left` for `assignment-review`, or `record-settled`. The Office uses the
+review's own decision after its scheduler claim ends.
+
+- `stage-left`: the review ended `ready`, or delivery took its ticket: a job that is not cancelled
+  holds the key. The job counts even once the review was cancelled or is gone.
+- `record-settled`: the review reached its own decision: `ready`, `owned` or `held`. Delivery or a
+  later review of the ticket is not that decision.
+- `stage-result-passed`: a review saves no stage results, so this reads `untested` at once.
 
 **A ticket's resume.** A Jira/Azure pilot ticket is resumed by queueing its own `resume-ticket`
 request, the one the Resume command queues, marked as a repair resume. It differs from a
@@ -672,9 +751,9 @@ verified or has recurred).
 | `recurred` | The ledger recorded the work stopping again for this incident's cause after the resume and after the fix was found in the running release. This replaces any outcome recorded before it, and nothing replaces it. |
 | `chained` | Before anything else could be said, the job, or the request the resume queued, stopped for another cause; the detail names that incident. Not final: any other outcome replaces it. |
 | `stalled` | Nothing has moved for 24 hours and no wait the Office understands explains it; the detail says since when. Not final: any outcome but `chained` replaces it, and it replaces `chained`. |
-| `moved-by-hand` | An operator's command for the ticket followed the resume (PR preparation, a candidate base update, a candidate or PR review recheck, a requeued implementation). For a Jira/Azure ticket: a request your own command queued for it after the resume's (`start-pilot`, `resume-ticket`, a corrected QA plan, a saved-implementation continuation). For a Brain checkpoint: a retry queued for its original run after the resume, whoever queued it. The boundary is not read after that, and the move is found even if the job is gone since. |
-| `gone` | The job is missing or cancelled, or the ticket or checkpoint is missing, with the boundary not crossed; or the project no longer holds the request. |
-| `untested` | Nothing can show whether the repair worked: the fix declared the boundary undeclared; the boundary cannot be judged for this job; the release that held the fix stopped serving after the resume was queued; or the resume was queued by a release that did not yet record how the job stood. For a checkpoint, also an ordinary completion (see A checkpoint's resume). |
+| `moved-by-hand` | An operator's command for the ticket followed the resume (PR preparation, a candidate base update, a candidate or PR review recheck, a requeued implementation). For a Jira/Azure ticket: a request your own command queued for it after the resume's (`start-pilot`, `resume-ticket`, a corrected QA plan, a saved-implementation continuation). For a Brain checkpoint: a retry queued for its original run after the resume, whoever queued it. For an assignment review: your `review-assignment` or `defer-non-ready` command for its ticket after the resume; a job's commands do not count for a review, nor a review's for a job. The boundary is not read after that, and the move is found even if the job is gone since. |
+| `gone` | The job or assignment review is missing or cancelled, or the ticket or checkpoint is missing, with the boundary not crossed; or the project no longer holds the request. |
+| `untested` | Nothing can show whether the repair worked: the fix declared the boundary undeclared; the boundary cannot be judged for this job; the release that held the fix stopped serving after the resume was queued; or the resume was queued by a release that did not yet record how the job stood. For a checkpoint, also an ordinary completion (see A checkpoint's resume). For an assignment review, also `stage-result-passed`. |
 
 A resume with no entry is still pending. `moved-by-hand`, `gone` and `untested` say nothing about
 the repair either way. An outcome other than `chained` or `stalled` stays as recorded unless the
@@ -691,7 +770,8 @@ quiet since admission can be `stalled` at hour 24 even if its project was paused
 read-back, a reconcile or a Jira transition filed under its key. A conversation, a Slack message,
 a retrospective or an investigation about the ticket does not start the 24 hours again. For a
 Brain checkpoint the runs that count are those filed under the checkpoint, the resume's request
-or the checkpoint's original run; a run of another night does not.
+or the checkpoint's original run; a run of another night does not. For an assignment review they
+are the runs filed under that review; a later review of its ticket does not count.
 
 What each boundary reads, for a delivery job:
 
@@ -716,6 +796,9 @@ For a ticket, declare `stage-left` unless the fix is only shown by the stage run
 For a Brain checkpoint, declare `record-settled`: a checkpoint has no stage of its own to leave or
 pass, so the other two read `untested`. What counts as settled is under A checkpoint's resume.
 
+For an assignment review, declare `stage-left` for `assignment-review` or `record-settled`. What
+each reads is under An assignment review's resume.
+
 Declare a boundary the route can reach. What a read-back saves differs by route: some save the
 stage's own step, some a step under a read-back name of their own, some none. Where the read-back
 saves no step of the stage, that stage's passed result is saved only later, when the job next
@@ -732,6 +815,8 @@ runs the stage in the ordinary way.
 | `reconcile-review` | `lead-pr`, the stage's own step, for the saved review; `review` for a continuation's saved review; none for a stopped base handoff |
 | `review-pr`, `review-candidate` | none; the job is queued again at the stage it stopped at, and the stage's own run saves its step. For a merge preflight declare `stage-left` for `merge` or `record-settled` |
 | `requeue-implement` | none; the job is queued again at `implement`, and the implement run saves its step. Declare `stage-left` for `implement`. Not `stage-result-passed` for `implement`: a passed result the guard rejects again is still saved as a passed step before the job is blocked, so that boundary can read `advanced` while the job is still blocked at `implement` |
+| `release-writer` | none; the job stays stopped until the harness restarts the run, and the restarted stage's run saves its step. Declare `stage-left` for the bound writer stage. For `implement`, not `stage-result-passed`: a passed implement result can be saved just before the approach guard rejects it |
+| `review-assignment` | none; the review is queued again and runs as any queued review. Declare `stage-left` for `assignment-review` or `record-settled` |
 
 When in doubt, declare `stage-left` for the stage the job stopped at.
 
@@ -808,16 +893,22 @@ deployed), and after it becomes `verified` or `recurred`.
 - A paused or draining project shows as one subject. Its stopped work stays open until the project
   runs again and the ledger can see whether it cleared.
 - A failed run is counted for 24 hours, then clears by itself. One that belongs to a stopped job,
-  ticket, review or maintenance run is part of that subject instead. Of the runs that failed for
+  ticket, review or maintenance run, to the outbox item kept for a ticket or review, or to the Jira
+  mailbox error its check recorded, is part of that subject instead. Of the runs that failed for
   one cause in a project, only the newest 20 are subjects of their own: an older one clears as
   newer ones arrive, and still counts as part of the stopped work it belongs to. Every run that
   was recorded stays in the incident's event history.
 - If a collector cannot read a project, the service log says which one each minute, and what that
-  collector had reported for the project is left open until it can.
+  collector had reported for the project is left open until it can. A subject whose cause changes
+  meanwhile still moves to its new incident. An unreadable outbox releases an item only when fresh
+  stopped-work reports cover it. A Jira mailbox error stays open while a check is queued or running
+  unless a successful check has been recorded since the observed failure.
 - With three GitHub projects, ordinary provider waits will meet the two-project threshold often.
   That is the plan's threshold; it makes them eligible for research, nothing more.
 - A run a provider refused at its usage limit is a `provider-wait` when the harness typed the
   failure as `provider-limit`, which it does for a stage that only reads. The ledger does not read
   the reset time the provider stated: three such runs, or two projects, still cross the research
-  threshold before it. A writer stage refused the same way keeps `uncertain-effect`.
+  threshold before it. A writer stage refused the same way keeps `uncertain-effect`. The repair
+  wait for a dead hands-off writer reads past that label to the Effects ledger (see Work awaiting a
+  repair); the ledger's own reading of the stop is unchanged.
 - The repair runner's own failures are not recorded yet; the runner does not exist.

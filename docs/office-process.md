@@ -389,8 +389,10 @@ at the Lead review or the PR preparation, the Office settles it (`server/deliver
 The candidate must be the one the Office created, its branch and worktree, with a passed harness draft that
 published the current head to that pull request. GitHub must show the PR closed and merged by the owner at
 that head into the project target, still linked to the job's issue. Nothing else of the job may be open: no
-claim, recovery request, worker that did not run to its end, hold, prerequisite, park, merge attempt or
-approval wait, repair in progress, stopped-base update, unverified board move or receipt, or unsettled effect. The Office then records the owner and both commits,
+claim, recovery request, worker that did not run to its end, hold, unmet prerequisite, park, merge attempt or
+approval wait, repair in progress, stopped-base update, unverified board move or receipt, or unsettled effect.
+A prerequisite the job keeps must pass the scheduler's own prerequisite check, across the office's projects,
+before the Office reads GitHub for the job and again after GitHub answers. The Office then records the owner and both commits,
 clears the stop and watches the merge commit like any merge: its Actions decide between the existing CI route
 and the ordinary closeout. Closeout moves each card that is not yet in Done with one read-back effect bound to the merge commit.
 The finished review and its findings are kept; no merge, worker or provider write is sent to settle it.
@@ -405,7 +407,18 @@ branch or PR, an unsettled effect, a hold, a nested repository in the worktree o
 recovery record is not restarted and keeps its existing handling. Scope repair always carries a
 recovery record, so it is never restarted this way. Once a job has been restarted, the
 stopped-base readback no longer applies to it: a run the harness then declines, or a job that
-uses up its three restarts, stays blocked for a person. Jira/Azure work is unchanged.
+uses up its three restarts, stays blocked for a person, unless a `release-writer` resume after a
+verified fix grants that run one more restart (see Resume after a fix). That grant
+(`job.repairRelease`) is bound to the run, its stage and the accepted head, and allows one attempt
+once the three are spent or the six hours have passed, five minutes after the stop; an attempt the
+ordinary allowance still holds is taken ordinarily and leaves the grant unspent. Every other check
+above still applies. The restart is recorded, the job queued and the grant spent in one write; a
+write that fails changes nothing in the project. Earlier restarts and their refs are kept. A
+salvage ref is created once and never moved: a later salvage of the same run continues only where
+the worktree agrees with it (still holding exactly the kept work, or already reset by that salvage
+as `ORIG_HEAD` shows), and otherwise declines before any reset, naming the ref. A restart pass
+whose job, run, stage, accepted head, branch, worktree or grant changed while it awaited a read
+writes nothing. Jira/Azure work is unchanged.
 
 Parking moves the issue card and the pull request's card to Block, and a person releases the park by
 moving the issue card alone. The pull request's card is then the harness's to move, when its own
@@ -727,6 +740,30 @@ Morgan or Joe:
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after
   three failures in a row. The Azure monitor's reads are read-only, so a lingering helper is not
   treated as a possible write.
+- Harper hands a blocker follow-up to Morgan as one read-only diagnosis at a time
+  (`server/knowledge/handoff-admission.ts`, from `reconcileBlockerFollowups()`). While its request is
+  queued or working, or its claim or worker is still running or stopping, nothing more is sent for that
+  follow-up, whatever its detail says. Once it closes, another is sent only if what is due changed. For
+  an IT recovery that is a new needs-human episode: an observed exit (IT retrying, or resolved) and a
+  return. For the project refresh and assignment reads it is also a change between a temporary read
+  failure and any other failure, the two kinds of advice Ellis gives Morgan. For anything else it is the
+  requested action without provider occurrence details such as GitHub's request ID and timestamp.
+  Each send has its own id. A diagnosis that started is never settled: one a restart interrupts keeps
+  its session, any answer and the interruption, and unchanged material sends nothing more. Queued
+  requests that never started are settled as failed, with the reason and the id of the hand-off kept
+  (`supersededByHandoffId`), when the store opens (before start-up recovery) and on every
+  reconciliation; nothing is deleted. The scheduler reads them as history that only their own
+  conversation's writes, receipts and claims can hold back, not a write of their ticket's delivery
+  (`supersededHandoff` in `server/operations/stale-records.ts`, used by `scheduledWork()`). A failed
+  person's message is read back by whichever request is queued or working for exactly that original,
+  Harper's kept request first (`pendingReadback()` in `server/conversations/conversation-recovery.ts`).
+  One IT already tracks is read back through IT's recovery, with its backoff and three attempts
+  (`readBackConversations()`); IT adopts the live replacement of a settled request it remembered without
+  spending an attempt (`recoverAttempt()`), and neither Harper nor IT queues another while Harper's
+  earlier read-back of it is still stopping. The first open after upgrading changes an affected store,
+  so a failed activation then stops at rollback eligibility rather than rolling back; an older build
+  skips the settled rows but would send again for a new provider footer, so a downgraded store stays
+  fenced or offline until a build with this rule resumes it.
 - Session visibility and service status probes are informational and stay with Ellis. They are
   listed but not counted as follow-ups, and do not by themselves show Ellis as retrying, even while
   such a watch is being retried or once it names Morgan. Any other recovery in progress, and anything
@@ -855,9 +892,9 @@ It records new scheduler claims, effect intents, and queued harness and delivery
 same transaction as that write and outside the saved state. The journaled writers are
 `Store.claimWork`, `Effects.execute`, `enqueueRequest`, `requestDelivery`, the history-retirement,
 PR-metadata, QA plan-retry and saved-implementation operator commands, and the closeout cleanup
-request. The completed receipt of a synchronous review or implement resume adds no
-admission-journal row. One start-up migration that queues a legacy `adopt-candidate` request is
-not journaled. It runs identically in every release.
+request. The completed receipt of a synchronous review, implement or assignment-review resume,
+or of a writer release, adds no admission-journal row. One start-up migration that queues a legacy `adopt-candidate`
+request is not journaled. It runs identically in every release.
 
 The journal omits status changes to existing records under a claim, during start-up recovery and
 through operator commands. An IT tick that began before the fence was taken can also requeue
@@ -1121,7 +1158,8 @@ marked in their project (see Repair wait below). And once the fix is found in th
 the Office resumes the marked stop once and removes the marker. It queues a recovery request for
 a GitHub read-back, a `resume-ticket` delivery request for a Jira/Azure pilot ticket, or the native
 read-back (`reconcile-native-checkpoint`) for a Brain checkpoint. It directly requeues GitHub
-review jobs or jobs the approach guard rejected at `implement` (see Resume after a fix below).
+review jobs, jobs the approach guard rejected at `implement` and stopped assignment reviews, and
+grants a dead writer run one more harness restart (`release-writer`) (see Resume after a fix below).
 An incident by itself describes a stop and grants no retry or authority over the work. Resuming
 requires a fix bound to a route, that fix in the running release, and automatic resumes enabled.
 
@@ -1132,17 +1170,27 @@ reads every project:
   intake reviews, checkpoints, maintenance, notices and conversations), and waiting work whose own
   record is a stop (a pull request that is not ready, checks or required Azure policies still
   running, a merge waiting for approval, a pull-request review that needs follow-up) or that waits
-  on a configured hold, a retry the Office planned or an unfinished structured prerequisite;
+  on a configured hold, a retry the Office planned or an unfinished structured prerequisite; a
+  feature waiting on answers to its current question round, while the feature itself waits, is not
+  paused and is held neither by the automatic policy nor by configured intake, recorded in the
+  harness's own words with no question, answer or detail kept; and Harper's weekly roll-up while the
+  retry the Office saved for it is still ahead. A feature's recovery deadline alone is not read;
 - runs that failed after dispatch, by failure category, each counted for 24 hours;
 - IT recoveries handed to a person;
 - IT investigations that name the harness or propose an Office fix;
 - improvement proposals addressed to the Office harness;
 - the latest error of the assignment listener, the mailbox intake and the GitHub and Azure readers,
-  kept while the reader's next read is under way; a GitHub project's mailbox error is the GitHub
-  read's own and is reported once;
+  kept while the reader's next read is under way; a Jira mailbox blanks its error when a check is
+  queued or starts. Its subject stays open during that check unless a successful check was recorded
+  after the observed failure. A present error is read as usual. A GitHub project's mailbox error is
+  the GitHub read's own and is reported once;
 - Slack deliveries that could not be confirmed and were not replaced;
-- any other open outbox item, by its title only, including the item of a ticket or intake review
-  the scheduler does not project.
+- any other open outbox item, by its title only. The item of a ticket or intake review, and the
+  summary of reviews that cannot read session ownership, are kept only while stopped work reports
+  or keeps open none of their records: the ticket or a stopped request that only mirrors its
+  blocker, the review, or every review in the summary. Work the scheduler projects but stopped work
+  does not record, such as finished history or a review running again, covers nothing, and nor
+  does a stopped-work read that failed before the record was first seen.
 
 A saved stop is read only while the record's status makes it current; a watching job keeps only a
 wait's own stop. A record that could run but is held by the scheduler's condition, a prerequisite
@@ -1167,7 +1215,9 @@ subject, stage and typed cause, and its wording is evidence only:
 - `unknown`: the record does not say where its text came from: work with no retained record, a
   delivery request's error, a ticket blocker with no saved stop, result or failure behind it, what
   a run that completed handed back to a request, notice, conversation or Jira mailbox read, a
-  recovery's copied detail, and the outbox item of an unprojected ticket or review. For these the
+  mailbox checkpoint whose last intake run completed (whether or not the intake error still
+  stands; with no intake run or a typed failure its text is the harness's), a recovery's copied
+  detail, and the outbox item of an unprojected ticket or review. For these the
   scheduler's own cause, which can come from the text's wording, is neither kind nor explanation.
 
 A merge waiting for approval is identified by that restriction, not by the job's changing detail.
@@ -1181,15 +1231,36 @@ references is still unsettled. Two sources that report the same stop yield one s
 run is folded into the job, ticket, review or maintenance run it worked for, and an unconfirmed
 Slack delivery into its notice or conversation, which then carries the unsettled write and, when
 it has no explanation of its own, the delivery's; a delivery request that only mirrors its
-ticket's stop is folded into the ticket, and a checkpoint that only repeats its maintenance run's
-into the run. An exhausted recovery and the record it tried to recover stay separate subjects. A subject whose signal is gone is cleared. A subject that returns
+ticket's stop is folded into the ticket. If that request is the only subject covering an unprojected
+ticket, it takes in the ticket's stage run. A checkpoint that only repeats its maintenance run's
+stop folds into that run. A failed intake run is folded into the Jira mailbox error when the
+record proves it caused it: its standing typed failure is what the error says, it started after the last
+successful check and it ran wholly within the check that recorded the failure, as the project's
+persisted events show; otherwise the two stay apart. A kept ticket or review outbox item is bound
+to its record's saved stop, head and last run, which it takes in, and to that record's unsettled
+writes; its episode stays the item's own. An improvement proposal's write is unsettled only while
+one filed under its own issue work key is. An exhausted recovery and the record it tried to recover stay separate subjects. A subject whose signal is gone is cleared. A subject that returns
 after it cleared, or whose stop marker changed, is a new episode of the same incident and one
 observed resume, and how long it has stood is counted from that latest stop; the count survives
-the projection dropping an old cleared subject, because it is read back from the events. A subject is not cleared while its signal cannot be seen: stopped work
-while its project is paused or draining, a source whose collector failed for that project, and
-everything of a project that could not be read. While stopped work cannot be seen, the runs and
-deliveries its open subjects hold stay with them, and those a pause newly hides fold into the
-pause; while another source cannot be seen, what it had contributed to a subject stays on it.
+the projection dropping an old cleared subject, because it is read back from the events. A
+subject is open in one incident at a time: observed under another cause, it leaves the incident
+that held it in the same change, whatever cannot be seen. Two copies of one subject left open by
+an earlier release are both kept until it is observed again, which selects one. Otherwise a
+subject is not cleared while its signal cannot be seen: its owner's source while its project is
+paused or draining or its collector failed for that project, the mailbox subject while a check is
+under way without a newer success, and everything of a project that could not be read. While an
+owner cannot be seen, the runs and deliveries its open subjects hold stay with them. Those a
+pause newly hides fold into the pause. A readable outbox uses both fresh and retained stopped-work
+subjects as coverage.
+During an outbox outage, only fresh stopped-work reports can release its saved items and free their
+runs to fold into the subjects that now cover them. What each source says of a subject, whether a write
+it knows of is unsettled and its explanation, is recorded apart; the subject's own facts combine
+them with the owner first and the rest in collector order. While another source cannot be seen it
+keeps exactly its own part, wherever the subject's cause now puts it, and a readable source that
+reports nothing withdraws its part, the owner's included, so a fact only the owner gave goes when
+the owner drops it. A subject recorded before parts were kept retains its earlier aggregate
+alongside facts learned on partial reads. A pass that reads all of the original sources replaces
+that aggregate.
 
 **Expected waits.** Holds, decisions, merge approvals, prerequisites, pauses, authentication
 blocks, provider waits, planned retries, uncertain effects and questions are recognised from typed
@@ -1255,7 +1326,8 @@ most 1,000 subjects.
 A route is one of a closed inventory (`server/incidents/repair/resume-routes.ts`): the existing
 handlers the Office intends to resume stopped work through, and nothing else. A binding with a
 route is refused, and nothing is saved, when its action is not in the inventory, its payload does
-not have that action's shape (`{ key }`, or `{ key, head? }` where the handler takes a head), the
+not have that action's shape (`{ key }`, `{ key, head? }` where the handler takes a head, or
+`{ key, head }` with a head that is not blank for `release-writer`), the
 action does not apply to the subject's kind, a key that names the subject's own record names
 another, or its expected stage is not the stage the stop was recorded at. A key is compared and
 saved exactly as sent, so one with space around it is refused. A project's delivery work shares one
@@ -1283,18 +1355,25 @@ routes are dispatched: `reconcile-implementation`, `reconcile-validation` and
 `reconcile-base-update`, `reconcile-closeout` and `reconcile-review`, with a head or as their
 saved-result form without one. `resume-ticket` is dispatched for a Jira/Azure pilot ticket (see
 A ticket's resume, below). `review-pr`, `review-candidate` and `requeue-implement` are dispatched
-as synchronous transitions that requeue the job directly (see below). `reconcile-native-checkpoint`
-is dispatched for a Brain checkpoint (see A checkpoint's resume, below). `retry-checkpoint` and
-`reconcile-maintenance` are not dispatched, by decision, and their inventory rows say why: a
-checkpoint retry can start a paid maintenance run after the repair wait lifts, and a maintenance
-reconciliation can repeat a paid read-back on replay and can finish with the original run still
-blocked. The remaining routes await dispatch support. `reconcile-review` without a head verifies a
-saved independent review against the unchanged pull request and issue and runs no model. Several
-of the other handlers start a model run when the scheduler runs the request (the implementation,
-validation, scope-repair, preparation, stopped base update and closeout read-backs), so a resume
-through them is a paid run no person started. `requeue-implement` starts no run itself, but the job
-it queues runs implement again on the same candidate, which is also a paid run no person started. A
-stopped base handoff is read from the run it already started; no other is started. A resume is
+as synchronous transitions that requeue the job directly (see below). `release-writer` is
+dispatched as a grant of one more harness restart to a dead writer run (see A writer release,
+below); it restarts nothing itself, and the restart it allows is a paid run. `review-assignment` is
+dispatched as a synchronous transition that requeues a stopped assignment review directly (see An
+assignment review's resume, below). `reconcile-native-checkpoint` is dispatched for a Brain
+checkpoint (see A checkpoint's resume, below). `retry-checkpoint` and `reconcile-maintenance` are
+not dispatched, by decision, and their inventory rows say why: a checkpoint retry can start a paid
+maintenance run after the repair wait lifts, and a maintenance reconciliation can repeat a paid
+read-back on replay and can finish with the original run still blocked. `reconcile-review`
+without a head verifies a saved independent review against the unchanged pull request and issue
+and runs no model. Several of the other handlers start a model run when the scheduler runs the
+request (the implementation, validation, scope-repair, preparation, stopped base update and
+closeout read-backs), so a resume through them is a paid run no person started.
+`requeue-implement` starts no run itself, but the job it queues runs implement again on the same
+candidate, which is also a paid run no person started. `review-assignment` starts no run itself
+either. It requeues the review locally. On a project that is not hands-off, the ordinary pump then
+checks the review's assessment, its assignment, holds and pilot ownership, and may reach a paid
+read-only PM run with a 15-minute timeout. Hands-off intake takes its existing deterministic path.
+A stopped base handoff is read from the run it already started; no other is started. A resume is
 still one per subject and fix, and none is admitted while the switch is paused.
 
 A ticket's resume. A subject whose route resumes a ticket (`cec/delivery/ticket:KEY`) is admitted
@@ -1400,7 +1479,9 @@ repair waits are kept, and never while a deployment holds the fence. For every `
 incident it puts each subject the reading calls `due` to admission in its own project
 (`server/incidents/repair/dispatch-resume.ts` for GitHub read-backs, `dispatch-ticket-resume.ts`
 for `resume-ticket`, `dispatch-transition-resume.ts` for `review-pr`, `review-candidate` and
-`requeue-implement`, and `dispatch-checkpoint-resume.ts` for `reconcile-native-checkpoint`).
+`requeue-implement`, `dispatch-writer-release.ts` for `release-writer`, `dispatch-assignment-resume.ts` for
+`review-assignment`, and
+`dispatch-checkpoint-resume.ts` for `reconcile-native-checkpoint`).
 The pass reads the clock for each subject so admission uses that subject's current wait.
 
 The deployment mark alone does not admit a resume. It says what was found when it was made, and
@@ -1427,7 +1508,7 @@ repair-wait marker is removed. The request's admission-journal row commits with 
 attempt count or budget of the job is changed; the scheduler runs the request under its existing
 ownership and the handler checks its own preconditions.
 
-Three routes are synchronous transitions rather than requests: `review-pr`, `review-candidate` and
+Three job routes are synchronous transitions rather than requests: `review-pr`, `review-candidate` and
 `requeue-implement` (`server/incidents/repair/dispatch-transition-resume.ts`). Their admission
 makes the checks above, except the head and the earlier completed request, and also refuses while
 a scheduler claim is active for the job. Then, in one project transaction, it makes the transition
@@ -1443,6 +1524,22 @@ writes nothing. No admission-journal row is written: the receipt is no queued wo
 scheduler reads a completed request as terminal. The admission finds the job by the bound ID; the
 operator's command finds the first job of the key that is not cancelled. Both refuse while a
 scheduler claim is active on the job as delivery work, by kind and ID.
+
+A writer release. `release-writer` takes `{ key, head }`, where `head` is required: the ID of the
+dead writer run, compared exactly as given. The generic job admission refuses it as
+`not-dispatchable`; `server/incidents/repair/dispatch-writer-release.ts` admits it. It makes a job
+resume's checks (above, except the earlier completed request), refuses while a scheduler claim is
+active for the job, and finds the job by the bound ID even where another job shares its key. Then
+the harness's own restart rule, short of its allowance (`stoppedWriter` in
+`server/delivery/attempts/restart-writer.ts`), must name a dead run of the job, and `head` must be
+that run: otherwise `head-mismatch`. The wait's deadline is read again after those reads and just
+before the write. In one project transaction it saves the grant on the job (`job.repairRelease`:
+the resume identity, incident, subject, fix event and commit, the run, its stage and the accepted
+head), a `completed` receipt with top-level `head: ''`, `repairResume` and how the job stood,
+removes the repair-wait marker and emits `repair-resume-admitted`. The job stays stopped and no
+counter changes. The harness's restart spends the grant at a later poll with all of its own
+checks (see the writer restart, above); a grant admitted before a withdrawal of the fix is still
+spent that way, while the outcome is judged only while the release that runs now holds the fix.
 
 `requeueImplement` requeues a job blocked at `implement` with the approach guard's message, whose
 last two implement results are a structured wait or decision and then a passed result the guard
@@ -1460,6 +1557,39 @@ resume is `wait-ended`. The transition saves no stage step, so declare `stage-le
 `implement`. Acceptance saves a rejected passed result as a step before it rethrows
 (`server/delivery/pipeline/accept-stage-result.ts`), so `stage-result-passed` for `implement` can
 read as crossed while the job is still blocked at `implement`.
+
+An assignment review's resume. `review-assignment` is a synchronous transition too
+(`server/incidents/repair/dispatch-assignment-resume.ts`), for a subject `project/intake/ID`. A
+resume already bound for that incident, subject and fix is returned first, even once the review is
+gone. Then its admission refuses when: the project is paused or draining (`project-paused`); the
+route is not `review-assignment` dispatched for an assignment review (`not-dispatchable`); the
+subject is not an assignment review of this project, or the project does not hold that review
+(`no-record`); the repair wait of that incident is not in effect for the review's exact stop, or a
+later review of the same ticket supersedes it (`wait-ended`), since the scheduler and observation
+read only the last review stored for a ticket; the route's key is not the review's ticket
+(`key-mismatch`); a request for that ticket is queued or working, in the recovery queue or in the
+delivery queue, where a Jira/Azure `start-pilot` waits, or a scheduler claim is active for the
+review itself (`request-pending`). The wait's deadline is read again just before the write. Then,
+in one project transaction, `requeueAssignmentReview` (`server/scheduling/assignment-transition.ts`)
+refuses a review that is queued or working, or whose ticket a delivery job holds in any status but
+`cancelled` (`transition-refused`); otherwise it sets the review `queued` with `queuedAt` from the
+store's clock and changes nothing else. The admission reads the wait again, and one that ran out
+undoes the transaction. It saves a `completed` delivery-lane request as the receipt with
+`repairResume` and the review's baseline (no steps, at `assignment-review`), removes that review's
+repair-wait marker and emits `repair-resume-admitted`, the only event, with no role. The baseline
+records that event's ID. No admission-journal row is written and the receipt is never run.
+
+The review keeps its IT ownership-recovery count (`itRecoveryAttempts`) and its read-retry record
+(`retry`) exactly as they were. A spent budget does not refuse the resume: a review whose read
+retries are marked exhausted, whose three retries are spent before the flag is set, or whose IT
+recoveries are at their cap of three is resumed once per fix (Joe, 2026-11-24, "Resume it once").
+No budget is reset or replenished, so the ordinary retry planner and IT's ownership recovery keep
+their own limits; the receipt is what limits the Office to one resume per fix. The operator's
+`review-assignment` command (`recheck`, `server/scheduling/operator-commands.ts`) is not changed and
+is not this transition: it picks the latest review of the key, returns without a word while that
+review is queued or working, resets the IT count, stamps the wall clock and emits
+`assignment-recheck` as the PM. A person's `review-assignment` or `defer-non-ready` command after
+the resume reads as moved by hand.
 
 The head check (`server/incidents/repair/route-head.ts`) asks the handler's own admission rule,
 the function the handler itself calls when the request runs, so admission and execution cannot
@@ -1525,7 +1655,9 @@ replacement followed the admission in ledger order or is dated after the saved a
 which also covers late admission records); `gone` (the project no longer holds the request);
 `untested` (the binding does not record how the job stood); `moved-by-hand` (an operator's command
 event for the request's ticket after the admission's own project event: `pr-preparation-queued`,
-`candidate-base-update`, `candidate-review-recheck`, `pr-review-recheck`, `implement-requeued`);
+`candidate-base-update`, `candidate-review-recheck`, `pr-review-recheck`, `implement-requeued`;
+for an assignment review only `assignment-recheck` and `pickup-deferred`, so neither list moves
+the other's subject);
 `untested` (the boundary is undeclared); `advanced` (the declared boundary is crossed,
 `boundary-crossed.ts`) or `untested` when it cannot be judged; `gone` (the job is missing or
 cancelled); `stalled` (see below), which replaces `chained` and is not followed by it; `chained`
@@ -1582,6 +1714,21 @@ after the admission's event whose message begins, compared literally, with
 names no checkpoint and no actor; a person's retry, IT's, the not-started recovery and the
 refresh continuation emit it alike, and any of them reads `moved-by-hand`. The resume's own
 request is looked for elsewhere as `brain/reconciliation/ID`.
+
+An assignment-review subject (`project/intake/ID`) is read by the same rules, as a review whatever
+its ID begins with, and its request is the completed receipt. A review has no steps, so in place of
+a job the pass supplies the bound review's status, read by its ID, and a crossing read from that
+review and from delivery of the receipt's ticket (`review-progress.ts`). The review's own
+decision counts once its intake claim ends. `stage-left` for `assignment-review` is crossed when
+the review ends `ready` or a non-cancelled delivery job holds the ticket. The job proves departure
+even while the claim is active or after the review is cancelled or removed. `record-settled` is
+crossed only by the bound review's own decision of `ready`, `owned` or `held`. A later review of
+the ticket, a delivery job or the receipt is no such decision. `stage-result-passed`, another
+stage and a baseline at another stage are `untested` on
+the first pass. A review that is missing or cancelled, with nothing crossed and nothing earlier
+deciding, is `gone`. The move is read by the receipt's ticket after the admission's event, so it is
+found once the review is gone; a later review of the ticket shares that key. Activity is the work
+log under the review's ID and the receipt's.
 
 A resume that shows nothing is `stalled` after 24 hours (`stalled-resume.ts`): asked after every
 final reading and before `chained`, which it replaces; like `chained` it gives way to any final
@@ -1780,7 +1927,17 @@ or a write still dispatching or uncertain in the project's Effects ledger. A del
 results are judged by the pipeline's own rule for that, in any of its steps
 (`server/delivery/pipeline/uncertain-effects.ts`); a ticket's by an uncertain receipt or an
 unverified status change on its stage result or its transition; a maintenance run's by an
-uncertain receipt. Those keep their own handling, whether they stood before the wait or arose after it. The
+uncertain receipt. Those keep their own handling, whether they stood before the wait or arose after it.
+One label is not read as an unconfirmed write: a dead hands-off writer's own process failure
+(`server/incidents/repair/writer-process-failure.ts`). A timeout, inactivity or non-zero exit of an
+`implement` or `update-base` run is typed `uncertain-effect`, and so is the job's stop, though such a
+writer commits on its own branch only. Where the snapshot names its project, the harness delivers
+the job, the stop's last worker is the latest run of the job's stage, and that run failed or was
+interrupted with that typed failure, returned no verdict, had no completion accepted and has no
+result saved, the stop kind and the failure are set aside for this decision, and every other
+reason above is read as usual. The Effects ledger and the saved results then decide: a write of
+the job or its issue still dispatching or uncertain, or a saved result that owes a read-back, still
+keeps it from being held. The saved stop is not changed. The
 unsettled writes and the prerequisites are read at the moment of each decision, from the project's
 own store and with the scheduler's own validation (`server/incidents/repair/freeze-reads.ts`);
 nothing about them is kept on the marker or between decisions. A reader that cannot make those
@@ -1811,7 +1968,9 @@ to these reads and always gates. For a held record:
   delivery is about no stopped record (`server/it/investigations/source-record.ts`). The
   investigation is judged on its own runs as well: when a run under investigation itself failed
   for authentication, permission, ownership or a write of unknown outcome, the investigation is
-  never held, whichever record it resolves to
+  never held, whichever record it resolves to. That check reads the run's own typed failure, so a
+  dead writer held by the exception above can still be investigated while its recovery and
+  restart are held
   (`server/it/investigations/held-investigation.ts`, used by `readiness.ts` and by Harper's guard);
 - Harper does not hand it to Morgan or nudge IT about it, including through a recovery or an
   investigation about it; the follow-up record is still kept (`server/knowledge/blocker-followups.ts`);
@@ -1827,9 +1986,11 @@ Nothing is reset, resumed or rewritten: recovery attempts, read-back counts, res
 investigation attempts are exactly what they were. When the wait ends or expires each path
 continues from them under its own rules, and the outbox request returns. A wait does not extend a
 path's own time limit: a writer run that stopped more than six hours ago is no longer restarted by
-the harness, so after a long wait that job is a person's to read back, unless a resume after the
-fix releases it. An `update-base` job in that state is not resumed (see Resume after a fix) and
-is a person's. The Office's own bounded retry of a transient failed read is not held. The
+the harness, so after a long wait that job is a person's to read back, unless a `release-writer`
+resume after the fix grants it one more restart. An `update-base` job in that state is not resumed
+by `reconcile-base-update` (see Resume after a fix): only `release-writer` resumes it, and without
+it the job is a person's. The run stays the harness's to restart for stopped-base recovery while
+its grant stands unspent. The Office's own bounded retry of a transient failed read is not held. The
 scheduler's dispatch is unchanged; a held record was already not running.
 
 ## Code owners and verification

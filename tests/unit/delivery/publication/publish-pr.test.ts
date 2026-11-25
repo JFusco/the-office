@@ -1,7 +1,8 @@
 import { claimedDelivery } from '../../../fixtures/delivery-claim';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD } from '../support/fake-github';
 afterEach(cleanupFakes);
+afterEach(() => vi.useRealTimers());
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { publishCandidate } from '../../../../server/delivery/publication/publish-pr';
@@ -60,7 +61,10 @@ test('a PR creation whose read-back lagged is adopted on retry, never re-sent', 
         if (program === 'gh' && args[1] === 'list' && drop && f.state.prs.length) return '[]';
         return out;
     };
-    await expect(claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root))).rejects.toThrow();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const rejected = expect(claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root))).rejects.toThrow();
+    await vi.runAllTimersAsync();
+    await rejected;
     drop = false;
     expect(await claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root))).toMatchObject({ pr: 200 });
     expect(creates).toBe(1);
@@ -113,7 +117,10 @@ test('post-push head observation stops after five reads without repeating the pu
         }
         return out;
     };
-    await expect(claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root))).rejects.toThrow('head did not update');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const rejected = expect(claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root))).rejects.toThrow('head did not update');
+    await vi.runAllTimersAsync();
+    await rejected;
     expect(reads).toBe(6); // Initial identity read plus exactly five head observations.
     expect(f.state.calls.filter(call => call.startsWith('git push '))).toHaveLength(1);
     expect(f.state.calls.filter(call => call.startsWith('gh pr create '))).toHaveLength(0);

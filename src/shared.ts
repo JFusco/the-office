@@ -194,6 +194,8 @@ export interface TicketJob {
     candidateBase?: string;
     /** Writer stage runs the harness abandoned and restarted from the accepted head; their work is kept under `ref`. */
     writerRestarts?: import('./contracts/writer-restart').WriterRestart[];
+    /** One restart past the ordinary allowance, granted after a verified fix; absent on jobs saved before it existed. */
+    repairRelease?: import('./contracts/writer-restart').WriterRepairRelease;
     /** The stopped writer run the harness would not restart, and why; other recovery owns it. */
     writerRestartDeclined?: { workId: string; reason: string; at: string };
     /** Why the last pre-restart read of the branch or PR failed; cleared when the read succeeds. */
@@ -859,6 +861,8 @@ export interface TeamMessage {
         project: string;
         verifiedAt: string;
     };
+    /** A Harper request settled unstarted in favour of this follow-up's current hand-off; it never ran. */
+    supersededByHandoffId?: string;
     contextProject?: string;
     id: string;
     requestId: string;
@@ -1005,6 +1009,7 @@ export interface OfficeSnapshot {
         ledger: string;
     };
     coordination?: Coordination;
+    jiraQueueProgress?: import('./contracts/ticket-progress').JiraQueueProgress[];
     teamQueue?: {
         project: string;
         projectName: string;

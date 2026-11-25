@@ -43,7 +43,10 @@ export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
     'review-candidate': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
     'review-pr': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
     'requeue-implement': { subject: 'job', keyed: 'ticket', head: null, dispatch: 'all' },
-    'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: 'none' },
+    // Grants one restart of a dead hands-off writer past its ordinary allowance and restarts nothing itself; the harness's own restart spends it at a later poll (see dispatch-writer-release.ts).
+    'release-writer': { subject: 'job', keyed: 'ticket', head: 'the ID of the dead writer run the restart is for; required', dispatch: 'all' },
+    // Synchronous: the bound review is requeued at once with its recovery counts kept, beside a completed receipt carrying the binding (see dispatch-assignment-resume.ts).
+    'review-assignment': { subject: 'intake', keyed: 'ticket', head: null, dispatch: 'all' },
     'reconcile-maintenance': { subject: 'maintenance', keyed: 'record', head: null, dispatch: 'none', reason: 'Maintenance reconciliation can repeat a paid read-back on replay and can finish with the original run still blocked.' },
     'retry-checkpoint': { subject: 'checkpoint', keyed: 'record', head: null, dispatch: 'none', reason: 'A checkpoint retry can start a paid maintenance run after the repair wait lifts.' },
     // Brain only: one model-free read of the native gate, and the checkpoint is completed only from a native completion that already exists. Admitted by its own path (see dispatch-checkpoint-resume.ts).
@@ -54,6 +57,17 @@ export const RESUME_ROUTES: Readonly<Record<string, ResumeRoute>> = {
 const Key = z.string().min(1).max(200).refine(key => key === key.trim());
 const KeyOnly = z.object({ key: Key }).strict();
 const KeyAndHead = z.object({ key: Key, head: z.string().max(200).optional() }).strict();
+/** A worker ID is compared exactly as sent, so only one that is blank is refused here. */
+const KeyAndWorker = z.object({ key: Key, head: z.string().max(200).refine(head => head.trim() !== '') }).strict();
+
+/** Whether a route grants a dead writer one more restart, admitted by its own path (see dispatch-writer-release.ts). */
+export const forWriterRelease = (action: string) => action === 'release-writer';
+
+/** The payload of a writer release, `{ key, head }` with the dead run's ID, or null when it is not one. */
+export function writerReleasePayload(payload: unknown): { key: string; head: string } | null {
+    const parsed = KeyAndWorker.safeParse(payload);
+    return parsed.success ? parsed.data : null;
+}
 
 /** A subject key is `project/kind/id`; a project ID and a kind hold no slash, an ID may. Null when it is not one. */
 export function subjectParts(subject: string): { project: string; kind: string; id: string } | null {
@@ -91,8 +105,8 @@ const SUBJECTS: Record<ResumeRoute['subject'], { named: string; is: (kind: strin
 export function routeFault(route: RepairRoute, subject: { subject: string; stage: string | null; provider: string }, routes: Readonly<Record<string, ResumeRoute>> = RESUME_ROUTES): string | null {
     const known = Object.hasOwn(routes, route.action) ? routes[route.action] : undefined;
     if (!known) return `${route.action} is not a resume route; the routes are ${Object.keys(routes).join(', ')}`;
-    const payload = (known.head === null ? KeyOnly : KeyAndHead).safeParse(route.payload);
-    if (!payload.success) return `the payload of ${route.action} is ${known.head === null ? '{ key }' : '{ key, head? }'}`;
+    const shape = known.head === null ? KeyOnly : forWriterRelease(route.action) ? KeyAndWorker : KeyAndHead, payload = shape.safeParse(route.payload);
+    if (!payload.success) return `the payload of ${route.action} is ${shape === KeyOnly ? '{ key }' : shape === KeyAndWorker ? '{ key, head }' : '{ key, head? }'}`;
     const work = subjectParts(subject.subject);
     if (!work || !SUBJECTS[known.subject].is(work.kind, work.id, subject.provider)) return `${route.action} resumes ${SUBJECTS[known.subject].named}, which ${subject.subject || 'this subject'} is not`;
     const own = known.subject === 'ticket' ? work.id.slice('ticket:'.length) : known.keyed === 'record' ? work.id : null;

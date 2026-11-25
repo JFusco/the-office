@@ -70,6 +70,7 @@ test('Node startup preserves a running owner, releases failed-start locks and st
       meanMS:expect.any(Number),medianMS:expect.any(Number),p99MS:expect.any(Number),maxMS:expect.any(Number),
     });
     const html=await request(`${base}/`);expect(html.headers.get('content-type')).toContain('text/html');expect(html.headers.get('cache-control')).toBe('no-store');
+    expect(html.headers.get('keep-alive')?.split(',').map(value => value.trim())).toContain('timeout=65');
     expect((await request(`${base}/api/office`,{headers:{Origin:'https://example.invalid'}})).status).toBe(403);
     const stream=await request(`${base}/api/events?project=brain`);expect(stream.headers.get('content-type')).toBe('text/event-stream');
     reader=stream.body!.getReader();expect(new TextDecoder().decode((await wait(reader.read(),'first SSE snapshot')).value)).toContain('event: snapshot');await wait(reader.cancel(),'SSE cancellation');reader=undefined;

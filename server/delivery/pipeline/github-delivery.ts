@@ -46,6 +46,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Store } from '../../store/store';
 import type { Engine } from '../../scheduling/engine';
+import type { DependencyStores } from './dependencies';
 import { stageRole } from './stage-roles';
 import type { TicketJob, StageResult, Role } from '../../../src/shared';
 import { nextJobStage } from './approach';
@@ -117,7 +118,7 @@ export class GitHubDelivery {
     async approveMerge(key: string, head: string) { return approveMerge.call(this, key, head); }
     async reconcileBaseUpdate(key: string) { return reconcileBaseUpdate.call(this, key); }
     async reconcileCloseout(key: string) { return closeout.reconcileCloseout.call(this, key); }
-    async observe() { return observe.call(this); }
+    async observe(dependencyStores?: () => DependencyStores) { return observe.call(this, dependencyStores); }
     async queueConflictRepair(key: string, reason: 'conflicts' | 'ci' = 'conflicts') { return queueConflictRepair.call(this, key, reason); }
     async queueCIRepair(job: TicketJob) { return queueCIRepair.call(this, job); }
     async recoverMergeCI(job: TicketJob) { return recoverMergeCI.call(this, job); }

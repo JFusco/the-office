@@ -15,6 +15,7 @@ import { ctoInputRecovered } from './cto-input-resolution';
 import { isSavedPlanFollowup } from '../../src/conversations/saved-plan-followup';
 import { ownerStepItems, sameOwnerSteps } from './owner-step-items';
 import { metadataParkAction } from './metadata-park-action';
+import { capabilityBlockedReviews, latestReviews } from './capability-blocked';
 export function conversationResolved(state: OfficeSnapshot, message: TeamMessage): boolean {
     return !!message.resolvedBy || ctoInputRecovered(state, message) || state.messages.some(reply => reply.actionId === `message:${message.id}` && reply.from === 'pm' && reply.status === 'answered' &&
         reply.receipts.every(receipt => receipt.verified && !receipt.uncertain) &&
@@ -74,8 +75,8 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: im
     for (const run of state.maintenance?.runs || [])
         if (run.blockerFollowup && ['blocked', 'interrupted'].includes(run.blockerFollowup.status))
             item(`maintenance-blocker:${run.id}`, 'Read back the source repair handoff', run.blockerFollowup.detail, 'pm');
-    const latest = [...new Map((state.coordination?.listener.reviews || []).map(r => [r.key, r])).values()];
-    const capabilityBlocked = latest.filter(r => r.status === 'blocked' && !r.retry?.nextAt && !state.coordination?.jobs?.some(j => j.key === r.key && j.pr && j.status !== 'cancelled') && /session.*(?:inventory|read|visibility)|task.claim/i.test(r.detail) && /unavailable|missing|lacks|not available/i.test(r.detail) && !awaitingRepair('intake', r.id));
+    const latest = latestReviews(state);
+    const capabilityBlocked = capabilityBlockedReviews(state, latest, id => awaitingRepair('intake', id));
     if (capabilityBlocked.length)
         item('ownership-capability', 'Office cannot check other active sessions', `New development is paused for ${capabilityBlocked.map(r => r.key).join(', ')} because the Office worker cannot read current Codex/Claude session ownership. This is an Office capability blocker, not a request for merge approval. Existing linked PRs continue through Sam.\n${capabilityBlocked.map(r => `${r.key}: ${r.detail}`).join('\n')}`, 'pm');
     for (const r of latest)

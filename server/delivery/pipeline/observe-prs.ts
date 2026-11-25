@@ -14,11 +14,12 @@ import { resumeProviderReviews } from '../parking/resume-provider-review';
 import { observeMetadataParks } from '../parking/observe-metadata-parks';
 import { queueMergeNotice } from '../../conversations/notifications';
 import type { GitHubDelivery } from './github-delivery';
+import type { DependencyStores } from './dependencies';
 
-export async function observe(this: GitHubDelivery) {
+export async function observe(this: GitHubDelivery, dependencyStores?: () => DependencyStores) {
     await retireInactiveDeliveries(this);
     await retireExternalDeliveries(this);
-    await settleOwnerMergedStopped(this);
+    await settleOwnerMergedStopped(this, dependencyStores);
     await resumeProviderReviews(this);
     await observeMetadataParks(this);
     await restartStoppedWriters(this);

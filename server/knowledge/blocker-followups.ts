@@ -10,9 +10,12 @@ import { enqueueRequest } from '../scheduling/requests';
 import { investigationResolution } from '../it/investigations/ledger';
 import { nativeDeliveryResolved } from '../it/native-delivery-resolved';
 import { conversationResolved } from '../conversations/outbox';
-import { conversationReadbackReady, uncertainConversations, queueConversationReadback } from '../conversations/conversation-recovery';
+import { conversationReadbackReady, uncertainConversations, queueConversationReadback, pendingReadback, readbackEnding } from '../conversations/conversation-recovery';
 import { holdReason } from '../office/project-holds';
 import { captureLearning, learningDigest } from './learning-events';
+import { bindHandoff, harperRequests, legacyMaterialKey, materialKey, nextHandoffId, openHandoff, settleHandoffs, SOURCE_MISSING, type HandoffEvidence } from './handoff-admission';
+import { temporaryReadFailure } from '../scheduling/read-retries';
+import { unsettledEffects } from '../operations/unsettled-effects';
 
 /** Positive binding, not a prose tag, grants only read-only diagnosis. */
 export function harperHandoff(store: Store, message: TeamMessage): boolean {
@@ -36,13 +39,17 @@ function heldForRepair(store: Store, item: BlockerFollowup): boolean {
     const about = followupRecord(store, item), now = store.clock.now();
     return !!about && !!repairFreeze(store.state, about, now, freezeReads(store, now));
 }
-function handoff(store: Store, item: BlockerFollowup, original?: TeamMessage) {
-    const id = `harper-followup:${item.id}:${learningDigest(item.nextAction)}`;
-    if (item.handoffId === id || store.state.messages.some(message => message.id === id) || store.state.paused || store.state.draining || holdReason(store.project, item.key)) return;
+/** `key`: what the action due is about (`handoff-admission.ts`). One open hand-off per follow-up, admitted only when that changed. */
+function handoff(store: Store, item: BlockerFollowup, evidence: HandoffEvidence, key: string, original?: TeamMessage) {
+    // Nothing new is due; a follow-up whose earlier hand-offs predate the key waits until one can be recorded.
+    if (item.handoffMaterialKey === key || item.handoffMaterialKey === undefined && harperRequests(item, store.state.messages).length) return;
+    // While the hand-off is open the last admitted key stands, whatever is observed meanwhile.
+    if (openHandoff(item, evidence) || store.state.paused || store.state.draining || holdReason(store.project, item.key)) return;
     // What a harness repair in progress covers is not handed to Morgan for diagnosis; the follow-up record itself is kept.
     if (heldForRepair(store, item)) return;
     if (original && !conversationReadbackReady(store, original)) return;
-    item.handoffId = id; (item.handoffIds ??= []).push(id);
+    const id = nextHandoffId(item, store.state.messages);
+    bindHandoff(item, id); (item.handoffIds ??= []).push(id); item.handoffMaterialKey = key;
     store.state.messages.push({ id, requestId: id, from: 'knowledge', to: 'pm', ticket: item.key,
         actionId: original ? `message:${original.id}` : `harper:${item.id}`, body: `Harper requests READ ONLY diagnosis and source read-back. ${item.nextAction}\nSource: ${JSON.stringify(item.source)}\nDo not retry writes, change goals, pickup, notes, or send messages. Preserve original failure evidence. ${original ? `Verify EVERY original effect, and return conversation-readback targeting ${original.id} only when accounted for.` : 'Report the exact remaining dependency and owner. A diagnosis does not resolve the source.'}`,
         status: 'queued', createdAt: store.clock.now().toISOString(), sessionId: '', recheck: false, error: '', recipients: [], receipts: [] });
@@ -53,13 +60,19 @@ export function reconcileBlockerFollowups(store: Store): void {
     if (!knowledge) return;
     const before = JSON.stringify([knowledge.followups, knowledge.unblockBriefs, store.state.messages.length]), now = store.clock.now().toISOString();
     const records = knowledge.followups ??= [], observed = new Set<string>();
-    const observe = (source: LearningSubject, key: string, detail: string, disposition: BlockerFollowup['disposition'], proof: unknown, refs: Partial<BlockerFollowup> = {}, teaches = true) => {
+    const evidence: HandoffEvidence = { projectId: store.project.id, messages: store.state.messages, claims: store.activeClaims(), workLog: store.state.workLog || [], unsettled: unsettledEffects(store) };
+    // Before any pending lookup or admission, and whether or not Harper may admit: one hand-off per follow-up stays open.
+    const settled = settleHandoffs(records, evidence);
+    const observe = (source: LearningSubject, key: string, detail: string, disposition: BlockerFollowup['disposition'], proof: unknown, refs: Partial<BlockerFollowup> = {}, teaches = true, ownerStatus?: BlockerFollowup['history'][number]['ownerStatus']) => {
         const id = `${source.kind}:${source.id}`, fingerprint = learningDigest([disposition, proof, detail]);
         observed.add(id);
         let item = records.find(item => item.id === id);
         if (!item) { item = { id, source, key, fingerprint: '', owner: 'Morgan', nextAction: detail, evidence: [], disposition, createdAt: now, updatedAt: now, history: [] }; records.push(item); }
+        const last = item.history.at(-1);
+        // The first observation since owner status was recorded is the same observation: filled in, not a transition.
+        if (item.fingerprint === fingerprint && ownerStatus && last?.fingerprint === fingerprint && !last.ownerStatus) last.ownerStatus = ownerStatus;
         if (item.fingerprint !== fingerprint) {
-            item.history.push({ at: now, disposition, fingerprint, detail }); item.updatedAt = now;
+            item.history.push({ at: now, disposition, fingerprint, detail, ...(ownerStatus ? { ownerStatus } : {}) }); item.updatedAt = now;
             Object.assign(item, { fingerprint, disposition, nextAction: detail, ...refs });
             if (disposition === 'confirmed') item.resolvedAt = now; else delete item.resolvedAt;
             item.evidence = [{ kind: 'learning', ref: id, url: '', detail: JSON.stringify(proof).slice(0, 1500) }];
@@ -69,18 +82,22 @@ export function reconcileBlockerFollowups(store: Store): void {
         }
         // Checked every pass: a retrospective accepted after confirmation may still write a brief.
         if (item.disposition === 'confirmed') clearUnblockBrief(knowledge, source);
+        // Hand-offs admitted before keys were recorded get one, once, whatever the follow-up's state now.
+        if (item.handoffMaterialKey === undefined) { const legacy = legacyMaterialKey(item, store.state.messages, temporaryReadFailure); if (legacy !== undefined) item.handoffMaterialKey = legacy; }
         return item;
     };
+    const due = (item: BlockerFollowup) => materialKey(item, item.nextAction, temporaryReadFailure);
     for (const entry of store.state.it?.investigations || []) {
         const proof = investigationResolution(store, entry), recovered = !!proof?.receipt.startsWith(PROVIDER_RECOVERED), limitRefusal = investigatesLimitRefusal(store, entry);
         // A provider that works again taught nothing about the Office: the follow-up closes without a lesson.
         const item = observe({ kind: 'investigation', id: entry.id }, entry.source.ticket, recovered ? 'The provider that refused this run is working again; the refused run was not repeated.' : proof ? proof.kind === 'superseded' ? 'A verified replacement superseded this incident; original outcome remains unknown.' : 'Original source has verified resolution evidence.' : entry.lastError || entry.report?.summary || 'Ellis owns source diagnosis; wait for verified recovery.', proof?.kind || (entry.status === 'blocked' ? 'needs-input' : 'unresolved'), proof || { status: entry.status, attempts: entry.attempts }, { investigationId: entry.id, owner: proof ? 'Ellis' : entry.status === 'blocked' ? 'Morgan' : 'Ellis' }, !limitRefusal);
-        if (item.disposition === 'needs-input' && knowledge.enabled) handoff(store, item);
+        if (item.disposition === 'needs-input' && knowledge.enabled) handoff(store, item, evidence, due(item));
     }
     for (const [id, recovery] of Object.entries(store.state.it?.recoveries || {})) {
         const positive = nativeDeliveryResolved(store, id, recovery.requestId);
-        const item = observe({ kind: 'recovery', id }, '', recovery.detail, positive ? 'confirmed' : recovery.status === 'resolved' ? 'unknown' : recovery.status === 'needs-human' ? 'needs-input' : 'unresolved', { requestId: recovery.requestId, status: recovery.status, positive }, { recoveryId: id, requestId: recovery.requestId, owner: recovery.status === 'needs-human' ? 'Morgan' : 'Ellis' });
-        if (item.disposition === 'needs-input' && knowledge.enabled) handoff(store, item);
+        const item = observe({ kind: 'recovery', id }, '', recovery.detail, positive ? 'confirmed' : recovery.status === 'resolved' ? 'unknown' : recovery.status === 'needs-human' ? 'needs-input' : 'unresolved', { requestId: recovery.requestId, status: recovery.status, positive }, { recoveryId: id, requestId: recovery.requestId, owner: recovery.status === 'needs-human' ? 'Morgan' : 'Ellis' }, true, recovery.status);
+        // The same raw diagnostic IT chose its advice by (`server/it/delivery-recoveries.ts`).
+        if (item.disposition === 'needs-input' && knowledge.enabled) handoff(store, item, evidence, materialKey(item, recovery.detail, temporaryReadFailure));
     }
     for (const job of store.state.coordination?.jobs || []) {
         const old = records.find(item => item.source.kind === 'job' && item.source.id === job.id);
@@ -98,11 +115,13 @@ export function reconcileBlockerFollowups(store: Store): void {
     for (const original of store.state.messages.filter(message => message.from === 'human' && ['failed', 'interrupted'].includes(message.status))) {
         const resolved = conversationResolved(store.state, original);
         const item = observe({ kind: 'message', id: original.id }, original.ticket, `Reconcile the original conversation: ${original.error}`, resolved ? 'confirmed' : 'unresolved', { resolved, error: original.error });
-        const pending = store.state.messages.find(message => message.actionId === `message:${original.id}` && ['queued', 'working'].includes(message.status));
-        if (pending) item.handoffId = pending.id;
-        else if (!resolved && knowledge.enabled) {
-            if (uncertainConversations(store).some(message => message.id === original.id) && conversationReadbackReady(store, original)) item.handoffId = queueConversationReadback(store, original).id;
-            else handoff(store, item, original);
+        const pending = pendingReadback(store, original);
+        if (pending) bindHandoff(item, pending.id);
+        // A read-back Harper bound for it is still ending: nothing new until its worker has stopped.
+        else if (!resolved && knowledge.enabled && !readbackEnding(store, original)) {
+            // One IT already tracks is read back through IT's recovery, so its backoff and budget apply.
+            if (uncertainConversations(store).some(message => message.id === original.id)) { if (!store.state.it?.recoveries[`conversation:${original.id}`] && conversationReadbackReady(store, original)) bindHandoff(item, queueConversationReadback(store, original).id); }
+            else handoff(store, item, evidence, due(item), original);
         }
     }
     for (const ticket of store.state.tickets) {
@@ -110,27 +129,28 @@ export function reconcileBlockerFollowups(store: Store): void {
         const completed = ticket.pilot && ticket.stage === 'complete';
         const item = observe({ kind: 'ticket', id: ticket.runId }, ticket.key, completed ? 'Owning CEC pipeline verified staging completion.' : ticket.parked?.reason || 'CEC source no longer blocked; recovery proof unknown.', completed ? 'confirmed' : ticket.parked ? 'unresolved' : 'unknown', { completed, parked: ticket.parked?.marker });
         // An unparked ticket is progressing again; it needs no diagnosis merely because completion is unproved.
-        if (ticket.parked && knowledge.enabled) handoff(store, item);
+        if (ticket.parked && knowledge.enabled) handoff(store, item, evidence, due(item));
     }
     for (const run of store.state.maintenance?.runs || []) {
         if (!['blocked', 'interrupted'].includes(run.status) && !records.some(item => item.source.kind === 'maintenance' && item.source.id === run.id)) continue;
         const replacement = store.state.maintenance?.runs.find(other => other.id !== run.id && other.supersedes?.includes(run.id));
         const item = observe({ kind: 'maintenance', id: run.id }, '', replacement ? `Maintenance owner superseded this run with ${replacement.id}; original outcome remains unverified. ${run.error}` : run.error || 'Maintenance effects need source read-back; a later run does not resolve this one.', replacement ? 'superseded' : ['blocked', 'interrupted'].includes(run.status) ? 'unresolved' : 'unknown', { status: run.status, error: run.error, replacement: replacement?.id }, { owner: 'Morgan' });
-        if (item.disposition === 'unresolved' && knowledge.enabled) handoff(store, item);
+        if (item.disposition === 'unresolved' && knowledge.enabled) handoff(store, item, evidence, due(item));
     }
     for (const feature of store.state.features || []) {
         if (feature.status !== 'blocked' && !records.some(item => item.source.kind === 'feature' && item.source.id === feature.id)) continue;
         const item = observe({ kind: 'feature', id: feature.id }, '', feature.detail, feature.status === 'blocked' ? 'needs-input' : 'unknown', { phase: feature.phase, status: feature.status }, { owner: 'Morgan' });
-        if (item.disposition === 'needs-input' && knowledge.enabled) handoff(store, item);
+        if (item.disposition === 'needs-input' && knowledge.enabled) handoff(store, item, evidence, due(item));
     }
     for (const improvement of knowledge.improvements || []) {
         if (!['needs-input', 'uncertain'].includes(improvement.status)) continue;
         const item = observe({ kind: 'orchestration', id: improvement.id }, improvement.providerId || '', improvement.detail, 'needs-input', { digest: improvement.digest, effects: improvement.effectIds, status: improvement.status }, { owner: 'Morgan', improvementId: improvement.id });
-        if (knowledge.enabled) handoff(store, item);
+        if (knowledge.enabled) handoff(store, item, evidence, due(item));
     }
     for (const item of records) if (!observed.has(item.id)) {
         // Losing a record is not resolution. Preserve its earlier proof as history.
-        observe(item.source, item.key, 'Original source is no longer retained; outcome unknown.', 'unknown', { sourceMissing: true });
+        observe(item.source, item.key, SOURCE_MISSING.detail, 'unknown', SOURCE_MISSING.proof);
     }
-    if (before !== JSON.stringify([knowledge.followups, knowledge.unblockBriefs, store.state.messages.length])) store.save();
+    // Settling changes only existing rows, which the comparison cannot see; the batch is saved once either way.
+    if (settled || before !== JSON.stringify([knowledge.followups, knowledge.unblockBriefs, store.state.messages.length])) store.save();
 }

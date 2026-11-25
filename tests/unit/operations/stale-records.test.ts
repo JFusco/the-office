@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { closedTicketReport, closedTicketRequest, finishedJobsRequest, retiredFollowup, settledNotice, supersededCheckpoint, supersededDeliveryRequest, supersededEvidenceRequest, supersededRun, touchesUnsettled } from '../../../server/operations/stale-records';
+import { closedTicketReport, closedTicketRequest, finishedJobsRequest, retiredFollowup, settledNotice, supersededCheckpoint, supersededDeliveryRequest, supersededEvidenceRequest, supersededHandoff, supersededRun, touchesUnsettled } from '../../../server/operations/stale-records';
 
 test('a stopped recovery request is history once its ticket is closed, never while it is open or after it completed', () => {
     const tickets = [{ key: 'GH-310', status: 'closed' }, { key: 'GH-67', status: 'open' }];
@@ -109,4 +109,14 @@ test('a failed goal evidence request is history only after a later request cover
     expect(supersededEvidenceRequest(failed, [failed, ask('b', 'answered', '2026-11-02T22:00:00Z', { id: 'reply-uuid', from: 'pm' })])).toBeUndefined();
     expect(supersededEvidenceRequest(failed, [failed, ask('b', 'answered', '2026-11-02T22:00:00Z', { id: 'pm-report:goal-evidence:b', from: 'pm' })])).toBeUndefined();
     expect(supersededEvidenceRequest({ id: 'goal-evidence:a', from: 'cto', status: 'failed', createdAt: '2026-11-01T22:00:00Z' } as never, [ask('b', 'answered', '2026-11-02T22:00:00Z')])).toBeUndefined();
+});
+
+test('a settled Harper duplicate is known by its failed status, Harper-to-Morgan roles and saved superseding id, never by its wording', () => {
+    const settled = { from: 'knowledge', to: 'pm', status: 'failed', supersededByHandoffId: 'current' } as const;
+    expect(supersededHandoff(settled)).toBe(true);
+    expect(supersededHandoff({ ...settled, supersededByHandoffId: undefined })).toBe(false);
+    expect(supersededHandoff({ ...settled, status: 'queued' })).toBe(false);
+    expect(supersededHandoff({ ...settled, status: 'interrupted' })).toBe(false);
+    expect(supersededHandoff({ ...settled, from: 'it' })).toBe(false);
+    expect(supersededHandoff({ ...settled, to: 'it' })).toBe(false);
 });
