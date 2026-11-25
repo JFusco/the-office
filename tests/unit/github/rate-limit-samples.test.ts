@@ -31,6 +31,29 @@ test('each reset window reports what was used between its first and last sample'
     expect(f.samples.report().windows.find(w => w.resource === 'core')).toEqual({ resource: 'core', reset: new Date(RESET * 1000).toISOString(), limit: 5000, firstObservedAt: new Date(T0).toISOString(), lastObservedAt: new Date(T0 + 600_000).toISOString(), firstUsed: 100, lastUsed: 250, consumed: 150, samples: 2 });
 });
 
+test('a delayed sample cannot lower usage in a reset window or supersede a newer reset window', async () => {
+    let release!: (body: string) => void;
+    const f = fixture([async () => resources(100), () => new Promise(resolve => { release = resolve; }), async () => resources(130)]);
+    const header = (used: number, reset: number) =>
+        `HTTP/2.0 200 OK\nX-RateLimit-Resource: core\nX-RateLimit-Limit: 5000\nX-RateLimit-Used: ${used}\nX-RateLimit-Remaining: ${5000 - used}\nX-RateLimit-Reset: ${reset}\n\n`;
+    await f.samples.sample();
+    f.at(60); const delayed = f.samples.sample();
+    f.at(61); f.samples.headers(header(120, RESET));
+    f.at(62); release(resources(90));
+    await delayed;
+    const report = f.samples.report(), latestAt = new Date(T0 + 61_000).toISOString();
+    expect(report.core).toMatchObject({ used: 120, observedAt: latestAt, from: 'headers' });
+    expect(report.windows.find(w => w.resource === 'core')).toMatchObject({
+        firstUsed: 100, lastUsed: 120, consumed: 20,
+        firstObservedAt: new Date(T0).toISOString(), lastObservedAt: latestAt, samples: 2,
+    });
+
+    f.at(119); f.samples.headers(header(5, RESET + 3600));
+    f.at(120); await f.samples.sample();
+    expect(f.samples.report().core).toMatchObject({ used: 5, reset: new Date((RESET + 3600) * 1000).toISOString() });
+    expect(f.samples.report().windows.filter(w => w.resource === 'core').map(w => w.consumed)).toEqual([30, 0]);
+});
+
 test('a failed or unreadable sample keeps the last reading and records only why, never the text', async () => {
     const f = fixture([async () => resources(5), async () => { throw new Error('gh exited 1: token ghp_secret rejected'); }, async () => 'not json']);
     await f.samples.sample(); f.at(60); await f.samples.sample();

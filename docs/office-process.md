@@ -847,8 +847,9 @@ It only measures: nothing is deferred, refused or reordered by it, and the work 
   the time observed. Headers on an `--include` response count for the resource they name. A failed sample
   keeps the last reading and records only that it failed.
 - **Report.** `/api/health` carries a `github` block: the service instance, when collection started, the
-  covered interval and whether it spans the full hour, totals, sources with their families, the latest
-  core and GraphQL readings, and what was used within each reset window seen. It is read from memory, so
+  covered interval and whether it spans the full hour, totals, sources with their families, and the same
+  counts by configured project ID. Calls without a project scope appear under `office`. It also reports
+  the latest core and GraphQL readings and what was used within each reset window seen. It is read from memory, so
   reading it calls no provider. A restart starts a new ledger: the first hour after a deploy is partial.
 
 ### Deployment fence and admission journal

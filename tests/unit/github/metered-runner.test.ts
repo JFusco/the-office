@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { CallLedger } from '../../../server/github/call-ledger';
+import { noCalls } from '../../../server/github/call-outcome';
 import { withGitHubSource, type Runner } from '../../../server/github/call-scope';
 import { meteredRunner } from '../../../server/github/metered-runner';
 import { RateLimitSamples } from '../../../server/github/rate-limit-samples';
@@ -63,4 +64,29 @@ test('rate-limit headers on an --include response are kept for the resource they
     const response = 'HTTP/2.0 200 OK\r\nX-Ratelimit-Resource: core\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Used: 40\r\nX-Ratelimit-Remaining: 4960\r\nX-Ratelimit-Reset: 1795000000\r\n\r\n{}';
     await meteredRunner(async () => response, ledger, quota)('gh', ['api', '-i', 'repos/a/b/pulls/1']);
     expect(quota.report().core).toMatchObject({ limit: 5000, used: 40, remaining: 4960, from: 'headers' });
+});
+
+test.each([false, true])('meters a chunked 304 and preserves the caller outcome (nonzero exit: %s)', async nonzero => {
+    const ledger = new CallLedger(), quota = new RateLimitSamples(async () => '');
+    const chunks = ['HTTP/2.0 30', '4 Not Modified\r\nX-RateLimit-Res', 'ource: core\r\nX-RateLimit-Limit: 5000\r\nX-RateLimit-Used: 40\r\n',
+        'X-RateLimit-Remaining: 4960\r\nX-RateLimit-Reset: 1795000000\r\nX-Fixture: private-header\r\n\r', '\n'];
+    const diagnostic = 'No provider diagnostic was returned.';
+    const error = new CommandFailure(`gh exited 1: ${diagnostic}`, 'other', true);
+    const body = chunks.join(''), h = hooks();
+    const raw: Runner = async (_program, _args, options = {}) => {
+        options.onSpawn?.(4242);
+        for (const chunk of chunks) options.onOutput?.('stdout', chunk);
+        if (nonzero) {
+            options.onOutput?.('stderr', diagnostic);
+            throw error;
+        }
+        return body;
+    };
+    const result = meteredRunner(raw, ledger, quota)('gh', ['api', '--include', 'repos/a/b/pulls/1', '-H', 'If-None-Match: "fixture"'], h.options);
+    if (nonzero) await expect(result).rejects.toBe(error);
+    else await expect(result).resolves.toBe(body);
+    expect(h.seen).toEqual({ spawns: [4242], output: nonzero ? [...chunks, diagnostic] : chunks });
+    expect(ledger.report().totals).toEqual({ ...noCalls(), invocations: 1, attempts: 1, responses: 1, revalidations: 1 });
+    expect(quota.report().core).toMatchObject({ limit: 5000, used: 40, remaining: 4960, from: 'headers' });
+    expect(JSON.stringify(quota.report())).not.toContain('private-header');
 });

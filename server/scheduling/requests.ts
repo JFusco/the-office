@@ -37,7 +37,7 @@ import { command } from '../workers/process';
 import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
 import { recordAdmission } from '../store/admission-journal';
 import { requireBoundCheckpointRun } from '../incidents/repair/bound-checkpoint-run';
-import { withGitHubSource } from '../github/call-scope';
+import { currentGitHubSource, withGitHubSource } from '../github/call-scope';
 import { itRecoveryRequest } from '../it/recovery-request';
 const actions = new Set(['admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'check-lesson-issues', 'file-lesson-issue']);
 export const deterministicActions = new Set([ 'retire-incomplete-history', 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'check-lesson-issues', 'file-lesson-issue']);
@@ -75,8 +75,8 @@ export function enqueueCloseoutReconciliation(store:Store,key:string,head:string
 }
 export async function executeRequest(store: Store, engine: Engine, coordinator: Coordinator, request: HarnessRequest, checkIT?: () => Promise<void>): Promise<void> {
     // A request IT saved as its recovery is IT's work, whatever it calls (server/github/call-scope.ts).
-    const run = () => runRequest(store, engine, coordinator, request, checkIT);
-    return itRecoveryRequest(store.state, request.id) ? withGitHubSource('it', run, true) : run();
+    const pin = itRecoveryRequest(store.state, request.id);
+    return withGitHubSource(pin ? 'it' : currentGitHubSource(), () => runRequest(store, engine, coordinator, request, checkIT), { project: store.project.id, pin });
 }
 async function runRequest(store: Store, engine: Engine, coordinator: Coordinator, request: HarnessRequest, checkIT?: () => Promise<void>): Promise<void> {
     if (request.status !== 'queued')
@@ -143,7 +143,10 @@ async function runRequest(store: Store, engine: Engine, coordinator: Coordinator
                 await engine.observe();
                 break;
             case 'observe-dependencies':
-                await observePrerequisites([...coordinator.state.listener.reviews.flatMap(review => review.prerequisites || []), ...(coordinator.state.jobs || []).flatMap(job => job.prerequisites || [])], coordinator.dependencyStores());
+                await withGitHubSource('dependency-refresh', () => observePrerequisites(
+                    [...coordinator.state.listener.reviews.flatMap(review => review.prerequisites || []), ...(coordinator.state.jobs || []).flatMap(job => job.prerequisites || [])],
+                    coordinator.dependencyStores(),
+                ));
                 break;
             case 'poll':
                 await coordinator.poll();

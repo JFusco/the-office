@@ -1,6 +1,10 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { currentGitHubSource, type Runner } from '../../../server/github/call-scope';
 import { ServiceHealthChecks } from '../../../server/office/service-health';
+import { startServiceTicks } from '../../../server/office/service-ticks';
+import { apiRoute } from '../../../server/office/http/api-routes';
+import { CEC } from '../../../server/office/config';
+import { ITSpecialist } from '../../../server/it/it-specialist';
 import { Offices } from '../../../server/scheduling/offices';
 import { enqueueRequest, executeRequest } from '../../../server/scheduling/requests';
 import type { OfficeSnapshot } from '../../../src/shared';
@@ -9,7 +13,7 @@ const T0 = Date.parse('2026-11-24T12:00:00.000Z'), MINUTE = 60_000;
 const board = JSON.stringify({ data: { user: { projectV2: { title: 'Board', url: 'https://github.com/users/JFusco/projects/8', shortDescription: '', readme: '', fields: { nodes: [{ name: 'Status', options: [{ name: 'Ready' }] }], pageInfo: { hasNextPage: false } }, items: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } } } });
 const issue = (number: number) => ({ number, title: `Issue ${number}`, state: 'open', html_url: `https://github.com/JFusco/brain/issues/${number}`, updated_at: '2026-11-24T11:00:00Z' });
 const hosts = JSON.stringify({ hosts: { 'github.com': [{ active: true, state: 'success', login: 'fixture' }] } });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 function close(office: Offices) { office.dispose(); for (const { store } of office.entries.values()) store.close(); office.control.db.close(); }
 
 /** Simulated `gh` children. Each records the source it ran under; `hold` keeps one call open until `release`. */
@@ -24,6 +28,7 @@ function provider(hold?: RegExp) {
         options.onSpawn?.(4200 + calls.length);
         if (hold?.test(call)) await held;
         const out = args[0] === 'auth' ? hosts : args[1] === 'graphql' ? board
+            : args[1] === 'repos/JFusco/brain/pulls/419' ? '{"number":419,"state":"closed","merged":true,"merge_commit_sha":"fixture"}'
             : /issues\?state=open&assignee/.test(call) ? '[[]]'
             : /brain\/issues\?state=open/.test(call) ? JSON.stringify([[issue(1)], [issue(2)]])
             : /issues\?state=open|pulls\?state=open/.test(call) ? '[[]]'
@@ -58,6 +63,13 @@ test('the real monitor and workflow callback are counted apart while a second pr
             pipelines: { workflows: [1, 1], 'workflow-runs': [1, 1] },
             assignments: { issues: [1, 1], graphql: [1, 1] },
         });
+        const { projects, totals } = office.githubCalls.report();
+        expect(projects.map(({ project, invocations, sources }) => [project, invocations, sources.map(s => [s.source, s.invocations])])).toEqual([
+            ['brain', 6, [['monitor', 4], ['pipelines', 2]]],
+            ['cms-field-vocabulary', 2, [['assignments', 2]]],
+        ]);
+        for (const key of Object.keys(totals) as (keyof typeof totals)[])
+            expect(projects.reduce((sum, row) => sum + row[key], 0), key).toBe(totals[key]);
         expect(brain.store.state.pipelines?.items.map(item => item.name)).toEqual(['CI']);
 
         // The GitHub login probe through the Office runner: opaque, labelled health, its output forwarded to the check.
@@ -69,7 +81,7 @@ test('the real monitor and workflow callback are counted apart while a second pr
 
         // An hour later every count has expired, and the hour is fully covered.
         vi.setSystemTime(T0 + 61 * MINUTE);
-        expect(office.githubCalls.report()).toMatchObject({ sources: [], totals: { invocations: 0 }, window: { complete: true, coveredMinutes: 60 } });
+        expect(office.githubCalls.report()).toMatchObject({ sources: [], projects: [], totals: { invocations: 0 }, window: { complete: true, coveredMinutes: 60 } });
     } finally { close(office); }
 
     // A restarted Office starts a new ledger: its report covers only the time since it started.
@@ -97,10 +109,74 @@ test('a refresh IT saved as its recovery is counted once, as IT’s, through the
         expect(made).toBeGreaterThanOrEqual(5);
         expect(p.calls.every(c => c.source === 'it')).toBe(true);
         expect(office.githubCalls.report().sources.map(s => [s.source, s.invocations])).toEqual([['it', made]]);
+        expect(office.githubCalls.report().projects).toMatchObject([{ project: 'brain', invocations: made, sources: [{ source: 'it', invocations: made }] }]);
 
         // An ordinary refresh keeps the labels of the work it runs; its workflows' runs are already known.
         const next = enqueueRequest(brain.store, 'refresh');
         await office.githubCalls.bind(() => executeRequest(brain.store, brain.engine, coordinator, next));
         expect(office.githubCalls.report().sources.map(s => [s.source, s.invocations])).toEqual([['it', made], ['monitor', 4], ['pipelines', 1]]);
     } finally { close(office); }
+});
+
+test('a queued dependency observation counts its provider read under dependency refresh', async () => {
+    const p = provider(), office = new Offices(p.raw);
+    try {
+        const { store, engine, coordinator } = office.get('brain');
+        const owner = coordinator!;
+        owner.state.listener.reviews = [{
+            id: 'review', key: 'GH-1', summary: 'Review', url: '', queuedAt: '', startedAt: '', endedAt: '',
+            status: 'held', detail: '', owner: '', prerequisites: [{
+                target: { projectId: 'brain', kind: 'pr', id: '419' },
+                condition: 'pr-merged', evidence: 'Fixture', observedAt: '',
+            }],
+        }];
+        const request = enqueueRequest(store, 'observe-dependencies');
+        await office.githubCalls.bind(() => executeRequest(store, engine, owner, request));
+
+        expect(request.status).toBe('completed');
+        expect(owner.state.dependencyObservations).toMatchObject([{ exists: true, complete: true, error: '' }]);
+        expect(families(office)).toEqual({ 'dependency-refresh': { pull: [1, 1] } });
+        expect(office.githubCalls.report().projects).toMatchObject([{ project: 'brain', invocations: 1 }]);
+    } finally { close(office); }
+});
+
+test.each([false, true])('health stays busy for a quota sample across the fence (sample fails: %s)', async fails => {
+    vi.useFakeTimers({ now: T0 });
+    vi.stubEnv('OFFICE_NO_POLL', undefined);
+    let finishSample!: () => void;
+    const sample = new Promise<string>((resolve, reject) => {
+        finishSample = () => {
+            if (fails) reject(new Error('sample failed'));
+            else resolve('{"resources":{"core":{"used":9,"remaining":4991,"limit":5000,"reset":1795000000}}}');
+        };
+    });
+    const raw = vi.fn<Runner>(async (_program, _args, options) => {
+        options?.onSpawn?.(4200);
+        return sample;
+    });
+    const offices = new Offices(raw), serviceHealth = new ServiceHealthChecks();
+    const itSpecialist = new ITSpecialist(offices, serviceHealth);
+    vi.spyOn(offices, 'pump').mockResolvedValue(undefined);
+    vi.spyOn(offices, 'tick').mockResolvedValue(undefined);
+    vi.spyOn(itSpecialist, 'tick').mockResolvedValue(undefined);
+    const loadedRevision = { hash: 'fixture', manifest: [] };
+    const context = { offices, itSpecialist, loadedRevision, serviceHealth, ...offices.get('brain'), project: 'brain', snapshotText: () => '', vite: null, config: { projects: [], cec: CEC, holds: {} } };
+    const url = new URL('http://127.0.0.1:4318/api/health');
+    const health = async () => (await apiRoute(new Request(url), url, context))!.json();
+    const stop = offices.githubCalls.bind(() => startServiceTicks(context));
+    const token = 'synthetic-fence-token';
+    try {
+        expect(await health()).toMatchObject({ busy: false });
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(raw).toHaveBeenCalledTimes(1);
+        expect(raw).toHaveBeenCalledWith('gh', ['api', 'rate_limit'], expect.any(Object));
+        expect(offices.operations.count).toBe(1);
+        offices.fence.acquire(token, 'fixture');
+        expect(await health()).toMatchObject({ busy: true, fence: { status: 'held' } });
+        finishSample();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(await health()).toMatchObject({ busy: false, fence: { status: 'held' } });
+        await vi.advanceTimersByTimeAsync(MINUTE);
+        expect(raw).toHaveBeenCalledTimes(1);
+    } finally { stop(); offices.fence.release(token); close(offices); }
 });

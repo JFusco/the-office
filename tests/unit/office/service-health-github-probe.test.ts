@@ -28,6 +28,23 @@ test('with production executors the GitHub probe is metered once as health and n
     expect(calls.report().sources).toMatchObject([{ source: 'health', invocations: 1, opaque: 1, unknown: 1, families: [{ family: 'gh-auth' }] }]);
 });
 
+test.each([
+    { error: 'status code: 403 API rate limit exceeded', status: 'unknown', refusals: 1, failures: 0 },
+    { error: 'status code: 401 API rate limit exceeded', status: 'disconnected', refusals: 0, failures: 1 },
+])('meters the active host error reported by a successful auth status command ($status)', async ({ error, status, refusals, failures }) => {
+    const raw = async () => JSON.stringify({ hosts: {
+        'github.com': [
+            { active: false, state: 'error', error: 'HTTP 401' },
+            { active: true, state: 'error', login: 'fixture', error },
+        ],
+    } });
+    const calls = new GitHubCalls(raw);
+    const report = await new ServiceHealthChecks(undefined, calls.run).report([state]);
+    expect(report.services.find(s => s.id === 'github')).toMatchObject({ status });
+    expect(calls.report().sources).toMatchObject([{ source: 'health', invocations: 1, attempts: 1, opaque: 1, unknown: 1, refusals, failures }]);
+    expect(JSON.stringify(calls.report())).not.toContain(error);
+});
+
 test('one injected fake executor still runs every probe, the GitHub one included', async () => {
     const programs: string[] = [], leaf = children.length;
     const fake = async (program: string) => { programs.push(program); return program === 'curl' ? JSON.stringify({ status: { indicator: 'none', description: 'ok' }, components: [] }) : program === 'gh' ? JSON.stringify({ hosts: { 'github.com': [{ active: true, state: 'success', login: 'fixture' }] } }) : program === 'claude' ? '{"loggedIn":true}' : program === 'twg' ? '{"data":{"accountId":"a"}}' : '"id"'; };

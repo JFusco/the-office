@@ -42,7 +42,7 @@ export class GitHubMonitor {
     }catch(e){return {...previous,title:previous?.title||this.store.project.name,url:config.url,description:previous?.description||'',readme:previous?.readme||'',observedAt:previous?.observedAt||'',lanes:previous?.lanes||[],items:previous?.items||[],error:`GitHub Project read failed: ${String(e)}. ${/permission|forbidden|scope|403/i.test(String(e))?'Run gh auth refresh -h github.com -s project in your terminal, then recheck Projects access in the Office account.':'Retry the read-only project refresh; the last verified board is retained.'}`};}
   }
   /** Counted as `monitor` in the Office's GitHub call ledger, whoever asks for it. */
-  poll(){return withGitHubSource('monitor',()=>this.observe());}
+  poll(){return withGitHubSource('monitor',()=>this.observe(),{project:this.store.project.id});}
   private async observe(){
     if(this.polling)return;this.polling=true;
     const prior=this.store.state.github??={status:'idle',observedAt:'',error:'',issues:[],prs:[],runs:[]};

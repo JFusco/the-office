@@ -64,7 +64,8 @@ export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pic
             }
         }
         // The account's rate limits, read without spending quota: one sample for every project, at most once a minute.
-        if ([...offices.entries.values()].some(({ store }) => store.project.provider === 'github')) void offices.githubCalls?.quota.sample();
+        if ([...offices.entries.values()].some(({ store }) => store.project.provider === 'github'))
+            void offices.githubCalls?.quota.sample(() => offices.operations.begin());
     }, 5000);
     return () => { clearInterval(tick); clearInterval(incidentTick); clearInterval(itTick); clearInterval(checkpointTick); clearInterval(conversationTick); };
 }

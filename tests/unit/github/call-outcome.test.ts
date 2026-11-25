@@ -21,7 +21,8 @@ test('slurped pages are counted from the outer envelope before callers flatten i
 
 test('a high-level command is opaque whatever its result', () => {
     expect(succeeded(opaque, '{}')).toEqual(counts({ opaque: 1, unknown: 1 }));
-    expect(failed(opaque, failure('API rate limit exceeded for user ID 1. (HTTP 403)'))).toEqual(counts({ refusals: 1, opaque: 1, unknown: 1 }));
+    expect(failed(opaque, failure('API rate limit exceeded for user ID 1. (HTTP 403)'))).toEqual(counts({ attempts: 1, refusals: 1, opaque: 1, unknown: 1 }));
+    expect(failed(opaque, failure('Forbidden (HTTP 403)'))).toEqual(counts({ attempts: 1, failures: 1, opaque: 1, unknown: 1 }));
     expect(failed(opaque, failure('no pull requests found'))).toEqual(counts({ failures: 1, opaque: 1, unknown: 1 }));
 });
 

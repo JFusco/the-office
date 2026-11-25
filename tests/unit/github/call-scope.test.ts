@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { setTimeout as wait } from 'node:timers/promises';
-import { bindGitHubRunner, boundGitHubRunner, currentGitHubSource, deliverySource, withGitHubSource, type Runner } from '../../../server/github/call-scope';
+import { bindGitHubRunner, boundGitHubRunner, currentGitHubProject, currentGitHubSource, deliverySource, withGitHubSource, type Runner } from '../../../server/github/call-scope';
 
 const runner: Runner = async () => '';
 
@@ -28,15 +28,23 @@ test('the innermost scope names the source, and concurrent work keeps its own', 
     await Promise.all([observe('monitor', 15), observe('pipelines', 1)]);
     expect(seen).toEqual(['pipelines:pipelines', 'monitor:monitor']);
     await withGitHubSource('assignments', async () => {
-        await withGitHubSource('discovery', async () => { await wait(1); expect(currentGitHubSource()).toBe('discovery'); });
+        await withGitHubSource('discovery', async () => {
+            await wait(1);
+            expect(currentGitHubSource()).toBe('discovery');
+            expect(currentGitHubProject()).toBe('brain');
+        });
         expect(currentGitHubSource()).toBe('assignments');
-    });
+    }, { project: 'brain' });
 });
 
 test('a pinned owner keeps its label through nested scopes', async () => {
     await withGitHubSource('it', async () => {
-        await withGitHubSource('monitor', async () => { await wait(1); expect(currentGitHubSource()).toBe('it'); });
-    }, true);
+        await withGitHubSource('monitor', async () => {
+            await wait(1);
+            expect(currentGitHubSource()).toBe('it');
+            expect(currentGitHubProject()).toBe('brain');
+        }, { project: 'cms-field-vocabulary' });
+    }, { project: 'brain', pin: true });
 });
 
 test('a delivery step is labelled by a known stage only', () => {
