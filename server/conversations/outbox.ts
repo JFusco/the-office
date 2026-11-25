@@ -14,6 +14,7 @@ import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Rol
 import { ctoInputRecovered } from './cto-input-resolution';
 import { isSavedPlanFollowup } from '../../src/conversations/saved-plan-followup';
 import { ownerStepItems, sameOwnerSteps } from './owner-step-items';
+import { metadataParkAction } from './metadata-park-action';
 import { capabilityBlockedReviews, latestReviews } from './capability-blocked';
 export function conversationResolved(state: OfficeSnapshot, message: TeamMessage): boolean {
     return !!message.resolvedBy || ctoInputRecovered(state, message) || state.messages.some(reply => reply.actionId === `message:${message.id}` && reply.from === 'pm' && reply.status === 'answered' &&
@@ -111,7 +112,11 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: im
             item(`merge-approval:${j.id}`, `Approve PR #${j.pr} merge`, `${j.key}: Sam’s review passed for ${j.head}. Approve this specific head to queue the merge; the Office will recheck live GitHub requirements first.`, 'pm', j.key, j.prUrl);
     for (const j of state.coordination?.jobs || []) {
         if (parkedProviderWait(j)) continue;
-        if (j.status === 'blocked' && j.parked?.published && j.detail.startsWith('Decision needed'))
+        const harnessPark = metadataParkAction(j);
+        // A park write sent and not read back is a visible stop, whatever read retry is pending.
+        if (harnessPark && (j.parked!.published || !awaitingRepair('delivery', j.id)))
+            item(`ticket-job:${j.id}`, harnessPark.title, harnessPark.detail, 'pm', j.key, j.prUrl);
+        else if (j.status === 'blocked' && j.parked?.published && j.detail.startsWith('Decision needed'))
             item(`ticket-job:${j.id}`, `${j.key} needs a decision on the board`, `${j.parked.reason}\nMove the card back to Ready to resume ${j.parked.stage}.`, 'pm', j.key, j.prUrl);
         // A stop the Office retries by itself is not Joe's, from the moment it happens; retries are not planned while paused.
         else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt && !(readRetryPending(j, at) && !state.paused) && !awaitingRepair('delivery', j.id))

@@ -34,7 +34,7 @@ import { currentAssignment } from '../../workers/assignment-context';
 import { linkDraftIssue } from '../publication/link-draft-issue';
 import { readPublication } from '../publication/read-command';
 import { isDeepStrictEqual } from 'node:util';
-import { admitPRMetadata } from '../publication/metadata-admission';
+import { evaluatePRMetadata } from '../publication/metadata-admission';
 import { dispatchLeadAssessment } from './dispatch-lead-assessment';
 import { metadataAppliesToHead } from '../publication/metadata-context';
 import { acceptMetadataReview } from '../publication/metadata-review';
@@ -252,7 +252,8 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         return;
     }
     if (job.stage === 'lead-pr') {
-        if (await admitPRMetadata(this, job, result, inputSha256)) { learn(); return; }
+        const metadata = await evaluatePRMetadata(this, job, result, inputSha256, reviewStart);
+        if (metadata.route === 'takeover') { learn(); return; }
         if (metadataAppliesToHead(this.store, job)) {
             await acceptMetadataReview(this, job, result, beforeWorkers);
             if (['blocked', 'failed'].includes(result.outcome) && result.resolution?.kind === 'source-repair') {
@@ -264,7 +265,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
             await this.finishLeadReview(job, result);
             learn(); return;
         }
-        if (await dispatchLeadAssessment(this, job, result, root)) learn();
+        if (await dispatchLeadAssessment(this, job, result, root, metadata)) learn();
         return;
     }
     if (await this.queueSourceRepair(job, result, root)) { learn(); return; }

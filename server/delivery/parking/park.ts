@@ -1,14 +1,29 @@
 import { moveLane } from '../board/move-lane';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
+import { advanceMetadataPark } from './advance-metadata-park';
+import { decisionMarker } from './decision-marker';
+import { recordMetadataPark, type HarnessPark } from './record-metadata-park';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 import { recordParked } from '../../knowledge/record-trigger';
 
 export { needsDecision } from './needs-decision';
+export { decisionMarker } from './decision-marker';
+export type { HarnessPark } from './record-metadata-park';
 
-/** Retains the job, candidate, PR and stage; asks on the issue and moves the card to Block. */
-export async function park(delivery: GitHubDelivery, job: TicketJob, result: StageResult): Promise<void> {
+/**
+ * Retains the job, candidate, PR and stage; asks on the issue and moves the card to Block. With `harness`, the
+ * harness words the park itself and the cards go first: the park is recorded once, each card move is one lane
+ * Effect keyed to this park's step, and the decision comment is posted last, once every card reads in Block
+ * (`advance-metadata-park.ts`).
+ */
+export async function park(delivery: GitHubDelivery, job: TicketJob, result: StageResult, harness?: HarnessPark): Promise<void> {
+    if (harness) {
+        recordMetadataPark(delivery, job, harness);
+        try { return await advanceMetadataPark(delivery, job); }
+        finally { job.status = 'blocked'; delivery.store.save(); }
+    }
     const { store, execute } = delivery, repository = store.project.repository, issueNumber = Number(job.key.slice(3));
     const reason = (result.blocker || result.summary).trim(), head = job.head;
     const guard = () => assertDeliveryMayMutate(store, delivery.jobs, job, head);
@@ -17,7 +32,7 @@ export async function park(delivery: GitHubDelivery, job: TicketJob, result: Sta
     job.parked = { stage: job.stage, reason, at: new Date().toISOString(), published: false, ...(release ? { release } : {}) };
     job.detail = `Decision needed: ${reason}`;
     store.save();
-    const marker = `Office decision ${job.id}:${job.steps.length}`;
+    const marker = decisionMarker(job);
     const findComment = async () => {
         const pages = JSON.parse(await execute('gh', ['api', `repos/${repository}/issues/${issueNumber}/comments?per_page=100`, '--paginate', '--slurp'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
         const found = pages.flat().find((comment: any) => comment.body?.includes(marker));
