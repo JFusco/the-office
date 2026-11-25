@@ -16,6 +16,7 @@ import { MergeNotifications } from '../conversations/notifications';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import { BrainFollowup } from '../maintenance/brain/brain-followup';
 import type { Coordinator } from './coordination';
+import { deliverySource, withGitHubSource } from '../github/call-scope';
 import { ReviewResult } from './coordination';
 
 export async function pump(this: Coordinator, selection?: string | { kind: 'delivery' | 'intake' | 'notice' | 'checkpoint' | 'followup' | 'recovery'; id: string }) {
@@ -31,16 +32,16 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
     try {
         const delivery = new GitHubDelivery(this.store, this.engine, this.execute);
         if (this.state.jobs!.some(j => j.status === 'queued'))
-            await delivery.refreshDependencies();
+            await withGitHubSource('dependency-refresh', () => delivery.refreshDependencies());
         if (this.store.state.paused)
             return;
         const job = (!selected || selected.kind === 'delivery') && this.state.jobs!.find(j => j.status === 'queued' && !dependencyEligibility(j.prerequisites || [], this.dependencyStores(), new Date()) && (!focusedJobId || j.id === focusedJobId));
         if (job) {
-            await delivery.step(job);
+            await withGitHubSource(deliverySource(job.stage), () => delivery.step(job));
             return;
         }
         if ((!selected || selected.kind === 'notice') && this.state.notices?.entries.some(n => n.status === 'queued' && (!selected || n.id === selected.id))) {
-            await new MergeNotifications(this.store, this.engine).pump(selected?.id);
+            await withGitHubSource('merge-notices', () => new MergeNotifications(this.store, this.engine, this.execute).pump(selected?.id));
             return;
         }
         if (focusedJobId)
@@ -164,7 +165,7 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
             }
             if (handsOff(this.store)) {
                 const delivery = new GitHubDelivery(this.store, this.engine, this.execute);
-                await delivery.discover(assignments);
+                await withGitHubSource('discovery', () => delivery.discover(assignments));
                 const outcome = admit(this, delivery, { key: review.key, workRequested: review.workRequested, prerequisites: review.prerequisiteError ? [] : review.prerequisites || [], featureBinding: review.featureBinding }, new Date());
                 Object.assign(review, review.prerequisiteError ? { status: 'held', detail: review.prerequisiteError, owner: '' } : outcome);
                 return;

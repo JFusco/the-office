@@ -13,6 +13,7 @@ import { requestWork, preparePR, updateCandidateBase, recheckCandidate, recheckP
 import { readAssignments, readGoneTickets, poll } from './assignment-poll';
 import { tick } from './coordination-tick';
 import { pump } from './coordination-pump';
+import { withGitHubSource } from '../github/call-scope';
 import { resumeRepairedMaintenance, queueCheckpointRetry, readBackCheckpoint, retryCheckpoint } from '../maintenance/checkpoint-retry';
 export function coordination(): Coordination { return { enabled: false, activatedAt: '', lastTickAt: '', nextDueAt: '', checkpoints: [], listener: { lastCheckedAt: '', nextCheckAt: '', error: '', assigned: [], reviews: [] } }; }
 export function localDay(now: Date) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now); }
@@ -69,9 +70,9 @@ export class Coordinator {
     recheckPR(key: string) { return recheckPR.call(this, key); }
     recheck(key: string) { return recheck.call(this, key); }
     async deferNonReady(key: string) { return deferNonReady.call(this, key); }
-    async readAssignments(): Promise<AssignedIssue[]>  { return readAssignments.call(this); }
+    async readAssignments(): Promise<AssignedIssue[]>  { return withGitHubSource('assignments', () => readAssignments.call(this)); }
     async readGoneTickets(keys: string[]): Promise<Set<string>> { return readGoneTickets.call(this, keys); }
-    async poll(now = new Date()) { return poll.call(this, now); }
+    async poll(now = new Date()) { return withGitHubSource('assignments', () => poll.call(this, now)); }
     async tick(now = new Date()) { return tick.call(this, now); }
     async resumeRepairedMaintenance(now = new Date()) { return resumeRepairedMaintenance.call(this, now); }
     queueCheckpointRetry(checkpoint: import('../../src/shared').DailyCheckpoint, original: import('../../src/shared').MaintenanceRun, gate: { retryAfter?: string | null }, now = new Date()) { return queueCheckpointRetry.call(this, checkpoint, original, gate, now); }
@@ -79,5 +80,5 @@ export class Coordinator {
     async retryCheckpoint(id: string, nativeReadback = true) { return retryCheckpoint.call(this, id, nativeReadback); }
     maintenanceRecovery() { return this.store.state.maintenance?.runs.find(r => !r.retirement && ['blocked', 'interrupted'].includes(r.status) && r.readbackRetry && !r.readbackRetry.exhausted && (!r.readbackRetry.nextAt || Date.parse(r.readbackRetry.nextAt) <= Date.now())); }
     hasQueued() { return !!(this.state.enabled && (this.maintenanceRecovery() || new BrainFollowup(this.store, this.engine, this.execute).pending() || this.state.checkpoints.some(c => c.status === 'queued' && (!c.retryAt || Date.parse(c.retryAt) <= Date.now())) || this.state.listener.reviews.some(r => r.status === 'queued') || this.state.jobs!.some(j => j.status === 'queued' && !j.dependsOnPR) || this.state.notices?.entries.some(n => n.status === 'queued') || this.store.project.provider === 'github' && this.state.time?.enabled && this.state.time.githubField && this.state.time.entries.some(e => e.status === 'pending'))); }
-    async pump(selection?: string | { kind: 'delivery' | 'intake' | 'notice' | 'checkpoint' | 'followup' | 'recovery'; id: string }) { return pump.call(this, selection); }
+    async pump(selection?: string | { kind: 'delivery' | 'intake' | 'notice' | 'checkpoint' | 'followup' | 'recovery'; id: string }) { return withGitHubSource('pump', () => pump.call(this, selection)); }
 }

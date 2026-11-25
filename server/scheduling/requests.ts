@@ -37,6 +37,8 @@ import { command } from '../workers/process';
 import { reconcilePRMetadata } from '../delivery/recovery/pr-metadata-recovery';
 import { recordAdmission } from '../store/admission-journal';
 import { requireBoundCheckpointRun } from '../incidents/repair/bound-checkpoint-run';
+import { withGitHubSource } from '../github/call-scope';
+import { itRecoveryRequest } from '../it/recovery-request';
 const actions = new Set(['admit-improvement', 'apply-time-scope', 'reconcile-activation', 'repair-pr-conflicts', 'reconcile-scope-repair', 'cleanup-merged-candidate', 'reconcile-validation', 'resume-discovery', 'correct-recovery-time', 'reconcile-implementation', 'refresh', 'poll', 'observe-dependencies', 'check-it', 'reconcile-time', 'reconcile-cost', 'retry-checkpoint', 'reconcile-maintenance', 'reconcile-preparation', 'approve-merge', 'reconcile-review', 'reconcile-base-update', 'reconcile-closeout', 'reconcile-pr-link', 'defer-non-ready', 'adopt-candidate', 'reconcile-native-refresh', 'reconcile-native-delivery', 'reconcile-native-checkpoint', 'check-lesson-issues', 'file-lesson-issue']);
 export const deterministicActions = new Set([ 'retire-incomplete-history', 'admit-improvement', 'apply-time-scope', 'correct-recovery-time', 'refresh', 'poll', 'observe-dependencies', 'reconcile-time', 'reconcile-cost', 'check-lesson-issues', 'file-lesson-issue']);
 export function enqueueRequest(store: Store, action: string, key = '', head = '', lane: HarnessRequest['lane'] = 'delivery'): HarnessRequest {
@@ -72,13 +74,18 @@ export function enqueueCloseoutReconciliation(store:Store,key:string,head:string
  return store.transaction(()=>{const request=enqueueRequest(store,'reconcile-closeout',key,head);if(descriptor)request.closeoutSupervisionProof=descriptor;store.save();return request;});
 }
 export async function executeRequest(store: Store, engine: Engine, coordinator: Coordinator, request: HarnessRequest, checkIT?: () => Promise<void>): Promise<void> {
+    // A request IT saved as its recovery is IT's work, whatever it calls (server/github/call-scope.ts).
+    const run = () => runRequest(store, engine, coordinator, request, checkIT);
+    return itRecoveryRequest(store.state, request.id) ? withGitHubSource('it', run, true) : run();
+}
+async function runRequest(store: Store, engine: Engine, coordinator: Coordinator, request: HarnessRequest, checkIT?: () => Promise<void>): Promise<void> {
     if (request.status !== 'queued')
         return;
     request.status = 'working';
     delete request.stop;
     store.save();
     try {
-        const delivery = new GitHubDelivery(store, engine);
+        const delivery = new GitHubDelivery(store, engine, coordinator?.execute);
         switch (request.action) {
             case 'retire-incomplete-history': retireIncompleteHistory(store, request); break;
             case 'reconcile-pr-metadata': await reconcilePRMetadata(delivery, request); break;

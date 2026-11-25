@@ -33,7 +33,8 @@ process.on('exit', releaseLock);
 sweepStaleSessionSnapshots();
 const offices = new Offices();
 const loadedRevision = runtimeRevision();
-const serviceHealth = new ServiceHealthChecks();
+// The GitHub login probe is metered with the Office's other GitHub calls; public status and other probes keep the base runner.
+const serviceHealth = new ServiceHealthChecks(undefined, offices.githubCalls.run);
 const itSpecialist = new ITSpecialist(offices, serviceHealth);
 for (const entry of offices.entries.values())
     entry.conversations.checkIT = () => itSpecialist.tick(new Date(), true);
@@ -48,46 +49,49 @@ function snapshot(project: string, purpose: 'a request' | 'a push') { return sna
 const watchedLoop = loopDelay();
 let shutdown = false;
 const server = serve({ hostname: '127.0.0.1', port: PORT,
-    async fetch(req) {
-        if (!safeOrigin(req))
-            return json({ error: 'Only same-origin local office requests are accepted' }, 403);
-        const url = new URL(req.url);
-        let endWrite: (() => void) | undefined;
-        try {
-            // Office-wide routes run before project resolution: they need no project query.
-            const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshotText: snapshot, vite, config, loopDelay: watchedLoop, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
-            // The fence's own endpoints, then its gate: while a deployment holds it, every other write is refused.
-            for (const route of [deploymentFenceRoute, deploymentFenceGate]) {
-                const response = await route(req, url, service);
-                if (response) return response;
-            }
-            // A write that passed the open gate keeps health busy until it ends, so a fence taken meanwhile waits for it.
-            endWrite = req.method === 'GET' || req.method === 'HEAD' ? undefined : offices.operations.begin();
-            for (const route of [preferencesRoute, officeConfigRoute, telemetryRoute, incidentsRoute]) {
-                const response = await route(req, url, service);
-                if (response) return response;
-            }
-            const project = url.searchParams.get('project') || offices.entries.keys().next().value || 'cec';
-            const { store, engine, conversations, coordinator } = offices.get(project);
-            const context = { ...service, project, store, engine, conversations, coordinator };
-            for (const route of [apiRoute, commandRoute, staticRoute]) {
-                const response = await route(req, url, context);
-                if (response) return response;
-            }
-            return json({ error: 'Not found' }, 404);
+    // A request's `gh` calls go to the Office's metered runner (server/github/call-scope.ts).
+    fetch: req => offices.githubCalls.bind(() => respond(req)) }) as Server;
+async function respond(req: Request): Promise<Response> {
+    if (!safeOrigin(req))
+        return json({ error: 'Only same-origin local office requests are accepted' }, 403);
+    const url = new URL(req.url);
+    let endWrite: (() => void) | undefined;
+    try {
+        // Office-wide routes run before project resolution: they need no project query.
+        const service = { offices, serviceHealth, itSpecialist, loadedRevision, snapshotText: snapshot, vite, config, loopDelay: watchedLoop, preferences: offices.preferences, serviceInstanceId: offices.serviceInstanceId };
+        // The fence's own endpoints, then its gate: while a deployment holds it, every other write is refused.
+        for (const route of [deploymentFenceRoute, deploymentFenceGate]) {
+            const response = await route(req, url, service);
+            if (response) return response;
         }
-        catch (e) {
-            return json({ error: sanitize(e instanceof Error ? e.message : String(e)) }, 409);
+        // A write that passed the open gate keeps health busy until it ends, so a fence taken meanwhile waits for it.
+        endWrite = req.method === 'GET' || req.method === 'HEAD' ? undefined : offices.operations.begin();
+        for (const route of [preferencesRoute, officeConfigRoute, telemetryRoute, incidentsRoute]) {
+            const response = await route(req, url, service);
+            if (response) return response;
         }
-        finally { endWrite?.(); }
-    } }) as Server;
+        const project = url.searchParams.get('project') || offices.entries.keys().next().value || 'cec';
+        const { store, engine, conversations, coordinator } = offices.get(project);
+        const context = { ...service, project, store, engine, conversations, coordinator };
+        for (const route of [apiRoute, commandRoute, staticRoute]) {
+            const response = await route(req, url, context);
+            if (response) return response;
+        }
+        return json({ error: 'Not found' }, 404);
+    }
+    catch (e) {
+        return json({ error: sanitize(e instanceof Error ? e.message : String(e)) }, 409);
+    }
+    finally { endWrite?.(); }
+}
 await new Promise<void>((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
 server.requestTimeout = 255000;
 keepAliveThroughStalls(server);
 for (const { store } of offices.entries.values())
     store.emit('office-opened', `${store.project.name} office is open. Saved work has been recovered; remote evidence still needs current verification.`);
 console.log(`\n  The Office is open → http://127.0.0.1:${PORT}\n  ${built ? 'Production build' : 'Development preview'} · Local only\n`);
-const stopTicks = startServiceTicks({ offices, itSpecialist, loadedRevision });
+// Timers started here keep the binding, so their `gh` calls go to the Office's metered runner.
+const stopTicks = offices.githubCalls.bind(() => startServiceTicks({ offices, itSpecialist, loadedRevision }));
 async function close() {
     if (shutdown)
         return;

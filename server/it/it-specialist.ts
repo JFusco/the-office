@@ -15,13 +15,16 @@ import { readBackConversations } from './conversation-readbacks';
 import { runDeliveryRecoveries } from './delivery-recoveries';
 import { reconcileRecoveryLedger } from './recovery-ledger';
 import { publishITReport } from './it-report';
+import { withGitHubSource } from '../github/call-scope';
 // Separate operational capacity: no model, source edits, login changes or writes
 // to providers. Only existing read-back and read-only retry contracts are used.
 export class ITSpecialist {
     running = false;
     nextAt = 0;
     constructor(private offices: Offices, private health: ServiceHealthChecks) { }
-    async tick(now = new Date(), force = false) {
+    /** Counted as `it` in the Office's GitHub call ledger; the health report it reads labels its own probe. */
+    tick(now = new Date(), force = false) { return withGitHubSource('it', () => this.check(now, force)); }
+    private async check(now: Date, force: boolean) {
         // Skipped whole while a deployment holds the fence, forced checks included: no attempt is spent on a refusal.
         if (this.running || !force && now.getTime() < this.nextAt || this.offices.fenced?.())
             return;
