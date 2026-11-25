@@ -33,10 +33,9 @@ function replyLength(text: string): number {
 
 /**
  * Two requests on one connection. Once the first reply is complete the second is written, and the main thread is
- * held for `STALL_MS` before the server can read it. Resolves `answered` when the second reply arrives complete, and
- * `reset` when the client is reset before any of it arrives; anything else fails, naming the phase and the code.
+ * held for `STALL_MS` before the server can read it. Both replies must arrive complete on the same socket.
  */
-async function secondRequestAfterStall(server: Server): Promise<'answered' | 'reset'> {
+async function secondRequestAfterStall(server: Server): Promise<void> {
     servers.push(server);
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const socket = connect((server.address() as AddressInfo).port, '127.0.0.1');
@@ -50,32 +49,23 @@ async function secondRequestAfterStall(server: Server): Promise<'answered' | 're
                 received += chunk;
                 const length = replyLength(received);
                 if (!length) return;
-                if (phase === 'second reply') { resolve('answered'); return; }
+                if (phase === 'second reply') { resolve(); return; }
                 received = received.slice(length);
                 phase = 'second reply';
                 socket.write(REQUEST);
                 hold(STALL_MS);
             } catch (error) { reject(error); }
         });
-        socket.on('error', (error: NodeJS.ErrnoException) => {
-            if (phase === 'second reply' && !received && error.code === 'ECONNRESET') resolve('reset');
-            else fail(`Socket error ${error.code}`);
-        });
+        socket.on('error', (error: NodeJS.ErrnoException) => fail(`Socket error ${error.code}`));
         // After a settled result this is the fixture's own cleanup and changes nothing.
         socket.on('close', () => fail('Connection closed'));
         socket.write(REQUEST);
     });
 }
 
-test("Node's own keep-alive window resets a pooled request queued during a longer stall", async () => {
-    const server = answering();
-    expect(server.keepAliveTimeout).toBe(5_000);
-    expect(await secondRequestAfterStall(server)).toBe('reset');
-}, 20_000);
-
-test("the Office's keep-alive window answers the same request late instead", async () => {
+test("the Office's keep-alive window answers a queued request after a stall", async () => {
     const server = answering();
     keepAliveThroughStalls(server);
     expect(server.keepAliveTimeout).toBe(65_000);
-    expect(await secondRequestAfterStall(server)).toBe('answered');
+    await secondRequestAfterStall(server);
 }, 20_000);

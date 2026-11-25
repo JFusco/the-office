@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 38,
-    "edges": 81,
+    "nodes": 49,
+    "edges": 96,
     "byType": {
       "index": 4,
-      "journal": 4,
-      "plan": 24,
+      "journal": 12,
+      "plan": 27,
       "topic": 6
     }
   },
@@ -39,8 +39,39 @@
       ],
       "bytes": 2261,
       "degree": 4,
-      "x": 0.945817,
-      "y": 0.324699,
+      "x": 0.967295,
+      "y": 0.253655,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-automatic-graphify-refresh.md",
+      "label": "Refresh the shared Graphify map after source merges",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 573,
+          "url": "https://github.com/jfusco/the-office/issues/573"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 550,
+          "url": "https://github.com/jfusco/the-office/pull/550"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 569,
+          "url": "https://github.com/jfusco/the-office/pull/569"
+        }
+      ],
+      "bytes": 1102,
+      "degree": 2,
+      "x": 0.926917,
+      "y": 0.375267,
       "size": 8
     },
     {
@@ -58,8 +89,8 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.879474,
-      "y": 0.475947,
+      "x": 0.871319,
+      "y": 0.490718,
       "size": 8
     },
     {
@@ -70,15 +101,178 @@
       "githubRefs": [
         {
           "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 560,
+          "url": "https://github.com/jfusco/the-office/issues/560"
+        },
+        {
+          "repository": "jfusco/the-office",
           "kind": "pull-request",
           "number": 550,
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 1837,
+      "bytes": 1954,
       "degree": 4,
-      "x": 0.789141,
-      "y": 0.614213,
+      "x": 0.801414,
+      "y": 0.598111,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-pr-549-feat-incidents-read-less-common-records-once.md",
+      "label": "PR #549: feat(incidents): read less common records once",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 363,
+          "url": "https://github.com/jfusco/the-office/issues/363"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 549,
+          "url": "https://github.com/jfusco/the-office/pull/549"
+        }
+      ],
+      "bytes": 1611,
+      "degree": 0,
+      "x": 0.718349,
+      "y": 0.695683,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-pr-554-fix-office-redact-tokens-after-json-escapes.md",
+      "label": "PR #554: fix(office): redact tokens after json escapes",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 538,
+          "url": "https://github.com/jfusco/the-office/issues/538"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 554,
+          "url": "https://github.com/jfusco/the-office/pull/554"
+        }
+      ],
+      "bytes": 975,
+      "degree": 0,
+      "x": 0.62349,
+      "y": 0.781831,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-pr-557-feat-repair-grant-one-writer-restart-after-a-fix.md",
+      "label": "PR #557: feat(repair): grant one writer restart after a fix",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 532,
+          "url": "https://github.com/jfusco/the-office/issues/532"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 557,
+          "url": "https://github.com/jfusco/the-office/pull/557"
+        }
+      ],
+      "bytes": 1728,
+      "degree": 0,
+      "x": 0.518393,
+      "y": 0.855143,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-pr-569-chore-graph-refresh-office-code-map.md",
+      "label": "PR #569: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 568,
+          "url": "https://github.com/jfusco/the-office/issues/568"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 569,
+          "url": "https://github.com/jfusco/the-office/pull/569"
+        }
+      ],
+      "bytes": 585,
+      "degree": 0,
+      "x": 0.404783,
+      "y": 0.914413,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-pr-580-chore-graph-refresh-office-code-map.md",
+      "label": "PR #580: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 580,
+          "url": "https://github.com/jfusco/the-office/pull/580"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": 0.284528,
+      "y": 0.958668,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "label": "Group repeated GitHub rate-limit stops as one incident",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 563,
+          "url": "https://github.com/jfusco/the-office/issues/563"
+        }
+      ],
+      "bytes": 1680,
+      "degree": 4,
+      "x": 0.1596,
+      "y": 0.987182,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-trim-unit-suite.md",
+      "label": "Trim repeated recovery and publication checks",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 565,
+          "url": "https://github.com/jfusco/the-office/issues/565"
+        }
+      ],
+      "bytes": 820,
+      "degree": 3,
+      "x": 0.032052,
+      "y": 0.999486,
       "size": 8
     },
     {
@@ -106,10 +300,10 @@
           "url": "https://github.com/jfusco/the-office/pull/33"
         }
       ],
-      "bytes": 1009,
+      "bytes": 1126,
       "degree": 3,
-      "x": 0.677282,
-      "y": 0.735724,
+      "x": -0.096023,
+      "y": 0.995379,
       "size": 8
     },
     {
@@ -120,8 +314,8 @@
       "githubRefs": [],
       "bytes": 3394,
       "degree": 4,
-      "x": 0.986361,
-      "y": 0.164595,
+      "x": 0.99179,
+      "y": 0.127877,
       "size": 12
     },
     {
@@ -132,8 +326,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": 0.546948,
-      "y": 0.837166,
+      "x": -0.222521,
+      "y": 0.974928,
       "size": 12
     },
     {
@@ -157,8 +351,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": 0.401695,
-      "y": 0.915773,
+      "x": -0.345365,
+      "y": 0.938468,
       "size": 8
     },
     {
@@ -176,8 +370,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": 0.245485,
-      "y": 0.9694,
+      "x": -0.462538,
+      "y": 0.886599,
       "size": 8
     },
     {
@@ -195,8 +389,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": 0.082579,
-      "y": 0.996584,
+      "x": -0.572117,
+      "y": 0.820172,
       "size": 8
     },
     {
@@ -214,8 +408,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": -0.082579,
-      "y": 0.996584,
+      "x": -0.672301,
+      "y": 0.740278,
       "size": 8
     },
     {
@@ -233,8 +427,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": -0.245485,
-      "y": 0.9694,
+      "x": -0.761446,
+      "y": 0.648228,
       "size": 8
     },
     {
@@ -252,8 +446,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.401695,
-      "y": 0.915773,
+      "x": -0.838088,
+      "y": 0.545535,
       "size": 8
     },
     {
@@ -277,8 +471,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.546948,
-      "y": 0.837166,
+      "x": -0.900969,
+      "y": 0.433884,
       "size": 8
     },
     {
@@ -296,8 +490,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.677282,
-      "y": 0.735724,
+      "x": -0.949056,
+      "y": 0.315108,
       "size": 8
     },
     {
@@ -321,8 +515,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.789141,
-      "y": 0.614213,
+      "x": -0.981559,
+      "y": 0.191159,
       "size": 8
     },
     {
@@ -364,8 +558,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.879474,
-      "y": 0.475947,
+      "x": -0.997945,
+      "y": 0.06407,
       "size": 8
     },
     {
@@ -383,8 +577,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.945817,
-      "y": 0.324699,
+      "x": -0.997945,
+      "y": -0.06407,
       "size": 8
     },
     {
@@ -408,8 +602,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.986361,
-      "y": 0.164595,
+      "x": -0.981559,
+      "y": -0.191159,
       "size": 8
     },
     {
@@ -427,8 +621,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -1,
-      "y": 0,
+      "x": -0.949056,
+      "y": -0.315108,
       "size": 8
     },
     {
@@ -464,8 +658,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.986361,
-      "y": -0.164595,
+      "x": -0.900969,
+      "y": -0.433884,
       "size": 8
     },
     {
@@ -519,8 +713,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.945817,
-      "y": -0.324699,
+      "x": -0.838088,
+      "y": -0.545535,
       "size": 8
     },
     {
@@ -538,8 +732,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.879474,
-      "y": -0.475947,
+      "x": -0.761446,
+      "y": -0.648228,
       "size": 8
     },
     {
@@ -557,8 +751,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.789141,
-      "y": -0.614213,
+      "x": -0.672301,
+      "y": -0.740278,
       "size": 8
     },
     {
@@ -582,8 +776,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.677282,
-      "y": -0.735724,
+      "x": -0.572117,
+      "y": -0.820172,
       "size": 8
     },
     {
@@ -601,8 +795,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.546948,
-      "y": -0.837166,
+      "x": -0.462538,
+      "y": -0.886599,
       "size": 8
     },
     {
@@ -656,8 +850,8 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.401695,
-      "y": -0.915773,
+      "x": -0.345365,
+      "y": -0.938468,
       "size": 8
     },
     {
@@ -675,8 +869,27 @@
       ],
       "bytes": 11453,
       "degree": 4,
-      "x": -0.245485,
-      "y": -0.9694,
+      "x": -0.222521,
+      "y": -0.974928,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "label": "Group repeated GitHub rate-limit observations (#563)",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 563,
+          "url": "https://github.com/jfusco/the-office/issues/563"
+        }
+      ],
+      "bytes": 3712,
+      "degree": 4,
+      "x": -0.096023,
+      "y": -0.995379,
       "size": 8
     },
     {
@@ -694,8 +907,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": -0.082579,
-      "y": -0.996584,
+      "x": 0.032052,
+      "y": -0.999486,
       "size": 8
     },
     {
@@ -713,8 +926,27 @@
       ],
       "bytes": 751,
       "degree": 5,
-      "x": 0.082579,
-      "y": -0.996584,
+      "x": 0.1596,
+      "y": -0.987182,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-refresh-the-shared-office-code-map-after-merges-708032e283.md",
+      "label": "Refresh the shared Office code map after merges",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 573,
+          "url": "https://github.com/jfusco/the-office/issues/573"
+        }
+      ],
+      "bytes": 826,
+      "degree": 3,
+      "x": 0.284528,
+      "y": -0.958668,
       "size": 8
     },
     {
@@ -738,8 +970,20 @@
       ],
       "bytes": 802,
       "degree": 3,
-      "x": 0.245485,
-      "y": -0.9694,
+      "x": 0.404783,
+      "y": -0.914413,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
+      "label": "Trim the Office unit suite",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [],
+      "bytes": 9984,
+      "degree": 3,
+      "x": 0.518393,
+      "y": -0.855143,
       "size": 8
     },
     {
@@ -771,6 +1015,18 @@
           "kind": "issue",
           "number": 562,
           "url": "https://github.com/jfusco/the-office/issues/562"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 563,
+          "url": "https://github.com/jfusco/the-office/issues/563"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 573,
+          "url": "https://github.com/jfusco/the-office/issues/573"
         },
         {
           "repository": "jfusco/the-office",
@@ -1037,10 +1293,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 8704,
-      "degree": 28,
-      "x": 0.401695,
-      "y": -0.915773,
+      "bytes": 9673,
+      "degree": 31,
+      "x": 0.62349,
+      "y": -0.781831,
       "size": 12
     },
     {
@@ -1056,10 +1312,10 @@
           "url": "https://github.com/jfusco/the-office/issues/553"
         }
       ],
-      "bytes": 1429,
-      "degree": 8,
-      "x": 0.546948,
-      "y": -0.837166,
+      "bytes": 2333,
+      "degree": 13,
+      "x": 0.718349,
+      "y": -0.695683,
       "size": 8
     },
     {
@@ -1095,8 +1351,8 @@
       ],
       "bytes": 1324,
       "degree": 8,
-      "x": 0.677282,
-      "y": -0.735724,
+      "x": 0.801414,
+      "y": -0.598111,
       "size": 8
     },
     {
@@ -1144,8 +1400,8 @@
       ],
       "bytes": 2044,
       "degree": 9,
-      "x": 0.789141,
-      "y": -0.614213,
+      "x": 0.871319,
+      "y": -0.490718,
       "size": 8
     },
     {
@@ -1175,8 +1431,8 @@
       ],
       "bytes": 885,
       "degree": 11,
-      "x": 0.879474,
-      "y": -0.475947,
+      "x": 0.926917,
+      "y": -0.375267,
       "size": 8
     },
     {
@@ -1216,10 +1472,10 @@
           "url": "https://github.com/jfusco/the-office/pull/462"
         }
       ],
-      "bytes": 1515,
-      "degree": 6,
-      "x": 0.945817,
-      "y": -0.324699,
+      "bytes": 1931,
+      "degree": 9,
+      "x": 0.967295,
+      "y": -0.253655,
       "size": 8
     },
     {
@@ -1249,8 +1505,8 @@
       ],
       "bytes": 944,
       "degree": 2,
-      "x": 0.986361,
-      "y": -0.164595,
+      "x": 0.99179,
+      "y": -0.127877,
       "size": 8
     }
   ],
@@ -1261,6 +1517,13 @@
       "target": "wiki/topics/delivery-and-recovery.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "044df719cafe1ebc",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "046a9d63044c78ac",
@@ -1305,9 +1568,23 @@
       "relation": "topic"
     },
     {
+      "id": "13d9913dce9dd17f",
+      "source": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "166d800c687c1e02",
       "source": "wiki/journal/2026-11-24-live-ticket-timeline.md",
       "target": "wiki/plans/2026-11-24-live-ticket-timeline-e55e366158.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "1bda58858aa455be",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
       "type": "link",
       "relation": "link"
     },
@@ -1354,6 +1631,20 @@
       "relation": "topic"
     },
     {
+      "id": "22b882a546ccc4e1",
+      "source": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "23117bbd16beddef",
+      "source": "wiki/topics/context-wiki-and-ci.md",
+      "target": "wiki/journal/2026-11-24-trim-unit-suite.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "23c7b0b1e29b39b1",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-06-harper-lesson-follow-up-07f8652d10.md",
@@ -1385,6 +1676,13 @@
       "id": "25158e44a6711366",
       "source": "wiki/journal/2026-11-24-context-wiki.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "298d214ea74a4352",
+      "source": "wiki/journal/2026-11-24-trim-unit-suite.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
       "type": "topic",
       "relation": "topic"
     },
@@ -1536,6 +1834,13 @@
       "relation": "topic"
     },
     {
+      "id": "7bd95a165b5f5976",
+      "source": "wiki/journal/2026-11-24-automatic-graphify-refresh.md",
+      "target": "wiki/plans/2026-11-24-refresh-the-shared-office-code-map-after-merges-708032e283.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "7db2bbf0d28071df",
       "source": "wiki/plans/2026-11-06-office-settings-drawer-80f69f7d0e.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
@@ -1655,6 +1960,13 @@
       "relation": "topic"
     },
     {
+      "id": "b8354a5ffd660563",
+      "source": "wiki/journal/2026-11-24-automatic-graphify-refresh.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "bcd4264a05183927",
       "source": "wiki/plans/2026-11-07-model-cost-alongside-time-04ce361575.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
@@ -1681,6 +1993,13 @@
       "target": "wiki/topics/planning-and-learning.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "c14c2fa5f06cdac5",
+      "source": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "target": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "type": "plan",
+      "relation": "plan"
     },
     {
       "id": "c3e7a4a7d0a8bba9",
@@ -1732,6 +2051,13 @@
       "relation": "plan"
     },
     {
+      "id": "ccb91f1e42139862",
+      "source": "wiki/topics/releases-and-incidents.md",
+      "target": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "cef9dc19b6d87e67",
       "source": "wiki/plans/2026-11-06-delivery-throughput-and-harness-validation-2c131f596e.md",
       "target": "wiki/topics/delivery-and-recovery.md",
@@ -1751,6 +2077,13 @@
       "target": "wiki/topics/context-wiki-and-ci.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "d4084be33d1ed1ae",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-refresh-the-shared-office-code-map-after-merges-708032e283.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "d9ac4d1aff622666",
@@ -1774,6 +2107,20 @@
       "relation": "link"
     },
     {
+      "id": "e14d6b9b05256ed1",
+      "source": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "e4bb97dc64446849",
+      "source": "wiki/journal/2026-11-24-trim-unit-suite.md",
+      "target": "wiki/plans/2026-11-24-trim-the-office-unit-suite-03daf197c2.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "e56d58329e2a8982",
       "source": "wiki/MECHANICS.md",
       "target": "wiki/plans/INDEX.md",
@@ -1788,11 +2135,25 @@
       "relation": "topic"
     },
     {
+      "id": "ede6fcb5753507bf",
+      "source": "wiki/plans/2026-11-24-refresh-the-shared-office-code-map-after-merges-708032e283.md",
+      "target": "wiki/topics/context-wiki-and-ci.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "edef921871daf63a",
       "source": "wiki/journal/2026-11-24-context-wiki.md",
       "target": "wiki/topics/planning-and-learning.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "f15efea091ec1496",
+      "source": "wiki/journal/2026-11-24-rate-limit-incident-grouping.md",
+      "target": "wiki/plans/2026-11-24-group-repeated-github-rate-limit-observations-563-6ca584f77e.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "f216cb6962dcfec7",
