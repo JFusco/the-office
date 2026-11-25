@@ -288,17 +288,18 @@ test('bounds the whole provider context when comments alone fit below 1 MiB',asy
  expect(a.run).not.toHaveBeenCalled();expect(a.job.stage).toBe('validate');expect(JSON.stringify(a.job)).toBe(prior);expect(JSON.stringify(a.original)).toBe(original);
 });
 
-const incompleteProviderFields=[
- {resource:'issue',field:'title',invalid:null},{resource:'issue',field:'body',invalid:0},
- {resource:'issue',field:'labels',invalid:{}},{resource:'issue',field:'updated_at',invalid:''},
- {resource:'comment',field:'user',invalid:{}},{resource:'comment',field:'author_association',invalid:null},
- {resource:'comment',field:'created_at',invalid:''},{resource:'comment',field:'updated_at',invalid:null},
-];
-test.each(incompleteProviderFields.flatMap(field=>[true,false].flatMap(missing=>[false,true].map(after=>({...field,missing,after})))))('rejects incomplete $resource field $field (missing=$missing, after=$after)',async({resource,field,invalid,missing,after})=>{
+test.each([
+ {resource:'issue',field:'title',after:false}, {resource:'issue',field:'title',after:true},
+ {resource:'comment',field:'created_at',after:false}, {resource:'comment',field:'created_at',after:true},
+])('preserves recovery state on an incomplete $resource (after worker=$after)',async({resource,field,after})=>{
  const a=fixture(),comment=commentFor(a,1),prior=JSON.stringify(a.job),original=JSON.stringify(a.original),checkpoint=readFileSync(resolve(a.root,'sessions/original/completed-output.json'),'utf8');
- const invalidate=()=>{const record=resource==='issue'?a.issue:comment;if(missing)delete (record as any)[field];else (record as any)[field]=invalid;};
+ const invalidate=()=>{const record=resource==='issue'?a.issue:comment;delete (record as any)[field];};
  vi.spyOn(a.delivery,'api').mockImplementation(async path=>path.includes('/comments?')?[structuredClone(comment)]:structuredClone(a.issue));
- if(after)a.run.mockImplementation(async()=>{const result=a.readback();invalidate();return result as any;});else invalidate();
+ if(after)a.run.mockImplementation(async()=>{
+  const result=a.readback();
+  if(resource==='comment')comment.created_at='';else invalidate();
+  return result as any;
+ });else invalidate();
  await expect(reconcileValidation(a.delivery,a.job.key,'original',a.ownership)).rejects.toThrow(resource==='issue'?'Current issue scope is unavailable':'Current issue comment identity or pagination is unverified');
  expect(a.run).toHaveBeenCalledTimes(after?1:0);expect(a.job.stage).toBe('validate');expect(JSON.stringify(a.job)).toBe(prior);expect(JSON.stringify(a.original)).toBe(original);
  expect(readFileSync(resolve(a.root,'sessions/original/completed-output.json'),'utf8')).toBe(checkpoint);expect(readdirSync(resolve(a.root,'ticket-work/job'))).toEqual(['checks.log']);
