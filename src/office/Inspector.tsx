@@ -1,182 +1,185 @@
-import { QAResultsCard } from '../work/QAResultsCard';
-import { Outbox } from '../conversations/Outbox';
-import { withoutIdentifiers } from './without-identifiers';
-import {LoadingMark} from '../ui/LoadingState';
-import { PanelHeader } from '../ui/PanelHeader';
-import { panelMotion } from '../tokens/motion';
-import { TicketTimeline } from '../work/timeline/TicketTimeline';
-import { currentJob } from '../work/timeline/ticket-progress';
-import { TelemetryPanel } from '../telemetry/TelemetryPanel';
-import {pmQueueItems, prerequisiteKeys} from '../work/pm-queue';
-import {DependencyNotice} from '../work/DependencyNotice';
-import {ServiceHealthPanel} from '../health/ServiceHealthPanel';
-import {PMQueue} from '../work/PMQueue';
-import {InboxQueue} from '../work/InboxQueue';
-import { ProjectWork } from '../work/ProjectWork';
-import { WorkSummary } from '../work/WorkSummary';
-import { Checkpoints } from '../work/Checkpoints';
-import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react';
-import { SettingsPanel } from './settings/SettingsPanel';
-import type { OfficePreferencesController } from './settings/useOfficePreferences';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, useIsPresent } from 'motion/react';
-import { ArrowUpRight, Check, ChevronRight, ExternalLink, FileText, GitPullRequest, Inbox, X, AlertCircle, Camera, Clock3, Settings2, MessageCircle } from '../ui/icons';
-import { Button, Card, Count, IconButton, Notice, PanelIcon, PanelTitle, Section, SectionTitle, StatusDot, Tag, TextLink, cx, envelopeCard, eyebrow, interactive, mutedCopy, noticeIcon } from '../ui';
-import { STAGE_LABELS, ROLE_NAMES, PERSONAS, officeUrl, type OfficeSnapshot, type Ticket, type TicketJob, type Evidence, type Role } from '../shared';
-import type { Selection } from '../scene/OfficeScene';
-import { Conversation, type SendMessage } from '../conversations/Conversation';
-import { Goals } from '../leadership/Goals';
-import { ApproachSummary } from '../work/ApproachSummary';
-import { GitHubPanel } from '../work/GitHubPanel';
-import { PipelineList } from '../work/PipelineList';
-import { TimeBook, PipelineTiming } from '../timing/TimeBook';
-import { LiveAgentTask } from '../scene/LiveAgentTask';
-import { LessonsPanel } from '../knowledge/LessonsPanel';
-import { ReportsTo } from '../people/ReportsTo';
-import { PeoplePanel } from '../people/PeoplePanel';
-const PORTRAIT:Record<Role,string>={pm:'bg-portrait-pm',lead:'bg-portrait-lead',qa:'bg-portrait-qa',developer:'bg-portrait-default',cto:'bg-portrait-default',it:'bg-portrait-default',analyst:'bg-portrait-default',knowledge:'bg-portrait-default'};
-const textRow=`-mx-2 flex w-[calc(100%+16px)] justify-between rounded-5 border-b border-row-rule px-2 py-2.5 text-left text-11 hover:bg-icon-hover ${interactive}`;
-const pipelineHeader='flex flex-wrap items-start justify-between gap-2.5';
-function Link({url,children}:{url:string;children:React.ReactNode}){return /^https:\/\//.test(url)||/^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)?<TextLink href={url} target="_blank" rel="noreferrer">{children}<ExternalLink size={12}/></TextLink>:<span>{children}</span>;}
-function EvidenceCard({e}:{e:Evidence}){
-  return <Card tone="finding" className="mt-2.5"><div className={cx(eyebrow,'text-9')}>{e.kind} · {e.environment||'environment unrecorded'}</div><p className="text-11 leading-body text-card-copy">{e.summary}</p>{e.kind==='screenshot'&&e.path?<a className={cx('block self-start rounded-4',interactive)} href={`/api/artifact?path=${encodeURIComponent(e.path)}`} target="_blank" rel="noreferrer"><img className="max-w-full rounded-4" alt={e.summary} src={`/api/artifact?path=${encodeURIComponent(e.path)}`} loading="lazy"/></a>:null}<small className="block text-11 leading-relaxed text-evidence-detail">{e.observedAt?new Date(e.observedAt).toLocaleString():'Time unavailable'}</small></Card>;
-}
-function TicketHeading({ticket,url,label,className}:{ticket:string;url:string;label:string;className?:string}){
-  return <div className={cx('flex items-center justify-between text-10 text-ticket-heading',className)} data-ticket-heading><span>{ticket}</span><span className="text-9"><Link url={url}>{label}</Link></span></div>;
-}
-function JobRecords({job, snapshot}: {job: TicketJob; snapshot: OfficeSnapshot}) {
-  const artifacts = new Map<string, string>();
-  const artifactUrl = (path: string) => officeUrl('/api/artifact?path=' + encodeURIComponent(path), snapshot.project?.id);
-  for (const step of job.steps || []) {
-    if (step.stage !== 'validate') continue;
-    for (const evidence of step.result.evidence) {
-      if (evidence.path) artifacts.set(artifactUrl(evidence.path), evidence.summary);
-      else if (/^https:\/\//.test(evidence.url || '')) artifacts.set(evidence.url, evidence.summary);
-    }
-    if (step.result.qaRunDir) artifacts.set(artifactUrl(step.result.qaRunDir + '/report.json'), 'View full QA report');
-  }
-  return <>
-    {job.prUrl && <Section><SectionTitle className="mb-3">Pull request</SectionTitle><Link url={job.prUrl}>PR #{job.pr}</Link></Section>}
-    {artifacts.size > 0 && <Section><SectionTitle className="mb-3">Verification evidence</SectionTitle>
-      <ul className="space-y-2 text-11">{[...artifacts].map(([url, label]) =>
-        <li key={url}><TextLink href={url} target="_blank" rel="noreferrer">{label}</TextLink></li>)}</ul>
-    </Section>}
-    <TimeBook snapshot={snapshot} ticket={job.key}/>
-  </>;
-}
-function TicketDetail({ticket:t,snapshot,act,onOpen,reduced}:{reduced:boolean;ticket:Ticket;snapshot:OfficeSnapshot;act:(action:string,key?:string)=>void;onOpen:(key:string)=>void}){
-  const queued=snapshot.deliveryQueue?.find(r=>r.key===t.key&&['queued','working'].includes(r.status));
-  const review=snapshot.coordination?.listener.reviews.slice().reverse().find(r=>r.key===t.key);
-  const job=currentJob(snapshot.coordination?.jobs || [],t.key);
-  const dependency=<DependencyNotice keys={review?prerequisiteKeys(review):[]} snapshot={snapshot} onOpen={(_project,key)=>onOpen(key)}/>;
-  const timeline=<TicketTimeline ticket={t} snapshot={snapshot} job={job} reduced={reduced}/>;
-  const assigned=snapshot.coordination?.listener.assigned.some(i=>i.key===t.key);
-  const startAssigned=<Button variant="primary" disabled={snapshot.mode==='demo'||snapshot.paused||!assigned||!!queued||!!job||!!review&&prerequisiteKeys(review).length>0||!!review&&['owned','blocked','interrupted'].includes(review.status)||!!review?.workRequested&&['queued','working'].includes(review.status)} onClick={()=>act('start-assigned',t.key)}>Start ticket <ChevronRight size={15}/></Button>;
-  if(snapshot.project?.provider==='github')return <div className="flex min-w-0 flex-col gap-4" data-github-ticket><TicketHeading ticket={t.key} url={t.url} label="View GitHub issue"/><PanelTitle className="max-w-full break-words">{t.summary}</PanelTitle>{timeline}<Tag className="self-start" >{t.status}</Tag>{snapshot.github?.board?<p className={mutedCopy}>Project lane: {snapshot.github.board.items.find(i=>i.number===Number(t.key.slice(3))&&i.repository===snapshot.project?.repository)?.status||'Not on board'}{snapshot.github.board.error?' · last observation unavailable or stale':''}</p>:null}<div className="flex flex-wrap items-center gap-2">{startAssigned}</div>{dependency}<ApproachSummary approach={job?.approach} decisions={job?.decisions}/><QAResultsCard ticket={t} job={job}/>{review?<><Tag className="self-start">{review.status}</Tag><WorkSummary detail={withoutIdentifiers(review.detail)} flush/></>:null}{job?<Section><SectionTitle className="mb-4">Office delivery · {job.status}</SectionTitle><WorkSummary detail={withoutIdentifiers(job.detail)} flush/>{job.prUrl?<Link url={job.prUrl}>PR #{job.pr}</Link>:null}{job.stage==='lead-pr'&&['blocked','interrupted','watching'].includes(job.status)?<Button className="mt-5" onClick={()=>act('review-pr',t.key)}>Recheck PR</Button>:null}</Section>:null}<TimeBook snapshot={snapshot} ticket={t.key}/></div>;
-  return <>
-    <TicketHeading ticket={t.key} url={t.url} label="View in Jira"/><PanelTitle className="mt-3 mb-4">{t.summary}</PanelTitle>{timeline}
-    <div className="flex flex-wrap gap-2"><Tag>{t.type}</Tag><Tag tone={t.activity}>Jira status · {t.status}</Tag><Tag>{STAGE_LABELS[t.stage]}</Tag></div>
-    {t.blocker?<Notice className="mt-5"><AlertCircle className={noticeIcon} size={16}/><span>{t.blocker}</span></Notice>:null}
-    {snapshot.mode==='demo'?<Notice tone="tour" className="mt-5">This is an illustrative ticket. No Jira, code, browser or Azure action is running.</Notice>:<div className="mt-5 flex flex-wrap items-center gap-2 empty:hidden">{queued?<Tag>{queued.status==='queued'?'Implementation queued':'Delivery in progress'}</Tag>:null}{t.stage==='mailbox'?startAssigned:null}{t.activity==='blocked'&&t.pilot?<Button disabled={!!queued} onClick={()=>act('resume-ticket',t.key)}>Check & resume</Button>:null}</div>}
-    {dependency}
-    <ApproachSummary approach={t.approach} decisions={t.decisions}/><QAResultsCard ticket={t}/>
-    {t.commit||t.prId||t.previewUrl?<Section><SectionTitle className="mb-4">Candidate</SectionTitle><dl className="my-2.5 grid grid-cols-[90px_1fr] gap-2.5 text-10 leading-relaxed"><dt className="text-dl-term">Branch</dt><dd className="break-all">{t.branch||'Not created'}</dd><dt className="text-dl-term">Fix cycles</dt><dd className="break-all">{t.attempt} · maximum 2 per finding</dd>{t.previewUrl?<><dt className="text-dl-term">Application</dt><dd className="break-all"><Link url={t.previewUrl}>Open candidate</Link></dd></>:null}</dl>{t.prId?<Link url={snapshot.azure.prs.find(pr=>pr.id===t.prId)?.url||t.results['draft-pr']?.evidence.find(e=>e.kind==='pr')?.url||'#'}><GitPullRequest size={14}/> PR {t.prId}</Link>:null}</Section>:null}
-    {t.findings.length?<Section><SectionTitle className="mb-4">QA & review findings</SectionTitle>{t.findings.map(f=><Card key={f.id} tone="finding" className="mt-2.5"><Tag className="self-start" tone={f.status==='verified'?'passed':'blocked'}>{f.id} · {f.status}</Tag><h4 className="text-13 leading-relaxed font-semibold">{f.summary}</h4><p className="text-11 leading-body text-card-copy"><b className="font-medium">Expected:</b> {f.expected}</p><p className="text-11 leading-body text-card-copy"><b className="font-medium">Observed:</b> {f.actual}</p></Card>)}</Section>:null}
-    {t.evidence.length?<Section><SectionTitle className="mb-4"><Camera size={14}/> Verification evidence</SectionTitle>{t.evidence.map((e,i)=><EvidenceCard key={`${e.id}-${i}`} e={e}/>)}</Section>:<Section className="flex gap-3 text-11 text-empty"><FileText className="shrink-0" size={22}/><p className="leading-body">Evidence will arrive here as the team works. A passed stage needs saved, current-candidate proof.</p></Section>}
-    <TimeBook snapshot={snapshot} ticket={t.key}/>
-  </>;
-}
-import { TicketPlanningAction } from '../features/questions/TicketPlanningAction';
-import { FeatureWorkspace } from '../features/FeatureWorkspace';
-export default function Inspector({selection,snapshot,names=ROLE_NAMES,onClose,onSelect,onOpenBrain,act,busy,sendMessage,reduced,onOpenProject,preferences,osReduced=false,refresh,settingsReturn,drawerOpener,replacing}:{selection:Exclude<Selection,null>;snapshot:OfficeSnapshot;names?:Record<Role,string>;onClose:()=>void;onOpenBrain?:()=>void;onSelect:(s:Selection)=>void;act:(action:string,key?:string)=>void;busy:boolean;sendMessage:SendMessage;reduced:boolean;onOpenProject:(project:string,key:string)=>void;preferences?:OfficePreferencesController;osReduced?:boolean;refresh?:()=>Promise<void>;settingsReturn?:RefObject<HTMLElement|null>;drawerOpener?:MutableRefObject<HTMLElement|null>;replacing?:RefObject<boolean>}){
-  const close=useRef<HTMLButtonElement>(null),ownOpener=useRef<HTMLElement|null>(null),opener=drawerOpener||ownOpener;
-  const present=useIsPresent();
-  const selectionId='id' in selection?selection.id:selection.kind==='chat'?selection.ticket:undefined;
-  // Each drawer instance shows one selection; App remounts it when the selection changes.
-  useEffect(()=>{
-    if(!present){
-      // Another drawer replaces this one after it closes; that drawer takes focus when it opens.
-      if(replacing?.current)return;
-      const active=document.activeElement,gear=settingsReturn?.current as HTMLButtonElement|null|undefined,target=opener.current;
-      opener.current=null;
-      if(selection.kind==='settings'){
-        // Settings returns to the gear from any entry path, unless the user already moved focus elsewhere.
-        if(active&&active!==document.body&&!active.closest('[data-inspector]'))return;
-        if(gear&&!gear.disabled){gear.focus({preventScroll:true});return;}
-      }
-      if(target?.isConnected)target.focus({preventScroll:true});return;}
-    // Keep the original trigger across drawer swaps: a replacement opens with focus on the body.
-    const active=document.activeElement;
-    if(active instanceof HTMLElement&&active!==document.body&&!active.closest('[data-inspector]'))opener.current=active;
-    close.current?.focus({preventScroll:true});
-  },[present]);
-  const agent=selection.kind==='agent'?snapshot.agents.find(a=>a.id===selection.id):null;
-  const ticket=selection.kind==='ticket'?snapshot.tickets.find(t=>t.key===selection.id):null;
-  const queueTicket = selection.kind==='ticket' && !ticket ? pmQueueItems(snapshot).find(r=>r.project===snapshot.project?.id && r.key===selection.id) : undefined;
-  const queueJob = selection.kind==='ticket' && !ticket ? currentJob(
-    (snapshot.teamQueue || []).filter(row=>row.project===snapshot.project?.id).map(row=>row.job), selection.id) : undefined;
-  const fallbackKey = queueJob?.key || queueTicket?.key;
-  const issue = fallbackKey ? snapshot.github?.issues.find(item=>item.key===fallbackKey) : undefined;
-  const fallbackTitle = queueTicket?.title || issue?.title ||
-    snapshot.coordination?.listener.reviews.filter(review=>review.key===fallbackKey).at(-1)?.summary ||
-    (queueJob?.pr ? 'PR #' + queueJob.pr + ' delivery' : fallbackKey);
-  const discussionKey = ticket?.key || queueJob?.key;
-  const github=snapshot.project?.provider==='github';
-  const chat=selection.kind==='chat'||selection.kind==='cto-chat';
-  const pmName=snapshot.agents.find(a=>a.id==='pm')?.name||names.pm,ctoName=snapshot.agents.find(a=>a.id==='cto')?.name||names.cto;
-  const title=selection.kind==='settings'?'Settings':selection.kind==='features'?'Features':selection.kind==='people'?'People':selection.kind==='telemetry'?'Telemetry':selection.kind==='health'?'Service health':selection.kind==='pm-queue'?'PM queue':selection.kind==='goals'?'Project goals':selection.kind==='cto-chat'?`Chat with ${ctoName}`:selection.kind==='outbox'?'Your outbox':selection.kind==='chat'?`Chat with ${pmName}`:selection.kind==='mailbox'?'PM mailbox':selection.kind==='azure'?(github?'GitHub operations':'Azure operations'):selection.kind==='meeting'?'Review table':agent?agent.title:'Ticket';
-  // The drawer is a non-modal complementary region: it takes focus on open, Escape closes it,
-  // and focus returns to the control that opened it. Exiting drawers are inert and hidden.
-  return <motion.aside data-inspector className={cx('fixed top-topbar right-0 bottom-dock z-45 flex flex-col border-l border-drawer-line bg-drawer shadow-drawer backdrop-blur-drawer will-change-transform overscroll-contain max-compact:top-topbar-compact max-compact:bottom-dock-compact max-compact:w-full',selection.kind==='features'||selection.kind==='people'||selection.kind==='telemetry'?'w-[min(1280px,100vw)]':'w-drawer wide:w-drawer-wide max-tablet:w-drawer-tablet max-compact:max-w-drawer',present?'pointer-events-auto':'pointer-events-none')} aria-label={title}
-    {...panelMotion(reduced)}
-    inert={!present} aria-hidden={!present}>
+import { drawerPageMotion, panelMotion } from '../tokens/motion';
+import { IconButton, cx, interactive } from '../ui';
+import { ChevronRight, X } from '../ui/icons';
+import { ROLE_NAMES } from '../shared';
+import { createConversationDrafts } from '../conversations/Conversation';
+import type { InspectorProps } from './drawer/inspector-props';
+import { DrawerNavigation, DrawerPage } from './drawer/DrawerTopic';
+import { popPage, pushPage, removePage, renamePage, type DrawerPath, type DrawerEntry } from './drawer/navigation';
+import { InspectorContent } from './drawer/InspectorContent';
+import { selectionTitle } from './drawer/selection-title';
 
-    <div className="flex h-drawer-head shrink-0 items-center justify-between border-b border-drawer-rule px-6"><span className={cx(eyebrow,'text-8 text-drawer-title')}>{title}</span><IconButton ref={close} aria-label="Close details" onClick={onClose}><X size={19}/></IconButton></div>
-    <div key={`${selection.kind}:${selectionId}`} data-inspector-scroll className={cx('min-h-0 min-w-0 flex-1 overflow-x-hidden wrap-anywhere scrollbar-thin scrollbar-thumb-scrollbar',chat?'flex flex-col overflow-y-auto px-6 py-4.5 max-compact:px-5 max-compact:py-3.5':'overflow-y-auto p-6')}>
-      {selection.kind==='features'?<FeatureWorkspace key={[snapshot.project?.id,selection.id,selection.sourceGoalId,selection.sourceTicket].join(':')} snapshot={snapshot} initialId={selection.id} sourceGoalId={selection.sourceGoalId} sourceTicket={selection.sourceTicket} onOpen={(project,id)=>onOpenProject(project,'feature:'+id)}/>:null}
-      {selection.kind==='people'?<PeoplePanel snapshot={snapshot} names={names} onSelect={onSelect}/>:null}
-      {selection.kind==='settings'&&preferences?<SettingsPanel snapshot={snapshot} preferences={preferences} osReduced={osReduced} refresh={refresh}/>:null}
-      {selection.kind==='telemetry'?<TelemetryPanel projects={snapshot.projects||[]} defaultProject={snapshot.project?.id}/>:null}
-      {selection.kind==='health'?<ServiceHealthPanel project={snapshot.project?.id} liveIT={snapshot.it} onChat={()=>onSelect({kind:'agent',id:'it'})}/>:null}
-      {selection.kind==='chat'?<><PanelHeader icon={<MessageCircle size={26}/>}>Chat with {pmName}</PanelHeader><p className="text-11 leading-normal text-muted">Your PM coordinates the team and keeps the work up to date.</p><Conversation key={selection.ticket||'office'} snapshot={snapshot} names={names} sendMessage={sendMessage} initialTicket={selection.ticket||''} fill/></>:null}
-      {selection.kind==='goals'?<Goals snapshot={snapshot} sendMessage={sendMessage} onDiscuss={()=>onSelect({kind:'cto-chat'})} onPlan={(project,goal)=>onOpenProject(project,'feature-goal:'+goal)}/>:null}
-      {selection.kind==='cto-chat'?<><PanelHeader icon={<MessageCircle size={26}/>}>Chat with {ctoName}</PanelHeader><p className="text-11 leading-normal text-muted">Discuss any Office project and save goals or ideas in the existing panel. {pmName} brings delivery reports here.</p><Conversation snapshot={snapshot} names={names} sendMessage={sendMessage} role="cto" fill/></>:null}
-      {selection.kind==='outbox'?<Outbox key={selection.id||'tray'} snapshot={snapshot} names={names} sendMessage={sendMessage} initialId={selection.id} refresh={refresh}/>:null}
-      {ticket?<><TicketDetail reduced={reduced} ticket={ticket} snapshot={snapshot} act={act} onOpen={key=>onSelect({kind:'ticket',id:key})}/><TicketPlanningAction snapshot={snapshot} ticket={ticket.key} open={id=>onSelect(id?{kind:'features',id}:{kind:'features',sourceTicket:ticket.key})}/></>:null}
-      {fallbackKey && <><TicketHeading ticket={fallbackKey} url={issue?.url || ''} label={issue ? 'View GitHub issue' : ''}/><PanelTitle>{fallbackTitle}</PanelTitle>
-        <TicketTimeline reduced={reduced} snapshot={snapshot} ticket={{key:fallbackKey}} job={queueJob}/>
-        {queueJob && <JobRecords job={queueJob} snapshot={snapshot}/>}</>}
-      {discussionKey && <Button full className="mb-6" onClick={()=>onSelect({kind:'chat',ticket:discussionKey})}>Discuss {discussionKey} with {pmName}</Button>}
-      {selection.kind==='pm-queue'?<PMQueue reduced={reduced} snapshot={snapshot} onOpen={onOpenProject}/>:null}
-      {selection.kind==='mailbox'?<>
-        <PanelHeader icon={<Inbox size={26}/>}>PM mailbox</PanelHeader><InboxQueue snapshot={snapshot} onOpen={key=>onSelect({kind:'ticket',id:key})}/><p className={cx(mutedCopy,'mt-4')}>{github?`GitHub issues for this project. Ask ${pmName} to draft or create an issue using GitHub Issue Creator, or coordinate the daily maintenance review.`:'The PM receives CEC parent tickets assigned to you in To Do or Open. Every ticket is checked before it reaches a desk.'}</p>
-        <Button variant="primary" full className="mt-5" disabled={busy||!!snapshot.pendingMail||snapshot.intake.status==='working'||snapshot.mode==='demo'||snapshot.paused} onClick={()=>act('check-mail')}>{snapshot.intake.status==='working'?<LoadingMark/>:<Inbox size={16}/>} {snapshot.pendingMail?'Mail check queued':'Check mail now'}</Button>
-        <div className="mt-4 flex items-start gap-2 text-9 text-schedule"><Clock3 size={14}/><span>{snapshot.intake.schedule}<small className="mt-1 block text-8 leading-relaxed text-schedule-detail">{snapshot.intake.lastChecked?`Last checked ${new Date(snapshot.intake.lastChecked).toLocaleString()}`:'Mailbox has not been checked yet'}</small></span></div>
-        {snapshot.intake.error?<Notice className="mt-5"><AlertCircle className={noticeIcon} size={17}/><span>{snapshot.intake.error}</span></Notice>:null}
-        <Button full className="mt-5" disabled={!preferences?.preferences} onClick={()=>onSelect({kind:'settings'})}><Settings2 size={16}/> Project settings</Button>
-        <Checkpoints snapshot={snapshot}/><ProjectWork snapshot={snapshot} onOpen={key=>onSelect({kind:'ticket',id:key})}/>
-        {snapshot.tickets.some(t=>t.stage!=='mailbox')?<Section><SectionTitle className="mb-4">Already with the team</SectionTitle>{snapshot.tickets.filter(t=>t.stage!=='mailbox').map(t=><button type="button" key={t.key} className={textRow} onClick={()=>onSelect({kind:'ticket',id:t.key})}><span>{t.key}<small className="mt-1 block text-9 leading-relaxed text-row-detail">{STAGE_LABELS[t.stage]}</small></span><ChevronRight size={15}/></button>)}</Section>:null}
-      </>:null}
-      {agent?<>
-        <div className={cx('relative mb-6 grid h-19 w-17.25 place-items-center rounded-20 text-39 font-heading text-portrait-ink inset-shadow-portrait',PORTRAIT[agent.id])}><span aria-hidden="true">{agent.name[0]}</span><StatusDot status={agent.activity} size="lg" className="absolute right-0 bottom-0 outline-4 outline-drawer-dot-ring"/></div><span className={cx(eyebrow,'text-9')}>{agent.title}</span><PanelTitle className="mt-3 mb-4">{agent.name}</PanelTitle><Tag tone={agent.activity}>{agent.activity}</Tag><p className={cx(mutedCopy,'mt-4')}><LiveAgentTask agent={agent} snapshot={snapshot} visible={present}/></p>{agent.lastOutcome?<Section data-last-report className="flex flex-col items-start gap-3"><SectionTitle>Last report · {agent.lastOutcome.ticket||'Office'}</SectionTitle><Tag>{agent.lastOutcome.status}</Tag><WorkSummary detail={agent.lastOutcome.summary} className="w-full min-w-0 wrap-anywhere"/><small className="block text-11 leading-relaxed">Worker completion does not mean ticket closure. Check the ticket’s delivery state below.</small></Section>:null}
-        {agent.ticket?<button type="button" className={envelopeCard} onClick={()=>onSelect({kind:'ticket',id:agent.ticket})}><span className={cx(eyebrow,'text-8 text-envelope-label')}>At this desk</span><strong className="max-w-57.5 text-13 leading-relaxed font-emphasis">{agent.ticket}</strong><span>{snapshot.tickets.find(t=>t.key===agent.ticket)?.summary}</span><ArrowUpRight size={18} className="absolute right-4 bottom-4 text-envelope-icon"/></button>:<Section className="flex gap-3 text-11 text-empty"><p className="leading-body">{PERSONAS[agent.id].summary}</p></Section>}
-        {agent.id==='it'?<><Conversation snapshot={snapshot} names={names} sendMessage={sendMessage} role="it"/><Button full className="mt-5" onClick={()=>onSelect({kind:'health'})}>Open Service health</Button></>:agent.id==='knowledge'?<><Conversation snapshot={snapshot} names={names} sendMessage={sendMessage} role="knowledge"/><Button full onClick={onOpenBrain}>Open Harper’s knowledge</Button><LessonsPanel snapshot={snapshot} refresh={refresh}/></>:<Button full className="mt-5" onClick={()=>onSelect({kind:'chat',ticket:agent.ticket||undefined})}>Chat with {pmName}{agent.id!=='pm'?` about ${agent.name}’s work`:""}</Button>}<Section><SectionTitle className="mb-4">Responsibilities</SectionTitle><p className={mutedCopy}>{PERSONAS[agent.id].responsibilities}</p><ReportsTo id={agent.id} snapshot={snapshot} names={names} onSelect={onSelect}/></Section>
-        {agent.id==='pm'?<TimeBook snapshot={snapshot}/>:null}
-        <Section><SectionTitle className="mb-4">Recent activity</SectionTitle>{snapshot.events.filter(e=>e.role===agent.id).slice(0,8).map(e=><div className="flex items-start gap-3 border-b border-log-entry-rule py-3 text-10" key={e.id}><time className="min-w-9.75 pt-0.5 text-8 text-log-entry-time">{new Date(e.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time><WorkSummary detail={withoutIdentifiers(e.message)} textClassName="text-log-entry-ink wrap-anywhere"/></div>)}{!snapshot.events.some(e=>e.role===agent.id)?<p className={mutedCopy}>No work has been dispatched yet.</p>:null}</Section>
-        <footer className="mt-8 border-t border-panel-foot-rule pt-3 text-9 text-panel-foot" data-panel-foot>{agent.id==='developer'&&agent.model?<p className="leading-body">Configured model: Opus 5.5 · {agent.effort} effort{agent.observedModel===agent.model?' · verified in last run':''}</p>:null}<small className="block text-11 leading-relaxed">{agent.sessionId?'Session running':'No session running'}</small></footer>
-      </>:null}
-      {selection.kind==='azure'&&github?<GitHubPanel snapshot={snapshot} act={act} busy={busy}/>:null}
-      {selection.kind==='azure'&&!github?<>
-        <PanelHeader icon={<GitPullRequest size={26}/>} tone="azure">Azure pipelines</PanelHeader><p className={mutedCopy}>Current PRs, policy builds, merges and deployments. Each observation stays tied to its actual commit.</p>
-        <Tag tone={snapshot.azure.error?'blocked':'waiting'}>{snapshot.azure.observedAt?`Observed ${new Date(snapshot.azure.observedAt).toLocaleTimeString()}`:'Waiting for the first observation'}</Tag>
-        {snapshot.azure.observedAt&&Date.now()-Date.parse(snapshot.azure.observedAt)>150000?<Notice className="mt-5">Azure observations are stale. These results are from an earlier checkpoint and cannot clear a delivery gate.</Notice>:null}
-        {snapshot.azure.error?<Notice className="mt-5"><AlertCircle className={noticeIcon} size={16}/><span>{snapshot.azure.error}</span></Notice>:null}
-        <PipelineList pipelines={snapshot.pipelines}/>
-        <Section><SectionTitle className="mb-4">Recent pipelines <Count>{snapshot.azure.builds.length}</Count></SectionTitle>{snapshot.azure.builds.slice(0,8).map(b=><Card key={b.id}><div className={pipelineHeader}><strong className="text-11 leading-relaxed">{b.name}</strong><Tag tone={b.result==='failed'?'blocked':b.result==='succeeded'?'passed':'working'}>{b.result||b.status}</Tag></div><div className="self-start text-10"><Link url={b.url}>Build {b.id}</Link></div><small className="block text-8 leading-relaxed text-card-detail">{b.branch.replace('refs/heads/','')}</small><PipelineTiming build={b} anchor={snapshot.liveAnchor}/></Card>)}{!snapshot.azure.builds.length?<p className={mutedCopy}>Builds appear after Azure is connected.</p>:null}</Section>
-        <Section><SectionTitle className="mb-4">Pull requests</SectionTitle>{snapshot.azure.prs.slice(0,10).map(p=><Card key={p.id}><div className={pipelineHeader}><Link url={p.url}>PR {p.id}</Link><Tag>{p.draft?'Draft':p.status}</Tag></div><h4 className="text-11 leading-relaxed font-semibold">{p.title}</h4><small className="block text-8 leading-relaxed text-card-detail">{p.source.replace('refs/heads/','')} → {p.target.replace('refs/heads/','')}</small>{p.policies.map((x,i)=><div className="flex items-start gap-2 text-9 text-pipeline-stage" key={i}><StatusDot status={x.status==='rejected'?'blocked':x.status==='approved'?'idle':'waiting'} className="mt-0.75"/>{x.name}: {x.status}</div>)}</Card>)}</Section>
-        <Section><SectionTitle className="mb-4">Running environments</SectionTitle>{snapshot.azure.deployed.length?snapshot.azure.deployed.map(d=><Card key={d.environment}><strong className="text-11 leading-relaxed">{d.environment}</strong><div className="self-start text-10"><Link url={d.url}>Open application</Link></div></Card>):<p className={mutedCopy}>Running versions have not been verified. A successful pipeline alone does not establish the deployed version.</p>}</Section>
-        <p className={cx(mutedCopy,'mt-4')}>The team monitors merges and deployments. Human release controls remain in Azure.</p>
-      </>:null}
-      {selection.kind==='meeting'?<><PanelHeader icon={<FileText size={26}/>} tone="review">Reviews</PanelHeader><p className={mutedCopy}>The team chooses the planning, review and verification each task needs. Decisions are recorded with reasons; skipped steps stay distinct from work that passed.</p><Section><SectionTitle className="mb-4">Handoffs</SectionTitle>{snapshot.events.filter(e=>['stage-passed','fix-requested','stage-started'].includes(e.kind)).slice(0,12).map(e=><div className="flex items-start gap-3 border-b border-log-entry-rule py-3 text-10" key={e.id}><time className="min-w-9.75 pt-0.5 text-8 text-log-entry-time">{e.ticket}</time><WorkSummary detail={withoutIdentifiers(e.message)} textClassName="text-log-entry-ink wrap-anywhere"/></div>)}{!snapshot.events.some(e=>e.kind==='stage-passed')?<p className={mutedCopy}>The table is ready. Reviewed plans and handoffs will appear here as tickets move through the office.</p>:null}</Section></>:null}
-    </div>
-  </motion.aside>;
+export default function Inspector(props: InspectorProps) {
+  const { selection, snapshot, names = ROLE_NAMES, reduced, onClose, drawerOpener, replacing, settingsReturn } = props;
+  const close = useRef<HTMLButtonElement>(null),
+    ownOpener = useRef<HTMLElement | null>(null),
+    opener = drawerOpener || ownOpener;
+  const present = useIsPresent();
+  useEffect(() => {
+    if (!present) {
+      // Another drawer replaces this one after it closes; that drawer takes focus when it opens.
+      if (replacing?.current) return;
+      const active = document.activeElement,
+        gear = settingsReturn?.current as HTMLButtonElement | null | undefined,
+        target = opener.current;
+      opener.current = null;
+      if (selection.kind === 'settings') {
+        // Settings returns to the gear from any entry path, unless the user already moved focus elsewhere.
+        if (active && active !== document.body && !active.closest('[data-inspector]')) return;
+        if (gear && !gear.disabled) {
+          gear.focus({ preventScroll: true });
+          return;
+        }
+      }
+      if (target?.isConnected) target.focus({ preventScroll: true });
+      return;
+    }
+    // Keep the original trigger across drawer swaps: a replacement opens with focus on the body.
+    const active = props.source || document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && !active.closest('[data-inspector]'))
+      opener.current = active;
+    close.current?.focus({ preventScroll: true });
+  }, [present]);
+  const rootTitle = selectionTitle(selection, snapshot, names);
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const [path, setPath] = useState<DrawerPath>(() => ({
+    entries: [{ id: 'root', title: rootTitle, trigger: null }],
+    previous: null,
+    returning: false,
+  }));
+  const [records, setRecords] = useState([{ id: 'root', selection, depth: 0, parentId: '' }]);
+  const [drafts] = useState(createConversationDrafts);
+  const pointerTrigger = useRef<HTMLElement | null>(null);
+  const heading = useRef<HTMLElement | null>(null);
+  const current = path.entries.at(-1)!,
+    parent = path.entries.at(-2);
+  const title = current.id === 'root' ? rootTitle : current.title;
+  const selectedPage=path.entries.map(entry=>records.find(record=>record.id===entry.id)?.selection).filter(Boolean).at(-1) || selection;
+  const regionTitle=selectedPage.kind==='agent' ? snapshot.agents.find(agent=>agent.id===selectedPage.id)?.title : selectedPage.kind==='ticket'?'Ticket':selectedPage.kind==='features'?'Features':selectionTitle(selectedPage,snapshot,names);
+  const visibleRecord=records.find(record=>record.id===current.id)?.selection;
+  const visibleTicket=present && visibleRecord?.kind==='ticket' ? visibleRecord.id : '';
+  useLayoutEffect(()=>{
+    props.onVisibleTicket?.(visibleTicket);
+    return ()=>props.onVisibleTicket?.('');
+  },[visibleTicket,props.onVisibleTicket]);
+  function push(entry: DrawerEntry) {
+    setPath((old) => pushPage(old, entry));
+  }
+  function open(next: InspectorProps['selection']) {
+    const prior = records.find(
+      (record) => record.parentId === current.id && JSON.stringify(record.selection) === JSON.stringify(next),
+    );
+    const id = prior?.id ?? crypto.randomUUID(),
+      depth = path.entries.length;
+    const focused = document.activeElement;
+    const activated = pointerTrigger.current;
+    pointerTrigger.current = null;
+    const trigger = activated?.closest('[data-inspector-scroll]') ? activated :
+      focused instanceof HTMLElement && focused.closest('[data-inspector-scroll]') ? focused : null;
+    setRecords((old) =>
+      old.some((record) => record.id === id) ? old : [...old, { id, selection: next, depth, parentId: current.id }],
+    );
+    if (next.kind === 'settings') props.onSettings?.();
+    push({ id, title: selectionTitle(next, snapshot, names), trigger });
+  }
+  const rename = useCallback((id: string, title: string) => setPath(old => renamePage(old, id, title)), []);
+  const remove = useCallback(
+    (id: string) => setPath(old => removePage(old, id)),
+    [],
+  );
+  function back(focus?: HTMLElement | null) {
+    setPath(old => popPage(old, focus));
+  }
+  useLayoutEffect(() => {
+    if (!path.previous) return;
+    const origin = path.returnFocus;
+    if (path.returning && origin?.isConnected && !origin.closest('[inert]')) {
+      origin.focus({ preventScroll: true });
+      if (document.activeElement === origin) return;
+    }
+    heading.current?.focus({ preventScroll: true });
+  }, [current.id, path.previous, path.returning, path.returnFocus]);
+  useEffect(() => {
+    if (!path.previous) return;
+    const settle = () => {
+      setRecords(old => old.filter(record => path.entries.some(entry => entry.id === record.id)));
+      setPath(old => old === path ? { ...old, previous: null, returnFocus: null } : old);
+    };
+    const timer = window.setTimeout(settle, drawerPageMotion(reduced).duration * 1000);
+    return () => window.clearTimeout(timer);
+  }, [path, reduced]);
+  const Heading = parent ? 'h2' : 'span';
+  function openProject(project: string, key: string) {
+    const feature = key.startsWith('feature:') || key.startsWith('feature-goal:');
+    if (project !== snapshot.project?.id || (feature && props.floor === 'cto'))
+      return props.onOpenProject(project, key);
+    if (key.startsWith('feature-goal:')) open({ kind: 'features', sourceGoalId: key.slice(13) });
+    else if (key.startsWith('feature:')) open({ kind: 'features', id: key.slice(8) });
+    else open({ kind: 'ticket', id: key });
+  }
+  return (
+    <motion.aside
+      data-inspector
+      onClickCapture={event => {
+        const source = event.target instanceof Element ? event.target.closest<HTMLElement>('button, a, [role="button"]') : null;
+        pointerTrigger.current = source;
+      }}
+      className={cx(
+        'fixed top-topbar right-0 bottom-dock z-45 flex flex-col border-l border-drawer-line bg-drawer shadow-drawer backdrop-blur-drawer will-change-transform overscroll-contain max-compact:top-topbar-compact max-compact:bottom-dock-compact max-compact:w-full',
+        selection.kind === 'features' || selection.kind === 'people' || selection.kind === 'telemetry'
+          ? 'w-[min(1280px,100vw)]'
+          : 'w-drawer wide:w-drawer-wide max-tablet:w-drawer-tablet max-compact:max-w-drawer',
+        present ? 'pointer-events-auto' : 'pointer-events-none',
+      )}
+      aria-label={regionTitle || title}
+      {...panelMotion(reduced)}
+      inert={!present}
+      aria-hidden={!present}
+    >
+      <div className={cx('grid h-drawer-head shrink-0 items-center gap-control-gap border-b border-drawer-rule px-panel-padding max-compact:px-card-padding',
+        parent ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)]' : 'grid-cols-[1fr_auto]')}>
+        {parent && (
+          <button
+            type="button"
+            onClick={() => back()}
+            aria-label={`Back to ${parent.title}`}
+            className={cx(
+              'flex min-h-control-height min-w-0 max-w-full justify-self-start items-center gap-1 rounded-4 text-12 text-link',
+              interactive,
+            )}
+          >
+            <ChevronRight size={16} className="shrink-0 rotate-180" />
+            <span className="truncate">{parent.title}</span>
+          </button>
+        )}
+        <Heading ref={element => { heading.current = element; }} tabIndex={-1} className={cx("min-w-0 truncate text-13 font-semibold", parent && "text-center")}>
+          {title}
+        </Heading>
+        <IconButton className="justify-self-end" ref={close} aria-label="Close details" onClick={onClose}>
+          <X size={19} />
+        </IconButton>
+      </div>
+      <div ref={setViewport} className="relative min-h-0 flex-1 overflow-hidden" />
+      <DrawerNavigation.Provider value={{ drafts, path, viewport, reduced, push, back, remove, rename }}>
+        {records.map((record) => (
+          <DrawerPage
+            key={record.id}
+            id={record.id}
+            depth={record.depth}
+            fill={record.selection.kind === 'chat' || record.selection.kind === 'cto-chat'}
+          >
+            <InspectorContent
+              {...props}
+              snapshot={(record.selection.kind==='ticket'||record.selection.kind==='pm-queue') ? (props.ticketSnapshot || snapshot) : snapshot}
+                selection={record.selection}
+              onOpenProject={openProject}
+              onSelect={(next) => next && open(next)}
+            />
+          </DrawerPage>
+        ))}
+      </DrawerNavigation.Provider>
+    </motion.aside>
+  );
 }

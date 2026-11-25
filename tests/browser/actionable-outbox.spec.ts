@@ -1,4 +1,4 @@
-import { test, expect } from './fixture-test';
+import { test, expect, type APIRequestContext, type Page } from './fixture-test';
 import { setPreferences } from './support';
 
 test.beforeEach(async ({ page, request }) => { await setPreferences(request, { reducedMotion: true }); await page.addInitScript(() => localStorage.setItem('office.floor', 'delivery')); });
@@ -10,7 +10,7 @@ test(`saved plan follow-up survives ${blocker.startsWith('Error:') ? 'interrupte
     snapshot.tickets = [ticket]; snapshot.outbox = [{ id: 'ticket:CEC-154:plan', role: 'developer', ticket: ticket.key, title: 'CEC-154 needs Office follow-up', detail: ticket.blocker, status: 'open', url: '', createdAt: '', updatedAt: '' }];
     await request.post('/__fixture/snapshot?project=cec', { data: snapshot });
     let posts = 0; await page.route('**/api/commands', async route => { posts++; expect(route.request().postDataJSON()).toEqual({ action: 'resume-ticket', key: 'CEC-154' }); await route.abort(); });
-    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click();
+    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.getByRole('button',{name:/^Needs your reply/}).click();
     await page.getByRole('button', { name: /CEC-154.*Open follow-up/ }).click();
     const detail = page.locator('[data-saved-plan-followup]'); await expect(detail).toContainText('No product answer or approval is needed');
     await detail.getByText('Read Alex’s saved plan', { exact: true }).click(); await expect(detail).toContainText('Preserve saved Page Fields');
@@ -40,7 +40,7 @@ test('product question opens from outbox with recommendation first, three choice
 
 test('ordinary follow-up exposes its reply field above history and sends to the displayed owner', async ({ page, request }) => {
     await request.post('/__fixture/snapshot?project=cec', { data: { outbox: [{ id: 'question:clarification', role: 'lead', ticket: '', title: 'Sam has a question', detail: 'Which environment should be used?', status: 'open', url: '', createdAt: '', updatedAt: '' }] } });
-    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.locator('[data-outbox-item]').click();
+    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.getByRole('button',{name:/^Needs your reply/}).click(); await page.locator('[data-outbox-item]').click();
     await expect(page.getByRole('textbox', { name: 'Your reply to Sam' })).toBeInViewport(); await page.getByRole('textbox', { name: 'Your reply to Sam' }).fill('Use the lower environment only.');
     await page.getByRole('button', { name: 'Send reply', exact: true }).click();
     const writes = await (await request.get('/__fixture/writes')).json(); expect(writes.some((item: any) => item.body.role === 'lead' && item.body.actionId === 'question:clarification' && item.body.body === 'Use the lower environment only.')).toBe(true);
@@ -50,7 +50,7 @@ test('Avery input failure offers original-message recovery instead of a duplicat
     const message = { id: 'avery-original', requestId: 'avery-original', from: 'human', to: 'cto', status: 'failed', body: 'The walkthrough videos are complete.', error: '{"input_error_code":"input_too_large"}', ticket: '', actionId: '', receipts: [], recipients: [], createdAt: '', sessionId: '', recheck: false };
     await request.post('/__fixture/snapshot?project=cec', { data: { messages: [message], outbox: [{ id: 'message:avery-original', role: 'cto', ticket: '', title: 'Avery’s reply needs Office recovery', detail: 'Context exceeded the input limit', status: 'open', url: '', createdAt: '', updatedAt: '' }] } });
     let posts = 0; await page.route('**/api/commands', async route => { posts++; expect(route.request().postDataJSON()).toEqual({ action: 'recover-cto-input', messageId: message.id }); await route.abort(); });
-    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.locator('[data-outbox-item]').click();
+    await page.goto('/'); await page.getByRole('button', { name: /^Open your outbox,/ }).click(); await page.getByRole('button',{name:/^Needs your reply/}).click(); await page.locator('[data-outbox-item]').click();
     const followup = page.locator('[data-cto-input-followup]'); await expect(followup).toContainText('Your message was retained');
     await followup.getByRole('button', { name: 'Recover original message' }).click(); await expect(followup.getByRole('alert')).toContainText('do not send your original message again');
     await expect(followup.getByRole('button', { name: 'Recovery requested — check status' })).toBeDisabled(); expect(posts).toBe(1);
@@ -65,4 +65,52 @@ test('a stale outbox answer refreshes its question without losing the typed draf
     let posts = 0; await page.route(`**/api/features/${feature.id}?project=cec&officeWide=1`, async route => { posts++; feature.paused = true; await request.post('/__fixture/snapshot?project=cec', { data: { features: [feature] } }); await route.fulfill({ status: 409, json: { code: 'changed-precondition', error: 'Ticket left Ready intake' } }); });
     await form.getByRole('button', { name: 'Send answers', exact: true }).click(); await expect(form).toHaveCount(0);
     expect(await page.evaluate(() => Object.values(localStorage).includes('Keep the authored Page Fields.'))).toBe(true); expect(posts).toBe(1);
+});
+
+const reply = {id:'fixture-reply',role:'lead',ticket:'',title:'Confirm the test environment',detail:'Choose a fixture environment.',url:'',createdAt:'',updatedAt:''};
+
+async function openAndRemoveResolvedItem(page: Page, request: APIRequestContext) {
+    const active = page.locator('[data-inspector-scroll]');
+    await active.getByRole('button',{name:'Resolved items 1',exact:true}).click();
+    await active.locator('[data-outbox-item]').click();
+    await expect(active.locator('[data-outbox-detail]')).toBeVisible();
+    expect((await request.post('/__fixture/snapshot',{data:{outbox:[]}})).ok()).toBe(true);
+    await expect(active.getByText('This item is no longer in the outbox.',{exact:true})).toBeVisible();
+    return active;
+}
+
+test('a resolved outbox item stays available for Back focus only', async ({page,request}) => {
+    const item = {...reply,status:'open'};
+    const publish = async () => expect((await request.post('/__fixture/snapshot',{data:{outbox:[item]}})).ok()).toBe(true);
+    await publish();
+    await page.goto('/');
+    await page.getByRole('button',{name:/^Open your outbox,/}).click();
+    await page.getByRole('button',{name:'Needs your reply 1',exact:true}).click();
+    const row = page.locator('[data-inspector-scroll] [data-outbox-item]');
+    const original = await row.elementHandle();
+    await row.click();
+    item.status = 'resolved';
+    await publish();
+    await expect(page.locator('[data-outbox-detail]').getByText('Resolved',{exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Back to Needs your reply',exact:true}).click();
+    await expect(row).toBeFocused();
+    expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(row).toHaveCount(0);
+    await page.getByRole('button',{name:'Back to Your outbox',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Needs your reply 0',exact:true})).toBeVisible();
+    const active = await openAndRemoveResolvedItem(page, request);
+    await expect(active.getByRole('button')).toHaveCount(0);
+    await page.getByRole('button',{name:'Back to Resolved items',exact:true}).click();
+    await expect(active.getByText('No items in this group.',{exact:true})).toBeVisible();
+});
+
+test('Close dismisses the outbox drawer when the open item is removed', async ({page,request}) => {
+    expect((await request.post('/__fixture/snapshot',{data:{outbox:[{...reply,status:'resolved'}]}})).ok()).toBe(true);
+    await page.goto('/');
+    await page.getByRole('button',{name:/^Open your outbox,/}).click();
+    await openAndRemoveResolvedItem(page, request);
+    const drawer = page.locator('[data-inspector]');
+    await drawer.getByRole('button',{name:'Close details',exact:true}).click();
+    await expect(drawer).toHaveCount(0);
 });

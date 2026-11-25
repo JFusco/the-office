@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 49,
-    "edges": 96,
+    "nodes": 51,
+    "edges": 101,
     "byType": {
       "index": 4,
-      "journal": 12,
-      "plan": 27,
+      "journal": 13,
+      "plan": 28,
       "topic": 6
     }
   },
@@ -39,8 +39,8 @@
       ],
       "bytes": 2261,
       "degree": 4,
-      "x": 0.967295,
-      "y": 0.253655,
+      "x": 0.969797,
+      "y": 0.243914,
       "size": 8
     },
     {
@@ -70,8 +70,8 @@
       ],
       "bytes": 1102,
       "degree": 2,
-      "x": 0.926917,
-      "y": 0.375267,
+      "x": 0.932472,
+      "y": 0.361242,
       "size": 8
     },
     {
@@ -89,8 +89,27 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.871319,
-      "y": 0.490718,
+      "x": 0.881012,
+      "y": 0.473094,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-24-drawer-navigation.md",
+      "label": "Drawer navigation",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 551,
+          "url": "https://github.com/jfusco/the-office/issues/551"
+        }
+      ],
+      "bytes": 611,
+      "degree": 3,
+      "x": 0.816197,
+      "y": 0.577774,
       "size": 8
     },
     {
@@ -114,8 +133,8 @@
       ],
       "bytes": 1954,
       "degree": 4,
-      "x": 0.801414,
-      "y": 0.598111,
+      "x": 0.739009,
+      "y": 0.673696,
       "size": 8
     },
     {
@@ -139,8 +158,8 @@
       ],
       "bytes": 1611,
       "degree": 0,
-      "x": 0.718349,
-      "y": 0.695683,
+      "x": 0.650618,
+      "y": 0.759405,
       "size": 8
     },
     {
@@ -164,8 +183,8 @@
       ],
       "bytes": 975,
       "degree": 0,
-      "x": 0.62349,
-      "y": 0.781831,
+      "x": 0.552365,
+      "y": 0.833602,
       "size": 8
     },
     {
@@ -189,8 +208,8 @@
       ],
       "bytes": 1728,
       "degree": 0,
-      "x": 0.518393,
-      "y": 0.855143,
+      "x": 0.445738,
+      "y": 0.895163,
       "size": 8
     },
     {
@@ -214,8 +233,8 @@
       ],
       "bytes": 585,
       "degree": 0,
-      "x": 0.404783,
-      "y": 0.914413,
+      "x": 0.332355,
+      "y": 0.943154,
       "size": 8
     },
     {
@@ -233,8 +252,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.284528,
-      "y": 0.958668,
+      "x": 0.213933,
+      "y": 0.976848,
       "size": 8
     },
     {
@@ -252,8 +271,8 @@
       ],
       "bytes": 1680,
       "degree": 4,
-      "x": 0.1596,
-      "y": 0.987182,
+      "x": 0.092268,
+      "y": 0.995734,
       "size": 8
     },
     {
@@ -271,8 +290,8 @@
       ],
       "bytes": 820,
       "degree": 3,
-      "x": 0.032052,
-      "y": 0.999486,
+      "x": -0.030795,
+      "y": 0.999526,
       "size": 8
     },
     {
@@ -302,8 +321,8 @@
       ],
       "bytes": 1126,
       "degree": 3,
-      "x": -0.096023,
-      "y": 0.995379,
+      "x": -0.153392,
+      "y": 0.988165,
       "size": 8
     },
     {
@@ -314,8 +333,8 @@
       "githubRefs": [],
       "bytes": 3394,
       "degree": 4,
-      "x": 0.99179,
-      "y": 0.127877,
+      "x": 0.992421,
+      "y": 0.122888,
       "size": 12
     },
     {
@@ -326,8 +345,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": -0.222521,
-      "y": 0.974928,
+      "x": -0.273663,
+      "y": 0.961826,
       "size": 12
     },
     {
@@ -351,8 +370,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": -0.345365,
-      "y": 0.938468,
+      "x": -0.389786,
+      "y": 0.920906,
       "size": 8
     },
     {
@@ -370,8 +389,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": -0.462538,
-      "y": 0.886599,
+      "x": -0.5,
+      "y": 0.866025,
       "size": 8
     },
     {
@@ -389,8 +408,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": -0.572117,
-      "y": 0.820172,
+      "x": -0.602635,
+      "y": 0.798017,
       "size": 8
     },
     {
@@ -408,8 +427,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": -0.672301,
-      "y": 0.740278,
+      "x": -0.696134,
+      "y": 0.717912,
       "size": 8
     },
     {
@@ -427,8 +446,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": -0.761446,
-      "y": 0.648228,
+      "x": -0.779081,
+      "y": 0.626924,
       "size": 8
     },
     {
@@ -446,8 +465,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.838088,
-      "y": 0.545535,
+      "x": -0.850217,
+      "y": 0.526432,
       "size": 8
     },
     {
@@ -471,8 +490,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.900969,
-      "y": 0.433884,
+      "x": -0.908465,
+      "y": 0.41796,
       "size": 8
     },
     {
@@ -490,8 +509,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.949056,
-      "y": 0.315108,
+      "x": -0.952942,
+      "y": 0.303153,
       "size": 8
     },
     {
@@ -515,8 +534,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.981559,
-      "y": 0.191159,
+      "x": -0.982973,
+      "y": 0.18375,
       "size": 8
     },
     {
@@ -558,8 +577,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.997945,
-      "y": 0.06407,
+      "x": -0.998103,
+      "y": 0.061561,
       "size": 8
     },
     {
@@ -577,8 +596,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.997945,
-      "y": -0.06407,
+      "x": -0.998103,
+      "y": -0.061561,
       "size": 8
     },
     {
@@ -602,8 +621,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.981559,
-      "y": -0.191159,
+      "x": -0.982973,
+      "y": -0.18375,
       "size": 8
     },
     {
@@ -621,8 +640,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.949056,
-      "y": -0.315108,
+      "x": -0.952942,
+      "y": -0.303153,
       "size": 8
     },
     {
@@ -658,8 +677,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.900969,
-      "y": -0.433884,
+      "x": -0.908465,
+      "y": -0.41796,
       "size": 8
     },
     {
@@ -713,8 +732,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.838088,
-      "y": -0.545535,
+      "x": -0.850217,
+      "y": -0.526432,
       "size": 8
     },
     {
@@ -732,8 +751,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.761446,
-      "y": -0.648228,
+      "x": -0.779081,
+      "y": -0.626924,
       "size": 8
     },
     {
@@ -751,8 +770,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.672301,
-      "y": -0.740278,
+      "x": -0.696134,
+      "y": -0.717912,
       "size": 8
     },
     {
@@ -776,8 +795,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.572117,
-      "y": -0.820172,
+      "x": -0.602635,
+      "y": -0.798017,
       "size": 8
     },
     {
@@ -795,8 +814,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.462538,
-      "y": -0.886599,
+      "x": -0.5,
+      "y": -0.866025,
       "size": 8
     },
     {
@@ -850,8 +869,8 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.345365,
-      "y": -0.938468,
+      "x": -0.389786,
+      "y": -0.920906,
       "size": 8
     },
     {
@@ -869,8 +888,20 @@
       ],
       "bytes": 11453,
       "degree": 4,
-      "x": -0.222521,
-      "y": -0.974928,
+      "x": -0.273663,
+      "y": -0.961826,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md",
+      "label": "Drill-down navigation for Office drawers",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [],
+      "bytes": 4584,
+      "degree": 3,
+      "x": -0.153392,
+      "y": -0.988165,
       "size": 8
     },
     {
@@ -888,8 +919,8 @@
       ],
       "bytes": 3712,
       "degree": 4,
-      "x": -0.096023,
-      "y": -0.995379,
+      "x": -0.030795,
+      "y": -0.999526,
       "size": 8
     },
     {
@@ -907,8 +938,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": 0.032052,
-      "y": -0.999486,
+      "x": 0.092268,
+      "y": -0.995734,
       "size": 8
     },
     {
@@ -926,8 +957,8 @@
       ],
       "bytes": 751,
       "degree": 5,
-      "x": 0.1596,
-      "y": -0.987182,
+      "x": 0.213933,
+      "y": -0.976848,
       "size": 8
     },
     {
@@ -945,8 +976,8 @@
       ],
       "bytes": 826,
       "degree": 3,
-      "x": 0.284528,
-      "y": -0.958668,
+      "x": 0.332355,
+      "y": -0.943154,
       "size": 8
     },
     {
@@ -970,8 +1001,8 @@
       ],
       "bytes": 802,
       "degree": 3,
-      "x": 0.404783,
-      "y": -0.914413,
+      "x": 0.445738,
+      "y": -0.895163,
       "size": 8
     },
     {
@@ -982,8 +1013,8 @@
       "githubRefs": [],
       "bytes": 9984,
       "degree": 3,
-      "x": 0.518393,
-      "y": -0.855143,
+      "x": 0.552365,
+      "y": -0.833602,
       "size": 8
     },
     {
@@ -1293,10 +1324,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 9673,
-      "degree": 31,
-      "x": 0.62349,
-      "y": -0.781831,
+      "bytes": 9953,
+      "degree": 32,
+      "x": 0.650618,
+      "y": -0.759405,
       "size": 12
     },
     {
@@ -1314,8 +1345,8 @@
       ],
       "bytes": 2333,
       "degree": 13,
-      "x": 0.718349,
-      "y": -0.695683,
+      "x": 0.739009,
+      "y": -0.673696,
       "size": 8
     },
     {
@@ -1351,8 +1382,8 @@
       ],
       "bytes": 1324,
       "degree": 8,
-      "x": 0.801414,
-      "y": -0.598111,
+      "x": 0.816197,
+      "y": -0.577774,
       "size": 8
     },
     {
@@ -1398,10 +1429,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 2044,
-      "degree": 9,
-      "x": 0.871319,
-      "y": -0.490718,
+      "bytes": 2452,
+      "degree": 12,
+      "x": 0.881012,
+      "y": -0.473094,
       "size": 8
     },
     {
@@ -1431,8 +1462,8 @@
       ],
       "bytes": 885,
       "degree": 11,
-      "x": 0.926917,
-      "y": -0.375267,
+      "x": 0.932472,
+      "y": -0.361242,
       "size": 8
     },
     {
@@ -1474,8 +1505,8 @@
       ],
       "bytes": 1931,
       "degree": 9,
-      "x": 0.967295,
-      "y": -0.253655,
+      "x": 0.969797,
+      "y": -0.243914,
       "size": 8
     },
     {
@@ -1505,12 +1536,19 @@
       ],
       "bytes": 944,
       "degree": 2,
-      "x": 0.99179,
-      "y": -0.127877,
+      "x": 0.992421,
+      "y": -0.122888,
       "size": 8
     }
   ],
   "edges": [
+    {
+      "id": "030a9403e0fe041b",
+      "source": "wiki/plans/2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
     {
       "id": "044ce2e0a57b663e",
       "source": "wiki/journal/2026-11-24-context-wiki.md",
@@ -1869,6 +1907,13 @@
       "relation": "link"
     },
     {
+      "id": "86219057cd5d3eb8",
+      "source": "wiki/journal/2026-11-24-drawer-navigation.md",
+      "target": "wiki/topics/office-ui-and-telemetry.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "91548b0b3d93db4c",
       "source": "wiki/topics/context-wiki-and-ci.md",
       "target": "wiki/MECHANICS.md",
@@ -1921,6 +1966,13 @@
       "id": "9fe9a357cf53c18a",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-06-delivery-throughput-and-harness-validation-2c131f596e.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "a30f9728b96a2141",
+      "source": "wiki/topics/office-ui-and-telemetry.md",
+      "target": "wiki/journal/2026-11-24-drawer-navigation.md",
       "type": "link",
       "relation": "link"
     },
@@ -2072,6 +2124,13 @@
       "relation": "topic"
     },
     {
+      "id": "d0ce53f61c7e9ad1",
+      "source": "wiki/journal/2026-11-24-drawer-navigation.md",
+      "target": "wiki/plans/2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "d22254c0661a2f74",
       "source": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
       "target": "wiki/topics/context-wiki-and-ci.md",
@@ -2082,6 +2141,13 @@
       "id": "d4084be33d1ed1ae",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-24-refresh-the-shared-office-code-map-after-merges-708032e283.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "d98551306294cb4b",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-24-drill-down-navigation-for-office-drawers-7f263c6ae4.md",
       "type": "link",
       "relation": "link"
     },

@@ -19,5 +19,5 @@ test('occasional coffee breaks stay distinct from actual work and stop with redu
   await setPreferences(request,{reducedMotion:false,quality:'low'});
   await page.goto('/');const coffee=page.locator('[data-office-life]');await expect(coffee).toContainText('Coffee break',{timeout:25000});await expect(coffee).toContainText('Office life');
   await page.screenshot({path:evidence('office-coffee-break.png')});
-  await page.getByRole('button',{name:'Office settings'}).click();await page.getByLabel('Reduced motion').check();await expect(page.getByLabel('Reduced motion')).toBeChecked();await expect(coffee).toHaveCount(0);await page.keyboard.press('Escape');await expect(page.locator('canvas')).toBeVisible();
+  await page.getByRole('button',{name:'Office settings'}).click();await page.getByRole('button',{name:/^Office preferences/}).click();await page.getByLabel('Reduced motion').check();await expect(page.getByLabel('Reduced motion')).toBeChecked();await expect(coffee).toHaveCount(0);await page.keyboard.press('Escape');await expect(page.locator('canvas')).toBeVisible();
 });

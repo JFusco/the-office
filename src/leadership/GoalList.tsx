@@ -1,12 +1,21 @@
 import type { ProjectGoal } from '../shared';
 import { Count, Section, SectionTitle, cx, eyebrow, interactive, mutedCopy } from '../ui';
 import { reviewExcerpt } from './ReviewText';
+import { useDrawerReturnRow } from '../office/drawer/DrawerTopic';
 
-export function GoalList({ goals, disabled, onEdit }: { goals: ProjectGoal[]; disabled: boolean; onEdit: (goal: ProjectGoal) => void }) {
+const goalKey = (goal: ProjectGoal) => `${goal.projectId}:${goal.id}`;
+
+export function GoalList({ goals, disabled, onEdit }: { goals: ProjectGoal[]; disabled: boolean; onEdit: (goal: ProjectGoal, source: HTMLElement) => void }) {
   const current = goals.filter(goal => goal.status !== 'done');
   const completed = goals.filter(goal => goal.status === 'done');
-  function card(goal: ProjectGoal) {
-    return <button type="button" key={`${goal.projectId}:${goal.id}`} disabled={disabled} onClick={() => onEdit(goal)} className={cx('my-2.5 flex w-full flex-col gap-2 rounded-8 border border-l-3 border-goal-line bg-goal p-4 text-left enabled:hover:border-goal-hover-line enabled:hover:bg-goal-hover', goal.priority === 1 ? 'border-l-goal-first' : 'border-l-goal-rank', interactive)}>
+  const { opened, remember, release } = useDrawerReturnRow<{ key: string; completed: boolean }>();
+  const openedGoal = goals.find(goal => goalKey(goal) === opened?.key);
+  const moved = openedGoal && (openedGoal.status === 'done') !== opened?.completed ? openedGoal : undefined;
+  function card(goal: ProjectGoal, completed: boolean) {
+    return <button type="button" key={goalKey(goal)} disabled={disabled} onBlur={release} onClick={event => {
+      remember({ key: goalKey(goal), completed }, event.currentTarget);
+      onEdit(goal, event.currentTarget);
+    }} className={cx('my-2.5 flex w-full flex-col gap-2 rounded-8 border border-l-3 border-goal-line bg-goal p-4 text-left enabled:hover:border-goal-hover-line enabled:hover:bg-goal-hover', goal.priority === 1 ? 'border-l-goal-first' : 'border-l-goal-rank', interactive)}>
       <span className={cx(eyebrow, 'text-9')}>{goal.project} · {goal.status === 'done' ? 'Completed' : `${['', 'First', 'Next', 'Later', 'Someday'][goal.priority]} · ${goal.status}`}</span>
       <strong className="text-14">{goal.title}</strong>
       <span className="text-12 leading-relaxed">{reviewExcerpt(goal.detail, 180)}</span>
@@ -15,9 +24,12 @@ export function GoalList({ goals, disabled, onEdit }: { goals: ProjectGoal[]; di
       <small className="block text-10 leading-relaxed text-goal-detail">Select for full details, history, and editing</small>
     </button>;
   }
+  const currentRows = moved && !opened?.completed ? [...current, moved] : current;
+  const completedRows = moved && opened?.completed ? [...completed, moved] : completed;
   return <Section>
     <SectionTitle className="mb-4">Project priorities <Count>{current.length}</Count></SectionTitle>
-    {current.length ? current.map(card) : <p className={mutedCopy}>{completed.length ? 'All recorded goals are complete.' : 'No goals recorded yet. Start with an idea or a project outcome you want the team to work toward.'}</p>}
-    {completed.length ? <details className="my-4"><summary className={cx('cursor-pointer text-13 font-semibold', interactive)}>Completed ({completed.length})</summary>{completed.map(card)}</details> : null}
+    {!current.length && <p className={mutedCopy}>{completed.length ? 'All recorded goals are complete.' : 'No goals recorded yet. Start with an idea or a project outcome you want the team to work toward.'}</p>}
+    {currentRows.map(goal => card(goal, false))}
+    {completedRows.length ? <details className="my-4"><summary className={cx('cursor-pointer text-13 font-semibold', interactive)}>Completed ({completed.length})</summary>{completedRows.map(goal => card(goal, true))}</details> : null}
   </Section>;
 }

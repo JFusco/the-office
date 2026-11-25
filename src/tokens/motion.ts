@@ -13,3 +13,7 @@ export const knowledgeMaxFrameStep = 50;
 export const knowledgeOrbitIdle = 3000;
 export const knowledgeOrbitSpeed = .2;
 export const knowledgeTapSlop = 8;
+
+export function drawerPageMotion(reduced: boolean) {
+    return { duration: reduced ? 0 : .28, ease: [.22, 1, .36, 1] as const };
+}

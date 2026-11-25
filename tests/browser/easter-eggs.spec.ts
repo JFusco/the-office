@@ -57,7 +57,7 @@ test('cast names stay consistent in generated drawer and chat copy', async ({ pa
   await page.keyboard.type('the office');
   await page.getByRole('button', { name: /^Visit Jim Halpert,/ }).click();
   const drawer = page.getByRole('complementary');
-  await expect(drawer.getByRole('button', { name: 'Chat with Pam Beesly about Jim Halpert’s work', exact: true })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Conversation Pam Beesly', exact: true })).toBeVisible();
   await expect(drawer).not.toContainText('Morgan');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Chat with Pam Beesly', exact: true }).click();
@@ -66,7 +66,7 @@ test('cast names stay consistent in generated drawer and chat copy', async ({ pa
   await expect(page.getByLabel('Message Pam Beesly', { exact: true })).toHaveAttribute('placeholder', 'Ask Pam Beesly to update the team or send a Slack message…');
   await page.reload();
   await page.getByRole('button', { name: /^Visit Alex,/ }).click();
-  await expect(drawer.getByRole('button', { name: 'Chat with Morgan about Alex’s work', exact: true })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Conversation Morgan', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Chat with Morgan', exact: true }).click();
   await expect(drawer.getByRole('log')).toContainText('Talk to Morgan');

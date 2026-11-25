@@ -1,6 +1,7 @@
 import { RoomCamera } from './RoomCamera';
 import type { CameraBookmark } from './camera-bookmark';
 import type { RefObject } from 'react';
+import type { Feature } from '../contracts/features';
 import {itAgent} from '../health/it-agent';
 import { avatarHome, SPOTS, sceneHandoff, sceneNow } from './scene-motion';
 import { useAvatarMotion } from './useAvatarMotion';
@@ -16,7 +17,7 @@ import * as THREE from 'three';
 import { STAGE_LABELS, STAGE_ROLE, STAGES, ROLE_NAMES, type Agent, type OfficeSnapshot, type Role } from '../shared';
 import { sceneColors } from '../tokens/scene-colors';
 import { StatusDot, cx, interactiveScene } from '../ui';
-export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTicket?:string}|{kind:'agent';id:Role}|{kind:'chat';ticket?:string}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|{kind:'settings'}|{kind:'people'}|{kind:'telemetry'}|null;
+export type Selection={kind:'features';id?:string;sourceGoalId?:string;sourceTicket?:string;initialFeature?:Feature}|{kind:'agent';id:Role}|{kind:'chat';ticket?:string;role?:Role}|{kind:'outbox';id?:string}|{kind:'mailbox'}|{kind:'health'}|{kind:'pm-queue'}|{kind:'azure'}|{kind:'ticket';id:string;page?:'evidence'}|{kind:'meeting'}|{kind:'goals'}|{kind:'cto-chat'}|{kind:'settings';page?:'project'}|{kind:'people'}|{kind:'telemetry'}|null;
 const Party=createContext(false);
 type Vec=[number,number,number];
 type SceneAgent=Agent;

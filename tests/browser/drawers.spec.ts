@@ -1,5 +1,8 @@
+import { type Locator } from '@playwright/test';
 import { expect, test, type Page } from './fixture-test';
-import { setPreferences } from './support';
+import { jiraQueueProgress } from '../../server/cec/queue-progress';
+import type { AssignmentReview, OfficeSnapshot, StageResult, TicketJob } from '../../src/shared';
+import { evidence as screenshotPath, setPreferences } from './support';
 async function geometry(page:Page){return page.evaluate(()=>{
   const box=(selector:string)=>{const r=document.querySelector(selector)!.getBoundingClientRect();return [r.x,r.y,r.width,r.height];};
   return {world:box('main'),canvas:box('canvas'),header:box('header'),dock:box('[data-surface=dock]'),scroll:[scrollX,scrollY],width:document.documentElement.scrollWidth};
@@ -62,18 +65,33 @@ test('opening another panel closes the current drawer first, then slides the nex
 test('a drawer opened from inside another drawer returns focus to the original trigger',async({page})=>{
   await page.goto('/');await expect(page.locator('canvas')).toBeVisible();
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();const mailbox=page.getByRole('complementary',{name:'PM mailbox'});await expect(mailbox).toBeVisible();
-  await mailbox.locator('section',{hasText:'Already with the team'}).getByRole('button').first().click();
-  await expect(page.getByRole('complementary',{name:'Ticket'})).toBeVisible();await expect(page.getByRole('button',{name:'Close details'})).toBeFocused();
+  await mailbox.getByRole('button',{name:/Already with the team/}).click();
+  await page.locator('[data-inspector-scroll]').getByRole('button').first().click();
+  await expect(page.getByRole('button',{name:'Back to Already with the team'})).toBeVisible();await expect(page.locator('[data-inspector] h2').first()).toBeFocused();
   await page.keyboard.press('Escape');await expect(page.locator('[data-inspector]')).toHaveCount(0);
   await expect(page.getByRole('button',{name:/^Open PM mailbox,/})).toBeFocused();
 });
 test('Settings opened from the mailbox closes help, and waits for preferences like the gear',async({page})=>{
+  await page.setViewportSize({width:390,height:640});
   await page.goto('/');await expect(page.locator('canvas')).toBeVisible();
   await page.getByRole('button',{name:'Office help'}).click();await expect(page.getByRole('dialog',{name:'Office controls'})).toBeVisible();
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await expect(page.getByRole('dialog',{name:'Office controls'})).toBeVisible();
-  await page.getByRole('complementary',{name:'PM mailbox'}).getByRole('button',{name:'Project settings'}).click();
-  await expect(page.getByRole('complementary',{name:'Settings'})).toBeVisible();await expect(page.getByRole('dialog',{name:'Office controls'})).toHaveCount(0);
-  await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Office settings'})).toBeFocused();
+  const project = page.getByRole('complementary',{name:'PM mailbox'}).getByRole('button',{name:'Project settings'});
+  const active = page.locator('[data-inspector-scroll]');
+  await project.scrollIntoViewIfNeeded();
+  const offset = await active.evaluate(element => element.scrollTop);
+  await project.click();
+  await expect(page.getByRole('heading',{name:'Project settings',exact:true})).toBeFocused();
+  await expect(page.getByRole('dialog',{name:'Office controls'})).toHaveCount(0);
+  for (const topic of ['Pickup', 'Notifications', 'Time']) {
+    await expect(active.getByRole('button',{name:topic,exact:true})).toBeVisible();
+  }
+  await page.getByRole('button',{name:'Back to PM mailbox'}).click();
+  await expect(project).toBeFocused();
+  expect(await active.evaluate(element => element.scrollTop)).toBe(offset);
+  await page.getByRole('button',{name:'Office settings'}).click();
+  await expect(active.getByRole('button',{name:'Office preferences',exact:true})).toBeVisible();
+  await expect(active.getByRole('button',{name:/^Project settings/})).toBeVisible();
 });
 test('before preferences load, neither the gear nor the mailbox can open Settings',async({page})=>{
   await page.route('**/api/events*',route=>route.abort());
@@ -87,7 +105,477 @@ test('cancelling a drawer swap with Escape returns focus to the original trigger
   await page.goto('/');await expect(page.locator('canvas')).toBeVisible();
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();const mailbox=page.getByRole('complementary',{name:'PM mailbox'});await expect(mailbox).toBeVisible();
   // Escape lands while the mailbox is still sliding out for the ticket drawer.
-  await mailbox.locator('section',{hasText:'Already with the team'}).getByRole('button').first().click();await page.keyboard.press('Escape');
+  await mailbox.getByRole('button',{name:/Already with the team/}).click();
+  await page.locator('[data-inspector-scroll]').getByRole('button').first().click();await page.keyboard.press('Escape');
   await expect(page.locator('[data-inspector]')).toHaveCount(0);await expect(page.getByRole('complementary',{name:'Ticket'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:/^Open PM mailbox,/})).toBeFocused();
 });
+
+async function sampleSlide(trigger: Locator) {
+  const capture = await trigger.evaluateHandle(button => ({
+    samples: new Promise<{ incoming: number[]; outgoing: number[]; paired: boolean; stationary: boolean; inert: boolean }>(resolve => {
+      button.addEventListener('click', () => {
+        const shell = button.closest('[data-inspector]')!;
+        const leaving = shell.querySelector<HTMLElement>('[data-inspector-scroll]')!;
+        const canvas = document.querySelector('canvas')!;
+        const bounds = (element: Element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return `${x} ${y} ${width} ${height}`;
+        };
+        const frame = bounds(shell), scene = bounds(canvas);
+        const { x, width } = leaving.parentElement!.getBoundingClientRect();
+        const start = performance.now();
+        const incoming: number[] = [], outgoing: number[] = [];
+        let stationary = true, inert = true, paired = false;
+        const slide = (element: Element) => element.getAnimations().find(animation =>
+          (animation.effect as KeyframeEffect).getKeyframes().some(keyframe => 'transform' in keyframe));
+        async function sample() {
+          const entering = shell.querySelector<HTMLElement>('[data-inspector-scroll]');
+          const from = slide(leaving), to = entering && slide(entering);
+          if (entering && entering !== leaving && from && to) {
+            // Motion uses native transforms. Seek the two real animations together
+            // before the outgoing page unmounts, even on a busy test machine.
+            await Promise.all([from.ready, to.ready]);
+            const fromStart = Number(from.startTime), toStart = Number(to.startTime);
+            const firstStart = Math.min(fromStart, toStart);
+            const sameTiming = Math.abs(fromStart - toStart) < 20 &&
+              from.effect?.getTiming().duration === to.effect?.getTiming().duration;
+            from.pause(); to.pause();
+            for (const elapsed of [0, 70, 140, 210, 280]) {
+              from.currentTime = firstStart + elapsed - fromStart;
+              to.currentTime = firstStart + elapsed - toStart;
+              await new Promise(requestAnimationFrame);
+              const oldPage = (leaving.getBoundingClientRect().x - x) / width;
+              const newPage = (entering.getBoundingClientRect().x - x) / width;
+              outgoing.push(oldPage);
+              incoming.push(newPage);
+              paired ||= sameTiming && Math.abs(oldPage) > .01 && Math.abs(newPage) > .01;
+              stationary &&= bounds(shell) === frame && bounds(canvas) === scene;
+              inert &&= leaving.inert && !entering.inert;
+            }
+            from.play(); to.play();
+          } else if (performance.now() - start < 420) {
+            requestAnimationFrame(sample);
+            return;
+          }
+          resolve({incoming, outgoing, paired, stationary, inert});
+        }
+        requestAnimationFrame(sample);
+      }, {once:true});
+    }),
+  }));
+  try {
+    await trigger.click();
+    return await capture.evaluate(result => result.samples);
+  } finally {
+    await capture.dispose();
+  }
+}
+
+for (const width of [390,1440]) {
+  test(`ticket evidence returns to the same mailbox row at ${width}px`,async({page,request})=>{
+    await page.setViewportSize({width,height:844});
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await setPreferences(request,{reducedMotion:false,quality:'low'});
+    await page.goto('/');
+    const mailbox=page.getByRole('button',{name:/^Open PM mailbox,/});
+    await mailbox.click();
+    const drawer=page.locator('[data-inspector]'),active=drawer.locator('[data-inspector-scroll]');
+    await expect.poll(()=>drawer.evaluate(el=>el.getBoundingClientRect().right)).toBeCloseTo(width,0);
+    const office=await geometry(page),original=await drawer.elementHandle();
+    const first=active.getByRole('button',{name:/^CEC-\d+ · /}).first();
+    if (width === 390) await drawer.screenshot({path:screenshotPath('mailbox-navigation-phone.png')});
+    // Tapping a button in Safari can leave focus on the previous control.
+    const forward = await sampleSlide(first);
+    expect(forward).toMatchObject({stationary:true,inert:true,paired:true});
+    expect(Math.min(...forward.outgoing)).toBeCloseTo(-.2, 1);
+    expect(forward.incoming[0]).toBeGreaterThan(.2);
+    expect(forward.incoming.at(-1)).toBeCloseTo(0, 1);
+    const evidence=active.getByRole('button',{name:/^Evidence/});
+    await evidence.scrollIntoViewIfNeeded();
+    const offset=await active.evaluate(el=>el.scrollTop);
+    await evidence.press('Enter');
+    await expect(drawer.getByRole('heading',{name:'Evidence',exact:true}).first()).toBeFocused();
+    await expect(active.locator('[data-qa-results]')).toBeVisible();
+    await drawer.getByRole('button',{name:/^Back to /}).click();
+    await expect(evidence).toBeFocused();
+    expect(await active.evaluate(el=>el.scrollTop)).toBe(offset);
+    await expect.poll(() => active.evaluate(el => el.getBoundingClientRect().x - el.parentElement!.getBoundingClientRect().x)).toBeCloseTo(0, 0);
+    const reverse = await sampleSlide(drawer.getByRole('button',{name:'Back to PM mailbox'}));
+    expect(reverse).toMatchObject({stationary:true,inert:true,paired:true});
+    expect(Math.min(...reverse.incoming)).toBeCloseTo(-.2, 1);
+    expect(reverse.incoming.at(-1)).toBeCloseTo(0, 1);
+    expect(Math.max(...reverse.outgoing)).toBeGreaterThan(.2);
+    await expect(first).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    const backToMailbox = drawer.getByRole('button',{name:'Back to PM mailbox'});
+    await expect(backToMailbox).toBeVisible();
+    await backToMailbox.click();
+    await expect(first).toBeFocused();
+    await expect(backToMailbox).toHaveCount(0);
+    await first.press('Enter');
+    await evidence.press('Enter');
+    await expect(drawer.getByRole('heading',{name:'Evidence',exact:true}).first()).toBeFocused();
+    await drawer.getByRole('button',{name:/^Back to CEC-/}).evaluate(async button => {
+      const back = button as HTMLButtonElement;
+      back.click();
+      await new Promise(requestAnimationFrame);
+      back.click();
+    });
+    await expect(first).toBeFocused();
+    await expect(backToMailbox).toHaveCount(0);
+    await expect(drawer.locator('[data-drawer-page]:not([inert])')).toHaveCount(1);
+    expect(await original!.evaluate(el=>el===document.querySelector('[data-inspector]'))).toBe(true);
+    expect(await geometry(page)).toEqual(office);
+    await page.keyboard.press('Escape');await expect(mailbox).toBeFocused();
+  });
+}
+async function openTicketDiscussion(page: Page) {
+  await page.goto('/');await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+  await page.getByRole('button',{name:/Already with the team/}).click();
+  await page.locator('[data-inspector-scroll]').getByRole('button').first().click();
+  const discuss=page.getByRole('button',{name:/^Discuss .* with /});
+  await discuss.click();
+  return { discuss, compose:page.getByRole('textbox',{name:'Message Morgan'}),
+    back:page.getByRole('button',{name:/^Back to CEC-/}) };
+}
+
+test('a ticket conversation keeps typed and suggested drafts across live updates and Back',async({page,request})=>{
+  const {discuss, compose, back} = await openTicketDiscussion(page);
+  const suggestion = await compose.inputValue();
+  expect(suggestion).not.toBe('');
+  await compose.fill('Can you check the latest update?');
+  await expect(page.getByRole('button',{name:'Pause office',exact:true})).toBeVisible();
+  expect((await request.post('/__fixture/snapshot',{data:{paused:true}})).ok()).toBe(true);
+  await expect(page.getByRole('button',{name:'Resume office',exact:true})).toBeVisible();
+  await expect(compose).toHaveValue('Can you check the latest update?');
+  await back.click();await expect(discuss).toBeFocused();
+  await expect(page.locator('[data-drawer-page] textarea')).toHaveCount(0);
+  await discuss.click();await expect(compose).toHaveValue('Can you check the latest update?');
+  await page.getByRole('button',{name:'Use current suggestion'}).click();
+  await expect(compose).toHaveValue(suggestion);
+  await back.click();
+  await expect(page.locator('[data-drawer-page] textarea')).toHaveCount(0);
+  await discuss.click();await expect(compose).toHaveValue(suggestion);
+});
+
+test('a reopened chat keeps its pending send and retries a lost response with the same ID',async({page})=>{
+  const submissions: { id:string; body:string }[] = [];
+  let loseResponse!: () => void;
+  const held = new Promise<void>(resolve => { loseResponse = resolve; });
+  await page.route(/\/api\/messages(?:\?|$)/, async route => {
+    submissions.push(route.request().postDataJSON());
+    if (submissions.length === 1) {
+      await route.fetch();
+      await held;
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+  const {discuss, compose, back} = await openTicketDiscussion(page);
+  const send = page.getByRole('button',{name:'Send message',exact:true});
+  try {
+    await compose.fill('Check the handoff');
+    await send.click();
+    await expect.poll(() => submissions.length).toBe(1);
+    await back.click();
+    await expect(page.locator('[data-drawer-page] textarea')).toHaveCount(0);
+    await discuss.click();
+    await expect(compose).toBeDisabled();
+    await expect(page.getByRole('button',{name:'Sending…'})).toBeDisabled();
+  } finally {
+    loseResponse();
+  }
+  await expect(send).toBeEnabled();
+  await back.click();
+  await expect(page.locator('[data-drawer-page] textarea')).toHaveCount(0);
+  await discuss.click();
+  await expect(compose).toHaveValue('Check the handoff');
+  await send.click();
+  await expect(compose).toHaveValue('');
+  expect(submissions).toHaveLength(2);
+  expect(submissions[1]).toEqual(submissions[0]);
+  await compose.fill('Check only the QA notes');
+  await send.click();
+  await expect(compose).toHaveValue('');
+  expect(submissions).toHaveLength(3);
+  expect(submissions[2].id).not.toBe(submissions[0].id);
+  expect(submissions[2].body).toBe('Check only the QA notes');
+});
+
+test('an unsaved notification setting survives Back and a live update',async({page,request})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Office settings'}).click();
+  await page.getByRole('button',{name:/Project settings/}).click();
+  const notifications=page.getByRole('button',{name:'Notifications',exact:true});
+  await notifications.click();
+  const channel=page.getByRole('textbox',{name:'Channel name',exact:true});
+  await channel.fill('delivery-updates-draft');
+  await expect(page.getByRole('button',{name:'Pause office',exact:true})).toBeVisible();
+  expect((await request.post('/__fixture/snapshot',{data:{paused:true}})).ok()).toBe(true);
+  await expect(page.getByRole('button',{name:'Resume office',exact:true})).toBeVisible();
+  await expect(channel).toHaveValue('delivery-updates-draft');
+  await page.getByRole('button',{name:/^Back to /}).click();await expect(notifications).toBeFocused();
+  await notifications.press('Enter');await expect(channel).toHaveValue('delivery-updates-draft');
+});
+
+test('a changed mailbox priority keeps the original Back target', async ({page,request}) => {
+  const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
+  const [replacement, originalTicket] = snapshot.tickets;
+  originalTicket.activity = 'blocked';
+  const update = async () => {
+    const response = await request.post('/__fixture/snapshot',{data:{tickets:snapshot.tickets}});
+    expect(response.ok()).toBe(true);
+  };
+  await update();
+  await page.goto('/');
+  await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+  const root = page.locator('[data-drawer-page="root"]');
+  const originalRow = root.getByRole('button',{name:new RegExp('^' + originalTicket.key + ' ·')});
+  const original = await originalRow.elementHandle();
+  await originalRow.click();
+  const evidence = page.getByRole('button',{name:/^Evidence/});
+  await evidence.click();
+  originalTicket.activity = 'working';
+  replacement.activity = 'blocked';
+  await update();
+  await expect(root.locator('[data-drawer-row]').filter({hasText:replacement.summary})).toHaveCount(1);
+  await page.getByRole('button',{name:'Back to ' + originalTicket.key}).click();
+  await expect(evidence).toBeFocused();
+  await page.getByRole('button',{name:'Back to PM mailbox'}).click();
+  await expect(originalRow).toBeFocused();
+  expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+  const priority = root.getByRole('heading',{name:'Needs attention'}).locator('..');
+  await expect(priority.getByRole('button',{name:new RegExp('^' + replacement.key + ' ·')})).toBeVisible();
+  await root.getByRole('button',{name:/^Queued for Morgan/}).click({delay:120});
+  const backToMailbox = page.getByRole('button',{name:'Back to PM mailbox',exact:true});
+  await expect(backToMailbox).toBeVisible();
+  await backToMailbox.click();
+  await expect(root.getByRole('heading',{name:'Previously opened'})).toHaveCount(0);
+  await expect(priority.getByRole('button',{name:new RegExp('^' + replacement.key + ' ·')})).toBeVisible();
+});
+
+for (const [topic, empty] of [
+  ['Ready for pickup', 'No assignments ready for pickup.'],
+  ['Waiting for pickup', 'No assignments waiting for pickup.'],
+  ['Already with the team', 'No tickets with the team.'],
+] as const) {
+  test(`${topic} stays open when its last ticket leaves`, async ({page,request}) => {
+    const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
+    const {listener} = snapshot.coordination!;
+    if (topic === 'Waiting for pickup') {
+      listener.assigned[0].status = 'Backlog';
+      expect((await request.post('/__fixture/snapshot',{data:{coordination:snapshot.coordination}})).ok()).toBe(true);
+    }
+    await page.goto('/');
+    await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+    const row = page.getByRole('button',{name:topic + ' 1',exact:true});
+    await row.click();
+    const heading = page.locator('[data-inspector] > div > h2').filter({hasText:topic});
+    await expect(heading).toBeFocused();
+    if (topic === 'Already with the team') {
+      for (const ticket of snapshot.tickets) ticket.stage = 'mailbox';
+    } else {
+      listener.assigned = [];
+    }
+    const response = await request.post('/__fixture/snapshot',{data:{tickets:snapshot.tickets, coordination:snapshot.coordination}});
+    expect(response.ok()).toBe(true);
+    await expect(page.getByText(empty,{exact:true})).toBeVisible();
+    await expect(heading).toBeFocused();
+    await page.getByRole('button',{name:'Back to PM mailbox'}).click();
+    await expect(page.getByRole('button',{name:topic + ' 0',exact:true})).toBeFocused();
+  });
+}
+
+test('Already with the team restores a ticket that moved back to the mailbox', async ({page, request}) => {
+  const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
+  const ticket = snapshot.tickets.find(item => item.stage !== 'mailbox')!;
+  await page.goto('/');
+  await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+  const active = page.locator('[data-inspector-scroll]');
+  await active.getByRole('button',{name:/^Already with the team/}).click();
+  const row = active.getByRole('button',{name:new RegExp('^' + ticket.key)});
+  const original = await row.elementHandle();
+  await row.click();
+  ticket.stage = 'mailbox';
+  expect((await request.post('/__fixture/snapshot',{data:{tickets:snapshot.tickets}})).ok()).toBe(true);
+  await expect(page.locator('[data-drawer-page="root"] [data-drawer-row]').filter({hasText:'Already with the team'})).toHaveText(/0$/);
+  await page.getByRole('button',{name:'Back to Already with the team'}).click();
+  await expect(row).toBeFocused();
+  expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+  await page.keyboard.press('Tab');
+  await expect(row).toHaveCount(0);
+});
+
+test('phone settings topics form one aligned list', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Office settings'}).click();
+  await page.getByRole('button',{name:/Project settings/}).click();
+  const rows = page.locator('[data-inspector-scroll] [data-drawer-row]');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first()).toBeInViewport();
+  const boxes = await rows.evaluateAll(elements => elements.map(element => {
+    const row = element.getBoundingClientRect();
+    return {left:row.left,right:row.right,top:row.top,bottom:row.bottom,height:row.height,chevron:element.querySelector('svg')!.getBoundingClientRect().right};
+  }));
+  for (const [i,row] of boxes.entries()) {
+    expect(row.height).toBeGreaterThanOrEqual(44);
+    expect(row.left).toBeCloseTo(boxes[0].left);
+    expect(row.right).toBeCloseTo(boxes[0].right);
+    expect(row.chevron).toBeCloseTo(boxes[0].chevron);
+    if (i) expect(row.top).toBeCloseTo(boxes[i-1].bottom);
+  }
+  await page.locator('[data-inspector]').screenshot({path:screenshotPath('settings-navigation-phone.png')});
+});
+
+for (const group of ['Ready for pickup', 'Queued for Morgan', 'In progress'] as const) {
+  test(`mailbox preserves the activated row when work leaves ${group}`, async ({page, request}) => {
+    const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
+    const coordination = snapshot.coordination!;
+    const assigned = coordination.listener.assigned[0];
+    const review: AssignmentReview = {
+      id: 'fixture-intake', key: assigned.key, summary: assigned.summary, status: 'queued',
+      queuedAt: snapshot.serverTime, detail: 'Waiting for intake.', url: assigned.url, startedAt: '', endedAt: '', owner: '',
+    };
+    const intake = group === 'Queued for Morgan';
+    if (group === 'In progress') review.status = 'working';
+    if (intake || group === 'In progress') coordination.listener.reviews = [review];
+    const publish = async () => expect((await request.post('/__fixture/snapshot', {data:{coordination}})).ok()).toBe(true);
+    await publish();
+    await page.goto('/');
+    await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+    const root = page.locator('[data-drawer-page="root"]');
+    const active = page.locator('[data-inspector-scroll]');
+    await active.getByRole('button',{name:group + ' 1',exact:true}).click();
+    const row = active.getByRole('button',{name:new RegExp(assigned.summary)});
+    const original = await row.elementHandle();
+    await row.click();
+    if (group === 'In progress') coordination.listener.reviews = [];
+    else if (intake) review.status = 'working';
+    else assigned.pickupStatus = 'Backlog';
+    await publish();
+    await expect(root.locator('[data-drawer-row]').filter({hasText:group})).toContainText('0');
+    const nextGroup = group === 'In progress' ? 'Ready for pickup' : intake ? 'In progress' : 'Waiting for pickup';
+    await expect(root.locator('[data-drawer-row]').filter({hasText:nextGroup})).toContainText('1');
+    await page.getByRole('button',{name:'Back to ' + group,exact:true}).click();
+    await expect(row).toBeFocused();
+    expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(row).toHaveCount(0);
+  });
+}
+
+test('PM queue restores the button after activation without pointer focus', async ({page,request}) => {
+  const snapshot: OfficeSnapshot = await (await request.get('/api/office')).json();
+  const ticket = snapshot.tickets[1];
+  const publish = async () => expect((await request.post('/__fixture/snapshot', {data:{
+    tickets:snapshot.tickets,
+    jiraQueueProgress:jiraQueueProgress(snapshot.project!,snapshot,new Date()).filter(row => row.key === ticket.key),
+  }})).ok()).toBe(true);
+  ticket.stage = 'mailbox';
+  ticket.pilot = true;
+  await publish();
+  await page.goto('/');
+  await page.getByRole('button',{name:/^PM queue \d+:/}).click();
+  await page.getByRole('button',{name:/^Queued next/}).click();
+  const active = page.locator('[data-inspector-scroll]');
+  const row = active.locator('[data-card]').filter({hasText:ticket.key}).getByRole('button',{name:'Open CEC ticket'});
+  const close = page.getByRole('button',{name:'Close details'});
+  await close.focus();
+  const original = await row.elementHandle();
+  // WebKit can activate a button without shifting focus to it first.
+  await original!.evaluate((button, previous) => {
+    if (button.ownerDocument.activeElement !== previous) throw new Error('Expected focus on Close');
+    (button as HTMLButtonElement).click();
+  }, (await close.elementHandle())!);
+  await expect(active.getByRole('heading',{name:ticket.summary,exact:true})).toBeVisible();
+  ticket.stage = 'qa';
+  ticket.activity = 'working';
+  await publish();
+  await expect(page.locator('[data-drawer-page="root"] [data-drawer-row]').filter({hasText:'Queued next'})).toContainText('0');
+  await page.getByRole('button',{name:'Back to Queued next'}).click();
+  await expect(row).toBeFocused();
+  expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+  await page.keyboard.press('Tab');
+  await expect(row).toHaveCount(0);
+});
+
+for (const destination of ['Evidence without a saved artifact', 'Evidence', 'Time', 'Discussion', 'Delivery history', 'Approach and decisions'] as const) {
+    test(`a live ticket can fall back to its queue record while reading ${destination}`, async ({page,request}) => {
+        await page.setViewportSize({width:900,height:620});
+        const snapshot: OfficeSnapshot = await (await request.get('/api/office?project=brain')).json();
+        const ticket = snapshot.tickets[0];
+        const worker = {...snapshot.workLog![0],id:'fallback-worker',ticket:ticket.key,task:'Queue validation worker',stage:'validate'};
+        const artifact = '/fixture/brain/validation/report.json';
+        const proof: StageResult = {outcome:'passed',summary:'Saved verification result',commit:'fixture',
+            evidence:[{id:'fallback-artifact',kind:'checks',summary:'Saved verification artifact',path:artifact,commit:'fixture',environment:'fixture',url:'',observedAt:snapshot.serverTime}],
+            findings:[],receipts:[],previewUrl:'',worktree:'',branch:'',prId:42,qaRunDir:'',paidRuns:null,blocker:''};
+        const job: TicketJob = {id:'fallback-job',key:ticket.key,stage:'validate',status:'working',pr:42,
+            prUrl:'https://example.org/pull/42',requestedAt:snapshot.serverTime,head:'fixture',worktree:'',branch:'',detail:'Run fixture checks.',
+            approach:{plan:'brief',review:'focused',validation:'browser',checks:[],reason:'Check the saved approach.'},
+            steps:destination === 'Evidence without a saved artifact' ? [] : [{stage:'validate',result:proof,workerId:worker.id}]};
+        const events = Array.from({length:8},(_,i) => ({id:100+i,at:new Date(Date.parse(snapshot.serverTime)+i).toISOString(),
+            kind:'stage-started',ticket:ticket.key,message:'Saved handoff ' + i}));
+        const publish = async (withTicket: boolean) => {
+            const response = await request.post('/__fixture/snapshot?project=brain',{data:{
+                tickets:withTicket ? [ticket] : [],events,teamQueue:[{project:'brain',projectName:'Brain',job}],
+                coordination:{...snapshot.coordination,jobs:[job]},workLog:[...snapshot.workLog!,worker],
+            }});
+            expect(response.ok()).toBe(true);
+        };
+        await publish(true);
+        await page.goto('/');
+        await page.getByLabel('Office project').selectOption('brain');
+        await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
+        const drawer = page.locator('[data-inspector]');
+        const active = drawer.locator('[data-drawer-page]:not([inert])');
+        await active.getByRole('button',{name:new RegExp('^' + ticket.key + ' ·')}).click();
+        const timeline = active.getByRole('region',{name:'Ticket timeline'});
+        await timeline.getByRole('button',{name:'Show earlier activity'}).click();
+        const parent = await active.elementHandle();
+        const back = drawer.getByRole('button',{name:'Back to ' + ticket.key,exact:true});
+
+        if (destination === 'Evidence without a saved artifact') {
+            const offset = await parent!.evaluate(el => {el.scrollTop = 24; return el.scrollTop;});
+            expect(offset).toBe(24);
+            await active.getByRole('button',{name:'Evidence',exact:true}).evaluate(el => (el as HTMLButtonElement).click());
+            await expect(active.locator('[data-qa-results]')).toBeVisible();
+            await publish(false);
+            await expect(active.getByRole('heading',{name:'PR #42 delivery',exact:true})).toBeVisible();
+            await expect(active).toHaveCount(1);
+            expect(await active.evaluate((el,original) => el === original,parent!)).toBe(true);
+            expect(await active.evaluate(el => el.scrollTop)).toBe(offset);
+            await expect(drawer.getByRole('heading',{name:ticket.key,exact:true})).toBeFocused();
+            return;
+        }
+
+        const label = destination === 'Discussion' ? 'Discuss ' + ticket.key + ' with Morgan' :
+            destination === 'Delivery history' ? 'Delivery history 1' : destination;
+        const row = active.getByRole('button',{name:label,exact:true});
+        const original = await row.elementHandle();
+        await row.click();
+        const child = await active.elementHandle();
+        const sessions = active.getByText(/^Worker sessions/);
+        if (destination === 'Time') {
+            await sessions.click();
+            await expect(active.getByText(worker.task,{exact:true})).toBeVisible();
+        }
+        await publish(false);
+        await expect(drawer.locator('[data-drawer-page][inert]').getByText('PR #42 delivery',{exact:true})).toHaveCount(1);
+        expect(await active.evaluate((el,original) => el === original,child!)).toBe(true);
+        if (destination === 'Evidence') {
+            await expect(active.getByRole('link',{name:'Saved verification artifact'})).toHaveAttribute('href','/api/artifact?path=' + encodeURIComponent(artifact) + '&project=brain');
+        }
+        if (destination === 'Time') await expect(active.getByText(worker.task,{exact:true})).toBeVisible();
+        if (destination === 'Delivery history') await expect(active.getByText(proof.summary,{exact:true})).toBeVisible();
+        if (destination === 'Approach and decisions') await expect(active.getByText('Check the saved approach.',{exact:true})).toBeVisible();
+        await back.click();
+        await expect(timeline.getByText('Saved handoff 0',{exact:true})).toBeVisible();
+        await expect(row).toBeFocused();
+        expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+    });
+}

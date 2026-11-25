@@ -26,11 +26,13 @@ test('the People drawer finds employees, shows the org chart and opens each desk
   await chart.locator('[data-org-node="lead"]').click();
   const sam = page.getByRole('complementary', { name: 'Lead developer' });
   await expect(sam).toBeVisible();
+  await page.getByRole('button',{name:/^Responsibilities/}).click();
   await expect(sam.locator('[data-reports-to]')).toContainText('Reports to Avery');
   await expect(sam.locator('[data-reports-to]')).toContainText('Direct reports: Alex, Riley');
   await sam.locator('[data-reports-to]').getByRole('button', { name: 'Avery' }).click();
-  await expect(page.locator('[data-reports-to]')).toContainText('Reports to Joe');
-  await expect(page.locator('[data-reports-to]')).toContainText('Direct reports: Morgan, Sam, Ellis, Harper');
+  await page.getByRole('button',{name:/^Responsibilities/}).click();
+  await expect(page.locator('[data-inspector-scroll] [data-reports-to]')).toContainText('Reports to Joe');
+  await expect(page.locator('[data-inspector-scroll] [data-reports-to]')).toContainText('Direct reports: Morgan, Sam, Ellis, Harper');
 
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-inspector]')).toHaveCount(0);
@@ -74,6 +76,7 @@ test('during the tour People only opens desks present in the sample snapshot', a
       await expect(agent).toBeVisible();
       await expect(page.getByRole('complementary', { name: 'Ticket', exact: true })).toHaveCount(0);
       if (id === 'lead') {
+        await page.getByRole('button',{name:'Responsibilities'}).click();
         await expect(agent.locator('[data-reports-to]')).toContainText('Reports to Avery');
         await expect(agent.locator('[data-reports-to]').getByRole('button', { name: 'Avery', exact: true })).toHaveCount(0);
       }
@@ -85,5 +88,33 @@ test('during the tour People only opens desks present in the sample snapshot', a
   }
 
   await page.getByRole('button', { name: 'Office settings', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: 'Settings', exact: true }).getByText('Turns M, O, C, P, U and 0 on or off. Escape always closes details.', { exact: true })).toBeVisible();
+  await page.getByRole('button',{name:/^Office preferences/}).click();await expect(page.getByRole('complementary', { name: 'Settings', exact: true }).getByText('Turns M, O, C, P, U and 0 on or off. Escape always closes details.', { exact: true })).toBeVisible();
+});
+
+test('returning to a reassigned desk restores the original ticket button and destination', async ({page,request}) => {
+ const snapshot = await (await request.get('/api/office')).json();
+ const [first,next] = snapshot.tickets;
+ const agent = snapshot.agents.find((agent:{id:string})=>agent.id==='lead');
+ const publish = async () => expect((await request.post('/__fixture/snapshot',{data:{agents:snapshot.agents}})).ok()).toBe(true);
+ agent.ticket = first.key;
+ await publish();
+ await page.goto('/');
+ await page.getByRole('button',{name:/Visit Sam/}).click();
+ const active = page.locator('[data-inspector-scroll]');
+ const originalRow = active.getByRole('button',{name:new RegExp(first.key)});
+ const original = await originalRow.elementHandle();
+ await originalRow.click();
+ agent.ticket = next.key;
+ await publish();
+ const root = page.locator('[data-drawer-page="root"]');
+ await expect(root.locator('button').filter({hasText:'At this desk'})).toContainText(next.key);
+ await page.getByRole('button',{name:/^Back to /}).click();
+ await expect(originalRow).toBeFocused();
+ expect(await original!.evaluate(el => el === document.activeElement)).toBe(true);
+ await page.keyboard.press('Enter');
+ await expect(active.getByRole('heading',{name:first.summary,exact:true})).toBeVisible();
+ await page.getByRole('button',{name:/^Back to /}).click();
+ await expect(originalRow).toBeFocused();
+ await page.keyboard.press('Tab');
+ await expect(originalRow).toHaveCount(0);
 });

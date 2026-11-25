@@ -1,5 +1,6 @@
+import { DrawerTopic, useDrawerReturnRow } from '../office/drawer/DrawerTopic';
 import { motion } from 'motion/react';
-import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type ComponentProps, type RefObject } from 'react';
 import { withoutIdentifiers } from '../office/without-identifiers';
 import type { OfficeSnapshot } from '../shared';
 import { Button, Card, Count, Section, SectionTitle, Tag, TextLink, mutedCopy } from '../ui';
@@ -12,12 +13,11 @@ import { transitionKey, useTransitions } from './timeline/use-transitions';
 
 type OpenFocus = {identity: string; scroll: HTMLElement | null; top: number};
 
-function OpenTicketButton({identity, projectName, onClick, focusToRestore}: {
+function OpenTicketButton({identity, projectName, focusToRestore, ...events}: {
     identity: string;
     projectName: string;
-    onClick: () => void;
     focusToRestore: RefObject<OpenFocus | null>;
-}) {
+} & Pick<ComponentProps<typeof Button>, 'onClick' | 'onFocus'>) {
     const ref = useRef<HTMLButtonElement>(null);
     useLayoutEffect(() => {
         const button = ref.current;
@@ -33,7 +33,7 @@ function OpenTicketButton({identity, projectName, onClick, focusToRestore}: {
             focusToRestore.current = {identity, scroll, top: scroll?.scrollTop || 0};
         };
     }, [identity, focusToRestore]);
-    return <Button ref={ref} className="self-start" onClick={onClick}>Open {projectName} ticket</Button>;
+    return <Button ref={ref} className="self-start" {...events}>Open {projectName} ticket</Button>;
 }
 
 export function PMQueue({snapshot, onOpen, reduced = true}: {
@@ -46,6 +46,7 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
         return {...row, progress, identity: row.project + ':' + row.key, signature: transitionKey(progress)};
     });
     const changes = useTransitions(snapshot, new Map(rows.map(r => [r.identity,r.signature])), reduced);
+    const { opened: reading, remember, release, clear } = useDrawerReturnRow<{group: (typeof rows)[number]['group']; identity: string}>();
     const waiting = rows.filter(r => r.group === 'waiting');
     const dependencyOnly = waitingOnlyOnPrerequisites(waiting);
     const titles = {active:'With the team now', queued:'Queued next',
@@ -60,17 +61,18 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
         <PanelHeader icon={<Inbox size={26}/>}>PM queue</PanelHeader>
         {snapshot.mode === 'live' && !live && <p className={mutedCopy}>Last confirmed{time &&
             <> · <time dateTime={time}>{new Date(time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</time></>}</p>}
-        <p className={mutedCopy}>Remaining work across all projects, including stopped deliveries and prerequisite waits. Automatic pickup follows each project’s status rule; an explicit Start can queue another assignment.</p>
+        <p className={mutedCopy}>Work across all projects.</p>
         {(['active','queued','waiting','stopped'] as const).map(group => {
-            const items = rows.filter(r => r.group === group);
-            if (!items.length) return null;
-            return <Section key={group} aria-label={titles[group]}>
-                <SectionTitle className="mb-4">{titles[group]} <Count>{items.length}</Count></SectionTitle>
+            const count = rows.filter(row => row.group === group).length;
+            const items = rows.filter(r => r.group === group || (reading?.group === group && reading.identity === r.identity));
+            return <DrawerTopic available={items.length > 0} key={group} title={titles[group]} onOpen={clear} detail={count}><Section aria-label={titles[group]}>
+                <SectionTitle className="mb-4">{titles[group]} <Count>{count}</Count></SectionTitle>
                 {group === 'waiting' && dependencyOnly && <p className={mutedCopy}>These tickets are waiting on linked work. Morgan rechecks them when their prerequisites complete.</p>}
                 {group === 'stopped' && <p className={mutedCopy}>These tickets are stopped, not queued for new work. Read the blocker before continuing.</p>}
+                {!items.length && <p className={mutedCopy}>No tickets in this group.</p>}
                 {items.map(row => {
                     const pulse = !reduced && changes.get(row.identity) === row.signature;
-                    return <Card as="article" key={row.identity}>
+                    return <div className="contents" key={row.identity} onBlur={release}><Card as="article">
                         <strong className="text-11 leading-relaxed">{row.projectName} · {row.key}</strong>
                         <Tag className="max-w-full self-start whitespace-normal!" tone={row.progress.state}>
                             <motion.span aria-hidden="true" key={row.signature + String(pulse)}
@@ -84,12 +86,17 @@ export function PMQueue({snapshot, onOpen, reduced = true}: {
                         {row.detail !== row.progress.next && <p className="text-12 leading-relaxed">{withoutIdentifiers(row.detail)}</p>}
                         <DependencyNotice keys={row.blockedBy || []} snapshot={snapshot} project={row.project} onOpen={onOpen}/>
                         {row.prUrl && <div className="self-start text-10"><TextLink href={row.prUrl} target="_blank" rel="noreferrer">PR #{row.pr} ↗</TextLink></div>}
-                        <OpenTicketButton identity={row.identity} projectName={row.projectName} onClick={() => onOpen(row.project,row.key)} focusToRestore={focusToRestore}/>
-                    </Card>;
+                        <div><OpenTicketButton identity={row.identity} projectName={row.projectName} focusToRestore={focusToRestore}
+                            onFocus={event => remember({group, identity:row.identity}, event.currentTarget)}
+                            onClick={event => {
+                                remember({group, identity:row.identity}, event.currentTarget);
+                                onOpen(row.project,row.key);
+                            }}/></div>
+                    </Card></div>;
                 })}
-            </Section>;
+            </Section></DrawerTopic>;
         })}
-        {!rows.length ? <p className={mutedCopy}>No remaining Office work is recorded. Check project lanes for assignments and GitHub operations for open PRs.</p> :
+        {!rows.length ? <p className={mutedCopy}>The queue is empty.</p> :
             !rows.some(r => r.group === 'active' || r.group === 'queued') && <p className={mutedCopy}>Nothing can run yet: {waiting.length} waiting{dependencyOnly ? ' on prerequisites' : ''} · {rows.filter(r => r.group === 'stopped').length} stopped for follow-up. Work remains open.</p>}
     </>;
 }

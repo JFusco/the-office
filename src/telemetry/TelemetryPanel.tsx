@@ -1,6 +1,7 @@
+import { DrawerNavigation, DrawerTopic } from '../office/drawer/DrawerTopic';
 import {LoadingMark,LoadingState} from '../ui/LoadingState';
 import { PanelHeader } from '../ui/PanelHeader';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import type { TelemetryReport } from '../contracts/telemetry';
 import { ChartColumn, RefreshCw } from '../ui/icons';
 import { Button, Notice, PanelIcon, PanelTitle, Select, cx, fieldLabel, mutedCopy, selectField } from '../ui';
@@ -39,7 +40,13 @@ export function TelemetryPanel({ projects, defaultProject = '' }: { projects: { 
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [key, refresh]);
-  const drill = (next: Scope) => { setScope(next); requestAnimationFrame(() => document.getElementById(SCOPE_ID)?.focus()); };
+  const navigation=useContext(DrawerNavigation);
+  const drill = (next: Scope) => {
+    setScope(next);
+    const scopeField = document.getElementById(SCOPE_ID);
+    if (navigation && navigation.path.entries.length > 1) navigation.back(scopeField);
+    else scopeField?.focus({ preventScroll: true });
+  };
   const ticketKeys = tickets.project === scope.project ? tickets.keys : [];
   return <>
     <PanelHeader icon={<ChartColumn size={26}/>}>Telemetry</PanelHeader>
@@ -62,16 +69,16 @@ export function TelemetryPanel({ projects, defaultProject = '' }: { projects: { 
     {report ? <div className={cx('mt-5', !current && 'opacity-60')} aria-busy={!current}>
       <KpiTiles totals={report.totals} />
       {report.totals.runs === 0 ? <p className={cx(mutedCopy, 'mt-4')}>{report.totals.inProgressRuns ? 'Only in-progress runs so far; they appear here when they finish.' : 'No model runs started in this range.'}</p> : <>
-        {report.scope.kind === 'office' ? <BreakdownTable caption="By project" rows={report.byProject} onSelect={row => drill({ ...scope, project: row.projectId || '', ticket: '' })} /> : null}
-        {!report.scope.ticket ? <BreakdownTable caption={report.scope.kind === 'office' ? 'By ticket (all projects)' : 'By ticket'} rows={report.byTicket.map(row => report.scope.kind === 'office' ? { ...row, label: `${projects.find(p => p.id === row.projectId)?.name ?? row.projectId} · ${row.label}` } : row)} onSelect={row => drill({ ...scope, project: row.projectId || '', ticket: row.id.split(':').at(-1) || '' })} /> : null}
+        {report.scope.kind === 'office' ? <DrawerTopic title="Projects"><BreakdownTable caption="By project" rows={report.byProject} onSelect={row => drill({ ...scope, project: row.projectId || '', ticket: '' })} /></DrawerTopic> : null}
+        {!report.scope.ticket ? <DrawerTopic title="Tickets"><BreakdownTable caption={report.scope.kind === 'office' ? 'By ticket (all projects)' : 'By ticket'} rows={report.byTicket.map(row => report.scope.kind === 'office' ? { ...row, label: `${projects.find(p => p.id === row.projectId)?.name ?? row.projectId} · ${row.label}` } : row)} onSelect={row => drill({ ...scope, project: row.projectId || '', ticket: row.id.split(':').at(-1) || '' })} /></DrawerTopic> : null}
         {report.overhead.runs ? <p className={cx(mutedCopy, 'mt-2')}>Overhead with no ticket (maintenance, Slack, CTO and helper work): {report.overhead.runs} {report.overhead.runs === 1 ? 'run' : 'runs'} · {pricedLabel(report.overhead)}{coverage(report.overhead.partialRuns, report.overhead.unpricedRuns) ? ` (${coverage(report.overhead.partialRuns, report.overhead.unpricedRuns)})` : ''}.</p> : null}
-        <BreakdownTable caption="By model and requested effort" rows={report.byModel} />
-        <BreakdownTable caption="By effort kind" rows={report.byEffortKind} />
-        <BreakdownTable caption="By stage" rows={report.byStage} limit={10} />
-        <BreakdownTable caption="By role" rows={report.byRole} />
-        <BreakdownTable caption="By day started (Eastern)" rows={[...report.byDay].reverse()} limit={14} />
+        <DrawerTopic title="Model and effort"><BreakdownTable caption="By model and requested effort" rows={report.byModel} />
+        <BreakdownTable caption="By effort kind" rows={report.byEffortKind} /></DrawerTopic>
+        <DrawerTopic title="Stage and role"><BreakdownTable caption="By stage" rows={report.byStage} limit={10} />
+        <BreakdownTable caption="By role" rows={report.byRole} /></DrawerTopic>
+        <DrawerTopic title="Daily usage"><BreakdownTable caption="By day started (Eastern)" rows={[...report.byDay].reverse()} limit={14} /></DrawerTopic>
       </>}
-      <SyncStatus sync={report.sync} observedAt={report.scope.observedAt} onChanged={() => setRefresh(n => n + 1)} />
+      <DrawerTopic title="Sync status"><SyncStatus sync={report.sync} observedAt={report.scope.observedAt} onChanged={() => setRefresh(n => n + 1)} /></DrawerTopic>
       <p className={cx(mutedCopy, 'mt-4')}>Observed {new Date(report.scope.observedAt).toLocaleString()}. Model time is summed per run; accounted hours merge overlapping work and are usually lower.</p>
     </div> : null}
   </>;

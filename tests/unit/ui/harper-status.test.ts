@@ -24,7 +24,7 @@ test('a demoted hypothesis leaves the active count and is listed as report-only 
         f.store.state.knowledge!.lessons = [learningLesson('L1', { statement: 'Demoted idea', tier: 'hypothesis', revision: 2 }), learningLesson('L2', { statement: 'Steady guidance' })];
         const snapshot = { knowledge: f.store.state.knowledge, project: { id: 'brain', provider: 'github' }, agents: [], mode: 'live' } as never;
         const html = renderToStaticMarkup(createElement(LessonsPanel, { snapshot }));
-        const active = html.indexOf('Active lessons'), hypotheses = html.indexOf('Hypotheses (reports only; not supplied to prompts)');
+        const active = html.indexOf('Active lessons'), hypotheses = html.indexOf('Observations to review');
         expect(html.slice(active, active + 200)).toMatch(/Active lessons <[^>]*>1</);
         expect(hypotheses).toBeGreaterThan(active);
         expect(html.slice(active, hypotheses)).not.toContain('Demoted idea');

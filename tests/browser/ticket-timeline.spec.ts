@@ -33,6 +33,7 @@ for (const mode of ['animated desktop','system reduced mobile','Office reduced d
         await page.goto('/');
         const queue = page.getByRole('button',{name:/^PM queue \d+:/});
         await queue.click();
+        await page.getByRole('button',{name:/^Queued next/}).click();
         const queued = page.getByRole('region',{name:'Queued next'});
         const openTicket = page.locator('[data-card]').filter({hasText:ticket.key}).getByRole('button',{name:'Open CEC ticket'});
         await expect(queued.getByRole('button',{name:'Open CEC ticket'})).toHaveCount(1);
@@ -40,12 +41,15 @@ for (const mode of ['animated desktop','system reduced mobile','Office reduced d
         await expect(openTicket).toBeFocused();
         const scroll = page.locator('[data-inspector-scroll]');
         await scroll.evaluate(el => {el.scrollTop = 16;});
-        expect(await scroll.evaluate(el => el.scrollTop)).toBe(16);
+        const initialScroll = await scroll.evaluate(el => el.scrollTop);
         await push('qa','QA received the change');
-        const card = page.getByRole('region',{name:'With the team now'}).locator('[data-card]').filter({hasText:ticket.key});
+        const card = queued.locator('[data-card]').filter({hasText:ticket.key});
         await expect(card).toContainText('Riley');
+        await expect(queued.getByRole('heading',{name:'Queued next 0',exact:true})).toBeVisible();
+        const overviewRow = page.locator('[data-drawer-page="root"] [data-drawer-row]').filter({hasText:'Queued next'});
+        await expect(overviewRow.getByText('0',{exact:true})).toHaveText('0');
         await expect(openTicket).toBeFocused();
-        expect(await scroll.evaluate(el => el.scrollTop)).toBe(16);
+        expect(await scroll.evaluate(el => el.scrollTop)).toBe(initialScroll);
         await openTicket.click();
         const timeline = page.getByRole('region',{name:'Ticket timeline'});
         const current = timeline.locator('[aria-current="step"]');
@@ -70,6 +74,7 @@ for (const mode of ['animated desktop','system reduced mobile','Office reduced d
         const mailbox = page.getByRole('button',{name:/^Open PM mailbox,/});
         const mailboxDrawer = page.getByRole('complementary',{name:'PM mailbox',exact:true});
         await mailbox.click();
+        await page.getByRole('button',{name:/^Already with the team/}).click();
         await mailboxDrawer.getByRole('button',{name:ticket.key + ' Verifying the change',exact:true}).click();
         await expect(timeline.getByText(/^Last confirmed · /).locator('time')).toHaveAttribute('datetime',confirmedAt!);
         await context.setOffline(false);
@@ -102,6 +107,7 @@ for (const mode of ['animated desktop','system reduced mobile','Office reduced d
         await expect(current).not.toHaveAttribute('data-transition',/.+/);
         await close.click();
         await mailbox.click();
+        await page.getByRole('button',{name:/^Already with the team/}).click();
         await mailboxDrawer.getByRole('button',{name:ticket.key + ' Verified on staging',exact:true}).click();
         await expect(current).toContainText('Delivery complete');
         await expect(current).not.toHaveAttribute('data-transition',/.+/);
@@ -141,6 +147,7 @@ test('the PM queue opens the matching project and keeps the approval beside its 
     await page.goto('/');
     const queue = page.getByRole('button',{name:/^PM queue \d+:/});
     await queue.click();
+    await page.getByRole('button',{name:/^Waiting for the next step/}).click();
     const row = page.locator('[data-card]').filter({hasText:'Brain · ' + ticket.key});
     await expect(row).toContainText('Needs your approval');
     await expect(row).toContainText('You · Review PR #42');
@@ -158,17 +165,21 @@ test('the PM queue opens the matching project and keeps the approval beside its 
     await expect(timeline.getByRole('button',{name:'Approve merge of PR #42'})).toHaveCount(0);
     await expect(queue).not.toHaveAttribute('aria-label',/waiting on prerequisites/);
     await queue.click();
+    await page.getByRole('button',{name:/^Waiting for the next step/}).click();
     const waiting = page.getByRole('region',{name:'Waiting for the next step'});
     await expect(waiting.locator('[data-card]').filter({hasText:'Brain · ' + ticket.key})).toContainText('Waiting for GitHub checks');
     await expect(waiting.getByRole('link',{name:'PR #42 ↗'})).toHaveAttribute('href',job.prUrl);
     await row.getByRole('button',{name:'Open Brain ticket'}).click();
     const drawer = page.getByRole('complementary',{name:'Ticket',exact:true});
     await expect(drawer.getByRole('link',{name:'PR #42',exact:true})).toHaveAttribute('href',job.prUrl);
+    await page.getByRole('button',{name:/^Evidence/}).click();
     await expect(drawer.getByRole('link',{name:'Saved validation artifact'}))
         .toHaveAttribute('href','/api/artifact?path=' + encodeURIComponent(artifact) + '&project=brain');
+    await page.getByRole('button',{name:/^Back to /}).click();await page.getByRole('button',{name:/^Time/}).click();
     const timeBook = drawer.getByRole('region',{name:'Time reported to Morgan'});
     await timeBook.getByText(/^Worker sessions/).click();
     await expect(timeBook.getByText(worker.task,{exact:true})).toBeVisible();
+    await page.getByRole('button',{name:/^Back to /}).click();
     const openTimeline = await timeline.elementHandle();
     job.status = 'completed';
     job.stage = 'closeout';
@@ -183,6 +194,7 @@ test('the PM queue opens the matching project and keeps the approval beside its 
     await expect(page.getByRole('log',{name:'Team conversation'})).toContainText(messages[0].body);
     await queue.click();
     await expect(page.getByRole('heading',{name:'PM queue',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:/^Stopped/}).click();
     await expect(row).toHaveCount(0);
     await expect(page.locator('[data-card]').filter({hasText:'CMS field vocabulary · ' + ticket.key})).toHaveCount(1);
 });

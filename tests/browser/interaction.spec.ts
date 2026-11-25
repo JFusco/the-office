@@ -20,7 +20,7 @@ test('representative controls visibly change on hover and show a keyboard focus 
   await full(page,request);await ready(page);
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();
   const drawer=page.getByRole('complementary',{name:'PM mailbox'});
-  const targets:[string,Locator][]=[['icon button',page.getByRole('button',{name:'Office help'})],['dock button',page.getByRole('button',{name:/^Open your outbox,/})],['scene label',page.getByRole('button',{name:'DEVELOPMENT Implementation'})],
+  await page.getByRole('button',{name:/^Project board/}).click();const targets:[string,Locator][]=[['icon button',page.getByRole('button',{name:'Office help'})],['dock button',page.getByRole('button',{name:/^Open your outbox,/})],['scene label',page.getByRole('button',{name:'DEVELOPMENT Implementation'})],
     ['project select',page.getByLabel('Office project')],['link',page.getByRole('link',{name:'Open board: CEC Jira board'})],['summary',drawer.getByText('To Do · 1',{exact:true})]];
   const hovers=async(targets:[string,Locator][])=>{for(const [name,target] of targets){
     await target.scrollIntoViewIfNeeded();await page.mouse.move(0,0);
@@ -33,7 +33,7 @@ test('representative controls visibly change on hover and show a keyboard focus 
   await hovers(targets);
   // Project form controls now live in the Settings drawer.
   await page.getByRole('button',{name:'Office settings'}).click();const settings=page.getByRole('complementary',{name:'Settings'});await expect(settings).toBeVisible();
-  await hovers([['secondary button',settings.getByRole('button',{name:'Save pickup rule'})],['text field',settings.getByRole('combobox',{name:'Pickup status'})]]);
+  await page.getByRole('button',{name:/^.*Project settings/}).click();await page.getByRole('button',{name:/^Pickup/}).click();await hovers([['secondary button',settings.getByRole('button',{name:'Save pickup rule'})],['text field',settings.getByRole('combobox',{name:'Pickup status'})]]);
   await page.keyboard.press('Escape');await page.mouse.move(0,0);
   await page.getByRole('button',{name:'Office help'}).focus();await page.keyboard.press('Shift+Tab');await page.keyboard.press('Tab');
   const ring=await page.evaluate(()=>{const s=getComputedStyle(document.activeElement!);return {style:s.outlineStyle,width:s.outlineWidth,visible:document.activeElement!.matches(':focus-visible')};});
@@ -45,18 +45,19 @@ test('system and Office reduced motion both remove transitions',async({page,requ
   await page.emulateMedia({reducedMotion:'no-preference'});await setPreferences(request,{reducedMotion:true});await ready(page);
   await expect(page.locator('html')).toHaveAttribute('data-motion','reduced');
   expect((await look(page.getByRole('button',{name:'Office help'}))).property).toBe('none');
-  await page.getByRole('button',{name:'Office settings'}).click();await page.getByLabel('Reduced motion').uncheck();
+  await page.getByRole('button',{name:'Office settings'}).click();await page.getByRole('button',{name:/^Office preferences/}).click();await page.getByLabel('Reduced motion').uncheck();
   await expect(page.locator('html')).toHaveAttribute('data-motion','full');expect((await look(page.getByRole('button',{name:'Office help'}))).property).not.toBe('none');
 });
-test('settings is a named non-modal drawer that returns focus to the gear from both entry paths',async({page})=>{
+test('settings is non-modal and Escape restores focus to the drawer opener',async({page})=>{
   await ready(page);
   const gear=page.getByRole('button',{name:'Office settings'}),drawer=page.getByRole('complementary',{name:'Settings'}),close=page.getByRole('button',{name:'Close details'});
   await gear.click();await expect(drawer).toBeVisible();await expect(drawer).not.toHaveAttribute('aria-modal');await expect(gear).toHaveAttribute('aria-expanded','true');await expect(close).toBeFocused();
   await page.keyboard.press('Escape');await expect(drawer).toHaveCount(0);await expect(gear).toHaveAttribute('aria-expanded','false');await expect(gear).toBeFocused();
   await gear.click();await expect(drawer).toBeVisible();await close.click();await expect(drawer).toHaveCount(0);await expect(gear).toBeFocused();
   await page.getByRole('button',{name:/^Open PM mailbox,/}).click();await page.getByRole('complementary',{name:'PM mailbox'}).getByRole('button',{name:'Project settings'}).click();
-  await expect(drawer).toBeVisible();await expect(gear).toHaveAttribute('aria-expanded','true');
-  await page.keyboard.press('Escape');await expect(drawer).toHaveCount(0);await expect(gear).toBeFocused();
+  const project=page.getByRole('complementary',{name:'Project settings'});
+  await expect(project.getByRole('button',{name:'Back to PM mailbox'})).toBeVisible();
+  await page.keyboard.press('Escape');await expect(project).toHaveCount(0);await expect(page.getByRole('button',{name:/^Open PM mailbox,/})).toBeFocused();
   await expect(page.locator('[aria-modal]')).toHaveCount(0);
 });
 test('help is a named non-modal panel that takes and returns focus',async({page})=>{
