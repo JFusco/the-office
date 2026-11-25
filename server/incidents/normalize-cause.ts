@@ -21,6 +21,8 @@ export function normalizeCause(text: unknown): string {
         .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<id>')
         .replace(/\b[A-Z][A-Z0-9]{1,9}-\d+\b/g, '<key>')
         .replace(STATUS, (_, word: string, code: string) => word + [...code].map(digit => String.fromCharCode(KEPT + Number(digit))).join(''))
+        // A run of three or more colon-separated groups (a GitHub request ID, an address) names an occurrence.
+        .replace(/\b[0-9a-f]{2,}(?::[0-9a-f]{2,}){2,}\b/gi, '<id>')
         .replace(/\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,64}\b/gi, '<id>')
         .replace(/#?\b\d+(?:[.:]\d+)*(?=[a-z]{0,3}\b)/gi, '<n>')
         .replace(/[\uE000-\uE009]/g, kept => String(kept.charCodeAt(0) - KEPT))

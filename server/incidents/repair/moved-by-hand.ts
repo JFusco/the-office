@@ -10,13 +10,22 @@ import type { Store } from '../../store/store';
 export const OPERATOR_MOVES: readonly string[] = ['pr-preparation-queued', 'candidate-base-update', 'candidate-review-recheck', 'pr-review-recheck', 'implement-requeued'];
 
 /**
- * The first operator's command that moved this ticket's job after a given project event, or
- * null. Read from the project's own events by ID, which only grows, so "after" needs no clock.
- * A recovery request an operator queues by command leaves no such event and is not seen here.
+ * The project events only an operator's command emits when it moves a ticket's assignment review:
+ * a recheck and a deferral (server/scheduling/operator-commands.ts). Each carries the ticket's key,
+ * not the review's ID, so a later review of the same ticket is moved the same way. Kept apart from
+ * the job commands, so a review command never moves a job's resume, nor a job command a review's.
  */
-export function movedByHand(store: Pick<Store, 'db'>, ticket: string, after: number): { kind: string; at: string } | null {
-    const row = store.db.prepare(`SELECT body FROM events WHERE id>? AND json_extract(body,'$.ticket')=? AND json_extract(body,'$.kind') IN (${OPERATOR_MOVES.map(() => '?').join(',')}) ORDER BY id LIMIT 1`)
-        .get(after, ticket, ...OPERATOR_MOVES) as { body: string } | undefined;
+export const REVIEW_MOVES: readonly string[] = ['assignment-recheck', 'pickup-deferred'];
+
+/**
+ * The first operator's command that moved this ticket's work after a given project event, or
+ * null: by default one that moves its job, or one of `kinds`. Read from the project's own events by
+ * ID, which only grows, so "after" needs no clock, and by the ticket, so it is found once the work
+ * is gone. A recovery request an operator queues by command leaves no such event and is not seen here.
+ */
+export function movedByHand(store: Pick<Store, 'db'>, ticket: string, after: number, kinds: readonly string[] = OPERATOR_MOVES): { kind: string; at: string } | null {
+    const row = store.db.prepare(`SELECT body FROM events WHERE id>? AND json_extract(body,'$.ticket')=? AND json_extract(body,'$.kind') IN (${kinds.map(() => '?').join(',')}) ORDER BY id LIMIT 1`)
+        .get(after, ticket, ...kinds) as { body: string } | undefined;
     if (!row) return null;
     const event = JSON.parse(row.body) as { kind: string; at: string };
     return { kind: event.kind, at: event.at };
