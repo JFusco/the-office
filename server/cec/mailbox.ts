@@ -38,7 +38,10 @@ export async function checkMail(this: Engine, scheduled = false) {
     if (this.store.state.intake.status === 'working')
         return;
     if (this.store.project.provider === 'github') {
-        await this.github.poll();
+        // Under a GitHub quota hold nothing is read, and the mailbox mirrors the observation the deferral left standing,
+        // with its time and any error. Before a first observation there is nothing to mirror and nothing changes.
+        if (await this.github.poll() && !this.store.state.github)
+            return;
         const g = this.store.state.github!;
         this.store.state.intake = { ...this.store.state.intake, status: g.error ? 'blocked' : 'idle', lastChecked: g.observedAt, error: g.error };
         this.store.save();

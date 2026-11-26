@@ -23,3 +23,11 @@ test('pending scheduler checks are explicit and missing history never gets the r
     s.coordination!.listener.error = 'read failed';
     expect(listenerHealth(s, now)?.statusLabel).toBe('Check failed');
 });
+test('a GitHub quota deferral is a plain status line in front of the standing error, until it ends', () => {
+    const s = snapshot(), until = '2026-11-04T20:30:00.000Z';
+    Object.assign(s.coordination!.listener, { error: 'API rate limit exceeded (HTTP 403)', lastCheckedAt: '2026-11-04T19:40:00Z', deferredUntil: until });
+    expect(listenerHealth(s, now)).toMatchObject({ status: 'unknown', statusLabel: 'Waiting for GitHub quota', detail: `GitHub quota low. Observation resumes at ${until}.`, checkedAt: '2026-11-04T19:40:00Z' });
+    expect(listenerHealth(s, Date.parse(until))).toMatchObject({ status: 'warning', statusLabel: 'Check failed' });
+    s.paused = true;
+    expect(listenerHealth(s, now)?.statusLabel).toBe('Paused');
+});

@@ -30,6 +30,8 @@ import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import type { AssignedIssue } from '../../src/shared';
 import type { Coordinator } from './coordination';
 import { withGitHubSource } from '../github/call-scope';
+import { backgroundHold, type QuotaHold } from '../github/quota-governor';
+import { pollWhileHeld } from './held-poll';
 
 export async function readAssignments(this: Coordinator): Promise<AssignedIssue[]>  {
     if (this.store.project.provider === 'github') {
@@ -77,11 +79,19 @@ export async function readGoneTickets(this: Coordinator, keys: string[]): Promis
         return new Set();
     }
 }
-export async function poll(this: Coordinator, now = new Date()) {
+/** Returns the GitHub quota hold that deferred this poll's background reads; otherwise nothing. */
+export async function poll(this: Coordinator, now = new Date()): Promise<QuotaHold | undefined> {
     if (!this.state.enabled || this.store.state.paused || this.polling)
         return;
     this.polling = true;
     try {
+        // Under a GitHub quota hold only protected work runs, and no reader error is written (./held-poll.ts).
+        const quotaHold = backgroundHold(this.store.project, this.engine.quota);
+        if (quotaHold) {
+            await pollWhileHeld(this, quotaHold, now);
+            return quotaHold;
+        }
+        delete this.state.listener.deferredUntil;
         const assigned = await this.readAssignments(), listener = this.state.listener;
         // Date the completed provider read, before downstream delivery work can make it older.
         const observedAt = this.store.clock.now().toISOString();

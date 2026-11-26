@@ -184,7 +184,7 @@ test('a bounded provider observation does not occupy the shared delivery slot', 
     const office = offices(), cec = office.get('cec'), seen: string[] = [];
     ticket(cec.store);
     let release!: () => void;
-    cec.engine.observe = async () => { seen.push('observation'); await new Promise<void>(done => release = done); };
+    cec.engine.observe = async () => { seen.push('observation'); await new Promise<void>(done => release = done); return undefined; };
     cec.engine.startPilot = async () => { seen.push('delivery'); };
     enqueueRequest(cec.store, 'refresh');
     cec.engine.requestDelivery('CEC-999', 'start-pilot');

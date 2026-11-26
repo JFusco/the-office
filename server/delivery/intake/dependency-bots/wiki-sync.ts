@@ -1,6 +1,7 @@
 import { readRepo } from '../dependabot/qualify';
 import { findTrackingIssue } from '../dependabot/tracking-issue';
 import { openPulls } from '../shared-pr-inventory';
+import { memoDigest } from './refusal-memo';
 import type { DependencyBot } from './adopt';
 
 const OWNER = { login: 'JFusco', id: 486049 }, ACTIONS = { login: 'github-actions[bot]', id: 41898282 };
@@ -10,10 +11,19 @@ const wikiPath = (path: unknown) => typeof path === 'string' && !path.split('/')
 /** A repository's release policy may append exactly this marker to the canonical title; nothing else is accepted. */
 const SKIP_RELEASE = ' [skip release]';
 const titled = (title: unknown, canonical: string) => title === canonical || title === canonical + SKIP_RELEASE;
+const HEAD_UNAVAILABLE = 'the wiki PR head changed or is unavailable', COMMITS_INCOMPLETE = 'wiki commit coverage is incomplete on the current head', FILES_INCOMPLETE = 'wiki file coverage is incomplete';
+/** Refusals on missing or moving evidence: the next pass may read it whole, so they are never reused. */
+const RETRIED = new Set([HEAD_UNAVAILABLE, COMMITS_INCOMPLETE, FILES_INCOMPLETE]);
 
 /** Canonical BOT_TOKEN wiki PRs: account identity plus bounded content, then ordinary exact-head review. */
 export const wikiSync: DependencyBot = {
     id: 'wiki-sync', label: 'wiki-sync', autoAdoptLanes: ['In review'],
+    // Every row field qualification reads, with the project's repository and target.
+    refusalMemo: {
+        key: (store, pull) => memoDigest([store.project.repository, store.project.target, pull.number, pull.node_id, pull.state, pull.user?.login, pull.user?.id, pull.draft,
+            pull.head?.repo?.full_name, pull.head?.ref, pull.head?.sha, pull.base?.repo?.full_name, pull.base?.ref, pull.base?.sha, pull.title, pull.body, pull.commits, pull.changed_files]),
+        reusable: refusal => !RETRIED.has(refusal),
+    },
     async openPulls(store, execute, inventory) {
         return (await openPulls({ store, execute }, inventory))
             .filter((pull: any) => branch.test(pull.head?.ref || '') && identity(pull.user, OWNER));
@@ -25,7 +35,7 @@ export const wikiSync: DependencyBot = {
         if (pull.head?.repo?.full_name !== store.project.repository) return 'it comes from another repository';
         if (pull.base?.ref !== store.project.target) return 'it does not target the configured base';
         const p = typeof pull.commits === 'number' && typeof pull.changed_files === 'number' ? pull : await readRepo(store, execute, `pulls/${pull.number}`);
-        if (p.state !== 'open' || p.head?.sha !== pull.head.sha || !/^[a-f0-9]{40}$/.test(p.head.sha)) return 'the wiki PR head changed or is unavailable';
+        if (p.state !== 'open' || p.head?.sha !== pull.head.sha || !/^[a-f0-9]{40}$/.test(p.head.sha)) return HEAD_UNAVAILABLE;
         const parent = /^bot\/wiki-sync\/([1-9]\d*)$/.exec(p.head.ref)?.[1];
         if (parent) {
             if (!titled(p.title, `docs(wiki): reconcile PR #${parent}`) || !p.body?.startsWith(`Automated, reviewable wiki reconciliation for merged PR #${parent}.`)) return 'the wiki PR does not match its source merge';
@@ -33,9 +43,11 @@ export const wikiSync: DependencyBot = {
             if (!source.merged || !source.merged_at || source.base?.ref !== store.project.target || typeof source.head?.ref !== 'string' || source.head.ref.startsWith('bot/wiki-')) return 'the source PR is not an eligible merged parent';
         } else if (!['docs(wiki): reconcile missed merges', 'docs(wiki): weekly issue and merge reconciliation'].some(canonical => titled(p.title, canonical)) || !/^Automated, reviewable (?:batch wiki reconciliation\.|weekly refresh of cited issue state and missed merge reconciliation\.)/.test(p.body || '')) return 'it is not a canonical wiki maintenance PR';
         const commits = await readRepo(store, execute, `pulls/${p.number}/commits?per_page=100`, true);
-        if (!commits.length || commits.length !== p.commits || commits.at(-1)?.sha !== p.head.sha || commits.some((commit: any) => !identity(commit.author, ACTIONS) || !identity(commit.committer, ACTIONS))) return 'wiki commits are not exclusively Actions-authored on the current head';
+        if (!commits.length || commits.length !== p.commits || commits.at(-1)?.sha !== p.head.sha) return COMMITS_INCOMPLETE;
+        if (commits.some((commit: any) => !identity(commit.author, ACTIONS) || !identity(commit.committer, ACTIONS))) return 'wiki commits are not exclusively Actions-authored on the current head';
         const files = await readRepo(store, execute, `pulls/${p.number}/files?per_page=100`, true);
-        if (!files.length || files.length !== p.changed_files || files.some((file: any) => !wikiPath(file.filename) || file.previous_filename && !wikiPath(file.previous_filename))) return 'wiki changes extend beyond Markdown and the generated wiki graph, or file coverage is incomplete';
+        if (!files.length || files.length !== p.changed_files) return FILES_INCOMPLETE;
+        if (files.some((file: any) => !wikiPath(file.filename) || file.previous_filename && !wikiPath(file.previous_filename))) return 'wiki changes extend beyond Markdown and the generated wiki graph';
         const closing = [...(p.body || '').matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)].map(match => Number(match[1]));
         if (closing.length) {
             const tracking = await findTrackingIssue(store, execute, p.number, 0, 'wiki-sync');
