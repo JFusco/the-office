@@ -23,4 +23,11 @@ Notices are served, never saved: `overseer-incident:<id>` while the runner's out
 
 Testing found that `AbortSignal.timeout` rejects the fractional milliseconds the phase clock gives. Without the fix every budgeted request would have failed, so timeouts are now whole milliseconds.
 
+The implementation review (`23965293`) accepted 21 more findings. All were repaired and each passed an independent recheck. Two were blockers:
+
+- a send left unconfirmed at one Office origin could have been repeated through another;
+- an owed journal write could have forwarded a different ID from the one owed.
+
+Joe allowed the wiki graph to be regenerated for one of the repairs. The recheck raised one more suggestion: a send whose preflight passed with a millisecond left could be claimed and never sent. A send now needs a one-second window before it is claimed.
+
 [Issue #664](https://github.com/JFusco/the-office/issues/664) · [Overseer, Forwarding and reports](../../docs/overseer.md#forwarding-and-reports)
