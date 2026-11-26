@@ -1,7 +1,8 @@
+import { reconcileGitHubWrite } from '../../github/identity/write-boundary';
 import type { Store } from '../../store/store';
 import type { Feature } from '../../../src/contracts/features';
 import type { FeaturePublisher, PublicationReceipt } from '../publication';
-import { Effects, EffectUncertainError } from '../../store/effects';
+import { EffectUncertainError } from '../../store/effects';
 import { reserveIdentity } from './reserve-identity';
 import { featureById } from '../commands';
 import { pendingRounds } from '../questions/pending-round';
@@ -12,7 +13,7 @@ export function uncertainPublications(store: Store, feature: Feature) {
 /** Original intent remains readable after its authorization is superseded. Never dispatches. */
 export async function reconcilePublication(store: Store, feature: Feature, provider: FeaturePublisher) {
     for (const {itemId, effect} of uncertainPublications(store, feature)) {
-        if (!await new Effects(store).reconcile(effect!.id, intent => provider.readBack(intent))) throw new EffectUncertainError(effect!.id, 'Original publication remains uncertain; no resend');
+        if (!await reconcileGitHubWrite(store, effect!.id, intent => provider.readBack(intent))) throw new EffectUncertainError(effect!.id, 'Original publication remains uncertain; no resend');
         const current=featureById(store,feature.id),item=current.publication.find(p=>p.id===itemId);
         if (!item?.effects.includes(effect!.id)) throw new Error('Original publication identity changed during read-back');
         reserveIdentity(store, feature.id, itemId, store.getEffect(effect!.id)!.receipt as PublicationReceipt);

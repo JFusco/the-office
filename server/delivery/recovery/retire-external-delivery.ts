@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { workKey, type TicketJob } from '../../../src/shared';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { mergedByOwner } from '../pipeline/merged-by-owner';
+import { mergedByOfficeBot, officeMerge } from '../pipeline/office-merge';
 import { completedPRReview, completedPRReviews } from './completed-pr-review';
 import { completedPreparation } from './completed-preparation';
 import { settledExternalRepair } from './settled-external-repair';
@@ -65,7 +66,9 @@ export async function retireExternalDeliveries(delivery: GitHubDelivery): Promis
             const pull = await delivery.verifyPR(job, true);
             if (pull.number !== job.pr || pull.html_url !== job.prUrl || pull.state !== 'closed' ||
                 !pull.merged_at || !/^[a-f0-9]{40}$/.test(pull.merge_commit_sha || '')) continue;
-            const byOwner = mergedByOwner(delivery, pull);
+            const byOwner = mergedByOwner(delivery, pull) && !officeMerge(store, job, pull);
+            // The App's bot merges only through an Office merge Effect; without a matching one there is no completion proof.
+            if (mergedByOfficeBot(store, pull) && !officeMerge(store, job, pull)) continue;
             if (!byOwner && (pull.head.sha !== job.head || pull.head.ref !== job.branch)) continue;
             if (delivery.jobs.find(current => current.id === job.id) !== job ||
                 !isDeepStrictEqual(job, prior) || !(eligible(delivery, job) || byOwner && ownerSettles(delivery, job))) continue;

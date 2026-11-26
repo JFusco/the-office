@@ -1,5 +1,5 @@
+import { reconcileGitHubWrite } from '../github/identity/write-boundary';
 import type { CostEntry } from '../../src/contracts/telemetry';
-import { Effects } from '../store/effects';
 import type { Store } from '../store/store';
 import { githubGraphql, readNumber } from '../time/board-number-field';
 import { READBACK_INTERVAL_MS } from '../time/time-readback';
@@ -36,7 +36,7 @@ export async function readBackCost(store: Store, key: string, execute: typeof co
         return;
     }
     const graphql = githubGraphql(store, execute);
-    const verified = await new Effects(store).reconcile(effect.id, async intent => {
+    const verified = await reconcileGitHubWrite(store, effect.id, async intent => {
         const payload = intent.payload as { item: string; field: string; usd: number };
         const observed = await readNumber(graphql, payload.item, payload.field);
         return { verified: observed === payload.usd, receipt: { observed } };

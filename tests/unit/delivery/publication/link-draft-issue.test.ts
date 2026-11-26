@@ -80,7 +80,8 @@ test('candidate drift during comment reads prevents the write', async () => {
     const f = await fixture(), original = f.delivery.execute;
     f.delivery.execute = (async (program, args, options) => {
         const result = await original(program, args, options);
-        if (args[1] === 'user') f.job.head = 'c'.repeat(40);
+        // The comment author is the Effect's own writer now, never a viewer read: the drift arrives during the comment pages read.
+        if (String(args[1]).includes('/comments?')) f.job.head = 'c'.repeat(40);
         return result;
     }) as typeof original;
     await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('head changed');
@@ -229,7 +230,7 @@ test.each(['dispatched-rejection', 'other-pr-uncertain', 'prepared'])('complete 
 
 test('a hold arriving during comment reads prevents dispatch', async () => {
     const f = await fixture(), original = f.delivery.execute;
-    f.delivery.execute = async (program, args, options) => { const result = await original(program, args, options); if (args[1] === 'user') HOLDS[f.job.key] = 'Synthetic hold'; return result; };
+    f.delivery.execute = async (program, args, options) => { const result = await original(program, args, options); if (String(args[1]).includes('/comments?')) HOLDS[f.job.key] = 'Synthetic hold'; return result; };
     try { await expect(claimedDelivery(f.store, f.job, () => linkDraftIssue(f.delivery, f.job, f.state.issue, f.root))).rejects.toThrow('held'); }
     finally { delete HOLDS[f.job.key]; }
     expect(writes(f.state.calls)).toHaveLength(0);

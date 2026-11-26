@@ -54,6 +54,37 @@ A top-level `GH-…` hold stops that issue number in every GitHub project, so pu
 
 A mistake stops start-up and names the project and key, for example `Project "web": policy.merge must be "human" or "harness"`.
 
+### Office GitHub App
+
+The optional `githubApp` block lets a GitHub write route move from your stored `gh` login to the Office's own
+GitHub App, one project and operation at a time. It holds public identifiers only: the App and installation
+ids, the bot login, each project's `repository` and `repositoryId`, the key-source selector
+`{ "kind": "keychain", "service": "…", "account": "…" }` (the key itself stays in the Keychain) and
+`writes[projectId][operation]`. Leave it out and every write uses your `gh` login exactly as before.
+
+A route moves only through a recorded trial and an explicit promotion, and comes back only through a rollback
+that names its current activation Effect:
+
+```json
+"writes": {
+  "the-office": {
+    "issue-close": { "mode": "operator", "revokes": "harness:job-1:issue-close:5" }
+  }
+}
+```
+
+To try the App again after that rollback, the next trial names the same revocation:
+
+```json
+"issue-close": { "mode": "qualify", "effectId": "harness:job-2:issue-close:9", "installationId": 12345678,
+  "repositoryId": 1, "adapter": "github-issue-close", "target": "https://github.com/JFusco/the-office/issues/9",
+  "beforeDigest": "…", "expectedDigest": "…", "revokes": "harness:job-1:issue-close:5" }
+```
+
+On a route that was ever activated, removing the entry, removing the block or writing bare `"operator"` holds
+its writes rather than falling back. See [GitHub write identity](docs/office-process.md#github-write-identity).
+
+
 ### Add a Jira/Azure project
 
 A Jira/Azure project is configured entirely from its own entry, with `jira`, `azure` and `prompt` blocks. All three are required; nothing is borrowed from CEC. Every value below is a placeholder:

@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { activeEffectId, harnessEffect } from '../harness/effect';
+import { expectedAuthor } from '../../github/identity/office-authors';
 import type { Execute } from '../board/project-graphql';
 import type { Store } from '../../store/store';
 import type { EffectIntent, TicketJob } from '../../../src/shared';
@@ -15,12 +16,17 @@ export const parkCommentKey = (job: Pick<TicketJob, 'steps' | 'parked'>) =>
 export const parkCommentBody = (parked: Pick<NonNullable<TicketJob['parked']>, 'marker' | 'reason' | 'instruction'>) => `${parked.marker}: ${parked.reason}\n\n${parked.instruction}`;
 const issueUrl = (store: Store, issue: number) => `https://github.com/${store.project.repository}/issues/${issue}`;
 
-/** The account the Office posts as, read from GitHub. */
-export async function commentAuthor(store: Store, execute: Execute): Promise<string> {
-    const viewer = JSON.parse(await execute('gh', ['api', 'user'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
-    if (typeof viewer?.login !== 'string' || !viewer.login) throw new Error('Authenticated comment author is unavailable');
-    return viewer.login;
+/**
+ * The account an Office comment under `effectId` is expected to carry, never read from the live viewer (an
+ * installation token cannot answer `gh api user`): the saved writer of that Effect, the historical operator for a
+ * legacy one, or the principal its route selects for a new comment (`server/github/identity/office-authors.ts`).
+ */
+export function commentAuthor(store: Store, effectId: string): string {
+    return expectedAuthor(store, effectId, 'github-issue-comment');
 }
+/** The expected author of this job's park decision comment. */
+export const parkCommentAuthor = (store: Store, job: Pick<TicketJob, 'id' | 'steps' | 'parked'>) =>
+    commentAuthor(store, activeEffectId(store, `harness:${job.id}:${parkCommentKey(job)}`));
 
 /**
  * The park's one decision comment, read across every page of the issue's comments. Null only when no comment starts

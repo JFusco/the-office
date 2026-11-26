@@ -1,4 +1,4 @@
-import { Effects } from '../store/effects';
+import { executeGitHubWrite, reconcileGitHubWrite } from '../github/identity/write-boundary';
 import type { Store } from '../store/store';
 import type { command } from '../workers/process';
 import { cardStatus, projectCards, setCardStatus, statusField } from '../delivery/board/project-graphql';
@@ -24,8 +24,7 @@ const firstLane = (status: string | undefined, move: Pick<LaneMove, 'backlog'>) 
 
 /** One durable lane write. Preflight re-reads the card, so a lane a person chose after the first read is never overwritten. */
 async function move(store: Store, execute: typeof command, lessonId: string, id: string, payload: LaneMove): Promise<void> {
-    const effects = new Effects(store);
-    await effects.execute({
+    await executeGitHubWrite(store, {
         id, work: { projectId: store.project.id, kind: 'retrospective', id: lessonId }, attemptId: lessonId,
         operation: 'lesson-issue-lane', target: payload.item, authorization: 'joe-approved-lesson-issue', payload, expectedState: { lane: 'first' },
         preflight: async () => {
@@ -34,7 +33,7 @@ async function move(store: Store, execute: typeof command, lessonId: string, id:
         },
         dispatch: async saved => { await setCardStatus(store, execute, saved.project, saved.item, saved.field, saved.option); return { item: saved.item }; },
         verify: async (_receipt, saved) => await cardStatus(store, execute, saved.item, saved.field) === saved.option,
-    });
+    }, { board: payload.project, field: payload.field });
 }
 
 /**
@@ -50,7 +49,7 @@ export async function readyLessonIssue(store: Store, execute: typeof command, le
     if (prior?.status === 'verified') return settle(store, lessonId, `${prior.payload.lane} verified by read-back`);
     if (prior && ['dispatching', 'uncertain'].includes(prior.status)) {
         const saved = prior.payload;
-        if (!await new Effects(store).reconcile(id, async () => ({ verified: await cardStatus(store, execute, saved.item, saved.field) === saved.option, receipt: { item: saved.item } })))
+        if (!await reconcileGitHubWrite(store, id, async () => ({ verified: await cardStatus(store, execute, saved.item, saved.field) === saved.option, receipt: { item: saved.item } })))
             throw new Error('The earlier lane move is still unconfirmed on the board; it will not be sent twice');
         return settle(store, lessonId, `${saved.lane} verified by read-back`);
     }

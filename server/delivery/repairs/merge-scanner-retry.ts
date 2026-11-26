@@ -1,9 +1,9 @@
+import { reconcileGitHubWrite } from '../../github/identity/write-boundary';
 import { officeMergeProvenance } from './merge-provenance';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isDeepStrictEqual, stripVTControlCharacters } from 'node:util';
 import { setTimeout as wait } from 'node:timers/promises';
-import { Effects } from '../../store/effects';
 import { containedFile } from '../../cec/workflow';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { activeEffectId, harnessEffect } from '../harness/effect';
@@ -38,7 +38,7 @@ export async function reconcileMergeScannerRetry(delivery: GitHubDelivery, job: 
         !isDeepStrictEqual(prior.payload, { runId: r.runId, head: r.head, attempt: r.attempt, evidencePath: r.evidencePath }) ||
         !isDeepStrictEqual(prior.expectedState, { key: `merge-scanner-retry:${r.runId}` })) throw new Error('Original scanner retry effect identity changed');
     const expected = structuredClone(prior), record = structuredClone(r);
-    if (!await new Effects(store).reconcile(id, async () => {
+    if (!await reconcileGitHubWrite(store, id, async () => {
         const receipt = await retryReadBack(delivery, r);
         return { verified: !!receipt && delivery.jobs.find(j => j.id === job.id) === job && job.stage === 'ci-recovery' && !job.ciFollowupKey &&
             job.mergeCommit === record.head && isDeepStrictEqual(job.mergeScannerRetry, record) && isDeepStrictEqual(store.getEffect(id), expected), receipt };

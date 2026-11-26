@@ -1,11 +1,15 @@
 import { withGitHubSource, type Runner } from './call-scope';
+import type { WriteCredential } from './identity/child-credentials';
+import { credentialOptions, currentWriteCredential, withWriteCredential } from './identity/write-credential-scope';
 
 const HOUR = 60 * 60_000;
 export type Resource = 'core' | 'graphql';
 type Reading = { limit: number; used: number; remaining: number; reset: number };
 export type ResourceReading = Reading & { resource: Resource };
 /** Where a reading came from: a `rate_limit` sample, an `--include` header block, or a GraphQL body's `rateLimit`. */
-export type Sample = ResourceReading & { at: number; from: 'rate_limit' | 'headers' | 'body' };
+export type Sample = ResourceReading & { at: number; from: 'rate_limit' | 'headers' | 'body'; principal?: string };
+const OPERATOR = 'operator';
+const of = (sample: Sample) => sample.principal ?? OPERATOR;
 
 function reading(value: any): Reading | undefined {
     const { limit, used, remaining, reset } = value ?? {};
@@ -37,65 +41,91 @@ export function readRateLimitHeaders(text: string): ResourceReading | undefined 
  */
 export class RateLimitSamples {
     private samples: Sample[] = [];
-    private pending?: Promise<void>;
-    private lastAt = -Infinity;
-    private failure?: { at: number; reason: 'failed' | 'unreadable' };
-    constructor(private run: Runner, private now = () => Date.now(), private intervalMs = 60_000) { }
-    /** `intervalMs` shortens the spacing for the quota governor's probe; every sample still shares the one in flight. */
-    sample(begin?: () => () => void, intervalMs = this.intervalMs): Promise<void> {
-        if (this.pending) return this.pending;
+    private pending = new Map<string, Promise<void>>();
+    private lastAt = new Map<string, number>();
+    private failures = new Map<string, { at: number; reason: 'failed' | 'unreadable' }>();
+    /**
+     * `credential` gives a principal other than the operator its own credential, so its probe reads that principal's
+     * own windows; a principal without one is never probed.
+     */
+    constructor(private run: Runner, private now = () => Date.now(), private intervalMs = 60_000, private credential?: (principal: string) => Promise<WriteCredential | undefined>) { }
+    /**
+     * `intervalMs` shortens the spacing for the quota governor's probe; every sample of a principal still shares the one
+     * in flight per credential context. Rollback probes use the stored operator context and share its quota window.
+     */
+    sample(begin?: () => () => void, intervalMs = this.intervalMs, principal = OPERATOR): Promise<void> {
+        const scoped = currentWriteCredential();
+        const rollback = principal === OPERATOR && scoped?.principal === 'operator' ? scoped : undefined;
+        const probeKey = rollback ? 'operator:rollback' : principal;
+        const inFlight = this.pending.get(probeKey);
+        if (inFlight) return inFlight;
         const at = this.now();
-        if (at - this.lastAt < intervalMs) return Promise.resolve();
-        this.lastAt = at;
+        if (at - (this.lastAt.get(probeKey) ?? -Infinity) < intervalMs) return Promise.resolve();
+        this.lastAt.set(probeKey, at);
         const end = begin?.();
-        this.pending = withGitHubSource('quota', async () => this.run('gh', ['api', 'rate_limit'], { timeout: 30_000, readOnly: true })).then(raw => {
+        const probe = async () => {
+            if (principal === OPERATOR && !rollback) return this.run('gh', ['api', 'rate_limit'], { timeout: 30_000, readOnly: true });
+            const credential = rollback ?? await this.credential?.(principal);
+            if (!credential) throw new Error('No credential for this principal');
+            // The runner here is the metered runner itself, not `command`: the child credential is applied explicitly.
+            return withWriteCredential(credential, () => this.run('gh', ['api', 'rate_limit'], credentialOptions('gh', { timeout: 30_000, readOnly: true }, credential)));
+        };
+        const pending = withGitHubSource('quota', probe).then(raw => {
             let resources: any;
             try { resources = JSON.parse(raw)?.resources; } catch { /* unreadable below */ }
-            const read = (['core', 'graphql'] as const).flatMap(resource => { const value = reading(resources?.[resource]); return value ? [{ ...value, resource, at: this.now(), from: 'rate_limit' as const }] : []; });
-            if (!read.length) this.failure = { at: this.now(), reason: 'unreadable' };
+            const read = (['core', 'graphql'] as const).flatMap(resource => { const value = reading(resources?.[resource]); return value ? [{ ...value, resource, at: this.now(), from: 'rate_limit' as const, ...(principal === OPERATOR ? {} : { principal }) }] : []; });
+            if (!read.length) this.failures.set(principal, { at: this.now(), reason: 'unreadable' });
             for (const sample of read) this.keep(sample);
-        }, () => { this.failure = { at: this.now(), reason: 'failed' }; }).finally(() => {
-            this.pending = undefined;
+        }, () => { this.failures.set(principal, { at: this.now(), reason: 'failed' }); }).finally(() => {
+            this.pending.delete(probeKey);
             end?.();
         });
-        return this.pending;
+        this.pending.set(probeKey, pending);
+        return pending;
     }
-    /** Keep only the quota values from an included response, or from a GraphQL body's `rateLimit` (`from: 'body'`). */
-    headers(input: string | ResourceReading | undefined, from: 'headers' | 'body' = 'headers') {
+    /** Keep only the quota values from an included response, or from a GraphQL body's `rateLimit` (`from: 'body'`), for the principal that made the call. */
+    headers(input: string | ResourceReading | undefined, from: 'headers' | 'body' = 'headers', principal = OPERATOR) {
         const value = typeof input === 'string' ? readRateLimitHeaders(input) : input;
-        if (value) this.keep({ ...value, at: this.now(), from });
+        if (value) this.keep({ ...value, at: this.now(), from, ...(principal === OPERATOR ? {} : { principal }) });
     }
     /** Readings are kept by resource and reset: a reading updates only the window it reports, and others stay live. */
     private keep(sample: Sample) {
         this.samples = this.samples.filter(kept => kept.at > sample.at - HOUR);
         // Cumulative usage in the same window cannot go back when a delayed read arrives.
-        if (this.samples.some(kept => kept.resource === sample.resource && kept.reset === sample.reset && kept.used > sample.used)) return;
+        if (this.samples.some(kept => of(kept) === of(sample) && kept.resource === sample.resource && kept.reset === sample.reset && kept.used > sample.used)) return;
         this.samples.push(sample);
     }
     /** The newest reading of one resource in the last hour: its latest reset window and, within it, the most used. */
-    latest(resource: Resource): Sample | undefined {
+    latest(resource: Resource, principal = OPERATOR): Sample | undefined {
         const now = this.now();
         let best: Sample | undefined;
         for (const sample of this.samples)
-            if (sample.resource === resource && sample.at > now - HOUR && (!best || sample.reset > best.reset || sample.reset === best.reset && sample.used >= best.used)) best = sample;
+            if (of(sample) === principal && sample.resource === resource && sample.at > now - HOUR && (!best || sample.reset > best.reset || sample.reset === best.reset && sample.used >= best.used)) best = sample;
         return best;
     }
     /**
      * The most-used reading of each live reset window of one resource, in reset order: read in the last hour, with its
      * reset still ahead. GitHub can answer GraphQL from more than one window at once, and `rate_limit` shows only one.
      */
-    liveWindows(resource: Resource): Sample[] {
+    liveWindows(resource: Resource, principal = OPERATOR): Sample[] {
         const now = this.now(), windows = new Map<number, Sample>();
         for (const sample of this.samples) {
-            if (sample.resource !== resource || sample.at <= now - HOUR || sample.reset * 1000 <= now) continue;
+            if (of(sample) !== principal || sample.resource !== resource || sample.at <= now - HOUR || sample.reset * 1000 <= now) continue;
             const kept = windows.get(sample.reset);
             if (!kept || sample.used >= kept.used) windows.set(sample.reset, sample);
         }
         return [...windows.values()].sort((a, b) => a.reset - b.reset);
     }
-    /** The latest reading of each resource, and what was used within each reset window seen in the last hour. */
+    /**
+     * The operator's latest reading of each resource and what it used within each reset window seen in the last hour,
+     * as before; any other principal's own windows under `principals`.
+     */
     report() {
-        const now = this.now(), samples = this.samples.filter(sample => sample.at > now - HOUR);
+        const principals = [...new Set(this.samples.map(of))].filter(principal => principal !== OPERATOR).sort();
+        return { ...this.principalReport(OPERATOR), principals: Object.fromEntries(principals.map(principal => [principal, this.principalReport(principal)])) };
+    }
+    private principalReport(principal: string) {
+        const now = this.now(), samples = this.samples.filter(sample => of(sample) === principal && sample.at > now - HOUR), failure = this.failures.get(principal);
         const latest = new Map<Resource, Sample>();
         const windows = new Map<string, Sample[]>();
         for (const sample of samples) {
@@ -111,7 +141,7 @@ export class RateLimitSamples {
                 const first = group[0], last = group.at(-1)!;
                 return { resource: first.resource, reset: iso(first.reset * 1000), limit: last.limit, firstObservedAt: iso(first.at), lastObservedAt: iso(last.at), firstUsed: first.used, lastUsed: last.used, consumed: last.used - first.used, samples: group.length };
             }),
-            lastFailure: this.failure ? { at: iso(this.failure.at), reason: this.failure.reason } : null,
+            lastFailure: failure ? { at: iso(failure.at), reason: failure.reason } : null,
         };
     }
 }

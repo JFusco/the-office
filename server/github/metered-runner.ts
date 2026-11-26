@@ -6,6 +6,7 @@ import { graphqlAnswer, type GraphqlAnswer } from './graphql-answer';
 import type { QuotaGovernor } from './quota-governor';
 import { quotaRefusal } from './quota-refusal';
 import { readRateLimitHeaders, type RateLimitSamples } from './rate-limit-samples';
+import { currentPrincipal } from './identity/write-credential-scope';
 
 const MAX_HEADER_LENGTH = 16_384;
 /** As much of a GraphQL query's stdout as the spawn path itself keeps, so a failed call's body can still say its cost. */
@@ -22,7 +23,7 @@ const MAX_BODY_LENGTH = 16_000_000;
 export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimitSamples, governor?: Pick<QuotaGovernor, 'refused' | 'answered'>): Runner {
     return async (program, args, options = {}) => {
         if (!githubCli(program)) return raw(program, args, options);
-        const source = currentGitHubSource(), project = currentGitHubProject(), operation = currentGitHubOperation(), call = githubCall(args, operation);
+        const source = currentGitHubSource(), project = currentGitHubProject(), operation = currentGitHubOperation(), call = githubCall(args, operation), principal = currentPrincipal();
         let spawned = false;
         const account = (observe: () => void) => { try { observe(); } catch { /* Telemetry only. */ } };
         let headerPrefix = call.include ? '' : undefined, body = call.api && graphqlFamily(call.family) ? '' : undefined;
@@ -49,7 +50,7 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
             options.onOutput?.(stream, chunk);
         } : options.onOutput;
         // A GraphQL body's balance first; an included header block only when the body gave none.
-        const keepReading = (answer?: GraphqlAnswer) => answer?.reading ? quota?.headers(answer.reading, 'body') : quota?.headers(quotaReading);
+        const keepReading = (answer?: GraphqlAnswer) => answer?.reading ? quota?.headers(answer.reading, 'body', principal) : quota?.headers(quotaReading, 'headers', principal);
         // A refusal and the text that stated it, for this invocation only.
         const refusalIn = (text: string | undefined, answer?: GraphqlAnswer) => {
             const refusal = text === undefined ? undefined : quotaRefusal(text, headers, answer?.reading ?? quotaReading);
@@ -61,11 +62,11 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
                 if (headerPrefix === '') captureHeaders(stdout);
                 const answer = body === undefined ? undefined : graphqlAnswer(stdout, call.include);
                 const matched = refusalIn(answer?.errors, answer);
-                ledger.record(source, call.family, graphqlCounts(succeeded(call, stdout, status), answer, operation, !!matched), project);
+                ledger.record(source, call.family, graphqlCounts(succeeded(call, stdout, status), answer, operation, !!matched), project, principal);
                 keepReading(answer);
                 // GitHub's 200 envelope can still state a refusal: that is a refusal, not an answer.
-                if (matched) { governor?.refused(matched.refusal, source !== 'quota'); options.onGitHubRefusal?.(matched.text); }
-                else if (source !== 'quota') governor?.answered();
+                if (matched) { governor?.refused(matched.refusal, source !== 'quota', principal); options.onGitHubRefusal?.(matched.text); }
+                else if (source !== 'quota') governor?.answered(principal);
             });
             return stdout;
         } catch (error) {
@@ -73,10 +74,10 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
             if (spawned) account(() => {
                 const answer = body === undefined ? undefined : graphqlAnswer(body, call.include);
                 const matched = refusalIn(error instanceof Error ? error.message : String(error), answer) ?? refusalIn(answer?.errors, answer);
-                ledger.record(source, call.family, graphqlCounts(failed(call, error, status, answer), answer, operation, !!matched), project);
+                ledger.record(source, call.family, graphqlCounts(failed(call, error, status, answer), answer, operation, !!matched), project, principal);
                 keepReading(answer);
                 // The probe's own refusal still holds, and never starts another probe.
-                if (matched) { governor?.refused(matched.refusal, source !== 'quota'); options.onGitHubRefusal?.(matched.text); }
+                if (matched) { governor?.refused(matched.refusal, source !== 'quota', principal); options.onGitHubRefusal?.(matched.text); }
             });
             throw error;
         }

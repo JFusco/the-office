@@ -5,6 +5,7 @@ import { assessDeliveryEligibility } from '../harness/delivery-authority';
 import { harnessDelivers } from '../harness/scope';
 import { dependencyEligibility, validatePrerequisites, type DependencyStores } from './dependencies';
 import { mergedByOwner } from './merged-by-owner';
+import { harnessMergeAttempted, mergedByOfficeBot } from './office-merge';
 import { hasUncertainEffects } from './uncertain-effects';
 import type { GitHubDelivery } from './github-delivery';
 
@@ -73,7 +74,8 @@ function ownerMerged(delivery: GitHubDelivery, job: TicketJob, pull: any): boole
         pull.base?.repo?.full_name === repository && pull.head?.repo?.full_name === repository &&
         pull.base.ref === store.project.target && pull.head.ref === job.branch && pull.head.sha === job.head &&
         pull.state === 'closed' && pull.merged === true && !!pull.merged_at && /^[a-f0-9]{40}$/.test(pull.merge_commit_sha || '') &&
-        mergedByOwner(delivery, pull);
+        // A merge the harness sent is recognized through its own merge Effect, never as the owner's.
+        mergedByOwner(delivery, pull) && !harnessMergeAttempted(store, job) && !mergedByOfficeBot(store, pull);
 }
 
 /** The job's own issue, open or closed as completed by the merge, and one the ordinary closeout stage accepts. */

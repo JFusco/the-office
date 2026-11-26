@@ -68,5 +68,17 @@
   "delivery": {
     "concurrency": 3
   },
+  "githubApp": {
+    "appId": 123456,
+    "installationId": 12345678,
+    "botLogin": "example-office[bot]",
+    "keySource": { "kind": "keychain", "service": "the-office-github-app", "account": "configure-locally" },
+    "repositories": {
+      "example": { "repository": "owner/repository", "repositoryId": 1 }
+    },
+    "writes": {
+      "example": { "comment": "operator", "issue-create": "operator", "push": "operator" }
+    }
+  },
   "holds": {}
 }

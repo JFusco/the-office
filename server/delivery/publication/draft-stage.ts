@@ -3,13 +3,15 @@ import { harnessStageResult, receipt } from '../harness/stage-result';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { publishCandidate } from './publish-pr';
 import { readPublication } from './read-command';
+import { appSelected } from '../../github/identity/office-authors';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { StageResult, TicketJob } from '../../../src/shared';
 
 /** Model-free `draft`: publish the verified candidate and move its cards to In review. */
 export async function harnessDraft(delivery: GitHubDelivery, job: TicketJob, root: string): Promise<StageResult> {
     const { store, execute } = delivery;
-    await readPublication(store, execute, job, root, 'viewer');
+    // The start-of-draft provenance read: the operator's viewer, or a repository read an installation token can answer.
+    await readPublication(store, execute, job, root, appSelected(store, 'git-push') ? 'repository' : 'viewer');
     const publication = await publishCandidate(store, execute, delivery.jobs, job, root, delivery);
     const head = job.head;
     const lane = await moveLane(store, execute, job, 'In review', () => assertDeliveryMayMutate(store, delivery.jobs, job, head), publication.pr);

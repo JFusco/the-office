@@ -1,6 +1,7 @@
 import type { Store } from '../store/store';
-import { Effects } from '../store/effects';
 import { command } from '../workers/process';
+import { executeGitHubWrite, reconcileGitHubWrite } from './identity/write-boundary';
+import { writerSuccessor } from './identity/writer-successor';
 /** Shared exact repository/issue identity validation for ordinary reads and bounded evidence capture. */
 export function validateGitHubIssue(issue: any, repository: string, number: number) {
     if (!Number.isSafeInteger(number) || number <= 0 || issue?.number !== number || issue.pull_request || issue.html_url !== `https://github.com/${repository}/issues/${number}`) throw new Error('GitHub issue identity mismatch');
@@ -29,17 +30,17 @@ export class GitHubOperations {
             throw new Error('Positive issue number required');
     }
     async comment(number: number, runId: string, text: string, preflight: () => Promise<void>): Promise<any> {
-        const id = `native-closeout-comment:${number}:${runId}`;
-        const effects = new Effects(this.store), previous = this.store.getEffect(id);
+        const id = writerSuccessor(this.store, `native-closeout-comment:${number}:${runId}`);
+        const previous = this.store.getEffect(id);
         if (previous)
             text = (previous.payload as {
                 text: string;
             }).text;
         if (previous && ['uncertain', 'dispatching'].includes(previous.status)) {
-            if (!await effects.reconcile(id, async (intent) => { const matches = (await this.comments(number)).filter(comment => comment.body === text && Date.parse(comment.created_at) >= Date.parse(intent.createdAt) - 2000); return { verified: matches.length === 1, receipt: matches[0] || null }; }))
+            if (!await reconcileGitHubWrite(this.store, id, async (intent) => { const matches = (await this.comments(number)).filter(comment => comment.body === text && Date.parse(comment.created_at) >= Date.parse(intent.createdAt) - 2000); return { verified: matches.length === 1, receipt: matches[0] || null }; }))
                 throw new Error('Original closeout comment remains uncertain; no resend');
         }
-        return effects.execute({ id, work: { projectId: this.store.project.id, kind: 'issue', id: String(number) }, attemptId: runId, operation: 'github-native-closeout-comment', target: `GH-${number}`, authorization: 'verified-native-refresh', payload: { text }, expectedState: { runId }, preflight,
+        return executeGitHubWrite(this.store, { id, work: { projectId: this.store.project.id, kind: 'issue', id: String(number) }, attemptId: runId, operation: 'github-native-closeout-comment', target: `GH-${number}`, authorization: 'verified-native-refresh', payload: { text }, expectedState: { runId }, preflight,
             dispatch: async (value) => this.api(`issues/${number}/comments`, 'POST', { body: value.text }), verify: async (receipt) => {
                 if (!receipt.id)
                     return false;
@@ -48,13 +49,13 @@ export class GitHubOperations {
             } });
     }
     async closeIssue(number: number, runId: string, preflight: () => Promise<void>): Promise<void> {
-        const effects = new Effects(this.store), id = `native-closeout-state:${number}:${runId}`;
+        const id = writerSuccessor(this.store, `native-closeout-state:${number}:${runId}`);
         const intent = this.store.getEffect(id);
         if (intent && ['uncertain', 'dispatching'].includes(intent.status)) {
-            if (!await effects.reconcile(id, async () => { const saved = await this.issue(number); return { verified: saved.state === 'closed', receipt: saved }; }))
+            if (!await reconcileGitHubWrite(this.store, id, async () => { const saved = await this.issue(number); return { verified: saved.state === 'closed', receipt: saved }; }))
                 throw new Error('Original issue closure remains uncertain');
         }
-        await effects.execute({ id, work: { projectId: this.store.project.id, kind: 'issue', id: String(number) }, attemptId: runId, operation: 'github-native-closeout-state', target: `GH-${number}`, authorization: 'verified-native-refresh', payload: { state: 'closed', state_reason: 'completed' }, expectedState: { runId }, preflight, dispatch: async (payload) => this.api(`issues/${number}`, 'PATCH', payload), verify: async () => (await this.issue(number)).state === 'closed' });
+        await executeGitHubWrite(this.store, { id, work: { projectId: this.store.project.id, kind: 'issue', id: String(number) }, attemptId: runId, operation: 'github-native-closeout-state', target: `GH-${number}`, authorization: 'verified-native-refresh', payload: { state: 'closed', state_reason: 'completed' }, expectedState: { runId }, preflight, dispatch: async (payload) => this.api(`issues/${number}`, 'PATCH', payload), verify: async () => (await this.issue(number)).state === 'closed' });
     }
     async done(number: number, runId: string, preflight: () => Promise<void>): Promise<void> {
         const config = this.store.project.githubProject;
@@ -91,14 +92,14 @@ export class GitHubOperations {
                 throw new Error('Board field read-back is incomplete');
             return node.fieldValues.nodes.find((value: any) => value.field?.id === field.id)?.optionId;
         };
-        const id = `native-closeout-board:${number}:${runId}`, effects = new Effects(this.store), previous = this.store.getEffect(id);
-        if (previous && ['dispatching', 'uncertain'].includes(previous.status) && !await effects.reconcile(id, async () => ({ verified: await read() === options[0].id, receipt: { itemId: item.id } })))
+        const id = writerSuccessor(this.store, `native-closeout-board:${number}:${runId}`), previous = this.store.getEffect(id);
+        if (previous && ['dispatching', 'uncertain'].includes(previous.status) && !await reconcileGitHubWrite(this.store, id, async () => ({ verified: await read() === options[0].id, receipt: { itemId: item.id } })))
             throw new Error('Previous Done transition remains uncertain');
-        await effects.execute({ id, work: { projectId: this.store.project.id, kind: 'issue', id: String(number) }, attemptId: runId, operation: 'github-native-closeout-board', target: config.url, authorization: 'verified-native-refresh', payload: { project: project.id, item: item.id, field: field.id, option: options[0].id }, expectedState: { runId }, preflight: async () => {
+        await executeGitHubWrite(this.store, { id, work: { projectId: this.store.project.id, kind: 'issue', id: String(number) }, attemptId: runId, operation: 'github-native-closeout-board', target: config.url, authorization: 'verified-native-refresh', payload: { project: project.id, item: item.id, field: field.id, option: options[0].id }, expectedState: { runId }, preflight: async () => {
                 await preflight();
                 const current = await read();
                 if (!field.options.some((option: any) => option.id === current && ['Ready', 'In progress', 'In review', 'Done'].includes(option.name)))
                     throw new Error('Board lane was deferred or is unclassified');
-            }, dispatch: async (variables) => graph('mutation($project:ID!,$item:ID!,$field:ID!,$option:String!){updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$option}}){projectV2Item{id}}}', variables, true), verify: async () => await read() === options[0].id });
+            }, dispatch: async (variables) => graph('mutation($project:ID!,$item:ID!,$field:ID!,$option:String!){updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$option}}){projectV2Item{id}}}', variables, true), verify: async () => await read() === options[0].id }, { board: project.id, field: field.id });
     }
 }

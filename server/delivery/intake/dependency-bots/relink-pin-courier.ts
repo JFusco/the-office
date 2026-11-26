@@ -1,6 +1,6 @@
+import { reconcileGitHubWrite } from '../../../github/identity/write-boundary';
 import { createHash } from 'node:crypto';
 import { holdReason } from '../../../office/project-holds';
-import { Effects } from '../../../store/effects';
 import { harnessEffect } from '../../harness/effect';
 import { readBackOrThrow } from '../../harness/read-retry';
 import { projectGraphql, type Execute } from '../../board/project-graphql';
@@ -45,7 +45,7 @@ export async function relinkPinCourier(store: Store, execute: Execute, record: D
         const head = /^pr-body:\d+:([a-f0-9]{40})(?::|$)/.exec(String((effect.expectedState as any)?.key))?.[1];
         if (!head || effect.status === 'verified' && (effect.receipt as any)?.head !== head) throw new Error('Prior PR link receipt/head changed');
         if (['dispatching', 'uncertain'].includes(effect.status)) {
-            if (!await new Effects(store).reconcile(effect.id, async () => ({ verified: linked(p, head), receipt: { head } })))
+            if (!await reconcileGitHubWrite(store, effect.id, async () => ({ verified: linked(p, head), receipt: { head } })))
                 throw new Error('Prior PR link PATCH remains unverified; it will not be resent');
         } else if (effect.status !== 'verified' && !(effect.status === 'rejected' && !effect.dispatchedAt))
             throw new Error('Prior PR link intent requires reconciliation');

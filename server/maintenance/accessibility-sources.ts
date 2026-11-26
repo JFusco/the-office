@@ -14,7 +14,8 @@ import { featureGate } from '../features/enrollment-gate';
 import { GitHubOperations } from '../github/github-operations';
 import { GitHubIssuePublisher } from '../github/issue-publication';
 import { holdsFor } from '../office/project-holds';
-import { Effects } from '../store/effects';
+import { executeGitHubWrite, reconcileGitHubWrite } from '../github/identity/write-boundary';
+import { writerSuccessor } from '../github/identity/writer-successor';
 import type { Store } from '../store/store';
 import { command } from '../workers/process';
 import { candidateOwner } from './candidate-ownership';
@@ -98,9 +99,8 @@ export function reconcileSourceScan(store: Store, run: MaintenanceRun): boolean 
 export async function reconcileSourceEffects(store: Store, run: MaintenanceRun, execute: typeof command) {
     const pending = sourceEffects(store, run.id).filter(unsettled);
     if (!pending.length) return;
-    const effects = new Effects(store);
     for (const effect of pending) {
-        const verified = await effects.reconcile<unknown>(effect.id, async () => {
+        const verified = await reconcileGitHubWrite<unknown>(store, effect.id, async () => {
             if (effect.operation === 'github-issue-assign') {
                 const number = Number(effect.target.split('/').at(-1));
                 const issue = await new GitHubOperations(store, execute).issue(number);
@@ -214,12 +214,11 @@ async function handoffIssue(store: Store, run: MaintenanceRun, finding: Finding,
         if (assigning ? owners.length > 0 : !owners.includes(assignee)) throw new Error(`${key} changed owners before source handoff`);
     };
     if (!assignees(issue).includes(assignee)) {
-        const effects = new Effects(store);
-        const id = `accessibility-assignment:${run.id}:${number}`;
+        const id = writerSuccessor(store, `accessibility-assignment:${run.id}:${number}`);
         const operation: FeatureOperation = { id, kind: 'assign', payload: { assignees: [assignee] }, expected: {} };
         const item: FeatureManifestItem = { id: key, key, title: issue.title, action: 'update', predecessor: '', criteria: [], operations: [operation] };
         const publisher = new GitHubIssuePublisher(store, { id: run.id, marker: () => finding.marker }, execute);
-        await effects.execute({
+        await executeGitHubWrite(store, {
             id, work: { projectId: store.project.id, kind: 'maintenance', id: run.id }, attemptId: run.id,
             operation: 'github-issue-assign', target: issue.html_url, authorization: 'office-harness',
             payload: operation.payload, expectedState: { nodeId, marker: finding.marker },

@@ -2,7 +2,8 @@ import type { Store } from '../store/store';
 import type { KnowledgeImprovement } from '../../src/contracts/knowledge';
 import type { FeatureManifest } from '../../src/contracts/features';
 import type { PublicationReceipt } from '../features/publication';
-import { Effects } from '../store/effects';
+import { executeGitHubWrite, reconcileGitHubWrite, selectGitHubWriter } from '../github/identity/write-boundary';
+import { writerSuccessor } from '../github/identity/writer-successor';
 import { holdReason } from '../office/project-holds';
 import { improvementDigest, IMPROVEMENT_POLICY } from './propose-improvements';
 import { improvementManifest, improvementMarker, improvementProvider } from './improvement-publication';
@@ -44,11 +45,10 @@ export async function admitImprovement(store: Store, id: string, provider: impor
     };
     try {
         // Read-back settles the original effect even after authority is revoked. It grants no new write.
-        const effects = new Effects(store);
         for (const effectId of item.effectIds) {
             const prior = store.getEffect(effectId);
             if (prior && ['uncertain', 'dispatching'].includes(prior.status)) {
-                if (!await effects.reconcile(effectId, intent => provider.readBack(intent))) throw new Error('Original publication remains uncertain; never resend');
+                if (!await reconcileGitHubWrite(store, effectId, intent => provider.readBack(intent))) throw new Error('Original publication remains uncertain; never resend');
                 const receipt = store.getEffect(effectId)!.receipt as PublicationReceipt;
                 if (!receipt.key || !receipt.url || item.providerId && item.providerId !== receipt.key) throw new Error('Improvement identity changed');
                 item.providerId = receipt.key; item.url = receipt.url; store.save();
@@ -69,20 +69,22 @@ export async function admitImprovement(store: Store, id: string, provider: impor
         const manifest = current().manifest!, row = manifest.items[0];
         for (const operation of row.operations) {
             item = current();
-            const effectId = `improvement:${id}:${operation.id}`, marker = improvementMarker(id);
+            const effectId = writerSuccessor(store, `improvement:${id}:${operation.id}`), marker = improvementMarker(id);
             const prior = store.getEffect(effectId);
-            if (prior && ['uncertain', 'dispatching'].includes(prior.status) && !await effects.reconcile(effectId, intent => provider.readBack(intent))) throw new Error('Original publication remains uncertain; never resend');
+            if (prior && ['uncertain', 'dispatching'].includes(prior.status) && !await reconcileGitHubWrite(store, effectId, intent => provider.readBack(intent))) throw new Error('Original publication remains uncertain; never resend');
             const verified = store.getEffect(effectId);
             let receipt: PublicationReceipt;
             if (verified?.status === 'verified') receipt = verified.receipt as PublicationReceipt;
             else {
                 const key = item.providerId || '';
+                // The writer is selected before the publication records this Effect id.
+                const writer = await selectGitHubWriter(store, { id: effectId, operation: `improvement-${operation.kind}`, target: store.project.repository, payload: { item: row, operation, key, marker } });
                 store.transaction(() => { const value = current(); value.status = 'publishing'; if (!value.effectIds.includes(effectId)) value.effectIds.push(effectId); });
-                receipt = await effects.execute({ id: effectId, work: { projectId: store.project.id, kind: 'issue', id }, attemptId: digest, operation: `improvement-${operation.kind}`, target: store.project.repository,
+                receipt = await executeGitHubWrite(store, { id: effectId, work: { projectId: store.project.id, kind: 'issue', id }, attemptId: digest, operation: `improvement-${operation.kind}`, target: store.project.repository,
                     authorization: IMPROVEMENT_POLICY, payload: { item: row, operation, key, marker }, expectedState: { digest, grant },
                     preflight: async () => { await provider.preflight(row, operation, key); current(); },
                     dispatch: () => { current(); return provider.dispatch(row, operation, key, marker); },
-                    verify: receipt => provider.verify(receipt, operation) });
+                    verify: receipt => provider.verify(receipt, operation) }, {}, writer);
             }
             store.transaction(() => { const value = current(); if (!receipt.key || !receipt.url || value.providerId && value.providerId !== receipt.key) throw new Error('Improvement identity changed'); value.providerId = receipt.key; value.url = receipt.url; });
         }
