@@ -1,4 +1,5 @@
 import { harnessDelivers } from '../harness/scope';
+import { latestProposalGroup, settledDraftStep } from '../../maintenance/proposal-group';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
@@ -17,11 +18,9 @@ export function maintenanceVerifiedDraft(store: Pick<Store, 'project' | 'state'>
     if (!issue || !job.head || !harnessDelivers(store, job)) return false;
     return (store.state.maintenance?.runs || []).some(run => {
         if (run.status !== 'completed') return false;
-        const steps = run.steps || [], built = steps.map(step => step.stage === 'proposal' && step.result.outcome === 'passed' && step.result.candidates?.[0]?.issue === issue).lastIndexOf(true);
-        if (built < 0 || steps[built].result.candidates[0].head !== job.head) return false;
-        // The steps that follow belong to this proposal until the next one is built.
-        const next = steps.findIndex((step, index) => index > built && step.stage === 'proposal');
-        return steps.slice(built + 1, next < 0 ? undefined : next).some(step => step.stage === 'draft-pr' && step.result.outcome === 'passed' && (step.result.receipts || []).every(receipt => receipt.verified && !receipt.uncertain));
+        const group = latestProposalGroup(run, issue);
+        if (!group || run.steps[group.proposal].result.candidates[0].head !== job.head) return false;
+        return run.steps.slice(group.proposal + 1, group.end).some(settledDraftStep);
     });
 }
 
