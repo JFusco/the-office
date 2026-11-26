@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 74,
-    "edges": 138,
+    "nodes": 88,
+    "edges": 144,
     "byType": {
       "index": 4,
-      "journal": 29,
-      "plan": 35,
+      "journal": 42,
+      "plan": 36,
       "topic": 6
     }
   },
@@ -39,8 +39,8 @@
       ],
       "bytes": 2378,
       "degree": 4,
-      "x": 0.985616,
-      "y": 0.169001,
+      "x": 0.989821,
+      "y": 0.142315,
       "size": 8
     },
     {
@@ -70,8 +70,8 @@
       ],
       "bytes": 1102,
       "degree": 2,
-      "x": 0.967733,
-      "y": 0.251978,
+      "x": 0.977147,
+      "y": 0.212565,
       "size": 8
     },
     {
@@ -89,8 +89,8 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.942877,
-      "y": 0.33314,
+      "x": 0.959493,
+      "y": 0.281733,
       "size": 8
     },
     {
@@ -108,8 +108,8 @@
       ],
       "bytes": 728,
       "degree": 3,
-      "x": 0.911228,
-      "y": 0.411901,
+      "x": 0.93695,
+      "y": 0.349464,
       "size": 8
     },
     {
@@ -133,8 +133,8 @@
       ],
       "bytes": 1954,
       "degree": 4,
-      "x": 0.873014,
-      "y": 0.487695,
+      "x": 0.909632,
+      "y": 0.415415,
       "size": 8
     },
     {
@@ -158,8 +158,8 @@
       ],
       "bytes": 1611,
       "degree": 0,
-      "x": 0.82851,
-      "y": 0.559975,
+      "x": 0.877679,
+      "y": 0.479249,
       "size": 8
     },
     {
@@ -183,8 +183,8 @@
       ],
       "bytes": 975,
       "degree": 0,
-      "x": 0.778036,
-      "y": 0.62822,
+      "x": 0.841254,
+      "y": 0.540641,
       "size": 8
     },
     {
@@ -208,8 +208,8 @@
       ],
       "bytes": 1728,
       "degree": 0,
-      "x": 0.721956,
-      "y": 0.691939,
+      "x": 0.800541,
+      "y": 0.599278,
       "size": 8
     },
     {
@@ -233,8 +233,8 @@
       ],
       "bytes": 585,
       "degree": 0,
-      "x": 0.660675,
-      "y": 0.750672,
+      "x": 0.75575,
+      "y": 0.654861,
       "size": 8
     },
     {
@@ -252,8 +252,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.594633,
-      "y": 0.803997,
+      "x": 0.707107,
+      "y": 0.707107,
       "size": 8
     },
     {
@@ -271,8 +271,8 @@
       ],
       "bytes": 1797,
       "degree": 4,
-      "x": 0.524307,
-      "y": 0.851529,
+      "x": 0.654861,
+      "y": 0.75575,
       "size": 8
     },
     {
@@ -290,8 +290,8 @@
       ],
       "bytes": 880,
       "degree": 3,
-      "x": 0.450204,
-      "y": 0.892926,
+      "x": 0.599278,
+      "y": 0.800541,
       "size": 8
     },
     {
@@ -321,8 +321,8 @@
       ],
       "bytes": 1126,
       "degree": 3,
-      "x": 0.372856,
-      "y": 0.927889,
+      "x": 0.540641,
+      "y": 0.841254,
       "size": 8
     },
     {
@@ -340,8 +340,8 @@
       ],
       "bytes": 2613,
       "degree": 3,
-      "x": 0.292823,
-      "y": 0.956167,
+      "x": 0.479249,
+      "y": 0.877679,
       "size": 8
     },
     {
@@ -365,8 +365,8 @@
       ],
       "bytes": 1945,
       "degree": 0,
-      "x": 0.210679,
-      "y": 0.977555,
+      "x": 0.415415,
+      "y": 0.909632,
       "size": 8
     },
     {
@@ -390,8 +390,8 @@
       ],
       "bytes": 596,
       "degree": 0,
-      "x": 0.127018,
-      "y": 0.9919,
+      "x": 0.349464,
+      "y": 0.93695,
       "size": 8
     },
     {
@@ -409,8 +409,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.042441,
-      "y": 0.999099,
+      "x": 0.281733,
+      "y": 0.959493,
       "size": 8
     },
     {
@@ -428,8 +428,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.042441,
-      "y": 0.999099,
+      "x": 0.212565,
+      "y": 0.977147,
       "size": 8
     },
     {
@@ -453,8 +453,8 @@
       ],
       "bytes": 659,
       "degree": 0,
-      "x": -0.127018,
-      "y": 0.9919,
+      "x": 0.142315,
+      "y": 0.989821,
       "size": 8
     },
     {
@@ -472,8 +472,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.210679,
-      "y": 0.977555,
+      "x": 0.071339,
+      "y": 0.997452,
       "size": 8
     },
     {
@@ -503,8 +503,8 @@
       ],
       "bytes": 1400,
       "degree": 0,
-      "x": -0.292823,
-      "y": 0.956167,
+      "x": 0,
+      "y": 1,
       "size": 8
     },
     {
@@ -522,8 +522,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.372856,
-      "y": 0.927889,
+      "x": -0.071339,
+      "y": 0.997452,
       "size": 8
     },
     {
@@ -541,8 +541,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.450204,
-      "y": 0.892926,
+      "x": -0.142315,
+      "y": 0.989821,
       "size": 8
     },
     {
@@ -560,8 +560,8 @@
       ],
       "bytes": 2153,
       "degree": 4,
-      "x": -0.524307,
-      "y": 0.851529,
+      "x": -0.212565,
+      "y": 0.977147,
       "size": 8
     },
     {
@@ -579,8 +579,27 @@
       ],
       "bytes": 2364,
       "degree": 4,
-      "x": -0.594633,
-      "y": 0.803997,
+      "x": -0.281733,
+      "y": 0.959493,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-evidence-redaction-gaps.md",
+      "label": "Close the evidence-redaction gaps",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 627,
+          "url": "https://github.com/jfusco/the-office/issues/627"
+        }
+      ],
+      "bytes": 2316,
+      "degree": 4,
+      "x": -0.349464,
+      "y": 0.93695,
       "size": 8
     },
     {
@@ -598,8 +617,8 @@
       ],
       "bytes": 1792,
       "degree": 3,
-      "x": -0.660675,
-      "y": 0.750672,
+      "x": -0.415415,
+      "y": 0.909632,
       "size": 8
     },
     {
@@ -617,8 +636,8 @@
       ],
       "bytes": 2977,
       "degree": 4,
-      "x": -0.721956,
-      "y": 0.691939,
+      "x": -0.479249,
+      "y": 0.877679,
       "size": 8
     },
     {
@@ -636,8 +655,266 @@
       ],
       "bytes": 3089,
       "degree": 3,
-      "x": -0.778036,
-      "y": 0.62822,
+      "x": -0.540641,
+      "y": 0.841254,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-619-chore-graph-refresh-office-code-map.md",
+      "label": "PR #619: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 619,
+          "url": "https://github.com/jfusco/the-office/pull/619"
+        }
+      ],
+      "bytes": 507,
+      "degree": 0,
+      "x": -0.599278,
+      "y": 0.800541,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-624-chore-graph-refresh-office-code-map.md",
+      "label": "PR #624: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 624,
+          "url": "https://github.com/jfusco/the-office/pull/624"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": -0.654861,
+      "y": 0.75575,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-628-perf-github-stop-re-reading-settled-github-data.md",
+      "label": "PR #628: perf(github): stop re-reading settled GitHub data",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 533,
+          "url": "https://github.com/jfusco/the-office/issues/533"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 615,
+          "url": "https://github.com/jfusco/the-office/issues/615"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 628,
+          "url": "https://github.com/jfusco/the-office/pull/628"
+        }
+      ],
+      "bytes": 1710,
+      "degree": 0,
+      "x": -0.707107,
+      "y": 0.707107,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-630-chore-graph-refresh-office-code-map.md",
+      "label": "PR #630: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 630,
+          "url": "https://github.com/jfusco/the-office/pull/630"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": -0.75575,
+      "y": 0.654861,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-633-chore-graph-refresh-office-code-map.md",
+      "label": "PR #633: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 633,
+          "url": "https://github.com/jfusco/the-office/pull/633"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": -0.800541,
+      "y": 0.599278,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-637-feat-delivery-refresh-a-stale-office-pr-description.md",
+      "label": "PR #637: feat(delivery): refresh a stale Office PR description",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 531,
+          "url": "https://github.com/jfusco/the-office/issues/531"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 637,
+          "url": "https://github.com/jfusco/the-office/pull/637"
+        }
+      ],
+      "bytes": 1699,
+      "degree": 0,
+      "x": -0.841254,
+      "y": 0.540641,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-639-chore-graph-refresh-office-code-map.md",
+      "label": "PR #639: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 639,
+          "url": "https://github.com/jfusco/the-office/pull/639"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": -0.877679,
+      "y": 0.479249,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-643-chore-graph-refresh-office-code-map.md",
+      "label": "PR #643: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 643,
+          "url": "https://github.com/jfusco/the-office/pull/643"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": -0.909632,
+      "y": 0.415415,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-645-chore-graph-refresh-office-code-map.md",
+      "label": "PR #645: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 645,
+          "url": "https://github.com/jfusco/the-office/pull/645"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": -0.93695,
+      "y": 0.349464,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-648-feat-github-hold-background-reads-on-low-quota.md",
+      "label": "PR #648: feat(github): hold background reads on low quota",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 533,
+          "url": "https://github.com/jfusco/the-office/issues/533"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 635,
+          "url": "https://github.com/jfusco/the-office/issues/635"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 648,
+          "url": "https://github.com/jfusco/the-office/pull/648"
+        }
+      ],
+      "bytes": 1484,
+      "degree": 0,
+      "x": -0.959493,
+      "y": 0.281733,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-650-chore-graph-refresh-office-code-map.md",
+      "label": "PR #650: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 650,
+          "url": "https://github.com/jfusco/the-office/pull/650"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": -0.977147,
+      "y": 0.212565,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-pr-654-chore-graph-refresh-office-code-map.md",
+      "label": "PR #654: chore(graph): refresh Office code map",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "pull-request",
+          "number": 654,
+          "url": "https://github.com/jfusco/the-office/pull/654"
+        }
+      ],
+      "bytes": 468,
+      "degree": 0,
+      "x": -0.989821,
+      "y": 0.142315,
       "size": 8
     },
     {
@@ -655,8 +932,8 @@
       ],
       "bytes": 1661,
       "degree": 2,
-      "x": -0.82851,
-      "y": 0.559975,
+      "x": -0.997452,
+      "y": 0.071339,
       "size": 8
     },
     {
@@ -667,8 +944,8 @@
       "githubRefs": [],
       "bytes": 3394,
       "degree": 4,
-      "x": 0.996397,
-      "y": 0.084806,
+      "x": 0.997452,
+      "y": 0.071339,
       "size": 12
     },
     {
@@ -679,8 +956,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": -0.873014,
-      "y": 0.487695,
+      "x": -1,
+      "y": 0,
       "size": 12
     },
     {
@@ -704,8 +981,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": -0.911228,
-      "y": 0.411901,
+      "x": -0.997452,
+      "y": -0.071339,
       "size": 8
     },
     {
@@ -723,8 +1000,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": -0.942877,
-      "y": 0.33314,
+      "x": -0.989821,
+      "y": -0.142315,
       "size": 8
     },
     {
@@ -742,8 +1019,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": -0.967733,
-      "y": 0.251978,
+      "x": -0.977147,
+      "y": -0.212565,
       "size": 8
     },
     {
@@ -761,8 +1038,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": -0.985616,
-      "y": 0.169001,
+      "x": -0.959493,
+      "y": -0.281733,
       "size": 8
     },
     {
@@ -780,8 +1057,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": -0.996397,
-      "y": 0.084806,
+      "x": -0.93695,
+      "y": -0.349464,
       "size": 8
     },
     {
@@ -799,8 +1076,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -1,
-      "y": 0,
+      "x": -0.909632,
+      "y": -0.415415,
       "size": 8
     },
     {
@@ -824,8 +1101,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.996397,
-      "y": -0.084806,
+      "x": -0.877679,
+      "y": -0.479249,
       "size": 8
     },
     {
@@ -843,8 +1120,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.985616,
-      "y": -0.169001,
+      "x": -0.841254,
+      "y": -0.540641,
       "size": 8
     },
     {
@@ -868,8 +1145,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.967733,
-      "y": -0.251978,
+      "x": -0.800541,
+      "y": -0.599278,
       "size": 8
     },
     {
@@ -911,8 +1188,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.942877,
-      "y": -0.33314,
+      "x": -0.75575,
+      "y": -0.654861,
       "size": 8
     },
     {
@@ -930,8 +1207,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.911228,
-      "y": -0.411901,
+      "x": -0.707107,
+      "y": -0.707107,
       "size": 8
     },
     {
@@ -955,8 +1232,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.873014,
-      "y": -0.487695,
+      "x": -0.654861,
+      "y": -0.75575,
       "size": 8
     },
     {
@@ -974,8 +1251,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.82851,
-      "y": -0.559975,
+      "x": -0.599278,
+      "y": -0.800541,
       "size": 8
     },
     {
@@ -1011,8 +1288,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.778036,
-      "y": -0.62822,
+      "x": -0.540641,
+      "y": -0.841254,
       "size": 8
     },
     {
@@ -1066,8 +1343,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.721956,
-      "y": -0.691939,
+      "x": -0.479249,
+      "y": -0.877679,
       "size": 8
     },
     {
@@ -1085,8 +1362,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.660675,
-      "y": -0.750672,
+      "x": -0.415415,
+      "y": -0.909632,
       "size": 8
     },
     {
@@ -1104,8 +1381,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.594633,
-      "y": -0.803997,
+      "x": -0.349464,
+      "y": -0.93695,
       "size": 8
     },
     {
@@ -1129,8 +1406,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.524307,
-      "y": -0.851529,
+      "x": -0.281733,
+      "y": -0.959493,
       "size": 8
     },
     {
@@ -1148,8 +1425,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.450204,
-      "y": -0.892926,
+      "x": -0.212565,
+      "y": -0.977147,
       "size": 8
     },
     {
@@ -1203,8 +1480,8 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.372856,
-      "y": -0.927889,
+      "x": -0.142315,
+      "y": -0.989821,
       "size": 8
     },
     {
@@ -1222,8 +1499,8 @@
       ],
       "bytes": 11453,
       "degree": 4,
-      "x": -0.292823,
-      "y": -0.956167,
+      "x": -0.071339,
+      "y": -0.997452,
       "size": 8
     },
     {
@@ -1234,8 +1511,8 @@
       "githubRefs": [],
       "bytes": 4584,
       "degree": 3,
-      "x": -0.210679,
-      "y": -0.977555,
+      "x": 0,
+      "y": -1,
       "size": 8
     },
     {
@@ -1253,8 +1530,8 @@
       ],
       "bytes": 3712,
       "degree": 4,
-      "x": -0.127018,
-      "y": -0.9919,
+      "x": 0.071339,
+      "y": -0.997452,
       "size": 8
     },
     {
@@ -1272,8 +1549,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": -0.042441,
-      "y": -0.999099,
+      "x": 0.142315,
+      "y": -0.989821,
       "size": 8
     },
     {
@@ -1291,8 +1568,8 @@
       ],
       "bytes": 751,
       "degree": 5,
-      "x": 0.042441,
-      "y": -0.999099,
+      "x": 0.212565,
+      "y": -0.977147,
       "size": 8
     },
     {
@@ -1310,8 +1587,8 @@
       ],
       "bytes": 826,
       "degree": 3,
-      "x": 0.127018,
-      "y": -0.9919,
+      "x": 0.281733,
+      "y": -0.959493,
       "size": 8
     },
     {
@@ -1335,8 +1612,8 @@
       ],
       "bytes": 802,
       "degree": 3,
-      "x": 0.210679,
-      "y": -0.977555,
+      "x": 0.349464,
+      "y": -0.93695,
       "size": 8
     },
     {
@@ -1347,8 +1624,8 @@
       "githubRefs": [],
       "bytes": 9984,
       "degree": 3,
-      "x": 0.292823,
-      "y": -0.956167,
+      "x": 0.415415,
+      "y": -0.909632,
       "size": 8
     },
     {
@@ -1384,8 +1661,8 @@
       ],
       "bytes": 5802,
       "degree": 4,
-      "x": 0.372856,
-      "y": -0.927889,
+      "x": 0.479249,
+      "y": -0.877679,
       "size": 8
     },
     {
@@ -1403,8 +1680,8 @@
       ],
       "bytes": 18511,
       "degree": 3,
-      "x": 0.450204,
-      "y": -0.892926,
+      "x": 0.540641,
+      "y": -0.841254,
       "size": 8
     },
     {
@@ -1422,8 +1699,8 @@
       ],
       "bytes": 23324,
       "degree": 4,
-      "x": 0.524307,
-      "y": -0.851529,
+      "x": 0.599278,
+      "y": -0.800541,
       "size": 8
     },
     {
@@ -1434,8 +1711,27 @@
       "githubRefs": [],
       "bytes": 7010,
       "degree": 3,
-      "x": 0.594633,
-      "y": -0.803997,
+      "x": 0.654861,
+      "y": -0.75575,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-26-close-the-evidence-redaction-gaps-in-627-ff6df4e7c7.md",
+      "label": "Close the evidence-redaction gaps in #627",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 627,
+          "url": "https://github.com/jfusco/the-office/issues/627"
+        }
+      ],
+      "bytes": 17144,
+      "degree": 4,
+      "x": 0.707107,
+      "y": -0.707107,
       "size": 8
     },
     {
@@ -1453,8 +1749,8 @@
       ],
       "bytes": 9514,
       "degree": 3,
-      "x": 0.660675,
-      "y": -0.750672,
+      "x": 0.75575,
+      "y": -0.654861,
       "size": 8
     },
     {
@@ -1472,8 +1768,8 @@
       ],
       "bytes": 10320,
       "degree": 4,
-      "x": 0.721956,
-      "y": -0.691939,
+      "x": 0.800541,
+      "y": -0.599278,
       "size": 8
     },
     {
@@ -1491,8 +1787,8 @@
       ],
       "bytes": 23072,
       "degree": 3,
-      "x": 0.778036,
-      "y": -0.62822,
+      "x": 0.841254,
+      "y": -0.540641,
       "size": 8
     },
     {
@@ -1569,6 +1865,12 @@
         },
         {
           "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 627,
+          "url": "https://github.com/jfusco/the-office/issues/627"
+        },
+        {
+          "repository": "jfusco/the-office",
           "kind": "pull-request",
           "number": 6,
           "url": "https://github.com/jfusco/the-office/pull/6"
@@ -1832,10 +2134,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 12809,
-      "degree": 39,
-      "x": 0.82851,
-      "y": -0.559975,
+      "bytes": 13156,
+      "degree": 40,
+      "x": 0.877679,
+      "y": -0.479249,
       "size": 12
     },
     {
@@ -1853,8 +2155,8 @@
       ],
       "bytes": 2333,
       "degree": 13,
-      "x": 0.873014,
-      "y": -0.487695,
+      "x": 0.909632,
+      "y": -0.415415,
       "size": 8
     },
     {
@@ -1890,8 +2192,8 @@
       ],
       "bytes": 2146,
       "degree": 16,
-      "x": 0.911228,
-      "y": -0.411901,
+      "x": 0.93695,
+      "y": -0.349464,
       "size": 8
     },
     {
@@ -1939,8 +2241,8 @@
       ],
       "bytes": 2452,
       "degree": 12,
-      "x": 0.942877,
-      "y": -0.33314,
+      "x": 0.959493,
+      "y": -0.281733,
       "size": 8
     },
     {
@@ -1970,8 +2272,8 @@
       ],
       "bytes": 1531,
       "degree": 14,
-      "x": 0.967733,
-      "y": -0.251978,
+      "x": 0.977147,
+      "y": -0.212565,
       "size": 8
     },
     {
@@ -2011,10 +2313,10 @@
           "url": "https://github.com/jfusco/the-office/pull/462"
         }
       ],
-      "bytes": 2614,
-      "degree": 15,
-      "x": 0.985616,
-      "y": -0.169001,
+      "bytes": 3024,
+      "degree": 18,
+      "x": 0.989821,
+      "y": -0.142315,
       "size": 8
     },
     {
@@ -2044,8 +2346,8 @@
       ],
       "bytes": 1265,
       "degree": 5,
-      "x": 0.996397,
-      "y": -0.084806,
+      "x": 0.997452,
+      "y": -0.071339,
       "size": 8
     }
   ],
@@ -2329,6 +2631,13 @@
       "target": "wiki/journal/2026-11-24-live-ticket-timeline.md",
       "type": "link",
       "relation": "link"
+    },
+    {
+      "id": "4423bf23d861335f",
+      "source": "wiki/journal/2026-11-26-evidence-redaction-gaps.md",
+      "target": "wiki/plans/2026-11-26-close-the-evidence-redaction-gaps-in-627-ff6df4e7c7.md",
+      "type": "plan",
+      "relation": "plan"
     },
     {
       "id": "45184852d65531ec",
@@ -2779,6 +3088,20 @@
       "relation": "link"
     },
     {
+      "id": "c6854ef33e082e9b",
+      "source": "wiki/journal/2026-11-26-evidence-redaction-gaps.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "c7bc4fba4965f784",
+      "source": "wiki/plans/2026-11-26-close-the-evidence-redaction-gaps-in-627-ff6df4e7c7.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "c7e1a59a86239cc8",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-06-repository-graphify-setup-3e66cf6d6e.md",
@@ -2798,6 +3121,13 @@
       "target": "wiki/plans/2026-11-24-524-resume-a-stopped-assignment-review-after-a-fix-093b51f84f.md",
       "type": "plan",
       "relation": "plan"
+    },
+    {
+      "id": "cba54802f2125d96",
+      "source": "wiki/journal/2026-11-26-evidence-redaction-gaps.md",
+      "target": "wiki/plans/2026-11-26-close-the-evidence-redaction-gaps-in-627-ff6df4e7c7.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "cbacab63d24f2000",
@@ -2873,6 +3203,13 @@
       "id": "d813ef5b9df88ec2",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-26-one-harper-diagnosis-per-stopped-maintenance-run-572e1bc09c.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "d89041d93b698e33",
+      "source": "wiki/topics/releases-and-incidents.md",
+      "target": "wiki/journal/2026-11-26-evidence-redaction-gaps.md",
       "type": "link",
       "relation": "link"
     },
@@ -2973,6 +3310,13 @@
       "target": "wiki/topics/planning-and-learning.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "ee0149ffbf9ce3c9",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-26-close-the-evidence-redaction-gaps-in-627-ff6df4e7c7.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "f15efea091ec1496",
