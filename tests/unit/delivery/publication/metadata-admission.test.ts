@@ -1,10 +1,10 @@
 import { expect, test, vi } from 'vitest';
-import { metadataFixture } from '../../../fixtures/pr-metadata';
+import { addMetadataHumanInput, metadataFixture } from '../../../fixtures/pr-metadata';
 import { admitPRMetadata, evaluatePRMetadata } from '../../../../server/delivery/publication/metadata-admission';
 import { deliveryInputSha256 } from '../../../../server/github/github-context';
 import { CommandFailure } from '../../../../server/workers/process';
 import { withAssignment } from '../../../../server/workers/assignment-context';
-import type { StageResult } from '../../../../src/shared';
+import type { EffectIntent, StageResult } from '../../../../src/shared';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { workerFailure } from '../../../../server/workers/process';
@@ -213,6 +213,19 @@ test('a provider or Git failure while reading authorship stays an error', async 
 });
 
 test.each<[string, (kind: 'pr' | 'history', reads: number, f: ReturnType<typeof staleFixture>) => void, string]>([
+    ['the first history read sees a different head that is restored for the final REST read', (kind, reads, f) => {
+        if (kind === 'history' && reads === 1) f.pr.head.sha = 'f'.repeat(40);
+        if (kind === 'pr' && reads === 2) f.pr.head.sha = f.job.head;
+    }, 'the pull request description changed while its authorship was read'],
+    ['the PR closes during the final history read', (kind, reads, f) => {
+        if (kind === 'history' && reads === 2) f.pr.state = 'closed';
+    }, 'the pull request description changed while its authorship was read'],
+    ['the PR is retargeted during the final history read', (kind, reads, f) => {
+        if (kind === 'history' && reads === 2) f.pr.base.ref = 'release';
+    }, 'the pull request description changed while its authorship was read'],
+    ['human input arrives during the first REST read', (kind, reads, f) => {
+        if (kind === 'pr' && reads === 1) addMetadataHumanInput(f);
+    }, 'human inputs changed since the review'],
     ['the review replaced during the last read', (kind, reads, f) => { if (kind === 'history' && reads === 2) f.review.findings = f.review.findings.map(x => ({ ...x, expected: 'Changed' })); },
         'the saved review changed while the pull request was read'],
     ['the head moved during the last read', (kind, reads, f) => { if (kind === 'pr' && reads === 2) f.pr.head.sha = 'f'.repeat(40); }, 'the pull request changed while its content was read'],
@@ -222,5 +235,32 @@ test.each<[string, (kind: 'pr' | 'history', reads: number, f: ReturnType<typeof 
 ])('%s binds nothing and parks nothing', async (_name, onRead, reason) => {
     const { f, evaluate } = incident('GH-193', {}, onRead);
     expect(await evaluate()).toEqual({ route: 'ineligible', reason });
+    expect(f.job.stage).toBe('lead-pr');
     expect(f.job.prMetadataRepair).toBeUndefined(); expect(f.job.parked).toBeUndefined(); expect(f.writes.patches).toBe(0);
+});
+
+test('the review-start target must match the bound target even when the head and content match', async () => {
+    const { f, evaluate } = incident('GH-193'), reviewed = structuredClone(f.pr);
+    reviewed.base.ref = 'release';
+    expect(await evaluate(reviewed)).toEqual({ route: 'ineligible', reason: 'the pull request changed after the review started' });
+    expect(f.job.stage).toBe('lead-pr');
+    expect(f.job.prMetadataRepair).toBeUndefined(); expect(f.job.parked).toBeUndefined();
+});
+
+test.each([true, false])('a concurrent uncertain write from another job affects only its own PR (same PR: %s)', async same => {
+    const { f, evaluate, reads } = incident('GH-193', {}, (kind, count, f) => {
+        if (kind !== 'history' || count !== 2) return;
+        const at = f.store.clock.now().toISOString();
+        const effect: EffectIntent = { id: 'originating-job-metadata', operation: 'github-pr-metadata',
+            target: same ? f.job.prUrl : 'https://github.com/' + f.store.project.repository + '/pull/999',
+            work: { projectId: f.store.project.id, kind: 'delivery', id: 'originating-job' }, attemptId: 'originating-job',
+            status: 'uncertain', authorization: 'office-harness', payload: {}, expectedState: { key: 'pr-metadata:prior' },
+            createdAt: at, dispatchedAt: at, verifiedAt: '', receipt: null, error: 'Lost response', elapsedMs: 1 };
+        f.store.putEffect(effect);
+    });
+    if (same) {
+        await expect(evaluate()).rejects.toThrow('needs read-back');
+        expect(f.job.prMetadataRepair).toBeUndefined(); expect(f.job.parked).toBeUndefined();
+    } else expect(await evaluate()).toEqual({ route: 'takeover' });
+    expect(reads.history).toBe(2);
 });

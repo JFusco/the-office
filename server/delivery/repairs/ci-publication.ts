@@ -4,8 +4,6 @@ import { isDeepStrictEqual } from 'node:util';
 import { resolve } from 'node:path';
 import { verifyRepairCandidate } from './delivery-repairs';
 import { verifyCIHooks } from './ci-checkout';
-import { optionalDescriptionHistory, type DescriptionHistory } from '../publication/description-history';
-import { certifyDescriptionWrite } from '../publication/description-continuity';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
 import type { CIRepair } from '../../../src/contracts/ci-repair';
@@ -16,7 +14,6 @@ export const CI_METADATA_CONSUMED = 'Admitted PR metadata already owns the one-s
 /** Fixed operations only. Every write retains intent, exact-head guard and provider read-back. */
 export async function publishCIRepair(delivery: GitHubDelivery, job: TicketJob, repair: CIRepair, failure: CIFailure) {
     const { store, execute } = delivery, plan = repair.plan!, repo = store.project.repository;
-    let described: DescriptionHistory | undefined, response = '';
     const guard = async () => {
         const current = await guardCIRepair(delivery, job, repair);
         if (current.title !== failure.pr.title || current.body !== failure.pr.body) throw new Error('PR metadata changed during CI repair');
@@ -36,8 +33,6 @@ export async function publishCIRepair(delivery: GitHubDelivery, job: TicketJob, 
             if (!before || live.head_sha !== repair.head || live.run_attempt !== before.run_attempt || live.status !== 'completed' || !['failure', 'timed_out'].includes(live.conclusion))
                 throw new Error('CI retry execution changed');
         }
-        // Collected only, so the original PATCH can record the revision it produced.
-        if (plan.kind === 'pr-metadata') described = await optionalDescriptionHistory(store, execute, job.pr);
     };
     const readBack = async () => {
         if (plan.kind === 'retry') {
@@ -79,14 +74,11 @@ export async function publishCIRepair(delivery: GitHubDelivery, job: TicketJob, 
                 if (!repair.worktree || !/^[a-f0-9]{40}$/.test(repair.repairedHead || '')) throw new Error('Validated reworded candidate required');
                 await execute('git', ['push', `--force-with-lease=refs/heads/${repair.branch}:${repair.head}`, 'origin', `${repair.repairedHead}:refs/heads/${repair.branch}`], { cwd: repair.worktree, timeout: 15 * 60000 });
             } else if (plan.kind === 'pr-metadata') {
-                response = await execute('gh', ['api', `repos/${repo}/pulls/${job.pr}`, '--method', 'PATCH', '--input', '-'], { cwd: store.project.repo, input: JSON.stringify({ title: plan.title, body: plan.body }), timeout: 60000 });
+                await execute('gh', ['api', `repos/${repo}/pulls/${job.pr}`, '--method', 'PATCH', '--input', '-'], { cwd: store.project.repo, input: JSON.stringify({ title: plan.title, body: plan.body }), timeout: 60000 });
             } else {
                 await execute('gh', ['api', `repos/${repo}/actions/runs/${plan.runId}/rerun-failed-jobs`, '--method', 'POST'], { cwd: store.project.repo, timeout: 60000 });
             }
-            const receipt = await readBack();
-            if (plan.kind !== 'pr-metadata' || !receipt) return receipt;
-            const revision = await certifyDescriptionWrite(store, execute, described, { head: repair.head, title: plan.title, body: plan.body }, response);
-            return revision ? { ...receipt, revision } : receipt;
+            return readBack();
         },
     });
 }

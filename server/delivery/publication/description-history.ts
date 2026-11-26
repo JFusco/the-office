@@ -50,11 +50,6 @@ export async function readDescriptionHistory(store: Store, execute: Execute, num
     return { ...history, revision: descriptionRevision(history) };
 }
 
-/** For provenance that is only collected, never required: a failed read yields nothing. */
-export async function optionalDescriptionHistory(store: Store, execute: Execute, number: number): Promise<DescriptionHistory | undefined> {
-    try { return await readDescriptionHistory(store, execute, number); } catch { return undefined; }
-}
-
 /** True when the history shows the description exactly as it was created: no edit, and no edit time. */
 export function uneditedDescription(history: DescriptionHistory): boolean {
     return history.lastEditedAt === null && !history.includesCreatedEdit && history.edits.length === 0;

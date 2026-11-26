@@ -127,9 +127,10 @@ export function maintenanceDraftProvenance(store: Store, job: Pick<TicketJob, 'k
         const body = readArtifact(store, create.bodyFile).bytes, text = body.toString('utf8');
         need(Buffer.from(text, 'utf8').equals(body), 'the body file is not UTF-8 text');
         const read = JSON.parse(readArtifact(store, views[0].view.stdout).bytes.toString('utf8')), links = read?.closingIssuesReferences;
+        const issueUrl = 'https://github.com/' + project.repository + '/issues/' + issue;
         need(read?.number === pr.number && read.url === pr.url && read.state === 'OPEN' && read.isDraft === true && read.headRefName === built.branch &&
             read.headRefOid === built.head && read.baseRefName === project.target && read.title === create.title && read.body === text &&
-            Array.isArray(links) && links.length > 0 && links.every((link: any) => link?.number === issue), 'the worker read-back does not show this draft with the body file');
+            Array.isArray(links) && links.length > 0 && links.every((link: any) => link?.number === issue && link.url === issueUrl), 'the worker read-back does not show this draft with the body file');
         need(pr.body === text && pr.title === create.title && pr.base === project.target, 'the live description is not the one the worker created');
         return { proven: true, draft: { head: built.head, source: { kind: 'maintenance', runId: run.id, step: draft, workerId: w.id }, contentSha256: digest({ title: pr.title, body: pr.body }) } };
     } catch (error) {

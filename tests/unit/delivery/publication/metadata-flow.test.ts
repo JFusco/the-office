@@ -10,6 +10,7 @@ import { metadataScope } from '../../../../server/delivery/publication/metadata-
 import { digest } from '../../../../server/store/readback-evidence';
 import { acceptStageResult } from '../../../../server/delivery/pipeline/accept-stage-result';
 import { deliveryInputSha256 } from '../../../../server/github/github-context';
+import { readDescriptionHistory } from '../../../../server/delivery/publication/description-history';
 import { publishMetadata } from '../../../../server/delivery/publication/publish-metadata';
 import { metadataAppliesToHead } from '../../../../server/delivery/publication/metadata-context';
 import { plan } from '../../../fixtures/ci-repair';
@@ -413,10 +414,16 @@ test('GH-193: unassigned, one assessment refreshes the body for 074eedf with one
     expect(prompts[0]).toContain(`STALE OWN DESCRIPTION: the harness proved the live body is the Office's own description, written for earlier head ${INCIDENTS['GH-193'].published}`);
     expect(f.writes.patches).toBe(1); expect(f.writes.inputs).toEqual([{ body: f.selected.body }]);
     expect(f.pr).toMatchObject({ title: before.title, body: f.selected.body });
-    expect(f.store.getEffect<any>(`harness:${f.job.id}:pr-metadata:${r.id}`)).toMatchObject({ status: 'verified',
-        receipt: { head: INCIDENTS['GH-193'].head, title: before.title, body: f.selected.body, revision: { edits: 2 } } });
+    const effect = f.store.getEffect(`harness:${f.job.id}:pr-metadata:${r.id}`);
+    expect(effect).toMatchObject({ status: 'verified', receipt: { head: INCIDENTS['GH-193'].head, title: before.title, body: f.selected.body } });
+    expect(effect?.receipt).not.toHaveProperty('revision');
     expect(r.phase).toBe('review');
-    f.job.steps.push({ stage: 'prepare-pr', result: preparation! }); f.store.finishClaim(prep.id, 'completed');
+    await inPrep(() => acceptStageResult.call(f.delivery, { job: f.job, result: preparation!, project: f.store.project, root: f.root,
+        issue: f.state.issue, role: 'lead', continuation: undefined, reviewStart: undefined, beforeWorkers: new Set<string>(),
+        inputSha256: deliveryInputSha256(f.store, f.job.key), technicalPhase: false,
+        candidateAtStart: JSON.stringify({ id: f.job.id, stage: f.job.stage, head: f.job.head, branch: f.job.branch, worktree: f.job.worktree }) }));
+    f.store.finishClaim(prep.id, 'completed');
+    expect(f.job).toMatchObject({ stage: 'lead-pr', status: 'queued', head: INCIDENTS['GH-193'].head });
     const fresh = await acceptLead(f, leadResult(f));
     expect(r.phase).toBe('done'); expect(r.review?.workerId).toBe(fresh.worker.id);
     expect(f.job.steps.at(-1)?.result).toMatchObject({ commit: INCIDENTS['GH-193'].head, outcome: 'passed' });
@@ -427,7 +434,7 @@ test('GH-193: unassigned, one assessment refreshes the body for 074eedf with one
 test.each([
     ['unchanged', (v: any, before: any, refreshed: string) => v(null, null, 'unchanged'), 'left the body unchanged'],
     ['a byte-identical repair', (v: any, before: any) => v(before.title, before.body), 'left the body unchanged'],
-    ['a title-only repair', (v: any, before: any, refreshed: string) => v('feat(optimizely): retitled SaaS field limits', refreshed), 'changed the title'],
+    ['a title-only repair', (v: any, before: any) => v('feat(optimizely): retitled SaaS field limits', before.body), 'changed the title'],
 ] as const)('%s blocks at capture and on reuse, with zero PATCHes and zero fresh reviews', async (_name, make, reason) => {
     const { f, r, verdict, assess, model, inPrep, before } = await staleTakeover();
     const leads = () => f.store.state.workLog!.filter(w => w.requestId === f.job.id && w.stage === 'github-lead-pr').length, priorLeads = leads();
@@ -474,4 +481,53 @@ test('a human edit restored before dispatch, or an altered saved proof, stops th
     const effect = lost.f.store.getEffect(`harness:${lost.f.job.id}:pr-metadata:${lost.r.id}`) as any;
     expect(effect.status).toBe('verified'); expect(effect.receipt.revision).toBeUndefined();
     expect(lost.f.writes.patches).toBe(1); expect(lost.r.phase).toBe('review'); expect(lost.f.pr.body).toBe(lost.f.selected.body);
+});
+
+test('retargeting during the prepared Effect history read stops the stale refresh before dispatch', async () => {
+    const { f, r, before, verdict, assess, inPrep } = await staleTakeover();
+    assess(verdict(before.title, f.selected.body));
+    await inPrep(() => assessPRMetadata(f.delivery, f.job, f.root));
+    const execute = f.delivery.execute, id = 'harness:' + f.job.id + ':pr-metadata:' + r.id;
+    let retargeted = false;
+    f.delivery.execute = (async (program, args, options) => {
+        if (program === 'gh' && args[1] === 'graphql' && JSON.parse(options!.input!).query.includes('userContentEdits') &&
+            f.store.getEffect(id)?.status === 'prepared') {
+            f.pr.base.ref = 'release';
+            retargeted = true;
+        }
+        return execute(program, args, options);
+    }) as typeof execute;
+    await expect(inPrep(() => publishMetadata(f.delivery, f.job))).rejects.toThrow('changed after its stale-description proof');
+    expect(retargeted).toBe(true);
+    expect(f.store.getEffect(id)?.dispatchedAt).toBeFalsy();
+    expect(f.writes.patches).toBe(0);
+});
+
+test.each(['github-pr-metadata', 'ci-pr-metadata'])('saved %s proof blocks fresh dispatch and allows uncertain intent read-back', async operation => {
+    const { f, r, verdict, assess, inPrep, before } = await staleTakeover();
+    assess(verdict(before.title, f.selected.body));
+    await inPrep(() => assessPRMetadata(f.delivery, f.job, f.root));
+    editDescription(f.pr, before.body + 'Previous edit');
+    editDescription(f.pr, before.body);
+    const history = await readDescriptionHistory(f.store, f.delivery.execute, f.job.pr);
+    r.binding.staleDescription = { ...r.binding.staleDescription!, source: { kind: 'effect', operation, effectId: 'legacy-patch' }, revision: history.revision };
+    r.bindingSha256 = digest(r.binding);
+
+    const key = 'pr-metadata:' + r.id, id = 'harness:' + f.job.id + ':' + key;
+    const publish = () => inPrep(() => publishMetadata(f.delivery, f.job));
+    await expect(publish()).rejects.toThrow('requires creation evidence');
+    expect(f.writes.patches).toBe(0);
+    expect(f.store.getEffect(id)).toBeUndefined();
+
+    const { workerId, resultSha256, proposalSha256, selected } = r.assessment!;
+    const at = f.store.clock.now().toISOString();
+    f.store.putEffect({ id, operation: 'github-pr-metadata', target: f.job.prUrl,
+        work: { projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, attemptId: f.job.id, authorization: 'office-harness',
+        status: 'uncertain', createdAt: at, dispatchedAt: at, verifiedAt: '', receipt: null, error: 'Lost response', elapsedMs: 1,
+        expectedState: { key }, payload: { binding: r.binding, origin: r.origin, original: null, workerId, resultSha256, proposalSha256, selected } });
+    editDescription(f.pr, f.selected.body);
+    await publish();
+    expect(f.store.getEffect(id)).toMatchObject({ status: 'verified', receipt: { head: f.job.head, ...f.selected } });
+    expect(f.writes.patches).toBe(0);
+    expect(r.phase).toBe('review');
 });

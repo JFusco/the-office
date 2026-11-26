@@ -34,3 +34,14 @@ test('anything the reader cannot follow is unreadable, never a guessed create', 
     expect(recordedCreates(`URL=$(gh pr create -R ${REPO} --draft --base main --head b --title t --body-file ${R}/b.md); echo $URL`)).toEqual([]);
     expect(recordedCreates(`echo "gh pr create is next"`)).toEqual([]);
 });
+
+test('compound commands cannot borrow success or output for a create, or skip the recorded view', () => {
+    const create = `gh pr create -R ${REPO} --draft --base main --head b --title t --body-file ${R}/b.md`;
+    const view = `gh pr view 194 -R ${REPO} --json body,url > ${R}/pr/readback.json`;
+    expect(recordedCreates(`${create} || gh pr view 194 --json url --jq .url`)).toBeUndefined();
+    expect(recordedCreates(`${create}; gh pr view 194 --json url --jq .url`)).toBeUndefined();
+    expect(recordedCreates(`true || ${create}`)).toBeUndefined();
+    expect(recordedViews(`true || ${view}; true`)).toEqual([]);
+    expect(recordedViews(`false && ${view}; true`)).toEqual([]);
+    expect(recordedViews(`if false; then\n${view}; fi`)).toEqual([]);
+});

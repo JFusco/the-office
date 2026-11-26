@@ -108,7 +108,7 @@ function bash(sessionId: string, cwd: string, parent: string, tool: string, comm
 }
 
 /** The draft worker's native session: it writes the body file, creates the draft, reads it back into a file, then returns. */
-export function draftSession(key: IncidentKey, repo: string, runDir: string, saved: MaintenanceResult, change: { createOutput?: string; createFailed?: boolean; bodyFile?: string; skipView?: boolean } = {}) {
+export function draftSession(key: IncidentKey, repo: string, runDir: string, saved: MaintenanceResult, change: { createOutput?: string; createFailed?: boolean; bodyFile?: string; skipView?: boolean; afterCreate?: string; viewGuard?: string } = {}) {
     const i = INCIDENTS[key], session = i.draft.worker, url = `https://github.com/${REPOSITORY}/pull/${i.pr}`, body = change.bodyFile ?? resolve(runDir, i.bodyFile);
     const worktree = resolve(repo, '..', 'cms-field-vocabulary-worktrees', i.branch.slice(6));
     const writeBody = `mkdir -p ${resolve(runDir, i.bodyFile, '..')}; B=${body}; cat > $B <<'EOF'\n${liveBody(key)}EOF`;
@@ -118,11 +118,12 @@ export function draftSession(key: IncidentKey, repo: string, runDir: string, sav
     const view = key === 'GH-193'
         ? `R=${runDir}; gh pr view ${i.pr} -R ${REPOSITORY} --json number,url,state,isDraft,headRefName,headRefOid,baseRefName,title,author,closingIssuesReferences,body > $R/${i.readBackFile}; python3 -c "\nimport json;d=json.load(open('$R/${i.readBackFile}'));b=open('$R/${i.bodyFile}').read()\nprint('body match',d['body'].strip()==b.strip())"; gh pr list -R ${REPOSITORY} --state all --head ${i.branch} --json number`
         : `R=${resolve(runDir, 'pr', '195')}; gh pr view ${i.pr} -R ${REPOSITORY} --json number,state,isDraft,headRefName,headRefOid,baseRefName,title,author,body,closingIssuesReferences,url > $R/pr-readback.json; python3 -I -c "\nimport json;d=json.load(open('$R/pr-readback.json'));b=open('$R/body.md').read()\nprint('body match', d['body'].strip()==b.strip())"; jq -r .body $R/pr-readback.json | (cd ${worktree} && node scripts/validate_pr_body.cjs)`;
+    const viewCommand = change.viewGuard ? view.replace('gh pr view', change.viewGuard + 'gh pr view') : view;
     const start = id(), records: any[] = [{ type: 'user', sessionId: session, cwd: repo, uuid: start, parentUuid: null, message: { role: 'user', content: 'CMS maintenance · draft-pr' } }];
     let parent = start;
     const calls: [string, string, string, boolean][] = [[i.tools.body, writeBody, '', false],
-        [i.tools.create, create, change.createOutput ?? (key === 'GH-193' ? url : `${url}\nShell cwd was reset to ${repo}`), !!change.createFailed],
-        ...(change.skipView ? [] : [[i.tools.view, view, `${i.pr} OPEN True ${i.branch} ${i.published} main ${i.title} JFusco [${i.issue}]\nbody match True`, false] as [string, string, string, boolean]])];
+        [i.tools.create, create + (change.afterCreate || ''), change.createOutput ?? (key === 'GH-193' ? url : `${url}\nShell cwd was reset to ${repo}`), !!change.createFailed],
+        ...(change.skipView ? [] : [[i.tools.view, viewCommand, `${i.pr} OPEN True ${i.branch} ${i.published} main ${i.title} JFusco [${i.issue}]\nbody match True`, false] as [string, string, string, boolean]])];
     for (const [tool, command, output, failed] of calls) {
         const call = bash(session, repo, parent, tool, command, output, failed); records.push(...call.records); parent = call.last;
     }

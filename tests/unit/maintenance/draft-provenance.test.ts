@@ -1,4 +1,4 @@
-import { rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test } from 'vitest';
 import { maintenanceDraftProvenance } from '../../../server/maintenance/draft-provenance';
@@ -32,8 +32,18 @@ test.each<[string, (f: ReturnType<typeof staleFixture>) => void, RegExp]>([
         '{"type":"user","sessionId":"44361e64-f29a-42c7-8336-53ed150dc7ad"}\n'), /evidence is unavailable/],
     ['a failed create followed by a matching human pull request', f => f.session('GH-193', { createFailed: true,
         createOutput: `a pull request for branch "${INCIDENTS['GH-193'].branch}" into branch "main" already exists:\nhttps://github.com/JFusco/cms-field-vocabulary/pull/194` }), /no single successful create/],
+    ['a failed create followed by a successful lookup within the same Bash call', f => f.session('GH-193', {
+        afterCreate: ' || gh pr view 194 -R JFusco/cms-field-vocabulary --json url --jq .url',
+        createOutput: 'a pull request already exists\nhttps://github.com/JFusco/cms-field-vocabulary/pull/194',
+    }), /a recorded pull request create cannot be read/],
     ['a create that never printed this pull request, beside its model-written receipt', f => f.session('GH-193', { createOutput: 'Created.' }), /no single successful create/],
     ['no read-back of the new pull request', f => f.session('GH-193', { skipView: true }), /no single read-back/],
+    ['a successful Bash call that skipped the provider view', f => f.session('GH-193', { viewGuard: 'false && ' }), /no single read-back/],
+    ['an archived closing link to the same issue number in another repository', f => {
+        const file = resolve(f.runDir, INCIDENTS['GH-193'].readBackFile), archived = JSON.parse(readFileSync(file, 'utf8'));
+        archived.closingIssuesReferences[0] = { ...archived.closingIssuesReferences[0], url: 'https://github.com/other/repository/issues/193' };
+        writeFileSync(file, JSON.stringify(archived));
+    }, /read-back does not show this draft/],
     ['a body file changed after creation', f => writeFileSync(resolve(f.runDir, INCIDENTS['GH-193'].bodyFile), liveBody('GH-193').trimEnd()), /read-back does not show this draft/],
     ['a missing session artifact', f => rmSync(resolve(f.store.dataRoot, 'sessions', INCIDENTS['GH-193'].draft.worker, 'assignment.json')), /evidence is unavailable/],
     ['a draft worker of another provider', f => { f.draftWorker().provider = 'codex'; }, /did not complete|assignment, identity or provider differs/],

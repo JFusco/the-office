@@ -7,7 +7,8 @@
 
 interface Word { text: string; raw: string; dynamic: boolean }
 interface Redirect { op: string; target?: Word }
-interface SimpleCommand { words: Word[]; redirects: Redirect[]; pipedIn: boolean; pipedOut: boolean }
+type Separator = 'start' | 'sequence' | 'and' | 'or' | 'pipe' | 'end';
+interface SimpleCommand { words: Word[]; redirects: Redirect[]; before: Separator; after: Separator }
 
 class Unreadable extends Error {}
 
@@ -27,22 +28,25 @@ function closing(line: string, start: number): number {
 
 function simpleCommands(line: string): SimpleCommand[] {
     const vars = new Map<string, string | null>(), commands: SimpleCommand[] = [];
-    const fresh = (pipedIn: boolean): SimpleCommand => ({ words: [], redirects: [], pipedIn, pipedOut: false });
-    let current = fresh(false), word: Word | undefined, pending: string | undefined, quote = '', i = 0;
+    const fresh = (before: Separator): SimpleCommand => ({ words: [], redirects: [], before, after: 'end' });
+    let current = fresh('start'), word: Word | undefined, pending: string | undefined, quote = '', i = 0;
     const start = () => (word ??= { text: '', raw: '', dynamic: false });
     const end = () => {
         if (!word) return;
         if (pending) { current.redirects.push({ op: pending, target: word }); pending = undefined; } else current.words.push(word);
         word = undefined;
     };
-    const finish = (piped: boolean) => {
+    const finish = (after: Separator) => {
         end();
         if (pending) throw new Unreadable('redirect without target');
-        if (!current.words.length && !current.redirects.length) { if (piped || current.pipedIn) throw new Unreadable('empty pipeline'); return; }
-        current.pipedOut = piped;
-        if (!piped && !current.pipedIn && !current.redirects.length && current.words.every(w => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w.raw)))
+        if (!current.words.length && !current.redirects.length) {
+            if (after === 'sequence' || after === 'end') return;
+            throw new Unreadable('missing command');
+        }
+        current.after = after;
+        if (after !== 'pipe' && current.before !== 'pipe' && !current.redirects.length && current.words.every(w => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w.raw)))
             for (const w of current.words) { const name = w.raw.slice(0, w.raw.indexOf('=')); vars.set(name, w.dynamic ? null : w.text.slice(name.length + 1)); }
-        commands.push(current); current = fresh(piped);
+        commands.push(current); current = fresh(after);
     };
     const opaque = (from: number, to: number) => { const w = start(); w.raw += line.slice(from, to); w.dynamic = true; return to; };
     const expand = (at: number): number => {
@@ -73,9 +77,9 @@ function simpleCommands(line: string): SimpleCommand[] {
             continue;
         }
         if (c === ' ' || c === '\t') { end(); i++; continue; }
-        if (c === '\n' || c === ';') { finish(false); i++; continue; }
-        if (c === '&') { if (line[i + 1] !== '&') throw new Unreadable('background or descriptor redirect'); finish(false); i += 2; continue; }
-        if (c === '|') { if (line[i + 1] === '|') { finish(false); i += 2; } else { finish(true); i++; } continue; }
+        if (c === '\n' || c === ';') { finish('sequence'); i++; continue; }
+        if (c === '&') { if (line[i + 1] !== '&') throw new Unreadable('background or descriptor redirect'); finish('and'); i += 2; continue; }
+        if (c === '|') { if (line[i + 1] === '|') { finish('or'); i += 2; } else { finish('pipe'); i++; } continue; }
         if (c === '<' || c === '>') {
             if (c === '<' && line[i + 1] === '<') throw new Unreadable('heredoc');
             let op: string = c;
@@ -96,7 +100,8 @@ function simpleCommands(line: string): SimpleCommand[] {
         const w = start(); w.text += c; w.raw += c; i++;
     }
     if (quote) throw new Unreadable('unclosed quote');
-    finish(false);
+    finish('end');
+    if (['and', 'or', 'pipe'].includes(current.before)) throw new Unreadable('missing final command');
     return commands;
 }
 
@@ -130,25 +135,46 @@ const CREATE = { '-R': 'repo', '--repo': 'repo', '-B': 'base', '--base': 'base',
     '-F': 'bodyFile', '--body-file': 'bodyFile', '-d': 'draft', '--draft': 'draft' };
 const VIEW = { '-R': 'repo', '--repo': 'repo', '--json': 'json' };
 
-/** Every `gh pr create` on the line; undefined when the line cannot be read or one of them is not a plain create. */
+const unconditional = (c: SimpleCommand) => c.before === 'start' || c.before === 'sequence';
+const assignments = (c: SimpleCommand) => unconditional(c) && c.after === 'sequence' && !c.redirects.length &&
+    c.words.length > 0 && c.words.every(w => !w.dynamic && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w.raw));
+const changeDirectory = (c: SimpleCommand) => unconditional(c) && c.after === 'sequence' && !c.redirects.length &&
+    c.words.length === 2 && c.words[0].raw === 'cd' && !c.words[1].dynamic && c.words[1].text.startsWith('/');
+
+/** The guarded create uses a bracket test whose lookup output is captured by the shell. */
+function createGuard(c: SimpleCommand): boolean {
+    const [open, lookup, equals, zero, close] = c.words;
+    return unconditional(c) && c.after === 'and' && !c.redirects.length && c.words.length === 5 &&
+        open.raw === '[' && lookup.raw.startsWith('"$(gh pr list ') && lookup.raw.endsWith(')"') &&
+        equals.raw === '=' && zero.raw === '0' && close.raw === ']';
+}
+
+/** A terminal plain create owns the paired Bash exit status and URL output. */
 export function recordedCreates(line: string): RecordedCreate[] | undefined {
     const commands = read(line);
     if (!commands) return undefined;
     const creates: RecordedCreate[] = [];
-    for (const command of commands.filter(c => named(c, 'create'))) {
-        const f = flags(command.words.slice(3), CREATE, ['draft']);
-        if (!f || command.pipedIn || command.pipedOut || command.redirects.some(r => r.op !== '2>&1') ||
+    for (const [index, command] of commands.entries()) {
+        if (!named(command, 'create')) continue;
+        const f = flags(command.words.slice(3), CREATE, ['draft']), prefix = commands.slice(0, index);
+        const guarded = command.before === 'and' && prefix.length > 0 && createGuard(prefix.at(-1)!);
+        if (guarded) prefix.pop();
+        if (!f || index !== commands.length - 1 || !unconditional(command) && !guarded ||
+            !prefix.every(c => assignments(c) || changeDirectory(c)) || command.redirects.some(r => r.op !== '2>&1') ||
             !f.repo || !f.base || !f.head || !f.title || !f.bodyFile) return undefined;
         creates.push({ repository: f.repo, base: f.base, head: f.head, title: f.title, bodyFile: f.bodyFile, draft: 'draft' in f });
     }
     return creates;
 }
 
-/** Each plain `gh pr view <number> --json <fields> > <file>` on the line: no filter, template or pipe. */
+/** An unconditional provider view that redirects its JSON into the read-back file. */
 export function recordedViews(line: string): RecordedView[] {
-    return (read(line) || []).flatMap(command => {
+    const commands = read(line) || [];
+    return commands.flatMap((command, index) => {
+        if (!named(command, 'view') || !unconditional(command) || command.after === 'pipe' ||
+            !commands.slice(0, index).every(assignments)) return [];
         const number = command.words[3];
-        if (!named(command, 'view') || !number || number.dynamic ||!/^[1-9][0-9]*$/.test(number.text) || command.pipedIn || command.pipedOut) return [];
+        if (!number || number.dynamic || !/^[1-9][0-9]*$/.test(number.text)) return [];
         const f = flags(command.words.slice(4), VIEW, []), out = command.redirects;
         if (!f?.repo || !f.json || out.length !== 1 || out[0].op !== '>' || !out[0].target || out[0].target.dynamic) return [];
         return [{ number: Number(number.text), repository: f.repo, fields: f.json.split(','), stdout: out[0].target.text }];

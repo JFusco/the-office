@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ciFixture, newHead, oldHead, plan } from '../../../fixtures/ci-repair';
 import { publishCIRepair } from '../../../../server/delivery/repairs/ci-publication';
+import { addMetadataHumanInput } from '../../../fixtures/pr-metadata';
+import { editDescription } from '../support/fake-github';
 import { bindMetadata } from '../../../../server/delivery/publication/metadata-context';
 
 async function setup(kind: 'pr-metadata' | 'commit-messages' | 'retry') {
@@ -88,14 +90,13 @@ test.each(['advancing-base', 'retargeted-base', 'foreign-head'] as const)('uncer
     expect(f.calls.filter(c => c.args[0] === 'push')).toHaveLength(1);
 });
 
-test('a confirmed CI metadata PATCH certifies its revision; a lost response reconciled by read-back records none', async () => {
+test('a confirmed CI metadata PATCH and an uncertain read-back verify content without authorship', async () => {
     const body = 'Corrected description.\n\nCloses #322\n';
     const f = await setup('pr-metadata'); f.repair.plan!.body = body;
     await claimedDelivery(f.store, f.job, () => publishCIRepair(f.delivery, f.job, f.repair, f.failure));
     const receipt = (f.store.getEffect(`harness:${f.job.id}:ci-repair:${f.repair.id}`) as any).receipt;
-    expect(receipt).toMatchObject({ head: f.repair.head, title: 'fix: corrected title', body, revision: { edits: 2 } });
-    expect(receipt.revision.lastEditId).toBe((f.pr as any).edits[0].id);
-    // A title-only repair changes no description edit, so it records no revision.
+    expect(receipt).toEqual({ head: f.repair.head, title: 'fix: corrected title', body });
+    // Title-only publication also verifies without an authorship revision.
     const title = await setup('pr-metadata');
     await claimedDelivery(title.store, title.job, () => publishCIRepair(title.delivery, title.job, title.repair, title.failure));
     expect((title.store.getEffect(`harness:${title.job.id}:ci-repair:${title.repair.id}`) as any).receipt.revision).toBeUndefined();
@@ -105,4 +106,36 @@ test('a confirmed CI metadata PATCH certifies its revision; a lost response reco
     const reconciled = lost.store.getEffect(`harness:${lost.job.id}:ci-repair:${lost.repair.id}`) as any;
     expect(reconciled.status).toBe('verified'); expect(reconciled.receipt.revision).toBeUndefined();
     expect(lost.calls.filter(c => c.args.includes('PATCH'))).toHaveLength(1);
+});
+
+test('CI preflight observes human inputs added during its final issue read and dispatches nothing', async () => {
+    const f = await setup('pr-metadata'), execute = f.delivery.execute;
+    const id = 'harness:' + f.job.id + ':ci-repair:' + f.repair.id;
+    let injected = false;
+    f.delivery.execute = (async (program, args, options) => {
+        if (program === 'gh' && args[1]?.endsWith('/issues/322') && f.store.getEffect(id)?.status === 'prepared' && !injected) {
+            addMetadataHumanInput(f); injected = true;
+        }
+        return execute(program, args, options);
+    }) as typeof execute;
+    await expect(claimedDelivery(f.store, f.job, () => publishCIRepair(f.delivery, f.job, f.repair, f.failure))).rejects.toThrow('CI repair ownership');
+    expect(injected).toBe(true);
+    expect(f.calls.filter(c => c.args.includes('PATCH'))).toHaveLength(0);
+});
+
+test('CI verifies a no-op PATCH after a person supplies the selected bytes without claiming the revision', async () => {
+    const f = await setup('pr-metadata'), execute = f.delivery.execute, plan = f.repair.plan!;
+    plan.body = 'Corrected description.\n\nCloses #322\n';
+    f.delivery.execute = (async (program, args, options) => {
+        if (program === 'gh' && args.includes('PATCH')) {
+            f.pr.title = plan.title;
+            editDescription(f.pr, plan.body);
+        }
+        return execute(program, args, options);
+    }) as typeof execute;
+    await claimedDelivery(f.store, f.job, () => publishCIRepair(f.delivery, f.job, f.repair, f.failure));
+    const effect = f.store.getEffect('harness:' + f.job.id + ':ci-repair:' + f.repair.id)!;
+    expect(effect.status).toBe('verified');
+    expect(effect.receipt).toEqual({ head: f.repair.head, title: plan.title, body: plan.body });
+    expect(f.calls.filter(c => c.args.includes('PATCH'))).toHaveLength(1);
 });

@@ -447,11 +447,12 @@ earlier head of this pull request and unedited since:
 - `own-description.ts` orders the Office's create, metadata and CI metadata Effects for this pull
   request, from any job of the project, by dispatch. The latest must hold the live bytes and be provable:
   a create whose original response recorded its content (`created-content.ts`) on a description never
-  edited, or a PATCH whose original dispatch certified the edit revision it produced
-  (`description-continuity.ts`) and that revision is still the live one. A tie, conflicting records,
-  a newer unprovable write or bytes matching only an older write are refused; an unsettled write is an
-  error until it is read back. A read-back reconciliation, an adopted pull request or a shared editor
-  login never proves authorship.
+  edited. Metadata and CI metadata PATCHes verify the resulting content by read-back and confer no
+  authorship. If the latest write was a PATCH, attribution declines. Fresh refreshes require creation
+  evidence, including after restart. Issue #629 tracks a dedicated GitHub App identity so future
+  description edits can be attributed to the Office. A tie, conflicting records, a newer unprovable
+  write or bytes matching only an older write are refused. An unsettled write requires read-back.
+  An adopted pull request or a shared editor login cannot establish authorship.
 - With no Office write recorded, a completed maintenance run proves a never-edited description it
   created (`server/maintenance/draft-provenance.ts`): its latest passed proposal for the issue and branch
   gives the head; one completed draft worker of the following draft step, bound to its claim,

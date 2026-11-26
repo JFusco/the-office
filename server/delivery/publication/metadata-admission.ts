@@ -7,6 +7,8 @@ import { assertMetadataBinding, bindMetadata } from './metadata-context';
 import { metadataWorkspace } from './metadata-workspace';
 import { lintPRContent, PRContentRejected } from './pr-body';
 import { readDescriptionHistory } from './description-history';
+import { matchesBoundDescription } from './description-continuity';
+import { ownDescription } from './own-description';
 import { staleOwnDescription } from './stale-own-description';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 
@@ -60,7 +62,7 @@ function unbound(delivery: GitHubDelivery, job: TicketJob, result: StageResult, 
  * repository, target and branch: a closed or changed one neither parks nor is taken over. Narratives never select a
  * route. Tool, permission and unsettled-effect errors, and a refused binding, stay errors.
  */
-export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJob, result: StageResult, inputSha256: string, reviewed?: { title?: unknown; body?: unknown; head?: { sha?: unknown } }): Promise<MetadataDecision> {
+export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJob, result: StageResult, inputSha256: string, reviewed?: { title?: unknown; body?: unknown; head?: { sha?: unknown }; base?: { ref?: unknown } }): Promise<MetadataDecision> {
     const { store } = delivery;
     const ineligible = (reason: string): MetadataDecision => ({ route: 'ineligible', reason });
     const gate = unbound(delivery, job, result, inputSha256);
@@ -75,7 +77,9 @@ export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJo
     };
     settled();
     const sole = open.length === 1, others = open.filter(f => f !== finding);
-    const pr = await delivery.verifyPR(job, true), record = bindMetadata(delivery, job, pr, [METADATA_FINDING], 'lead-pr');
+    const pr = await delivery.verifyPR(job, true);
+    if (inputSha256 !== deliveryInputSha256(store, job.key)) return ineligible('human inputs changed since the review');
+    const record = bindMetadata(delivery, job, pr, [METADATA_FINDING], 'lead-pr');
     let rejected = false;
     if (sole) {
         const cwd = await metadataWorkspace(delivery, job, true, record);
@@ -104,11 +108,17 @@ export async function evaluatePRMetadata(delivery: GitHubDelivery, job: TicketJo
     if (!rejected) {
         if (closed) return ineligible('the pull request is no longer the open pull request the review read');
         if (moved) return ineligible('the pull request changed while its content was read');
-        if (reviewed?.head?.sha !== record.binding.head || reviewed.title !== before.title || reviewed.body !== before.body)
+        if (reviewed?.head?.sha !== record.binding.head || reviewed.title !== before.title || reviewed.body !== before.body ||
+            reviewed.base?.ref !== record.binding.base)
             return ineligible('the pull request changed after the review started');
-        if (stale?.stale) {
-            if (last!.revision.sha256 !== stale.proof.revision.sha256 || last!.head !== record.binding.head || last!.title !== before.title || last!.body !== before.body)
+        if (stale && !stale.stale && stale.drift) return ineligible(stale.reason);
+        if (stale?.stale && last) {
+            if (!matchesBoundDescription(last, record.binding) || last.revision.sha256 !== stale.proof.revision.sha256)
                 return ineligible('the pull request description changed while its authorship was read');
+            const owned = ownDescription(store, job, last);
+            if (!owned.owned || owned.attribution.head !== stale.proof.head || owned.attribution.contentSha256 !== stale.proof.contentSha256 ||
+                !isDeepStrictEqual(owned.attribution.source, stale.proof.source))
+                return ineligible('the Office write attribution changed while the pull request was read');
             const bound = bindMetadata(delivery, job, pr, [METADATA_FINDING], 'lead-pr', stale.proof);
             assertMetadataBinding(delivery, job, bound, 'admission');
             return takeover(bound, `The live PR description is the Office's own, written for ${stale.proof.head.slice(0, 7)} and unedited since; the head is now ${record.binding.head.slice(0, 7)}. One read-only Lead metadata assessment refreshes the body; no source worker or repair budget was spent.`);

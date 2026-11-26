@@ -24,8 +24,8 @@ function setup() {
             status: 'verified', createdAt: at(0), dispatchedAt: at(1), verifiedAt: at(1), receipt: null, error: '', elapsedMs: 1, ...e };
         f.store.putEffect(full); return full;
     };
-    const created = (receipt: Record<string, unknown>, head = OLD) => effect({ id: `harness:${job.id}:pr-create:${head}`, operation: 'github-pr-create', target: `${REPOSITORY}:${job.branch}`,
-        payload: { head, branch: job.branch, base: 'main' }, expectedState: { key: `pr-create:${head}` }, receipt });
+    const created = (receipt: Record<string, unknown>, head = OLD, minute = 1) => effect({ id: `harness:${job.id}:pr-create:${head}`, operation: 'github-pr-create', target: `${REPOSITORY}:${job.branch}`,
+        payload: { head, branch: job.branch, base: 'main' }, expectedState: { key: `pr-create:${head}` }, dispatchedAt: at(minute), receipt });
     /** One metadata PATCH of `body` for `head`, applied to the fake PR; `certified` keeps the revision the write produced. */
     const patched = async (repair: string, body: string, minute: number, change: { head?: string; certified?: boolean; verifiedAt?: string } = {}) => {
         editDescription(pr, body);
@@ -58,11 +58,9 @@ test('an old number-and-URL create receipt, or a create of another pull request 
 
 test('the latest write by dispatch decides, whatever order reconciliation verified them in', async () => {
     const f = setup();
-    // Dispatched first and read back last, so it holds no revision; dispatched second and certified when it ran.
     await f.patched('first', '## Summary\nFirst refresh.\nCloses #5\n', 2, { certified: false, verifiedAt: at(9) });
-    const second = await f.patched('second', '## Summary\nSecond refresh.\nCloses #5\n', 3, { head: 'd'.repeat(40) });
-    expect(await f.own()).toEqual({ owned: true, attribution: { head: 'd'.repeat(40), source: { kind: 'effect', effectId: second.id, operation: 'github-pr-metadata' },
-        contentSha256: digest({ title: f.pr.title, body: '## Summary\nSecond refresh.\nCloses #5\n' }) } });
+    await f.patched('second', '## Summary\nSecond refresh.\nCloses #5\n', 3);
+    expect(await f.own()).toEqual({ owned: false, reason: 'the latest Office write of this description has no provable content' });
 });
 
 test('bytes matching only an older write, a tie, a conflicting record or an unsettled write are refused', async () => {
@@ -82,25 +80,32 @@ test('bytes matching only an older write, a tie, a conflicting record or an unse
     await expect(unsettled.own()).rejects.toThrow('needs read-back');
 });
 
-test('a human edit and restoration after a certified PATCH is refused, and so is a write only reconciled by read-back', async () => {
-    const restored = setup(), body = '## Summary\nRefreshed.\nCloses #5\n';
-    await restored.patched('a', body, 2);
-    expect(await restored.own()).toMatchObject({ owned: true });
-    editDescription(restored.pr, 'Closes #5\nJoe\n'); editDescription(restored.pr, body);
-    expect(await restored.own()).toEqual({ owned: false, reason: 'the description was edited after the latest Office write' });
-    // Inside the reconciliation window: the PATCH's response was lost and a person wrote the intended bytes.
-    const window = setup();
-    await window.patched('a', body, 2, { certified: false, verifiedAt: at(30) });
-    expect(await window.own()).toEqual({ owned: false, reason: 'the latest Office write of this description has no provable content' });
+test.each(['github-pr-metadata', 'ci-pr-metadata'] as const)('a legacy revision on %s confers no ownership or fallback to a create', async operation => {
+    const f = setup(), body = '## Summary\nRefreshed.\nCloses #5\n';
+    f.created({ number: f.pr.number, url: f.pr.html_url, contentSha256: digest({ title: f.pr.title, body: CREATED_BODY }) });
+    expect(await f.own()).toMatchObject({ owned: true });
+    const latest = async (body: string) => {
+        if (operation === 'github-pr-metadata') return f.patched('later', body, 2);
+        editDescription(f.pr, body);
+        const revision = (await f.read()).revision;
+        return f.effect({ id: 'later-ci', operation, target: f.pr.html_url, expectedState: { key: 'ci-repair:r1' }, dispatchedAt: at(2),
+            payload: { head: OLD, base: BASE, branch: f.job.branch, plan: { kind: 'pr-metadata', title: f.pr.title, body }, repairedHead: '' },
+            receipt: { head: OLD, title: f.pr.title, body, revision } });
+    };
+    // A no-op leaves the older creation proof compatible with the live bytes and history.
+    await latest(CREATED_BODY);
+    expect(await f.own()).toEqual({ owned: false, reason: 'the latest Office write of this description has no provable content' });
+    // An actual edit has a legacy receipt with a matching revision and still confers no ownership.
+    await latest(body);
+    expect(await f.own()).toEqual({ owned: false, reason: 'the latest Office write of this description has no provable content' });
 });
 
-test('a certified CI metadata PATCH is an Office write of its head', async () => {
-    const f = setup(), body = '## Summary\nCI title repair.\nCloses #5\n';
-    editDescription(f.pr, body);
-    const after = await f.read(), plan = { kind: 'pr-metadata', title: f.pr.title, body };
-    const e = f.effect({ id: `harness:${f.job.id}:ci-repair:r1`, operation: 'ci-pr-metadata', target: f.pr.html_url, expectedState: { key: 'ci-repair:r1' },
-        payload: { head: OLD, base: BASE, branch: f.job.branch, plan, repairedHead: '' }, receipt: { head: OLD, title: f.pr.title, body, revision: after.revision } });
-    expect(await f.own()).toMatchObject({ owned: true, attribution: { head: OLD, source: { effectId: e.id, operation: 'ci-pr-metadata' } } });
+test.each([[200, 199], [199, 200], [199, 199]])('create number %s and URL PR %s are compared together', async (number, urlNumber) => {
+    const f = setup(), contentSha256 = digest({ title: f.pr.title, body: f.pr.body });
+    f.created({ number: 200, url: f.pr.html_url, contentSha256 });
+    f.created({ number, url: 'https://github.com/' + REPOSITORY + '/pull/' + urlNumber, contentSha256 }, 'd'.repeat(40), 2);
+    expect(await f.own()).toMatchObject(number === urlNumber ? { owned: true, attribution: { head: OLD } } :
+        { owned: false, reason: 'an Office write of this description has conflicting records' });
 });
 
 test.each(['GH-193', 'GH-195'] as const)('%s: with no Office write, the maintenance draft worker owns the never-edited description', async key => {

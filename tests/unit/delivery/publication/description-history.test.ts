@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, descriptionNode, editDescription, HEAD, BASE, REPOSITORY } from '../support/fake-github';
-import { DescriptionHistoryUnavailable, optionalDescriptionHistory, readDescriptionHistory, uneditedDescription } from '../../../../server/delivery/publication/description-history';
+import { DescriptionHistoryUnavailable, readDescriptionHistory, uneditedDescription } from '../../../../server/delivery/publication/description-history';
 afterEach(cleanupFakes);
 
 /** PR 194 as GitHub returned it on 2026-11-24: open at the merged head, never edited. */
@@ -56,13 +56,11 @@ test.each([
 ])('%s is a read error, never a negative answer', async (_name, change) => {
     const f = setup();
     await expect(readDescriptionHistory(f.store, answering(f, change), 194)).rejects.toThrow(DescriptionHistoryUnavailable);
-    expect(await optionalDescriptionHistory(f.store, answering(f, change), 194)).toBeUndefined();
 });
 
-test('a provider failure propagates; only the optional read swallows it', async () => {
+test('a provider failure propagates', async () => {
     const f = setup(), failing = (async () => { throw new Error('gh: HTTP 502'); }) as any;
     await expect(readDescriptionHistory(f.store, failing, 194)).rejects.toThrow('HTTP 502');
-    expect(await optionalDescriptionHistory(f.store, failing, 194)).toBeUndefined();
     const errors = (async () => JSON.stringify({ errors: [{ message: 'Could not resolve to a PullRequest' }] })) as any;
     await expect(readDescriptionHistory(f.store, errors, 194)).rejects.toThrow('Could not resolve');
 });

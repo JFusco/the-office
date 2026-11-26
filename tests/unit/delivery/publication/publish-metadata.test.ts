@@ -54,11 +54,11 @@ test('unapproved or incomplete native closing links keep the original single wri
 
 const effectOf = (f: ReturnType<typeof metadataFixture>) => f.store.getEffect(`harness:${f.job.id}:pr-metadata:${f.record.id}`) as any;
 
-test('the original PATCH certifies the description revision it produced; the receipt is otherwise unchanged', async () => {
+test('the original PATCH verifies the exact selected content without certifying authorship', async () => {
     const f = metadataFixture();
     await f.run(() => publishMetadata(f.delivery, f.job));
     const after = await readDescriptionHistory(f.store, f.delivery.execute, 200), receipt = effectOf(f).receipt;
-    expect(receipt).toEqual({ head: f.job.head, title: f.selected.title, body: f.selected.body, issueUrl: f.issueUrl, revision: after.revision });
+    expect(receipt).toEqual({ head: f.job.head, title: f.selected.title, body: f.selected.body, issueUrl: f.issueUrl });
     // The first edit of a description: GitHub's original-text entry and this write.
     expect(after.revision.edits).toBe(2); expect(f.writes.inputs).toEqual([f.selected]);
 });
@@ -71,20 +71,16 @@ test('a lost response reconciled by read-back records no revision and sends noth
     expect(effectOf(f).receipt.revision).toBeUndefined(); expect(f.writes.patches).toBe(1);
 });
 
-test('an unattributable edit or an unreadable history leaves an ordinary publication verified without provenance', async () => {
-    const human = metadataFixture(), execute = human.delivery.execute;
-    human.delivery.execute = (async (program, args, options) => {
-        if (program === 'gh' && args.includes('PATCH')) editDescription(human.pr, 'Closes #5\nA person edited it\n');
+test('a person supplying the selected body before a no-op PATCH receives no Office authorship', async () => {
+    const f = metadataFixture(), execute = f.delivery.execute;
+    expect(f.pr.title).toBe(f.selected.title);
+    f.delivery.execute = (async (program, args, options) => {
+        if (program === 'gh' && args.includes('PATCH')) editDescription(f.pr, f.selected.body);
         return execute(program, args, options);
     }) as typeof execute;
-    await human.run(() => publishMetadata(human.delivery, human.job));
-    expect(effectOf(human)).toMatchObject({ status: 'verified' }); expect(effectOf(human).receipt.revision).toBeUndefined();
-    const unreadable = metadataFixture(), read = unreadable.delivery.execute;
-    unreadable.delivery.execute = (async (program, args, options) => {
-        if (program === 'gh' && args[1] === 'graphql' && JSON.parse(options!.input!).query.includes('userContentEdits')) throw new Error('gh: HTTP 502');
-        return read(program, args, options);
-    }) as typeof read;
-    await unreadable.run(() => publishMetadata(unreadable.delivery, unreadable.job));
-    expect(effectOf(unreadable)).toMatchObject({ status: 'verified' }); expect(effectOf(unreadable).receipt.revision).toBeUndefined();
-    expect(unreadable.writes.patches).toBe(1);
+    await f.run(() => publishMetadata(f.delivery, f.job));
+    expect(effectOf(f)).toMatchObject({ status: 'verified', receipt: { head: f.job.head, ...f.selected, issueUrl: f.issueUrl } });
+    expect(effectOf(f).receipt.revision).toBeUndefined();
+    expect((await readDescriptionHistory(f.store, f.delivery.execute, 200)).revision.edits).toBe(2);
+    expect(f.writes.patches).toBe(1);
 });

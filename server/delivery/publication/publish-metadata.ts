@@ -8,13 +8,12 @@ import { metadataWorkspace } from './metadata-workspace';
 import { savedMetadataAssessment } from './metadata-assessment';
 import { lintPRContent } from './pr-body';
 import { metadataClaim } from './metadata-claim';
-import { certifyDescriptionWrite, historyBeforeWrite } from './description-continuity';
-import type { DescriptionHistory } from './description-history';
+import { historyBeforeWrite } from './description-continuity';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 
 /**
- * One metadata PATCH on an unchanged head. Uncertain dispatches are read back, never resent. The original dispatch
- * also records the description revision it produced when the edit history proves it; a read-back records none.
+ * One metadata PATCH on an unchanged head. Uncertain dispatches are read back without resending.
+ * Read-back verifies the resulting content. Authorship requires creation evidence.
  */
 export async function publishMetadata(delivery: GitHubDelivery, job: TicketJob): Promise<void> {
     const claim = structuredClone(metadataClaim(delivery, job));
@@ -37,8 +36,10 @@ export async function publishMetadata(delivery: GitHubDelivery, job: TicketJob):
     const effects = (store.db.prepare('SELECT body FROM effects WHERE work_key=?').all(workKey({ projectId: store.project.id, kind: 'delivery', id: job.id })) as { body: string }[]).map(row => JSON.parse(row.body));
     if (effects.some(e => e.id !== id && e.status !== 'verified' && !(e.status === 'rejected' && !e.dispatchedAt)))
         throw new Error('An earlier original delivery write still needs independent readback');
-    let before: DescriptionHistory | undefined;
     const guard = async () => {
+        const source = b.staleDescription?.source;
+        if (source?.kind === 'effect' && source.operation !== 'github-pr-create')
+            throw new Error('A fresh stale-description refresh requires creation evidence');
         metadataClaim(delivery, job, claim);
         assertMetadataBinding(delivery, job);
         if (job.prMetadataRepair !== r || r.id !== recordId || !isDeepStrictEqual(savedMetadataAssessment(delivery, job), assessment)) throw new Error('Metadata assessment changed before publication');
@@ -46,7 +47,7 @@ export async function publishMetadata(delivery: GitHubDelivery, job: TicketJob):
         const p = await metadataProvider(delivery, job);
         if (digest({ title: p.title, body: p.body }) !== b.beforeSha256) throw new Error('Human or provider metadata changed before publication');
         await metadataOwnership(delivery, job);
-        before = await historyBeforeWrite(store, execute, b);
+        await historyBeforeWrite(store, execute, b);
         metadataClaim(delivery, job, claim); assertMetadataBinding(delivery, job);
     };
     const readBack = async () => {
@@ -76,12 +77,10 @@ export async function publishMetadata(delivery: GitHubDelivery, job: TicketJob):
         await harnessEffect(store, job, { key, operation: 'github-pr-metadata', target: b.url, payload, guard, readBack,
             dispatch: async () => {
                 // A stale-description refresh writes the body alone; the title stays the one the proof bound.
-                const response = await execute('gh', ['api', `repos/${b.repository}/pulls/${b.pr}`, '--method', 'PATCH', '--input', '-'], {
+                await execute('gh', ['api', `repos/${b.repository}/pulls/${b.pr}`, '--method', 'PATCH', '--input', '-'], {
                     cwd: store.project.repo, input: JSON.stringify(b.staleDescription ? { body: selected.body } : selected), timeout: 60000,
                 });
-                const receipt = await readBack();
-                const revision = receipt && await certifyDescriptionWrite(store, execute, before, { head: b.head, ...selected }, response);
-                return receipt && revision ? { ...receipt, revision } : receipt;
+                return readBack();
             },
         });
     }
