@@ -2,7 +2,7 @@
 
 The Office gives models implementation and review decisions. The harness owns candidate worktrees, GitHub and board mutations, merge readiness, and closeout. Durable Effects preserve mutation intent and reconcile uncertain outcomes through provider read-back.
 
-The initial hands-off rollout introduced this division for Brain. Later changes extended retry and recovery without giving abandoned model runs authority to publish. The simplification in PR #212 and deterministic intake in PR #335 consolidated work around the ordinary delivery path. Approved prerequisites are evaluated as structured gates.
+The initial hands-off rollout introduced this division for Brain. Later changes extended retry and recovery without giving abandoned model runs authority to publish. The simplification in PR #212 and deterministic intake in PR #335 consolidated work around the ordinary delivery path. Approved prerequisites are evaluated as structured gates. A verified saved writer that declares prerequisites is adopted without a replay when its paid-run count is `0` or not reported (`null`); a reported positive count prevents adoption.
 
 The Office can adopt eligible Context Wiki reconciliation PRs when a project opts in. It validates the bot account, commit history, and Markdown and graph-data scope. A canonical wiki PR title may carry exactly one trailing ` [skip release]` marker, for repositories whose release policy needs it; no other title variation qualifies ([journal](../journal/2026-11-25-wiki-sync-skip-release-titles.md)). Qualified wiki PRs proceed directly to required current-head GitHub checks and repository merge rules.
 
