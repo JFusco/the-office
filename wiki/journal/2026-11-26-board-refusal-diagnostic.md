@@ -1,6 +1,8 @@
 ---
 topics: [office-ui-and-telemetry]
 plans: [2026-11-26-issue-672-keep-the-board-refusal-visible-through-the-quota-hold-009e708920.md]
+issue: 'https://github.com/jfusco/the-office/issues/672'
+issues: ['https://github.com/jfusco/the-office/issues/672']
 ---
 
 # Keep a refused board read visible through the quota hold
