@@ -9,6 +9,7 @@ import { publishCandidate } from '../../../../server/delivery/publication/publis
 import { promoteReady } from '../../../../server/delivery/publication/ready-pr';
 import { officePRContent } from '../../../../server/delivery/publication/pr-body';
 import { HOLDS } from '../../../../server/office/config';
+import { digest } from '../../../../server/store/readback-evidence';
 
 test('first publication pushes once and opens one linked draft PR from the developer content', async () => {
     const f = fakeGitHub(), job = f.candidate({stage:'draft'}), root = f.artifactRoot(job);
@@ -124,4 +125,70 @@ test('post-push head observation stops after five reads without repeating the pu
     expect(reads).toBe(6); // Initial identity read plus exactly five head observations.
     expect(f.state.calls.filter(call => call.startsWith('git push '))).toHaveLength(1);
     expect(f.state.calls.filter(call => call.startsWith('gh pr create '))).toHaveLength(0);
+});
+
+const CONTENT = { title: 'fix(sources): restore scans', body: '## Summary\nRestores.\n## Linked issue\nCloses #5\n' };
+/** A draft candidate with developer content; `lists` rewrites what `gh pr list` returns for one state. */
+function creation(lists: (state: string, out: any[]) => any[] = (_state, out) => out, loseCreate = false) {
+    const f = fakeGitHub(), job = f.candidate({ stage: 'draft' }), root = f.artifactRoot(job);
+    writeFileSync(resolve(root, 'pr.json'), JSON.stringify(CONTENT));
+    const execute = async (program: string, args: string[], options: any) => {
+        const out = await f.execute(program, args, options);
+        if (program === 'gh' && args[1] === 'create' && loseCreate) { loseCreate = false; throw new Error('gh: HTTP 502 after create'); }
+        return program === 'gh' && args[1] === 'list' ? JSON.stringify(lists(args[args.indexOf('--state') + 1], JSON.parse(out))) : out;
+    };
+    const publish = () => claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root));
+    return { ...f, job, publish, effect: () => f.store.getEffect(`harness:${job.id}:pr-create:${HEAD}`) as any };
+}
+
+test('the original create records the digest of what it published, under its unchanged Effect identity', async () => {
+    const f = creation();
+    expect(await f.publish()).toMatchObject({ pr: 200, created: true, pushed: true, contentSource: 'developer' });
+    expect(f.effect()).toMatchObject({ status: 'verified', operation: 'github-pr-create', target: `JFusco/cms-field-vocabulary:${f.job.branch}`,
+        payload: { head: HEAD, branch: f.job.branch, base: 'main' }, expectedState: { key: `pr-create:${HEAD}` },
+        receipt: { number: 200, url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200', contentSha256: digest(CONTENT) } });
+    // Adopting it again records nothing new.
+    expect(await f.publish()).toMatchObject({ pr: 200, created: false });
+    expect(f.state.calls.filter(c => c.startsWith('gh pr create'))).toHaveLength(1);
+});
+
+test('a read-back that differs from the supplied content publishes without a digest', async () => {
+    const f = creation((state, out) => state === 'open' ? out.map(pr => ({ ...pr, body: pr.body.trimEnd() })) : out);
+    expect(await f.publish()).toMatchObject({ pr: 200, created: true });
+    expect(f.effect()?.receipt).toEqual({ number: 200, url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200' });
+});
+
+test('an adopted pull request has no create intent at all', async () => {
+    const f = creation();
+    f.state.remote[f.job.branch] = HEAD;
+    f.state.prs.push({ number: 200, html_url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200', state: 'open', draft: true, title: CONTENT.title, body: CONTENT.body,
+        head: { sha: HEAD, ref: f.job.branch }, base: { ref: 'main', sha: BASE, repo: { full_name: 'JFusco/cms-field-vocabulary' } }, merged_at: null });
+    expect(await f.publish()).toMatchObject({ pr: 200, created: false });
+    expect(f.effect()).toBeUndefined(); expect(f.state.calls.some(c => c.startsWith('gh pr create'))).toBe(false);
+});
+
+test('a lost create response is reconciled by read-back alone: no digest, no second create', async () => {
+    let hide = false;
+    const f = creation((state, out) => state === 'all' && hide ? [] : out, true);
+    await expect(f.publish()).rejects.toThrow('HTTP 502');
+    expect(f.effect()).toMatchObject({ status: 'uncertain', receipt: null });
+    // The list lags, so publication reaches the saved intent and reads it back instead of creating again.
+    hide = true;
+    expect(await f.publish()).toMatchObject({ pr: 200, created: true });
+    expect(f.effect()).toMatchObject({ status: 'verified', receipt: { number: 200, url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200' } });
+    expect(f.effect()?.receipt.contentSha256).toBeUndefined();
+    expect(f.state.calls.filter(c => c.startsWith('gh pr create'))).toHaveLength(1);
+});
+
+test('a legacy number-and-URL create receipt still reads as the publication', async () => {
+    const f = creation((state, out) => state === 'all' ? [] : out);
+    f.state.remote[f.job.branch] = HEAD;
+    f.state.prs.push({ number: 200, html_url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200', state: 'open', draft: true, title: CONTENT.title, body: CONTENT.body,
+        head: { sha: HEAD, ref: f.job.branch }, base: { ref: 'main', sha: BASE, repo: { full_name: 'JFusco/cms-field-vocabulary' } }, merged_at: null });
+    f.store.putEffect({ id: `harness:${f.job.id}:pr-create:${HEAD}`, work: { projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, attemptId: f.job.id,
+        operation: 'github-pr-create', target: `JFusco/cms-field-vocabulary:${f.job.branch}`, authorization: 'office-harness', payload: { head: HEAD, branch: f.job.branch, base: 'main' },
+        expectedState: { key: `pr-create:${HEAD}` }, status: 'verified', createdAt: '2026-11-01T00:00:00Z', dispatchedAt: '2026-11-01T00:00:01Z', verifiedAt: '2026-11-01T00:00:02Z',
+        receipt: { number: 200, url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200' }, error: '', elapsedMs: 1 });
+    expect(await f.publish()).toMatchObject({ pr: 200, url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200', created: true });
+    expect(f.state.calls.some(c => c.startsWith('gh pr create'))).toBe(false);
 });

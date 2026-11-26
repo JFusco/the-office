@@ -19,13 +19,14 @@ export async function metadataScope(delivery: GitHubDelivery, job: TicketJob) {
     return context;
 }
 
+/** The bound PR and its open issue. As in delivery, a job admitted from an existing PR needs no assignee on the issue. */
 export async function metadataProvider(delivery: GitHubDelivery, job: TicketJob): Promise<any> {
     assertMetadataBinding(delivery, job);
     const b = job.prMetadataRepair!.binding, p = await delivery.verifyPR(job, true), issue = await delivery.api(`issues/${Number(job.key.slice(3))}`);
     assertMetadataBinding(delivery, job);
     if (p.number !== b.pr || p.html_url !== b.url || p.state !== 'open' || p.merged_at || p.head?.sha !== b.head || p.head?.ref !== b.branch ||
         p.head?.repo?.full_name !== b.repository || p.base?.ref !== b.base || issue.number !== Number(b.key.slice(3)) || issue.pull_request ||
-        issue.state !== 'open' || issue.html_url !== `https://github.com/${b.repository}/issues/${issue.number}` || !issue.assignees?.some((u: any) => u.login === 'JFusco'))
+        issue.state !== 'open' || issue.html_url !== `https://github.com/${b.repository}/issues/${issue.number}` || !job.existingPR && !issue.assignees?.some((u: any) => u.login === 'JFusco'))
         throw new Error('Original native metadata PR or issue changed');
     return p;
 }

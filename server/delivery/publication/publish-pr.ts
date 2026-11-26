@@ -4,6 +4,7 @@ import { assertDeliveryMayMutate } from '../harness/guards';
 import { harnessEffect } from '../harness/effect';
 import { retryRead } from '../harness/read-retry';
 import { lintPRContent, prContent } from './pr-body';
+import { createdContentSha256 } from './created-content';
 import { assertMetadataBinding, metadataAppliesToHead } from './metadata-context';
 import { publishMetadata } from './publish-metadata';
 import { recordedPush } from './record-push';
@@ -82,7 +83,7 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
         if (metadata) await publishMetadata(delivery!, job);
         return { pr: job.pr, url: updated.html_url, pushed, created: false };
     }
-    const list = async (state: string) => JSON.parse(await execute('gh', ['pr', 'list', '--repo', repository, '--head', branch, '--state', state, '--json', 'number,url,state,headRefOid,baseRefName,isDraft,closingIssuesReferences'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
+    const list = async (state: string) => JSON.parse(await execute('gh', ['pr', 'list', '--repo', repository, '--head', branch, '--state', state, '--json', 'number,url,state,headRefOid,baseRefName,isDraft,closingIssuesReferences,title,body'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
     const prior = await list('all');
     const adoptable = prior.filter((pr: any) => pr.state === 'OPEN' && pr.headRefOid === head && pr.baseRefName === target);
     if (prior.length && adoptable.length !== 1)
@@ -97,16 +98,19 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
     const content = await prContent(execute, job, issueNumber, root);
     await lintPRContent(execute, worktree, content, issueNumber);
     const issueUrl = `https://github.com/${repository}/issues/${issueNumber}`;
-    const readBack = async () => {
+    const linkedDraft = async () => {
         const open = (await list('open')).filter((pr: any) => pr.headRefOid === head && pr.baseRefName === target && pr.isDraft);
-        return open.length === 1 && open[0].closingIssuesReferences?.some((issue: any) => issue.url === issueUrl) ? { number: open[0].number as number, url: open[0].url as string } : null;
+        return open.length === 1 && open[0].closingIssuesReferences?.some((issue: any) => issue.url === issueUrl) ? open[0] : null;
     };
-    const created = await harnessEffect(store, job, {
+    const readBack = async () => { const pr = await linkedDraft(); return pr ? { number: pr.number as number, url: pr.url as string } : null; };
+    const created = await harnessEffect<{ number: number; url: string; contentSha256?: string } | null>(store, job, {
         key: `pr-create:${head}`, operation: 'github-pr-create', target: `${repository}:${branch}`, payload: { head, branch, base: target },
         guard: () => assertCandidate(store, jobs, job, candidate),
         dispatch: async () => {
-            await execute('gh', ['pr', 'create', '--repo', repository, '--base', target, '--head', branch, '--draft', '--title', content.title, '--body-file', '-'], { cwd: worktree, input: content.body, timeout: 120000 });
-            return retryRead(readBack);
+            const printed = await execute('gh', ['pr', 'create', '--repo', repository, '--base', target, '--head', branch, '--draft', '--title', content.title, '--body-file', '-'], { cwd: worktree, input: content.body, timeout: 120000 });
+            // Only this original create records what it published; a reconciliation reads back number and URL alone.
+            const pr = await retryRead(linkedDraft), contentSha256 = createdContentSha256(printed, pr, content);
+            return pr ? { number: pr.number as number, url: pr.url as string, ...(contentSha256 ? { contentSha256 } : {}) } : null;
         },
         readBack,
     });

@@ -87,3 +87,22 @@ test.each(['advancing-base', 'retargeted-base', 'foreign-head'] as const)('uncer
     } else await expect(reconciled).rejects.toThrow(change === 'retargeted-base' ? 'repository or target' : 'will not be resent');
     expect(f.calls.filter(c => c.args[0] === 'push')).toHaveLength(1);
 });
+
+test('a confirmed CI metadata PATCH certifies its revision; a lost response reconciled by read-back records none', async () => {
+    const body = 'Corrected description.\n\nCloses #322\n';
+    const f = await setup('pr-metadata'); f.repair.plan!.body = body;
+    await claimedDelivery(f.store, f.job, () => publishCIRepair(f.delivery, f.job, f.repair, f.failure));
+    const receipt = (f.store.getEffect(`harness:${f.job.id}:ci-repair:${f.repair.id}`) as any).receipt;
+    expect(receipt).toMatchObject({ head: f.repair.head, title: 'fix: corrected title', body, revision: { edits: 2 } });
+    expect(receipt.revision.lastEditId).toBe((f.pr as any).edits[0].id);
+    // A title-only repair changes no description edit, so it records no revision.
+    const title = await setup('pr-metadata');
+    await claimedDelivery(title.store, title.job, () => publishCIRepair(title.delivery, title.job, title.repair, title.failure));
+    expect((title.store.getEffect(`harness:${title.job.id}:ci-repair:${title.repair.id}`) as any).receipt.revision).toBeUndefined();
+    const lost = await setup('pr-metadata'); lost.repair.plan!.body = body; lost.failWrites(true);
+    await expect(claimedDelivery(lost.store, lost.job, () => publishCIRepair(lost.delivery, lost.job, lost.repair, lost.failure))).rejects.toThrow('Connection lost');
+    await claimedDelivery(lost.store, lost.job, () => publishCIRepair(lost.delivery, lost.job, lost.repair, lost.failure));
+    const reconciled = lost.store.getEffect(`harness:${lost.job.id}:ci-repair:${lost.repair.id}`) as any;
+    expect(reconciled.status).toBe('verified'); expect(reconciled.receipt.revision).toBeUndefined();
+    expect(lost.calls.filter(c => c.args.includes('PATCH'))).toHaveLength(1);
+});

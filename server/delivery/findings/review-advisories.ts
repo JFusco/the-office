@@ -18,8 +18,30 @@ const QA_STAGES = ['validate', 'refused-qa-result'];
 export function reviewAdvisoryIds(store: Pick<Store, 'project'>, job: Reviewed): Set<string> {
     const at = job.steps.map(step => step.stage).lastIndexOf('review'), review = job.steps[at]?.result;
     if (!handsOff(store) || !review || review.outcome !== 'passed' || !job.head || review.commit !== job.head) return new Set();
-    const owned = new Set([...job.steps.slice(0, at).filter(step => QA_STAGES.includes(step.stage)).flatMap(step => step.result.findings.map(finding => finding.id)), ...(job.repairCycle?.pendingFindingIds || [])]);
+    const owned = ownedBefore(job, at);
     return new Set(review.findings.filter(finding => finding.status === 'open' && !owned.has(finding.id)).map(finding => finding.id));
+}
+
+/** Findings an earlier QA result raised, or a repair is still answering: somebody's work, never a note. */
+function ownedBefore(job: Reviewed, at: number): Set<string> {
+    return new Set([...job.steps.slice(0, at).filter(step => QA_STAGES.includes(step.stage)).flatMap(step => step.result.findings.map(finding => finding.id)), ...(job.repairCycle?.pendingFindingIds || [])]);
+}
+
+/**
+ * The open findings a readiness review may carry beside its reserved `pr-metadata` finding without them
+ * counting as other work: the review advisories of this head, and what the latest validation left open
+ * while passing on this head, unless an earlier QA result raised it or a repair is still answering it.
+ * Either is dropped once a later saved step closed it. Read from the saved steps, never from wording;
+ * `withoutReviewAdvisories` keeps reading the review alone.
+ */
+export function metadataCarriedAdvisoryIds(store: Pick<Store, 'project'>, job: Reviewed): Set<string> {
+    const carried = new Map([...reviewAdvisoryIds(store, job)].map(id => [id, job.steps.map(step => step.stage).lastIndexOf('review')]));
+    const at = job.steps.map(step => step.stage).lastIndexOf('validate'), validation = job.steps[at]?.result;
+    if (handsOff(store) && job.head && validation?.outcome === 'passed' && validation.commit === job.head) {
+        const owned = ownedBefore(job, at);
+        for (const finding of validation.findings) if (finding.status === 'open' && !owned.has(finding.id) && !carried.has(finding.id)) carried.set(finding.id, at);
+    }
+    return new Set([...carried].filter(([id, from]) => !job.steps.slice(from + 1).some(step => (step.result.findings || []).some(f => f.id === id && f.status !== 'open'))).map(([id]) => id));
 }
 
 /**

@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { onTestFinished, vi } from 'vitest';
-import { fakeGitHub, cleanupFakes, HEAD, BASE, REPOSITORY } from '../unit/delivery/support/fake-github';
+import { fakeGitHub, cleanupFakes, editDescription, HEAD, BASE, REPOSITORY } from '../unit/delivery/support/fake-github';
 import { bindMetadata } from '../../server/delivery/publication/metadata-context';
 import { artifact, digest } from '../../server/store/readback-evidence';
 import { withAssignment } from '../../server/workers/assignment-context';
@@ -11,23 +11,28 @@ import { enqueueMetadataRecovery } from '../../server/delivery/recovery/pr-metad
 import { reconcilePRMetadata } from '../../server/delivery/recovery/pr-metadata-recovery';
 import { workerProfile } from '../../server/workers/worker-profiles';
 
+/** The pull request a metadata fixture publishes; the defaults are the long-standing issue 5 and PR 200. */
+export interface MetadataShape { issue?: number; pr?: number; head?: string; branch?: string; title?: string; body?: string; refreshed?: string }
+
 /** Synthetic native result/claim/provider evidence; never contacts GitHub or a model. */
-export function metadataFixture(saved = true) {
-    const f = fakeGitHub(), job = f.candidate({ stage: 'prepare-pr', status: 'working', pr: 200, prUrl: `https://github.com/${REPOSITORY}/pull/200` });
+export function metadataFixture(saved = true, shape: MetadataShape = {}) {
+    const issue = shape.issue ?? 5, number = shape.pr ?? 200;
+    const f = fakeGitHub(issue), job = f.candidate({ stage: 'prepare-pr', status: 'working', pr: number, prUrl: `https://github.com/${REPOSITORY}/pull/${number}`,
+        ...(shape.head ? { head: shape.head } : {}), ...(shape.branch ? { branch: shape.branch } : {}) });
     onTestFinished(cleanupFakes);
     f.store.state.coordination!.enabled = true;
     const root = f.artifactRoot(job);
     writeFileSync(resolve(job.worktree, 'package.json'), JSON.stringify({ packageManager: 'pnpm@11.1.1', scripts: { 'lint:pr': 'node scripts/validate_pr_body.cjs' } }));
     mkdirSync(resolve(job.worktree, 'node_modules'), { recursive: true });
-    const pr = { number: 200, html_url: job.prUrl, state: 'open', draft: false, merged_at: null, title: 'fix: release scans', body: 'Closes #5',
-        head: { sha: HEAD, ref: job.branch, repo: { full_name: REPOSITORY } }, base: { sha: BASE, ref: 'main', repo: { full_name: REPOSITORY } } };
+    const pr = { number, html_url: job.prUrl, state: 'open', draft: false, merged_at: null, title: shape.title ?? 'fix: release scans', body: shape.body ?? `Closes #${issue}`,
+        head: { sha: job.head || HEAD, ref: job.branch, repo: { full_name: REPOSITORY } }, base: { sha: BASE, ref: 'main', repo: { full_name: REPOSITORY } } };
     f.state.prs.push(pr);
     const record = job.prMetadataRepair = bindMetadata(f.delivery, job, pr, ['pr-metadata'], 'lead-pr');
-    const selected = { title: pr.title, body: '## Summary\nRestore the fixture release scans.\n## Linked issue\nCloses #5\n' };
+    const selected = { title: pr.title, body: shape.refreshed ?? `## Summary\nRestore the fixture release scans.\n## Linked issue\nCloses #${issue}\n` };
     const verdict = { outcome: 'repair' as const, findingIds: ['pr-metadata'], evidence: ['Retained successful exact-head fixture checks'], summary: 'Repair only the evidenced metadata', ...selected };
     const claim = f.store.claimWork({ projectId: f.store.project.id, kind: 'delivery', id: job.id }, 'metadata-fixture', 'prepare-pr')!;
     const ownership = { complete: true, fresh: true, project: f.store.project.id, key: job.key, ownership: { status: 'clear' } };
-    const writes = { patches: 0, land: true, loseResponse: false };
+    const writes = { patches: 0, land: true, loseResponse: false, inputs: [] as any[] };
     const links = { urls: [f.issueUrl], more: false };
     const original = f.delivery.execute;
     f.delivery.execute = (async (program, args, options) => {
@@ -35,13 +40,14 @@ export function metadataFixture(saved = true) {
         if (program === 'pnpm') return args[0] === '--version' ? '11.1.1\n' : '';
         if (program === 'gh' && args.includes('PATCH')) {
             writes.patches++;
-            if (writes.land) Object.assign(pr, JSON.parse(options!.input!));
+            const patch = JSON.parse(options!.input!); writes.inputs.push(patch);
+            if (writes.land) { if (typeof patch.title === 'string') pr.title = patch.title; if (typeof patch.body === 'string') editDescription(pr, patch.body); }
             if (writes.loseResponse) throw new Error('gh: HTTP 499 after metadata dispatch');
             return JSON.stringify(pr);
         }
-        if (program === 'gh' && args[1]?.includes('/issues/200/comments?')) return '[[]]';
+        if (program === 'gh' && args[1]?.includes(`/issues/${number}/comments?`)) return '[[]]';
         if (program === 'gh' && args[0] === 'api' && args[1] === 'graphql' && JSON.parse(options!.input!).query.includes('closingIssuesReferences(first:100)'))
-            return JSON.stringify({ data: { repository: { pullRequest: { number: 200, headRefOid: pr.head.sha,
+            return JSON.stringify({ data: { repository: { pullRequest: { number, headRefOid: pr.head.sha,
                 closingIssuesReferences: { nodes: links.urls.map(url => ({ url })), pageInfo: { hasNextPage: links.more } } } } } });
         return original(program, args, options);
     }) as typeof original;

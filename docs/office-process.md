@@ -429,9 +429,47 @@ again once; the board move comes before any source work, so nothing is repeated
 
 A hands-off readiness review that blocks on the pull request's title or body (the reserved
 `pr-metadata` finding, no resolution) is read once (`server/delivery/publication/metadata-admission.ts`).
-The harness takes the edit over only when that finding is the only one open and the repository's own PR
-lint rejects the live content. When the lint accepts it, or other findings are open beside it, the
-harness parks the job instead (`server/delivery/parking/park-unadmitted-metadata.ts`): one decision
+The harness takes the edit over on one of two routes. On the content route the finding is the only one
+open and the repository's own PR lint rejects the live content. On the stale own-description route
+(`server/delivery/publication/stale-own-description.ts`) the lint accepts it, or every other open
+finding is an advisory the passed review or validation of this head left open (`metadataCarriedAdvisoryIds`
+in `server/delivery/findings/review-advisories.ts`, read from the saved steps, never from wording; no
+lint runs for a mixed result), and the harness proves the live description is its own, written for an
+earlier head of this pull request and unedited since:
+
+- The pull request's description history is read whole (`description-history.ts`); a partial or
+  malformed answer is a read error, never a negative answer.
+- `own-description.ts` orders the Office's create, metadata and CI metadata Effects for this pull
+  request, from any job of the project, by dispatch. The latest must hold the live bytes and be provable:
+  a create whose original response recorded its content (`created-content.ts`) on a description never
+  edited, or a PATCH whose original dispatch certified the edit revision it produced
+  (`description-continuity.ts`) and that revision is still the live one. A tie, conflicting records,
+  a newer unprovable write or bytes matching only an older write are refused; an unsettled write is an
+  error until it is read back. A read-back reconciliation, an adopted pull request or a shared editor
+  login never proves authorship.
+- With no Office write recorded, a completed maintenance run proves a never-edited description it
+  created (`server/maintenance/draft-provenance.ts`): its latest passed proposal for the issue and branch
+  gives the head; one completed draft worker of the following draft step, bound to its claim,
+  assignment and saved result, spans the creation time; its one successful `gh pr create` in its native
+  Claude record (read with `recorded-gh-command.ts`; another provider declines) printed this pull
+  request's URL from a body file in the run's directory; and its own read-back, that file and the live
+  description are the same bytes. Missing or ambiguous evidence declines.
+- The attributed head must be another full commit and an ancestor of the current head in the job's own
+  checkout, with nothing fetched. Git's exit 1 declines; any other failure stays an error.
+
+The proof (route, head, source, content digest and edit revision) joins the binding before its digest;
+bindings without it keep their earlier shape, digests and Effect identities. The one read-only Lead
+assessment then refreshes the body for the current head and keeps the captured title; no selection, an
+unchanged body or a changed title blocks the route with the genuine result kept, and nothing is
+written. Immediately before the one body-only PATCH the guard reads the edit history again: a changed
+revision stops the write even when the text was restored. GitHub's PR update has no comparison against
+the previous body, so a person's edit after that last read can still race the write. An intent already
+dispatched is only read back. A fresh Lead readiness review of the same head must then verify
+`pr-metadata`. A job admitted from an existing PR needs no assignee on its issue here, as in delivery.
+A refused or unprovable attribution is the ordinary human edit below; changes during the reads make the
+decision ineligible.
+
+When neither route applies, the harness parks the job instead (`server/delivery/parking/park-unadmitted-metadata.ts`): one decision
 comment names the pull request, the field, the edit the finding asks for and every other open finding,
 and tells Joe to edit the pull request and then move the issue card back to the pickup lane, which
 resumes with a fresh readiness review; a reply to Morgan does not. Model-written text in it is shown
@@ -475,7 +513,10 @@ holds or a person takes an issue card it had in Block out again
 before dispatch, the record is kept, and `review-pr` then runs an ordinary review, after the issue card
 is returned to a lane a review starts from, when a fresh review still applies. A historical park also
 needs every recorded card and the enabled pickup lane named in its original instruction. Jobs the harness does not deliver, source resolutions, older
-metadata bindings and a saved conflict assessment acted on again keep the reconciliation stop.
+metadata bindings and a saved conflict assessment acted on again keep the reconciliation stop. A job
+keeps one metadata binding: a second stale description after a completed repair is not admitted again.
+Before rolling back past the stale own-description route, drain or hold its bound repairs so an older
+release cannot publish without the proof; dispatched writes are reconciled by read-back.
 
 A hands-off job on an adopted pull request can also stop inside the harness after its conflict-only
 readiness assessment was accepted and recorded, before anything was written. Such a job is queued
