@@ -6,11 +6,12 @@ import { sanitize } from '../office/security';
 
 export const GOAL_EVIDENCE_LIMITS = { bodyBytes: 8192, paths: 2, commits: 2, documentBytes: 32768, retryMs: 30000 } as const;
 export function boundedEvidence(value: string, bytes: number) {
-    const raw = Buffer.from(sanitize(value)), clipped = raw.subarray(0, bytes);
-    // Do not leave a replacement character when the last UTF-8 character was split.
-    let text = clipped.toString('utf8');
-    while (Buffer.byteLength(text) > clipped.length) text = text.slice(0, -1);
-    return { text, bytes: raw.length, truncated: raw.length > bytes };
+    const raw = Buffer.from(sanitize(value));
+    // Cut at a complete UTF-8 character: when the first excluded byte continues a character, back up to that
+    // character's lead byte, so a split character is dropped whole and never decodes to a replacement character.
+    let end = Math.min(bytes, raw.length);
+    while (end > 0 && end < raw.length && (raw[end] & 0xC0) === 0x80) end--;
+    return { text: raw.subarray(0, end).toString('utf8'), bytes: raw.length, truncated: raw.length > bytes };
 }
 export function goalEvidencePath(value: unknown): value is string {
     return typeof value === 'string' && value.length <= 240 && /^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.md$/.test(value) && !value.split('/').some(part => part === '.' || part === '..');

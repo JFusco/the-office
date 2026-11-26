@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { Store } from '../../../server/store/store';
 import { projectById, withCECGoalEvidence } from '../../../server/office/projects';
-import { collectAzureGoalDocuments, GOAL_EVIDENCE_LIMITS, azurePRDescription, goalEvidencePath } from '../../../server/leadership/goal-evidence';
+import { boundedEvidence, collectAzureGoalDocuments, GOAL_EVIDENCE_LIMITS, azurePRDescription, goalEvidencePath } from '../../../server/leadership/goal-evidence';
 import { projectPRFacts, goalEvidenceFingerprint } from '../../../server/leadership/goal-reporting';
 import { collectCTOFacts } from '../../../server/leadership/cto-collector';
 import { workEvidence } from '../../../server/leadership/goal-reviews';
@@ -115,4 +115,13 @@ test('normal CEC project selection inherits only its validated canonical binding
         const foreign = { ...project, ...delta }; expect(withCECGoalEvidence(foreign, binding)).toBe(foreign); expect(foreign.goalEvidencePaths).toBeUndefined();
     }
     expect(withCECGoalEvidence(project, { repo: binding.repo, repository: binding.repository })).toBe(project);
+});
+
+test('an Azure PR description cut inside a character drops the whole character', () => {
+    const prefix = 'a'.repeat(8189);
+    expect(azurePRDescription(prefix + '😀')).toEqual({ description: prefix, descriptionTruncated: true });
+});
+test.each([8190, 8191, 8192])('a cut keeping %s bytes of a four-byte character returns the text before it, with the original count', limit => {
+    const prefix = 'a'.repeat(8189);
+    expect(boundedEvidence(prefix + '😀', limit)).toEqual({ text: prefix, bytes: 8193, truncated: true });
 });
