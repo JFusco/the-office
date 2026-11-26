@@ -24,6 +24,14 @@ export async function stopOrWait(system, current, launcherFile, limits, helperLe
     return stopped;
 }
 
+function reportedOutcome(ended, officeData) {
+    if (!ended) return { kind: 'exit', outcome: null, detail: 'the helper did not report the pass' };
+    if (ended.error && ended.code === null) return { kind: 'startup', outcome: null, detail: bounded(ended.error) };
+    const { kind, outcome, detail } = classify(ended, officeData);
+    const diagnostic = detail ?? (kind === 'success' ? null : ended.stderr.trim().split('\n').at(-1) ?? null);
+    return { kind, outcome, detail: bounded(diagnostic) || null };
+}
+
 export async function dispatch({ state, save, system, limits, paths, pinned, deadlineMs, origin, env, launcherFile, failed, isShuttingDown, setShutdown }) {
     const id = randomUUID(), started = system.now(), startedAt = started.toISOString(), clock0 = system.monotonic();
     const deadline = new Date(started.getTime() + deadlineMs).toISOString();
@@ -44,7 +52,10 @@ export async function dispatch({ state, save, system, limits, paths, pinned, dea
     let wake = null, phases = [], ended = null, spawnError = null, helperExited = false, ready = false, passExited = false, stopReason = null;
     const notify = () => { const fn = wake; wake = null; fn?.(); };
     // A stop asked for while the helper starts is honoured before anything is authorized.
-    setShutdown(() => { stopReason ??= 'interrupted'; notify(); });
+    setShutdown(() => {
+        if (!passExited && !ended) stopReason ??= 'interrupted';
+        notify();
+    });
     helper.on('error', error => { spawnError = error; notify(); });
     helper.on('message', received => {
         if (!isObject(received)) return;
@@ -97,24 +108,25 @@ export async function dispatch({ state, save, system, limits, paths, pinned, dea
         if (passExited && !ended && !stopReason) await waitFor(() => !!ended || helperExited, limits.drainMs * 2);
         const helperLeft = ms => waitFor(() => helperExited, ms);
         const stopped = await stopOrWait(system, current, launcherFile, limits, helperLeft);
+        const exit = ended ? { code: ended.code, signal: ended.signal } : null;
+        const { kind: verdict, outcome, detail } = stopReason
+            ? { kind: stopReason, outcome: null, detail: stopReason === 'interrupted' ? 'the launcher was asked to stop' : null }
+            : reportedOutcome(ended, paths.officeData);
         if (!stopped.gone) {
-            const verdict = stopReason === 'hang' ? 'hang' : stopReason === 'interrupted' ? 'interrupted' : ended ? classify(ended, paths.officeData).kind : 'exit';
             const kind = current.counted ?? (['success', 'locked', 'interrupted'].includes(verdict) ? 'orphan' : verdict);
-            if (!current.counted) state = settle(state, attemptRecord(id, kind, startedAt, system.now().toISOString(), { detail: 'the pass’s group could not be confirmed gone' }));
+            if (!current.counted) {
+                state = settle(state, attemptRecord(id, kind, startedAt, system.now().toISOString(), {
+                    exit, outcome, detail: kind === 'orphan' ? 'the pass’s group could not be confirmed gone' : detail,
+                }));
+            }
             try { putCurrent({ ...current, counted: kind, observation: stopped.observation }); } catch (error) { saveError ??= error; }
             failed({ kind, id, blocked: true, reason: stopped.observation?.reason ?? 'not confirmed gone' });
             if (saveError) throw saveError;
             return 0;
         }
         if (saveError) throw saveError;
-        const exit = ended ? { code: ended.code, signal: ended.signal } : null;
         // A latched hang stays a hang, with its own detail, whatever the pass reported while it was stopped.
-        if (stopReason === 'hang') return finish('hang', { exit });
-        // A pass the launcher itself stopped ends however the stop left it; that is not its own outcome.
-        if (stopReason === 'interrupted') return finish('interrupted', { exit, detail: 'the launcher was asked to stop' });
-        if (!ended) return finish('exit', { exit, detail: 'the helper ended without reporting the pass' });
-        if (ended.error && ended.code === null) return finish('startup', { exit, detail: bounded(ended.error) });
-        const verdict = classify(ended, paths.officeData);
-        return finish(verdict.kind, { exit, outcome: verdict.outcome, detail: bounded(verdict.detail ?? (verdict.kind === 'success' ? null : ended.stderr.trim().split('\n').at(-1) ?? null)) || null });
+        if (verdict === 'hang') return finish('hang', { exit });
+        return finish(verdict, { exit, outcome, detail });
     } finally { letGo(); }
 }

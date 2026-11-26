@@ -17,7 +17,7 @@ const send = payload => {
 /** Whether this process is the only member of its group left. */
 async function alone(system) {
     const inventory = await groupInventory(system, process.pid);
-    return inventory.ok && inventory.members.every(member => member.pid === process.pid);
+    return inventory.ok && inventory.members.length === 1 && inventory.members[0].pid === process.pid;
 }
 
 export async function helperMain(id, system = defaultSystem()) {
@@ -46,12 +46,12 @@ export async function helperMain(id, system = defaultSystem()) {
         process.exit(0);
     };
     // The launcher is stopping this group: stay its leader while the rest leaves, so the launcher can still name it for KILL.
+    // Keep the leader available after the wait if the inventory still cannot confirm it is alone.
     process.on('SIGTERM', () => {
         if (terminating || cleaning) return;
         terminating = true;
         void (async () => {
-            await untilAlone(LIMITS.termGraceMs + LIMITS.absenceWaitMs);
-            if (!cleaning) process.exit(143);
+            if (await untilAlone(LIMITS.termGraceMs + LIMITS.absenceWaitMs) && !cleaning) process.exit(143);
         })();
     });
     process.on('disconnect', () => { if (!authorized) process.exit(0); else void cleanUp(); });

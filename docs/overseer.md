@@ -1288,9 +1288,11 @@ itself, counting it once (as `lost` unless it was already counted), so there is 
 
 - **The group's leader is not this attempt's helper.** Its PID was reused, or the attempt is
   someone else's. List the group with `ps -o pid,pgid,lstart,command -g <pgid>`. Stop only
-  members you identify as this attempt's: its helper, whose command ends with
-  `code/launcher/overseer-launch.mjs --group <attempt ID>` and whose start time matches, or a
-  process running from the pinned release folder. Leave every other member to exit by itself.
+  members you can independently tie to this attempt, for example through a matching recorded
+  PID, start time and full attempt-specific command or a verified parent chain to its helper.
+  The helper's command ends with `code/launcher/overseer-launch.mjs --group <attempt ID>`
+  and its start time matches the saved identity. Use the pinned release path only as context,
+  and leave any member whose ownership is uncertain to exit by itself.
   The launches that follow keep blocking until the group is gone, then settle it.
 - **The group could not be confirmed gone.** List and stop it the same way, identified members
   only. Once the probe reports no such process, the next launch clears `current`; the attempt
@@ -1302,6 +1304,14 @@ itself, counting it once (as `lost` unless it was already counted), so there is 
   key: a file without it is unreadable.
 - **`state/launcher.json` cannot be read.** No pass starts and the file is left as it is. Keep a
   copy, then repair or move it aside; a root without it starts with empty counters.
+- **`control/launcher.lock` names a launcher that appears to have stopped.** Keep the job
+  booted out. Read `launcherLock.owner.pid`, `launcherLock.owner.start` and
+  `launcherLock.guardLeft` from status. Compare the owner with
+  `LC_ALL=C ps -o lstart=,command= -p <pid>`. If the PID has no live process and the guard
+  is clear, the next launch reclaims the lock automatically. If the PID belongs to an unrelated
+  process, confirm the start time or command differs and use `ps -o pid,command -ax` to
+  confirm that no launcher or helper is running before removing only `control/launcher.lock`.
+  Leave an uncertain owner in place and handle a leftover guard as described below.
 - **`control/launcher.lock.reclaim` is left behind.** A launch stopped while taking the lock.
   Keep it until `ps -o pid,command -ax` shows no process running `overseer-launch.mjs`, neither
   a launcher nor a helper; then remove it.

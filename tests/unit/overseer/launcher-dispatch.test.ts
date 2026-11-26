@@ -15,7 +15,7 @@ const groupGone = (pid: number) => { try { process.kill(-pid, 0); return false; 
 describe.skipIf(process.platform !== 'darwin')('dispatch with a stand-in helper', () => {
     test('a stop asked for while the helper starts withholds authorization: nothing runs, and the attempt is interrupted', async () => {
         const helper = fakeHelper({ readyAfter: 100 });
-        const { run, state } = await dispatchWith(helper, { deadlineMs: 20_000, isShuttingDown: () => true });
+        const { run, state } = await dispatchWith(helper, { deadlineMs: 20_000, isShuttingDown: () => true, system: { ps: helper.ps } });
         expect(await run).toBe(0);
         expect(helper.saw('started')).toBe(true);
         expect(helper.saw('authorized')).toBe(false);
@@ -38,6 +38,30 @@ describe.skipIf(process.platform !== 'darwin')('dispatch with a stand-in helper'
         const { run, state } = await dispatchWith(helper, { deadlineMs: 600 });
         expect(await run).toBe(0);
         expect(state()).toMatchObject({ current: null, counts: { success: 1, hang: 0 }, last: { kind: 'success', outcome: 'idle' } });
+    }, 30_000);
+
+    test.each([
+        ['during drain', 0, 'success', 0],
+        ['after the full report', 1, 'exit', 3],
+    ] as const)('a stop %s preserves exit %i as %s', async (when, exitCode, kind, consecutiveFailures) => {
+        const helper = fakeHelper({ exitedAt: when === 'during drain' ? 200 : undefined, reportAt: 600, exitCode });
+        let onGroupProbe = () => {};
+        const system = {
+            ps: helper.ps,
+            kill: (pid: number, signal: NodeJS.Signals | 0) => {
+                if (pid < 0 && signal === 0) onGroupProbe();
+                return process.kill(pid, signal);
+            },
+        };
+        const { run, state, shutdown } = await dispatchWith(helper, { deadlineMs: 20_000, consecutiveFailures: 2, system });
+        if (when === 'during drain') {
+            expect(await until(() => helper.saw('exited'))).toBe(true);
+            shutdown();
+        } else {
+            onGroupProbe = shutdown;
+        }
+        expect(await run).toBe(0);
+        expect(state()).toMatchObject({ current: null, consecutiveFailures, counts: { [kind]: 1, interrupted: 0 }, last: { kind, exit: { code: exitCode } } });
     }, 30_000);
 
     test('a hang stays one hang with its own detail when the pass reports while it is being stopped', async () => {

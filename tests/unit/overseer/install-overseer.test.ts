@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { chmodSync, linkSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, linkSync, mkdirSync, readFileSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { beforeAll, describe, expect, test } from 'vitest';
@@ -100,8 +100,11 @@ describe('installer preflight, before any plist or launchctl', () => {
     test('only launchd’s own absence answer for this job and this user installs; anything like it writes nothing and bootstraps nothing', async () => {
         const answers: [string, Answer, boolean][] = [
             ['the exact answer', MISSING, true],
+            ['the exact answer with the launchctl header', { ...MISSING, stderr: `Bad request.\n${MISSING.stderr}\n` }, true],
             ['another service', { code: 113, stdout: '', stderr: `Could not find service "com.jfusco.office-service" in domain for user gui: ${UID}` }, false],
             ['another user', { code: 113, stdout: '', stderr: `Could not find service "${LABEL}" in domain for user gui: ${UID + 1}` }, false],
+            ['another user sharing the UID prefix', { ...MISSING, stderr: `${MISSING.stderr}0` }, false],
+            ['contradictory output', { ...MISSING, stdout: 'The service is loaded' }, false],
             ['the words, another failure', { code: 5, stdout: '', stderr: `Could not find service "${LABEL}" in domain for user gui: ${UID}` }, false],
             ['the words in passing', { code: 1, stdout: 'could not find service anything', stderr: '' }, false],
         ];
@@ -245,6 +248,11 @@ describe.skipIf(process.platform !== 'darwin')('installation as a LaunchAgent', 
 
     test('pin to plist: the pin the CLI writes installs, and the plist’s own command runs one pass from the installed launcher', async () => {
         const w = installWorld('record', { 'scripts/overseer-launch.mjs': '// the release’s own copy: never what is installed or run\nprocess.exit(99);\n' });
+        const modules = join(w.built.directory, 'node_modules');
+        const linkedLoader = '.pnpm/tsx@4.23.15/node_modules/tsx';
+        mkdirSync(join(modules, linkedLoader, '..'), { recursive: true });
+        renameSync(join(modules, 'tsx'), join(modules, linkedLoader));
+        symlinkSync(linkedLoader, join(modules, 'tsx'), 'dir');
         const { VITEST: _, VITEST_POOL_ID: __, VITEST_WORKER_ID: ___, ...inherited } = process.env;
         const cliEnv = { ...inherited, NODE_ENV: 'production', OFFICE_DATA_ROOT: w.world.officeData, OVERSEER_ROOT: w.world.root };
         await execute(process.execPath, ['--import', 'tsx', cli, 'overseer', 'pin', w.built.commit], { env: cliEnv, encoding: 'utf8', timeout: 60_000 });

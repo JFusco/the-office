@@ -48,6 +48,15 @@ The first implementation review (`ec1b1997`) raised 18 findings. It stopped for 
 - publication faults are tested;
 - the recovery guide never clears an attempt while its group may run.
 
-A fresh full review of the repaired head followed, with the byte comparison first among its checks and regeneration declared.
+A fresh full review of the repaired head (`b249ef79`) followed, with the byte comparison first among its checks and regeneration declared. It confirmed all 18 independently and accepted 10 more, all repaired and passed on recheck:
+
+- the helper stays the group's leader unless `ps` shows it alone, so an empty listing or an expired TERM wait no longer lets it leave a descendant unnamed;
+- a stop asked for after the pass has exited keeps the pass's own result;
+- cleanup that cannot be confirmed keeps the pass's exit facts, and a spawn error stays `startup`;
+- the installer accepts only launchd's exact absence answer for this user, so UID 5010 no longer passes for 501;
+- a newly charged `lost` or `orphan` attempt logs one summary, even when the next pass succeeds;
+- test teardown signals only fixtures whose identity still matches;
+- the pin-to-plist test runs a pnpm-style `tsx` link;
+- the recovery guide covers a stale `launcher.lock` and treats the release path as context only.
 
 [Issue #647](https://github.com/JFusco/the-office/issues/647) · [Overseer, Launcher](../../docs/overseer.md)

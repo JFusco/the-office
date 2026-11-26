@@ -41,34 +41,42 @@ const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
  */
 export type Behavior = 'record' | 'hang' | { exit: number } | 'record-with-stubborn-child' | 'no-markers-exit-1' | 'bootstrap-then-exit-1';
 
-function entrySource(behavior: Behavior): string {
+function entrySource(behavior: Behavior, captureParent: boolean): string {
     // The evidence names the live parent's invocation, so a test can tell which launcher file started the helper.
     const start = `import { execFileSync, spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 const mark = phase => { if (process.send) { process.send({ type: 'overseer-phase', phase }); process.channel?.unref(); } };
 if (!globalThis.__overseerFixtureLoader) { console.error('the release-local loader did not run'); process.exit(2); }
 const root = process.env.OVERSEER_ROOT;
-const parent = execFileSync('/bin/ps', ['-o', 'command=', '-p', String(process.ppid)], { encoding: 'utf8', env: { LC_ALL: 'C' } }).trim();
+const parent = ${captureParent ? "execFileSync('/bin/ps', ['-o', 'command=', '-p', String(process.ppid)], { encoding: 'utf8', env: { LC_ALL: 'C' } }).trim()" : 'null'};
 writeFileSync(root + '/evidence.json', JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(1), env: process.env, pid: process.pid, parent, loader: globalThis.__overseerFixtureLoader === true }));
 `;
     const record = `console.log(JSON.stringify({ pass: crypto.randomUUID(), startedAt: new Date().toISOString(), endedAt: new Date().toISOString(), outcome: 'idle', detail: 'fixture pass', officeDataRoot: root + '/state/office-data' }));`;
-    const stubborn = `const child = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { stdio: ['ignore', 'inherit', 'inherit'] });
-writeFileSync(root + '/grandchild.pid', String(child.pid));`;
+    const descendant = `const { existsSync, renameSync, writeFileSync } = require('node:fs');
+const root = process.argv[1];
+process.on('SIGTERM', () => {});
+setInterval(() => { if (existsSync(root + '/release-pipes')) process.exit(0); }, 50);
+writeFileSync(root + '/grandchild.ready', String(process.pid));
+renameSync(root + '/grandchild.ready', root + '/grandchild.pid');`;
+    const stubborn = `spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}, root], { stdio: ['ignore', 'inherit', 'inherit'] });`;
+    const ready = `const readyBy = Date.now() + 5_000;
+while (!existsSync(root + '/grandchild.pid') && Date.now() < readyBy) await new Promise(done => setTimeout(done, 50));
+if (!existsSync(root + '/grandchild.pid')) throw new Error('the fixture descendant did not become ready');`;
     if (behavior === 'record') return `${start}mark('bootstrap'); mark('run');\n${record}\n`;
-    if (behavior === 'hang') return `${start}mark('bootstrap'); mark('run');\n${stubborn}\nsetInterval(() => {}, 1000);\n`;
-    if (behavior === 'record-with-stubborn-child') return `${start}mark('bootstrap'); mark('run');\n${stubborn}\nawait new Promise(done => setTimeout(done, 300));\n${record}\nprocess.exit(0);\n`;
+    if (behavior === 'hang') return `${start}mark('bootstrap'); mark('run');\n${stubborn}\nsetInterval(() => { if (existsSync(root + '/release-pipes')) process.exit(0); }, 50);\n`;
+    if (behavior === 'record-with-stubborn-child') return `${start}mark('bootstrap'); mark('run');\n${stubborn}\n${ready}\n${record}\nprocess.exit(0);\n`;
     if (behavior === 'no-markers-exit-1') return `${start}console.error('The pass could not be recorded: disk full'); process.exit(1);\n`;
     if (behavior === 'bootstrap-then-exit-1') return `${start}mark('bootstrap'); console.error('Cannot find module'); process.exit(1);\n`;
     return `${start}mark('bootstrap'); mark('run');\nprocess.exit(${behavior.exit});\n`;
 }
 
 /** A release under `<officeData>/releases/<commit>` with a release.json the Office itself would write, and a `tsx` of its own unless told otherwise. */
-export function release(officeData: string, behavior: Behavior = 'record', options: { loader?: boolean; files?: Record<string, string> } = {}) {
+export function release(officeData: string, behavior: Behavior = 'record', options: { loader?: boolean; files?: Record<string, string>; captureParent?: boolean } = {}) {
     const commit = randomBytes(20).toString('hex'), directory = join(officeData, 'releases', commit);
     const files: Record<string, string> = {
         'package.json': JSON.stringify({ name: 'fixture-release', type: 'module' }),
         'pnpm-lock.yaml': `lockfileVersion: '9.0'\n# ${commit}\n`,
-        'server/overseer.ts': entrySource(behavior),
+        'server/overseer.ts': entrySource(behavior, options.captureParent ?? true),
         'src/shared.ts': 'export const shared = 1;\n',
         ...options.files,
     };

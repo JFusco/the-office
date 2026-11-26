@@ -102,7 +102,9 @@ export async function installOverseer(options = {}) {
     const existing = await existingPlist(run, plistPath, paths);
     const service = await run('/bin/launchctl', ['print', `gui/${uid}/${LABEL}`]);
     // Only launchd's own answer for this job in this domain proves it is not loaded.
-    const missing = service.code === 113 && `${service.stderr}\n${service.stdout}`.includes(`Could not find service "${LABEL}" in domain for user gui: ${uid}`);
+    const diagnostic = [service.stderr.trim(), service.stdout.trim()].filter(Boolean).join('\n');
+    const absent = `Could not find service "${LABEL}" in domain for user gui: ${uid}`;
+    const missing = service.code === 113 && (diagnostic === absent || diagnostic === `Bad request.\n${absent}`);
     if (service.code !== 0 && !missing) throw new Error(`launchctl print could not tell whether ${LABEL} is loaded (exit ${service.code}); nothing was written`);
     if (service.code === 0) {
         const copy = (() => { try { return readOwned(paths.launcherCopy, 4 * 1024 * 1024); } catch { return null; } })();

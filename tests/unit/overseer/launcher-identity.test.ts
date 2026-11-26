@@ -11,7 +11,7 @@ import { snapshot, tempDir } from './runner-world';
 // launcher's for this attempt: by its complete path, whatever it holds, compared before any bound.
 
 beforeAll(loadLauncher);
-afterEach(killOwned);
+afterEach(() => killOwned());
 
 /** A copy of the committed bundle at the given path. */
 function bundleAt(path: string) {

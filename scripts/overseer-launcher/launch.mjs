@@ -58,8 +58,18 @@ export async function launch(options = {}) {
         const failed = summary => log(JSON.stringify({ at: system.now().toISOString(), ...summary }).slice(0, 2000));
         try {
             const recovered = await recoverCurrent(state, system, launcherFile, limits);
+            // A new charge replaces last. Re-observing or clearing a counted attempt preserves it.
+            const recoveredFailure = recovered.state.last !== state.last ? recovered.state.last : null;
             save(recovered.state);
-            if (recovered.blocked) { failed({ blocked: true, reason: state.current?.observation?.reason ?? 'blocked' }); return 0; }
+            const reason = state.current?.observation?.reason ?? 'blocked';
+            if (recoveredFailure) {
+                const { kind, id, detail } = recoveredFailure;
+                failed({ kind, id, ...(recovered.blocked ? { blocked: true, reason } : { detail }) });
+            }
+            if (recovered.blocked) {
+                if (!recoveredFailure) failed({ blocked: true, reason });
+                return 0;
+            }
             if (shuttingDown) return 0;
             const at = system.now().toISOString(), refuse = (kind, reason) => {
                 save(settle(state, attemptRecord(randomUUID(), kind, at, system.now().toISOString(), { detail: bounded(reason) })));

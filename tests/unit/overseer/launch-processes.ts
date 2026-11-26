@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,12 +16,43 @@ export async function loadLauncher() {
 export const launch = (options: Record<string, unknown>) => loaded.entry.launch({ launcherFile: LAUNCHER, ...options });
 export const quiet = { noSignalHandlers: true, log: () => {}, warn: () => {} };
 
-/** Processes a test started, killed with their groups afterwards. */
-export const owned: ChildProcess[] = [];
-export const pids: number[] = [];
-export function killOwned() {
-    for (const child of owned.splice(0)) try { process.kill(-child.pid!, 'SIGKILL'); } catch { /* gone */ }
-    for (const pid of pids.splice(0)) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
+type Identity = { pid: number; pgid: number; start: string; command: string };
+type ProcessSystem = {
+    ps: (args: string[]) => Promise<{ ok: boolean; code: number | null; stdout: string }>;
+    kill: (pid: number, signal: NodeJS.Signals) => unknown;
+};
+const owned = new Map<number, { identity: Identity; group: boolean }>();
+
+export async function trackProcess(child: ChildProcess, group = false, system: Pick<ProcessSystem, 'ps'> = loaded.group.defaultSystem()): Promise<Identity | null> {
+    const pid = child.pid;
+    if (!pid || pid < 2 || child.exitCode !== null || child.signalCode !== null) return null;
+    const identity: Identity | null = await loaded.group.processIdentity(system, pid);
+    if (!identity || !identity.command || (group && identity.pgid !== pid) || child.exitCode !== null || child.signalCode !== null) return null;
+    const entry = { identity, group };
+    owned.set(pid, entry);
+    child.once('exit', () => { if (owned.get(pid) === entry) owned.delete(pid); });
+    return identity;
+}
+
+export async function trackGrandchild(root: string) {
+    const pid = Number(readFileSync(join(root, 'grandchild.pid'), 'utf8'));
+    if (Number.isSafeInteger(pid) && pid > 1) {
+        const identity: Identity | null = await loaded.group.processIdentity(loaded.group.defaultSystem(), pid);
+        if (identity?.command.endsWith(` ${root}`)) owned.set(pid, { identity, group: false });
+    }
+    return pid;
+}
+
+/** Signal only a fixture whose live identity still matches the one captured at startup. */
+export async function killOwned(system: ProcessSystem = loaded.group.defaultSystem()) {
+    for (const [pid, entry] of owned) {
+        const { identity, group } = entry;
+        const current: Identity | null = await loaded.group.processIdentity(system, pid);
+        if (owned.get(pid) !== entry) continue;
+        owned.delete(pid);
+        if (!current || current.pgid !== identity.pgid || current.start !== identity.start || current.command !== identity.command) continue;
+        try { system.kill(group ? -pid : pid, 'SIGKILL'); } catch { /* gone */ }
+    }
 }
 
 export const readState = (root: string) => JSON.parse(readFileSync(join(root, 'state/launcher.json'), 'utf8'));
@@ -37,15 +68,17 @@ export function launchedWith(behavior: Behavior, options: { deadlineMs?: number;
     return { world, built, env, run: (extra: Record<string, unknown> = {}) => launch({ env, limits: FAST, ...quiet, ...options.launch, ...extra }) };
 }
 
-const ps = (args: string[]) => new Promise(done => execFile('/bin/ps', args, { env: { LC_ALL: 'C' } }, (error, stdout) => done({ ok: !error, code: 0, stdout })));
-
 /** A helper started the way the launcher starts one, from the given launcher file, waiting to be authorized, and its recorded identity. */
 export async function waitingHelper(file = LAUNCHER) {
     const id = randomUUID(), child = spawn(process.execPath, [file, '--group', id], { detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
-    owned.push(child);
-    await new Promise(done => child.once('message', done));
-    const identity = await loaded.group.processIdentity({ ps }, child.pid);
-    return { id, child, pid: child.pid!, start: identity.start as string, command: identity.command as string };
+    let ready = false;
+    child.once('message', () => { ready = true; });
+    const identity = await trackProcess(child, true);
+    if (!identity || !(await until(() => ready || child.exitCode !== null || child.signalCode !== null)) || !ready) {
+        if (child.connected) child.disconnect();
+        throw new Error('Could not identify a ready test helper');
+    }
+    return { id, child, ...identity };
 }
 
 export const registered = (helper: { id: string; pid: number; start: string }, extra: Record<string, unknown> = {}) => ({

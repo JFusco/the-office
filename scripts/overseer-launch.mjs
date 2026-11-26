@@ -383,6 +383,13 @@ async function stopOrWait(system, current, launcherFile, limits, helperLeft = as
   if (!stopped.gone && await helperLeft(limits.absenceWaitMs) && await waitAbsent(system, current, limits.absenceWaitMs, limits)) return { gone: true, observation: null };
   return stopped;
 }
+function reportedOutcome(ended, officeData) {
+  if (!ended) return { kind: "exit", outcome: null, detail: "the helper did not report the pass" };
+  if (ended.error && ended.code === null) return { kind: "startup", outcome: null, detail: bounded(ended.error) };
+  const { kind, outcome, detail } = classify(ended, officeData);
+  const diagnostic = detail ?? (kind === "success" ? null : ended.stderr.trim().split("\n").at(-1) ?? null);
+  return { kind, outcome, detail: bounded(diagnostic) || null };
+}
 async function dispatch({ state, save, system, limits, paths, pinned, deadlineMs, origin, env, launcherFile, failed, isShuttingDown, setShutdown }) {
   const id = randomUUID(), started = system.now(), startedAt = started.toISOString(), clock0 = system.monotonic();
   const deadline = new Date(started.getTime() + deadlineMs).toISOString();
@@ -414,7 +421,7 @@ async function dispatch({ state, save, system, limits, paths, pinned, deadlineMs
     fn?.();
   };
   setShutdown(() => {
-    stopReason ??= "interrupted";
+    if (!passExited && !ended) stopReason ??= "interrupted";
     notify();
   });
   helper.on("error", (error) => {
@@ -499,10 +506,17 @@ async function dispatch({ state, save, system, limits, paths, pinned, deadlineMs
     if (passExited && !ended && !stopReason) await waitFor(() => !!ended || helperExited, limits.drainMs * 2);
     const helperLeft = (ms) => waitFor(() => helperExited, ms);
     const stopped = await stopOrWait(system, current, launcherFile, limits, helperLeft);
+    const exit = ended ? { code: ended.code, signal: ended.signal } : null;
+    const { kind: verdict, outcome, detail } = stopReason ? { kind: stopReason, outcome: null, detail: stopReason === "interrupted" ? "the launcher was asked to stop" : null } : reportedOutcome(ended, paths.officeData);
     if (!stopped.gone) {
-      const verdict2 = stopReason === "hang" ? "hang" : stopReason === "interrupted" ? "interrupted" : ended ? classify(ended, paths.officeData).kind : "exit";
-      const kind = current.counted ?? (["success", "locked", "interrupted"].includes(verdict2) ? "orphan" : verdict2);
-      if (!current.counted) state = settle(state, attemptRecord(id, kind, startedAt, system.now().toISOString(), { detail: "the pass’s group could not be confirmed gone" }));
+      const kind = current.counted ?? (["success", "locked", "interrupted"].includes(verdict) ? "orphan" : verdict);
+      if (!current.counted) {
+        state = settle(state, attemptRecord(id, kind, startedAt, system.now().toISOString(), {
+          exit,
+          outcome,
+          detail: kind === "orphan" ? "the pass’s group could not be confirmed gone" : detail
+        }));
+      }
       try {
         putCurrent({ ...current, counted: kind, observation: stopped.observation });
       } catch (error) {
@@ -513,13 +527,8 @@ async function dispatch({ state, save, system, limits, paths, pinned, deadlineMs
       return 0;
     }
     if (saveError) throw saveError;
-    const exit = ended ? { code: ended.code, signal: ended.signal } : null;
-    if (stopReason === "hang") return finish("hang", { exit });
-    if (stopReason === "interrupted") return finish("interrupted", { exit, detail: "the launcher was asked to stop" });
-    if (!ended) return finish("exit", { exit, detail: "the helper ended without reporting the pass" });
-    if (ended.error && ended.code === null) return finish("startup", { exit, detail: bounded(ended.error) });
-    const verdict = classify(ended, paths.officeData);
-    return finish(verdict.kind, { exit, outcome: verdict.outcome, detail: bounded(verdict.detail ?? (verdict.kind === "success" ? null : ended.stderr.trim().split("\n").at(-1) ?? null)) || null });
+    if (verdict === "hang") return finish("hang", { exit });
+    return finish(verdict, { exit, outcome, detail });
   } finally {
     letGo();
   }
@@ -534,7 +543,7 @@ const send = (payload) => {
 };
 async function alone(system) {
   const inventory = await groupInventory(system, process.pid);
-  return inventory.ok && inventory.members.every((member) => member.pid === process.pid);
+  return inventory.ok && inventory.members.length === 1 && inventory.members[0].pid === process.pid;
 }
 async function helperMain(id, system = defaultSystem()) {
   if (!isUuid(id) || typeof process.send !== "function") process.exit(2);
@@ -568,8 +577,7 @@ async function helperMain(id, system = defaultSystem()) {
     if (terminating || cleaning) return;
     terminating = true;
     void (async () => {
-      await untilAlone(LIMITS.termGraceMs + LIMITS.absenceWaitMs);
-      if (!cleaning) process.exit(143);
+      if (await untilAlone(LIMITS.termGraceMs + LIMITS.absenceWaitMs) && !cleaning) process.exit(143);
     })();
   });
   process.on("disconnect", () => {
@@ -892,15 +900,21 @@ async function launch(options = {}) {
     const failed = (summary) => log(JSON.stringify({ at: system.now().toISOString(), ...summary }).slice(0, 2e3));
     try {
       const recovered = await recoverCurrent(state, system, launcherFile, limits);
+      const recoveredFailure = recovered.state.last !== state.last ? recovered.state.last : null;
       save(recovered.state);
+      const reason = state.current?.observation?.reason ?? "blocked";
+      if (recoveredFailure) {
+        const { kind, id, detail } = recoveredFailure;
+        failed({ kind, id, ...recovered.blocked ? { blocked: true, reason } : { detail } });
+      }
       if (recovered.blocked) {
-        failed({ blocked: true, reason: state.current?.observation?.reason ?? "blocked" });
+        if (!recoveredFailure) failed({ blocked: true, reason });
         return 0;
       }
       if (shuttingDown) return 0;
-      const at = system.now().toISOString(), refuse = (kind, reason) => {
-        save(settle(state, attemptRecord(randomUUID(), kind, at, system.now().toISOString(), { detail: bounded(reason) })));
-        failed({ kind, reason: bounded(reason) });
+      const at = system.now().toISOString(), refuse = (kind, reason2) => {
+        save(settle(state, attemptRecord(randomUUID(), kind, at, system.now().toISOString(), { detail: bounded(reason2) })));
+        failed({ kind, reason: bounded(reason2) });
         return 0;
       };
       let deadlineMs, origin;
