@@ -1,6 +1,8 @@
 ---
 topics: [releases-and-incidents]
 plans: [2026-11-26-close-the-evidence-redaction-gaps-in-627-ff6df4e7c7.md]
+issue: 'https://github.com/jfusco/the-office/issues/627'
+issues: ['https://github.com/jfusco/the-office/issues/627']
 ---
 
 # Close the evidence-redaction gaps
