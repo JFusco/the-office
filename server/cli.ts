@@ -4,7 +4,9 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { resolve } from 'node:path';
 const [cmd,...rawArgs]=process.argv.slice(2);
 // The Overseer runner's controls read and write its own files only. They are dispatched before Office configuration loads, so they work when it is broken.
-if(cmd==='overseer'){const {overseerCommand}=await import('./overseer/commands');process.exitCode=await overseerCommand(rawArgs);}
+// Pinning a release is the one Overseer verb that loads Office configuration and release verification, through its own import.
+if(cmd==='overseer'&&rawArgs[0]==='pin'){const {pinCommand}=await import('./overseer/pin-command');process.exitCode=await pinCommand(rawArgs.slice(1));}
+else if(cmd==='overseer'){const {overseerCommand}=await import('./overseer/commands');process.exitCode=await overseerCommand(rawArgs);}
 else{
 const {PORT}=await import('./office/config');
 const projectIndex=rawArgs.indexOf('--project');const project=projectIndex>=0?rawArgs[projectIndex+1]:'cec';if(!project)throw new Error('--project requires a project ID');const args=rawArgs.filter((_,i)=>i!==projectIndex&&i!==projectIndex+1||projectIndex<0);const key=args.find(arg=>!arg.startsWith('--'));
@@ -80,6 +82,6 @@ try{
       }
     }
   }
-  else {console.log('The Office · add --project cms-field-vocabulary to select CMS\n\n  pnpm office projects\n  pnpm office maintenance --project cms-field-vocabulary --scheduled --wait\n  pnpm office status\n  pnpm office baseline [--json]\n  pnpm office release build [COMMIT] | current\n  pnpm office deploy COMMIT | status | resume OPERATION | end OPERATION | pin COMMIT\n  pnpm office incident status INCIDENT | start-repair INCIDENT --issue N --revision R | bind-fix INCIDENT COMMIT|PR --revision R (--bindings FILE | --no-route REASON)\n  pnpm office overseer status | pause [--reason TEXT] | unpause | reconcile-budget RESERVATION --expected-micro-usd N --reason TEXT [--finalize]\n  pnpm office outbox\n  pnpm office audit-lessons [--project brain]\n  pnpm office time [CEC-123]\n  pnpm office chat --file message.txt [--ticket CEC-123] --wait\n  pnpm office reply ITEM_ID --file reply.txt --recheck --wait\n  pnpm office intake\n  pnpm office pilot CEC-123\n  pnpm office continue CEC-123\n  pnpm office pause | resume | azure\n\nStart the service first: pnpm start');process.exitCode=cmd?1:0;}
+  else {console.log('The Office · add --project cms-field-vocabulary to select CMS\n\n  pnpm office projects\n  pnpm office maintenance --project cms-field-vocabulary --scheduled --wait\n  pnpm office status\n  pnpm office baseline [--json]\n  pnpm office release build [COMMIT] | current\n  pnpm office deploy COMMIT | status | resume OPERATION | end OPERATION | pin COMMIT\n  pnpm office incident status INCIDENT | start-repair INCIDENT --issue N --revision R | bind-fix INCIDENT COMMIT|PR --revision R (--bindings FILE | --no-route REASON)\n  pnpm office overseer status | pause [--reason TEXT] | unpause | reconcile-budget RESERVATION --expected-micro-usd N --reason TEXT [--finalize] | pin COMMIT\n  pnpm office outbox\n  pnpm office audit-lessons [--project brain]\n  pnpm office time [CEC-123]\n  pnpm office chat --file message.txt [--ticket CEC-123] --wait\n  pnpm office reply ITEM_ID --file reply.txt --recheck --wait\n  pnpm office intake\n  pnpm office pilot CEC-123\n  pnpm office continue CEC-123\n  pnpm office pause | resume | azure\n\nStart the service first: pnpm start');process.exitCode=cmd?1:0;}
 }catch(e){console.error(`Office request failed at ${base}: ${String(e)}`);process.exitCode=1;}
 }

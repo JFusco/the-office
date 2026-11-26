@@ -11,9 +11,10 @@ running and you have enabled automatic resumes, the Office uses the route that f
 switch starts paused. The Office reports `no-route` for `retry-checkpoint` and
 `reconcile-maintenance`.
 See [Resuming after a fix](#resuming-after-a-fix).
-The repair runner exists as an observe-only pass that you start by hand. It reads the Office,
-keeps one incident in flight and journals outages in its own folder. It calls no model and
-changes nothing in the Office. See [Runner](#runner).
+The repair runner exists as an observe-only pass. You start it by hand, or its launcher, once you
+install it, starts one every two minutes. It reads the Office, keeps one incident in flight and
+journals outages in its own folder. It calls no model and changes nothing in the Office. See
+[Runner](#runner) and [Launcher](#launcher).
 The process rules are in the Office process, under
 [Deployment](office-process.md#deployment), [Incident ledger](office-process.md#incident-ledger)
 and [Overseer runner](office-process.md#overseer-runner).
@@ -923,8 +924,9 @@ The runner is the Overseer's own process, separate from the Office service, so i
 when that service is down. In this release one pass only observes. It reads the Office's health
 and its research list, keeps at most one incident in flight and records what it saw. It calls no
 model, makes no GitHub call, sends the Office nothing but two `GET`s and takes no scheduler
-claim. Nothing starts it on a schedule yet, and the incident it keeps in flight is only recorded:
-nothing is triaged, fixed or resumed because of it.
+claim. Nothing starts it on a schedule until you install its launcher (see [Launcher](#launcher)),
+and the incident it keeps in flight is only recorded: nothing is triaged, fixed or resumed because
+of it.
 
 ### Running a pass
 
@@ -994,6 +996,11 @@ All under the root, kept apart: control files, journals and state.
 | `state/budget.sqlite` | The budget ledger: every model reservation and deployment admission (see Budgets) |
 | `state/runner.sqlite`, `state/runner-data/` | The runner's private Store, for its own Effects in later phases; nothing opens it yet |
 | `control/budget.json` | Optional: a lower or higher daily ceiling (see Budgets) |
+| `code/pin.json` | The release the launcher runs passes from; only `pnpm office overseer pin` writes it |
+| `code/launcher/overseer-launch.mjs` | The installed launcher, a read-only copy (see Launcher) |
+| `state/launcher.json` | The launcher's attempt in progress, its counters and its last 20 attempts |
+| `control/launcher.lock` | The launch that holds the launcher; `launcher.lock.reclaim` exists for an instant while one takes it |
+| `logs/launcher.out.log`, `logs/launcher.err.log` | launchd's capture of the launcher's output |
 
 ### Controls
 
@@ -1001,14 +1008,17 @@ All under the root, kept apart: control files, journals and state.
 pnpm office overseer status
 pnpm office overseer pause --reason "looking at CEC-154"
 pnpm office overseer unpause
+pnpm office overseer pin COMMIT
 ```
 
 These read and write the runner's files only and never contact the Office, so they work while
-the Office or its configuration is broken. With `OVERSEER_ROOT` unset they use
+the Office or its configuration is broken. `pin` is the one exception that loads Office
+configuration, to find the Office data root its release lives in. With `OVERSEER_ROOT` unset they use
 `~/Projects/the-office-overseer`. `status` reads every file above and creates nothing: the budget
 ledger through a read-only connection, never the Store. It shows STOP and pause, the lock owner or
-a guard left behind, the runner state, the number of journaled events, the billing mode and
-today's budget standing, and names any file it cannot read. A pause keeps its first reason; pausing again
+a guard left behind, the runner state, the number of journaled events, the billing mode,
+today's budget standing, the pin, the launcher's state and who holds its lock, and names any file
+it cannot read. A pause keeps its first reason; pausing again
 changes nothing. `unpause` removes the pause and nothing else. If STOP is present the runner stays
 stopped, and the answer says so.
 
@@ -1165,3 +1175,125 @@ A pass writes STOP, keeping any STOP already there, when:
 To clear it, confirm no pass is running (`pnpm office overseer status` shows no lock), settle the
 file named in the reason, then remove `control/STOP.json` by hand. A STOP file that cannot be read
 counts as STOP, and so does a pause file that cannot be read.
+
+## Launcher
+
+The launcher is what runs passes on a schedule: a LaunchAgent that starts one pass every two
+minutes from a release you pinned, stops it at its deadline and records how it ended. A person
+installs it; nothing in the Office or the runner does. The launcher itself never contacts the
+Office, and writes only under the runner's root.
+
+### Pinning a release
+
+```bash
+pnpm office release build COMMIT
+pnpm office overseer pin COMMIT
+```
+
+`pin` takes a full 40-character SHA of a release already built under the Office data root
+(`<OFFICE_DATA_ROOT>/releases/<sha>`). It refuses, and pins nothing, unless that folder is no link,
+its manifest verifies, and `server/overseer.ts` is a file of the release's own runtime inventory.
+A refusal leaves an earlier pin as it was. The launcher checks the pin again before every pass.
+
+### Installing it
+
+```bash
+node scripts/install-overseer.mjs --print
+node scripts/install-overseer.mjs
+```
+
+Run these from the operator checkout on macOS. `--print` shows the plist and what would be done,
+and writes nothing. The installer checks everything before writing anything. It checks the root
+(as for a pass), the pin and its release folder, `OVERSEER_PASS_DEADLINE_MS` and
+`OVERSEER_OFFICE_URL`, and any plist already at
+`~/Library/LaunchAgents/com.jfusco.office-overseer.plist`. A plist there must be this
+installation's: same label, same launcher, same root.
+
+Then it asks launchd whether `gui/<uid>/com.jfusco.office-overseer` is loaded:
+
+| launchd says | The installer |
+|---|---|
+| Not loaded (`Could not find service`) | Copies the launcher (0400) and writes the plist (0600) and the log files, then bootstraps the job |
+| Loaded, with these exact files | Reports `already-installed` and writes nothing |
+| Loaded, with other or missing files | Writes nothing; run `launchctl bootout gui/<uid>/com.jfusco.office-overseer` first |
+| Anything else | Writes nothing |
+
+If the bootstrap fails, the error names where the files are; installing again repeats every check.
+
+The plist runs `node <root>/code/launcher/overseer-launch.mjs` every 120 seconds from the root.
+It sets only `OVERSEER_ROOT`, `OVERSEER_PASS_DEADLINE_MS` (240000 unless you set one from 30000 to
+900000), `PATH`, the checkout's `.local` and the Office data root (both protected from the runner
+root) and, if you set it, `OVERSEER_OFFICE_URL`. launchd never starts a second copy while one
+runs, and runs a firing missed while the Mac slept once on waking. To stop the schedule, boot the
+job out; to change anything, boot it out and install again.
+
+### The installed launcher
+
+`scripts/overseer-launch.mjs` is generated: `pnpm build:overseer-launcher` bundles the modules in
+`scripts/overseer-launcher/` into that one file of Node built-ins. Never edit it by hand. After
+changing a module, regenerate it and commit both. A unit test fails while they disagree, and a
+Vite upgrade that changes the output is regenerated in the same change. The installer copies the
+committed file byte for byte from your checkout. The pinned release never supplies the launcher:
+the launcher verifies that release and runs its pass, and loads none of its code.
+
+A checkout change does not touch the installed copy. A new launcher takes effect only when you
+boot out and install again.
+
+### One launch
+
+Each firing takes `control/launcher.lock`, settles anything an earlier launch left, then checks
+the deadline, the Office URL, the pin (the release folder, its manifest, its lockfile and its
+runtime hash) and that the release has its own `node_modules/tsx`. Only then does it start a
+helper, a process of its own group, and record the helper's PID, group and start time in
+`state/launcher.json` before the pass may run. The helper runs
+`node --import tsx server/overseer.ts pass` in the release folder. The pass gets only the root,
+`PATH`, `HOME`, `NODE_ENV=production` and, if set, the Office URL. When the pass ends, its deadline passes
+or the launcher is asked to stop, the whole group is stopped: TERM, up to 10 seconds, then KILL.
+The attempt is settled only once the group is confirmed gone.
+
+| Kind | The attempt |
+|---|---|
+| `success` | The pass printed a valid record, whatever its outcome (`service-down`, `paused` and `stopped` included) |
+| `locked` | The pass found another pass holding the runner (exit 3) |
+| `interrupted` | The launcher was asked to stop, for example by a bootout |
+| `config` | The deadline or the Office URL is invalid |
+| `pin` | The pin is missing or invalid, or its release does not verify |
+| `startup` | The helper could not start or be registered, the release has no `tsx` of its own, or the pass failed while starting (exit 2, or a failure before its bootstrap finished) |
+| `exit` | The pass failed after starting, or exited 0 without a valid record |
+| `hang` | The pass passed its deadline; counted before the first signal |
+| `lost` | An earlier launch ended without settling its pass, whose group is gone |
+| `orphan` | An earlier launch left its pass running, stopped now; or a pass that ended but whose group could not be confirmed gone |
+
+Each attempt is counted once. `consecutiveFailures` rises with every kind from `config` to
+`orphan`, returns to 0 on `success`, and is kept by `locked` and `interrupted`. The launcher exits
+0 when it recorded an outcome or another launch held the lock, 1 when its state could not be read
+or saved, and 2 when the root is unsafe or a protected Office root is not set.
+
+STOP and pause still let a pass run: it records `stopped` or `paused`, a `success` for the launcher.
+The Office's switch for automatic repair resumes is separate.
+
+### When the launcher stops
+
+`pnpm office overseer status` shows the launcher's attempt in progress (`current`): its attempt ID,
+phase, PID and group, the helper's start time, and, when it is blocked, a dated observation of the
+group's members and why. A blocked attempt stays until a person settles it; every launch until
+then starts no pass and updates only that observation. Boot the job out before you do anything by hand, and install it again
+when you are done.
+
+- **The group's leader is not this attempt's helper.** Its PID was reused, or the attempt is
+  someone else's. Leave that group alone: it is not the Overseer's. Once you have confirmed with
+  `ps -o pid,pgid,lstart,command -g <pgid>` that nothing in it is the attempt's helper, remove
+  `current` from `state/launcher.json`.
+- **The group could not be confirmed gone.** List it the same way. Stop only members you have
+  identified as this attempt's: the helper's command ends with
+  `code/launcher/overseer-launch.mjs --group <attempt ID>`, and its start time matches. When
+  `kill -0 -- -<pgid>` reports no such process, remove `current`. The attempt was already counted,
+  so nothing is counted again.
+- **An unregistered start** (`phase: starting`) means a launch stopped between saving the attempt
+  and registering its helper. Look for a helper whose command ends with `--group <attempt ID>`.
+  Keep the state file as it is until both that helper and the launcher are gone; then remove
+  `current`.
+- **`state/launcher.json` cannot be read.** No pass starts and the file is left as it is. Keep a
+  copy, then repair or move it aside; a root without it starts with empty counters.
+- **`control/launcher.lock.reclaim` is left behind.** A launch stopped while taking the lock.
+  Once no launcher process is running, remove it.
