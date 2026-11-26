@@ -16,7 +16,7 @@ What it adds:
 - **The wrapper.** It writes each run's policy exactly once and hands one wrapped command to an executor its caller supplies. No path runs the program unwrapped.
 - **The qualification contract.** It names the probe battery, how its observations are read, and which reader profile may run nested.
 
-The plan review ([plan](../plans/2026-11-26-overseer-phase-7b-fixture-only-worker-sandbox-contract-91873a31d0.md), run `f67675fd`) accepted 17 findings, five of them blockers:
+The plan review ([plan](../plans/2026-11-26-overseer-phase-7b-fixture-only-worker-sandbox-contract-91873a31d0.md), run `f67675fd`) accepted 16 of its 17 findings, five of them blockers, and rejected FIND-017 on upstream evidence that the runtime takes `javaAgentJarPath` as a top-level setting, where the plan already put it. The blockers:
 
 - **Credential and configuration probes.** The runtime's base macOS profile still allows lookups of `securityd` and `SecurityServer`, so the battery must show a Keychain item and protected configuration denied, each beside a working control.
 - **Inner receipts.** The outer battery passing says nothing about a provider's own restrictions, so each reader profile needs a receipt of its own for its exact binary and invocation.
