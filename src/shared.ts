@@ -365,7 +365,11 @@ export interface TimeEntry {
     unsentCheckedAt?: string;
 }
 /** An automated PR the harness bridged (or refused to bridge) into existing-PR delivery. */
-export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string; redos?: BotRedo[] }
+export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string;
+    /** A refused wiki-sync PR's last qualification: the digest of the row it read and when. Absent on older records, which qualify live. */
+    refusalMemo?: { key: string; checkedAt: string };
+    /** Each conflicted head of this PR and its bot-owned redo (`server/delivery/repairs/bot-redo/`). */
+    redos?: BotRedo[] }
 /** The bot-owned way one conflicted head is recovered: a wiki workflow run, a Dependabot command or Renovate's own rebase control. */
 export type BotRedoRoute = 'wiki-sync.yml' | 'wiki-issue-sync.yml' | 'dependabot-rebase' | 'renovate-checkbox' | 'renovate-requested' | 'renovate-unavailable';
 /**
@@ -439,6 +443,8 @@ export interface Coordination {
         error: string;
         assigned: AssignedIssue[];
         reviews: AssignmentReview[];
+        /** When a GitHub quota hold that deferred the poll's background reads ends. Never an error; the next full read clears it. */
+        deferredUntil?: string;
     };
 }
 export interface GitHubBoard {

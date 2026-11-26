@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {codexSessions,claudeSessions,guardianReview,loadedCodexSession,openRollouts,SessionBridge} from '../../../server/workers/session-bridge';
 import {sessionScope} from '../../../server/workers/session-scope';
+import {SessionContextDeadline} from '../../../server/workers/session-context-deadline';
 const cleanup:(()=>void)[]=[];afterEach(()=>cleanup.splice(0).forEach(f=>f()));
 /** Injected desktop inventories carry the explicit process accounting report that coverage requires. */
 const accounted=(sessions:any[]=[])=>Object.assign(sessions,{unaccounted:[] as number[]});
@@ -19,6 +20,26 @@ test('a slow inventory expires from its observation start rather than gaining fr
   await bridge.refresh();
   expect(bridge.current.observedAt).toBe(new Date(start).toISOString());
   expect(bridge.forProject(store,'GH-1')).toMatchObject({fresh:false,complete:false,ownership:{status:'unavailable'}});
+  // Full coverage still counts as the first complete read for startup; freshness at use stays forProject's to judge.
+  expect(bridge.current.complete).toBe(true);expect(bridge.firstCompleteAt).toBe(new Date(start).toISOString());
+ }finally{clock.mockRestore();}
+});
+test('the first complete read is marked once, when it is published, and later reads never move the mark',async()=>{
+ const store:any={project:{id:'brain',provider:'github',repo:'/brain',repository:'Joe/brain'},state:{workLog:[]}};
+ const at=(minute:number)=>Date.parse(`2026-11-26T04:${minute}:00Z`);let now=at(46),cold=true,hold:Promise<void>|undefined,reached:(()=>void)|undefined;
+ const clock=vi.spyOn(Date,'now').mockImplementation(()=>now);
+ try{
+  const execute:any=async(program:string)=>{if(program==='claude')return '[]';reached?.();await hold;return '/brain/.git';};
+  const bridge=new SessionBridge(()=>[store],execute,async()=>[],async()=>accounted(),async sessions=>sessions,
+   async sessions=>{if(cold)throw new SessionContextDeadline('5bf24b85-6be0-48bd-a72b-b3aead054354','fold',5002,50389828);return sessions;});
+  await bridge.refresh();expect(bridge.current.complete).toBe(false);expect(bridge.firstCompleteAt).toBe('');
+  // The first full scan is marked only when it is published, after its last repository read.
+  now=at(47);cold=false;let release!:()=>void;hold=new Promise(resolve=>{release=resolve;});const atGit=new Promise<void>(resolve=>{reached=resolve;});
+  const pending=bridge.refresh();await atGit;expect(bridge.firstCompleteAt).toBe('');expect(bridge.current.observedAt).toBe(new Date(at(46)).toISOString());
+  release();await pending;hold=undefined;reached=undefined;
+  expect(bridge.current.complete).toBe(true);expect(bridge.firstCompleteAt).toBe(new Date(at(47)).toISOString());
+  now=at(48);await bridge.refresh();expect(bridge.current).toMatchObject({complete:true,observedAt:new Date(at(48)).toISOString()});expect(bridge.firstCompleteAt).toBe(new Date(at(47)).toISOString());
+  now=at(49);cold=true;await bridge.refresh();expect(bridge.current).toMatchObject({complete:false,observedAt:new Date(at(49)).toISOString()});expect(bridge.firstCompleteAt).toBe(new Date(at(47)).toISOString());
  }finally{clock.mockRestore();}
 });
 test('retained conversation exposes an outside chat to both projects without claiming historical issues',()=>{

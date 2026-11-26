@@ -6,6 +6,7 @@ import { closesIssue, linkPR } from '../dependabot/link-pr';
 import { autoAdoptable, autoAdopts, waitsQuietly } from './auto-adopt';
 import { relinkPinCourier } from './relink-pin-courier';
 import { MISSING_NATIVE_LINK } from './resume-linked-delivery';
+import { refusalStands, type RefusalMemo } from './refusal-memo';
 import type { Execute } from '../../board/project-graphql';
 import type { PullInventory } from '../shared-pr-inventory';
 import type { Store } from '../../../store/store';
@@ -18,6 +19,8 @@ export interface DependencyBot {
     /** The bot's own open PRs, from the poll's shared inventory when one is given. */
     openPulls: (store: Store, execute: Execute, inventory?: PullInventory) => Promise<any[]>;
     refusal: (store: Store, execute: Execute, pull: any) => Promise<string>;
+    /** A bot whose refusal of an unchanged PR may be reused for a while (wiki-sync only). */
+    refusalMemo?: RefusalMemo;
 }
 type Guard = () => void;
 
@@ -26,8 +29,9 @@ type Guard = () => void;
  * the harness creates one tracking issue, links the PR with `Closes #<issue>` and puts both cards In review.
  * PR discovery then routes it to Sam's review, the guarded merge and closeout. Nothing is merged here.
  * Adoption never stops the rest of the poll: its own failures are recorded on the adoption.
+ * With `underWay` (a GitHub quota hold) only those records are adopted; no new PR is taken up.
  */
-export async function adoptDependencyBot(store: Store, execute: Execute, jobs: TicketJob[], pickup: PickupPolicy, bot: DependencyBot, inventory?: PullInventory): Promise<void> {
+export async function adoptDependencyBot(store: Store, execute: Execute, jobs: TicketJob[], pickup: PickupPolicy, bot: DependencyBot, inventory?: PullInventory, underWay?: (record: DependabotAdoption) => boolean): Promise<void> {
     if (!handsOff(store) || store.state.paused || store.state.draining)
         return;
     const all = store.state.coordination!.adoptions ??= [];
@@ -37,12 +41,13 @@ export async function adoptDependencyBot(store: Store, execute: Execute, jobs: T
     try { pulls = await bot.openPulls(store, execute, inventory); }
     catch (error) { store.emit(`${bot.id}-unavailable`, `${bot.label} PRs could not be read; adoption skipped this poll: ${String(error)}`, 'pm', ''); return; }
     withdrawStale(store, records, pulls, bot);
-    if (pickup.enabled) {
+    const taken = (p: any) => !underWay || records.some(record => record.pr === p.number && underWay(record));
+    if (pickup.enabled && (!underWay || records.some(underWay))) {
         let ready: any[] = [];
         const auto = autoAdopts(store.project, bot.id);
         try { ready = auto ? await autoAdoptable(store, execute, pulls, pickup.status, bot.autoAdoptLanes) : await inPickupLane(store, execute, pulls, pickup.status); }
         catch (error) { store.emit(`${bot.id}-unavailable`, `${bot.label} PR cards could not be read; adoption skipped this poll: ${String(error)}`, 'pm', ''); }
-        for (const p of ready)
+        for (const p of ready.filter(taken))
             await adoptOne(store, execute, records, p, pickup, guard, bot, auto, inventory);
     }
     await reverify(store, execute, records, pulls, jobs, guard, bot, inventory);
@@ -59,15 +64,22 @@ async function adoptOne(store: Store, execute: Execute, records: DependabotAdopt
     let record = records.find(r => r.pr === pr.number);
     if (record?.status === 'adopted' || holdReason(store.project, `GH-${pr.number}`))
         return;
+    // A refused PR whose row is unchanged is not qualified again until its memo expires (./refusal-memo.ts).
+    const memoKey = bot.refusalMemo?.key(store, p);
+    if (memoKey && refusalStands(record, memoKey, store.clock.now()))
+        return;
     if (auto && !record && waitsQuietly(await bot.refusal(store, execute, p)))
         return;
     if (!record)
         records.push(record = { id: crypto.randomUUID(), pr: pr.number, url: pr.url, title: pr.title, issue: 0, status: 'adopting', detail: `${bot.label} PR #${pr.number} adoption started.`, at: new Date().toISOString(), ...(bot.id !== 'dependabot' ? { bot: bot.id } : {}) });
     if (!store.state.coordination!.adoptions!.includes(record)) store.state.coordination!.adoptions!.push(record);
     try {
+        delete record.refusalMemo;
         const refused = await bot.refusal(store, execute, p);
         if (refused) {
             settle(store, record, 'refused', auto ? `${bot.label} PR #${pr.number} was not adopted automatically: ${refused}. Handle it manually.` : `${bot.label} PR #${pr.number} was not adopted: ${refused}. Move its card out of ${pickup.status} or handle it manually.`, `${bot.id}-refused`);
+            // Dated on every qualification, even when it is worded as before; a refusal for missing evidence is never kept.
+            if (memoKey && bot.refusalMemo!.reusable(refused)) record.refusalMemo = { key: memoKey, checkedAt: store.clock.now().toISOString() };
             return;
         }
         const writeGuard = headGuard(store, execute, p, bot, guard);

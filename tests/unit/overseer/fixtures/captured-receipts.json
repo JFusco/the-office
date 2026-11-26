@@ -1,0 +1,112 @@
+{
+  "note": "Captured from Office worker runs on this machine and trimmed to the fields server/telemetry/run-cost.ts reads. Identifiers are replaced; no prompt, output or conversation text is kept. Each trimmed copy prices exactly as its original did.",
+  "claude": {
+    "provenance": {
+      "source": "provider-completion.json of an Office Claude worker run",
+      "capturedAt": "2026-11-26T04:37:20.370Z",
+      "originalSha256": "d60535ec6f635d1589b9338e04940db75c641044a327135146a7bfe29b1411d2",
+      "recordedAt": "2026-11-25T01:50:11.134Z",
+      "costBasis": "Provider estimate, not billing confirmation",
+      "producerVersion": null,
+      "producerVersionNote": "provider-completion.json does not record the Claude Code version; installed at capture: 2.1.328 (Claude Code)"
+    },
+    "result": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 1.5326971999999999,
+      "num_turns": 21,
+      "duration_ms": 491415,
+      "duration_api_ms": 220253,
+      "session_id": "00000000-0000-4000-8000-00000000c1a0",
+      "usage": {
+        "input_tokens": 38,
+        "cache_creation_input_tokens": 95311,
+        "cache_read_input_tokens": 1625386,
+        "output_tokens": 22249
+      },
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 38,
+          "outputTokens": 22249,
+          "cacheReadInputTokens": 1625386,
+          "cacheCreationInputTokens": 95311,
+          "webSearchRequests": 0,
+          "costUSD": 1.5326971999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 7255,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 95311,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    "expected": {
+      "microUsd": 1532697,
+      "partialMicroUsd": null,
+      "completeness": "complete",
+      "valuation": "provider-estimate",
+      "providerBasis": "list",
+      "reportedTotalUsd": 1.5326971999999999,
+      "priceRefs": [],
+      "components": [
+        {
+          "model": "claude-opus-5-5",
+          "microUsd": 1532697,
+          "providerBasis": "list"
+        }
+      ],
+      "reasons": []
+    }
+  },
+  "codex": {
+    "provenance": {
+      "source": "Codex rollout of an Office Codex worker run (codex exec)",
+      "capturedAt": "2026-11-26T04:37:20.372Z",
+      "originalSha256": "c71b40a69c083f131223ff6f3c9cd5fed9de37bf7e7b048b3c0a0be612809fef",
+      "producerVersion": "0.171.0",
+      "lines": 61,
+      "keptLines": 16
+    },
+    "threadId": "00000000-0000-4000-8000-00000000c0de",
+    "rollout": "{\"type\":\"session_meta\",\"payload\":{\"id\":\"00000000-0000-4000-8000-00000000c0de\",\"cli_version\":\"0.171.0\",\"originator\":\"codex_exec\"}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-1\"}}\n{\"type\":\"turn_context\",\"payload\":{\"model\":\"gpt-6-astra\",\"effort\":\"high\"}}\n{\"type\":\"token_usage_record\",\"payload\":{\"response_id\":\"resp-1\",\"turn_id\":\"turn-1\",\"thread_id\":\"00000000-0000-4000-8000-00000000c0de\",\"usage\":{\"input_tokens\":36668,\"cached_input_tokens\":14080,\"cache_write_input_tokens\":0,\"output_tokens\":267,\"reasoning_output_tokens\":0,\"total_tokens\":36935},\"thread_token_usage\":{\"input_tokens\":36668,\"cached_input_tokens\":14080,\"cache_write_input_tokens\":0,\"output_tokens\":267,\"reasoning_output_tokens\":0,\"total_tokens\":36935}}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":36668,\"cached_input_tokens\":14080,\"cache_write_input_tokens\":0,\"output_tokens\":267,\"reasoning_output_tokens\":0,\"total_tokens\":36935}}}}\n{\"type\":\"token_usage_record\",\"payload\":{\"response_id\":\"resp-2\",\"turn_id\":\"turn-1\",\"thread_id\":\"00000000-0000-4000-8000-00000000c0de\",\"usage\":{\"input_tokens\":42256,\"cached_input_tokens\":36736,\"cache_write_input_tokens\":0,\"output_tokens\":348,\"reasoning_output_tokens\":44,\"total_tokens\":42604},\"thread_token_usage\":{\"input_tokens\":78924,\"cached_input_tokens\":50816,\"cache_write_input_tokens\":0,\"output_tokens\":615,\"reasoning_output_tokens\":44,\"total_tokens\":79539}}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":78924,\"cached_input_tokens\":50816,\"cache_write_input_tokens\":0,\"output_tokens\":615,\"reasoning_output_tokens\":44,\"total_tokens\":79539}}}}\n{\"type\":\"token_usage_record\",\"payload\":{\"response_id\":\"resp-3\",\"turn_id\":\"turn-1\",\"thread_id\":\"00000000-0000-4000-8000-00000000c0de\",\"usage\":{\"input_tokens\":43057,\"cached_input_tokens\":42368,\"cache_write_input_tokens\":0,\"output_tokens\":312,\"reasoning_output_tokens\":18,\"total_tokens\":43369},\"thread_token_usage\":{\"input_tokens\":121981,\"cached_input_tokens\":93184,\"cache_write_input_tokens\":0,\"output_tokens\":927,\"reasoning_output_tokens\":62,\"total_tokens\":122908}}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":121981,\"cached_input_tokens\":93184,\"cache_write_input_tokens\":0,\"output_tokens\":927,\"reasoning_output_tokens\":62,\"total_tokens\":122908}}}}\n{\"type\":\"token_usage_record\",\"payload\":{\"response_id\":\"resp-4\",\"turn_id\":\"turn-1\",\"thread_id\":\"00000000-0000-4000-8000-00000000c0de\",\"usage\":{\"input_tokens\":44959,\"cached_input_tokens\":43136,\"cache_write_input_tokens\":0,\"output_tokens\":369,\"reasoning_output_tokens\":61,\"total_tokens\":45328},\"thread_token_usage\":{\"input_tokens\":166940,\"cached_input_tokens\":136320,\"cache_write_input_tokens\":0,\"output_tokens\":1296,\"reasoning_output_tokens\":123,\"total_tokens\":168236}}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":166940,\"cached_input_tokens\":136320,\"cache_write_input_tokens\":0,\"output_tokens\":1296,\"reasoning_output_tokens\":123,\"total_tokens\":168236}}}}\n{\"type\":\"token_usage_record\",\"payload\":{\"response_id\":\"resp-5\",\"turn_id\":\"turn-1\",\"thread_id\":\"00000000-0000-4000-8000-00000000c0de\",\"usage\":{\"input_tokens\":49196,\"cached_input_tokens\":45184,\"cache_write_input_tokens\":0,\"output_tokens\":105,\"reasoning_output_tokens\":64,\"total_tokens\":49301},\"thread_token_usage\":{\"input_tokens\":216136,\"cached_input_tokens\":181504,\"cache_write_input_tokens\":0,\"output_tokens\":1401,\"reasoning_output_tokens\":187,\"total_tokens\":217537}}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":216136,\"cached_input_tokens\":181504,\"cache_write_input_tokens\":0,\"output_tokens\":1401,\"reasoning_output_tokens\":187,\"total_tokens\":217537}}}}\n{\"type\":\"token_usage_record\",\"payload\":{\"response_id\":\"resp-6\",\"turn_id\":\"turn-1\",\"thread_id\":\"00000000-0000-4000-8000-00000000c0de\",\"usage\":{\"input_tokens\":50785,\"cached_input_tokens\":49152,\"cache_write_input_tokens\":0,\"output_tokens\":1016,\"reasoning_output_tokens\":0,\"total_tokens\":51801},\"thread_token_usage\":{\"input_tokens\":266921,\"cached_input_tokens\":230656,\"cache_write_input_tokens\":0,\"output_tokens\":2417,\"reasoning_output_tokens\":187,\"total_tokens\":269338}}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":266921,\"cached_input_tokens\":230656,\"cache_write_input_tokens\":0,\"output_tokens\":2417,\"reasoning_output_tokens\":187,\"total_tokens\":269338}}}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-1\"}}\n",
+    "expected": {
+      "reportedTotalUsd": null,
+      "priceRefs": [
+        {
+          "id": "openai:gpt-6-astra:standard:short:no-write-duration:global:2026-11-07",
+          "provider": "codex",
+          "model": "gpt-6-astra",
+          "tier": "standard",
+          "contextBand": "short",
+          "cacheWriteDuration": null,
+          "region": "global",
+          "rates": {
+            "input": 10,
+            "cachedInput": 1,
+            "cacheWrite": null,
+            "output": 50
+          },
+          "sourceUrl": "https://developers.openai.com/api/docs/pricing",
+          "asOf": "2026-11-07"
+        }
+      ],
+      "components": [
+        {
+          "model": "gpt-6-astra",
+          "microUsd": 714156,
+          "providerBasis": "list"
+        }
+      ],
+      "providerBasis": "list",
+      "valuation": "price-table",
+      "microUsd": 714156,
+      "partialMicroUsd": null,
+      "completeness": "complete",
+      "reasons": []
+    }
+  }
+}
