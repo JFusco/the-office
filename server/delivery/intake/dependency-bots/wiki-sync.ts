@@ -7,6 +7,9 @@ const OWNER = { login: 'JFusco', id: 486049 }, ACTIONS = { login: 'github-action
 const branch = /^bot\/wiki-(?:sync\/[1-9]\d*|maintenance)$/;
 const identity = (actual: any, expected: typeof OWNER) => actual?.login === expected.login && actual?.id === expected.id;
 const wikiPath = (path: unknown) => typeof path === 'string' && !path.split('/').some(part => ['.', '..', ''].includes(part)) && (path === 'scripts/wiki/graph/data/graph.json' || path.startsWith('wiki/') && path.endsWith('.md'));
+/** A repository's release policy may append exactly this marker to the canonical title; nothing else is accepted. */
+const SKIP_RELEASE = ' [skip release]';
+const titled = (title: unknown, canonical: string) => title === canonical || title === canonical + SKIP_RELEASE;
 
 /** Canonical BOT_TOKEN wiki PRs: account identity plus bounded content, then ordinary exact-head review. */
 export const wikiSync: DependencyBot = {
@@ -25,10 +28,10 @@ export const wikiSync: DependencyBot = {
         if (p.state !== 'open' || p.head?.sha !== pull.head.sha || !/^[a-f0-9]{40}$/.test(p.head.sha)) return 'the wiki PR head changed or is unavailable';
         const parent = /^bot\/wiki-sync\/([1-9]\d*)$/.exec(p.head.ref)?.[1];
         if (parent) {
-            if (p.title !== `docs(wiki): reconcile PR #${parent}` || !p.body?.startsWith(`Automated, reviewable wiki reconciliation for merged PR #${parent}.`)) return 'the wiki PR does not match its source merge';
+            if (!titled(p.title, `docs(wiki): reconcile PR #${parent}`) || !p.body?.startsWith(`Automated, reviewable wiki reconciliation for merged PR #${parent}.`)) return 'the wiki PR does not match its source merge';
             const source = await readRepo(store, execute, `pulls/${parent}`);
             if (!source.merged || !source.merged_at || source.base?.ref !== store.project.target || typeof source.head?.ref !== 'string' || source.head.ref.startsWith('bot/wiki-')) return 'the source PR is not an eligible merged parent';
-        } else if (!['docs(wiki): reconcile missed merges', 'docs(wiki): weekly issue and merge reconciliation'].includes(p.title) || !/^Automated, reviewable (?:batch wiki reconciliation\.|weekly refresh of cited issue state and missed merge reconciliation\.)/.test(p.body || '')) return 'it is not a canonical wiki maintenance PR';
+        } else if (!['docs(wiki): reconcile missed merges', 'docs(wiki): weekly issue and merge reconciliation'].some(canonical => titled(p.title, canonical)) || !/^Automated, reviewable (?:batch wiki reconciliation\.|weekly refresh of cited issue state and missed merge reconciliation\.)/.test(p.body || '')) return 'it is not a canonical wiki maintenance PR';
         const commits = await readRepo(store, execute, `pulls/${p.number}/commits?per_page=100`, true);
         if (!commits.length || commits.length !== p.commits || commits.at(-1)?.sha !== p.head.sha || commits.some((commit: any) => !identity(commit.author, ACTIONS) || !identity(commit.committer, ACTIONS))) return 'wiki commits are not exclusively Actions-authored on the current head';
         const files = await readRepo(store, execute, `pulls/${p.number}/files?per_page=100`, true);

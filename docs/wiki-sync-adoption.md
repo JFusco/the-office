@@ -10,6 +10,9 @@ Qualification requires the installed BOT_TOKEN account (JFusco, numeric ID
 486049), same-repository head and configured target, canonical title/body,
 complete Actions-authored/committed history (numeric ID 41898282), and complete
 changes limited to `wiki/**/*.md` and `scripts/wiki/graph/data/graph.json`.
+A numbered, missed-merges or weekly title may end with exactly one
+` [skip release]` (a repository whose release policy marks wiki PRs). No other
+suffix or prefix qualifies.
 Renames must stay within that scope. A numbered reconciliation must refer to a
 merged, non-wiki parent on the configured target. The workflow uses unsigned
 local Actions commits, so GitHub signature verification is not its provenance
