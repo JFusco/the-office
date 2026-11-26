@@ -1,6 +1,8 @@
 ---
 topics: [office-ui-and-telemetry]
 plans: [2026-11-26-issue-533-delivery-2-batched-github-pr-observation-revision-d-94a83733cb.md]
+issue: 'https://github.com/jfusco/the-office/issues/657'
+issues: ['https://github.com/jfusco/the-office/issues/657']
 ---
 
 # Read open pull requests in one GraphQL inventory per project

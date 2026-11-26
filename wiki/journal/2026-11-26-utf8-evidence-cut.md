@@ -1,6 +1,8 @@
 ---
 topics: [office-ui-and-telemetry]
 plans: [2026-11-26-issue-673-clip-bounded-evidence-at-a-complete-utf-8-character-795cc2f567.md]
+issue: 'https://github.com/jfusco/the-office/issues/673'
+issues: ['https://github.com/jfusco/the-office/issues/673']
 ---
 
 # Cut bounded evidence at a complete UTF-8 character
