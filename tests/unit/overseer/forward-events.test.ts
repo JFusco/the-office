@@ -186,3 +186,19 @@ test('no event is examined once the phase has no time left, whatever the writer 
     const summary = await forwardFailures({ entries: [{ event: failure('service-down') }], origin: ORIGIN, state: runner.state, effects: runner.effects, writer: officeWriter(ORIGIN, world.request), limit: 20, remaining: () => 0 });
     expect([summary.examined, world.requests]).toEqual([0, []]);
 });
+
+test('a send left only a sliver after its preflight is refused unclaimed, never claimed and then stranded', async () => {
+    let remaining = 1000;
+    const down = failure('service-down'), runner = store();
+    // About 1.5 ms remain when health answers, 0.5 ms when the POST would start.
+    const world = officeWorld({ before: (method, path) => { if (path === '/api/health') remaining = 1.5; if (method === 'POST') remaining = 0.5; } });
+    const first = await forwardFailures({
+        entries: [{ event: down }], origin: ORIGIN, state: runner.state, effects: runner.effects,
+        writer: officeWriter(ORIGIN, world.request, undefined, () => remaining), limit: 1, remaining: () => remaining,
+    });
+    expect(first).toMatchObject({ pending: 1, uncertain: [] });
+    expect(world.posts()).toEqual([]);
+    expect(runner.effects.readIntent(forwardIntent(down.id, 1))).toMatchObject({ status: 'rejected', dispatchedAt: '' });
+    expect(await forward(world, runner, [down])).toMatchObject({ forwarded: 1 });
+    expect(world.posts()).toHaveLength(1);
+});

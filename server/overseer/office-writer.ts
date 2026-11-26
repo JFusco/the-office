@@ -31,6 +31,8 @@ export interface OfficeWriter {
 }
 
 const ANSWER_LIMIT = 64 * 1024;
+/** The least time a send may start with, well inside the pass's 6 s finalization reserve. */
+export const SEND_WINDOW_MS = 1_000;
 const RESET = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET']);
 const codeOf = (error: unknown) => String((error as { cause?: { code?: unknown } })?.cause?.code ?? (error as { code?: unknown })?.code ?? '');
 const bounded = (text: string) => sanitize(text).slice(0, 500);
@@ -72,7 +74,8 @@ export function officeWriter(base: string, request: typeof fetch = fetch, limits
         return parsed.data;
     };
     return {
-        canStartRequest: () => requestTimeout() > 0,
+        // A send needs a real window, not a sliver: a claim made with a millisecond left would be read back forever, never sent.
+        canStartRequest: () => requestTimeout() >= SEND_WINDOW_MS,
         health: () => officeReader(base, request, limits, remaining).health(),
         readFailure: id => failure('GET', `/api/incidents/runner/failures/${encodeURIComponent(id)}`, id, { present: 200, absent: 404, occupied: 409 }),
         sendFailure: event => failure('POST', '/api/incidents/runner/failures', event.id, { recorded: 200, replayed: 200, occupied: 409 }, JSON.stringify(event)),
