@@ -102,3 +102,16 @@ test('persisted identities outside 2..2147483647, or a PID that is not its group
     expect(calls).toEqual([]);
     expect(listed).toBe(0);
 });
+
+test.skipIf(process.platform !== 'darwin')('the real ps runs outside the group it lists, so a helper never finds its own ps there', async () => {
+    const system = group.defaultSystem();
+    const self = await system.ps(['-o', 'pgid=', '-p', String(process.pid)]);
+    const pgid = Number(self.stdout.trim());
+    expect(pgid).toBeGreaterThan(1);
+    const listing = await system.ps(['-o', 'pid=', '-g', String(pgid)]);
+    expect(listing.ok).toBe(true);
+    const members = listing.stdout.split('\n').filter(Boolean).map(Number);
+    expect(members).toContain(process.pid);
+    expect(members).not.toContain(listing.pid);
+    expect(await system.ps(['-o', 'pid=', '-p', '999999999'])).toMatchObject({ ok: true, stdout: '' });
+});

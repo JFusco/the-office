@@ -123,6 +123,12 @@ test('a release without a tsx of its own does not start, even with one in a fold
     expect(await launch({ env: launchEnv(world), limits: FAST, ...quiet })).toBe(0);
     expect(readState(world.root)).toMatchObject({ counts: { startup: 2 }, current: null, last: { kind: 'startup', detail: expect.stringContaining('outside the release') } });
     expect(snapshot(world.root)).not.toHaveProperty('/evidence.json');
+    // Nor is a node_modules/tsx that is no package folder: Node would pass over it to the one above.
+    rmSync(join(built.directory, 'node_modules', 'tsx'));
+    writeFileSync(join(built.directory, 'node_modules', 'tsx'), 'not a package');
+    expect(await launch({ env: launchEnv(world), limits: FAST, ...quiet })).toBe(0);
+    expect(readState(world.root)).toMatchObject({ counts: { startup: 3 }, current: null, last: { kind: 'startup', detail: expect.stringContaining('not a package folder') } });
+    expect(snapshot(world.root)).not.toHaveProperty('/evidence.json');
 });
 
 test('a bad deadline or Office URL is counted as configuration and starts nothing; an unsafe root writes nothing', async () => {

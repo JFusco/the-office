@@ -52,11 +52,20 @@ export function readLauncherState(paths: RunnerPaths): { state: LauncherState } 
     catch { return { unreadable: 'not valid launcher state' }; }
 }
 
-const Owner = z.object({ id: uuid, pid: z.number().int().positive(), start: z.string().max(40), at: iso }).strict();
+const Owner = z.object({ id: uuid, pid: z.number().int().positive(), start: z.string().min(1).max(40), at: iso }).strict();
+
+/** Whether the reclaim guard is there: only ENOENT proves it is not. */
+function guardStanding(path: string): boolean | { unreadable: string } {
+    try { lstatSync(path); return true; }
+    catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        return code === 'ENOENT' ? false : { unreadable: `cannot tell whether ${path} exists (${code ?? 'unknown error'})` };
+    }
+}
 
 /** Who holds the launcher lock, and whether its reclaim guard is left behind. */
 export function readLauncherLock(paths: RunnerPaths) {
-    const guardLeft = (() => { try { lstatSync(paths.launcherGuard); return true; } catch { return false; } })();
+    const guardLeft = guardStanding(paths.launcherGuard);
     let owner: { owner: z.infer<typeof Owner> } | { absent: true } | { unreadable: string };
     try {
         if (!checkOwnedFile(paths.launcherLock)) owner = { absent: true };

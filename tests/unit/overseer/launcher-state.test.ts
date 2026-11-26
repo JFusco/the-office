@@ -73,6 +73,10 @@ test('both readers refuse the same malformed files, and status names the unreada
         '21 recent entries': { ...good['newest 20 of 21'], recent: [...good['newest 20 of 21'].recent, good['newest 20 of 21'].recent[0]] },
         'a negative count': { ...good.empty, consecutiveFailures: -1 },
         'version 2': { ...good.empty, version: 2 },
+        'an identifier in an array': { ...good.registered, current: { ...good.registered.current, id: [ID(2)] } },
+        'a commit in an array': { ...good.registered, current: { ...good.registered.current, commit: ['a'.repeat(40)] } },
+        'a date that does not exist': { ...good['every settled kind'], last: { ...good['every settled kind'].last, startedAt: '2026-02-30T08:00:00.000Z' } },
+        'hour 24': { ...good.registered, current: { ...good.registered.current, deadline: '2026-11-26T24:00:00.000Z' } },
     };
     for (const [name, state] of Object.entries(malformed)) {
         expect(contract.validState(state), name).toBe(false);
@@ -89,4 +93,37 @@ test('both readers refuse the same malformed files, and status names the unreada
         expect(() => contract.saveState(paths, state), name).toThrow('Refusing to save invalid launcher state');
     }
     expect(readLauncherState(runnerPaths(join(tempDir(), 'runner')))).toEqual({ absent: true });
+});
+
+test('the launcher’s scalar checks are zod’s: ISO times and identifiers agree on every edge', async () => {
+    const { z } = await import('zod');
+    const fields = await launcherSource('field-checks');
+    const times = ['2026-11-26T09:00:00.000Z', '2026-11-26T09:00:00Z', '2026-11-26T09:00:00.1234567890Z', '2028-02-29T00:00:00Z', '2026-11-26T09:00Z', '2026-02-29T00:00:00Z',
+        '2026-02-30T09:00:00.000Z', '2026-04-31T00:00:00Z', '2026-11-26T24:00:00Z', '2026-11-26T09:60:00Z', '2026-11-26T09:00:60Z', '2026-11-26T09:00:00+01:00', '2026-11-26 09:00:00Z', ['2026-11-26T09:00:00Z'], 20261126, null];
+    for (const value of times) expect(fields.isIso(value), JSON.stringify(value)).toBe(z.iso.datetime().safeParse(value).success);
+    const passIds = ['7b0c6a43-62f8-4a49-9f11-8d1b2f6ad0c4', '7B0C6A43-62F8-4A49-9F11-8D1B2F6AD0C4', '00000000-0000-0000-0000-000000000000', 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+        '7b0c6a43-62f8-0a49-9f11-8d1b2f6ad0c4', '7b0c6a43-62f8-4a49-cf11-8d1b2f6ad0c4', '7b0c6a4362f84a499f118d1b2f6ad0c4', ['7b0c6a43-62f8-4a49-9f11-8d1b2f6ad0c4']];
+    for (const value of passIds) expect(fields.isRfcUuid(value), JSON.stringify(value)).toBe(z.uuid().safeParse(value).success);
+    for (const value of [['a'.repeat(40)], 'a'.repeat(40)]) expect(fields.isSha(value), JSON.stringify(value)).toBe(typeof value === 'string');
+    for (const value of [[ID(1)], ID(1), ID(1).toUpperCase()]) expect(fields.isUuid(value), JSON.stringify(value)).toBe(value === ID(1));
+});
+
+test('status tells a guard that is absent, present, or cannot be looked at, and an owner without a start time is unreadable; it writes nothing', async () => {
+    const { chmodSync, mkdirSync: makeDirectory } = await import('node:fs');
+    const { readLauncherLock } = await import('../../../server/overseer/launcher-state');
+    const root = join(tempDir(), 'runner'), paths = runnerPaths(root);
+    makeDirectory(paths.control, { recursive: true, mode: 0o700 });
+    expect(readLauncherLock(paths)).toEqual({ absent: true, guardLeft: false });
+    writeFileSync(paths.launcherGuard, '');
+    expect(readLauncherLock(paths).guardLeft).toBe(true);
+    writeFileSync(paths.launcherLock, JSON.stringify({ id: ID(1), pid: 4242, start: '', at: AT }));
+    expect(readLauncherLock(paths)).toMatchObject({ unreadable: 'not a launcher owner record' });
+    const before = snapshot(root);
+    chmodSync(paths.control, 0o000);
+    try {
+        const read = readLauncherLock(paths);
+        expect(read.guardLeft).toEqual({ unreadable: expect.stringContaining('cannot tell whether') });
+        expect(read).toHaveProperty('unreadable');
+    } finally { chmodSync(paths.control, 0o700); }
+    expect(snapshot(root)).toEqual(before);
 });

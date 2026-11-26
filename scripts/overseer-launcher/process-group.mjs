@@ -1,18 +1,38 @@
 // Ownership of a pass's process group: probing it, listing its members, telling whether its
 // leader is this attempt's helper, and stopping it within bounds. Nothing is signalled that
 // cannot be identified; only ESRCH proves a group gone.
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { bounded, errorCode, MAX_PID, validPgid } from './field-checks.mjs';
 import { LIMITS } from './limits.mjs';
+
+/**
+ * `/bin/ps` under LC_ALL=C, bounded in time and output. It runs in a session of its own (spawn
+ * forwards `detached`; execFile does not), so a helper listing its group never finds its own ps
+ * there, nor does anyone else. Exit 1 with no output is an empty listing.
+ */
+function listPs(args) {
+    return new Promise(done => {
+        let child;
+        try { child = spawn('/bin/ps', args, { env: { LC_ALL: 'C', PATH: '/usr/bin:/bin' }, detached: true, stdio: ['ignore', 'pipe', 'ignore'] }); }
+        catch { done({ ok: false, code: null, stdout: '', pid: null }); return; }
+        let stdout = '', bytes = 0, over = false, settled = false;
+        const finish = result => { if (settled) return; settled = true; clearTimeout(timer); done({ pid: child.pid ?? null, ...result }); };
+        const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } finish({ ok: false, code: null, stdout: '' }); }, LIMITS.psTimeoutMs);
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', chunk => {
+            bytes += Buffer.byteLength(chunk);
+            if (bytes > LIMITS.psMaxBytes) { over = true; try { child.kill('SIGKILL'); } catch { /* gone */ } }
+            else stdout += chunk;
+        });
+        child.on('error', () => finish({ ok: false, code: null, stdout: '' }));
+        child.on('close', code => finish(over ? { ok: false, code, stdout: '' } : { ok: code === 0 || (code === 1 && !stdout.trim()), code, stdout }));
+    });
+}
 
 /** The real system: signals, `ps`, sleeping and the clocks. Tests replace parts of it. */
 export const defaultSystem = () => ({
     kill: (pid, signal) => process.kill(pid, signal),
-    // ps runs in a session of its own, so a helper listing its group never finds its own ps there, nor does anyone else.
-    ps: args => new Promise(done => {
-        const child = execFile('/bin/ps', args, { env: { LC_ALL: 'C', PATH: '/usr/bin:/bin' }, timeout: LIMITS.psTimeoutMs, maxBuffer: LIMITS.psMaxBytes, encoding: 'utf8', detached: true },
-            (error, stdout) => done({ ok: !error || (error.code === 1 && !stdout.trim()), code: error ? (typeof error.code === 'number' ? error.code : null) : 0, stdout: stdout ?? '', pid: child.pid }));
-    }),
+    ps: listPs,
     sleep: ms => new Promise(done => setTimeout(done, ms)),
     now: () => new Date(),
     monotonic: () => performance.now(),

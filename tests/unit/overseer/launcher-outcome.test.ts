@@ -22,12 +22,15 @@ test('exit 0 is a success only with a valid record naming the runner’s own Off
         'no output': '', 'cut short': printed({ ...record(), officeDataRoot: OFFICE }).slice(0, -20), 'another data root': printed({ ...record(), officeDataRoot: '/elsewhere' }),
         'an unknown outcome': printed({ ...record({ outcome: 'done' }), officeDataRoot: OFFICE }), 'an unknown key': printed({ ...record({ extra: 1 }), officeDataRoot: OFFICE }),
         'a record before other output': `${JSON.stringify({ ...record(), officeDataRoot: OFFICE })}\ntrailing\n`,
+        'an identifier in an array': printed({ ...record({ pass: ['7b0c6a43-62f8-4a49-9f11-8d1b2f6ad0c4'] }), officeDataRoot: OFFICE }),
+        'a date that does not exist': printed({ ...record({ startedAt: '2026-02-30T09:00:00.000Z' }), officeDataRoot: OFFICE }),
     };
     for (const [name, stdout] of Object.entries(invalid)) expect(outcome.classify(ended(0, { stdout }), OFFICE), name).toMatchObject({ kind: 'exit', detail: 'exit 0 without a valid pass record' });
 });
 
 test('the pass record the launcher accepts is the runner’s own PassRecord', () => {
-    const cases = [record(), record({ outcome: 'observing', selected: { incident: 'inc-1', revision: 0, state: 'triaged', kept: false } }), record({ extra: 1 }), record({ outcome: 'done' }), record({ detail: 'x'.repeat(501) }), record({ startedAt: 'today' }), record({ selected: { incident: 'inc-1' } })];
+    const cases = [record(), record({ outcome: 'observing', selected: { incident: 'inc-1', revision: 0, state: 'triaged', kept: false } }), record({ extra: 1 }), record({ outcome: 'done' }), record({ detail: 'x'.repeat(501) }), record({ startedAt: 'today' }), record({ selected: { incident: 'inc-1' } }),
+        record({ pass: ['7b0c6a43-62f8-4a49-9f11-8d1b2f6ad0c4'] }), record({ pass: '7b0c6a43-62f8-0a49-9f11-8d1b2f6ad0c4' }), record({ endedAt: '2026-02-30T09:00:01.000Z' }), record({ cachedHealthAt: '2026-11-26T24:00:00Z' })];
     for (const value of cases) expect(outcome.validPassRecord({ ...value, officeDataRoot: OFFICE }, OFFICE), JSON.stringify(value)).toBe(PassRecord.safeParse(value).success);
 });
 

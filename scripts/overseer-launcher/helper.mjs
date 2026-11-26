@@ -2,7 +2,7 @@
 // private channel, runs the pass, relays its phase markers and exit, and stays the leader until
 // it is alone in the group, so whoever stops the group can still tell it is this attempt's.
 import { spawn } from 'node:child_process';
-import { isObject, message, UUID } from './field-checks.mjs';
+import { isObject, isUuid, message } from './field-checks.mjs';
 import { LIMITS } from './limits.mjs';
 import { defaultSystem, groupInventory } from './process-group.mjs';
 
@@ -21,29 +21,37 @@ async function alone(system) {
 }
 
 export async function helperMain(id, system = defaultSystem()) {
-    if (!UUID.test(id) || typeof process.send !== 'function') process.exit(2);
-    let authorized = false, cleaning = false;
+    if (!isUuid(id) || typeof process.send !== 'function') process.exit(2);
+    let authorized = false, terminating = false, cleaning = false;
+    /** Waits up to `ms` for this helper to be alone in its group. */
+    const untilAlone = async ms => {
+        const until = system.monotonic() + ms;
+        while (system.monotonic() < until) {
+            if (await alone(system)) return true;
+            await system.sleep(LIMITS.pollMs);
+        }
+        return alone(system);
+    };
     const leaveWhenAlone = async () => {
         while (!(await alone(system))) await system.sleep(LIMITS.pollMs);
         process.exit(0);
     };
     // The launcher is gone: stop this group within bounds, staying its leader until the rest is gone.
+    // This one sequence also takes over a TERM already being waited out, since no one else will send the KILL.
     const cleanUp = async () => {
         if (cleaning) return;
         cleaning = true;
         try { process.kill(-process.pid, 'SIGTERM'); } catch { /* already gone */ }
-        const until = system.monotonic() + LIMITS.termGraceMs;
-        while (system.monotonic() < until && !(await alone(system))) await system.sleep(LIMITS.pollMs);
-        if (!(await alone(system))) try { process.kill(-process.pid, 'SIGKILL'); } catch { /* already gone */ }
+        if (!(await untilAlone(LIMITS.termGraceMs))) try { process.kill(-process.pid, 'SIGKILL'); } catch { /* already gone */ }
         process.exit(0);
     };
+    // The launcher is stopping this group: stay its leader while the rest leaves, so the launcher can still name it for KILL.
     process.on('SIGTERM', () => {
-        if (cleaning) return;
-        cleaning = true;
+        if (terminating || cleaning) return;
+        terminating = true;
         void (async () => {
-            const until = system.monotonic() + LIMITS.termGraceMs + LIMITS.absenceWaitMs;
-            while (system.monotonic() < until && !(await alone(system))) await system.sleep(LIMITS.pollMs);
-            process.exit(143);
+            await untilAlone(LIMITS.termGraceMs + LIMITS.absenceWaitMs);
+            if (!cleaning) process.exit(143);
         })();
     });
     process.on('disconnect', () => { if (!authorized) process.exit(0); else void cleanUp(); });
@@ -68,6 +76,8 @@ export async function helperMain(id, system = defaultSystem()) {
         });
         child.on('error', error => report({ code: null, signal: null, error: message(error) }));
         child.on('exit', (code, signal) => {
+            // The exit itself is reported at once, so time spent draining never counts against the deadline.
+            send({ type: 'exited' });
             // Drain what the pipes still hold, bounded: a descendant may keep them open.
             const closed = Promise.all([child.stdout, child.stderr].map(stream => new Promise(done => stream.once('close', done))));
             void Promise.race([closed, system.sleep(LIMITS.drainMs)]).then(() => report({ code, signal }));

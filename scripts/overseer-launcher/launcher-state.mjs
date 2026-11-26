@@ -2,7 +2,7 @@
 // Its contract, reading, saving and the settlement of each attempt into counts and history.
 import { isAbsolute } from 'node:path';
 import { publishDurable, readOwned } from './durable-files.mjs';
-import { boundedString, exactKeys, isCount, isIso, SHA, UUID, validPgid } from './field-checks.mjs';
+import { boundedString, exactKeys, isCount, isIso, isSha, isUuid, validPgid } from './field-checks.mjs';
 import { LIMITS } from './limits.mjs';
 
 export const KINDS = Object.freeze(['success', 'locked', 'interrupted', 'config', 'pin', 'startup', 'exit', 'hang', 'lost', 'orphan']);
@@ -19,7 +19,7 @@ function validObservation(observation) {
 function validCurrent(current) {
     if (current === null) return true;
     if (!exactKeys(current, ['id', 'commit', 'entry', 'startedAt', 'deadline', 'phase', 'pid', 'pgid', 'start', 'counted', 'observation'])) return false;
-    if (!UUID.test(current.id) || !SHA.test(current.commit) || !boundedString(current.entry, 4096, 1) || !isAbsolute(current.entry) || !isIso(current.startedAt) || !isIso(current.deadline)) return false;
+    if (!isUuid(current.id) || !isSha(current.commit) || !boundedString(current.entry, 4096, 1) || !isAbsolute(current.entry) || !isIso(current.startedAt) || !isIso(current.deadline)) return false;
     if (current.counted !== null && !KINDS.includes(current.counted)) return false;
     if (!validObservation(current.observation)) return false;
     if (current.phase === 'starting') return current.pid === null && current.pgid === null && current.start === null;
@@ -27,7 +27,7 @@ function validCurrent(current) {
 }
 
 function validRecord(record) {
-    return exactKeys(record, ['id', 'kind', 'startedAt', 'durationMs', 'exit', 'outcome', 'detail']) && UUID.test(record.id) && KINDS.includes(record.kind) && isIso(record.startedAt)
+    return exactKeys(record, ['id', 'kind', 'startedAt', 'durationMs', 'exit', 'outcome', 'detail']) && isUuid(record.id) && KINDS.includes(record.kind) && isIso(record.startedAt)
         && (record.durationMs === null || isCount(record.durationMs))
         && (record.exit === null || (exactKeys(record.exit, ['code', 'signal']) && (record.exit.code === null || Number.isSafeInteger(record.exit.code)) && (record.exit.signal === null || boundedString(record.exit.signal, 20, 1))))
         && (record.outcome === null || boundedString(record.outcome, 40)) && (record.detail === null || boundedString(record.detail, 500));

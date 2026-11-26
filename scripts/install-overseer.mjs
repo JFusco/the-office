@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { officeOrigin, passDeadline } from './overseer-launcher/configuration.mjs';
 import { assertDirectoryOrAbsent, checkOwnedFile, ensurePrivateDirectory, publishDurable, readOwned } from './overseer-launcher/durable-files.mjs';
@@ -46,17 +46,22 @@ export function renderPlist({ execPath, paths, environment }) {
 const defaultRun = (command, args) => new Promise(done => execFile(command, args, { timeout: 30_000, encoding: 'utf8', maxBuffer: 1024 * 1024 },
     (error, stdout, stderr) => done({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: stdout ?? '', stderr: stderr ?? '' })));
 
-/** An existing plist under the label must be this installation's: same label, the two-argument launcher layout, this root. */
+/**
+ * An existing plist under the label must be this installation's: a single-link file at its own
+ * physical path, the same label, no `Program` override, Node and this launcher as its two
+ * arguments, and this root.
+ */
 async function existingPlist(run, plistPath, paths) {
-    let stat;
-    try { stat = lstatSync(plistPath); } catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`${plistPath} is not a regular file; refusing to replace it`);
+    let owned;
+    try { owned = checkOwnedFile(plistPath); } catch (error) { throw new Error(`${plistPath} is not a plain file of its own (${error instanceof Error ? error.message : String(error)}); refusing to replace it`); }
+    if (!owned) return null;
     const parsed = await run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', plistPath]);
     let plist;
     try { plist = parsed.code === 0 ? JSON.parse(parsed.stdout) : null; } catch { plist = null; }
     if (!plist) throw new Error(`${plistPath} cannot be read; refusing to replace it`);
     const args = plist.ProgramArguments;
-    if (plist.Label !== LABEL || !Array.isArray(args) || args.length !== 2 || args[1] !== paths.launcherCopy || plist.WorkingDirectory !== paths.root || plist.EnvironmentVariables?.OVERSEER_ROOT !== paths.root)
+    const node = Array.isArray(args) && typeof args[0] === 'string' && isAbsolute(args[0]) && basename(args[0]) === 'node';
+    if (plist.Label !== LABEL || plist.Program !== undefined || !node || args.length !== 2 || args[1] !== paths.launcherCopy || plist.WorkingDirectory !== paths.root || plist.EnvironmentVariables?.OVERSEER_ROOT !== paths.root)
         throw new Error(`${plistPath} belongs to another installation; refusing to replace it`);
     return readFileSync(plistPath, 'utf8');
 }
@@ -87,6 +92,8 @@ export async function installOverseer(options = {}) {
     for (const directory of [paths.code, paths.launcherDir, paths.logs]) assertDirectoryOrAbsent(directory);
     for (const file of [paths.launcherCopy, paths.stdoutLog, paths.stderrLog]) checkOwnedFile(file);
     const plistDir = resolve(home, 'Library/LaunchAgents'), plistPath = resolve(plistDir, `${LABEL}.plist`);
+    assertDirectoryOrAbsent(plistDir);
+    if (physicalPath(plistDir) !== plistDir) throw new Error(`${plistDir} goes through a link (${physicalPath(plistDir)}); refusing to write there`);
     const environment = {
         OVERSEER_ROOT: root, OVERSEER_PASS_DEADLINE_MS: String(deadline), PATH: env.PATH || '/usr/bin:/bin',
         OVERSEER_CHECKOUT_DATA_ROOT: checkoutData, OFFICE_DATA_ROOT: officeData, ...(origin ? { OVERSEER_OFFICE_URL: origin } : {}),
@@ -94,7 +101,8 @@ export async function installOverseer(options = {}) {
     const plist = renderPlist({ execPath, paths, environment }), launcherBytes = readFileSync(launcherSource);
     const existing = await existingPlist(run, plistPath, paths);
     const service = await run('/bin/launchctl', ['print', `gui/${uid}/${LABEL}`]);
-    const missing = service.code !== 0 && /could not find service/i.test(`${service.stderr}\n${service.stdout}`);
+    // Only launchd's own answer for this job in this domain proves it is not loaded.
+    const missing = service.code === 113 && `${service.stderr}\n${service.stdout}`.includes(`Could not find service "${LABEL}" in domain for user gui: ${uid}`);
     if (service.code !== 0 && !missing) throw new Error(`launchctl print could not tell whether ${LABEL} is loaded (exit ${service.code}); nothing was written`);
     if (service.code === 0) {
         const copy = (() => { try { return readOwned(paths.launcherCopy, 4 * 1024 * 1024); } catch { return null; } })();

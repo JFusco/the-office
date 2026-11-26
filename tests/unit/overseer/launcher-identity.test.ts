@@ -35,6 +35,16 @@ test('run from source, the launcher starts helpers from the bundle beside its fo
     expect(readState(outside)).toMatchObject({ counts: { pin: 1 }, current: null });
 });
 
+test('run directly from source, the launcher protects its own checkout’s .local and writes nothing there', async () => {
+    const checkout = join(tempDir(), 'checkout'), sources = join(checkout, 'scripts', 'overseer-launcher');
+    cpSync(LAUNCHER_SOURCES, sources, { recursive: true });
+    mkdirSync(join(checkout, '.local'));
+    const before = snapshot(checkout);
+    const child = spawn(process.execPath, [join(sources, 'launch.mjs')], { env: { PATH: process.env.PATH, HOME: checkout, OVERSEER_ROOT: join(checkout, '.local', 'runner') }, stdio: 'ignore' });
+    expect(await new Promise(done => child.once('exit', done))).toBe(2);
+    expect(snapshot(checkout)).toEqual(before);
+}, 30_000);
+
 describe.skipIf(process.platform !== 'darwin')('helper identity with real processes', () => {
     test('the installed copy, missing either protected Office root, refuses and writes nothing', async () => {
         const world = layout(), copy = bundleAt(join(world.root, 'code', 'launcher', 'overseer-launch.mjs'));

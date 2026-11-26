@@ -32,4 +32,22 @@ The plan review (`e0d61cef`) accepted nine findings and six further gaps. The ce
 
 During implementation, real-process tests found two races. The launcher is the helper's parent, so `ps` can list a helper that has just exited, not yet reaped, as `(node)`, a leader it cannot name. The launcher now waits for the helper's reaped exit before treating such a leader as a stranger. The helper's own `ps` also showed up in its group; `ps` now runs detached.
 
+The first implementation review (`ec1b1997`) raised 18 findings. It stopped for a decision only because regenerating the bundle was not among its commands; Joe's coordinator approved that step. All 18 were repaired, each with a test that fails without its fix:
+
+- a failed save during dispatch still stops the group and lets the launcher exit;
+- nothing is authorized once a stop is asked for or the deadline, which counts startup, has passed;
+- a pass that exits before its deadline is not a hang, and a latched hang keeps its own record;
+- a helper whose launcher dies during a TERM wait escalates itself;
+- `ps` runs in a session of its own (`execFile` silently drops `detached`);
+- run directly from source, the launcher protects its own checkout;
+- the release's `tsx` must be a package folder;
+- the installer checks the plist's folder, executable and launchd's exact absence answer;
+- identifiers must be strings, and times real calendar dates, as zod requires;
+- the lock records an observed start time;
+- status tells an absent guard from one it cannot see;
+- publication faults are tested;
+- the recovery guide never clears an attempt while its group may run.
+
+A fresh full review of the repaired head followed, with the byte comparison first among its checks and regeneration declared.
+
 [Issue #647](https://github.com/JFusco/the-office/issues/647) · [Overseer, Launcher](../../docs/overseer.md)

@@ -134,6 +134,27 @@ describe.skipIf(process.platform !== 'darwin')('the launcher with real processes
         expect(readState(world.root)).toMatchObject({ current: null, counts: { interrupted: 1, hang: 0 }, consecutiveFailures: 0 });
     }, 60_000);
 
+    test('a launcher that dies while its stop waits out TERM leaves the helper to escalate: the group is gone and counted once', async () => {
+        const world = layout(), built = release(world.officeData, 'hang');
+        writePin(world.root, built);
+        const launcher = spawn(process.execPath, [LAUNCHER], { env: launchEnv(world, { OVERSEER_PASS_DEADLINE_MS: '60000' }), stdio: 'ignore' });
+        await until(() => existsSync(join(world.root, 'grandchild.pid')));
+        const grandchild = Number(readFileSync(join(world.root, 'grandchild.pid'), 'utf8'));
+        pids.push(grandchild);
+        const { id, pid: helperPid } = readState(world.root).current;
+        // The launcher sends TERM to the group and waits; the helper waits with it; the grandchild ignores TERM.
+        launcher.kill('SIGTERM');
+        await new Promise(done => setTimeout(done, 1_000));
+        launcher.kill('SIGKILL');
+        await new Promise(done => launcher.once('exit', done));
+        expect(await until(() => !alive(grandchild) && !alive(helperPid), 25_000)).toBe(true);
+        // Recovery comes before configuration: with a bad deadline, the next launch only settles the attempt.
+        expect(await launch({ env: launchEnv(world, { OVERSEER_PASS_DEADLINE_MS: 'never' }), limits: FAST, ...quiet })).toBe(0);
+        const state = readState(world.root);
+        expect(state).toMatchObject({ current: null, counts: { lost: 1, interrupted: 0, config: 1 } });
+        expect(state.recent.filter((record: { id: string }) => record.id === id)).toHaveLength(1);
+    }, 60_000);
+
     test('a helper whose launcher dies stops its own group; before authorization it just leaves', async () => {
         const world = layout(), built = release(world.officeData, 'hang');
         writePin(world.root, built);

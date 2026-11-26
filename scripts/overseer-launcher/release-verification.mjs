@@ -2,10 +2,10 @@
 // runtimeRevision mirror, the pinned tree's entry and its own tsx. The rules of
 // server/office/revision.ts and server/release/release-manifest.ts, on Node built-ins.
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { assertDirectoryOrAbsent, checkOwnedFile, readOwned } from './durable-files.mjs';
-import { boundedString, DIGEST, exactKeys, isIso, message, SHA } from './field-checks.mjs';
+import { boundedString, exactKeys, isDigest, isIso, isSha, message } from './field-checks.mjs';
 import { LIMITS } from './limits.mjs';
 import { physicalPath, present, within } from './runner-root.mjs';
 
@@ -14,15 +14,15 @@ export const PASS_ENTRY = 'server/overseer.ts';
 /** server/overseer/runner-pin.ts RunnerPin. */
 export function validPin(pin) {
     return exactKeys(pin, ['version', 'commit', 'directory', 'manifestHash', 'lockfile', 'pinnedAt'])
-        && pin.version === 1 && SHA.test(pin.commit) && boundedString(pin.directory, 4096, 1) && isAbsolute(pin.directory)
-        && DIGEST.test(pin.manifestHash) && DIGEST.test(pin.lockfile) && isIso(pin.pinnedAt);
+        && pin.version === 1 && isSha(pin.commit) && boundedString(pin.directory, 4096, 1) && isAbsolute(pin.directory)
+        && isDigest(pin.manifestHash) && isDigest(pin.lockfile) && isIso(pin.pinnedAt);
 }
 
 /** server/release/release-manifest.ts ReleaseManifestSchema. */
 export function validManifest(manifest) {
     return exactKeys(manifest, ['version', 'commit', 'hash', 'node', 'pnpm', 'lockfile', 'builtAt'])
-        && manifest.version === 1 && SHA.test(manifest.commit) && DIGEST.test(manifest.hash) && boundedString(manifest.node, 200, 1)
-        && boundedString(manifest.pnpm, 200, 1) && DIGEST.test(manifest.lockfile) && isIso(manifest.builtAt);
+        && manifest.version === 1 && isSha(manifest.commit) && isDigest(manifest.hash) && boundedString(manifest.node, 200, 1)
+        && boundedString(manifest.pnpm, 200, 1) && isDigest(manifest.lockfile) && isIso(manifest.builtAt);
 }
 
 const digestOf = path => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -82,12 +82,17 @@ export function verifiedPin(paths, roots, limits = LIMITS) {
     return { pin, directory: expected, entry };
 }
 
-/** The release must load `tsx` from its own node_modules (pnpm's link included), never an ancestor's. */
+/**
+ * The release must load `tsx` from its own node_modules (pnpm's link included), never an
+ * ancestor's: a package folder, since Node passes over anything else there and keeps looking
+ * in the folders above.
+ */
 export function localLoader(directory) {
     const link = resolve(directory, 'node_modules', 'tsx');
     try {
         const target = realpathSync(link);
         if (!within(target, resolve(realpathSync(directory), 'node_modules'))) throw new Error('outside the release');
+        if (!statSync(target).isDirectory() || !statSync(resolve(target, 'package.json')).isFile()) throw new Error('not a package folder');
         return target;
     } catch (error) { throw new Error(`The pinned release has no tsx of its own (${message(error)})`); }
 }

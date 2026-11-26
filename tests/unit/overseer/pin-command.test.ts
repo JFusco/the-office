@@ -115,6 +115,8 @@ test('the pin the command writes is the pin the launcher accepts, and both refus
         'an upper-case commit': { ...written, commit: written.commit.toUpperCase() }, 'a relative directory': { ...written, directory: 'releases/x' },
         'a short manifest hash': { ...written, manifestHash: 'a'.repeat(63) }, 'a lockfile digest of another length': { ...written, lockfile: 'a'.repeat(40) },
         'a time that is not ISO': { ...written, pinnedAt: 'yesterday' },
+        'a commit in an array': { ...written, commit: [written.commit] }, 'a digest in an array': { ...written, lockfile: [written.lockfile] },
+        'a date that does not exist': { ...written, pinnedAt: '2026-02-30T09:00:00.000Z' },
     })) {
         expect(validPin(malformed), name).toBe(false);
         expect(RunnerPin.safeParse(malformed).success, name).toBe(false);

@@ -1223,9 +1223,10 @@ If the bootstrap fails, the error names where the files are; installing again re
 The plist runs `node <root>/code/launcher/overseer-launch.mjs` every 120 seconds from the root.
 It sets only `OVERSEER_ROOT`, `OVERSEER_PASS_DEADLINE_MS` (240000 unless you set one from 30000 to
 900000), `PATH`, the checkout's `.local` and the Office data root (both protected from the runner
-root) and, if you set it, `OVERSEER_OFFICE_URL`. launchd never starts a second copy while one
-runs, and runs a firing missed while the Mac slept once on waking. To stop the schedule, boot the
-job out; to change anything, boot it out and install again.
+root) and, if you set it, `OVERSEER_OFFICE_URL`. With `StartInterval`, launchd skips a firing
+while the previous launch is still running or while the Mac is asleep; it does not make up a
+missed firing on waking, and the next pass comes at the following interval. To stop the schedule,
+boot the job out; to change anything, boot it out and install again.
 
 ### The installed launcher
 
@@ -1276,24 +1277,31 @@ The Office's switch for automatic repair resumes is separate.
 
 `pnpm office overseer status` shows the launcher's attempt in progress (`current`): its attempt ID,
 phase, PID and group, the helper's start time, and, when it is blocked, a dated observation of the
-group's members and why. A blocked attempt stays until a person settles it; every launch until
-then starts no pass and updates only that observation. Boot the job out before you do anything by hand, and install it again
-when you are done.
+group's members and why. A blocked attempt stays current until its group is confirmed gone;
+every launch until then starts no pass and updates only that observation. Boot the job out
+before you do anything by hand, and install it again when you are done.
+
+Never clear an attempt while its group may still be running: a group with members can hold
+the pass's descendants even when its leader is gone or is someone else. Once
+`kill -0 -- -<pgid>` reports no such process, the next launch settles a registered attempt by
+itself, counting it once (as `lost` unless it was already counted), so there is nothing to edit.
 
 - **The group's leader is not this attempt's helper.** Its PID was reused, or the attempt is
-  someone else's. Leave that group alone: it is not the Overseer's. Once you have confirmed with
-  `ps -o pid,pgid,lstart,command -g <pgid>` that nothing in it is the attempt's helper, remove
-  `current` from `state/launcher.json`.
-- **The group could not be confirmed gone.** List it the same way. Stop only members you have
-  identified as this attempt's: the helper's command ends with
-  `code/launcher/overseer-launch.mjs --group <attempt ID>`, and its start time matches. When
-  `kill -0 -- -<pgid>` reports no such process, remove `current`. The attempt was already counted,
-  so nothing is counted again.
+  someone else's. List the group with `ps -o pid,pgid,lstart,command -g <pgid>`. Stop only
+  members you identify as this attempt's: its helper, whose command ends with
+  `code/launcher/overseer-launch.mjs --group <attempt ID>` and whose start time matches, or a
+  process running from the pinned release folder. Leave every other member to exit by itself.
+  The launches that follow keep blocking until the group is gone, then settle it.
+- **The group could not be confirmed gone.** List and stop it the same way, identified members
+  only. Once the probe reports no such process, the next launch clears `current`; the attempt
+  was already counted, so nothing is counted again.
 - **An unregistered start** (`phase: starting`) means a launch stopped between saving the attempt
-  and registering its helper. Look for a helper whose command ends with `--group <attempt ID>`.
-  Keep the state file as it is until both that helper and the launcher are gone; then remove
-  `current`.
+  and registering its helper, so there is no group to probe. Keep the state file as it is until
+  `ps -o pid,command -ax` shows neither a launcher nor a helper whose command ends with
+  `--group <attempt ID>`. Only then set `"current": null` in `state/launcher.json`, keeping the
+  key: a file without it is unreadable.
 - **`state/launcher.json` cannot be read.** No pass starts and the file is left as it is. Keep a
   copy, then repair or move it aside; a root without it starts with empty counters.
 - **`control/launcher.lock.reclaim` is left behind.** A launch stopped while taking the lock.
-  Once no launcher process is running, remove it.
+  Keep it until `ps -o pid,command -ax` shows no process running `overseer-launch.mjs`, neither
+  a launcher nor a helper; then remove it.

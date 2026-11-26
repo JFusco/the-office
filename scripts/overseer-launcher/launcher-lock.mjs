@@ -2,7 +2,7 @@
 // acquirePassLock, with the launcher's own paths and its process identity.
 import { closeSync, openSync, rmSync, unlinkSync } from 'node:fs';
 import { checkOwnedFile, ensurePrivateDirectory, publishDurable, readOwned } from './durable-files.mjs';
-import { boundedString, errorCode, exactKeys, isIso, message, UUID } from './field-checks.mjs';
+import { boundedString, errorCode, exactKeys, isIso, isUuid, message } from './field-checks.mjs';
 import { processIdentity } from './process-group.mjs';
 
 function readOwner(paths) {
@@ -11,7 +11,7 @@ function readOwner(paths) {
     if (text === null) return { absent: true };
     try {
         const owner = JSON.parse(text);
-        return exactKeys(owner, ['id', 'pid', 'start', 'at']) && UUID.test(owner.id) && Number.isSafeInteger(owner.pid) && owner.pid > 0 && boundedString(owner.start, 40) && isIso(owner.at) ? { owner } : { unreadable: true };
+        return exactKeys(owner, ['id', 'pid', 'start', 'at']) && isUuid(owner.id) && Number.isSafeInteger(owner.pid) && owner.pid > 0 && boundedString(owner.start, 40, 1) && isIso(owner.at) ? { owner } : { unreadable: true };
     } catch { return { unreadable: true }; }
 }
 
@@ -22,7 +22,9 @@ function readOwner(paths) {
  */
 export async function acquireLauncherLock(paths, system, id) {
     ensurePrivateDirectory(paths.control);
+    // The owner record names this launcher's OS start time, so a person can tell it from a reused PID.
     const self = await processIdentity(system, process.pid);
+    if (!self || !boundedString(self.start, 40, 1)) return { held: false, reason: 'this launcher’s own start time cannot be read; the lock is not taken' };
     try { checkOwnedFile(paths.guard); closeSync(openSync(paths.guard, 'wx', 0o600)); }
     catch (error) { return { held: false, reason: errorCode(error) === 'EEXIST' ? `${paths.guard} is left behind, or another launcher is taking the lock` : message(error) }; }
     try {
@@ -37,7 +39,7 @@ export async function acquireLauncherLock(paths, system, id) {
             if (!again.owner || JSON.stringify(again.owner) !== JSON.stringify(seen.owner)) return { held: false, reason: `${paths.lock} changed while it was read` };
             reclaim = true;
         }
-        const owner = { id, pid: process.pid, start: self?.start ?? '', at: system.now().toISOString() }, text = JSON.stringify(owner);
+        const owner = { id, pid: process.pid, start: self.start, at: system.now().toISOString() }, text = JSON.stringify(owner);
         if (!publishDurable(paths.lock, text, 0o600, { exclusive: !reclaim })) return { held: false, reason: `${paths.lock} appeared while it was taken` };
         return {
             held: true,

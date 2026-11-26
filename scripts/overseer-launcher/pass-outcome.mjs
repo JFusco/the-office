@@ -1,5 +1,5 @@
 // What a finished pass amounts to: the pass record contract and the classification of its exit.
-import { boundedString, exactKeys, isCount, isIso, UUID } from './field-checks.mjs';
+import { boundedString, exactKeys, isCount, isIso, isRfcUuid } from './field-checks.mjs';
 
 const PASS_OUTCOMES = ['stopped', 'paused', 'service-down', 'fenced', 'read-failed', 'idle', 'observing'];
 
@@ -7,7 +7,7 @@ const PASS_OUTCOMES = ['stopped', 'paused', 'service-down', 'fenced', 'read-fail
 export function validPassRecord(record, officeData) {
     const optional = ['selected', 'released', 'cachedHealthAt', 'cachedIncidentsAt', 'note'];
     if (!exactKeys(record, ['pass', 'startedAt', 'endedAt', 'outcome', 'detail', 'officeDataRoot'], optional)) return false;
-    if (!UUID.test(record.pass) || !isIso(record.startedAt) || !isIso(record.endedAt) || !PASS_OUTCOMES.includes(record.outcome) || !boundedString(record.detail, 500)) return false;
+    if (!isRfcUuid(record.pass) || !isIso(record.startedAt) || !isIso(record.endedAt) || !PASS_OUTCOMES.includes(record.outcome) || !boundedString(record.detail, 500)) return false;
     if (record.officeDataRoot !== officeData) return false;
     if (record.selected !== undefined && !(exactKeys(record.selected, ['incident', 'revision', 'state', 'kept']) && boundedString(record.selected.incident, 100) && isCount(record.selected.revision) && boundedString(record.selected.state, 100) && typeof record.selected.kept === 'boolean')) return false;
     if (record.released !== undefined && !(exactKeys(record.released, ['incident', 'reason']) && boundedString(record.released.incident, 100) && boundedString(record.released.reason, 200))) return false;

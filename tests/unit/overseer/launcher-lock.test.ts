@@ -1,7 +1,7 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, expect, test } from 'vitest';
-import { launcherSource } from './launch-world';
+import { FAST, launchEnv, launcherSource, layout, release, writePin } from './launch-world';
 import { tempDir } from './runner-world';
 
 // One launcher at a time: a dead owner is reclaimed only on ESRCH and an unchanged reread.
@@ -63,4 +63,18 @@ test('a dead owner is reclaimed; one that changed while it was read is not', asy
     const result = await lock.acquireLauncherLock(raced, system(() => { writeFileSync(raced.lock, owner(4343, 2)); throw ESRCH(); }), ID(4));
     expect(result).toMatchObject({ held: false, reason: expect.stringContaining('changed while it was read') });
     expect(readFileSync(raced.lock, 'utf8')).toBe(owner(4343, 2));
+});
+
+test('a launcher that cannot read its own start time takes no lock and starts no pass; an owner without one cannot be read', async () => {
+    const p = paths(), blind = { ...system(), ps: async () => ({ ok: true, code: 0, stdout: '', pid: 1 }) };
+    expect(await lock.acquireLauncherLock(p, blind, ID(8))).toMatchObject({ held: false, reason: expect.stringContaining('start time cannot be read') });
+    expect(() => readFileSync(p.lock)).toThrow();
+    const empty = paths(JSON.stringify({ id: ID(1), pid: 4242, start: '', at: '2026-11-26T08:00:00.000Z' }));
+    expect(await lock.acquireLauncherLock(empty, system(() => { throw ESRCH(); }), ID(9))).toMatchObject({ held: false, reason: expect.stringContaining('cannot be read') });
+    const entry = await launcherSource('launch');
+    const world = layout(), built = release(world.officeData, 'record');
+    writePin(world.root, built);
+    expect(await entry.launch({ env: launchEnv(world), limits: FAST, system: { ps: blind.ps }, noSignalHandlers: true, log: () => {}, warn: () => {} })).toBe(0);
+    expect(existsSync(join(world.root, 'evidence.json'))).toBe(false);
+    expect(existsSync(join(world.root, 'state', 'launcher.json'))).toBe(false);
 });

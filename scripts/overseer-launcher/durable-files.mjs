@@ -70,30 +70,35 @@ export function readOwned(path, max) {
     } finally { closeSync(fd); }
 }
 
+/** The file operations publication uses; tests replace them to make a write or a sync fail. */
+const NODE_IO = { openSync, writeSync, fsyncSync, closeSync, renameSync, linkSync };
+
 /**
  * Writes a whole file beside its target, synced, then renames it in (or links it, when the target
  * must not exist yet), and syncs the folder: a reader sees the old file or the new one. Returns
- * false only when an exclusive target already exists.
+ * false only when an exclusive target already exists. A failure before the rename leaves the
+ * target as it was and removes the draft; a failure syncing the folder comes after the new file
+ * is complete in place.
  */
-export function publishDurable(path, content, mode = 0o600, { exclusive = false } = {}) {
+export function publishDurable(path, content, mode = 0o600, { exclusive = false, io = NODE_IO } = {}) {
     const parent = dirname(path), bytes = Buffer.from(content);
     ensurePrivateDirectory(parent);
     checkOwnedFile(path);
-    const draft = `${path}.${randomUUID()}.tmp`, fd = openSync(draft, 'wx', mode);
+    const draft = `${path}.${randomUUID()}.tmp`, fd = io.openSync(draft, 'wx', mode);
     let published;
     try {
         try {
-            if (writeSync(fd, bytes) !== bytes.length) throw new Error(`${path} was cut short while writing`);
-            fsyncSync(fd);
-        } finally { closeSync(fd); }
+            if (io.writeSync(fd, bytes) !== bytes.length) throw new Error(`${path} was cut short while writing`);
+            io.fsyncSync(fd);
+        } finally { io.closeSync(fd); }
         if (exclusive) {
-            try { linkSync(draft, path); published = true; }
+            try { io.linkSync(draft, path); published = true; }
             catch (error) { if (errorCode(error) === 'EEXIST') published = false; else throw error; }
-        } else { renameSync(draft, path); published = true; }
+        } else { io.renameSync(draft, path); published = true; }
     } finally { rmSync(draft, { force: true }); }
     if (published) {
-        const directory = openSync(parent, 'r');
-        try { fsyncSync(directory); } finally { closeSync(directory); }
+        const directory = io.openSync(parent, 'r');
+        try { io.fsyncSync(directory); } finally { io.closeSync(directory); }
     }
     return published;
 }

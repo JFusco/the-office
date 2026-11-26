@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, linkSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { beforeAll, describe, expect, test } from 'vitest';
@@ -72,6 +72,50 @@ describe('installer preflight, before any plist or launchctl', () => {
 
     test('the deadline defaults to 240000 ms only when it is unset', () => {
         expect(I.DEFAULT_DEADLINE_MS).toBe(240_000);
+    });
+
+    test('a LaunchAgents folder reached through a link, or a plist with a second name, is refused in preview and install with nothing written or run', async () => {
+        const cases: [string, (w: ReturnType<typeof installWorld>) => void, string][] = [
+            ['linked LaunchAgents', w => { const elsewhere = join(w.world.base, 'elsewhere-agents'); mkdirSync(elsewhere); mkdirSync(join(w.home, 'Library')); symlinkSync(elsewhere, join(w.home, 'Library', 'LaunchAgents')); }, 'not a link or a file'],
+            ['linked Library', w => { const elsewhere = join(w.world.base, 'elsewhere-library'); mkdirSync(join(elsewhere, 'LaunchAgents'), { recursive: true }); symlinkSync(elsewhere, join(w.home, 'Library')); }, 'goes through a link'],
+            ['plist with a second name', w => {
+                const agents = join(w.home, 'Library', 'LaunchAgents');
+                mkdirSync(agents, { recursive: true });
+                const plist = I.renderPlist({ execPath: process.execPath, paths: { launcherCopy: join(w.world.root, 'code/launcher/overseer-launch.mjs'), root: w.world.root, stdoutLog: join(w.world.root, 'logs/launcher.out.log'), stderrLog: join(w.world.root, 'logs/launcher.err.log') }, environment: { OVERSEER_ROOT: w.world.root } });
+                writeFileSync(join(w.world.base, 'other-name.plist'), plist);
+                linkSync(join(w.world.base, 'other-name.plist'), join(agents, `${LABEL}.plist`));
+            }, 'single link'],
+        ];
+        for (const [name, make, error] of cases) for (const print of [true, false]) {
+            const w = installWorld();
+            writePin(w.world.root, w.built);
+            make(w);
+            const fake = launchctl(), before = snapshot(w.world.base);
+            await expect(I.installOverseer(w.options({ run: fake.run, print })), `${name} ${print}`).rejects.toThrow(error);
+            expect(fake.calls, `${name} ${print}`).toEqual([]);
+            expect(snapshot(w.world.base), `${name} ${print}`).toEqual(before);
+        }
+    });
+
+    test('only launchd’s own absence answer for this job and this user installs; anything like it writes nothing and bootstraps nothing', async () => {
+        const answers: [string, Answer, boolean][] = [
+            ['the exact answer', MISSING, true],
+            ['another service', { code: 113, stdout: '', stderr: `Could not find service "com.jfusco.office-service" in domain for user gui: ${UID}` }, false],
+            ['another user', { code: 113, stdout: '', stderr: `Could not find service "${LABEL}" in domain for user gui: ${UID + 1}` }, false],
+            ['the words, another failure', { code: 5, stdout: '', stderr: `Could not find service "${LABEL}" in domain for user gui: ${UID}` }, false],
+            ['the words in passing', { code: 1, stdout: 'could not find service anything', stderr: '' }, false],
+        ];
+        for (const [name, answer, installs] of answers) {
+            const w = installWorld();
+            writePin(w.world.root, w.built);
+            const fake = launchctl(answer), before = snapshot(w.world.base);
+            if (installs) expect(await I.installOverseer(w.options({ run: fake.run })), name).toMatchObject({ status: 'installed' });
+            else {
+                await expect(I.installOverseer(w.options({ run: fake.run })), name).rejects.toThrow('could not tell whether');
+                expect(fake.mutating(), name).toEqual([]);
+                expect(snapshot(w.world.base), name).toEqual(before);
+            }
+        }
     });
 });
 
@@ -148,6 +192,29 @@ describe.skipIf(process.platform !== 'darwin')('installation as a LaunchAgent', 
         await expect(I.installOverseer(w.options({ run: fake.run }))).rejects.toThrow('could not tell whether');
         expect(fake.mutating()).toEqual([]);
         expect(snapshot(w.world.base)).toEqual(before);
+    });
+
+    test('a plist that would run another program is not this installation’s, while one the installer renders is', async () => {
+        const w = installWorld();
+        writePin(w.world.root, w.built);
+        const plistPath = join(w.home, `Library/LaunchAgents/${LABEL}.plist`);
+        await I.installOverseer(w.options({ run: launchctl().run }));
+        const ours = readFileSync(plistPath, 'utf8');
+        expect(await I.installOverseer(w.options({ run: launchctl({ code: 0, stdout: '', stderr: '' }).run }))).toMatchObject({ status: 'already-installed' });
+        const variants: [string, string][] = [
+            ['another executable', ours.replace(`<string>${process.execPath}</string>`, '<string>/bin/sh</string>')],
+            ['a relative node', ours.replace(`<string>${process.execPath}</string>`, '<string>node</string>')],
+            ['a Program override', ours.replace('<key>ProgramArguments</key>', '<key>Program</key><string>/bin/sh</string><key>ProgramArguments</key>')],
+        ];
+        for (const [name, text] of variants) {
+            expect(text, name).not.toBe(ours);
+            chmodSync(plistPath, 0o600);
+            writeFileSync(plistPath, text);
+            const fake = launchctl(), before = snapshot(w.world.base);
+            await expect(I.installOverseer(w.options({ run: fake.run })), name).rejects.toThrow('another installation');
+            expect(fake.mutating(), name).toEqual([]);
+            expect(snapshot(w.world.base), name).toEqual(before);
+        }
     });
 
     test('a plist under the label that is another installation’s, misleading or unreadable is refused and left alone', async () => {

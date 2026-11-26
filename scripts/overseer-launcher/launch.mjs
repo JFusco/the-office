@@ -87,5 +87,6 @@ export async function launch(options = {}) {
 
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(HERE)) {
     if (process.argv[2] === '--group') await helperMain(process.argv[3]);
-    else process.exitCode = await launch({ launcherFile: HERE });
+    // DEFAULT_LAUNCHER_FILE is this file in the bundle, and the bundle beside this folder when run from source.
+    else process.exitCode = await launch();
 }

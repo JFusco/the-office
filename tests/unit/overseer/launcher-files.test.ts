@@ -74,3 +74,26 @@ test('publication replaces a file whole at its mode, an exclusive one never repl
     expect(readFileSync(sentinel, 'utf8')).toBe('outside');
     expect(readdirSync(join(root, 'state')).filter(name => name.endsWith('.tmp'))).toEqual([]);
 });
+
+test('a short write or a failed sync before the rename keeps the old file and leaves no draft; a failed folder sync comes after the new file is whole', async () => {
+    const fs = await import('node:fs');
+    const { root } = world(), path = join(root, 'state', 'launcher.json');
+    files.publishDurable(path, 'before', 0o600);
+    const real = { openSync: fs.openSync, writeSync: fs.writeSync, fsyncSync: fs.fsyncSync, closeSync: fs.closeSync, renameSync: fs.renameSync, linkSync: fs.linkSync };
+    const drafts = () => readdirSync(join(root, 'state')).filter(name => name.endsWith('.tmp'));
+    const short = { ...real, writeSync: (fd: number, bytes: Buffer) => real.writeSync(fd, bytes.subarray(0, 2)) };
+    expect(() => files.publishDurable(path, 'after', 0o600, { io: short })).toThrow('cut short');
+    let syncs = 0;
+    const failedDraftSync = { ...real, fsyncSync: () => { syncs++; throw Object.assign(new Error('EIO'), { code: 'EIO' }); } };
+    expect(() => files.publishDurable(path, 'after', 0o600, { io: failedDraftSync })).toThrow('EIO');
+    expect(syncs).toBe(1);
+    for (const exclusive of [false, true]) expect(() => files.publishDurable(join(root, 'state', exclusive ? 'new.json' : 'launcher.json'), 'after', 0o600, { exclusive, io: short })).toThrow('cut short');
+    expect(readFileSync(path, 'utf8')).toBe('before');
+    expect(drafts()).toEqual([]);
+    expect(readdirSync(join(root, 'state')).sort()).toEqual(['launcher.json']);
+    let calls = 0;
+    const failedFolderSync = { ...real, fsyncSync: (fd: number) => { if (++calls === 2) throw Object.assign(new Error('EIO on the folder'), { code: 'EIO' }); real.fsyncSync(fd); } };
+    expect(() => files.publishDurable(path, 'after', 0o600, { io: failedFolderSync })).toThrow('EIO on the folder');
+    expect(readFileSync(path, 'utf8')).toBe('after');
+    expect(drafts()).toEqual([]);
+});
