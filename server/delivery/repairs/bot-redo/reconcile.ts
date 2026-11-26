@@ -55,8 +55,9 @@ async function closedWithRedo(delivery: GitHubDelivery, job: TicketJob, pr: any,
         outstanding.find(r => r.sha === head) ?? outstanding.at(-1);
     if (!redo) return false;
     if (!redo.closed) {
-        const events = await readRepo(delivery.store, delivery.execute, `issues/${pr.number}/events?per_page=100`, true);
-        const close = events.filter((e: any) => e.event === 'closed').at(-1), login = BOT_LOGIN[redo.bot];
+        const events = await readRepo(delivery.store, delivery.execute, `issues/${pr.number}/events?per_page=100`, true).catch(() => []);
+        const matches = events.filter((e: any) => e?.event === 'closed' && Date.parse(e.created_at) === Date.parse(closedAt));
+        const close = matches.length === 1 ? matches[0] : undefined, login = BOT_LOGIN[redo.bot];
         const requested = redo.effectId && delivery.store.getEffect(redo.effectId)?.dispatchedAt || redo.firstSeenAt;
         redo.closed = { at: requested, closedAt, head, closer: close?.actor?.login || 'unknown', attributed: !!login && close?.actor?.login === login && close.actor.type === 'Bot' };
     }
@@ -64,8 +65,12 @@ async function closedWithRedo(delivery: GitHubDelivery, job: TicketJob, pr: any,
     return true;
 }
 
-function requeue(delivery: GitHubDelivery, job: TicketJob, detail: string): void {
-    if (['queued', 'working'].includes(job.status) || !assessDeliveryEligibility(delivery.store, job).eligible) return;
+function requeue(delivery: GitHubDelivery, job: TicketJob, redo: BotRedo, detail: string): void {
+    const { store } = delivery, approval = job.mergeAuthorization;
+    if (job.stage !== 'merge' || !['blocked', 'interrupted', 'watching'].includes(job.status) ||
+        job.mergeApprovalRequired || approval && approval.head !== redo.sha ||
+        !store.state.coordination?.merges?.enabled && approval?.head !== redo.sha ||
+        !assessDeliveryEligibility(store, job).eligible) return;
     job.stage = 'merge'; job.status = 'queued'; job.detail = detail; delete job.stop;
 }
 
@@ -83,7 +88,8 @@ async function awaitOutcome(delivery: GitHubDelivery, job: TicketJob, pr: any, r
             if (!executorActive(delivery, job.pr)) retirePreparation(store, record, redo, effect, 'Redo preparation retired: the head no longer conflicts');
             return false;
         }
-        requeue(delivery, job, `PR #${job.pr} still conflicts at ${short(redo.sha)}; the merge stage asks ${redo.bot} once for this head.`);
+        if (job.status !== 'blocked' || redo.dispatchRefRefusal?.jobId !== job.id || redo.dispatchRefRefusal.detail !== job.detail)
+            requeue(delivery, job, redo, `PR #${job.pr} still conflicts at ${short(redo.sha)}; the merge stage asks ${redo.bot} once for this head.`);
         return true;
     }
     const sentAt = Date.parse(redo.bot === 'pin-courier' ? redo.firstSeenAt : effect.dispatchedAt), limit = wiki(redo) ? OVERDUE.wiki : redo.bot === 'dependabot' ? OVERDUE.dependabot : OVERDUE.renovate;
@@ -114,7 +120,7 @@ async function awaitOutcome(delivery: GitHubDelivery, job: TicketJob, pr: any, r
         return true;
     }
     if (redo.sameHead.proof && redo.sameHead.proof !== 'contained') reportContainmentStop(store, job, redo, redo.sameHead.proof);
-    else if (!redo.sameHead.proof) requeue(delivery, job, `Wiki run ${run.url} left numbered PR #${job.pr} at ${short(redo.sha)}; the Office checks whether ${store.project.target} already contains it.`);
+    else if (!redo.sameHead.proof) requeue(delivery, job, redo, `Wiki run ${run.url} left numbered PR #${job.pr} at ${short(redo.sha)}; the Office checks whether ${store.project.target} already contains it.`);
     return true;
 }
 
@@ -131,7 +137,8 @@ async function replacement(delivery: GitHubDelivery, job: TicketJob, pr: any, re
     const bot = await automationMergePolicy(delivery, { ...job, head: pr.head.sha }, pr);
     const sameCandidate = (p: any) => p.number === pr.number && p.html_url === pr.html_url && p.state === 'open' && !p.draft &&
         !p.merged_at && !p.merged && p.head?.sha === pr.head.sha && p.head.ref === pr.head.ref &&
-        p.head.repo?.full_name === pr.head.repo?.full_name && p.base?.ref === store.project.target && p.base.repo?.full_name === store.project.repository;
+        p.head.repo?.full_name === pr.head.repo?.full_name && p.base?.ref === store.project.target && p.base.repo?.full_name === store.project.repository &&
+        (bot !== 'wiki-sync' || p.title === pr.title && p.body === pr.body);
     const current = await delivery.verifyPR(job, true);
     if (!sameCandidate(current) || !nativeLinked(current) || !sameCandidate(await delivery.api(`pulls/${job.pr}`))) return true;
     if (executorActive(delivery, job.pr)) return true;

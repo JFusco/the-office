@@ -1,6 +1,7 @@
 import { refusal as dependabotRefusal } from '../intake/dependabot/qualify';
 import { pinCourier } from '../intake/dependency-bots/pin-courier';
 import { wikiSync } from '../intake/dependency-bots/wiki-sync';
+import { nativeLinked } from '../repairs/bot-redo/recovery-reader';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { assessDeliveryEligibility } from '../harness/delivery-authority';
 import { assertAutomationEffects } from './automation-effects';
@@ -50,9 +51,11 @@ export async function routeAutomationMerge(delivery: GitHubDelivery, job: Ticket
  * head and its bot-owned redo are observed first (`automation-conflict.ts`).
  */
 export async function observeAutomationMerge(delivery: GitHubDelivery, job: TicketJob, pr: any) {
-    if (!harnessMayMerge(delivery.store)) return false;
-    const conflict = await observeAutomationConflict(delivery, job, pr);
+    const mayMerge = harnessMayMerge(delivery.store);
+    const conflict = mayMerge ? await observeAutomationConflict(delivery, job, pr) : null;
     if (conflict !== null) return conflict;
+    if (!nativeLinked(pr)) throw new Error('PR is not natively linked to this exact project issue');
+    if (!mayMerge) return false;
     if (!await automationMergePolicy(delivery, { ...job, head: pr.head?.sha }, pr)) return false;
     if (pr.state !== 'open' || pr.draft || pr.mergeable !== true) throw Error('Automation PR waits for GitHub merge readiness');
     assertAutomationEffects(delivery.store, job);

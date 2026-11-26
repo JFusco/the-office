@@ -208,6 +208,20 @@ test('a held delivery records no conflict and queues nothing', async () => {
     expect(f.job.detail).toContain('held or owned');
 });
 
+test('cancellation during bot qualification cannot admit a redo', async () => {
+    const f = fakeBotPR('dependabot');
+    f.state.fail = (_p, args) => {
+        if (args.some(a => a.endsWith('/pulls/200/commits?per_page=100'))) f.job.status = 'cancelled';
+        return false;
+    };
+    await f.observe();
+    expect(f.delivery.jobs).toContain(f.job);
+    expect(f.adoption.status).toBe('adopted');
+    expect(f.job.status).toBe('cancelled');
+    expect(f.adoption.redos).toBeUndefined();
+    expect(f.store.state.events.filter(e => e.kind === 'bot-redo-conflict')).toEqual([]);
+});
+
 test('a recorded conflict that GitHub reports mergeable again before the request merges on the ordinary path, with no request', async () => {
     const f = fakeBotPR('dependabot');
     await f.observe();
@@ -224,4 +238,47 @@ test('a default branch other than the configured target dispatches nothing', asy
     expect(dispatches(f)).toEqual([]);
     expect(f.job.status).toBe('blocked');
     expect(f.job.detail).toContain('live default branch');
+    const blocked = () => f.store.state.events.filter(e => e.kind === 'github-delivery-blocked').length;
+    const repoReads = () => f.state.calls.filter(c => c === `gh api repos/${f.store.project.repository}`).length;
+    expect(blocked()).toBe(1);
+    expect(repoReads()).toBe(1);
+    for (let i = 0; i < 2; i++) {
+        await f.observe();
+        expect(f.job.status).toBe('blocked');
+        expect(blocked()).toBe(1);
+        expect(repoReads()).toBe(1);
+    }
+});
+
+test('an unsent redo waits while merging is disabled and resumes with exact-head approval', async () => {
+    const f = fakeBotPR('wiki-sync');
+    await f.observe();
+    expect(f.job.status).toBe('queued');
+    f.store.state.coordination!.merges!.enabled = false;
+    await f.step();
+    expect(f.job.status).toBe('blocked');
+    for (let i = 0; i < 2; i++) {
+        await f.observe();
+        expect(f.job.status).toBe('blocked');
+    }
+    expect(dispatches(f)).toEqual([]);
+    f.job.mergeAuthorization = { head: H1, at: f.store.clock.now().toISOString() };
+    await f.observe();
+    expect(f.job.status).toBe('queued');
+    await f.step();
+    expect(dispatches(f)).toHaveLength(1);
+});
+
+test('an unsent redo can retry after a transient repository read failure', async () => {
+    const f = fakeBotPR('wiki-sync');
+    await f.observe();
+    f.state.fail = (_p, args) => args[1] === `repos/${f.store.project.repository}` ? 'HTTP 502: Bad Gateway' : false;
+    await f.step();
+    expect(f.job.status).toBe('blocked');
+    expect(dispatches(f)).toEqual([]);
+    f.state.fail = () => false;
+    await f.observe();
+    expect(f.job.status).toBe('queued');
+    await f.step();
+    expect(dispatches(f)).toHaveLength(1);
 });

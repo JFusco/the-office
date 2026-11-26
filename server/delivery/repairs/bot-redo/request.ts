@@ -10,7 +10,7 @@ import { checkboxArgs, renovateControl } from './pin-courier-rebase';
 import { readBackRedo } from './read-back';
 import { readBackRequests } from './reconcile';
 import { reportStop, UNAVAILABLE, waitingDetail, waitOnBot } from './report';
-import { dispatchArgs, dispatchRef, wikiWorkflow, type WikiRun } from './wiki-regenerate';
+import { dispatchArgs, dispatchRef, wikiWorkflow, WikiDispatchRefMismatch, type WikiRun } from './wiki-regenerate';
 import type { GitHubDelivery } from '../../pipeline/github-delivery';
 import type { Store } from '../../../store/store';
 import type { EffectIntent, TicketJob } from '../../../../src/shared';
@@ -80,7 +80,14 @@ export async function requestBotRedo(delivery: GitHubDelivery, job: TicketJob, p
     if (pr.head.ref !== job.branch || pr.head.ref !== redo.branch || redo.issue !== record.issue || redo.issueUrl !== `https://github.com/${store.project.repository}/issues/${record.issue}`)
         throw new Error('Conflicted bot PR branch or issue binding changed');
     const adoption = record.id;
-    const target = bot === 'wiki-sync' ? await dispatchRef(delivery, pr) : store.project.target;
+    const wikiRef = async (snapshot: any) => {
+        try { return await dispatchRef(delivery, snapshot); }
+        catch (error) {
+            if (error instanceof WikiDispatchRefMismatch) redo.dispatchRefRefusal = { jobId: job.id, detail: String(error) };
+            throw error;
+        }
+    };
+    const target = bot === 'wiki-sync' ? await wikiRef(pr) : store.project.target;
     const route = selectRoute(store.project.repository, pr, bot, target);
     if (!('args' in route)) {
         if (redo.effectId) {
@@ -118,7 +125,7 @@ export async function requestBotRedo(delivery: GitHubDelivery, job: TicketJob, p
                 if (!stillConflicted(live, sent))
                     throw new Error('The conflicted bot PR changed before its redo request');
                 if (await automationMergePolicy(delivery, job, live) !== sent.bot) throw new Error('Bot qualification changed before its redo request');
-                if (sent.bot === 'wiki-sync' && await dispatchRef(delivery, live) !== sent.target) throw new Error('The wiki dispatch ref changed before the request');
+                if (sent.bot === 'wiki-sync' && await wikiRef(live) !== sent.target) throw new Error('The wiki dispatch ref changed before the request');
                 assertRedoRoute(live, sent);
                 if ((await findTrackingIssue(store, execute, sent.pr, sent.issue, sent.bot))?.number !== sent.issue) throw new Error('The bot PR’s own tracking issue no longer matches');
                 const last = await delivery.api(`pulls/${sent.pr}`);

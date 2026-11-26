@@ -111,7 +111,7 @@ test('a Dependabot PR closed by Dependabot after its rebase request is one closu
     await f.observe(); await f.step();
     const before = f.writes().length;
     Object.assign(f.pr, { state: 'closed', closed_at: '2026-11-26T01:00:00Z' });
-    f.state.events[200] = [{ event: 'closed', actor: { login: 'dependabot[bot]', type: 'Bot' } }];
+    f.state.events[200] = [{ event: 'closed', created_at: f.pr.closed_at, actor: { login: 'dependabot[bot]', type: 'Bot' } }];
     await f.observe(); await f.observe();
     expect(f.adoption.redos![0].closed).toMatchObject({ closer: 'dependabot[bot]', attributed: true, head: H1, closedAt: '2026-11-26T01:00:00Z' });
     expect(f.job.status).toBe('blocked');
@@ -122,13 +122,14 @@ test('a Dependabot PR closed by Dependabot after its rebase request is one closu
     expect(f.store.getEffect(redoBase(f.store, 200, H1))?.status).toBe('verified');
 });
 
-test('closing a reopened PR after a second redo records both closures once', async () => {
+test.each(['matching human event', 'older event only', 'event read denied', 'ambiguous events'])('closing a reopened PR records both closures once with %s', async evidence => {
     const f = fakeBotPR('dependabot'), advance = clock(f);
     await f.observe(); await f.step();
     const firstClosedAt = '2026-11-26T01:00:00Z', secondClosedAt = '2026-11-26T03:00:00Z';
     advance(1);
     Object.assign(f.pr, { state: 'closed', closed_at: firstClosedAt });
-    f.state.events[200] = [{ event: 'closed', actor: { login: 'dependabot[bot]', type: 'Bot' } }];
+    const earlier = { event: 'closed', created_at: firstClosedAt, actor: { login: 'dependabot[bot]', type: 'Bot' } };
+    f.state.events[200] = [earlier];
     await f.observe(); await f.observe();
     expect(stops(f)).toBe(1);
     advance(1);
@@ -138,22 +139,27 @@ test('closing a reopened PR after a second redo records both closures once', asy
     expect(f.job).toMatchObject({ status: 'queued', head: H2 });
     await f.step();
     advance(1);
+    const writes = f.writes().length;
     Object.assign(f.pr, { state: 'closed', closed_at: secondClosedAt });
-    f.state.events[200].push({ event: 'closed', actor: { login: 'JFusco', type: 'User' } });
+    const human = { event: 'closed', created_at: secondClosedAt, actor: { login: 'JFusco', type: 'User' } };
+    if (evidence === 'matching human event' || evidence === 'ambiguous events') f.state.events[200].push(human);
+    if (evidence === 'ambiguous events') f.state.events[200].push({ ...earlier, created_at: secondClosedAt });
+    if (evidence === 'event read denied') f.state.fail = (_p, args) => args.some(a => a.includes('/issues/200/events')) ? 'HTTP 403: Resource not accessible' : false;
     await f.observe(); await f.observe();
     expect(f.adoption.redos!.map(redo => redo.closed)).toEqual([
         expect.objectContaining({ head: H1, closedAt: firstClosedAt, attributed: true }),
-        expect.objectContaining({ head: H2, closedAt: secondClosedAt, closer: 'JFusco', attributed: false }),
+        expect.objectContaining({ head: H2, closedAt: secondClosedAt, closer: evidence === 'matching human event' ? 'JFusco' : 'unknown', attributed: false }),
     ]);
     expect(stops(f)).toBe(2);
     expect(f.state.calls.filter(c => c.includes('/issues/200/events'))).toHaveLength(2);
+    expect(f.writes()).toHaveLength(writes);
 });
 
 test('a closer named only by text is not attributed to the bot', async () => {
     const f = fakeBotPR('dependabot');
     await f.observe(); await f.step();
     Object.assign(f.pr, { state: 'closed', closed_at: '2026-11-26T01:00:00Z' });
-    f.state.events[200] = [{ event: 'closed', actor: { login: 'dependabot[bot]', type: 'User' } }];
+    f.state.events[200] = [{ event: 'closed', created_at: f.pr.closed_at, actor: { login: 'dependabot[bot]', type: 'User' } }];
     await f.observe();
     expect(f.adoption.redos![0].closed?.attributed).toBe(false);
     expect(f.job.detail).not.toContain('by dependabot[bot]');

@@ -110,6 +110,51 @@ test.each(['head advances', 'native link disappears'])('replacement settlement w
     expect(rebaseCalls(f)).toHaveLength(1);
 });
 
+test.each(['title', 'body'] as const)('wiki replacement settlement waits for stable qualification when its %s changes', async field => {
+    const f = fakeBotPR('wiki-sync');
+    await f.observe();
+    const dispatches = () => f.writes().filter(m => m.target.endsWith('/dispatches'));
+    f.state.loseResponse = (_p, args) => args.some(a => a.endsWith('/dispatches')) && args.includes('POST');
+    await f.step();
+    const id = redoBase(f.store, 200, H1), original = f.store.getEffect(id);
+    expect(original).toMatchObject({ status: 'uncertain', receipt: null });
+    f.publish(H2, { checks: 'pass' });
+    const canonical = f.pr[field];
+    f.state.nativeLinks[200] = true;
+    f.state.fail = (_p, args) => {
+        if (args.some(a => a.endsWith('/pulls/200/commits?per_page=100'))) f.pr[field] = 'Edited while qualifying';
+        return false;
+    };
+    await f.observe();
+    expect(f.pr[field]).toBe('Edited while qualifying');
+    expect(f.adoption.redos![0].settled).toBeUndefined();
+    expect(f.job.head).toBe(H1);
+    expect(f.store.getEffect(id)).toEqual(original);
+    f.state.fail = () => false;
+    f.pr[field] = canonical;
+    await f.observe();
+    expect(f.adoption.redos![0].settled).toMatchObject({ replacement: H2, effectId: id, cause: 'unknown' });
+    expect(f.store.getEffect(id)).toEqual(original);
+    expect(dispatches()).toHaveLength(1);
+});
+
+test('a later green head still needs its native link after a redo has settled', async () => {
+    const f = fakeBotPR('dependabot');
+    await f.observe(); await f.step();
+    f.publish(H2, { checks: 'pending' });
+    await f.observe();
+    expect(f.adoption.redos![0].settled?.replacement).toBe(H2);
+    expect(f.job).toMatchObject({ status: 'watching', head: H2 });
+    f.publish(H3, { checks: 'pass' });
+    f.state.nativeLinks[200] = false;
+    await f.observe();
+    expect(f.job).toMatchObject({ status: 'blocked', head: H2 });
+    expect(puts(f)).toEqual([]);
+    delete f.state.nativeLinks[200];
+    await f.observe();
+    expect(f.job).toMatchObject({ status: 'queued', head: H3 });
+});
+
 test.each([false, null])('an automation replacement reporting mergeable %s in preflight sends no merge PUT', async mergeable => {
     const f = fakeBotPR('dependabot');
     await f.observe(); await f.step();

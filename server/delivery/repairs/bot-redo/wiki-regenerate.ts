@@ -18,11 +18,13 @@ export function wikiWorkflow(pr: any): { route: 'wiki-sync.yml' | 'wiki-issue-sy
     return match ? { route: match.workflow, inputs: {} } : 'its title and body name no canonical wiki maintenance workflow';
 }
 
+export class WikiDispatchRefMismatch extends Error {}
+
 /** The dispatch ref: the repository's live default branch, which must also be the configured target and the PR's base. */
 export async function dispatchRef(delivery: GitHubDelivery, pr: any): Promise<string> {
     const { store } = delivery, repo = await delivery.api('');
     if (repo.full_name !== store.project.repository || repo.default_branch !== store.project.target || pr.base?.ref !== store.project.target)
-        throw new Error('The wiki dispatch ref is not the live default branch, the configured target and the PR base');
+        throw new WikiDispatchRefMismatch('The wiki dispatch ref is not the live default branch, the configured target and the PR base');
     return store.project.target;
 }
 

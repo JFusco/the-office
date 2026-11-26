@@ -386,6 +386,8 @@ export interface BotRedo {
     effectId?: string;
     /** The request's first failure, kept when a later read-back verifies it. */
     failure?: string;
+    /** An unsent wiki request whose dispatch ref disagreed with the PR and project. */
+    dispatchRefRefusal?: { jobId: string; detail: string };
     /** The verified wiki workflow run and what was last read of it. */
     run?: { id: number; url: string; attempt?: number; status?: string; conclusion?: string; completedAt?: string };
     /** A successful wiki run that left this head unchanged: a numbered PR's containment check or a maintenance PR's weekly wait. */

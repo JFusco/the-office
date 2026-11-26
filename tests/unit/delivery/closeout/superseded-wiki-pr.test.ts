@@ -34,6 +34,20 @@ const cardMoves = (f: Fixture) => f.state.mutations.filter(m => m.method === 'GR
 const closeEffect = (f: Fixture, step: string) => f.store.getEffect(`harness:${f.job.id}:${f.job.supersededWikiClose?.operation}:${step}`);
 const marker = `<!-- office-wiki-superseded:200:${H1} -->`;
 
+async function expectReversalStaysBlocked(f: Fixture) {
+    const stageEvents = () => f.store.state.events.filter(e => e.kind === 'github-delivery-stage' || e.kind === 'github-delivery-blocked').length;
+    const calls = () => f.state.calls.filter(c => c.endsWith('/pulls/200')).length;
+    const before = { events: stageEvents(), reads: calls(), writes: f.state.mutations.length };
+    for (let i = 0; i < 2; i++) {
+        await f.observe();
+        if (f.job.status === 'queued') await f.step();
+        expect(f.job.status).toBe('blocked');
+        expect(stageEvents()).toBe(before.events);
+        expect(f.state.mutations).toHaveLength(before.writes);
+    }
+    expect(calls()).toBeGreaterThan(before.reads);
+}
+
 test('a numbered PR whose target lacks a change stays open with the path named, and nothing is written', async () => {
     const f = await sameHead({ contained: false });
     await f.observe();
@@ -332,6 +346,7 @@ test('a PR reopened after the Office closed it gets no issue comment, issue clos
     expect(posted(f, 5)).toEqual([]); expect(issueCloses(f)).toEqual([]); expect(cardMoves(f)).toEqual([]);
     expect(f.job.status).toBe('blocked');
     expect(f.job.detail).toContain('not the exact closed, unmerged PR');
+    await expectReversalStaysBlocked(f);
 });
 
 test('a PR reopened at a new head after its close record is qualified again instead of closed', async () => {
@@ -411,13 +426,34 @@ test.each(['PR', 'issue'])('a reopened %s during the final card read-back cannot
     const prReceipt = closeEffect(f, 'pr-close'), issueReceipt = closeEffect(f, 'issue-close');
     expect(prReceipt?.status).toBe('verified');
     expect(issueReceipt?.status).toBe('verified');
-    await f.observe(); await f.step();
+    await expectReversalStaysBlocked(f);
     expect(f.job.status).toBe('blocked');
     expect(f.adoption.status).toBe('adopted');
     expect(f.store.state.events.filter(e => e.kind === 'wiki-pr-superseded')).toEqual([]);
     expect(closeEffect(f, 'pr-close')).toEqual(prReceipt);
     expect(closeEffect(f, 'issue-close')).toEqual(issueReceipt);
     expect(cardMoves(f)).toHaveLength(2);
+});
+
+test.each([0, 1])('reopening the issue after %i card moves blocks the remaining moves', async moved => {
+    const f = await sameHead();
+    await f.observe();
+    let reopened = false;
+    f.state.fail = (_p, args) => {
+        if (!reopened && cardMoves(f).length === moved && closeEffect(f, 'issue-close')?.status === 'verified' &&
+            args.some(a => a.endsWith('/issues/5'))) {
+            reopened = true;
+            f.state.issue.state = 'open';
+        }
+        return false;
+    };
+    await f.step();
+    expect(reopened).toBe(true);
+    expect(cardMoves(f)).toHaveLength(moved);
+    expect(f.state.cards.map(c => c.status).sort()).toEqual(moved === 0 ? ['review', 'review'] : ['done', 'review']);
+    expect(closeEffect(f, 'issue-close')).toMatchObject({ status: 'verified', receipt: { state: 'closed', reason: 'not_planned' } });
+    expect(f.job).toMatchObject({ status: 'blocked', detail: expect.stringContaining('recorded closure') });
+    expect(f.store.state.events.filter(e => e.kind === 'wiki-pr-superseded')).toEqual([]);
 });
 
 test.each(['relink', 'issue-close'])('disabling merging on the prepared %s’s final read rejects that write', async step => {

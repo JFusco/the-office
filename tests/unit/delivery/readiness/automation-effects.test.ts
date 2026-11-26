@@ -13,7 +13,7 @@ function fixture(status: EffectIntent['status'] = 'uncertain', job = 'earlier-jo
         payload: { project: f.store.project.id, repository: f.store.project.repository, pr: 200, sha: H1, adoption: 'adoption-200', issue: 5, bot: 'dependabot', branch: f.job.branch, target: 'main', route: 'dependabot-rebase', args: [] },
         expectedState: {}, status, createdAt: '', dispatchedAt: status === 'prepared' ? '' : '2026-11-25T00:00:00Z', verifiedAt: '', receipt: null, error: 'HTTP 403', elapsedMs: 0 });
     f.adoption.redos = [{ sha: H1, pr: 200, issue: 5, bot: 'dependabot', branch: f.job.branch, issueUrl: `https://github.com/${f.store.project.repository}/issues/5`, firstSeenAt: '', effectId: id }];
-    const settle = () => { f.adoption.redos![0].settled = { effectId: id, project: f.store.project.id, repository: f.store.project.repository, pr: 200, adoption: 'adoption-200', bot: 'dependabot', sha: H1, replacement: H2, at: '', evidence: '', cause: 'unknown' }; };
+    const settle = () => { f.adoption.redos![0].settled = { effectId: id, project: f.store.project.id, repository: f.store.project.repository, pr: 200, adoption: 'adoption-200', bot: 'dependabot', sha: H1, replacement: H2, at: '2026-11-25T01:00:00Z', evidence: 'Dependabot qualification and native issue link read back', cause: 'unknown' }; };
     return { ...f, id, settle, check: (active?: string) => () => assertAutomationEffects(f.store, f.job, false, active) };
 }
 
@@ -25,7 +25,7 @@ test('the same request is history once its exact settlement is saved; the row it
     const f = fixture();
     f.settle();
     expect(f.check()).not.toThrow();
-    expect(f.store.getEffect(f.id)).toMatchObject({ status: 'uncertain', error: 'HTTP 403', receipt: null });
+    expect(f.store.getEffect(f.id)).toMatchObject({ status: 'uncertain', error: 'HTTP 403', receipt: null, dispatchedAt: '2026-11-25T00:00:00Z' });
 });
 
 test('a dispatching redo stays blocking even if it has a settlement', () => {
@@ -40,6 +40,9 @@ test.each<[string, (f: ReturnType<typeof fixture>) => void]>([
     ['no replacement', f => { f.adoption.redos![0].settled!.replacement = H1; }],
     ['another adoption', f => { f.adoption.redos![0].settled!.adoption = 'other'; }],
     ['another bot', f => { f.adoption.redos![0].settled!.bot = 'pin-courier'; }],
+    ['no observation time', f => { Reflect.deleteProperty(f.adoption.redos![0].settled!, 'at'); }],
+    ['an invalid observation time', f => { f.adoption.redos![0].settled!.at = 'invalid'; }],
+    ['blank qualification evidence', f => { f.adoption.redos![0].settled!.evidence = ' \n '; }],
     ['a withdrawn adoption', f => { f.adoption.status = 'withdrawn'; }],
 ])('a settlement naming %s leaves the request blocking', (_kind, change) => {
     const f = fixture();

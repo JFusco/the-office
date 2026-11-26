@@ -99,5 +99,7 @@ export function settledRequest(store: Store, effect: EffectIntent): boolean {
     return !!p && !!store.state.coordination?.adoptions?.some(a => a.status === 'adopted' && belongsTo(store, a, effect as EffectIntent<RedoPayload>) &&
         a.redos?.some(r => r.sha === p.sha && r.pr === p.pr && r.bot === p.bot && matchesRedo(store, a, r, effect as EffectIntent<RedoPayload>) && r.settled?.effectId === effect.id &&
             r.settled.project === store.project.id && r.settled.repository === store.project.repository && r.settled.pr === p.pr &&
-            r.settled.adoption === a.id && r.settled.bot === p.bot && r.settled.sha === p.sha && /^[a-f0-9]{40}$/.test(r.settled.replacement) && r.settled.replacement !== p.sha));
+            r.settled.adoption === a.id && r.settled.bot === p.bot && r.settled.sha === p.sha && /^[a-f0-9]{40}$/.test(r.settled.replacement) && r.settled.replacement !== p.sha &&
+            typeof r.settled.at === 'string' && Number.isFinite(Date.parse(r.settled.at)) &&
+            typeof r.settled.evidence === 'string' && !!r.settled.evidence.trim()));
 }
