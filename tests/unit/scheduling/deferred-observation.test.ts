@@ -178,23 +178,30 @@ async function boardOffice() {
 }
 const workflows = (calls: string[]) => calls.filter(call => call.includes('/actions/workflows'));
 
-test('a board page GitHub refuses records the refusal against the last observation, and the held poll after it keeps it', async () => {
+const WAIT = "Wait for GitHub's rate limit to clear before retrying the board read.";
+test.each([
+    { name: 'a primary refusal printed only in the first page’s body', message: REFUSAL, page: 1,
+        answer: (options: CommandOptions) => { options.onOutput?.('stdout', JSON.stringify({ errors: [{ message: REFUSAL }] })); throw new CommandFailure('gh exited 1: query failed', 'other', true); } },
+    { name: 'a secondary HTTP 403 on a later page', message: 'You have exceeded a secondary rate limit', page: 2,
+        answer: () => { throw new CommandFailure('gh exited 1: gh: You have exceeded a secondary rate limit (HTTP 403)', 'other', true); } },
+])('$name records the refusal and the wait against the last observation, and the held poll after it keeps it', async ({ message, page, answer }) => {
     const x = await boardOffice();
-    x.answerBoard((_page, options) => {
-        options.onOutput?.('stdout', JSON.stringify({ errors: [{ message: REFUSAL }] }));
-        throw new CommandFailure('gh exited 1: query failed', 'other', true);
-    });
+    x.answerBoard((number, options) => number === page ? answer(options) : boardPage(number, 'Measured card'));
     expect(await x.observe()).toBeUndefined();
     expect(await x.lastPoll()).toBeUndefined();
-    expect(x.store.state.github).toMatchObject({ status: 'blocked', error: expect.stringContaining(REFUSAL) });
-    expect(x.store.state.github!.error).toContain('GitHub Project read failed');
+    const error = x.store.state.github!.error;
+    expect(x.store.state.github!.status).toBe('blocked');
+    expect(error).toContain('GitHub Project read failed: ');
+    expect(error.split(message).length - 1).toBe(1);
+    expect(error).toContain(WAIT);
+    expect(error).not.toMatch(/gh auth refresh|Retry the read-only project refresh/);
     const kept = ({ prs, board, issues, runs, observedAt }: typeof x.saved) => ({ prs, board, issues, runs, observedAt });
     expect(kept(x.store.state.github!)).toEqual(kept(x.saved));
-    expect(x.calls).toContain('board page 1');
+    expect(x.calls).toContain(`board page ${page}`);
     expect(x.calls).toContain('repos/JFusco/brain/actions/runs?per_page=100');
     expect(workflows(x.calls)).toEqual([]);
     expect(x.refused).toHaveBeenCalledTimes(1);
-    // The refusal's probe answers healthy; the shared backoff still holds the next refresh, which reads nothing and keeps the diagnostic.
+    // Any probe answers healthy; the shared backoff still holds the next refresh, which reads nothing and keeps the diagnostic.
     await x.github.quota.sample();
     const diagnostic = structuredClone(x.store.state.github!);
     x.calls.length = 0;

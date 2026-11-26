@@ -31,3 +31,14 @@ test('project observation failure does not discard repository issues or claim em
   }).poll();
   expect(store.state.github?.error).toBe('');expect(store.state.github?.issues[0].number).toBe(255);expect(store.state.github?.board?.observedAt).toBe('');expect(store.state.github?.board?.error).toContain('Projects unavailable');
 });
+test('a board permission failure without a hold still publishes the repository issues, with the access hint on the board',async()=>{
+  const store=setup();
+  await new GitHubMonitor(store,async(_program,args,options)=>{
+    if(isInventoryQuery(options))return noOpenPRs(store.project.repository);
+    if(args[1]==='graphql')throw new Error('gh exited 1: gh: Resource not accessible by integration');
+    if(args[1].includes('/issues?'))return JSON.stringify([[{number:256,title:'Fixture issue',state:'open',html_url:'https://github.com/JFusco/brain/issues/256',updated_at:'2026-10-28T00:00:00Z'}]]);
+    return '{"workflow_runs":[]}';
+  }).poll();
+  expect(store.state.github?.status).toBe('idle');expect(store.state.github?.error).toBe('');expect(store.state.github?.issues[0].number).toBe(256);
+  expect(store.state.github?.board?.error).toContain('Resource not accessible by integration');expect(store.state.github?.board?.error).toContain('Run gh auth refresh -h github.com -s project in your terminal');
+});

@@ -7,6 +7,7 @@ import { graphqlPR } from './pr-observation-shape';
 import { terminalPRs } from './pr-transitions';
 import { GRAPHQL_WORK, type QuotaGate, type QuotaHold } from './quota-governor';
 import { heldBy, quotaCheck, type QuotaCheck } from './quota-hold';
+import { boardReadFailure } from './board-read-failure';
 
 export class GitHubMonitor {
   polling=false;
@@ -19,11 +20,14 @@ export class GitHubMonitor {
   }
   /**
    * `check` is a background caller's quota check, asked before each page; a hold it raises is rethrown, never a board
-   * error. `onGitHubRefusal` is told the text of a page's stated rate-limit refusal; the board and its error are unchanged.
+   * error. A page's stated rate-limit refusal is kept for this read's diagnostic (`./board-read-failure.ts`) and its
+   * text told once to `onGitHubRefusal`.
    */
   async board(check?:QuotaCheck,onGitHubRefusal?:(message:string)=>void):Promise<GitHubBoard|undefined>{
     const config=this.store.project.githubProject;if(!config)return;
     const saved=this.store.state.github?.board,previous=saved?.url===config.url?saved:undefined;
+    let refusal:string|undefined;
+    const refused=(message:string)=>{refusal=message;onGitHubRefusal?.(message);};
     try{
       let after:string|null=null,board:GitHubBoard|undefined;
       do{
@@ -31,7 +35,7 @@ export class GitHubMonitor {
         const query=`query($owner:String!,$number:Int!,$after:String){user(login:$owner){projectV2(number:$number){title url shortDescription readme fields(first:100){nodes{... on ProjectV2SingleSelectField{name options{name}}} pageInfo{hasNextPage}} items(first:100,after:$after){nodes{id fieldValues(first:100){nodes{... on ProjectV2ItemFieldSingleSelectValue{name field{... on ProjectV2SingleSelectField{name}}}} pageInfo{hasNextPage}} content{... on Issue{number title url state repository{nameWithOwner}}}} pageInfo{hasNextPage endCursor}}}}}`;
         const args=['api','graphql','-f',`query=${query}`,'-f',`owner=${config.owner}`,'-F',`number=${config.number}`];
         if(after)args.push('-f',`after=${after}`);
-        const response=JSON.parse(await this.execute('gh',args,{cwd:this.store.project.repo,timeout:60000,readOnly:true,...(onGitHubRefusal?{onGitHubRefusal}:{})}));
+        const response=JSON.parse(await this.execute('gh',args,{cwd:this.store.project.repo,timeout:60000,readOnly:true,onGitHubRefusal:refused}));
         if(response.errors?.length)throw new Error(response.errors.map((e:any)=>e.message).join('; '));
         const p=response.data?.user?.projectV2;if(!p)throw new Error(`${this.store.project.name} project is unavailable`);
         if(p.fields.pageInfo.hasNextPage)throw new Error('Project field pagination is incomplete');
@@ -48,7 +52,7 @@ export class GitHubMonitor {
         after=next.hasNextPage?next.endCursor:null;
       }while(after);
       return board;
-    }catch(e){if(heldBy(e))throw e;return {...previous,title:previous?.title||this.store.project.name,url:config.url,description:previous?.description||'',readme:previous?.readme||'',observedAt:previous?.observedAt||'',lanes:previous?.lanes||[],items:previous?.items||[],error:`GitHub Project read failed: ${String(e)}. ${/permission|forbidden|scope|403/i.test(String(e))?'Run gh auth refresh -h github.com -s project in your terminal, then recheck Projects access in the Office account.':'Retry the read-only project refresh; the last verified board is retained.'}`};}
+    }catch(e){if(heldBy(e))throw e;return {...previous,title:previous?.title||this.store.project.name,url:config.url,description:previous?.description||'',readme:previous?.readme||'',observedAt:previous?.observedAt||'',lanes:previous?.lanes||[],items:previous?.items||[],error:boardReadFailure(e,refusal)};}
   }
   /**
    * Counted as `monitor` in the Office's GitHub call ledger, whoever asks for it. It reads GraphQL, so it asks for
