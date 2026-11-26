@@ -17,6 +17,14 @@ test('the runner reaches none of the Office service, the control store, the sche
     expect(files).not.toContain('server/office/config.ts');
 });
 
+test('the runner Store and the budgeted run reach none of the Office service, the control store, the scheduler or the worker runtime', () => {
+    for (const entry of ['server/overseer/runner-store.ts', 'server/overseer/budgeted-run.ts']) {
+        const { files } = runtimeClosure([entry]);
+        expect(files.filter(file => FORBIDDEN.includes(file)), entry).toEqual([]);
+    }
+    expect(runtimeClosure(['server/overseer/runner-store.ts']).files).toEqual(expect.arrayContaining(['server/store/store.ts', 'server/store/effects.ts', 'server/office/config.ts']));
+});
+
 test('the operator commands reach no Office module that reads configuration or opens a store', () => {
     const { files } = runtimeClosure(['server/overseer/commands.ts']);
     expect(files.filter(file => FORBIDDEN.includes(file) || file === 'server/office/config.ts' || file === 'server/store/store.ts')).toEqual([]);

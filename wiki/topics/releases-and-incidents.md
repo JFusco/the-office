@@ -8,7 +8,7 @@ These changes landed as separate increments. The fence and release identity prec
 
 An incident's identity is its cause's fingerprint. For a cause the harness wrote, that fingerprint includes its normalized text, in which occurrence details (paths, ticket keys, identifiers, times and numbers) become placeholders. A detail left in the text splits one cause into many incidents, as GitHub request IDs did until [rate-limit stops were grouped](../journal/2026-11-24-rate-limit-incident-grouping.md).
 
-The Overseer's runner is a separate process that only observes: [phase 6a](../journal/2026-11-25-overseer-runner-skeleton.md) reads the Office over loopback `GET`s, keeps one incident in flight and journals outages in its own folder. It is the one authorized exception to the shared-runtime rule, and it changes no Office state.
+The Overseer's runner is a separate process that only observes: [phase 6a](../journal/2026-11-25-overseer-runner-skeleton.md) reads the Office over loopback `GET`s, keeps one incident in flight and journals outages in its own folder. It is the one authorized exception to the shared-runtime rule, and it changes no Office state. [Phase 6b](../journal/2026-11-26-overseer-phase-6b-runner-budgets.md) added the budget admission every future model call must pass: a ledger of reservations held until a matching receipt settles them, round and daily limits, required timeouts, and a daily ceiling on list-price estimates, which are not bills on the subscription logins the runner uses.
 
 ## Evidence
 

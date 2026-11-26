@@ -991,6 +991,9 @@ All under the root, kept apart: control files, journals and state.
 | `journal/failures.jsonl` | The runner's failure events, one per line, never rewritten |
 | `state/runner.json` | The incident in flight, the current outage, both cached readings, any journal write still owed, and the last pass |
 | `state/office-data/` | The pass's `OFFICE_DATA_ROOT` |
+| `state/budget.sqlite` | The budget ledger: every model reservation and deployment admission (see Budgets) |
+| `state/runner.sqlite`, `state/runner-data/` | The runner's private Store, for its own Effects in later phases; nothing opens it yet |
+| `control/budget.json` | Optional: a lower or higher daily ceiling (see Budgets) |
 
 ### Controls
 
@@ -1000,17 +1003,138 @@ pnpm office overseer pause --reason "looking at CEC-154"
 pnpm office overseer unpause
 ```
 
-These read and write the runner's files only. They open no database and never contact the
-Office, so they work while the Office or its configuration is broken. With `OVERSEER_ROOT` unset
-they use `~/Projects/the-office-overseer`. `status` reads every file above and creates nothing.
-It shows STOP and pause, the lock owner or a guard left behind, the runner state and the number of
-journaled events, and names any file it cannot read. A pause keeps its first reason; pausing again
+These read and write the runner's files only and never contact the Office, so they work while
+the Office or its configuration is broken. With `OVERSEER_ROOT` unset they use
+`~/Projects/the-office-overseer`. `status` reads every file above and creates nothing: the budget
+ledger through a read-only connection, never the Store. It shows STOP and pause, the lock owner or
+a guard left behind, the runner state, the number of journaled events, the billing mode and
+today's budget standing, and names any file it cannot read. A pause keeps its first reason; pausing again
 changes nothing. `unpause` removes the pause and nothing else. If STOP is present the runner stays
 stopped, and the answer says so.
 
 Pausing the runner pauses nothing in the Office. The switch for automatic repair resumes is the
 Office's own (`pnpm office incident pause-resumes`, under Resuming after a fix) and works
 whatever the runner is doing.
+
+### Budgets
+
+No model runs yet: nothing in the runner calls one before phase 7. What exists is the admission
+every future model call must pass, and the ledger that keeps its account. Phase 7's model runs go
+through one boundary, `runBudgeted` in `server/overseer/budgeted-run.ts`, which admits a call,
+starts it, and settles what it cost.
+
+**The money is an estimate.** The runner's model calls use the existing Claude and Codex
+subscription logins the Office workers use, so they share their usage limits with Joe's own
+sessions and the Office. Every dollar figure is what the usage would cost at API list prices:
+Claude's own estimate (`costBasis: list`) and, for Codex, the Office's price table. It is never a
+bill. Run counts and timeouts are the real brake; the daily ceiling stops a runaway. Neither the
+margins nor the timeouts guarantee a worst-case dollar amount.
+
+`pnpm office overseer status` shows the billing record:
+
+| Field | Value |
+|---|---|
+| `mode` | `subscription-logins`, for `claude` and `codex` |
+| `dedicatedApiKeys` | `false`: none are provisioned, and switching to API keys is a billing decision for Joe |
+| `sharedUsageLimits` | `true` |
+| `accountBackstop` | `not-configured`, by Joe's decision of 2026-11-25; whether either account offers one is not verified |
+| `claudeMaxBudgetUsd` | `not-applied`: Claude's `--max-budget-usd` is not qualified on the subscription profile |
+
+Before ordinary dispatch, phase 7 must show isolated access to those logins, that each run's
+receipt names the session it was started with, real output activity and that the provider
+process exits. A missing or mismatched login stops dispatch.
+
+**What a call costs to admit.** Every stage is in one closed table. A stage outside it is
+refused. Each call reserves 150% of its stage's allocation:
+
+| Stage | Allocation | Reserved | Timeouts (total / quiet) | Counts in |
+|---|---:|---:|---|---|
+| `research`, `triage` | $2 | $3 | 15 / 5 min | 2 triage rounds |
+| `second-opinion` | $2 | $3 | 15 / 5 min | 1 second opinion |
+| `plan`, `plan-review` | $3 | $4.50 | 20 / 5 min | 2 fix attempts |
+| `fix` | $15 | $22.50 | 60 / 10 min | 2 fix attempts |
+| `review` | $3 | $4.50 | 20 / 5 min | 2 review-repair rounds |
+| `repair` | $15 | $22.50 | 60 / 10 min | 2 review-repair rounds |
+
+A call names its incident and its round, from 1 to the limit of the counter its stage counts in.
+Each stage runs at most once in a round, and the first call in a round opens it, whichever stage
+that is. So a fix attempt can be a plan, a plan review and the fix, and still counts as one
+attempt. Every call also counts against the day: 24 model calls and 4 newly opened fix rounds per
+Eastern day. A round opened at 23:59 keeps that day when it continues after midnight. Six
+deployments a day are admitted the same way, for phase 10.
+
+The diff cap allows up to 15 files and 600 changed lines, and future repairs that exceed either
+limit go to `needs-joe`.
+
+Timeouts are required: whole milliseconds, with `1 000 <= quiet <= total <= 7 200 000`. A call
+without them is refused. `runBudgeted` returns control to its caller at the first of the two
+deadlines, even when the call ignores its abort signal. Output resets only the quiet one.
+
+**The ceiling.** $100 a day, held as 100 000 000 micro-USD. To change it, write
+`control/budget.json`:
+
+```json
+{ "version": 1, "dailyCeilingMicroUsd": 50000000 }
+```
+
+The value is a whole number from 1 to 1 000 000 000. A file that cannot be read or does not
+validate refuses every admission (`ceiling-unreadable`) until it is fixed or removed.
+
+A call is admitted only if what it reserves fits in what is left today:
+
+- **Spent:** the settled charges of calls admitted today.
+- **Held:** every reservation not yet settled, from any day, at the larger of its reservation and
+  its charge so far.
+- **Overruns:** while an overrun is unacknowledged, nothing is available.
+
+A reservation that exactly fits is admitted. Two processes admitting at once are serialized, so
+they can never together pass the ceiling.
+
+**Settling.** A call's reservation stays held until a receipt settles it:
+
+- **Matching complete receipt.** When the receipt names the session the call bound at launch and
+  is complete, its total is charged once, a valid zero included, and the hold is released. The
+  charge stays on the day the call was admitted.
+- **Missing or incomplete receipt.** The hold stays, at the largest of the reservation, the charge
+  so far, and the largest amount the receipt supports. That is its priced subtotal, its reported
+  total or its priced components, whichever is largest; they may describe the same spend, so they
+  are never added. A crash that reports zero keeps the reservation. So does a receipt for another
+  session.
+- **A charge only rises.** Later evidence can raise it but never lower it. A late matching receipt
+  below the charge already posted still releases the hold, and its exact total is kept beside the
+  charge.
+- **Abandoned.** A reservation still unsettled a minute past its total timeout, for example
+  because its process died, is charged its full reservation and stays held.
+
+**Overruns.** A charge above its reservation is an overrun. It stops every further admission,
+whatever the ceiling, until a person acknowledges it at the amount `status` shows:
+
+```bash
+pnpm office overseer reconcile-budget RESERVATION --expected-micro-usd 25000000 --reason "looked at the run: a long fix"
+```
+
+An acknowledgement at another amount is refused (`stale-amount`); read `status` again. If the
+charge rises later, it needs acknowledging again. Acknowledging does not release a hold that is
+still waiting for its receipt. To close one by hand, once you have established that the call has
+ended and what it cost, add `--finalize` and say how in `--reason`:
+
+```bash
+pnpm office overseer reconcile-budget RESERVATION --expected-micro-usd 22500000 --finalize --reason "process gone; charge left at the reservation"
+```
+
+A reservation still running cannot be finalized, and a timeout by itself is not evidence that a
+call ended.
+
+**When status cannot read the ledger.** `status` never repairs anything. It reports `budget`:
+`{ unreadable }` with the reason, and invents no balance, when the ledger:
+
+- is a link or a file with a second name;
+- is not an SQLite database, or is not a rollback-journal one;
+- is locked;
+- has a `-journal` left beside it (`journal-present`).
+
+A journal left by an interrupted write is rolled back by the runner's next write, not by
+`status`. If it stays, check that no runner process is alive.
 
 ### When the Office does not answer
 
