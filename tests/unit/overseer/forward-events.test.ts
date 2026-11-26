@@ -190,11 +190,13 @@ test('no event is examined once the phase has no time left, whatever the writer 
 test('a send left only a sliver after its preflight is refused unclaimed, never claimed and then stranded', async () => {
     let remaining = 1000;
     const down = failure('service-down'), runner = store();
-    // About 1.5 ms remain when health answers, 0.5 ms when the POST would start.
-    const world = officeWorld({ before: (method, path) => { if (path === '/api/health') remaining = 1.5; if (method === 'POST') remaining = 0.5; } });
+    // About 1.5 ms remain when health answers; the claim then uses the rest, leaving 0.5 ms as the send begins.
+    const world = officeWorld({ before: (_, path) => { if (path === '/api/health') remaining = 1.5; } });
+    const writer = officeWriter(ORIGIN, world.request, undefined, () => remaining);
+    const claiming = { ...writer, sendFailure: (event: FailureEvent) => { remaining = 0.5; return writer.sendFailure(event); } };
     const first = await forwardFailures({
         entries: [{ event: down }], origin: ORIGIN, state: runner.state, effects: runner.effects,
-        writer: officeWriter(ORIGIN, world.request, undefined, () => remaining), limit: 1, remaining: () => remaining,
+        writer: claiming, limit: 1, remaining: () => remaining,
     });
     expect(first).toMatchObject({ pending: 1, uncertain: [] });
     expect(world.posts()).toEqual([]);
