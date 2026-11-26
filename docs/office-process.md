@@ -2157,6 +2157,12 @@ release a pass only observes:
   `service-down` event in its own folder. When the Office answers again, it journals one
   `service-restored` event. These events are not yet sent to the Office.
 
+Before any later phase lets it call a model, every call must pass the runner's own budget
+admission: a daily ceiling on estimated cost at list price, 24 model calls a day, per-incident
+round limits and required timeouts, recorded in a ledger under the runner's root. The runner's
+model calls use the existing Claude and Codex subscription logins; the dollar figures are
+estimates, not bills. See [Overseer, Budgets](overseer.md#budgets).
+
 The runner writes only under its own root, which is never an Office data root. Its pause
 (`pnpm office overseer pause`) and STOP stop the runner only. The Office's switch for automatic
 repair resumes (`pnpm office incident pause-resumes`) is separate, and works whatever the runner
@@ -2179,7 +2185,7 @@ is doing. How to run and read it is in [Overseer, Runner](overseer.md#runner).
 | Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
 | Evidence packets, dismissals and their lapse | `server/incidents/evidence-packet.ts`, `server/incidents/dismissal.ts`, `server/incidents/dismissal-validity.ts` |
 | Repair waits: marker, admission, expiry, effective cause | `server/incidents/repair/` |
-| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection | `server/overseer.ts`, `server/overseer/` |
+| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection, budget admission and ledger, private Store | `server/overseer.ts`, `server/overseer/` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |
