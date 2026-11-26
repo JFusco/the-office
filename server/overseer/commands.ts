@@ -2,8 +2,9 @@ import { lstatSync } from 'node:fs';
 import { readStanding, reconcile } from './budget-ledger';
 import { BILLING_MODE } from './budget-policy';
 import type { RunnerPaths } from './config';
-import { RUNNER_DEFAULTS } from './config';
+import { DEFAULT_OFFICE_URL, officeUrl, RUNNER_DEFAULTS } from './config';
 import { readFailures } from './failure-journal';
+import { journalDigest, readForwardingStatus } from './forwarding-status';
 import { readLauncherLock, readLauncherState } from './launcher-state';
 import { pauseRunner, readPause, readStop, unpauseRunner } from './kill-switch';
 import { readRunnerPin } from './runner-pin';
@@ -14,8 +15,8 @@ import { readPassOwner } from './single-flight';
 /**
  * `pnpm office overseer status | pause [--reason TEXT] | unpause | reconcile-budget ...`. These
  * read and write the runner's own files only and never contact the Office, so they work while
- * the Office is down. `pin` is server/overseer/pin-command.ts, reached by its own import. `status` reads the budget ledger through a read-only connection and opens
- * no Store. The Office's switch for automatic repair resumes is separate
+ * the Office is down. `pin` is server/overseer/pin-command.ts, reached by its own import. `status` reads the budget ledger through a read-only connection, opens
+ * no Store, and shows what the last pass forwarded from its summary file (forwarding-status.ts). The Office's switch for automatic repair resumes is separate
  * (`pnpm office incident pause-resumes`).
  */
 
@@ -30,9 +31,18 @@ const guardPresent = (path: string) => {
     try { lstatSync(path); return true; } catch { return false; }
 };
 
-/** Everything the runner's files say about it, reading each and creating nothing. */
-export function runnerStatus(paths: RunnerPaths, now: Date = new Date()) {
+/**
+ * Everything the runner's files say about it, reading each and creating nothing. `office` is the
+ * Office origin this CLI would report to (OVERSEER_OFFICE_URL), or why it is not one: what was
+ * forwarded is shown only for that origin and the journal as it reads now.
+ */
+export function runnerStatus(paths: RunnerPaths, now: Date = new Date(), office: { origin: string } | { invalid: string } = { origin: DEFAULT_OFFICE_URL }) {
     const read = readRunnerState(paths), journal = readFailures(paths, RUNNER_DEFAULTS.journalLimit), budget = readStanding(paths, now);
+    const forwarding = readForwardingStatus(paths, {
+        origin: 'origin' in office ? office.origin : null,
+        lastPass: 'unreadable' in read ? null : read.state.lastPass?.pass ?? null,
+        journal: journal.problem === null ? { digest: journalDigest(journal.entries.map(entry => entry.line)), entries: journal.entries.length } : null,
+    });
     const state = 'unreadable' in read ? read : (({ inFlight, outage, intent, observation, lastPass }) => ({
         inFlight, outage, intent: intent && { id: intent.id },
         observation: { healthAt: observation.health?.at ?? null, incidentsAt: observation.incidents?.at ?? null },
@@ -43,6 +53,7 @@ export function runnerStatus(paths: RunnerPaths, now: Date = new Date()) {
         state, journal: journal.problem === null ? { events: journal.entries.length, limit: RUNNER_DEFAULTS.journalLimit } : { problem: journal.problem },
         billing: BILLING_MODE, budget: 'standing' in budget ? budget.standing : budget,
         pin: readRunnerPin(paths), launcher: readLauncherState(paths), launcherLock: readLauncherLock(paths),
+        office, forwarding,
     };
 }
 
@@ -74,7 +85,11 @@ export async function overseerCommand(args: string[], context: { env?: NodeJS.Pr
     try { paths = resolveCliRoot(env); }
     catch (error) { log(`Refused: ${error instanceof Error ? error.message : String(error)}`); return 2; }
     const print = (value: unknown) => log(JSON.stringify(value, null, 2));
-    if (verb === 'status') { print(runnerStatus(paths, now())); return 0; }
+    if (verb === 'status') {
+        const office = (() => { try { return { origin: officeUrl(env) }; } catch (error) { return { invalid: error instanceof Error ? error.message : String(error) }; } })();
+        print(runnerStatus(paths, now(), office));
+        return 0;
+    }
     if (verb === 'pause') {
         ensurePrivateDirectory(paths.control);
         const { written, pause } = pauseRunner(paths, reason, now);

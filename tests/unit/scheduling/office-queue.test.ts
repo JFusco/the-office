@@ -36,6 +36,9 @@ function offices(limit = 1) {
     initializeLanes(office);
     office.entries = new Map();
     office.sessions = new SessionBridge(() => [...office.entries.values()].map(e => e.store));
+    // An empty control database: no runner incident and no halt report, so no notices.
+    office.incidents = { get: () => null } as never;
+    office.runnerReports = { halt: () => null } as never;
     for (const id of ['cec', 'cms-field-vocabulary']) {
         const s = store(id), engine = new Engine(s, office.capacity);
         office.entries.set(id, { store: s, engine, conversations: new Conversations(s, engine, s.dataRoot), coordinator: new Coordinator(s, engine) });

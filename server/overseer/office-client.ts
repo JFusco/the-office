@@ -5,9 +5,10 @@ import { ServiceHealth } from '../release/service-http';
 import { RUNNER_DEFAULTS } from './config';
 
 /**
- * What the runner reads from the running Office, and nothing else: `/api/health` and the
+ * What the runner reads from the running Office for its observation: `/api/health` and the
  * research list. Every request is a body-less `GET` to a fixed path that follows no redirect,
- * is bounded in time and size, and is retried once only when its connection was reset.
+ * is bounded in time and size, and is retried once only when its connection was reset. What the
+ * runner reports to the Office goes through office-writer.ts.
  */
 
 const STATES = ['observed', 'triaged', 'fixing', 'shipped', 'deployed', 'verified', 'recurred', 'housekept', 'dismissed', 'needs-joe', 'abandoned'] as const satisfies readonly IncidentState[];
@@ -53,6 +54,8 @@ export interface OfficeReader {
 
 /** A read of the Office that did not give a usable answer. */
 export class OfficeReadError extends Error {}
+/** The phase expired before this observation could start. */
+export class ObservationSkipped extends OfficeReadError {}
 
 const RESET = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET']);
 const reset = (error: unknown) => {
@@ -61,7 +64,8 @@ const reset = (error: unknown) => {
 };
 const bounded = (text: string) => sanitize(text).slice(0, 500);
 
-async function bodyWithin(response: Response, limit: number): Promise<string> {
+/** A response body read to at most `limit` bytes; a longer one is cut off and refused. */
+export async function bodyWithin(response: Response, limit: number): Promise<string> {
     const declared = response.headers.get('content-length');
     if (declared !== null && Number(declared) > limit) {
         await response.body?.cancel().catch(() => undefined);
@@ -84,12 +88,22 @@ async function bodyWithin(response: Response, limit: number): Promise<string> {
     return Buffer.concat(chunks).toString('utf8');
 }
 
-export function officeReader(base: string, request: typeof fetch = fetch, limits: { requestTimeoutMs: number; maxResponseBytes: number } = RUNNER_DEFAULTS): OfficeReader {
+/**
+ * `remaining` is the time left in the pass's current phase (see pass-budget.ts): each attempt is
+ * bounded by the smaller of the request timeout and that, and none starts once it is spent.
+ */
+export function officeReader(base: string, request: typeof fetch = fetch, limits: { requestTimeoutMs: number; maxResponseBytes: number } = RUNNER_DEFAULTS, remaining: () => number = () => Infinity): OfficeReader {
     const get = async (path: '/api/health' | '/api/incidents?research=1'): Promise<unknown> => {
         for (let attempt = 0; ; attempt++) {
+            // AbortSignal.timeout takes whole milliseconds; the phase clock is fractional.
+            const timeout = Math.floor(Math.min(limits.requestTimeoutMs, remaining()));
+            if (!(timeout > 0)) {
+                const detail = `${path} was not read: the pass has no time left for it`;
+                throw attempt === 0 ? new ObservationSkipped(detail) : new OfficeReadError(detail);
+            }
             try {
                 // The signal stays on the response, so it bounds reading the body as well.
-                const response = await request(`${base}${path}`, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(limits.requestTimeoutMs) });
+                const response = await request(`${base}${path}`, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout) });
                 const text = await bodyWithin(response, limits.maxResponseBytes);
                 if (!response.ok) throw new OfficeReadError(bounded(`${path} answered ${response.status}: ${text.slice(0, 300)}`));
                 try { return JSON.parse(text); }

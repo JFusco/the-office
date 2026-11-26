@@ -51,14 +51,18 @@ export function runtimeSpecifiers(file: string): string[] {
 
 export interface Closure { files: string[]; packages: string[] }
 
-/** The runtime closure of the given entries, as paths relative to the repository when inside it. */
-export function runtimeClosure(entries: string[], root = repository): Closure {
-    const options = compilerOptions(), files = new Set<string>(), packages = new Set<string>();
+/**
+ * The runtime closure of the given entries, as paths relative to the repository when inside it.
+ * A file in `stopAt` is listed when reached but not walked into: what it loads is left out.
+ */
+export function runtimeClosure(entries: string[], root = repository, stopAt: readonly string[] = []): Closure {
+    const options = compilerOptions(), files = new Set<string>(), packages = new Set<string>(), stops = new Set(stopAt.map(file => resolve(root, file)));
     const pending = entries.map(entry => resolve(root, entry));
     while (pending.length) {
         const file = pending.pop()!;
         if (files.has(file)) continue;
         files.add(file);
+        if (stops.has(file)) continue;
         for (const specifier of runtimeSpecifiers(file)) {
             if (specifier.startsWith('node:')) continue;
             if (!specifier.startsWith('.')) {

@@ -5,6 +5,7 @@ import { dismiss, type DismissalFacts, type DismissalRequest } from './dismissal
 import type { FixIdentity } from './fix-identity';
 import type { IncidentLedger } from './incident-ledger';
 import { routeFault } from './repair/resume-routes';
+import { FAILURE_ID } from './runner-report';
 import { repairSubject } from './subject-digest';
 import { nextState } from './transitions';
 
@@ -71,6 +72,8 @@ export interface Recorded { event: IncidentEvent; revision: number; incident: In
 export function replayed(ledger: IncidentLedger, incident: string, eventId: string, expectedRevision: number, request: WriteRequest): Recorded | null {
     if (!EVENT_ID.test(eventId)) throw new Error('An event ID is 8 to 100 letters, digits, dots, colons, dashes or underscores, and does not start with inc-');
     const saved = ledger.event(eventId);
+    // A runner failure's ID is the runner's own: only its report route records one (record-runner-failure.ts).
+    if (!saved && FAILURE_ID.test(eventId)) throw new Error(`Incident event ${eventId} is reserved for the repair runner's failure reports`);
     if (!saved) return null;
     if (saved.incident !== incident || saved.kind !== request.kind || canonical(saved.body.request) !== canonical({ ...request, expectedRevision })) throw new Error(`Incident event ${eventId} was already recorded with different content`);
     const current = ledger.get(incident);

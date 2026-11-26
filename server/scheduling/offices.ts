@@ -41,6 +41,9 @@ import { seedOfficeLessons } from '../knowledge/seeded-office-lessons';
 import { expireLessons, queueLessonIssueCheck } from '../knowledge/lesson-exits';
 import { IncidentLedger } from '../incidents/incident-ledger';
 import { ResumeControl } from '../incidents/repair/resume-control';
+import { RunnerReports } from '../incidents/runner-reports';
+import { readNotices } from '../incidents/incident-notices';
+import { servedOutbox } from '../conversations/served-outbox';
 import { observeProjects } from '../incidents/observe-projects';
 import { syncIncidents } from '../incidents/sync-incidents';
 import { storeTimings } from '../store/store-timings';
@@ -69,6 +72,8 @@ export class Offices {
     incidents = new IncidentLedger(this.control.db);
     /** Whether automatic repair resumes are admitted, office-wide. Opening it writes nothing; it starts paused. */
     resumes = new ResumeControl(this.control.db);
+    /** What the Overseer runner reports beside its failures: its control condition. Opening it writes nothing. */
+    runnerReports = new RunnerReports(this.control.db);
     /** Reads every project's stopped work into the incident ledger; writes nothing to a project, and nothing at all while fenced. */
     observeIncidents(now = new Date()) { return this.fenced() ? undefined : syncIncidents(this.incidents, observeProjects([...this.entries.values()], (entry, lane) => this.projection(entry, lane), now), now); }
     /** Ticks and HTTP writes that started before the fence was taken; health reports busy until they end. */
@@ -150,17 +155,19 @@ export class Offices {
         source.emit('conversation-reconciled', 'Earlier failed conversation has a verified completed retry. Original failure retained in history.', 'pm', original.ticket);
     }
     get(id = PROJECTS[0].id) { projectById(id); return this.entries.get(id)!; }
-    /** `progressions` holds the delivery projection of each entry the caller has already computed. */
-    summaries(progressions?: Map<unknown, ReturnType<Offices['projection']>>) {
+    /** The Overseer runner's notices as the control database reads now, for every project's served outbox (see server/incidents/incident-notices.ts). */
+    notices() { return readNotices(this); }
+    /** `progressions` holds the delivery projection of each entry the caller has already computed; `notices`, the notices the caller already read. */
+    summaries(progressions?: Map<unknown, ReturnType<Offices['projection']>>, notices = this.notices()) {
         return [...this.entries.values()].map(entry => {
             const progression = progressions?.get(entry) ?? this.projection(entry);
             return { id: entry.store.project.id, name: entry.store.project.name, provider: entry.store.project.provider, paused: entry.store.state.paused,
                 working: progression.filter(item => item.eligibility.state === 'running').length,
                 queued: progression.filter(item => item.eligibility.state === 'runnable').length,
-                needsYou: currentOutbox(entry.store).filter(o => o.status === 'open').length };
+                needsYou: servedOutbox(currentOutbox(entry.store), notices).filter(o => o.status === 'open').length };
         });
     }
-    snapshot(id = PROJECTS[0].id) { const scoped=knowledgeOfficeState(id,this.get(id).store.state),progressions=new Map([...this.entries.values()].map(entry => [entry, this.projection(entry)]));return { ...scoped, featureQuestions: this.questions(), featurePlanning: { assessment: featurePolicy(id, FEATURE_PLANNING).assessment.enabled, progression: featurePolicy(id, FEATURE_PLANNING).progression, policyDigest: featurePolicy(id, FEATURE_PLANNING).digest }, slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: currentOutbox(this.get(id).store, scoped), dailyCTO: this.control.summaries(), officeKnowledge: officeKnowledgeSnapshot(id,this.control.knowledge?.()), progression: [...progressions.values()].flat().map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(progressions), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), jiraQueueProgress: [...this.entries.values()].flatMap(({store}) => jiraQueueProgress(store.project, store.state, store.clock.now())), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
+    snapshot(id = PROJECTS[0].id) { const scoped=knowledgeOfficeState(id,this.get(id).store.state),progressions=new Map([...this.entries.values()].map(entry => [entry, this.projection(entry)])),notices=this.notices();return { ...scoped, featureQuestions: this.questions(), featurePlanning: { assessment: featurePolicy(id, FEATURE_PLANNING).assessment.enabled, progression: featurePolicy(id, FEATURE_PLANNING).progression, policyDigest: featurePolicy(id, FEATURE_PLANNING).digest }, slackDeliveries: projectSlackDeliveries(this.get(id).store.state), preferences: this.preferences.read(), it: diagnosticSnapshot(this.get(id).store), serviceInstanceId: this.serviceInstanceId, snapshotSequence: ++this.snapshotSequence, outbox: servedOutbox(currentOutbox(this.get(id).store, scoped), notices), dailyCTO: this.control.summaries(), officeKnowledge: officeKnowledgeSnapshot(id,this.control.knowledge?.()), progression: [...progressions.values()].flat().map(({ work, stage, rank, enqueuedAt, eligibility }) => ({ work, stage, rank, enqueuedAt, eligibility })), sessionVisibility: this.sessions.forProject(this.get(id).store), serverTime: new Date().toISOString(), projects: this.summaries(progressions, notices), ctoGoals: [...this.entries.values()].flatMap(({ store }) => store.state.goals || []), ctoMessages: [...this.entries.values()].flatMap(({ store }) => { const ids = new Set(store.state.messages.filter(m => m.to === 'cto' || m.from === 'cto' || m.recipients.includes('cto')).map(m => m.requestId)); return store.state.messages.filter(m => ids.has(m.requestId)).map(m => ({ ...m, contextProject: store.project.name })); }).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), jiraQueueProgress: [...this.entries.values()].flatMap(({store}) => jiraQueueProgress(store.project, store.state, store.clock.now())), teamQueue: [...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.jobs || []).map(job => ({ project: store.project.id, projectName: store.project.name, job }))), pmQueue: [...new Map([...this.entries.values()].flatMap(({ store }) => (store.state.coordination?.listener.reviews || []).map(review => ({ project: store.project.id, projectName: store.project.name, review }))).map(row => [`${row.project}:${row.review.key}`, row])).values()].sort((a, b) => a.review.queuedAt.localeCompare(b.review.queuedAt)) }; }
     async tick(now = new Date()) {
         if (this.step('tick: fence', () => this.fenced())) return;
         // Registered before the first await: a fence taken meanwhile sees this tick as still busy.

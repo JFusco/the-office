@@ -16,11 +16,13 @@ const done = (path: string, bytes: Buffer): BoundedRead => ({ path, sha256: crea
  * read see the same file (no swap to a symlink in between). At most `maxBytes` are read; a file
  * that is, or grows, larger is refused rather than read partially.
  */
-export function readBoundedNoFollowSync(path: string, maxBytes: number): BoundedRead {
+export function readBoundedNoFollowSync(path: string, maxBytes: number, { singleLink = false }: { singleLink?: boolean } = {}): BoundedRead {
     let fd: number;
     try { fd = openSync(path, FLAGS); } catch (error) { return { reason: reasonOf(error) }; }
     try {
-        if (!fstatSync(fd).isFile()) return { reason: 'not-owned' };
+        const stat = fstatSync(fd);
+        // With `singleLink`, a file that another name also reaches is not the caller's own.
+        if (!stat.isFile() || singleLink && stat.nlink !== 1) return { reason: 'not-owned' };
         const bytes = Buffer.alloc(maxBytes + 1);
         let total = 0, read: number;
         while (total <= maxBytes && (read = readSync(fd, bytes, total, maxBytes + 1 - total, total)) > 0) total += read;

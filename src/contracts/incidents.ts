@@ -5,7 +5,7 @@
  */
 export type IncidentState = 'observed' | 'triaged' | 'fixing' | 'shipped' | 'deployed' | 'verified' | 'recurred' | 'housekept' | 'dismissed' | 'needs-joe' | 'abandoned';
 
-/** Where a signal was read. `runner` is reserved for the repair runner's own failures. */
+/** Where a signal was read. `runner`: the repair runner's own failures, which it forwards to the Office. */
 export type IncidentSource = 'stopped-work' | 'worker-failure' | 'it-recovery' | 'it-investigation' | 'improvement' | 'provider-error' | 'slack-delivery' | 'outbox' | 'runner';
 /** Every source, in the order their reports are trusted when several describe one stop: the order the collectors run in. */
 export const INCIDENT_SOURCES: readonly IncidentSource[] = ['stopped-work', 'worker-failure', 'it-recovery', 'it-investigation', 'improvement', 'provider-error', 'slack-delivery', 'outbox', 'runner'];
@@ -294,9 +294,10 @@ export interface EvidencePacket {
  * written by a person or the repair runner through the Office. `fix-deployed`, `fix-withdrawn`,
  * `release-identity-unknown`, `dismissal-invalidated`, `repair-wait-expired`, `resume-admitted`,
  * `resume-refused`, `resume-outcome`, `incident-verified` and `incident-recurred` are written by
- * the Office itself.
+ * the Office itself. `runner-failure` is a failure the repair runner journaled and forwarded, under
+ * its journal ID (server/incidents/record-runner-failure.ts).
  */
-export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired' | 'resume-admitted' | 'resume-refused' | 'resume-outcome' | 'incident-verified' | 'incident-recurred';
+export type IncidentEventKind = 'incident-observed' | 'subject-observed' | 'episode-observed' | 'subject-cleared' | 'research-promoted' | 'research-withdrawn' | 'repair-started' | 'fix-bound' | 'fix-deployed' | 'fix-withdrawn' | 'release-identity-unknown' | 'dismissed' | 'dismissal-invalidated' | 'repair-wait-expired' | 'resume-admitted' | 'resume-refused' | 'resume-outcome' | 'incident-verified' | 'incident-recurred' | 'runner-failure';
 
 export interface IncidentEvent {
     /** Stable: the same event recorded twice is one event. */

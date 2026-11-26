@@ -29,7 +29,7 @@ function passDeadline(env, limits = LIMITS) {
     throw new Error(`OVERSEER_PASS_DEADLINE_MS must be from ${limits.minDeadlineMs} to ${limits.maxDeadlineMs}`);
   return value;
 }
-const LOOPBACK = /* @__PURE__ */ new Set(["127.0.0.1", "localhost", "[::1]"]);
+const LOOPBACK = /* @__PURE__ */ new Set(["127.0.0.1", "localhost"]);
 function officeOrigin(env) {
   const raw = env.OVERSEER_OFFICE_URL;
   if (raw === void 0) return void 0;
@@ -40,7 +40,7 @@ function officeOrigin(env) {
     throw new Error("OVERSEER_OFFICE_URL is not a URL");
   }
   if (url.protocol !== "http:" || !LOOPBACK.has(url.hostname) || url.username || url.password || url.pathname !== "/" || url.search || url.hash || /[?#]/.test(raw))
-    throw new Error("OVERSEER_OFFICE_URL must be a bare http: origin on 127.0.0.1, localhost or [::1]");
+    throw new Error("OVERSEER_OFFICE_URL must be a bare http: origin on 127.0.0.1 or localhost");
   return url.origin;
 }
 const UUID_FORM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

@@ -12,7 +12,8 @@ import { workerFailures } from './worker-failures';
 /**
  * Every source of incident signals, in the order their reports are trusted when two describe the
  * same stop: the stopped record itself first, the outbox last. The repair runner's own failures
- * have no collector until the runner exists.
+ * have no collector: the runner reports them over HTTP (record-runner-failure.ts), and observation
+ * leaves its subject as those reports left it.
  */
 export const COLLECTORS: readonly IncidentCollector[] = [stoppedWork, workerFailures, itRecoveries, itInvestigations, improvements, providerErrors, slackDeliveries, outboxItems];
 

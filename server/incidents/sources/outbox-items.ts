@@ -3,6 +3,7 @@ import type { OfficeSnapshot } from '../../../src/shared';
 import { projectOutbox } from '../../conversations/outbox';
 import { touchesUnsettled } from '../../operations/stale-records';
 import { boundedEvidence } from '../bounded-evidence';
+import { NOTICE_KINDS } from '../incident-notices';
 import { normalizeCause } from '../normalize-cause';
 import type { IncidentCollector } from '../observation';
 import { stoppedCoverage } from '../stopped-coverage';
@@ -10,8 +11,8 @@ import { outboxCoverage } from './outbox-coverage';
 import { stoppedRecord } from './stopped-record';
 import { stoppedWork } from './stopped-work';
 
-/** Outbox items another collector already reads from their source record. */
-const COVERED = ['ticket-job', 'checkpoint', 'maintenance', 'maintenance-blocker', 'assignment-listener', 'intake', 'azure', 'github', 'message', 'merge-notice', 'merge-approval'];
+/** Outbox items another collector already reads from their source record, and the runner's notices, which its own reports write. */
+const COVERED = ['ticket-job', 'checkpoint', 'maintenance', 'maintenance-blocker', 'assignment-listener', 'intake', 'azure', 'github', 'message', 'merge-notice', 'merge-approval', ...NOTICE_KINDS];
 /** Outbox items that stand for records stopped work may already hold; they are kept only while it does not. */
 const FALLBACK = ['ticket', 'assignment', 'ownership-capability'];
 /** Outbox items that are a person's own step, by the kind of item. */

@@ -49,8 +49,9 @@ test('the pass deadline must be a whole number of milliseconds from 30 000 to 90
 test('the Office URL must be a bare loopback HTTP origin, and is never echoed', () => {
     expect(configuration.officeOrigin({})).toBeUndefined();
     expect(configuration.officeOrigin({ OVERSEER_OFFICE_URL: 'http://localhost:5000/' })).toBe('http://localhost:5000');
-    expect(configuration.officeOrigin({ OVERSEER_OFFICE_URL: 'http://[::1]:4318' })).toBe('http://[::1]:4318');
-    for (const url of ['https://127.0.0.1:4318', 'http://example.com', 'http://user:secret@127.0.0.1:4318', 'http://127.0.0.1:4318/api', 'http://127.0.0.1:4318/?x', 'http://127.0.0.1:4318/#x', 'nope']) {
+    expect(configuration.officeOrigin({ OVERSEER_OFFICE_URL: 'http://127.0.0.1:4318' })).toBe('http://127.0.0.1:4318');
+    expect(() => configuration.officeOrigin({ OVERSEER_OFFICE_URL: 'http://[::1]:4318' })).toThrow('OVERSEER_OFFICE_URL must be a bare http: origin on 127.0.0.1 or localhost');
+    for (const url of ['http://[::1]:4318', 'https://127.0.0.1:4318', 'http://example.com', 'http://user:secret@127.0.0.1:4318', 'http://127.0.0.1:4318/api', 'http://127.0.0.1:4318/?x', 'http://127.0.0.1:4318/#x', 'nope']) {
         expect(() => configuration.officeOrigin({ OVERSEER_OFFICE_URL: url }), url).toThrow('OVERSEER_OFFICE_URL');
         try { configuration.officeOrigin({ OVERSEER_OFFICE_URL: url }); } catch (error) { expect((error as Error).message).not.toContain('secret'); }
     }

@@ -14,12 +14,14 @@ import { assessResumes } from './repair/assess-resumes';
 import { resumeAdmitted } from './repair/resume-arrivals';
 import { NEVER_ENABLED, type ResumeControl } from './repair/resume-control';
 import { readRepairIssue } from './repair-issue';
+import type { RunnerReports } from './runner-reports';
+import { runnerRoute } from './runner-routes';
 import { json } from '../office/http/responses';
 import { sanitizeObject } from '../office/security';
 
 export interface IncidentsRouteContext {
     /** `resumes`: the switch for automatic repair resumes; a context without one reads as never enabled and accepts no change. */
-    offices: { incidents: IncidentLedger; resumes?: ResumeControl };
+    offices: { incidents: IncidentLedger; resumes?: ResumeControl; runnerReports?: RunnerReports };
     /** The code this service loaded at start-up: its hash and every file's hash. */
     loadedRevision?: { hash: string; manifest: readonly { path: string; hash: string }[] };
     /** The release identity as it reads now; the service's own records when not given. */
@@ -97,10 +99,12 @@ async function resumeSwitch(req: Request, context: IncidentsRouteContext): Promi
  * one incident with its event history and, once its fix is found in the running release, how
  * each bound subject stands for a resume; `/api/incidents/<id>/evidence` its evidence packet. All
  * three only read. `/api/incidents/<id>/events` accepts the three events a person or the repair
- * runner may record; nothing else about an incident can be written from outside.
+ * runner may record. Besides those, only the runner's own reports are written from outside
+ * (`/api/incidents/runner/`, runner-routes.ts): its journaled failures and its control condition.
  */
 export async function incidentsRoute(req: Request, url: URL, context: IncidentsRouteContext): Promise<Response | undefined> {
     if (url.pathname !== '/api/incidents' && !url.pathname.startsWith('/api/incidents/')) return undefined;
+    if (url.pathname.startsWith('/api/incidents/runner/')) return runnerRoute(req, url, context);
     if (url.pathname === '/api/incidents/resumes') return resumeSwitch(req, context);
     const events = /^\/api\/incidents\/(inc-[0-9a-f]{16})\/events$/.exec(url.pathname);
     if (events) return req.method === 'POST' ? writeEvent(req, events[1], context) : json({ error: 'POST required' }, 405);

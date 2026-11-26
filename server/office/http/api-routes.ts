@@ -1,4 +1,6 @@
 import { currentOutbox } from '../../conversations/current-outbox';
+import { servedOutbox } from '../../conversations/served-outbox';
+import { readNotices } from '../../incidents/incident-notices';
 import { referencedQAArtifact } from '../../qa/report-access';
 import { qaPlanRetryRoute } from '../../cec/qa/plan-retry-route';
 import { DATA, ROOT } from '../config';
@@ -133,7 +135,7 @@ export async function apiRoute(req: Request, url: URL, context: ServiceContext &
     }
     if (url.pathname === '/api/messages') {
         // Projected now, not as last saved: a repair wait can begin, end or expire between events.
-        if (req.method === 'GET') return json({ messages: store.state.messages, outbox: currentOutbox(store) });
+        if (req.method === 'GET') return json({ messages: store.state.messages, outbox: servedOutbox(currentOutbox(store), readNotices(offices)) });
         if (req.method !== 'POST')
             return json({ error: 'POST required' }, 405);
         if (Number(req.headers.get('content-length') || 0) > 30000)

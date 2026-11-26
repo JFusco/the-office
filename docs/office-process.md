@@ -1469,7 +1469,9 @@ project's state and the scheduler's own projection, writes two tables of its own
 writes a project store, calls a provider or runs a model. A person can also record a repair start
 and a fix binding on an incident (see Write-back below), and the Office compares the release it
 runs with fixes that are on `main` (see Deployed fixes below); both read GitHub and write only the
-ledger. Two steps write a project store. While a repair is in progress, the stops it covers are
+ledger. The Overseer runner reports its own failures, which the Office records on the one `runner`
+incident and its subject, `office-overseer/runner/office-service`; observation leaves that subject
+as those reports left it (see Overseer runner below). Two steps write a project store. While a repair is in progress, the stops it covers are
 marked in their project (see Repair wait below). And once the fix is found in the running release,
 the Office resumes the marked stop once and removes the marker. It queues a recovery request for
 a GitHub read-back, a `resume-ticket` delivery request for a Jira/Azure pilot ticket, or the native
@@ -2312,18 +2314,33 @@ scheduler's dispatch is unchanged; a held record was already not running.
 ### Overseer runner
 
 The Overseer runner (`server/overseer.ts`) is the repair engine's own process. It runs outside
-the Office service, one pass at a time, so it keeps working when the service is down. In this
-release a pass only observes:
+the Office service, one pass at a time, so it keeps working when the service is down. A pass
+observes and reports:
 
-- It reads `/api/health` and `/api/incidents?research=1` with `GET`s over loopback. It sends the
-  Office nothing else, calls no model, makes no GitHub call and takes no scheduler claim.
+- It reads `/api/health` and `/api/incidents?research=1` with `GET`s over loopback. It calls no
+  model, makes no GitHub call and takes no scheduler claim. Its only writes to the Office are its
+  own reports, below.
 - It keeps at most one incident in flight. That is an incident eligible for research in state
   `observed`, `triaged` or `recurred`, never a runner failure. It records which incident it
   chose in its own state.
-- It stands down while a deployment holds the fence, or while the runner's STOP or pause holds.
+- It stops observation and selection while the runner's STOP or pause holds. A held deployment
+  fence stops selection after the health read.
 - When the Office does not answer for five minutes over two passes, it journals one
   `service-down` event in its own folder. When the Office answers again, it journals one
-  `service-restored` event. These events are not yet sent to the Office.
+  `service-restored` event.
+- Every pass forwards those events, before it reads STOP or a pause, so forwarding goes on while
+  the runner is stopped. The Office records each under its journal ID, together with the change it
+  makes to the one `runner` incident, in a single transaction
+  (`POST /api/incidents/runner/failures`). Observation never changes that incident's subject.
+- At the end of every pass the runner reports its control condition, running, paused or stopped,
+  ordered by sequence (`POST /api/incidents/runner/halt`).
+- Each report goes through the runner's own Effects. A send its preflight refuses (Office down,
+  fence held) is tried again by a later pass. A send already dispatched is only ever read back,
+  never sent again, including when a deployment took the fence after the preflight.
+- These routes are the only outside writes besides the incident event route and the operator's
+  resume switch. They sit behind the origin check and the deployment fence.
+- The Office serves two notices in every project's outbox, never saved in one: the runner's open
+  outage, and a stopped runner.
 
 Before any later phase lets it call a model, every call must pass the runner's own budget
 admission: a daily ceiling on estimated cost at list price, 24 model calls a day, per-incident
@@ -2361,7 +2378,8 @@ or stops it. See [Overseer, Launcher](overseer.md#launcher).
 | Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
 | Evidence packets, dismissals and their lapse | `server/incidents/evidence-packet.ts`, `server/incidents/dismissal.ts`, `server/incidents/dismissal-validity.ts` |
 | Repair waits: marker, admission, expiry, effective cause | `server/incidents/repair/` |
-| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection, budget admission and ledger, private Store, runner pin | `server/overseer.ts`, `server/overseer/` |
+| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection, budget admission and ledger, private Store, runner pin, failure forwarding and halt reports | `server/overseer.ts`, `server/overseer/` |
+| Runner reports in the Office: the runner failure write path, its routes, the halt slot and the outbox notices | `server/incidents/runner-report.ts`, `server/incidents/record-runner-failure.ts`, `server/incidents/runner-routes.ts`, `server/incidents/runner-reports.ts`, `server/incidents/incident-notices.ts`, `server/conversations/served-outbox.ts` |
 | Overseer launcher: schedule, pin verification, process groups, attempt counting, installation | `scripts/overseer-launcher/`, `scripts/install-overseer.mjs`, `scripts/build-overseer-launcher.mjs` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |

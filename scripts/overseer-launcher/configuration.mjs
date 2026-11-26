@@ -11,7 +11,8 @@ export function passDeadline(env, limits = LIMITS) {
     return value;
 }
 
-const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+// The Office answers only these origins (server/office/security.ts safeOrigin), so the runner accepts no others.
+const LOOPBACK = new Set(['127.0.0.1', 'localhost']);
 
 /** `OVERSEER_OFFICE_URL`, normalized, or undefined: the bare loopback rule of server/overseer/config.ts officeUrl. Never echoes the value. */
 export function officeOrigin(env) {
@@ -20,6 +21,6 @@ export function officeOrigin(env) {
     let url;
     try { url = new URL(raw); } catch { throw new Error('OVERSEER_OFFICE_URL is not a URL'); }
     if (url.protocol !== 'http:' || !LOOPBACK.has(url.hostname) || url.username || url.password || url.pathname !== '/' || url.search || url.hash || /[?#]/.test(raw))
-        throw new Error('OVERSEER_OFFICE_URL must be a bare http: origin on 127.0.0.1, localhost or [::1]');
+        throw new Error('OVERSEER_OFFICE_URL must be a bare http: origin on 127.0.0.1 or localhost');
     return url.origin;
 }
