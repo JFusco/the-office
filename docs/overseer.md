@@ -1014,6 +1014,7 @@ All under the root, kept apart: control files, journals and state.
 | `state/launcher.json` | The launcher's attempt in progress, its counters and its last 20 attempts |
 | `control/launcher.lock` | The launch that holds the launcher; `launcher.lock.reclaim` exists for an instant while one takes it |
 | `logs/launcher.out.log`, `logs/launcher.err.log` | launchd's capture of the launcher's output |
+| `runs/<id>/` | One model run's own folders: `home`, `tmp`, `provider` and `office-data` (see Worker environment). Nothing creates one yet |
 
 ### Controls
 
@@ -1161,6 +1162,50 @@ call ended.
 
 A journal left by an interrupted write is rolled back by the runner's next write, not by
 `status`. If it stays, check that no runner process is alive.
+
+### Worker environment
+
+No model runs yet. When one does, its worker starts with an environment the runner builds from
+nothing (`server/overseer/worker-environment.ts`), passed as the child's whole environment
+(`replaceEnv` in `server/workers/spawn-command.ts`). None of the runner's own variables reach it:
+
+| Variable | Value |
+|---|---|
+| `PATH` | `/usr/bin:/bin:/usr/sbin:/sbin`; provider binaries are started by absolute path |
+| `LANG`, `LC_ALL` | `en_US.UTF-8` |
+| `HOME`, `TMPDIR` | The run's `home` and `tmp` |
+| `CLAUDE_CONFIG_DIR` (Claude) or `CODEX_HOME` (Codex) | The run's `provider`, never both |
+| `OFFICE_DATA_ROOT` | The run's `office-data`, never the Office's |
+| `OFFICE_NO_POLL` | `1` |
+
+Nothing else is passed: no GitHub, Jira, Azure, Slack, SSH-agent, cloud or Office credential or
+configuration, and no `USER`, `LOGNAME` or `SHELL`. A provider may later be given a non-secret
+setting only from its own list in that file, which is empty until its qualification adds one. A
+child that runs with `replaceEnv` also gets no `NODE_V8_COVERAGE` the runner holds, and Node's
+permission model refuses it outright. On macOS a CoreFoundation-linked program, Node among them,
+sets `__CF_USER_TEXT_ENCODING` for itself when it starts; nothing passes that on.
+
+Each run has its own folders, `runs/<id>/`, named by the ID of the budget reservation that admitted
+it (`server/overseer/run-directories.ts`). An ID is used once, whatever is left in its folder.
+Before it creates anything the runner checks the root as it was given, component by component, and
+refuses a link anywhere in it or a root that no longer resolves where it did. The root must belong
+to the runner and be writable only by it. The runner must also own `runs`, with no permissions for
+group or others, and each of the five run folders must belong to the runner and have mode `0700`.
+At handoff, the runner rechecks the type, physical location, ownership, and permissions of `runs`
+and the five run folders. These checks trust the folders above the root. A process of the same
+user can still change a folder after it was checked.
+
+What these folders do and do not settle:
+
+- **Fresh local state.** The provider directory relocates the CLI's own user settings, sessions and
+  transcripts, so a run never reuses Joe's or an Office worker's. It does not move the scopes the
+  CLI reads from elsewhere: Claude's project and managed (policy) settings, and Codex's project
+  guidance in the folder it works in.
+- **Not a session identity.** The reservation ID names the storage only. A run still has to start a
+  new provider session and bind the session the provider reports to its reservation
+  (`bindSession` in `server/overseer/budgeted-run.ts`).
+- **Not confinement.** Keeping a worker to these folders is the sandbox's job, and proving which
+  login it uses is the provider authentication's; both are later parts of phase 7.
 
 ### When the Office does not answer
 

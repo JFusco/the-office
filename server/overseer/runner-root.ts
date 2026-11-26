@@ -67,6 +67,9 @@ export function assertDirectoryOrAbsent(path: string): void {
     if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`${path} must be a directory, not a link or a file`);
 }
 
+/** Validated runner paths, with the root as it was supplied: allocating a run folder rechecks that spelling (`run-directories.ts`). */
+export type ValidatedRunnerPaths = RunnerPaths & { suppliedRoot: string };
+
 /**
  * The runner's paths for a root that is safe to write into. Refused, before anything is written:
  * a relative or empty root; a root that is, contains or lies inside the inherited
@@ -74,7 +77,7 @@ export function assertDirectoryOrAbsent(path: string): void {
  * `.local`; a root beneath an Office data root marker, on the path as given or as resolved; a
  * dangling link or an inconclusive lookup; and a private folder that exists as a link or a file.
  */
-export function validateRunnerRoot(supplied: string, env: NodeJS.ProcessEnv): RunnerPaths {
+export function validateRunnerRoot(supplied: string, env: NodeJS.ProcessEnv): ValidatedRunnerPaths {
     if (!supplied || !isAbsolute(supplied)) throw new Error('The Overseer root must be an absolute path');
     const root = physicalPath(supplied), checkoutData = resolve(CHECKOUT, '.local');
     const guarded = [resolve(env.OFFICE_DATA_ROOT || checkoutData), checkoutData];
@@ -87,11 +90,11 @@ export function validateRunnerRoot(supplied: string, env: NodeJS.ProcessEnv): Ru
             if (present(join(directory, marker))) throw new Error(`The Overseer root ${root} is at or inside an Office data root (${join(directory, marker)} exists)`);
     const paths = runnerPaths(root);
     privateDirectories(paths).forEach(assertDirectoryOrAbsent);
-    return paths;
+    return { ...paths, suppliedRoot: supplied };
 }
 
 /** The pass entry's root: `OVERSEER_ROOT` is required; there is no default. */
-export function requireRunnerRoot(env: NodeJS.ProcessEnv): RunnerPaths {
+export function requireRunnerRoot(env: NodeJS.ProcessEnv): ValidatedRunnerPaths {
     if (env.OVERSEER_ROOT === undefined) throw new Error('The Overseer pass needs OVERSEER_ROOT, an absolute path');
     return validateRunnerRoot(env.OVERSEER_ROOT, env);
 }

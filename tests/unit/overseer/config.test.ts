@@ -9,6 +9,8 @@ test('control files, journals and state each have their own folder, and the runn
         guard: '/runner/control/pass.lock.reclaim', failures: '/runner/journal/failures.jsonl', runnerState: '/runner/state/runner.json',
     });
     expect(privateDirectories(paths)).toEqual(['/runner/control', '/runner/journal', '/runner/state', '/runner/state/office-data']);
+    // Model runs get their own folder beside the others; a pass never creates it.
+    expect(paths.runs).toBe('/runner/runs');
 });
 
 test('the Office URL defaults to the local service and accepts only a bare HTTP origin on a loopback host the Office answers', () => {
