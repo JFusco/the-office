@@ -2,12 +2,12 @@
   "version": 1,
   "wikiRoot": "wiki",
   "counts": {
-    "nodes": 86,
-    "edges": 138,
+    "nodes": 91,
+    "edges": 152,
     "byType": {
       "index": 4,
-      "journal": 41,
-      "plan": 35,
+      "journal": 43,
+      "plan": 38,
       "topic": 6
     }
   },
@@ -39,8 +39,8 @@
       ],
       "bytes": 2378,
       "degree": 4,
-      "x": 0.989343,
-      "y": 0.145601,
+      "x": 0.99048,
+      "y": 0.137654,
       "size": 8
     },
     {
@@ -70,8 +70,8 @@
       ],
       "bytes": 1102,
       "degree": 2,
-      "x": 0.976076,
-      "y": 0.21743,
+      "x": 0.978624,
+      "y": 0.20566,
       "size": 8
     },
     {
@@ -89,8 +89,8 @@
       ],
       "bytes": 1601,
       "degree": 9,
-      "x": 0.957601,
-      "y": 0.288099,
+      "x": 0.962103,
+      "y": 0.272686,
       "size": 8
     },
     {
@@ -108,8 +108,8 @@
       ],
       "bytes": 728,
       "degree": 3,
-      "x": 0.934016,
-      "y": 0.357231,
+      "x": 0.940998,
+      "y": 0.338413,
       "size": 8
     },
     {
@@ -133,8 +133,8 @@
       ],
       "bytes": 1954,
       "degree": 4,
-      "x": 0.905448,
-      "y": 0.424457,
+      "x": 0.915408,
+      "y": 0.402527,
       "size": 8
     },
     {
@@ -158,8 +158,8 @@
       ],
       "bytes": 1611,
       "degree": 0,
-      "x": 0.872049,
-      "y": 0.489418,
+      "x": 0.885456,
+      "y": 0.464723,
       "size": 8
     },
     {
@@ -183,8 +183,8 @@
       ],
       "bytes": 975,
       "degree": 0,
-      "x": 0.833998,
-      "y": 0.551768,
+      "x": 0.851284,
+      "y": 0.524704,
       "size": 8
     },
     {
@@ -208,8 +208,8 @@
       ],
       "bytes": 1728,
       "degree": 0,
-      "x": 0.791496,
-      "y": 0.611174,
+      "x": 0.813056,
+      "y": 0.582185,
       "size": 8
     },
     {
@@ -233,8 +233,8 @@
       ],
       "bytes": 585,
       "degree": 0,
-      "x": 0.744772,
-      "y": 0.667319,
+      "x": 0.770953,
+      "y": 0.636892,
       "size": 8
     },
     {
@@ -252,8 +252,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.694074,
-      "y": 0.719903,
+      "x": 0.725176,
+      "y": 0.688563,
       "size": 8
     },
     {
@@ -271,8 +271,8 @@
       ],
       "bytes": 1797,
       "degree": 4,
-      "x": 0.639673,
-      "y": 0.768647,
+      "x": 0.675944,
+      "y": 0.736953,
       "size": 8
     },
     {
@@ -290,8 +290,8 @@
       ],
       "bytes": 880,
       "degree": 3,
-      "x": 0.581859,
-      "y": 0.81329,
+      "x": 0.62349,
+      "y": 0.781831,
       "size": 8
     },
     {
@@ -321,8 +321,8 @@
       ],
       "bytes": 1126,
       "degree": 3,
-      "x": 0.52094,
-      "y": 0.853593,
+      "x": 0.568065,
+      "y": 0.822984,
       "size": 8
     },
     {
@@ -340,8 +340,8 @@
       ],
       "bytes": 2613,
       "degree": 3,
-      "x": 0.457242,
-      "y": 0.889342,
+      "x": 0.509933,
+      "y": 0.860214,
       "size": 8
     },
     {
@@ -365,8 +365,8 @@
       ],
       "bytes": 1945,
       "degree": 0,
-      "x": 0.391105,
-      "y": 0.920346,
+      "x": 0.44937,
+      "y": 0.893346,
       "size": 8
     },
     {
@@ -390,8 +390,8 @@
       ],
       "bytes": 596,
       "degree": 0,
-      "x": 0.32288,
-      "y": 0.94644,
+      "x": 0.386667,
+      "y": 0.92222,
       "size": 8
     },
     {
@@ -409,8 +409,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.252933,
-      "y": 0.967484,
+      "x": 0.32212,
+      "y": 0.946699,
       "size": 8
     },
     {
@@ -428,8 +428,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.181637,
-      "y": 0.983366,
+      "x": 0.256039,
+      "y": 0.966666,
       "size": 8
     },
     {
@@ -453,8 +453,8 @@
       ],
       "bytes": 659,
       "degree": 0,
-      "x": 0.109371,
-      "y": 0.994001,
+      "x": 0.188738,
+      "y": 0.982028,
       "size": 8
     },
     {
@@ -472,8 +472,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": 0.036522,
-      "y": 0.999333,
+      "x": 0.120537,
+      "y": 0.992709,
       "size": 8
     },
     {
@@ -503,8 +503,8 @@
       ],
       "bytes": 1400,
       "degree": 0,
-      "x": -0.036522,
-      "y": 0.999333,
+      "x": 0.051761,
+      "y": 0.998659,
       "size": 8
     },
     {
@@ -522,8 +522,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.109371,
-      "y": 0.994001,
+      "x": -0.017261,
+      "y": 0.999851,
       "size": 8
     },
     {
@@ -541,8 +541,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.181637,
-      "y": 0.983366,
+      "x": -0.0862,
+      "y": 0.996278,
       "size": 8
     },
     {
@@ -560,8 +560,27 @@
       ],
       "bytes": 2153,
       "degree": 4,
-      "x": -0.252933,
-      "y": 0.967484,
+      "x": -0.154729,
+      "y": 0.987957,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-bot-pr-conflict-redo.md",
+      "label": "Conflicted bot PRs are redone by their own bot",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 591,
+          "url": "https://github.com/jfusco/the-office/issues/591"
+        }
+      ],
+      "bytes": 2364,
+      "degree": 4,
+      "x": -0.222521,
+      "y": 0.974928,
       "size": 8
     },
     {
@@ -579,8 +598,8 @@
       ],
       "bytes": 2316,
       "degree": 4,
-      "x": -0.32288,
-      "y": 0.94644,
+      "x": -0.289252,
+      "y": 0.957253,
       "size": 8
     },
     {
@@ -598,8 +617,8 @@
       ],
       "bytes": 1792,
       "degree": 3,
-      "x": -0.391105,
-      "y": 0.920346,
+      "x": -0.354605,
+      "y": 0.935016,
       "size": 8
     },
     {
@@ -617,8 +636,8 @@
       ],
       "bytes": 2977,
       "degree": 4,
-      "x": -0.457242,
-      "y": 0.889342,
+      "x": -0.418268,
+      "y": 0.908324,
       "size": 8
     },
     {
@@ -636,8 +655,27 @@
       ],
       "bytes": 3089,
       "degree": 3,
-      "x": -0.52094,
-      "y": 0.853593,
+      "x": -0.479937,
+      "y": 0.877303,
+      "size": 8
+    },
+    {
+      "id": "wiki/journal/2026-11-26-overseer-phase-6c-launcher.md",
+      "label": "Overseer phase 6c: launcher, runner pin and LaunchAgent",
+      "type": "journal",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 647,
+          "url": "https://github.com/jfusco/the-office/issues/647"
+        }
+      ],
+      "bytes": 5773,
+      "degree": 4,
+      "x": -0.53932,
+      "y": 0.842101,
       "size": 8
     },
     {
@@ -655,8 +693,8 @@
       ],
       "bytes": 507,
       "degree": 0,
-      "x": -0.581859,
-      "y": 0.81329,
+      "x": -0.596132,
+      "y": 0.802886,
       "size": 8
     },
     {
@@ -674,8 +712,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.639673,
-      "y": 0.768647,
+      "x": -0.650104,
+      "y": 0.759845,
       "size": 8
     },
     {
@@ -705,8 +743,8 @@
       ],
       "bytes": 1710,
       "degree": 0,
-      "x": -0.694074,
-      "y": 0.719903,
+      "x": -0.700978,
+      "y": 0.713183,
       "size": 8
     },
     {
@@ -724,8 +762,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.744772,
-      "y": 0.667319,
+      "x": -0.748511,
+      "y": 0.663123,
       "size": 8
     },
     {
@@ -743,8 +781,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.791496,
-      "y": 0.611174,
+      "x": -0.792477,
+      "y": 0.609902,
       "size": 8
     },
     {
@@ -768,8 +806,8 @@
       ],
       "bytes": 1699,
       "degree": 0,
-      "x": -0.833998,
-      "y": 0.551768,
+      "x": -0.832666,
+      "y": 0.553775,
       "size": 8
     },
     {
@@ -787,8 +825,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.872049,
-      "y": 0.489418,
+      "x": -0.868888,
+      "y": 0.495009,
       "size": 8
     },
     {
@@ -806,8 +844,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.905448,
-      "y": 0.424457,
+      "x": -0.900969,
+      "y": 0.433884,
       "size": 8
     },
     {
@@ -825,8 +863,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.934016,
-      "y": 0.357231,
+      "x": -0.928756,
+      "y": 0.370691,
       "size": 8
     },
     {
@@ -856,8 +894,8 @@
       ],
       "bytes": 1484,
       "degree": 0,
-      "x": -0.957601,
-      "y": 0.288099,
+      "x": -0.952118,
+      "y": 0.305732,
       "size": 8
     },
     {
@@ -875,8 +913,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.976076,
-      "y": 0.21743,
+      "x": -0.970942,
+      "y": 0.239316,
       "size": 8
     },
     {
@@ -894,8 +932,8 @@
       ],
       "bytes": 468,
       "degree": 0,
-      "x": -0.989343,
-      "y": 0.145601,
+      "x": -0.985139,
+      "y": 0.171759,
       "size": 8
     },
     {
@@ -913,8 +951,8 @@
       ],
       "bytes": 1661,
       "degree": 2,
-      "x": -0.997332,
-      "y": 0.072995,
+      "x": -0.994642,
+      "y": 0.103384,
       "size": 8
     },
     {
@@ -925,8 +963,8 @@
       "githubRefs": [],
       "bytes": 3394,
       "degree": 4,
-      "x": 0.997332,
-      "y": 0.072995,
+      "x": 0.997617,
+      "y": 0.068991,
       "size": 12
     },
     {
@@ -937,8 +975,8 @@
       "githubRefs": [],
       "bytes": 738,
       "degree": 9,
-      "x": -1,
-      "y": 0,
+      "x": -0.999404,
+      "y": 0.034516,
       "size": 12
     },
     {
@@ -962,8 +1000,8 @@
       ],
       "bytes": 802,
       "degree": 2,
-      "x": -0.997332,
-      "y": -0.072995,
+      "x": -0.999404,
+      "y": -0.034516,
       "size": 8
     },
     {
@@ -981,8 +1019,8 @@
       ],
       "bytes": 640,
       "degree": 2,
-      "x": -0.989343,
-      "y": -0.145601,
+      "x": -0.994642,
+      "y": -0.103384,
       "size": 8
     },
     {
@@ -1000,8 +1038,8 @@
       ],
       "bytes": 840,
       "degree": 2,
-      "x": -0.976076,
-      "y": -0.21743,
+      "x": -0.985139,
+      "y": -0.171759,
       "size": 8
     },
     {
@@ -1019,8 +1057,8 @@
       ],
       "bytes": 709,
       "degree": 2,
-      "x": -0.957601,
-      "y": -0.288099,
+      "x": -0.970942,
+      "y": -0.239316,
       "size": 8
     },
     {
@@ -1038,8 +1076,8 @@
       ],
       "bytes": 683,
       "degree": 2,
-      "x": -0.934016,
-      "y": -0.357231,
+      "x": -0.952118,
+      "y": -0.305732,
       "size": 8
     },
     {
@@ -1057,8 +1095,8 @@
       ],
       "bytes": 697,
       "degree": 2,
-      "x": -0.905448,
-      "y": -0.424457,
+      "x": -0.928756,
+      "y": -0.370691,
       "size": 8
     },
     {
@@ -1082,8 +1120,8 @@
       ],
       "bytes": 712,
       "degree": 2,
-      "x": -0.872049,
-      "y": -0.489418,
+      "x": -0.900969,
+      "y": -0.433884,
       "size": 8
     },
     {
@@ -1101,8 +1139,8 @@
       ],
       "bytes": 649,
       "degree": 2,
-      "x": -0.833998,
-      "y": -0.551768,
+      "x": -0.868888,
+      "y": -0.495009,
       "size": 8
     },
     {
@@ -1126,8 +1164,8 @@
       ],
       "bytes": 752,
       "degree": 2,
-      "x": -0.791496,
-      "y": -0.611174,
+      "x": -0.832666,
+      "y": -0.553775,
       "size": 8
     },
     {
@@ -1169,8 +1207,8 @@
       ],
       "bytes": 1059,
       "degree": 2,
-      "x": -0.744772,
-      "y": -0.667319,
+      "x": -0.792477,
+      "y": -0.609902,
       "size": 8
     },
     {
@@ -1188,8 +1226,8 @@
       ],
       "bytes": 664,
       "degree": 2,
-      "x": -0.694074,
-      "y": -0.719903,
+      "x": -0.748511,
+      "y": -0.663123,
       "size": 8
     },
     {
@@ -1213,8 +1251,8 @@
       ],
       "bytes": 848,
       "degree": 2,
-      "x": -0.639673,
-      "y": -0.768647,
+      "x": -0.700978,
+      "y": -0.713183,
       "size": 8
     },
     {
@@ -1232,8 +1270,8 @@
       ],
       "bytes": 620,
       "degree": 2,
-      "x": -0.581859,
-      "y": -0.81329,
+      "x": -0.650104,
+      "y": -0.759845,
       "size": 8
     },
     {
@@ -1269,8 +1307,8 @@
       ],
       "bytes": 1030,
       "degree": 2,
-      "x": -0.52094,
-      "y": -0.853593,
+      "x": -0.596132,
+      "y": -0.802886,
       "size": 8
     },
     {
@@ -1324,8 +1362,8 @@
       ],
       "bytes": 1178,
       "degree": 2,
-      "x": -0.457242,
-      "y": -0.889342,
+      "x": -0.53932,
+      "y": -0.842101,
       "size": 8
     },
     {
@@ -1343,8 +1381,8 @@
       ],
       "bytes": 725,
       "degree": 2,
-      "x": -0.391105,
-      "y": -0.920346,
+      "x": -0.479937,
+      "y": -0.877303,
       "size": 8
     },
     {
@@ -1362,8 +1400,8 @@
       ],
       "bytes": 621,
       "degree": 2,
-      "x": -0.32288,
-      "y": -0.94644,
+      "x": -0.418268,
+      "y": -0.908324,
       "size": 8
     },
     {
@@ -1387,8 +1425,8 @@
       ],
       "bytes": 1040,
       "degree": 2,
-      "x": -0.252933,
-      "y": -0.967484,
+      "x": -0.354605,
+      "y": -0.935016,
       "size": 8
     },
     {
@@ -1406,8 +1444,8 @@
       ],
       "bytes": 737,
       "degree": 2,
-      "x": -0.181637,
-      "y": -0.983366,
+      "x": -0.289252,
+      "y": -0.957253,
       "size": 8
     },
     {
@@ -1461,8 +1499,8 @@
       ],
       "bytes": 1166,
       "degree": 2,
-      "x": -0.109371,
-      "y": -0.994001,
+      "x": -0.222521,
+      "y": -0.974928,
       "size": 8
     },
     {
@@ -1480,8 +1518,8 @@
       ],
       "bytes": 11453,
       "degree": 4,
-      "x": -0.036522,
-      "y": -0.999333,
+      "x": -0.154729,
+      "y": -0.987957,
       "size": 8
     },
     {
@@ -1492,8 +1530,8 @@
       "githubRefs": [],
       "bytes": 4584,
       "degree": 3,
-      "x": 0.036522,
-      "y": -0.999333,
+      "x": -0.0862,
+      "y": -0.996278,
       "size": 8
     },
     {
@@ -1511,8 +1549,8 @@
       ],
       "bytes": 3712,
       "degree": 4,
-      "x": 0.109371,
-      "y": -0.994001,
+      "x": -0.017261,
+      "y": -0.999851,
       "size": 8
     },
     {
@@ -1530,8 +1568,8 @@
       ],
       "bytes": 884,
       "degree": 3,
-      "x": 0.181637,
-      "y": -0.983366,
+      "x": 0.051761,
+      "y": -0.998659,
       "size": 8
     },
     {
@@ -1549,8 +1587,8 @@
       ],
       "bytes": 751,
       "degree": 5,
-      "x": 0.252933,
-      "y": -0.967484,
+      "x": 0.120537,
+      "y": -0.992709,
       "size": 8
     },
     {
@@ -1568,8 +1606,8 @@
       ],
       "bytes": 826,
       "degree": 3,
-      "x": 0.32288,
-      "y": -0.94644,
+      "x": 0.188738,
+      "y": -0.982028,
       "size": 8
     },
     {
@@ -1593,8 +1631,8 @@
       ],
       "bytes": 802,
       "degree": 3,
-      "x": 0.391105,
-      "y": -0.920346,
+      "x": 0.256039,
+      "y": -0.966666,
       "size": 8
     },
     {
@@ -1605,8 +1643,8 @@
       "githubRefs": [],
       "bytes": 9984,
       "degree": 3,
-      "x": 0.457242,
-      "y": -0.889342,
+      "x": 0.32212,
+      "y": -0.946699,
       "size": 8
     },
     {
@@ -1642,8 +1680,8 @@
       ],
       "bytes": 5802,
       "degree": 4,
-      "x": 0.52094,
-      "y": -0.853593,
+      "x": 0.386667,
+      "y": -0.92222,
       "size": 8
     },
     {
@@ -1661,8 +1699,27 @@
       ],
       "bytes": 18511,
       "degree": 3,
-      "x": 0.581859,
-      "y": -0.81329,
+      "x": 0.44937,
+      "y": -0.893346,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-26-591-recover-conflicted-adopted-bot-prs-and-merge-qualified-replacements-e855672b0c.md",
+      "label": "#591 — Recover conflicted adopted bot PRs and merge qualified replacements",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 591,
+          "url": "https://github.com/jfusco/the-office/issues/591"
+        }
+      ],
+      "bytes": 23324,
+      "degree": 4,
+      "x": 0.509933,
+      "y": -0.860214,
       "size": 8
     },
     {
@@ -1673,8 +1730,8 @@
       "githubRefs": [],
       "bytes": 7010,
       "degree": 3,
-      "x": 0.639673,
-      "y": -0.768647,
+      "x": 0.568065,
+      "y": -0.822984,
       "size": 8
     },
     {
@@ -1692,8 +1749,8 @@
       ],
       "bytes": 17144,
       "degree": 4,
-      "x": 0.694074,
-      "y": -0.719903,
+      "x": 0.62349,
+      "y": -0.781831,
       "size": 8
     },
     {
@@ -1711,8 +1768,8 @@
       ],
       "bytes": 9514,
       "degree": 3,
-      "x": 0.744772,
-      "y": -0.667319,
+      "x": 0.675944,
+      "y": -0.736953,
       "size": 8
     },
     {
@@ -1730,8 +1787,8 @@
       ],
       "bytes": 10320,
       "degree": 4,
-      "x": 0.791496,
-      "y": -0.611174,
+      "x": 0.725176,
+      "y": -0.688563,
       "size": 8
     },
     {
@@ -1749,8 +1806,46 @@
       ],
       "bytes": 23072,
       "degree": 3,
-      "x": 0.833998,
-      "y": -0.551768,
+      "x": 0.770953,
+      "y": -0.636892,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-26-overseer-phase-6c-launcher-packaging-for-jfusco-the-office-647-ab1fd16d77.md",
+      "label": "Overseer phase 6c launcher packaging for JFusco/the-office#647",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 647,
+          "url": "https://github.com/jfusco/the-office/issues/647"
+        }
+      ],
+      "bytes": 10036,
+      "degree": 3,
+      "x": 0.813056,
+      "y": -0.582185,
+      "size": 8
+    },
+    {
+      "id": "wiki/plans/2026-11-26-overseer-phase-6c-launcher-runner-pin-and-launchagent-for-647-cd16bfae80.md",
+      "label": "Overseer phase 6c — launcher, runner pin and LaunchAgent for #647",
+      "type": "plan",
+      "aliases": [],
+      "githubRefs": [
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 647,
+          "url": "https://github.com/jfusco/the-office/issues/647"
+        }
+      ],
+      "bytes": 23790,
+      "degree": 3,
+      "x": 0.851284,
+      "y": -0.524704,
       "size": 8
     },
     {
@@ -1810,6 +1905,12 @@
         {
           "repository": "jfusco/the-office",
           "kind": "issue",
+          "number": 591,
+          "url": "https://github.com/jfusco/the-office/issues/591"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
           "number": 613,
           "url": "https://github.com/jfusco/the-office/issues/613"
         },
@@ -1824,6 +1925,12 @@
           "kind": "issue",
           "number": 627,
           "url": "https://github.com/jfusco/the-office/issues/627"
+        },
+        {
+          "repository": "jfusco/the-office",
+          "kind": "issue",
+          "number": 647,
+          "url": "https://github.com/jfusco/the-office/issues/647"
         },
         {
           "repository": "jfusco/the-office",
@@ -2090,10 +2197,10 @@
           "url": "https://github.com/jfusco/the-office/pull/550"
         }
       ],
-      "bytes": 12731,
-      "degree": 39,
-      "x": 0.872049,
-      "y": -0.489418,
+      "bytes": 13939,
+      "degree": 42,
+      "x": 0.885456,
+      "y": -0.464723,
       "size": 12
     },
     {
@@ -2111,8 +2218,8 @@
       ],
       "bytes": 2333,
       "degree": 13,
-      "x": 0.905448,
-      "y": -0.424457,
+      "x": 0.915408,
+      "y": -0.402527,
       "size": 8
     },
     {
@@ -2146,10 +2253,10 @@
           "url": "https://github.com/jfusco/the-office/pull/335"
         }
       ],
-      "bytes": 1741,
-      "degree": 13,
-      "x": 0.934016,
-      "y": -0.357231,
+      "bytes": 2146,
+      "degree": 16,
+      "x": 0.940998,
+      "y": -0.338413,
       "size": 8
     },
     {
@@ -2197,8 +2304,8 @@
       ],
       "bytes": 2452,
       "degree": 12,
-      "x": 0.957601,
-      "y": -0.288099,
+      "x": 0.962103,
+      "y": -0.272686,
       "size": 8
     },
     {
@@ -2228,8 +2335,8 @@
       ],
       "bytes": 1531,
       "degree": 14,
-      "x": 0.976076,
-      "y": -0.21743,
+      "x": 0.978624,
+      "y": -0.20566,
       "size": 8
     },
     {
@@ -2269,10 +2376,10 @@
           "url": "https://github.com/jfusco/the-office/pull/462"
         }
       ],
-      "bytes": 3024,
-      "degree": 18,
-      "x": 0.989343,
-      "y": -0.145601,
+      "bytes": 3304,
+      "degree": 22,
+      "x": 0.99048,
+      "y": -0.137654,
       "size": 8
     },
     {
@@ -2302,8 +2409,8 @@
       ],
       "bytes": 1265,
       "degree": 5,
-      "x": 0.997332,
-      "y": -0.072995,
+      "x": 0.997617,
+      "y": -0.068991,
       "size": 8
     }
   ],
@@ -2540,6 +2647,13 @@
       "relation": "link"
     },
     {
+      "id": "302e6351c7512b6a",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-26-overseer-phase-6c-launcher-packaging-for-jfusco-the-office-647-ab1fd16d77.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "32ba8ceee4dd8c25",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-25-589-accept-the-optional-skip-release-suffix-on-wiki-pr-titles-fbe538826b.md",
@@ -2573,6 +2687,13 @@
       "target": "wiki/topics/releases-and-incidents.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "3f2dd28bcc5c4266",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-26-overseer-phase-6c-launcher-runner-pin-and-launchagent-for-647-cd16bfae80.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "40130e180be618e4",
@@ -2622,6 +2743,13 @@
       "target": "wiki/topics/planning-and-learning.md",
       "type": "topic",
       "relation": "topic"
+    },
+    {
+      "id": "52fb33d779cdd5a3",
+      "source": "wiki/topics/delivery-and-recovery.md",
+      "target": "wiki/journal/2026-11-26-bot-pr-conflict-redo.md",
+      "type": "link",
+      "relation": "link"
     },
     {
       "id": "5534521de305d678",
@@ -2680,6 +2808,13 @@
       "relation": "topic"
     },
     {
+      "id": "678bb14a60b5aabb",
+      "source": "wiki/journal/2026-11-26-bot-pr-conflict-redo.md",
+      "target": "wiki/plans/2026-11-26-591-recover-conflicted-adopted-bot-prs-and-merge-qualified-replacements-e855672b0c.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "6d15c5e20f208326",
       "source": "wiki/journal/2026-11-24-context-wiki.md",
       "target": "wiki/plans/2026-11-24-install-the-office-context-wiki-and-split-quality-bfa15636b4.md",
@@ -2736,6 +2871,20 @@
       "relation": "topic"
     },
     {
+      "id": "796d5ed8a3b5f306",
+      "source": "wiki/plans/2026-11-26-591-recover-conflicted-adopted-bot-prs-and-merge-qualified-replacements-e855672b0c.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "7bc5427acf5ddfb5",
+      "source": "wiki/journal/2026-11-26-bot-pr-conflict-redo.md",
+      "target": "wiki/plans/2026-11-26-591-recover-conflicted-adopted-bot-prs-and-merge-qualified-replacements-e855672b0c.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "7bd95a165b5f5976",
       "source": "wiki/journal/2026-11-24-automatic-graphify-refresh.md",
       "target": "wiki/plans/2026-11-24-refresh-the-shared-office-code-map-after-merges-708032e283.md",
@@ -2771,6 +2920,13 @@
       "relation": "link"
     },
     {
+      "id": "858ee86c09b3de2c",
+      "source": "wiki/journal/2026-11-26-bot-pr-conflict-redo.md",
+      "target": "wiki/topics/delivery-and-recovery.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
       "id": "86219057cd5d3eb8",
       "source": "wiki/journal/2026-11-24-drawer-navigation.md",
       "target": "wiki/topics/office-ui-and-telemetry.md",
@@ -2783,6 +2939,27 @@
       "target": "wiki/plans/2026-11-26-hold-ownership-reading-harness-requests-during-startup-fc0b03865d.md",
       "type": "plan",
       "relation": "plan"
+    },
+    {
+      "id": "8bdf9f8c39648ecf",
+      "source": "wiki/journal/2026-11-26-overseer-phase-6c-launcher.md",
+      "target": "wiki/plans/2026-11-26-overseer-phase-6c-launcher-runner-pin-and-launchagent-for-647-cd16bfae80.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
+      "id": "8e5614b9b5175c20",
+      "source": "wiki/plans/2026-11-26-overseer-phase-6c-launcher-runner-pin-and-launchagent-for-647-cd16bfae80.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
+    },
+    {
+      "id": "8e9d08bfa110f73f",
+      "source": "wiki/plans/2026-11-26-overseer-phase-6c-launcher-packaging-for-jfusco-the-office-647-ab1fd16d77.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
     },
     {
       "id": "9106ded8188f746d",
@@ -2820,6 +2997,13 @@
       "relation": "link"
     },
     {
+      "id": "970b8a030a98afc9",
+      "source": "wiki/topics/releases-and-incidents.md",
+      "target": "wiki/journal/2026-11-26-overseer-phase-6c-launcher.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
       "id": "9764bf8c030d4ef6",
       "source": "wiki/plans/2026-11-26-hold-ownership-reading-harness-requests-during-startup-fc0b03865d.md",
       "target": "wiki/topics/session-evidence.md",
@@ -2830,6 +3014,13 @@
       "id": "9a89177d4899e9c3",
       "source": "wiki/topics/delivery-and-recovery.md",
       "target": "wiki/journal/2026-11-25-wiki-sync-skip-release-titles.md",
+      "type": "link",
+      "relation": "link"
+    },
+    {
+      "id": "9c5e77408a08217a",
+      "source": "wiki/plans/INDEX.md",
+      "target": "wiki/plans/2026-11-26-591-recover-conflicted-adopted-bot-prs-and-merge-qualified-replacements-e855672b0c.md",
       "type": "link",
       "relation": "link"
     },
@@ -3114,6 +3305,13 @@
       "relation": "topic"
     },
     {
+      "id": "d7d59d1bae435d14",
+      "source": "wiki/journal/2026-11-26-overseer-phase-6c-launcher.md",
+      "target": "wiki/plans/2026-11-26-overseer-phase-6c-launcher-packaging-for-jfusco-the-office-647-ab1fd16d77.md",
+      "type": "plan",
+      "relation": "plan"
+    },
+    {
       "id": "d813ef5b9df88ec2",
       "source": "wiki/plans/INDEX.md",
       "target": "wiki/plans/2026-11-26-one-harper-diagnosis-per-stopped-maintenance-run-572e1bc09c.md",
@@ -3126,6 +3324,13 @@
       "target": "wiki/journal/2026-11-26-evidence-redaction-gaps.md",
       "type": "link",
       "relation": "link"
+    },
+    {
+      "id": "d9421742cd56490e",
+      "source": "wiki/journal/2026-11-26-overseer-phase-6c-launcher.md",
+      "target": "wiki/topics/releases-and-incidents.md",
+      "type": "topic",
+      "relation": "topic"
     },
     {
       "id": "d95c0808eb0b823f",

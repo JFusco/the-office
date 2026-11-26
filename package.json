@@ -7,6 +7,7 @@
     "dev": "tsx watch --clear-screen=false server/dev.ts",
     "start": "tsx server/index.ts",
     "build": "tsc --noEmit && vite build",
+    "build:overseer-launcher": "node scripts/build-overseer-launcher.mjs",
     "test": "vitest run",
     "verify:ci": "pnpm build && pnpm test",
     "lint:pr": "node scripts/validate_pr_body.cjs",

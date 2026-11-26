@@ -40,6 +40,14 @@ export interface RunnerPaths {
     /** The budget ledger (`budget-ledger.ts`) and the optional ceiling override. */
     budgetDb: string;
     budgetConfig: string;
+    /** The launcher's own (`scripts/overseer-launch.mjs`): the code pin, the installed launcher, its state, its lock and launchd's logs. */
+    code: string;
+    pin: string;
+    launcherCopy: string;
+    launcherState: string;
+    launcherLock: string;
+    launcherGuard: string;
+    logs: string;
 }
 
 export function runnerPaths(root: string): RunnerPaths {
@@ -51,6 +59,9 @@ export function runnerPaths(root: string): RunnerPaths {
         failures: resolve(journal, 'failures.jsonl'), runnerState: resolve(state, 'runner.json'),
         runnerDb: resolve(state, 'runner.sqlite'), runnerData: resolve(state, 'runner-data'),
         budgetDb: resolve(state, 'budget.sqlite'), budgetConfig: resolve(control, 'budget.json'),
+        code: resolve(root, 'code'), pin: resolve(root, 'code', 'pin.json'), launcherCopy: resolve(root, 'code', 'launcher', 'overseer-launch.mjs'),
+        launcherState: resolve(state, 'launcher.json'), launcherLock: resolve(control, 'launcher.lock'), launcherGuard: resolve(control, 'launcher.lock.reclaim'),
+        logs: resolve(root, 'logs'),
     };
 }
 
