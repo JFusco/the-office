@@ -97,7 +97,7 @@ const costed = (cost: number, remaining: number, extra: object = {}) => JSON.str
 const INVENTORY = ['api', 'graphql', '--input', '-', '--include'];
 /** A metered runner over children that print `stdout` and exit 0, or print it and fail with `error`; the governor records what it is told. */
 function graphqlFixture() {
-    const ledger = new CallLedger(), quota = new RateLimitSamples(async () => { throw new Error('not sampled'); }), told: { refused: any[]; answered: number } = { refused: [], answered: 0 };
+    const ledger = new CallLedger(), quota = new RateLimitSamples(async () => { throw new Error('not sampled'); }), told: { refused: any[]; answered: number } = { refused: [], answered: 0 }, notices: string[] = [];
     const governor = { refused: (refusal: any) => { told.refused.push(refusal); }, answered: () => { told.answered++; } };
     let next: { stdout: string; error?: Error } = { stdout: '{}' };
     const raw: Runner = async (_program, _args, options = {}) => {
@@ -108,13 +108,14 @@ function graphqlFixture() {
         return next.stdout;
     };
     const run = meteredRunner(raw, ledger, quota, governor);
+    let onGitHubRefusal = (message: string) => { notices.push(message); };
     const call = (answer: typeof next, operation?: GitHubOperation, args = INVENTORY) => {
         next = answer;
-        const work = () => run('gh', args);
+        const work = () => run('gh', args, { onGitHubRefusal: message => onGitHubRefusal(message) });
         return withGitHubSource('monitor', () => operation ? withGitHubOperation(operation, work) : work(), { project: 'brain' }).catch((error: Error) => error);
     };
     const family = (name: string) => ledger.report().projects.find(p => p.project === 'brain')?.sources[0].families.find(f => f.family === name);
-    return { ledger, quota, told, call, family };
+    return { ledger, quota, told, notices, call, family, callback: (next: (message: string) => void) => { onGitHubRefusal = next; } };
 }
 
 test('PR inventory pages count their reported points and child continuations; an uncosted query counts as unknown', async () => {
@@ -153,6 +154,8 @@ test('a refusal stated in an HTTP 200 envelope or by a thrown gh error reaches t
     await f.call({ stdout: graphqlHeaders('403 Forbidden') + JSON.stringify({ data: null, ...limited }), error: new CommandFailure('gh exited 1: gh: API rate limit exceeded for user ID 1.', 'other', true) }, 'pr-child');
     await f.call({ stdout: graphqlHeaders('403 Forbidden', 'Retry-After: 90\r\n') + '{"message":"You have exceeded a secondary rate limit."}', error: new CommandFailure('gh exited 1: gh: You have exceeded a secondary rate limit. (HTTP 403)', 'other', true) }, 'pr-root');
     expect(f.told.refused.map(refusal => [refusal.secondary, refusal.retryAfterMs])).toEqual([[false, undefined], [false, undefined], [true, 90_000]]);
+    // The caller is told each refusal once, in the words that stated it: the 200 body's errors, else gh's own error first.
+    expect(f.notices).toEqual(['API rate limit exceeded for user ID 1.', 'gh exited 1: gh: API rate limit exceeded for user ID 1.', 'gh exited 1: gh: You have exceeded a secondary rate limit. (HTTP 403)']);
     expect(f.family('monitor-pr-graphql')).toMatchObject({ invocations: 3, pages: 0, refusals: 3, failures: 0, unknownCost: 3 });
 });
 
@@ -162,15 +165,28 @@ test('a permission error is a read failure, never a refusal; a call cancelled be
     expect(await f.call({ stdout: '', error: new CommandFailure('Worker cancelled before dispatch', 'cancelled', false) }, 'pr-child')).toMatchObject({ category: 'cancelled' });
     expect(f.family('monitor-pr-graphql')).toMatchObject({ invocations: 1, failures: 1, refusals: 0, prChildInvocations: 0 });
     expect(f.told.refused).toEqual([]);
+    expect(f.notices).toEqual([]);
 });
 
 test.each([
-    { kind: 'refusal', stdout: '{"errors":[{"message":"API rate limit exceeded for user ID 1."}]}', refusals: 1, failures: 0, points: 0, unknownCost: 1 },
-    { kind: 'failure', stdout: costed(2, 4980, { errors: [{ message: 'Could not resolve to a Repository' }] }), refusals: 0, failures: 1, points: 2, unknownCost: 0 },
-])('a GraphQL $kind reported only in stdout counts one attempt and zero pages', async ({ stdout, refusals, failures, points, unknownCost }) => {
+    { kind: 'refusal', stdout: '{"errors":[{"message":"API rate limit exceeded for user ID 1."}]}', refusals: 1, failures: 0, points: 0, unknownCost: 1, notices: ['API rate limit exceeded for user ID 1.'] },
+    { kind: 'failure', stdout: costed(2, 4980, { errors: [{ message: 'Could not resolve to a Repository' }] }), refusals: 0, failures: 1, points: 2, unknownCost: 0, notices: [] },
+])('a GraphQL $kind reported only in stdout counts one attempt and zero pages', async ({ stdout, refusals, failures, points, unknownCost, notices }) => {
     const f = graphqlFixture();
     const error = new CommandFailure('gh exited 1: query failed', 'other', true);
     expect(await f.call({ stdout, error }, undefined, ['api', 'graphql', '-f', 'query=query{viewer{login}}'])).toBe(error);
     expect(f.family('graphql')).toMatchObject({ invocations: 1, attempts: 1, pages: 0, unknown: 0, refusals, failures, points, unknownCost });
     expect(f.told.refused).toHaveLength(refusals);
+    // gh's error says only that the query failed: the caller learns the refusal from what it printed.
+    expect(f.notices).toEqual(notices);
+});
+
+test('a refusal callback that throws changes nothing the caller receives, and the hold is started first', async () => {
+    const f = graphqlFixture(), error = new CommandFailure('gh exited 1: query failed', 'other', true), heldWhenTold: number[] = [];
+    f.callback(() => { heldWhenTold.push(f.told.refused.length); throw new Error('callback failed'); });
+    expect(await f.call({ stdout: '{"errors":[{"message":"API rate limit exceeded for user ID 1."}]}', error }, undefined, ['api', 'graphql', '-f', 'query=query{viewer{login}}'])).toBe(error);
+    const body = JSON.stringify({ data: null, errors: [{ message: 'API rate limit exceeded for user ID 1.' }] });
+    expect(await f.call({ stdout: body }, undefined, ['api', 'graphql', '-f', 'query=query{viewer{login}}'])).toBe(body);
+    expect(f.told.refused).toHaveLength(2);
+    expect(heldWhenTold).toEqual([1, 2]);
 });
