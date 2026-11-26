@@ -14,6 +14,7 @@ import { conversationReadbackReady, uncertainConversations, queueConversationRea
 import { holdReason } from '../office/project-holds';
 import { captureLearning, learningDigest } from './learning-events';
 import { bindHandoff, harperRequests, legacyMaterialKey, materialKey, nextHandoffId, openHandoff, settleHandoffs, SOURCE_MISSING, type HandoffEvidence } from './handoff-admission';
+import { adoptLegacyKey, maintenanceStopKey } from './maintenance-handoff-key';
 import { temporaryReadFailure } from '../scheduling/read-retries';
 import { unsettledEffects } from '../operations/unsettled-effects';
 
@@ -39,7 +40,7 @@ function heldForRepair(store: Store, item: BlockerFollowup): boolean {
     const about = followupRecord(store, item), now = store.clock.now();
     return !!about && !!repairFreeze(store.state, about, now, freezeReads(store, now));
 }
-/** `key`: what the action due is about (`handoff-admission.ts`). One open hand-off per follow-up, admitted only when that changed. */
+/** `key`: what the action due is about (`handoff-admission.ts`; a maintenance run's stop, `maintenance-handoff-key.ts`). One open hand-off per follow-up, admitted only when that changed. */
 function handoff(store: Store, item: BlockerFollowup, evidence: HandoffEvidence, key: string, original?: TeamMessage) {
     // Nothing new is due; a follow-up whose earlier hand-offs predate the key waits until one can be recorded.
     if (item.handoffMaterialKey === key || item.handoffMaterialKey === undefined && harperRequests(item, store.state.messages).length) return;
@@ -135,7 +136,7 @@ export function reconcileBlockerFollowups(store: Store): void {
         if (!['blocked', 'interrupted'].includes(run.status) && !records.some(item => item.source.kind === 'maintenance' && item.source.id === run.id)) continue;
         const replacement = store.state.maintenance?.runs.find(other => other.id !== run.id && other.supersedes?.includes(run.id));
         const item = observe({ kind: 'maintenance', id: run.id }, '', replacement ? `Maintenance owner superseded this run with ${replacement.id}; original outcome remains unverified. ${run.error}` : run.error || 'Maintenance effects need source read-back; a later run does not resolve this one.', replacement ? 'superseded' : ['blocked', 'interrupted'].includes(run.status) ? 'unresolved' : 'unknown', { status: run.status, error: run.error, replacement: replacement?.id }, { owner: 'Morgan' });
-        if (item.disposition === 'unresolved' && knowledge.enabled) handoff(store, item, evidence, due(item));
+        if (item.disposition === 'unresolved' && knowledge.enabled) { const key = maintenanceStopKey(run); adoptLegacyKey(item, key); handoff(store, item, evidence, key); }
     }
     for (const feature of store.state.features || []) {
         if (feature.status !== 'blocked' && !records.some(item => item.source.kind === 'feature' && item.source.id === feature.id)) continue;
