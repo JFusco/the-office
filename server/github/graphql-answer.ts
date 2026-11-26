@@ -13,7 +13,7 @@ export function responseBody(stdout: string, include: boolean): string {
 /**
  * Read a GraphQL body's `rateLimit { cost limit used remaining resetAt }` and `errors`. The ISO reset becomes integer
  * UTC epoch seconds; a value that is missing or invalid is left out, so its cost counts as unknown. Error messages
- * are returned for the refusal rule only and are never kept.
+ * are returned for the refusal rule, whose matched text the caller may keep as its diagnostic; the ledger never does.
  */
 export function graphqlAnswer(stdout: string, include: boolean): GraphqlAnswer {
     let body: any;

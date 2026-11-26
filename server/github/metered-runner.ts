@@ -16,7 +16,8 @@ const MAX_BODY_LENGTH = 16_000_000;
  * spawned is counted once under the current source and operation. Any other program passes straight through, uncounted.
  * A direct GraphQL query also counts the points its body reported, failed or not, and its body's balance is kept
  * before its included headers. A stated rate-limit refusal, in the error or in a GraphQL body's `errors`, is told to
- * the quota governor once; any other answer as an answer. Accounting never changes what the caller receives.
+ * the quota governor once, and then its text to the caller's `onGitHubRefusal`; any other answer as an answer.
+ * Accounting never changes what the caller receives.
  */
 export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimitSamples, governor?: Pick<QuotaGovernor, 'refused' | 'answered'>): Runner {
     return async (program, args, options = {}) => {
@@ -49,17 +50,21 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
         } : options.onOutput;
         // A GraphQL body's balance first; an included header block only when the body gave none.
         const keepReading = (answer?: GraphqlAnswer) => answer?.reading ? quota?.headers(answer.reading, 'body') : quota?.headers(quotaReading);
-        const refusalIn = (text: string | undefined, answer?: GraphqlAnswer) => text === undefined ? undefined : quotaRefusal(text, headers, answer?.reading ?? quotaReading);
+        // A refusal and the text that stated it, for this invocation only.
+        const refusalIn = (text: string | undefined, answer?: GraphqlAnswer) => {
+            const refusal = text === undefined ? undefined : quotaRefusal(text, headers, answer?.reading ?? quotaReading);
+            return refusal && { refusal, text: text! };
+        };
         try {
             const stdout = await raw(program, args, { ...options, onOutput, onSpawn: pid => { spawned = true; options.onSpawn?.(pid); } });
             account(() => {
                 if (headerPrefix === '') captureHeaders(stdout);
                 const answer = body === undefined ? undefined : graphqlAnswer(stdout, call.include);
-                const refusal = refusalIn(answer?.errors, answer);
-                ledger.record(source, call.family, graphqlCounts(succeeded(call, stdout, status), answer, operation, !!refusal), project);
+                const matched = refusalIn(answer?.errors, answer);
+                ledger.record(source, call.family, graphqlCounts(succeeded(call, stdout, status), answer, operation, !!matched), project);
                 keepReading(answer);
                 // GitHub's 200 envelope can still state a refusal: that is a refusal, not an answer.
-                if (refusal) governor?.refused(refusal, source !== 'quota');
+                if (matched) { governor?.refused(matched.refusal, source !== 'quota'); options.onGitHubRefusal?.(matched.text); }
                 else if (source !== 'quota') governor?.answered();
             });
             return stdout;
@@ -67,11 +72,11 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
             // Refused before dispatch (cancelled, or a live provider under unit tests): no process, nothing counted.
             if (spawned) account(() => {
                 const answer = body === undefined ? undefined : graphqlAnswer(body, call.include);
-                const refusal = refusalIn(error instanceof Error ? error.message : String(error), answer) ?? refusalIn(answer?.errors, answer);
-                ledger.record(source, call.family, graphqlCounts(failed(call, error, status, answer), answer, operation, !!refusal), project);
+                const matched = refusalIn(error instanceof Error ? error.message : String(error), answer) ?? refusalIn(answer?.errors, answer);
+                ledger.record(source, call.family, graphqlCounts(failed(call, error, status, answer), answer, operation, !!matched), project);
                 keepReading(answer);
                 // The probe's own refusal still holds, and never starts another probe.
-                if (refusal) governor?.refused(refusal, source !== 'quota');
+                if (matched) { governor?.refused(matched.refusal, source !== 'quota'); options.onGitHubRefusal?.(matched.text); }
             });
             throw error;
         }
