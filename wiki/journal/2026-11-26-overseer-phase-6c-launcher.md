@@ -59,4 +59,6 @@ A fresh full review of the repaired head (`b249ef79`) followed, with the byte co
 - the pin-to-plist test runs a pnpm-style `tsx` link;
 - the recovery guide covers a stale `launcher.lock` and treats the release path as context only.
 
+Merging main after #658 conflicted only in the generated wiki files. On the merged head, a loaded full suite showed that three stand-in dispatch tests had deadlines too short to cover helper startup, which the deadline now counts. Each now has 3 s and checks authorization first.
+
 [Issue #647](https://github.com/JFusco/the-office/issues/647) · [Overseer, Launcher](../../docs/overseer.md)

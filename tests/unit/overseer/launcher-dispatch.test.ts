@@ -34,9 +34,11 @@ describe.skipIf(process.platform !== 'darwin')('dispatch with a stand-in helper'
     }, 30_000);
 
     test('a pass that exits before its deadline is not a hang, though its report arrives after it while output drains', async () => {
-        const helper = fakeHelper({ exitedAt: 200, reportAt: 1_100 });
-        const { run, state } = await dispatchWith(helper, { deadlineMs: 600 });
+        // The deadline counts startup, so it leaves room for a slow start; the report still lands after it, inside the drain wait.
+        const helper = fakeHelper({ exitedAt: 200, reportAt: 3_500 });
+        const { run, state } = await dispatchWith(helper, { deadlineMs: 3_000, limits: { drainMs: 5_000 } });
         expect(await run).toBe(0);
+        expect(helper.saw('authorized')).toBe(true);
         expect(state()).toMatchObject({ current: null, counts: { success: 1, hang: 0 }, last: { kind: 'success', outcome: 'idle' } });
     }, 30_000);
 
@@ -66,11 +68,12 @@ describe.skipIf(process.platform !== 'darwin')('dispatch with a stand-in helper'
 
     test('a hang stays one hang with its own detail when the pass reports while it is being stopped', async () => {
         const helper = fakeHelper({ reportOnTerm: true });
-        const { run, state, failures } = await dispatchWith(helper, { deadlineMs: 400 });
+        const { run, state, failures } = await dispatchWith(helper, { deadlineMs: 3_000 });
         expect(await run).toBe(0);
+        expect(helper.saw('authorized')).toBe(true);
         expect(helper.saw('terminated')).toBe(true);
         const settled = state();
-        expect(settled).toMatchObject({ current: null, counts: { hang: 1, success: 0 }, last: { kind: 'hang', detail: 'passed its 400 ms deadline', exit: { code: 0, signal: null } } });
+        expect(settled).toMatchObject({ current: null, counts: { hang: 1, success: 0 }, last: { kind: 'hang', detail: 'passed its 3000 ms deadline', exit: { code: 0, signal: null } } });
         expect(settled.recent).toHaveLength(1);
         expect(failures).toEqual([expect.objectContaining({ kind: 'hang' })]);
     }, 30_000);
@@ -94,7 +97,7 @@ ensurePrivateDirectory(paths.state);
 const save = next => { if (next.current?.counted === 'hang') throw new Error('disk full'); contract.saveState(paths, next); };
 try {
     await dispatch({ state: contract.emptyState(), save, system: defaultSystem(), limits: { ...LIMITS, termGraceMs: 1000, absenceWaitMs: 1000, pollMs: 50 }, paths,
-        pinned: { pin: { commit: 'a'.repeat(40) }, directory: home, entry: '/release/server/overseer.ts' }, deadlineMs: 500, origin: undefined,
+        pinned: { pin: { commit: 'a'.repeat(40) }, directory: home, entry: '/release/server/overseer.ts' }, deadlineMs: 3_000, origin: undefined,
         env: { PATH: process.env.PATH, HOME: home }, launcherFile: file, failed: () => {}, isShuttingDown: () => false, setShutdown: () => {} });
     console.log(JSON.stringify({ resolved: true }));
 } catch (error) { console.log(JSON.stringify({ rejected: error.message })); }
@@ -107,6 +110,7 @@ try {
         if (!exited) child.kill('SIGKILL');
         expect(exited).toBe(true);
         expect(JSON.parse(output.trim())).toEqual({ rejected: 'disk full' });
+        expect(helper.saw('authorized')).toBe(true);
         expect(helper.saw('terminated')).toBe(true);
         expect(groupGone(helper.pidOf('started')!)).toBe(true);
     }, 30_000);
