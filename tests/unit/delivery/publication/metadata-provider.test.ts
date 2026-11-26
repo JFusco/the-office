@@ -31,3 +31,14 @@ test('metadata uses its exact claim without depending on complete chat context',
     await claimedDelivery(f.store,f.job,()=>metadataOwnership(f.delivery,f.job,false));
     expect(f.state.calls.some(c=>c.startsWith('curl'))).toBe(false);
 });
+
+test.each([
+    [true, [], true], [true, [{ login: 'someone-else' }], true], [true, [{ login: 'JFusco' }], true],
+    [false, [], false], [false, [{ login: 'someone-else' }], false], [false, [{ login: 'JFusco' }], true],
+] as const)('as in delivery, existingPR=%s with assignees %j reads=%s; the open issue and PR identity still bind', async (existingPR, assignees, reads) => {
+    const f = setup(); f.job.existingPR = existingPR; f.state.issue.assignees = [...assignees];
+    const read = metadataProvider(f.delivery, f.job);
+    if (reads) expect(await read).toMatchObject({ number: 200 }); else await expect(read).rejects.toThrow('native metadata');
+    f.state.issue.state = 'closed';
+    await expect(metadataProvider(f.delivery, f.job)).rejects.toThrow('native metadata');
+});

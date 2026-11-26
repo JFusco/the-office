@@ -9,6 +9,7 @@ import { projectById } from '../../server/office/projects';
 import { GitHubDelivery } from '../../server/delivery/pipeline/github-delivery';
 import { ProjectProgress } from '../../server/delivery/board/project-progress';
 import type { CIRepairPlan } from '../../src/contracts/ci-repair';
+import { descriptionNode, editDescription } from '../unit/delivery/support/fake-github';
 
 export const oldHead = 'a'.repeat(40), base = 'b'.repeat(40), newHead = 'c'.repeat(40);
 export const plan = (kind: CIRepairPlan['kind']): CIRepairPlan => ({ kind, summary: 'Correct the evidenced fixture defect', evidence: ['Exact job 10 failed in the fixture log'], messages: [], title: '', body: '', runId: 0 });
@@ -48,9 +49,15 @@ export function ciFixture() {
         if (bin === 'gh') {
             if (args[0] === 'pr') return JSON.stringify({ closingIssuesReferences: [{ url: issue.html_url }] });
             const path = args[1];
+            if (path === 'graphql' && JSON.parse(options.input).query.includes('userContentEdits'))
+                return JSON.stringify({ data: { repository: { nameWithOwner: 'JFusco/brain', pullRequest: descriptionNode(pr) } } });
             if (path.includes('/pulls?')) return '[[]]';
             if (path.endsWith('/pulls/323')) {
-                if (args.includes('PATCH')) { if (writeLands) Object.assign(pr, JSON.parse(options.input)); if (failWrite) throw new Error('Connection lost after dispatch'); }
+                if (args.includes('PATCH')) {
+                    const patch = JSON.parse(options.input);
+                    if (writeLands) { if (typeof patch.title === 'string') pr.title = patch.title; if (typeof patch.body === 'string') editDescription(pr, patch.body); }
+                    if (failWrite) throw new Error('Connection lost after dispatch');
+                }
                 return JSON.stringify(pr);
             }
             if (path.endsWith('/issues/322')) return JSON.stringify(issue);

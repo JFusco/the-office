@@ -14,6 +14,26 @@ export const HEAD = 'a'.repeat(40);
 const cleanup: (() => void)[] = [];
 export function cleanupFakes() { cleanup.splice(0).forEach(fn => fn()); }
 
+/** When a synthetic pull request without its own creation time was opened. */
+export const CREATED = '2026-10-31T12:00:00Z';
+let editSeconds = 0;
+/** GitHub's `PullRequest` description fields for a synthetic REST pull request, with its edit history. */
+export function descriptionNode(pr: any) {
+    const edits = pr.edits || [];
+    return { number: pr.number, url: pr.html_url, state: pr.merged_at ? 'MERGED' : pr.state === 'open' ? 'OPEN' : 'CLOSED', baseRefName: pr.base.ref,
+        headRefName: pr.head.ref, headRefOid: pr.head.sha, title: pr.title, body: pr.body, createdAt: pr.created_at || CREATED,
+        lastEditedAt: pr.last_edited_at ?? null, includesCreatedEdit: !!pr.includes_created_edit,
+        userContentEdits: { totalCount: edits.length, nodes: edits, pageInfo: { hasNextPage: false } } };
+}
+/** Records a body edit the way GitHub does: the first edit also lists the original text, dated at creation. */
+export function editDescription(pr: any, body: string, at = new Date(Date.UTC(2026, 10, 24, 0, 0, ++editSeconds)).toISOString().replace('.000Z', 'Z')) {
+    if (body === pr.body) return;
+    pr.edits ??= [];
+    if (!pr.includes_created_edit) { pr.edits.push({ id: `UCE_${pr.number}_original`, createdAt: at, editedAt: pr.created_at || CREATED, deletedAt: null }); pr.includes_created_edit = true; }
+    pr.edits.unshift({ id: `UCE_${pr.number}_${editSeconds}_${pr.edits.length}`, createdAt: at, editedAt: at, deletedAt: null });
+    pr.last_edited_at = at; pr.body = body;
+}
+
 /** Stateful, synthetic GitHub + git + board for hands-off delivery tests. Never touches a real provider. */
 export function fakeGitHub(issueNumber = 5) {
     const root = mkdtempSync(resolve(tmpdir(), 'office-delivery-'));
@@ -42,7 +62,7 @@ export function fakeGitHub(issueNumber = 5) {
         prFiles: {} as Record<number, string[]>,
         prCommits: {} as Record<number, string[]>,
     };
-    const prJson = (pr: any) => ({ number: pr.number, url: pr.html_url, state: pr.merged_at ? 'MERGED' : pr.state === 'open' ? 'OPEN' : 'CLOSED', headRefOid: pr.head.sha, baseRefName: pr.base.ref, isDraft: pr.draft, closingIssuesReferences: new RegExp(`Closes #${issueNumber}\\b`).test(pr.body || '') ? [{ url: issueUrl, number: issueNumber }] : [] });
+    const prJson = (pr: any) => ({ number: pr.number, url: pr.html_url, state: pr.merged_at ? 'MERGED' : pr.state === 'open' ? 'OPEN' : 'CLOSED', headRefOid: pr.head.sha, baseRefName: pr.base.ref, isDraft: pr.draft, title: pr.title, body: pr.body, closingIssuesReferences: new RegExp(`Closes #${issueNumber}\\b`).test(pr.body || '') ? [{ url: issueUrl, number: issueNumber }] : [] });
     const execute = async (program: string, args: string[], options: any = {}): Promise<string> => {
         const line = `${program} ${args.join(' ')}`;
         state.calls.push(line);
@@ -114,6 +134,10 @@ export function fakeGitHub(issueNumber = 5) {
         throw new Error(`Unexpected synthetic command: ${line}`);
     };
     function graphql({ query, variables }: { query: string; variables: any }) {
+        if (query.includes('userContentEdits')) {
+            const pr = state.prs.find(p => p.number === variables.number);
+            return { data: { repository: { nameWithOwner: REPOSITORY, pullRequest: pr ? descriptionNode(pr) : null } } };
+        }
         if (query.includes('addProjectV2ItemById')) { const id = `card-${variables.content}`; if (!state.cards.some(c => c.id === id)) state.cards.push({ id, kind: 'Issue', number: issueNumber, status: 'backlog' }); return { data: { addProjectV2ItemById: { item: { id } } } }; }
         if (query.startsWith('mutation')) { state.cards.find(c => c.id === variables.item)!.status = variables.option; return { data: { updateProjectV2ItemFieldValue: { projectV2Item: { id: variables.item } } } }; }
         if (query.includes('fields(first')) return { data: { user: { projectV2: { id: 'project', fields: { nodes: [{ id: 'status', name: 'Status', options: state.lanes }], pageInfo: { hasNextPage: false } } } } } };
