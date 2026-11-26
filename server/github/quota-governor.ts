@@ -25,8 +25,8 @@ export const backgroundHold = (project: Pick<OfficeProject, 'provider'>, gate?: 
 export const quotaLow = (hold: QuotaHold) => `GitHub quota low. Observation resumes at ${hold.until}.`;
 
 /**
- * One account budget for every project of an Office instance. Background work is held while the latest reading of
- * a resource it asks for is at or below the reserve, until that reading's reset; and, whatever it asks for, after a
+ * One account budget for every project of an Office instance. Background work is held while any live reset window of
+ * a resource it asks for is at or below the reserve, until the latest such reset; and, whatever it asks for, after a
  * stated refusal, until its Retry-After, its zero-remaining reset or a backoff of at least a minute that doubles on
  * each repeat, until a quiet spell as long as that backoff follows the hold. Only a reading of a resource counts for
  * it, so no other resource's response lifts it. Refusals while a hold stands join it. A primary
@@ -38,14 +38,14 @@ export class QuotaGovernor implements QuotaGate {
     private refusedUntil = 0;
     private repeats = 0;
     private backoffMs = 0;
-    constructor(private samples: Pick<RateLimitSamples, 'latest' | 'sample'>, private now = () => Date.now()) { }
+    constructor(private samples: Pick<RateLimitSamples, 'liveWindows' | 'sample'>, private now = () => Date.now()) { }
     hold(resources: readonly Resource[] = ['core']): QuotaHold | undefined {
         const now = this.now(), until = Math.max(this.refusedUntil, ...resources.map(resource => this.lowUntil(resource, now)));
         return until > now ? { until: new Date(until).toISOString() } : undefined;
     }
+    /** The latest reset among the resource's live windows at or below the reserve: reset order alone says nothing of which is spent. */
     private lowUntil(resource: Resource, now: number): number {
-        const latest = this.samples.latest(resource), reset = (latest?.reset ?? 0) * 1000;
-        return latest && reset > now && latest.remaining <= latest.limit * CORE_RESERVE ? reset : 0;
+        return Math.max(0, ...this.samples.liveWindows(resource).filter(window => window.reset * 1000 > now && window.remaining <= window.limit * CORE_RESERVE).map(window => window.reset * 1000));
     }
     /** `probe` is false for the probe's own call. */
     refused(refusal: QuotaRefusal, probe = true): void {

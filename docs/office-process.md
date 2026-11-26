@@ -969,8 +969,9 @@ Counting refuses and reorders nothing; the quota hold below reads its samples an
   reported, failed or not, or one `unknownCost`; a positive `unknownCost` marks the points as partial. Board
   and other queries that select no `rateLimit` count as unknown cost; opaque commands stay unknown traffic.
 - **PR inventory families.** Every page of the monitor's open-PR inventory is `monitor-pr-graphql`, root or
-  child, by a fixed operation marker that survives a pinned owner. A review or check continuation also counts
-  in `prChildInvocations` and, when it succeeds, `prChildPages`: root invocations and pages are the family's
+  child, by a fixed operation marker that survives a pinned owner. A review continuation, a head read by OID,
+  a suite continuation and a run continuation each also count in `prChildInvocations` and, when it succeeds,
+  `prChildPages`: root invocations and pages are the family's
   totals less those. A PR's terminal REST read (`server/github/pr-transitions.ts`) is counted as
   `pull-terminal`, `pull-reviews-terminal`, `check-runs-terminal` and `statuses-terminal`, so recurring
   `pull`, `pull-reviews`, `check-runs` and `statuses` under `monitor` should stay at zero. No argument,
@@ -994,19 +995,26 @@ The monitor reads its open PRs as one batch, and neither it nor the assignment p
 an answer that cannot have changed.
 
 - **One GraphQL open-PR inventory per refresh.** The monitor reads the configured repository's open PRs
-  newest created first through `gh api graphql --include` (`server/github/pr-observation-graphql.ts`): 20 PRs
-  a root page, each with its first 10 reviews and the first 20 check contexts of its head; a continuation
-  reads 50 more of one PR's reviews, on the same PR at the captured head, or of one commit's contexts, by OID.
-  Repository, PR, head and commit identity, fresh advancing cursors, constant counts and distinct nodes are
-  checked on every page; `checkRunCount` and `statusContextCount` must match the contexts read. Anything
-  else, partial `errors` included, fails the read and the last observation, its time and its error stand.
-  Only a complete inventory is published; nothing is cached. `server/github/pr-observation-shape.ts` gives
-  each PR the REST-built shape: REST casing, `[bot]` logins, three-valued `mergeable`, links from closing
-  directives in the full body before it is bounded, each review's own commit, check runs in rollup order,
-  then the newest status per context, newest first; `EXPECTED` contexts, which REST never lists, are
-  dropped. A check or review value that is not a GraphQL enum, an unknown PR state, mergeability or status
-  state, a missing actor or an unavailable review commit fails the read. The monitor no
-  longer reads the open-pulls list or a PR's detail, reviews, check runs or statuses each refresh.
+  newest created first through `gh api graphql --include` (`server/github/pr-observation-graphql.ts`): 10 PRs
+  a root page, each with its first 10 reviews and, on its last commit, the head's statuses and its first 10
+  check suites with up to 50 LATEST runs each. When that commit is not the head (a fork's or a deleted ref's
+  head, or no commit listed), its data is discarded and the head's statuses and first suite page are read by
+  the captured OID. Reviews continue 50 at a time on the same PR at the captured head; suites continue 50 at
+  a time on the head by OID; a suite's runs continue 50 at a time by its node ID, LATEST on every page
+  (`pr-head-checks.ts`). Repository, PR, head, suite and commit identity, fresh advancing cursors, constant
+  counts, distinct nodes and final coverage are checked for every connection; statuses come from the head's
+  plain `status` list, with distinct IDs and context names. A head with more than 1,000 suites, the most REST
+  covers, fails before any further check page. Anything else, partial `errors` or a timeout included, fails
+  the read and the last observation, its time and its error stand. Only a complete inventory is published;
+  nothing is cached. `server/github/pr-observation-shape.ts` gives each PR the REST-built shape: REST casing,
+  `[bot]` logins, three-valued `mergeable`, links from closing directives in the full body before it is
+  bounded, each review's own commit, LATEST runs in REST's order (descending numeric run ID, each a positive
+  safe integer unique to the PR) linked by their `permalink`, then statuses newest first, by context in
+  code-unit order within the same second; `EXPECTED` statuses, which REST never lists, are dropped. REST
+  leaves that equal-time order unspecified, so a tied pair can show in another order than REST's; no
+  decision reads it. A check or review value that is not a GraphQL enum, an unknown PR state, mergeability or
+  status state, a missing actor, an unavailable review commit or an invalid run ID fails the read. The
+  monitor no longer reads the open-pulls list or a PR's detail, reviews, check runs or statuses each refresh.
 - **Terminal reads once.** A PR the last observation had open that a complete inventory no longer lists is
   read by number once. A close or merge reuses that detail, reads every review, check-run and status page of
   the head it returned, and appends the row in prior order with its URL, state and `mergedAt`; the next poll
@@ -1063,9 +1071,12 @@ for every project while the account's quota is low. Decisions, reconciliation an
 - **When.** A resource at or below 10% of its limit holds the background work that asks for it until that
   reading's reset. Work that reads GraphQL, or depends on a step that does, asks for core and GraphQL
   (`GRAPHQL_WORK`); core-only work asks for core and continues on its own budget while only GraphQL is low.
-  Only a reading of a resource counts for it: the latest sample of the newest reset window, from a
-  `rate_limit` sample, an `--include` header block or a GraphQL body's `rateLimit`, so no other resource's
-  reading lifts it. A stated rate-limit refusal of any call
+  Only a reading of a resource counts for it, so no other resource's reading lifts it. Readings are kept by
+  resource and reset window, from a `rate_limit` sample, an `--include` header block or a GraphQL body's
+  `rateLimit`; a reading updates only the window it reports. GitHub can answer GraphQL from two windows at
+  once while `rate_limit` shows only one, so every live window counts: the most-used reading of each window
+  read in the last hour whose reset is still ahead. The hold runs to the latest reset among the low windows,
+  and at a window's exact reset the rest are weighed again. A stated rate-limit refusal of any call
   (`quota-refusal.ts`, the login check's rule, a credential failure taking precedence) holds until the
   `Retry-After` or zero-remaining reset its included headers give, or else for a minute, doubling on each
   repeat to 16 minutes; an answered call after a quiet spell as long as the last backoff starts again from

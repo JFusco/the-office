@@ -64,28 +64,60 @@ export function reviewsOf(data: any, repository: string, number: number, head: s
     return pr.reviews;
 }
 
-/** A context continuation: the captured commit itself, found by OID. A missing or inaccessible commit fails. */
-export function rollupOf(data: any, repository: string, head: string) {
+/** A head read by OID, first page or suite continuation: the captured commit itself. A missing or inaccessible commit fails. */
+export function commitOf(data: any, repository: string, head: string) {
     const commit = repositoryOf(data, repository).object;
     if (commit?.__typename !== 'Commit' || commit.oid !== head) fail(`commit ${head} is missing or inaccessible`);
-    return commit.statusCheckRollup;
+    return commit;
 }
 
-/** The first rollup page embedded in a root page, when its one commit is the captured head; undefined when no commit is listed. */
-export function embeddedRollup(node: any, head: string): { rollup: any } | undefined {
+/**
+ * The commit a root page embeds, when it is the captured head. A well-formed empty list, or one valid commit with
+ * another OID (a fork's or a deleted ref's head, a truncated list), gives undefined: the head is then read by OID and
+ * the embedded data is discarded. Missing fields, a malformed OID, a null node or more than one commit fail.
+ */
+export function embeddedHead(node: any, head: string): any | undefined {
     const commits = node?.commits?.nodes;
     if (!Array.isArray(commits) || commits.length > 1) fail(`#${node?.number} commit page is malformed`);
     if (!commits.length) return undefined;
-    if (commits[0]?.commit?.oid !== head) fail(`#${node.number} last commit is not its head`);
-    return { rollup: commits[0].commit.statusCheckRollup };
+    const commit = commits[0]?.commit;
+    if (!commit || !isOid(commit.oid)) fail(`#${node.number} commit page is malformed`);
+    return commit.oid === head ? commit : undefined;
 }
 
-/** A rollup's contexts connection, counting check runs and statuses apart. */
-export const contextPages = (number: number) => new ConnectionPages(`#${number} checks`, ['checkRunCount', 'statusContextCount']);
-/** Context counts against the distinct nodes read: check runs and statuses each as the connection said. */
-export function reconcileContexts(contexts: ConnectionPages): any[] {
-    const nodes = contexts.complete();
-    const runs = nodes.filter(node => node.__typename === 'CheckRun').length, statuses = nodes.filter(node => node.__typename === 'StatusContext').length;
-    if (runs + statuses !== nodes.length || contexts.count('checkRunCount') !== runs || contexts.count('statusContextCount') !== statuses) fail('check counts do not match the contexts read');
-    return nodes;
+/** Every suite read belongs to the captured head. */
+export function suiteOnHead(suite: any, head: string) {
+    if (suite?.commit?.oid !== head) fail(`check suite ${String(suite?.id)} is on another commit`);
+    return suite;
+}
+
+/** A run continuation: the same suite, on the captured head, in the configured repository. */
+export function suiteOf(data: any, repository: string, id: string, head: string) {
+    const suite = data?.node;
+    if (suite?.__typename !== 'CheckSuite' || suite.id !== id || suite.commit?.oid !== head || suite.repository?.nameWithOwner !== repository)
+        fail(`run page for suite ${id} is for another suite, commit or repository`);
+    return suite;
+}
+
+/** A head with more suites than REST's ref-level checks cover cannot be read as REST reads it. Exactly 1,000 is read. */
+export function withinSuiteCoverage(suites: ConnectionPages, number: number, head: string, limit: number) {
+    const total = suites.count('totalCount') ?? 0;
+    if (total > limit) fail(`#${number} head ${head} has ${total} check suites, more than the ${limit} REST covers`);
+}
+
+/**
+ * The head's statuses: an explicit null `status` is none. Otherwise the raw list, every entry with a distinct
+ * nonempty ID and context name; its values are checked by the projection, before `EXPECTED` is dropped.
+ */
+export function statusContexts(commit: any, number: number): any[] {
+    if (commit.status === null) return [];
+    const contexts = commit.status?.contexts;
+    if (!Array.isArray(contexts)) fail(`#${number} statuses are missing`);
+    const ids = new Set<string>(), names = new Set<string>();
+    for (const entry of contexts) {
+        if (typeof entry?.id !== 'string' || !entry.id || ids.has(entry.id) || typeof entry.context !== 'string' || !entry.context || names.has(entry.context))
+            fail(`#${number} statuses have a missing or repeated entry`);
+        ids.add(entry.id); names.add(entry.context);
+    }
+    return contexts;
 }

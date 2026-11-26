@@ -65,6 +65,7 @@ export class RateLimitSamples {
         const value = typeof input === 'string' ? readRateLimitHeaders(input) : input;
         if (value) this.keep({ ...value, at: this.now(), from });
     }
+    /** Readings are kept by resource and reset: a reading updates only the window it reports, and others stay live. */
     private keep(sample: Sample) {
         this.samples = this.samples.filter(kept => kept.at > sample.at - HOUR);
         // Cumulative usage in the same window cannot go back when a delayed read arrives.
@@ -78,6 +79,19 @@ export class RateLimitSamples {
         for (const sample of this.samples)
             if (sample.resource === resource && sample.at > now - HOUR && (!best || sample.reset > best.reset || sample.reset === best.reset && sample.used >= best.used)) best = sample;
         return best;
+    }
+    /**
+     * The most-used reading of each live reset window of one resource, in reset order: read in the last hour, with its
+     * reset still ahead. GitHub can answer GraphQL from more than one window at once, and `rate_limit` shows only one.
+     */
+    liveWindows(resource: Resource): Sample[] {
+        const now = this.now(), windows = new Map<number, Sample>();
+        for (const sample of this.samples) {
+            if (sample.resource !== resource || sample.at <= now - HOUR || sample.reset * 1000 <= now) continue;
+            const kept = windows.get(sample.reset);
+            if (!kept || sample.used >= kept.used) windows.set(sample.reset, sample);
+        }
+        return [...windows.values()].sort((a, b) => a.reset - b.reset);
     }
     /** The latest reading of each resource, and what was used within each reset window seen in the last hour. */
     report() {

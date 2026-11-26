@@ -73,7 +73,7 @@ test('a requested mailbox check under a hold mirrors the standing GitHub observa
 test('the GraphQL reserve reached mid-traversal stops the next page and the pipelines read, keeps the last observation, and a later refresh completes', async () => {
     const T0 = Date.parse('2026-11-26T13:00:00.000Z'), RESET_AT = '2026-11-26T13:30:00Z';
     let now = T0, low = true;
-    // Forty-five open PRs: three root pages. The first page's own balance is the reserve.
+    // Forty-five open PRs: five root pages. The first page's own balance is the reserve.
     const prs = Array.from({ length: 45 }, (_, i) => generatedPR(100 - i));
     const pulls = graphqlPulls(() => prs, { cost: () => low && pulls.calls.length === 1 ? rate(500, 1, RESET_AT) : rate(4000, 1, RESET_AT) });
     const root = mkdtempSync(resolve(tmpdir(), 'office-deferred-'));
@@ -107,7 +107,7 @@ test('the GraphQL reserve reached mid-traversal stops the next page and the pipe
     // After the reset it starts fresh and completes every page.
     low = false; now = Date.parse(RESET_AT);
     expect(await github.bind(() => engine.observe())).toBeUndefined();
-    expect(pulls.calls.map(call => call.kind)).toEqual(['root', 'root', 'root', 'root']);
+    expect(pulls.calls.map(call => call.kind)).toEqual(['root', 'root', 'root', 'root', 'root', 'root']);
     expect(store.state.github).toMatchObject({ status: 'idle', error: '' });
     expect(store.state.github!.prs.map(pr => pr.number)).toEqual(prs.map(pr => pr.node.number));
     expect(calls.some(call => call?.includes('workflows'))).toBe(true);

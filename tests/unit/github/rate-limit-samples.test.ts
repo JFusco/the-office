@@ -110,3 +110,23 @@ test('a GraphQL body reading is kept with body provenance, by the same window ru
     expect([resourceReading('graphql', { limit: 5000, used: 1, remaining: 4999, reset: RESET }), resourceReading('core', { limit: 5000, used: -1, remaining: 4999, reset: RESET })])
         .toEqual([{ resource: 'graphql', limit: 5000, used: 1, remaining: 4999, reset: RESET }, undefined]);
 });
+
+test('each live reset window keeps its own most-used reading; a rate_limit sample updates only the window it reports', async () => {
+    const early = T0 / 1000 + 600, late = T0 / 1000 + 1800;
+    const f = fixture([async () => JSON.stringify({ resources: { core: { limit: 5000, used: 60, remaining: 4940, reset: late }, graphql: { limit: 5000, used: 900, remaining: 4100, reset: late } } })]);
+    f.samples.headers({ resource: 'graphql', limit: 5000, used: 4500, remaining: 500, reset: early }, 'body');
+    f.samples.headers({ resource: 'graphql', limit: 5000, used: 4400, remaining: 600, reset: early }, 'body');
+    f.samples.headers({ resource: 'graphql', limit: 5000, used: 800, remaining: 4200, reset: late }, 'body');
+    await f.samples.sample();
+    // The sample reported only the later window: the earlier window's most-used reading stands beside it.
+    expect(f.samples.liveWindows('graphql').map(w => [w.reset, w.used, w.from])).toEqual([[early, 4500, 'body'], [late, 900, 'rate_limit']]);
+    expect(f.samples.latest('graphql')).toMatchObject({ reset: late, used: 900 });
+    expect(f.samples.liveWindows('core').map(w => w.reset)).toEqual([late]);
+    // At its exact reset a window is no longer live.
+    f.at(600);
+    expect(f.samples.liveWindows('graphql').map(w => w.reset)).toEqual([late]);
+    f.at(1799);
+    expect(f.samples.liveWindows('graphql').map(w => w.reset)).toEqual([late]);
+    f.at(1800);
+    expect(f.samples.liveWindows('graphql')).toEqual([]);
+});

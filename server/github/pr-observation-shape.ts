@@ -33,40 +33,52 @@ export function restLogin(actor: any, what: string): string {
     return actor.__typename === 'Bot' && !login.endsWith('[bot]') ? `${login}[bot]` : login;
 }
 
-/** Statuses as REST keeps them: the newest per exact context, newest first; ties keep the rollup's order. */
-function statusRows(contexts: any[], sha: string): GitHubPR['checks'] {
-    const newest = new Map<string, { node: any; at: number }>();
-    for (const node of contexts) {
-        if (node.__typename !== 'StatusContext') continue;
-        const context = text(node.context, 'status context'), state = member(STATUS_STATES, node.state, 'status state'), at = time(node.createdAt, 'status time');
+/**
+ * LATEST runs in REST's order: descending numeric ID, at full width. Each ID must be a positive safe integer, unique
+ * across this PR's suites; a missing, coerced, unsafe or repeated ID fails. Same-name runs from different suites stay.
+ * Each run links to its own `permalink`, which is REST's `html_url`.
+ */
+function runRows(runs: any[], sha: string): GitHubPR['checks'] {
+    const ids = new Set<number>();
+    const rows = runs.map(run => {
+        const id = run.databaseId;
+        if (!Number.isSafeInteger(id) || id <= 0 || ids.has(id)) fail('check run ID is missing, invalid or repeated');
+        ids.add(id);
+        const status = enumValue(run.status, 'check status'), conclusion = run.conclusion === null ? '' : enumValue(run.conclusion, 'check conclusion').toLowerCase();
+        return { id, row: { name: text(run.name, 'check name'), status: status.toLowerCase(), conclusion, url: text(run.permalink, 'check link'), sha } };
+    });
+    return rows.sort((a, b) => b.id - a.id).map(({ row }) => row);
+}
+
+/**
+ * Statuses, the latest per context as GitHub lists them: each validated, then `EXPECTED` dropped. Newest first; at the
+ * same time, by context in ascending code-unit order. REST documents reverse chronology and no order within a second.
+ */
+function statusRows(statuses: any[], sha: string): GitHubPR['checks'] {
+    const rows: { node: any; at: number }[] = [];
+    for (const node of statuses) {
+        const state = member(STATUS_STATES, node.state, 'status state'), at = time(node.createdAt, 'status time');
+        text(node.context, 'status context');
         if (node.targetUrl !== null && typeof node.targetUrl !== 'string') fail('status link is malformed');
-        if (state === 'EXPECTED') continue;
-        const kept = newest.get(context);
-        if (!kept || at > kept.at) newest.set(context, { node, at });
+        if (state !== 'EXPECTED') rows.push({ node, at });
     }
-    return [...newest.values()].sort((a, b) => b.at - a.at).map(({ node }) => ({ name: node.context, status: node.state === 'PENDING' ? 'pending' : 'completed', conclusion: node.state.toLowerCase(), url: node.targetUrl || '', sha }));
+    return rows.sort((a, b) => b.at - a.at || (a.node.context < b.node.context ? -1 : a.node.context > b.node.context ? 1 : 0))
+        .map(({ node }) => ({ name: node.context, status: node.state === 'PENDING' ? 'pending' : 'completed', conclusion: node.state.toLowerCase(), url: node.targetUrl || '', sha }));
 }
 
 /**
  * One open PR from the GraphQL inventory in the monitor's REST-built shape (`src/shared.ts` `GitHubPR`): REST
  * casing and logins, three-valued mergeability, links from closing directives in the full body before it is bounded,
- * each review's own commit, check runs in the rollup's order, then statuses. Query-only IDs and times are not kept.
- * A value that is not a GraphQL enum, an unknown PR state, mergeability or status state, a missing actor or a
- * review without its commit fails the read.
+ * each review's own commit, LATEST runs in REST order, then statuses, all on the verified head. Query-only IDs,
+ * cursors and times are not kept. A value that is not a GraphQL enum, an unknown PR state, mergeability or status
+ * state, a missing actor, a review without its commit or an invalid run ID fails the read.
  */
-export function graphqlPR({ node, reviews, contexts, commit }: ObservedPR): GitHubPR {
+export function graphqlPR({ node, reviews, commit, checkRuns, statuses }: ObservedPR): GitHubPR {
     const body = text(node.body, 'PR body');
     if (typeof node.isDraft !== 'boolean' || node.mergedAt !== null && typeof node.mergedAt !== 'string' || !isOid(commit)) fail(`#${node.number} fields are malformed`);
-    const checks: GitHubPR['checks'] = [];
-    for (const run of contexts) {
-        if (run.__typename === 'StatusContext') continue;
-        if (run.__typename !== 'CheckRun') fail('check context is of an unknown kind');
-        const status = enumValue(run.status, 'check status'), conclusion = run.conclusion === null ? '' : enumValue(run.conclusion, 'check conclusion').toLowerCase();
-        checks.push({ name: text(run.name, 'check name'), status: status.toLowerCase(), conclusion, url: text(run.url, 'check link'), sha: commit });
-    }
     return { linkedIssues: closingDirectives(body), number: node.number, title: text(node.title, 'PR title'), state: mapped(PR_STATES, node.state, 'PR state'), draft: node.isDraft, author: restLogin(node.author, `#${node.number}`),
         head: node.headRefOid, base: text(node.baseRefName, 'PR base'), url: text(node.url, 'PR link'), mergedAt: node.mergedAt || '', mergeable: mapped(MERGEABLE, node.mergeable, 'PR mergeability'),
         ...githubPRDescription(body),
         reviews: reviews.map(review => ({ author: restLogin(review.author, `#${node.number} review`), state: enumValue(review.state, 'review state'), commit: isOid(review.commit?.oid) ? review.commit.oid : fail(`#${node.number} review commit is unavailable`) })),
-        checks: [...checks, ...statusRows(contexts, commit)] };
+        checks: [...runRows(checkRuns, commit), ...statusRows(statuses, commit)] };
 }

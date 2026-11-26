@@ -8,7 +8,7 @@ import { ITSpecialist } from '../../../server/it/it-specialist';
 import { Offices } from '../../../server/scheduling/offices';
 import { enqueueRequest, executeRequest } from '../../../server/scheduling/requests';
 import type { OfficeSnapshot } from '../../../src/shared';
-import { generatedPR, graphqlPulls, included, isInventoryQuery, noOpenPRs, type GraphqlPR } from '../github/support/pull-fixtures';
+import { generatedPR, graphqlPulls, included, isInventoryQuery, noOpenPRs, type GraphqlPR, type Kind } from '../github/support/pull-fixtures';
 import { scheduledWork } from '../../../server/scheduling/scheduled-work';
 import { CommandFailure } from '../../../server/workers/process';
 
@@ -189,7 +189,7 @@ test.each([false, true])('health stays busy for a quota sample across the fence 
 });
 
 /** `provider()` with the open-PR inventory served from `prs`; a continuation of `failing` kind fails after it spawned. */
-function inventory(prs: () => GraphqlPR[], failing?: 'reviews' | 'contexts') {
+function inventory(prs: () => GraphqlPR[], failing?: Kind) {
     const p = provider(), pulls = graphqlPulls(prs);
     const raw: Runner = async (program, args, options = {}) => {
         if (!isInventoryQuery(options)) return p.raw(program, args, options);
@@ -206,14 +206,14 @@ function inventory(prs: () => GraphqlPR[], failing?: 'reviews' | 'contexts') {
 const prFamily = (office: Offices, source: string, project = 'brain') => office.githubCalls.report().projects.find(p => p.project === project)?.sources.find(s => s.source === source)?.families.find(f => f.family === 'monitor-pr-graphql');
 
 test('health splits PR inventory root and child calls, failed continuations included, under the project and a pinned owner', async () => {
-    // Twenty plain PRs fill the first root page; the next one needs a review continuation and a context continuation, which fails.
-    const prs = [...Array.from({ length: 20 }, (_, i) => generatedPR(60 - i)), generatedPR(30, { reviews: 11, contexts: 21 })];
-    const p = inventory(() => prs, 'contexts'), office = new Offices(p.raw);
+    // Ten plain PRs fill the first root page; the next one needs a review continuation and a run continuation, which fails.
+    const prs = [...Array.from({ length: 10 }, (_, i) => generatedPR(60 - i)), generatedPR(30, { reviews: 11, suites: [51] })];
+    const p = inventory(() => prs, 'runs'), office = new Offices(p.raw);
     try {
         const brain = office.get('brain');
         await office.githubCalls.bind(() => brain.engine.observe());
         expect(brain.store.state.github).toMatchObject({ status: 'blocked', error: expect.stringContaining('Something went wrong') });
-        expect(p.pulls.calls.map(call => call.kind)).toEqual(['root', 'root', 'reviews', 'contexts']);
+        expect(p.pulls.calls.map(call => call.kind)).toEqual(['root', 'root', 'reviews', 'runs']);
         // Two root calls and one child succeeded; one child failed: four invocations, three pages, two children, one child page.
         expect(prFamily(office, 'monitor')).toMatchObject({ invocations: 4, pages: 3, failures: 1, prChildInvocations: 2, prChildPages: 1, points: 3, unknownCost: 1 });
         const monitor = families(office).monitor;
@@ -224,6 +224,26 @@ test('health splits PR inventory root and child calls, failed continuations incl
         brain.store.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { 'project-progress': { requestId: request.id, attempts: 1, nextAt: '', status: 'retrying', detail: 'saved error' } } };
         await office.githubCalls.bind(() => executeRequest(brain.store, brain.engine, brain.coordinator!, request));
         expect(prFamily(office, 'it')).toMatchObject({ invocations: 4, pages: 3, prChildInvocations: 2, prChildPages: 1 });
+        expect(office.githubCalls.report().totals.invocations).toBe(p.calls.length);
+    } finally { close(office); }
+});
+
+test('the head read by OID and both check continuations are PR children, under the project and under a pinned owner', async () => {
+    // One PR whose root page lists no commit: its head is read by OID, its eleventh suite needs a suite page, and that suite's runs a run page.
+    const prs = [{ ...generatedPR(30, { suites: [...Array(10).fill(1), 51] }), commit: null }];
+    const p = inventory(() => prs), office = new Offices(p.raw);
+    try {
+        const brain = office.get('brain');
+        await office.githubCalls.bind(() => brain.engine.observe());
+        expect(brain.store.state.github).toMatchObject({ status: 'idle', error: '' });
+        expect(brain.store.state.github!.prs[0].checks).toHaveLength(61);
+        expect(p.pulls.calls.map(call => call.kind)).toEqual(['root', 'head', 'suites', 'runs']);
+        expect(prFamily(office, 'monitor')).toMatchObject({ invocations: 4, pages: 4, prChildInvocations: 3, prChildPages: 3, points: 4, unknownCost: 0 });
+        const request = enqueueRequest(brain.store, 'refresh');
+        brain.store.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { 'project-progress': { requestId: request.id, attempts: 1, nextAt: '', status: 'retrying', detail: 'saved error' } } };
+        await office.githubCalls.bind(() => executeRequest(brain.store, brain.engine, brain.coordinator!, request));
+        expect(prFamily(office, 'it')).toMatchObject({ invocations: 4, pages: 4, prChildInvocations: 3, prChildPages: 3 });
+        expect(families(office).it).toMatchObject({ graphql: [1, 1] });
         expect(office.githubCalls.report().totals.invocations).toBe(p.calls.length);
     } finally { close(office); }
 });
