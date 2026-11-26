@@ -9,9 +9,12 @@ export interface HarnessEffect<R> {
     operation: string;
     target: string;
     payload: Record<string, unknown>;
+    /** Runs before admission and again at the end of preflight, with no arguments unless marked by `effectIdGuard`. */
     guard: () => void | Promise<void>;
-    /** Performs the single write, then returns the canonical read-back. */
+    /** Performs the single write and returns its receipt or, by default, the canonical read-back. */
     dispatch: () => Promise<R>;
+    /** When supplied, verifies the provider receipt after Effects has persisted it. */
+    verify?: (receipt: R) => Promise<boolean>;
     /** Read-only: the canonical receipt when the write is observable, otherwise null. */
     readBack: () => Promise<R | null>;
     /**
@@ -21,6 +24,20 @@ export interface HarnessEffect<R> {
      */
     notLanded?: () => Promise<boolean>;
 }
+
+const NEEDS_EFFECT_ID = Symbol('effect-id-guard');
+
+/**
+ * Marks a guard that must know the exact Effect id it guards, such as one that exempts its own unsent preparation from
+ * the automation Effect gate. The mark travels with the function through callers that forward a guard unchanged (a lane
+ * move, a proof comment). Only a marked guard receives the id; every other guard is called with no arguments.
+ */
+export function effectIdGuard(guard: (activeEffectId?: string) => void | Promise<void>): () => void | Promise<void> {
+    return Object.assign((activeEffectId?: string) => guard(activeEffectId), { [NEEDS_EFFECT_ID]: true });
+}
+
+const runGuard = (guard: () => void | Promise<void>, id: string) =>
+    NEEDS_EFFECT_ID in guard ? (guard as (activeEffectId?: string) => void | Promise<void>)(id) : guard();
 
 /** A rejected preflight never dispatched, and an attempt read back as never landed is settled: a later attempt may use a fresh intent id. */
 export function activeEffectId(store: Store, base: string): string {
@@ -52,13 +69,13 @@ export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>,
             throw new Error(`${effect.operation} for ${effect.target} is unverified after read-back; it will not be resent`);
         id = activeEffectId(store, base);
     }
-    await effect.guard();
+    await runGuard(effect.guard, id);
     return effects.execute<Record<string, unknown>, R>({
         id, work: { projectId: store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id,
         operation: effect.operation, target: effect.target, authorization: 'office-harness',
         payload: effect.payload, expectedState: { key: effect.key },
-        preflight: async () => { await effect.guard(); },
+        preflight: async () => { await runGuard(effect.guard, id); },
         dispatch: () => effect.dispatch(),
-        verify: async receipt => receipt !== null && receipt !== undefined,
+        verify: effect.verify ?? (async receipt => receipt !== null && receipt !== undefined),
     });
 }

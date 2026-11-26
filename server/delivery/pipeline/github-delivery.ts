@@ -7,6 +7,8 @@ import { officeQADirectory } from '../../qa/assignment';
 import { qaTimeLimit } from '../../qa/time-limit';
 import { STAGE_STALL_LIMIT_MS } from '../../workers/stall-limit';
 import { routeAutomationMerge } from '../readiness/automation-merge';
+import { withRecoveryReader } from '../repairs/bot-redo/recovery-reader';
+import { continueSupersededWikiPR } from '../closeout/superseded-wiki-pr';
 import { FreshMergeReview } from '../readiness/refresh-merge-review';
 import { assertFeatureGate } from '../../features/enrollment-gate';
 import { bindDelivery } from '../../features/delivery-binding';
@@ -118,7 +120,8 @@ export class GitHubDelivery {
     async approveMerge(key: string, head: string) { return approveMerge.call(this, key, head); }
     async reconcileBaseUpdate(key: string) { return reconcileBaseUpdate.call(this, key); }
     async reconcileCloseout(key: string) { return closeout.reconcileCloseout.call(this, key); }
-    async observe(dependencyStores?: () => DependencyStores) { return observe.call(this, dependencyStores); }
+    /** Observation reads a recovering bot PR through a call-local reader (`repairs/bot-redo/recovery-reader.ts`). */
+    async observe(dependencyStores?: () => DependencyStores) { return observe.call(withRecoveryReader(this), dependencyStores); }
     async queueConflictRepair(key: string, reason: 'conflicts' | 'ci' = 'conflicts') { return queueConflictRepair.call(this, key, reason); }
     async queueCIRepair(job: TicketJob) { return queueCIRepair.call(this, job); }
     async recoverMergeCI(job: TicketJob) { return recoverMergeCI.call(this, job); }
@@ -140,6 +143,7 @@ export class GitHubDelivery {
             if(job.savedPrerequisiteHandoff&&!await requireSavedPrerequisites(this,job)){
                 job.status='queued';job.detail='Independent review waits for fresh verified prerequisite merge';return;
             }
+            if (await continueSupersededWikiPR(this, job, root)) return;
             if (await routeAutomationMerge(this, job)) return;
             if (await runStoppedBaseReview(this, job)) return;
             await inspectMetadataPark(this, job);

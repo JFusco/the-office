@@ -219,6 +219,34 @@ already queued blocks with "Project policy requires human merge", and a merge
 already attempted is still settled by read-back. Release, package or downstream-runner success
 must be observed from the relevant provider; a merge is not proof of release.
 
+An adopted bot PR that GitHub reports as conflicting is recovered by its own bot, never by an
+Office commit (`server/delivery/repairs/bot-redo/`). Observation only reads: it records the
+conflicted head on the adoption and queues the merge stage. Under the merge claim the harness
+asks the bot once per conflicted head, across delivery jobs and restarts. The request is a wiki
+workflow dispatch (`docs/wiki-sync-adoption.md`), `@dependabot rebase`, or a check of Renovate's
+own rebase box on a Pin Courier PR. A box already checked is waited on. A PR with no single box is
+a recorded producer prerequisite, because the Office cannot read Pin Courier's effective
+configuration. Each request is an Effect with read-back and is never resent.
+
+A distinct head on the same PR and branch settles the request once the original executor finishes,
+when it passes the original qualifier and has its native issue link. This retires an unsent
+preparation and preserves the original receipt and error for an uncertain request. Observation
+can recover an earlier head's request from its saved intent even if the adoption lost the wait.
+The replacement then goes through the ordinary current-head checks and guarded merge. A new
+conflict on it is a new allowance. The reporting clocks are six hours from a wiki dispatch, 24 hours from a Dependabot
+request, 13 hours from Pin Courier's first observation, and eight days for a maintenance wiki PR
+waiting on its weekly refresh. They only report, and observation goes on. A PR closed without merge
+while its redo is open is one stop. The closer is named only when GitHub's close event identifies
+the bot, and the tracking issue and cards are left for reconciliation. A numbered wiki PR whose
+successful run left its head unchanged is closed as superseded only on a containment proof
+(`server/delivery/closeout/superseded-wiki-pr.ts`). Nothing else merges or closes on this path.
+
+Rolling back to a release without this path needs active recoveries finished first, or the affected
+work held or paused until a compatible reader reconciles it. The adoption's redo records, their
+Effects and any partial close record are kept. The older reader looks up Effects only for the
+current job, so a replacement job would not see its predecessor's request. It also treats a
+verified request still awaiting its outcome as settled.
+
 After a GitHub closeout the harness removes the candidate it owns: the worktree, the local branch
 and the remote branch, the last through Effects (`server/delivery/candidate/remove-candidate.ts`).
 It owns a candidate the job created, and one a completed maintenance run of the same project

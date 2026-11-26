@@ -1,6 +1,9 @@
 import { assertStoppedBaseMergeReady } from '../recovery/stopped-base-validation';
 import { automationMergePolicy } from './automation-merge';
 import { assertAutomationEffects } from './automation-effects';
+import { assertAutomationAuthority } from './automation-authority';
+import { adoptionFor, botOf } from '../repairs/bot-redo/ledger';
+import { requestBotRedo } from '../repairs/bot-redo/request';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { FreshMergeReview, refreshMergeReview } from './refresh-merge-review';
 import {currentMergeChecks} from './github-check-selection';
@@ -71,9 +74,17 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
         throw new Error(`${job.key} is held: ${holdReason(this.store.project, job.key)}`);
     if (attempted)
         throw new Error('Prior merge attempt needs read-back; it will not be repeated');
+    const adoption = adoptionFor(this.store, job);
+    const binding = adoption && { adoption: adoption.id, bot: botOf(adoption), pr: adoption.pr, issue: adoption.issue };
     const p = await this.verifyPR(job, true);
-    const greenOnly = !!await automationMergePolicy(this, job, p);
-    if (greenOnly) assertAutomationEffects(this.store, job);
+    const bot = await automationMergePolicy(this, job, p), greenOnly = !!bot;
+    // A conflicted adopted bot PR asks its own bot to redo it, once per head (`repairs/bot-redo/request.ts`).
+    if (bot) {
+        if (!binding || binding.bot !== bot) throw Error('Automation adoption changed before the write');
+        assertAutomationAuthority(this.store, this.jobs, job, expectedHead, binding);
+        if (await requestBotRedo(this, job, p, bot)) return;
+        assertAutomationEffects(this.store, job);
+    }
     if (!greenOnly) await requireMetadataReview(this, job);
     if (!greenOnly && await refreshMergeReview(this, job, p, true)) return;
     const lead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
@@ -126,16 +137,17 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
                 throw new Error(`${job.key} is held: ${holdReason(this.store.project, job.key)}`);
             const current = await this.verifyPR(job, true);
             if (!greenOnly) await requireMetadataReview(this, job);
-            if (current.head.sha !== payload.sha || current.state !== 'open' || current.draft)
+            if (current.head.sha !== payload.sha || current.state !== 'open' || current.draft || greenOnly && current.mergeable !== true)
                 throw new Error('Merge candidate changed immediately before dispatch');
             await currentMergeChecks(this,job,current);
             if (greenOnly) {
-                if (!await automationMergePolicy(this, job, current)) throw Error('Green-check merge policy changed');
+                if (await automationMergePolicy(this, job, current) !== bot) throw Error('Green-check merge policy changed');
                 assertAutomationEffects(this.store, job, true);
             }
             if (!greenOnly && await refreshMergeReview(this, job, current, true)) throw new FreshMergeReview(job.detail);
             assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
             assertStoppedBaseMergeReady(this.store, job, expectedHead);
+            if (greenOnly && binding) assertAutomationAuthority(this.store, this.jobs, job, payload.sha, binding);
         },
         dispatch: async (value) => {
             job.mergeAttempt = { head: value.sha, at: this.store.clock.now().toISOString() };
