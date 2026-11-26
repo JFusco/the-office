@@ -1,4 +1,4 @@
-import { backgroundHold, quotaLow } from '../github/quota-governor';
+import { backgroundHold, GRAPHQL_WORK, quotaLow } from '../github/quota-governor';
 import type { ITContext } from './context';
 
 /**
@@ -9,7 +9,8 @@ import type { ITContext } from './context';
  * deferred: its own path queues nothing more and keeps that follow-up. Other providers are never deferred.
  */
 export function quotaDeferred(context: Pick<ITContext, 'store' | 'engine' | 'it' | 'current' | 'followUps'>, id: string): boolean {
-    const held = backgroundHold(context.store.project, context.engine?.quota), recovery = context.it.recoveries[id];
+    // Both reads it would queue depend on GraphQL (the assignment board, the PR inventory), so both resources count.
+    const held = backgroundHold(context.store.project, context.engine?.quota, GRAPHQL_WORK), recovery = context.it.recoveries[id];
     if (!held || recovery?.status === 'needs-human' && recovery.attempts >= 3) return false;
     context.current.add(id);
     context.followUps.push({ id, owner: 'IT', detail: quotaLow(held), nextAt: held.until, routine: true });

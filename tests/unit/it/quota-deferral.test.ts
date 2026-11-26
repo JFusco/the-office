@@ -70,3 +70,13 @@ test('a recovery already handed to Morgan keeps its follow-up through a hold, an
     expect(x.state.it!.reports.at(-1)!.followUps.find(followUp => followUp.id === 'assignment-listener')).toMatchObject({ owner: 'Morgan' });
     expect(x.state.it!.status).toBe('needs-attention');
 });
+
+test('a GraphQL-only reserve defers listener and refresh recovery: both reads it would queue need GraphQL', async () => {
+    const x = setup('brain'), asked: unknown[] = [];
+    const engine = (x.it as any).offices.entries.get('brain').engine;
+    engine.quota = { hold: (resources?: readonly string[]) => { asked.push(resources); return resources?.includes('graphql') ? { until: UNTIL } : undefined; } };
+    await x.it.tick(NOW, true);
+    expect(x.state.coordination!.requests ?? []).toEqual([]);
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every(resources => Array.isArray(resources) && resources.includes('core') && resources.includes('graphql'))).toBe(true);
+});

@@ -30,3 +30,12 @@ test('high-level commands are opaque, and the pagination and include flags are r
     expect(githubCall(['pr', 'list']).api).toBe(false);
     expect(githubCall(['api', 'repos/a/b/pulls', '--paginate', '--slurp', '-i'])).toMatchObject({ paginate: true, slurp: true, include: true });
 });
+
+test('the PR inventory is its own GraphQL family, root or child; its terminal REST reads carry a suffix', () => {
+    const graphql = ['api', 'graphql', '--input', '-', '--include'], repo = 'repos/JFusco/brain';
+    expect([githubCall(graphql, 'pr-root').family, githubCall(graphql, 'pr-child').family, githubCall(graphql).family, githubCall(graphql, 'pr-terminal').family]).toEqual(['monitor-pr-graphql', 'monitor-pr-graphql', 'graphql', 'graphql']);
+    expect(githubCall(graphql, 'pr-root')).toMatchObject({ api: true, include: true });
+    expect([`${repo}/pulls/7`, `${repo}/pulls/7/reviews?per_page=100`, `${repo}/commits/abc/check-runs?per_page=100`, `${repo}/commits/abc/statuses?per_page=100`, `${repo}/issues/7`]
+        .map(path => githubCall(['api', path], 'pr-terminal').family)).toEqual(['pull-terminal', 'pull-reviews-terminal', 'check-runs-terminal', 'statuses-terminal', 'issue']);
+    expect(githubCall(['api', `${repo}/pulls/7`], 'pr-root').family).toBe('pull');
+});

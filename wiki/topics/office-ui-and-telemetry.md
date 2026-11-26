@@ -10,6 +10,11 @@ Estimated model cost comes from worker accounting. The Office records its
 estimates alongside time and publishes board cost through Effects with
 provider read-back.
 
+GitHub calls are counted per source and family in `/api/health`. Observation reads stay within the account's hourly
+quota. The monitor reads each project's open pull requests as
+[one GraphQL inventory](../journal/2026-11-26-batched-pr-observation.md) instead of four REST reads per PR. Background
+GraphQL work holds while any live reset window of the quota is at or below its 10% reserve.
+
 ## Live ticket timeline
 
 The PM queue and ticket drawer share a progress summary for GitHub and Jira/Azure.

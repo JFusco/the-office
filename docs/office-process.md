@@ -1003,22 +1003,37 @@ Counting refuses and reorders nothing; the quota hold below reads its samples an
   `monitor` (the GitHub monitor's poll), `pipelines` (the workflow read after it), `assignments` (the
   assignment poll and assignment reads), `bot-adoption`, `alerts`, `discovery`, `dependency-refresh`,
   `pr-observation` (the poll's PR observation), `merge-notices`, `pump`, `delivery:<stage>` (a delivery step,
-  by the stage it started in), `it`, `health` (the GitHub login probe), `quota` (rate-limit samples) and
-  `other` (a bound call no scope named). Ellis's tick is `it`, and so is every call of a harness request IT
-  saved as its recovery, through any scope nested in it; a request IT's recovery joined is counted once.
+  by the stage it started in), `it`, `health` (the GitHub login probe), `quota` (rate-limit samples), `time`
+  (hours publication, read-back and unsent release, and an hours reconciliation no scope owns), `cost` (cost
+  publication and read-back, and a cost reconciliation no scope owns) and `other` (a bound call no scope
+  named). Scheduled time and cost callbacks name their configured project. Ellis's tick is `it`, and so is
+  every call of a harness request IT saved as its recovery, through any scope nested in it; a request IT's
+  recovery joined is counted once.
 - **Units.** For each source and endpoint family (fixed labels such as `pulls`, `pull`, `check-runs`,
-  `graphql`, `gh-pr`): CLI invocations, observed HTTP attempts and successful pages, full responses,
-  authorized 304s (each a response and a revalidation), stated rate-limit refusals, other failures, opaque
-  operations, and invocations whose traffic is unknown. Slurped pages are counted from the outer envelope.
+  `graphql`, `monitor-pr-graphql`, `gh-pr`): CLI invocations, observed HTTP attempts and successful pages,
+  full responses, authorized 304s (each a response and a revalidation), stated rate-limit refusals, other
+  failures, opaque operations, and invocations whose traffic is unknown. Slurped pages are counted from the outer envelope.
   High-level `gh pr`, `gh issue`, `gh auth` and `gh run`, and a failure with no stated answer, record the
   invocation and mark its traffic unknown. A refusal is GitHub's stated rate-limit refusal, by the rule the
-  login check uses, with a credential failure taking precedence. No argument, path, header, body, field or
-  credential is kept.
+  login check uses, with a credential failure taking precedence, whether gh states it or an HTTP 200
+  GraphQL body's `errors` does. A direct GraphQL query also adds the `points` its body's `rateLimit.cost`
+  reported, failed or not, or one `unknownCost`; a positive `unknownCost` marks the points as partial. Board
+  and other queries that select no `rateLimit` count as unknown cost; opaque commands stay unknown traffic.
+- **PR inventory families.** Every page of the monitor's open-PR inventory is `monitor-pr-graphql`, root or
+  child, by a fixed operation marker that survives a pinned owner. A review continuation, a head read by OID,
+  a suite continuation and a run continuation each also count in `prChildInvocations` and, when it succeeds,
+  `prChildPages`: root invocations and pages are the family's
+  totals less those. A PR's terminal REST read (`server/github/pr-transitions.ts`) is counted as
+  `pull-terminal`, `pull-reviews-terminal`, `check-runs-terminal` and `statuses-terminal`, so recurring
+  `pull`, `pull-reviews`, `check-runs` and `statuses` under `monitor` should stay at zero. No argument,
+  path, header, body, field or credential is kept.
 - **Rate limits.** One `gh api rate_limit` sample serves every project, at most once a minute while the
   Office has a GitHub project, and none while the fence is held or polling is off; GitHub does not count that
   endpoint against the REST limit. It reads core and GraphQL `limit`, `used`, `remaining` and `reset` with
-  the time observed. Headers on an `--include` response count for the resource they name. A failed sample
-  keeps the last reading and records only that it failed.
+  the time observed. Headers on an `--include` response count for the resource they name. A GraphQL body's
+  `rateLimit` (`limit`, `used`, `remaining`, `resetAt` as epoch seconds) counts for GraphQL with `body`
+  provenance, before that response's headers. A failed sample keeps the last reading and records only that
+  it failed.
 - **Report.** `/api/health` carries a `github` block: the service instance, when collection started, the
   covered interval and whether it spans the full hour, totals, sources with their families, and the same
   counts by configured project ID. Calls without a project scope appear under `office`. It also reports
@@ -1027,7 +1042,39 @@ Counting refuses and reorders nothing; the quota hold below reads its samples an
 
 ### Settled GitHub reads
 
-The assignment poll does not read GitHub again for an answer that cannot have changed.
+The monitor reads its open PRs as one batch, and neither it nor the assignment poll reads GitHub again for
+an answer that cannot have changed.
+
+- **One GraphQL open-PR inventory per refresh.** The monitor reads the configured repository's open PRs
+  newest created first through `gh api graphql --include` (`server/github/pr-observation-graphql.ts`): 10 PRs
+  a root page, each with its first 10 reviews and, on its last commit, the head's statuses and its first 10
+  check suites with up to 50 LATEST runs each. When that commit is not the head (a fork's or a deleted ref's
+  head, or no commit listed), its data is discarded and the head's statuses and first suite page are read by
+  the captured OID. Reviews continue 50 at a time on the same PR at the captured head; suites continue 10 at
+  a time on the head by OID; a suite's runs continue 50 at a time by its node ID, LATEST on every page
+  (`pr-head-checks.ts`). Repository, PR, head, suite and commit identity, fresh advancing cursors, constant
+  counts, distinct nodes and final coverage are checked for every connection; statuses come from the head's
+  plain `status` list, with distinct IDs and context names. A head with more than 1,000 suites, the most REST
+  covers, fails before any further check page. A read failure, including partial `errors` or a timeout,
+  keeps the prior rows and observation time, sets the status to `blocked`, and records the current error.
+  A quota deferral keeps the prior rows and observation time and restores the prior status and error.
+  Only a complete inventory is published, and nothing is cached.
+  `server/github/pr-observation-shape.ts` gives each PR the REST-built shape: REST casing,
+  `[bot]` logins, three-valued `mergeable`, links from closing directives in the full body before it is
+  bounded, each review's own commit, LATEST runs in REST's order (descending numeric run ID, each a positive
+  safe integer unique to the PR) linked by their `permalink`, then statuses newest first, by context in
+  code-unit order within the same second; `EXPECTED` statuses, which REST never lists, are dropped. REST
+  leaves that equal-time order unspecified, so a tied pair can show in another order than REST's; no
+  decision reads it. A check or review value that is not a GraphQL enum, an unknown PR state, mergeability or
+  status state, a missing actor, an unavailable review commit or an invalid run ID fails the read. The
+  monitor no longer reads the open-pulls list or a PR's detail, reviews, check runs or statuses each refresh.
+- **Terminal reads once.** A PR the last observation had open that a complete inventory no longer lists is
+  read by number once. A close or merge reuses that detail, reads every review, check-run and status page of
+  the head it returned, and appends the row in prior order with its URL, state and `mergedAt`; the next poll
+  reads it no more. A PR its detail shows open keeps its last row. A failed read fails the observation, so
+  the open row stands and the transition is read again. Terminal and tracked-issue reads ask the quota
+  check first, like every other read of the refresh. Readiness, merge, approval, closeout and every
+  Effect read-back keep their own live reads; none reads the observation.
 
 - **One open-PR inventory per poll.** `server/delivery/intake/shared-pr-inventory.ts` reads the complete
   open-PR list on first use and shares it with the poll's bot adoptions (Dependabot, Pin Courier, wiki-sync),
@@ -1074,39 +1121,54 @@ The assignment poll does not read GitHub again for an answer that cannot have ch
 One governor per Office instance (`server/github/quota-governor.ts`) holds background GitHub observation
 for every project while the account's quota is low. Decisions, reconciliation and delivery never ask it.
 
-- **When.** Core at or below 10% of its limit holds until that reading's reset. Only a core reading counts
-  for core: the latest sample of the newest reset window, from a `rate_limit` sample or the headers of an
-  `--include` response, so a GraphQL, search or other header never lifts it. No background read uses
-  `--include` yet, so today the readings are the samples. A stated rate-limit refusal of any call
+- **When.** A resource at or below 10% of its limit holds the background work that asks for it until that
+  reading's reset. Work that reads GraphQL, or depends on a step that does, asks for core and GraphQL
+  (`GRAPHQL_WORK`); core-only work asks for core and continues on its own budget while only GraphQL is low.
+  Only a reading of a resource counts for it, so no other resource's reading lifts it. Readings are kept by
+  resource and reset window, from a `rate_limit` sample, an `--include` header block or a GraphQL body's
+  `rateLimit`; a reading updates only the window it reports. GitHub can answer GraphQL from two windows at
+  once while `rate_limit` shows only one, so every live window counts: the most-used reading of each window
+  read in the last hour whose reset is still ahead. The hold runs to the latest reset among the low windows,
+  and at a window's exact reset the rest are weighed again. A stated rate-limit refusal of any call
   (`quota-refusal.ts`, the login check's rule, a credential failure taking precedence) holds until the
   `Retry-After` or zero-remaining reset its included headers give, or else for a minute, doubling on each
   repeat to 16 minutes; an answered call after a quiet spell as long as the last backoff starts again from
-  a minute. Refusals while a hold stands join it and are not counted as repeats. A bare permission 403 is not
-  a refusal and keeps its own error path.
+  a minute. Refusals while a hold stands join it and are not counted as repeats. A refusal holds every
+  caller, core-only work included. A bare permission 403 or other GraphQL error is not a refusal and keeps
+  its own error path.
 - **Probe.** A primary refusal that the latest core reading does not explain starts one `rate_limit` probe,
   shared with the routine sample: one in flight and at most every 30 seconds across projects. A secondary
   refusal never probes. A failed probe changes nothing, and the probe's own refusal never probes again. With
   no reading and no refusal (a cold start) nothing is held. Memory only: a restart holds nothing.
-- **Deferred.** The provider refresh with its pipelines read: the monitor returns the hold and writes
+- **Deferred.** The provider refresh with its pipelines read, which reads GraphQL: the monitor asks on entry,
+  before each inventory and board page, and once more before publishing. A hold met mid-read (`server/github/quota-hold.ts`)
+  discards what was staged; the status and error from before the read are restored, a first observation
+  stays absent, and the next eligible refresh starts fresh. The monitor returns the hold and publishes
   nothing, so `provider-observation.ts` keeps the last observation, its time and any error, and the GitHub
-  mailbox check mirrors that standing observation, or changes nothing before a first one. The service tick queues no refresh while held, and queues it
-  on the first tick after. In the assignment poll (`server/scheduling/held-poll.ts`): assignment reads, bot
-  and alert scans for new intake, discovery, poll-only dependency refresh and merge notices, and everything
-  that consumes the assignments read (assessments, review settlement, intake, parked resumes, Backlog
-  retirement, card admission). The last assignments, their time and any error stand; `listener.deferredUntil`
-  records when observation resumes, and the next full read clears it.
+  mailbox check mirrors that standing observation, or changes nothing before a first one. The service tick
+  queues no refresh while held, and queues it on the first tick after. In the assignment poll
+  (`server/scheduling/held-poll.ts`): assignment reads, the board, bot and alert scans for new intake,
+  discovery and merge notices (its link check is GraphQL), and everything that consumes the assignments
+  read (assessments, review settlement, intake, parked resumes, Backlog retirement, card admission). The
+  background assignment read asks before its REST read, before each board page and before publishing the
+  completed board; a hold met between them
+  takes the held poll once and returns the deadline, never a listener error. The poll's REST-only
+  dependency refresh for live jobs runs while core itself is clear, and waits under a core hold or a shared
+  refusal; a failed lookup there keeps the routing and writes no error. The last assignments, board, their time and any error stand; `listener.deferredUntil` records
+  when observation resumes, and the next full read clears it.
 - **Never deferred.** The poll keeps its one-minute tick for protected work: a bot adoption or alert record
   under way (`adopting` or `tracking`, or owning an Effect still dispatching or uncertain by its attempt ID,
   `server/delivery/intake/intake-under-way.ts`) runs its own path with the live reads its reconciliation
   needs, and takes up no new PR or alert; adopted PRs with live deliveries are reverified; parked waits,
   pending candidate cleanup and the PR observation of live jobs run. Pump routing, dispatch-time assignment
-  checks, merge, closeout, Effect read-backs and every delivery stage are outside the hold. A refusal there
+  checks and their board pages, merge (its live GraphQL policy and review-thread query included), closeout,
+  Effect read-backs and every delivery stage are outside the hold. A refusal there
   keeps its failure or uncertain disposition.
 - **No error, one episode.** A deferral writes no reader `error`: the error of the refused read stands
   through the hold as one incident-ledger episode, and the next completed read clears it as before. A queued
   refresh or poll that meets the hold completes with "GitHub quota low. Observation resumes at <time>." The
   listener's health row says the same. Ellis queues no listener or refresh recovery and spends no attempt
-  while held (`server/it/quota-deferral.ts`): a recovery that exists stays current with its count and
+  while either resource they need is held (`server/it/quota-deferral.ts`): a recovery that exists stays current with its count and
   diagnostics, none is created, and one routine follow-up carries the same line. One already handed to Morgan
   keeps Morgan's follow-up, and its own path queues nothing more. Jira/Azure projects are never held.
 
