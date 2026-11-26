@@ -1,6 +1,8 @@
 ---
 topics: [delivery-and-recovery]
 plans: [2026-11-26-issue-629-give-office-writes-a-github-app-identity-18a0eac3a0.md]
+issue: 'https://github.com/jfusco/the-office/issues/698'
+issues: ['https://github.com/jfusco/the-office/issues/698']
 ---
 
 # Lay the foundation for the Office's own GitHub write identity
