@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, BASE, HEAD, REPOSITORY } from '../../support/fake-github';
 import { wikiSync } from '../../../../../server/delivery/intake/dependency-bots/wiki-sync';
 import { adoptDependencyBot } from '../../../../../server/delivery/intake/dependency-bots/adopt';
+import { automationMergePolicy } from '../../../../../server/delivery/readiness/automation-merge';
 import { dependabotReviewGuidance } from '../../../../../server/delivery/intake/dependabot/review-guidance';
 import { trackingMarker } from '../../../../../server/delivery/intake/dependabot/tracking-issue';
 import { HOLDS } from '../../../../../server/office/config';
@@ -20,14 +21,17 @@ function fixture(card: string | null = 'review') {
     const commit = { author: { ...actor }, committer: { ...actor } };
     const files: any[] = [{ filename: 'wiki/journal/source.md' }, { filename: 'scripts/wiki/graph/data/graph.json' }];
     const parent = { merged: true, merged_at: '2026-11-07T15:37:10Z', base: { ref: 'main' }, head: { ref: 'codex/profile' } };
+    // Board writes are GraphQL mutations, which the fake's call log does not show as POST or PATCH.
+    const mutations: string[] = [];
     const execute = async (program: string, args: string[], options?: any) => {
+        if (args[1] === 'graphql' && /^\s*mutation\b/.test(JSON.parse(options?.input || '{}').query || '')) mutations.push(options.input);
         if (args[1]?.includes('/pulls/314/commits?')) return JSON.stringify([[{ ...commit, sha: pr.head.sha }]]);
         if (args[1]?.includes('/pulls/314/files?')) return JSON.stringify([files]);
         if (args[1]?.endsWith('/pulls/139')) return JSON.stringify(parent);
         return f.execute(program, args, options);
     };
     const adopt = (run = execute) => adoptDependencyBot(f.store, run, f.delivery.jobs, f.store.state.coordination!.pickup!, wikiSync);
-    const writes = () => f.state.calls.filter(call => /POST|PATCH/.test(call));
+    const writes = () => [...f.state.calls.filter(call => /POST|PATCH/.test(call)), ...mutations];
     return { f, pr, files, commit, parent, execute, adopt, writes };
 }
 
@@ -76,7 +80,7 @@ test.each(['wrong-author-id', 'draft', 'fork', 'base', 'branch', 'title', 'paren
     expect(await wikiSync.refusal(f.store, execute, pr)).not.toBe('');
     await adopt(); expect(writes()).toHaveLength(0);
 });
-test.each(['docs(wiki): reconcile missed merges', 'docs(wiki): weekly issue and merge reconciliation'])('canonical maintenance PR %s qualifies without inventing a parent', async title => {
+test.each(['docs(wiki): reconcile missed merges', 'docs(wiki): weekly issue and merge reconciliation', 'docs(wiki): reconcile missed merges [skip release]', 'docs(wiki): weekly issue and merge reconciliation [skip release]'])('canonical maintenance PR %s qualifies without inventing a parent', async title => {
     const { f, pr, execute, adopt } = fixture(); pr.head.ref = 'bot/wiki-maintenance'; pr.title = title;
     pr.body = title.includes('weekly') ? 'Automated, reviewable weekly refresh of cited issue state and missed merge reconciliation. Processed 2 merged PRs.' : 'Automated, reviewable batch wiki reconciliation. Processed 2 merged PRs.';
     expect(await wikiSync.refusal(f.store, execute, pr)).toBe(''); await adopt(); expect(f.store.state.coordination!.adoptions![0].status).toBe('adopted');
@@ -110,4 +114,47 @@ test('a lost issue-create response is settled by read-back without duplicate iss
     await adopt(run); await adopt(run);
     expect(f.state.calls.filter(call => call.includes('POST') && call.includes('/issues '))).toHaveLength(1);
     expect(f.store.state.coordination!.adoptions![0]).toMatchObject({ status: 'adopted', issue: 5 });
+});
+const MARKED = 'docs(wiki): reconcile PR #139 [skip release]';
+test('a numbered wiki PR titled with the [skip release] marker qualifies and is adopted automatically', async () => {
+    const { f, pr, execute, adopt, writes } = fixture(); pr.title = MARKED;
+    expect(await wikiSync.refusal(f.store, execute, pr)).toBe('');
+    await adopt();
+    expect(writes().some(write => write.includes('updateProjectV2ItemFieldValue'))).toBe(true);
+    expect(f.store.state.coordination!.adoptions![0]).toMatchObject({ bot: 'wiki-sync', issue: 5, status: 'adopted' });
+    expect(f.state.calls.filter(call => call.includes('POST') && call.includes('/issues '))).toHaveLength(1);
+    expect(f.state.cards.map(card => [card.kind, card.status]).sort()).toEqual([['Issue', 'review'], ['PullRequest', 'review']]);
+});
+test.each([
+    ['bot/wiki-sync/139', 'docs(wiki): reconcile PR #138 [skip release]'],
+    ['bot/wiki-sync/139', 'docs(wiki): reconcile PR #139 [skip ci]'],
+    ['bot/wiki-sync/139', 'docs(wiki): reconcile PR #139 and more'],
+    ['bot/wiki-sync/139', 'docs(wiki): reconcile PR #139[skip release]'],
+    ['bot/wiki-sync/139', 'docs(wiki): reconcile PR #139 [skip release] [skip release]'],
+    ['bot/wiki-sync/139', 'docs(wiki): reconcile PR #139 [skip release] '],
+    ['bot/wiki-sync/139', 'Re: docs(wiki): reconcile PR #139 [skip release]'],
+    ['bot/wiki-maintenance', 'docs(wiki): reconcile missed merges [skip ci]'],
+])('on %s, the title %j is refused before any adoption write', async (ref, title) => {
+    const { f, pr, execute, adopt, writes } = fixture(); pr.head.ref = ref; pr.title = title;
+    if (ref === 'bot/wiki-maintenance') pr.body = 'Automated, reviewable batch wiki reconciliation. Processed 2 merged PRs.';
+    expect(await wikiSync.refusal(f.store, execute, pr)).not.toBe('');
+    await adopt(); expect(writes()).toHaveLength(0);
+});
+test('automationMergePolicy accepts an adopted wiki PR whose title carries the marker', async () => {
+    const { f, pr, execute, adopt } = fixture(); await adopt();
+    await f.delivery.discover([{ key: 'GH-5', url: f.issueUrl }] as any);
+    const job = f.delivery.jobs.find(j => j.key === 'GH-5' && j.pr === 314)!;
+    pr.title = MARKED;
+    f.delivery.execute = execute as any;
+    expect(await automationMergePolicy(f.delivery, { ...job, head: pr.head.sha }, pr)).toBe('wiki-sync');
+});
+test('a refused wiki adoption whose marked PR qualifies is adopted on the next poll and its outbox item resolves', async () => {
+    const { f, pr, adopt } = fixture(); pr.title = MARKED;
+    const detail = 'wiki-sync PR #314 was not adopted automatically: the wiki PR does not match its source merge. Handle it manually.';
+    f.store.state.coordination!.adoptions = [{ id: 'refused-314', bot: 'wiki-sync', pr: 314, url: pr.html_url, title: pr.title, issue: 0, status: 'refused', detail, at: '2026-11-24T00:00:00.000Z' }];
+    f.store.emit('wiki-sync-refused', detail, 'pm', '');
+    expect(f.store.state.outbox.find(item => item.id === 'dependabot:314')).toMatchObject({ status: 'open' });
+    await adopt();
+    expect(f.store.state.coordination!.adoptions).toEqual([expect.objectContaining({ id: 'refused-314', status: 'adopted', issue: 5 })]);
+    expect(f.store.state.outbox.find(item => item.id === 'dependabot:314')).toMatchObject({ status: 'resolved' });
 });
