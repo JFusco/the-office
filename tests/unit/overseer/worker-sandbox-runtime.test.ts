@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { SANDBOX_RUNTIME, trustedSandbox } from '../../../server/overseer/worker-sandbox-runtime';
@@ -116,4 +116,15 @@ test('only macOS is supported, and this tree has no runtime installed today', ()
     expect(trustedSandbox()).toEqual(process.platform === 'darwin'
         ? { status: 'unavailable', reason: `${SANDBOX_RUNTIME.name} is not installed with this runner` }
         : { status: 'unsupported', platform: process.platform });
+});
+
+test('a writable path that is not normalized and absolute, or a package that cannot be looked at, is unavailable', () => {
+    const { installation } = fakeInstallation(tempDir());
+    for (const writable of ['relative/path', '/a/../b'])
+        expect(resolveIn(installation, { writable: [writable] }), writable).toMatchObject({ status: 'unavailable', reason: 'Each writable path must be a normalized absolute path' });
+    // A scope folder that cannot be searched is not the same as no package.
+    const locked = fakeInstallation(tempDir()), scope = join(locked.modules, '@anthropic-ai');
+    chmodSync(scope, 0o000);
+    try { expect(resolveIn(locked.installation)).toMatchObject({ status: 'unavailable', reason: expect.not.stringContaining('is not installed') }); }
+    finally { chmodSync(scope, 0o755); }
 });

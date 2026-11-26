@@ -168,3 +168,17 @@ test('protected paths must have physical spellings, even when the final componen
     for (const edit of [{ officeData: linked }, { checkoutData: linked }, { checkouts: [linked] }, { sessionStores: [linked] }])
         expect(() => checkPolicyInputs({ ...input, protectedRoots: { ...input.protectedRoots, ...edit } })).toThrow(`The protected ${linked} resolves elsewhere`);
 });
+
+test('a readable path inside a protected store beneath a home is refused, though a narrow file beneath a home may be opened', () => {
+    const { input } = sandboxWorld();
+    const protectedRoots = { ...input.protectedRoots, sessionStores: ['/Users/someone/.claude', '/Users/someone/.codex'] };
+    expect(() => sandboxPolicy({ ...input, protectedRoots, runtimeReads: ['/Users/someone/.local/share/claude/versions/2.1.328'] })).not.toThrow();
+    expect(() => sandboxPolicy({ ...input, protectedRoots, runtimeReads: ['/Users/someone/.claude/settings.json'] })).toThrow('overlaps the protected /Users/someone/.claude');
+});
+
+test('expanding rules moves only allocation-relative entries; anything else in them stays as written', () => {
+    const { run, input } = sandboxWorld();
+    const rules = JSON.parse(relativeRules(sandboxPolicy(input), run));
+    rules.filesystem.allowWrite.push({ path: '/elsewhere/absolute', literal: true });
+    expect(JSON.parse(expandRules(JSON.stringify(rules), run)).filesystem.allowWrite).toContainEqual({ path: '/elsewhere/absolute', literal: true });
+});

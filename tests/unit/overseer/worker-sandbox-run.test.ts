@@ -245,3 +245,16 @@ test('nothing starts for an unavailable or unsupported sandbox, a cancelled run,
         expect(calls, message).toEqual([]);
     }
 });
+
+test('a selection naming a program the policy does not reopen is refused before anything is written', () => {
+    const { run, input } = sandboxWorld();
+    expect(() => prepare(input, { programs: { startup: '/usr/bin/false' } })).toThrow("is not a program this run's policy was prepared for (startup)");
+    expect(existsSync(policyPath(run))).toBe(false);
+});
+
+test('a wrapper folder replaced by a link is refused at handoff as a link', () => {
+    const { input } = sandboxWorld(), prepared = prepare(input);
+    renameSync(prepared.wrapperTmp, `${prepared.wrapperTmp}-moved`);
+    symlinkSync(`${prepared.wrapperTmp}-moved`, prepared.wrapperTmp);
+    expect(() => verifyPrepared(prepared)).toThrow('must be a directory, not a link or a file');
+});
