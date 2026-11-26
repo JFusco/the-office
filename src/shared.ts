@@ -273,6 +273,12 @@ export interface TicketJob {
     updatedAt?: string;
     automaticStatus?: string;
     mergeCommit?: string;
+    /**
+     * A verified merge that predates every enabled merge-notice destination, so it gets no notice under `policy`, a
+     * fingerprint of the notice settings. Merge-notice observation skips the job while each bound value still holds
+     * and discards the marker once one changes (`server/conversations/no-merge-notice.ts`); absent on older jobs.
+     */
+    noMergeNotice?: { repository: string; issue: number; pr: number; mergeCommit: string; mergedAt: string; policy: string; at: string };
     /** The head for which a maintenance-verified draft was last sent back to the prepare stage to be marked ready; once per head. */
     draftPromotionHead?: string;
     /** Set once when a stop on the harness's own parked pull request card was queued again (`server/delivery/recovery/parked-card-refusal.ts`). */

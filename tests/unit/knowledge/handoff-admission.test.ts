@@ -107,7 +107,7 @@ test('a recovery is about its needs-human episode by history position, and the t
     expect(at([seen('needs-human', one, t), seen('needs-human', denied, t)], 'project-progress')).not.toBe(at([seen('needs-human', one, t)], 'project-progress'));
     expect(at([seen('needs-human', one, t), seen('needs-human', denied, t)], 'implementation:job-1')).toBe(at([seen('needs-human', one, t)], 'implementation:job-1'));
     // Any other follow-up is about its whole action, less the footer.
-    const action = (nextAction: string) => key(followup({ id: 'maintenance:m', source: { kind: 'maintenance', id: 'm' }, nextAction }));
+    const action = (nextAction: string) => key(followup({ id: 'investigation:i', source: { kind: 'investigation', id: 'i' }, nextAction }));
     expect(action(`Read back issue 7. ${one}`)).toBe(action(`Read back issue 7. ${two}`));
     expect(action(`Read back issue 8. ${one}`)).not.toBe(action(`Read back issue 7. ${one}`));
 });

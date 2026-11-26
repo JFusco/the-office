@@ -1,4 +1,5 @@
 import { readRepo } from '../dependabot/qualify';
+import { openPulls } from '../shared-pr-inventory';
 import type { DependencyBot } from './adopt';
 import type { Store } from '../../../store/store';
 
@@ -20,8 +21,8 @@ export function pinCourierVerifiedCommit(commit: any): boolean {
 /** The installed GitHub App's numeric author identity and GitHub-verified commits are both required. */
 export const pinCourier: DependencyBot = {
     id: 'pin-courier', label: 'pin-courier',
-    async openPulls(store, execute) {
-        return (await readRepo(store, execute, 'pulls?state=open&per_page=100', true))
+    async openPulls(store, execute, inventory) {
+        return (await openPulls({ store, execute }, inventory))
             .filter((pull: any) => pull.user?.login === LOGIN && pull.user.id === USER_ID);
     },
     async refusal(store, execute, pull) {

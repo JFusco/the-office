@@ -1,4 +1,5 @@
 import { cardStatus, projectCards, statusField, type Execute } from '../../board/project-graphql';
+import { openPulls, type PullInventory } from '../shared-pr-inventory';
 import type { Store } from '../../../store/store';
 
 export const DEPENDABOT = 'dependabot[bot]';
@@ -17,9 +18,9 @@ export function dependabotPR(p: any): DependabotPR {
     return { number: p.number, title: p.title, url: p.html_url, head: p.head?.sha || '', body: p.body || '' };
 }
 
-/** Open Dependabot PRs, read once per poll. */
-export async function openDependabotPulls(store: Store, execute: Execute): Promise<any[]> {
-    return (await readRepo(store, execute, 'pulls?state=open&per_page=100', true)).filter((p: any) => p.user?.login === DEPENDABOT);
+/** Open Dependabot PRs, from the poll's shared inventory when there is one. */
+export async function openDependabotPulls(store: Store, execute: Execute, inventory?: PullInventory): Promise<any[]> {
+    return (await openPulls({ store, execute }, inventory)).filter((p: any) => p.user?.login === DEPENDABOT);
 }
 
 /** The subset whose board card a person moved to the pickup lane. */

@@ -793,7 +793,17 @@ Morgan or Joe:
   follow-up, whatever its detail says. Once it closes, another is sent only if what is due changed. For
   an IT recovery that is a new needs-human episode: an observed exit (IT retrying, or resolved) and a
   return. For the project refresh and assignment reads it is also a change between a temporary read
-  failure and any other failure, the two kinds of advice Ellis gives Morgan. For anything else it is the
+  failure and any other failure, the two kinds of advice Ellis gives Morgan. For a stopped maintenance run
+  it is the run's own stop: the status and stage it stopped in and when it ended
+  (`server/knowledge/maintenance-handoff-key.ts`). A run stops in its pump, or at start-up recovery if it
+  was left working, and is never pumped again: both pumps take only queued runs. A read-back adds a step
+  and rewrites the run's error in its own words, and the run's only later status is reconciled, which
+  is not handed off; supersession and source loss also end its hand-offs. So a stopped run is diagnosed
+  once, however its read-backs word the blocker or whichever write they still find unverified: Morgan
+  owns the follow-up, and a different write found during the same stop is for Morgan's read-back to
+  diagnose (Joe's decision, 2026-11-25). A changed prerequisite reaches Morgan through the run that
+  replaces it, once that run stops, under its own follow-up. A key saved before this rule came from that
+  run's only stop and is read as it on the follow-up's first reconciliation. For anything else it is the
   requested action without provider occurrence details such as GitHub's request ID and timestamp.
   Each send has its own id. A diagnosis that started is never settled: one a restart interrupts keeps
   its session, any answer and the interruption, and unchanged material sends nothing more. Queued
@@ -810,7 +820,9 @@ Morgan or Joe:
   earlier read-back of it is still stopping. The first open after upgrading changes an affected store,
   so a failed activation then stops at rollback eligibility rather than rolling back; an older build
   skips the settled rows but would send again for a new provider footer, so a downgraded store stays
-  fenced or offline until a build with this rule resumes it.
+  fenced or offline until a build with this rule resumes it. An older build also reads a maintenance
+  follow-up's stop key as new: once its last request closes it can send once for that follow-up, and
+  again for each later rewording.
 - Session visibility and service status probes are informational and stay with Ellis. They are
   listed but not counted as follow-ups, and do not by themselves show Ellis as retrying, even while
   such a watch is being retried or once it names Morgan. Any other recovery in progress, and anything
@@ -948,6 +960,41 @@ It only measures: nothing is deferred, refused or reordered by it, and the work 
   counts by configured project ID. Calls without a project scope appear under `office`. It also reports
   the latest core and GraphQL readings and what was used within each reset window seen. It is read from memory, so
   reading it calls no provider. A restart starts a new ledger: the first hour after a deploy is partial.
+
+### Settled GitHub reads
+
+The assignment poll does not read GitHub again for an answer that cannot have changed.
+
+- **One open-PR inventory per poll.** `server/delivery/intake/shared-pr-inventory.ts` reads the complete
+  open-PR list on first use and shares it with the poll's bot adoptions (Dependabot, Pin Courier, wiki-sync),
+  alert tracking, discovery, dependency refresh and merge notices; each keeps its own author, branch,
+  hands-off and pause rules. A write-free poll makes one `--paginate --slurp` traversal, counted under the
+  first source that needs it (usually `bot-adoption`); the labels are unchanged. A failed or incomplete read
+  is shared too and proves nothing: adoption skips the poll without withdrawing a record, and discovery fails
+  the poll before anything is admitted. When `linkPR` or `relinkPinCourier` dispatches a PR-body PATCH,
+  whatever its outcome, the inventory is dropped and the next reader traverses the list again; the PATCH
+  keeps its own read-back. The inventory lives for one poll; the pump and other callers read their own.
+- **Dependency refresh for live jobs only.** `refreshDependencies` (`server/delivery/intake/pr-discovery.ts`)
+  selects jobs that are not completed or cancelled before any read. In the poll it takes their rows from the
+  inventory and reads `pulls/N` once per live PR without a usable row, including when the inventory fails
+  or when the pump calls without one. Each detail read requires a live job still tracking that PR.
+  A parent is another live job whose PR head is this PR's base. Before applying results, refresh checks
+  that the same live job still tracks the PR and that its parent is still live. A job cancelled or
+  finished during the reads keeps its routing. Missing PR identity stops routing.
+- **Merge notices.** `observeGitHubMergeNotices` skips a candidate whose PR is in the poll's complete open
+  list; without a complete list every candidate takes its live read. A PR verified closed and unmerged is
+  read again after 30 minutes, or at once after it is seen open again. All jobs on the PR share that wait.
+  A verified merge with no assignee or reporter for the configured recipients waits 30 minutes for that
+  issue and PR. A change to the notice settings ends either wait. Waits are in memory
+  (`server/conversations/merge-notice-cooldown.ts`) and clear on restart.
+- **The one durable no-notice reason.** A verified merge older than the valid start of every enabled
+  destination can never be sent. Its job keeps a `noMergeNotice` marker (`server/conversations/no-merge-notice.ts`)
+  bound to the repository, issue, PR, merge SHA, merge time and a fingerprint of the direct settings
+  (enablement, start, recipients, workspace, mappings) and the channel settings (enablement, start, channel,
+  workspace, version). While the binding holds the job is not read again; when any part changes the marker is
+  discarded and the merge is read again. Linkage failures, malformed identity and provider errors record
+  nothing and are read on the next poll. Slack delivery keeps its own read-backs. Jobs saved before the
+  marker take the ordinary read, and an older release ignores it.
 
 ### Deployment fence and admission journal
 

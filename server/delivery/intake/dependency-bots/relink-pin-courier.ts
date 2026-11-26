@@ -7,6 +7,7 @@ import { projectGraphql, type Execute } from '../../board/project-graphql';
 import { resumeLinkedDelivery } from './resume-linked-delivery';
 import { findTrackingIssue } from '../dependabot/tracking-issue';
 import type { DependabotPR } from '../dependabot/qualify';
+import type { PullInventory } from '../shared-pr-inventory';
 import type { Store } from '../../../store/store';
 import { workKey, type DependabotAdoption, type EffectIntent, type TicketJob } from '../../../../src/shared';
 
@@ -14,7 +15,7 @@ const sha = (value: unknown) => createHash('sha256').update(JSON.stringify(value
 const editorMatches = (editor: any) => editor?.__typename === 'Bot' && editor.login === 'pin-courier' && editor.databaseId === 351979519;
 
 /** A bot may replace its description without changing commits. Preserve the old receipt; link this observed body revision once. */
-export async function relinkPinCourier(store: Store, execute: Execute, record: DependabotAdoption, pr: DependabotPR, jobs: TicketJob[], headGuard: () => Promise<void>): Promise<void> {
+export async function relinkPinCourier(store: Store, execute: Execute, record: DependabotAdoption, pr: DependabotPR, jobs: TicketJob[], headGuard: () => Promise<void>, inventory?: Pick<PullInventory, 'invalidate'>): Promise<void> {
     const issue = record.issue, job = jobs.find(j => j.key === `GH-${issue}` && j.pr === pr.number && !['completed', 'cancelled'].includes(j.status));
     const guard = () => {
         if (!job || !jobs.includes(job) || job.key !== `GH-${issue}` || job.pr !== pr.number || ['completed', 'cancelled'].includes(job.status) ||
@@ -69,7 +70,9 @@ export async function relinkPinCourier(store: Store, execute: Execute, record: D
             if (sha(current) !== snapshot) throw new Error('PR body/head/editor/link changed before link repair');
         },
         dispatch: async () => {
-            await execute('gh', ['api', `repos/${store.project.repository}/pulls/${pr.number}`, '-X', 'PATCH', '-f', `body=${body}`], { cwd: store.project.repo, timeout: 60000 });
+            // A dispatched body write, even one whose outcome is unknown, leaves the poll's shared open-PR rows stale.
+            try { await execute('gh', ['api', `repos/${store.project.repository}/pulls/${pr.number}`, '-X', 'PATCH', '-f', `body=${body}`], { cwd: store.project.repo, timeout: 60000 }); }
+            finally { inventory?.invalidate(); }
             return readBackOrThrow(receipt, `Native issue #${issue} link on PR #${pr.number}`);
         },
         readBack: receipt,
