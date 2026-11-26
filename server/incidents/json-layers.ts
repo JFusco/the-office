@@ -59,9 +59,20 @@ function strings(src: string, from: number, to: number): { pairs: Array<[number,
     return { pairs, unresolved: -1 };
 }
 
+/**
+ * Whether the quote at `at` opens a JSON value: the nearest character before it, past whitespace, is `:`, `[` or `,`.
+ * A stray inch mark or an unbalanced quote in prose opens nothing, so it never decides where later evidence ends.
+ */
+function opensValue(src: string, at: number): boolean {
+    let i = at - 1;
+    while (i >= 0 && /\s/.test(src[i])) i--;
+    return i >= 0 && ':[,'.includes(src[i]);
+}
+
 export class JsonLayers {
     /** Every established string, ordered by where its content starts. */
     private readonly all: LayerString[] = [];
+    private rootUnresolved = -1;
 
     constructor(readonly text: string) {
         const pending: Array<{ src: string; from: number; to: number; at: (i: number) => number; parent: LayerString | null }> = [
@@ -71,6 +82,7 @@ export class JsonLayers {
             const { src, from, to, at, parent } = next;
             const found = strings(src, from, to);
             if (parent) parent.unresolved = found.unresolved;
+            else this.rootUnresolved = opensValue(src, found.unresolved) ? found.unresolved : -1;
             for (const [open, close] of found.pairs) {
                 const { decoded, starts } = decode(src, open + 1, close, at);
                 const string: LayerString = { depth: (parent?.depth ?? 0) + 1, start: at(open + 1), end: at(close), decoded, starts, parent, unresolved: -1 };
@@ -97,6 +109,11 @@ export class JsonLayers {
     /** The depth of the string holding `offset`: 0 outside every string. */
     depth(offset: number): number {
         return this.at(offset)?.depth ?? 0;
+    }
+
+    /** Whether this offset lies after a source-level quote that opens a JSON string value and is never closed. */
+    rootUnresolvedAt(offset: number): boolean {
+        return this.rootUnresolved >= 0 && this.rootUnresolved < offset;
     }
 }
 

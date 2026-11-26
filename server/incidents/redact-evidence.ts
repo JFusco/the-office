@@ -1,6 +1,6 @@
 import { isJsonText, sanitizeInMode, TOKEN_START } from '../office/security';
 import { credentialSpans } from './credential-spans';
-import { BARE_CREDENTIAL } from './credential-patterns';
+import { BARE_CREDENTIAL, URL_USERINFO } from './credential-patterns';
 import { JsonLayers } from './json-layers';
 
 const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|xox[abprs]-[A-Za-z0-9-]+)`, 'g');
@@ -9,7 +9,7 @@ const JSON_WEB_TOKEN = new RegExp(String.raw`${TOKEN_START}eyJ[A-Za-z0-9_-]+\.[A
 
 function redactUnquoted(text: string, json: boolean): string {
     return sanitizeInMode(text, json)
-        .replace(/((?:https?|socks5?):\/\/)[^\s/@]+@/gi, '$1[redacted]@')
+        .replace(URL_USERINFO, '$1[redacted]@')
         .replace(BARE_CREDENTIAL, '$1[redacted]')
         .replace(PROVIDER_TOKEN, '[redacted]')
         .replace(AWS_KEY_ID, '[redacted]')

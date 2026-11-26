@@ -14,6 +14,7 @@ const fixtures: Record<string, [string, string]> = {
     // Every `aToken` is a candidate name; only the last one is closed, so the scan back to its quote runs once.
     'closed-key': [`{"${key}":"fixture"}`, `{"${key}":"[redacted]"}`],
     'cut-key': [`{"${key}`, `{"${key}`],
+    'shared-bare-end': ['token=x-'.repeat(Math.ceil(MIB / 'token=x-'.length)) + 'end done', 'token=[redacted] done'],
     // Many bare and single-quoted assignments two levels down: each looks its layer up instead of reading from the start.
     'many-assignments': [wrap(message(pair('x', 'a' + B + "'b").repeat(repeats))), wrap(message(pair('[redacted]', '[redacted]').repeat(repeats)))],
 };

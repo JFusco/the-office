@@ -1,33 +1,24 @@
+import { BEARER_CREDENTIAL, HEADER_OPERAND, POSTGRES_URL } from '../office/security';
 import { bareValue, deeperValueEnd, queryValue, separatorEscapeAt } from './bare-value';
-import { AFTER_LABEL, BARE_LABEL, CREDENTIAL_NAME, KEY, NEXT_LABEL, PROPERTY, QUOTED_LABEL } from './credential-patterns';
+import { AFTER_LABEL, BARE_LABEL, CREDENTIAL_NAME, GAP, GAP_ESCAPE, KEY, NEXT_LABEL, PROPERTY, QUOTED_LABEL, URL_USERINFO } from './credential-patterns';
 import { decodedIndex, type JsonLayers, type LayerString, quoteAt, unresolvedAt } from './json-layers';
 import { nonStringValueEnd } from './json-value';
 
 /** Text to replace before the shared sanitizer runs: `[start, end)` of the original text, and what stands there instead. */
 export interface Span { start: number; end: number; replacement: string }
 
-// A quote escaped n times (n = 0, 1, 3, 7… in JSON inside JSON) is closed by the same quote after
-// n + k·2(n + 1) backslashes, which for an unescaped quote is any even run. A run that is not n modulo n + 1
-// belongs to an enclosing string, so the value ends before it. A saved fragment may end mid-value or mid-escape.
 const OPEN = String.raw`(?<open>(?<run>(?:\\(?:\\\\)*)?)(?<quote>["']))`;
-const quotedCredential = (json: boolean) => {
-    // A quote right after another credential label opens that label's value, so it does not end this one.
-    // In JSON text an unescaped quote is certain, so only an escaped one is checked.
-    const notLabel = json ? String.raw`(?:(?!\\)|(?!${AFTER_LABEL}))` : String.raw`(?!${AFTER_LABEL})`;
-    const close = String.raw`(?<!\\)${notLabel}(?:\k<run>\k<run>\\\\)*\k<run>\k<quote>`;
-    // In JSON text an unescaped double quote also ends a single-quoted value: it closes the string that holds it.
-    const enclosing = String.raw`(?<!\\)${notLabel}(?:\k<run>\\)*(?!\k<run>)\\*\k<quote>${json ? String.raw`|(?<!\\)(?:\\\\)*"` : ''}`;
-    return new RegExp(String.raw`(?<prefix>${PROPERTY}|${QUOTED_LABEL})${OPEN}(?:[^\\"']+|(?!${close}|${enclosing})[\s\S])*(?:${close}|(?=${enclosing})|$)`, 'gi');
-};
-const QUOTED_CREDENTIAL = quotedCredential(false);
-const QUOTED_CREDENTIAL_IN_JSON = quotedCredential(true);
+const QUOTED_CREDENTIAL = new RegExp(String.raw`(?<prefix>${PROPERTY}|${QUOTED_LABEL})${OPEN}`, 'gi');
+const QUOTE = /(?<!\\)\\*["']/g;
 const NON_STRING_KEY = new RegExp(KEY, 'gi');
 const BARE = new RegExp(BARE_LABEL, 'gi');
 const NAME = new RegExp(`(?:${CREDENTIAL_NAME})`, 'iy');
 const NEXT = new RegExp(NEXT_LABEL, 'iy');
 const LABEL_BEFORE = new RegExp(AFTER_LABEL, 'iy');
+const WRITTEN_GAP = new RegExp(GAP_ESCAPE, 'y');
 /** Whole Authorization and Cookie fields are the shared sanitizer's: no edit here may split one. */
-const RESERVED = /(?:authorization|cookie)(?:\s|\\+[tnr])*[=:]\s*$/i;
+const RESERVED = new RegExp(String.raw`(?:authorization|cookie)${GAP}[=:]\s*$`, 'i');
+const HEADER_VALUE = new RegExp(HEADER_OPERAND, 'y');
 /** Labels whose bare value the shared sanitizer already takes whole, up to a newline, comma, brace or quote. */
 const SHARED = /(?:password|api[_-]?key|secret|authorization|cookie|connection[_-]?string)\s*[=:]\s*$/i;
 /** Query parameters the shared sanitizer takes whole, up to a raw `&`, whitespace or quote. */
@@ -37,17 +28,18 @@ const QUERY = /^(?:token|sig|key|secret|code|access_token|client_secret|password
  * Whether every backslash in `[from, to)` writes a tab, CR or LF at the depth of the text holding it: a gap that the
  * pattern found, which only the text's layers can tell from literal backslashes.
  */
-function genuineGap(text: string, layers: JsonLayers, from: number, to: number): boolean {
+function genuineGap(text: string, layers: JsonLayers, from: number, to: number, containing?: LayerString | null): boolean {
     for (let i = from; i < to; i++) {
         if (text[i] !== '\\') continue;
-        let run = 0;
-        while (text[i + run] === '\\') run++;
-        const string = layers.at(i);
+        WRITTEN_GAP.lastIndex = i;
+        if (!WRITTEN_GAP.test(text) || WRITTEN_GAP.lastIndex > to) return false;
+        const escapeEnd = WRITTEN_GAP.lastIndex;
+        const string = containing === undefined ? layers.at(i) : containing;
         if (string) {
             const index = decodedIndex(string, i);
-            if (string.starts[index] !== i || string.starts[index + 1] !== i + run + 1 || !/[\t\n\r]/.test(string.decoded[index])) return false;
-        } else if (run !== 1) return false;
-        i += run;
+            if (string.starts[index] !== i || string.starts[index + 1] !== escapeEnd || !/[\t\n\r]/.test(string.decoded[index])) return false;
+        } else if (text[i + 1] === '\\') return false;
+        i = escapeEnd - 1;
     }
     return true;
 }
@@ -63,24 +55,40 @@ function nameEnd(text: string, at: number, property: boolean): number {
     return end;
 }
 
+function labelBefore(text: string, layers: JsonLayers, at: number, containing: LayerString | null): boolean {
+    LABEL_BEFORE.lastIndex = at;
+    const match = LABEL_BEFORE.exec(text);
+    return match !== null && genuineGap(text, layers, at - match[1].length, at, containing);
+}
+
 /**
- * Where a single-quoted value inside a JSON string ends, at that string's own depth: on an apostrophe after an even run
- * of decoded backslashes (a written `\` counting as one) that does not follow another label. Inside a string the
- * text opens but never closes, no apostrophe can be trusted, so the value runs to the end of the string that holds it.
+ * Close on an apostrophe after an even run of decoded backslashes unless it opens another assignment.
+ * For an unresolved string, use the established enclosing delimiter.
  */
-function apostropheEnd(text: string, string: LayerString, from: number): { end: number; closed: boolean } {
-    if (unresolvedAt(string, from)) return { end: string.end, closed: false };
+function apostropheEnd(text: string, layers: JsonLayers, string: LayerString, from: number): number {
+    if (unresolvedAt(string, from)) return string.end;
     let run = 0;
     for (let i = decodedIndex(string, from); i < string.decoded.length; i++) {
         const char = string.decoded[i];
         if (char === '\\') { run++; continue; }
-        if (char === "'" && run % 2 === 0) {
-            LABEL_BEFORE.lastIndex = string.starts[i];
-            if (!LABEL_BEFORE.test(text)) return { end: string.starts[i + 1], closed: true };
-        }
+        if (char === "'" && run % 2 === 0 && !labelBefore(text, layers, string.starts[i], string)) return string.starts[i + 1];
         run = 0;
     }
-    return { end: string.end, closed: false };
+    return string.end;
+}
+
+/** A quote opened with n backslashes closes after n + k·2(n + 1) backslashes. */
+function quotedEnd(text: string, layers: JsonLayers, json: boolean, from: number, quote: string, n: number, containing: LayerString | null): number {
+    QUOTE.lastIndex = from;
+    for (let match = QUOTE.exec(text); match; match = QUOTE.exec(text)) {
+        const run = match[0].length - 1, at = match.index, char = text[at + run];
+        if (char === quote && ((json && run === 0) || !labelBefore(text, layers, at, containing))) {
+            if (run % (2 * (n + 1)) === n) return QUOTE.lastIndex;
+            if (run % (n + 1) !== n) return at;
+        }
+        if (json && char === '"' && run % 2 === 0) return at;
+    }
+    return text.length;
 }
 
 /** Whether another credential assignment follows `at`, after real separation and any escapes and indentation at its depth. */
@@ -98,35 +106,40 @@ function nextAssignmentAt(text: string, layers: JsonLayers, at: number, separate
     return !!next && genuineGap(text, layers, i, i + next[0].length);
 }
 
-/** The spans sorted by start, keeping the earlier of two that overlap and dropping one inside another. */
+/** Sort by start and cover the union of overlapping spans with the first replacement. */
 function ordered(spans: Span[]): Span[] {
     const kept: Span[] = [];
     for (const span of spans.sort((a, b) => a.start - b.start || b.end - a.end)) {
-        if (kept.length && span.start < kept[kept.length - 1].end) continue;
-        kept.push(span);
+        const last = kept[kept.length - 1];
+        if (last && span.start < last.end) last.end = Math.max(last.end, span.end);
+        else kept.push(span);
     }
     return kept;
 }
 
 function quotedSpans(text: string, layers: JsonLayers, json: boolean, taken: Span[]): Span[] {
     const spans: Span[] = [];
-    const pattern = json ? QUOTED_CREDENTIAL_IN_JSON : QUOTED_CREDENTIAL;
+    const pattern = QUOTED_CREDENTIAL;
     pattern.lastIndex = 0;
     let t = 0;
     for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
-        const { prefix, open, quote, nameRun } = match.groups as { prefix: string; open: string; quote: string; nameRun?: string };
+        const { prefix, open, run, quote, nameRun } = match.groups as { prefix: string; open: string; run: string; quote: string; nameRun?: string };
         while (t < taken.length && taken[t].end <= match.index) t++;
         if (t < taken.length && taken[t].start <= match.index) { pattern.lastIndex = taken[t].end; continue; }
-        if (!genuineGap(text, layers, nameEnd(text, match.index, nameRun !== undefined), match.index + prefix.length)) { pattern.lastIndex = match.index + 1; continue; }
-        // In JSON text a bare label lies inside a string, so a plain double quote right after it closes that string.
-        // Only the label is hidden, so the shared sanitizer leaves it alone too.
-        if (nameRun === undefined && open === '"' && json) {
-            spans.push({ start: match.index, end: match.index + prefix.length, replacement: prefix });
+        const openStart = match.index + prefix.length;
+        if (!genuineGap(text, layers, nameEnd(text, match.index, nameRun !== undefined), openStart)) { pattern.lastIndex = match.index + 1; continue; }
+        // A bare label may end at its containing string's closing delimiter.
+        if (nameRun === undefined && layers.at(match.index)?.end === openStart) {
+            spans.push({ start: match.index, end: openStart, replacement: prefix });
+            pattern.lastIndex = openStart;
             continue;
         }
-        const valueStart = match.index + prefix.length + open.length;
-        const string = quote === "'" ? layers.at(valueStart - 1) : null;
-        const end = string ? apostropheEnd(text, string, valueStart).end : match.index + match[0].length;
+        const valueStart = openStart + open.length;
+        const string = layers.at(openStart);
+        let end: number;
+        if (quote === "'" && string) end = apostropheEnd(text, layers, string, valueStart);
+        else if (quote === "'" && layers.rootUnresolvedAt(openStart)) end = text.length;
+        else end = quotedEnd(text, layers, json, valueStart, quote, run.length, string);
         spans.push({ start: match.index, end, replacement: `${prefix}${open}[redacted]${open}` });
         pattern.lastIndex = Math.max(end, match.index + 1);
     }
@@ -151,11 +164,18 @@ function nonStringSpans(text: string, layers: JsonLayers): Span[] {
 /**
  * Bare assignments whose edit depends on the text's layers: a label with nothing after it but the next assignment,
  * hidden so the shared sanitizer cannot take that label as a value; and a value read at its depth, where a written
- * separator, gap or escape decides where it starts or ends. Every other bare value is left to the rule after the
- * shared sanitizer, as before. Whole Authorization and Cookie fields are never touched here.
+ * separator, gap or escape decides where it starts or ends. Use the shared operand boundaries when an edit would
+ * hide a shared rule's match or when a whole header has a serialized gap the shared rule cannot match.
  */
 function bareSpans(text: string, layers: JsonLayers, taken: Span[]): Span[] {
     const spans: Span[] = [];
+    const urls = text.matchAll(URL_USERINFO);
+    const sharedOperands = [BEARER_CREDENTIAL, POSTGRES_URL].map(pattern => {
+        const matches = text.matchAll(pattern);
+        return { matches, next: matches.next() };
+    });
+    let url = urls.next();
+    let unescaped: { end: number; limit: number; string: LayerString | null } | undefined;
     BARE.lastIndex = 0;
     let t = 0;
     for (let match = BARE.exec(text); match; match = BARE.exec(text)) {
@@ -163,22 +183,61 @@ function bareSpans(text: string, layers: JsonLayers, taken: Span[]): Span[] {
         while (t < taken.length && taken[t].end <= start) t++;
         if (t < taken.length && taken[t].start <= start) { BARE.lastIndex = taken[t].end; continue; }
         if (!genuineGap(text, layers, nameEnd(text, start, false), valueStart)) { BARE.lastIndex = start + 1; continue; }
-        const reserved = RESERVED.test(label);
-        if (!reserved && nextAssignmentAt(text, layers, valueStart, /\s$/.test(label))) {
+        if (RESERVED.test(label)) {
+            if (!label.includes('\\')) continue;
+            HEADER_VALUE.lastIndex = valueStart;
+            if (!HEADER_VALUE.test(text)) continue;
+            const end = Math.min(HEADER_VALUE.lastIndex, layers.at(start)?.end ?? text.length);
+            if (end > valueStart) {
+                spans.push({ start, end, replacement: `${label}[redacted]` });
+                BARE.lastIndex = end;
+            }
+            continue;
+        }
+        if (nextAssignmentAt(text, layers, valueStart, /\s$/.test(label))) {
             spans.push({ start, end: valueStart, replacement: label });
             continue;
         }
-        if (reserved) continue;
-        const limit = Math.min(t < taken.length ? taken[t].start : text.length, layers.at(valueStart)?.end ?? text.length);
+        const string = layers.at(valueStart);
+        const limit = Math.min(t < taken.length ? taken[t].start : text.length, string?.end ?? text.length);
         const query = '?&'.includes(text[start - 1] ?? '') && start > 0 && QUERY.test(label);
+        // A later label inside an ordinary unescaped operand reaches the same boundary. Query operands still need
+        // their own measurement, and the quoted-span limit and containing layer have to agree.
+        if (!query && unescaped && valueStart < unescaped.end && limit === unescaped.limit && string === unescaped.string) continue;
         const value = query ? queryValue(text, layers, valueStart, limit) : bareValue(text, layers, valueStart, limit);
         if (!value) continue;
-        const string = layers.at(valueStart);
         const deeper = string && unresolvedAt(string, valueStart)
             ? deeperValueEnd(text, layers, valueStart, limit, at => nextAssignmentAt(text, layers, at, true)) : -1;
-        const end = Math.max(value.end, deeper);
+        let end = Math.max(value.end, deeper);
         const layered = text.slice(start, end).includes('\\') || value.endsAtEscape;
-        if (query || SHARED.test(label) ? !value.endsAtEscape : !layered) continue;
+        if (!query && !layered) unescaped = { end, limit, string };
+        const needsSpan = query ? value.endsAtEscape || !!separatorEscapeAt(text, layers, valueStart)
+            : SHARED.test(label) ? value.endsAtEscape : layered;
+        if (!needsSpan) continue;
+
+        while (!url.done && url.value.index + url.value[0].length <= start) url = urls.next();
+        if (!url.done) {
+            const userinfoStart = url.value.index + url.value[1].length;
+            const at = url.value.index + url.value[0].length - 1;
+            if (userinfoStart <= start && start < at && at < end) {
+                spans.push({ start: userinfoStart, end: at, replacement: '[redacted]' });
+                BARE.lastIndex = at + 1;
+                continue;
+            }
+        }
+        // A placeholder covering the start of either scheme makes the shared rule miss the remaining operand.
+        // An extension can bring the start of another shared operand into the span.
+        let previousEnd: number;
+        do {
+            previousEnd = end;
+            for (const cursor of sharedOperands) {
+                while (!cursor.next.done && cursor.next.value.index < end) {
+                    const match = cursor.next.value;
+                    if (match.index >= valueStart) end = Math.max(end, Math.min(match.index + match[0].length, string?.end ?? text.length));
+                    cursor.next = cursor.matches.next();
+                }
+            }
+        } while (end > previousEnd);
         spans.push({ start, end, replacement: `${label}[redacted]` });
         BARE.lastIndex = end;
     }

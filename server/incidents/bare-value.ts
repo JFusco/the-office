@@ -68,18 +68,26 @@ export function bareValue(text: string, layers: JsonLayers, start: number, limit
         while (unit && !unit.escaped && (unit.char === ' ' || unit.char === '\t')) unit = units.next().value;
     }
     let end = -1;
-    for (; unit && !isSeparator(unit.char) && !ENDS.has(unit.char); unit = units.next().value) end = unit.end;
+    for (; unit && !isSeparator(unit.char); unit = units.next().value) {
+        if (ENDS.has(unit.char) && (!unit.escaped || unit.char === '"')) break;
+        end = unit.end;
+    }
     if (end < 0) return null;
     return { end, endsAtEscape: !!unit && unit.escaped && isSeparator(unit.char) };
 }
 
 /**
- * The value of a query parameter the shared sanitizer would also read: its escape pairs (an escaped ampersand among
- * them) are data up to a separator written as an escape at its depth, a raw `&`, whitespace or a quote.
+ * The value of a query parameter the shared sanitizer would also read. It includes leading serialized separators
+ * and indentation, then escape pairs as data up to a separator escape at its depth, a raw `&`, whitespace or a quote.
  */
 export function queryValue(text: string, layers: JsonLayers, start: number, limit: number): BareValue | null {
+    let i = start;
+    for (let gap = separatorEscapeAt(text, layers, i); gap && i + gap <= limit; gap = separatorEscapeAt(text, layers, i)) {
+        i += gap;
+        while (i < limit && (text[i] === ' ' || text[i] === '\t')) i++;
+    }
     let end = -1;
-    for (let i = start; i < limit;) {
+    for (; i < limit;) {
         if (text[i] === '\\') {
             if (separatorEscapeAt(text, layers, i)) return end < 0 ? null : { end, endsAtEscape: true };
             end = Math.min(i + 2, limit);

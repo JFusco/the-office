@@ -14,6 +14,8 @@ test('provider tokens the office-wide redaction does not cover are removed, stan
 
 test('credentials inside a URL are removed and the rest of the URL is kept', () => {
     expect(redactEvidence('clone https://joe:hunter2@github.com/a/b.git failed')).toBe('clone https://[redacted]@github.com/a/b.git failed');
+    expectRedaction('{"m":"clone https://user:prefix-token=p' + u('00e4') + 'ss@example.test/repo.git failed"}',
+        message('clone https://[redacted]@example.test/repo.git failed'));
 });
 
 test('what the office-wide redaction already covers still is, and ordinary text is untouched', () => {
@@ -273,6 +275,9 @@ test('#627 item 3: a credential property with a value that is not a string loses
     expect(JSON.parse(JSON.parse(redacted).d)).toEqual({ credentials: '[redacted]', next: 1 });
     expectRedaction(wrap('{"token":123'), wrap('{"token":"[redacted]"'));
     expectRedaction(wrap('{"credentials":{"a":"x (cut)'), wrap('{"credentials":"[redacted]"'));
+    const overlapping = redactEvidence(JSON.stringify({ log: `password='{"credentials":{"note":"it's secret"}}' done` }));
+    expect(JSON.parse(overlapping).log).not.toContain('secret');
+    expect(redactEvidence(overlapping)).toBe(overlapping);
 });
 
 test('#627 item 4: a serialized tab or newline between a label and its value is a gap at the label\'s layer', () => {
@@ -282,12 +287,54 @@ test('#627 item 4: a serialized tab or newline between a label and its value is 
     expectRedaction(message('token= auth.token' + tab + '=fixture next'), message('token= auth.token' + tab + '=[redacted] next'));
     expectRedaction(wrap('{"token"' + tab + ':"fixture","n":1}'), wrap('{"token"' + tab + ':"[redacted]","n":1}'));
     expectRedaction(message('token=' + lf + '  fixture done'), message('token=[redacted] done'));
+    expectRedaction(message('?token=' + lf + '  fixture done'), message('?token=[redacted] done'));
     expectRedaction(message('token:' + B + 'tabc next'), message('token:[redacted] next'));
     expectRedaction(message('token:' + B + 't'), message('token:[redacted]'));
     expectRedaction(message('token="first password:' + tab + '"second value" done'), message('token="[redacted]" done'));
+    expectRedaction(message("token='first password:" + tab + "'second value' done"), message("token='[redacted]' done"));
+    for (const quote of ['"', "'"]) {
+        expectRedaction(message(`token=${quote}first password:${B}t${quote} done`),
+            message(`token=${quote}[redacted]${quote} done`));
+    }
+});
+
+test('serialized gaps preserve whole Authorization and Cookie redaction', () => {
+    expectRedaction(message('Authorization' + tab + ': Basic fixture'), message('Authorization' + tab + ': [redacted]'));
+    expectRedaction(message('Cookie' + tab + ': name=fixture; session=second'), message('Cookie' + tab + ': [redacted]'));
+    expectRedaction('{"m":"Cookie' + u('0009') + ': name=fixture; session=second"}',
+        '{"m":"Cookie' + u('0009') + ': [redacted]"}');
+});
+
+test('a leading serialized gap retains the shared Bearer and PostgreSQL operand extents', () => {
+    for (const value of ['Bearer opaque-operand', 'postgresql://user:left,right@db.example.test/app']) {
+        const input = message('token=' + tab + value + ' done');
+        expectRedaction(input, message('token=[redacted] done'));
+        expect(JSON.parse(redactEvidence(input))).toEqual({ m: 'token=[redacted] done' });
+    }
+});
+
+test('before punctuation, only genuine short and Unicode tab, LF or CR escapes form a gap', () => {
+    const uppercase = 'token' + B + 'T=x';
+    expectRedaction(uppercase, uppercase);
+    expectRedaction('ToKeN' + B + 't=x', 'ToKeN' + B + 't=[redacted]');
+    for (const escape of ['0009', '000a', '000d'].map(u)) {
+        expectRedaction('{"m":"token' + escape + '=fixture"}', '{"m":"token' + escape + '=[redacted]"}');
+        const literal = message('token' + escape + '=fixture');
+        expectRedaction(literal, literal);
+    }
+});
+
+test('an empty bare assignment preserves the mapped closing quote of a nested message', () => {
+    const inner = message('token' + tab + '=');
+    const input = wrap(inner);
+    expectRedaction(input, input);
+    const parsed = JSON.parse(redactEvidence(input));
+    expect(parsed.n).toBe(1);
+    expect(JSON.parse(parsed.d)).toEqual(JSON.parse(inner));
 });
 
 test('#627 item 5: a single-quoted value in a JSON string closes on an even run of decoded backslashes', () => {
+    expectRedaction(cut("token='a" + B + "'b' done"), cut("token='[redacted]'"));
     const cutWrap = redactEvidence(wrap(cut("token='a" + B + "'b' done")));
     expect(cutWrap).toBe(wrap(cut("token='[redacted]'")));
     expect(JSON.parse(cutWrap).n).toBe(1);
@@ -320,6 +367,8 @@ test('#627 item 9 (option a): an encoded whitespace escape ends a bare value; a 
     expectRedaction('?token=a' + B + '&b=2' + u('0020') + 'token=c&x=1', '?token=[redacted]' + u('0020') + 'token=[redacted]&x=1');
     expectRedaction('{"log":"token:' + u('00a0') + 'fixture next"}', '{"log":"token:[redacted] next"}');
     expectRedaction('token=fix' + u('00e4') + 'ture next', 'token=[redacted] next');
+    expectRedaction('{"msg":"token=p' + u('003c') + 's' + u('0026') + 'word next"}', '{"msg":"token=[redacted] next"}');
+    expectRedaction('token=a' + u('00e4') + 'b' + u('002c') + 'secret next', 'token=[redacted] next');
     expectRedaction('token=fixture' + u('FEFF') + 'next', 'token=[redacted]' + u('FEFF') + 'next');
     expectRedaction('token=fix' + u('0085') + 'ture next', 'token=[redacted] next');
     expectRedaction('token=fix' + B + 'U0020ture next', 'token=[redacted] next');
@@ -329,4 +378,9 @@ test('#627 item 9 (option a): an encoded whitespace escape ends a bare value; a 
         expectRedaction(text, 'Authorization: [redacted]');
     }
     for (const text of ['Cookie: name=fixture' + u('0020') + 'other=fixture', 'Cookie: token=fixture; session=fixture']) expectRedaction(text, 'Cookie: [redacted]');
+});
+
+test('#627: a stray quote in prose opens no JSON string, so a later single-quoted value still closes on its apostrophe', () => {
+    expectRedaction('it is 5" wide token=\'abc\' done', 'it is 5" wide token=\'[redacted]\' done');
+    expectRedaction('say "unbalanced token=\'abc\' done', 'say "unbalanced token=\'[redacted]\' done');
 });

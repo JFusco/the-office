@@ -6,7 +6,7 @@ const child = resolve(__dirname, 'redact-evidence-cost-child.ts');
 /** Generous: the clean cases take well under a second; a lookup that restarts from the start of the text for every match takes far longer. */
 const BUDGET_MS = 10_000;
 
-test.each(['closed-key', 'cut-key', 'many-assignments'])('redacting about 1 MiB of %s finishes within the budget with the exact output', fixture => {
+test.each(['closed-key', 'cut-key', 'shared-bare-end', 'many-assignments'])('redacting about 1 MiB of %s finishes within the budget with the exact output', fixture => {
     const run = spawnSync(process.execPath, ['--import', 'tsx', child, fixture], { encoding: 'utf8', timeout: BUDGET_MS, killSignal: 'SIGKILL' });
     expect(run.error?.message ?? run.signal ?? '', `${fixture}: killed or failed to start`).toBe('');
     expect(run.status, run.stderr).toBe(0);
