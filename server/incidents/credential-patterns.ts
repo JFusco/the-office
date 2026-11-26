@@ -24,14 +24,14 @@ export const QUOTED_LABEL = String.raw`${NAME_START}(?:${CREDENTIAL_NAME})${GAP}
 export const BARE_LABEL = String.raw`${NAME_START}(?:${CREDENTIAL_NAME})${GAP}[=:]\s*`;
 export const AFTER_LABEL = String.raw`(?<=(?:${CREDENTIAL_NAME})(?:\\*["'])?(${GAP}[=:]${GAP}))`;
 /** Another credential assignment: a name, possibly ending a dotted, hyphenated or camelCase identifier, then its punctuation. */
-export const NEXT_LABEL = String.raw`(?:[\w.-]*(?:[_.-]|${CAMEL_START}))?(?:${CREDENTIAL_NAME})${GAP}[=:]`;
+const NEXT_NAME = String.raw`(?:[\w.-]*(?:[_.-]|${CAMEL_START}))?(?:${CREDENTIAL_NAME})`;
+export const NEXT_LABEL = String.raw`${NEXT_NAME}${GAP}[=:]`;
 // A bare value in JSON text ends at a control-character escape (\n, \u001b) or before the backslashes of an escaped
 // quote at any depth. It may start with a control escape, and an escaped backslash or other \u escape stays in it.
 // Keep the class first inside `(?-i:…)`: V8 13.6 drops the modifier for a class in a later alternative.
 export const CONTROL_ESCAPE = String.raw`\\(?-i:[bfnrt]|u00[01][\dA-Fa-f]|u007[fF])`;
 const BARE_UNIT = String.raw`(?:[^\s&,;}"'\\\0]+|(?!(?<!\\)(?:\\\\)*\\")(?:\\\\|(?!${CONTROL_ESCAPE})\\))`;
 const BARE_VALUE = String.raw`(?:${CONTROL_ESCAPE})*${BARE_UNIT}+`;
-// After whitespace or an escape, another credential label is the next assignment, not this one's value.
-// What is left for this rule after the edits chosen on the original text never depends on the text's layers.
-export const BARE_CREDENTIAL = new RegExp(String.raw`(${NAME_START}(?:${CREDENTIAL_NAME})\s*[=:]\s*)(?!\[redacted\]|(?:(?<=\s)|${CONTROL_ESCAPE})(?:${CONTROL_ESCAPE})*${NEXT_LABEL})${BARE_VALUE}`, 'gi');
+// The original-text scan handles serialized gaps before punctuation in the next label.
+export const BARE_CREDENTIAL = new RegExp(String.raw`(${NAME_START}(?:${CREDENTIAL_NAME})\s*[=:]\s*)(?!\[redacted\]|(?:(?<=\s)|${CONTROL_ESCAPE})(?:${CONTROL_ESCAPE})*${NEXT_NAME}\s*[=:])${BARE_VALUE}`, 'gi');
 export const URL_USERINFO = /((?:https?|socks5?):\/\/)[^\s/@]+@/gi;

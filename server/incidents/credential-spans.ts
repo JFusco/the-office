@@ -1,6 +1,6 @@
-import { BEARER_CREDENTIAL, HEADER_OPERAND, POSTGRES_URL } from '../office/security';
+import { BEARER_CREDENTIAL, HEADER_OPERAND, HEADER_PREFIX, POSTGRES_URL, QUERY_PREFIX } from '../office/security';
 import { bareValue, deeperValueEnd, queryValue, separatorEscapeAt } from './bare-value';
-import { AFTER_LABEL, BARE_LABEL, CREDENTIAL_NAME, GAP, GAP_ESCAPE, KEY, NEXT_LABEL, PROPERTY, QUOTED_LABEL, URL_USERINFO } from './credential-patterns';
+import { AFTER_LABEL, BARE_LABEL, CREDENTIAL_NAME, GAP, GAP_ESCAPE, KEY, NAME_START, NEXT_LABEL, PROPERTY, QUOTED_LABEL, URL_USERINFO } from './credential-patterns';
 import { decodedIndex, type JsonLayers, type LayerString, quoteAt, unresolvedAt } from './json-layers';
 import { nonStringValueEnd } from './json-value';
 
@@ -17,12 +17,34 @@ const NEXT = new RegExp(NEXT_LABEL, 'iy');
 const LABEL_BEFORE = new RegExp(AFTER_LABEL, 'iy');
 const WRITTEN_GAP = new RegExp(GAP_ESCAPE, 'y');
 /** Whole Authorization and Cookie fields are the shared sanitizer's: no edit here may split one. */
-const RESERVED = new RegExp(String.raw`(?:authorization|cookie)${GAP}[=:]\s*$`, 'i');
+const RESERVED_PREFIX = String.raw`(?:authorization|cookie)${GAP}[=:]\s*`;
+const RESERVED = new RegExp(RESERVED_PREFIX + '$', 'i');
 const HEADER_VALUE = new RegExp(HEADER_OPERAND, 'y');
 /** Labels whose bare value the shared sanitizer already takes whole, up to a newline, comma, brace or quote. */
-const SHARED = /(?:password|api[_-]?key|secret|authorization|cookie|connection[_-]?string)\s*[=:]\s*$/i;
+const SHARED = new RegExp(HEADER_PREFIX + '$', 'i');
+const SHARED_HEADER = new RegExp(`${HEADER_PREFIX}|${NAME_START}${RESERVED_PREFIX}`, 'gi');
 /** Query parameters the shared sanitizer takes whole, up to a raw `&`, whitespace or quote. */
-const QUERY = /^(?:token|sig|key|secret|code|access_token|client_secret|password)=$/i;
+const SHARED_QUERY = new RegExp(QUERY_PREFIX, 'gi');
+const QUERY = new RegExp(QUERY_PREFIX, 'iy');
+
+function isQueryLabel(text: string, start: number, valueStart: number): boolean {
+    if (start === 0 || (text[start - 1] !== '?' && text[start - 1] !== '&')) return false;
+    QUERY.lastIndex = start - 1;
+    return QUERY.test(text) && QUERY.lastIndex === valueStart;
+}
+
+/** Measure the shared header operand with already selected spans treated as opaque values. */
+function headerValueEnd(text: string, start: number, limit: number, taken: Span[], index: number): number {
+    let end = start;
+    while (end < limit) {
+        HEADER_VALUE.lastIndex = end;
+        if (HEADER_VALUE.test(text)) end = Math.min(HEADER_VALUE.lastIndex, limit);
+        while (index < taken.length && taken[index].end <= end) index++;
+        if (index === taken.length || taken[index].start > end) break;
+        end = Math.min(taken[index++].end, limit);
+    }
+    return end;
+}
 
 /**
  * Whether every backslash in `[from, to)` writes a tab, CR or LF at the depth of the text holding it: a gap that the
@@ -169,12 +191,13 @@ function nonStringSpans(text: string, layers: JsonLayers): Span[] {
  */
 function bareSpans(text: string, layers: JsonLayers, taken: Span[]): Span[] {
     const spans: Span[] = [];
-    const urls = text.matchAll(URL_USERINFO);
-    const sharedOperands = [BEARER_CREDENTIAL, POSTGRES_URL].map(pattern => {
+    const matchCursor = (pattern: RegExp) => {
         const matches = text.matchAll(pattern);
-        return { matches, next: matches.next() };
-    });
-    let url = urls.next();
+        return { pattern, matches, next: matches.next() };
+    };
+    const url = matchCursor(URL_USERINFO);
+    const sharedOperands = [matchCursor(SHARED_QUERY), url, matchCursor(BEARER_CREDENTIAL),
+        matchCursor(POSTGRES_URL), matchCursor(SHARED_HEADER)];
     let unescaped: { end: number; limit: number; string: LayerString | null } | undefined;
     BARE.lastIndex = 0;
     let t = 0;
@@ -185,9 +208,7 @@ function bareSpans(text: string, layers: JsonLayers, taken: Span[]): Span[] {
         if (!genuineGap(text, layers, nameEnd(text, start, false), valueStart)) { BARE.lastIndex = start + 1; continue; }
         if (RESERVED.test(label)) {
             if (!label.includes('\\')) continue;
-            HEADER_VALUE.lastIndex = valueStart;
-            if (!HEADER_VALUE.test(text)) continue;
-            const end = Math.min(HEADER_VALUE.lastIndex, layers.at(start)?.end ?? text.length);
+            const end = headerValueEnd(text, valueStart, layers.at(start)?.end ?? text.length, taken, t);
             if (end > valueStart) {
                 spans.push({ start, end, replacement: `${label}[redacted]` });
                 BARE.lastIndex = end;
@@ -200,7 +221,7 @@ function bareSpans(text: string, layers: JsonLayers, taken: Span[]): Span[] {
         }
         const string = layers.at(valueStart);
         const limit = Math.min(t < taken.length ? taken[t].start : text.length, string?.end ?? text.length);
-        const query = '?&'.includes(text[start - 1] ?? '') && start > 0 && QUERY.test(label);
+        const query = isQueryLabel(text, start, valueStart);
         // A later label inside an ordinary unescaped operand reaches the same boundary. Query operands still need
         // their own measurement, and the quoted-span limit and containing layer have to agree.
         if (!query && unescaped && valueStart < unescaped.end && limit === unescaped.limit && string === unescaped.string) continue;
@@ -215,26 +236,52 @@ function bareSpans(text: string, layers: JsonLayers, taken: Span[]): Span[] {
             : SHARED.test(label) ? value.endsAtEscape : layered;
         if (!needsSpan) continue;
 
-        while (!url.done && url.value.index + url.value[0].length <= start) url = urls.next();
-        if (!url.done) {
-            const userinfoStart = url.value.index + url.value[1].length;
-            const at = url.value.index + url.value[0].length - 1;
+        while (!url.next.done && url.next.value.index + url.next.value[0].length <= start) url.next = url.matches.next();
+        if (!url.next.done) {
+            const userinfoStart = url.next.value.index + url.next.value[1].length;
+            const at = url.next.value.index + url.next.value[0].length - 1;
             if (userinfoStart <= start && start < at && at < end) {
                 spans.push({ start: userinfoStart, end: at, replacement: '[redacted]' });
                 BARE.lastIndex = at + 1;
                 continue;
             }
         }
-        // A placeholder covering the start of either scheme makes the shared rule miss the remaining operand.
-        // An extension can bring the start of another shared operand into the span.
+        // Cover the rest of any shared operand whose introducer this edit would hide.
+        let overlapLimit = query && (value.endsAtEscape || text[end] === '&') ? end : string?.end ?? text.length;
         let previousEnd: number;
         do {
             previousEnd = end;
             for (const cursor of sharedOperands) {
                 while (!cursor.next.done && cursor.next.value.index < end) {
                     const match = cursor.next.value;
-                    if (match.index >= valueStart) end = Math.max(end, Math.min(match.index + match[0].length, string?.end ?? text.length));
+                    const operandStart = match.index + match[0].length;
+                    // Keep the active URL available for later assignments within its userinfo.
+                    if (cursor === url && match.index < valueStart && operandStart > end) break;
                     cursor.next = cursor.matches.next();
+                    if (match.index < valueStart) continue;
+                    let operandEnd = operandStart;
+                    if (cursor.pattern === SHARED_QUERY) {
+                        const operand = queryValue(text, layers, operandStart, limit);
+                        if (!operand) continue;
+                        operandEnd = operand.end;
+                        if (operandEnd >= end && (operand.endsAtEscape || text[operandEnd] === '&')) {
+                            overlapLimit = Math.min(overlapLimit, operandEnd);
+                        }
+                    } else if (cursor.pattern === SHARED_HEADER) {
+                        if (isQueryLabel(text, match.index, operandStart)) continue;
+                        if (!genuineGap(text, layers, match.index, operandStart)) continue;
+                        operandEnd = headerValueEnd(text, operandStart, overlapLimit, taken, t);
+                        if (operandEnd === operandStart) continue;
+                    } else if (cursor.pattern === URL_USERINFO) {
+                        // The bare assignment contains the URL. Resume its operand after the userinfo.
+                        operandEnd = bareValue(text, layers, operandStart, limit)?.end ?? operandStart;
+                    }
+                    const coveredEnd = Math.min(operandEnd, overlapLimit);
+                    end = Math.max(end, coveredEnd);
+                    if (cursor.pattern === SHARED_QUERY || cursor.pattern === SHARED_HEADER) {
+                        // A label inside this operand is data. Do not measure the same suffix again.
+                        while (!cursor.next.done && cursor.next.value.index < coveredEnd) cursor.next = cursor.matches.next();
+                    }
                 }
             }
         } while (end > previousEnd);

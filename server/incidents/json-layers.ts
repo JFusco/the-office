@@ -3,8 +3,8 @@
  *
  * A string at depth 1 is a double-quoted string in the source itself, of a whole JSON document or one pasted
  * into prose. A string at depth d + 1 is a double-quoted string inside the decoded content of a depth-d string.
- * A string is established only once its closing quote is found. An opening quote without one leaves the rest of
- * its parent's content unresolved: what is inside it is known only at the parent's depth.
+ * A string is established only once its closing quote is found. A cut string value leaves the rest of its
+ * parent's content unresolved: what is inside it is known only at the parent's depth.
  */
 export interface LayerString {
     depth: number;
@@ -60,13 +60,14 @@ function strings(src: string, from: number, to: number): { pairs: Array<[number,
 }
 
 /**
- * Whether the quote at `at` opens a JSON value: the nearest character before it, past whitespace, is `:`, `[` or `,`.
+ * Whether an unmatched quote opens a value after `:`, `[` or `,`, or starts a decoded parent with optional whitespace.
  * A stray inch mark or an unbalanced quote in prose opens nothing, so it never decides where later evidence ends.
  */
-function opensValue(src: string, at: number): boolean {
+function opensValue(src: string, at: number, inParent: boolean): boolean {
+    if (at < 0) return false;
     let i = at - 1;
     while (i >= 0 && /\s/.test(src[i])) i--;
-    return i >= 0 && ':[,'.includes(src[i]);
+    return i < 0 ? inParent : ':[,'.includes(src[i]);
 }
 
 export class JsonLayers {
@@ -81,8 +82,9 @@ export class JsonLayers {
         for (let next = pending.pop(); next; next = pending.pop()) {
             const { src, from, to, at, parent } = next;
             const found = strings(src, from, to);
-            if (parent) parent.unresolved = found.unresolved;
-            else this.rootUnresolved = opensValue(src, found.unresolved) ? found.unresolved : -1;
+            const unresolved = opensValue(src, found.unresolved, parent !== null) ? found.unresolved : -1;
+            if (parent) parent.unresolved = unresolved;
+            else this.rootUnresolved = unresolved;
             for (const [open, close] of found.pairs) {
                 const { decoded, starts } = decode(src, open + 1, close, at);
                 const string: LayerString = { depth: (parent?.depth ?? 0) + 1, start: at(open + 1), end: at(close), decoded, starts, parent, unresolved: -1 };

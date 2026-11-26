@@ -301,16 +301,25 @@ test('#627 item 4: a serialized tab or newline between a label and its value is 
 test('serialized gaps preserve whole Authorization and Cookie redaction', () => {
     expectRedaction(message('Authorization' + tab + ': Basic fixture'), message('Authorization' + tab + ': [redacted]'));
     expectRedaction(message('Cookie' + tab + ': name=fixture; session=second'), message('Cookie' + tab + ': [redacted]'));
+    expectRedaction('Cookie' + B + 't: name=fixture; token="fixture"; session=fixture', 'Cookie' + B + 't: [redacted]');
+    expectRedaction(message('Cookie' + tab + ': name=fixture; token="left,right"; session=fixture'),
+        message('Cookie' + tab + ': [redacted]'));
     expectRedaction('{"m":"Cookie' + u('0009') + ': name=fixture; session=second"}',
         '{"m":"Cookie' + u('0009') + ': [redacted]"}');
 });
 
-test('a leading serialized gap retains the shared Bearer and PostgreSQL operand extents', () => {
-    for (const value of ['Bearer opaque-operand', 'postgresql://user:left,right@db.example.test/app']) {
+test('a bare edit with a serialized gap preserves overlapping credential protection', () => {
+    for (const value of ['Bearer opaque-operand', 'postgresql://user:left,right@db.example.test/app', 'https://user:left,right@db.example.test/app']) {
         const input = message('token=' + tab + value + ' done');
         expectRedaction(input, message('token=[redacted] done'));
         expect(JSON.parse(redactEvidence(input))).toEqual({ m: 'token=[redacted] done' });
     }
+    expectRedaction(message('?token=' + tab + 'Bearer opaque-operand done'), message('?token=[redacted] done'));
+    expectRedaction(message('token=' + tab + '?token=left,right&x=1 done'), message('token=[redacted]&x=1 done'));
+    expectRedaction(message('token=' + tab + '?client_secret=fixture&x=1 done'), message('token=[redacted]&x=1 done'));
+    expectRedaction(message('token=' + tab + '?token=left,right' + lf + 'next'), message('token=[redacted]' + lf + 'next'));
+    expectRedaction(message('token' + tab + '=Authorization: Basic fixture'), message('token' + tab + '=[redacted]'));
+    expectRedaction(message('token' + tab + '=Authorization' + tab + ': Basic fixture'), message('token' + tab + '=[redacted]'));
 });
 
 test('before punctuation, only genuine short and Unicode tab, LF or CR escapes form a gap', () => {
@@ -335,6 +344,7 @@ test('an empty bare assignment preserves the mapped closing quote of a nested me
 
 test('#627 item 5: a single-quoted value in a JSON string closes on an even run of decoded backslashes', () => {
     expectRedaction(cut("token='a" + B + "'b' done"), cut("token='[redacted]'"));
+    expectRedaction(wrap("\"token='a" + B + "'b' done"), wrap("\"token='[redacted]'"));
     const cutWrap = redactEvidence(wrap(cut("token='a" + B + "'b' done")));
     expect(cutWrap).toBe(wrap(cut("token='[redacted]'")));
     expect(JSON.parse(cutWrap).n).toBe(1);
@@ -351,6 +361,7 @@ test('#627 item 5: a single-quoted value in a JSON string closes on an even run 
 
 test('#627 items 6 and 7: a label with nothing after it never takes the next label, dotted or after an escape', () => {
     expectRedaction('token= auth.token= fixture', 'token= auth.token= [redacted]');
+    expectRedaction(message('token= auth.token ' + B + 't=x'), message('token= [redacted] ' + B + 't=x'));
     expectRedaction('token= team.auth.token= fixture', 'token= team.auth.token= [redacted]');
     expectRedaction(message('token=' + lf + '  team.auth.token= fixture'), message('token=' + lf + '  team.auth.token= [redacted]'));
     expectRedaction('password= GITHUB_TOKEN:' + lf + '  fixture', 'password= GITHUB_TOKEN:' + lf + '  [redacted]');
@@ -368,7 +379,11 @@ test('#627 item 9 (option a): an encoded whitespace escape ends a bare value; a 
     expectRedaction('{"log":"token:' + u('00a0') + 'fixture next"}', '{"log":"token:[redacted] next"}');
     expectRedaction('token=fix' + u('00e4') + 'ture next', 'token=[redacted] next');
     expectRedaction('{"msg":"token=p' + u('003c') + 's' + u('0026') + 'word next"}', '{"msg":"token=[redacted] next"}');
-    expectRedaction('token=a' + u('00e4') + 'b' + u('002c') + 'secret next', 'token=[redacted] next');
+    for (const hex of ['002c', '0022']) {
+        const value = 'token=a' + u('00e4') + 'b' + u(hex) + 'secret next';
+        expectRedaction(value, 'token=[redacted] next');
+        expectRedaction('{"m":"' + value + '"}', message('token=[redacted] next'));
+    }
     expectRedaction('token=fixture' + u('FEFF') + 'next', 'token=[redacted]' + u('FEFF') + 'next');
     expectRedaction('token=fix' + u('0085') + 'ture next', 'token=[redacted] next');
     expectRedaction('token=fix' + B + 'U0020ture next', 'token=[redacted] next');
@@ -383,4 +398,6 @@ test('#627 item 9 (option a): an encoded whitespace escape ends a bare value; a 
 test('#627: a stray quote in prose opens no JSON string, so a later single-quoted value still closes on its apostrophe', () => {
     expectRedaction('it is 5" wide token=\'abc\' done', 'it is 5" wide token=\'[redacted]\' done');
     expectRedaction('say "unbalanced token=\'abc\' done', 'say "unbalanced token=\'[redacted]\' done');
+    expectRedaction(message("it is 5\" wide token='abc' done"), message("it is 5\" wide token='[redacted]' done"));
+    expectRedaction(wrap(message("it is 5\" wide token='abc' done")), wrap(message("it is 5\" wide token='[redacted]' done")));
 });

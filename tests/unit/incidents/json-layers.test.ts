@@ -27,12 +27,19 @@ test('a string pasted into prose is established once its closing quote is found'
 });
 
 test('a quote with no closing quote leaves the rest of its parent\'s content unresolved', () => {
-    const text = JSON.stringify({ m: 'ok "open token=x' });
+    const text = JSON.stringify({ m: 'ok: "open token=x' });
     const layers = new JsonLayers(text);
     const string = layers.at(text.indexOf('token'))!;
     expect(string.depth).toBe(1);
     expect(unresolvedAt(string, text.indexOf('token'))).toBe(true);
     expect(unresolvedAt(string, text.indexOf('ok'))).toBe(false);
+});
+
+test('a cut string value can start its decoded parent', () => {
+    const text = JSON.stringify({ m: '  "open token=x' });
+    const at = text.indexOf('token');
+    const string = new JsonLayers(text).at(at)!;
+    expect(unresolvedAt(string, at)).toBe(true);
 });
 
 test('a Unicode-written quote or backslash decodes like any other spelling', () => {

@@ -69,7 +69,8 @@ export function bareValue(text: string, layers: JsonLayers, start: number, limit
     }
     let end = -1;
     for (; unit && !isSeparator(unit.char); unit = units.next().value) {
-        if (ENDS.has(unit.char) && (!unit.escaped || unit.char === '"')) break;
+        // A short escaped quote still delimits the value. A Unicode escape ends in a hex digit.
+        if (ENDS.has(unit.char) && (!unit.escaped || (unit.char === '"' && text[unit.end - 1] === '"'))) break;
         end = unit.end;
     }
     if (end < 0) return null;
