@@ -19,9 +19,11 @@ import type { TicketJob } from '../../../../src/shared';
 import { projectStore } from '../incident-fixture';
 import { job } from './repair-wait-fixture';
 import { rules, run } from './route-head-fixture';
+import { cleanupFixtures, fixture } from '../../delivery/recovery/implementation/saved-prerequisite-fixture';
 
 const stores: Store[] = [];
 afterEach(() => { stores.splice(0).forEach(store => store.close()); });
+afterEach(cleanupFixtures);
 
 /** A project whose first job is the one asked about. */
 function world(...jobs: Record<string, unknown>[]) {
@@ -279,4 +281,11 @@ test('the handoff\'s own rules refuse an older completed writer, and any writer 
     expect(routeHeadFault(w.store, w.job, 'reconcile-implementation', 'worker-1', confirmed)).toBe(refused);
     // A run that is no writer of this job has no saved prerequisite result, and nothing else to read.
     expect(routeHeadFault(w.store, w.job, 'reconcile-implementation', 'worker-3')).toBe(NOTHING('reconcile-implementation', 'worker-3'));
+});
+
+test.each([[null, null], [1, 'What reconcile-implementation reads for GH-100 could not be established: Error: Saved result candidate or effects are unverified']] as const)('reconcile-implementation takes the stopped writer whose saved result reports paidRuns %s only as the handoff itself reads it', (paidRuns, fault) => {
+    const f = fixture(); f.result.paidRuns = paidRuns; f.prepareRecovery();
+    // The real rules, with only the native transcript root pointed at the fixture's.
+    const handoff: HandlerRules = { ...HANDLER_RULES, savedPrerequisiteOriginal: (store, job, head) => savedPrerequisiteOriginal(store, job, head, f.nativeRoot) };
+    expect(routeHeadFault(f.store, f.job, 'reconcile-implementation', f.original.id, handoff)).toBe(fault);
 });

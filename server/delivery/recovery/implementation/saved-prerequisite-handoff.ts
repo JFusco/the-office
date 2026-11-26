@@ -57,7 +57,7 @@ export function savedPrerequisiteOriginal(store:Store,job:TicketJob,originalWork
  const originals=store.state.workLog?.filter(w=>w.requestId===job.id&&w.stage===`github-${job.stage}`)||[],work=originals.at(-1);
  requireThat(work?.id===originalWorkId&&work.role==='developer'&&work.provider==='claude'&&work.status==='completed'&&completedExecution(store,work),'One exact completed original writer required');
  const cwd=job.worktree||store.project.repo,proof=continuationWorkerProof(store,job,work,false,cwd),result=ResultSchema.parse(proof.result);
- requireThat(result.outcome==='passed'&&result.paidRuns===0&&result.prId===0&&/^[a-f0-9]{40}$/.test(result.commit)&&!!result.worktree&&!!result.branch&&(!job.worktree||result.worktree===job.worktree)&&(!job.branch||result.branch===job.branch)&&
+ requireThat(result.outcome==='passed'&&(result.paidRuns??0)===0&&result.prId===0&&/^[a-f0-9]{40}$/.test(result.commit)&&!!result.worktree&&!!result.branch&&(!job.worktree||result.worktree===job.worktree)&&(!job.branch||result.branch===job.branch)&&
   result.receipts.every(r=>r.verified&&!r.uncertain),'Saved result candidate or effects are unverified');
  const dependencies=qualified(store,result,job.id),step=job.steps.filter(s=>s.stage===job.stage&&isDeepStrictEqual(s.result,result));
  requireThat(step.length===1&&new Set(result.findings.map(f=>f.id)).size===result.findings.length&&
