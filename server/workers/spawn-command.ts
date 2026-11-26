@@ -11,6 +11,14 @@ export type CommandOptions = {
     cwd?: string;
     /** Per-child overrides only; never change the service's process.env. */
     env?: Record<string, string>;
+    /**
+     * The child's complete environment: nothing from `process.env`, not even a variable Node would
+     * otherwise carry over (`NODE_V8_COVERAGE`). Only its own string entries are passed; a name must be
+     * non-empty and contain no `=`. Cannot be combined with `env`, and is refused under Node's permission
+     * model, which adds to `NODE_OPTIONS`. A bare program name is looked up on this record's `PATH`, so
+     * callers pass absolute paths.
+     */
+    replaceEnv?: Readonly<Record<string, string>>;
     /** Zero disables the total deadline when a progress watchdog is supplied. */
     timeout?: number;
     inactivityTimeout?: number;
@@ -39,6 +47,26 @@ export type CommandOptions = {
     onGitHubRefusal?: (message: string) => void;
 };
 /**
+ * The environment a `replaceEnv` call gives its child, or a pre-dispatch refusal. Node's spawn enumerates
+ * inherited keys and copies the parent's `NODE_V8_COVERAGE` into any map without its own entry, so the
+ * child gets a fresh null-prototype map of the caller's own entries, with that key present (undefined,
+ * which Node drops) unless the caller supplies it.
+ */
+function replacementEnvironment(options: CommandOptions): NodeJS.ProcessEnv {
+    if (options.env !== undefined)
+        throw new CommandFailure('A command cannot both merge and replace its environment', 'other', false);
+    if (process.permission !== undefined)
+        throw new CommandFailure("A replaced environment is refused under Node's permission model, which adds to NODE_OPTIONS", 'other', false);
+    const environment: NodeJS.ProcessEnv = Object.create(null);
+    environment.NODE_V8_COVERAGE = undefined;
+    for (const [name, value] of Object.entries(options.replaceEnv!)) {
+        if (!name || name.includes('='))
+            throw new CommandFailure(`A replaced environment cannot hold the variable name ${JSON.stringify(name.slice(0, 100))}`, 'other', false);
+        environment[name] = value;
+    }
+    return environment;
+}
+/**
  * The one place the Office spawns a subprocess: the pre-dispatch cancellation and live-provider guards, the
  * owned process group's lifecycle, the caller's hooks, stdout on success and a classified failure otherwise.
  * It never looks at the Office context; `command` (./process) chooses the runner a call goes to.
@@ -46,12 +74,13 @@ export type CommandOptions = {
 export async function spawnCommand(program: string, args: string[], options: CommandOptions = {}) {
     if (options.signal?.aborted)
         throw new CommandFailure('Worker cancelled before dispatch', 'cancelled', false);
+    const replaced = options.replaceEnv === undefined ? undefined : replacementEnvironment(options);
     // Unit tests inject fake runners; a test that reaches this real runner must never touch live services.
     const live = process.env.VITEST ? liveReach(program, args, options.cwd) : '';
     if (live)
         throw new CommandFailure(`${live} is blocked under unit tests; inject a fake command runner`, 'cancelled', false);
     return new Promise<string>((resolve, reject) => {
-        const child = spawn(program, args, { cwd: options.cwd, env: options.env ? { ...process.env, ...options.env } : process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+        const child = spawn(program, args, { cwd: options.cwd, env: replaced ?? (options.env ? { ...process.env, ...options.env } : process.env), stdio: ['pipe', 'pipe', 'pipe'], detached: true });
         const lifecycle = child.pid && options.onLifecycle ? lifecycleRecorder(child.pid, options.lifecycleInventory) : undefined;
         let out = '', err = '', line = '', failure: Error | undefined, killTimer: ReturnType<typeof setTimeout> | undefined, interruptTimer: ReturnType<typeof setTimeout> | undefined;
         const alive = () => { if (!child.pid) return false; const probe = probeProcessGroup(child.pid); lifecycle?.probe(probe); return probe.state !== 'absent'; };

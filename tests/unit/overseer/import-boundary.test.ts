@@ -30,6 +30,20 @@ test('the runner Store and the budgeted run reach none of the Office service, th
     expect(runtimeClosure(['server/overseer/runner-store.ts']).files).toEqual(expect.arrayContaining(['server/store/store.ts', 'server/store/effects.ts', 'server/office/config.ts']));
 });
 
+test('the run folders and the worker environment reach nothing of the Office', () => {
+    for (const entry of ['server/overseer/run-directories.ts', 'server/overseer/worker-environment.ts']) {
+        const { files } = runtimeClosure([entry]);
+        expect(files.filter(file => FORBIDDEN.includes(file)), entry).toEqual([]);
+    }
+    // Root handling stays on Node built-ins: no package and no Office module.
+    const folders = runtimeClosure(['server/overseer/run-directories.ts']);
+    expect(folders.files.sort()).toEqual(['server/overseer/config.ts', 'server/overseer/run-directories.ts', 'server/overseer/runner-root.ts']);
+    expect(folders.packages).toEqual([]);
+    const environment = runtimeClosure(['server/overseer/worker-environment.ts']);
+    expect(environment.files).toEqual([...folders.files, 'server/overseer/worker-environment.ts'].sort());
+    expect(environment.packages).toEqual([]);
+});
+
 test('the operator commands reach no Office module that reads configuration or opens a store', () => {
     const { files } = runtimeClosure(['server/overseer/commands.ts']);
     expect(files.filter(file => FORBIDDEN.includes(file) || file === 'server/office/config.ts' || file === 'server/store/store.ts')).toEqual([]);

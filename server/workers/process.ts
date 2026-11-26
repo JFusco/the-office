@@ -40,6 +40,8 @@ export function processGroupAlive(pid: number): boolean {
 /**
  * Runs one subprocess. A `gh` call made inside a bound Office context goes to that Office's metered runner,
  * which spawns it once and counts it (server/github/call-scope.ts); every other call is spawned directly.
+ * `env` adds to the service's environment; `replaceEnv` is the child's whole environment instead, with
+ * nothing of the service's (see `CommandOptions`).
  */
 export async function command(program: string, args: string[], options: CommandOptions = {}) {
     return (boundGitHubRunner(program) ?? spawnCommand)(program, args, options);
