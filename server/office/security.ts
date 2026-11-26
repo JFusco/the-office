@@ -16,6 +16,13 @@ export const AFTER_JSON_ESCAPE = String.raw`(?<=\\[bfnrt]|\\u[\dA-Fa-f]{4})`;
 /** Where a provider token can start: not inside a word, or right after a JSON escape. Use it in place of a leading `\b`. */
 export const TOKEN_START = String.raw`(?:(?<!\w)|${AFTER_JSON_ESCAPE})`;
 const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:sk-[\w-]+|gh[oprs]_[\w]+)\b`, 'g');
+export const BEARER_CREDENTIAL = /(?:Bearer\s+)(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi;
+export const POSTGRES_URL = /postgres(?:ql)?:\/\/(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi;
+export const QUERY_PREFIX = String.raw`[?&](?:token|sig|key|secret|code|access_token|client_secret|password)=`;
+const QUERY_CREDENTIAL = new RegExp(String.raw`(${QUERY_PREFIX})(?:\\(?:[\s\S]|$)|[^&\s"'\\])+`, 'gi');
+export const HEADER_PREFIX = String.raw`(?:password|api[_-]?key|secret|authorization|cookie|connection[_-]?string)\s*[=:]\s*`;
+export const HEADER_OPERAND = String.raw`(?:\\(?:[\s\S]|$)|[^\n,}"\\])+`;
+const HEADER_CREDENTIAL = new RegExp(String.raw`(${HEADER_PREFIX})("?)${HEADER_OPERAND}`, 'gi');
 /**
  * Redacts credentials in a string. A value never ends inside an escape (`\` takes the next character with it)
  * or takes an unescaped `"`, so JSON text stored in the string stays JSON. Whether the whole string is JSON
@@ -23,16 +30,25 @@ const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:sk-[\w-]+|gh[oprs]
  */
 export function sanitize(value: string): string {
   let json: boolean | undefined;
-  const isJson = () => json ??= isJsonText(value);
+  return sharedRedaction(value, () => json ??= isJsonText(value));
+}
+/**
+ * The same redaction for a caller that already knows whether the text it came from is JSON text: a string that holds
+ * placeholders in place of some of that text no longer parses, so its JSON mode cannot be read from it.
+ */
+export function sanitizeInMode(value: string, json: boolean): string {
+  return sharedRedaction(value, () => json);
+}
+function sharedRedaction(value: string, isJson: () => boolean): string {
   return value
     // First, so its offset is the original string's: a `b` after an odd run of backslashes in JSON text is the `\b` escape.
-    .replace(/(?:Bearer\s+)(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi, (match: string, at: number) => match[0] === 'b' && escapedAt(value, at) && isJson() ? 'bearer [redacted]' : 'Bearer [redacted]')
+    .replace(BEARER_CREDENTIAL, (match: string, at: number) => match[0] === 'b' && escapedAt(value, at) && isJson() ? 'bearer [redacted]' : 'Bearer [redacted]')
     .replace(PROVIDER_TOKEN,'[redacted]')
-    .replace(/([?&](?:token|sig|key|secret|code|access_token|client_secret|password)=)(?:\\(?:[\s\S]|$)|[^&\s"'\\])+/gi,'$1[redacted]')
+    .replace(QUERY_CREDENTIAL,'$1[redacted]')
     // In JSON text a label lies inside a string, so a quote right after it closes that string and is kept as it is.
-    .replace(/((?:password|api[_-]?key|secret|authorization|cookie|connection[_-]?string)\s*[=:]\s*)("?)(?:\\(?:[\s\S]|$)|[^\n,}"\\])+/gi,
+    .replace(HEADER_CREDENTIAL,
       (match: string, label: string, quote: string) => quote && isJson() ? match : `${label}${quote}[redacted]`)
-    .replace(/postgres(?:ql)?:\/\/(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi,'[database redacted]');
+    .replace(POSTGRES_URL,'[database redacted]');
 }
 /** The JSON text of a value with every string in it redacted: what `sanitizeObject` parses, for a caller that only needs the text. */
 export function redactedText(value: unknown): string {
