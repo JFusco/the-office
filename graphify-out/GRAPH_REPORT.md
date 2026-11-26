@@ -1,16 +1,16 @@
 # Graph Report - the-office  (2026-11-26)
 
 ## Corpus Check
-- 1319 files · ~583,015 words
+- 1319 files · ~583,105 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 7187 nodes · 31029 edges · 175 communities (165 shown, 10 thin omitted)
+- 7187 nodes · 31031 edges · 175 communities (165 shown, 10 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 1073 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `20c85363`
+- Built from commit: `646f2b2a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -70,7 +70,7 @@
 - investigations/ledger.ts
 - ref_node_sqlite
 - cec/issue-publication.ts
-- github-delivery.ts
+- shared.ts
 - dependency-bots/adopt.ts
 - pass.ts
 - store.ts
@@ -141,7 +141,7 @@
 - deploy-command.ts
 - refresh-issue-state.cjs
 - knowledge.ts
-- shared.ts
+- remove-candidate.ts
 - sign-in-unpark.ts
 - interrupted-work-recovery.ts
 - metadata-admission.ts
@@ -316,7 +316,7 @@ Cohesion: 0.06
 Nodes (101): RFC-9562, BANNER, builtin(), bundleLauncher(), LAUNCHER_BUNDLE, LAUNCHER_ENTRY, launcherChunk(), REPOSITORY (+93 more)
 
 ### Community 19 - "StageResult"
-Cohesion: 0.08
+Cohesion: 0.07
 Nodes (54): findingsBlock(), metadataCarriedAdvisoryIds(), ownedBefore(), QA_STAGES, reviewAdvisoryIds(), Reviewed, withoutReviewAdvisories(), gateRegisteredDelivery() (+46 more)
 
 ### Community 20 - "activation-recovery.ts"
@@ -393,7 +393,7 @@ Nodes (29): closingIssues(), githubRefs(), normalizeGithubQuery(), normalizeRepo
 
 ### Community 38 - "github-context.ts"
 Cohesion: 0.07
-Nodes (59): reviewInstructions(), deliveryTask(), DeliveryTaskInput, observe(), DISCOVERY_GUIDANCE, compactSteps(), CheckJobAgreement, checkJobAgreement() (+51 more)
+Nodes (59): reviewInstructions(), deliveryTask(), DeliveryTaskInput, observe(), DISCOVERY_GUIDANCE, SourceClosed, compactSteps(), CheckJobAgreement (+51 more)
 
 ### Community 39 - "assignments.ts"
 Cohesion: 0.06
@@ -455,9 +455,9 @@ Nodes (41): PreferencesRouteContext, fields, PreferencesPatch, PreferencesStore,
 Cohesion: 0.08
 Nodes (21): Assignment, contentSchema(), JiraIssuePublisher, jiraText(), Transition, descriptionPreimage(), plain(), publicationDescription() (+13 more)
 
-### Community 55 - "github-delivery.ts"
-Cohesion: 0.06
-Nodes (40): writerRestartInstruction(), BOARD_RULE, conflictRefreshInstruction(), DECISION_RULE, implementInstruction(), dependabotReviewGuidance(), discover(), hasRoutingRefs() (+32 more)
+### Community 55 - "shared.ts"
+Cohesion: 0.05
+Nodes (50): writerRestartInstruction(), BOARD_RULE, conflictRefreshInstruction(), DECISION_RULE, implementInstruction(), dependabotReviewGuidance(), discover(), hasRoutingRefs() (+42 more)
 
 ### Community 56 - "dependency-bots/adopt.ts"
 Cohesion: 0.09
@@ -723,9 +723,9 @@ Nodes (12): advanceFence(), key(), { execFileSync }, fs, issueRefs(), main(), ma
 Cohesion: 0.06
 Nodes (38): curateLesson(), Curation, CurationAction, mergeEvidence(), LessonBrainAudit, LessonBrainOverlap, BRAIN_SCOPE, SUBJECT (+30 more)
 
-### Community 126 - "shared.ts"
-Cohesion: 0.07
-Nodes (42): recordCandidateCleanup(), interruptedRemoval(), maintenanceCandidate(), moveAside(), moveBack(), purgeRemoved(), purging, removedRoot() (+34 more)
+### Community 126 - "remove-candidate.ts"
+Cohesion: 0.10
+Nodes (32): recordCandidateCleanup(), interruptedRemoval(), maintenanceCandidate(), moveAside(), moveBack(), purgeRemoved(), purging, removedRoot() (+24 more)
 
 ### Community 127 - "sign-in-unpark.ts"
 Cohesion: 0.11
@@ -907,17 +907,17 @@ Nodes (5): SNAPSHOT_PREFIX, removeStaleSessionSnapshots(), SNAPSHOT_SWEEP_MS, ST
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Store` connect `Store` to `worker-runtime.ts`, `features/workflow.ts`, `weekly-rollup.ts`, `features/commands.ts`, `admit-improvement.ts`, `github-readiness.ts`, `scheduled-captures.ts`, `run-retrospective.ts`, `record-trigger.ts`, `StageResult`, `activation-recovery.ts`, `jira-time.ts`, `admission.ts`, `outbox.ts`, `controller-runtime.ts`, `fact-bounds.ts`, `advance-metadata-park.ts`, `MaintenanceRun`, `metadata-context.ts`, `verifyRepairCandidate`, `offices.ts`, `scheduled-work.ts`, `github-context.ts`, `assignments.ts`, `requests.ts`, `time-scope.ts`, `reader.ts`, `.save`, `Offices`, `cec.ts`, `index.ts`, `run.ts`, `investigations/ledger.ts`, `ref_node_sqlite`, `cec/issue-publication.ts`, `github-delivery.ts`, `dependency-bots/adopt.ts`, `store.ts`, `time-readback.ts`, `cost-ledger.ts`, `lesson-selection.ts`, `maintenance/maintenance.ts`, `resume-arrivals.ts`, `ticket-evidence.ts`, `OfficeScene.tsx`, `retrospective-subject.ts`, `sanitizeObject`, `continuation-evidence.ts`, `agents.ts`, `session-bridge.ts`, `follow-production.ts`, `restart-writer.ts`, `sanitize`, `superseded-wiki-pr.ts`, `provider-observation.ts`, `Ticket`, `quota-governor.ts`, `pilot-delivery.ts`, `accessibility-sources.ts`, `http/commands.ts`, `.emit`, `pr-observation-graphql.ts`, `time-ledger.ts`, `notifications.ts`, `judge-resumes.ts`, `run-accounting.ts`, `conversations/slack.ts`, `daily-cto.ts`, `shared.ts`, `sign-in-unpark.ts`, `interrupted-work-recovery.ts`, `metadata-admission.ts`, `holdReason`, `alert-issue.ts`, `artifact`, `digest`, `ref_node_path`, `Effects`, `proof-comment.ts`, `OfficeSnapshot`, `validate-stage.ts`, `coordination.ts`, `scheduler.ts`, `blocker-followups.ts`, `preparation-readback.ts`, `project-graphql.ts`, `coordination-pump.ts`, `features.ts`, `continue-access-only-plan.ts`, `stop-service.ts`, `diagnostic-snapshot.ts`, `evidence.ts`, `retire-backlogged.ts`, `redactEvidence`, `conversation-recovery.ts`, `jira-attempts.ts`, `TicketJob`, `release-unpark.ts`, `QuestionNotifications`?**
+- **Why does `Store` connect `Store` to `worker-runtime.ts`, `features/workflow.ts`, `weekly-rollup.ts`, `features/commands.ts`, `admit-improvement.ts`, `github-readiness.ts`, `scheduled-captures.ts`, `run-retrospective.ts`, `record-trigger.ts`, `StageResult`, `activation-recovery.ts`, `jira-time.ts`, `admission.ts`, `outbox.ts`, `controller-runtime.ts`, `fact-bounds.ts`, `advance-metadata-park.ts`, `MaintenanceRun`, `metadata-context.ts`, `verifyRepairCandidate`, `offices.ts`, `scheduled-work.ts`, `github-context.ts`, `assignments.ts`, `requests.ts`, `time-scope.ts`, `reader.ts`, `.save`, `Offices`, `cec.ts`, `index.ts`, `run.ts`, `investigations/ledger.ts`, `ref_node_sqlite`, `cec/issue-publication.ts`, `shared.ts`, `dependency-bots/adopt.ts`, `store.ts`, `time-readback.ts`, `cost-ledger.ts`, `lesson-selection.ts`, `maintenance/maintenance.ts`, `resume-arrivals.ts`, `ticket-evidence.ts`, `OfficeScene.tsx`, `retrospective-subject.ts`, `sanitizeObject`, `continuation-evidence.ts`, `agents.ts`, `session-bridge.ts`, `follow-production.ts`, `restart-writer.ts`, `sanitize`, `superseded-wiki-pr.ts`, `provider-observation.ts`, `Ticket`, `quota-governor.ts`, `pilot-delivery.ts`, `accessibility-sources.ts`, `http/commands.ts`, `.emit`, `pr-observation-graphql.ts`, `time-ledger.ts`, `notifications.ts`, `judge-resumes.ts`, `run-accounting.ts`, `conversations/slack.ts`, `daily-cto.ts`, `remove-candidate.ts`, `sign-in-unpark.ts`, `interrupted-work-recovery.ts`, `metadata-admission.ts`, `holdReason`, `alert-issue.ts`, `artifact`, `digest`, `ref_node_path`, `Effects`, `proof-comment.ts`, `OfficeSnapshot`, `validate-stage.ts`, `coordination.ts`, `scheduler.ts`, `blocker-followups.ts`, `preparation-readback.ts`, `project-graphql.ts`, `coordination-pump.ts`, `features.ts`, `continue-access-only-plan.ts`, `stop-service.ts`, `diagnostic-snapshot.ts`, `evidence.ts`, `retire-backlogged.ts`, `redactEvidence`, `conversation-recovery.ts`, `jira-attempts.ts`, `TicketJob`, `release-unpark.ts`, `QuestionNotifications`?**
   _High betweenness centrality (0.066) - this node is a cross-community bridge._
 - **What connects `RFC-9562` to the rest of the system?**
   _1 weakly-connected nodes found - possible missing edges._
 - **Should `incidents/routes.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.06800804828973843 - nodes in this community are weakly interconnected._
-- **Why does `command()` connect `Store` to `incidents/routes.ts`, `worker-runtime.ts`, `features/workflow.ts`, `alert-issue.ts`, `weekly-rollup.ts`, `digest`, `ref_node_path`, `Effects`, `validate-stage.ts`, `coordination.ts`, `github-readiness.ts`, `StageResult`, `activation-recovery.ts`, `project-graphql.ts`, `coordination-pump.ts`, `jira-time.ts`, `CommandRegistry`, `controller-runtime.ts`, `continue-access-only-plan.ts`, `MaintenanceRun`, `metadata-context.ts`, `verifyRepairCandidate`, `offices.ts`, `stop-service.ts`, `retire-backlogged.ts`, `connectWith`, `TicketJob`, `requests.ts`, `reader.ts`, `.save`, `release-manifest.ts`, `deployed-fixes.ts`, `cec/issue-publication.ts`, `github-delivery.ts`, `store.ts`, `time-readback.ts`, `cost-ledger.ts`, `maintenance/maintenance.ts`, `ticket-evidence.ts`, `service-health.ts`, `sanitizeObject`, `continuation-evidence.ts`, `agents.ts`, `session-bridge.ts`, `restart-writer.ts`, `provider-observation.ts`, `Ticket`, `quota-governor.ts`, `change-scope.ts`, `pilot-delivery.ts`, `call-scope.ts`, `accessibility-sources.ts`, `time-ledger.ts`, `notifications.ts`, `deploy-command.ts`, `shared.ts`?**
+- **Why does `command()` connect `Store` to `incidents/routes.ts`, `worker-runtime.ts`, `features/workflow.ts`, `alert-issue.ts`, `weekly-rollup.ts`, `digest`, `ref_node_path`, `Effects`, `validate-stage.ts`, `coordination.ts`, `github-readiness.ts`, `StageResult`, `activation-recovery.ts`, `project-graphql.ts`, `coordination-pump.ts`, `jira-time.ts`, `CommandRegistry`, `controller-runtime.ts`, `continue-access-only-plan.ts`, `MaintenanceRun`, `metadata-context.ts`, `verifyRepairCandidate`, `offices.ts`, `stop-service.ts`, `retire-backlogged.ts`, `connectWith`, `TicketJob`, `requests.ts`, `reader.ts`, `.save`, `release-manifest.ts`, `deployed-fixes.ts`, `cec/issue-publication.ts`, `shared.ts`, `store.ts`, `time-readback.ts`, `cost-ledger.ts`, `maintenance/maintenance.ts`, `ticket-evidence.ts`, `service-health.ts`, `sanitizeObject`, `continuation-evidence.ts`, `agents.ts`, `session-bridge.ts`, `restart-writer.ts`, `provider-observation.ts`, `Ticket`, `quota-governor.ts`, `change-scope.ts`, `pilot-delivery.ts`, `call-scope.ts`, `accessibility-sources.ts`, `time-ledger.ts`, `notifications.ts`, `deploy-command.ts`, `remove-candidate.ts`?**
   _High betweenness centrality (0.023) - this node is a cross-community bridge._
 - **Should `OrgChart.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.11655874190564293 - nodes in this community are weakly interconnected._
-- **Why does `TicketJob` connect `TicketJob` to `interrupted-work-recovery.ts`, `metadata-admission.ts`, `holdReason`, `alert-issue.ts`, `cx`, `artifact`, `ref_node_path`, `Effects`, `proof-comment.ts`, `work-summary.ts`, `validate-stage.ts`, `App.tsx`, `github-readiness.ts`, `scheduler.ts`, `record-trigger.ts`, `preparation-readback.ts`, `StageResult`, `activation-recovery.ts`, `project-graphql.ts`, `GitHubDelivery`, `coordination-pump.ts`, `outbox.ts`, `fact-bounds.ts`, `advance-metadata-park.ts`, `MaintenanceRun`, `metadata-context.ts`, `verifyRepairCandidate`, `retire-backlogged.ts`, `merge-scanner-retry.ts`, `scheduled-work.ts`, `github-context.ts`, `release-unpark.ts`, `requests.ts`, `github-delivery.ts`, `dependency-bots/adopt.ts`, `store.ts`, `resume-arrivals.ts`, `retrospective-subject.ts`, `continuation-evidence.ts`, `restart-writer.ts`, `stopped-record.ts`, `superseded-wiki-pr.ts`, `pilot-delivery.ts`, `call-scope.ts`, `.emit`, `notifications.ts`, `shared.ts`, `sign-in-unpark.ts`?**
+- **Why does `TicketJob` connect `TicketJob` to `interrupted-work-recovery.ts`, `metadata-admission.ts`, `holdReason`, `alert-issue.ts`, `cx`, `artifact`, `ref_node_path`, `Effects`, `proof-comment.ts`, `work-summary.ts`, `validate-stage.ts`, `App.tsx`, `github-readiness.ts`, `scheduler.ts`, `record-trigger.ts`, `preparation-readback.ts`, `StageResult`, `activation-recovery.ts`, `project-graphql.ts`, `GitHubDelivery`, `coordination-pump.ts`, `outbox.ts`, `fact-bounds.ts`, `advance-metadata-park.ts`, `MaintenanceRun`, `metadata-context.ts`, `verifyRepairCandidate`, `retire-backlogged.ts`, `merge-scanner-retry.ts`, `scheduled-work.ts`, `github-context.ts`, `release-unpark.ts`, `requests.ts`, `shared.ts`, `dependency-bots/adopt.ts`, `store.ts`, `resume-arrivals.ts`, `retrospective-subject.ts`, `continuation-evidence.ts`, `restart-writer.ts`, `stopped-record.ts`, `superseded-wiki-pr.ts`, `pilot-delivery.ts`, `call-scope.ts`, `.emit`, `notifications.ts`, `remove-candidate.ts`, `sign-in-unpark.ts`?**
   _High betweenness centrality (0.018) - this node is a cross-community bridge._
 - **Should `worker-runtime.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.07138047138047138 - nodes in this community are weakly interconnected._
