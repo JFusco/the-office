@@ -1,7 +1,9 @@
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { isBuiltin } from 'node:module';
+import { dirname, join, relative, resolve } from 'node:path';
 import { expect, test } from 'vitest';
 import { runtimeClosure, runtimeSpecifiers } from './import-closure';
+import { INSTALLER, LAUNCHER, LAUNCHER_SOURCES } from './launch-world';
 import { tempDir } from './runner-world';
 
 const FORBIDDEN = [
@@ -46,4 +48,61 @@ test('the walk follows re-exports and dynamic imports, skips erased type imports
     expect(() => runtimeSpecifiers(join(root, 'computed.ts'))).toThrow('not a string literal');
     write('package.ts', "import 'no-such-package-for-overseer';\n");
     expect(() => runtimeClosure(['package.ts'], root)).toThrow();
+});
+
+const nodeBuiltin = (specifier: string) => specifier.startsWith('node:') && isBuiltin(specifier);
+
+/** The launcher modules an entry reaches. Anything it imports but a Node built-in or a sibling `.mjs` file fails the walk. */
+function launcherClosure(entry: string): string[] {
+    const seen = new Set<string>(), pending = [entry];
+    while (pending.length) {
+        const file = pending.pop()!;
+        if (seen.has(file)) continue;
+        seen.add(file);
+        for (const specifier of runtimeSpecifiers(file)) {
+            if (nodeBuiltin(specifier)) continue;
+            if (!/^\.\/[a-z-]+\.mjs$/.test(specifier)) throw new Error(`${file}: ${specifier} is neither a Node built-in nor a sibling module`);
+            const target = resolve(dirname(file), specifier);
+            if (!existsSync(target) || !lstatSync(target).isFile()) throw new Error(`${file}: ${specifier} does not resolve`);
+            pending.push(target);
+        }
+    }
+    return [...seen].map(file => relative(dirname(entry), file)).sort();
+}
+
+test('the launcher modules import only Node built-ins and each other, the entry reaches every one, and only the entry reads its own URL', () => {
+    const inventory = readdirSync(LAUNCHER_SOURCES).filter(name => name.endsWith('.mjs')).sort();
+    expect(inventory).toHaveLength(14);
+    expect(launcherClosure(join(LAUNCHER_SOURCES, 'launch.mjs'))).toEqual(inventory);
+    expect(inventory.filter(name => readFileSync(join(LAUNCHER_SOURCES, name), 'utf8').includes('import.meta'))).toEqual(['launch.mjs']);
+});
+
+test('the committed bundle imports only Node built-ins, and the installer only those and the maintained launcher modules', () => {
+    const bundle = runtimeSpecifiers(LAUNCHER);
+    expect(bundle.length).toBeGreaterThan(0);
+    expect(bundle.filter(specifier => !nodeBuiltin(specifier))).toEqual([]);
+    const installer = runtimeSpecifiers(INSTALLER);
+    const modules = installer.filter(specifier => !nodeBuiltin(specifier));
+    expect(modules.length).toBeGreaterThan(0);
+    for (const specifier of modules) {
+        expect(specifier).toMatch(/^\.\/overseer-launcher\/[a-z-]+\.mjs$/);
+        expect(existsSync(resolve(dirname(INSTALLER), specifier)), specifier).toBe(true);
+    }
+});
+
+test('the launcher walk refuses a node: name that is not a built-in, a package, a missing sibling and a computed target', () => {
+    const cases: [string, string, string][] = [
+        ['not a built-in', "import 'node:no-such-builtin-for-overseer';\n", 'neither a Node built-in'],
+        ['a package', "import { build } from 'vite';\n", 'neither a Node built-in'],
+        ['a bare built-in name', "import 'fs';\n", 'neither a Node built-in'],
+        ['a missing sibling', "import './missing.mjs';\n", 'does not resolve'],
+        ['a computed target', "const name = './other.mjs';\nawait import(name);\n", 'not a string literal'],
+    ];
+    for (const [name, text, error] of cases) {
+        const root = join(tempDir(), 'overseer-launcher');
+        mkdirSync(root);
+        writeFileSync(join(root, 'launch.mjs'), text);
+        expect(() => launcherClosure(join(root, 'launch.mjs')), name).toThrow(error);
+    }
+    expect(isBuiltin('node:no-such-builtin-for-overseer')).toBe(false);
 });

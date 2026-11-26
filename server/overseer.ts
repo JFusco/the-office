@@ -14,6 +14,12 @@ import { officeUrl, type RunnerPaths } from './overseer/config';
 import { requireRunnerRoot } from './overseer/runner-root';
 
 const USAGE = 'overseer: pass (with OVERSEER_ROOT, an absolute path, and optionally OVERSEER_OFFICE_URL)';
+/** Phase markers for the launcher's helper, when one runs this pass (scripts/overseer-launch.mjs). A pass run by hand has no channel, and the channel never keeps the pass alive. */
+const mark = (phase: 'bootstrap' | 'run') => {
+    if (!process.send) return;
+    process.send({ type: 'overseer-phase', phase });
+    process.channel?.unref();
+};
 let checked: { paths: RunnerPaths; office: string } | undefined;
 try {
     if (process.argv[2] !== 'pass' || process.argv.length !== 3) throw new Error(USAGE);
@@ -24,9 +30,12 @@ try {
 }
 if (checked) {
     process.env.OFFICE_DATA_ROOT = checked.paths.officeData;
+    mark('bootstrap');
     const [{ officeDataRoot, realMachine }, { runPass }] = await Promise.all([import('./overseer/machine'), import('./overseer/pass')]);
     try {
-        const result = await runPass(realMachine(checked.paths, checked.office));
+        const machine = realMachine(checked.paths, checked.office);
+        mark('run');
+        const result = await runPass(machine);
         if (result.status === 'locked') {
             console.error(result.reason);
             process.exitCode = 3;
