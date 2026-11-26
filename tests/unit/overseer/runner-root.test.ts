@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test } from 'vitest';
-import { ensurePrivateDirectory, physicalPath, requireRunnerRoot, validateRunnerRoot, within } from '../../../server/overseer/runner-root';
+import { checkDatabaseFiles, ensurePrivateDirectory, physicalPath, requireRunnerRoot, validateRunnerRoot, within } from '../../../server/overseer/runner-root';
+import { runnerPaths } from '../../../server/overseer/config';
 import { snapshot, tempDir } from './runner-world';
 
 const checkoutData = resolve(__dirname, '../../../.local');
@@ -101,4 +102,10 @@ test('containment is by path component', () => {
     expect(within('/ab', '/a')).toBe(false);
     expect(within('/a/..b', '/a')).toBe(true);
     expect(within('/', '/a')).toBe(false);
+});
+
+test('a runner database must sit directly in the state folder', () => {
+    const paths = runnerPaths(join(tempDir(), 'runner'));
+    expect(checkDatabaseFiles(paths, paths.budgetDb)).toEqual({ exists: false, sidecars: [] });
+    expect(() => checkDatabaseFiles(paths, join(paths.root, 'budget.sqlite'))).toThrow("is not in the runner's state folder");
 });

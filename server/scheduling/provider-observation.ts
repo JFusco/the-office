@@ -8,11 +8,15 @@ import { azureBinding } from '../office/project-bindings';
 import { command } from '../workers/process';
 import { withGitHubSource } from '../github/call-scope';
 import { reconcileAndResumeParked } from '../cec/parking/resume-parked';
+import type { QuotaHold } from '../github/quota-governor';
 import type { Engine } from './engine';
 
-export async function observe(this: Engine) {
+/** Returns the GitHub quota hold that deferred a GitHub project's observation; otherwise nothing. */
+export async function observe(this: Engine): Promise<QuotaHold | undefined> {
     if (this.store.project.provider === 'github') {
-        await this.github.poll();
+        // The pipelines read depends on the monitor's: a hold defers both, and the last observation stands.
+        const held = await this.github.poll();
+        if (held) return held;
         const github = this.store.state.github;
         // Workflows are grouped from the runs just read, so a failed read leaves the last pipelines in place.
         if (github?.status === 'idle' && !github.error)

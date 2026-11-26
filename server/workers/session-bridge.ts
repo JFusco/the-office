@@ -87,6 +87,8 @@ async function desktopSessions(execute:typeof command,workers:ReadonlySet<number
 }
 export class SessionBridge {
  current:SessionInventory={observedAt:'',expiresAt:'',sessions:[],sources:[],complete:false};polling?:Promise<SessionInventory>;
+ /** When the first read with complete coverage since this bridge was made began; empty until then (server/scheduling/inventory-startup-wait.ts). */
+ firstCompleteAt='';
  constructor(private stores:()=>Store[],private execute:typeof command=command,private native=codexSessions,private desktop:(execute:typeof command,workers:ReadonlySet<number>)=>Promise<LiveSession[]>=desktopSessions,private context=codexSessionContext,private claudeContext=claudeSessionContext){}
  async refresh(){
   if(this.polling)return this.polling;
@@ -112,7 +114,9 @@ export class SessionBridge {
   const stores=this.stores();const directories=[...new Set([...sessions.values()].map(s=>s.cwd).concat(stores.map(s=>s.project.repo)))];
   const commons=new Map<string,string>();await Promise.all(directories.map(async cwd=>{try{commons.set(cwd,(await this.execute('git',['rev-parse','--path-format=absolute','--git-common-dir'],{cwd,timeout:5000})).trim());}catch{/* A non-repository chat has no repository identity. */}}));
   for(const s of sessions.values()){const common=commons.get(s.cwd);s.project=stores.find(store=>resolve(s.cwd)===resolve(store.project.repo)||!!common&&common===commons.get(store.project.repo))?.project.id;}
-  return this.current={observedAt:new Date(observed).toISOString(),expiresAt:new Date(observed+45000).toISOString(),complete:coverageComplete,sources,sessions:[...sessions.values()]};
+  this.current={observedAt:new Date(observed).toISOString(),expiresAt:new Date(observed+45000).toISOString(),complete:coverageComplete,sources,sessions:[...sessions.values()]};
+  if(coverageComplete&&!this.firstCompleteAt)this.firstCompleteAt=this.current.observedAt;
+  return this.current;
  }
  forProject(store:Store,key='',requestId=''){
   const now=Date.now(),fresh=now<=Date.parse(this.current.expiresAt);

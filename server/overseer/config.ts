@@ -34,6 +34,12 @@ export interface RunnerPaths {
     guard: string;
     failures: string;
     runnerState: string;
+    /** The runner's private Store and its data folder (`runner-store.ts`); only the Store opener creates them. */
+    runnerDb: string;
+    runnerData: string;
+    /** The budget ledger (`budget-ledger.ts`) and the optional ceiling override. */
+    budgetDb: string;
+    budgetConfig: string;
 }
 
 export function runnerPaths(root: string): RunnerPaths {
@@ -43,6 +49,8 @@ export function runnerPaths(root: string): RunnerPaths {
         stop: resolve(control, 'STOP.json'), pause: resolve(control, 'pause.json'),
         lock: resolve(control, 'pass.lock'), guard: resolve(control, 'pass.lock.reclaim'),
         failures: resolve(journal, 'failures.jsonl'), runnerState: resolve(state, 'runner.json'),
+        runnerDb: resolve(state, 'runner.sqlite'), runnerData: resolve(state, 'runner-data'),
+        budgetDb: resolve(state, 'budget.sqlite'), budgetConfig: resolve(control, 'budget.json'),
     };
 }
 

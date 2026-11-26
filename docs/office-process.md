@@ -782,10 +782,23 @@ Morgan or Joe:
   `codex login status` query such as the Office's own health check runs
   (`server/workers/login-status-queries.ts`). Each is recognised by its exact start-up arguments, never by
   words in a prompt.
+- After the Office starts, a queued harness request that reads the shared session inventory waits until
+  the inventory has been complete once, so a cold first read cannot spend it
+  (`server/scheduling/inventory-startup-wait.ts`). These requests wait:
+  - `resume-discovery`, `reconcile-implementation`, `reconcile-validation`, `adopt-candidate`,
+    `reconcile-scope-repair` and `cleanup-merged-candidate`;
+  - `reconcile-preparation` and `reconcile-closeout` with a head;
+  - `reconcile-base-update` whose head is the board-preflight head its job admits.
+
+  Other work keeps running. The wait opens at the first read with complete coverage and does not
+  return. The request's own ownership check still runs at execution and refuses an incomplete, stale,
+  owned or uncertain read as before. A startup wait alone records no stopped work; a hold on the
+  request's key and a pause or drain keep their own subjects.
 - A Brain result stops for read-back when it is blocked or reports a write whose outcome is unknown.
   A write refused before it took effect is a known outcome and does not stop a completed run.
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after
-  three failures in a row. The Azure monitor's reads are read-only, so a lingering helper is not
+  three failures in a row. While a GitHub quota hold stands neither is retried or counted (see GitHub
+  quota hold). The Azure monitor's reads are read-only, so a lingering helper is not
   treated as a possible write.
 - Harper hands a blocker follow-up to Morgan as one read-only diagnosis at a time
   (`server/knowledge/handoff-admission.ts`, from `reconcileBlockerFollowups()`). While its request is
@@ -922,7 +935,7 @@ their original read-back. The GitHub absolute-hours exception above is unchanged
 ### GitHub call accounting
 
 Each running Office instance counts its own GitHub CLI calls over a rolling hour (`server/github/`).
-It only measures: nothing is deferred, refused or reordered by it, and the work cadence is unchanged.
+Counting refuses and reorders nothing; the quota hold below reads its samples and refusals.
 
 - **One spawn path.** `server/workers/spawn-command.ts` is the only place a subprocess is spawned, behind
   the pre-dispatch cancellation and live-provider guards. `command` (`server/workers/process.ts`) sends a
@@ -995,6 +1008,56 @@ The assignment poll does not read GitHub again for an answer that cannot have ch
   discarded and the merge is read again. Linkage failures, malformed identity and provider errors record
   nothing and are read on the next poll. Slack delivery keeps its own read-backs. Jobs saved before the
   marker take the ordinary read, and an older release ignores it.
+- **Wiki refusal memo.** A `refused` wiki-sync adoption keeps `refusalMemo` (`{ key, checkedAt }`,
+  `server/delivery/intake/dependency-bots/refusal-memo.ts`): a digest of the project repository and target
+  and every row field qualification reads (PR number and node, state, author login and ID, draft, head and
+  base repository, ref and SHA, title, body, commit and file counts). While the key holds the PR is not
+  qualified again for five minutes; after that, or on any change, it is, so parent and tracking-issue
+  evidence is read again. Each qualification that refuses dates the memo, even when its wording repeats.
+  A head that disagrees, incomplete commit or file coverage and a read error are never kept and are
+  qualified on the next pass. The write-boundary head guard and the live-delivery reverification always
+  qualify. Records saved before the memo qualify live, and an older release ignores it.
+
+### GitHub quota hold
+
+One governor per Office instance (`server/github/quota-governor.ts`) holds background GitHub observation
+for every project while the account's quota is low. Decisions, reconciliation and delivery never ask it.
+
+- **When.** Core at or below 10% of its limit holds until that reading's reset. Only a core reading counts
+  for core: the latest sample of the newest reset window, from a `rate_limit` sample or the headers of an
+  `--include` response, so a GraphQL, search or other header never lifts it. No background read uses
+  `--include` yet, so today the readings are the samples. A stated rate-limit refusal of any call
+  (`quota-refusal.ts`, the login check's rule, a credential failure taking precedence) holds until the
+  `Retry-After` or zero-remaining reset its included headers give, or else for a minute, doubling on each
+  repeat to 16 minutes; an answered call after a quiet spell as long as the last backoff starts again from
+  a minute. Refusals while a hold stands join it and are not counted as repeats. A bare permission 403 is not
+  a refusal and keeps its own error path.
+- **Probe.** A primary refusal that the latest core reading does not explain starts one `rate_limit` probe,
+  shared with the routine sample: one in flight and at most every 30 seconds across projects. A secondary
+  refusal never probes. A failed probe changes nothing, and the probe's own refusal never probes again. With
+  no reading and no refusal (a cold start) nothing is held. Memory only: a restart holds nothing.
+- **Deferred.** The provider refresh with its pipelines read: the monitor returns the hold and writes
+  nothing, so `provider-observation.ts` keeps the last observation, its time and any error, and the GitHub
+  mailbox check mirrors that standing observation, or changes nothing before a first one. The service tick queues no refresh while held, and queues it
+  on the first tick after. In the assignment poll (`server/scheduling/held-poll.ts`): assignment reads, bot
+  and alert scans for new intake, discovery, poll-only dependency refresh and merge notices, and everything
+  that consumes the assignments read (assessments, review settlement, intake, parked resumes, Backlog
+  retirement, card admission). The last assignments, their time and any error stand; `listener.deferredUntil`
+  records when observation resumes, and the next full read clears it.
+- **Never deferred.** The poll keeps its one-minute tick for protected work: a bot adoption or alert record
+  under way (`adopting` or `tracking`, or owning an Effect still dispatching or uncertain by its attempt ID,
+  `server/delivery/intake/intake-under-way.ts`) runs its own path with the live reads its reconciliation
+  needs, and takes up no new PR or alert; adopted PRs with live deliveries are reverified; parked waits,
+  pending candidate cleanup and the PR observation of live jobs run. Pump routing, dispatch-time assignment
+  checks, merge, closeout, Effect read-backs and every delivery stage are outside the hold. A refusal there
+  keeps its failure or uncertain disposition.
+- **No error, one episode.** A deferral writes no reader `error`: the error of the refused read stands
+  through the hold as one incident-ledger episode, and the next completed read clears it as before. A queued
+  refresh or poll that meets the hold completes with "GitHub quota low. Observation resumes at <time>." The
+  listener's health row says the same. Ellis queues no listener or refresh recovery and spends no attempt
+  while held (`server/it/quota-deferral.ts`): a recovery that exists stays current with its count and
+  diagnostics, none is created, and one routine follow-up carries the same line. One already handed to Morgan
+  keeps Morgan's follow-up, and its own path queues nothing more. Jira/Azure projects are never held.
 
 ### Deployment fence and admission journal
 
@@ -2145,6 +2208,12 @@ release a pass only observes:
   `service-down` event in its own folder. When the Office answers again, it journals one
   `service-restored` event. These events are not yet sent to the Office.
 
+Before any later phase lets it call a model, every call must pass the runner's own budget
+admission: a daily ceiling on estimated cost at list price, 24 model calls a day, per-incident
+round limits and required timeouts, recorded in a ledger under the runner's root. The runner's
+model calls use the existing Claude and Codex subscription logins; the dollar figures are
+estimates, not bills. See [Overseer, Budgets](overseer.md#budgets).
+
 The runner writes only under its own root, which is never an Office data root. Its pause
 (`pnpm office overseer pause`) and STOP stop the runner only. The Office's switch for automatic
 repair resumes (`pnpm office incident pause-resumes`) is separate, and works whatever the runner
@@ -2167,7 +2236,7 @@ is doing. How to run and read it is in [Overseer, Runner](overseer.md#runner).
 | Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
 | Evidence packets, dismissals and their lapse | `server/incidents/evidence-packet.ts`, `server/incidents/dismissal.ts`, `server/incidents/dismissal-validity.ts` |
 | Repair waits: marker, admission, expiry, effective cause | `server/incidents/repair/` |
-| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection | `server/overseer.ts`, `server/overseer/` |
+| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection, budget admission and ledger, private Store | `server/overseer.ts`, `server/overseer/` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |

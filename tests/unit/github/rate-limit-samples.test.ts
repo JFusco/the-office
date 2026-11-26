@@ -72,3 +72,29 @@ test('samples older than an hour are dropped; headers count only for core and Gr
     f.samples.headers('{"no":"headers"}');
     expect(f.samples.report().core).toBeNull();
 });
+
+test('the latest reading of a resource is its newest reset window, the most used within it, from the last hour', async () => {
+    const f = fixture([async () => resources(100), async () => resources(90)]);
+    const header = (resource: string, used: number, reset: number) => `HTTP/2.0 200 OK\nX-RateLimit-Resource: ${resource}\nX-RateLimit-Limit: 5000\nX-RateLimit-Used: ${used}\nX-RateLimit-Remaining: ${5000 - used}\nX-RateLimit-Reset: ${reset}\n\n`;
+    expect(f.samples.latest('core')).toBeUndefined();
+    await f.samples.sample();
+    f.at(10); f.samples.headers(header('graphql', 4000, RESET + 7200));
+    expect(f.samples.latest('core')).toMatchObject({ used: 100, reset: RESET, from: 'rate_limit' });
+    // A delayed sample with less used in the same window is not kept, so it cannot become the latest.
+    f.at(60); await f.samples.sample();
+    expect(f.samples.latest('core')).toMatchObject({ used: 100 });
+    f.at(3599); expect(f.samples.latest('core')).toMatchObject({ used: 100 });
+    f.at(3600); expect(f.samples.latest('core')).toBeUndefined();
+});
+
+test('a shorter interval lets the governor probe sooner, still sharing the one sample in flight', async () => {
+    let release = (_: string) => {};
+    const f = fixture([async () => resources(10), () => new Promise(resolve => { release = resolve; })]);
+    await f.samples.sample();
+    f.at(20); await f.samples.sample(undefined, 30_000);
+    expect(f.calls).toHaveLength(1);
+    f.at(30); const probe = f.samples.sample(undefined, 30_000), routine = f.samples.sample();
+    release(resources(20)); await Promise.all([probe, routine]);
+    expect(f.calls).toHaveLength(2);
+    expect(f.samples.latest('core')).toMatchObject({ used: 20 });
+});

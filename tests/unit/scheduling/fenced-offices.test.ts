@@ -49,7 +49,7 @@ test('a fenced office claims nothing and admits nothing across repeated pumps an
     const office = offices(), cec = office.get('cec');
     ticket(cec.store);
     let observed = 0, delivered = 0;
-    cec.engine.observe = async () => { observed++; };
+    cec.engine.observe = async () => { observed++; return undefined; };
     cec.engine.startPilot = async () => { delivered++; };
     // Work queued before the deployment took the fence stays queued, unclaimed.
     const refresh = enqueueRequest(cec.store, 'refresh');
@@ -68,7 +68,7 @@ test('a fenced office claims nothing and admits nothing across repeated pumps an
 test('releasing the fence lets the queued work run, once', async () => {
     const office = offices(), cec = office.get('cec');
     let observed = 0;
-    cec.engine.observe = async () => { observed++; };
+    cec.engine.observe = async () => { observed++; return undefined; };
     office.fence.acquire(TOKEN, 'release x');
     const refresh = enqueueRequest(cec.store, 'refresh');
     await office.pump();

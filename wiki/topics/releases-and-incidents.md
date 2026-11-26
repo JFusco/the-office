@@ -10,7 +10,7 @@ An incident's identity is its cause's fingerprint. For a cause the harness wrote
 
 Incident evidence is redacted before anything keeps it. Where an edit to it begins and ends depends on the JSON string depth of the text. That depth is read once from the original text, and those edits are chosen there before the shared sanitizer runs, so [no credential survives a serialized shape](../journal/2026-11-26-evidence-redaction-gaps.md) and the result never depends on an earlier edit's offsets.
 
-The Overseer's runner is a separate process that only observes: [phase 6a](../journal/2026-11-25-overseer-runner-skeleton.md) reads the Office over loopback `GET`s, keeps one incident in flight and journals outages in its own folder. It is the one authorized exception to the shared-runtime rule, and it changes no Office state.
+The Overseer's runner is a separate process that only observes: [phase 6a](../journal/2026-11-25-overseer-runner-skeleton.md) reads the Office over loopback `GET`s, keeps one incident in flight and journals outages in its own folder. It is the one authorized exception to the shared-runtime rule, and it changes no Office state. [Phase 6b](../journal/2026-11-26-overseer-phase-6b-runner-budgets.md) added the budget admission every future model call must pass: a ledger of reservations held until a matching receipt settles them, round and daily limits, required timeouts, and a daily ceiling on list-price estimates, which are not bills on the subscription logins the runner uses.
 
 ## Evidence
 
