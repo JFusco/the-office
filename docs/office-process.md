@@ -782,6 +782,18 @@ Morgan or Joe:
   `codex login status` query such as the Office's own health check runs
   (`server/workers/login-status-queries.ts`). Each is recognised by its exact start-up arguments, never by
   words in a prompt.
+- After the Office starts, a queued harness request that reads the shared session inventory waits until
+  the inventory has been complete once, so a cold first read cannot spend it
+  (`server/scheduling/inventory-startup-wait.ts`). These requests wait:
+  - `resume-discovery`, `reconcile-implementation`, `reconcile-validation`, `adopt-candidate`,
+    `reconcile-scope-repair` and `cleanup-merged-candidate`;
+  - `reconcile-preparation` and `reconcile-closeout` with a head;
+  - `reconcile-base-update` whose head is the board-preflight head its job admits.
+
+  Other work keeps running. The wait opens at the first read with complete coverage and does not
+  return. The request's own ownership check still runs at execution and refuses an incomplete, stale,
+  owned or uncertain read as before. A startup wait alone records no stopped work; a hold on the
+  request's key and a pause or drain keep their own subjects.
 - A Brain result stops for read-back when it is blocked or reports a write whose outcome is unknown.
   A write refused before it took effect is a known outcome and does not stop a completed run.
 - A failed project refresh or assignment read is retried by Ellis; Morgan is told only after

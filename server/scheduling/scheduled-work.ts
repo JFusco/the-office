@@ -6,6 +6,7 @@ import { stoppedBaseHandoffResolved, stoppedBaseReassessmentReady } from '../del
 import { scheduledOwnershipRead } from '../cec/qa/scheduled-ownership-read';
 import { freshOwnershipRead } from '../cec/qa/fresh-ownership-read';
 import { requestPriority } from '../operations/request-priority';
+import { inventoryStartupWait } from './inventory-startup-wait';
 import { gateRegisteredDelivery } from '../delivery/harness/delivery-eligibility';
 import { scheduledCaptures } from '../features/handoff/scheduled-captures';
 import { scheduledAssessments } from '../features/handoff/scheduled-assessments';
@@ -117,7 +118,8 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
                 requestResolved(store, request) ? eligible('terminal', 'Same durable reconciliation completed; prior failure retained') :
                     // Native closeout writes are keyed to the GitHub issue under the native run id (request.head) as attempt.
                     history(closedTicketRequest(request, store.state.tickets) || finishedJobsRequest(request, c.jobs || []), ['reconciliation', request.id], ...(c.jobs || []).filter(job => job.key === request.key).map(job => ['delivery', job.id] as [WorkRef['kind'], string]),
-                        ...(/^GH-\d+$/.test(request.key) ? [['issue', request.key.slice(3)] as [WorkRef['kind'], string]] : []), ...(request.head ? [['reconciliation', request.head] as [WorkRef['kind'], string]] : [])));
+                        ...(/^GH-\d+$/.test(request.key) ? [['issue', request.key.slice(3)] as [WorkRef['kind'], string]] : []), ...(request.head ? [['reconciliation', request.head] as [WorkRef['kind'], string]] : []))
+                        ?? inventoryStartupWait(store, request, coordinator?.sessionBridge));
     // Applying the scope correction only rewrites the local ledger (publishing stays paused), so it may
     // run while the office is paused or draining: draining is how live work on affected tickets ends.
     for (const item of items) if (item.stage === 'apply-time-scope' && (store.state.paused || store.state.draining)) {
