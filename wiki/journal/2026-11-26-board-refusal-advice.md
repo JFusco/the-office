@@ -1,6 +1,8 @@
 ---
 topics: [office-ui-and-telemetry]
 plans: [2026-11-26-issue-681-give-refused-board-reads-quota-guidance-105cc16c2e.md]
+issue: 'https://github.com/jfusco/the-office/issues/681'
+issues: ['https://github.com/jfusco/the-office/issues/681']
 ---
 
 # Give a refused board read quota guidance, not auth advice
