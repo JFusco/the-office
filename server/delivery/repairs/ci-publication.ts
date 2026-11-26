@@ -1,5 +1,6 @@
 import { activeEffectId, harnessEffect } from '../harness/effect';
 import { guardCIRepair } from './ci-guard';
+import { assertPushCredential } from '../../github/identity/push-credentials';
 import { isDeepStrictEqual } from 'node:util';
 import { resolve } from 'node:path';
 import { verifyRepairCandidate } from './delivery-repairs';
@@ -69,9 +70,11 @@ export async function publishCIRepair(delivery: GitHubDelivery, job: TicketJob, 
         key: `ci-repair:${repair.id}`, operation: `ci-${plan.kind}`, target: job.prUrl,
         payload, guard,
         readBack,
+        ...(plan.kind === 'commit-messages' && repair.worktree ? { credentialCheck: () => assertPushCredential(store, execute, repair.worktree!) } : {}),
         dispatch: async () => {
             if (plan.kind === 'commit-messages') {
                 if (!repair.worktree || !/^[a-f0-9]{40}$/.test(repair.repairedHead || '')) throw new Error('Validated reworded candidate required');
+                await assertPushCredential(store, execute, repair.worktree);
                 await execute('git', ['push', `--force-with-lease=refs/heads/${repair.branch}:${repair.head}`, 'origin', `${repair.repairedHead}:refs/heads/${repair.branch}`], { cwd: repair.worktree, timeout: 15 * 60000 });
             } else if (plan.kind === 'pr-metadata') {
                 await execute('gh', ['api', `repos/${repo}/pulls/${job.pr}`, '--method', 'PATCH', '--input', '-'], { cwd: store.project.repo, input: JSON.stringify({ title: plan.title, body: plan.body }), timeout: 60000 });

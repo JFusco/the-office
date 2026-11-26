@@ -1,5 +1,6 @@
 import type { CostEntry } from '../../src/contracts/telemetry';
-import { EffectUncertainError, Effects } from '../store/effects';
+import { EffectUncertainError } from '../store/effects';
+import { executeGitHubWrite, selectGitHubWriter } from '../github/identity/write-boundary';
 import type { Store } from '../store/store';
 import { boardItem, githubGraphql, numberField, numberValue, readNumber, type Graphql } from '../time/board-number-field';
 import { command } from '../workers/process';
@@ -44,19 +45,21 @@ export async function publishCost(store: Store, execute: typeof command = comman
         const baseline = saved?.baseline ?? current ?? 0, usd = boardUsd(baseline, entry.microUsd);
         store.transaction(() => { ledger.baselines[entry.key] ??= { baseline, lastWritten: current, itemId: item.id, fieldId }; });
         if (current === usd) { settle(store, entry, usd, 'already on the board; nothing written', false); return; }
-        const id = effectId(store, entry);
+        const id = effectId(store, entry), payload = { project: projectId, item: item.id, field: fieldId, usd };
+        // The writer is selected before the entry records its Effect id.
+        const writer = await selectGitHubWriter(store, { id, operation: COST_OPERATION, target: entry.key, payload });
         store.transaction(() => { Object.assign(entry, { status: 'posting', effectId: id, intendedUsd: usd, updatedAt: store.clock.now().toISOString() }); });
-        await new Effects(store).execute({
+        await executeGitHubWrite(store, {
             id, work: { projectId: store.project.id, kind: 'reconciliation', id: `cost:${entry.key}` }, attemptId: `r${entry.revision}`,
             operation: COST_OPERATION, target: entry.key, authorization: 'cost-field-enabled',
-            payload: { project: projectId, item: item.id, field: fieldId, usd }, expectedState: { previous: current },
+            payload, expectedState: { previous: current },
             preflight: async () => {
                 if (!costPublishingEnabled(store)) throw new Error('Cost publishing was turned off before dispatch');
                 if (await readNumber(graphql, item.id, fieldId) !== current) throw new Error('Board cost changed before dispatch');
             },
             dispatch: payload => graphql(mutation, payload),
             verify: async () => await readNumber(graphql, item.id, fieldId) === usd,
-        });
+        }, { board: projectId, field: fieldId }, writer);
         settle(store, entry, usd, 'verified by read-back');
     }
     catch (error) {

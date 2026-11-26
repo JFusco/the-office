@@ -3,7 +3,7 @@ import { effectiveParkPickup, REVIEWABLE } from './card-resume-route';
 import { ParkNeedsRestore } from './metadata-park-freshness';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { readParkInventory } from './metadata-park-inventory';
-import { commentAuthor, parkCommentBody, settleParkComment } from './park-comment';
+import { parkCommentAuthor, parkCommentBody, settleParkComment } from './park-comment';
 import { lanePayload, parkIntents, parkUpdates, settleParkWrites, unconfirmedWrites, unreadStopWords } from './park-writes';
 import { publishMetadataPark } from './publish-metadata-park';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -29,7 +29,7 @@ export async function advanceHistoricalPark(delivery: GitHubDelivery, job: Ticke
         const unread = await settleParkWrites(store, execute, job);
         if (unread.length) throw new Error(unreadStopWords(unread));
         try {
-            const comment = { issue, marker: parked.marker!, body: parkCommentBody(parked), author: await commentAuthor(store, execute) };
+            const comment = { issue, marker: parked.marker!, body: parkCommentBody(parked), author: parkCommentAuthor(store, job) };
             await settleParkComment(store, execute, job, comment, { payload: { marker: parked.marker }, guard, post: false });
         }
         catch (error) {

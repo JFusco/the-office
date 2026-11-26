@@ -13,6 +13,7 @@ import { readPublication } from './read-command';
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
+import { assertPushCredential } from '../../github/identity/push-credentials';
 
 type Execute = typeof command;
 export interface Publication { pr: number; url: string; pushed: boolean; created: boolean; contentSource?: string }
@@ -40,6 +41,8 @@ async function pushOnce(store: Store, execute: Execute, jobs: TicketJob[], job: 
     await harnessEffect(store, job, {
         key: `push:${head}`, operation: 'git-push', target: `${store.project.repository}:${branch}`, payload: { head, branch },
         guard: () => assertCandidate(store, jobs, job, candidate),
+        // An App push proves its destination, helper and hooks before the claim, so a refusal is never sent.
+        credentialCheck: () => assertPushCredential(store, execute, candidate.worktree),
         dispatch: async () => {
             // Ordinary push of the recorded candidate; never forced.
             await recordedPush(store, execute, job, candidate, () => assertCandidate(store, jobs, job, candidate), PUSH_TIMEOUT_MS);

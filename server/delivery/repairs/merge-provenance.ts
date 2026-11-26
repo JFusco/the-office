@@ -1,4 +1,5 @@
-import { Effects } from '../../store/effects';
+import { savedAuthor } from '../../github/identity/office-authors';
+import { reconcileGitHubWrite } from '../../github/identity/write-boundary';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
 
@@ -15,10 +16,12 @@ export async function officeMergeProvenance(delivery: GitHubDelivery, job: Ticke
         (effect.expectedState as any)?.head !== head || (effect.expectedState as any)?.base !== store.project.target) return false;
     const readBack = async () => {
         const pr = await delivery.verifyPR(job, true);
-        return unchanged() && pr.number === number && pr.html_url === url && pr.head.sha === head && !!pr.merged_at && pr.merge_commit_sha === merged;
+        // The merger GitHub records must be the writer the merge Effect saved.
+        return unchanged() && pr.number === number && pr.html_url === url && pr.head.sha === head && !!pr.merged_at && pr.merge_commit_sha === merged &&
+            pr.merged_by?.login === savedAuthor(store.getEffect(id));
     };
     if (['dispatching', 'uncertain'].includes(effect.status)) {
-        if (!await new Effects(store).reconcile(id, async () => ({ verified: await readBack(), receipt: { merged: true, sha: merged } }))) return false;
+        if (!await reconcileGitHubWrite(store, id, async () => ({ verified: await readBack(), receipt: { merged: true, sha: merged } }))) return false;
     }
     const verified = store.getEffect(id), receipt = verified?.receipt as any;
     return verified?.status === 'verified' && receipt?.merged === true && receipt.sha === merged && await readBack();

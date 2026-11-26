@@ -9,7 +9,7 @@ import { FreshMergeReview, refreshMergeReview } from './refresh-merge-review';
 import {currentMergeChecks} from './github-check-selection';
 import { teamReviewedHead } from './team-review';
 import {conflictOnlyAssessment} from '../repairs/conflict-repair';
-import { Effects } from '../../store/effects';
+import { executeGitHubWrite, selectGitHubWriter } from '../../github/identity/write-boundary';
 import { z } from 'zod';
 import { GITHUB_ISSUE_SKILL } from '../../github/github-context';
 import { ProjectProgress } from '../board/project-progress';
@@ -125,10 +125,12 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
     const intentId = intent?.status === 'rejected' && !intent.dispatchedAt
         ? `${defaultIntentId}:${crypto.randomUUID()}`
         : intent?.id || defaultIntentId;
+    const payload = { sha: job.head, method };
+    // The merge writer is selected, and its credential acquired, before the intent id is recorded on the job.
+    const writer = await selectGitHubWriter(this.store, { id: intentId, operation: 'github-merge', target: job.prUrl, payload });
     job.mergeIntentId = intentId;
     this.store.save();
-    const payload = { sha: job.head, method };
-    const merged = await new Effects(this.store).execute({ id: intentId, work: { projectId: this.store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id, operation: 'github-merge', target: job.prUrl, authorization: this.store.state.coordination!.merges?.authorizedAt || job.mergeAuthorization?.head || '', payload, expectedState: { head: job.head, base: this.store.project.target },
+    const merged = await executeGitHubWrite(this.store, { id: intentId, work: { projectId: this.store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id, operation: 'github-merge', target: job.prUrl, authorization: this.store.state.coordination!.merges?.authorizedAt || job.mergeAuthorization?.head || '', payload, expectedState: { head: job.head, base: this.store.project.target },
         preflight: async () => {
             assertHarnessMayMerge(this.store);
             if (this.jobs.find(candidate => candidate.id === job.id) !== job || job.stage !== 'merge' || !this.store.state.coordination?.merges?.enabled && job.mergeAuthorization?.head !== job.head)
@@ -154,7 +156,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
             this.store.save();
             return JSON.parse(await this.execute('gh', ['api', `repos/${this.store.project.repository}/pulls/${job.pr}/merge`, '--method', 'PUT', '-f', `sha=${value.sha}`, '-f', `merge_method=${value.method}`], { cwd: this.store.project.repo, timeout: 60000 }));
         },
-        verify: async (receipt) => { const saved = await this.verifyPR(job, true); return receipt.merged === true && !!saved.merged_at && saved.merge_commit_sha === receipt.sha && saved.head.sha === payload.sha; } });
+        verify: async (receipt) => { const saved = await this.verifyPR(job, true); return receipt.merged === true && !!saved.merged_at && saved.merge_commit_sha === receipt.sha && saved.head.sha === payload.sha; } }, {}, writer);
     const saved = await this.verifyPR(job, true);
     const observed = this.store.state.github?.prs.find(pr => pr.number === job.pr);
     if (observed) {

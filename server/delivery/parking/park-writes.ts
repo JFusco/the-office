@@ -1,8 +1,9 @@
-import { Effects } from '../../store/effects';
+import { reconcileGitHubWrite } from '../../github/identity/write-boundary';
 import { likePrefix } from '../../store/like-prefix';
 import { activeEffectId } from '../harness/effect';
 import { cardStatus, type Execute } from '../board/project-graphql';
-import { assertCommentIntent, commentAuthor, parkCommentBody, parkCommentKey, readParkComment, type ParkComment } from './park-comment';
+import { savedAuthor } from '../../github/identity/office-authors';
+import { assertCommentIntent, parkCommentBody, parkCommentKey, readParkComment, type ParkComment } from './park-comment';
 import type { Store } from '../../store/store';
 import type { BoardUpdate, EffectIntent, TicketJob } from '../../../src/shared';
 
@@ -77,7 +78,7 @@ export async function readParkWrite(store: Store, execute: Execute, job: TicketJ
         if (job.parked!.metadata) return readParkComment(store, execute, boundParkComment(store, job, intent), intent.receipt);
         const parked = job.parked!, issue = Number(job.key.slice(3)), marker = parked.marker!;
         assertCommentIntent(store, job, intent, issue, { marker });
-        return readParkComment(store, execute, { issue, marker, body: parkCommentBody(parked), author: await commentAuthor(store, execute) }, intent.receipt);
+        return readParkComment(store, execute, { issue, marker, body: parkCommentBody(parked), author: savedAuthor(intent) }, intent.receipt);
     }
     const p = lanePayload(store, job, intent);
     return await cardStatus(store, execute, p.item, p.field) === p.option ? { item: p.item, option: p.option } : null;
@@ -89,10 +90,9 @@ export async function readParkWrite(store: Store, execute: Execute, job: TicketJ
  * unread. Never sends anything; a failed read throws and leaves every record as it was.
  */
 export async function settleParkWrites(store: Store, execute: Execute, job: TicketJob): Promise<UnconfirmedWrite[]> {
-    const effects = new Effects(store);
     for (const intent of parkIntents(store, job).filter(attempted)) {
         const receipt = await readParkWrite(store, execute, job, intent);
-        if (receipt !== null) await effects.reconcile(intent.id, async () => ({ verified: true, receipt }));
+        if (receipt !== null) await reconcileGitHubWrite(store, intent.id, async () => ({ verified: true, receipt }));
     }
     for (const update of parkUpdates(job).filter(update => update.status !== 'verified')) {
         const intent = store.getEffect<Partial<LanePayload>>(activeEffectId(store, laneBase(job, update.item)));

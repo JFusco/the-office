@@ -18,5 +18,7 @@ export function initializeStoreSchema(db: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS queue_observations (work_key TEXT NOT NULL,stage TEXT NOT NULL,enqueued_at TEXT NOT NULL,ready_at TEXT NOT NULL,PRIMARY KEY(work_key,stage));
     CREATE TABLE IF NOT EXISTS queue_timings (claim_id TEXT PRIMARY KEY,work_key TEXT NOT NULL,body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS admissions (seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, ref TEXT NOT NULL, at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS github_write_routes (project_id TEXT NOT NULL, operation TEXT NOT NULL, activation_effect_id TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('active','revoked')), PRIMARY KEY(project_id,operation));
+    CREATE INDEX IF NOT EXISTS effects_app_writer ON effects(json_extract(body,'$.writer.operation')) WHERE json_extract(body,'$.writer.principal')='app';
   `);
 }

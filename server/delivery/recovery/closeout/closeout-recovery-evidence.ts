@@ -1,3 +1,5 @@
+// The original closeout comment is a worker's legacy operator write until D4 moves worker publication to the harness.
+import { OPERATOR_LOGIN } from '../../../github/identity/office-authors';
 import {offlineNativeEvidence,completedExecution} from '../../../workers/worker-completion';
 import {retainedConflictChain} from '../../repairs/conflict-chain';
 import {conflictOnlyAssessment} from '../../repairs/conflict-repair';
@@ -123,7 +125,7 @@ export async function closeoutProviderEvidence(delivery:GitHubDelivery,job:Ticke
  requireCloseout(pr.number===job.pr&&pr.html_url===`https://github.com/${repository}/pull/${job.pr}`&&job.prUrl===pr.html_url&&pr.state==='closed'&&pr.merged_at&&pr.merge_commit_sha===job.mergeCommit&&pr.head.sha===job.head&&pr.head.ref===job.branch&&pr.head.repo?.full_name===repository&&pr.base.repo?.full_name===repository&&issue.number===number&&issue.html_url===issueUrl&&issue.state==='closed'&&issue.state_reason==='completed'&&issue.assignees?.some((a:any)=>a.login==='JFusco'),'Exact accepted merged PR and closed assigned issue required');
  const comments:any[]=[];for(let page=1;page<=20;page++){const rows=await delivery.api(`issues/${number}/comments?per_page=100&page=${page}`);requireCloseout(Array.isArray(rows)&&rows.length<=100,'Complete closed issue comments required');comments.push(...rows);requireCloseout(Buffer.byteLength(JSON.stringify(comments))<=1024*1024,'Closed issue comments exceed bound');if(rows.length<100)break;requireCloseout(page<20,'Closed issue comment coverage incomplete');}
  requireCloseout(new RegExp(`^https://github\\.com/${repository}/issues/${number}#issuecomment-[0-9]+$`).test(commentUrl)&&new Set(comments.map(c=>c.id)).size===comments.length&&comments.every(c=>Number.isSafeInteger(c.id)&&c.id>0&&typeof c.body==='string'&&typeof c.user?.login==='string'),'Canonical complete original comment inventory required');
- const matches=comments.filter(c=>c.html_url===commentUrl);requireCloseout(matches.length===1&&typeof matches[0].body==='string'&&matches[0].body.trim()&&matches[0].user?.login==='JFusco','Exact original closeout comment required');
+ const matches=comments.filter(c=>c.html_url===commentUrl);requireCloseout(matches.length===1&&typeof matches[0].body==='string'&&matches[0].body.trim()&&matches[0].user?.login===OPERATOR_LOGIN,'Exact original closeout comment required');
  const board=await delivery.engine.github.board(),cards=board?.items.filter(c=>c.repository===repository&&c.number===number)||[];
  requireCloseout(board&&!board.error&&cards.length===1&&cards[0].status==='Done','Exact original Done card required');
  const options={cwd:store.project.repo,readOnly:true,timeout:60000};

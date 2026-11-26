@@ -1176,6 +1176,91 @@ for every project while the account's quota is low. Decisions, reconciliation an
   diagnostics, none is created, and one routine follow-up carries the same line. One already handed to Morgan
   keeps Morgan's follow-up, and its own path queues nothing more. Jira/Azure projects are never held.
 
+- **By principal.** Calls, samples and refusals carry the principal that made them
+  (`server/github/identity/write-credential-scope.ts`): `operator`, or `app:<installation id>` for the
+  Office GitHub App. Every repository of one installation shares that installation's primary budget; the
+  operator keeps its own resource and reset windows. A refusal of one principal holds only that principal,
+  with its own retry time and backoff, and its probe reads with that principal's own credential.
+  `/api/health` keeps its totals and the operator's quota fields as before and adds `principals` and `app`
+  (public identifiers and token-exchange counts) beside the operator's own `gh` login row, which stays
+  separate. Token exchanges are App-authentication traffic and are counted there, not as GitHub calls.
+
+### GitHub write identity
+
+Every Office GitHub mutation is a write route: one project and one fixed operation label
+(`server/github/identity/write-operations.ts`): `push`, `force-push`, `branch-delete`, `pr-create`,
+`pr-edit`, `pr-ready`, `pr-close`, `merge`, `issue-create`, `issue-edit`, `issue-assign`, `issue-close`,
+`comment`, `workflow-dispatch`, `workflow-rerun`, `board-add`, `board-status` and `board-field`. The
+inventory (`write-inventory.ts`) lists every publisher of each route, the mutation it sends, and the
+publishers that do not yet go through the checked claim: the journal-only board writers and the model
+workers that still publish directly until D4. A route is sent as the operator (Joe's stored `gh` login) or
+as the Office GitHub App, never by a model's choice.
+
+- **Configuration.** The public `githubApp` block of `office-config.json`
+  (`server/github/identity/app-config.ts`) names the App and installation ids, the bot login, each project's
+  repository and repository id, the approved key-source selector (`{ "kind": "keychain", "service", "account" }`)
+  and `writes[projectId][operation]`. It never holds a key or token: unknown fields, secret material, unknown
+  projects, malformed references and conflicting forms stop start-up. With no block every route on a
+  never-activated project selects the operator exactly as before.
+- **Entries.** `"operator"`; a pending trial `{ "mode": "qualify", "effectId", "installationId",
+  "repositoryId", "adapter", "target", "beforeDigest", "expectedDigest" }` (plus `board`/`field` on board
+  routes); explicit promotion `{ "mode": "office-app", "proofEffectIds": [...] }`; and deliberate rollback
+  `{ "mode": "operator", "revokes": "<activation Effect id>" }`.
+- **Durable state.** The project store's `github_write_routes` table holds one current activation reference
+  per project and operation; the proof, full binding and rollback audit live on the qualifying Effect
+  (`route-activation.ts`). A route is never-activated, active(X) or revoked(X). Anything else holds every
+  fresh write on it: an orphaned reference, a missing Effect or marker, conflicting unrevoked markers, a
+  reference that disagrees with its Effect, ordinary App history without an activation, or an unreadable
+  store. A lost marker is never rebuilt from configuration.
+- **Trial.** A pending entry grants its one designated Effect id an App write, bound to the concrete adapter,
+  target, pre-state digest and intended-change digest; every other write on the route still uses the
+  operator, and a retry suffix needs its own grant. A different target or change on the reserved id holds.
+  The trial is verified by the adapter's independent read-back; only actor-bearing evidence (the bot on the
+  bound target) qualifies. A lost response is reconciled read-only under the saved App writer.
+- **Promotion.** `office-app` applies only when every mutation of the route has a verified, actor-bearing
+  trial for the full binding, the trials follow the route's latest revocation (or none, on first
+  promotion), no proof belongs to an earlier activation, and no unchecked publisher shares the route. One
+  project transaction saves the marker on the first proof id in sorted order and sets the reference;
+  ordinary App writes start only after it commits. Reloading the same activation changes nothing.
+- **Rollback.** On active(X), `{ "mode": "operator", "revokes": "X" }` re-reads and matches the reference,
+  Effect, marker and binding inside one transaction, saves the rollback digest and project time on X and sets
+  revoked(X). Operator writes resume only after that commit, through the stored login with ambient
+  `GH_TOKEN`/`GITHUB_TOKEN` removed and the operator verified. Reloading it keeps the first record. An unknown,
+  another route's or a superseded id holds.
+- **Requalification.** On revoked(X) only an entry naming X sends: the rollback entry, or a new trial naming
+  the same revocation, `{ "mode": "qualify", ..., "revokes": "X" }`; a new activation then needs fresh proof
+  and explicit promotion. An absent block, a missing entry, bare `operator`, a stale binding (a changed
+  repository, repository id, App or installation) or an invalid reference holds fresh writes under both
+  principals on any previously activated route.
+- **Writer pinning.** The writer is selected, and its credential acquired, before `Effects.execute` creates
+  the intent or a caller records a dispatch or create fence (`write-boundary.ts`). The intent saves the
+  principal, expected login, binding and its grant. The prepared claim re-reads the route and current entry in
+  its transaction. A competing selection leaves the prepared intent and its writer intact. A writer the route
+  no longer authorizes is rejected unsent (`writerRefusedAt`) and a fresh
+  intent follows the route's current principal (`activeEffectId`, or a fixed-id caller's
+  `writerSuccessor`). A held route (`WriteHeld`) or unavailable credential (`CredentialUnavailable`) creates
+  no intent. Attempted intents keep their original writer for read-back, whatever the configuration says now.
+- **Credentials.** The App JWT is RS256, `iat` 60 seconds back and `exp` nine minutes ahead; an installation
+  token names one repository id and the mutation's permission subset and is validated (Metadata read, no
+  excess grant, the one repository, usable expiry) before use, cached in memory only. It reaches only `gh`
+  and `git` children of the write, as `GH_TOKEN`, never argv; git's helper is reset to
+  `gh auth git-credential` by per-invocation configuration. App and rollback pushes need exactly one HTTPS
+  destination for the bound repository, with no embedded credential, extra header, askpass or competing helper.
+  An App push additionally needs a qualified digest of the hook chain and its supported local delegates.
+  An unresolved delegate holds the push (`push-destination.ts`). Tokens, signing JWTs and PEM
+  keys are redacted everywhere text is saved.
+- **Authorship.** Readers expect one writer per record (`office-authors.ts`): its saved writer, or the
+  historical operator `JFusco` for a legacy record; never a live viewer read. Provider-only discovery
+  accepts the bot, or the operator for a record from before the route's cutover; an operator record after
+  it is kept for reconciliation. An exact issue identity with a matching creation receipt uses the saved
+  writer, including after rollback. An Office merge is recognized through its own merge Effect, with GitHub's
+  `merged_by` equal to the saved writer.
+- **Delivery 1 is fixture-only.** Every live route stays on the operator until its live qualification (G1
+  key handoff, G3 per-route trial); user-owned board routes have no installation grant and stay on the
+  operator until Joe decides the G2 board question. A build that predates writer provenance and these
+  activation checks must not run with an activated route: keep publication paused for a rollback to such a
+  build. The workflow-owned `BOT_TOKEN` stays outside this rollout.
+
 ### Deployment fence and admission journal
 
 A deployment holds the Office-wide deployment fence (`server/office/deployment-fence.ts`) while it

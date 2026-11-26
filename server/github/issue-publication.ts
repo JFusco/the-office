@@ -27,7 +27,7 @@ export class GitHubIssuePublisher implements FeaturePublisher {
         return pages.flat().map((issue: any) => ({ key: 'GH-' + issue.number, text: String(issue.title) + '\n' + String(issue.body), url: issue.html_url }));
     }
     async context() {
-        const user = await this.api('user'), field = this.store.project.githubProject ? await statusField(this.store, this.execute) : null;
+        const field = this.store.project.githubProject ? await statusField(this.store, this.execute) : null;
         const existing = this.provenance.sourceTicket ? this.content(await this.issue(this.provenance.sourceTicket)) : null;
         return JSON.stringify({ provider: 'github', destination: this.store.project.repository, featureId: this.provenance.id, assignee: 'JFusco', pickupStatus: this.store.state.coordination?.pickup?.status || 'Ready', board: field, existing,
             contract: 'Each item has a stable id, title, key (empty for create), action, predecessor id (empty for first), criteria, operations. create/update payload: {title,body,labels:[],assignees:[]}; create uses empty assignees. body must include office-feature-FEATURE_ID-item-ITEM_ID as a visible provenance line. update expected is the exact observed {title,body,labels,assignees}. assign payload: {assignees:[the verified account]}. For configured board add two board operations with payload {action:add|status,projectId,fieldId,optionId,name}; add uses empty optionId/name, status uses the verified pickupStatus option. Every operation has a stable id, kind, payload, expected object. Preserve IDs from prior mappings. Only these operations are supported.' });

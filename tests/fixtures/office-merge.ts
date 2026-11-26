@@ -3,6 +3,8 @@ import type { ciFixture } from './ci-repair';
 export function recordOfficeMerge(f: ReturnType<typeof ciFixture>) {
     const id = `merge:${f.job.id}:${f.job.head}`, at = '2026-11-09T08:00:00Z';
     f.job.mergeIntentId = id; f.job.mergeAttempt = { head: f.job.head, at };
+    // A legacy Office merge carries no saved writer: GitHub records the historical operator as its merger.
+    (f.pr as { merged_by?: unknown }).merged_by ??= { login: 'JFusco' };
     f.store.putEffect({ id, work: { projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, attemptId: f.job.id,
         operation: 'github-merge', target: f.job.prUrl, authorization: 'fixture', payload: { sha: f.job.head, method: 'merge' },
         expectedState: { head: f.job.head, base: f.store.project.target }, status: 'verified', createdAt: at, dispatchedAt: at,

@@ -9,15 +9,18 @@ import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
 const executingRevision = runtimeRevision().hash;
-type Read = 'pull-request' | 'issue-links' | 'issue-comments' | 'viewer';
+/** `viewer` is the operator's start-of-draft read and stays valid in historical evidence; `repository` is the read an installation token can answer. */
+type Read = 'pull-request' | 'issue-links' | 'issue-comments' | 'viewer' | 'repository';
+/** Reads that name no pull request or issue. */
+export const accountRead = (read: string) => read === 'viewer' || read === 'repository';
 
 /** The same fixed constructor is used to validate original command provenance during recovery. */
 export function publicationReadArgs(repository: string, read: Read, number?: number): string[] {
-    if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !['pull-request', 'issue-links', 'issue-comments', 'viewer'].includes(read) ||
-        read !== 'viewer' && (!Number.isSafeInteger(number) || number! <= 0))
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !['pull-request', 'issue-links', 'issue-comments', 'viewer', 'repository'].includes(read) ||
+        !accountRead(read) && (!Number.isSafeInteger(number) || number! <= 0))
         throw new Error('Exact publication read identity is required');
     return read === 'issue-links' ? ['pr', 'view', String(number), '--repo', repository, '--json', 'closingIssuesReferences'] :
-        ['api', read === 'viewer' ? 'user' : `repos/${repository}/${read === 'pull-request' ? `pulls/${number}` : `issues/${number}/comments?per_page=100`}`,
+        ['api', read === 'viewer' ? 'user' : read === 'repository' ? `repos/${repository}` : `repos/${repository}/${read === 'pull-request' ? `pulls/${number}` : `issues/${number}/comments?per_page=100`}`,
             '--method', 'GET', ...(read === 'issue-comments' ? ['--paginate', '--slurp'] : [])];
 }
 

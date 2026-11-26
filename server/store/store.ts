@@ -254,10 +254,11 @@ export class Store {
             throw new Error('Effect belongs to another project');
         this.statement('INSERT INTO effects VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,body=excluded.body').run(intent.id, workKey(intent.work), intent.status, JSON.stringify(sanitizeObject(intent)));
     }
-    updateEffect<T = unknown>(id: string, expected: EffectIntent['status'], mutate: (intent: EffectIntent<T>) => void): EffectIntent<T> | null {
+    /** Changes the current saved row, in one transaction, only while its status is `expected` (or one of them). */
+    updateEffect<T = unknown>(id: string, expected: EffectIntent['status'] | readonly EffectIntent['status'][], mutate: (intent: EffectIntent<T>) => void): EffectIntent<T> | null {
         return this.transaction(() => {
             const intent = this.getEffect<T>(id);
-            if (!intent || intent.status !== expected)
+            if (!intent || (typeof expected === 'string' ? intent.status !== expected : !expected.includes(intent.status)))
                 return null;
             mutate(intent);
             this.putEffect(intent);
