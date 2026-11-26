@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -6,7 +6,9 @@ import { Store } from '../../../server/store/store';
 import { Engine } from '../../../server/scheduling/engine';
 import { projectById } from '../../../server/office/projects';
 import { GitHubCalls } from '../../../server/github/github-calls';
-import { generatedPR, graphqlPulls, included, isInventoryQuery, rate } from '../github/support/pull-fixtures';
+import { generatedPR, graphqlPulls, included, isInventoryQuery, rate, type GraphqlPR } from '../github/support/pull-fixtures';
+import { CommandFailure } from '../../../server/workers/process';
+import type { CommandOptions } from '../../../server/workers/spawn-command';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).forEach(fn => fn()));
@@ -124,4 +126,115 @@ test('a reserve met before a first observation leaves the store without one', as
         ? included(graphqlPulls(() => Array.from({ length: 21 }, (_, i) => generatedPR(50 - i))).respond(options.input)) : args[1].includes('actions/runs') ? '{"workflow_runs":[]}' : '[[]]';
     expect(await x.engine.github.poll()).toEqual({ until: UNTIL });
     expect(x.store.state.github).toBeUndefined();
+});
+
+const B0 = Date.parse('2026-11-26T13:00:00.000Z'), WINDOW = Date.parse('2026-11-26T14:00:00Z') / 1000;
+const REFUSAL = 'API rate limit exceeded for user ID 1.';
+/** One Projects page of the Brain board, as `gh api graphql` prints it: page 1 continues to page 2. */
+const boardPage = (number: number, title: string) => JSON.stringify({ data: { user: { projectV2: { title: 'Brain', url: 'https://github.com/users/JFusco/projects/8', shortDescription: '', readme: '',
+    fields: { nodes: [{ name: 'Status', options: [{ name: 'Ready' }] }], pageInfo: { hasNextPage: false } },
+    items: { nodes: [{ id: `item-${number}`, content: { number, title, url: `https://github.com/JFusco/brain/issues/${number}`, state: 'OPEN', repository: { nameWithOwner: 'JFusco/brain' } }, fieldValues: { nodes: [{ name: 'Ready', field: { name: 'Status' } }], pageInfo: { hasNextPage: false } } }],
+        pageInfo: { hasNextPage: number === 1, endCursor: number === 1 ? 'page-2' : null } } } } } });
+const workflowRun = (id: number) => ({ id, workflow_id: 1, name: 'CI', status: 'completed', conclusion: 'success', head_sha: 'f'.repeat(40), head_branch: 'main', event: 'push', run_attempt: 1, html_url: `https://github.com/JFusco/brain/actions/runs/${id}`, created_at: '2026-11-26T12:00:00Z', updated_at: '2026-11-26T12:05:00Z', run_started_at: '2026-11-26T12:00:00Z' });
+
+/**
+ * Brain with its board, an isolated store and the Office's real accounting over an injected `gh`. A healthy baseline
+ * reaches the workflow inventory first; then every provider answer changes, so a measured read that published would
+ * show different rows. `board` answers each measured board page.
+ */
+async function boardOffice() {
+    const root = mkdtempSync(resolve(tmpdir(), 'office-board-refusal-'));
+    const store = new Store(':memory:', projectById('brain'), root);
+    cleanup.push(() => { store.close(); rmSync(root, { recursive: true, force: true }); });
+    let measured = false, board: (page: number, options: CommandOptions) => string = page => boardPage(page, 'Measured card');
+    const pr = (title: string): GraphqlPR => { const p = generatedPR(12, { suites: [1] }); return { ...p, node: { ...p.node, title } }; };
+    const pulls = graphqlPulls(() => [pr(measured ? 'Measured PR' : 'Baseline PR')]);
+    const calls: string[] = [];
+    const github = new GitHubCalls(async (_program, args, options = {}) => {
+        options.onSpawn?.(4242);
+        const page = args.includes('after=page-2') ? 2 : 1, boardRead = args[1] === 'graphql' && args.some(arg => arg.startsWith('query=query($owner'));
+        calls.push(isInventoryQuery(options) ? 'inventory' : boardRead ? `board page ${page}` : args[1]);
+        const out = isInventoryQuery(options) ? included(pulls.respond(options.input!))
+            : boardRead ? (measured ? board(page, options) : boardPage(page, 'Baseline card'))
+            : args[1] === 'rate_limit' ? JSON.stringify({ resources: { core: { limit: 5000, used: 100, remaining: 4900, reset: WINDOW }, graphql: { limit: 5000, used: 100, remaining: 4900, reset: WINDOW } } })
+            : args[1].includes('/issues?') ? JSON.stringify([[{ number: 1, title: measured ? 'Measured issue' : 'Baseline issue', state: 'open', html_url: 'https://github.com/JFusco/brain/issues/1', updated_at: '2026-11-26T12:00:00Z' }]])
+            : args[1].includes('/actions/runs?') ? JSON.stringify({ workflow_runs: measured ? [workflowRun(2), workflowRun(1)] : [workflowRun(1)] })
+            : args[1].includes('/actions/workflows?') ? JSON.stringify({ workflows: [{ id: 1, name: 'CI', state: 'active', html_url: 'https://github.com/JFusco/brain/actions' }] })
+            : /\/actions\/workflows\/\d+\/runs/.test(args[1]) ? '{"workflow_runs":[]}' : undefined;
+        if (out === undefined) throw new Error(`unexpected gh ${args.join(' ')}`);
+        options.onOutput?.('stdout', out);
+        return out;
+    }, '', () => B0);
+    const engine = new Engine(store, undefined, undefined, undefined, undefined, github.run as any, github.governor);
+    const poll = vi.spyOn(engine.github, 'poll'), refused = vi.spyOn(github.governor, 'refused');
+    // A healthy observation that reaches the workflow inventory, so its absence later means the read was skipped.
+    expect(await github.bind(() => engine.observe())).toBeUndefined();
+    expect(store.state.github).toMatchObject({ status: 'idle', error: '', issues: [{ title: 'Baseline issue' }], prs: [{ title: 'Baseline PR' }], board: { items: [{ number: 1 }, { number: 2 }] } });
+    expect(calls).toContain('repos/JFusco/brain/actions/workflows?per_page=100');
+    store.state.github!.observedAt = '2026-11-26T12:50:00.000Z';
+    const saved = structuredClone(store.state.github!);
+    calls.length = 0; measured = true;
+    return { store, engine, github, calls, poll, refused, saved, answerBoard: (next: typeof board) => { board = next; }, observe: () => github.bind(() => engine.observe()), lastPoll: () => poll.mock.results.at(-1)!.value };
+}
+const workflows = (calls: string[]) => calls.filter(call => call.includes('/actions/workflows'));
+
+test('a board page GitHub refuses records the refusal against the last observation, and the held poll after it keeps it', async () => {
+    const x = await boardOffice();
+    x.answerBoard((_page, options) => {
+        options.onOutput?.('stdout', JSON.stringify({ errors: [{ message: REFUSAL }] }));
+        throw new CommandFailure('gh exited 1: query failed', 'other', true);
+    });
+    expect(await x.observe()).toBeUndefined();
+    expect(await x.lastPoll()).toBeUndefined();
+    expect(x.store.state.github).toMatchObject({ status: 'blocked', error: expect.stringContaining(REFUSAL) });
+    expect(x.store.state.github!.error).toContain('GitHub Project read failed');
+    const kept = ({ prs, board, issues, runs, observedAt }: typeof x.saved) => ({ prs, board, issues, runs, observedAt });
+    expect(kept(x.store.state.github!)).toEqual(kept(x.saved));
+    expect(x.calls).toContain('board page 1');
+    expect(x.calls).toContain('repos/JFusco/brain/actions/runs?per_page=100');
+    expect(workflows(x.calls)).toEqual([]);
+    expect(x.refused).toHaveBeenCalledTimes(1);
+    // The refusal's probe answers healthy; the shared backoff still holds the next refresh, which reads nothing and keeps the diagnostic.
+    await x.github.quota.sample();
+    const diagnostic = structuredClone(x.store.state.github!);
+    x.calls.length = 0;
+    expect(await x.observe()).toEqual({ until: new Date(B0 + 60_000).toISOString() });
+    expect(x.calls).toEqual([]);
+    expect(x.store.state.github).toEqual(diagnostic);
+    expect(x.refused).toHaveBeenCalledTimes(1);
+});
+
+test('reaching the GraphQL reserve while the final board page is read defers the refresh and restores the earlier observation', async () => {
+    const x = await boardOffice();
+    x.answerBoard(page => {
+        if (page === 2) x.github.quota.headers({ resource: 'graphql', limit: 5000, used: 4500, remaining: 500, reset: WINDOW }, 'body');
+        return boardPage(page, 'Measured card');
+    });
+    expect(await x.observe()).toEqual({ until: new Date(WINDOW * 1000).toISOString() });
+    expect(await x.lastPoll()).toEqual({ until: new Date(WINDOW * 1000).toISOString() });
+    expect(x.calls).toEqual(expect.arrayContaining(['board page 1', 'board page 2']));
+    expect(x.store.state.github).toEqual(x.saved);
+    expect(workflows(x.calls)).toEqual([]);
+    expect(x.refused).not.toHaveBeenCalled();
+});
+
+test('a board permission failure met by an independent hold is a deferral, never promoted to the observation’s error', async () => {
+    const x = await boardOffice();
+    x.answerBoard((_page, options) => {
+        options.onOutput?.('stdout', JSON.stringify({ errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }] }));
+        throw new CommandFailure('gh exited 1: gh: Resource not accessible by integration', 'other', true);
+    });
+    const read = x.engine.github.board.bind(x.engine.github), seen: string[] = [];
+    x.engine.github.board = async (...args) => {
+        const result = await read(...args);
+        seen.push(result?.error ?? '');
+        // The hold arrives only after the board read failed for its own reason.
+        x.github.quota.headers({ resource: 'graphql', limit: 5000, used: 4500, remaining: 500, reset: WINDOW }, 'body');
+        return result;
+    };
+    expect(await x.observe()).toEqual({ until: new Date(WINDOW * 1000).toISOString() });
+    expect(seen).toEqual([expect.stringContaining('Resource not accessible by integration')]);
+    expect(x.calls).toContain('board page 1');
+    expect(x.store.state.github).toEqual(x.saved);
+    expect(x.refused).not.toHaveBeenCalled();
 });

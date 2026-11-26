@@ -1167,7 +1167,9 @@ for every project while the account's quota is low. Decisions, reconciliation an
   Effect read-backs and every delivery stage are outside the hold. A refusal there
   keeps its failure or uncertain disposition.
 - **No error, one episode.** A deferral writes no reader `error`: the error of the refused read stands
-  through the hold as one incident-ledger episode, and the next completed read clears it as before. A queued
+  through the hold as one incident-ledger episode, and the next completed read clears it as before. A board
+  page GitHub refuses during a refresh records the board's diagnostic, with the refusal's text, as that
+  observation's error against the last observation's rows and time, and the held polls after it keep it. A queued
   refresh or poll that meets the hold completes with "GitHub quota low. Observation resumes at <time>." The
   listener's health row says the same. Ellis queues no listener or refresh recovery and spends no attempt
   while either resource they need is held (`server/it/quota-deferral.ts`): a recovery that exists stays current with its count and

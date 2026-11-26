@@ -32,6 +32,11 @@ export type CommandOptions = {
     onStragglersTerminated?: (processGroup: number) => void;
     onLifecycle?: (diagnostic: LifecycleDiagnostic) => void;
     lifecycleInventory?: InventoryRunner;
+    /**
+     * Told the text of GitHub's stated rate-limit refusal of this `gh` call, once, after the Office's metered runner
+     * has started the shared hold (`server/github/metered-runner.ts`). Never called by the spawn path itself.
+     */
+    onGitHubRefusal?: (message: string) => void;
 };
 /**
  * The one place the Office spawns a subprocess: the pre-dispatch cancellation and live-provider guards, the

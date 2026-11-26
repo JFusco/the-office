@@ -17,8 +17,11 @@ export class GitHubMonitor {
     const data=JSON.parse(await this.execute('gh',args,{cwd:this.store.project.repo,timeout:60000,readOnly:true}));
     return paginate?data.flat():data;
   }
-  /** `check` is a background caller's quota check, asked before each page; a hold it raises is rethrown, never a board error. */
-  async board(check?:QuotaCheck):Promise<GitHubBoard|undefined>{
+  /**
+   * `check` is a background caller's quota check, asked before each page; a hold it raises is rethrown, never a board
+   * error. `onGitHubRefusal` is told the text of a page's stated rate-limit refusal; the board and its error are unchanged.
+   */
+  async board(check?:QuotaCheck,onGitHubRefusal?:(message:string)=>void):Promise<GitHubBoard|undefined>{
     const config=this.store.project.githubProject;if(!config)return;
     const saved=this.store.state.github?.board,previous=saved?.url===config.url?saved:undefined;
     try{
@@ -28,7 +31,7 @@ export class GitHubMonitor {
         const query=`query($owner:String!,$number:Int!,$after:String){user(login:$owner){projectV2(number:$number){title url shortDescription readme fields(first:100){nodes{... on ProjectV2SingleSelectField{name options{name}}} pageInfo{hasNextPage}} items(first:100,after:$after){nodes{id fieldValues(first:100){nodes{... on ProjectV2ItemFieldSingleSelectValue{name field{... on ProjectV2SingleSelectField{name}}}} pageInfo{hasNextPage}} content{... on Issue{number title url state repository{nameWithOwner}}}} pageInfo{hasNextPage endCursor}}}}}`;
         const args=['api','graphql','-f',`query=${query}`,'-f',`owner=${config.owner}`,'-F',`number=${config.number}`];
         if(after)args.push('-f',`after=${after}`);
-        const response=JSON.parse(await this.execute('gh',args,{cwd:this.store.project.repo,timeout:60000,readOnly:true}));
+        const response=JSON.parse(await this.execute('gh',args,{cwd:this.store.project.repo,timeout:60000,readOnly:true,...(onGitHubRefusal?{onGitHubRefusal}:{})}));
         if(response.errors?.length)throw new Error(response.errors.map((e:any)=>e.message).join('; '));
         const p=response.data?.user?.projectV2;if(!p)throw new Error(`${this.store.project.name} project is unavailable`);
         if(p.fields.pageInfo.hasNextPage)throw new Error('Project field pagination is incomplete');
@@ -75,8 +78,15 @@ export class GitHubMonitor {
       const observedAt=new Date().toISOString();
       const allIssues=issues.filter((i:any)=>!i.pull_request);
       for(const old of prior.issues)if(old.state==='open'&&!allIssues.some((i:any)=>i.number===old.number)){check();allIssues.push(await this.api(`issues/${old.number}`));}
-      const board=await this.board(check);
-      check();
+      // A refused board page has already started the shared hold, so the check below holds; the refusal is still a
+      // failed read of this observation, recorded with the board's diagnostic, and later held polls keep it.
+      let boardRefusal:string|undefined;
+      const board=await this.board(check,message=>{boardRefusal=message;});
+      try{check();}
+      catch(e){
+        if(heldBy(e)&&board?.error&&boardRefusal!==undefined)throw new Error(board.error.includes(boardRefusal)?board.error:`${boardRefusal} ${board.error}`);
+        throw e;
+      }
       const state:GitHubState={status:'idle',observedAt,error:'',prs,board,issues:allIssues.map((i:any)=>({number:i.number,key:`GH-${i.number}`,title:i.title,state:i.state,url:i.html_url,updatedAt:i.updated_at})),
         runs:runs.workflow_runs.map((r:any)=>({id:r.id,workflowId:r.workflow_id,name:r.name||r.display_title,status:r.status,conclusion:r.conclusion||'',head:r.head_sha,branch:r.head_branch,event:r.event,attempt:r.run_attempt,url:r.html_url,createdAt:r.created_at,updatedAt:r.updated_at,startedAt:r.run_started_at||''}))};
       this.store.state.github=state;
