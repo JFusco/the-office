@@ -10,6 +10,7 @@ import { Conversations } from '../../../server/conversations/conversations';
 import { projectById, officeCapacity, contextPacket, validTicket } from '../../../server/office/projects';
 import { BrainMaintenance } from '../../../server/maintenance/brain/brain-maintenance';
 import { GitHubMonitor } from '../../../server/github/github';
+import { isInventoryQuery, noOpenPRs } from '../github/support/pull-fixtures';
 import { GitHubMaintenance, weeklyDue } from '../../../server/maintenance/maintenance';
 import { command } from '../../../server/workers/process';
 import type { MaintenanceResult } from '../../../src/shared';
@@ -178,14 +179,13 @@ test('candidate isolation uses the Git worktree root and accepts a nested isolat
     await expect(maintenance.verifyCandidate({ ...valid })).rejects.toThrow('head or clean state');
 }, 30000);
 test('GitHub observation paginates issues and retains last good evidence if a later page fails', async () => {
-    const store = setup(), monitor = new GitHubMonitor(store, async (_program, args) => {
+    const store = setup(), monitor = new GitHubMonitor(store, async (_program, args, options) => {
         const path = args[1];
+        if (isInventoryQuery(options)) return noOpenPRs(store.project.repository);
         if (path.includes('/issues?')) {
             expect(args).toContain('--paginate');
             return JSON.stringify([[{ number: 91, title: 'Fixture issue', state: 'open', html_url: 'https://github.com/JFusco/cms-field-vocabulary/issues/91', updated_at: '2026-10-27T00:00:00Z' }], []]);
         }
-        if (path.includes('/pulls?'))
-            return '[[]]';
         if (path.includes('/actions/runs?'))
             return '{"workflow_runs":[]}';
         throw new Error('Unexpected fixture command');

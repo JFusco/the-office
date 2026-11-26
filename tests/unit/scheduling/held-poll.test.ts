@@ -8,6 +8,7 @@ import { ITSpecialist } from '../../../server/it/it-specialist';
 import { Coordinator } from '../../../server/scheduling/coordination';
 import { Engine } from '../../../server/scheduling/engine';
 import { enqueueRequest, executeRequest } from '../../../server/scheduling/requests';
+import type { TicketJob } from '../../../src/shared';
 afterEach(cleanupFakes);
 
 const T0 = Date.parse('2026-11-26T13:00:00.000Z'), RESET = T0 / 1000 + 1800, UNTIL = new Date(RESET * 1000).toISOString();
@@ -21,7 +22,7 @@ const prior = { key: 'GH-5', summary: 'Restore', url: `https://github.com/${REPO
  * answer was lost. The account's core quota is then sampled below the 10% reserve, and the last assignment poll and
  * GitHub observation were refused. Every call is recorded with the source it ran under.
  */
-async function belowTheFloor() {
+async function belowTheFloor(remaining = { core: 400, graphql: 5000 }) {
     const f = fakeGitHub();
     f.state.cards = [{ id: 'pr-card', kind: 'PullRequest', number: 121, status: 'ready' }];
     Object.assign(f.state.issue, { title: '', body: '', assignees: [] });
@@ -33,7 +34,7 @@ async function belowTheFloor() {
     let staleRows: any[] | undefined;
     const execute = async (program: string, args: string[], options?: any): Promise<string> => {
         calls.push({ source: currentGitHubSource(), line: `${program} ${args.join(' ')}` });
-        if (args[1] === 'rate_limit') return JSON.stringify({ resources: { core: { limit: 5000, used: 4600, remaining: 400, reset: RESET }, graphql: { limit: 5000, used: 0, remaining: 5000, reset: RESET } } });
+        if (args[1] === 'rate_limit') return JSON.stringify({ resources: { core: { limit: 5000, used: 5000 - remaining.core, remaining: remaining.core, reset: RESET }, graphql: { limit: 5000, used: 5000 - remaining.graphql, remaining: remaining.graphql, reset: RESET } } });
         if (staleRows && args[1] === `repos/${REPOSITORY}/pulls?state=open&per_page=100`) return JSON.stringify([staleRows]);
         return (f.execute as any)(program, args, options);
     };
@@ -125,4 +126,63 @@ test('at the deadline the poll reads assignments again and a completed read clea
     expect(x.c.state.listener.error).toBe('');
     expect(x.c.state.listener.deferredUntil).toBeUndefined();
     expect(x.c.state.listener.lastCheckedAt).not.toBe('2026-11-26T12:58:00.000Z');
+});
+
+/** A live job on a stacked PR the stale open list does not carry, so its dependency refresh reads it by number. */
+function liveChild(x: Awaited<ReturnType<typeof belowTheFloor>>) {
+    x.f.state.prs.push({ number: 123, html_url: `https://github.com/${REPOSITORY}/pull/123`, state: 'open', draft: false, user: { login: 'JFusco' }, title: 'Child', body: 'Closes #5',
+        head: { sha: 'c'.repeat(40), ref: 'codex/5-child', repo: { full_name: REPOSITORY } }, base: { ref: 'main', sha: BASE, repo: { full_name: REPOSITORY } }, merged_at: null });
+    const job = { id: 'child-job', key: 'GH-7', pr: 123, prUrl: `https://github.com/${REPOSITORY}/pull/123`, requestedAt: '2026-11-26T12:00:00.000Z', status: 'watching', stage: 'lead-pr', head: 'c'.repeat(40), worktree: '', branch: 'codex/5-stale', detail: '', steps: [] } as TicketJob;
+    x.c.state.jobs!.push(job);
+    return job;
+}
+
+test('at 500 of 5,000 GraphQL points with healthy core, the board and refresh wait while the REST-only dependency lookup and read-backs run', async () => {
+    const x = await belowTheFloor({ core: 4600, graphql: 500 }), job = liveChild(x);
+    const observed = vi.spyOn(GitHubDelivery.prototype, 'observe').mockResolvedValue(undefined);
+    try {
+        expect(x.github.governor.hold()).toBeUndefined();
+        expect(await x.c.poll(new Date(T0))).toEqual({ until: UNTIL });
+        // GraphQL-dependent work waits: no assignment or board read, no intake consumers, no monitor.
+        expect(x.assignmentReads()).toBe(0);
+        expect(x.calls.filter(call => ['assignments', 'alerts', 'discovery', 'merge-notices', 'monitor', 'pipelines'].includes(call.source))).toEqual([]);
+        // Core-only work continues: the live job's PR is read by number and its routing refreshed.
+        expect(x.calls).toContainEqual({ source: 'dependency-refresh', line: `gh api repos/${REPOSITORY}/pulls/123` });
+        expect(job.branch).toBe('codex/5-child');
+        // The protected read-back settled the uncertain adoption PATCH without repeating it.
+        expect(x.f.store.getEffect(x.effect)?.status).toBe('verified');
+        expect(x.patches()).toHaveLength(1);
+        expect(observed).toHaveBeenCalledTimes(1);
+        expect(x.c.state.listener).toMatchObject({ error: REFUSED, lastCheckedAt: '2026-11-26T12:58:00.000Z', assigned: [prior], deferredUntil: UNTIL });
+        // A refresh queued meanwhile records the deferral and reads nothing.
+        x.calls.length = 0;
+        const request = enqueueRequest(x.f.store, 'refresh');
+        await executeRequest(x.f.store, x.engine, x.c, request);
+        expect(request).toMatchObject({ status: 'completed', detail: QUOTA_LOW });
+        expect(x.calls).toEqual([]);
+    } finally { observed.mockRestore(); }
+});
+
+test('under a shared refusal the background dependency lookup waits too', async () => {
+    const x = await belowTheFloor({ core: 4600, graphql: 4600 }), job = liveChild(x);
+    x.github.governor.refused({ secondary: true });
+    const observed = vi.spyOn(GitHubDelivery.prototype, 'observe').mockResolvedValue(undefined);
+    try {
+        expect(await x.c.poll(new Date(T0))).toEqual({ until: new Date(T0 + 60_000).toISOString() });
+        expect(x.calls.filter(call => call.source === 'dependency-refresh')).toEqual([]);
+        expect(job.branch).toBe('codex/5-stale');
+        expect(observed).toHaveBeenCalledTimes(1);
+    } finally { observed.mockRestore(); }
+});
+
+test('a failed dependency lookup under a GraphQL-only reserve keeps the routing and the hold: no listener error, the protected tick runs', async () => {
+    const x = await belowTheFloor({ core: 4600, graphql: 500 }), job = liveChild(x);
+    x.f.state.fail = (_program, args) => args[1] === `repos/${REPOSITORY}/pulls/123` ? 'gh exited 1: Server Error (HTTP 502)' : false;
+    const observed = vi.spyOn(GitHubDelivery.prototype, 'observe').mockResolvedValue(undefined);
+    try {
+        expect(await x.c.poll(new Date(T0))).toEqual({ until: UNTIL });
+        expect(job.branch).toBe('codex/5-stale');
+        expect(observed).toHaveBeenCalledTimes(1);
+        expect(x.c.state.listener).toMatchObject({ error: REFUSED, deferredUntil: UNTIL });
+    } finally { observed.mockRestore(); }
 });

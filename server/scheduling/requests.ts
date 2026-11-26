@@ -75,9 +75,11 @@ export function enqueueCloseoutReconciliation(store:Store,key:string,head:string
  return store.transaction(()=>{const request=enqueueRequest(store,'reconcile-closeout',key,head);if(descriptor)request.closeoutSupervisionProof=descriptor;store.save();return request;});
 }
 export async function executeRequest(store: Store, engine: Engine, coordinator: Coordinator, request: HarnessRequest, checkIT?: () => Promise<void>): Promise<void> {
-    // A request IT saved as its recovery is IT's work, whatever it calls (server/github/call-scope.ts).
-    const pin = itRecoveryRequest(store.state, request.id);
-    return withGitHubSource(pin ? 'it' : currentGitHubSource(), () => runRequest(store, engine, coordinator, request, checkIT), { project: store.project.id, pin });
+    // A request IT saved as its recovery is IT's work, whatever it calls (server/github/call-scope.ts). Otherwise an
+    // hours or cost reconciliation no scope owns is counted as time or cost.
+    const pin = itRecoveryRequest(store.state, request.id), current = currentGitHubSource();
+    const source = pin ? 'it' : current === 'other' && request.action === 'reconcile-time' ? 'time' : current === 'other' && request.action === 'reconcile-cost' ? 'cost' : current;
+    return withGitHubSource(source, () => runRequest(store, engine, coordinator, request, checkIT), { project: store.project.id, pin });
 }
 async function runRequest(store: Store, engine: Engine, coordinator: Coordinator, request: HarnessRequest, checkIT?: () => Promise<void>): Promise<void> {
     if (request.status !== 'queued')

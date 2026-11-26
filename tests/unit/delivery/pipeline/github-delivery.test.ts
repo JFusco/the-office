@@ -1366,3 +1366,62 @@ test.each(['worker', 'harness'] as const)('retains the completed %s result when 
     expect(f.state.calls).toHaveLength(callsAtStop);
     expect(job.steps).toEqual([{ stage: 'superseded-stage-result', result }]);
 });
+
+/** Favorable monitor evidence for PR 700 at `head`, as a stale inventory could leave it: open, approved, green, Actions passed. */
+function favorableObservation(a: ReturnType<typeof setup>, row: Record<string, unknown> = {}) {
+    a.store.state.github = { status: 'idle', error: '', observedAt: new Date().toISOString(), issues: [],
+        runs: [{ id: 1, workflowId: 1, name: 'CI', status: 'completed', conclusion: 'success', head: 'c'.repeat(40), branch: 'main', event: 'push', attempt: 1, url: '', createdAt: '', updatedAt: '', startedAt: '' }],
+        prs: [{ number: 700, title: 'Fixture', state: 'open', draft: false, author: 'JFusco', head, base: 'main', url: a.pr.html_url, mergedAt: '', mergeable: true, linkedIssues: [999],
+            reviews: [{ author: 'JFusco', state: 'APPROVED', commit: head }], checks: [{ name: 'Tests', status: 'completed', conclusion: 'success', url: '', sha: head }], ...row }] };
+}
+test.each(['checks', 'threads', 'head'])('stale favorable monitor evidence never stands in for the merge preflight: live %s withholds the merge', async reason => {
+    const a = setup();
+    favorableObservation(a);
+    a.store.state.coordination!.merges = { enabled: true, authorizedAt: '' };
+    a.job.pr = 700; a.job.stage = 'lead-pr'; a.pr.draft = false;
+    a.engine.agents.run = async () => a.result('review') as any;
+    await a.delivery.step(a.job);
+    if (reason === 'checks') a.setCheckConclusion('failure'); else if (reason === 'threads') a.setUnresolved(true); else a.pr.head.sha = 'c'.repeat(40);
+    const before = a.calls.length;
+    await a.delivery.step(a.job);
+    const live = a.calls.slice(before);
+    expect(live).toContainEqual('api repos/JFusco/brain/pulls/700');
+    if (reason === 'checks') expect(live.some(call => call.includes(`commits/${head}/check-runs`))).toBe(true);
+    if (reason === 'threads') expect(live).toContainEqual('api graphql --input -');
+    expect(a.calls.some(c => c.includes('/merge --method PUT'))).toBe(false);
+    expect(a.job.mergeCommit).toBeUndefined();
+    expect(a.job.status).not.toBe('watching');
+});
+test('a stale favorable observation never approves a merge: approval reads the PR and issue live and withholds on a moved base', async () => {
+    const a = setup();
+    favorableObservation(a);
+    Object.assign(a.job, { pr: 700, head, stage: 'lead-pr', status: 'watching', mergeApprovalRequired: true, steps: [{ stage: 'lead-pr', result: a.result('review') }] });
+    a.pr.draft = false;
+    a.job.reviewContext = { head, issueUpdatedAt: '2026-10-28T12:00:00Z', prUpdatedAt: a.pr.updated_at, baseSha: a.pr.base.sha, target: 'main', step: 0 };
+    a.pr.base.sha = 'c'.repeat(40);
+    const before = a.calls.length;
+    await expect(a.delivery.approveMerge(a.job.key, head)).rejects.toThrow('changed');
+    expect(a.job).toMatchObject({ mergeApprovalRequired: true, stage: 'lead-pr', status: 'watching' });
+    expect(a.calls.slice(before)).toEqual(expect.arrayContaining(['api repos/JFusco/brain/pulls/700', 'api repos/JFusco/brain/issues/999']));
+});
+test('a stale observed merge never closes out: merge Actions and the merged PR are read live, and failures withhold closeout', async () => {
+    const actions = setup();
+    favorableObservation(actions, { state: 'closed', mergedAt: '2026-10-28T15:00Z' });
+    Object.assign(actions.job, { pr: 700, head, stage: 'merge', status: 'watching', mergeCommit: 'c'.repeat(40) });
+    Object.assign(actions.pr, { merged_at: '2026-10-28T15:00Z', merge_commit_sha: 'c'.repeat(40) });
+    actions.setRuns([{ head_sha: 'c'.repeat(40), event: 'push', head_branch: 'main', status: 'completed', conclusion: 'failure' }]);
+    await actions.delivery.observe();
+    expect(actions.calls.some(call => call.includes('actions/runs'))).toBe(true);
+    expect(actions.job).toMatchObject({ stage: 'ci-recovery', status: 'queued' });
+    const unmerged = setup();
+    favorableObservation(unmerged, { state: 'closed', mergedAt: '2026-10-28T15:00Z' });
+    Object.assign(unmerged.job, { pr: 700, head, stage: 'closeout', status: 'queued', mergeCommit: 'c'.repeat(40) });
+    unmerged.setIssueState('closed');
+    unmerged.engine.github.board = async () => ({ error: '', items: [{ number: 999, repository: 'JFusco/brain', status: 'Done' }] } as any);
+    unmerged.engine.agents.run = async () => { const r = unmerged.result(); r.commit = unmerged.job.mergeCommit!; r.evidence[0].commit = r.commit; r.receipts = ['issue-close', 'issue-comment', 'board-status'].map(action => ({ id: action, action, target: url, verified: true, uncertain: false, detail: 'Synthetic fixture' })); return r as any; };
+    // GitHub says the PR is still open and unmerged, whatever the observation says.
+    await unmerged.delivery.step(unmerged.job).catch(() => undefined);
+    expect(unmerged.calls).toContainEqual('api repos/JFusco/brain/pulls/700');
+    expect(unmerged.job.status).not.toBe('completed');
+    expect(unmerged.store.ticket('GH-999').stage).not.toBe('complete');
+});

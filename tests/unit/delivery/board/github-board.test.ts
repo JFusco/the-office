@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'vitest';
 import { Store } from '../../../../server/store/store';
 import { projectById } from '../../../../server/office/projects';
 import { GitHubMonitor } from '../../../../server/github/github';
+import { isInventoryQuery, noOpenPRs } from '../../github/support/pull-fixtures';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -22,10 +23,10 @@ test('failed later page retains the entire last good board and exposes missing P
 });
 test('project observation failure does not discard repository issues or claim empty lanes',async()=>{
   const store=setup();
-  await new GitHubMonitor(store,async(_program,args)=>{
+  await new GitHubMonitor(store,async(_program,args,options)=>{
+    if(isInventoryQuery(options))return noOpenPRs(store.project.repository);
     if(args[1]==='graphql')throw new Error('Projects unavailable');
     if(args[1].includes('/issues?'))return JSON.stringify([[{number:255,title:'Fixture issue',state:'open',html_url:'https://github.com/JFusco/brain/issues/255',updated_at:'2026-10-28T00:00:00Z'}]]);
-    if(args[1].includes('/pulls?'))return '[[]]';
     return '{"workflow_runs":[]}';
   }).poll();
   expect(store.state.github?.error).toBe('');expect(store.state.github?.issues[0].number).toBe(255);expect(store.state.github?.board?.observedAt).toBe('');expect(store.state.github?.board?.error).toContain('Projects unavailable');

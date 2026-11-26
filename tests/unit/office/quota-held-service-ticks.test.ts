@@ -19,11 +19,11 @@ afterEach(() => {
     stores.splice(0).forEach(s => s.close()); roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true }));
 });
 /** The real service ticks over one GitHub and one Jira/Azure project, with a governor holding until `until`. */
-function service(until: number) {
+function service(until: number, resource: 'any' | 'graphql' = 'any') {
     const root = mkdtempSync(resolve(tmpdir(), 'office-quota-ticks-')); roots.push(root);
     const open = (id: string) => { const store = new Store(':memory:', projectById(id), root); stores.push(store); store.state.coordination ??= coordination(); return store; };
     const github = open('cms-field-vocabulary'), azure = open('cec');
-    const governor = { hold: () => Date.now() < until ? { until: new Date(until).toISOString() } : undefined };
+    const governor = { hold: (resources: readonly string[] = ['core']) => (resource === 'any' || resources.includes(resource)) && Date.now() < until ? { until: new Date(until).toISOString() } : undefined };
     const offices = { entries: new Map([['cms-field-vocabulary', { store: github, engine: {} }], ['cec', { store: azure, engine: {} }]]), fenced: () => false, pump: async () => {}, tick: async () => {},
         observeIncidents: () => {}, incidents: { inState: () => [] }, resumes: { read: () => ({ enabled: false, revision: 0, reason: 'never enabled', at: null }) }, operations: new InFlightOperations(),
         githubCalls: { governor, quota: { sample: async () => {} } } };
@@ -41,6 +41,16 @@ test('while the quota is held a GitHub refresh waits for the first tick after th
     await vi.advanceTimersByTimeAsync(60_000);
     expect(x.refreshes(x.github)).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(30_000);
+    expect(x.refreshes(x.github)).toHaveLength(1);
+    x.stop();
+});
+
+test('a GraphQL-only reserve also holds the GitHub refresh, which reads the PR inventory through GraphQL', async () => {
+    const x = service(T0 + 3 * 60_000, 'graphql');
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(x.refreshes(x.github)).toEqual([]);
+    expect(x.refreshes(x.azure)).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(x.refreshes(x.github)).toHaveLength(1);
     x.stop();
 });

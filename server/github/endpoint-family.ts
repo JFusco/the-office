@@ -1,3 +1,5 @@
+import type { GitHubOperation } from './call-scope';
+
 /** `gh api` flags that take the next argument as their value. */
 const VALUE_FLAGS = new Set(['-X', '--method', '-f', '--raw-field', '-F', '--field', '-H', '--header', '--input', '-q', '--jq', '-t', '--template', '--hostname', '-p', '--preview', '--cache']);
 /** High-level commands hide how many requests they make. */
@@ -32,8 +34,23 @@ function endpoint(args: readonly string[]): string {
     }
     return '';
 }
-/** Classify a `gh` invocation by its arguments. Direct `gh api graphql` is its own family. */
-export function githubCall(args: readonly string[]): GitHubCall {
+/** The four REST families a PR that left the open inventory is read through once (`pr-terminal`). */
+const TERMINAL = new Set(['pull', 'pull-reviews', 'check-runs', 'statuses']);
+/** GraphQL families: board and other direct queries, and the monitor's PR inventory pages. */
+export const graphqlFamily = (family: string) => family === 'graphql' || family === 'monitor-pr-graphql';
+
+/**
+ * Classify a `gh` invocation by its arguments and the call's operation marker. Direct `gh api graphql` is its own
+ * family; the monitor's PR inventory pages, root or child, are `monitor-pr-graphql`, and its terminal REST reads
+ * carry a `-terminal` suffix.
+ */
+export function githubCall(args: readonly string[], operation?: GitHubOperation): GitHubCall {
+    const call = classify(args);
+    if (call.family === 'graphql' && (operation === 'pr-root' || operation === 'pr-child')) return { ...call, family: 'monitor-pr-graphql' };
+    if (operation === 'pr-terminal' && TERMINAL.has(call.family)) return { ...call, family: `${call.family}-terminal` };
+    return call;
+}
+function classify(args: readonly string[]): GitHubCall {
     const flags = new Set(args);
     if (args[0] !== 'api') return { family: OPAQUE[args[0]] ?? 'gh-other', api: false, paginate: false, slurp: false, include: false };
     const segments = endpoint(args).replace(/^\//, '').split(/[?#]/)[0].split('/').filter(Boolean);

@@ -16,6 +16,7 @@ import { scheduledFeatures } from '../features/scheduled-features';
 import { costLedger } from '../telemetry/cost-entries';
 import { costPublishingEnabled, publishCost } from '../telemetry/cost-ledger';
 import { dueCostReadback, readBackCost } from '../telemetry/cost-readback';
+import { withGitHubSource } from '../github/call-scope';
 import { publishableEntry } from '../time/publishable';
 import { gateFeatureWork } from '../features/scheduling-gates';
 import { deliveryRepairProjection } from '../../src/work/delivery-repair-projection';
@@ -133,21 +134,21 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
         // A pending day on a ticket with an unresolved publication waits, and does not block read-back.
         const pendingTime = c.time?.enabled && publishingEnabled && publishableEntry(c.time, store.project.provider, value => store.project.provider === 'github' || value.date < easternDay(now));
         if (pendingTime)
-            add('reconciliation', { id: `time:${pendingTime.id}`, status: 'queued' }, 'time-publication', pendingTime.date, 3, () => new TimeLedger(store).sync());
+            add('reconciliation', { id: `time:${pendingTime.id}`, status: 'queued' }, 'time-publication', pendingTime.date, 3, () => withGitHubSource('time', () => new TimeLedger(store).sync(), { project: store.project.id }));
         const readback = !pendingTime && publishingEnabled && dueReadback(store, now);
         if (readback)
-            add('reconciliation', { id: `time-readback:${readback.id}`, status: 'queued' }, 'time-readback', readback.createdAt, 3, () => readBackTime(store, readback.id));
+            add('reconciliation', { id: `time-readback:${readback.id}`, status: 'queued' }, 'time-readback', readback.createdAt, 3, () => withGitHubSource('time', () => readBackTime(store, readback.id), { project: store.project.id }));
         // A day that failed before any write has nothing to read back: it is returned to pending, paced and bounded.
         const unsent = !pendingTime && !readback && publishingEnabled && dueUnsent(store, now);
         if (unsent)
-            add('reconciliation', { id: `time-unsent:${unsent.id}:${unsent.unsentReleases || 0}`, status: 'queued' }, 'time-unsent', unsent.date, 3, async () => releaseUnsent(store, unsent.id));
+            add('reconciliation', { id: `time-unsent:${unsent.id}:${unsent.unsentReleases || 0}`, status: 'queued' }, 'time-unsent', unsent.date, 3, async () => withGitHubSource('time', () => releaseUnsent(store, unsent.id), { project: store.project.id }));
         // Cost publication and its read-back are independent of hours and of each other.
         const pendingCost = costPublishingEnabled(store) && costLedger(store)?.entries.find(entry => entry.status === 'pending');
         if (pendingCost)
-            add('reconciliation', { id: `cost:${pendingCost.key}`, status: 'queued' }, 'cost-publication', pendingCost.updatedAt, 3, () => publishCost(store));
+            add('reconciliation', { id: `cost:${pendingCost.key}`, status: 'queued' }, 'cost-publication', pendingCost.updatedAt, 3, () => withGitHubSource('cost', () => publishCost(store), { project: store.project.id }));
         const costReadback = dueCostReadback(store, now);
         if (costReadback)
-            add('reconciliation', { id: `cost-readback:${costReadback.key}`, status: 'queued' }, 'cost-readback', costReadback.updatedAt, 3, () => readBackCost(store, costReadback.key));
+            add('reconciliation', { id: `cost-readback:${costReadback.key}`, status: 'queued' }, 'cost-readback', costReadback.updatedAt, 3, () => withGitHubSource('cost', () => readBackCost(store, costReadback.key), { project: store.project.id }));
         // One project's own operations do not wait behind another project's.
         for (const item of items) item.slot = operationsSlot(item.stage);
         return withActiveClaims(store, lane, gateRegisteredDelivery(store, gateFeatureWork(store, items)));

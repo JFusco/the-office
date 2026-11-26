@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { currentGitHubSource, type Runner } from '../../../server/github/call-scope';
+import { currentGitHubSource, withGitHubSource, type Runner } from '../../../server/github/call-scope';
 import { ServiceHealthChecks } from '../../../server/office/service-health';
 import { startServiceTicks } from '../../../server/office/service-ticks';
 import { apiRoute } from '../../../server/office/http/api-routes';
@@ -8,6 +8,9 @@ import { ITSpecialist } from '../../../server/it/it-specialist';
 import { Offices } from '../../../server/scheduling/offices';
 import { enqueueRequest, executeRequest } from '../../../server/scheduling/requests';
 import type { OfficeSnapshot } from '../../../src/shared';
+import { generatedPR, graphqlPulls, included, isInventoryQuery, noOpenPRs, type GraphqlPR, type Kind } from '../github/support/pull-fixtures';
+import { scheduledWork } from '../../../server/scheduling/scheduled-work';
+import { CommandFailure } from '../../../server/workers/process';
 
 const T0 = Date.parse('2026-11-24T12:00:00.000Z'), MINUTE = 60_000;
 const board = JSON.stringify({ data: { user: { projectV2: { title: 'Board', url: 'https://github.com/users/JFusco/projects/8', shortDescription: '', readme: '', fields: { nodes: [{ name: 'Status', options: [{ name: 'Ready' }] }], pageInfo: { hasNextPage: false } }, items: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } } } });
@@ -27,7 +30,8 @@ function provider(hold?: RegExp) {
         calls.push({ call, source: currentGitHubSource(), forwarded: typeof options.onOutput === 'function' });
         options.onSpawn?.(4200 + calls.length);
         if (hold?.test(call)) await held;
-        const out = args[0] === 'auth' ? hosts : args[1] === 'graphql' ? board
+        const variables = isInventoryQuery(options) ? JSON.parse(options.input!).variables : undefined;
+        const out = args[0] === 'auth' ? hosts : variables ? noOpenPRs(`${variables.owner}/${variables.name}`) : args[1] === 'graphql' ? board
             : args[1] === 'repos/JFusco/brain/pulls/419' ? '{"number":419,"state":"closed","merged":true,"merge_commit_sha":"fixture"}'
             : /issues\?state=open&assignee/.test(call) ? '[[]]'
             : /brain\/issues\?state=open/.test(call) ? JSON.stringify([[issue(1)], [issue(2)]])
@@ -59,7 +63,7 @@ test('the real monitor and workflow callback are counted apart while a second pr
         expect(assignment).toBeLessThan(workflow);
         expect(p.calls.filter(c => c.call.includes('cms-field-vocabulary')).every(c => c.source === 'assignments')).toBe(true);
         expect(families(office)).toEqual({
-            monitor: { issues: [1, 2], pulls: [1, 1], 'actions-runs': [1, 1], graphql: [1, 1] },
+            monitor: { issues: [1, 2], 'monitor-pr-graphql': [1, 1], 'actions-runs': [1, 1], graphql: [1, 1] },
             pipelines: { workflows: [1, 1], 'workflow-runs': [1, 1] },
             assignments: { issues: [1, 1], graphql: [1, 1] },
         });
@@ -115,6 +119,9 @@ test('a refresh IT saved as its recovery is counted once, as IT’s, through the
         const next = enqueueRequest(brain.store, 'refresh');
         await office.githubCalls.bind(() => executeRequest(brain.store, brain.engine, coordinator, next));
         expect(office.githubCalls.report().sources.map(s => [s.source, s.invocations])).toEqual([['it', made], ['monitor', 4], ['pipelines', 1]]);
+        // The PR inventory and the board keep their own families under the pinned owner; no per-PR REST read is made.
+        expect(families(office).it).toMatchObject({ 'monitor-pr-graphql': [1, 1], graphql: [1, 1] });
+        expect(Object.keys(families(office).it)).not.toEqual(expect.arrayContaining(['pull']));
     } finally { close(office); }
 });
 
@@ -179,4 +186,110 @@ test.each([false, true])('health stays busy for a quota sample across the fence 
         await vi.advanceTimersByTimeAsync(MINUTE);
         expect(raw).toHaveBeenCalledTimes(1);
     } finally { stop(); offices.fence.release(token); close(offices); }
+});
+
+/** `provider()` with the open-PR inventory served from `prs`; a continuation of `failing` kind fails after it spawned. */
+function inventory(prs: () => GraphqlPR[], failing?: Kind) {
+    const p = provider(), pulls = graphqlPulls(prs);
+    const raw: Runner = async (program, args, options = {}) => {
+        if (!isInventoryQuery(options)) return p.raw(program, args, options);
+        p.calls.push({ call: args.join(' '), source: currentGitHubSource(), forwarded: true });
+        options.onSpawn?.(4300 + p.calls.length);
+        const body = pulls.respond(options.input!);
+        if (pulls.calls.at(-1)!.kind === failing) { options.onOutput?.('stderr', 'gh: Something went wrong'); throw new CommandFailure('gh exited 1: gh: Something went wrong while executing your query.', 'other', true); }
+        const out = included(body);
+        options.onOutput?.('stdout', out);
+        return out;
+    };
+    return { ...p, raw, pulls };
+}
+const prFamily = (office: Offices, source: string, project = 'brain') => office.githubCalls.report().projects.find(p => p.project === project)?.sources.find(s => s.source === source)?.families.find(f => f.family === 'monitor-pr-graphql');
+
+test('health splits PR inventory root and child calls, failed continuations included, under the project and a pinned owner', async () => {
+    // Ten plain PRs fill the first root page; the next one needs a review continuation and a run continuation, which fails.
+    const prs = [...Array.from({ length: 10 }, (_, i) => generatedPR(60 - i)), generatedPR(30, { reviews: 11, suites: [51] })];
+    const p = inventory(() => prs, 'runs'), office = new Offices(p.raw);
+    try {
+        const brain = office.get('brain');
+        await office.githubCalls.bind(() => brain.engine.observe());
+        expect(brain.store.state.github).toMatchObject({ status: 'blocked', error: expect.stringContaining('Something went wrong') });
+        expect(p.pulls.calls.map(call => call.kind)).toEqual(['root', 'root', 'reviews', 'runs']);
+        // Two root calls and one child succeeded; one child failed: four invocations, three pages, two children, one child page.
+        expect(prFamily(office, 'monitor')).toMatchObject({ invocations: 4, pages: 3, failures: 1, prChildInvocations: 2, prChildPages: 1, points: 3, unknownCost: 1 });
+        const monitor = families(office).monitor;
+        for (const rest of ['pulls', 'pull', 'pull-reviews', 'check-runs', 'statuses']) expect(monitor[rest]).toBeUndefined();
+
+        // The same refresh saved as IT's recovery: every call is IT's, under the same project, the split intact.
+        const request = enqueueRequest(brain.store, 'refresh');
+        brain.store.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { 'project-progress': { requestId: request.id, attempts: 1, nextAt: '', status: 'retrying', detail: 'saved error' } } };
+        await office.githubCalls.bind(() => executeRequest(brain.store, brain.engine, brain.coordinator!, request));
+        expect(prFamily(office, 'it')).toMatchObject({ invocations: 4, pages: 3, prChildInvocations: 2, prChildPages: 1 });
+        expect(office.githubCalls.report().totals.invocations).toBe(p.calls.length);
+    } finally { close(office); }
+});
+
+test('the head read by OID and both check continuations are PR children, under the project and under a pinned owner', async () => {
+    // One PR whose root page lists no commit: its head is read by OID, its eleventh suite needs a suite page, and that suite's runs a run page.
+    const prs = [{ ...generatedPR(30, { suites: [...Array(10).fill(1), 51] }), commit: null }];
+    const p = inventory(() => prs), office = new Offices(p.raw);
+    try {
+        const brain = office.get('brain');
+        await office.githubCalls.bind(() => brain.engine.observe());
+        expect(brain.store.state.github).toMatchObject({ status: 'idle', error: '' });
+        expect(brain.store.state.github!.prs[0].checks).toHaveLength(61);
+        expect(p.pulls.calls.map(call => call.kind)).toEqual(['root', 'head', 'suites', 'runs']);
+        expect(prFamily(office, 'monitor')).toMatchObject({ invocations: 4, pages: 4, prChildInvocations: 3, prChildPages: 3, points: 4, unknownCost: 0 });
+        const request = enqueueRequest(brain.store, 'refresh');
+        brain.store.state.it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], services: [], recoveries: { 'project-progress': { requestId: request.id, attempts: 1, nextAt: '', status: 'retrying', detail: 'saved error' } } };
+        await office.githubCalls.bind(() => executeRequest(brain.store, brain.engine, brain.coordinator!, request));
+        expect(prFamily(office, 'it')).toMatchObject({ invocations: 4, pages: 4, prChildInvocations: 3, prChildPages: 3 });
+        expect(families(office).it).toMatchObject({ graphql: [1, 1] });
+        expect(office.githubCalls.report().totals.invocations).toBe(p.calls.length);
+    } finally { close(office); }
+});
+
+test('scheduled time and cost callbacks and their unowned reconciliation are counted under time and cost for the project; IT keeps its read-backs', async () => {
+    const p = provider(), office = new Offices(p.raw);
+    try {
+        const brain = office.get('brain'), stores = new Map([['brain', brain.store]]), now = brain.store.clock.now();
+        const time = () => brain.store.state.coordination!.time as any;
+        brain.store.state.coordination!.time = { enabled: true, githubField: true, activatedAt: now.toISOString(), entries: [{ id: 'GH-1:2026-11-23', key: 'GH-1', date: '2026-11-23', status: 'pending', seconds: 60 }],
+            baselines: {}, publications: [], scopePolicy: 'model-work-v1', cost: { githubField: true, entries: [{ key: 'GH-2', revision: 1, status: 'pending', updatedAt: '2026-01-01T00:00:00Z', microUsd: 1000 }], baselines: {} } } as any;
+        const run = async (stage: string) => {
+            const item = scheduledWork(brain, stores, now, 'operations').find(item => item.stage === stage);
+            expect(item, stage).toBeDefined();
+            await office.githubCalls.bind(() => item!.execute()).catch(() => undefined);
+        };
+        await run('time-publication');
+        await run('cost-publication');
+        const sources = () => Object.fromEntries(office.githubCalls.report().projects.find(p => p.project === 'brain')!.sources.map(s => [s.source, s.invocations]));
+        expect(Object.keys(sources()).sort()).toEqual(['cost', 'time']);
+        expect(office.githubCalls.report().projects.map(p => p.project)).toEqual(['brain']);
+
+        // Queued reconciliation no scope owns is time or cost; one IT saved as its recovery stays IT's.
+        const before = sources();
+        const reconcileTime = enqueueRequest(brain.store, 'reconcile-time', 'GH-1');
+        Object.assign(time().entries[0], { status: 'uncertain' });
+        await office.githubCalls.bind(() => executeRequest(brain.store, brain.engine, brain.coordinator!, reconcileTime));
+        expect(sources().time).toBeGreaterThan(before.time);
+        Object.assign(time().cost.entries[0], { status: 'posting', intendedUsd: 0.01, effectId: 'cost:brain:GH-2:r1:a0', attempt: 0 });
+        brain.store.putEffect({ id: 'cost:brain:GH-2:r1:a0', work: { projectId: 'brain', kind: 'reconciliation', id: 'cost:GH-2' }, status: 'uncertain', dispatchedAt: '2026-01-01T00:00:00Z', payload: { item: 'item', field: 'field', usd: 0.01 } } as any);
+        const reconcileCost = enqueueRequest(brain.store, 'reconcile-cost', 'GH-2', 'abandon');
+        await office.githubCalls.bind(() => executeRequest(brain.store, brain.engine, brain.coordinator!, reconcileCost));
+        expect(sources().cost).toBeGreaterThan(before.cost);
+        expect(Object.keys(sources()).sort()).toEqual(['cost', 'time']);
+
+        // A time read-back run inside IT's pinned work is IT's, through the callback's own time scope.
+        time().entries = [{ id: 'GH-1:2026-11-23', key: 'GH-1', date: '2026-11-23', status: 'uncertain', seconds: 60 }];
+        time().publications = [{ id: 'attempt', provider: 'github', projectId: 'brain', key: 'GH-1', status: 'uncertain', itemId: 'i', fieldId: 'f', worklogId: '', baseline: 0, previousValue: 0, intendedValue: 0.0167, covered: [], payload: {}, createdAt: '2026-01-01T00:00:00Z', detail: '' }];
+        const readback = scheduledWork(brain, stores, now, 'operations').find(item => item.stage === 'time-readback');
+        expect(readback).toBeDefined();
+        const calls = p.calls.length;
+        await office.githubCalls.bind(() => withGitHubSource('it', () => readback!.execute(), { project: 'brain', pin: true })).catch(() => undefined);
+        expect(p.calls.length).toBeGreaterThan(calls);
+        expect(p.calls.slice(calls).every(call => call.source === 'it')).toBe(true);
+        // One ledger entry per spawned process, whoever owned it.
+        expect(office.githubCalls.report().totals.invocations).toBe(p.calls.length);
+        expect(office.githubCalls.report().sources.find(s => s.source === 'other')).toBeUndefined();
+    } finally { close(office); }
 });
