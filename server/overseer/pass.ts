@@ -1,13 +1,13 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { sanitize } from '../office/security';
 import type { RunnerLimits, RunnerPaths } from './config';
-import { appendFailureLine, failureLine, JournalRefused, readFailures, type FailureEvent, type JournalView } from './failure-journal';
+import { appendFailureLine, FailureEvent, failureLine, JournalRefused, readFailures, type JournalView } from './failure-journal';
 import { forwardFailures, type ForwardSummary } from './forward-events';
 import { ForwardingState } from './forwarding-state';
 import { journalDigest, writeForwardingStatus } from './forwarding-status';
 import { reportHalt, type HaltSummary } from './halt-report';
 import { readHalt, writeRunnerStop } from './kill-switch';
-import type { OfficeReader } from './office-client';
+import { ObservationSkipped, type OfficeReader } from './office-client';
 import type { OfficeWriter } from './office-writer';
 import { passAllowance, passBudget, type PassBudget } from './pass-budget';
 import { ensurePrivateDirectory } from './runner-root';
@@ -95,7 +95,11 @@ export async function runPass(machine: PassMachine): Promise<PassResult> {
                 catch (error) { unavailable = `Forwarding unavailable: ${message(error)}`; }
             }
         }
-        const reports = store && budget && reporting ? { state: new ForwardingState(store.db), effects: store.effects, writer: reporting.writer(() => budget!.remaining()), origin: reporting.origin } : null;
+        let reports: { state: ForwardingState; effects: RunnerEffects; writer: OfficeWriter; origin: string } | null = null;
+        if (store && budget && reporting) {
+            try { reports = { state: new ForwardingState(store.db), effects: store.effects, writer: reporting.writer(budget.remaining), origin: reporting.origin }; }
+            catch (error) { unavailable = `Forwarding unavailable: ${message(error)}`; }
+        }
         const reader = reporting && budget ? reporting.reader(() => budget!.remaining()) : machine.reader;
         // The summary status reads: a pass that does not finish leaves it marked unfinished, never stale-but-current.
         let statusProblem: string | null = null;
@@ -115,11 +119,20 @@ export async function runPass(machine: PassMachine): Promise<PassResult> {
                 return finish(record('stopped', reason));
             };
             // A journal event is saved as an intent first, so a pass that dies mid-write leaves the exact line for the next one.
+            const disputed = new Set<string>();
             const settle = (): string | null => {
                 const intent = state!.intent!;
+                let event: FailureEvent;
+                try { event = FailureEvent.parse(JSON.parse(intent.line)); }
+                catch { disputed.add(intent.id); return 'The owed journal line is not a valid failure event'; }
+                if (event.id !== intent.id) {
+                    disputed.add(intent.id);
+                    disputed.add(event.id);
+                    return 'The owed journal ID differs from the ID in its failure event';
+                }
                 try { appendFailureLine(paths, intent.line, limits.journalLimit); }
                 catch (error) {
-                    if (error instanceof JournalRefused) return error.message;
+                    if (error instanceof JournalRefused) { disputed.add(intent.id); return error.message; }
                     throw error;
                 }
                 state = { ...state!, outage: intent.next, intent: null };
@@ -138,8 +151,10 @@ export async function runPass(machine: PassMachine): Promise<PassResult> {
             journalView = journal.problem === null ? readFailures(paths, limits.journalLimit) : journal;
             // Forwarding runs before STOP and pause are read, so it goes on while they hold. A disputed owed ID is withheld.
             if (reports && budget && journalView.problem === null) {
-                const entries = journalView.entries.filter(entry => !(refused && owed && entry.event.id === owed.id));
-                forwarded = await forwardFailures({ entries, origin: reports.origin, state: reports.state, effects: reports.effects, writer: reports.writer, limit: limits.forwardLimit, remaining: budget.remaining });
+                const entries = journalView.entries.filter(entry => !disputed.has(entry.event.id));
+                try {
+                    forwarded = await forwardFailures({ entries, origin: reports.origin, state: reports.state, effects: reports.effects, writer: reports.writer, limit: limits.forwardLimit, remaining: budget.remaining });
+                } catch (error) { unavailable = `Forwarding unavailable: ${message(error)}`; }
             }
             budget?.enter('observe');
 
@@ -158,10 +173,12 @@ export async function runPass(machine: PassMachine): Promise<PassResult> {
             try { health = await reader.health(); }
             catch (error) {
                 const reason = message(error), { observation } = state!;
+                const cached = { cachedHealthAt: observation.health?.at ?? null, cachedIncidentsAt: observation.incidents?.at ?? null };
+                if (error instanceof ObservationSkipped) return finish(record('read-failed', reason, cached));
                 const failed = afterHealthFailure(state!.outage, { pass, now: now(), reason, cached: observation.health }, limits);
                 const stopped = transition(failed.next, failed.event);
                 if (stopped) return stopFor(stopped);
-                return finish(record('service-down', `The Office could not be read: ${reason}`, { cachedHealthAt: observation.health?.at ?? null, cachedIncidentsAt: observation.incidents?.at ?? null }));
+                return finish(record('service-down', `The Office could not be read: ${reason}`, cached));
             }
             const sample: HealthSample = { at: now().toISOString(), ...health };
             const answered = afterHealthSuccess(state!.outage, { now: now(), health: sample });
@@ -197,7 +214,13 @@ export async function runPass(machine: PassMachine): Promise<PassResult> {
             try { halt = await reportHalt({ paths, origin: reports.origin, state: reports.state, effects: reports.effects, writer: reports.writer, pass, now }); }
             catch (error) { halt = { confirmed: null, pending: null, conflict: null, detail: bounded(`The halt could not be reported: ${message(error)}`) }; }
         }
-        const view = journalView as JournalView | null, fwd = forwarded as ForwardSummary | null;
+        const initial = journalView as JournalView | null;
+        const view = reporting && initial?.problem === null ? readFailures(paths, limits.journalLimit) : initial;
+        let fwd = forwarded as ForwardSummary | null;
+        if (fwd && initial?.problem === null && view?.problem === null &&
+            initial.entries.every((entry, index) => view.entries[index]?.line === entry.line)) {
+            fwd = { ...fwd, pending: view.entries.length - fwd.forwarded };
+        } else fwd = null;
         let note = reporting ? reportingNote(fwd, halt, unavailable, view) : '';
         if (reporting) {
             const lines = view?.problem === null ? view.entries.map(entry => entry.line) : null;

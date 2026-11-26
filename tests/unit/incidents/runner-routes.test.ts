@@ -25,6 +25,23 @@ test('a failure is recorded, replayed and read back by its ID, each answer namin
     expect([other.status, (await other.json()).result]).toEqual([409, 'occupied']);
 });
 
+test('incident detail serves only typed diagnostics while the receipt binds discarded fields', async () => {
+    const world = officeWorld(), marker = 'private-fixture-marker';
+    const down = { ...failure('service-down'), evidence: { [marker]: 'opaque', extra: marker, failures: 2, loadedHash: 'abc', since: 123 } };
+    const first = await send(world, 'POST', '/api/incidents/runner/failures', JSON.stringify(down));
+    expect(first.status).toBe(200);
+    expect(world.incidents.event(down.id)?.body.evidence).toEqual({ failures: 2, loadedHash: 'abc' });
+    const detail = await send(world, 'GET', `/api/incidents/${RUNNER_INCIDENT}`);
+    expect(detail.status).toBe(200);
+    const served = await detail.text();
+    expect(served).toContain(down.id);
+    expect(served).not.toContain(marker);
+    const changed = { ...down, evidence: { ...down.evidence, extra: 'changed' } };
+    expect(failureDigest(changed)).not.toBe(failureDigest(down));
+    expect((await send(world, 'POST', '/api/incidents/runner/failures', JSON.stringify(changed))).status).toBe(409);
+    world.db.close();
+});
+
 test('the halt slot is written and read through its route', async () => {
     const world = officeWorld();
     expect((await send(world, 'GET', '/api/incidents/runner/halt')).status).toBe(404);
@@ -42,6 +59,9 @@ test('refusals write nothing: another origin, a held fence, a bad method, a malf
     expect(await status('GET', '/api/incidents/runner/failures')).toBe(405);
     expect(await status('PUT', '/api/incidents/runner/halt', JSON.stringify(halt(1)))).toBe(405);
     expect(await status('GET', '/api/incidents/runner/failures/overseer:service-down:not-a-uuid')).toBe(400);
+    const malformed = await send(world, 'GET', '/api/incidents/runner/failures/%E0%A4%A');
+    expect([malformed.status, await malformed.json()]).toEqual([400, { error: 'Not a runner failure ID' }]);
+    expect(tables(world)).toEqual(before);
     expect(await status('POST', '/api/incidents/runner/failures', JSON.stringify({ ...down, kind: 'service-lost' }))).toBe(400);
     expect((await world.request(`${ORIGIN}/api/incidents/runner/failures`, { method: 'POST', body: new Blob([body]).stream(), duplex: 'half' } as RequestInit)).status).toBe(411);
     expect(await status('POST', '/api/incidents/runner/failures', body, { 'content-length': String(Buffer.byteLength(body) - 5) })).toBe(400);

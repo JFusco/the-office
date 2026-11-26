@@ -40,6 +40,7 @@ export function runnerStatus(paths: RunnerPaths, now: Date = new Date(), office:
     const read = readRunnerState(paths), journal = readFailures(paths, RUNNER_DEFAULTS.journalLimit), budget = readStanding(paths, now);
     const forwarding = readForwardingStatus(paths, {
         origin: 'origin' in office ? office.origin : null,
+        lastPass: 'unreadable' in read ? null : read.state.lastPass?.pass ?? null,
         journal: journal.problem === null ? { digest: journalDigest(journal.entries.map(entry => entry.line)), entries: journal.entries.length } : null,
     });
     const state = 'unreadable' in read ? read : (({ inFlight, outage, intent, observation, lastPass }) => ({

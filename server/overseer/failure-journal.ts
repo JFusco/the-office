@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, openSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { FailureEvent, failureLine, LINE_LIMIT } from '../incidents/runner-report';
@@ -27,6 +28,8 @@ export function readFailures(paths: RunnerPaths, limit: number): JournalView {
     const read = readBoundedNoFollowSync(paths.failures, limit * LINE_LIMIT, { singleLink: true });
     if ('reason' in read) return read.reason === 'missing' ? { entries: [], problem: null }
         : { entries: null, problem: read.reason === 'not-owned' ? `${paths.failures} must be a regular file with a single link` : `${paths.failures} cannot be read (${read.reason})` };
+    if (createHash('sha256').update(read.text, 'utf8').digest('hex') !== read.sha256)
+        return { entries: null, problem: `${paths.failures} is not valid UTF-8` };
     if (read.text && !read.text.endsWith('\n')) return { entries: null, problem: `${paths.failures} ends in a cut-short line` };
     const lines = read.text.split('\n').slice(0, -1);
     if (lines.length > limit) return { entries: null, problem: `${paths.failures} holds ${lines.length} records, more than its limit of ${limit}` };
@@ -60,7 +63,7 @@ const syncPath = (path: string) => {
  */
 export function appendFailureLine(paths: RunnerPaths, line: string, limit: number): 'appended' | 'present' {
     const event = FailureEvent.parse(JSON.parse(line));
-    if (failureLine(event) !== line) throw new JournalRefused('A journal line must be exactly the serialized event');
+    if (Buffer.byteLength(line) > LINE_LIMIT || failureLine(event) !== line) throw new JournalRefused('A journal line must be exactly the serialized event');
     ensurePrivateDirectory(paths.journal);
     const view = readFailures(paths, limit);
     if (view.problem !== null) throw new JournalRefused(view.problem);

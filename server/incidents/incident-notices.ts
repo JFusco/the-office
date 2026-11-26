@@ -1,4 +1,5 @@
 import { subjectKey, type Incident } from '../../src/contracts/incidents';
+import { boundedEvidence } from './bounded-evidence';
 import type { HumanAction } from '../../src/shared';
 import type { IncidentLedger } from './incident-ledger';
 import { RUNNER_INCIDENT, RUNNER_SUBJECT } from './record-runner-failure';
@@ -31,13 +32,13 @@ export function incidentNotices(incident: Incident | null, halt: HaltReport | nu
         },
     });
     if (halt?.kind === 'stopped') {
-        const control = `control/${halt.control}`;
+        const control = `control/${halt.control}`, reason = boundedEvidence(halt.reason);
         notices.push({
             id: 'overseer-stopped', title: 'The Overseer runner is stopped', role: 'it', ticket: '', url: '', status: 'open',
-            detail: `${halt.reason}${halt.since ? ` (since ${halt.since})` : ''}`,
+            detail: `${reason}${halt.since ? ` (since ${halt.since})` : ''}`,
             createdAt: halt.since ?? halt.reportedAt, updatedAt: halt.reportedAt,
             ownerSteps: {
-                why: halt.reason,
+                why: reason,
                 steps: halt.control === 'pause.json'
                     ? [STATUS, { text: `${control} cannot be read: keep a copy, then repair it or remove it; the runner is paused while a valid one remains` }]
                     : [STATUS, { text: `Settle what ${control} names first, keeping the evidence it lists` }, { text: `Then remove ${control}` }],

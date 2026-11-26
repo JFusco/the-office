@@ -38,15 +38,26 @@ export async function forwardFailures(input: {
     limit: number; remaining: () => number;
 }): Promise<ForwardSummary> {
     const { entries, origin, state, effects, writer } = input;
+    state.prepareFailures();
     const digests = new Map(entries.map(({ event }) => [event.id, failureDigest(event)]));
     const standing = new Map<string, { standing: Standing; reason: string }>();
+    const sentElsewhere = new Map<string, string>();
     const classify = ({ event }: { event: FailureEvent }) => {
         const digest = digests.get(event.id)!, record = state.record(origin, event.id);
         if (record && record.digest !== digest) return { standing: 'conflict' as const, reason: 'the journal holds other content under this ID than the runner forwarded' };
         if (record?.conflict) return { standing: 'conflict' as const, reason: record.conflict };
         if (record?.receipt) return { standing: 'forwarded' as const, reason: '' };
         const intent = record ? effects.readIntent(forwardIntent(event.id, record.attempt)) : undefined;
-        if (intent?.dispatchedAt) return { standing: 'outstanding' as const, reason: record!.reason || 'sent; not yet read back' };
+        if (record && intent?.target === origin && intent.dispatchedAt) return { standing: 'outstanding' as const, reason: record.reason || 'sent; not yet read back' };
+        const earlier = state.otherRecords(origin, event.id).find(other => {
+            const dispatch = effects.readIntent(forwardIntent(event.id, other.record.attempt));
+            return !other.record.receipt && dispatch?.target === other.origin && !!dispatch.dispatchedAt;
+        });
+        if (earlier) {
+            const reason = `sent to ${earlier.origin}; confirmation at that origin is still pending`;
+            sentElsewhere.set(event.id, reason);
+            return { standing: 'outstanding' as const, reason };
+        }
         return { standing: 'unsent' as const, reason: record?.reason || 'not yet sent' };
     };
     for (const entry of entries) standing.set(entry.event.id, classify(entry));
@@ -84,7 +95,8 @@ export async function forwardFailures(input: {
         if (sendsDeferred) return;
         // A send its preflight refused left a rejected intent with no dispatch: the next one is a new attempt.
         const previous = effects.readIntent(forwardIntent(id, record.attempt));
-        if (previous?.status === 'rejected' && !previous.dispatchedAt) record.attempt = freeAttempt(effects, `forward:${id}`, record.attempt + 1);
+        if (previous && (previous.target !== origin || (previous.status === 'rejected' && !previous.dispatchedAt)))
+            record.attempt = freeAttempt(effects, `forward:${id}`, record.attempt + 1);
         save(record);
         let seen: Awaited<ReturnType<OfficeWriter['readFailure']>> | null = null;
         const sent = await sendReport<FailureReceipt>({
@@ -106,6 +118,14 @@ export async function forwardFailures(input: {
     };
 
     const readBack = async (id: string) => {
+        const elsewhere = sentElsewhere.get(id);
+        if (elsewhere) {
+            const answer = await writer.readFailure(id);
+            const record = state.record(origin, id) ?? { eventId: id, digest: digests.get(id)!, attempt: freeAttempt(effects, `forward:${id}`), receipt: null, conflict: null, reason: elsewhere };
+            if (answer.result === 'present') accept(record, answer.receipt);
+            if (answer.result === 'occupied') occupied(record, answer.error);
+            return;
+        }
         const record = state.record(origin, id)!, digest = record.digest;
         let seen: Awaited<ReturnType<OfficeWriter['readFailure']>> | null = null;
         const shown = await readBackReport(effects, forwardIntent(id, record.attempt), async () => {

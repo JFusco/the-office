@@ -31,6 +31,18 @@ test('an event is appended once; the same line again is a no-op and other conten
     expect(readFailures(paths, 1000)).toEqual({ entries: [{ event: down, line }], problem: null });
 });
 
+test('keeps valid multibyte text and refuses lossy UTF-8 without changing bytes', () => {
+    const paths = runnerRoot(), down = event('service-down', undefined, '€');
+    const line = failureLine(down);
+    appendFailureLine(paths, line, 1000);
+    expect(readFailures(paths, 1000)).toEqual({ entries: [{ event: down, line }], problem: null });
+    const bytes = Buffer.from(line);
+    bytes[bytes.indexOf('€')] = 0xff;
+    writeFileSync(paths.failures, bytes);
+    expect(readFailures(paths, 1000)).toMatchObject({ entries: null, problem: expect.stringContaining('UTF-8') });
+    expect(readFileSync(paths.failures)).toEqual(bytes);
+});
+
 test('only the exact serialized event is accepted as a line', () => {
     const paths = runnerRoot(), line = failureLine(event());
     expect(() => appendFailureLine(paths, line.trimEnd(), 1000)).toThrow('exactly the serialized event');

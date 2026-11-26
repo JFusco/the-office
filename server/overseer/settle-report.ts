@@ -53,6 +53,7 @@ export async function sendReport<R>(input: {
                 try { fence = (await writer.health()).fence; }
                 catch (error) { throw new PreflightRefused('unreachable', `The Office's health could not be read before sending: ${error instanceof Error ? error.message : String(error)}`); }
                 if (fence !== 'open') throw new PreflightRefused('fenced', `The deployment fence is ${fence}; nothing was sent`);
+                if (!writer.canStartRequest()) throw new PreflightRefused('unreachable', 'The pass has no time left for the report; nothing was sent');
             },
             dispatch: async () => { await input.dispatch(); return {}; },
             verify: async () => { receipt = await input.verify(); return receipt !== null; },

@@ -2310,8 +2310,8 @@ scheduler's dispatch is unchanged; a held record was already not running.
 ### Overseer runner
 
 The Overseer runner (`server/overseer.ts`) is the repair engine's own process. It runs outside
-the Office service, one pass at a time, so it keeps working when the service is down. In this
-release a pass only observes:
+the Office service, one pass at a time, so it keeps working when the service is down. A pass
+observes and reports:
 
 - It reads `/api/health` and `/api/incidents?research=1` with `GET`s over loopback. It calls no
   model, makes no GitHub call and takes no scheduler claim. Its only writes to the Office are its
@@ -2319,7 +2319,8 @@ release a pass only observes:
 - It keeps at most one incident in flight. That is an incident eligible for research in state
   `observed`, `triaged` or `recurred`, never a runner failure. It records which incident it
   chose in its own state.
-- It stands down while a deployment holds the fence, or while the runner's STOP or pause holds.
+- It stops observation and selection while the runner's STOP or pause holds. A held deployment
+  fence stops selection after the health read.
 - When the Office does not answer for five minutes over two passes, it journals one
   `service-down` event in its own folder. When the Office answers again, it journals one
   `service-restored` event.

@@ -11,6 +11,7 @@ import type { RunnerPaths } from './config';
  * a pass did not finish is never shown as current.
  */
 
+const SUMMARY_LIMIT = 64 * 1024;
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 const count = z.number().int().min(0).refine(Number.isSafeInteger);
 const Item = z.object({ id: z.string().max(100), reason: z.string().max(500) }).strict();
@@ -36,24 +37,40 @@ export type ForwardingSummary = z.infer<typeof ForwardingSummary>;
 export const journalDigest = (lines: readonly string[]) => createHash('sha256').update(lines.join(''), 'utf8').digest('hex');
 
 export function writeForwardingStatus(paths: RunnerPaths, summary: ForwardingSummary): void {
-    writeDurable(paths.forwarding, `${JSON.stringify(ForwardingSummary.parse(summary), null, 2)}\n`);
+    const saved = ForwardingSummary.parse(summary);
+    const serialize = () => `${JSON.stringify(saved)}\n`;
+    let text = serialize();
+    if (saved.state === 'complete') {
+        while (Buffer.byteLength(text) > SUMMARY_LIMIT) {
+            const items = saved.uncertain.length >= saved.conflicts.length ? saved.uncertain : saved.conflicts;
+            if (items.length === 0) throw new Error('Forwarding summary exceeds its size limit');
+            items.pop();
+            text = serialize();
+        }
+    }
+    writeDurable(paths.forwarding, text);
 }
 
 /**
  * The summary as status shows it, checked against what it is for: this Office origin and the
- * journal as it reads now. Missing, unfinished, unreadable, another origin's, or written for a
- * journal that has changed since: the counts are unknown, with the reason.
+ * journal as it reads now, and the pass record. Missing, incomplete or inconsistent evidence
+ * leaves the counts unknown, with a reason.
  */
-export function readForwardingStatus(paths: RunnerPaths, { origin, journal }: { origin: string | null; journal: { digest: string; entries: number } | null }) {
-    const read = readBoundedNoFollowSync(paths.forwarding, 64 * 1024, { singleLink: true });
+export function readForwardingStatus(paths: RunnerPaths, { origin, journal, lastPass }: { origin: string | null; lastPass: string | null; journal: { digest: string; entries: number } | null }) {
+    const read = readBoundedNoFollowSync(paths.forwarding, SUMMARY_LIMIT, { singleLink: true });
     if ('reason' in read) return { known: false as const, reason: read.reason === 'missing' ? 'no pass has reported forwarding yet' : `${paths.forwarding} cannot be read (${read.reason})` };
     let summary: ForwardingSummary;
     try { summary = ForwardingSummary.parse(JSON.parse(read.text)); }
     catch { return { known: false as const, reason: `${paths.forwarding} is not a valid summary` }; }
     if (summary.state === 'in-progress') return { known: false as const, reason: `pass ${summary.pass} started reporting at ${summary.at} and did not finish` };
     if (origin === null || summary.origin !== origin) return { known: false as const, reason: `the last summary was for ${summary.origin}, not this Office`, at: summary.at, halt: summary.halt };
-    const current = !!journal && !!summary.journal && summary.journal.digest === journal.digest && summary.journal.entries === journal.entries;
-    return current
-        ? { known: true as const, at: summary.at, pass: summary.pass, forwarded: summary.forwarded, pending: summary.pending, uncertain: summary.uncertain, conflicts: summary.conflicts, halt: summary.halt, detail: summary.detail }
-        : { known: false as const, reason: 'the journal has changed since the last pass counted it', at: summary.at, uncertain: summary.uncertain, conflicts: summary.conflicts, halt: summary.halt };
+    const diagnostics = { at: summary.at, uncertain: summary.uncertain, conflicts: summary.conflicts, halt: summary.halt, detail: summary.detail };
+    const unknown = (reason: string) => ({ known: false as const, reason, ...diagnostics });
+    if (lastPass !== summary.pass) return unknown('the summary does not match a recorded pass');
+    if (!journal || !summary.journal) return unknown('the journal could not be counted');
+    if (summary.journal.digest !== journal.digest || summary.journal.entries !== journal.entries)
+        return unknown('the journal has changed since the last pass counted it');
+    if (summary.forwarded === null || summary.pending === null) return unknown('the last pass did not have forwarding counts');
+    if (summary.forwarded + summary.pending !== journal.entries) return unknown('the forwarding counts disagree with the journal size');
+    return { known: true as const, pass: summary.pass, forwarded: summary.forwarded, pending: summary.pending, ...diagnostics };
 }

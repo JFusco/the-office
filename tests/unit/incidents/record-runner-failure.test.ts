@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { subjectKey } from '../../../src/contracts/incidents';
 import { IncidentLedger } from '../../../server/incidents/incident-ledger';
@@ -46,6 +46,7 @@ test('an open outage stays open through ordinary observation, and only its own r
 
 test('a restoration that arrives first keeps its outage cleared when the outage arrives, and a newer outage is a new episode of the same subject', () => {
     const incidents = ledger(), down = failure('service-down');
+    const history = vi.spyOn(incidents, 'events').mockImplementation(() => { throw new Error('Unexpected history scan'); });
     recordRunnerFailure(incidents, failure('service-restored', down.episode), AT);
     expect(subject(incidents)).toBeUndefined();
     recordRunnerFailure(incidents, down, later(1));
@@ -58,6 +59,9 @@ test('a restoration that arrives first keeps its outage cleared when the outage 
     const before = subject(incidents);
     expect(recordRunnerFailure(incidents, older, later(3))).toMatchObject({ status: 'recorded' });
     expect(subject(incidents)).toEqual(before);
+    expect(recordRunnerFailure(incidents, down, later(4))).toMatchObject({ status: 'replayed', receipt: { eventId: down.id, revision: 2 } });
+    expect(history).not.toHaveBeenCalled();
+    history.mockRestore();
     expect(runnerEvents(incidents)).toContain(older.id);
     expect(incidents.get(RUNNER_INCIDENT)!.revision).toBe(4);
 });
@@ -81,6 +85,40 @@ test('the same ID with other content is occupied, even when both read the same o
     // What is kept and served is redacted.
     expect(JSON.stringify(incidents.event(down.id))).not.toContain('ghp_aaaa');
     expect(JSON.stringify(incidents.get(RUNNER_INCIDENT))).not.toContain('ghp_aaaa');
+});
+
+test('distinct IDs take consecutive revisions when a competing event commits before the first write', () => {
+    const incidents = ledger(), down = failure('service-down'), restored = failure('service-restored', down.episode);
+    const record = incidents.record.bind(incidents);
+    vi.spyOn(incidents, 'record').mockImplementationOnce(change => {
+        expect(recordRunnerFailure(incidents, restored, AT)).toMatchObject({ status: 'recorded', receipt: { revision: 1 } });
+        record(change);
+    });
+    expect(recordRunnerFailure(incidents, down, AT)).toMatchObject({ status: 'recorded', receipt: { revision: 2 } });
+    expect(subject(incidents)).toMatchObject({ status: 'cleared', episode: down.episode });
+    expect(recordRunnerFailure(incidents, restored, AT)).toMatchObject({ status: 'replayed', receipt: { revision: 1 } });
+    expect(recordRunnerFailure(incidents, down, AT)).toMatchObject({ status: 'replayed', receipt: { revision: 2 } });
+
+    const error = new Error('storage unavailable'), other = failure('service-down');
+    const writes = vi.mocked(incidents.record);
+    writes.mockClear().mockImplementationOnce(() => { throw error; });
+    expect(() => recordRunnerFailure(incidents, other, AT)).toThrow(error);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(incidents.event(other.id)).toBeNull();
+});
+
+test.each([
+    ['11:00:00Z', '11:00:00.500Z', true],
+    ['11:00:00Z', '11:00:00.000Z', false],
+    ['11:00:00.5000000Z', '11:00:00.5000001Z', true],
+] as const)('orders outage starts at %s and %s in either delivery order', (earlier, laterAt, laterWins) => {
+    const first = failure('service-down', '00000000-0000-4000-8000-000000000002', `2026-11-26T${earlier}`);
+    const second = failure('service-down', '00000000-0000-4000-8000-000000000001', `2026-11-26T${laterAt}`);
+    for (const order of [[first, second], [second, first]]) {
+        const incidents = ledger();
+        order.forEach(event => recordRunnerFailure(incidents, event, AT));
+        expect(subject(incidents)?.episode).toBe((laterWins ? second : first).episode);
+    }
 });
 
 test('the generic event route refuses a runner failure ID before reading any provider, a historical event under such an ID still replays, and the runner finds that ID occupied', () => {

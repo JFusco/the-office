@@ -183,11 +183,13 @@ test('status shows what the last pass forwarded only for this Office and the jou
     const { appendFailureLine, failureLine } = await import('../../../server/overseer/failure-journal');
     const { journalDigest, writeForwardingStatus } = await import('../../../server/overseer/forwarding-status');
     const { ensurePrivateDirectory } = await import('../../../server/overseer/runner-root');
+    const { EMPTY_STATE, writeRunnerState } = await import('../../../server/overseer/runner-state');
     const root = join(tempDir(), 'runner'), paths = runnerPaths(root);
     for (const directory of [paths.journal, paths.state]) ensurePrivateDirectory(directory);
     const line = failureLine({ version: 1, id: 'overseer:service-down:00000000-0000-4000-8000-0000000000aa', kind: 'service-down', at: '2026-11-26T11:00:00.000Z', episode: '00000000-0000-4000-8000-0000000000aa', detail: 'fetch failed', evidence: {} });
     appendFailureLine(paths, line, 1000);
     const summary = { version: 1 as const, state: 'complete' as const, pass: '7b0c6a43-62f8-4a49-9f11-8d1b2f6ad0c4', at: '2026-11-26T12:00:00.000Z', origin: 'http://127.0.0.1:4318', journal: { digest: journalDigest([line]), entries: 1 }, forwarded: 0, pending: 1, uncertain: [{ id: 'overseer:service-down:00000000-0000-4000-8000-0000000000aa', reason: 'sent; not yet read back' }], conflicts: [], halt: null, detail: 'Forwarded 0 of 1' };
+    writeRunnerState(paths, { ...EMPTY_STATE, lastPass: { pass: summary.pass, startedAt: summary.at, endedAt: summary.at, outcome: 'idle', detail: '' } });
     writeForwardingStatus(paths, summary);
     const status = async (env: NodeJS.ProcessEnv = {}) => JSON.parse((await command(['status'], { OVERSEER_ROOT: root, ...env })).output).forwarding;
     // The Store is open with its write-ahead log, as a running pass leaves it.
@@ -200,7 +202,27 @@ test('status shows what the last pass forwarded only for this Office and the jou
     expect((await command(['status'], { OVERSEER_ROOT: root, OVERSEER_OFFICE_URL: 'http://[::1]:4318' })).output).toContain('"invalid"');
     expect(snapshot(root)).toEqual(before);
     store.close();
+    for (const [changed, reason] of [
+        [{ forwarded: null, pending: null }, 'did not have forwarding counts'],
+        [{ pending: 2 }, 'counts disagree'],
+        [{ pass: '7b0c6a43-62f8-4a49-9f11-8d1b2f6ad0c5' }, 'does not match a recorded pass'],
+    ] as const) {
+        const halt = { confirmed: { kind: 'running' as const, control: null, since: null, reason: '' }, pending: null, conflict: null, detail: null };
+        writeForwardingStatus(paths, { ...summary, ...changed, halt });
+        before = snapshot(root);
+        expect(await status()).toMatchObject({ known: false, reason: expect.stringContaining(reason), halt });
+        expect(snapshot(root)).toEqual(before);
+    }
+    const items = Array.from({ length: 50 }, (_, i) => ({ id: String(i), reason: '€'.repeat(500) }));
+    writeForwardingStatus(paths, { ...summary, uncertain: items, conflicts: items });
+    expect(readFileSync(paths.forwarding).byteLength).toBeLessThanOrEqual(64 * 1024);
+    expect(await status()).toMatchObject({ known: true, forwarded: 0, pending: 1, uncertain: expect.arrayContaining([items[0]]) });
+    writeFileSync(paths.forwarding, '€'.repeat(64 * 1024));
+    expect(await status()).toMatchObject({ known: false, reason: expect.stringContaining('too-large') });
+    writeForwardingStatus(paths, summary);
     before = snapshot(root);
+    expect(await status()).toMatchObject({ known: true, forwarded: 0, pending: 1 });
+    expect(snapshot(root)).toEqual(before);
     appendFailureLine(paths, failureLine({ version: 1, id: 'overseer:service-restored:00000000-0000-4000-8000-0000000000aa', kind: 'service-restored', at: '2026-11-26T11:07:00.000Z', episode: '00000000-0000-4000-8000-0000000000aa', detail: '', evidence: {} }), 1000);
     expect(await status()).toMatchObject({ known: false, reason: 'the journal has changed since the last pass counted it' });
     // A line rewritten by hand, the record count unchanged, is another journal too.
@@ -211,5 +233,4 @@ test('status shows what the last pass forwarded only for this Office and the jou
     expect(await status()).toMatchObject({ known: false, reason: expect.stringContaining('did not finish') });
     writeFileSync(paths.forwarding, 'not json');
     expect(await status()).toMatchObject({ known: false, reason: expect.stringContaining('not a valid summary') });
-    void before;
 });

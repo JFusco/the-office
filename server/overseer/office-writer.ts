@@ -18,6 +18,7 @@ export class OfficeWriteError extends Error {
 }
 
 export interface OfficeWriter {
+    canStartRequest(): boolean;
     health(): Promise<HealthReading>;
     /** The failure as the Office kept it: `present`, `absent` or `occupied`. */
     readFailure(id: string): Promise<FailureAnswer>;
@@ -35,10 +36,11 @@ const codeOf = (error: unknown) => String((error as { cause?: { code?: unknown }
 const bounded = (text: string) => sanitize(text).slice(0, 500);
 
 export function officeWriter(base: string, request: typeof fetch = fetch, limits: { requestTimeoutMs: number; maxResponseBytes: number } = RUNNER_DEFAULTS, remaining: () => number = () => Infinity): OfficeWriter {
+    const requestTimeout = () => Math.floor(Math.min(limits.requestTimeoutMs, remaining()));
     const call = async (method: 'GET' | 'POST', path: string, body?: string): Promise<{ status: number; answer: unknown }> => {
         for (let attempt = 0; ; attempt++) {
             // AbortSignal.timeout takes whole milliseconds; the phase clock is fractional.
-            const timeout = Math.floor(Math.min(limits.requestTimeoutMs, remaining()));
+            const timeout = requestTimeout();
             if (!(timeout > 0)) throw new OfficeWriteError('unreachable', `${method} ${path} was not sent: the pass has no time left for it`);
             let response: Response;
             try {
@@ -70,6 +72,7 @@ export function officeWriter(base: string, request: typeof fetch = fetch, limits
         return parsed.data;
     };
     return {
+        canStartRequest: () => requestTimeout() > 0,
         health: () => officeReader(base, request, limits, remaining).health(),
         readFailure: id => failure('GET', `/api/incidents/runner/failures/${encodeURIComponent(id)}`, id, { present: 200, absent: 404, occupied: 409 }),
         sendFailure: event => failure('POST', '/api/incidents/runner/failures', event.id, { recorded: 200, replayed: 200, occupied: 409 }, JSON.stringify(event)),

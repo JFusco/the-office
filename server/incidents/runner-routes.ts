@@ -62,7 +62,9 @@ export async function runnerRoute(req: Request, url: URL, context: RunnerRouteCo
     if (path === 'failures') return req.method === 'POST' ? writeFailure(req, context) : json({ error: 'POST required' }, 405);
     if (path.startsWith('failures/')) {
         if (req.method !== 'GET') return json({ error: 'GET required' }, 405);
-        const id = decodeURIComponent(path.slice('failures/'.length));
+        let id: string;
+        try { id = decodeURIComponent(path.slice('failures/'.length)); }
+        catch { return json({ error: 'Not a runner failure ID' }, 400); }
         return FAILURE_ID.test(id) ? readFailure(incidents, id) : json({ error: 'Not a runner failure ID' }, 400);
     }
     if (path === 'halt') {

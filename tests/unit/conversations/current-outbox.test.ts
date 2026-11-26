@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { currentOutbox } from '../../../server/conversations/current-outbox';
 import { projectOutbox } from '../../../server/conversations/outbox';
+import type { HumanAction } from '../../../src/shared';
 import { REPAIR_WAIT_MS } from '../../../server/incidents/repair/repair-wait';
+import { officeWorld } from '../overseer/forward-world';
 import { apiRoute } from '../../../server/office/http/api-routes';
 import { projectById } from '../../../server/office/projects';
 import { coordination } from '../../../server/scheduling/coordination';
@@ -78,4 +80,36 @@ test('the messages endpoint serves the outbox as it reads now, whatever was last
     expect(await served()).toEqual([]);
     time.now = new Date(EXPIRY);
     expect(await served()).toEqual(['ticket-job:job']);
+});
+
+test('the messages endpoint redacts a saved STOP reason for both projects and clears the notice on a running report', async () => {
+    const { store, root } = held(), world = officeWorld();
+    const projects = [store, new Store(':memory:', projectById('cms-field-vocabulary'), root)];
+    stores.push(projects[1]);
+    const marker = 'ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const stopped = {
+        version: 1 as const, sequence: 1, kind: 'stopped' as const, control: 'STOP.json' as const,
+        reason: `Check the service token ${marker}`, since: PROGRESS.toISOString(),
+        pass: '7b0c6a43-62f8-4a49-9f11-8d1b2f6ad0c4', reportedAt: PROGRESS.toISOString(),
+    };
+    const served = async (store: Store): Promise<HumanAction[]> => {
+        const url = new URL('http://127.0.0.1:4318/api/messages');
+        const response = await apiRoute(new Request(url), url, {
+            store, offices: { stores: () => new Map(), entries: new Map(), incidents: world.incidents, runnerReports: world.runnerReports },
+            engine: { features: {} }, project: store.project.id,
+        } as never);
+        return (await response!.json()).outbox;
+    };
+    try {
+        world.runnerReports.recordHalt(stopped, PROGRESS);
+        expect(world.runnerReports.halt()).toEqual(stopped);
+        for (const project of projects) {
+            const notice = (await served(project)).find(item => item.id === 'overseer-stopped');
+            expect(notice?.detail).toContain('[redacted]');
+            expect(notice?.ownerSteps?.why).toContain('[redacted]');
+            expect(JSON.stringify(notice)).not.toContain(marker);
+        }
+        world.runnerReports.recordHalt({ ...stopped, sequence: 2, kind: 'running', control: null, since: null, reason: '' }, PROGRESS);
+        for (const project of projects) expect(open(await served(project))).not.toContain('overseer-stopped');
+    } finally { world.db.close(); }
 });

@@ -54,6 +54,8 @@ export interface OfficeReader {
 
 /** A read of the Office that did not give a usable answer. */
 export class OfficeReadError extends Error {}
+/** The phase expired before this observation could start. */
+export class ObservationSkipped extends OfficeReadError {}
 
 const RESET = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET']);
 const reset = (error: unknown) => {
@@ -95,7 +97,10 @@ export function officeReader(base: string, request: typeof fetch = fetch, limits
         for (let attempt = 0; ; attempt++) {
             // AbortSignal.timeout takes whole milliseconds; the phase clock is fractional.
             const timeout = Math.floor(Math.min(limits.requestTimeoutMs, remaining()));
-            if (!(timeout > 0)) throw new OfficeReadError(`${path} was not read: the pass has no time left for it`);
+            if (!(timeout > 0)) {
+                const detail = `${path} was not read: the pass has no time left for it`;
+                throw attempt === 0 ? new ObservationSkipped(detail) : new OfficeReadError(detail);
+            }
             try {
                 // The signal stays on the response, so it bounds reading the body as well.
                 const response = await request(`${base}${path}`, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout) });

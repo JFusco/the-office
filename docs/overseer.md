@@ -11,7 +11,7 @@ running and you have enabled automatic resumes, the Office uses the route that f
 switch starts paused. The Office reports `no-route` for `retry-checkpoint` and
 `reconcile-maintenance`.
 See [Resuming after a fix](#resuming-after-a-fix).
-The repair runner exists as an observe-only pass. You start it by hand, or its launcher, once you
+Each repair runner pass observes and reports. You start it by hand, or its launcher, once you
 install it, starts one every two minutes. It reads the Office, keeps one incident in flight,
 journals outages in its own folder and forwards them to the incident ledger, and reports whether
 it is running, paused or stopped. It calls no model; its only writes to the Office are those
@@ -926,7 +926,7 @@ deployed), and after it becomes `verified` or `recurred`.
 ## Runner
 
 The runner is the Overseer's own process, separate from the Office service, so it still works
-when that service is down. In this release one pass only observes. It reads the Office's health
+when that service is down. Each pass observes and reports. It reads the Office's health
 and its research list, keeps at most one incident in flight and records what it saw. It calls no
 model, makes no GitHub call and takes no scheduler claim. Besides those reads it sends the Office
 only its own reports: the failures it journaled and its control condition (see
