@@ -23,6 +23,7 @@ import { holdReason } from '../office/project-holds';
 import { recoverBoardPreflights } from './board-preflight-recovery';
 import { temporaryReadFailure, reconcileReadRetries } from '../scheduling/read-retries';
 import { recoverPRMetadata } from './pr-metadata-recovery';
+import { quotaDeferred } from './quota-deferral';
 import type { ITContext } from './context';
 
 /** Read-only recoveries for delivery, intake, provider and checkpoint failures of an unpaused project. */
@@ -70,7 +71,8 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
         for (const job of state.coordination?.jobs || [])
             if (job.status === 'queued' && !before.has(job.id))
                 actions.push(`${job.key}: safe read-only review retry queued; completion awaits the team.`);
-        if (coordinator && state.coordination?.listener.error) {
+        // A GitHub quota hold defers both reads below: nothing is queued or counted until it ends (./quota-deferral.ts).
+        if (coordinator && state.coordination?.listener.error && !quotaDeferred(context, 'assignment-listener')) {
             const detail = state.coordination.listener.error;
             // One failed read is retried by Ellis; Morgan hears about it only after three in a row.
             await recover('assignment-listener', detail, async () => { return enqueueRequest(store, 'poll'); }, temporaryReadFailure(detail)
@@ -78,7 +80,7 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
                 : `Assignment listening requires a read-back of its saved failure: ${detail}`);
         }
         const source = store.project.provider === 'github' ? state.github : state.azure;
-        if (source?.error) {
+        if (source?.error && !quotaDeferred(context, 'project-progress')) {
             await recover('project-progress', source.error, async () => { return enqueueRequest(store, 'refresh'); }, temporaryReadFailure(source.error)
                 ? `Morgan investigates the saved ${store.project.provider} read diagnostic and resource access. Preserve the last verified project view; a timeout alone does not require a login change.`
                 : `Project refresh is blocked. Read the saved ${store.project.provider} error and check its resource permissions before retrying.`);
