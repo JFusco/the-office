@@ -9,6 +9,7 @@ import { currentGitHubSource } from '../../../server/github/call-scope';
 import { GitHubCalls } from '../../../server/github/github-calls';
 import { Coordinator, coordination } from '../../../server/scheduling/coordination';
 import { Engine } from '../../../server/scheduling/engine';
+import { CommandFailure } from '../../../server/workers/process';
 import type { AssignedIssue, GitHubBoard } from '../../../src/shared';
 
 const cleanup: (() => void)[] = [];
@@ -25,7 +26,7 @@ const prior: AssignedIssue = { key: 'GH-3', summary: 'Earlier', url: 'https://gi
  * Brain with the Office's real accounting over a simulated `gh`: when the selected board page answers,
  * another call's GraphQL balance of 500 of 5,000 arrives.
  */
-async function office(reservePage = 1) {
+async function office(reservePage = 1, refuseBoard = false) {
     const root = mkdtempSync(join(tmpdir(), 'office-board-hold-'));
     const store = new Store(':memory:', projectById('brain'), root);
     cleanup.push(() => { store.close(); rmSync(root, { recursive: true, force: true }); });
@@ -39,6 +40,8 @@ async function office(reservePage = 1) {
         if (args[1].includes('assignee=JFusco')) return JSON.stringify([[{ number: 1, title: 'Issue 1', html_url: 'https://github.com/JFusco/brain/issues/1', state: 'open', updated_at: '', assignees: [{ login: 'JFusco' }] }]]);
         if (args[1] === 'graphql' && args.some(arg => arg.startsWith('query=query($owner'))) {
             const number = args.includes('after=page-2') ? 2 : 1;
+            // GitHub's refusal only in the printed body; gh's own error says only that the query failed.
+            if (refuseBoard) { options.onOutput?.('stdout', JSON.stringify({ errors: [{ message: 'API rate limit exceeded for user ID 1.' }] })); throw new CommandFailure('gh exited 1: query failed', 'other', true); }
             if (number === holdAfterPage) github.quota.headers({ resource: 'graphql', limit: 5000, used: 4500, remaining: 500, reset: RESET }, 'body');
             return page(number, number === 1);
         }
@@ -93,4 +96,17 @@ test('past the GraphQL reset the background poll reads both pages and publishes 
     expect(x.boardPages()).toEqual([1, 1, 2]);
     expect(x.c.state.listener.deferredUntil).toBeUndefined();
     expect(x.store.state.github!.board?.items.map(item => item.number)).toEqual([1, 2]);
+});
+
+test('a board page GitHub refuses gives the assignment listener the wait, the provider message once and the last board', async () => {
+    const x = await office(0, true), refused = vi.spyOn(x.github.governor, 'refused');
+    expect(await x.c.poll(new Date(T0))).toBeUndefined();
+    const error = x.c.state.listener.error;
+    expect(error).toContain('GitHub Project read failed: ');
+    expect(error).toContain('gh exited 1: query failed');
+    expect(error.split('API rate limit exceeded for user ID 1.').length - 1).toBe(1);
+    expect(error).toContain("Wait for GitHub's rate limit to clear before retrying the board read.");
+    expect(error).not.toMatch(/gh auth refresh|Retry the read-only project refresh/);
+    expect(x.store.state.github!.board).toEqual(PRIOR_BOARD);
+    expect(refused).toHaveBeenCalledTimes(1);
 });

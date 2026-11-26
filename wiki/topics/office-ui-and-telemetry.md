@@ -14,7 +14,8 @@ GitHub calls are counted per source and family in `/api/health`. Observation rea
 quota. The monitor reads each project's open pull requests as
 [one GraphQL inventory](../journal/2026-11-26-batched-pr-observation.md) instead of four REST reads per PR. Background
 GraphQL work holds while any live reset window of the quota is at or below its 10% reserve. A board read GitHub refused
-[stays visible as the monitor's error through the hold](../journal/2026-11-26-board-refusal-diagnostic.md).
+[stays visible as the monitor's error through the hold](../journal/2026-11-26-board-refusal-diagnostic.md). Its advice
+[says to wait for the rate limit to clear](../journal/2026-11-26-board-refusal-advice.md), not to refresh auth.
 
 PR descriptions and goal documents are bounded in bytes and
 [cut at a complete UTF-8 character](../journal/2026-11-26-utf8-evidence-cut.md), so a split character is dropped whole.
