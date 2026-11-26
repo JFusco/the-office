@@ -37,10 +37,12 @@ export function refreshSettled(store: Store, job: TicketJob, ownClaimId?: string
 /**
  * Whether a refresh may replace conflict repair for this job, apart from in-flight work settling.
  * At merge the head was reviewed. At Sam's readiness review the head must be team-reviewed or an
- * accepted refresh head; `claimed` also admits the job while its own review step holds the claim.
+ * accepted refresh head; `claimed` also admits the job while its own review step holds the claim, and
+ * `stopped` a readiness review that stopped (`refresh-stopped-conflicts.ts`).
  */
-export function refreshEligible(store: Store, job: TicketJob, p: any, claimed = false): boolean {
-    if (!harnessDelivers(store, job) || !(job.stage === 'merge' ? ['blocked', 'interrupted', 'watching'].includes(job.status) : job.stage === 'lead-pr' && (job.status === 'watching' || claimed && job.status === 'working')))
+export function refreshEligible(store: Store, job: TicketJob, p: any, claimed = false, stopped = false): boolean {
+    if (!harnessDelivers(store, job) || !(job.stage === 'merge' ? ['blocked', 'interrupted', 'watching'].includes(job.status)
+        : job.stage === 'lead-pr' && (job.status === 'watching' || claimed && job.status === 'working' || stopped && ['blocked', 'interrupted'].includes(job.status))))
         return false;
     // A source-repair cycle with findings still pending keeps its own reconciliation contract. A finished one is only
     // the record of an earlier repair: it is never removed, and must not send a later conflict down the older route.
@@ -59,18 +61,24 @@ export function refreshEligible(store: Store, job: TicketJob, p: any, claimed = 
 }
 
 /**
- * A hands-off, reviewed PR that became conflicting after another merge (at the guarded merge or during
- * Sam's readiness review) goes back to Alex in its own worktree: he forward-merges current main and
- * runs required checks, the harness updates the same PR, and Sam reviews the merged head before the
- * guarded merge. Returns true when the job was requeued.
+ * A hands-off, reviewed PR that became conflicting after another merge (at the guarded merge, during
+ * Sam's readiness review, or after that review stopped) goes back to Alex in its own worktree: he
+ * forward-merges current main and runs required checks, the harness updates the same PR, and Sam
+ * reviews the merged head before the guarded merge. Returns true when the job was requeued.
  */
-export function refreshConflicted(store: Store, job: TicketJob, p: any): boolean {
-    if (!refreshEligible(store, job, p) || !refreshSettled(store, job))
+export function refreshConflicted(store: Store, job: TicketJob, p: any, stopped = false): boolean {
+    if (!refreshEligible(store, job, p, false, stopped) || !refreshSettled(store, job))
         return false;
-    job.repairReason = 'conflicts';
-    job.stage = 'update-base';
-    job.status = 'queued';
-    job.detail = `PR #${job.pr} conflicts with ${store.project.target} after another merge. Alex merges current ${store.project.target} into the same branch and runs required checks; the harness updates the same PR and Sam reviews the merged head before the guarded merge.`;
-    store.emit('pr-conflict-refresh-queued', `${job.key}: ${job.detail}`, 'developer', job.key);
+    const target = store.project.target, supersedes = stopped && job.stage === 'lead-pr';
+    const detail = supersedes
+        ? `PR #${job.pr} conflicts with ${target} after its readiness review stopped. This refresh supersedes the stopped review, whose verdict stays in the saved steps. Alex merges current ${target} into the same branch and runs required checks; the harness updates the same PR and Sam reviews the merged head.`
+        : `PR #${job.pr} conflicts with ${target} after another merge. Alex merges current ${target} into the same branch and runs required checks; the harness updates the same PR and Sam reviews the merged head before the guarded merge.`;
+    store.transition('pr-conflict-refresh-queued', `${job.key}: ${detail}`, () => {
+        job.repairReason = 'conflicts';
+        job.stage = 'update-base';
+        job.status = 'queued';
+        job.detail = detail;
+        if (supersedes) delete job.stop;
+    }, 'developer', job.key);
     return true;
 }

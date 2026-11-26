@@ -232,7 +232,7 @@ export async function acceptStageResult(this: GitHubDelivery, context: StageCont
         if (this.store.state.github) {
             const observed = this.store.state.github.prs.find(pr => pr.number === job.pr);
             if (observed)
-                Object.assign(observed, { state: p.state, base: p.base.ref, head: p.head.sha, mergedAt: p.merged_at || '', draft: p.draft });
+                Object.assign(observed, { state: p.state, base: p.base.ref, head: p.head.sha, mergedAt: p.merged_at || '', draft: p.draft, mergeable: p.mergeable ?? null });
         }
         const priorLead = job.steps.filter(s => s.stage === 'lead-pr').at(-1)?.result;
         const rejectedSameHead = priorLead?.commit === job.head && priorLead.outcome !== 'passed';
