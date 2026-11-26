@@ -15,6 +15,9 @@ quota. The monitor reads each project's open pull requests as
 [one GraphQL inventory](../journal/2026-11-26-batched-pr-observation.md) instead of four REST reads per PR. Background
 GraphQL work holds while any live reset window of the quota is at or below its 10% reserve.
 
+PR descriptions and goal documents are bounded in bytes and
+[cut at a complete UTF-8 character](../journal/2026-11-26-utf8-evidence-cut.md), so a split character is dropped whole.
+
 ## Live ticket timeline
 
 The PM queue and ticket drawer share a progress summary for GitHub and Jira/Azure.

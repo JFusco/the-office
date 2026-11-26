@@ -226,3 +226,11 @@ test('GitHub PR narratives are bounded without splitting Unicode or losing the t
     expect(Buffer.byteLength(result.description!)).toBeLessThanOrEqual(8192);
     expect(result.descriptionTruncated).toBe(true); expect(result.description).not.toContain('�');
 });
+test('a cut inside a character drops the whole character, never leaving a replacement character', () => {
+    const prefix = 'a'.repeat(8189);
+    expect(githubPRDescription(prefix + '😀')).toEqual({ description: prefix, descriptionTruncated: true });
+});
+test('a replacement character already in the text is kept, before a split character or at the cut itself', () => {
+    expect(githubPRDescription('a'.repeat(8186) + '\uFFFD' + '😀')).toEqual({ description: 'a'.repeat(8186) + '\uFFFD', descriptionTruncated: true });
+    expect(githubPRDescription('a'.repeat(8189) + '\uFFFD' + 'x')).toEqual({ description: 'a'.repeat(8189) + '\uFFFD', descriptionTruncated: true });
+});
