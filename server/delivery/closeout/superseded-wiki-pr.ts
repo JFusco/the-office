@@ -1,6 +1,6 @@
 import { Effects } from '../../store/effects';
 import { likePrefix } from '../../store/like-prefix';
-import { activeEffectId, harnessEffect } from '../harness/effect';
+import { activeEffectId, effectIdGuard, harnessEffect } from '../harness/effect';
 import { assertDeliveryMayMutate } from '../harness/guards';
 import { assessDeliveryEligibility } from '../harness/delivery-authority';
 import { readBackOrThrow } from '../harness/read-retry';
@@ -19,7 +19,7 @@ import { proveContainment, targetTip } from './wiki-containment';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { BotRedo, DependabotAdoption, Receipt, SupersededWikiClose, TicketJob } from '../../../src/shared';
 
-type Guard = (activeEffectId?: string) => Promise<void>;
+type Guard = () => void | Promise<void>;
 const STEPS = ['relink', 'pr-comment', 'pr-close', 'issue-comment', 'issue-close'] as const;
 type CommentStep = 'pr-comment' | 'issue-comment';
 const short = (sha: string) => sha.slice(0, 7);
@@ -129,13 +129,13 @@ function guards(delivery: GitHubDelivery, job: TicketJob, close: SupersededWikiC
         if (!ownsIssue(issue, close)) throw new Error('The wiki PR’s own tracking issue no longer matches');
         return issue;
     };
-    const open = (strictLink: boolean): Guard => async activeEffectId => { await qualifyOpen(strictLink, activeEffectId); };
-    const closed: Guard = async activeEffectId => { await closedIssue(activeEffectId); bound(activeEffectId); };
-    const bothClosed: Guard = async activeEffectId => {
+    const open = (strictLink: boolean): Guard => effectIdGuard(async activeEffectId => { await qualifyOpen(strictLink, activeEffectId); });
+    const closed: Guard = effectIdGuard(async activeEffectId => { await closedIssue(activeEffectId); bound(activeEffectId); });
+    const bothClosed: Guard = effectIdGuard(async activeEffectId => {
         const issue = await closedIssue(activeEffectId);
         if (!matchesClosedIssue(issue, close)) throw new Error(ISSUE_REOPENED);
         bound(activeEffectId);
-    };
+    });
     return { assertBound, bound, qualifyOpen, open, closedIssue, closed, bothClosed };
 }
 
@@ -212,13 +212,13 @@ async function restoreLink(delivery: GitHubDelivery, job: TicketJob, close: Supe
         const body = linkedBody(p.body || '', close.issue);
         if (body.length > 65_000) throw new Error(`PR #${close.pr} body is too long to restore "Closes #${close.issue}"`);
         await harnessEffect(store, job, { key: key(close, 'relink'), operation: 'github-pr-body', target: prUrl(close), payload: { issue: close.issue, head: close.head, run: close.run.id },
-            guard: async activeEffectId => {
+            guard: effectIdGuard(async activeEffectId => {
                 await g.qualifyOpen(false, activeEffectId);
                 const last = await readRepo(store, execute, `pulls/${close.pr}`);
                 assertOpenSnapshot(last, close, store.project.target);
                 if (last.body !== p.body) throw new Error('The wiki PR body changed before its link was restored');
                 g.bound(activeEffectId);
-            },
+            }),
             dispatch: async () => {
                 await execute('gh', ['api', `repos/${close.repository}/pulls/${close.pr}`, '-X', 'PATCH', '-f', `body=${body}`], { cwd: store.project.repo, timeout: 60000 });
                 return readBackOrThrow(linked, `Closes #${close.issue} on PR #${close.pr}`);
@@ -322,13 +322,13 @@ async function closeIssue(delivery: GitHubDelivery, job: TicketJob, close: Super
     }
     const read = readBacks(delivery, close)['issue-close'];
     await harnessEffect(store, job, { key: key(close, 'issue-close'), operation: 'github-issue-close', target: issueUrl(close), payload: { issue: close.issue, reason: 'not_planned' },
-        guard: async activeEffectId => {
-            await g.closed(activeEffectId);
+        guard: effectIdGuard(async activeEffectId => {
+            await g.closedIssue(activeEffectId); g.bound(activeEffectId);
             const issue = await readRepo(store, execute, `issues/${close.issue}`);
             if (!ownsIssue(issue, close) || issue.state !== 'open')
                 throw new Error('The tracking issue is no longer the matching open issue');
             g.bound(activeEffectId);
-        },
+        }),
         dispatch: async () => {
             await execute('gh', ['api', `repos/${close.repository}/issues/${close.issue}`, '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=not_planned'], { cwd: store.project.repo, timeout: 60000 });
             return readBackOrThrow(read, `Issue #${close.issue} closed as not planned`);
@@ -354,11 +354,11 @@ async function closeSuperseded(delivery: GitHubDelivery, job: TicketJob, root: s
             if (!done('pr-comment')) await postProofComment(store, execute, job, key(close, 'pr-comment'), comment(close, 'pull'), g.open(true));
             const read = readBacks(delivery, close)['pr-close'];
             await harnessEffect(store, job, { key: key(close, 'pr-close'), operation: 'github-pr-close', target: prUrl(close), payload: { pr: close.pr, head: close.head },
-                guard: async activeEffectId => {
+                guard: effectIdGuard(async activeEffectId => {
                     const qualified = await g.qualifyOpen(true, activeEffectId);
                     await revalidate(delivery, close, qualified);
                     g.bound(activeEffectId);
-                },
+                }),
                 dispatch: async () => {
                     await execute('gh', ['api', `repos/${close.repository}/pulls/${close.pr}`, '-X', 'PATCH', '-f', 'state=closed'], { cwd: store.project.repo, timeout: 60000 });
                     return readBackOrThrow(read, `PR #${close.pr} closed unmerged at ${short(close.head)}`);

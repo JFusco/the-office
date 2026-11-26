@@ -46,7 +46,7 @@ export async function readProofComment(store: Store, execute: Execute, c: ProofC
 }
 
 /** Posts the comment once; the returned ID is read back on its conversation with its author and complete body. */
-export async function postProofComment(store: Store, execute: Execute, job: TicketJob, key: string, c: ProofComment, guard: (activeEffectId?: string) => void | Promise<void>): Promise<CommentReceipt> {
+export async function postProofComment(store: Store, execute: Execute, job: TicketJob, key: string, c: ProofComment, guard: () => void | Promise<void>): Promise<CommentReceipt> {
     const id = activeEffectId(store, `harness:${job.id}:${key}`), prior = store.getEffect<CommentIntent['payload']>(id);
     const author = await commentAuthor(store, execute);
     if (prior && (!matchesProofComment(store, c, prior) || prior.payload.author !== undefined && prior.payload.author !== author))
