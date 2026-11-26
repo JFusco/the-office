@@ -4,7 +4,7 @@ import { repairFreeze } from '../../incidents/repair/repair-freeze';
 import { assessDeliveryEligibility } from '../harness/delivery-authority';
 import { metadataAppliesToHead } from '../publication/metadata-context';
 import { assertAutomationEffects } from '../readiness/automation-effects';
-import { refreshConflicted, refreshSettled } from './refresh-conflicted';
+import { refreshConflicted, refreshEligible, refreshSettled } from './refresh-conflicted';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import type { TicketJob } from '../../../src/shared';
 
@@ -12,10 +12,15 @@ const STOPPED = ['blocked', 'interrupted'];
 /** Stops that must be reconciled on their own before any other work on the job. */
 const OWN_RECONCILIATION = ['uncertain-effect', 'authority', 'source-closed'];
 
-/** The project refresh's cached row shows this exact head conflicting with the target; anything else costs no provider read. */
-function cachedConflict(delivery: GitHubDelivery, job: TicketJob): boolean {
+/**
+ * The conflict the project refresh's cached row shows at this exact head and target, in the PR shape the refresh rules
+ * read, or null; anything else costs no provider read. The cache holds no branch, so the job's own stands in until the
+ * live read checks the actual one.
+ */
+function cachedConflict(delivery: GitHubDelivery, job: TicketJob) {
     const row = delivery.store.state.github?.prs.find(pr => pr.number === job.pr);
-    return !!row && row.state === 'open' && !row.draft && row.head === job.head && row.base === delivery.store.project.target && row.mergeable === false;
+    if (!row || row.state !== 'open' || row.draft || row.head !== job.head || row.base !== delivery.store.project.target || row.mergeable !== false) return null;
+    return { state: row.state, draft: row.draft, merged_at: null, mergeable: false, head: { sha: row.head, ref: job.branch }, base: { ref: row.base } };
 }
 
 /** Local state only: nothing but the conflict keeps this stopped readiness review from a refresh. */
@@ -39,8 +44,10 @@ function admissible(delivery: GitHubDelivery, job: TicketJob): boolean {
  */
 export async function refreshStoppedConflicts(delivery: GitHubDelivery): Promise<void> {
     for (const job of [...delivery.jobs]) {
-        if (job.stage !== 'lead-pr' || !STOPPED.includes(job.status) || !cachedConflict(delivery, job) ||
-            !admissible(delivery, job) || !refreshSettled(delivery.store, job)) continue;
+        if (job.stage !== 'lead-pr' || !STOPPED.includes(job.status)) continue;
+        const cached = cachedConflict(delivery, job);
+        // A job the refresh rules refuse on local state alone (its budget, head proof or merge authority) is never read.
+        if (!cached || !admissible(delivery, job) || !refreshSettled(delivery.store, job) || !refreshEligible(delivery.store, job, cached, false, true)) continue;
         const prior = structuredClone(job);
         let pr: any;
         try { pr = await delivery.verifyPR(job, true); }

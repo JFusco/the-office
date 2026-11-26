@@ -13,7 +13,8 @@ provider read-back.
 GitHub calls are counted per source and family in `/api/health`. Observation reads stay within the account's hourly
 quota. The monitor reads each project's open pull requests as
 [one GraphQL inventory](../journal/2026-11-26-batched-pr-observation.md) instead of four REST reads per PR. Background
-GraphQL work holds while any live reset window of the quota is at or below its 10% reserve.
+GraphQL work holds while any live reset window of the quota is at or below its 10% reserve. A board read GitHub refused
+[stays visible as the monitor's error through the hold](../journal/2026-11-26-board-refusal-diagnostic.md).
 
 ## Live ticket timeline
 
