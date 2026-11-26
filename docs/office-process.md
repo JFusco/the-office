@@ -2,6 +2,11 @@
 
 This is the shared process baseline agreed on November 15, 2026. Every employee
 uses the existing Office runtime, scheduler and role-specific response schema.
+The one exception is the Overseer runner (see [Overseer runner](#overseer-runner)), a
+repair orchestrator supervised outside the Office service because it must work when
+that service is broken. It takes no scheduler claims, changes live Office state only
+through validated Office routes and routes external mutations through the existing
+Effects. It gives employees and configured project delivery no other dispatch path.
 There is no separate QA dispatcher or learning system. The diagrams describe
 the supported process, not proof that a particular ticket passed it. Configured
 project policy determines which optional stages run; a diagram grants no new
@@ -2047,6 +2052,27 @@ it the job is a person's. The run stays the harness's to restart for stopped-bas
 its grant stands unspent. The Office's own bounded retry of a transient failed read is not held. The
 scheduler's dispatch is unchanged; a held record was already not running.
 
+### Overseer runner
+
+The Overseer runner (`server/overseer.ts`) is the repair engine's own process. It runs outside
+the Office service, one pass at a time, so it keeps working when the service is down. In this
+release a pass only observes:
+
+- It reads `/api/health` and `/api/incidents?research=1` with `GET`s over loopback. It sends the
+  Office nothing else, calls no model, makes no GitHub call and takes no scheduler claim.
+- It keeps at most one incident in flight. That is an incident eligible for research in state
+  `observed`, `triaged` or `recurred`, never a runner failure. It records which incident it
+  chose in its own state.
+- It stands down while a deployment holds the fence, or while the runner's STOP or pause holds.
+- When the Office does not answer for five minutes over two passes, it journals one
+  `service-down` event in its own folder. When the Office answers again, it journals one
+  `service-restored` event. These events are not yet sent to the Office.
+
+The runner writes only under its own root, which is never an Office data root. Its pause
+(`pnpm office overseer pause`) and STOP stop the runner only. The Office's switch for automatic
+repair resumes (`pnpm office incident pause-resumes`) is separate, and works whatever the runner
+is doing. How to run and read it is in [Overseer, Runner](overseer.md#runner).
+
 ## Code owners and verification
 
 | Process boundary | Owning source |
@@ -2064,6 +2090,7 @@ scheduler's dispatch is unchanged; a held record was already not running.
 | Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
 | Evidence packets, dismissals and their lapse | `server/incidents/evidence-packet.ts`, `server/incidents/dismissal.ts`, `server/incidents/dismissal-validity.ts` |
 | Repair waits: marker, admission, expiry, effective cause | `server/incidents/repair/` |
+| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection | `server/overseer.ts`, `server/overseer/` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |
