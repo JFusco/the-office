@@ -12,9 +12,11 @@ switch starts paused. The Office reports `no-route` for `retry-checkpoint` and
 `reconcile-maintenance`.
 See [Resuming after a fix](#resuming-after-a-fix).
 The repair runner exists as an observe-only pass. You start it by hand, or its launcher, once you
-install it, starts one every two minutes. It reads the Office, keeps one incident in flight and
-journals outages in its own folder. It calls no model and changes nothing in the Office. See
-[Runner](#runner) and [Launcher](#launcher).
+install it, starts one every two minutes. It reads the Office, keeps one incident in flight,
+journals outages in its own folder and forwards them to the incident ledger, and reports whether
+it is running, paused or stopped. It calls no model; its only writes to the Office are those
+reports. See [Runner](#runner), [Forwarding and reports](#forwarding-and-reports) and
+[Launcher](#launcher).
 The process rules are in the Office process, under
 [Deployment](office-process.md#deployment), [Incident ledger](office-process.md#incident-ledger)
 and [Overseer runner](office-process.md#overseer-runner).
@@ -915,18 +917,22 @@ deployed), and after it becomes `verified` or `recurred`.
   threshold before it. A writer stage refused the same way keeps `uncertain-effect`. The repair
   wait for a dead hands-off writer reads past that label to the Effects ledger (see Work awaiting a
   repair); the ledger's own reading of the stop is unchanged.
-- The repair runner's own failures, such as an Office that stopped answering, are journaled in the
-  runner's own folder only (see [Runner](#runner)). The ledger does not record them yet.
+- The repair runner's own failures, such as an Office that stopped answering, reach the ledger
+  when the runner forwards them (see [Forwarding and reports](#forwarding-and-reports)). They form
+  one `runner` incident whose subject, `office-overseer/runner/office-service`, stands for the
+  newest outage: open from its `service-down` until its `service-restored` arrives, one episode per
+  outage. Observation never changes that subject; only the runner's reports do.
 
 ## Runner
 
 The runner is the Overseer's own process, separate from the Office service, so it still works
 when that service is down. In this release one pass only observes. It reads the Office's health
 and its research list, keeps at most one incident in flight and records what it saw. It calls no
-model, makes no GitHub call, sends the Office nothing but two `GET`s and takes no scheduler
-claim. Nothing starts it on a schedule until you install its launcher (see [Launcher](#launcher)),
-and the incident it keeps in flight is only recorded: nothing is triaged, fixed or resumed because
-of it.
+model, makes no GitHub call and takes no scheduler claim. Besides those reads it sends the Office
+only its own reports: the failures it journaled and its control condition (see
+[Forwarding and reports](#forwarding-and-reports)). Nothing starts it on a schedule until you
+install its launcher (see [Launcher](#launcher)), and the incident it keeps in flight is only
+recorded: nothing is triaged, fixed or resumed because of it.
 
 ### Running a pass
 
@@ -935,8 +941,11 @@ OVERSEER_ROOT="$HOME/Projects/the-office-overseer" node --import tsx server/over
 ```
 
 `OVERSEER_ROOT` is required and must be an absolute path. `OVERSEER_OFFICE_URL` is optional and
-defaults to `http://127.0.0.1:4318`; it must be a bare `http:` origin on `127.0.0.1`,
-`localhost` or `[::1]`. Before it loads any Office module, the pass sets `OFFICE_DATA_ROOT` to
+defaults to `http://127.0.0.1:4318`; it must be a bare `http:` origin on `127.0.0.1` or
+`localhost`, the only origins the Office answers. `[::1]` is refused like any other host: the
+pass, the installer and the launcher all check the same rule, and an installed launcher takes it
+only when you install it again. Whether any installation used `[::1]` was not checked. Before it
+loads any Office module, the pass sets `OFFICE_DATA_ROOT` to
 `state/office-data` under its root, whatever the shell set it to. Office code it loads can then
 never see the Office's own data.
 
@@ -968,6 +977,9 @@ A root is refused, with nothing written, when:
 | `paused` | A pause holds the runner |
 | `stopped` | STOP holds the runner, or the pass just wrote one |
 
+A pass that reports appends to its detail what it forwarded and reported, such as
+`Forwarded 2 of 2; halt reported running`, or why it could not.
+
 An incident is eligible when the ledger offers it for research, it is in state `observed`,
 `triaged` or `recurred`, and it is not one of the runner's own failures. The incident in flight is
 kept while it stays eligible. When it no longer is, `released` names it with the reason
@@ -994,7 +1006,8 @@ All under the root, kept apart: control files, journals and state.
 | `state/runner.json` | The incident in flight, the current outage, both cached readings, any journal write still owed, and the last pass |
 | `state/office-data/` | The pass's `OFFICE_DATA_ROOT` |
 | `state/budget.sqlite` | The budget ledger: every model reservation and deployment admission (see Budgets) |
-| `state/runner.sqlite`, `state/runner-data/` | The runner's private Store, for its own Effects in later phases; nothing opens it yet |
+| `state/runner.sqlite`, `state/runner-data/` | The runner's private Store: the Effects of its reports and what it knows of each one. Only a pass that holds the lock opens it, and only in the dedicated runner directory |
+| `state/forwarding.json` | What the last pass forwarded and reported, for `status` (see Forwarding and reports) |
 | `control/budget.json` | Optional: a lower or higher daily ceiling (see Budgets) |
 | `code/pin.json` | The release the launcher runs passes from; only `pnpm office overseer pin` writes it |
 | `code/launcher/overseer-launch.mjs` | The installed launcher, a read-only copy (see Launcher) |
@@ -1017,8 +1030,11 @@ configuration, to find the Office data root its release lives in. With `OVERSEER
 `~/Projects/the-office-overseer`. `status` reads every file above and creates nothing: the budget
 ledger through a read-only connection, never the Store. It shows STOP and pause, the lock owner or
 a guard left behind, the runner state, the number of journaled events, the billing mode,
-today's budget standing, the pin, the launcher's state and who holds its lock, and names any file
-it cannot read. A pause keeps its first reason; pausing again
+today's budget standing, the pin, the launcher's state and who holds its lock, the Office origin it
+would report to (`office`), and what the last pass forwarded (`forwarding`), and names any file
+it cannot read. `forwarding` comes from `state/forwarding.json` and is shown only when it was
+written for that origin and for the journal as it reads now; otherwise its counts are unknown and
+it says why. Status never opens the runner's SQLite Store. A pause keeps its first reason; pausing again
 changes nothing. `unpause` removes the pause and nothing else. If STOP is present the runner stays
 stopped, and the answer says so.
 
@@ -1153,12 +1169,80 @@ outage begins with the first such pass and takes that pass's ID. Once it has las
 and covered two passes, it is journaled once as `overseer:service-down:<outage>`. The next pass
 that reads health journals `overseer:service-restored:<outage>`. A gap shorter than that, such as
 a deployment's restart, is noted on the pass that ends it and journaled nowhere. These IDs are the
-event IDs the Office will record them under when forwarding arrives; until then they stay in
-`journal/failures.jsonl`.
+event IDs the Office records them under: the runner forwards them as described below.
 
 A journal event is saved in `state/runner.json` before it is appended. A pass that dies between
 the two leaves the exact line there, and the next pass writes it before it reads the Office. An
 event is never written twice, and never with different content under the same ID.
+
+### Forwarding and reports
+
+A pass takes the lock, reads runner state and the journal, and finishes any journal write a
+previous pass left half done. Then it forwards the journal's failure events, before it reads STOP
+or a pause, so forwarding goes on while the runner is stopped or paused, and also when runner state
+cannot be read. Observation follows as described above. However the pass ends, it then reports the
+runner's control condition, publishes `state/forwarding.json` and saves its record, all before it
+releases the lock. Forwarding needs the runner's Store, which opens only in
+`~/Projects/the-office-overseer`; a pass anywhere else observes and says forwarding is unavailable.
+
+The Office takes these reports through four routes, behind its origin check and deployment fence
+like every write. They are the only writes from outside besides the incident event route and the
+operator's `/api/incidents/resumes`:
+
+| Route | Does |
+|---|---|
+| `POST /api/incidents/runner/failures` | Records one journaled failure under its journal ID, with the change it makes to the runner's incident, in one transaction |
+| `GET /api/incidents/runner/failures/<id>` | The receipt kept for it: event, incident, digest and the revision it produced; or `absent` |
+| `POST /api/incidents/runner/halt` | Records the runner's control condition, ordered by sequence |
+| `GET /api/incidents/runner/halt` | The latest control condition the Office holds; or `absent` |
+
+Every answer names its resource and result, so an older Office without these routes, whose plain
+404 means nothing here, is never sent anything. The same failure sent again returns its original
+receipt, even after the incident has moved on. The same ID with other content is refused.
+
+Each send goes through the runner's Effects. Its preflight reads `/api/health` and refuses while
+the Office does not answer or a deployment holds the fence; nothing was sent, and a later pass
+tries again under a new attempt. Once a send is dispatched, anything short of the Office showing it
+kept leaves it for read-back only: it is never sent again. That is Joe's rule in `AGENTS.md`: "An
+uncertain effect is reconciled by read-back, never resent." It holds for the one narrow race
+too: a deployment that takes the fence after the preflight makes the Office refuse a send that has
+already been dispatched. The runner keeps that event, reads it back on later passes, and status
+lists it under `uncertain` until it shows. Other events keep going.
+
+Each pass examines at most 20 events, sends and read-backs together, taking turns from where the
+last pass stopped, so an event that stays unconfirmed never holds back the ones after it. It
+forwards for at most a quarter of its time, and never more than 30 seconds. Its time comes from the
+deadline the launcher registered for it (240 seconds for a pass run by hand); the halt report keeps
+the last quarter and the final six seconds are for saving. A launched pass whose deadline it cannot
+read defers its reports and says so.
+
+What status shows and what to do:
+
+- **`uncertain`**: sent and not yet shown by the Office. Keep the journal entry. Compare its ID
+  with the Office's receipt (`GET /api/incidents/runner/failures/<id>`); once the Office shows it, the
+  next pass settles it. Nothing is resent automatically.
+- **`conflicts`**: the Office holds that ID with other content, or the journal line changed under
+  an ID already forwarded. Nothing is sent for it. Keep both and compare the journal line with the
+  Office's receipt before deciding anything.
+- **The journal still fills up.** Forwarding removes nothing: a forwarded entry occupies the
+  journal until a person archives the confirmed evidence. At 1,000 events the runner stops, as
+  below.
+
+The control condition is `running`, `paused` or `stopped`, with the control file that holds it
+(`STOP.json`, or `pause.json` for a pause or a pause file that cannot be read), its reason, cut to
+500 characters, and its time. Each change gets a sequence above every one used or seen, frozen
+before it is sent, and the Office keeps the latest by sequence, so a clear always overtakes a STOP
+that was delayed.
+
+The Office shows two notices in every project's outbox, never saved in one:
+`overseer-incident:<incident>` while the runner's outage is open, and `overseer-stopped` while the
+runner's latest report says stopped. Each names its steps: run `pnpm office overseer status`, then
+settle what the control or outage names; for a STOP, resolve the cause before removing
+`control/STOP.json`. A paused runner has no notice. A reply to a notice is refused; it clears when
+its cause does.
+
+Reporting STOP changes nothing about automatic repair resumes. That switch is the Office's own: the
+configured Office has it enabled (Joe's handoff, 2026-11-23), while a new store starts it paused.
 
 ### When the runner stops
 
@@ -1171,6 +1255,9 @@ A pass writes STOP, keeping any STOP already there, when:
   recorded twice, a link or a file with a second name. Keep a copy; the journal is evidence for
   the ledger. A journal write still owed is the `intent` in runner state, and stays there.
 - **The journal is full** (1,000 events). A new outage needs room for its restoration as well.
+
+A forward or halt report that fails never stops the runner: the pass records why and tries again
+later.
 
 To clear it, confirm no pass is running (`pnpm office overseer status` shows no lock), settle the
 file named in the reason, then remove `control/STOP.json` by hand. A STOP file that cannot be read

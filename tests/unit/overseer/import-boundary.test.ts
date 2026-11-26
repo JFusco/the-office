@@ -13,10 +13,13 @@ const FORBIDDEN = [
 
 test('the runner reaches none of the Office service, the control store, the scheduler or the worker runtime', () => {
     const { files } = runtimeClosure(['server/overseer.ts']);
-    expect(files).toEqual(expect.arrayContaining(['server/overseer/machine.ts', 'server/overseer/pass.ts', 'server/overseer/office-client.ts']));
+    expect(files).toEqual(expect.arrayContaining(['server/overseer/machine.ts', 'server/overseer/pass.ts', 'server/overseer/office-client.ts', 'server/overseer/office-writer.ts', 'server/overseer/forward-events.ts', 'server/incidents/runner-report.ts']));
     expect(files.filter(file => FORBIDDEN.includes(file))).toEqual([]);
-    // Nothing loads Office configuration: the data root it would capture is the runner's own anyway.
-    expect(files).not.toContain('server/office/config.ts');
+    // Office configuration is reached only through the guarded runner Store, which checks the data root before loading it.
+    expect(files).toContain('server/office/config.ts');
+    const unguarded = runtimeClosure(['server/overseer.ts'], undefined, ['server/overseer/runner-store.ts']).files;
+    expect(unguarded).toContain('server/overseer/runner-store.ts');
+    expect(unguarded.filter(file => file === 'server/office/config.ts' || file === 'server/store/store.ts' || file === 'server/store/effects.ts')).toEqual([]);
 });
 
 test('the runner Store and the budgeted run reach none of the Office service, the control store, the scheduler or the worker runtime', () => {

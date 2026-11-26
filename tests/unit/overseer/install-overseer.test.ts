@@ -61,6 +61,8 @@ describe('installer preflight, before any plist or launchctl', () => {
             ['root inside the checkout data', w => { writePin(w.world.root, w.built); return { env: { ...w.env, OVERSEER_ROOT: join(w.world.checkoutData, 'runner') } }; }, 'overlaps the Office data root'],
             ['deadline below the bound', w => { writePin(w.world.root, w.built); return { env: { ...w.env, OVERSEER_PASS_DEADLINE_MS: '5000' } }; }, 'OVERSEER_PASS_DEADLINE_MS'],
             ['remote Office URL', w => { writePin(w.world.root, w.built); return { env: { ...w.env, OVERSEER_OFFICE_URL: 'http://example.com:4318' } }; }, 'OVERSEER_OFFICE_URL'],
+            // The Office answers only 127.0.0.1 and localhost, so an IPv6 loopback URL would fail every pass.
+            ['IPv6 loopback Office URL', w => { writePin(w.world.root, w.built); return { env: { ...w.env, OVERSEER_OFFICE_URL: 'http://[::1]:4318' } }; }, 'on 127.0.0.1 or localhost'],
         ];
         for (const [name, make, error] of cases) {
             const w = installWorld(), extra = make(w), fake = launchctl(), before = snapshot(w.world.base);

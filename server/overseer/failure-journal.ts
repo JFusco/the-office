@@ -1,6 +1,6 @@
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, openSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { z } from 'zod';
+import { FailureEvent, failureLine, LINE_LIMIT } from '../incidents/runner-report';
 import { readBoundedNoFollowSync } from '../store/owned-artifact';
 import type { RunnerPaths } from './config';
 import { ensurePrivateDirectory } from './runner-root';
@@ -8,47 +8,31 @@ import { ensurePrivateDirectory } from './runner-root';
 /**
  * The runner's failure events awaiting forwarding to the Office (phase 6d): one JSON record per
  * line, appended and never rewritten. Forwarding uses each record's ID as the Office event ID, so
- * an ID is written once with one content.
+ * an ID is written once with one content. The event's shape is the wire contract the Office
+ * validates too (`server/incidents/runner-report.ts`).
  */
-
-/** A subset of the Office's event IDs (`server/incidents/record-event.ts` EVENT_ID). */
-export const FAILURE_ID = /^overseer:(service-down|service-restored):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const Evidence = z.record(z.string().max(50), z.union([z.string().max(200), z.number(), z.boolean(), z.null()]))
-    .refine(evidence => Object.keys(evidence).length <= 12, 'Evidence holds at most 12 fields');
-export const FailureEvent = z.object({
-    version: z.literal(1),
-    id: z.string().regex(FAILURE_ID),
-    kind: z.enum(['service-down', 'service-restored']),
-    at: z.iso.datetime(),
-    episode: z.uuid(),
-    detail: z.string().max(500),
-    evidence: Evidence,
-}).strict().refine(event => event.id === `overseer:${event.kind}:${event.episode}`, 'An event ID names its kind and episode');
-export type FailureEvent = z.infer<typeof FailureEvent>;
-
-const LINE_LIMIT = 4096;
-
-/** The exact line an event is written as, newline included. */
-export function failureLine(event: FailureEvent): string {
-    const line = `${JSON.stringify(FailureEvent.parse(event))}\n`;
-    if (Buffer.byteLength(line) > LINE_LIMIT) throw new Error(`A failure event is at most ${LINE_LIMIT} bytes`);
-    return line;
-}
+export { FAILURE_ID, FailureEvent, failureLine } from '../incidents/runner-report';
 
 /** The journal as read: every complete record with its exact text, or why it cannot be trusted. */
 export type JournalView = { entries: { event: FailureEvent; line: string }[]; problem: null } | { entries: null; problem: string };
 
 /**
  * Reads the whole journal, bounded by its record limit. A torn last line, a malformed record, a
- * repeated ID or an unreadable file is a problem: the bytes are left as they are, nothing more is
- * appended, and the pass stops for a person.
+ * repeated ID, more records than the limit, a line longer than an event can be, a file another
+ * name also reaches, or an unreadable file is a problem: the bytes are left as they are, nothing
+ * more is appended, nothing is forwarded, and the pass stops for a person. What it returns is what
+ * may be forwarded to the Office.
  */
 export function readFailures(paths: RunnerPaths, limit: number): JournalView {
-    const read = readBoundedNoFollowSync(paths.failures, limit * LINE_LIMIT);
-    if ('reason' in read) return read.reason === 'missing' ? { entries: [], problem: null } : { entries: null, problem: `${paths.failures} cannot be read (${read.reason})` };
+    const read = readBoundedNoFollowSync(paths.failures, limit * LINE_LIMIT, { singleLink: true });
+    if ('reason' in read) return read.reason === 'missing' ? { entries: [], problem: null }
+        : { entries: null, problem: read.reason === 'not-owned' ? `${paths.failures} must be a regular file with a single link` : `${paths.failures} cannot be read (${read.reason})` };
     if (read.text && !read.text.endsWith('\n')) return { entries: null, problem: `${paths.failures} ends in a cut-short line` };
+    const lines = read.text.split('\n').slice(0, -1);
+    if (lines.length > limit) return { entries: null, problem: `${paths.failures} holds ${lines.length} records, more than its limit of ${limit}` };
     const entries: { event: FailureEvent; line: string }[] = [], ids = new Set<string>();
-    for (const [index, text] of read.text.split('\n').slice(0, -1).entries()) {
+    for (const [index, text] of lines.entries()) {
+        if (Buffer.byteLength(text) + 1 > LINE_LIMIT) return { entries: null, problem: `${paths.failures} line ${index + 1} is longer than ${LINE_LIMIT} bytes` };
         let event: FailureEvent;
         try { event = FailureEvent.parse(JSON.parse(text)); }
         catch { return { entries: null, problem: `${paths.failures} line ${index + 1} is not a failure event` }; }

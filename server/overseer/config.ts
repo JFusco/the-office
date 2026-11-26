@@ -17,6 +17,14 @@ export const RUNNER_DEFAULTS = {
     serviceDownAfterFailures: 2,
     /** Failure events kept for forwarding; a full journal stops the runner. */
     journalLimit: 1_000,
+    /** Journal events one pass examines for forwarding: sends and read-backs together. */
+    forwardLimit: 20,
+    /** A pass run by hand, outside the launcher, takes this long at most. */
+    manualPassMs: 240_000,
+    /** The end of a pass kept for saving its records: no request runs into it. */
+    finalizeMs: 6_000,
+    /** Forwarding takes at most a quarter of a pass, and never longer than this. */
+    forwardMaxMs: 30_000,
 } as const;
 export type RunnerLimits = { [K in keyof typeof RUNNER_DEFAULTS]: number };
 
@@ -34,6 +42,8 @@ export interface RunnerPaths {
     guard: string;
     failures: string;
     runnerState: string;
+    /** What the last pass forwarded and reported, for `status` (forwarding-status.ts). */
+    forwarding: string;
     /** The runner's private Store and its data folder (`runner-store.ts`); only the Store opener creates them. */
     runnerDb: string;
     runnerData: string;
@@ -56,7 +66,7 @@ export function runnerPaths(root: string): RunnerPaths {
         root, control, journal, state, officeData: resolve(state, 'office-data'),
         stop: resolve(control, 'STOP.json'), pause: resolve(control, 'pause.json'),
         lock: resolve(control, 'pass.lock'), guard: resolve(control, 'pass.lock.reclaim'),
-        failures: resolve(journal, 'failures.jsonl'), runnerState: resolve(state, 'runner.json'),
+        failures: resolve(journal, 'failures.jsonl'), runnerState: resolve(state, 'runner.json'), forwarding: resolve(state, 'forwarding.json'),
         runnerDb: resolve(state, 'runner.sqlite'), runnerData: resolve(state, 'runner-data'),
         budgetDb: resolve(state, 'budget.sqlite'), budgetConfig: resolve(control, 'budget.json'),
         code: resolve(root, 'code'), pin: resolve(root, 'code', 'pin.json'), launcherCopy: resolve(root, 'code', 'launcher', 'overseer-launch.mjs'),
@@ -69,7 +79,8 @@ export function runnerPaths(root: string): RunnerPaths {
 export const privateDirectories = (paths: RunnerPaths) => [paths.control, paths.journal, paths.state, paths.officeData];
 
 export const DEFAULT_OFFICE_URL = 'http://127.0.0.1:4318';
-const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+// The Office answers only these origins (server/office/security.ts safeOrigin), so the runner accepts no others.
+const LOOPBACK = new Set(['127.0.0.1', 'localhost']);
 
 /**
  * The Office the runner reads: `OVERSEER_OFFICE_URL`, or the default port on loopback. Only a bare
@@ -80,7 +91,7 @@ export function officeUrl(env: NodeJS.ProcessEnv): string {
     const raw = env.OVERSEER_OFFICE_URL ?? DEFAULT_OFFICE_URL;
     let url: URL;
     try { url = new URL(raw); } catch { throw new Error(`OVERSEER_OFFICE_URL is not a URL: ${raw.slice(0, 200)}`); }
-    if (url.protocol !== 'http:' || !LOOPBACK.has(url.hostname)) throw new Error('OVERSEER_OFFICE_URL must be an http: origin on 127.0.0.1, localhost or [::1]');
+    if (url.protocol !== 'http:' || !LOOPBACK.has(url.hostname)) throw new Error('OVERSEER_OFFICE_URL must be an http: origin on 127.0.0.1 or localhost');
     if (url.username || url.password || url.pathname !== '/' || url.search || url.hash || /[?#]/.test(raw))
         throw new Error('OVERSEER_OFFICE_URL must be a bare origin, without credentials, a path, a query or a fragment');
     return url.origin;

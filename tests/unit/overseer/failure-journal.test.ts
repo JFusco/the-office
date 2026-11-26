@@ -82,3 +82,26 @@ test('capacity: a new outage needs room for its restoration, a restoration needs
     expect(readFileSync(full.failures, 'utf8')).toBe(before);
     expect(appendFailureLine(full, failureLine(event('service-restored')), 1000)).toBe('appended');
 });
+
+test('a journal with more records than its limit, or a line longer than an event can be, is not trusted and nothing in it is offered for forwarding', () => {
+    const counted = runnerRoot();
+    fill(counted.failures, 4);
+    expect(readFailures(counted, 3)).toEqual({ entries: null, problem: expect.stringContaining('holds 4 records, more than its limit of 3') });
+    const long = runnerRoot();
+    mkdirSync(join(long.failures, '..'), { recursive: true });
+    // Valid JSON for no event, but longer than any event line can be.
+    writeFileSync(long.failures, `${JSON.stringify({ padding: 'x'.repeat(5000) })}\n`);
+    expect(readFailures(long, 1000)).toEqual({ entries: null, problem: expect.stringContaining('line 1 is longer than 4096 bytes') });
+    const linked = runnerRoot();
+    fill(linked.failures, 1);
+    linkSync(linked.failures, join(tempDir(), 'second-name.jsonl'));
+    expect(readFailures(linked, 1000)).toEqual({ entries: null, problem: expect.stringContaining('a single link') });
+});
+
+test('a journal exactly at its limit is still read whole, so its events can be forwarded', () => {
+    const paths = runnerRoot();
+    fill(paths.failures, 3);
+    const view = readFailures(paths, 3);
+    expect(view.problem).toBeNull();
+    expect(view.entries).toHaveLength(3);
+});

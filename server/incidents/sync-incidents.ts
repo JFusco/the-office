@@ -8,6 +8,7 @@ import { mailboxFreeze } from './mailbox-freeze';
 import { redactEvidence } from './redact-evidence';
 import { frozenKey, planSync } from './plan-sync';
 import { releasedFallbacks } from './released-fallbacks';
+import { RUNNER_PROJECT } from './runner-report';
 import { COLLECTORS, SOURCE_OF } from './sources/collectors';
 import { stoppedCoverage } from './stopped-coverage';
 
@@ -21,7 +22,8 @@ import { stoppedCoverage } from './stopped-coverage';
  * the same coverage after a readable outbox pass, or on fresh stopped-work reports during an outage.
  */
 export function syncIncidents(ledger: IncidentLedger, { observations, unreadable }: OfficeObservation, now: Date, collectors: readonly IncidentCollector[] = COLLECTORS, report: (message: string) => void = console.error): IncidentChange {
-    const frozen = new Set<string>(), open = ledger.current();
+    // The runner's subject is written by its own reports (record-runner-failure.ts); no project observation sees it.
+    const frozen = new Set<string>([frozenKey(RUNNER_PROJECT, 'runner')]), open = ledger.current();
     for (const { projectId, error } of unreadable) { frozen.add(frozenKey(projectId, '*')); report(`Incident observation could not read ${projectId}: ${error}`); }
     for (const observation of observations) {
         if (observation.state.paused || observation.state.draining) frozen.add(frozenKey(observation.projectId, 'stopped-work'));

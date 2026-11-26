@@ -26,6 +26,25 @@ export const readPause = (paths: RunnerPaths) => readControl(paths.pause, Pause)
 /** What holds the runner back: STOP first, then pause. A control file that cannot be read counts as STOP. */
 export type Halt = { kind: 'stopped' | 'paused'; reason: string };
 
+/**
+ * The runner's control condition for reporting to the Office, from one STOP-first reading: what
+ * holds it, the control file that holds it, why, and since when. A STOP or pause file that cannot
+ * be read means stopped, names that file and has no known time. The reason is redacted and cut to
+ * 500 characters before anyone compares or sends it.
+ */
+export interface ControlCondition { kind: 'running' | 'paused' | 'stopped'; control: 'STOP.json' | 'pause.json' | null; reason: string; since: string | null }
+
+export function readControlCondition(paths: RunnerPaths): ControlCondition {
+    const reason = (text: string) => sanitize(text).slice(0, 500);
+    const stop = readStop(paths);
+    if ('record' in stop) return { kind: 'stopped', control: 'STOP.json', reason: reason(`STOP: ${stop.record.reason}`), since: stop.record.at };
+    if ('unreadable' in stop) return { kind: 'stopped', control: 'STOP.json', reason: reason(`${paths.stop} cannot be read (${stop.unreadable})`), since: null };
+    const pause = readPause(paths);
+    if ('record' in pause) return { kind: 'paused', control: 'pause.json', reason: reason(`Paused: ${pause.record.reason}`), since: pause.record.at };
+    if ('unreadable' in pause) return { kind: 'stopped', control: 'pause.json', reason: reason(`${paths.pause} cannot be read (${pause.unreadable})`), since: null };
+    return { kind: 'running', control: null, reason: '', since: null };
+}
+
 export function readHalt(paths: RunnerPaths): Halt | null {
     const stop = readStop(paths);
     if ('record' in stop) return { kind: 'stopped', reason: `STOP: ${stop.record.reason}` };

@@ -72,7 +72,7 @@ test('start-up recovery saves the outbox that way too', () => {
 test('the messages endpoint serves the outbox as it reads now, whatever was last saved', async () => {
     const { store, time } = held();
     const url = new URL('http://127.0.0.1:4318/api/messages');
-    const served = async () => open((await (await apiRoute(new Request(url), url, { store, offices: { stores: () => new Map(), entries: new Map() }, engine: { features: {} }, project: 'brain' } as never))!.json()).outbox);
+    const served = async () => open((await (await apiRoute(new Request(url), url, { store, offices: { stores: () => new Map(), entries: new Map(), incidents: { get: () => null }, runnerReports: { halt: () => null } }, engine: { features: {} }, project: 'brain' } as never))!.json()).outbox);
     store.state.outbox = projectOutbox(store.state, time.now);
     expect(open(store.state.outbox)).toEqual(['ticket-job:job']);
     expect(await served()).toEqual([]);

@@ -177,3 +177,39 @@ test('reconcile-budget acknowledges an overrun at the amount shown, once, and re
     expect(JSON.parse((await command(['reconcile-budget', id, '--expected-micro-usd', '25000000', '--reason', 'already final', '--finalize'], env)).output)).toMatchObject({ reconciled: false, code: 'already-final' });
     expect((await statusOf(env)).budget).toMatchObject({ overruns: [], available: 75_000_000 });
 });
+
+test('status shows what the last pass forwarded only for this Office and the journal as it reads now, and opens no SQLite file, open WAL Store or not', async () => {
+    const { runnerStore } = await import('./forward-world');
+    const { appendFailureLine, failureLine } = await import('../../../server/overseer/failure-journal');
+    const { journalDigest, writeForwardingStatus } = await import('../../../server/overseer/forwarding-status');
+    const { ensurePrivateDirectory } = await import('../../../server/overseer/runner-root');
+    const root = join(tempDir(), 'runner'), paths = runnerPaths(root);
+    for (const directory of [paths.journal, paths.state]) ensurePrivateDirectory(directory);
+    const line = failureLine({ version: 1, id: 'overseer:service-down:00000000-0000-4000-8000-0000000000aa', kind: 'service-down', at: '2026-11-26T11:00:00.000Z', episode: '00000000-0000-4000-8000-0000000000aa', detail: 'fetch failed', evidence: {} });
+    appendFailureLine(paths, line, 1000);
+    const summary = { version: 1 as const, state: 'complete' as const, pass: '7b0c6a43-62f8-4a49-9f11-8d1b2f6ad0c4', at: '2026-11-26T12:00:00.000Z', origin: 'http://127.0.0.1:4318', journal: { digest: journalDigest([line]), entries: 1 }, forwarded: 0, pending: 1, uncertain: [{ id: 'overseer:service-down:00000000-0000-4000-8000-0000000000aa', reason: 'sent; not yet read back' }], conflicts: [], halt: null, detail: 'Forwarded 0 of 1' };
+    writeForwardingStatus(paths, summary);
+    const status = async (env: NodeJS.ProcessEnv = {}) => JSON.parse((await command(['status'], { OVERSEER_ROOT: root, ...env })).output).forwarding;
+    // The Store is open with its write-ahead log, as a running pass leaves it.
+    const store = runnerStore(paths.state);
+    store.store.db.exec('PRAGMA journal_mode=WAL');
+    store.store.db.exec('CREATE TABLE IF NOT EXISTS probe (x)');
+    let before = snapshot(root);
+    expect(await status()).toMatchObject({ known: true, forwarded: 0, pending: 1, uncertain: summary.uncertain });
+    expect(await status({ OVERSEER_OFFICE_URL: 'http://localhost:5000' })).toMatchObject({ known: false, reason: expect.stringContaining('not this Office') });
+    expect((await command(['status'], { OVERSEER_ROOT: root, OVERSEER_OFFICE_URL: 'http://[::1]:4318' })).output).toContain('"invalid"');
+    expect(snapshot(root)).toEqual(before);
+    store.close();
+    before = snapshot(root);
+    appendFailureLine(paths, failureLine({ version: 1, id: 'overseer:service-restored:00000000-0000-4000-8000-0000000000aa', kind: 'service-restored', at: '2026-11-26T11:07:00.000Z', episode: '00000000-0000-4000-8000-0000000000aa', detail: '', evidence: {} }), 1000);
+    expect(await status()).toMatchObject({ known: false, reason: 'the journal has changed since the last pass counted it' });
+    // A line rewritten by hand, the record count unchanged, is another journal too.
+    writeForwardingStatus(paths, summary);
+    writeFileSync(paths.failures, failureLine({ version: 1, id: 'overseer:service-down:00000000-0000-4000-8000-0000000000aa', kind: 'service-down', at: '2026-11-26T11:00:00.000Z', episode: '00000000-0000-4000-8000-0000000000aa', detail: 'edited', evidence: {} }));
+    expect(await status()).toMatchObject({ known: false, reason: 'the journal has changed since the last pass counted it' });
+    writeForwardingStatus(paths, { version: 1, state: 'in-progress', pass: summary.pass, at: summary.at, origin: summary.origin });
+    expect(await status()).toMatchObject({ known: false, reason: expect.stringContaining('did not finish') });
+    writeFileSync(paths.forwarding, 'not json');
+    expect(await status()).toMatchObject({ known: false, reason: expect.stringContaining('not a valid summary') });
+    void before;
+});

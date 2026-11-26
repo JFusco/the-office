@@ -116,12 +116,14 @@ test('against a healthy Office the pass observes with GETs only and creates no c
         expect(result.code).toBe(0);
         expect(result.record).toMatchObject({ outcome: 'observing', selected: { incident: 'inc-00000000000000a1', revision: 3, kept: false } });
         expect(requests).toEqual(['GET /api/health', 'GET /api/incidents?research=1']);
+        // Outside the dedicated runner directory the Store does not open: the pass observes and says it could not forward.
+        expect(result.record.detail).toContain('Forwarding unavailable');
     } finally { await new Promise(done => server.close(done)); }
 
     expect(snapshot(inherited)).toEqual(before);
     const db = new DatabaseSync(join(inherited, 'office.sqlite'), { readOnly: true });
     try { expect({ claims: claims(db), cursor: admissionCursor(db) }).toEqual(counts); } finally { db.close(); }
-    expect(Object.keys(snapshot(root)).sort()).toEqual(['/', '/control', '/journal', '/state', '/state/office-data', '/state/runner.json']);
+    expect(Object.keys(snapshot(root)).sort()).toEqual(['/', '/control', '/journal', '/state', '/state/forwarding.json', '/state/office-data', '/state/runner.json']);
 });
 
 test('a pass refused by a live pass exits 3 and changes nothing', async () => {

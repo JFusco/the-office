@@ -23,7 +23,8 @@ function fixture(projectId='brain'){
     const store=new Store(':memory:',projectById(projectId),root,clock);stores.push(store);store.state.coordination=coordination();
     const entry={store,engine:{},conversations:{},coordinator:{}} as OfficeEntry, all=new Map([[store.project.id,store]]);
     const project=(lane='delivery')=>scheduledWork(entry,all,clock.now(),lane);
-    const summaries=()=>Offices.prototype.summaries.call({entries:new Map([['brain',entry]]),projection:()=>project()} as any);
+    // No runner notices: an explicit empty list, as an empty control database reads.
+    const summaries=()=>Offices.prototype.summaries.call({entries:new Map([['brain',entry]]),projection:()=>project()} as any,undefined,[]);
     return {store,entry,project,summaries};
 }
 function claim(store:Store,work:WorkRef,stage:string,lane:ExecutionLane='delivery',role?:Role){
