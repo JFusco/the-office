@@ -57,7 +57,7 @@ const ancestry = (path: string) => {
 };
 
 /** A private folder that already exists must be a real directory, not a link or a file. */
-function assertDirectoryOrAbsent(path: string): void {
+export function assertDirectoryOrAbsent(path: string): void {
     let stat;
     try { stat = lstatSync(path); }
     catch (error) {
@@ -105,4 +105,36 @@ export function ensurePrivateDirectory(path: string): void {
     mkdirSync(path, { recursive: true, mode: 0o700 });
     assertDirectoryOrAbsent(path);
     if (realpathSync(path) !== path) throw new Error(`${path} resolves elsewhere (${realpathSync(path)}); refusing it`);
+}
+
+const SIDECARS = ['-journal', '-wal', '-shm'];
+
+/**
+ * A runner-owned file that may exist: if it does, it must be a regular file with a single link at
+ * its own physical path. Anything else, and a lookup that cannot be told, is refused. Returns
+ * whether it exists.
+ */
+export function checkOwnedFile(path: string): boolean {
+    let stat;
+    try { stat = lstatSync(path); }
+    catch (error) {
+        if (code(error) === 'ENOENT') return false;
+        throw new Error(`Cannot tell whether ${path} exists (${code(error) ?? 'unknown error'}); refusing it`);
+    }
+    // lstat: a link is not a regular file.
+    if (!stat.isFile() || stat.nlink !== 1) throw new Error(`${path} must be a regular file with a single link`);
+    if (realpathSync(path) !== path) throw new Error(`${path} resolves elsewhere (${realpathSync(path)}); refusing it`);
+    return true;
+}
+
+/**
+ * Checks a runner database and its `-journal`, `-wal` and `-shm` files before anything opens them:
+ * it must sit directly in the runner's state folder, and each file present must pass
+ * `checkOwnedFile`. Sidecars without their database are damaged state. Returns which exist.
+ */
+export function checkDatabaseFiles(paths: RunnerPaths, database: string): { exists: boolean; sidecars: string[] } {
+    if (dirname(database) !== paths.state) throw new Error(`${database} is not in the runner's state folder ${paths.state}`);
+    const exists = checkOwnedFile(database), sidecars = SIDECARS.filter(suffix => checkOwnedFile(`${database}${suffix}`));
+    if (!exists && sidecars.length) throw new Error(`${database} is missing but its ${sidecars.join(', ')} file remains; the database is damaged`);
+    return { exists, sidecars };
 }

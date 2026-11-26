@@ -2145,6 +2145,12 @@ release a pass only observes:
   `service-down` event in its own folder. When the Office answers again, it journals one
   `service-restored` event. These events are not yet sent to the Office.
 
+Before any later phase lets it call a model, every call must pass the runner's own budget
+admission: a daily ceiling on estimated cost at list price, 24 model calls a day, per-incident
+round limits and required timeouts, recorded in a ledger under the runner's root. The runner's
+model calls use the existing Claude and Codex subscription logins; the dollar figures are
+estimates, not bills. See [Overseer, Budgets](overseer.md#budgets).
+
 The runner writes only under its own root, which is never an Office data root. Its pause
 (`pnpm office overseer pause`) and STOP stop the runner only. The Office's switch for automatic
 repair resumes (`pnpm office incident pause-resumes`) is separate, and works whatever the runner
