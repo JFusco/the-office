@@ -6,6 +6,8 @@ The initial hands-off rollout introduced this division for Brain. Later changes 
 
 The Office can adopt eligible Context Wiki reconciliation PRs when a project opts in. It validates the bot account, commit history, and Markdown and graph-data scope. A canonical wiki PR title may carry exactly one trailing ` [skip release]` marker, for repositories whose release policy needs it; no other title variation qualifies ([journal](../journal/2026-11-25-wiki-sync-skip-release-titles.md)). Qualified wiki PRs proceed directly to required current-head GitHub checks and repository merge rules. A conflicted adopted bot PR (wiki-sync, Dependabot or Pin Courier) is redone by its own bot, once per conflicted head and never by an Office commit; its qualified replacement head merges on the ordinary path, and a numbered wiki PR whose regeneration left it unchanged is closed as superseded only on a proof that its target already contains it ([journal](../journal/2026-11-26-bot-pr-conflict-redo.md)).
 
+Office writes are moving to the Office's own GitHub App identity one route at a time. Every route stays on the operator's login until a recorded qualification and explicit activation say otherwise, a route that was activated holds rather than silently writing as the operator, and a rollback must name its activation. See [the identity foundation](../journal/2026-11-26-app-identity-foundation.md).
+
 ## Evidence
 
 - [Office process](../../docs/office-process.md)
