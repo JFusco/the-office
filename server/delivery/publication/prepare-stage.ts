@@ -5,6 +5,7 @@ import type { StageResult, TicketJob } from '../../../src/shared';
 import { assertMetadataBinding, metadataAppliesToHead } from './metadata-context';
 import { assessPRMetadata } from './metadata-assessment';
 import { publishMetadata } from './publish-metadata';
+import { staleRefreshRefusal } from './stale-description-proof';
 
 /**
  * Model-free `prepare-pr` for an open PR on the target branch with no dependent PRs.
@@ -32,7 +33,7 @@ export async function harnessPrepare(delivery: GitHubDelivery, job: TicketJob, r
         const r = job.prMetadataRepair!;
         if (r.origin === 'original-recovery' && (!r.assessment || r.phase === 'assessment'))
             throw new Error('Original metadata recovery requires its completed validated assessment; no new model');
-        if (r.phase === 'blocked') throw new Error(r.assessment?.summary || 'Metadata assessment is blocked');
+        if (r.phase === 'blocked') throw new Error(r.assessment && r.assessment.outcome !== 'blocked' && staleRefreshRefusal(r.binding, r.assessment.selected) || r.assessment?.summary || 'Metadata assessment is blocked');
         if (r.phase === 'assessment') await assessPRMetadata(delivery, job, root);
         await publishMetadata(delivery, job);
     }
