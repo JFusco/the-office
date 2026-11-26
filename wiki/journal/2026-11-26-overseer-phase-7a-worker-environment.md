@@ -2,7 +2,11 @@
 topics: [releases-and-incidents]
 plans: [2026-11-26-overseer-phase-7a-isolated-worker-environment-59e2648ff3.md]
 issue: 'https://github.com/jfusco/the-office/issues/691'
-issues: ['https://github.com/jfusco/the-office/issues/691', 'https://github.com/jfusco/the-office/issues/690']
+issues:
+  [
+    'https://github.com/jfusco/the-office/issues/691',
+    'https://github.com/jfusco/the-office/issues/690',
+  ]
 ---
 
 # Overseer phase 7a: isolated worker environment
