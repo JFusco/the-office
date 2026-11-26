@@ -108,9 +108,9 @@ export class GitHubDelivery {
     /** True only on positive evidence that the job's PR is already merged; any read failure is not evidence. */
     async mergedOutside(job: TicketJob): Promise<boolean> { try { return !!(await this.verifyPR(job, true)).merged_at; } catch { return false; } }
     async preparationChecksPending(job: TicketJob, result: StageResult): Promise<boolean>  { return preparationChecksPending.call(this, job, result); }
-    async discover(assigned: AssignedIssue[]) { return discover.call(this, assigned); }
+    async discover(assigned: AssignedIssue[], inventory?: import('../intake/shared-pr-inventory').PullInventory) { return discover.call(this, assigned, inventory); }
     async merge(job: TicketJob) { return readiness.merge.call(this, job); }
-    async refreshDependencies() { return refreshDependencies.call(this); }
+    async refreshDependencies(inventory?: import('../intake/shared-pr-inventory').PullInventory) { return refreshDependencies.call(this, inventory); }
     async routeExisting(key: string, pr: number) { return routeExisting.call(this, key, pr); }
     async reconcileWrongLink(key: string) { return reconcileWrongLink.call(this, key); }
     async reconcilePreparation(key: string) { return reconcilePreparation.call(this, key); }

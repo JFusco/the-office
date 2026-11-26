@@ -1,7 +1,7 @@
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 
 /** Complete live open-PR inventory; a stale cache is never proof that no PR exists. */
-export async function openPullInventory(delivery: GitHubDelivery): Promise<any[]> {
+export async function openPullInventory(delivery: Pick<GitHubDelivery, 'store' | 'execute'>): Promise<any[]> {
     const { store, execute } = delivery;
     const pages = JSON.parse(await execute('gh', ['api', `repos/${store.project.repository}/pulls?state=open&per_page=100`, '--paginate', '--slurp'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
     if (!Array.isArray(pages) || pages.some(page => !Array.isArray(page)))

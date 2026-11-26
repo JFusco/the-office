@@ -1,5 +1,6 @@
 import { readRepo } from '../dependabot/qualify';
 import { findTrackingIssue } from '../dependabot/tracking-issue';
+import { openPulls } from '../shared-pr-inventory';
 import type { DependencyBot } from './adopt';
 
 const OWNER = { login: 'JFusco', id: 486049 }, ACTIONS = { login: 'github-actions[bot]', id: 41898282 };
@@ -10,8 +11,8 @@ const wikiPath = (path: unknown) => typeof path === 'string' && !path.split('/')
 /** Canonical BOT_TOKEN wiki PRs: account identity plus bounded content, then ordinary exact-head review. */
 export const wikiSync: DependencyBot = {
     id: 'wiki-sync', label: 'wiki-sync', autoAdoptLanes: ['In review'],
-    async openPulls(store, execute) {
-        return (await readRepo(store, execute, 'pulls?state=open&per_page=100', true))
+    async openPulls(store, execute, inventory) {
+        return (await openPulls({ store, execute }, inventory))
             .filter((pull: any) => branch.test(pull.head?.ref || '') && identity(pull.user, OWNER));
     },
     async refusal(store, execute, pull) {

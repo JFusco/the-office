@@ -7,6 +7,7 @@ import { autoAdoptable, autoAdopts, waitsQuietly } from './auto-adopt';
 import { relinkPinCourier } from './relink-pin-courier';
 import { MISSING_NATIVE_LINK } from './resume-linked-delivery';
 import type { Execute } from '../../board/project-graphql';
+import type { PullInventory } from '../shared-pr-inventory';
 import type { Store } from '../../../store/store';
 import type { DependabotAdoption, PickupPolicy, TicketJob } from '../../../../src/shared';
 
@@ -14,7 +15,8 @@ export interface DependencyBot {
     id: 'dependabot' | 'pin-courier' | 'wiki-sync';
     label: string;
     autoAdoptLanes?: readonly string[];
-    openPulls: (store: Store, execute: Execute) => Promise<any[]>;
+    /** The bot's own open PRs, from the poll's shared inventory when one is given. */
+    openPulls: (store: Store, execute: Execute, inventory?: PullInventory) => Promise<any[]>;
     refusal: (store: Store, execute: Execute, pull: any) => Promise<string>;
 }
 type Guard = () => void;
@@ -25,14 +27,14 @@ type Guard = () => void;
  * PR discovery then routes it to Sam's review, the guarded merge and closeout. Nothing is merged here.
  * Adoption never stops the rest of the poll: its own failures are recorded on the adoption.
  */
-export async function adoptDependencyBot(store: Store, execute: Execute, jobs: TicketJob[], pickup: PickupPolicy, bot: DependencyBot): Promise<void> {
+export async function adoptDependencyBot(store: Store, execute: Execute, jobs: TicketJob[], pickup: PickupPolicy, bot: DependencyBot, inventory?: PullInventory): Promise<void> {
     if (!handsOff(store) || store.state.paused || store.state.draining)
         return;
     const all = store.state.coordination!.adoptions ??= [];
     const records = all.filter(record => (record.bot || 'dependabot') === bot.id);
     const guard: Guard = () => { if (store.state.paused || store.state.draining) throw new Error('Office paused before a dependency adoption write'); };
     let pulls: any[];
-    try { pulls = await bot.openPulls(store, execute); }
+    try { pulls = await bot.openPulls(store, execute, inventory); }
     catch (error) { store.emit(`${bot.id}-unavailable`, `${bot.label} PRs could not be read; adoption skipped this poll: ${String(error)}`, 'pm', ''); return; }
     withdrawStale(store, records, pulls, bot);
     if (pickup.enabled) {
@@ -41,9 +43,9 @@ export async function adoptDependencyBot(store: Store, execute: Execute, jobs: T
         try { ready = auto ? await autoAdoptable(store, execute, pulls, pickup.status, bot.autoAdoptLanes) : await inPickupLane(store, execute, pulls, pickup.status); }
         catch (error) { store.emit(`${bot.id}-unavailable`, `${bot.label} PR cards could not be read; adoption skipped this poll: ${String(error)}`, 'pm', ''); }
         for (const p of ready)
-            await adoptOne(store, execute, records, p, pickup, guard, bot, auto);
+            await adoptOne(store, execute, records, p, pickup, guard, bot, auto, inventory);
     }
-    await reverify(store, execute, records, pulls, jobs, guard, bot);
+    await reverify(store, execute, records, pulls, jobs, guard, bot, inventory);
 }
 
 function settle(store: Store, record: DependabotAdoption, status: DependabotAdoption['status'], detail: string, kind: string): void {
@@ -52,7 +54,7 @@ function settle(store: Store, record: DependabotAdoption, status: DependabotAdop
     store.emit(kind, detail, 'pm', record.issue ? `GH-${record.issue}` : '');
 }
 
-async function adoptOne(store: Store, execute: Execute, records: DependabotAdoption[], p: any, pickup: PickupPolicy, guard: Guard, bot: DependencyBot, auto = false): Promise<void> {
+async function adoptOne(store: Store, execute: Execute, records: DependabotAdoption[], p: any, pickup: PickupPolicy, guard: Guard, bot: DependencyBot, auto = false, inventory?: PullInventory): Promise<void> {
     const pr = { ...dependabotPR(p), bot: bot.id };
     let record = records.find(r => r.pr === pr.number);
     if (record?.status === 'adopted' || holdReason(store.project, `GH-${pr.number}`))
@@ -73,7 +75,7 @@ async function adoptOne(store: Store, execute: Execute, records: DependabotAdopt
         record.issue = issue.number;
         // Link first: a card moved out of the pickup lane before the link would never be offered again.
         if (!closesIssue(pr.body, issue.number))
-            await linkPR(store, execute, record, pr, issue.number, writeGuard);
+            await linkPR(store, execute, record, pr, issue.number, writeGuard, inventory);
         await ensureReviewCards(store, execute, record, issue, pr.number, pickup.status, writeGuard);
         settle(store, record, 'adopted', `${bot.label} PR #${pr.number} adopted through #${issue.number}; required GitHub checks and repository rules govern its Office merge, without an added review or QA cycle.`, `${bot.id}-adopted`);
     }
@@ -93,7 +95,7 @@ function withdrawStale(store: Store, records: DependabotAdoption[], pulls: any[]
  * withdraws the adoption, and with it Sam's Dependabot guidance), and a Dependabot rebase that
  * rewrote the body is linked again for its new head.
  */
-async function reverify(store: Store, execute: Execute, records: DependabotAdoption[], pulls: any[], jobs: TicketJob[], guard: Guard, bot: DependencyBot): Promise<void> {
+async function reverify(store: Store, execute: Execute, records: DependabotAdoption[], pulls: any[], jobs: TicketJob[], guard: Guard, bot: DependencyBot, inventory?: PullInventory): Promise<void> {
     for (const record of records.filter(r => r.status === 'adopted' && r.issue)) {
         const p = pulls.find(pull => pull.number === record.pr);
         const live = jobs.some(job => job.key === `GH-${record.issue}` && job.pr === record.pr && !['completed', 'cancelled'].includes(job.status));
@@ -108,8 +110,8 @@ async function reverify(store: Store, execute: Execute, records: DependabotAdopt
             const lostLink = jobs.some(j => j.pr === record.pr && j.key === `GH-${record.issue}` && j.status === 'blocked' && j.detail === MISSING_NATIVE_LINK);
             if (!closesIssue(p.body || '', record.issue) || bot.id === 'pin-courier' && lostLink) {
                 const pr = { ...dependabotPR(p), bot: bot.id }, writeGuard = headGuard(store, execute, p, bot, guard);
-                if (bot.id === 'pin-courier') await relinkPinCourier(store, execute, record, pr, jobs, writeGuard);
-                else await linkPR(store, execute, record, pr, record.issue, writeGuard);
+                if (bot.id === 'pin-courier') await relinkPinCourier(store, execute, record, pr, jobs, writeGuard, inventory);
+                else await linkPR(store, execute, record, pr, record.issue, writeGuard, inventory);
             }
             delete record.relinkError;
         }

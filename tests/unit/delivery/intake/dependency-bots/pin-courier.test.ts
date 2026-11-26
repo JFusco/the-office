@@ -5,6 +5,7 @@ import { pinCourier } from '../../../../../server/delivery/intake/dependency-bot
 import { adoptDependabot } from '../../../../../server/delivery/intake/dependabot/adopt';
 import { dependabotReviewGuidance } from '../../../../../server/delivery/intake/dependabot/review-guidance';
 import { trackingMarker } from '../../../../../server/delivery/intake/dependabot/tracking-issue';
+import { sharedPullInventory } from '../../../../../server/delivery/intake/shared-pr-inventory';
 
 afterEach(() => { cleanupFakes(); vi.unstubAllEnvs(); });
 function fixture() {
@@ -136,6 +137,15 @@ test('same-head bot body refresh restores the exact native issue link once and r
     expect(record).toMatchObject({ status: 'adopted', issue: 5, pr: 314 });
     expect(x.f.delivery.jobs).toHaveLength(1);
     expect(x.f.state.cards.every(c => c.status === 'review')).toBe(true);
+});
+test.each(['lands', 'uncertain'] as const)('a dispatched link repair PATCH that %s leaves the shared open-PR rows stale', async outcome => {
+    const x = await adoptedRewrite(), shared = sharedPullInventory({ store: x.f.store, execute: x.execute as any });
+    let invalidated = 0;
+    const inventory = { read: shared.read, invalidate: () => { invalidated++; shared.invalidate(); } };
+    if (outcome === 'uncertain') x.f.state.fail = (_program, args) => args.includes('PATCH') ? 'timeout' : false;
+    await adoptDependencyBot(x.f.store, x.execute, x.f.delivery.jobs, x.f.store.state.coordination!.pickup!, pinCourier, inventory);
+    expect(x.pr.body).toBe(outcome === 'lands' ? 'Closes #5\n\nRenovate refreshed the same head' : 'Renovate refreshed the same head');
+    expect(invalidated).toBe(1);
 });
 test.each(['human', 'unknown', 'wrong-bot-id', 'paused', 'draining', 'active-worker', 'claim', 'wrong-issue', 'uncertain', 'prepared'])(
     '%s cannot authorize a new same-head link PATCH', async reason => {

@@ -3,6 +3,7 @@ import { openDependabotPulls, readRepo } from './qualify';
 import { dependabotAlert, unansweredAlerts, type DependabotAlert } from './alerts';
 import { alertMarker, closeAlertIssue, ensureAlertIssue, ensurePickupCard, listOwnIssues } from './alert-issue';
 import type { Execute } from '../../board/project-graphql';
+import type { PullInventory } from '../shared-pr-inventory';
 import type { Store } from '../../../store/store';
 import type { DependabotAlertIssue, PickupPolicy, TicketJob } from '../../../../src/shared';
 
@@ -19,7 +20,7 @@ const unavailable = new WeakMap<object, string>();
  * issue once the alert is gone and nothing is being delivered for it. An issue that already exists for
  * the alert, open or closed, is never duplicated or reopened. Nothing here stops the rest of the poll.
  */
-export async function trackDependabotAlerts(store: Store, execute: Execute, jobs: readonly TicketJob[], pickup: PickupPolicy, now = new Date()): Promise<void> {
+export async function trackDependabotAlerts(store: Store, execute: Execute, jobs: readonly TicketJob[], pickup: PickupPolicy, now = new Date(), inventory?: PullInventory): Promise<void> {
     if (!handsOff(store) || store.state.paused || store.state.draining) return;
     const guard = () => { if (store.state.paused || store.state.draining) throw new Error('Office paused before a Dependabot alert write'); };
     let open: DependabotAlert[];
@@ -40,7 +41,7 @@ export async function trackDependabotAlerts(store: Store, execute: Execute, jobs
     const listed = () => issues ??= listOwnIssues(store, execute);
     if (untracked.length) {
         let due: DependabotAlert[] = [];
-        try { due = unansweredAlerts(untracked, await openDependabotPulls(store, execute), now); }
+        try { due = unansweredAlerts(untracked, await openDependabotPulls(store, execute, inventory), now); }
         catch (error) {
             const detail = `Dependabot pull requests could not be read; alerts wait for the next poll: ${String(error)}`;
             if (unavailable.get(store) !== detail) store.emit('dependabot-alerts-unavailable', detail, 'pm', '');

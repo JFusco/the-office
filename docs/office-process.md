@@ -902,6 +902,42 @@ It only measures: nothing is deferred, refused or reordered by it, and the work 
   the latest core and GraphQL readings and what was used within each reset window seen. It is read from memory, so
   reading it calls no provider. A restart starts a new ledger: the first hour after a deploy is partial.
 
+### Settled GitHub reads
+
+The assignment poll does not read GitHub again for an answer that cannot have changed.
+
+- **One open-PR inventory per poll.** `server/delivery/intake/shared-pr-inventory.ts` reads the complete
+  open-PR list on first use and shares it with the poll's bot adoptions (Dependabot, Pin Courier, wiki-sync),
+  alert tracking, discovery, dependency refresh and merge notices; each keeps its own author, branch,
+  hands-off and pause rules. A write-free poll makes one `--paginate --slurp` traversal, counted under the
+  first source that needs it (usually `bot-adoption`); the labels are unchanged. A failed or incomplete read
+  is shared too and proves nothing: adoption skips the poll without withdrawing a record, and discovery fails
+  the poll before anything is admitted. When `linkPR` or `relinkPinCourier` dispatches a PR-body PATCH,
+  whatever its outcome, the inventory is dropped and the next reader traverses the list again; the PATCH
+  keeps its own read-back. The inventory lives for one poll; the pump and other callers read their own.
+- **Dependency refresh for live jobs only.** `refreshDependencies` (`server/delivery/intake/pr-discovery.ts`)
+  selects jobs that are not completed or cancelled before any read. In the poll it takes their rows from the
+  inventory and reads `pulls/N` once per live PR the inventory lacks, such as a closed parent still in
+  closeout; the pump passes no inventory and reads each live PR once. A parent is another live job whose PR
+  head is this PR's base. Before applying results it checks again that the job is the same live job on the
+  same PR and that the parent is still live, so a job cancelled or finished during the reads keeps its
+  routing. Missing PR identity still stops routing.
+- **Merge notices.** `observeGitHubMergeNotices` skips a candidate whose PR is in the poll's complete open
+  list; without a complete list every candidate takes its live read. A PR verified closed and unmerged is
+  read again after 30 minutes, or at once after it is seen open again. A verified merge that queued nothing
+  because nobody can be told yet (no assignee or reporter for the configured recipients) waits the same 30
+  minutes, so a newly assigned recipient is told within that time. A change to the notice settings ends
+  either wait. Waits are in memory (`server/conversations/merge-notice-cooldown.ts`): a restart reads every
+  candidate again.
+- **The one durable no-notice reason.** A verified merge older than the valid start of every enabled
+  destination can never be sent. Its job keeps a `noMergeNotice` marker (`server/conversations/no-merge-notice.ts`)
+  bound to the repository, issue, PR, merge SHA, merge time and a fingerprint of the direct settings
+  (enablement, start, recipients, workspace, mappings) and the channel settings (enablement, start, channel,
+  workspace, version). While the binding holds the job is not read again; when any part changes the marker is
+  discarded and the merge is read again. Linkage failures, malformed identity and provider errors record
+  nothing and are read on the next poll. Slack delivery keeps its own read-backs. Jobs saved before the
+  marker take the ordinary read, and an older release ignores it.
+
 ### Deployment fence and admission journal
 
 A deployment holds the Office-wide deployment fence (`server/office/deployment-fence.ts`) while it

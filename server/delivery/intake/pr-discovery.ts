@@ -1,13 +1,13 @@
 import { handsOff } from '../harness/scope';
-import { openPullInventory } from './pr-inventory';
+import { openPulls, type PullInventory } from './shared-pr-inventory';
 import type { AssignedIssue } from '../../../src/shared';
 import type { TicketJob } from '../../../src/shared';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 
-export async function discover(this: GitHubDelivery, assigned: AssignedIssue[]) {
+export async function discover(this: GitHubDelivery, assigned: AssignedIssue[], shared?: PullInventory) {
     // Provider observation supplies the PR inventory; no model or source work is
     // needed to route already published work to a read-only Lead assessment.
-    const inventory = handsOff(this.store) ? await openPullInventory(this) : await Promise.all((this.store.state.github?.prs.filter(p => p.state === 'open') || []).map(pr => this.api(`pulls/${pr.number}`)));
+    const inventory = handsOff(this.store) ? await openPulls(this, shared) : await Promise.all((this.store.state.github?.prs.filter(p => p.state === 'open') || []).map(pr => this.api(`pulls/${pr.number}`)));
     const candidates = new Map(assigned.map(i => [i.key, { key: i.key, url: i.url }]));
     for (const i of this.store.state.github?.issues || [])
         if (i.state === 'open' && this.store.state.github?.board?.items.some(card => card.repository === this.store.project.repository && card.number === i.number))
@@ -47,20 +47,34 @@ export async function discover(this: GitHubDelivery, assigned: AssignedIssue[]) 
     }
 }
 
-export async function refreshDependencies(this: GitHubDelivery) {
-    const tracked = this.jobs.filter(j => j.pr && j.status !== 'cancelled');
-    const metadata = await Promise.all(tracked.map(j => this.api(`pulls/${j.pr}`)));
-    for (const job of tracked) {
-        if (['completed', 'cancelled'].includes(job.status))
+const live = (job: TicketJob) => !['completed', 'cancelled'].includes(job.status);
+
+/**
+ * Stacked-PR routing for live jobs only: a finished job's PR is never read again. Rows come from the poll's
+ * open-PR inventory when one is given; a live PR it lacks (every live PR, from the pump) is read once by number.
+ */
+export async function refreshDependencies(this: GitHubDelivery, inventory?: PullInventory) {
+    const tracked = this.jobs.filter(j => j.pr && live(j)).map(job => ({ job, id: job.id, key: job.key, pr: job.pr }));
+    if (!tracked.length)
+        return;
+    const wanted = new Set(tracked.map(t => t.pr)), metadata = new Map<number, any>();
+    for (const p of inventory ? await inventory.read() : [])
+        if (wanted.has(p.number) && p.head?.ref && p.base?.ref)
+            metadata.set(p.number, p);
+    const missing = [...wanted].filter(pr => !metadata.has(pr));
+    (await Promise.all(missing.map(pr => this.api(`pulls/${pr}`)))).forEach((p, i) => { if (p?.number === missing[i]) metadata.set(missing[i], p); });
+    for (const { job, id, key, pr } of tracked) {
+        // A job that finished, was cancelled or changed PR while the reads were out keeps its routing as it was.
+        if (!this.jobs.includes(job) || job.id !== id || job.key !== key || job.pr !== pr || !live(job))
             continue;
-        const p = metadata.find(p => p.number === job.pr);
+        const p = metadata.get(pr);
         if (!p?.head?.ref)
             throw new Error('PR dependency identity is unavailable');
-        const previous = this.jobs.find(parent => parent.pr === job.dependsOnPR && !['completed', 'cancelled'].includes(parent.status));
-        const parent = metadata.find(parent => parent.number !== p.number && parent.head?.ref === p.base?.ref);
-        const parentJob = parent && this.jobs.find(j => j.pr === parent.number);
+        const previous = this.jobs.find(parent => parent.pr === job.dependsOnPR && live(parent));
+        // A parent is another job, live as the jobs stand now, whose PR head is this PR's base.
+        const parentJob = p.base?.ref ? this.jobs.find(j => live(j) && j.pr !== p.number && metadata.get(j.pr)?.head?.ref === p.base.ref) : undefined;
         job.branch = p.head.ref;
-        job.dependsOnPR = previous?.pr || (parentJob && !['completed', 'cancelled'].includes(parentJob.status) ? parentJob.pr : undefined);
+        job.dependsOnPR = previous?.pr || parentJob?.pr;
         if (job.dependsOnPR && job.status === 'queued')
             job.detail = `Waiting for parent PR #${job.dependsOnPR} to finish closeout.`;
     }
