@@ -4,7 +4,9 @@ import { BILLING_MODE } from './budget-policy';
 import type { RunnerPaths } from './config';
 import { RUNNER_DEFAULTS } from './config';
 import { readFailures } from './failure-journal';
+import { readLauncherLock, readLauncherState } from './launcher-state';
 import { pauseRunner, readPause, readStop, unpauseRunner } from './kill-switch';
+import { readRunnerPin } from './runner-pin';
 import { defaultRunnerRoot, ensurePrivateDirectory, validateRunnerRoot } from './runner-root';
 import { readRunnerState } from './runner-state';
 import { readPassOwner } from './single-flight';
@@ -12,12 +14,12 @@ import { readPassOwner } from './single-flight';
 /**
  * `pnpm office overseer status | pause [--reason TEXT] | unpause | reconcile-budget ...`. These
  * read and write the runner's own files only and never contact the Office, so they work while
- * the Office is down. `status` reads the budget ledger through a read-only connection and opens
+ * the Office is down. `pin` is server/overseer/pin-command.ts, reached by its own import. `status` reads the budget ledger through a read-only connection and opens
  * no Store. The Office's switch for automatic repair resumes is separate
  * (`pnpm office incident pause-resumes`).
  */
 
-const USAGE = 'pnpm office overseer status | pause [--reason TEXT] | unpause | reconcile-budget RESERVATION --expected-micro-usd N --reason TEXT [--finalize]';
+const USAGE = 'pnpm office overseer status | pause [--reason TEXT] | unpause | reconcile-budget RESERVATION --expected-micro-usd N --reason TEXT [--finalize] | pin COMMIT';
 
 /** The CLI's root: `OVERSEER_ROOT`, or `~/Projects/the-office-overseer` when it is unset. An empty or relative value is refused. */
 export function resolveCliRoot(env: NodeJS.ProcessEnv): RunnerPaths {
@@ -40,6 +42,7 @@ export function runnerStatus(paths: RunnerPaths, now: Date = new Date()) {
         root: paths.root, stop: readStop(paths), pause: readPause(paths), lock: readPassOwner(paths), lockGuardLeft: guardPresent(paths.guard),
         state, journal: journal.problem === null ? { events: journal.entries.length, limit: RUNNER_DEFAULTS.journalLimit } : { problem: journal.problem },
         billing: BILLING_MODE, budget: 'standing' in budget ? budget.standing : budget,
+        pin: readRunnerPin(paths), launcher: readLauncherState(paths), launcherLock: readLauncherLock(paths),
     };
 }
 

@@ -2247,6 +2247,14 @@ The runner writes only under its own root, which is never an Office data root. I
 repair resumes (`pnpm office incident pause-resumes`) is separate, and works whatever the runner
 is doing. How to run and read it is in [Overseer, Runner](overseer.md#runner).
 
+A person schedules passes by pinning a verified release (`pnpm office overseer pin COMMIT`) and
+installing the launcher as a LaunchAgent (`node scripts/install-overseer.mjs`). Every two minutes
+the launcher starts at most one pass from that release, in a process group of its own, and stops
+the group at its deadline. It counts each attempt once in its own state under the runner's root.
+The launcher is built from `scripts/overseer-launcher/` into one committed file and copied from
+the operator's checkout, never from the release it runs. Nothing in the Office installs, starts
+or stops it. See [Overseer, Launcher](overseer.md#launcher).
+
 ## Code owners and verification
 
 | Process boundary | Owning source |
@@ -2264,7 +2272,8 @@ is doing. How to run and read it is in [Overseer, Runner](overseer.md#runner).
 | Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
 | Evidence packets, dismissals and their lapse | `server/incidents/evidence-packet.ts`, `server/incidents/dismissal.ts`, `server/incidents/dismissal-validity.ts` |
 | Repair waits: marker, admission, expiry, effective cause | `server/incidents/repair/` |
-| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection, budget admission and ledger, private Store | `server/overseer.ts`, `server/overseer/` |
+| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection, budget admission and ledger, private Store, runner pin | `server/overseer.ts`, `server/overseer/` |
+| Overseer launcher: schedule, pin verification, process groups, attempt counting, installation | `scripts/overseer-launcher/`, `scripts/install-overseer.mjs`, `scripts/build-overseer-launcher.mjs` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |
