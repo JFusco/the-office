@@ -11,7 +11,7 @@ export const noCalls = (): CallCounts => ({ invocations: 0, attempts: 0, pages: 
 const statedHttpStatus = /(?:\bHTTP |status code:\s*)[1-5]\d\d\b/i;
 /** gh's other error format for a 401. Kept local: the login health check's own classification is unchanged here. */
 const statedCredential401 = /status code:\s*401\b/i;
-const refusedByRateLimit = (text: string) => rateLimitRefusal.test(text) && !credentialFailure.test(text) && !statedCredential401.test(text);
+export const refusedByRateLimit = (text: string) => rateLimitRefusal.test(text) && !credentialFailure.test(text) && !statedCredential401.test(text);
 const revalidated = { attempts: 1, responses: 1, revalidations: 1 };
 
 function githubAuthError(stdout: string): string | undefined {

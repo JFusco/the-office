@@ -363,7 +363,9 @@ export interface TimeEntry {
     unsentCheckedAt?: string;
 }
 /** An automated PR the harness bridged (or refused to bridge) into existing-PR delivery. */
-export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
+export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string;
+    /** A refused wiki-sync PR's last qualification: the digest of the row it read and when. Absent on older records, which qualify live. */
+    refusalMemo?: { key: string; checkedAt: string } }
 /** A Dependabot alert the harness turned into an issue because no pull request came for it. */
 export interface DependabotAlertIssue { id: string; alert: number; package: string; issue: number; status: 'tracking' | 'tracked' | 'resolved' | 'blocked'; detail: string; at: string }
 export interface Coordination {
@@ -396,6 +398,8 @@ export interface Coordination {
         error: string;
         assigned: AssignedIssue[];
         reviews: AssignmentReview[];
+        /** When a GitHub quota hold that deferred the poll's background reads ends. Never an error; the next full read clears it. */
+        deferredUntil?: string;
     };
 }
 export interface GitHubBoard {

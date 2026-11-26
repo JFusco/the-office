@@ -3,8 +3,8 @@ import { withGitHubSource, type Runner } from './call-scope';
 const HOUR = 60 * 60_000;
 type Resource = 'core' | 'graphql';
 type Reading = { limit: number; used: number; remaining: number; reset: number };
-type ResourceReading = Reading & { resource: Resource };
-type Sample = ResourceReading & { at: number; from: 'rate_limit' | 'headers' };
+export type ResourceReading = Reading & { resource: Resource };
+export type Sample = ResourceReading & { at: number; from: 'rate_limit' | 'headers' };
 
 function reading(value: any): Reading | undefined {
     const { limit, used, remaining, reset } = value ?? {};
@@ -35,10 +35,11 @@ export class RateLimitSamples {
     private lastAt = -Infinity;
     private failure?: { at: number; reason: 'failed' | 'unreadable' };
     constructor(private run: Runner, private now = () => Date.now(), private intervalMs = 60_000) { }
-    sample(begin?: () => () => void): Promise<void> {
+    /** `intervalMs` shortens the spacing for the quota governor's probe; every sample still shares the one in flight. */
+    sample(begin?: () => () => void, intervalMs = this.intervalMs): Promise<void> {
         if (this.pending) return this.pending;
         const at = this.now();
-        if (at - this.lastAt < this.intervalMs) return Promise.resolve();
+        if (at - this.lastAt < intervalMs) return Promise.resolve();
         this.lastAt = at;
         const end = begin?.();
         this.pending = withGitHubSource('quota', async () => this.run('gh', ['api', 'rate_limit'], { timeout: 30_000, readOnly: true })).then(raw => {
@@ -63,6 +64,14 @@ export class RateLimitSamples {
         // Cumulative usage in the same window cannot go back when a delayed read arrives.
         if (this.samples.some(kept => kept.resource === sample.resource && kept.reset === sample.reset && kept.used > sample.used)) return;
         this.samples.push(sample);
+    }
+    /** The newest reading of one resource in the last hour: its latest reset window and, within it, the most used. */
+    latest(resource: Resource): Sample | undefined {
+        const now = this.now();
+        let best: Sample | undefined;
+        for (const sample of this.samples)
+            if (sample.resource === resource && sample.at > now - HOUR && (!best || sample.reset > best.reset || sample.reset === best.reset && sample.used >= best.used)) best = sample;
+        return best;
     }
     /** The latest reading of each resource, and what was used within each reset window seen in the last hour. */
     report() {

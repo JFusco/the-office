@@ -111,7 +111,7 @@ export class Offices {
             const root = projectData(project), store = new Store(resolve(root, 'office.sqlite'), project, root);
             store.recover(this.fenced());
             try { markCaptureStart(store); backfillClaudeCost(store); } catch (error) { store.emit('accounting-unavailable', `Saved Claude cost estimates were not imported: ${String(error).slice(0, 300)}`); } // idempotent
-            const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity, execute), conversations = new Conversations(store, engine, root);
+            const engine = new Engine(store, this.capacity, this.ctoCapacity, this.itCapacity, this.knowledgeCapacity, execute, this.githubCalls.governor), conversations = new Conversations(store, engine, root);
             this.entries.set(project.id, { store, engine, conversations, coordinator: new Coordinator(store, engine, execute) });
         }
         for (const entry of this.entries.values()) {

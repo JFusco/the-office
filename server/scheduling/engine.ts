@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Agents } from '../workers/agents';
 import { officeCapacity, type OfficeCapacity } from '../office/projects';
 import { GitHubMonitor } from '../github/github';
+import { noQuotaHold, type QuotaGate } from '../github/quota-governor';
 import { GitHubMaintenance } from '../maintenance/maintenance';
 import { BrainMaintenance } from '../maintenance/brain/brain-maintenance';
 import { AzureMonitor } from '../cec/azure';
@@ -53,7 +54,8 @@ export class Engine {
             this.capacity.lane = '';
     }
     heartbeat: ReturnType<typeof setInterval> | undefined;
-    constructor(public store: Store, public capacity: OfficeCapacity = officeCapacity(), ctoCapacity: OfficeCapacity = officeCapacity(), itCapacity: OfficeCapacity = officeCapacity(), knowledgeCapacity: OfficeCapacity = officeCapacity(), execute: typeof command = command) { this.knowledgeAgents = new Agents(store, command, knowledgeCapacity); this.jira = new JiraOperations(store); this.itAgents = new Agents(store, command, itCapacity); this.ctoAgents = new Agents(store, command, ctoCapacity); this.agents = new Agents(store, command, capacity); this.features = new FeatureWorkflow(store, this.agents); this.azure = new AzureMonitor(store); this.github = new GitHubMonitor(store, execute); this.maintenance = store.project.id === 'brain' ? new BrainMaintenance(store, this.agents) : new GitHubMaintenance(store, this.agents); }
+    /** `quota` is the Office's GitHub quota governor (server/github/quota-governor.ts); without one nothing is held. */
+    constructor(public store: Store, public capacity: OfficeCapacity = officeCapacity(), ctoCapacity: OfficeCapacity = officeCapacity(), itCapacity: OfficeCapacity = officeCapacity(), knowledgeCapacity: OfficeCapacity = officeCapacity(), execute: typeof command = command, readonly quota: QuotaGate = noQuotaHold) { this.knowledgeAgents = new Agents(store, command, knowledgeCapacity); this.jira = new JiraOperations(store); this.itAgents = new Agents(store, command, itCapacity); this.ctoAgents = new Agents(store, command, ctoCapacity); this.agents = new Agents(store, command, capacity); this.features = new FeatureWorkflow(store, this.agents); this.azure = new AzureMonitor(store); this.github = new GitHubMonitor(store, execute, quota); this.maintenance = store.project.id === 'brain' ? new BrainMaintenance(store, this.agents) : new GitHubMaintenance(store, this.agents); }
     requestMail(scheduled = false) { return requestMail.call(this, scheduled); }
     async drainMail() { return drainMail.call(this); }
     async checkMail(scheduled = false) { return checkMail.call(this, scheduled); }

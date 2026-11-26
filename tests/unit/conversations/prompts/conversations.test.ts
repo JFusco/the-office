@@ -91,7 +91,7 @@ test('queued replies survive restart; running replies become interrupted and nev
 test('paused or occupied office queues messages; uncertain Jira writes stop relay and recheck', async () => {
     const { store, engine, chat } = setup();
     let calls = 0, rechecks = 0;
-    engine.observe = async () => { rechecks++; };
+    engine.observe = async () => { rechecks++; return undefined; };
     engine.agents.followup = async () => { calls++; return { ...response, notifyRoles: ['qa'], receipts: [{ id: 'uncertain', action: 'jira-update', target: 'CEC-999', verified: false, uncertain: true, detail: 'Timeout after submit' }] }; };
     const m = chat.enqueue(input('Synthetic update', { recheck: true }));
     store.state.paused = true;
