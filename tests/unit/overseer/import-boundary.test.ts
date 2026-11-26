@@ -44,6 +44,22 @@ test('the run folders and the worker environment reach nothing of the Office', (
     expect(environment.packages).toEqual([]);
 });
 
+const SANDBOX = ['server/overseer/worker-sandbox-policy.ts', 'server/overseer/worker-sandbox-runtime.ts', 'server/overseer/worker-sandbox-run.ts', 'server/overseer/sandbox-qualification.ts'];
+
+test('the worker sandbox reaches nothing of the Office, and no pass reaches the sandbox', () => {
+    for (const entry of SANDBOX) {
+        const { files, packages } = runtimeClosure([entry]);
+        expect(files.filter(file => FORBIDDEN.includes(file)), entry).toEqual([]);
+        // No package, and the real command runner only as a type: 7b ships no way to dispatch.
+        expect(packages, entry).toEqual([]);
+        expect(files, entry).not.toContain('server/workers/process.ts');
+        expect(files, entry).not.toContain('server/workers/spawn-command.ts');
+    }
+    expect(runtimeClosure(['server/overseer/worker-sandbox-policy.ts']).files).toEqual(['server/overseer/config.ts', 'server/overseer/runner-root.ts', 'server/overseer/worker-sandbox-policy.ts']);
+    const pass = runtimeClosure(['server/overseer.ts']).files;
+    expect(pass.filter(file => SANDBOX.includes(file))).toEqual([]);
+});
+
 test('the operator commands reach no Office module that reads configuration or opens a store', () => {
     const { files } = runtimeClosure(['server/overseer/commands.ts']);
     expect(files.filter(file => FORBIDDEN.includes(file) || file === 'server/office/config.ts' || file === 'server/store/store.ts')).toEqual([]);

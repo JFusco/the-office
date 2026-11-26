@@ -1014,7 +1014,8 @@ All under the root, kept apart: control files, journals and state.
 | `state/launcher.json` | The launcher's attempt in progress, its counters and its last 20 attempts |
 | `control/launcher.lock` | The launch that holds the launcher; `launcher.lock.reclaim` exists for an instant while one takes it |
 | `logs/launcher.out.log`, `logs/launcher.err.log` | launchd's capture of the launcher's output |
-| `runs/<id>/` | One model run's own folders: `home`, `tmp`, `provider` and `office-data` (see Worker environment). Nothing creates one yet |
+| `runs/<id>/` | One model run's own folders: `home`, `tmp`, `provider` and `office-data` (see Worker environment), its frozen `snapshot` and its `sandbox.json` (see Worker sandbox). Nothing creates one yet |
+| `w/<id>/` | The sandbox wrapper's own short temporary folder for one run, never opened to the payload (see Worker sandbox) |
 
 ### Controls
 
@@ -1206,6 +1207,117 @@ What these folders do and do not settle:
   (`bindSession` in `server/overseer/budgeted-run.ts`).
 - **Not confinement.** Keeping a worker to these folders is the sandbox's job, and proving which
   login it uses is the provider authentication's; both are later parts of phase 7.
+
+### Worker sandbox
+
+The worker sandbox contract targets Anthropic's outer filesystem and network sandbox
+(`@anthropic-ai/sandbox-runtime`, `srt`, 0.0.83). This delivery adds no runtime dependency.
+Its implementation checks use fixtures, and the observer dispatches no workers.
+
+| Part | File | Does |
+|---|---|---|
+| Policy | `server/overseer/worker-sandbox-policy.ts` | Builds the runtime's settings for one run |
+| Runtime | `server/overseer/worker-sandbox-runtime.ts` | Locates the pinned package inside the runner's own installation, as files; never runs it |
+| Run | `server/overseer/worker-sandbox-run.ts` | Writes the run's policy once and hands one wrapped command to an executor its caller supplies |
+| Qualification | `server/overseer/sandbox-qualification.ts` | The probe battery, how its observations are read, and which reader profile may then run nested |
+
+**The policy.**
+
+- **Reads:** content reads are denied everywhere (`/`). Homes, `/Volumes`, the shared and temporary
+  folders, live Office data, the checkout's data, checkouts and session stores are denied by name
+  too, and so are the runner's control, journal, state, code, logs and other runs, the runner's own
+  installation, the wrapper's own folders (`w/`), and `launchctl`, `osascript` and `open`. Only
+  these are opened again:
+  - the run's frozen `snapshot` and its four working folders;
+  - `/bin/bash` and `/bin/sh`, because on macOS the runtime runs the payload through `bash -c`;
+  - `/usr/lib` and `/System/Library`, without which nothing starts;
+  - the executables and runtime inputs a caller names, each reviewed. A narrow file beneath a home, such as a provider binary, may be opened; a home
+  itself, or anything that contains or lies in a protected place, is refused.
+- **Writes:** only in the four working folders and stage scratch strictly inside the run. The
+  snapshot, policy file, both spellings of the runtime's shared temporary folder, and the
+  `/dev/tty`, `/dev/dtracehelper`, and `/dev/autofs_nowait` devices are denied.
+- **Network:** none; the domain allowlist must be empty, and Unix sockets, Mach lookups beyond the
+  runtime's base profile, local binding, Apple Events, a pseudo-terminal and the runtime's weaker
+  modes are all off. Every path is a literal, never a pattern.
+
+**What the policy does not settle.** Denying a read does not stop a payload running a sealed system
+tool: under this policy `/bin/launchctl` still ran and reached launchd. Denying launchd control is
+therefore not something the policy does. The runtime's own HTTP and SOCKS proxy stays reachable on
+loopback even with no domains allowed. Its base macOS profile still allows lookups of
+`com.apple.securityd.xpc` and `com.apple.SecurityServer`, so whether a Keychain item can be reached
+has to be tested, not assumed. The runtime also keeps a few built-in exceptions of its own, such as
+stdio and the null device. Each of these is a probe of the battery below, and an unexplained one
+leaves the sandbox unqualified.
+
+**The policy file.** `runs/<id>/sandbox.json`: the settings with keys sorted, created once (never
+over anything, never through a link) at 0600, then checked as a regular single-link file of the
+runner's holding exactly those bytes. The run's folders and the file are checked again just before
+each command. Anything else stops the run, and its ID stays used.
+
+**One command.** `node <srt cli> --settings runs/<id>/sandbox.json -- <program> <args…>`:
+
+- **Program:** the absolute regular file assigned to the selected probe or profile in the prepared
+  policy's executable inventory.
+- **Arguments:** each is passed unchanged after `--`.
+- **Folder and environment:** it runs in the run's `home`, with the worker environment, except that
+  the wrapper's own `TMPDIR` is a short folder of its own, `w/<first 8 of the run ID>`, at 0700. The
+  runtime binds a Unix socket there, and a macOS socket path holds at most 103 bytes, which the run's
+  `tmp` exceeds. The payload's `TMPDIR` is the run's `tmp`, passed as `CLAUDE_CODE_TMPDIR`. A root
+  that would make that folder longer than 80 bytes is refused before anything is written.
+- **Refusals:** an unavailable or unsupported runtime, a cancelled run, missing timeouts or a policy
+  that does not check out stops it before anything starts.
+- **No fallback:** nothing ever runs the program without the sandbox, and a failure is never
+  retried.
+
+The executor is supplied by the caller; these modules ship none, and no runner pass reaches them.
+
+**Qualification.** The runner-owned receipts require a complete battery under the effective policy:
+
+- **Allowed:** startup (with the exact arguments and folder), a snapshot read, writes read back in
+  `tmp` and `provider`, and a file created through the ordinary temporary-directory API.
+- **Denied, each beside a control that succeeds outside the sandbox:**
+  - reads of a sibling folder, runner state, synthetic Office data, and Claude and Codex
+    configuration outside the run;
+  - writes to the snapshot, the run folder, a sibling, the policy and both spellings of the shared
+    temporary folder;
+  - replacing the policy or the snapshot, each verified intact afterwards;
+  - a synthetic item in a disposable Keychain;
+  - direct and proxied network, loopback, a Unix socket and a launchd query.
+- **Runtime observations:** the payload's Java agent path matches the resolved JAR, both runtime
+  proxies refuse forwarding, the remaining IPC surface is recorded, and parent writes stay in the
+  wrapper folder.
+- **Cleanup:** the payload, its process group and the proxy have all ended after each of success,
+  failure, and interruption.
+- **Nested Seatbelt:** whether a profile can be applied inside, recorded apart.
+
+Each observation is bound to its run, probe, policy digest and profile. A payload probe needs a
+start marker, exactly one terminal record and a successful command completion. A denial also
+needs a matching positive control and an operation-specific refusal. Missing, duplicate or
+inconclusive evidence leaves the sandbox unqualified.
+
+A reader profile may run only with two receipts. The first is the outer battery for this OS build,
+architecture, Node, runtime contents and policy rules. The second is its own inner receipt for the
+exact provider binary, version, arguments and tools, showing each restriction it requires applied and
+the battery passed through it. Each receipt keeps the digest of its originating policy. The runner
+expands only allocation-owned paths for the new run and compares the resulting digest with the
+verified policy file.
+
+**Where things stand.** On 2026-11-26, Joe approved the installation prompts for an experiment
+with runtime 0.0.83 on a separate branch. The host battery used synthetic sentinels. Launchd was
+reachable under the policy, the credential-store probe was unrun, and the shared `/tmp/claude`
+probe was inconclusive. Both shipped reader profiles remain unqualified and the model gate is closed.
+See the [phase 7b journal](../wiki/journal/2026-11-26-overseer-phase-7b-worker-sandbox.md).
+
+- **Codex reader:** a Seatbelt profile cannot be applied inside another on this Mac (Darwin 24.3):
+  `sandbox-exec` inside `sandbox-exec` gives `sandbox_apply: Operation not permitted`, exit 71. Codex's
+  own read-only sandbox for model commands is Seatbelt, so a Codex reader that can run commands stays
+  unqualified. Joe's coordinator: "If a provider cannot meet them, record it as unqualified." Whether a
+  Codex reader without command execution qualifies is a later profile decision, and Joe's if it would
+  waive a restriction.
+- **Claude reader:** no receipt yet shows its restrictions applied to the actual binary.
+
+The project dependency pin in `package.json` and `pnpm-lock.yaml` and runner-owned receipts for
+the exact host, installation, policy and provider profiles are outstanding.
 
 ### When the Office does not answer
 

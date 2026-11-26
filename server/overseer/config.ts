@@ -60,6 +60,8 @@ export interface RunnerPaths {
     logs: string;
     /** One private folder per model run (`run-directories.ts`); a pass never creates it. */
     runs: string;
+    /** The sandbox wrapper's own short temporary folder per run (`worker-sandbox-run.ts`); never opened to a payload. */
+    wrapperTmp: string;
 }
 
 export function runnerPaths(root: string): RunnerPaths {
@@ -73,7 +75,7 @@ export function runnerPaths(root: string): RunnerPaths {
         budgetDb: resolve(state, 'budget.sqlite'), budgetConfig: resolve(control, 'budget.json'),
         code: resolve(root, 'code'), pin: resolve(root, 'code', 'pin.json'), launcherCopy: resolve(root, 'code', 'launcher', 'overseer-launch.mjs'),
         launcherState: resolve(state, 'launcher.json'), launcherLock: resolve(control, 'launcher.lock'), launcherGuard: resolve(control, 'launcher.lock.reclaim'),
-        logs: resolve(root, 'logs'), runs: resolve(root, 'runs'),
+        logs: resolve(root, 'logs'), runs: resolve(root, 'runs'), wrapperTmp: resolve(root, 'w'),
     };
 }
 

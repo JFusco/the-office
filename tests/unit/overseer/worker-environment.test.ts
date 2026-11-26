@@ -49,7 +49,7 @@ test('only a setting in the provider table is accepted, and the table never name
         expect(() => workerEnvironment({ paths, provider, run, settings: { HOME: '/Users/someone' } })).toThrow('is not a setting');
         expect(PROVIDER_SETTINGS[provider].filter(name => (RESERVED_NAMES as readonly string[]).includes(name))).toEqual([]);
     }
-    expect(RESERVED_NAMES).toEqual(expect.arrayContaining(Object.values(PROVIDER_DIRECTORY)));
+    expect(RESERVED_NAMES).toEqual(expect.arrayContaining([...Object.values(PROVIDER_DIRECTORY), 'CLAUDE_CODE_TMPDIR']));
 });
 
 test('a run that is not this runner\'s allocation is refused', () => {
