@@ -267,3 +267,44 @@ test('a running worker without a claim ID costs the sweep no provider read', asy
     expect(f.reads()).toBe(calls);
     expectUntouched(f, before);
 });
+
+test.each<[string, Parameters<typeof stopped>[0], (f: Fixture) => void]>([
+    ['a spent refresh budget', 'refresh', f => { f.job.steps.splice(1, 0, { stage: 'update-base', result: result(f.job, OLD) }, { stage: 'update-base', result: result(f.job, OLD, { summary: 'source repair' }) }); }],
+    ['a head without review proof', 'none', () => {}],
+    ['merges disabled without an authorization for the head', 'refresh', f => { f.store.state.coordination!.merges!.enabled = false; }],
+    ['an empty saved worktree', 'refresh', f => { f.job.worktree = ''; }],
+])('%s costs two consecutive sweeps no provider call', async (_kind, proof, change) => {
+    const f = stopped(proof);
+    change(f);
+    const before = structuredClone(f.job), calls = f.reads();
+    for (let pass = 0; pass < 2; pass++) {
+        await f.sweep();
+        expect(f.reads()).toBe(calls);
+        expectUntouched(f, before);
+    }
+});
+
+test('an admissible job is read from GitHub once and queued once; the next sweep reads nothing', async () => {
+    const f = stopped(), calls = f.reads();
+    await f.sweep();
+    expect(f.state.calls.slice(calls)).toEqual([
+        'gh api repos/JFusco/cms-field-vocabulary/pulls/200',
+        'gh pr view 200 --repo JFusco/cms-field-vocabulary --json closingIssuesReferences',
+    ]);
+    expect(f.job).toMatchObject({ stage: 'update-base', status: 'queued' });
+    expect(f.events()).toBe(1);
+    const after = f.reads();
+    await f.sweep();
+    expect(f.reads()).toBe(after);
+    expect(f.events()).toBe(1);
+});
+
+test('disabled merges with an authorization for exactly the job head still verify on GitHub and queue', async () => {
+    const f = stopped();
+    f.store.state.coordination!.merges!.enabled = false;
+    f.job.mergeAuthorization = { head: HEAD } as any;
+    const calls = f.reads();
+    await f.sweep();
+    expect(f.reads()).toBe(calls + 2);
+    expect(f.job).toMatchObject({ stage: 'update-base', status: 'queued' });
+});
