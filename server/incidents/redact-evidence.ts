@@ -1,46 +1,14 @@
-import { AFTER_JSON_ESCAPE, isJsonText, sanitize, TOKEN_START } from '../office/security';
+import { isJsonText, sanitizeInMode, TOKEN_START } from '../office/security';
+import { credentialSpans } from './credential-spans';
+import { BARE_CREDENTIAL } from './credential-patterns';
+import { JsonLayers } from './json-layers';
 
-const CREDENTIAL_NAME = '(?:access|refresh|id|auth|bearer|session|api)?[_-]?token|client[_-]?secret|secret[_-]?(?:access[_-]?)?key|secret|password|passwd|api[_-]?key|private[_-]?key|authorization|cookie|credentials';
-// The name may end a longer identifier (GITHUB_TOKEN, X-Auth-Token, --token); only a letter or digit before it rules it out,
-// unless the name starts a camelCase word (githubToken, userPassword, JWTToken): a lower-case letter or digit, then an
-// upper-case one, or an upper-case letter, then an upper-case and a lower-case one.
-// It may also follow a JSON escape (\n, \u001b), whose letters stay case-sensitive under the `i` flag.
-// So may a terminal colour code (\u001b[33m) right before it.
-const CAMEL_START = String.raw`(?-i:(?<=[a-z0-9])(?=[A-Z]))|(?-i:(?<=[A-Z])(?=[A-Z][a-z]))`;
-const NAME_START = String.raw`(?:(?<![A-Za-z0-9])|${CAMEL_START}|(?-i:${AFTER_JSON_ESCAPE})|(?<=(?:\\u001b|\x1b)\[[\d;]*m))`;
-const ASSIGNMENT = String.raw`${NAME_START}(?:${CREDENTIAL_NAME})\s*[=:]\s*`;
-// A property name starts right after its quote, and an escaped one takes a value escaped as deeply.
-const PROPERTY = String.raw`${NAME_START}(?=${CREDENTIAL_NAME})(?<=["'][\w-]{0,64})(?:${CREDENTIAL_NAME})(?<nameRun>\\*)["']\s*:\s*(?=\k<nameRun>["'])`;
-// A quote escaped n times (n = 0, 1, 3, 7… in JSON inside JSON) is closed by the same quote after
-// n + k·2(n + 1) backslashes, which for an unescaped quote is any even run. A run that is not n modulo n + 1
-// belongs to an enclosing string, so the value ends before it. A saved fragment may end mid-value or mid-escape.
-const OPEN = String.raw`(?<open>(?<run>(?:\\(?:\\\\)*)?)(?<quote>["']))`;
-const AFTER_LABEL = String.raw`(?<=(?:${CREDENTIAL_NAME})(?:\\*["'])?\s*[=:]\s*)`;
-const quotedCredential = (json: boolean) => {
-    // A quote right after another credential label opens that label's value, so it does not end this one.
-    // In JSON text an unescaped quote is certain, so only an escaped one is checked.
-    const notLabel = json ? String.raw`(?:(?!\\)|(?!${AFTER_LABEL}))` : String.raw`(?!${AFTER_LABEL})`;
-    const close = String.raw`(?<!\\)${notLabel}(?:\k<run>\k<run>\\\\)*\k<run>\k<quote>`;
-    // In JSON text an unescaped double quote also ends a single-quoted value: it closes the string that holds it.
-    const enclosing = String.raw`(?<!\\)${notLabel}(?:\k<run>\\)*(?!\k<run>)\\*\k<quote>${json ? String.raw`|(?<!\\)(?:\\\\)*"` : ''}`;
-    return new RegExp(String.raw`(?<prefix>${PROPERTY}|${ASSIGNMENT})${OPEN}(?:[^\\"']+|(?!${close}|${enclosing})[\s\S])*(?:${close}|(?=${enclosing})|$)`, 'gi');
-};
-const QUOTED_CREDENTIAL = quotedCredential(false);
-const QUOTED_CREDENTIAL_IN_JSON = quotedCredential(true);
-// A bare value in JSON text ends at a control-character escape (\n, \u001b) or before the backslashes of an escaped
-// quote at any depth. It may start with a control escape, and an escaped backslash or other \u escape stays in it.
-// Keep the class first inside `(?-i:…)`: V8 13.6 drops the modifier for a class in a later alternative.
-const CONTROL_ESCAPE = String.raw`\\(?-i:[bfnrt]|u00[01][\dA-Fa-f]|u007[fF])`;
-const BARE_UNIT = String.raw`(?:[^\s&,;}"'\\\0]+|(?!(?<!\\)(?:\\\\)*\\")(?:\\\\|(?!${CONTROL_ESCAPE})\\))`;
-const BARE_VALUE = String.raw`(?:${CONTROL_ESCAPE})*${BARE_UNIT}+`;
-// After whitespace or an escape, another credential label is the next assignment, not this one's value.
-const BARE_CREDENTIAL = new RegExp(String.raw`(${ASSIGNMENT})(?!\[redacted\]|(?:(?<=\s)|${CONTROL_ESCAPE})(?:${CONTROL_ESCAPE})*(?:[\w-]*(?:[_-]|${CAMEL_START}))?(?:${CREDENTIAL_NAME})\s*[=:])${BARE_VALUE}`, 'gi');
 const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]+|xox[abprs]-[A-Za-z0-9-]+)`, 'g');
 const AWS_KEY_ID = new RegExp(String.raw`${TOKEN_START}(?:AKIA|ASIA)[A-Z0-9]{16}\b`, 'g');
 const JSON_WEB_TOKEN = new RegExp(String.raw`${TOKEN_START}eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`, 'g');
 
-function redactUnquoted(text: string): string {
-    return sanitize(text)
+function redactUnquoted(text: string, json: boolean): string {
+    return sanitizeInMode(text, json)
         .replace(/((?:https?|socks5?):\/\/)[^\s/@]+@/gi, '$1[redacted]@')
         .replace(BARE_CREDENTIAL, '$1[redacted]')
         .replace(PROVIDER_TOKEN, '[redacted]')
@@ -64,21 +32,22 @@ export function redactEvidence(text: string): string {
     }
 }
 
+/**
+ * Every edit whose extent depends on the JSON strings of the text is chosen on the original text, against one map of
+ * its layers, and the text is rendered once: each chosen span becomes a placeholder the shared sanitizer leaves alone,
+ * and every other character is kept (a NUL doubled). The rules that do not depend on layers then run on the rendered
+ * text, with the original text's JSON mode, and the placeholders are put back.
+ */
 function redactCredentials(text: string): string {
-    // Hide the quoted syntax from the shared sanitizer so its unquoted rules keep their scope.
-    const quoted: string[] = [];
     const json = isJsonText(text);
-    const masked = text.replaceAll('\0', '\0\0').replace(json ? QUOTED_CREDENTIAL_IN_JSON : QUOTED_CREDENTIAL, (...match) => {
-        const { prefix, open, nameRun } = match[match.length - 1] as { prefix: string; open: string; nameRun?: string };
-        const index = quoted.length;
-        // In JSON text a bare label lies inside a string, so a plain double quote right after it closes that string.
-        // Only the label is hidden, so the shared sanitizer leaves it alone too.
-        if (nameRun === undefined && open === '"' && json) {
-            quoted.push(prefix);
-            return `\0${index}\0${(match[0] as string).slice(prefix.length)}`;
-        }
-        quoted.push(`${prefix}${open}[redacted]${open}`);
-        return `\0${index}\0`;
-    });
-    return redactUnquoted(masked).replace(/\0(\d*)\0/g, (_, index: string) => index ? quoted[Number(index)] : '\0');
+    const kept: string[] = [];
+    const parts: string[] = [];
+    let at = 0;
+    for (const span of credentialSpans(text, new JsonLayers(text), json)) {
+        parts.push(text.slice(at, span.start).replaceAll('\0', '\0\0'), `\0${kept.length}\0`);
+        kept.push(span.replacement);
+        at = span.end;
+    }
+    parts.push(text.slice(at).replaceAll('\0', '\0\0'));
+    return redactUnquoted(parts.join(''), json).replace(/\0(\d*)\0/g, (_, index: string) => index ? kept[Number(index)] : '\0');
 }

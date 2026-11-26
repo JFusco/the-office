@@ -215,3 +215,118 @@ test('text too large for the regex stack is kept as nothing, and any other failu
     overflow.mockRestore();
     expect(redactEvidence('token=fixture')).toBe('token=[redacted]');
 });
+
+// #627: the gaps a review of #539 and #542 found. `message`, `wrap` and `cut` build the fixtures the plan names.
+const B = '\\';
+const u = (hex: string) => `${B}u${hex}`;
+const tab = '\t', lf = '\n', NUL = '\0';
+const message = (s: string) => JSON.stringify({ m: s });
+const wrap = (s: string) => JSON.stringify({ d: s, n: 1 });
+const cut = (s: string) => message(s).slice(0, -2);
+/** The exact output, and the same output again on a second pass. */
+function expectRedaction(input: string, output: string) {
+    expect(redactEvidence(input)).toBe(output);
+    expect(redactEvidence(output)).toBe(output);
+}
+
+test('#627: edits are chosen on the original text, so an earlier edit never moves a later layer decision', () => {
+    const lead = (credentials: unknown, token: string) => NUL + JSON.stringify({ credentials, token }) + ' ';
+    const S = '{"m":"token=\'a' + B + B + '\'b\' done token=fix' + u('0020') + 'tail next"}';
+    const T = '{"m":"token=\'[redacted]\' done token=[redacted]' + u('0020') + 'tail next"}';
+    const redacted = redactEvidence(lead(1, 'x'.repeat(256)) + wrap(S));
+    const head = lead('[redacted]', '[redacted]');
+    expect(redacted).toBe(head + wrap(T));
+    expect(JSON.parse(head.slice(1, -1))).toEqual({ credentials: '[redacted]', token: '[redacted]' });
+    expect(JSON.parse(JSON.parse(redacted.slice(head.length)).d)).toEqual({ m: "token='[redacted]' done token=[redacted] tail next" });
+});
+
+test('#627: the shared sanitizer keeps the JSON mode of the original text', () => {
+    const output = '["password=[redacted]' + u('0020') + 'next","' + B + 'bearer [redacted]"]';
+    expectRedaction('["password=fixture' + u('0020') + 'next","' + B + 'bearer fixture"]', output);
+    expect(() => JSON.parse(output)).not.toThrow();
+});
+
+test('#627 items 1 and 2: a dotted or long property name ending in a credential name is recognized', () => {
+    expectRedaction('{"spring.datasource.password":"hunter2"}', '{"spring.datasource.password":"[redacted]"}');
+    expectRedaction(wrap('{"spring.datasource.password":"hunter2"}'), wrap('{"spring.datasource.password":"[redacted]"}'));
+    expect(redactEvidence('{"credential.helper":"store"}')).toBe('{"credential.helper":"store"}');
+    const key = 'a'.repeat(65) + 'Token';
+    expectRedaction(JSON.stringify({ [key]: 'fixture' }), JSON.stringify({ [key]: '[redacted]' }));
+});
+
+test('#627 item 3: a credential property with a value that is not a string loses the whole value', () => {
+    expectRedaction('{"githubToken":12345,"next":"kept"}', '{"githubToken":"[redacted]","next":"kept"}');
+    for (const value of ['{"a":1}', '[1,2]', 'true', 'false', 'null', '-1.5e+10', '{"a":[1,{"b":"]}"}],"c":{}}']) {
+        expectRedaction(`{"credentials":${value},"next":"kept"}`, '{"credentials":"[redacted]","next":"kept"}');
+    }
+    const serialized = JSON.stringify({ credentials: { a: 'x' + B, b: '}secret' }, next: 'kept' });
+    expectRedaction(serialized, '{"credentials":"[redacted]","next":"kept"}');
+    expectRedaction(wrap(serialized), wrap('{"credentials":"[redacted]","next":"kept"}'));
+    const single = "{'credentials':{'a':'}x secret'},'n':1}";
+    expectRedaction(single, `{'credentials':"[redacted]",'n':1}`);
+    expectRedaction(wrap(single), wrap(`{'credentials':"[redacted]",'n':1}`));
+    expectRedaction('{"credentials":{"a":"it\'s }"},"n":1}', '{"credentials":"[redacted]","n":1}');
+    expectRedaction(JSON.stringify({ credentials: { a: 'q"}' }, next: 'kept' }), '{"credentials":"[redacted]","next":"kept"}');
+    const unicodeQuoted = '{"d":"{' + B + '"credentials' + B + '":{' + B + '"a' + B + '":' + u('0022') + '}tail' + u('0022') + '},' + B + '"next' + B + '":1}","n":1}';
+    const redacted = redactEvidence(unicodeQuoted);
+    expect(redacted).toBe(wrap('{"credentials":"[redacted]","next":1}'));
+    expect(JSON.parse(JSON.parse(redacted).d)).toEqual({ credentials: '[redacted]', next: 1 });
+    expectRedaction(wrap('{"token":123'), wrap('{"token":"[redacted]"'));
+    expectRedaction(wrap('{"credentials":{"a":"x (cut)'), wrap('{"credentials":"[redacted]"'));
+});
+
+test('#627 item 4: a serialized tab or newline between a label and its value is a gap at the label\'s layer', () => {
+    expectRedaction(message('auth_token:' + tab + '"fixture" done'), message('auth_token:' + tab + '"[redacted]" done'));
+    expectRedaction(wrap(message('auth_token:' + tab + '"fixture" done')), wrap(message('auth_token:' + tab + '"[redacted]" done')));
+    expectRedaction(message('{"token":' + tab + '"fixture","n":1}'), message('{"token":' + tab + '"[redacted]","n":1}'));
+    expectRedaction(message('token= auth.token' + tab + '=fixture next'), message('token= auth.token' + tab + '=[redacted] next'));
+    expectRedaction(wrap('{"token"' + tab + ':"fixture","n":1}'), wrap('{"token"' + tab + ':"[redacted]","n":1}'));
+    expectRedaction(message('token=' + lf + '  fixture done'), message('token=[redacted] done'));
+    expectRedaction(message('token:' + B + 'tabc next'), message('token:[redacted] next'));
+    expectRedaction(message('token:' + B + 't'), message('token:[redacted]'));
+    expectRedaction(message('token="first password:' + tab + '"second value" done'), message('token="[redacted]" done'));
+});
+
+test('#627 item 5: a single-quoted value in a JSON string closes on an even run of decoded backslashes', () => {
+    const cutWrap = redactEvidence(wrap(cut("token='a" + B + "'b' done")));
+    expect(cutWrap).toBe(wrap(cut("token='[redacted]'")));
+    expect(JSON.parse(cutWrap).n).toBe(1);
+    expect(redactEvidence(cutWrap)).toBe(cutWrap);
+    for (const value of ['left' + B + "'right", 'a' + B + B]) {
+        expectRedaction(message("token='" + value + "' done"), message("token='[redacted]' done"));
+        expectRedaction(wrap(message("token='" + value + "' done")), wrap(message("token='[redacted]' done")));
+    }
+    expectRedaction('{"m":"token=\'a' + u('005C') + '\'b\' done"}', '{"m":"token=\'[redacted]\' done"}');
+    expectRedaction('{"m":"token=\'a' + u('005c') + u('005C') + '\' done"}', '{"m":"token=\'[redacted]\' done"}');
+    expectRedaction(message('unbalanced " token=fix' + B + 'u0020tail next'), message('unbalanced " token=[redacted] next'));
+    expectRedaction(wrap(cut('token=' + lf + '  fixture done')), wrap(cut('token=[redacted] done')));
+});
+
+test('#627 items 6 and 7: a label with nothing after it never takes the next label, dotted or after an escape', () => {
+    expectRedaction('token= auth.token= fixture', 'token= auth.token= [redacted]');
+    expectRedaction('token= team.auth.token= fixture', 'token= team.auth.token= [redacted]');
+    expectRedaction(message('token=' + lf + '  team.auth.token= fixture'), message('token=' + lf + '  team.auth.token= [redacted]'));
+    expectRedaction('password= GITHUB_TOKEN:' + lf + '  fixture', 'password= GITHUB_TOKEN:' + lf + '  [redacted]');
+    expectRedaction('password= token="two words" done', 'password= token="[redacted]" done');
+});
+
+test('#627 item 8: only a lower-case \\u001b or \\u001B colour code with a lower-case m starts a name', () => {
+    for (const prefix of [u('001b') + '[33m', u('001B') + '[33m']) expectRedaction(prefix + 'token=x', prefix + 'token=[redacted]');
+    for (const text of [B + 'U001b[33mtoken=x', u('001b') + '[33Mtoken=x']) expect(redactEvidence(text)).toBe(text);
+});
+
+test('#627 item 9 (option a): an encoded whitespace escape ends a bare value; a printable escape stays in it', () => {
+    for (const label of ['token=', 'password=', '?token=']) expectRedaction(label + 'fixture' + u('0020') + 'next', label + '[redacted]' + u('0020') + 'next');
+    expectRedaction('?token=a' + B + '&b=2' + u('0020') + 'token=c&x=1', '?token=[redacted]' + u('0020') + 'token=[redacted]&x=1');
+    expectRedaction('{"log":"token:' + u('00a0') + 'fixture next"}', '{"log":"token:[redacted] next"}');
+    expectRedaction('token=fix' + u('00e4') + 'ture next', 'token=[redacted] next');
+    expectRedaction('token=fixture' + u('FEFF') + 'next', 'token=[redacted]' + u('FEFF') + 'next');
+    expectRedaction('token=fix' + u('0085') + 'ture next', 'token=[redacted] next');
+    expectRedaction('token=fix' + B + 'U0020ture next', 'token=[redacted] next');
+    expectRedaction(message('token=fix' + B + 'u0020tail next'), message('token=[redacted] next'));
+    expectRedaction(wrap('{"m":"token=fix' + u('0020') + 'tail next"}'), wrap('{"m":"token=[redacted]' + u('0020') + 'tail next"}'));
+    for (const text of ['Authorization: Bearer fixture', 'Authorization: Basic dXNlcjpwYXNz', 'Authorization: Bearer' + u('0020') + 'fixture', 'Authorization: Basic' + u('0020') + 'dXNlcjpwYXNz']) {
+        expectRedaction(text, 'Authorization: [redacted]');
+    }
+    for (const text of ['Cookie: name=fixture' + u('0020') + 'other=fixture', 'Cookie: token=fixture; session=fixture']) expectRedaction(text, 'Cookie: [redacted]');
+});
