@@ -1,6 +1,6 @@
 import { withGitHubSource, type Runner } from './call-scope';
 import type { WriteCredential } from './identity/child-credentials';
-import { credentialOptions, withWriteCredential } from './identity/write-credential-scope';
+import { credentialOptions, currentWriteCredential, withWriteCredential } from './identity/write-credential-scope';
 
 const HOUR = 60 * 60_000;
 export type Resource = 'core' | 'graphql';
@@ -51,18 +51,21 @@ export class RateLimitSamples {
     constructor(private run: Runner, private now = () => Date.now(), private intervalMs = 60_000, private credential?: (principal: string) => Promise<WriteCredential | undefined>) { }
     /**
      * `intervalMs` shortens the spacing for the quota governor's probe; every sample of a principal still shares the one
-     * in flight. A principal's probe runs with that principal's own credential (the operator's: unchanged).
+     * in flight per credential context. Rollback probes use the stored operator context and share its quota window.
      */
     sample(begin?: () => () => void, intervalMs = this.intervalMs, principal = OPERATOR): Promise<void> {
-        const inFlight = this.pending.get(principal);
+        const scoped = currentWriteCredential();
+        const rollback = principal === OPERATOR && scoped?.principal === 'operator' ? scoped : undefined;
+        const probeKey = rollback ? 'operator:rollback' : principal;
+        const inFlight = this.pending.get(probeKey);
         if (inFlight) return inFlight;
         const at = this.now();
-        if (at - (this.lastAt.get(principal) ?? -Infinity) < intervalMs) return Promise.resolve();
-        this.lastAt.set(principal, at);
+        if (at - (this.lastAt.get(probeKey) ?? -Infinity) < intervalMs) return Promise.resolve();
+        this.lastAt.set(probeKey, at);
         const end = begin?.();
         const probe = async () => {
-            if (principal === OPERATOR) return this.run('gh', ['api', 'rate_limit'], { timeout: 30_000, readOnly: true });
-            const credential = await this.credential?.(principal);
+            if (principal === OPERATOR && !rollback) return this.run('gh', ['api', 'rate_limit'], { timeout: 30_000, readOnly: true });
+            const credential = rollback ?? await this.credential?.(principal);
             if (!credential) throw new Error('No credential for this principal');
             // The runner here is the metered runner itself, not `command`: the child credential is applied explicitly.
             return withWriteCredential(credential, () => this.run('gh', ['api', 'rate_limit'], credentialOptions('gh', { timeout: 30_000, readOnly: true }, credential)));
@@ -74,10 +77,10 @@ export class RateLimitSamples {
             if (!read.length) this.failures.set(principal, { at: this.now(), reason: 'unreadable' });
             for (const sample of read) this.keep(sample);
         }, () => { this.failures.set(principal, { at: this.now(), reason: 'failed' }); }).finally(() => {
-            this.pending.delete(principal);
+            this.pending.delete(probeKey);
             end?.();
         });
-        this.pending.set(principal, pending);
+        this.pending.set(probeKey, pending);
         return pending;
     }
     /** Keep only the quota values from an included response, or from a GraphQL body's `rateLimit` (`from: 'body'`), for the principal that made the call. */

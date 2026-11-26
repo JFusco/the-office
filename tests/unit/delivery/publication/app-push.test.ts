@@ -3,11 +3,15 @@ import { resolve } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes, fakeGitHub, REPOSITORY } from '../support/fake-github';
 import { recordedPush } from '../../../../server/delivery/publication/record-push';
-import { appCredential } from '../../../../server/github/identity/child-credentials';
+import { appCredential, operatorRollbackCredential } from '../../../../server/github/identity/child-credentials';
 import { bindGitHubIdentity } from '../../../../server/github/identity/identity-runtime';
 import { pushHookChain } from '../../../../server/github/identity/push-destination';
 import { credentialOptions, withWriteCredential } from '../../../../server/github/identity/write-credential-scope';
 import { childEnvironment } from '../../../../server/workers/child-environment';
+import { publishCIRepair } from '../../../../server/delivery/repairs/ci-publication';
+import { ciFixture, newHead, oldHead, plan } from '../../../fixtures/ci-repair';
+import { claimedDelivery } from '../../../fixtures/delivery-claim';
+import { appConfig, APP } from '../../github/identity/support/route-fixture';
 
 afterEach(cleanupFakes);
 const TOKEN = `ghs_${'Synthetic4'.repeat(4)}`;
@@ -63,4 +67,65 @@ test.each([
         repositories: { 'cms-field-vocabulary': { repository: REPOSITORY, repositoryId: 9 } }, writes: {} }) });
     await expect(withWriteCredential(appCredential(2002, TOKEN), () => recordedPush(p.f.store, p.execute as never, p.job, p.job as never, () => {}, 60000))).rejects.toThrow(/refused|not the bound/);
     expect(p.pushes).toEqual([]);
+});
+
+test.each([true, false])('a rollback push requires its bound HTTPS destination (%s)', async bound => {
+    const p = appPush(bound ? undefined : 'https://github.com/other/repository.git');
+    bindGitHubIdentity(p.f.store, { config: () => ({ appId: 1, installationId: 2002, botLogin: 'office[bot]', keySource: { kind: 'keychain', service: 's', account: 'a' },
+        repositories: { 'cms-field-vocabulary': { repository: REPOSITORY, repositoryId: 9 } }, writes: {} }) });
+    const run = withWriteCredential(operatorRollbackCredential(), () => recordedPush(p.f.store, p.execute as never, p.job, p.job as never, () => {}, 60000));
+    if (bound) {
+        await expect(run).rejects.toThrow('git exited 128');
+        expect(p.pushes).toHaveLength(1);
+        expect(p.pushes[0].env).toMatchObject({ GIT_CONFIG_VALUE_0: '', GIT_CONFIG_VALUE_1: '!gh auth git-credential' });
+        expect(p.pushes[0].env.GH_TOKEN).toBeUndefined();
+    } else {
+        await expect(run).rejects.toThrow('not the bound github.com repository');
+        expect(p.pushes).toEqual([]);
+    }
+});
+
+test.each([true, false])('a force-with-lease rollback also requires its bound HTTPS destination (%s)', async bound => {
+    const f = ciFixture(), { store, delivery, job } = f, { repository, id: projectId } = store.project;
+    await delivery.queueCIRepair(job);
+    job.status = 'working';
+    const repair = job.ciRepairs![0];
+    repair.phase = 'publish'; repair.plan = plan('commit-messages'); repair.repairedHead = newHead;
+    repair.worktree = resolve(f.artifactRoot, `ci-${repair.id}`, 'candidate');
+    repair.hooksPath = resolve(repair.worktree, '.githooks');
+    f.setGitHead(newHead);
+    const failure = JSON.parse(readFileSync(repair.evidencePath, 'utf8'));
+
+    const activation = 'force-push-proof', operation = 'force-push', adapter = 'ci-commit-messages';
+    bindGitHubIdentity(store, { config: () => appConfig({ [operation]: { mode: 'operator', revokes: activation } }), operatorLogin: async () => 'JFusco' });
+    store.putEffect({
+        id: activation, work: { projectId, kind: 'delivery', id: job.id }, attemptId: job.id, operation: adapter, target: job.prUrl,
+        authorization: 'office-harness', payload: {}, expectedState: {}, status: 'verified', createdAt: '', dispatchedAt: 'x', verifiedAt: 'x', receipt: {}, error: '', elapsedMs: 0,
+        writer: { principal: 'app', projectId, repository, operation, login: APP.botLogin, appId: APP.appId, installationId: APP.installationId,
+            repositoryId: APP.repositoryId, grant: { kind: 'trial', entryDigest: 'fixture' }, binding: { adapter, target: job.prUrl } },
+        activation: { projectId, operation, predecessor: null, proofEffectIds: [activation], activatedAt: '2026-11-26T12:00:00Z',
+            binding: { projectId, operation, repository, repositoryId: APP.repositoryId, appId: APP.appId, installationId: APP.installationId, adapters: [adapter] },
+            revocation: { at: '2026-11-26T12:00:01Z', entryDigest: 'fixture' } },
+    });
+    store.db.prepare("INSERT INTO github_write_routes VALUES(?,?,?,'revoked')").run(projectId, operation, activation);
+
+    const pushEnvs: NodeJS.ProcessEnv[] = [];
+    const execute = delivery.execute;
+    delivery.execute = async (program, args, options = {}) => {
+        if (program === 'git' && args.includes('--push')) return bound ? `https://github.com/${repository}.git` : 'https://github.com/other/repository.git';
+        if (program === 'git' && args[0] === 'config') return HELPERS;
+        if (program === 'git' && args[0] === 'push') pushEnvs.push(childEnvironment(credentialOptions(program, options)));
+        return execute(program, args, options);
+    };
+    const publish = claimedDelivery(store, job, () => publishCIRepair(delivery, job, repair, failure));
+    if (bound) {
+        await publish;
+        expect(f.calls.filter(c => c.args[0] === 'push')[0].args).toContain(`--force-with-lease=refs/heads/${repair.branch}:${oldHead}`);
+        expect(pushEnvs).toHaveLength(1);
+        expect(pushEnvs[0]).toMatchObject({ GIT_CONFIG_VALUE_0: '', GIT_CONFIG_VALUE_1: '!gh auth git-credential' });
+        expect(pushEnvs[0].GH_TOKEN).toBeUndefined();
+    } else {
+        await expect(publish).rejects.toThrow('not the bound github.com repository');
+        expect(pushEnvs).toEqual([]);
+    }
 });

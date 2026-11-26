@@ -66,7 +66,7 @@ function trialOperation(dispatch: () => Promise<unknown>) {
 }
 function gated<T>() { let release!: (value: T) => void; const held = new Promise<T>(resolve => { release = resolve; }); return { held, release }; }
 
-test.each(['promotion', 'committed revocation'] as const)('a second read-back that finishes after the first verified keeps the %s', async variant => {
+test.each(['promotion', 'committed revocation'] as const)('a negative read-back that finishes after the first verified keeps the %s', async variant => {
     const folder = realpathSync(mkdtempSync(join(tmpdir(), 'effects-settled-'))), path = join(folder, 'office.sqlite');
     let file = new Store(path, projectById('brain'), folder);
     try {
@@ -78,7 +78,7 @@ test.each(['promotion', 'committed revocation'] as const)('a second read-back th
         expect(await a).toBe(true);
         expect(promoteRoute(file, appConfig(), 'issue-close', { mode: 'office-app', proofEffectIds: ['trial'] })).toEqual({ ok: true, activationId: 'trial' });
         if (variant === 'committed revocation') expect(revokeRoute(file, appConfig(), 'issue-close', { mode: 'operator', revokes: 'trial' })).toMatchObject({ ok: true });
-        second.release({ verified: true, receipt: { winner: 2 } });
+        second.release({ verified: false, receipt: null });
         expect(await b).toBe(true);
         file.close();
         file = new Store(path, projectById('brain'), folder);

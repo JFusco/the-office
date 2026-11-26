@@ -1,10 +1,10 @@
-import { harnessEffect } from '../../harness/effect';
+import { activeEffectId, harnessEffect } from '../../harness/effect';
 import { readBackOrThrow } from '../../harness/read-retry';
 import { cardStatus, projectCards, projectGraphql, setCardStatus, statusField, type Execute } from '../../board/project-graphql';
 import { readRepo } from './qualify';
 import type { DependabotAlert } from './alerts';
 import type { Store } from '../../../store/store';
-import { discoveredAuthor } from '../../../github/identity/office-authors';
+import { discoveredAuthor, issueCreationAuthor, OPERATOR_LOGIN } from '../../../github/identity/office-authors';
 
 export interface AlertIssue { number: number; nodeId: string; url: string; open: boolean }
 type Guard = () => void | Promise<void>;
@@ -28,6 +28,8 @@ export function alertIssueBody(alert: DependabotAlert): string {
 
 /** Every issue, open or closed and by any author, all pages: where an alert's issue is looked for. Read once per poll. */
 export const listOwnIssues = (store: Store, execute: Execute): Promise<any[]> => readRepo(store, execute, 'issues?state=all&per_page=100', true);
+const issueTarget = (store: Store, alert: number) => `${store.project.repository}#dependabot-alert-${alert}`;
+const receipt = (i: any): AlertIssue => ({ number: i.number, nodeId: i.node_id, url: i.html_url, open: i.state === 'open' });
 
 /** The one issue carrying this alert's marker, open or closed. More than one is a person's to untangle. */
 export async function findAlertIssue(store: Store, execute: Execute, alert: number, known = 0, listed?: () => Promise<any[]>): Promise<AlertIssue | null> {
@@ -35,28 +37,47 @@ export async function findAlertIssue(store: Store, execute: Execute, alert: numb
     const marked = (i: any) => !i.pull_request && String(i.body || '').split(/\r?\n/).some(line => line.trim() === alertMarker(alert));
     // Author and target are checked on their own: another author's copy of the marker is not the Office's, and an
     // operator issue written after the App cutover is kept for reconciliation rather than adopted or duplicated.
+    const author = known ? issueCreationAuthor(store, known, issueTarget(store, alert)) : undefined;
     const own = (i: any) => {
         if (!marked(i) || i.html_url !== `https://github.com/${store.project.repository}/issues/${i.number}`) return false;
-        const standing = discoveredAuthor(store, 'github-issue-create', i.user?.login, i.created_at);
+        const login = i.user?.login;
+        const pinned = i.number === known ? author : issueCreationAuthor(store, i.number, issueTarget(store, alert));
+        const standing = pinned === undefined ? discoveredAuthor(store, 'github-issue-create', login, i.created_at) : login === pinned ? 'office' : 'foreign';
         if (standing === 'ambiguous') throw new Error(`Issue #${i.number} for Dependabot alert #${alert} was written by the operator after the App cutover; reconcile it`);
+        if (standing === 'office' && login !== OPERATOR_LOGIN && !i.assignees?.some((a: any) => a.login === OPERATOR_LOGIN))
+            throw new Error(`Issue #${i.number} for Dependabot alert #${alert} is assigned elsewhere; reconcile it`);
         return standing === 'office';
     };
-    const found = known ? [await readRepo(store, execute, `issues/${known}`)].filter(own) : (await (listed ? listed() : listOwnIssues(store, execute))).filter(own);
+    const issues = listed ? await listed() : known ? [await readRepo(store, execute, `issues/${known}`)] : await listOwnIssues(store, execute);
+    const found = issues.filter(own);
     if (found.length > 1) throw new Error(`Dependabot alert #${alert} has ${found.length} issues; reconcile them`);
-    return found.length ? { number: found[0].number, nodeId: found[0].node_id, url: found[0].html_url, open: found[0].state === 'open' } : null;
+    return found[0] && (!known || found[0].number === known) ? receipt(found[0]) : null;
 }
 
 /** Creates the one issue for the alert, assigned to Joe, or returns the one that exists. Never creates twice. */
 export async function ensureAlertIssue(store: Store, execute: Execute, record: { id: string; issue: number }, alert: DependabotAlert, guard: Guard, listed?: () => Promise<any[]>): Promise<AlertIssue> {
-    const existing = await findAlertIssue(store, execute, alert.number, record.issue, listed);
-    if (existing) return existing;
-    if (record.issue) throw new Error(`Known issue #${record.issue} for Dependabot alert #${alert.number} no longer carries its marker; preserve it for reconciliation`);
-    const read = () => findAlertIssue(store, execute, alert.number);
+    const target = issueTarget(store, alert.number), effectId = activeEffectId(store, `harness:${record.id}:issue`);
+    const prior = store.getEffect(effectId);
+    const known = record.issue || (prior?.status === 'verified' ? (prior.receipt as AlertIssue | null)?.number : undefined);
+    if (known || !prior?.dispatchedAt) {
+        const existing = await findAlertIssue(store, execute, alert.number, known, known ? undefined : listed);
+        if (existing) return existing;
+        if (known) throw new Error(`Known issue #${known} for Dependabot alert #${alert.number} no longer carries its marker; preserve it for reconciliation`);
+    }
+    const read = () => findAlertIssue(store, execute, alert.number, (store.getEffect(effectId)?.receipt as AlertIssue | null)?.number);
     return harnessEffect(store, record, {
-        key: 'issue', operation: 'github-issue-create', target: `${store.project.repository}#dependabot-alert-${alert.number}`, payload: { alert: alert.number }, guard,
+        key: 'issue', operation: 'github-issue-create', target, payload: { alert: alert.number }, guard,
         dispatch: async () => {
-            await execute('gh', ['api', `repos/${store.project.repository}/issues`, '-X', 'POST', '-f', `title=${alertIssueTitle(alert)}`, '-f', `body=${alertIssueBody(alert)}`, '-f', 'assignees[]=JFusco'], { cwd: store.project.repo, timeout: 60000 });
+            const raw = await execute('gh', ['api', `repos/${store.project.repository}/issues`, '-X', 'POST', '-f', `title=${alertIssueTitle(alert)}`, '-f', `body=${alertIssueBody(alert)}`, '-f', 'assignees[]=JFusco'], { cwd: store.project.repo, timeout: 60000 });
+            const created = raw.trim() ? JSON.parse(raw) : null;
+            if (Number.isSafeInteger(created?.number) && created.number > 0 && created.html_url === `https://github.com/${store.project.repository}/issues/${created.number}`)
+                return receipt(created);
             return readBackOrThrow(read, `Issue for Dependabot alert #${alert.number}`);
+        },
+        verify: async created => {
+            const found = await readBackOrThrow(() => findAlertIssue(store, execute, alert.number, created.number, () => listOwnIssues(store, execute)),
+                `Issue for Dependabot alert #${alert.number}`);
+            return found.nodeId === created.nodeId && found.open === created.open;
         },
         readBack: read,
     });

@@ -21,8 +21,17 @@ export const currentPrincipal = (): string => scope.getStore()?.label ?? 'operat
 export function credentialOptions(program: string, options: CommandOptions, credential = currentWriteCredential()): CommandOptions {
     const name = basename(program), part = credential && (name === 'gh' ? credential.gh : name === 'git' ? credential.git : undefined);
     if (!part) return options;
-    const envRemove = [...new Set([...(options.envRemove ?? []), ...part.remove])];
-    const replaceEnv = (options as { replaceEnv?: Readonly<Record<string, string>> }).replaceEnv;
-    if (replaceEnv !== undefined) return { ...options, replaceEnv: { ...replaceEnv, ...part.env }, envRemove } as CommandOptions;
-    return { ...options, env: { ...options.env, ...part.env }, envRemove };
+    const remove = new Set(part.remove);
+    const envRemove = [...new Set([...(options.envRemove ?? []), ...remove])];
+    const provided = { ...(options.replaceEnv ?? options.env) };
+    for (const key of remove) {
+        // The push recorder supplies its own event log and explicitly disables tracing environment and config values.
+        if (name === 'git' && (key === 'GIT_TRACE2_EVENT' ||
+            (key === 'GIT_TRACE2_ENV_VARS' || key === 'GIT_TRACE2_CONFIG_PARAMS') && provided[key] === '')) continue;
+        delete provided[key];
+    }
+    const env = { ...provided, ...part.env };
+    if (options.replaceEnv !== undefined)
+        return { ...options, replaceEnv: env, envRemove: options.envRemove?.filter(key => !Object.hasOwn(part.env, key)) };
+    return { ...options, env, envRemove };
 }

@@ -51,22 +51,30 @@ test('an operator rollback removes ambient tokens from the final merged environm
     process.env.GITHUB_TOKEN = 'ghs_SyntheticConflicting0000000000000';
     for (const program of ['gh', 'git']) {
         const env = childEnvironment(credentialOptions(program, { env: { GH_TOKEN: 'caller-supplied' } }, operatorRollbackCredential()));
-        expect([env.GH_TOKEN, env.GITHUB_TOKEN]).toEqual(['caller-supplied', undefined]);
+        expect([env.GH_TOKEN, env.GITHUB_TOKEN]).toEqual([undefined, undefined]);
         const plain = childEnvironment(credentialOptions(program, {}, operatorRollbackCredential()));
         expect([plain.GH_TOKEN, plain.GITHUB_TOKEN]).toEqual([undefined, undefined]);
     }
     expect(process.env.GH_TOKEN).toBe('ghp_SyntheticConflicting0000000000000');
 });
 
-test('removal composes with a whole replacement environment without changing what it passes', () => {
+test('replacement environments retain only the selected credential for gh and git', () => {
     const replaced = Object.assign(Object.create(null), { PATH: '/usr/bin', GH_TOKEN: 'ghp_SyntheticReplaced000000000000000' }) as NodeJS.ProcessEnv;
     expect(childEnvironment({ envRemove: ['GH_TOKEN', 'GITHUB_TOKEN'] }, replaced)).toEqual({ PATH: '/usr/bin' });
     const untouched = Object.assign(Object.create(null), { PATH: '/usr/bin' }) as NodeJS.ProcessEnv;
     expect(childEnvironment({}, untouched)).toBe(untouched);
-    // A caller's replacement environment carries the credential instead of a forbidden extra merge.
-    const options = credentialOptions('gh', { replaceEnv: { PATH: '/usr/bin' } } as CommandOptions, appCredential(2002, TOKEN)) as CommandOptions & { replaceEnv: Record<string, string> };
-    expect(options.env).toBeUndefined();
-    expect(options.replaceEnv).toEqual({ PATH: '/usr/bin', GH_TOKEN: TOKEN, GH_PROMPT_DISABLED: '1' });
+    const replaceEnv = { PATH: '/usr/bin', GH_TOKEN: 'caller', GITHUB_TOKEN: 'other', DROP: 'caller-removal' };
+    for (const program of ['gh', 'git']) {
+        const options = { replaceEnv, envRemove: ['DROP', 'GH_TOKEN'] };
+        const app = credentialOptions(program, options, appCredential(2002, TOKEN));
+        expect(app.env).toBeUndefined();
+        const selected = childEnvironment(app, { ...app.replaceEnv });
+        expect(selected).toMatchObject({ PATH: '/usr/bin', GH_TOKEN: TOKEN });
+        expect([selected.GITHUB_TOKEN, selected.DROP]).toEqual([undefined, undefined]);
+        const rollback = credentialOptions(program, options, operatorRollbackCredential());
+        const operator = childEnvironment(rollback, { ...rollback.replaceEnv });
+        expect([operator.GH_TOKEN, operator.GITHUB_TOKEN, operator.DROP]).toEqual([undefined, undefined, undefined]);
+    }
 });
 
 test('with nothing to remove the spawn environment is exactly what it was', () => {

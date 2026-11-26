@@ -1,5 +1,6 @@
 import { featureEffectGate } from '../features/delivery-binding';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { workKey } from '../../src/shared';
 import type { EffectIntent, WorkRef } from '../../src/shared';
 import type { EffectWriter, WriteQualification } from '../../src/contracts/write-identity';
@@ -66,6 +67,8 @@ export class Effects {
                 throw new EffectUncertainError(intent.id, 'Independent read-back required; the original operation cannot be resent');
             if (intent.status === 'rejected')
                 throw new Error(intent.error || 'Effect preflight was rejected');
+            if (!isDeepStrictEqual(intent.writer, operation.writer))
+                throw new Error('Another executor prepared this effect with a different writer');
         }
         try {
             await operation.preflight();
@@ -169,7 +172,7 @@ export class Effects {
             throw new Error('Only an attempted effect requires reconciliation');
         const result = await readBack(structuredClone(intent));
         if (!result.verified)
-            return false;
+            return this.store.getEffect(id)?.status === 'verified';
         const verifiedAt = this.store.clock.now().toISOString();
         const applied = this.store.transaction(() => {
             const updated = this.store.updateEffect(id, ['dispatching', 'uncertain'], current => {

@@ -20,6 +20,12 @@ export const CREDENTIAL_TRACING = ['GH_DEBUG', 'DEBUG', 'GIT_TRACE', 'GIT_TRACE_
 /** Prompts and alternative helpers a push must never fall back to. */
 export const PROMPTS = ['GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_CONFIG_PARAMETERS', 'GCM_INTERACTIVE'];
 
+// The first entry resets every configured helper before choosing the stored gh helper.
+const GIT_HELPER = {
+    GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
+    GIT_CONFIG_KEY_1: 'credential.helper', GIT_CONFIG_VALUE_1: '!gh auth git-credential',
+};
+
 /** The selected scoped App credential: `GH_TOKEN` for `gh`, and git's credential helper reset to `gh auth git-credential`. */
 export function appCredential(installationId: number, token: string): WriteCredential {
     if (!token) throw new Error('A nonempty scoped App token is required');
@@ -27,13 +33,8 @@ export function appCredential(installationId: number, token: string): WriteCrede
         principal: 'app', label: `app:${installationId}`,
         gh: { env: { GH_TOKEN: token, GH_PROMPT_DISABLED: '1' }, remove: [...AMBIENT_TOKENS, ...CREDENTIAL_TRACING] },
         git: {
-            env: {
-                GH_TOKEN: token, GH_PROMPT_DISABLED: '1', GIT_TERMINAL_PROMPT: '0', GIT_TRACE_REDACT: '1',
-                // Per-invocation configuration: an empty helper resets every configured helper before the gh one.
-                GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
-                GIT_CONFIG_KEY_1: 'credential.helper', GIT_CONFIG_VALUE_1: '!gh auth git-credential',
-            },
-            remove: [...AMBIENT_TOKENS, ...CREDENTIAL_TRACING, ...PROMPTS],
+            env: { ...GIT_HELPER, GH_TOKEN: token, GH_PROMPT_DISABLED: '1', GIT_TRACE_REDACT: '1' },
+            remove: [...AMBIENT_TOKENS, ...CREDENTIAL_TRACING, ...PROMPTS, 'NODE_OPTIONS', 'ENV', 'BASH_ENV'],
         },
     };
 }
@@ -42,7 +43,7 @@ export function appCredential(installationId: number, token: string): WriteCrede
 export function operatorRollbackCredential(): WriteCredential {
     return {
         principal: 'operator', label: 'operator',
-        gh: { env: { GH_PROMPT_DISABLED: '1' }, remove: [...AMBIENT_TOKENS] },
-        git: { env: { GIT_TERMINAL_PROMPT: '0' }, remove: [...AMBIENT_TOKENS, 'GIT_ASKPASS', 'SSH_ASKPASS'] },
+        gh: { env: { GH_HOST: 'github.com', GH_PROMPT_DISABLED: '1' }, remove: [...AMBIENT_TOKENS, ...CREDENTIAL_TRACING] },
+        git: { env: { ...GIT_HELPER, GH_HOST: 'github.com', GH_PROMPT_DISABLED: '1', GIT_TRACE_REDACT: '1' }, remove: [...AMBIENT_TOKENS, ...CREDENTIAL_TRACING, ...PROMPTS] },
     };
 }

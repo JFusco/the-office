@@ -1,9 +1,16 @@
 import { afterEach, expect, test } from 'vitest';
 import { discoveredAuthor, expectedAuthor, OPERATOR_LOGIN, savedAuthor } from '../../../../server/github/identity/office-authors';
-import { promoteRoute } from '../../../../server/github/identity/route-activation';
-import { findTrackingIssue, trackingMarker } from '../../../../server/delivery/intake/dependabot/tracking-issue';
-import { findAlertIssue, alertMarker } from '../../../../server/delivery/intake/dependabot/alert-issue';
-import { appConfig, APP, closeId, routeFixture, type RouteFixture } from './support/route-fixture';
+import { promoteRoute, revokeRoute } from '../../../../server/github/identity/route-activation';
+import { ensureTrackingIssue, findTrackingIssue, trackingMarker } from '../../../../server/delivery/intake/dependabot/tracking-issue';
+import { ensureAlertIssue, findAlertIssue, alertMarker } from '../../../../server/delivery/intake/dependabot/alert-issue';
+import { postProofComment, readProofComment } from '../../../../server/delivery/closeout/proof-comment';
+import { commentAuthor } from '../../../../server/delivery/parking/park-comment';
+import { parseGitHubApp } from '../../../../server/github/identity/app-config';
+import { canonicalDigest } from '../../../../server/github/identity/route-entry';
+import { changeDigest } from '../../../../server/github/identity/write-boundary';
+import { currentPrincipal } from '../../../../server/github/identity/write-credential-scope';
+import type { TicketJob } from '../../../../src/shared';
+import { appConfig, APP, closeId, issueUrl, routeFixture, type RouteFixture } from './support/route-fixture';
 
 let f: RouteFixture;
 afterEach(() => f?.cleanup());
@@ -60,7 +67,7 @@ test('tracking-issue discovery lists every author on every page and checks autho
     await expect(findTrackingIssue(f.store, duplicate.execute as never, 40)).rejects.toThrow('has 2 tracking issues');
 });
 
-test('alert-issue discovery keeps an operator lookalike written after the issue-create cutover for reconciliation, never a duplicate', async () => {
+function issueCreateHistory() {
     f = routeFixture();
     f.setConfig(appConfig());
     // A recorded issue-create activation, as G3 will leave it.
@@ -70,9 +77,82 @@ test('alert-issue discovery keeps an operator lookalike written after the issue-
         writer: { principal: 'app', projectId: 'brain', repository: 'JFusco/brain', operation: 'issue-create', login: APP.botLogin, appId: APP.appId, installationId: APP.installationId, repositoryId: APP.repositoryId, grant: { kind: 'trial', entryDigest: 'd' }, binding: { adapter: 'github-issue-create', target: 'JFusco/brain#x' } },
         activation: { projectId: 'brain', operation: 'issue-create', predecessor: null, proofEffectIds: ['create-proof'], activatedAt: '2026-11-20T00:00:00.000Z',
             binding: { projectId: 'brain', operation: 'issue-create', repository: 'JFusco/brain', repositoryId: APP.repositoryId, appId: APP.appId, installationId: APP.installationId, adapters: ['github-issue-create'] } } });
+}
+
+test('alert-issue discovery checks the App assignee and keeps an uncorroborated operator match for reconciliation', async () => {
+    issueCreateHistory();
     const body = `Alert\n${alertMarker(9)}\n`;
-    expect((await findAlertIssue(f.store, listing([issue(1, 'JFusco', body)]).execute as never, 9))?.number).toBe(1);
+    expect((await findAlertIssue(f.store, listing([issue(1, 'JFusco', body, { assignees: [] })]).execute as never, 9))?.number).toBe(1);
     expect((await findAlertIssue(f.store, listing([issue(2, APP.botLogin, body, { created_at: '2026-11-25T00:00:00Z' })]).execute as never, 9))?.number).toBe(2);
+    await expect(ensureAlertIssue(f.store, listing([issue(2, APP.botLogin, body, { assignees: [{ login: 'someone' }] })]).execute as never,
+        { id: 'alert-9', issue: 0 }, { number: 9 } as never, () => {})).rejects.toThrow('assigned elsewhere');
     await expect(findAlertIssue(f.store, listing([issue(3, 'JFusco', body, { created_at: '2026-11-25T00:00:00Z' })]).execute as never, 9)).rejects.toThrow('after the App cutover');
     expect(await findAlertIssue(f.store, listing([issue(4, 'someone', body)]).execute as never, 9)).toBeNull();
+});
+
+test.each(['alert', 'tracking'] as const)('the %s reader corroborates the exact issue created during a rollback', async kind => {
+    issueCreateHistory();
+    const rollback = { mode: 'operator', revokes: 'create-proof' } as const;
+    f.setConfig(appConfig({ 'issue-create': rollback }));
+    expect(revokeRoute(f.store, f.config()!, 'issue-create', rollback)).toMatchObject({ ok: true });
+    let created: ReturnType<typeof issue> | undefined, writes = 0;
+    const execute = async (_program: string, args: string[]) => {
+        if (args.includes('POST')) {
+            writes++;
+            created = issue(12, OPERATOR_LOGIN, args.find(arg => arg.startsWith('body='))!.slice(5), { created_at: '2026-11-26T12:00:00Z' });
+            return JSON.stringify(created);
+        }
+        if (args[1].endsWith('/issues/12')) return JSON.stringify(created);
+        return JSON.stringify([created ? [created] : []]);
+    };
+    const record = { id: kind, issue: 0 };
+    const alert = { number: 9, package: 'fixture' } as never;
+    const pr = { number: 40, title: 'Update', url: 'https://github.com/JFusco/brain/pull/40', head: '', body: '' };
+    const ensure = () => kind === 'alert' ? ensureAlertIssue(f.store, execute, record, alert, () => {})
+        : ensureTrackingIssue(f.store, execute, record, pr, () => {});
+    expect((await ensure()).number).toBe(12);
+    f.reopen();
+    record.issue = 12;
+    expect((await ensure()).number).toBe(12);
+    const lookalike = { ...created!, number: 13, html_url: issueUrl(13) };
+    const find = kind === 'alert'
+        ? () => findAlertIssue(f.store, listing([lookalike]).execute, 9)
+        : () => findTrackingIssue(f.store, listing([lookalike]).execute, 40);
+    await expect(find()).rejects.toThrow('after the App cutover');
+    expect(writes).toBe(1);
+});
+
+test.each([false, true])('a designated proof comment reads its pre-state twice before sending (changed=%s)', async changed => {
+    f = routeFixture();
+    const job = { id: 'job-1' } as TicketJob, key = 'proof-comment', id = `harness:${job.id}:${key}`, number = 9;
+    const marker = '<!-- proof fixture -->', body = `${marker}\nProof`, target = issueUrl(number), operation = 'github-issue-comment';
+    const payload = { number, marker, body, author: APP.botLogin };
+    f.setConfig(parseGitHubApp(appConfig({ comment: { mode: 'qualify', effectId: id, adapter: operation, target, beforeDigest: canonicalDigest(null),
+        expectedDigest: changeDigest({ id, operation, target, payload }), installationId: APP.installationId, repositoryId: APP.repositoryId } }), [f.store.project]));
+    expect(commentAuthor(f.store, id)).toBe(APP.botLogin);
+    expect(commentAuthor(f.store, id + ':other')).toBe(OPERATOR_LOGIN);
+    const posted = { id: 88, body, html_url: `${target}#issuecomment-88`, issue_url: 'https://api.github.com/repos/JFusco/brain/issues/9', user: { login: APP.botLogin } };
+    const calls: string[] = [];
+    const execute = async (_program: string, args: string[]) => {
+        if (args.includes('POST')) { calls.push(currentPrincipal()); return JSON.stringify(posted); }
+        if (args.includes('--paginate')) {
+            calls.push(f.store.getEffect(id)?.status ?? 'before admission');
+            return JSON.stringify([changed && calls.length === 2 ? [posted] : []]);
+        }
+        calls.push('exact read-back');
+        return JSON.stringify(posted);
+    };
+    const proof = { number, kind: 'issue' as const, marker, body };
+    const sent = postProofComment(f.store, execute, job, key, proof, () => {});
+    if (changed) {
+        await expect(sent).rejects.toThrow('pre-state changed');
+        expect(f.store.getEffect(id)?.dispatchedAt).toBe('');
+        expect(calls).toEqual(['before admission', 'prepared']);
+    } else {
+        await expect(sent).resolves.toMatchObject({ id: 88 });
+        const intent = f.store.getEffect(id)!;
+        expect(intent).toMatchObject({ status: 'verified', writer: { login: APP.botLogin } });
+        expect(calls).toEqual(['before admission', 'prepared', 'app:2002', 'exact read-back']);
+        await expect(readProofComment(f.store, execute, proof, intent)).resolves.toEqual(intent.receipt);
+    }
 });

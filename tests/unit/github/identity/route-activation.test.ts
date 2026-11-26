@@ -159,6 +159,15 @@ test('two activation cycles: the revoked route holds stale entries, requalifies 
     expect(revokeRoute(f.store, f.config()!, 'issue-close', { mode: 'operator', revokes: b })).toEqual({ ok: true, activationId: b });
     f.reopen(); f.setConfig(appConfig({ 'issue-close': { mode: 'operator', revokes: b } }));
     const before = f.operator();
+    const recordB = rawBody(b).activation;
+    f.store.db.prepare("UPDATE github_write_routes SET activation_effect_id = ? WHERE operation = 'issue-close'").run(a);
+    f.reopen();
+    f.setConfig(appConfig({ 'issue-close': { mode: 'operator', revokes: a } }));
+    await holds(14);
+    expect(f.operator()).toBe(before);
+    expect(rawBody(b).activation).toEqual(recordB);
+    f.store.db.prepare("UPDATE github_write_routes SET activation_effect_id = ? WHERE operation = 'issue-close'").run(b);
+    f.setConfig(appConfig({ 'issue-close': { mode: 'operator', revokes: b } }));
     await f.close(14);
     expect(f.operator()).toBe(before + 1);
     expect(rawBody(b).activation.revocation).toBeDefined();

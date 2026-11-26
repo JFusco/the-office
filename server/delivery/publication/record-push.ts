@@ -23,7 +23,7 @@ export async function recordedPush(store: Store, execute: typeof command, job: P
         effect.target !== `${store.project.repository}:${candidate.branch}` ||
         digest(effect.payload) !== digest({ head: candidate.head, branch: candidate.branch }))
         throw new Error('The original dispatching push Effect is required before native capture');
-    // An App push proves again, right before the native capture, its one bound HTTPS destination, sole helper and qualified hooks.
+    // Check the scoped destination and helper again before native capture, with hook qualification for App pushes.
     await assertPushCredential(store, execute, realpathSync(candidate.worktree));
     guard();
     const root = resolve(store.dataRoot, 'ticket-work', job.id);

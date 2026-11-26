@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
-import { assertAppPushDestination, pushHookChain } from '../../../../server/github/identity/push-destination';
+import { assertBoundPushDestination, pushHookChain } from '../../../../server/github/identity/push-destination';
 import { assertPushCredential } from '../../../../server/github/identity/push-credentials';
 import { appCredential, operatorRollbackCredential } from '../../../../server/github/identity/child-credentials';
 import { withWriteCredential } from '../../../../server/github/identity/write-credential-scope';
@@ -26,8 +26,8 @@ function git(answers: { urls?: string; config?: string[]; hooks?: string }) {
 }
 
 test('one bound HTTPS destination with only the gh helper after the reset is accepted', async () => {
-    await expect(assertAppPushDestination(git({}).execute, '/w', 'JFusco/brain')).resolves.toBeUndefined();
-    await expect(assertAppPushDestination(git({ urls: 'https://github.com/JFusco/brain' }).execute, '/w', 'JFusco/brain')).resolves.toBeUndefined();
+    await expect(assertBoundPushDestination(git({}).execute, '/w', 'JFusco/brain')).resolves.toBeUndefined();
+    await expect(assertBoundPushDestination(git({ urls: 'https://github.com/JFusco/brain' }).execute, '/w', 'JFusco/brain')).resolves.toBeUndefined();
 });
 
 test.each([
@@ -42,7 +42,7 @@ test.each([
     ['a competing helper after the reset', { config: [...OURS, 'credential.https://github.com.helper=store'] }, 'competing helper'],
     ['no reset', { config: ['credential.helper=osxkeychain', 'credential.helper=!gh auth git-credential'] }, 'competing helper'],
 ])('%s is refused before the push', async (_, answers, message) => {
-    const error = await assertAppPushDestination(git(answers).execute, '/w', 'JFusco/brain').catch(caught => caught as Error);
+    const error = await assertBoundPushDestination(git(answers).execute, '/w', 'JFusco/brain').catch(caught => caught as Error);
     expect(error?.message).toContain(message);
     expect(error?.message).not.toContain(TOKEN);
 });
@@ -50,29 +50,42 @@ test.each([
 let folder = '';
 afterEach(() => { if (folder) rmSync(folder, { recursive: true, force: true }); folder = ''; });
 
-test('the hook chain digest covers Husky\'s runner and the user hook, and changes when a hook changes', async () => {
+test('the hook chain covers a Husky hook and its delegate, and holds unresolved delegates', async () => {
     folder = mkdtempSync(join(tmpdir(), 'push-hooks-'));
     mkdirSync(join(folder, '.husky/_'), { recursive: true });
-    writeFileSync(join(folder, '.husky/_/pre-push'), '. "$(dirname "$0")/h"');
-    writeFileSync(join(folder, '.husky/_/h'), 'sh -e "$s"');
+    writeFileSync(join(folder, '.husky/_/pre-push'), '#!/usr/bin/env sh\n. "$(dirname "$0")/h"');
+    copyFileSync('node_modules/husky/husky', join(folder, '.husky/_/h'));
+    mkdirSync(join(folder, 'scripts'));
+    const script = join(folder, 'scripts/guard-push.cjs');
+    writeFileSync(script, 'process.exit(0);');
     writeFileSync(join(folder, '.husky/pre-push'), 'node scripts/guard-push.cjs');
     const { execute } = git({ hooks: '.husky/_' });
     const first = await pushHookChain(execute, folder);
     expect(await pushHookChain(execute, folder)).toBe(first);
-    writeFileSync(join(folder, '.husky/pre-push'), 'node scripts/guard-push.cjs; env > /tmp/leak');
-    expect(await pushHookChain(execute, folder)).not.toBe(first);
+    const store = new Store(':memory:', projectById('brain'), folder);
+    try {
+        bindGitHubIdentity(store, { config: () => appConfig({}, { repositories: { brain: { repository: 'JFusco/brain', repositoryId: 4004, pushHooks: [first] } } }) });
+        const check = () => withWriteCredential(appCredential(2002, TOKEN), () => assertPushCredential(store, execute, folder));
+        await expect(check()).resolves.toBeUndefined();
+        writeFileSync(script, "console.log('guard updated');");
+        await expect(check()).rejects.toThrow('hook chain is not qualified');
+        rmSync(script);
+        await expect(check()).rejects.toThrow('hook chain cannot be established');
+    } finally { store.close(); }
 });
 
-test('the push site check runs only for an App push and needs a qualified hook chain', async () => {
+test('scoped pushes check the destination while App pushes additionally need qualified hooks', async () => {
     folder = mkdtempSync(join(tmpdir(), 'push-site-'));
     const store = new Store(':memory:', projectById('brain'), folder);
     try {
         const reads = git({});
-        // The operator, never activated or rolled back, makes no extra read.
         await assertPushCredential(store, reads.execute, folder);
-        await withWriteCredential(operatorRollbackCredential(), () => assertPushCredential(store, reads.execute, folder));
         expect(reads.calls).toEqual([]);
         bindGitHubIdentity(store, { config: () => appConfig() });
+        await withWriteCredential(operatorRollbackCredential(), () => assertPushCredential(store, reads.execute, folder));
+        expect(reads.calls.map(args => args[0])).toEqual(['remote', 'config']);
+        await expect(withWriteCredential(operatorRollbackCredential(), () =>
+            assertPushCredential(store, git({ urls: 'https://github.com/JFusco/other' }).execute, folder))).rejects.toThrow('not the bound github.com repository');
         await expect(withWriteCredential(appCredential(2002, TOKEN), () => assertPushCredential(store, reads.execute, folder))).rejects.toThrow('hook chain is not qualified');
         const chain = await pushHookChain(reads.execute, folder);
         bindGitHubIdentity(store, { config: () => appConfig({}, { repositories: { brain: { repository: 'JFusco/brain', repositoryId: 4004, pushHooks: [chain] } } }) });

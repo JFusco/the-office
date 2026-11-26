@@ -1235,7 +1235,8 @@ as the Office GitHub App, never by a model's choice.
 - **Writer pinning.** The writer is selected, and its credential acquired, before `Effects.execute` creates
   the intent or a caller records a dispatch or create fence (`write-boundary.ts`). The intent saves the
   principal, expected login, binding and its grant. The prepared claim re-reads the route and current entry in
-  its transaction; a writer they no longer authorize is rejected unsent (`writerRefusedAt`) and a fresh
+  its transaction. A competing selection leaves the prepared intent and its writer intact. A writer the route
+  no longer authorizes is rejected unsent (`writerRefusedAt`) and a fresh
   intent follows the route's current principal (`activeEffectId`, or a fixed-id caller's
   `writerSuccessor`). A held route (`WriteHeld`) or unavailable credential (`CredentialUnavailable`) creates
   no intent. Attempted intents keep their original writer for read-back, whatever the configuration says now.
@@ -1243,14 +1244,16 @@ as the Office GitHub App, never by a model's choice.
   token names one repository id and the mutation's permission subset and is validated (Metadata read, no
   excess grant, the one repository, usable expiry) before use, cached in memory only. It reaches only `gh`
   and `git` children of the write, as `GH_TOKEN`, never argv; git's helper is reset to
-  `gh auth git-credential` by per-invocation configuration. An App push first needs exactly one HTTPS
-  destination for the bound repository, no embedded credential, extra header, askpass or competing helper,
-  and a hook chain digest qualified for the repository (`push-destination.ts`). Tokens, signing JWTs and PEM
+  `gh auth git-credential` by per-invocation configuration. App and rollback pushes need exactly one HTTPS
+  destination for the bound repository, with no embedded credential, extra header, askpass or competing helper.
+  An App push additionally needs a qualified digest of the hook chain and its supported local delegates.
+  An unresolved delegate holds the push (`push-destination.ts`). Tokens, signing JWTs and PEM
   keys are redacted everywhere text is saved.
 - **Authorship.** Readers expect one writer per record (`office-authors.ts`): its saved writer, or the
   historical operator `JFusco` for a legacy record; never a live viewer read. Provider-only discovery
   accepts the bot, or the operator for a record from before the route's cutover; an operator record after
-  it is kept for reconciliation. An Office merge is recognized through its own merge Effect, with GitHub's
+  it is kept for reconciliation. An exact issue identity with a matching creation receipt uses the saved
+  writer, including after rollback. An Office merge is recognized through its own merge Effect, with GitHub's
   `merged_by` equal to the saved writer.
 - **Delivery 1 is fixture-only.** Every live route stays on the operator until its live qualification (G1
   key handoff, G3 per-route trial); user-owned board routes have no installation grant and stay on the

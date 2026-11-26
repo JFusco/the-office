@@ -1,4 +1,6 @@
 import { reconcileGitHubWrite } from '../../github/identity/write-boundary';
+import { OPERATOR_LOGIN } from '../../github/identity/office-authors';
+import type { Store } from '../../store/store';
 import { likePrefix } from '../../store/like-prefix';
 import { activeEffectId, effectIdGuard, harnessEffect } from '../harness/effect';
 import { assertDeliveryMayMutate } from '../harness/guards';
@@ -7,7 +9,7 @@ import { readBackOrThrow } from '../harness/read-retry';
 import { harnessStageResult, receipt } from '../harness/stage-result';
 import { moveLane } from '../board/move-lane';
 import { readRepo } from '../intake/dependabot/qualify';
-import { ownTracking } from '../intake/dependabot/tracking-issue';
+import { ownTracking, trackingIssueAuthor } from '../intake/dependabot/tracking-issue';
 import { closesIssue, linkedBody } from '../intake/dependabot/link-pr';
 import { wikiSync } from '../intake/dependency-bots/wiki-sync';
 import { assertAutomationAuthority } from '../readiness/automation-authority';
@@ -31,13 +33,14 @@ const intent = (delivery: GitHubDelivery, job: TicketJob, close: SupersededWikiC
     delivery.store.getEffect(activeEffectId(delivery.store, `harness:${job.id}:${key(close, step)}`));
 const prUrl = (close: SupersededWikiClose) => `https://github.com/${close.repository}/pull/${close.pr}`;
 const issueUrl = (close: SupersededWikiClose) => `https://github.com/${close.repository}/issues/${close.issue}`;
-const ownsIssue = (issue: any, close: SupersededWikiClose) =>
-    issue?.number === close.issue && issue.html_url === issueUrl(close) && ownTracking(issue, close.pr, 'wiki-sync');
+const ownsIssue = (store: Store, issue: any, close: Pick<SupersededWikiClose, 'issue' | 'repository' | 'pr'>) =>
+    issue?.number === close.issue && ownTracking(issue, close.pr, 'wiki-sync',
+        [trackingIssueAuthor(store, close.issue, close.pr, 'wiki-sync') ?? OPERATOR_LOGIN], close.repository);
 const matchesClosedPR = (p: any, close: SupersededWikiClose) =>
     p.number === close.pr && p.html_url === prUrl(close) && p.state === 'closed' && !p.merged_at && !p.merged &&
     p.head?.sha === close.head && p.head.ref === close.branch;
-const matchesClosedIssue = (issue: any, close: SupersededWikiClose) =>
-    ownsIssue(issue, close) && issue.state === 'closed' && (issue.state_reason || '') === (close.issueReason ?? 'not_planned');
+const matchesClosedIssue = (store: Store, issue: any, close: SupersededWikiClose) =>
+    ownsIssue(store, issue, close) && issue.state === 'closed' && (issue.state_reason || '') === (close.issueReason ?? 'not_planned');
 const PR_REOPENED = 'The superseded wiki PR is not the exact closed, unmerged PR at its proven head';
 const ISSUE_REOPENED = 'The tracking issue no longer matches its recorded closure';
 
@@ -77,7 +80,11 @@ function readBacks(delivery: GitHubDelivery, close: SupersededWikiClose): Record
             store.save();
             return null;
         },
-        'issue-close': async () => { const i = await readRepo(store, execute, `issues/${close.issue}`); return i.state === 'closed' && i.state_reason === 'not_planned' ? { state: 'closed', reason: 'not_planned' } : null; },
+        'issue-close': async () => {
+            const issue = await readRepo(store, execute, `issues/${close.issue}`);
+            return ownsIssue(store, issue, close) && issue.state === 'closed' && issue.state_reason === 'not_planned'
+                ? { state: 'closed', reason: 'not_planned' } : null;
+        },
     };
 }
 
@@ -117,7 +124,7 @@ function guards(delivery: GitHubDelivery, job: TicketJob, close: SupersededWikiC
         const refused = await wikiSync.refusal(store, execute, p);
         if (refused) throw new Error(`The wiki PR no longer qualifies: ${refused}`);
         const issue = await readRepo(store, execute, `issues/${close.issue}`);
-        if (!ownsIssue(issue, close) || issue.state !== 'open') throw new Error('The wiki PR’s own tracking issue is not open');
+        if (!ownsIssue(store, issue, close) || issue.state !== 'open') throw new Error('The wiki PR’s own tracking issue is not open');
         bound(activeEffectId);
         return p;
     };
@@ -126,14 +133,14 @@ function guards(delivery: GitHubDelivery, job: TicketJob, close: SupersededWikiC
         const p = await readRepo(store, execute, `pulls/${close.pr}`);
         if (!matchesClosedPR(p, close)) throw new Error(PR_REOPENED);
         const issue = await readRepo(store, execute, `issues/${close.issue}`);
-        if (!ownsIssue(issue, close)) throw new Error('The wiki PR’s own tracking issue no longer matches');
+        if (!ownsIssue(store, issue, close)) throw new Error('The wiki PR’s own tracking issue no longer matches');
         return issue;
     };
     const open = (strictLink: boolean): Guard => effectIdGuard(async activeEffectId => { await qualifyOpen(strictLink, activeEffectId); });
     const closed: Guard = effectIdGuard(async activeEffectId => { await closedIssue(activeEffectId); bound(activeEffectId); });
     const bothClosed: Guard = effectIdGuard(async activeEffectId => {
         const issue = await closedIssue(activeEffectId);
-        if (!matchesClosedIssue(issue, close)) throw new Error(ISSUE_REOPENED);
+        if (!matchesClosedIssue(store, issue, close)) throw new Error(ISSUE_REOPENED);
         bound(activeEffectId);
     });
     return { assertBound, bound, qualifyOpen, open, closedIssue, closed, bothClosed };
@@ -148,7 +155,8 @@ async function firstCheck(delivery: GitHubDelivery, job: TicketJob, record: Depe
     const refused = await wikiSync.refusal(store, execute, pr);
     if (refused) throw new Error(`The numbered wiki PR no longer qualifies: ${refused}`);
     const issue = await readRepo(store, execute, `issues/${record.issue}`);
-    if (!ownTracking(issue, job.pr, 'wiki-sync') || issue.state !== 'open') throw new Error('The wiki PR’s own tracking issue is not open');
+    if (!ownsIssue(store, issue, { issue: record.issue, repository: store.project.repository, pr: job.pr }) || issue.state !== 'open')
+        throw new Error('The wiki PR’s own tracking issue is not open');
     const result = await proveContainment(store, execute, job.pr, h);
     assertDeliveryMayMutate(store, delivery.jobs, job, h);
     if (adoptionFor(store, job) !== record || redoFor(record, job.pr, h) !== redo) throw new Error('The wiki PR adoption changed during its containment check');
@@ -325,7 +333,7 @@ async function closeIssue(delivery: GitHubDelivery, job: TicketJob, close: Super
         guard: effectIdGuard(async activeEffectId => {
             await g.closedIssue(activeEffectId); g.bound(activeEffectId);
             const issue = await readRepo(store, execute, `issues/${close.issue}`);
-            if (!ownsIssue(issue, close) || issue.state !== 'open')
+            if (!ownsIssue(store, issue, close) || issue.state !== 'open')
                 throw new Error('The tracking issue is no longer the matching open issue');
             g.bound(activeEffectId);
         }),
@@ -417,7 +425,7 @@ export async function observeSupersededClose(delivery: GitHubDelivery, job: Tick
     if (intent(delivery, job, close, 'pr-close')?.status === 'verified' && !matchesClosedPR(pr, close)) refusal = PR_REOPENED;
     else if (close.issueReason !== undefined || intent(delivery, job, close, 'issue-close')?.status === 'verified') {
         const issue = await readRepo(store, execute, `issues/${close.issue}`);
-        if (!matchesClosedIssue(issue, close)) refusal = ISSUE_REOPENED;
+        if (!matchesClosedIssue(store, issue, close)) refusal = ISSUE_REOPENED;
     }
     if (!current()) return true;
     if (refusal) { job.status = 'blocked'; job.detail = String(new Error(refusal)); return true; }

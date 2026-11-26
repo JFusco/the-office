@@ -60,5 +60,6 @@ export async function postProofComment(store: Store, execute: Execute, job: Tick
             return { id: posted.id, url: `${conversation(store, c)}#issuecomment-${posted.id}` };
         },
         verify: async receipt => !!await readCommentId(store, execute, c, author, receipt),
+        preState: () => findProofComment(store, execute, c, author),
         readBack: () => readProofComment(store, execute, c, store.getEffect<CommentIntent['payload']>(id)!) });
 }

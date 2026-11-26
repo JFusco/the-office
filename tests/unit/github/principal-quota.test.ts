@@ -1,11 +1,12 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import type { Runner } from '../../../server/github/call-scope';
 import { GitHubCalls } from '../../../server/github/github-calls';
 import { appPrincipals } from '../../../server/github/identity/app-readiness';
-import { appCredential } from '../../../server/github/identity/child-credentials';
+import { appCredential, operatorRollbackCredential } from '../../../server/github/identity/child-credentials';
 import { currentPrincipal, withWriteCredential } from '../../../server/github/identity/write-credential-scope';
 import { backgroundHold } from '../../../server/github/quota-governor';
 import { command } from '../../../server/workers/process';
+import { childEnvironment } from '../../../server/workers/child-environment';
 
 const T0 = Date.parse('2026-11-26T13:00:00.000Z'), RESET = T0 / 1000 + 1800;
 const TOKEN = `ghs_${'Synthetic3'.repeat(4)}`;
@@ -74,4 +75,29 @@ test('with no App configured the readiness says so and no App principal exists',
     const calls = new GitHubCalls(async () => '{}', 'i', () => T0, appPrincipals(() => undefined, () => undefined));
     expect(calls.report().app).toEqual({ configured: false, repositories: 0, authentication: { exchanges: 0, failures: 0, cached: 0 } });
     expect(calls.report().principals).toEqual([]);
+});
+
+test('a rollback refusal probes using the same stored operator context', async () => {
+    vi.stubEnv('GH_TOKEN', 'synthetic-ambient');
+    vi.stubEnv('GITHUB_TOKEN', 'synthetic-other');
+    const seen: { target: string; token?: string; other?: string }[] = [];
+    const raw: Runner = async (_program, args, options = {}) => {
+        options.onSpawn?.(4242);
+        const env = childEnvironment(options);
+        seen.push({ target: args[1], token: env.GH_TOKEN, other: env.GITHUB_TOKEN });
+        if (args[1] === 'rate_limit') return limits(4000);
+        throw new Error('gh exited 1: API rate limit exceeded (HTTP 403)');
+    };
+    try {
+        const calls = new GitHubCalls(raw, 'instance', () => T0);
+        calls.quota.headers({ resource: 'core', limit: 5000, used: 500, remaining: 4500, reset: RESET }, 'headers', APP);
+        await withWriteCredential(operatorRollbackCredential(), async () => {
+            const target = 'repos/JFusco/brain/issues/2';
+            await expect(calls.bind(() => command('gh', ['api', target, '--method', 'PATCH'], { env: { GH_TOKEN: 'synthetic-caller' } }))).rejects.toThrow('rate limit exceeded');
+            await calls.quota.sample();
+            expect(seen).toEqual([{ target, token: undefined, other: undefined }, { target: 'rate_limit', token: undefined, other: undefined }]);
+        });
+        expect(calls.quota.latest('core')?.remaining).toBe(4000);
+        expect(calls.quota.latest('core', APP)?.remaining).toBe(4500);
+    } finally { vi.unstubAllEnvs(); }
 });

@@ -143,6 +143,33 @@ test('a contained numbered PR is relinked once, waits for the native link, then 
     expect(f.writes().filter(m => m.target.endsWith('/dispatches'))).toHaveLength(1);
 });
 
+test.each(['office[bot]', 'someone-else'])('wiki closeout checks the tracking issue against its saved App writer (%s)', async login => {
+    const f = await sameHead();
+    const { id: projectId, repository } = f.store.project;
+    const author = 'office[bot]', target = `${repository}#wiki-sync-200`, id = `harness:${f.adoption.id}:issue:200`;
+    f.store.putEffect({
+        id, work: { projectId, kind: 'delivery', id: f.adoption.id }, attemptId: f.adoption.id,
+        operation: 'github-issue-create', target, authorization: 'office-harness', payload: { pr: 200 }, expectedState: { key: 'issue:200' },
+        status: 'verified', createdAt: '2026-11-26T12:00:00Z', dispatchedAt: '2026-11-26T12:00:00Z', verifiedAt: '2026-11-26T12:00:00Z',
+        receipt: { number: 5, nodeId: f.state.issue.node_id, url: f.issueUrl }, error: '', elapsedMs: 0,
+        writer: { principal: 'app', projectId, repository, operation: 'issue-create', login: author, appId: 1, installationId: 2, repositoryId: 3,
+            grant: { kind: 'trial', entryDigest: 'fixture' }, binding: { adapter: 'github-issue-create', target } },
+    });
+    f.state.issue.user = { login };
+    await f.observe();
+    await f.step();
+    if (login === author) {
+        expect(f.job.status, f.job.detail).toBe('cancelled');
+        expect(issueCloses(f)).toHaveLength(1);
+        expect(closeEffect(f, 'issue-close')?.status).toBe('verified');
+    } else {
+        expect(f.job.detail).toContain('tracking issue is not open');
+        expect(f.job.supersededWikiClose).toBeUndefined();
+        expect(closes(f)).toEqual([]);
+        expect(issueCloses(f)).toEqual([]);
+    }
+});
+
 test.each([
     ['the relink', (args: string[]) => args.some(a => a.startsWith('body=Automated')) && args.includes('PATCH')],
     ['the PR comment', (args: string[]) => args.some(a => a.endsWith('/issues/200/comments'))],

@@ -124,27 +124,33 @@ export async function executeGitHubWrite<T, R>(store: Store, operation: EffectOp
     const chosen = selected ?? await selectGitHubWriter(store, operation, options);
     if (!chosen) return new Effects(store).execute(operation);
     const runtime = githubIdentity(store), trial = chosen.writer?.grant.kind === 'trial' ? chosen.writer.binding.beforeDigest : undefined;
-    let credential = chosen.credential, operatorChecked = credential?.principal === 'operator';
+    let credential = chosen.credential, operatorChecked = false;
     const scoped = <V>(work: () => Promise<V>) => credential ? withWriteCredential(credential, work) : work();
     return new Effects(store).execute<T, R>({
         ...operation,
         writer: chosen.writer,
         preflight: async () => {
             await operation.preflight();
-            if (trial !== undefined && canonicalDigest(await options.preState!()) !== trial) throw new Error('The designated trial pre-state changed before dispatch');
+            if (trial !== undefined && (!options.preState || canonicalDigest(await options.preState()) !== trial))
+                throw new Error('The designated trial pre-state changed before dispatch');
             // A rollback that committed while this intent waited sends through the operator with ambient tokens removed.
             const current = store.getEffect(operation.id);
             const now = current && claimRefusal(store, runtime.config(), current, chosen.route).decision;
-            if (now?.kind === 'operator' && now.mode === 'rollback' && !operatorChecked) { await verifiedOperator(runtime, chosen.route.operation); operatorChecked = true; }
-            const check = options.credentialCheck, selected = credential;
-            if (check && selected) await withWriteCredential(selected, check);
+            if (now?.kind === 'operator' && now.mode === 'rollback') {
+                await verifiedOperator(runtime, chosen.route.operation);
+                operatorChecked = true;
+                credential = operatorRollbackCredential();
+            }
+            if (options.credentialCheck) {
+                const checkCredential = credential;
+                if (checkCredential) await withWriteCredential(checkCredential, options.credentialCheck);
+            }
         },
         claim: intent => {
             const { refusal, decision } = claimRefusal(store, runtime.config(), intent, chosen.route);
             if (refusal) return refusal;
             if (decision?.kind === 'operator' && decision.mode === 'rollback') {
                 if (!operatorChecked) return 'The writer was refused at dispatch: the operator was not verified for the committed rollback';
-                credential = operatorRollbackCredential();
             }
         },
         dispatch: payload => scoped(() => operation.dispatch(payload)),

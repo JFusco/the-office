@@ -50,6 +50,7 @@ export function routeState(store: Store, operation: WriteOperation): RouteState 
     if (marker.projectId !== store.project.id || marker.operation !== operation || marker.proofEffectIds[0] !== effect.id)
         return held('the activation marker belongs to another route');
     if ((row.state === 'revoked') !== !!marker.revocation) return held('the route reference and its activation Effect disagree');
+    if (markers.some(other => other.activation!.predecessor === effect.id)) return held('the route reference names a superseded activation');
     if (markers.some(other => other.id !== effect.id && !other.activation!.revocation)) return held('conflicting unrevoked activation markers');
     const known = new Set(markers.map(intent => intent.id));
     if (history.some(intent => intent.writer!.grant.kind === 'activation' && !known.has((intent.writer!.grant as { activationEffectId: string }).activationEffectId)))
