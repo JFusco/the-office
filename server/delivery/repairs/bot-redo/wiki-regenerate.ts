@@ -30,7 +30,7 @@ export const dispatchArgs = (repository: string, workflow: string, ref: string, 
     ['api', '-X', 'POST', '-H', API_VERSION, `repos/${repository}/actions/workflows/${workflow}/dispatches`, '-f', `ref=${ref}`,
         ...Object.entries(inputs).flatMap(([name, value]) => ['-f', `inputs[${name}]=${value}`])];
 
-export interface WikiRun { id: number; url: string; status: string; conclusion: string; completedAt?: string }
+export interface WikiRun { id: number; url: string; status: string; conclusion: string; attempt?: number; completedAt?: string }
 
 /** Read-only: the exact run the dispatch returned, matched on repository, ID, workflow path, event, ref and dispatch time. */
 export async function dispatchedRun(delivery: GitHubDelivery, payload: RedoPayload, receipt: any, dispatchedAt: string): Promise<WikiRun | null> {
@@ -39,5 +39,7 @@ export async function dispatchedRun(delivery: GitHubDelivery, payload: RedoPaylo
     const run = await readRepo(store, execute, `actions/runs/${id}`);
     if (run.id !== id || run.repository?.full_name !== store.project.repository || run.path !== `.github/workflows/${payload.route}` ||
         run.event !== 'workflow_dispatch' || run.head_branch !== payload.target || !(Date.parse(run.created_at) >= Date.parse(dispatchedAt) - 120_000)) return null;
-    return { id, url: run.html_url, status: run.status || '', conclusion: run.conclusion || '', ...(run.status === 'completed' ? { completedAt: run.updated_at } : {}) };
+    return { id, url: run.html_url, status: run.status || '', conclusion: run.conclusion || '',
+        ...(Number.isSafeInteger(run.run_attempt) && run.run_attempt > 0 ? { attempt: run.run_attempt } : {}),
+        ...(run.status === 'completed' ? { completedAt: run.updated_at } : {}) };
 }

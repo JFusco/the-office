@@ -387,7 +387,7 @@ export interface BotRedo {
     /** The request's first failure, kept when a later read-back verifies it. */
     failure?: string;
     /** The verified wiki workflow run and what was last read of it. */
-    run?: { id: number; url: string; status?: string; conclusion?: string; completedAt?: string };
+    run?: { id: number; url: string; attempt?: number; status?: string; conclusion?: string; completedAt?: string };
     /** A successful wiki run that left this head unchanged: a numbered PR's containment check or a maintenance PR's weekly wait. */
     sameHead?: { kind: 'numbered' | 'maintenance'; at: string; proof?: string };
     /** The PR closed without merge while this redo was open; the closer is named only on a matching provider event. */
@@ -408,6 +408,8 @@ export interface SupersededWikiClose {
     revalidated?: { target: string; at: string }[];
     /** The tracking issue's own reason when it was already closed before the Office's close. */
     issueReason?: string;
+    /** Closed, unmerged PR observed at a different head after dispatch. */
+    observedPRClose?: { state: 'closed'; head: string };
     /** An outcome after the PR close that could not be corroborated; no further write follows it. */
     partial?: string;
 }

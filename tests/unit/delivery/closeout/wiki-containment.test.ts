@@ -21,6 +21,17 @@ test('a modified page with the same type, mode and object at both commits is con
     expect(await f.prove()).toEqual({ proof: { head: H1, target: BASE, generator: '', paths: [{ path: 'wiki/a.md', status: 'modified', result: 'same' }] } });
 });
 
+test('a target advance after the trailing PR read invalidates the file inventory', async () => {
+    const f = fixture([{ filename: 'wiki/a.md', status: 'modified' }], [blob('wiki/a.md', PAGE)], [blob('wiki/a.md', PAGE)]);
+    f.state.trees[H2] = f.state.trees[BASE];
+    f.state.fail = (_p, args) => {
+        if (args.some(a => a.includes('/git/ref/heads/'))) f.pr.base.sha = f.state.targetTip = H2;
+        return false;
+    };
+    expect(await f.prove()).toMatchObject({ refusal: expect.stringContaining('differs from the selected target tip'), retry: true });
+    expect(await f.prove()).toMatchObject({ proof: { head: H1, target: H2 } });
+});
+
 test.each([
     ['the same object with another mode', blob('wiki/a.md', PAGE, '100755')],
     ['the same object as another type', blob('wiki/a.md', PAGE, '100644', 'commit')],

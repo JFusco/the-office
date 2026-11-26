@@ -42,11 +42,42 @@ test('a numbered PR whose target lacks a change stays open with the path named, 
     expect(f.job.status).toBe('blocked');
     expect(f.job.detail).toContain(`${PAGE} (modified)`);
     expect(f.adoption.redos![0].sameHead?.proof).toContain(PAGE);
+    expect(f.store.state.events.filter(e => e.kind === 'bot-redo-stopped')).toHaveLength(1);
     await f.observe(); await f.observe();
     expect(f.job.status).toBe('blocked');
+    expect(f.store.state.events.filter(e => e.kind === 'bot-redo-stopped')).toHaveLength(1);
     expect(f.writes().filter(m => !m.target.endsWith('/dispatches'))).toEqual([]);
     expect(f.writes().filter(m => m.target.endsWith('/dispatches'))).toHaveLength(1);
     expect(f.job.supersededWikiClose).toBeUndefined();
+});
+
+test('a same-size inventory from before a base advance cannot close the PR', async () => {
+    const f = await sameHead();
+    await f.observe();
+    const missing = 'wiki/new.md';
+    f.state.trees[H1].tree.push(blob(missing, PAGE_SHA));
+    f.state.trees[TIP2].tree[0].sha = PAGE_SHA;
+    let lists = 0, moved = false;
+    f.state.fail = (_p, args) => {
+        if (args.some(a => a.endsWith('/pulls/200/files?per_page=100'))) lists++;
+        // Qualification reads the files once. Advance the base after the proof reads them.
+        if (lists === 2 && !moved && args.some(a => a.endsWith('/pulls/200'))) {
+            moved = true;
+            f.pr.base.sha = f.state.targetTip = TIP2;
+            f.state.prFiles[200][0] = { filename: missing, status: 'modified' };
+        }
+        return false;
+    };
+    await f.step();
+    expect(moved).toBe(true);
+    expect(f.job.detail).toContain('base commit changed during its file inventory');
+    expect(f.job.supersededWikiClose).toBeUndefined();
+    expect(closes(f)).toEqual([]);
+    await f.observe();
+    expect(f.job.status).toBe('queued');
+    await f.step();
+    expect(f.job.detail).toContain(missing);
+    expect(closes(f)).toEqual([]);
 });
 
 test('a transient tree read retries containment on the next claim', async () => {
@@ -129,25 +160,58 @@ test.each([
     expect(store.state.events.filter(e => e.kind === 'wiki-pr-superseded')).toHaveLength(1);
 });
 
-test('a tracking issue already closed as completed keeps its reason and is not closed again', async () => {
+test.each(['without a preparation', 'with an interrupted preparation'])('a tracking issue already closed as completed keeps its reason %s', async mode => {
     const f = await sameHead();
     await f.observe();
-    f.state.fail = (_p, args) => { if (args.some(a => a.endsWith('/issues/5/comments')) && args.includes('POST')) Object.assign(f.state.issue, { state: 'closed', state_reason: 'completed' }); return false; };
+    const issueComment = (args: string[]) => args.some(a => a.endsWith('/issues/5/comments')) && args.includes('POST');
+    let preparedId: string | undefined;
+    if (mode === 'with an interrupted preparation') {
+        f.state.loseResponse = (_p, args) => issueComment(args);
+        await f.step();
+        const key = `${f.job.supersededWikiClose!.operation}:issue-close`;
+        preparedId = `harness:${f.job.id}:${key}`;
+        f.store.putEffect({ id: preparedId, work: { projectId: f.store.project.id, kind: 'delivery', id: f.job.id }, attemptId: f.job.id,
+            operation: 'github-issue-close', target: f.state.issue.html_url, authorization: 'office-harness', payload: { issue: 5, reason: 'not_planned' },
+            expectedState: { key }, status: 'prepared', createdAt: f.store.clock.now().toISOString(), dispatchedAt: '', verifiedAt: '', receipt: null, error: '', elapsedMs: null });
+        Object.assign(f.state.issue, { state: 'closed', state_reason: 'completed' });
+        f.state.loseResponse = () => false;
+        await f.observe();
+        expect(f.job.status).toBe('queued');
+    } else {
+        f.state.fail = (_p, args) => {
+            if (issueComment(args)) Object.assign(f.state.issue, { state: 'closed', state_reason: 'completed' });
+            return false;
+        };
+    }
     await f.step();
     expect(f.job.status).toBe('cancelled');
     expect(issueCloses(f)).toEqual([]);
+    if (preparedId) expect(f.store.getEffect(preparedId)).toMatchObject({ status: 'rejected', dispatchedAt: '' });
+    expect(f.job.supersededWikiClose?.issueReason).toBe('completed');
     expect(f.job.steps.at(-1)?.result.summary).toContain('was already closed (completed)');
     expect(f.state.issue.state_reason).toBe('completed');
+    expect(posted(f, 5)).toHaveLength(1);
+    for (const c of f.state.comments.filter(c => c.body.startsWith(marker))) {
+        expect(c.body).toContain(H1.slice(0, 7));
+        expect(c.body).toContain(BASE.slice(0, 7));
+        expect(c.body).toContain(f.state.runs[0].html_url);
+        expect(c.body).not.toMatch(/is closed as not planned/i);
+    }
+    await f.observe();
+    expect(f.store.state.events.filter(e => e.kind === 'wiki-pr-superseded')).toHaveLength(1);
 });
 
 test('a target that loses a proven change before the close sends no close and leaves the PR open', async () => {
     const f = await sameHead();
     await f.observe();
-    f.state.fail = (_p, args) => { if (args.some(a => a.endsWith('/issues/200/comments')) && args.includes('POST')) f.state.targetTip = TIP2; return false; };
+    f.state.fail = (_p, args) => { if (args.some(a => a.endsWith('/issues/200/comments')) && args.includes('POST')) f.pr.base.sha = f.state.targetTip = TIP2; return false; };
     await f.step();
     expect(posted(f, 200)).toHaveLength(1);
     expect(closes(f)).toEqual([]);
     expect(f.pr.state).toBe('open');
+    expect(f.state.issue.state).toBe('open');
+    expect(f.state.comments[0].body).toContain(BASE.slice(0, 7));
+    expect(f.state.comments[0].body).not.toMatch(/is closed as not planned/i);
     expect(f.job.supersededWikiClose).toBeUndefined();
     expect(f.job.status).toBe('blocked');
     expect(f.job.detail).toContain('stays open');
@@ -166,7 +230,7 @@ test.each(['loses', 'keeps'])('a target that %s a proven change during prepared 
         if (!moved && prepared?.status === 'prepared' && args.some(a => a.endsWith('/pulls/200/commits?per_page=100'))) {
             moved = true;
             preparedId = prepared.id;
-            f.state.targetTip = TIP2;
+            f.pr.base.sha = f.state.targetTip = TIP2;
         }
         return false;
     };
@@ -188,14 +252,35 @@ test.each(['loses', 'keeps'])('a target that %s a proven change during prepared 
 test('drift after the PR close that the target no longer corroborates is kept as a partial outcome with no further write', async () => {
     const f = await sameHead();
     await f.observe();
+    // A closed PR's base stays where it was; only the target moves.
     f.state.fail = (_p, args) => { if (args.includes('state=closed')) f.state.targetTip = TIP2; return false; };
     await f.step();
     expect(closes(f)).toHaveLength(1);
     expect(f.job.supersededWikiClose?.partial).toContain('was closed at');
+    expect(f.job.supersededWikiClose?.partial).toContain(`does not contain ${PAGE}`);
     expect(posted(f, 5)).toEqual([]); expect(issueCloses(f)).toEqual([]); expect(cardMoves(f)).toEqual([]);
     await f.observe(); await f.step();
     expect(posted(f, 5)).toEqual([]); expect(issueCloses(f)).toEqual([]);
     expect(f.job.status).toBe('blocked');
+});
+
+test.each([false, true])('a close applied at a different head stays uncertain and preserves the actual outcome (lost response: %s)', async lost => {
+    const f = await sameHead();
+    await f.observe();
+    f.state.loseResponse = (_p, args) => {
+        if (!args.includes('state=closed') || !args.some(a => a.endsWith('/pulls/200'))) return false;
+        f.publish(H2);
+        return lost;
+    };
+    await f.step();
+    expect(f.pr).toMatchObject({ state: 'closed', merged: false, head: { sha: H2 } });
+    await f.observe(); await f.observe();
+    expect(f.job).toMatchObject({ status: 'blocked', supersededWikiClose: { head: H1, observedPRClose: { state: 'closed', head: H2 } } });
+    expect(f.job.detail).toContain(H2.slice(0, 7));
+    expect(closeEffect(f, 'pr-close')).toMatchObject({ status: 'uncertain', payload: { head: H1 } });
+    expect(closes(f)).toHaveLength(1);
+    expect(posted(f, 5)).toEqual([]); expect(issueCloses(f)).toEqual([]); expect(cardMoves(f)).toEqual([]);
+    expect(f.store.state.events.filter(e => e.kind === 'wiki-pr-superseded')).toEqual([]);
 });
 
 test.each([
@@ -260,6 +345,34 @@ test('a PR reopened at a new head after its close record is qualified again inst
     await f.observe();
     expect(f.adoption.redos![0].settled?.replacement).toBe(H2);
     expect(f.job).toMatchObject({ status: 'queued', head: H2 });
+});
+
+test('a PR closed during the proof comment and reopened at the same head rechecks containment and reuses its writes', async () => {
+    const f = await sameHead();
+    await f.observe();
+    f.state.fail = (_p, args) => {
+        if (args.some(a => a.endsWith('/issues/200/comments')) && args.includes('POST')) f.pr.state = 'closed';
+        return false;
+    };
+    await f.step();
+    expect(f.job.status).toBe('watching');
+    expect(f.job.supersededWikiClose).toBeUndefined();
+    expect(closes(f)).toEqual([]);
+    expect(posted(f, 200)).toHaveLength(1);
+    const originalBody = f.state.comments.find(c => c.body.startsWith(marker)).body;
+    f.pr.state = 'open';
+    f.pr.base.sha = f.state.targetTip = TIP2;
+    f.state.trees[TIP2].tree[0].sha = PAGE_SHA;
+    await f.observe();
+    expect(f.job.status).toBe('queued');
+    await f.step();
+    expect(f.job.status).toBe('cancelled');
+    expect(f.job.supersededWikiClose).toMatchObject({ target: TIP2, comments: { pr: originalBody } });
+    expect(posted(f, 200)).toHaveLength(1);
+    expect(relinks(f)).toHaveLength(1);
+    expect(closes(f)).toHaveLength(1);
+    expect(posted(f, 5)).toHaveLength(1);
+    expect(issueCloses(f)).toHaveLength(1);
 });
 
 test('a new head before the first pending proof comment abandons the saved close', async () => {
@@ -409,4 +522,53 @@ test('a claimed re-entry reads an earlier unread PR close back before anything e
     expect(f.job.status).toBe('cancelled');
     expect(closes(f)).toHaveLength(1);
     expect(f.job.steps.some(s => s.stage === 'superseded-close-abandoned')).toBe(false);
+});
+
+test.each([false, true])('a target that still holds every change after the PR close is corroborated with the closed PR’s frozen base (lost response: %s)', async lost => {
+    const f = await sameHead();
+    f.state.trees[TIP2] = { tree: [blob(PAGE, PAGE_SHA), blob('wiki/connections.md', OTHER), generator] };
+    await f.observe();
+    let moved = false;
+    f.state.loseResponse = (_p, args) => lost && args.includes('state=closed');
+    f.state.fail = (_p, args) => { if (!moved && args.includes('state=closed')) { moved = true; f.state.targetTip = TIP2; } return false; };
+    await f.step();
+    if (lost) {
+        expect(f.job.status).toBe('blocked');
+        f.state.loseResponse = () => false;
+        await f.observe();
+        expect(f.job.status).toBe('queued');
+        await f.step();
+    }
+    expect(f.pr.base.sha).toBe(BASE);
+    expect(f.job.supersededWikiClose?.partial).toBeUndefined();
+    expect(f.job.supersededWikiClose?.revalidated).toMatchObject([{ target: TIP2 }]);
+    expect(closes(f)).toHaveLength(1); expect(posted(f, 5)).toHaveLength(1); expect(issueCloses(f)).toHaveLength(1);
+    expect(f.state.issue).toMatchObject({ state: 'closed', state_reason: 'not_planned' });
+    expect(f.state.cards.map(c => c.status)).toEqual(['done', 'done']);
+    expect(f.job.status).toBe('cancelled');
+    expect(f.store.state.events.filter(e => e.kind === 'wiki-pr-superseded')).toHaveLength(1);
+});
+
+test('a corroboration read that cannot bind the closed PR’s base waits instead of recording a partial outcome', async () => {
+    const f = await sameHead();
+    f.state.trees[TIP2] = { tree: [blob(PAGE, PAGE_SHA), blob('wiki/connections.md', OTHER), generator] };
+    await f.observe();
+    // After the close, the second PR read is the corroborating proof's first: its base is unreadable once.
+    let afterClose = -1;
+    f.state.fail = (_p, args) => {
+        if (args.includes('state=closed')) { afterClose = 0; f.state.targetTip = TIP2; return false; }
+        if (afterClose >= 0 && args.includes(`repos/${f.store.project.repository}/pulls/200`) && !args.includes('-X')) {
+            afterClose++;
+            if (afterClose === 2) f.pr.base.sha = ''; else if (afterClose === 3) f.pr.base.sha = BASE;
+        }
+        return false;
+    };
+    await f.step();
+    expect(f.job.status).toBe('blocked');
+    expect(f.job.detail).toContain('corroboration waits');
+    expect(f.job.supersededWikiClose?.partial).toBeUndefined();
+    await f.observe(); await f.step();
+    expect(f.pr.base.sha).toBe(BASE);
+    expect(f.job.status).toBe('cancelled');
+    expect(closes(f)).toHaveLength(1); expect(issueCloses(f)).toHaveLength(1);
 });

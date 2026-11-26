@@ -44,6 +44,17 @@ test('a failed wiki run is one stop and no second run', async () => {
     expect(f.writes().filter(m => m.target.endsWith('/dispatches'))).toHaveLength(1);
 });
 
+test('wiki redo records the observed attempt without a second dispatch', async () => {
+    const f = fakeBotPR('wiki-sync');
+    f.state.onDispatch = (_workflow, _inputs, run) => { run.run_attempt = 2; };
+    await f.observe(); await f.step();
+    const { id, html_url: url } = f.state.runs[0], redo = f.adoption.redos![0];
+    expect(redo.run).toMatchObject({ id, url, attempt: 2 });
+    await f.observe();
+    expect(redo.run).toMatchObject({ id, url, attempt: 2 });
+    expect(f.writes().filter(m => m.target.endsWith('/dispatches'))).toHaveLength(1);
+});
+
 test.each<[string, (f: Fixture) => void]>([
     ['a run from another workflow', f => { f.state.runs[0].path = '.github/workflows/other.yml'; }],
     ['a run on another ref', f => { f.state.runs[0].head_branch = 'feature'; }],
@@ -109,6 +120,33 @@ test('a Dependabot PR closed by Dependabot after its rebase request is one closu
     expect(f.state.calls.filter(c => c.includes('/issues/200/events'))).toHaveLength(1);
     expect(f.writes()).toHaveLength(before);
     expect(f.store.getEffect(redoBase(f.store, 200, H1))?.status).toBe('verified');
+});
+
+test('closing a reopened PR after a second redo records both closures once', async () => {
+    const f = fakeBotPR('dependabot'), advance = clock(f);
+    await f.observe(); await f.step();
+    const firstClosedAt = '2026-11-26T01:00:00Z', secondClosedAt = '2026-11-26T03:00:00Z';
+    advance(1);
+    Object.assign(f.pr, { state: 'closed', closed_at: firstClosedAt });
+    f.state.events[200] = [{ event: 'closed', actor: { login: 'dependabot[bot]', type: 'Bot' } }];
+    await f.observe(); await f.observe();
+    expect(stops(f)).toBe(1);
+    advance(1);
+    Object.assign(f.pr, { state: 'open', closed_at: null });
+    f.publish(H2, { mergeable: false });
+    await f.observe();
+    expect(f.job).toMatchObject({ status: 'queued', head: H2 });
+    await f.step();
+    advance(1);
+    Object.assign(f.pr, { state: 'closed', closed_at: secondClosedAt });
+    f.state.events[200].push({ event: 'closed', actor: { login: 'JFusco', type: 'User' } });
+    await f.observe(); await f.observe();
+    expect(f.adoption.redos!.map(redo => redo.closed)).toEqual([
+        expect.objectContaining({ head: H1, closedAt: firstClosedAt, attributed: true }),
+        expect.objectContaining({ head: H2, closedAt: secondClosedAt, closer: 'JFusco', attributed: false }),
+    ]);
+    expect(stops(f)).toBe(2);
+    expect(f.state.calls.filter(c => c.includes('/issues/200/events'))).toHaveLength(2);
 });
 
 test('a closer named only by text is not attributed to the bot', async () => {

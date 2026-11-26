@@ -13,7 +13,7 @@ import { wikiSync } from '../intake/dependency-bots/wiki-sync';
 import { assertAutomationAuthority } from '../readiness/automation-authority';
 import { assertAutomationEffects } from '../readiness/automation-effects';
 import { adoptionFor, redoFor } from '../repairs/bot-redo/ledger';
-import { reportStop, waitOnBot } from '../repairs/bot-redo/report';
+import { reportContainmentStop, waitOnBot } from '../repairs/bot-redo/report';
 import { postProofComment, readProofComment, type ProofComment } from './proof-comment';
 import { proveContainment, targetTip } from './wiki-containment';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
@@ -61,7 +61,15 @@ function readBacks(delivery: GitHubDelivery, close: SupersededWikiClose): Record
     const { store, execute } = delivery, pull = () => readRepo(store, execute, `pulls/${close.pr}`);
     return {
         relink: async () => { const p = await pull(); return p.head?.sha === close.head && closesIssue(p.body || '', close.issue) ? { head: close.head } : null; },
-        'pr-close': async () => { const p = await pull(); return p.state === 'closed' && !p.merged_at && !p.merged && p.head?.sha === close.head ? { state: 'closed', head: close.head, target: await targetTip(store, execute) } : null; },
+        'pr-close': async () => {
+            const p = await pull(), head = p.head?.sha;
+            if (p.number !== close.pr || p.html_url !== prUrl(close) || p.state !== 'closed' || p.merged_at || p.merged || !/^[a-f0-9]{40}$/.test(head || '')) return null;
+            if (head === close.head) return { state: 'closed', head, target: await targetTip(store, execute) };
+            close.observedPRClose = { state: 'closed', head };
+            close.partial = `PR #${close.pr} was closed unmerged at ${short(head)} after proof at ${short(close.head)}; the tracking issue and cards are left as they are`;
+            store.save();
+            return null;
+        },
         'issue-close': async () => { const i = await readRepo(store, execute, `issues/${close.issue}`); return i.state === 'closed' && i.state_reason === 'not_planned' ? { state: 'closed', reason: 'not_planned' } : null; },
     };
 }
@@ -134,8 +142,9 @@ async function firstCheck(delivery: GitHubDelivery, job: TicketJob, record: Depe
     assertDeliveryMayMutate(store, delivery.jobs, job, h);
     if (adoptionFor(store, job) !== record || redoFor(record, job.pr, h) !== redo) throw new Error('The wiki PR adoption changed during its containment check');
     if ('refusal' in result) {
+        if (result.retry) throw new Error(result.refusal);
         redo.sameHead!.proof = result.refusal;
-        reportStop(store, job, redo, `Numbered wiki PR #${job.pr} stays open: run ${redo.run!.url} left it at ${short(h)} and ${result.refusal}.`);
+        reportContainmentStop(store, job, redo, result.refusal);
         return false;
     }
     const { proof } = result, m = short(proof.target), target = store.project.target, exempt = proof.paths.filter(p => p.result === 'exempt').map(p => p.path);
@@ -143,9 +152,14 @@ async function firstCheck(delivery: GitHubDelivery, job: TicketJob, record: Depe
     const close: SupersededWikiClose = { job: job.id, adoption: record.id, repository: store.project.repository, pr: job.pr, parent, issue: record.issue, branch: pr.head.ref,
         head: h, target: proof.target, run: { id: redo.run!.id, url: redo.run!.url }, redoEffect: redo.effectId!, proof, operation: `superseded:${job.pr}:${h}:${redo.run!.id}`, at: store.clock.now().toISOString(),
         comments: {
-            pr: `${marker(job.pr, h)}\nThe Office closes this wiki PR as superseded. Wiki run ${redo.run!.url} regenerated it for merged PR #${parent} and left it at ${short(h)}, and \`${target}\` at ${m} already holds every substantive change it makes (${scope}). Tracking issue #${record.issue} is closed as not planned. Proof: Office delivery job ${job.id}.`,
-            issue: `${marker(job.pr, h)}\nWiki PR #${job.pr} is closed as superseded: \`${target}\` at ${m} already holds every substantive change it makes at ${short(h)} (wiki run ${redo.run!.url}). Nothing is left to merge, so this issue is closed as not planned. Proof: Office delivery job ${job.id}.`,
+            pr: `${marker(job.pr, h)}\nWiki run ${redo.run!.url} regenerated this wiki PR for merged PR #${parent} and left it at ${short(h)}. \`${target}\` at ${m} already holds every substantive change it makes (${scope}). The Office plans to close this PR as superseded and tracking issue #${record.issue} as not planned if the issue is still open. Proof: Office delivery job ${job.id}.`,
+            issue: `${marker(job.pr, h)}\nWiki PR #${job.pr} is closed as superseded: \`${target}\` at ${m} already holds every substantive change it makes at ${short(h)} (wiki run ${redo.run!.url}). The Office plans to close this issue as not planned if it is still open. Proof: Office delivery job ${job.id}.`,
         } };
+    const priorComment = intent(delivery, job, close, 'pr-comment');
+    if (priorComment?.status === 'verified') {
+        const body = (priorComment.payload as Partial<ProofComment>).body;
+        if (typeof body === 'string') close.comments.pr = body;
+    }
     store.transition('wiki-pr-contained', `${job.key}: ${target} at ${m} contains wiki PR #${job.pr} at ${short(h)} (${scope}); closing it as superseded.`, () => {
         job.supersededWikiClose = close; redo.sameHead!.proof = 'contained';
     }, 'pm', job.key);
@@ -205,7 +219,7 @@ async function restoreLink(delivery: GitHubDelivery, job: TicketJob, close: Supe
     return false;
 }
 
-/** The PR stays open: unsent preparations are retired, sent receipts are kept as history and the close record ends. */
+/** A close that ended before dispatch retires its unsent preparations and retains its sent receipts. */
 function abandon(delivery: GitHubDelivery, job: TicketJob, close: SupersededWikiClose, root: string, reason: string, staysOpen: boolean): void {
     const { store } = delivery, record = adoptionFor(store, job), redo = record && redoFor(record, close.pr, close.head);
     for (const step of STEPS) {
@@ -216,10 +230,13 @@ function abandon(delivery: GitHubDelivery, job: TicketJob, close: SupersededWiki
     store.transaction(() => {
         job.steps.push({ stage: 'superseded-close-abandoned', result });
         delete job.supersededWikiClose;
-        if (staysOpen && redo?.sameHead) redo.sameHead.proof = reason;
+        if (redo?.sameHead) {
+            if (staysOpen) redo.sameHead.proof = reason;
+            else delete redo.sameHead.proof;
+        }
     });
-    if (staysOpen && redo) reportStop(store, job, redo, `Numbered wiki PR #${close.pr} stays open: ${reason}`);
-    else waitOnBot(job, `Wiki PR #${close.pr} moved before its superseded close (${reason}); its new head is qualified again.`);
+    if (staysOpen && redo) reportContainmentStop(store, job, redo, reason);
+    else waitOnBot(job, `Wiki PR #${close.pr} changed before its superseded close (${reason}); waiting for the next PR observation.`);
 }
 
 /** Immediately before the PR close: the PR is unchanged and a moved target still contains every change. */
@@ -236,7 +253,10 @@ async function revalidate(delivery: GitHubDelivery, close: SupersededWikiClose, 
     if (tip === last) return;
     const again = await proveContainment(store, execute, close.pr, close.head, tip);
     if (await refs() !== tip) throw new Error(`${store.project.target} is still moving; the superseded close waits for its next claim`);
-    if ('refusal' in again) throw new CloseRevalidationError(`${store.project.target} moved and ${again.refusal}; no close was sent`, true);
+    if ('refusal' in again) {
+        if (again.retry) throw new Error(again.refusal);
+        throw new CloseRevalidationError(`${store.project.target} moved and ${again.refusal}; no close was sent`, true);
+    }
     (close.revalidated ??= []).push({ target: tip, at: store.clock.now().toISOString() }); store.save();
 }
 
@@ -245,6 +265,7 @@ async function corroborate(delivery: GitHubDelivery, job: TicketJob, close: Supe
     const observed = (intent(delivery, job, close, 'pr-close')?.receipt as { target?: string } | null)?.target, last = close.revalidated?.at(-1)?.target ?? close.target;
     if (!observed || observed === last) return;
     const again = await proveContainment(delivery.store, delivery.execute, close.pr, close.head, observed);
+    if ('refusal' in again && again.retry) throw new Error(`The superseded close's corroboration waits: ${again.refusal}`);
     if ('refusal' in again) {
         close.partial = `PR #${close.pr} was closed at ${short(close.head)}, then ${delivery.store.project.target} moved and ${again.refusal}; the tracking issue and cards are left as they are`;
         delivery.store.save();
@@ -267,9 +288,26 @@ function sentReceipts(delivery: GitHubDelivery, job: TicketJob, close: Supersede
 async function closeIssue(delivery: GitHubDelivery, job: TicketJob, close: SupersededWikiClose, g: ReturnType<typeof guards>): Promise<void> {
     const { store, execute } = delivery, sent = intent(delivery, job, close, 'issue-close');
     if (sent?.status === 'verified' || close.issueReason !== undefined) return;
-    if (!sent) {
-        const issue = await readRepo(store, execute, `issues/${close.issue}`);
-        if (issue.state === 'closed') { close.issueReason = issue.state_reason || ''; store.save(); return; }
+    if (!sent || sent.status === 'prepared' && !sent.dispatchedAt) {
+        const issue = await g.closedIssue(sent?.id);
+        if (issue.state === 'closed') {
+            g.bound(sent?.id);
+            store.transaction(() => {
+                if (sent) {
+                    const retired = store.updateEffect(sent.id, 'prepared', current => {
+                        if (!current.dispatchedAt) {
+                            current.status = 'rejected';
+                            current.error = 'Tracking issue already closed before dispatch';
+                        }
+                    });
+                    if (retired?.status !== 'rejected') throw new Error('The tracking issue close Effect changed during read-back');
+                } else if (intent(delivery, job, close, 'issue-close')) {
+                    throw new Error('The tracking issue close Effect changed during read-back');
+                }
+                close.issueReason = issue.state_reason || '';
+            });
+            return;
+        }
     }
     const read = readBacks(delivery, close)['issue-close'];
     await harnessEffect(store, job, { key: key(close, 'issue-close'), operation: 'github-issue-close', target: issueUrl(close), payload: { issue: close.issue, reason: 'not_planned' },
@@ -294,6 +332,7 @@ async function closeSuperseded(delivery: GitHubDelivery, job: TicketJob, root: s
     const record = adoptionFor(store, job);
     if (!record || record.id !== close.adoption || record.issue !== close.issue || job.id !== close.job || job.pr !== close.pr || job.head !== close.head) throw new Error('The superseded close binding changed');
     const unread = await readBackSent(delivery, job, close);
+    if (close.partial) throw new Error(`The superseded close stopped: ${close.partial}`);
     if (unread) throw new Error(`The superseded close's ${unread} is unverified after read-back; it will not be resent`);
     await reconcilePriorLinks(delivery, close);
     const done = (step: string) => intent(delivery, job, close, step)?.status === 'verified', g = guards(delivery, job, close, record);
@@ -360,8 +399,8 @@ export async function continueSupersededWikiPR(delivery: GitHubDelivery, job: Ti
 export async function observeSupersededClose(delivery: GitHubDelivery, job: TicketJob): Promise<boolean> {
     const close = job.supersededWikiClose!;
     if (['queued', 'working'].includes(job.status)) return true;
+    const unread = close.partial ? null : await readBackSent(delivery, job, close);
     if (close.partial) { job.stage = 'merge'; job.status = 'blocked'; job.detail = `The superseded close stopped: ${close.partial}`; return true; }
-    const unread = await readBackSent(delivery, job, close);
     if (unread) { job.stage = 'merge'; job.status = 'blocked'; job.detail = `The superseded close of PR #${close.pr} waits for read-back of its ${unread}; nothing is resent.`; return true; }
     if (!assessDeliveryEligibility(delivery.store, job).eligible) return true;
     job.stage = 'merge'; job.status = 'queued'; delete job.stop;

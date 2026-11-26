@@ -137,7 +137,7 @@ export async function merge(this: GitHubDelivery, job: TicketJob) {
                 throw new Error(`${job.key} is held: ${holdReason(this.store.project, job.key)}`);
             const current = await this.verifyPR(job, true);
             if (!greenOnly) await requireMetadataReview(this, job);
-            if (current.head.sha !== payload.sha || current.state !== 'open' || current.draft)
+            if (current.head.sha !== payload.sha || current.state !== 'open' || current.draft || greenOnly && current.mergeable !== true)
                 throw new Error('Merge candidate changed immediately before dispatch');
             await currentMergeChecks(this,job,current);
             if (greenOnly) {

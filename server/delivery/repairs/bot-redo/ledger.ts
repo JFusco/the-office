@@ -73,6 +73,16 @@ export function matchesRedo(store: Store, record: DependabotAdoption, redo: BotR
         effect.payload.sha === redo.sha && effect.payload.branch === redo.branch && (!redo.route || effect.payload.route === redo.route);
 }
 
+/** Retire only the original matching preparation while it is still unsent. */
+export function retirePreparation(store: Store, record: DependabotAdoption, redo: BotRedo, effect: EffectIntent<RedoPayload> | undefined, reason: string): void {
+    if (effect?.status !== 'prepared' || effect.dispatchedAt || !matchesRedo(store, record, redo, effect)) return;
+    store.updateEffect<RedoPayload>(effect.id, 'prepared', current => {
+        if (current.dispatchedAt || !matchesRedo(store, record, redo, current)) return;
+        current.status = 'rejected';
+        current.error = reason;
+    });
+}
+
 /** Every redo request Effect for this PR, across delivery jobs. */
 export function redoEffects(store: Store, pr: number): EffectIntent<RedoPayload>[] {
     return (store.db.prepare("SELECT body FROM effects WHERE id LIKE ? ESCAPE '\\'").all(likePrefix(prefix(store, pr))) as { body: string }[])

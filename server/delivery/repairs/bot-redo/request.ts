@@ -5,12 +5,12 @@ import { assertAutomationAuthority } from '../../readiness/automation-authority'
 import { assertAutomationEffects } from '../../readiness/automation-effects';
 import { automationMergePolicy } from '../../readiness/automation-merge';
 import { rebaseArgs } from './dependabot-rebase';
-import { adoptionFor, botOf, redoBase, redoOf, type RedoPayload } from './ledger';
+import { adoptionFor, botOf, redoBase, redoOf, retirePreparation, type RedoPayload } from './ledger';
 import { checkboxArgs, renovateControl } from './pin-courier-rebase';
 import { readBackRedo } from './read-back';
 import { readBackRequests } from './reconcile';
 import { reportStop, UNAVAILABLE, waitingDetail, waitOnBot } from './report';
-import { dispatchArgs, dispatchRef, wikiWorkflow } from './wiki-regenerate';
+import { dispatchArgs, dispatchRef, wikiWorkflow, type WikiRun } from './wiki-regenerate';
 import type { GitHubDelivery } from '../../pipeline/github-delivery';
 import type { Store } from '../../../store/store';
 import type { EffectIntent, TicketJob } from '../../../../src/shared';
@@ -83,6 +83,16 @@ export async function requestBotRedo(delivery: GitHubDelivery, job: TicketJob, p
     const target = bot === 'wiki-sync' ? await dispatchRef(delivery, pr) : store.project.target;
     const route = selectRoute(store.project.repository, pr, bot, target);
     if (!('args' in route)) {
+        if (redo.effectId) {
+            retirePreparation(store, record, redo, store.getEffect<RedoPayload>(redo.effectId), 'Obsolete redo preparation retired before dispatch');
+            const current = store.getEffect(redo.effectId);
+            if (attempted(current)) {
+                assertAutomationEffects(store, job);
+                waitOnBot(job, waitingDetail(job, redo));
+                return true;
+            }
+            if (current?.status === 'prepared') throw new Error('The saved redo preparation no longer matches its original request');
+        }
         redo.route = route.route;
         if (route.route === 'renovate-unavailable') reportStop(store, job, redo, UNAVAILABLE(job, redo));
         else waitOnBot(job, waitingDetail(job, redo));
@@ -97,8 +107,9 @@ export async function requestBotRedo(delivery: GitHubDelivery, job: TicketJob, p
     const intent = attempt.reuse, sent = intent?.payload ?? payload;
     redo.route = sent.route; redo.effectId = attempt.id; store.save();
     let dispatchedAt = '';
+    let observedRun: WikiRun | undefined;
     try {
-        const receipt: any = await new Effects(store).execute<RedoPayload, unknown>({
+        await new Effects(store).execute<RedoPayload, unknown>({
             id: attempt.id, work: intent?.work ?? { projectId: store.project.id, kind: 'delivery', id: job.id }, attemptId: intent?.attemptId ?? job.id,
             operation: intent?.operation ?? OPERATION[sent.route as Sent], target: intent?.target ?? pr.html_url, authorization: intent?.authorization ?? 'office-harness',
             payload: sent, expectedState: intent?.expectedState ?? { head: sent.sha, base: sent.target, branch: sent.branch },
@@ -123,9 +134,13 @@ export async function requestBotRedo(delivery: GitHubDelivery, job: TicketJob, p
                 const out = await execute('gh', value.args, { cwd: store.project.repo, timeout: 60000 });
                 return out.trim() ? JSON.parse(out) : null;
             },
-            verify: async (value, saved) => !!await readBackRedo(delivery, saved, value, dispatchedAt),
+            verify: async (value, saved) => {
+                const evidence = await readBackRedo(delivery, saved, value, dispatchedAt);
+                if (evidence && 'conclusion' in evidence) observedRun = evidence;
+                return !!evidence;
+            },
         });
-        if (sent.route === 'wiki-sync.yml' || sent.route === 'wiki-issue-sync.yml') redo.run = { id: Number(receipt.workflow_run_id), url: String(receipt.html_url) };
+        if (observedRun) redo.run = observedRun;
     }
     catch (error) {
         if (!redo.failure && store.getEffect(attempt.id)?.dispatchedAt) redo.failure = String(error);

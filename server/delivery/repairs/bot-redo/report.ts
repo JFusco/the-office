@@ -16,6 +16,11 @@ export function reportStop(store: Store, job: TicketJob, redo: BotRedo, stop: st
     store.emit('bot-redo-stopped', `${job.key}: ${stop}`, 'pm', job.key);
 }
 
+/** Both the first check and later observations report the same saved refusal. */
+export function reportContainmentStop(store: Store, job: TicketJob, redo: BotRedo, reason: string): void {
+    reportStop(store, job, redo, `Numbered wiki PR #${job.pr} stays open at ${redo.sha.slice(0, 7)} after run ${redo.run?.url}: ${reason}`);
+}
+
 /** What the job waits on for this head, in plain words. */
 export function waitingDetail(job: TicketJob, redo: BotRedo): string {
     const at = `PR #${job.pr} at ${redo.sha.slice(0, 7)}`;

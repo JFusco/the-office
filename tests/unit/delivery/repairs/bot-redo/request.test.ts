@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { cleanupFakes } from '../../support/fake-github';
-import { fakeBotPR, H1, H2 } from '../../support/fake-bot-pr';
+import { fakeBotPR, H1, H2, H3, RENOVATE_BOX } from '../../support/fake-bot-pr';
 import { redoBase } from '../../../../../server/delivery/repairs/bot-redo/ledger';
 import { withAssignment } from '../../../../../server/workers/assignment-context';
 import type { EffectIntent, TicketJob } from '../../../../../src/shared';
@@ -80,6 +80,57 @@ test.each<[string, (f: Fixture) => void]>([
     if (kind === 'the redo stays unsettled') expect(f.adoption.redos![0].settled).toBeUndefined();
 });
 
+test.each(['head advances', 'native link disappears'])('replacement settlement waits when the %s during qualification', async drift => {
+    const f = fakeBotPR('dependabot');
+    await f.observe();
+    const post = (args: string[]) => args.some(a => a.endsWith('/issues/200/comments')) && args.includes('POST');
+    f.state.loseResponse = (_p, args) => post(args);
+    await f.step();
+    const id = redoBase(f.store, 200, H1), original = f.store.getEffect(id);
+    expect(original).toMatchObject({ status: 'uncertain', receipt: null });
+    f.publish(H2, { checks: 'pass' });
+    let changed = false;
+    f.state.fail = (_p, args) => {
+        if (!changed && args.some(a => a.endsWith('/pulls/200/commits?per_page=100'))) {
+            changed = true;
+            if (drift === 'head advances') f.publish(H3, { checks: 'pass' });
+            else f.state.nativeLinks[200] = false;
+        }
+        return false;
+    };
+    await f.observe();
+    expect(changed).toBe(true);
+    expect(f.adoption.redos![0].settled).toBeUndefined();
+    expect(f.job.head).toBe(H1);
+    f.publish(H3, { checks: 'pass' });
+    delete f.state.nativeLinks[200];
+    await f.observe();
+    expect(f.adoption.redos![0].settled).toMatchObject({ replacement: H3, effectId: id, cause: 'unknown' });
+    expect(f.store.getEffect(id)).toEqual(original);
+    expect(rebaseCalls(f)).toHaveLength(1);
+});
+
+test.each([false, null])('an automation replacement reporting mergeable %s in preflight sends no merge PUT', async mergeable => {
+    const f = fakeBotPR('dependabot');
+    await f.observe(); await f.step();
+    f.publish(H2, { checks: 'pass' });
+    await f.observe();
+    expect(f.job).toMatchObject({ status: 'queued', head: H2 });
+    let changed = false;
+    f.state.fail = (_p, args) => {
+        if (f.job.mergeIntentId && f.store.getEffect(f.job.mergeIntentId)?.status === 'prepared' && args.some(a => a.endsWith('/pulls/200'))) {
+            changed = true;
+            f.pr.mergeable = mergeable;
+        }
+        return false;
+    };
+    await f.step();
+    expect(changed).toBe(true);
+    expect(f.store.getEffect(f.job.mergeIntentId!)).toMatchObject({ status: 'rejected', dispatchedAt: '' });
+    expect(f.job.mergeAttempt).toBeUndefined();
+    expect(puts(f)).toEqual([]);
+});
+
 test('an unrelated unread write that appears during merge preflight stops the merge', async () => {
     const f = fakeBotPR('dependabot');
     await f.observe(); await f.step();
@@ -126,6 +177,27 @@ function prepared(f: Fixture, payload: Record<string, unknown>, id = redoBase(f.
 }
 const payload = (f: Fixture, args = ['api', '-X', 'POST', `repos/${f.store.project.repository}/issues/200/comments`, '-f', 'body=@dependabot rebase']) =>
     ({ project: f.store.project.id, repository: f.store.project.repository, pr: 200, sha: H1, adoption: 'adoption-200', issue: 5, bot: 'dependabot', branch: f.job.branch, target: 'main', route: 'dependabot-rebase', args });
+
+test.each(['checked', 'unavailable'])('Pin Courier retires its unsent checkbox preparation when the control becomes %s', async mode => {
+    const f = fakeBotPR('pin-courier');
+    await f.observe();
+    const checked = RENOVATE_BOX.replace('[ ]', '[x]');
+    const earlier = prepared(f, { ...payload(f, ['api', '-X', 'PATCH', `repos/${f.store.project.repository}/pulls/200`, '-f',
+        `body=${f.pr.body.replace(RENOVATE_BOX, checked)}`]), bot: 'pin-courier', route: 'renovate-checkbox' });
+    f.store.putEffect({ ...earlier, operation: 'github-pr-body' });
+    Object.assign(f.adoption.redos![0], { effectId: earlier.id, route: 'renovate-checkbox' });
+    f.pr.body = f.pr.body.replace(RENOVATE_BOX, mode === 'checked' ? checked : '');
+    await f.step();
+    expect(f.store.getEffect(earlier.id)).toMatchObject({ status: 'rejected', dispatchedAt: '' });
+    expect(f.adoption.redos![0].route).toBe(mode === 'checked' ? 'renovate-requested' : 'renovate-unavailable');
+    const job = replace(f);
+    f.publish(H2, { checks: 'pass' });
+    await f.observe();
+    expect(job).toMatchObject({ status: 'queued', head: H2 });
+    await f.step(job);
+    expect(puts(f)).toHaveLength(1);
+    expect(f.writes().filter(m => m.method === 'PATCH')).toEqual([]);
+});
 
 test('a qualifying replacement retires an idle, unsent preparation and merges', async () => {
     const f = fakeBotPR('dependabot');

@@ -3,12 +3,13 @@ import { assessDeliveryEligibility } from '../../harness/delivery-authority';
 import { readRepo } from '../../intake/dependabot/qualify';
 import { MISSING_NATIVE_LINK } from '../../intake/dependency-bots/resume-linked-delivery';
 import { automationMergePolicy } from '../../readiness/automation-merge';
-import { adoptionFor, matchesRedo, redoEffects, restoreRedos, type RedoPayload } from './ledger';
+import { adoptionFor, matchesRedo, redoEffects, restoreRedos, retirePreparation, type RedoPayload } from './ledger';
 import { readBackRedo } from './read-back';
-import { reportStop, UNAVAILABLE, waitingDetail, waitOnBot } from './report';
-import { dispatchedRun } from './wiki-regenerate';
+import { nativeLinked } from './recovery-reader';
+import { reportContainmentStop, reportStop, UNAVAILABLE, waitingDetail, waitOnBot } from './report';
+import { dispatchedRun, type WikiRun } from './wiki-regenerate';
 import type { GitHubDelivery } from '../../pipeline/github-delivery';
-import type { BotRedo, DependabotAdoption, EffectIntent, TicketJob } from '../../../../src/shared';
+import type { BotRedo, DependabotAdoption, TicketJob } from '../../../../src/shared';
 
 const HOUR = 3_600_000;
 /** Reporting clocks only: an overdue bot is reported once, and polling for a later qualifying head continues. */
@@ -32,27 +33,32 @@ export async function readBackRequests(delivery: GitHubDelivery, record: Dependa
         const effect = delivery.store.getEffect<RedoPayload>(redo.effectId!);
         if (!effect || !matchesRedo(delivery.store, record, redo, effect) || !['dispatching', 'uncertain'].includes(effect.status)) continue;
         redo.failure ||= effect.error || 'Request dispatch was interrupted';
+        let observedRun: WikiRun | undefined;
         try {
             await new Effects(delivery.store).reconcile(effect.id, async intent => {
                 const evidence = await readBackRedo(delivery, intent.payload as RedoPayload, intent.receipt, intent.dispatchedAt);
+                if (evidence && 'conclusion' in evidence) observedRun = evidence;
                 return { verified: !!evidence && !executorActive(delivery, record.pr, claimId), receipt: intent.receipt ?? evidence };
             });
         }
         catch { /* An unreadable provider keeps the request uncertain until a later read or a settled outcome. */ }
         const verified = delivery.store.getEffect<RedoPayload>(effect.id);
-        if (verified?.status === 'verified' && wiki(redo) && !redo.run) redo.run = { id: Number((verified.receipt as any)?.workflow_run_id), url: String((verified.receipt as any)?.html_url) };
+        if (verified?.status === 'verified' && observedRun) redo.run = observedRun;
     }
 }
 
 /** The PR closed without merge while a redo was open: one closure outcome, the closer named only on provider evidence. */
 async function closedWithRedo(delivery: GitHubDelivery, job: TicketJob, pr: any, redos: BotRedo[]): Promise<boolean> {
-    const redo = redos.find(r => r.closed) ?? redos.filter(r => !r.settled).at(-1);
+    const head = pr.head?.sha || '', closedAt = pr.closed_at || '';
+    const outstanding = redos.filter(r => !r.settled && !r.closed);
+    const redo = redos.find(r => r.closed?.head === head && r.closed?.closedAt === closedAt) ??
+        outstanding.find(r => r.sha === head) ?? outstanding.at(-1);
     if (!redo) return false;
     if (!redo.closed) {
         const events = await readRepo(delivery.store, delivery.execute, `issues/${pr.number}/events?per_page=100`, true);
         const close = events.filter((e: any) => e.event === 'closed').at(-1), login = BOT_LOGIN[redo.bot];
         const requested = redo.effectId && delivery.store.getEffect(redo.effectId)?.dispatchedAt || redo.firstSeenAt;
-        redo.closed = { at: requested, closedAt: pr.closed_at || '', head: pr.head?.sha || '', closer: close?.actor?.login || 'unknown', attributed: !!login && close?.actor?.login === login && close.actor.type === 'Bot' };
+        redo.closed = { at: requested, closedAt, head, closer: close?.actor?.login || 'unknown', attributed: !!login && close?.actor?.login === login && close.actor.type === 'Bot' };
     }
     reportStop(delivery.store, job, redo, `PR #${pr.number} closed without merge${redo.closed.attributed ? ` by ${redo.closed.closer}` : ''} after its redo at ${short(redo.sha)}; the tracking issue and cards are left for reconciliation.`);
     return true;
@@ -61,16 +67,6 @@ async function closedWithRedo(delivery: GitHubDelivery, job: TicketJob, pr: any,
 function requeue(delivery: GitHubDelivery, job: TicketJob, detail: string): void {
     if (['queued', 'working'].includes(job.status) || !assessDeliveryEligibility(delivery.store, job).eligible) return;
     job.stage = 'merge'; job.status = 'queued'; job.detail = detail; delete job.stop;
-}
-
-/** An unsent preparation the PR no longer needs is retired, only while it has no dispatch time, so it never blocks the PR. */
-function retirePreparation(store: GitHubDelivery['store'], record: DependabotAdoption, redo: BotRedo, effect: EffectIntent<RedoPayload> | undefined, reason: string): void {
-    if (effect?.status !== 'prepared' || effect.dispatchedAt || !matchesRedo(store, record, redo, effect)) return;
-    store.updateEffect(effect.id, 'prepared', current => {
-        if (current.dispatchedAt) return;
-        current.status = 'rejected';
-        current.error = reason;
-    });
 }
 
 /** The PR is still at the conflicted head: report on the request and on the bot's progress, by each bot's clock. */
@@ -103,7 +99,7 @@ async function awaitOutcome(delivery: GitHubDelivery, job: TicketJob, pr: any, r
     }
     const run = await dispatchedRun(delivery, effect.payload, effect.receipt, effect.dispatchedAt);
     if (!run) { reportStop(store, job, redo, `The wiki run for PR #${job.pr} no longer reads back as the dispatched run; its request receipt is kept.`); return true; }
-    redo.run = { ...run };
+    redo.run = { ...run, attempt: run.attempt ?? redo.run?.attempt };
     if (run.status !== 'completed') {
         if (now - sentAt > OVERDUE.wiki) reportStop(store, job, redo, `Wiki run ${run.url} for PR #${job.pr} has not finished within 6 hours; still observing.`);
         else waitOnBot(job, waitingDetail(job, redo));
@@ -117,7 +113,7 @@ async function awaitOutcome(delivery: GitHubDelivery, job: TicketJob, pr: any, r
         else waitOnBot(job, `Wiki run ${run.url} left maintenance PR #${job.pr} at ${short(redo.sha)}; it stays open for the next weekly refresh to replace.`);
         return true;
     }
-    if (redo.sameHead.proof && redo.sameHead.proof !== 'contained') reportStop(store, job, redo, `Numbered wiki PR #${job.pr} stays open: ${redo.sameHead.proof}`);
+    if (redo.sameHead.proof && redo.sameHead.proof !== 'contained') reportContainmentStop(store, job, redo, redo.sameHead.proof);
     else if (!redo.sameHead.proof) requeue(delivery, job, `Wiki run ${run.url} left numbered PR #${job.pr} at ${short(redo.sha)}; the Office checks whether ${store.project.target} already contains it.`);
     return true;
 }
@@ -133,6 +129,11 @@ async function replacement(delivery: GitHubDelivery, job: TicketJob, pr: any, re
         return true;
     }
     const bot = await automationMergePolicy(delivery, { ...job, head: pr.head.sha }, pr);
+    const sameCandidate = (p: any) => p.number === pr.number && p.html_url === pr.html_url && p.state === 'open' && !p.draft &&
+        !p.merged_at && !p.merged && p.head?.sha === pr.head.sha && p.head.ref === pr.head.ref &&
+        p.head.repo?.full_name === pr.head.repo?.full_name && p.base?.ref === store.project.target && p.base.repo?.full_name === store.project.repository;
+    const current = await delivery.verifyPR(job, true);
+    if (!sameCandidate(current) || !nativeLinked(current) || !sameCandidate(await delivery.api(`pulls/${job.pr}`))) return true;
     if (executorActive(delivery, job.pr)) return true;
     if (adoptionFor(store, job) !== record || !delivery.jobs.includes(job) || bot !== last.bot ||
         open.some(r => r.settled || r.closed || r.branch !== pr.head.ref || r.bot !== bot || !record.redos?.includes(r)))
