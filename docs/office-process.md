@@ -1027,14 +1027,16 @@ an answer that cannot have changed.
   a root page, each with its first 10 reviews and, on its last commit, the head's statuses and its first 10
   check suites with up to 50 LATEST runs each. When that commit is not the head (a fork's or a deleted ref's
   head, or no commit listed), its data is discarded and the head's statuses and first suite page are read by
-  the captured OID. Reviews continue 50 at a time on the same PR at the captured head; suites continue 50 at
+  the captured OID. Reviews continue 50 at a time on the same PR at the captured head; suites continue 10 at
   a time on the head by OID; a suite's runs continue 50 at a time by its node ID, LATEST on every page
   (`pr-head-checks.ts`). Repository, PR, head, suite and commit identity, fresh advancing cursors, constant
   counts, distinct nodes and final coverage are checked for every connection; statuses come from the head's
   plain `status` list, with distinct IDs and context names. A head with more than 1,000 suites, the most REST
-  covers, fails before any further check page. Anything else, partial `errors` or a timeout included, fails
-  the read and the last observation, its time and its error stand. Only a complete inventory is published;
-  nothing is cached. `server/github/pr-observation-shape.ts` gives each PR the REST-built shape: REST casing,
+  covers, fails before any further check page. A read failure, including partial `errors` or a timeout,
+  keeps the prior rows and observation time, sets the status to `blocked`, and records the current error.
+  A quota deferral keeps the prior rows and observation time and restores the prior status and error.
+  Only a complete inventory is published, and nothing is cached.
+  `server/github/pr-observation-shape.ts` gives each PR the REST-built shape: REST casing,
   `[bot]` logins, three-valued `mergeable`, links from closing directives in the full body before it is
   bounded, each review's own commit, LATEST runs in REST's order (descending numeric run ID, each a positive
   safe integer unique to the PR) linked by their `permalink`, then statuses newest first, by context in
@@ -1115,8 +1117,8 @@ for every project while the account's quota is low. Decisions, reconciliation an
   shared with the routine sample: one in flight and at most every 30 seconds across projects. A secondary
   refusal never probes. A failed probe changes nothing, and the probe's own refusal never probes again. With
   no reading and no refusal (a cold start) nothing is held. Memory only: a restart holds nothing.
-- **Deferred.** The provider refresh with its pipelines read, which reads GraphQL: the monitor asks on entry
-  and again before each inventory and board page. A hold met mid-read (`server/github/quota-hold.ts`)
+- **Deferred.** The provider refresh with its pipelines read, which reads GraphQL: the monitor asks on entry,
+  before each inventory and board page, and once more before publishing. A hold met mid-read (`server/github/quota-hold.ts`)
   discards what was staged; the status and error from before the read are restored, a first observation
   stays absent, and the next eligible refresh starts fresh. The monitor returns the hold and publishes
   nothing, so `provider-observation.ts` keeps the last observation, its time and any error, and the GitHub
@@ -1125,7 +1127,8 @@ for every project while the account's quota is low. Decisions, reconciliation an
   (`server/scheduling/held-poll.ts`): assignment reads, the board, bot and alert scans for new intake,
   discovery and merge notices (its link check is GraphQL), and everything that consumes the assignments
   read (assessments, review settlement, intake, parked resumes, Backlog retirement, card admission). The
-  background assignment read asks before its REST read and before each board page; a hold met between them
+  background assignment read asks before its REST read, before each board page and before publishing the
+  completed board; a hold met between them
   takes the held poll once and returns the deadline, never a listener error. The poll's REST-only
   dependency refresh for live jobs runs while core itself is clear, and waits under a core hold or a shared
   refusal; a failed lookup there keeps the routing and writes no error. The last assignments, board, their time and any error stand; `listener.deferredUntil` records

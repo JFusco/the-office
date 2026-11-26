@@ -47,13 +47,14 @@ export function succeeded(call: GitHubCall, stdout: string, status?: number): Ca
     return { ...counts, attempts: pages, pages, responses: pages, fullResponses: pages };
 }
 /** A spawned process that failed. A rate-limit refusal is GitHub's stated one, unless the text is also a credential failure. */
-export function failed(call: GitHubCall, error: unknown, status?: number): CallCounts {
+export function failed(call: GitHubCall, error: unknown, status?: number, answer?: GraphqlAnswer): CallCounts {
     const text = error instanceof Error ? error.message : String(error), counts = { ...noCalls(), invocations: 1 };
     const refused = refusedByRateLimit(text), outcome = refused ? { refusals: 1 } : { failures: 1 };
     if (!call.api) return { ...counts, ...outcome, attempts: Number(statedHttpStatus.test(text)), opaque: 1, unknown: 1 };
     if (!call.paginate && (status === 304 || status === undefined && /\bHTTP 304\b/.test(text))) return { ...counts, ...revalidated };
-    // Without a stated answer the request may never have been sent; a paginated read may have read pages first.
-    const answered = status !== undefined || refused || statedHttpStatus.test(text) || /\bGraphQL: /.test(text);
+    // A GraphQL errors body confirms a single request was sent. A paginated read may have read other pages first.
+    const answered = status !== undefined || refused || statedHttpStatus.test(text) || /\bGraphQL: /.test(text)
+        || (!call.paginate && answer?.errors !== undefined);
     return { ...counts, ...outcome, attempts: answered ? 1 : 0, unknown: !answered || call.paginate ? 1 : 0 };
 }
 /**

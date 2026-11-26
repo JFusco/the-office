@@ -221,3 +221,8 @@ test.each(['root', 'runs'] as const)('a %s request timing out after successful p
     expect(calls.some(path => path.includes('actions/workflows'))).toBe(false);
     expect(s.state.pipelines?.observedAt).toBe('2026-11-26T12:50:00.000Z');
 });
+test('GitHub PR narratives are bounded without splitting Unicode or losing the truncation marker', () => {
+    const result = githubPRDescription('😀'.repeat(9000));
+    expect(Buffer.byteLength(result.description!)).toBeLessThanOrEqual(8192);
+    expect(result.descriptionTruncated).toBe(true); expect(result.description).not.toContain('�');
+});

@@ -48,8 +48,9 @@ test('a GraphQL query adds its reported points or one unknown cost; an errors bo
     expect(graphqlCounts(succeeded(graphql, '{}'), {})).toEqual({ ...page, unknownCost: 1 });
     expect(graphqlCounts(succeeded(graphql, '{}'), { cost: 1, errors: 'Something failed' })).toEqual({ ...page, pages: 0, failures: 1, points: 1 });
     expect(graphqlCounts(succeeded(graphql, '{}'), { errors: 'API rate limit exceeded' }, 'pr-root', true)).toEqual({ ...page, pages: 0, refusals: 1, unknownCost: 1 });
-    // A refusal stated only in the body of a failed call is still a refusal.
-    expect(graphqlCounts(failed(graphql, failure('Something failed')), { errors: 'API rate limit exceeded' }, undefined, true)).toEqual(counts({ refusals: 1, unknown: 1, unknownCost: 1 }));
+    // A refusal stated only in the body establishes a response to a single request.
+    const refusal = { errors: 'API rate limit exceeded' };
+    expect(graphqlCounts(failed(graphql, failure('Something failed'), undefined, refusal), refusal, undefined, true)).toEqual(counts({ attempts: 1, refusals: 1, unknownCost: 1 }));
     expect(graphqlCounts(succeeded(graphql, '{}'), { cost: 1 }, 'pr-child')).toEqual({ ...page, points: 1, prChildInvocations: 1, prChildPages: 1 });
     expect(graphqlCounts(failed(graphql, failure('Server Error (HTTP 502)')), {}, 'pr-child')).toEqual(counts({ attempts: 1, failures: 1, unknownCost: 1, prChildInvocations: 1 }));
     // Not a GraphQL query: unchanged.

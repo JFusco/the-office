@@ -34,7 +34,7 @@ import { backgroundHold, GRAPHQL_WORK, type QuotaHold } from '../github/quota-go
 import { heldBy, quotaCheck, type QuotaCheck } from '../github/quota-hold';
 import { pollWhileHeld } from './held-poll';
 
-/** `check`, from the background poll, is asked before the assignment read and each board page; a hold it raises is rethrown. */
+/** The background poll supplies `check` for the assignment read, each board page and the completed read. */
 export async function readAssignments(this: Coordinator, check?: QuotaCheck): Promise<AssignedIssue[]>  {
     if (this.store.project.provider === 'github') {
         check?.();
@@ -44,6 +44,7 @@ export async function readAssignments(this: Coordinator, check?: QuotaCheck): Pr
         const board = await this.engine.github.board(check);
         if (!board || board.error)
             throw new Error(board?.error || 'Project board is unavailable');
+        check?.();
         if (this.store.state.github)
             this.store.state.github.board = board;
         return pages.flat().filter((i: any) => !i.pull_request && i.assignees?.some((a: any) => a.login === 'JFusco')).map((i: any) => ({ key: `GH-${i.number}`, summary: i.title, url: i.html_url, assignee: 'JFusco', status: i.state, statusId: '', updated: i.updated_at, type: 'GitHub issue', subtask: false, pickupStatus: board.items.find(card => card.number === i.number && card.repository === this.store.project.repository)?.status || '' }));
@@ -99,7 +100,7 @@ export async function poll(this: Coordinator, now = new Date()): Promise<QuotaHo
         let assigned: AssignedIssue[];
         try { assigned = await this.readAssignments(quotaCheck(this.store.project, this.engine.quota)); }
         catch (error) {
-            // A hold met between the assignment read and a board page, or between two board pages: a deferral, as at entry.
+            // A hold reached during the reads defers the poll just as a hold at entry does.
             const hold = heldBy(error);
             if (!hold) throw error;
             await pollWhileHeld(this, hold, now);

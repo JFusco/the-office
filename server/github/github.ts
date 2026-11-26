@@ -49,8 +49,8 @@ export class GitHubMonitor {
   }
   /**
    * Counted as `monitor` in the Office's GitHub call ledger, whoever asks for it. It reads GraphQL, so it asks for
-   * both resources, on entry and before each GraphQL page. Under a GitHub quota hold nothing is published, not even
-   * the status, and the hold is returned: the last observation, its time and its error stand.
+   * both resources on entry, before each GraphQL page and before publishing. A hold is returned with the prior
+   * observation, time, status and error intact.
    */
   async poll():Promise<QuotaHold|undefined>{
     const held=this.quota?.hold(GRAPHQL_WORK);if(held)return held;
@@ -76,6 +76,7 @@ export class GitHubMonitor {
       const allIssues=issues.filter((i:any)=>!i.pull_request);
       for(const old of prior.issues)if(old.state==='open'&&!allIssues.some((i:any)=>i.number===old.number)){check();allIssues.push(await this.api(`issues/${old.number}`));}
       const board=await this.board(check);
+      check();
       const state:GitHubState={status:'idle',observedAt,error:'',prs,board,issues:allIssues.map((i:any)=>({number:i.number,key:`GH-${i.number}`,title:i.title,state:i.state,url:i.html_url,updatedAt:i.updated_at})),
         runs:runs.workflow_runs.map((r:any)=>({id:r.id,workflowId:r.workflow_id,name:r.name||r.display_title,status:r.status,conclusion:r.conclusion||'',head:r.head_sha,branch:r.head_branch,event:r.event,attempt:r.run_attempt,url:r.html_url,createdAt:r.created_at,updatedAt:r.updated_at,startedAt:r.run_started_at||''}))};
       this.store.state.github=state;

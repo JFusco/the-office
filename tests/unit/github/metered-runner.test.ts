@@ -138,9 +138,9 @@ test('without a body balance the included GraphQL headers are kept; a failed con
     // gh prints the errors body and exits 1: its cost is read from what it printed.
     const error = await f.call({ stdout: graphqlHeaders() + costed(1, 4980, { errors: [{ type: 'NOT_FOUND', message: 'Could not resolve to a PullRequest' }] }), error: new CommandFailure('gh exited 1: gh: Could not resolve to a PullRequest', 'other', true) }, 'pr-child');
     expect(error).toBeInstanceOf(CommandFailure);
-    // A child that fails with only a diagnostic: one invocation, no page, its cost unknown.
+    // A child that fails without a response: one invocation, no observed attempt, its cost and traffic unknown.
     await f.call({ stdout: '', error: new CommandFailure('gh exited 1: connection reset', 'other', true) }, 'pr-child');
-    expect(f.family('monitor-pr-graphql')).toMatchObject({ invocations: 3, pages: 1, failures: 2, points: 1, unknownCost: 2, prChildInvocations: 2, prChildPages: 0 });
+    expect(f.family('monitor-pr-graphql')).toMatchObject({ invocations: 3, attempts: 2, pages: 1, failures: 2, unknown: 1, points: 1, unknownCost: 2, prChildInvocations: 2, prChildPages: 0 });
     expect(f.quota.latest('graphql')).toMatchObject({ remaining: 4980, from: 'body' });
     expect(f.told.refused).toEqual([]);
 });
@@ -162,4 +162,15 @@ test('a permission error is a read failure, never a refusal; a call cancelled be
     expect(await f.call({ stdout: '', error: new CommandFailure('Worker cancelled before dispatch', 'cancelled', false) }, 'pr-child')).toMatchObject({ category: 'cancelled' });
     expect(f.family('monitor-pr-graphql')).toMatchObject({ invocations: 1, failures: 1, refusals: 0, prChildInvocations: 0 });
     expect(f.told.refused).toEqual([]);
+});
+
+test.each([
+    { kind: 'refusal', stdout: '{"errors":[{"message":"API rate limit exceeded for user ID 1."}]}', refusals: 1, failures: 0, points: 0, unknownCost: 1 },
+    { kind: 'failure', stdout: costed(2, 4980, { errors: [{ message: 'Could not resolve to a Repository' }] }), refusals: 0, failures: 1, points: 2, unknownCost: 0 },
+])('a GraphQL $kind reported only in stdout counts one attempt and zero pages', async ({ stdout, refusals, failures, points, unknownCost }) => {
+    const f = graphqlFixture();
+    const error = new CommandFailure('gh exited 1: query failed', 'other', true);
+    expect(await f.call({ stdout, error }, undefined, ['api', 'graphql', '-f', 'query=query{viewer{login}}'])).toBe(error);
+    expect(f.family('graphql')).toMatchObject({ invocations: 1, attempts: 1, pages: 0, unknown: 0, refusals, failures, points, unknownCost });
+    expect(f.told.refused).toHaveLength(refusals);
 });

@@ -68,7 +68,7 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
             if (spawned) account(() => {
                 const answer = body === undefined ? undefined : graphqlAnswer(body, call.include);
                 const refusal = refusalIn(error instanceof Error ? error.message : String(error), answer) ?? refusalIn(answer?.errors, answer);
-                ledger.record(source, call.family, graphqlCounts(failed(call, error, status), answer, operation, !!refusal), project);
+                ledger.record(source, call.family, graphqlCounts(failed(call, error, status, answer), answer, operation, !!refusal), project);
                 keepReading(answer);
                 // The probe's own refusal still holds, and never starts another probe.
                 if (refusal) governor?.refused(refusal, source !== 'quota');

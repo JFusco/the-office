@@ -44,10 +44,15 @@ test('a failed terminal read fails the observation, so the open row is read agai
     await expect(terminalPRs(FROZEN_GOLDEN, new Set([21, 20]), async () => { throw new Error('gh exited 1: Server Error (HTTP 502)'); })).rejects.toThrow('HTTP 502');
 });
 
-test('the quota check is asked before each PR is read; a hold it raises reads nothing more', async () => {
-    const a = api({ 22: { ...pr22.rest.detail, state: 'closed' }, 21: { ...pr21.rest.detail, state: 'closed' } });
-    let checks = 0;
-    const check = () => { if (++checks === 2) throw new QuotaHeld({ until: '2026-11-26T14:00:00.000Z' }); };
-    await expect(terminalPRs(FROZEN_GOLDEN, new Set([20]), a.read, check)).rejects.toBeInstanceOf(QuotaHeld);
-    expect(a.calls.map(call => call.path)).toEqual(['pulls/22', 'pulls/22/reviews?per_page=100', `commits/${H22}/check-runs?per_page=100`, `commits/${H22}/statuses?per_page=100`]);
+test('a quota hold reached during the closed PR detail read stops its follow-up requests', async () => {
+    const a = api({ 22: { ...pr22.rest.detail, state: 'closed' } });
+    let held = false;
+    const read = async (path: string) => {
+        const result = await a.read(path);
+        if (path === 'pulls/22') held = true;
+        return result;
+    };
+    const check = () => { if (held) throw new QuotaHeld({ until: '2026-11-26T14:00:00.000Z' }); };
+    await expect(terminalPRs(FROZEN_GOLDEN, new Set([21, 20]), read, check)).rejects.toBeInstanceOf(QuotaHeld);
+    expect(a.calls.map(call => call.path)).toEqual(['pulls/22']);
 });
