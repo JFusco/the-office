@@ -186,7 +186,8 @@ const recoveryKey = (item: Item, episode: number, detail: string | undefined, te
 /**
  * What the action currently due is about. A recovery is about its needs-human episode and, for the two IT reads
  * whose advice depends on it, whether `detail` (IT's raw diagnostic) is a temporary read failure. Any other
- * follow-up is about its whole requested action, less provider occurrence metadata.
+ * follow-up is about its whole requested action, less provider occurrence metadata. A maintenance run's follow-up
+ * is keyed by the run's stop instead (`maintenance-handoff-key.ts`).
  */
 export function materialKey(item: Item, detail: string, temporary: (text: string) => boolean): string {
     if (item.source.kind !== 'recovery') return actionKey(detail);

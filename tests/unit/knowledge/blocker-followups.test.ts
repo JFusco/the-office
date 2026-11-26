@@ -1,6 +1,7 @@
 import { test, expect } from 'vitest';
 import { reconcileBlockerFollowups, harperHandoff } from '../../../server/knowledge/blocker-followups';
-import { job, knowledgeStore, maintenanceRun } from './knowledge-fixture';
+import { job, knowledgeStore, maintenanceResult, maintenanceRun } from './knowledge-fixture';
+import { maintenanceStopKey } from '../../../server/knowledge/maintenance-handoff-key';
 import { markAwaitingRepair, unmark } from '../incidents/repair/mark-fixture';
 import { learningMetrics } from '../../../server/knowledge/learning-metrics';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -10,7 +11,7 @@ import { Store } from '../../../server/store/store';
 import { projectById } from '../../../server/office/projects';
 import { coordination } from '../../../server/scheduling/coordination';
 import { learningDigest } from '../../../server/knowledge/learning-events';
-import { materialKey } from '../../../server/knowledge/handoff-admission';
+import { materialKey, withoutProviderOccurrence } from '../../../server/knowledge/handoff-admission';
 import { temporaryReadFailure } from '../../../server/scheduling/read-retries';
 import { readSavedState } from '../../../server/store/read-saved-state';
 import { scheduledWork, type OfficeEntry } from '../../../server/scheduling/scheduled-work';
@@ -314,16 +315,128 @@ test.each([[true, 2], [false, 1]])('a parked-ticket instruction that changes whi
     } finally { f.close(); }
 });
 
-test('an answered maintenance diagnosis: a fresh provider footer is nothing new; a changed target or instruction is', () => {
+test('an answered maintenance diagnosis: a fresh provider footer or a changed instruction within the same stop is nothing new', () => {
     const f = knowledgeStore();
     try {
-        const run = maintenanceRun({ id: 'm-1', status: 'blocked', error: `Read back issue 7 on acme/site. ${footer(1)}` });
+        const run = maintenanceRun({ id: 'm-1', status: 'blocked', endedAt: '2026-11-06T09:30:00Z', error: `Read back issue 7 on acme/site. ${footer(1)}` });
         f.store.state.maintenance = { runs: [run], lastDaily: '', lastWeekly: '', ledger: '' };
         reconcileBlockerFollowups(f.store); answerAll(f.store, 'maintenance:m-1');
         run.error = `Read back issue 7 on acme/site. ${footer(2)}`; reconcileBlockerFollowups(f.store);
         expect(sent(f.store, 'maintenance:m-1')).toHaveLength(1);
+        // A read-back's words, whatever they name, do not stop the run again (issue 588).
         run.error = `Read back issue 8 on acme/site. ${footer(3)}`; reconcileBlockerFollowups(f.store);
-        expect(sent(f.store, 'maintenance:m-1')).toHaveLength(2);
+        expect(sent(f.store, 'maintenance:m-1')).toHaveLength(1);
+    } finally { f.close(); }
+});
+
+/** The four blocker texts Brain run fc5437de's follow-up saw on 2026-11-24/25 (issue 588), in order. */
+const FC5437DE = [
+    'Error: ownership-coverage-unavailable',
+    'Native maintenance completion remains outstanding. The Office stage owner must resolve the ownership-coverage prerequisite and route an authorized continuation of the original native run; this readback cannot complete, fail, resume or clean it up.',
+    'Native maintenance completion remains outstanding. Current session coverage is incomplete and expired, with ownership unverified. The Office stage owner must establish fresh ownership coverage and route an authorized continuation of native run 65ea658f-daad-4c6c-ab6d-0772c4369456. This readback cannot resume, complete, fail or clean it up.',
+    'Native maintenance completion remains outstanding. Assignment-scoped ownership is unverified; the supplied bridge reports ownership not-requested. The Office stage owner must establish fresh complete ownership coverage and route an authorized continuation of native run 65ea658f-daad-4c6c-ab6d-0772c4369456. This readback cannot resume, complete, fail or clean it up.',
+];
+const brainStop = (id: string, overrides: Partial<import('../../../src/shared').MaintenanceRun> = {}) => maintenanceRun({ id, status: 'blocked', stage: 'brain-maintenance', endedAt: '2026-11-24T22:38:43.125Z', error: FC5437DE[0],
+    steps: [{ role: 'pm', stage: 'brain-maintenance', at: '2026-11-24T22:38:42.732Z', result: maintenanceResult({ outcome: 'blocked', blocker: 'ownership-coverage-unavailable' }) }], ...overrides });
+/** One blocked read-back as `GitHubMaintenance.reconcile` saves it: a step with its coverage, and its words as the run's error. */
+function readBack(store: Store, run: import('../../../src/shared').MaintenanceRun, text: string, coverage?: object) {
+    const result = { ...maintenanceResult({ outcome: 'blocked', blocker: text }), ...(coverage ? { coverage } : {}) };
+    run.steps.push({ role: 'pm', stage: 'maintenance-readback', at: store.clock.now().toISOString(), result });
+    run.error = text;
+}
+/** Read-back coverage in the shape `maintenanceCoverageSchema` accepts, with one saved receipt row per original write. */
+const coverage = (receipts: { id: string; verified: boolean; uncertain: boolean }[]) => ({ originalWorkId: 'work-1', nativeSha256: 'a'.repeat(64), completeNativeExecution: true, asyncCommandsComplete: true,
+    delegatedTasksComplete: true, allAttemptedEffectsKnown: receipts.every(row => !row.uncertain), freshProviderDispositions: true, calls: [],
+    receipts: receipts.map(row => ({ ...row, receiptSha256: learningDigest(row.id), evidence: `Read back ${row.id}.` })) });
+/** The key the earlier build saved: the digest of the follow-up's text, less provider occurrence metadata. */
+const textKey = (text: string) => learningDigest(['action', withoutProviderOccurrence(text)]);
+
+test('issue 588 admits only send-1', () => {
+    const f = knowledgeStore('brain', '2026-11-24T22:38:44.000Z'), id = 'maintenance:fc5437de';
+    try {
+        const run = brainStop('fc5437de');
+        f.store.state.maintenance = { runs: [run], lastDaily: '', lastWeekly: '', ledger: '' };
+        const pass = () => reconcileBlockerFollowups(f.store);
+        pass();
+        expect(sent(f.store, id).map(message => message.id)).toEqual([`harper-followup:${id}:send-1`]);
+        f.advance(32 * 60000); readBack(f.store, run, FC5437DE[1]); pass();
+        f.advance(28 * 60000); readBack(f.store, run, FC5437DE[2]); pass();
+        // Answered at these points live; the earlier key admitted send-2 and send-3 right after.
+        f.advance(5 * 60000); answerAll(f.store, id); pass();
+        f.advance(24 * 60000); readBack(f.store, run, FC5437DE[3]); pass();
+        f.advance(2 * 60000); answerAll(f.store, id); pass();
+        f.advance(3 * 60000); answerAll(f.store, id); pass(); pass();
+        expect(sent(f.store, id).map(message => message.id)).toEqual([`harper-followup:${id}:send-1`]);
+        const item = f.store.state.knowledge!.followups!.find(entry => entry.id === id)!;
+        expect(item.history.map(entry => entry.detail)).toEqual(FC5437DE);
+        expect(item.handoffMaterialKey).toBe(maintenanceStopKey(run));
+    } finally { f.close(); }
+});
+
+test('a stopped replacement gets its own diagnosis', () => {
+    const f = knowledgeStore('brain', '2026-11-24T22:38:44.000Z');
+    try {
+        // Maintenance AC2 (Joe, 2026-11-25): one diagnosis per stopped run; a different write found during the same stop is Morgan's read-back's to diagnose.
+        const first = 'Write merge-453 has an unknown outcome; read it back before continuing.', second = 'Write catalog-push has an unknown outcome; read it back before continuing.';
+        const run = brainStop('m-2', { error: `Error: ${first}` });
+        run.steps[0].result.receipts = ['merge-453', 'catalog-push'].map(write => ({ id: write, action: write, target: 'JFusco/brain', verified: write !== 'merge-453', uncertain: write === 'merge-453', detail: '' }));
+        f.store.state.maintenance = { runs: [run], lastDaily: '', lastWeekly: '', ledger: '' };
+        const followup = (id: string) => f.store.state.knowledge!.followups!.find(item => item.id === id)!;
+        reconcileBlockerFollowups(f.store); answerAll(f.store, 'maintenance:m-2');
+        f.advance(30 * 60000);
+        readBack(f.store, run, second, coverage([{ id: 'step:0:merge-453', verified: true, uncertain: false }, { id: 'step:0:catalog-push', verified: false, uncertain: true }]));
+        reconcileBlockerFollowups(f.store); reconcileBlockerFollowups(f.store);
+        expect(followup('maintenance:m-2')).toMatchObject({ disposition: 'unresolved', nextAction: second });
+        expect(sent(f.store, 'maintenance:m-2')).toHaveLength(1);
+        // A changed prerequisite reaches Morgan through the run that replaces this one, once it stops.
+        f.store.state.maintenance.runs.push(brainStop('m-3', { supersedes: ['m-2'], endedAt: '2026-11-25T03:00:00.000Z', error: 'Error: merge-453 still unverified' }));
+        reconcileBlockerFollowups(f.store);
+        expect(followup('maintenance:m-2').disposition).toBe('superseded');
+        expect(sent(f.store, 'maintenance:m-3').map(message => message.id)).toEqual(['harper-followup:maintenance:m-3:send-1']);
+        answerAll(f.store, 'maintenance:m-3'); reconcileBlockerFollowups(f.store); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, 'maintenance:m-2')).toHaveLength(1);
+        expect(sent(f.store, 'maintenance:m-3')).toHaveLength(1);
+    } finally { f.close(); }
+});
+
+test.each([['the latest wording', 3, false], ['an earlier wording, changed while its request was open', 1, false], ['an earlier wording whose detail is no longer held', 1, true]] as const)('saved legacy maintenance keys survive reopen (%s)', (_case, text, dropped) => {
+    const f = diskStore('2026-11-24T22:38:44.000Z'), id = 'maintenance:fc5437de';
+    try {
+        const run = brainStop('fc5437de');
+        f.store.state.maintenance = { runs: [run], lastDaily: '', lastWeekly: '', ledger: '' };
+        reconcileBlockerFollowups(f.store);
+        for (const words of FC5437DE.slice(1)) { f.advance(30 * 60000); readBack(f.store, run, words); reconcileBlockerFollowups(f.store); }
+        answerAll(f.store, id);
+        // As the earlier build left it: send-1 answered, and the key of the text a hand-off was admitted for.
+        const item = f.store.state.knowledge!.followups!.find(entry => entry.id === id)!;
+        item.handoffMaterialKey = textKey(FC5437DE[text]);
+        if (dropped) delete (item.history[text] as { detail?: string }).detail;
+        f.store.save();
+        const store = f.reopen();
+        reconcileBlockerFollowups(store); f.advance(60000); reconcileBlockerFollowups(store);
+        const stop = maintenanceStopKey(store.state.maintenance!.runs[0]);
+        expect(sent(store, id)).toHaveLength(1);
+        // Saved by reconciliation itself, then read again after another reopen.
+        expect(readSavedState(f.path)!.knowledge!.followups!.find(entry => entry.id === id)!.handoffMaterialKey).toBe(stop);
+        expect(f.reopen().state.knowledge!.followups!.find(entry => entry.id === id)!.handoffMaterialKey).toBe(stop);
+    } finally { f.close(); }
+});
+
+// Synthetic: a run has one stop, so this isolates the comparison of two stop keys.
+test('a different prefixed stop admits one new diagnosis', () => {
+    const f = diskStore('2026-11-24T22:38:44.000Z'), id = 'maintenance:fc5437de';
+    try {
+        const run = brainStop('fc5437de');
+        f.store.state.maintenance = { runs: [run], lastDaily: '', lastWeekly: '', ledger: '' };
+        reconcileBlockerFollowups(f.store); answerAll(f.store, id);
+        f.store.state.knowledge!.followups!.find(entry => entry.id === id)!.handoffMaterialKey = maintenanceStopKey({ ...run, endedAt: '2026-11-23T22:38:43.125Z' });
+        f.store.save();
+        const store = f.reopen();
+        reconcileBlockerFollowups(store);
+        expect(sent(store, id).map(message => message.id)).toEqual([`harper-followup:${id}:send-1`, `harper-followup:${id}:send-2`]);
+        expect(store.state.knowledge!.followups!.find(entry => entry.id === id)!.handoffMaterialKey).toBe(maintenanceStopKey(store.state.maintenance!.runs[0]));
+        answerAll(store, id); reconcileBlockerFollowups(store); reconcileBlockerFollowups(store);
+        expect(sent(store, id)).toHaveLength(2);
     } finally { f.close(); }
 });
 

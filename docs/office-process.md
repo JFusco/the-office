@@ -746,7 +746,17 @@ Morgan or Joe:
   follow-up, whatever its detail says. Once it closes, another is sent only if what is due changed. For
   an IT recovery that is a new needs-human episode: an observed exit (IT retrying, or resolved) and a
   return. For the project refresh and assignment reads it is also a change between a temporary read
-  failure and any other failure, the two kinds of advice Ellis gives Morgan. For anything else it is the
+  failure and any other failure, the two kinds of advice Ellis gives Morgan. For a stopped maintenance run
+  it is the run's own stop: the status and stage it stopped in and when it ended
+  (`server/knowledge/maintenance-handoff-key.ts`). A run stops in its pump, or at start-up recovery if it
+  was left working, and is never pumped again: both pumps take only queued runs. A read-back adds a step
+  and rewrites the run's error in its own words, and the run's only later status is reconciled, which
+  is not handed off; supersession and source loss also end its hand-offs. So a stopped run is diagnosed
+  once, however its read-backs word the blocker or whichever write they still find unverified: Morgan
+  owns the follow-up, and a different write found during the same stop is for Morgan's read-back to
+  diagnose (Joe's decision, 2026-11-25). A changed prerequisite reaches Morgan through the run that
+  replaces it, once that run stops, under its own follow-up. A key saved before this rule came from that
+  run's only stop and is read as it on the follow-up's first reconciliation. For anything else it is the
   requested action without provider occurrence details such as GitHub's request ID and timestamp.
   Each send has its own id. A diagnosis that started is never settled: one a restart interrupts keeps
   its session, any answer and the interruption, and unchanged material sends nothing more. Queued
@@ -763,7 +773,9 @@ Morgan or Joe:
   earlier read-back of it is still stopping. The first open after upgrading changes an affected store,
   so a failed activation then stops at rollback eligibility rather than rolling back; an older build
   skips the settled rows but would send again for a new provider footer, so a downgraded store stays
-  fenced or offline until a build with this rule resumes it.
+  fenced or offline until a build with this rule resumes it. An older build also reads a maintenance
+  follow-up's stop key as new: once its last request closes it can send once for that follow-up, and
+  again for each later rewording.
 - Session visibility and service status probes are informational and stay with Ellis. They are
   listed but not counted as follow-ups, and do not by themselves show Ellis as retrying, even while
   such a watch is being retried or once it names Morgan. Any other recovery in progress, and anything
