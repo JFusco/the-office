@@ -23,7 +23,7 @@ export interface BudgetedInvocation {
 /** What an invocation returns: the session its receipt belongs to, and the receipt valued by `run-cost.ts`. */
 export interface InvocationResult { evidenceId: string | null; cost: RunCost | null }
 
-type Settled = { ok: true; settlement: Settlement } | { ok: false; error: Error };
+type Settled = { ok: true; settlement: Settlement } | { ok: false; error: Error; evidence: InvocationResult | null };
 export type BudgetedOutcome =
     | { status: 'refused'; code: RefusalCode }
     | { status: 'ledger-error'; code: LedgerError['code']; message: string }
@@ -38,16 +38,15 @@ export async function runBudgeted(paths: RunnerPaths, request: AdmissionRequest,
     let admission;
     try { admission = admit(paths, request, options); }
     catch (error) {
-        if (error instanceof LedgerError) return { status: 'ledger-error', code: error.code, message: error.message };
-        throw error;
+        return { status: 'ledger-error', code: error instanceof LedgerError ? error.code : 'ledger-failed', message: asError(error).message };
     }
     if (!admission.admitted) return { status: 'refused', code: admission.code };
     const { reservation } = admission, controller = new AbortController();
     let bound: string | null = null, done = false;
     // Each settlement opens its own short transaction, so a late one works after the caller has moved on.
-    const settleWith = (evidence: InvocationResult | null): Settled => {
-        try { return { ok: true, settlement: settle(paths, reservation.id, { evidenceId: evidence?.evidenceId ?? null, cost: evidence?.cost ?? null }, options) }; }
-        catch (error) { return { ok: false, error: asError(error) }; }
+    const settleWith = (evidence: InvocationResult | null, writeOptions = options): Settled => {
+        try { return { ok: true, settlement: settle(paths, reservation.id, { evidenceId: evidence?.evidenceId ?? null, cost: evidence?.cost ?? null }, writeOptions) }; }
+        catch (error) { return { ok: false, error: asError(error), evidence }; }
     };
     return new Promise<BudgetedOutcome>(resolve => {
         const stop = (reason: 'total' | 'inactivity') => {
@@ -56,7 +55,7 @@ export async function runBudgeted(paths: RunnerPaths, request: AdmissionRequest,
             clearTimeout(total);
             quiet.clear();
             controller.abort(new Error(`The invocation passed its ${reason} timeout`));
-            resolve({ status: 'timed-out', reservation, reason, retained: settleWith(null), late });
+            resolve({ status: 'timed-out', reservation, reason, retained: settleWith(null, { ...options, busyTimeoutMs: 0 }), late });
         };
         const total = setTimeout(() => stop('total'), reservation.totalTimeoutMs);
         const quiet = inactivityWatch(reservation.inactivityTimeoutMs, () => stop('inactivity'));

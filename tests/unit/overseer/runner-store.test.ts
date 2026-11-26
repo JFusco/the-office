@@ -10,12 +10,12 @@ const run = promisify(execFile);
 const repository = resolve(__dirname, '../../..'), child = resolve(__dirname, 'store-child.mts'), recorder = resolve(__dirname, 'record-loads.mjs');
 
 /** Opens the Store in a fresh production-mode process (Vitest's flags cleared, so local bindings are read), recording which repository modules load. */
-async function open(root: string, options: { trusted?: string; dataRoot?: string; mode?: string } = {}) {
+async function open(root: string, options: { trusted?: string; dataRoot?: string; args?: string[] } = {}) {
     const loads = join(tempDir(), 'loads.txt');
     writeFileSync(loads, '');
     const { VITEST: _, VITEST_POOL_ID: __, VITEST_WORKER_ID: ___, ...inherited } = process.env;
     const env = { ...inherited, NODE_ENV: 'production', OFFICE_DATA_ROOT: options.dataRoot ?? runnerPaths(root).officeData, OVERSEER_LOAD_LOG: loads };
-    const { stdout } = await run(process.execPath, ['--import', 'tsx', '--import', recorder, child, root, options.trusted ?? root, ...(options.mode ? [options.mode] : [])], { env, encoding: 'utf8', timeout: 60_000 });
+    const { stdout } = await run(process.execPath, ['--import', 'tsx', '--import', recorder, child, root, options.trusted ?? root, ...(options.args ?? [])], { env, encoding: 'utf8', timeout: 60_000 });
     const loaded = readFileSync(loads, 'utf8').split('\n').filter(url => url.startsWith(`file://${repository}/server/`)).map(url => url.slice(`file://${repository}/`.length));
     return { ...JSON.parse(stdout.trim().split('\n').at(-1)!), loaded };
 }
@@ -42,10 +42,23 @@ test('a root other than the dedicated one is refused, such as an ordinary checko
     expect(await open(link, { trusted: link })).toMatchObject({ ok: false, error: expect.stringContaining('reached through a link') });
 });
 
+test('the Store derives its destinations from the trusted root even when the selected paths conflict', async () => {
+    const root = join(tempDir(), 'runner'), decoy = tempDir();
+    const { officeData } = runnerPaths(decoy);
+    mkdirSync(officeData, { recursive: true });
+    writeFileSync(join(officeData, 'office-config.json'), '{');
+    const before = snapshot(decoy);
+    const result = await open(root, { args: ['decoy-paths', decoy] });
+    expect(result).toMatchObject({ ok: true, replay: { n: 1 }, dispatched: 1 });
+    expect(snapshot(root)).toHaveProperty('/state/runner.sqlite');
+    expect(snapshot(root)).toHaveProperty('/state/runner-data');
+    expect(snapshot(decoy)).toEqual(before);
+});
+
 test('a wrong OFFICE_DATA_ROOT or a linked office-config.json is refused before Office configuration loads, and the decoy is untouched', async () => {
     const root = join(tempDir(), 'runner'), decoy = tempDir();
     writeFileSync(join(decoy, 'office-config.json'), '{"projects":[]}');
-    const before = snapshot(decoy), wrong = await open(root, { dataRoot: decoy });
+    const before = snapshot(decoy), wrong = await open(root, { dataRoot: decoy, args: ['override-env'] });
     expect(wrong).toMatchObject({ ok: false, error: expect.stringContaining('OFFICE_DATA_ROOT must be') });
     expect(loadedOffice(wrong.loaded)).toEqual([]);
     expect(snapshot(decoy)).toEqual(before);
@@ -59,7 +72,7 @@ test('a wrong OFFICE_DATA_ROOT or a linked office-config.json is refused before 
 
 test('Office configuration already loaded for another root refuses the Store before it loads', async () => {
     const root = join(tempDir(), 'runner'), decoy = tempDir();
-    const result = await open(root, { dataRoot: decoy, mode: 'load-config-first' });
+    const result = await open(root, { dataRoot: decoy, args: ['load-config-first'] });
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining(`Office configuration was loaded for ${decoy}`) });
     expect(result.loaded).not.toContain('server/store/store.ts');
 });
@@ -83,3 +96,13 @@ test('a linked or hard-linked database or sidecar is refused before anything ope
     writeFileSync(paths.runnerData, '');
     expect(await open(root)).toMatchObject({ ok: false, error: expect.stringContaining('must be a directory') });
 }, 120_000);
+
+test('a state folder reached through a link is refused before Office configuration loads, and its target is untouched', async () => {
+    const root = join(tempDir(), 'runner'), elsewhere = tempDir();
+    mkdirSync(root);
+    symlinkSync(elsewhere, runnerPaths(root).state);
+    const before = snapshot(elsewhere), result = await open(root);
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('must be a directory') });
+    expect(loadedOffice(result.loaded)).toEqual([]);
+    expect(snapshot(elsewhere)).toEqual(before);
+});

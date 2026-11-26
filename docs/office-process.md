@@ -2173,7 +2173,7 @@ is doing. How to run and read it is in [Overseer, Runner](overseer.md#runner).
 | Release identity and recognition of a deployed fix | `server/office/release-identity.ts`, `server/incidents/deployed-fixes.ts` |
 | Evidence packets, dismissals and their lapse | `server/incidents/evidence-packet.ts`, `server/incidents/dismissal.ts`, `server/incidents/dismissal-validity.ts` |
 | Repair waits: marker, admission, expiry, effective cause | `server/incidents/repair/` |
-| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection | `server/overseer.ts`, `server/overseer/` |
+| Overseer runner: pass, root, lock, STOP and pause, outage journal, selection, budget admission and ledger, private Store | `server/overseer.ts`, `server/overseer/` |
 | IT, maintenance and native workflow evidence | `server/it/`, `server/maintenance/` |
 | Harper and assignment learning | `server/knowledge/lesson-selection.ts`, `server/knowledge/lesson-exposure.ts`, `server/knowledge/learning-events.ts` |
 | Conversations, notifications, time and cost | `server/conversations/`, `server/time/`, `server/telemetry/`, `server/leadership/` |

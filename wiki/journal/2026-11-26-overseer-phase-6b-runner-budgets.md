@@ -29,4 +29,12 @@ The plan review (`9dc5e84c`) accepted 21 findings. They included:
 - path checks before the Store writes;
 - acknowledgement bound to the exact charge.
 
+The implementation review (`4e99b089`) accepted 13 findings, repaired once and passed recheck. Its repairs:
+
+- only evidence for the bound, nonblank session can raise a charge, and higher matching evidence reopens a hold closed by hand;
+- the Store derives its paths from the dedicated root;
+- `status` lists open holds;
+- a timed-out call records its hold without waiting on the writer;
+- a failed late settlement returns its receipt for retry.
+
 [Issue #625](https://github.com/JFusco/the-office/issues/625) · [Overseer, Budgets](../../docs/overseer.md)

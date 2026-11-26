@@ -1063,6 +1063,9 @@ attempt. Every call also counts against the day: 24 model calls and 4 newly open
 Eastern day. A round opened at 23:59 keeps that day when it continues after midnight. Six
 deployments a day are admitted the same way, for phase 10.
 
+The diff cap allows up to 15 files and 600 changed lines, and future repairs that exceed either
+limit go to `needs-joe`.
+
 Timeouts are required: whole milliseconds, with `1 000 <= quiet <= total <= 7 200 000`. A call
 without them is refused. `runBudgeted` returns control to its caller at the first of the two
 deadlines, even when the call ignores its abort signal. Output resets only the quiet one.

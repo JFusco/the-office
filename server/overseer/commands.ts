@@ -46,13 +46,16 @@ export function runnerStatus(paths: RunnerPaths, now: Date = new Date()) {
 /** `reconcile-budget RESERVATION --expected-micro-usd N --reason TEXT [--finalize]`, or null when malformed. */
 function reconcileArgs(rest: string[]) {
     const [id, ...flags] = rest, out: { id: string; expectedMicroUsd?: number; reason?: string; finalize: boolean } = { id, finalize: false };
-    if (!id || !/^[0-9a-f-]{36}$/.test(id)) return null;
+    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) return null;
     for (let index = 0; index < flags.length; index++) {
         const flag = flags[index];
         if (flag === '--finalize' && !out.finalize) out.finalize = true;
         else if (flag === '--expected-micro-usd' && out.expectedMicroUsd === undefined && /^\d{1,15}$/.test(flags[index + 1] ?? '')) out.expectedMicroUsd = Number(flags[++index]);
-        else if (flag === '--reason' && out.reason === undefined && flags[index + 1]?.trim()) out.reason = flags[++index].trim().slice(0, 2000);
-        else return null;
+        else if (flag === '--reason' && out.reason === undefined) {
+            const reason = flags[++index]?.trim();
+            if (!reason || ['--finalize', '--expected-micro-usd', '--reason'].includes(reason)) return null;
+            out.reason = reason.slice(0, 2000);
+        } else return null;
     }
     return out.expectedMicroUsd === undefined || out.reason === undefined ? null : out as Required<typeof out>;
 }

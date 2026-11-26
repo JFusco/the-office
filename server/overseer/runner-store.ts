@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type { OfficeProject } from '../../src/shared';
-import type { RunnerPaths } from './config';
+import { runnerPaths, type RunnerPaths } from './config';
 import { assertDirectoryOrAbsent, checkDatabaseFiles, checkOwnedFile, defaultRunnerRoot, ensurePrivateDirectory, physicalPath } from './runner-root';
 
 /**
@@ -29,12 +29,13 @@ export type RunnerStore = Awaited<ReturnType<typeof openRunnerStore>>;
  * Then it loads Office configuration and checks the data root it captured, in case it was loaded
  * earlier for another root. Finally it checks the database files and constructs the Store.
  */
-export async function openRunnerStore(paths: RunnerPaths, options: { trustedRoot?: string; env?: NodeJS.ProcessEnv } = {}) {
-    const { trustedRoot = defaultRunnerRoot(), env = process.env } = options;
+export async function openRunnerStore(selected: RunnerPaths, { trustedRoot = defaultRunnerRoot() }: { trustedRoot?: string } = {}) {
     const anchor = resolve(trustedRoot);
     if (physicalPath(anchor) !== anchor) throw new Error(`The dedicated runner directory ${anchor} is reached through a link; refusing it`);
-    if (paths.root !== anchor) throw new Error(`The runner Store opens only in the dedicated runner directory ${anchor}, not ${paths.root}`);
-    if (env.OFFICE_DATA_ROOT !== paths.officeData) throw new Error(`OFFICE_DATA_ROOT must be ${paths.officeData} before the runner Store loads`);
+    if (selected.root !== anchor) throw new Error(`The runner Store opens only in the dedicated runner directory ${anchor}, not ${selected.root}`);
+    const paths = runnerPaths(anchor);
+    if (process.env.OFFICE_DATA_ROOT !== paths.officeData) throw new Error(`OFFICE_DATA_ROOT must be ${paths.officeData} before the runner Store loads`);
+    assertDirectoryOrAbsent(paths.state);
     assertDirectoryOrAbsent(paths.officeData);
     checkOwnedFile(resolve(paths.officeData, 'office-config.json'));
     const { DATA } = await import('../office/config');

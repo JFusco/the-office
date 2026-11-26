@@ -3,12 +3,14 @@ import { linkSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'n
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { promisify } from 'node:util';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { parseCodexRollout } from '../../../server/telemetry/codex-rollout';
 import { claudeCost, codexCost } from '../../../server/telemetry/run-cost';
 import { admit, admitDeployment, bindEvidence, knownAmount, LedgerError, readStanding, reconcile, settle, type ReservationRow } from '../../../server/overseer/budget-ledger';
 import { budgetRequest, type Stage } from '../../../server/overseer/budget-policy';
+import { runBudgeted } from '../../../server/overseer/budgeted-run';
 import type { RunnerPaths } from '../../../server/overseer/config';
+import * as rootChecks from '../../../server/overseer/runner-root';
 import { incidentId, runnerRoot, snapshot, tempDir } from './runner-world';
 
 const run = promisify(execFile);
@@ -150,7 +152,7 @@ test('admission holds the write lock from BEGIN on: another writer is refused be
     expect(probed).toBe(true);
 });
 
-test('a lock held past the busy timeout and a failed commit grant nothing', () => {
+test('a writer lock held past the busy timeout grants nothing', () => {
     const paths = runnerRoot();
     admitDeployment(paths, 'create-the-ledger', clock(at()));
     const holder = new DatabaseSync(paths.budgetDb);
@@ -159,7 +161,26 @@ test('a lock held past the busy timeout and a failed commit grant nothing', () =
         expect(() => admit(paths, ask('triage'), { now: () => at(), busyTimeoutMs: 200 })).toThrow(LedgerError);
         try { admit(paths, ask('triage'), { now: () => at(), busyTimeoutMs: 200 }); } catch (error) { expect((error as LedgerError).code).toBe('ledger-busy'); }
     } finally { holder.exec('ROLLBACK'); holder.close(); }
-    expect(() => admit(paths, ask('triage'), { now: () => at(), hooks: { beforeCommit: () => { throw new Error('disk full'); } } })).toThrow('rolled back');
+    expect(rows(paths)).toEqual([]);
+});
+
+test('a failed SQLite COMMIT rolls back admission before any invocation', async () => {
+    const paths = runnerRoot();
+    admitDeployment(paths, 'create-the-ledger', clock(at()));
+    const reader = new DatabaseSync(paths.budgetDb, { readOnly: true });
+    const invoke = vi.fn(async () => null);
+    try {
+        const result = await runBudgeted(paths, ask('triage'), invoke, {
+            ...clock(at()), busyTimeoutMs: 0,
+            hooks: { beforeCommit: () => {
+                // A shared read lock in DELETE mode allows the insert but prevents COMMIT.
+                reader.exec('BEGIN');
+                expect(reader.prepare('SELECT COUNT(*) AS n FROM reservations').get()).toEqual({ n: 0 });
+            } },
+        });
+        expect(result).toEqual({ status: 'ledger-error', code: 'ledger-busy', message: expect.stringMatching(/rolled back:.*locked/i) });
+        expect(invoke).not.toHaveBeenCalled();
+    } finally { reader.close(); }
     expect(rows(paths)).toEqual([]);
 });
 
@@ -294,6 +315,11 @@ test('an unacknowledged overrun leaves nothing available whatever the ceiling; a
     expect(standing(paths, at(1))).toMatchObject({ available: 0, unresolved: 25_000_000 });
     reconcile(paths, fix.id, { expectedMicroUsd: 25_000_000, reason: 'seen' }, clock(at(2)));
     expect(standing(paths, at(2))).toMatchObject({ available: 1_000_000_000 - 25_000_000, unresolved: 25_000_000, overruns: [] });
+    const otherSession = claude({ session_id: 'x', total_cost_usd: 30, modelUsage: { m: { costUSD: 30, costBasis: 'list' } } });
+    expect(settle(paths, fix.id, { evidenceId: 'x', cost: otherSession }, clock(at(3))).row).toMatchObject({
+        status: 'overrun', final: 0, charged: 25_000_000, ack_micro_usd: 25_000_000,
+    });
+    expect(admit(paths, ask('triage'), clock(at(4)))).toMatchObject({ admitted: true });
 });
 
 test('a reservation finalized by a person stays finalized with its reason, and an outstanding one cannot be', () => {
@@ -305,6 +331,45 @@ test('a reservation finalized by a person stays finalized with its reason, and a
     expect(rows(paths)[0]).toMatchObject({ final: 1, charged: 22_500_000, finalized_reason: 'process gone (ps), charge left at the reservation', finalized_at: at(2).toISOString() });
     expect(standing(paths, at(24 * 60))).toMatchObject({ unresolved: 4_500_000 });
     expect(reconcile(paths, '00000000-0000-4000-8000-000000000000', { expectedMicroUsd: 0, reason: 'x' }, clock(at(3)))).toMatchObject({ reconciled: false, code: 'unknown-reservation' });
+});
+
+test('a higher matching partial receipt reopens a manually finalized hold and blocks admission', () => {
+    const paths = runnerRoot(), fix = admitted(paths, 'fix');
+    bindEvidence(paths, fix.id, 's', clock(at()));
+    settle(paths, fix.id, { evidenceId: 's', cost: null }, clock(at(1)));
+    expect(reconcile(paths, fix.id, { expectedMicroUsd: 22_500_000, reason: 'invocation ended, kept the reservation', finalize: true }, clock(at(2)))).toMatchObject({ reconciled: true, row: { final: 1 } });
+    const partial = claude({ total_cost_usd: 30, modelUsage: { known: { costUSD: 25, costBasis: 'list' }, unknown: { costUSD: 5, costBasis: 'unknown' } } });
+    expect(partial.completeness).toBe('partial');
+    expect(settle(paths, fix.id, { evidenceId: 'x', cost: partial }, clock(at(3)))).toMatchObject({ result: 'stale', row: { charged: 22_500_000, final: 1 } });
+    expect(settle(paths, fix.id, { evidenceId: 's', cost: partial }, clock(at(4))).result).toBe('overrun');
+    expect(rows(paths)[0]).toMatchObject({ charged: 30_000_000, status: 'overrun', final: 0 });
+    expect(admit(paths, ask('triage'), clock(at(5)))).toEqual({ admitted: false, code: 'overrun-unreconciled' });
+    expect(standing(paths, at(5))).toMatchObject({ finalized: 0, unresolved: 30_000_000, available: 0 });
+});
+
+test('a reopened hold still applies the reservation floor', () => {
+    const paths = runnerRoot(), fix = admitted(paths, 'fix');
+    bindEvidence(paths, fix.id, 's', clock(at()));
+    const complete = claude({ total_cost_usd: 1, modelUsage: { m: { costUSD: 1, costBasis: 'list' } } });
+    expect(settle(paths, fix.id, { evidenceId: 's', cost: complete }, clock(at(1))).row).toMatchObject({ final: 1, charged: 1_000_000 });
+    const partial = claude({ total_cost_usd: 2 });
+    expect(settle(paths, fix.id, { evidenceId: 's', cost: partial }, clock(at(2))).row).toMatchObject({ final: 0, charged: 22_500_000, status: 'retained' });
+});
+
+test('manual finalization replays at its reviewed charge while a higher complete receipt requires acknowledgement', () => {
+    const paths = runnerRoot(), fix = admitted(paths, 'fix');
+    bindEvidence(paths, fix.id, 's', clock(at()));
+    settle(paths, fix.id, { evidenceId: 's', cost: null }, clock(at(1)));
+    const finalize = { expectedMicroUsd: 22_500_000, reason: 'invocation ended, kept the reservation', finalize: true };
+    expect(reconcile(paths, fix.id, finalize, clock(at(2)))).toMatchObject({ reconciled: true, replay: false });
+    expect(reconcile(paths, fix.id, finalize, clock(at(3)))).toMatchObject({ reconciled: true, replay: true, row: { finalized_at: at(2).toISOString() } });
+    const complete = claude({ total_cost_usd: 30, modelUsage: { m: { costUSD: 30, costBasis: 'list' } } });
+    expect(settle(paths, fix.id, { evidenceId: 's', cost: complete }, clock(at(4))).row).toMatchObject({ charged: 30_000_000, final: 1, status: 'overrun' });
+    const reviewed = { expectedMicroUsd: 30_000_000, reason: 'reviewed the matching complete receipt' };
+    expect(reconcile(paths, fix.id, { ...reviewed, finalize: true }, clock(at(5)))).toMatchObject({ reconciled: false, code: 'already-final' });
+    expect(admit(paths, ask('triage'), clock(at(6)))).toEqual({ admitted: false, code: 'overrun-unreconciled' });
+    expect(reconcile(paths, fix.id, reviewed, clock(at(7)))).toMatchObject({ reconciled: true, replay: false, row: { ack_micro_usd: 30_000_000 } });
+    expect(admit(paths, ask('triage'), clock(at(8)))).toMatchObject({ admitted: true });
 });
 
 test('the ledger, its sidecars and the ceiling file must be regular single-link files; an unreadable ceiling refuses admission', () => {
@@ -361,6 +426,26 @@ test('a ledger reached through a linked state folder, or a sidecar without its d
     expect(readStanding(linkedLedger, at())).toEqual({ unreadable: expect.stringContaining('single link') });
 });
 
+test('both ledger openers close the connection if the database is missing at the post-open check', () => {
+    const paths = runnerRoot();
+    admitDeployment(paths, 'create-the-ledger', clock(at()));
+    const check = vi.spyOn(rootChecks, 'checkDatabaseFiles');
+    const close = vi.spyOn(DatabaseSync.prototype, 'close');
+    const disappears = () => check.mockReturnValueOnce({ exists: true, sidecars: [] }).mockReturnValueOnce({ exists: false, sidecars: [] });
+    try {
+        disappears();
+        expect(readStanding(paths, at())).toEqual({ unreadable: expect.stringContaining('missing after opening') });
+        expect(close).toHaveBeenCalledTimes(1);
+        disappears();
+        expect(() => admit(paths, ask('triage'), clock(at()))).toThrow('missing after opening');
+        expect(close).toHaveBeenCalledTimes(2);
+    } finally {
+        check.mockRestore();
+        close.mockRestore();
+    }
+    expect(rows(paths)).toEqual([]);
+});
+
 test('a reservation binds one session: the same one again is accepted, another is refused', () => {
     const paths = runnerRoot(), fix = admitted(paths, 'fix');
     bindEvidence(paths, fix.id, 'session-a', clock(at()));
@@ -368,4 +453,18 @@ test('a reservation binds one session: the same one again is accepted, another i
     expect(() => bindEvidence(paths, fix.id, 'session-b', clock(at()))).toThrow('already bound to another session');
     expect(rows(paths)[0].evidence_id).toBe('session-a');
     expect(() => bindEvidence(paths, '00000000-0000-4000-8000-000000000000', 'session-a', clock(at()))).toThrow('No reservation');
+});
+
+test.each(['', ' \t'])('blank session identity %j cannot bind or release a hold', blank => {
+    const paths = runnerRoot(), fix = admitted(paths, 'fix');
+    expect(() => bindEvidence(paths, fix.id, blank, clock(at()))).toThrow('must be nonblank');
+    expect(rows(paths)[0].evidence_id).toBeNull();
+    // Earlier versions could persist a blank binding.
+    const db = new DatabaseSync(paths.budgetDb);
+    try { db.prepare('UPDATE reservations SET evidence_id=? WHERE id=?').run(blank, fix.id); } finally { db.close(); }
+    const zero = claude({ total_cost_usd: 0, modelUsage: { m: { costUSD: 0, costBasis: 'list' } } });
+    expect(zero).toMatchObject({ completeness: 'complete', microUsd: 0 });
+    expect(settle(paths, fix.id, { evidenceId: blank, cost: zero }, clock(at(1))).row).toMatchObject({ status: 'retained', charged: 22_500_000, final: 0 });
+    bindEvidence(paths, fix.id, 's', clock(at(2)));
+    expect(rows(paths)[0].evidence_id).toBe('s');
 });

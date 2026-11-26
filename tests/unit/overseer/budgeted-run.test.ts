@@ -2,9 +2,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { claudeCost } from '../../../server/telemetry/run-cost';
-import type { ReservationRow } from '../../../server/overseer/budget-ledger';
+import { readStanding, settle, type ReservationRow } from '../../../server/overseer/budget-ledger';
 import { budgetRequest } from '../../../server/overseer/budget-policy';
-import { runBudgeted, type BudgetedInvocation, type BudgetedOutcome } from '../../../server/overseer/budgeted-run';
+import { runBudgeted, type BudgetedInvocation, type BudgetedOutcome, type InvocationResult } from '../../../server/overseer/budgeted-run';
 import type { RunnerPaths } from '../../../server/overseer/config';
 import { incidentId, runnerRoot } from './runner-world';
 
@@ -28,6 +28,17 @@ test('a refused admission never calls the invocation', async () => {
     writeFileSync(paths.budgetConfig, JSON.stringify({ version: 1, dailyCeilingMicroUsd: 1 }));
     const invoke = vi.fn();
     expect(await runBudgeted(paths, triage, invoke, { now })).toEqual({ status: 'refused', code: 'ceiling' });
+    expect(invoke).not.toHaveBeenCalled();
+});
+
+test('a damaged ledger returns an admission error before invoking', async () => {
+    const paths = runnerRoot();
+    mkdirSync(paths.state, { recursive: true });
+    writeFileSync(paths.budgetDb, 'damaged ledger');
+    const invoke = vi.fn();
+    expect(await runBudgeted(paths, triage, invoke, { now })).toEqual({
+        status: 'ledger-error', code: 'ledger-failed', message: expect.stringMatching(/not a database/i),
+    });
     expect(invoke).not.toHaveBeenCalled();
 });
 
@@ -58,6 +69,25 @@ test('a silent invocation that ignores its signal returns to the caller at the i
     expect(row(paths)).toMatchObject({ status: 'retained', final: 0, charged: 3_000_000 });
 });
 
+test('an inactivity timeout reports a contended retention write without waiting for the writer', async () => {
+    const paths = runnerRoot();
+    const outcome = runBudgeted(paths, triage, () => new Promise(() => {}), { now });
+    const holder = new DatabaseSync(paths.budgetDb);
+    try {
+        holder.exec('BEGIN IMMEDIATE');
+        await vi.advanceTimersByTimeAsync(triage.inactivityTimeoutMs - 1);
+        expect(await settledBy(outcome)).toBe(PENDING);
+        const started = performance.now();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await settledBy(outcome)).toMatchObject({
+            status: 'timed-out', reason: 'inactivity', retained: { ok: false, error: { code: 'ledger-busy' } },
+        });
+        expect(performance.now() - started).toBeLessThan(2_500);
+    } finally { holder.close(); }
+    expect(row(paths)).toMatchObject({ status: 'outstanding', final: 0, reserved: 3_000_000, charged: null });
+    expect(readStanding(paths, now())).toMatchObject({ standing: { unresolved: 3_000_000, available: 97_000_000 } });
+}, 10_000);
+
 test('regular output keeps an invocation going until its total deadline, which does not move', async () => {
     const paths = runnerRoot();
     const outcome = runBudgeted(paths, triage, run => {
@@ -82,6 +112,35 @@ test('a receipt that arrives after the timeout settles the original reservation,
     finish!({ evidenceId: 'session-1', cost: usd(4) });
     expect(await (result as Extract<BudgetedOutcome, { status: 'timed-out' }>).late).toMatchObject({ ok: true, settlement: { result: 'overrun' } });
     expect(row(paths)).toMatchObject({ status: 'overrun', final: 1, charged: 4_000_000 });
+});
+
+test('a failed late settlement exposes the receipt for retry against the original reservation', async () => {
+    const paths = runnerRoot();
+    let finish!: (evidence: InvocationResult) => void;
+    const invoke = vi.fn((run: BudgetedInvocation) => {
+        run.bindSession('s');
+        return new Promise<InvocationResult>(resolve => { finish = resolve; });
+    });
+    const outcome = runBudgeted(paths, triage, invoke, { now, busyTimeoutMs: 0 });
+    await vi.advanceTimersByTimeAsync(triage.inactivityTimeoutMs);
+    const result = await settledBy(outcome) as Extract<BudgetedOutcome, { status: 'timed-out' }>;
+    expect(result).toMatchObject({ status: 'timed-out', retained: { ok: true } });
+
+    const holder = new DatabaseSync(paths.budgetDb);
+    const receipt = { evidenceId: 's', cost: usd(4) };
+    let failure: Awaited<typeof result.late>;
+    try {
+        holder.exec('BEGIN IMMEDIATE');
+        finish(receipt);
+        failure = await result.late;
+    } finally { holder.close(); }
+
+    expect(failure).toMatchObject({ ok: false, error: { code: 'ledger-busy' }, evidence: receipt });
+    expect(row(paths)).toMatchObject({ id: result.reservation.id, status: 'retained', final: 0, charged: 3_000_000 });
+    if (failure.ok || !failure.evidence) throw new Error('Missing failed settlement evidence');
+    expect(settle(paths, result.reservation.id, failure.evidence, { now }).result).toBe('overrun');
+    expect(row(paths)).toMatchObject({ id: result.reservation.id, status: 'overrun', final: 1, charged: 4_000_000 });
+    expect(invoke).toHaveBeenCalledTimes(1);
 });
 
 test('a rejection that arrives after the timeout keeps the hold as it was', async () => {

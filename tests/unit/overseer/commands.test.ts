@@ -16,9 +16,9 @@ import { incidentId, snapshot, tempDir } from './runner-world';
 const run = promisify(execFile);
 const cli = resolve(__dirname, '../../../server/cli.ts'), recorder = resolve(__dirname, 'record-loads.mjs');
 
-async function command(args: string[], env: NodeJS.ProcessEnv) {
+async function command(args: string[], env: NodeJS.ProcessEnv, now = () => new Date('2026-11-25T12:00:00.000Z')) {
     const lines: string[] = [];
-    const code = await overseerCommand(args, { env, log: line => lines.push(line), now: () => new Date('2026-11-25T12:00:00.000Z') });
+    const code = await overseerCommand(args, { env, log: line => lines.push(line), now });
     return { code, output: lines.join('\n') };
 }
 
@@ -94,18 +94,33 @@ const statusOf = async (env: NodeJS.ProcessEnv) => {
     return JSON.parse(output);
 };
 
-test("status shows the billing mode and today's budget standing, reading the ledger without changing anything", async () => {
+test("status shows billing and budget standing and projects abandonment at the deadline without writing", async () => {
     const root = join(tempDir(), 'runner'), env = { OVERSEER_ROOT: root }, paths = runnerPaths(root);
     expect(await statusOf(env)).toMatchObject({
         billing: { mode: 'subscription-logins', dedicatedApiKeys: false, accountBackstop: { status: 'not-configured' } },
-        budget: { day: '2026-11-25', ceiling: 100_000_000, finalized: 0, unresolved: 0, available: 100_000_000, runs: { used: 0, limit: 24 }, overruns: [] },
+        budget: { day: '2026-11-25', ceiling: 100_000_000, finalized: 0, unresolved: 0, available: 100_000_000, runs: { used: 0, limit: 24 }, holds: [], overruns: [] },
     });
     const fix = admit(paths, budgetRequest(incidentId(1), 'fix', 1), { now });
     if (!fix.admitted) throw new Error(fix.code);
     admitDeployment(paths, 'deploy-1', { now });
     const before = snapshot(root);
-    expect((await statusOf(env)).budget).toMatchObject({ unresolved: 22_500_000, available: 77_500_000, runs: { used: 1 }, fixRounds: { used: 1 }, deployments: { used: 1 } });
+    const { id, deadline } = fix.reservation;
+    const beforeDeadline = await command(['status'], env, () => new Date(Date.parse(deadline) - 1));
+    expect(beforeDeadline.code).toBe(0);
+    expect(JSON.parse(beforeDeadline.output).budget).toMatchObject({
+        unresolved: 22_500_000, available: 77_500_000, runs: { used: 1 }, fixRounds: { used: 1 }, deployments: { used: 1 },
+        holds: [{ id, status: 'outstanding', held: 22_500_000 }],
+    });
+    const atDeadline = await command(['status'], env, () => new Date(deadline));
+    expect(atDeadline.code).toBe(0);
+    expect(JSON.parse(atDeadline.output).budget).toMatchObject({
+        unresolved: 22_500_000, available: 77_500_000, holds: [{ id, status: 'abandoned', held: 22_500_000 }],
+    });
     expect(snapshot(root)).toEqual(before);
+    const db = new DatabaseSync(paths.budgetDb, { readOnly: true });
+    try {
+        expect(db.prepare('SELECT status, charged FROM reservations WHERE id=?').get(id)).toEqual({ status: 'outstanding', charged: null });
+    } finally { db.close(); }
     mkdirSync(paths.control, { recursive: true });
     writeFileSync(paths.budgetConfig, '{"version":1,"dailyCeilingMicroUsd":0}');
     expect((await statusOf(env)).budget).toMatchObject({ ceiling: null, ceilingUnreadable: true, available: 0, unresolved: 22_500_000 });
@@ -148,6 +163,11 @@ test('reconcile-budget acknowledges an overrun at the amount shown, once, and re
     expect(JSON.parse((await command(['reconcile-budget', id, '--expected-micro-usd', '22500000', '--reason', 'x'], env)).output)).toMatchObject({ reconciled: false, code: 'outstanding' });
     bindEvidence(paths, id, 's', { now });
     settle(paths, id, { evidenceId: 's', cost: claudeCost({ type: 'result', subtype: 'success', is_error: false, session_id: 's', total_cost_usd: 25, modelUsage: { m: { costUSD: 25, costBasis: 'list' } } }) }, { now });
+    const malformedId = id.replace('-', '') + '-';
+    for (const [reservation, reason] of [[malformedId, 'reviewed the run'], [id, '--finalize']]) {
+        expect(await command(['reconcile-budget', reservation, '--expected-micro-usd', '25000000', '--reason', reason], env))
+            .toMatchObject({ code: 2, output: expect.stringContaining('pnpm office overseer status') });
+    }
     expect((await statusOf(env)).budget).toMatchObject({ available: 0, overruns: [{ id, reserved: 22_500_000, charged: 25_000_000, acknowledged: null }] });
     expect(await command(['reconcile-budget', id, '--expected-micro-usd', '24000000', '--reason', 'looked'], env)).toMatchObject({ code: 1, output: expect.stringContaining('stale-amount') });
     const done = await command(['reconcile-budget', id, '--expected-micro-usd', '25000000', '--reason', 'looked at the run'], env);

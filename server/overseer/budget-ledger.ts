@@ -71,7 +71,7 @@ function openWriter(paths: RunnerPaths, options: LedgerOptions): DatabaseSync {
     ensurePrivateDirectory(paths.state);
     const db = new DatabaseSync(paths.budgetDb);
     try {
-        checkDatabaseFiles(paths, paths.budgetDb);
+        if (!checkDatabaseFiles(paths, paths.budgetDb).exists) throw new Error(`${paths.budgetDb} is missing after opening`);
         db.exec(`PRAGMA busy_timeout=${options.busyTimeoutMs ?? 5000}; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;`);
         db.exec(SCHEMA);
     } catch (error) {
@@ -124,6 +124,7 @@ const get = (db: DatabaseSync, id: string) => db.prepare('SELECT * FROM reservat
 const count = (db: DatabaseSync, sql: string, ...args: (string | number)[]) => Number((db.prepare(sql).get(...args) as { n: number }).n);
 
 const UNRECONCILED = "status='overrun' AND (ack_micro_usd IS NULL OR ack_micro_usd != charged)";
+const HELD_AMOUNT = 'MAX(reserved, COALESCE(charged,0))';
 
 /** Outstanding reservations past their deadline: charged their full reservation, still held. */
 function abandonExpired(db: DatabaseSync, at: string) {
@@ -137,7 +138,7 @@ function abandonExpired(db: DatabaseSync, at: string) {
  */
 function balance(db: DatabaseSync, day: string, ceiling: number) {
     const finalized = count(db, 'SELECT COALESCE(SUM(charged),0) AS n FROM reservations WHERE final=1 AND day=?', day);
-    const unresolved = count(db, 'SELECT COALESCE(SUM(MAX(reserved, COALESCE(charged,0))),0) AS n FROM reservations WHERE final=0');
+    const unresolved = count(db, `SELECT COALESCE(SUM(${HELD_AMOUNT}),0) AS n FROM reservations WHERE final=0`);
     const overruns = db.prepare(`SELECT id, reserved, charged, ack_micro_usd FROM reservations WHERE ${UNRECONCILED} ORDER BY rowid`).all() as unknown as { id: string; reserved: number; charged: number; ack_micro_usd: number | null }[];
     return { finalized, unresolved, available: overruns.length ? 0 : Math.max(0, ceiling - finalized - unresolved), overruns };
 }
@@ -179,11 +180,12 @@ export function admit(paths: RunnerPaths, request: AdmissionRequest, options: Le
 
 /** Binds the provider session a reservation's invocation reported at launch. Once bound it cannot change. */
 export function bindEvidence(paths: RunnerPaths, id: string, evidenceId: string, options: LedgerOptions = {}): void {
+    if (!evidenceId.trim()) throw new Error('The evidence session ID must be nonblank');
     write(paths, options, db => {
         const row = get(db, id);
         if (!row) throw new UnknownReservation(`No reservation ${id}`);
         if (row.evidence_id === evidenceId) return;
-        if (row.evidence_id !== null) throw new Error(`Reservation ${id} is already bound to another session`);
+        if (row.evidence_id?.trim()) throw new Error(`Reservation ${id} is already bound to another session`);
         db.prepare('UPDATE reservations SET evidence_id=? WHERE id=?').run(evidenceId, id);
     });
 }
@@ -210,18 +212,18 @@ export type Settlement = { result: 'settled' | 'retained' | 'overrun' | 'duplica
  * Settles a reservation with what its invocation left: a terminal receipt with the session it was
  * bound to, or nothing. A matching complete receipt posts its total once (a valid zero included)
  * and releases the hold; the charge never falls below what was already posted, but the exact
- * receipt total is kept beside it. Anything else (missing, incomplete, an unbound or other
- * session) keeps the hold at the largest of the reservation, the prior charge and the known
- * amount. Evidence that is not a matching complete receipt never touches a finalized row, and a
- * repeated receipt changes nothing. A charge above the reservation is an overrun; a strictly
- * higher charge on an acknowledged overrun needs acknowledging again.
+ * receipt total is kept beside it. A hold keeps the largest of the reservation, the prior charge
+ * and the amount supported by matching evidence. Matching incomplete evidence reopens a finalized
+ * hold only when it supports a higher charge. A charge above the reservation is an overrun, and
+ * a higher overrun charge requires a new acknowledgement.
  */
 export function settle(paths: RunnerPaths, id: string, evidence: { evidenceId: string | null; cost: RunCost | null }, options: LedgerOptions = {}): Settlement {
     return write(paths, options, (db, now) => {
         abandonExpired(db, now.toISOString());
         const row = get(db, id);
         if (!row) throw new UnknownReservation(`No reservation ${id}`);
-        const { cost } = evidence, matched = row.evidence_id !== null && evidence.evidenceId === row.evidence_id;
+        const { cost } = evidence;
+        const matched = evidence.evidenceId === row.evidence_id && !!row.evidence_id?.trim();
         const complete = matched && cost?.completeness === 'complete' && Number.isSafeInteger(cost.microUsd) && cost.microUsd! >= 0;
         let charged: number, final = row.final, receiptTotal = row.receipt_total;
         if (complete) {
@@ -231,8 +233,10 @@ export function settle(paths: RunnerPaths, id: string, evidence: { evidenceId: s
             final = 1;
             receiptTotal = amount;
         } else {
-            if (row.final) return { result: 'stale', row };
-            charged = Math.max(row.charged ?? 0, row.reserved, knownAmount(cost) ?? 0);
+            const known = matched ? knownAmount(cost) : null;
+            if (row.final && (known === null || known <= row.charged!)) return { result: 'stale', row };
+            charged = Math.max(row.charged ?? 0, row.reserved, known ?? 0);
+            final = 0;
         }
         const status: ReservationStatus = charged > row.reserved ? 'overrun' : final ? 'settled' : row.status === 'abandoned' && !cost ? 'abandoned' : 'retained';
         const receipt = JSON.stringify({ matched, completeness: cost?.completeness ?? 'missing', microUsd: cost?.microUsd ?? null, partialMicroUsd: cost?.partialMicroUsd ?? null, reportedTotalUsd: cost?.reportedTotalUsd ?? null });
@@ -262,7 +266,10 @@ export function reconcile(paths: RunnerPaths, id: string, request: { expectedMic
         if (row.charged !== request.expectedMicroUsd) return refuse('stale-amount');
         if (request.finalize) {
             // Not final means retained, abandoned or a held overrun: outstanding was refused above, and settled is always final.
-            if (row.final) return row.finalized_reason !== null ? { reconciled: true, replay: true, row } : refuse('already-final');
+            if (row.final) {
+                const pendingAcknowledgement = row.status === 'overrun' && row.ack_micro_usd !== row.charged;
+                return row.finalized_reason !== null && !pendingAcknowledgement ? { reconciled: true, replay: true, row } : refuse('already-final');
+            }
             const ack = row.status === 'overrun' ? row.charged : row.ack_micro_usd;
             db.prepare('UPDATE reservations SET final=1, finalized_reason=?, finalized_at=?, ack_micro_usd=?, ack_reason=COALESCE(?, ack_reason), ack_at=COALESCE(?, ack_at) WHERE id=?')
                 .run(request.reason, at, ack, row.status === 'overrun' ? request.reason : null, row.status === 'overrun' ? at : null, id);
@@ -297,19 +304,25 @@ export interface Standing {
     runs: { used: number; limit: number };
     fixRounds: { used: number; limit: number };
     deployments: { used: number; limit: number };
+    holds: { id: string; status: ReservationStatus; held: number }[];
     overruns: { id: string; reserved: number; charged: number; acknowledged: number | null }[];
 }
 
 function standingOf(db: DatabaseSync | null, paths: RunnerPaths, now: Date): Standing {
     const day = easternDay(now), ceiling = readCeiling(paths);
-    if (!db) return { day, ceiling, ceilingUnreadable: ceiling === null, finalized: 0, unresolved: 0, available: ceiling ?? 0, runs: { used: 0, limit: DAILY_LIMITS.modelRuns }, fixRounds: { used: 0, limit: DAILY_LIMITS.fixRounds }, deployments: { used: 0, limit: DAILY_LIMITS.deployments }, overruns: [] };
-    // An expired outstanding reservation is charged in full when the next write abandons it; it already counts at that amount.
+    if (!db) return { day, ceiling, ceilingUnreadable: ceiling === null, finalized: 0, unresolved: 0, available: ceiling ?? 0, runs: { used: 0, limit: DAILY_LIMITS.modelRuns }, fixRounds: { used: 0, limit: DAILY_LIMITS.fixRounds }, deployments: { used: 0, limit: DAILY_LIMITS.deployments }, holds: [], overruns: [] };
     const money = balance(db, day, ceiling ?? 0);
+    const holds = db.prepare(`
+        SELECT id, CASE WHEN status='outstanding' AND deadline<=? THEN 'abandoned' ELSE status END AS status,
+            ${HELD_AMOUNT} AS held
+        FROM reservations WHERE final=0 ORDER BY rowid
+    `).all(now.toISOString()) as unknown as Standing['holds'];
     return {
         day, ceiling, ceilingUnreadable: ceiling === null, finalized: money.finalized, unresolved: money.unresolved, available: ceiling === null ? 0 : money.available,
         runs: { used: count(db, 'SELECT COUNT(*) AS n FROM reservations WHERE day=?', day), limit: DAILY_LIMITS.modelRuns },
         fixRounds: { used: count(db, FIX_ROUNDS_OPENED, day), limit: DAILY_LIMITS.fixRounds },
         deployments: { used: count(db, 'SELECT COUNT(*) AS n FROM deployments WHERE day=?', day), limit: DAILY_LIMITS.deployments },
+        holds,
         overruns: money.overruns.map(row => ({ id: row.id, reserved: row.reserved, charged: row.charged, acknowledged: row.ack_micro_usd })),
     };
 }
@@ -341,6 +354,7 @@ export function readStanding(paths: RunnerPaths, now: Date): { standing: Standin
     let db: DatabaseSync | undefined;
     try {
         db = new DatabaseSync(paths.budgetDb, { readOnly: true });
+        if (!checkDatabaseFiles(paths, paths.budgetDb).exists) throw new Error(`${paths.budgetDb} is missing after opening`);
         db.exec('PRAGMA busy_timeout=0; BEGIN');
         const standing = standingOf(db, paths, now);
         db.exec('COMMIT');
