@@ -378,9 +378,11 @@ A conflict that develops after the readiness review stopped (`blocked` or `inter
 (`server/delivery/repairs/refresh-stopped-conflicts.ts`).
 
 - **Trigger.** Only a cached project row for the job's exact head and the target that reports
-  `mergeable: false` costs a provider read. A live strict read must then confirm an open,
+  `mergeable: false` costs a provider read, and only when the existing refresh rules could admit
+  the job on that cached conflict. A job they refuse on local state alone (its budget, head proof,
+  merge authority or saved worktree) is never read. A live strict read must then confirm an open,
   unmerged, non-draft PR that still conflicts on the same SHA and branch, with its native issue
-  link.
+  link, and queuing still runs every check after that read.
 - **Eligible head.** The head must be one the team reviewed, or an accepted refresh head.
 - **Budget.** The three-base-update limit still applies, counting every saved base update.
 - **Exclusions.** Any of these keeps the job out, before and after the read: a park, holds,
