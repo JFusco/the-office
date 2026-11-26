@@ -8,6 +8,7 @@ import { retireExternalDeliveries } from '../recovery/retire-external-delivery';
 import { settleOwnerMergedStopped } from './owner-merged-stopped';
 import { conflictOnlyAssessment } from '../repairs/conflict-repair';
 import { refreshConflicted, refreshEligible } from '../repairs/refresh-conflicted';
+import { refreshStoppedConflicts } from '../repairs/refresh-stopped-conflicts';
 import { deliveryInputSha256, deliveryResearchContext, deliveryResearchSha256 } from '../../github/github-context';
 import { restartStoppedWriters } from '../attempts/restart-stopped-writers';
 import { resumeProviderReviews } from '../parking/resume-provider-review';
@@ -23,6 +24,7 @@ export async function observe(this: GitHubDelivery, dependencyStores?: () => Dep
     await resumeProviderReviews(this);
     await observeMetadataParks(this);
     await restartStoppedWriters(this);
+    await refreshStoppedConflicts(this);
     for (const job of this.jobs.filter(j => j.status === 'watching' || j.stage === 'merge' && ['blocked', 'interrupted'].includes(j.status))) {
         try {
             const p = await this.verifyPR(job);

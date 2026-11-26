@@ -371,7 +371,30 @@ branch) without Sam assessing the conflict first; a conflict on an unreviewed he
 to Sam. An earlier repair that has finished (no finding still pending) does not change this:
 a later conflict on the same pull request is refreshed the same way. A conflict repair, by
 either route, leaves a hands-off job on harness delivery: the harness publishes the repaired
-head, Sam reviews it and the guarded merge follows. Only the records of a real legacy
+head, Sam reviews it and the guarded merge follows.
+
+A conflict that develops after the readiness review stopped (`blocked` or `interrupted` at
+`lead-pr`, for a reason other than the conflict) is refreshed the same way
+(`server/delivery/repairs/refresh-stopped-conflicts.ts`).
+
+- **Trigger.** Only a cached project row for the job's exact head and the target that reports
+  `mergeable: false` costs a provider read. A live strict read must then confirm an open,
+  unmerged, non-draft PR that still conflicts on the same SHA and branch, with its native issue
+  link.
+- **Eligible head.** The head must be one the team reviewed, or an accepted refresh head.
+- **Budget.** The three-base-update limit still applies, counting every saved base update.
+- **Exclusions.** Any of these keeps the job out, before and after the read: a park, holds,
+  pause or drain, prerequisites, a metadata repair bound to the head, an unfinished CI repair,
+  a stopped-base record, a stop that needs its own reconciliation (`uncertain-effect`,
+  `authority` or `source-closed`), a repair wait, an active claim, worker or recovery request,
+  an unverified board move, an uncertain or unverified receipt (including a `lead-pr` read
+  receipt), or any unsettled write.
+- **Recheck after the read.** The job must still be the same, unchanged record.
+
+The refresh clears the stale stop and supersedes the stopped review, whose verdict stays in the
+saved steps. Preparation and a fresh readiness review on the repaired head then decide again on
+whatever stopped it. A parked job's conflict is refreshed when the park resumes, through the
+fresh review start. Only the records of a real legacy
 recovery keep a job on the older model-performed contracts, including the conflict step an
 initial draft conflict recovery wrote for the worker it adopted. The review is told who merges on the project: the Office's project policy and its
 merge switch decide that, not a repository document, so a line in a repository's `AGENTS.md` about
