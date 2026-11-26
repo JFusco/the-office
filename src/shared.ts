@@ -279,6 +279,8 @@ export interface TicketJob {
      * and discards the marker once one changes (`server/conversations/no-merge-notice.ts`); absent on older jobs.
      */
     noMergeNotice?: { repository: string; issue: number; pr: number; mergeCommit: string; mergedAt: string; policy: string; at: string };
+    /** A numbered wiki PR's superseded close in progress or done; absent on every other job. */
+    supersededWikiClose?: SupersededWikiClose;
     /** The head for which a maintenance-verified draft was last sent back to the prepare stage to be marked ready; once per head. */
     draftPromotionHead?: string;
     /** Set once when a stop on the harness's own parked pull request card was queued again (`server/delivery/recovery/parked-card-refusal.ts`). */
@@ -363,7 +365,48 @@ export interface TimeEntry {
     unsentCheckedAt?: string;
 }
 /** An automated PR the harness bridged (or refused to bridge) into existing-PR delivery. */
-export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string }
+export interface DependabotAdoption { bot?: 'pin-courier' | 'wiki-sync'; id: string; pr: number; url: string; title: string; issue: number; status: 'adopting' | 'adopted' | 'refused' | 'blocked' | 'withdrawn'; detail: string; at: string; relinkError?: string; redos?: BotRedo[] }
+/** The bot-owned way one conflicted head is recovered: a wiki workflow run, a Dependabot command or Renovate's own rebase control. */
+export type BotRedoRoute = 'wiki-sync.yml' | 'wiki-issue-sync.yml' | 'dependabot-rebase' | 'renovate-checkbox' | 'renovate-requested' | 'renovate-unavailable';
+/**
+ * One conflicted head of an adopted bot PR and the bot's own redo for it (`server/delivery/repairs/bot-redo/`). Kept on
+ * the adoption so it outlives a delivery job. Each head gets one request; its Effect (`effectId`) owns the provider receipt.
+ */
+export interface BotRedo {
+    sha: string; pr: number; issue: number; bot: 'dependabot' | 'pin-courier' | 'wiki-sync'; branch: string;
+    /** The strictly verified native issue link when the conflict was first observed. */
+    issueUrl: string;
+    /** Store time of the first observation; Pin Courier's reporting clock. */
+    firstSeenAt: string;
+    route?: BotRedoRoute;
+    effectId?: string;
+    /** The request's first failure, kept when a later read-back verifies it. */
+    failure?: string;
+    /** The verified wiki workflow run and what was last read of it. */
+    run?: { id: number; url: string; status?: string; conclusion?: string; completedAt?: string };
+    /** A successful wiki run that left this head unchanged: a numbered PR's containment check or a maintenance PR's weekly wait. */
+    sameHead?: { kind: 'numbered' | 'maintenance'; at: string; proof?: string };
+    /** The PR closed without merge while this redo was open; the closer is named only on a matching provider event. */
+    closed?: { at: string; closedAt: string; head: string; closer: string; attributed: boolean };
+    /** A qualified, linked replacement head; binds the exact request Effect it settles. */
+    settled?: { effectId: string; project: string; repository: string; pr: number; adoption: string; bot: string; sha: string; replacement: string; at: string; evidence: string; cause: 'attributed' | 'unknown' };
+    /** The last stop reported for this head; an event is emitted only when it changes. */
+    stop?: string;
+}
+/** Main's tree at `target` already holds every substantive change a numbered wiki PR makes at `head` (`server/delivery/closeout/wiki-containment.ts`). */
+export interface WikiContainmentProof { head: string; target: string; generator: string; paths: { path: string; status: string; previous?: string; result: 'same' | 'absent' | 'exempt' }[] }
+/** A numbered wiki PR closed as superseded by its proven-contained target (`server/delivery/closeout/superseded-wiki-pr.ts`); saved before the first close write. */
+export interface SupersededWikiClose {
+    job: string; adoption: string; repository: string; pr: number; parent: number; issue: number; branch: string;
+    head: string; target: string; run: { id: number; url: string }; redoEffect: string; proof: WikiContainmentProof;
+    comments: { pr: string; issue: string }; operation: string; at: string;
+    /** Later target tips the proof was repeated against. */
+    revalidated?: { target: string; at: string }[];
+    /** The tracking issue's own reason when it was already closed before the Office's close. */
+    issueReason?: string;
+    /** An outcome after the PR close that could not be corroborated; no further write follows it. */
+    partial?: string;
+}
 /** A Dependabot alert the harness turned into an issue because no pull request came for it. */
 export interface DependabotAlertIssue { id: string; alert: number; package: string; issue: number; status: 'tracking' | 'tracked' | 'resolved' | 'blocked'; detail: string; at: string }
 export interface Coordination {

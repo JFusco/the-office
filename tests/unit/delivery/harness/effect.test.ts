@@ -66,3 +66,12 @@ test('an effect that does not declare itself absolute is never sent again, howev
     await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('will not be resent');
     expect([writes, f.store.getEffect(id)?.status]).toEqual([1, 'uncertain']);
 });
+test('the guard is given the exact Effect id it guards, at admission and at the end of preflight', async () => {
+    const f = fakeGitHub(), job = f.candidate(), seen: (string | undefined)[] = [];
+    // The first attempt is refused in its preflight, so the second uses a fresh id.
+    const effect = { key: 'k', operation: 'op', target: 't', payload: {}, guard: (id?: string) => { seen.push(id); if (seen.length === 2) throw new Error('held'); }, dispatch: async () => ({ ok: true }), readBack: async () => ({ ok: true }) };
+    await expect(harnessEffect(f.store, job, effect)).rejects.toThrow('held');
+    await harnessEffect(f.store, job, effect);
+    const base = `harness:${job.id}:k`;
+    expect(seen).toEqual([base, base, `${base}:retry-1`, `${base}:retry-1`]);
+});

@@ -9,9 +9,12 @@ export interface HarnessEffect<R> {
     operation: string;
     target: string;
     payload: Record<string, unknown>;
-    guard: () => void | Promise<void>;
-    /** Performs the single write, then returns the canonical read-back. */
+    /** Runs before admission and again at the end of preflight; receives the exact Effect id it guards. */
+    guard: (activeEffectId?: string) => void | Promise<void>;
+    /** Performs the single write and returns its receipt or, by default, the canonical read-back. */
     dispatch: () => Promise<R>;
+    /** When supplied, verifies the provider receipt after Effects has persisted it. */
+    verify?: (receipt: R) => Promise<boolean>;
     /** Read-only: the canonical receipt when the write is observable, otherwise null. */
     readBack: () => Promise<R | null>;
     /**
@@ -52,13 +55,13 @@ export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>,
             throw new Error(`${effect.operation} for ${effect.target} is unverified after read-back; it will not be resent`);
         id = activeEffectId(store, base);
     }
-    await effect.guard();
+    await effect.guard(id);
     return effects.execute<Record<string, unknown>, R>({
         id, work: { projectId: store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id,
         operation: effect.operation, target: effect.target, authorization: 'office-harness',
         payload: effect.payload, expectedState: { key: effect.key },
-        preflight: async () => { await effect.guard(); },
+        preflight: async () => { await effect.guard(id); },
         dispatch: () => effect.dispatch(),
-        verify: async receipt => receipt !== null && receipt !== undefined,
+        verify: effect.verify ?? (async receipt => receipt !== null && receipt !== undefined),
     });
 }

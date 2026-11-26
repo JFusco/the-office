@@ -12,7 +12,7 @@ export interface TrackingIssue { number: number; nodeId: string; url: string }
 export const trackingMarker = (pr: number, bot = 'dependabot') => `<!-- office-${bot}-pr:${pr} -->`;
 
 /** The Office's own tracking issue: created through Joe's token, assigned to him, carrying the marker. */
-function ownTracking(i: any, pr: number, bot = 'dependabot'): boolean {
+export function ownTracking(i: any, pr: number, bot = 'dependabot'): boolean {
     return !i.pull_request && i.user?.login === 'JFusco' && i.assignees?.some((a: any) => a.login === 'JFusco') && String(i.body || '').includes(trackingMarker(pr, bot));
 }
 
