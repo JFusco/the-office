@@ -19,7 +19,7 @@
   not `utils.ts` or `helpers.ts`. Never create layer folders such as `utils/`,
   `services/`, `helpers/` or `types/`.
 
-Server domains (entry points `server/index.ts`, `server/dev.ts`, `server/cli.ts` stay at the root):
+Server domains (entry points `server/index.ts`, `server/dev.ts`, `server/cli.ts`, `server/overseer.ts` stay at the root):
 
 ```text
 server/
@@ -82,6 +82,10 @@ server/
                    release floor a deploy does not go below, deploy lock and journal, fence
                    hold, idle wait, stop, store backup and snapshot, plist install, start,
                    verification, active-release record, rollback, STOP
+  overseer/        the Overseer repair runner, outside the Office service (`area:repair`): one
+                   observe-only pass, its root and private folders, pass lock, STOP and pause,
+                   read-only Office client, outage journal, selection of the incident in flight,
+                   and the `pnpm office overseer` controls
 tests/unit/        mirrors server/ (plus ui/ for src/ logic)
 ```
 
@@ -106,6 +110,14 @@ src/
   runtime, claims and Effects; role-specific payloads do not create another
   orchestrator. Ship changed contracts, compatible historical readers and their
   behavioral checks together.
+- The Overseer (`server/overseer.ts`, `server/overseer/`) is the one authorized
+  exception to that rule: an independently supervised repair orchestrator with
+  constrained model invocation, because it must operate when the Office service is
+  broken. Today it only observes and invokes no model. It takes no Office scheduler
+  claims, changes live Office state only through validated Office routes, and routes
+  external mutations through the existing Effects. The exception gives ordinary
+  Office employees and configured project delivery no other dispatch path; they keep
+  the shared runtime and claims.
 
 - Models decide: research, implementation, review verdicts, repair content.
 - The deterministic harness acts: worktrees, pushes, PR creation and promotion, board
