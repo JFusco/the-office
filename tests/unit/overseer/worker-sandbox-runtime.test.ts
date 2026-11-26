@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { accessSync, chmodSync, mkdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { SANDBOX_RUNTIME, trustedSandbox } from '../../../server/overseer/worker-sandbox-runtime';
@@ -118,13 +118,23 @@ test('only macOS is supported, and this tree has no runtime installed today', ()
         : { status: 'unsupported', platform: process.platform });
 });
 
-test('a writable path that is not normalized and absolute, or a package that cannot be looked at, is unavailable', () => {
+test('a writable path that is not normalized and absolute is unavailable', () => {
     const { installation } = fakeInstallation(tempDir());
     for (const writable of ['relative/path', '/a/../b'])
         expect(resolveIn(installation, { writable: [writable] }), writable).toMatchObject({ status: 'unavailable', reason: 'Each writable path must be a normalized absolute path' });
-    // A scope folder that cannot be searched is not the same as no package.
-    const locked = fakeInstallation(tempDir()), scope = join(locked.modules, '@anthropic-ai');
+});
+
+test('a package scope that cannot be searched is reported as such, not as no package', context => {
+    const locked = fakeInstallation(tempDir()), scope = join(locked.modules, '@anthropic-ai'), mode = statSync(scope).mode & 0o7777;
     chmodSync(scope, 0o000);
-    try { expect(resolveIn(locked.installation)).toMatchObject({ status: 'unavailable', reason: expect.not.stringContaining('is not installed') }); }
-    finally { chmodSync(scope, 0o755); }
+    try {
+        // A process that may bypass directory search checks still reaches the manifest; the case needs a real denial.
+        let reachable = true;
+        try { accessSync(join(scope, 'sandbox-runtime', 'package.json')); } catch { reachable = false; }
+        if (reachable) context.skip();
+        expect(resolveIn(locked.installation)).toMatchObject({ status: 'unavailable', reason: `${join(scope, 'sandbox-runtime')} cannot be resolved (EACCES)` });
+    } finally {
+        chmodSync(scope, mode);
+    }
+    expect(statSync(scope).mode & 0o7777).toBe(mode);
 });

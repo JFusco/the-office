@@ -172,7 +172,8 @@ test('protected paths must have physical spellings, even when the final componen
 test('a readable path inside a protected store beneath a home is refused, though a narrow file beneath a home may be opened', () => {
     const { input } = sandboxWorld();
     const protectedRoots = { ...input.protectedRoots, sessionStores: ['/Users/someone/.claude', '/Users/someone/.codex'] };
-    expect(() => sandboxPolicy({ ...input, protectedRoots, runtimeReads: ['/Users/someone/.local/share/claude/versions/2.1.328'] })).not.toThrow();
+    const binary = '/Users/someone/.local/share/claude/versions/2.1.328';
+    expect(sandboxPolicy({ ...input, protectedRoots, runtimeReads: [binary] }).filesystem.allowRead).toContainEqual(literal(binary));
     expect(() => sandboxPolicy({ ...input, protectedRoots, runtimeReads: ['/Users/someone/.claude/settings.json'] })).toThrow('overlaps the protected /Users/someone/.claude');
 });
 

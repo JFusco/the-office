@@ -273,6 +273,9 @@ test('a malformed or mis-bound record makes an observation inconclusive, and a m
     const terminal = line(probe, { kind: 'terminal', outcome: 'allowed', cwd: EXPECTED.run.home, argv: EXPECTED.argv });
     for (const bad of [`${PROBE_LINE_PREFIX}"not an object"`, `${PROBE_LINE_PREFIX}{ not json`, line(probe, { kind: 'terminal', outcome: 'allowed' }, { ...binding, run: 'run-2' })])
         expect(observe(probe, binding, [start, terminal, bad], 'exited'), bad).toMatchObject({ started: true, outcome: 'inconclusive' });
+    // A single otherwise valid terminal from another run: only its binding makes it inconclusive.
+    const foreign = line(probe, { kind: 'terminal', outcome: 'allowed', cwd: EXPECTED.run.home, argv: EXPECTED.argv }, { ...binding, run: 'run-2' });
+    expect(observe(probe, binding, [start, foreign], 'exited')).toMatchObject({ started: true, outcome: 'inconclusive' });
     // Mis-bound and also wrong: only the binding is reported, because nothing else about that row is read.
     const misbound = battery().map(row => row.probe === 'snapshot-read' ? { ...row, run: 'run-2', outcome: 'denied' as const } : row);
     expect(qualify(misbound, EXPECTED).failures).toEqual(['snapshot-read: recorded for another run, policy or profile']);

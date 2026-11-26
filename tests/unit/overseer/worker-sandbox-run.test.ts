@@ -247,8 +247,9 @@ test('nothing starts for an unavailable or unsupported sandbox, a cancelled run,
 });
 
 test('a selection naming a program the policy does not reopen is refused before anything is written', () => {
-    const { run, input } = sandboxWorld();
+    const { paths, run, input } = sandboxWorld();
     expect(() => prepare(input, { programs: { startup: '/usr/bin/false' } })).toThrow("is not a program this run's policy was prepared for (startup)");
+    expect(existsSync(paths.wrapperTmp)).toBe(false);
     expect(existsSync(policyPath(run))).toBe(false);
 });
 
