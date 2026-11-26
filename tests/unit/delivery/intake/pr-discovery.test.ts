@@ -10,7 +10,7 @@ const row = (number: number, head: string, base = 'main', state = 'open') => ({ 
  * Dependency refresh over a fixed set of jobs. Open PRs are listed on two pages; every PR, open or not, can be
  * read by number. `during` runs while a by-number read is out.
  */
-function refresh() {
+function refresh(listFails = false) {
     const f = fakeGitHub(), reads: string[] = [], lists: string[] = [];
     const prs = new Map<number, any>([[700, row(700, 'parent-branch')], [701, row(701, 'child-branch', 'parent-branch')], [702, row(702, 'feature-branch', 'other-branch')],
         [703, row(703, 'other-branch')], [690, row(690, 'old-branch', 'main', 'closed')], [680, row(680, 'cancelled-branch')], [699, row(699, 'closed-parent', 'main', 'closed')]]);
@@ -19,6 +19,7 @@ function refresh() {
         const path = args[1] || '';
         if (program === 'gh' && path.endsWith('/pulls?state=open&per_page=100')) {
             lists.push(path);
+            if (listFails) throw new Error('HTTP 502');
             const open = [...prs.values()].filter(p => p.state === 'open');
             return JSON.stringify([open.slice(0, 2), open.slice(2)]);
         }
@@ -66,6 +67,26 @@ test('the pump, with no inventory, reads each live PR once and no finished one',
     expect(x.reads.sort()).toEqual(['pulls/700', 'pulls/701', 'pulls/702']);
     expect(x.jobs.child.dependsOnPR).toBe(700);
 });
+test('a failed inventory falls back to one detail read per live PR', async () => {
+    const x = refresh(true);
+    await x.delivery.refreshDependencies(x.inventory());
+    expect(x.lists).toHaveLength(1);
+    expect(x.reads).toEqual(['pulls/700', 'pulls/701', 'pulls/702']);
+    expect(x.jobs.child.dependsOnPR).toBe(700);
+});
+test.each([false, true])('cancellation during the inventory read checks for another live owner (%s)', async shared => {
+    const x = refresh(), child = x.jobs.child;
+    const routing = { branch: 'original-child', dependsOnPR: 700, detail: 'Original routing' };
+    Object.assign(child, routing);
+    x.prs.get(701).state = 'closed';
+    if (shared) x.delivery.jobs.push({ ...child, id: 'second-owner' });
+    const pending = x.delivery.refreshDependencies(x.inventory());
+    expect(x.lists).toHaveLength(1);
+    child.status = 'cancelled';
+    await pending;
+    expect(x.reads).toEqual(shared ? ['pulls/701'] : []);
+    expect(child).toMatchObject(routing);
+});
 test('a job cancelled, or a parent finished, while the read is out changes no routing', async () => {
     const x = refresh();
     x.setDuring(pr => {
@@ -83,4 +104,13 @@ test('missing PR identity stops routing', async () => {
     const x = refresh();
     x.prs.set(702, { number: 702, state: 'closed' });
     await expect(x.delivery.refreshDependencies()).rejects.toThrow('PR dependency identity is unavailable');
+});
+test('a detail response with a head and no base preserves existing routing', async () => {
+    const x = refresh(), job = x.jobs.unrelated;
+    const routing = { branch: 'original-branch', dependsOnPR: 699, detail: 'Original routing' };
+    Object.assign(job, routing);
+    x.prs.set(702, { number: 702, state: 'closed', head: { ref: 'different-branch' } });
+    await expect(x.delivery.refreshDependencies(x.inventory())).rejects.toThrow('PR dependency identity is unavailable');
+    expect(x.reads).toEqual(['pulls/702']);
+    expect(job).toMatchObject(routing);
 });

@@ -52,8 +52,12 @@ test('a write-free poll traverses the open-PR list once for every reader, and th
     expect(x.calls.filter(call => ['dependency-refresh', 'merge-notices'].includes(call.source))).toEqual([]);
     expect(x.writes()).toEqual([]);
 });
-test('an incomplete list admits nothing, withdraws nothing, and is not traversed again in the same pass', async () => {
-    const x = poll({ pages: open => [open, { message: 'Server Error' }] });
+test.each([
+    { name: 'a failed page', pages: (open: any[]) => [open, { message: 'Server Error' }] },
+    { name: 'zero pages', pages: () => [] },
+    { name: 'an unidentified row', pages: () => [[{}]] },
+])('$name admits nothing, withdraws nothing, and does not trigger a second traversal', async ({ pages }) => {
+    const x = poll({ pages });
     x.f.state.prs.push(pull(119, { body: 'Closes #5', head: { sha: HEAD, ref: 'codex/5-restore', repo: { full_name: REPOSITORY } } }));
     x.f.store.state.coordination!.adoptions = [{ id: 'refused', pr: 121, url: `https://github.com/${REPOSITORY}/pull/121`, title: 'bump', issue: 0, status: 'refused', detail: 'Refused earlier.', at: '' }];
     await x.c.poll(new Date('2026-10-31T12:01:00Z'));

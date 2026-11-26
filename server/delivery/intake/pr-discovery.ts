@@ -48,6 +48,8 @@ export async function discover(this: GitHubDelivery, assigned: AssignedIssue[], 
 }
 
 const live = (job: TicketJob) => !['completed', 'cancelled'].includes(job.status);
+const hasRoutingRefs = (pull: any) => typeof pull?.head?.ref === 'string' && !!pull.head.ref.trim() &&
+    typeof pull?.base?.ref === 'string' && !!pull.base.ref.trim();
 
 /**
  * Stacked-PR routing for live jobs only: a finished job's PR is never read again. Rows come from the poll's
@@ -57,22 +59,30 @@ export async function refreshDependencies(this: GitHubDelivery, inventory?: Pull
     const tracked = this.jobs.filter(j => j.pr && live(j)).map(job => ({ job, id: job.id, key: job.key, pr: job.pr }));
     if (!tracked.length)
         return;
+    const current = ({ job, id, key, pr }: typeof tracked[number]) =>
+        this.jobs.includes(job) && job.id === id && job.key === key && job.pr === pr && live(job);
     const wanted = new Set(tracked.map(t => t.pr)), metadata = new Map<number, any>();
-    for (const p of inventory ? await inventory.read() : [])
-        if (wanted.has(p.number) && p.head?.ref && p.base?.ref)
+    // A failed inventory leaves each live PR eligible for a detail read.
+    for (const p of inventory ? await inventory.read().catch(() => []) : [])
+        if (wanted.has(p.number) && hasRoutingRefs(p))
             metadata.set(p.number, p);
     const missing = [...wanted].filter(pr => !metadata.has(pr));
-    (await Promise.all(missing.map(pr => this.api(`pulls/${pr}`)))).forEach((p, i) => { if (p?.number === missing[i]) metadata.set(missing[i], p); });
-    for (const { job, id, key, pr } of tracked) {
+    await Promise.all(missing.map(async pr => {
+        if (!tracked.some(t => t.pr === pr && current(t))) return;
+        const p = await this.api(`pulls/${pr}`);
+        if (p?.number === pr && hasRoutingRefs(p)) metadata.set(pr, p);
+    }));
+    for (const entry of tracked) {
         // A job that finished, was cancelled or changed PR while the reads were out keeps its routing as it was.
-        if (!this.jobs.includes(job) || job.id !== id || job.key !== key || job.pr !== pr || !live(job))
+        if (!current(entry))
             continue;
+        const { job, pr } = entry;
         const p = metadata.get(pr);
-        if (!p?.head?.ref)
+        if (!p)
             throw new Error('PR dependency identity is unavailable');
         const previous = this.jobs.find(parent => parent.pr === job.dependsOnPR && live(parent));
         // A parent is another job, live as the jobs stand now, whose PR head is this PR's base.
-        const parentJob = p.base?.ref ? this.jobs.find(j => live(j) && j.pr !== p.number && metadata.get(j.pr)?.head?.ref === p.base.ref) : undefined;
+        const parentJob = this.jobs.find(j => live(j) && j.pr !== pr && metadata.get(j.pr)?.head.ref === p.base.ref);
         job.branch = p.head.ref;
         job.dependsOnPR = previous?.pr || parentJob?.pr;
         if (job.dependsOnPR && job.status === 'queued')

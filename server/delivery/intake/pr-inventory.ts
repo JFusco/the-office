@@ -4,7 +4,8 @@ import type { GitHubDelivery } from '../pipeline/github-delivery';
 export async function openPullInventory(delivery: Pick<GitHubDelivery, 'store' | 'execute'>): Promise<any[]> {
     const { store, execute } = delivery;
     const pages = JSON.parse(await execute('gh', ['api', `repos/${store.project.repository}/pulls?state=open&per_page=100`, '--paginate', '--slurp'], { cwd: store.project.repo, timeout: 60000, readOnly: true }));
-    if (!Array.isArray(pages) || pages.some(page => !Array.isArray(page)))
+    if (!Array.isArray(pages) || !pages.length || pages.some(page =>
+        !Array.isArray(page) || page.some(pull => !Number.isInteger(pull?.number) || pull.number <= 0)))
         throw new Error('Open pull request inventory is incomplete');
     return pages.flat();
 }

@@ -29,6 +29,14 @@ test('a merge predates every destination only against each enabled one with a va
     expect(predatesEveryDestination(policy(), '')).toBe(false);
     expect(predatesEveryDestination({ ...policy(), enabled: false, channel: { ...channel, enabled: false } }, merged.merged_at)).toBe(false);
 });
+test.each(['direct', 'channel'])('an enabled %s destination with no saved start prevents a marker', destination => {
+    const f = fakeGitHub(), j = job();
+    const p = JSON.parse(JSON.stringify(policy()));
+    delete (destination === 'direct' ? p : p.channel).enabledAt;
+    expect(predatesEveryDestination(p, merged.merged_at)).toBe(false);
+    expect(recordNoMergeNotice(f.store, j, merged, p)).toBe(false);
+    expect(j.noMergeNotice).toBeUndefined();
+});
 test('the marker is recorded only for that reason, and holds while its binding does', () => {
     const f = fakeGitHub(), j = job();
     expect(recordNoMergeNotice(f.store, j, merged, { ...policy(), enabledAt: '2026-11-01T00:00:00Z' })).toBe(false);

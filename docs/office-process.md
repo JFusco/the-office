@@ -917,18 +917,17 @@ The assignment poll does not read GitHub again for an answer that cannot have ch
   keeps its own read-back. The inventory lives for one poll; the pump and other callers read their own.
 - **Dependency refresh for live jobs only.** `refreshDependencies` (`server/delivery/intake/pr-discovery.ts`)
   selects jobs that are not completed or cancelled before any read. In the poll it takes their rows from the
-  inventory and reads `pulls/N` once per live PR the inventory lacks, such as a closed parent still in
-  closeout; the pump passes no inventory and reads each live PR once. A parent is another live job whose PR
-  head is this PR's base. Before applying results it checks again that the job is the same live job on the
-  same PR and that the parent is still live, so a job cancelled or finished during the reads keeps its
-  routing. Missing PR identity still stops routing.
+  inventory and reads `pulls/N` once per live PR without a usable row, including when the inventory fails
+  or when the pump calls without one. Each detail read requires a live job still tracking that PR.
+  A parent is another live job whose PR head is this PR's base. Before applying results, refresh checks
+  that the same live job still tracks the PR and that its parent is still live. A job cancelled or
+  finished during the reads keeps its routing. Missing PR identity stops routing.
 - **Merge notices.** `observeGitHubMergeNotices` skips a candidate whose PR is in the poll's complete open
   list; without a complete list every candidate takes its live read. A PR verified closed and unmerged is
-  read again after 30 minutes, or at once after it is seen open again. A verified merge that queued nothing
-  because nobody can be told yet (no assignee or reporter for the configured recipients) waits the same 30
-  minutes, so a newly assigned recipient is told within that time. A change to the notice settings ends
-  either wait. Waits are in memory (`server/conversations/merge-notice-cooldown.ts`): a restart reads every
-  candidate again.
+  read again after 30 minutes, or at once after it is seen open again. All jobs on the PR share that wait.
+  A verified merge with no assignee or reporter for the configured recipients waits 30 minutes for that
+  issue and PR. A change to the notice settings ends either wait. Waits are in memory
+  (`server/conversations/merge-notice-cooldown.ts`) and clear on restart.
 - **The one durable no-notice reason.** A verified merge older than the valid start of every enabled
   destination can never be sent. Its job keeps a `noMergeNotice` marker (`server/conversations/no-merge-notice.ts`)
   bound to the repository, issue, PR, merge SHA, merge time and a fingerprint of the direct settings

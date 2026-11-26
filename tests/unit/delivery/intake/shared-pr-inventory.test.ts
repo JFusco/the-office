@@ -28,6 +28,10 @@ test('an incomplete page is no inventory for any reader, and is not traversed ag
     await expect(inventory.read()).rejects.toThrow('incomplete');
     expect(calls).toHaveLength(1);
 });
+test('one empty page is a complete empty inventory', async () => {
+    const { source } = lister([[]]);
+    await expect(openPulls(source)).resolves.toEqual([]);
+});
 test('a PR-body write makes the next reader traverse the list again', async () => {
     const { source, calls } = lister([[{ number: 1 }]]), inventory = sharedPullInventory(source);
     await inventory.read();

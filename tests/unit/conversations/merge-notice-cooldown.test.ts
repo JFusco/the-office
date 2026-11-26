@@ -34,3 +34,18 @@ test('waits are per project store, so another project or a restarted store reads
     coolDown(one.store, 313, 'settings');
     expect(coolingDown(other.store, 313, 'settings')).toBe(false);
 });
+test('reopening clears both PR and issue waits for that PR', () => {
+    const { store } = clocked();
+    coolDown(store, 313, 'settings', 'GH-5');
+    expect(coolingDown(store, 313, 'settings', 'GH-5')).toBe(true);
+    expect(coolingDown(store, 313, 'settings')).toBe(false);
+    expect(coolingDown(store, 313, 'settings', 'GH-6')).toBe(false);
+    coolDown(store, 313, 'settings');
+    coolDown(store, 313, 'settings', 'GH-6');
+    coolDown(store, 3130, 'settings', 'GH-5');
+    clearCooldown(store, 313);
+    expect(coolingDown(store, 313, 'settings')).toBe(false);
+    expect(coolingDown(store, 313, 'settings', 'GH-5')).toBe(false);
+    expect(coolingDown(store, 313, 'settings', 'GH-6')).toBe(false);
+    expect(coolingDown(store, 3130, 'settings', 'GH-5')).toBe(true);
+});
