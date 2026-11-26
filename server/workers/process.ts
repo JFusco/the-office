@@ -1,6 +1,7 @@
 import { probeProcessGroup } from './lifecycle/process-group';
 import { spawnCommand, type CommandOptions } from './spawn-command';
 import { boundGitHubRunner } from '../github/call-scope';
+import { credentialOptions } from '../github/identity/write-credential-scope';
 import { sanitize } from '../office/security';
 export function workerFailure(program: string, code: number | null, stdout: string, stderr: string) {
     for (const line of stdout.trim().split('\n').reverse()) {
@@ -40,7 +41,9 @@ export function processGroupAlive(pid: number): boolean {
 /**
  * Runs one subprocess. A `gh` call made inside a bound Office context goes to that Office's metered runner,
  * which spawns it once and counts it (server/github/call-scope.ts); every other call is spawned directly.
+ * A GitHub write's credential scope (server/github/identity/write-credential-scope.ts) supplies its child environment.
  */
 export async function command(program: string, args: string[], options: CommandOptions = {}) {
-    return (boundGitHubRunner(program) ?? spawnCommand)(program, args, options);
+    // Inside an Office write's credential scope, its `gh` and `git` children get the selected credential.
+    return (boundGitHubRunner(program) ?? spawnCommand)(program, args, credentialOptions(program, options));
 }

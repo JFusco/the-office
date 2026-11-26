@@ -1,3 +1,5 @@
+// A worker's preparation comment is a legacy operator write until D4 moves worker publication to the harness.
+import { OPERATOR_LOGIN } from '../../../github/identity/office-authors';
 import type {PreparationBoardOrigin} from './preparation-board-provenance';
 import type {Store} from '../../../store/store';
 import type {StageResult,TicketJob} from '../../../../src/shared';
@@ -54,7 +56,7 @@ export function assertPreparationReceiptProviders(bindings:PreparationReceiptBin
   if(binding.kind==='board-item'&&(!binding.identity.endsWith(`#item-${context.board.item.id}`)||context.board.item.repository!==context.repository||context.board.item.number!==context.issue.number))throw new Error('Historical board receipt identity is not current');
   if(binding.kind==='issue-comment'){
    const matches=context.comments.filter(c=>c.id===binding.commentId),author=matches[0]?.user as {login?:unknown}|null;
-   if(matches.length!==1||matches[0].html_url!==`${context.issue.html_url}#issuecomment-${binding.commentId}`||author?.login!=='JFusco'||!Number.isFinite(Date.parse(matches[0].created_at as string))||Date.parse(matches[0].created_at as string)>=Date.parse(startedAt))throw new Error('Historical issue comment identity is not current');
+   if(matches.length!==1||matches[0].html_url!==`${context.issue.html_url}#issuecomment-${binding.commentId}`||author?.login!==OPERATOR_LOGIN||!Number.isFinite(Date.parse(matches[0].created_at as string))||Date.parse(matches[0].created_at as string)>=Date.parse(startedAt))throw new Error('Historical issue comment identity is not current');
   }
   if(binding.kind==='published-ref'&&(context.pr.head!==job.head||context.pr.branch!==job.branch))throw new Error('Historical published ref identity is not current');
  }

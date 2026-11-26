@@ -8,7 +8,8 @@ import { artifact } from '../../store/readback-evidence';
 import { readBoundedNoFollowSync } from '../../store/owned-artifact';
 import type { Store } from '../../store/store';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
-import { publicationReadArgs, readPublication } from './read-command';
+import { accountRead, publicationReadArgs, readPublication } from './read-command';
+import { commentAuthor } from '../parking/park-comment';
 
 /** Trust only the ledger written during the original live assignment, matched byte for byte
  * to its owned artifact. Neither current source/revision nor a newly supplied file proves history. */
@@ -27,7 +28,7 @@ function protectedOriginalClaim(store: Store, job: TicketJob, root: string, clai
             const proof = JSON.parse(record.body);
             return proof.protocol === 'draft-publication-read-v1' && /^[a-f0-9]{64}$/.test(proof.revision) &&
                 proof.repository === store.project.repository && proof.jobId === job.id && proof.key === job.key &&
-                proof.issue === Number(job.key.slice(3)) && (proof.pr === job.pr || proof.read === 'viewer' && proof.pr === 0) && proof.head === job.head &&
+                proof.issue === Number(job.key.slice(3)) && (proof.pr === job.pr || accountRead(proof.read) && proof.pr === 0) && proof.head === job.head &&
                 proof.lane === 'delivery' && isDeepStrictEqual(proof.claim, { ...claim, status: 'running', endedAt: '' }) &&
                 proof.program === 'gh' && proof.readOnly === true &&
                 isDeepStrictEqual(proof.args, publicationReadArgs(proof.repository, proof.read, proof.read === 'issue-comments' ? proof.issue : proof.pr)) &&
@@ -69,8 +70,9 @@ export async function linkDraftIssue(delivery: GitHubDelivery, job: TicketJob, i
     };
     const linked = await readPublication(store, execute, job, root, 'issue-links'); guard();
     if (!linked.closingIssuesReferences?.some((item: any) => item.url === url)) throw new Error('GitHub has not confirmed the native issue-to-PR link');
-    const viewer = await readPublication(store, execute, job, root, 'viewer'); guard();
-    if (typeof viewer.login !== 'string' || !viewer.login) throw new Error('Authenticated comment author is unavailable');
+    const key = `draft-link-comment:${job.pr}`, effectId = activeEffectId(store, `harness:${job.id}:${key}`), prior = store.getEffect(effectId);
+    // The expected author is the comment Effect's own writer, never a live viewer read (`office-authors.ts`).
+    const author = commentAuthor(store, effectId);
     const marker = `Office delivery ${job.id}`;
     const suffix = 'Sam will check PR readiness; maintainer merge and release gates still apply.';
     const prefix = `${marker}: Draft PR ${prUrl} is linked to this issue. `;
@@ -86,13 +88,12 @@ export async function linkDraftIssue(delivery: GitHubDelivery, job: TicketJob, i
         // Coverage is historical context only. Require either entire former template,
         // including its retained-review sentence or nonempty review/validation reason.
         const legacy = comment.body.slice(prefix.length, -suffix.length).match(/^Team-selected checks cover ([a-f0-9]{40}); (?:the retained independent review and validation apply\.|review=(?:none|focused|full), validation=(?:developer-checks|independent-checks|browser)\. \S(?:[\s\S]{0,2998}\S)?) $/);
-        if (!Number.isSafeInteger(comment.id) || comment.id <= 0 || comment.user?.login !== viewer.login || comment.html_url !== `${url}#issuecomment-${comment.id}` ||
+        if (!Number.isSafeInteger(comment.id) || comment.id <= 0 || comment.user?.login !== author || comment.html_url !== `${url}#issuecomment-${comment.id}` ||
             !(comment.body === body || comment.body.startsWith(prefix) && legacy && knownHeads.has(legacy[1]) && comment.body.endsWith(suffix)))
             throw new Error('Historical draft comment identity/content is unverified');
         return { id: comment.id as number, url: comment.html_url as string };
     };
-    const key = `draft-link-comment:${job.pr}`, effectId = activeEffectId(store, `harness:${job.id}:${key}`), prior = store.getEffect(effectId);
-    const payload = { issue: number, pr: job.pr, marker, body, author: viewer.login };
+    const payload = { issue: number, pr: job.pr, marker, body, author };
     if (prior && (prior.target !== url || prior.operation !== 'github-issue-comment' || prior.work.projectId !== store.project.id || prior.work.id !== job.id ||
         prior.work.kind !== 'delivery' || prior.attemptId !== job.id || JSON.stringify(prior.payload) !== JSON.stringify(payload))) throw new Error('Saved draft comment intent changed');
     const existing = await findComment();

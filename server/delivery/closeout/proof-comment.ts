@@ -1,6 +1,7 @@
 import { activeEffectId, harnessEffect } from '../harness/effect';
 import { readRepo } from '../intake/dependabot/qualify';
 import { commentAuthor } from '../parking/park-comment';
+import { savedAuthor } from '../../github/identity/office-authors';
 import type { Execute } from '../board/project-graphql';
 import type { Store } from '../../store/store';
 import type { EffectIntent, TicketJob } from '../../../src/shared';
@@ -41,14 +42,14 @@ async function readCommentId(store: Store, execute: Execute, c: ProofComment, au
 /** A known POST receipt is tied to its exact ID. A lost response can only be recovered by a unique exact marker. */
 export async function readProofComment(store: Store, execute: Execute, c: ProofComment, sent: Readonly<EffectIntent>): Promise<CommentReceipt | null> {
     if (!matchesProofComment(store, c, sent)) return null;
-    const author = (sent.payload as CommentIntent['payload']).author ?? await commentAuthor(store, execute);
+    const author = (sent.payload as CommentIntent['payload']).author ?? savedAuthor(sent);
     return sent.receipt == null ? findProofComment(store, execute, c, author) : readCommentId(store, execute, c, author, sent.receipt);
 }
 
 /** Posts the comment once; the returned ID is read back on its conversation with its author and complete body. */
 export async function postProofComment(store: Store, execute: Execute, job: TicketJob, key: string, c: ProofComment, guard: () => void | Promise<void>): Promise<CommentReceipt> {
     const id = activeEffectId(store, `harness:${job.id}:${key}`), prior = store.getEffect<CommentIntent['payload']>(id);
-    const author = await commentAuthor(store, execute);
+    const author = commentAuthor(store, id);
     if (prior && (!matchesProofComment(store, c, prior) || prior.payload.author !== undefined && prior.payload.author !== author))
         throw new Error('The saved proof comment or its author changed before dispatch');
     return harnessEffect(store, job, { key, operation: 'github-issue-comment', target: conversation(store, c),

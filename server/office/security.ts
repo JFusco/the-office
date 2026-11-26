@@ -15,7 +15,15 @@ function escapedAt(text: string, at: number): boolean {
 export const AFTER_JSON_ESCAPE = String.raw`(?<=\\[bfnrt]|\\u[\dA-Fa-f]{4})`;
 /** Where a provider token can start: not inside a word, or right after a JSON escape. Use it in place of a leading `\b`. */
 export const TOKEN_START = String.raw`(?:(?<!\w)|${AFTER_JSON_ESCAPE})`;
-const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:sk-[\w-]+|gh[oprs]_[\w]+)\b`, 'g');
+// A whole GitHub token, including a stateless installation token's dotted segments, and a fine-grained PAT.
+const PROVIDER_TOKEN = new RegExp(String.raw`${TOKEN_START}(?:sk-[\w-]+|gh[oprsu]_\w+(?:[.-][\w-]+)*|github_pat_\w+)\b`, 'g');
+/** A signed JWT, such as the App's own signing JWT: three base64url segments, the first two JSON objects. */
+const SIGNED_JWT = new RegExp(String.raw`${TOKEN_START}eyJ[\w-]+\.eyJ[\w-]+\.[\w-]+`, 'g');
+/**
+ * A PEM private key, multiline or serialized with `\n` escapes, through its END line. An unterminated block stops
+ * before an unescaped quote, so JSON text holding it stays JSON.
+ */
+const PEM_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:(?!-----END)(?:[^"\\]|\\[\s\S]))*(?:-----END [A-Z ]*PRIVATE KEY-----)?/g;
 export const BEARER_CREDENTIAL = /(?:Bearer\s+)(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi;
 export const POSTGRES_URL = /postgres(?:ql)?:\/\/(?:\\(?:[\s\S]|$)|[^\s"'\\])+/gi;
 export const QUERY_PREFIX = String.raw`[?&](?:token|sig|key|secret|code|access_token|client_secret|password)=`;
@@ -40,9 +48,12 @@ export function sanitizeInMode(value: string, json: boolean): string {
   return sharedRedaction(value, () => json);
 }
 function sharedRedaction(value: string, isJson: () => boolean): string {
-  return value
-    // First, so its offset is the original string's: a `b` after an odd run of backslashes in JSON text is the `\b` escape.
-    .replace(BEARER_CREDENTIAL, (match: string, at: number) => match[0] === 'b' && escapedAt(value, at) && isJson() ? 'bearer [redacted]' : 'Bearer [redacted]')
+  // A key block first: nothing inside it is offered to the patterns below.
+  const keyless = value.replace(PEM_KEY, '[private key redacted]');
+  return keyless
+    // Next, so its offset is the original string's: a `b` after an odd run of backslashes in JSON text is the `\b` escape.
+    .replace(BEARER_CREDENTIAL, (match: string, at: number) => match[0] === 'b' && escapedAt(keyless, at) && isJson() ? 'bearer [redacted]' : 'Bearer [redacted]')
+    .replace(SIGNED_JWT,'[redacted]')
     .replace(PROVIDER_TOKEN,'[redacted]')
     .replace(QUERY_CREDENTIAL,'$1[redacted]')
     // In JSON text a label lies inside a string, so a quote right after it closes that string and is kept as it is.

@@ -1,4 +1,5 @@
-import { Effects } from '../../../store/effects';
+import { savedAuthor } from '../../../github/identity/office-authors';
+import { reconcileGitHubWrite } from '../../../github/identity/write-boundary';
 import { assessDeliveryEligibility } from '../../harness/delivery-authority';
 import { readRepo } from '../../intake/dependabot/qualify';
 import { MISSING_NATIVE_LINK } from '../../intake/dependency-bots/resume-linked-delivery';
@@ -35,8 +36,8 @@ export async function readBackRequests(delivery: GitHubDelivery, record: Dependa
         redo.failure ||= effect.error || 'Request dispatch was interrupted';
         let observedRun: WikiRun | undefined;
         try {
-            await new Effects(delivery.store).reconcile(effect.id, async intent => {
-                const evidence = await readBackRedo(delivery, intent.payload as RedoPayload, intent.receipt, intent.dispatchedAt);
+            await reconcileGitHubWrite(delivery.store, effect.id, async intent => {
+                const evidence = await readBackRedo(delivery, intent.payload as RedoPayload, intent.receipt, intent.dispatchedAt, savedAuthor(intent));
                 if (evidence && 'conclusion' in evidence) observedRun = evidence;
                 return { verified: !!evidence && !executorActive(delivery, record.pr, claimId), receipt: intent.receipt ?? evidence };
             });

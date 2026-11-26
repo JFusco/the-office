@@ -7,10 +7,13 @@ import { liveReach } from './live-reach';
 import { exitFailure } from './exit-failure';
 import { CommandFailure, workerFailure } from './process';
 import { spawn } from 'node:child_process';
+import { childEnvironment } from './child-environment';
 export type CommandOptions = {
     cwd?: string;
     /** Per-child overrides only; never change the service's process.env. */
     env?: Record<string, string>;
+    /** Names removed from this child's inherited environment before `env` applies, e.g. ambient GitHub tokens. */
+    envRemove?: string[];
     /** Zero disables the total deadline when a progress watchdog is supplied. */
     timeout?: number;
     inactivityTimeout?: number;
@@ -51,7 +54,7 @@ export async function spawnCommand(program: string, args: string[], options: Com
     if (live)
         throw new CommandFailure(`${live} is blocked under unit tests; inject a fake command runner`, 'cancelled', false);
     return new Promise<string>((resolve, reject) => {
-        const child = spawn(program, args, { cwd: options.cwd, env: options.env ? { ...process.env, ...options.env } : process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+        const child = spawn(program, args, { cwd: options.cwd, env: childEnvironment(options), stdio: ['pipe', 'pipe', 'pipe'], detached: true });
         const lifecycle = child.pid && options.onLifecycle ? lifecycleRecorder(child.pid, options.lifecycleInventory) : undefined;
         let out = '', err = '', line = '', failure: Error | undefined, killTimer: ReturnType<typeof setTimeout> | undefined, interruptTimer: ReturnType<typeof setTimeout> | undefined;
         const alive = () => { if (!child.pid) return false; const probe = probeProcessGroup(child.pid); lifecycle?.probe(probe); return probe.state !== 'absent'; };

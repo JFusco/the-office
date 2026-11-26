@@ -1,4 +1,5 @@
-import { Effects } from '../store/effects';
+import { executeGitHubWrite, reconcileGitHubWrite } from '../github/identity/write-boundary';
+import { writerSuccessor } from '../github/identity/writer-successor';
 import type { command } from '../workers/process';
 import type { Lesson } from '../../src/shared';
 import type { Store } from '../store/store';
@@ -37,7 +38,7 @@ export async function fileLessonIssue(store: Store, execute: typeof command, les
         const issue = found.find(item => item.body?.includes(marker));
         return issue ? { url: issue.url, assigned: assignedToJoe(issue) } : null;
     };
-    const effects = new Effects(store), id = `lesson-issue:${lesson.id}`, prior = store.getEffect(id);
+    const id = writerSuccessor(store, `lesson-issue:${lesson.id}`), prior = store.getEffect(id);
     let receipt: { url: string };
     if (prior?.status === 'verified') {
         const saved = prior.receipt as { url: string } | null;
@@ -45,13 +46,13 @@ export async function fileLessonIssue(store: Store, execute: typeof command, les
             throw new Error(`The saved issue must still carry this lesson and be assigned to ${LESSON_ISSUE_ASSIGNEE} before filing`);
         receipt = saved;
     } else if (prior && ['dispatching', 'uncertain'].includes(prior.status)) {
-        if (!await effects.reconcile(id, async () => { const found = await find(); return { verified: !!found?.assigned, receipt: found && { url: found.url } }; }))
+        if (!await reconcileGitHubWrite(store, id, async () => { const found = await find(); return { verified: !!found?.assigned, receipt: found && { url: found.url } }; }))
             throw new Error(`The earlier issue request is not yet confirmed on GitHub as assigned to ${LESSON_ISSUE_ASSIGNEE}; it will not be filed twice`);
         receipt = store.getEffect<{ url: string }>(id)!.receipt as { url: string };
     } else {
         const existing = await find();
         if (existing && !existing.assigned) throw new Error(`${existing.url} already carries this lesson but is not assigned to ${LESSON_ISSUE_ASSIGNEE}; it will not be filed again`);
-        receipt = existing && { url: existing.url } || await effects.execute({
+        receipt = existing && { url: existing.url } || await executeGitHubWrite(store, {
             id, work: { projectId: store.project.id, kind: 'retrospective', id: lesson.id }, attemptId: lesson.id,
             operation: 'github-issue-create', target: repository, authorization: 'joe-approved-lesson-issue',
             payload: { title, marker }, expectedState: { status: 'proposed' },

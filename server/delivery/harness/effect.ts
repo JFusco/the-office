@@ -1,6 +1,7 @@
-import { Effects } from '../../store/effects';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
+import type { WriteQualification } from '../../../src/contracts/write-identity';
+import { executeGitHubWrite, reconcileGitHubWrite } from '../../github/identity/write-boundary';
 import { settleNotLanded } from './resend-not-landed';
 
 export interface HarnessEffect<R> {
@@ -23,6 +24,18 @@ export interface HarnessEffect<R> {
      * fresh intent (`resend-not-landed.ts`). Every other effect is reconciled by read-back and never resent.
      */
     notLanded?: () => Promise<boolean>;
+    /**
+     * Read-only: the actor-bearing evidence a verified receipt shows on its bound target, or undefined. Never for an
+     * adopted object or a state-only read-back; the default verification supplies none.
+     */
+    qualify?: (receipt: R) => Promise<WriteQualification | undefined>;
+    /** Read-only pre-state a designated App trial binds; the canonical read-back by default. Read only for that trial. */
+    preState?: () => Promise<unknown>;
+    /** The board and field a board write binds. */
+    board?: string;
+    field?: string;
+    /** Read-only checks an App or rollback credential must pass in preflight, such as a push's destination (`write-boundary.ts`). */
+    credentialCheck?: () => Promise<void>;
 }
 
 const NEEDS_EFFECT_ID = Symbol('effect-id-guard');
@@ -56,12 +69,13 @@ export function activeEffectId(store: Store, base: string): string {
 export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>, effect: HarnessEffect<R>): Promise<R> {
     const base = `harness:${job.id}:${effect.key}`;
     let id = activeEffectId(store, base);
-    const effects = new Effects(store);
+    const evidence = async (receipt: R | null) => receipt !== null && receipt !== undefined && effect.qualify ? effect.qualify(receipt) : undefined;
     const prior = store.getEffect<R>(id);
     if (prior && ['dispatching', 'uncertain'].includes(prior.status)) {
-        const verified = await effects.reconcile<R | null>(id, async () => {
+        // Read back under the intent's own saved writer (`server/github/identity/write-boundary.ts`).
+        const verified = await reconcileGitHubWrite<R | null>(store, id, async () => {
             const receipt = await effect.readBack();
-            return { verified: receipt !== null, receipt };
+            return { verified: receipt !== null, receipt, qualification: await evidence(receipt) };
         });
         if (verified)
             return store.getEffect<R>(id)!.receipt as R;
@@ -70,12 +84,16 @@ export async function harnessEffect<R>(store: Store, job: Pick<TicketJob, 'id'>,
         id = activeEffectId(store, base);
     }
     await runGuard(effect.guard, id);
-    return effects.execute<Record<string, unknown>, R>({
+    // The writer is selected, and its credential acquired, before the intent exists (`write-boundary.ts`).
+    return executeGitHubWrite<Record<string, unknown>, R>(store, {
         id, work: { projectId: store.project.id, kind: 'delivery', id: job.id }, attemptId: job.id,
         operation: effect.operation, target: effect.target, authorization: 'office-harness',
         payload: effect.payload, expectedState: { key: effect.key },
         preflight: async () => { await runGuard(effect.guard, id); },
         dispatch: () => effect.dispatch(),
-        verify: effect.verify ?? (async receipt => receipt !== null && receipt !== undefined),
-    });
+        verify: async receipt => {
+            const verified = effect.verify ? await effect.verify(receipt) : receipt !== null && receipt !== undefined;
+            return verified && effect.qualify ? { verified, qualification: await evidence(receipt) } : verified;
+        },
+    }, { preState: effect.preState ?? effect.readBack, board: effect.board, field: effect.field, credentialCheck: effect.credentialCheck });
 }

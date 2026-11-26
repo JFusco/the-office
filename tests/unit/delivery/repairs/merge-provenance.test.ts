@@ -4,14 +4,16 @@ import { recordOfficeMerge } from '../../../fixtures/office-merge';
 import { officeMergeProvenance } from '../../../../server/delivery/repairs/merge-provenance';
 function setup() {
     const f = ciFixture(); f.job.mergeCommit = newHead;
-    Object.assign(f.pr, { merged_at: '2026-11-09T08:00:00Z', merge_commit_sha: newHead });
+    Object.assign(f.pr, { merged_at: '2026-11-09T08:00:00Z', merge_commit_sha: newHead, merged_by: { login: 'JFusco' } });
     const id = recordOfficeMerge(f); return { ...f, id };
 }
 test('matching durable Office merge provenance is verified by canonical PR readback', async () => {
     const f = setup(); expect(await officeMergeProvenance(f.delivery, f.job)).toBe(true);
 });
-test.each(['attempt', 'payload', 'work', 'receipt', 'target'])('mismatched %s never authorizes a new operational retry', async kind => {
+test.each(['attempt', 'payload', 'work', 'receipt', 'target', 'merger'])('mismatched %s never authorizes a new operational retry', async kind => {
     const f = setup(), effect = f.store.getEffect(f.id)!;
+    // The saved writer of a legacy merge is the historical operator; a bot or anyone else did not send this one.
+    if (kind === 'merger') Object.assign(f.pr, { merged_by: { login: 'the-office-app[bot]' } });
     if (kind === 'attempt') delete f.job.mergeAttempt;
     if (kind === 'payload') (effect.payload as any).sha = newHead;
     if (kind === 'work') effect.work.id = 'another-job';

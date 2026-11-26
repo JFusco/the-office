@@ -12,15 +12,15 @@ const LONGEST_BACKOFF_MS = 16 * MINUTE;
 
 /** Background GitHub observation waits until `until` (ISO). */
 export interface QuotaHold { until: string }
-/** What a caller asks before a background GitHub read: the resources it needs, core by default. */
-export interface QuotaGate { hold(resources?: readonly Resource[]): QuotaHold | undefined }
+/** What a caller asks before a background GitHub read: the resources it needs (core by default) and the principal it reads as (the operator by default). */
+export interface QuotaGate { hold(resources?: readonly Resource[], principal?: string): QuotaHold | undefined }
 /** GitHub's stated rate-limit refusal of one call (`quota-refusal.ts`), with what its own headers said. */
 export interface QuotaRefusal { secondary: boolean; retryAfterMs?: number; reading?: ResourceReading }
 
 export const noQuotaHold: QuotaGate = { hold: () => undefined };
 /** The hold over a project's background GitHub observation: GitHub projects only, and only where there is a governor. */
-export const backgroundHold = (project: Pick<OfficeProject, 'provider'>, gate?: QuotaGate, resources?: readonly Resource[]): QuotaHold | undefined =>
-    project.provider === 'github' ? gate?.hold(resources) : undefined;
+export const backgroundHold = (project: Pick<OfficeProject, 'provider'>, gate?: QuotaGate, resources?: readonly Resource[], principal?: string): QuotaHold | undefined =>
+    project.provider === 'github' ? gate?.hold(resources, principal) : undefined;
 /** The status line a deferral shows. A deferral is never an error. */
 export const quotaLow = (hold: QuotaHold) => `GitHub quota low. Observation resumes at ${hold.until}.`;
 
@@ -35,30 +35,40 @@ export const quotaLow = (hold: QuotaHold) => `GitHub quota low. Observation resu
  * With no reading and no refusal nothing is held. Protected work never asks. Memory only: a restart holds nothing.
  */
 export class QuotaGovernor implements QuotaGate {
-    private refusedUntil = 0;
-    private repeats = 0;
-    private backoffMs = 0;
+    /**
+     * One refusal state per principal: the operator's own windows, and one per App installation shared by every
+     * repository it is installed on. A refusal of one principal never holds another.
+     */
+    private states = new Map<string, { refusedUntil: number; repeats: number; backoffMs: number }>();
     constructor(private samples: Pick<RateLimitSamples, 'liveWindows' | 'sample'>, private now = () => Date.now()) { }
-    hold(resources: readonly Resource[] = ['core']): QuotaHold | undefined {
-        const now = this.now(), until = Math.max(this.refusedUntil, ...resources.map(resource => this.lowUntil(resource, now)));
+    private state(principal: string) {
+        let state = this.states.get(principal);
+        if (!state) this.states.set(principal, state = { refusedUntil: 0, repeats: 0, backoffMs: 0 });
+        return state;
+    }
+    hold(resources: readonly Resource[] = ['core'], principal = 'operator'): QuotaHold | undefined {
+        const now = this.now(), until = Math.max(this.state(principal).refusedUntil, ...resources.map(resource => this.lowUntil(resource, now, principal)));
         return until > now ? { until: new Date(until).toISOString() } : undefined;
     }
     /** The latest reset among the resource's live windows at or below the reserve: reset order alone says nothing of which is spent. */
-    private lowUntil(resource: Resource, now: number): number {
-        return Math.max(0, ...this.samples.liveWindows(resource).filter(window => window.reset * 1000 > now && window.remaining <= window.limit * CORE_RESERVE).map(window => window.reset * 1000));
+    private lowUntil(resource: Resource, now: number, principal: string): number {
+        return Math.max(0, ...this.samples.liveWindows(resource, principal).filter(window => window.reset * 1000 > now && window.remaining <= window.limit * CORE_RESERVE).map(window => window.reset * 1000));
     }
-    /** `probe` is false for the probe's own call. */
-    refused(refusal: QuotaRefusal, probe = true): void {
-        const now = this.now();
-        if (!this.hold()) this.repeats++;
+    /** `probe` is false for the probe's own call. The probe reads the refused principal's own windows. */
+    refused(refusal: QuotaRefusal, probe = true, principal = 'operator'): void {
+        const now = this.now(), state = this.state(principal);
+        if (!this.hold(['core'], principal)) state.repeats++;
         const reset = refusal.reading?.remaining === 0 ? refusal.reading.reset * 1000 : 0;
-        this.backoffMs = Math.min(MINUTE * 2 ** (Math.max(this.repeats, 1) - 1), LONGEST_BACKOFF_MS);
+        state.backoffMs = Math.min(MINUTE * 2 ** (Math.max(state.repeats, 1) - 1), LONGEST_BACKOFF_MS);
         const until = refusal.retryAfterMs !== undefined ? now + refusal.retryAfterMs
             : reset > now ? reset
-            : now + this.backoffMs;
-        this.refusedUntil = Math.max(this.refusedUntil, until);
-        if (probe && !refusal.secondary && !this.lowUntil('core', now)) void this.samples.sample(undefined, PROBE_INTERVAL_MS);
+            : now + state.backoffMs;
+        state.refusedUntil = Math.max(state.refusedUntil, until);
+        if (probe && !refusal.secondary && !this.lowUntil('core', now, principal)) void this.samples.sample(undefined, PROBE_INTERVAL_MS, principal);
     }
     /** A call answered after a quiet spell as long as the last backoff, with no hold: the next refusal starts again from a minute. */
-    answered(): void { if (!this.hold() && this.now() - this.refusedUntil >= this.backoffMs) this.repeats = 0; }
+    answered(principal = 'operator'): void {
+        const state = this.state(principal);
+        if (!this.hold(['core'], principal) && this.now() - state.refusedUntil >= state.backoffMs) state.repeats = 0;
+    }
 }

@@ -3,7 +3,7 @@ import { assertDeliveryMayMutate } from '../harness/guards';
 import { REVIEWABLE } from './card-resume-route';
 import { assertParkCurrent, assertParkRoute, parkRestoreWords, ParkNeedsRestore, ParkSuperseded } from './metadata-park-freshness';
 import { assertMovable, assertPresentBlockProof, assertRecordedBoard, assertRecordedInBlock, assertStillInBlock, observeInBlock, readParkInventory, recordBlockCoverage } from './metadata-park-inventory';
-import { commentAuthor, parkCommentBody, settleParkComment } from './park-comment';
+import { parkCommentAuthor, parkCommentBody, settleParkComment } from './park-comment';
 import { boundParkComment, parkIntents, parkLaneOperation, settleParkWrites, unconfirmedWrites, unreadStopWords } from './park-writes';
 import { publishMetadataPark } from './publish-metadata-park';
 import { releaseMetadataPark } from './release-metadata-park';
@@ -81,7 +81,7 @@ export async function advanceMetadataPark(delivery: GitHubDelivery, job: TicketJ
         if (await moveLane(store, execute, job, 'Block', laneGuard, job.pr, parkLaneOperation(job)) !== route.block.name)
             throw new ParkNeedsRestore('the configured board did not confirm the Block lane');
         await recordBlockCoverage(store, execute, job, binding);
-        const author = await commentAuthor(store, execute);
+        const author = parkCommentAuthor(store, job);
         const commentGuard = () => assertParkCurrent(delivery, job, parked, async live => {
             assertPresentBlockProof(job, binding, live);
             const covered = new Set(binding.verified!.items);

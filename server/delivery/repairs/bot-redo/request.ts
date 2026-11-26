@@ -1,4 +1,5 @@
-import { Effects } from '../../../store/effects';
+import { executeGitHubWrite } from '../../../github/identity/write-boundary';
+import { savedAuthor } from '../../../github/identity/office-authors';
 import { requireDeliveryAuthority } from '../../harness/delivery-authority';
 import { findTrackingIssue } from '../../intake/dependabot/tracking-issue';
 import { assertAutomationAuthority } from '../../readiness/automation-authority';
@@ -116,7 +117,7 @@ export async function requestBotRedo(delivery: GitHubDelivery, job: TicketJob, p
     let dispatchedAt = '';
     let observedRun: WikiRun | undefined;
     try {
-        await new Effects(store).execute<RedoPayload, unknown>({
+        await executeGitHubWrite<RedoPayload, unknown>(store, {
             id: attempt.id, work: intent?.work ?? { projectId: store.project.id, kind: 'delivery', id: job.id }, attemptId: intent?.attemptId ?? job.id,
             operation: intent?.operation ?? OPERATION[sent.route as Sent], target: intent?.target ?? pr.html_url, authorization: intent?.authorization ?? 'office-harness',
             payload: sent, expectedState: intent?.expectedState ?? { head: sent.sha, base: sent.target, branch: sent.branch },
@@ -142,7 +143,7 @@ export async function requestBotRedo(delivery: GitHubDelivery, job: TicketJob, p
                 return out.trim() ? JSON.parse(out) : null;
             },
             verify: async (value, saved) => {
-                const evidence = await readBackRedo(delivery, saved, value, dispatchedAt);
+                const evidence = await readBackRedo(delivery, saved, value, dispatchedAt, savedAuthor(store.getEffect(attempt.id)));
                 if (evidence && 'conclusion' in evidence) observedRun = evidence;
                 return !!evidence;
             },

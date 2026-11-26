@@ -393,7 +393,8 @@ test('a PR closed during the proof comment and reopened at the same head recheck
 test('a new head before the first pending proof comment abandons the saved close', async () => {
     const f = await sameHead();
     await f.observe();
-    f.state.fail = (_p, args) => args[0] === 'api' && args[1] === 'user' ? 'HTTP 502: Bad Gateway' : false;
+    // The proof comment's author is its Effect's own writer, never a viewer read: the first PR read after the relink fails instead.
+    f.state.fail = (_p, args) => closeEffect(f, 'relink')?.status === 'verified' && args[0] === 'api' && String(args[1]).endsWith('/pulls/200') ? 'HTTP 502: Bad Gateway' : false;
     await f.step();
     expect(f.job.supersededWikiClose?.head).toBe(H1);
     expect(posted(f, 200)).toEqual([]);

@@ -1,3 +1,5 @@
+// A worker's ready event is a legacy operator write until D4 moves worker publication to the harness.
+import { OPERATOR_LOGIN } from '../../../github/identity/office-authors';
 import {preparationCheckpoint,preparationNativeCheckpoint,preparationNativeAssessment} from './preparation-checkpoint';
 import {postConflictPreparationEvidence,readPostConflictPreparationFacts,assertPostConflictOwnership} from './post-conflict-preparation';
 import {bindPreparationBoardOrigins,readPreparationBoardOrigins} from './preparation-board-provenance';
@@ -108,7 +110,7 @@ export async function reconcilePreparationReadback(delivery:GitHubDelivery,key:s
  assertPreparationReceiptProviders(selected.receiptBindings,before,job,selected.work.startedAt);
  const boardOriginsBefore=await readPreparationBoardOrigins(delivery,job,selected.receiptBindings);
  if(selected.postConflict){if(!before.readyEvents.some(e=>Date.parse(e.created_at)<Date.parse(selected.work.startedAt))||before.readyEvents.some(e=>Date.parse(e.created_at)>=Date.parse(selected.work.startedAt)))throw Error('Post-conflict PR must already have been ready before the original worker');}
- else if(!before.readyEvents.some(e=>e.actor==='JFusco'&&Date.parse(e.created_at)>=Date.parse(selected.work.startedAt)&&Date.parse(e.created_at)<=Date.parse(selected.work.endedAt!)))throw new Error('Original ready effect timeline provenance required');
+ else if(!before.readyEvents.some(e=>e.actor===OPERATOR_LOGIN&&Date.parse(e.created_at)>=Date.parse(selected.work.startedAt)&&Date.parse(e.created_at)<=Date.parse(selected.work.endedAt!)))throw new Error('Original ready effect timeline provenance required');
  const prior=new Set((store.state.workLog||[]).map(w=>w.id));
  const baseSchema=selected.postConflict?Assessment.omit({onlyReadyEffect:true}).extend({preparationClass:z.literal('post-conflict-zero-write'),noExternalEffects:z.boolean(),privateWritesOnly:z.boolean(),unchangedApprovedDelta:z.boolean(),approvalAnchor:z.string(),nativeSessionSha256:z.string()}):Assessment;
  const schema=baseSchema.extend({originalWorkId:z.literal(originalWorkId),nativeSessionId:z.literal(selected.work.sessionId!),checkpointSha256:z.literal(selected.checkpointSha256),commit:z.literal(job.head),prId:z.literal(job.pr),receiptBindingsSha256:z.literal(digest(selected.receiptBindings))});

@@ -161,7 +161,7 @@ export function fakeGitHub(issueNumber = 5, options: { onDisk?: boolean } = {}) 
             if (mergePut && verb === 'PUT') {
                 const pr = state.prs.find(p => p.number === Number(mergePut[1]));
                 if (!pr || pr.state !== 'open' || pr.head.sha !== f.sha) throw new Error('HTTP 409: Head branch was modified');
-                Object.assign(pr, { state: 'closed', merged: true, merged_at: store.clock.now().toISOString(), merge_commit_sha: 'f'.repeat(40) });
+                Object.assign(pr, { state: 'closed', merged: true, merged_at: store.clock.now().toISOString(), merge_commit_sha: 'f'.repeat(40), merged_by: { login: 'JFusco' } });
                 return JSON.stringify({ merged: true, sha: pr.merge_commit_sha });
             }
             if (/\/git\/ref\/heads\//.test(path)) return JSON.stringify({ ref: `refs/heads/${path.split('/git/ref/heads/')[1]}`, object: { sha: state.targetTip, type: 'commit' } });
@@ -207,7 +207,8 @@ export function fakeGitHub(issueNumber = 5, options: { onDisk?: boolean } = {}) 
     function graphql({ query, variables }: { query: string; variables: any }) {
         if (query.includes('mergeStateStatus')) { const pr = state.prs.find(p => p.number === variables.number); return { data: { repository: { pullRequest: pr && { headRefOid: pr.head.sha, baseRefName: pr.base.ref, mergeStateStatus: pr.mergeStateStatus ?? 'CLEAN', reviewDecision: null, reviewThreads: { nodes: pr.threads ?? [], pageInfo: { hasNextPage: false } } } } } }; }
         if (query.startsWith('mutation')) state.mutations.push({ method: 'GRAPHQL', target: 'project', args: [JSON.stringify(variables)] });
-        if (query.includes('editor{')) { const pr = state.prs.find(p => p.number === variables.number); return { data: { repository: { pullRequest: pr && { id: `PR_${pr.number}`, url: pr.html_url, state: pr.merged_at ? 'MERGED' : pr.state === 'open' ? 'OPEN' : 'CLOSED', headRefOid: pr.head.sha, body: pr.body, lastEditedAt: pr.lastEditedAt ?? '2026-11-25T00:00:00Z', editor: pr.editor ?? null, closingIssuesReferences: { nodes: linked(pr) ? [{ number: issueNumber, url: issueUrl }] : [], pageInfo: { hasNextPage: false } } } } } }; }
+        // The description-history query also reads each edit's editor; the relink query is the one with a top-level editor.
+        if (query.includes('editor{') && !query.includes('userContentEdits')) { const pr = state.prs.find(p => p.number === variables.number); return { data: { repository: { pullRequest: pr && { id: `PR_${pr.number}`, url: pr.html_url, state: pr.merged_at ? 'MERGED' : pr.state === 'open' ? 'OPEN' : 'CLOSED', headRefOid: pr.head.sha, body: pr.body, lastEditedAt: pr.lastEditedAt ?? '2026-11-25T00:00:00Z', editor: pr.editor ?? null, closingIssuesReferences: { nodes: linked(pr) ? [{ number: issueNumber, url: issueUrl }] : [], pageInfo: { hasNextPage: false } } } } } }; }
         if (query.includes('userContentEdits')) {
             const pr = state.prs.find(p => p.number === variables.number);
             return { data: { repository: { nameWithOwner: REPOSITORY, pullRequest: pr ? descriptionNode(pr) : null } } };

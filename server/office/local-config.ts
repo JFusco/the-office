@@ -9,6 +9,7 @@ import { assertModelOverrides, type ModelOverrides } from '../telemetry/model-ro
 import { parseProjectPolicy, type ProjectPolicyInput } from './project-policy-config';
 import { parseBindingBlocks, type BindingBlocks } from './project-binding-blocks';
 import { assertUniqueProjectKeys } from './jira-project-keys';
+import { parseGitHubApp, type GitHubAppConfig } from '../github/identity/app-config';
 /** A project entry as written in office-config.json. `policy`, `jira`, `azure` and `prompt` configure start-up and never reach the saved project. */
 export type ProjectInput = OfficeProject & { policy?: ProjectPolicyInput; jira?: unknown; azure?: unknown; prompt?: unknown; bindingBlocks?: BindingBlocks };
 export interface CECBinding {
@@ -36,6 +37,8 @@ export interface LocalBindings {
     delivery?: { concurrency?: number };
     /** Per-role Codex model and effort pins; absent roles use the built-in routes. */
     models?: ModelOverrides;
+    /** The Office GitHub App's public identifiers and write routes; absent means every route selects the operator. */
+    githubApp?: GitHubAppConfig;
 }
 export function localBindings(dataRoot: string): LocalBindings {
     if (process.env.VITEST || process.env.NODE_ENV === 'test')
@@ -69,6 +72,7 @@ export function localBindings(dataRoot: string): LocalBindings {
     assertUniqueProjectKeys(config.projects || []);
     assertModelOverrides(config.models);
     assertFeaturePlanningConfig(config.featurePlanning);
+    if (config.githubApp !== undefined) config.githubApp = parseGitHubApp(config.githubApp, config.projects);
     const concurrency = config.delivery?.concurrency;
     if (config.delivery !== undefined && (typeof config.delivery !== 'object' || config.delivery === null || concurrency !== undefined && (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3)))
         throw new Error('Delivery concurrency must be an integer from 1 to 3');

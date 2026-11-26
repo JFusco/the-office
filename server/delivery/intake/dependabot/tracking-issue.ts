@@ -5,22 +5,34 @@ import { cardStatus, projectCards, projectGraphql, setCardStatus, statusField, t
 import { readRepo, type DependabotPR } from './qualify';
 import type { Store } from '../../../store/store';
 import { centralCompanionHandoff, centralCompanionIssue } from '../dependency-bots/companion-issue';
+import { discoveredAuthor, OPERATOR_LOGIN } from '../../../github/identity/office-authors';
 
 export interface TrackingIssue { number: number; nodeId: string; url: string }
 
 /** Hidden marker that ties exactly one tracking issue to its Dependabot PR across restarts. */
 export const trackingMarker = (pr: number, bot = 'dependabot') => `<!-- office-${bot}-pr:${pr} -->`;
 
-/** The Office's own tracking issue: created through Joe's token, assigned to him, carrying the marker. */
-export function ownTracking(i: any, pr: number, bot = 'dependabot'): boolean {
-    return !i.pull_request && i.user?.login === 'JFusco' && i.assignees?.some((a: any) => a.login === 'JFusco') && String(i.body || '').includes(trackingMarker(pr, bot));
+/**
+ * The Office's own tracking issue, each fact checked on its own: written by an accepted Office author (the historical
+ * operator unless another is given), assigned to Joe, carrying the marker and, when named, on this repository.
+ */
+export function ownTracking(i: any, pr: number, bot = 'dependabot', authors: readonly string[] = [OPERATOR_LOGIN], repository?: string): boolean {
+    return !i.pull_request && authors.includes(i.user?.login) && i.assignees?.some((a: any) => a.login === 'JFusco') && String(i.body || '').includes(trackingMarker(pr, bot)) &&
+        (!repository || i.html_url === `https://github.com/${repository}/issues/${i.number}`);
 }
 
 export async function findTrackingIssue(store: Store, execute: Execute, pr: number, known = 0, bot = 'dependabot'): Promise<TrackingIssue | null> {
     const central = bot === 'pin-courier' && centralCompanionHandoff(store.project.repository);
-    const matches = (i: any) => ownTracking(i, pr, bot) || central && centralCompanionIssue(i, store.project.repository, pr);
+    // Every author's issues, all pages: no single-creator filter, so a bot-written tracking issue is found too.
+    const office = (i: any) => {
+        const standing = discoveredAuthor(store, 'github-issue-create', i?.user?.login, i?.created_at);
+        if (standing === 'ambiguous' && ownTracking(i, pr, bot, [OPERATOR_LOGIN], store.project.repository))
+            throw new Error(`Tracking issue #${i.number} for dependency PR #${pr} was written by the operator after the App cutover; reconcile it before adoption`);
+        return standing === 'office' && ownTracking(i, pr, bot, [i.user.login], store.project.repository);
+    };
+    const matches = (i: any) => office(i) || central && centralCompanionIssue(i, store.project.repository, pr);
     const found = known ? [await readRepo(store, execute, `issues/${known}`)].filter(matches)
-        : (await readRepo(store, execute, central ? 'issues?state=all&per_page=100' : 'issues?state=all&creator=JFusco&per_page=100', true)).filter(matches);
+        : (await readRepo(store, execute, 'issues?state=all&per_page=100', true)).filter(matches);
     if (found.length > 1)
         throw new Error(`Dependency PR #${pr} has ${found.length} tracking issues; reconcile before adoption`);
     if (found[0] && found[0].state !== 'open')

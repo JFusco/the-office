@@ -73,10 +73,13 @@ test('a comment sent before the PR was edited is settled by reading it back unde
     expect(f.job.parked).toMatchObject({ published: true }); expect(f.job.parked!.unconfirmed).toBeUndefined();
 });
 
-test('a PR card added during author discovery must be moved and covered before the first POST', async () => {
+test('a PR card added after the Block move, before the decision comment, must be moved and covered before the first POST', async () => {
     const f = metadataParkFixture({ prCard: false });
+    // The comment author is no longer read from the live viewer: the card arrives during the first comment read after the move.
+    let moved = false, added = false;
     f.hooks.before = call => {
-        if (call.args[1] === 'user') f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'review' });
+        if (call.request?.query.startsWith('mutation')) moved = true;
+        if (moved && !added && String(call.args[1]).includes('/comments?')) { added = true; f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'review' }); }
     };
     await expect(f.parkNow()).rejects.toThrow('card inventory changed');
     expect(f.writes.posts).toEqual([]);
@@ -92,9 +95,10 @@ test('a PR card added during author discovery must be moved and covered before t
 
 test('a PR card confirmed in Block during coverage remains required if it disappears before the POST', async () => {
     const f = metadataParkFixture({ prCard: false });
+    let moved = false, removed = false;
     f.hooks.after = call => {
-        if (call.request?.query.startsWith('mutation')) f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'block' });
-        if (call.args[1] === 'user') f.state.cards.splice(1, 1);
+        if (call.request?.query.startsWith('mutation')) { moved = true; f.state.cards.push({ id: 'pr-card', kind: 'PullRequest', number: 200, status: 'block' }); }
+        if (moved && !removed && String(call.args[1]).includes('/comments?')) { removed = true; f.state.cards.splice(1, 1); }
     };
     await expect(f.parkNow()).rejects.toThrow('no longer on the board');
     expect(f.job.parked!.metadata!.verified?.items).toEqual(['issue-card', 'pr-card']);

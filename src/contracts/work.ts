@@ -136,6 +136,14 @@ export interface EffectIntent<T = unknown> {
     elapsedMs: number | null;
     /** Set when an attempted write was read back as never having landed (`Effects.notLanded`); the intent is then `rejected`. */
     notLandedAt?: string;
+    /** The GitHub writer pinned before the intent was created; absent on historical and non-GitHub intents. */
+    writer?: import('./write-identity').EffectWriter;
+    /** Actor-bearing read-back evidence an adapter returned with a successful verification. */
+    qualification?: import('./write-identity').WriteQualification;
+    /** An explicit route promotion saved on this verified qualifying Effect. */
+    activation?: import('./write-identity').WriteActivation;
+    /** Set when the dispatch claim refused the pinned writer; the intent is `rejected` and was never dispatched. */
+    writerRefusedAt?: string;
 }
 export type ReconciliationAction = 'reconcile-activation' | 'reconcile-preparation' | 'reconcile-review' | 'reconcile-base-update' | 'reconcile-closeout' | 'reconcile-pr-link' | 'approve-merge' | 'retry-checkpoint' | 'reconcile-time' | 'reconcile-maintenance' | 'adopt-candidate';
 export interface ReconciliationRequest {

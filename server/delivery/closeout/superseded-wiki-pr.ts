@@ -1,4 +1,4 @@
-import { Effects } from '../../store/effects';
+import { reconcileGitHubWrite } from '../../github/identity/write-boundary';
 import { likePrefix } from '../../store/like-prefix';
 import { activeEffectId, effectIdGuard, harnessEffect } from '../harness/effect';
 import { assertDeliveryMayMutate } from '../harness/guards';
@@ -87,7 +87,7 @@ async function readBackSent(delivery: GitHubDelivery, job: TicketJob, close: Sup
     for (const step of STEPS) {
         const sent = intent(delivery, job, close, step);
         if (!sent || !['dispatching', 'uncertain'].includes(sent.status)) continue;
-        const verified = await new Effects(store).reconcile(sent.id, async original => {
+        const verified = await reconcileGitHubWrite(store, sent.id, async original => {
             const found = step === 'pr-comment' || step === 'issue-comment'
                 ? await readProofComment(store, execute, comment(close, step === 'pr-comment' ? 'pull' : 'issue'), original)
                 : await reads[step]();
@@ -189,7 +189,7 @@ async function reconcilePriorLinks(delivery: GitHubDelivery, close: SupersededWi
     const rows = (store.db.prepare("SELECT body FROM effects WHERE id LIKE ? ESCAPE '\\' AND status IN ('dispatching', 'uncertain')").all(likePrefix(prefix)) as { body: string }[]);
     for (const row of rows) {
         const { id } = JSON.parse(row.body);
-        const verified = await new Effects(store).reconcile(id, async original => {
+        const verified = await reconcileGitHubWrite(store, id, async original => {
             const head = /^([a-f0-9]{40})(?::retry-[1-9]\d*)?$/.exec(original.id.slice(prefix.length))?.[1];
             const key = (original.expectedState as { key?: string } | null)?.key, issue = (original.payload as { issue?: number } | null)?.issue;
             if (!head || key !== `pr-body:${close.pr}:${head}` || issue !== close.issue || original.operation !== 'github-pr-body' ||

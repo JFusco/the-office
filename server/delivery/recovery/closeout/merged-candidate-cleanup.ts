@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {resolve,dirname} from 'node:path';
 import {homedir} from 'node:os';
 import {isDeepStrictEqual} from 'node:util';
-import {Effects} from '../../../store/effects';
+import {executeGitHubWrite,reconcileGitHubWrite} from '../../../github/identity/write-boundary';
 import { holdReason } from '../../../office/project-holds';
 import {artifact,rootArtifact,digest,sha,terminationObservation} from '../../../store/readback-evidence';
 import {continuationWorktree} from '../implementation/continuation-evidence';
@@ -116,13 +116,13 @@ export async function cleanupMergedCandidate(delivery:GitHubDelivery,request:Har
   stable();const id=`closeout-cleanup:${job.id}:${recovery.originalWorkId}:${recovery.proofSha256}:${name}`,saved=recovery.operations[name];
   requireCloseout(!saved||saved.effectId===id,'Cleanup operation identity changed');
   if(!saved){recovery.operations[name]={effectId:id};store.save();}
-  const effect=store.getEffect(id),effects=new Effects(store);
+  const effect=store.getEffect(id);
   if(effect)requireCloseout(effect.work.projectId===store.project.id&&effect.work.kind==='delivery'&&effect.work.id===job.id&&effect.attemptId===request.id&&effect.operation===`merged-candidate-cleanup-${name}`&&effect.target===(name==='worktree'?job.worktree:`refs/heads/${job.branch}`)&&effect.authorization===recovery.proofSha256&&isDeepStrictEqual(effect.payload,{name,head:job.head,mergeCommit:job.mergeCommit,worktree:job.worktree,branch:job.branch})&&isDeepStrictEqual(effect.expectedState,{originalDelete:kind==='core-passed'?'unattempted':'not-currently-applied',head:job.head}),'Cleanup effect identity changed');
   if(effect&&['dispatching','uncertain'].includes(effect.status)){
    const pid=recovery.operations[name].processId;requireCloseout(pid,'Attempted cleanup process identity missing');terminationObservation(store,{id,sessionId:'harness-cleanup',processId:pid}as any);
    if(name==='worktree'&&recovery.operations.worktree.localResumption)resumptionProof(id);
    if(name==='worktree'&&!await afterState(name))await resumePartial(id);
-   requireCloseout(await effects.reconcile(id,async()=>({verified:await afterState(name),receipt:{operation:name,verifiedBy:'exact current provider/local postcondition',head:job.head,...(name==='worktree'&&recovery.operations.worktree.localResumption?{localResumption:structuredClone(recovery.operations.worktree.localResumption)}:{})}})),'New cleanup effect remains uncertain; it is not resent');
+   requireCloseout(await reconcileGitHubWrite(store,id,async()=>({verified:await afterState(name),receipt:{operation:name,verifiedBy:'exact current provider/local postcondition',head:job.head,...(name==='worktree'&&recovery.operations.worktree.localResumption?{localResumption:structuredClone(recovery.operations.worktree.localResumption)}:{})}})),'New cleanup effect remains uncertain; it is not resent');
   }
   const existing=store.getEffect(id);if(existing?.status==='verified'){if(name==='worktree'&&recovery.operations.worktree.localResumption)resumptionProof(id);requireCloseout(await afterState(name),'Previously verified cleanup postcondition changed');continue;}
   const preflight=async()=>{
@@ -145,7 +145,7 @@ export async function cleanupMergedCandidate(delivery:GitHubDelivery,request:Har
   // Mutable preflight blockers do not consume an effect attempt. The fixed primitive still
   // has a synchronous final claim/scope fence and its own provider/local compare-and-swap.
   await preflight();
-  await effects.execute({id,work:{projectId:store.project.id,kind:'delivery',id:job.id},attemptId:request.id,operation:`merged-candidate-cleanup-${name}`,target:name==='worktree'?job.worktree:`refs/heads/${job.branch}`,authorization:recovery.proofSha256,payload:{name,head:job.head,mergeCommit:job.mergeCommit,worktree:job.worktree,branch:job.branch},expectedState:{originalDelete:kind==='core-passed'?'unattempted':'not-currently-applied',head:job.head},preflight:async()=>stable(),dispatch,verify:()=>afterState(name)});
+  await executeGitHubWrite(store,{id,work:{projectId:store.project.id,kind:'delivery',id:job.id},attemptId:request.id,operation:`merged-candidate-cleanup-${name}`,target:name==='worktree'?job.worktree:`refs/heads/${job.branch}`,authorization:recovery.proofSha256,payload:{name,head:job.head,mergeCommit:job.mergeCommit,worktree:job.worktree,branch:job.branch},expectedState:{originalDelete:kind==='core-passed'?'unattempted':'not-currently-applied',head:job.head},preflight:async()=>stable(),dispatch,verify:()=>afterState(name)});
  }
  const current=await fresh();requireCloseout(current.branchHead===null&&!localPathPresent(job.worktree)&&await localRef()===null&&names.every(n=>store.getEffect(recovery.operations[n].effectId)?.status==='verified'),'Complete verified remote and local cleanup required');
  const at=store.clock.now().toISOString(),result:StageResult={...original.result,outcome:'passed',blocker:'',summary:kind==='core-passed'?'Original passed core checkpoint and failed transport retained; full independent effect read-back and first exact-tip cleanup verified.':'Independent original effect read-back and separate exact-tip cleanup verified. Original failed writer and blocked checkpoint retained.',findings:original.result.findings.map((f:any)=>f.id===original.cleanupFindingId?{...f,status:'verified',actual:'Original deletion timeout retained; distinct exact-tip remote and local cleanup effects independently verified.'}:f),

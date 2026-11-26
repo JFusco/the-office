@@ -4,6 +4,7 @@ import { cardStatus, projectCards, projectGraphql, setCardStatus, statusField, t
 import { readRepo } from './qualify';
 import type { DependabotAlert } from './alerts';
 import type { Store } from '../../../store/store';
+import { discoveredAuthor } from '../../../github/identity/office-authors';
 
 export interface AlertIssue { number: number; nodeId: string; url: string; open: boolean }
 type Guard = () => void | Promise<void>;
@@ -25,14 +26,22 @@ export function alertIssueBody(alert: DependabotAlert): string {
     ].join('\n');
 }
 
-/** Every issue Joe's login filed, open or closed: where an alert's issue is looked for. Read once per poll. */
-export const listOwnIssues = (store: Store, execute: Execute): Promise<any[]> => readRepo(store, execute, 'issues?state=all&creator=JFusco&per_page=100', true);
+/** Every issue, open or closed and by any author, all pages: where an alert's issue is looked for. Read once per poll. */
+export const listOwnIssues = (store: Store, execute: Execute): Promise<any[]> => readRepo(store, execute, 'issues?state=all&per_page=100', true);
 
 /** The one issue carrying this alert's marker, open or closed. More than one is a person's to untangle. */
 export async function findAlertIssue(store: Store, execute: Execute, alert: number, known = 0, listed?: () => Promise<any[]>): Promise<AlertIssue | null> {
     // The marker on a line of its own: an issue that only quotes it in a sentence is not the alert's issue.
     const marked = (i: any) => !i.pull_request && String(i.body || '').split(/\r?\n/).some(line => line.trim() === alertMarker(alert));
-    const found = known ? [await readRepo(store, execute, `issues/${known}`)].filter(marked) : (await (listed ? listed() : listOwnIssues(store, execute))).filter(marked);
+    // Author and target are checked on their own: another author's copy of the marker is not the Office's, and an
+    // operator issue written after the App cutover is kept for reconciliation rather than adopted or duplicated.
+    const own = (i: any) => {
+        if (!marked(i) || i.html_url !== `https://github.com/${store.project.repository}/issues/${i.number}`) return false;
+        const standing = discoveredAuthor(store, 'github-issue-create', i.user?.login, i.created_at);
+        if (standing === 'ambiguous') throw new Error(`Issue #${i.number} for Dependabot alert #${alert} was written by the operator after the App cutover; reconcile it`);
+        return standing === 'office';
+    };
+    const found = known ? [await readRepo(store, execute, `issues/${known}`)].filter(own) : (await (listed ? listed() : listOwnIssues(store, execute))).filter(own);
     if (found.length > 1) throw new Error(`Dependabot alert #${alert} has ${found.length} issues; reconcile them`);
     return found.length ? { number: found[0].number, nodeId: found[0].node_id, url: found[0].html_url, open: found[0].state === 'open' } : null;
 }
