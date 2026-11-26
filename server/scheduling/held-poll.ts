@@ -16,16 +16,18 @@ import { unparkReleasedWaits } from '../delivery/parking/release-unpark';
 import { unparkSignedIn } from '../delivery/parking/sign-in-unpark';
 import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import { withGitHubSource } from '../github/call-scope';
-import type { QuotaHold } from '../github/quota-governor';
+import { backgroundHold, type QuotaHold } from '../github/quota-governor';
 import type { Coordinator } from './coordination';
 
 /**
- * A GitHub project's assignment poll while a GitHub quota hold defers its background reads. Nothing new is read:
- * no assignments, no bot or alert scan for new intake, no discovery, poll-only dependency refresh or merge notices,
- * and nothing that consumes the assignments read (assessments, review settlement, intake, parked resumes, Backlog
- * retirement, card admission). Protected work keeps its tick: adoption and alert work already under way, through
- * its own path with the live reads its reconciliation needs, parked waits, pending cleanup and the PR observation
- * of live jobs. The last assignments, their time and any error stand; only when observation resumes is recorded.
+ * A GitHub project's assignment poll while a GitHub quota hold defers its background reads. Nothing that needs
+ * GraphQL is read: no assignments, no bot or alert scan for new intake, no discovery or merge notices, and nothing
+ * that consumes the assignments read (assessments, review settlement, intake, parked resumes, Backlog retirement,
+ * card admission). The poll's REST-only dependency refresh for live jobs runs while core itself is clear (a
+ * GraphQL-only reserve), and waits under a core hold or a shared refusal. Protected work keeps its tick: adoption
+ * and alert work already under way, through its own path with the live reads its reconciliation needs, parked
+ * waits, pending cleanup and the PR observation of live jobs. The last assignments, their time and any error
+ * stand; only when observation resumes is recorded.
  */
 export async function pollWhileHeld(coordinator: Coordinator, held: QuotaHold, now: Date): Promise<void> {
     const { store, execute, state, pickup } = coordinator, jobs = state.jobs ??= [];
@@ -45,6 +47,9 @@ export async function pollWhileHeld(coordinator: Coordinator, held: QuotaHold, n
         requeueRefusedQAResults(store, jobs);
         await retryCandidateCleanup(store, execute, jobs);
     }
+    // A failed lookup keeps the routing as it was and writes no error: the hold's contract stands, and the next full poll reads it again.
+    if (!backgroundHold(store.project, coordinator.engine.quota))
+        await withGitHubSource('dependency-refresh', () => delivery.refreshDependencies(inventory)).catch(() => undefined);
     await withGitHubSource('pr-observation', () => delivery.observe(() => coordinator.dependencyStores()));
     for (const review of state.listener.reviews) if (review.status === 'queued') holdAssessmentIntake(store, review);
     state.listener.deferredUntil = held.until;

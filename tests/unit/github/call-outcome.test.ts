@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { failed, noCalls, succeeded } from '../../../server/github/call-outcome';
+import { failed, graphqlCounts, noCalls, succeeded } from '../../../server/github/call-outcome';
 import { githubCall } from '../../../server/github/endpoint-family';
 import { CommandFailure } from '../../../server/workers/process';
 
@@ -40,4 +40,18 @@ test('a stated 304 is a response and a revalidation; other stated answers are fa
     expect(failed(githubCall(['api', 'graphql']), failure('GraphQL: Could not resolve to a Repository'))).toEqual(counts({ attempts: 1, failures: 1 }));
     expect(failed(rest, new CommandFailure('gh read timed out; saved observations retained; safe to retry the read', 'transient-read', true))).toEqual(counts({ failures: 1, unknown: 1 }));
     expect(failed(pages, failure('Server Error (HTTP 502)'))).toEqual(counts({ attempts: 1, failures: 1, unknown: 1 }));
+});
+
+test('a GraphQL query adds its reported points or one unknown cost; an errors body is no page; a continuation counts as a child', () => {
+    const graphql = githubCall(['api', 'graphql', '--input', '-']), page = counts({ attempts: 1, pages: 1, responses: 1, fullResponses: 1 });
+    expect(graphqlCounts(succeeded(graphql, '{}'), { cost: 3 })).toEqual({ ...page, points: 3 });
+    expect(graphqlCounts(succeeded(graphql, '{}'), {})).toEqual({ ...page, unknownCost: 1 });
+    expect(graphqlCounts(succeeded(graphql, '{}'), { cost: 1, errors: 'Something failed' })).toEqual({ ...page, pages: 0, failures: 1, points: 1 });
+    expect(graphqlCounts(succeeded(graphql, '{}'), { errors: 'API rate limit exceeded' }, 'pr-root', true)).toEqual({ ...page, pages: 0, refusals: 1, unknownCost: 1 });
+    // A refusal stated only in the body of a failed call is still a refusal.
+    expect(graphqlCounts(failed(graphql, failure('Something failed')), { errors: 'API rate limit exceeded' }, undefined, true)).toEqual(counts({ refusals: 1, unknown: 1, unknownCost: 1 }));
+    expect(graphqlCounts(succeeded(graphql, '{}'), { cost: 1 }, 'pr-child')).toEqual({ ...page, points: 1, prChildInvocations: 1, prChildPages: 1 });
+    expect(graphqlCounts(failed(graphql, failure('Server Error (HTTP 502)')), {}, 'pr-child')).toEqual(counts({ attempts: 1, failures: 1, unknownCost: 1, prChildInvocations: 1 }));
+    // Not a GraphQL query: unchanged.
+    expect(graphqlCounts(succeeded(rest, '{}'), undefined, 'pr-terminal')).toEqual(succeeded(rest, '{}'));
 });

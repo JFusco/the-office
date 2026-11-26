@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { currentGitHubSource, type Runner } from '../../../server/github/call-scope';
-import { RateLimitSamples } from '../../../server/github/rate-limit-samples';
+import { RateLimitSamples, resourceReading } from '../../../server/github/rate-limit-samples';
 
 const T0 = Date.parse('2026-11-24T12:00:00.000Z'), RESET = 1795000000;
 const resources = (core: number, graphql = 10) => JSON.stringify({ resources: { core: { limit: 5000, used: core, remaining: 5000 - core, reset: RESET }, graphql: { limit: 5000, used: graphql, remaining: 5000 - graphql, reset: RESET + 60 }, search: { limit: 30, used: 0, remaining: 30, reset: RESET } } });
@@ -97,4 +97,16 @@ test('a shorter interval lets the governor probe sooner, still sharing the one s
     release(resources(20)); await Promise.all([probe, routine]);
     expect(f.calls).toHaveLength(2);
     expect(f.samples.latest('core')).toMatchObject({ used: 20 });
+});
+
+test('a GraphQL body reading is kept with body provenance, by the same window rules as headers', async () => {
+    const f = fixture([]);
+    f.samples.headers({ resource: 'graphql', limit: 5000, used: 40, remaining: 4960, reset: RESET }, 'body');
+    expect(f.samples.report().graphql).toMatchObject({ used: 40, from: 'body' });
+    // An older reading of the same window cannot lower what was used.
+    f.samples.headers({ resource: 'graphql', limit: 5000, used: 30, remaining: 4970, reset: RESET }, 'body');
+    expect(f.samples.latest('graphql')).toMatchObject({ used: 40 });
+    expect(f.samples.latest('core')).toBeUndefined();
+    expect([resourceReading('graphql', { limit: 5000, used: 1, remaining: 4999, reset: RESET }), resourceReading('core', { limit: 5000, used: -1, remaining: 4999, reset: RESET })])
+        .toEqual([{ resource: 'graphql', limit: 5000, used: 1, remaining: 4999, reset: RESET }, undefined]);
 });

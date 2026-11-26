@@ -14,6 +14,7 @@ import { readAssignments, readGoneTickets, poll } from './assignment-poll';
 import { tick } from './coordination-tick';
 import { pump } from './coordination-pump';
 import { withGitHubSource } from '../github/call-scope';
+import type { QuotaCheck } from '../github/quota-hold';
 import { resumeRepairedMaintenance, queueCheckpointRetry, readBackCheckpoint, retryCheckpoint } from '../maintenance/checkpoint-retry';
 export function coordination(): Coordination { return { enabled: false, activatedAt: '', lastTickAt: '', nextDueAt: '', checkpoints: [], listener: { lastCheckedAt: '', nextCheckAt: '', error: '', assigned: [], reviews: [] } }; }
 export function localDay(now: Date) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now); }
@@ -70,7 +71,8 @@ export class Coordinator {
     recheckPR(key: string) { return recheckPR.call(this, key); }
     recheck(key: string) { return recheck.call(this, key); }
     async deferNonReady(key: string) { return deferNonReady.call(this, key); }
-    async readAssignments(): Promise<AssignedIssue[]>  { return withGitHubSource('assignments', () => readAssignments.call(this), { project: this.store.project.id }); }
+    /** `check` is the background poll's quota check; dispatch-time callers read without one. */
+    async readAssignments(check?: QuotaCheck): Promise<AssignedIssue[]>  { return withGitHubSource('assignments', () => readAssignments.call(this, check), { project: this.store.project.id }); }
     async readGoneTickets(keys: string[]): Promise<Set<string>> { return readGoneTickets.call(this, keys); }
     async poll(now = new Date()) { return withGitHubSource('assignments', () => poll.call(this, now), { project: this.store.project.id }); }
     async tick(now = new Date()) { return tick.call(this, now); }

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { setTimeout as wait } from 'node:timers/promises';
-import { bindGitHubRunner, boundGitHubRunner, currentGitHubProject, currentGitHubSource, deliverySource, withGitHubSource, type Runner } from '../../../server/github/call-scope';
+import { bindGitHubRunner, boundGitHubRunner, currentGitHubOperation, currentGitHubProject, currentGitHubSource, deliverySource, withGitHubOperation, withGitHubSource, type Runner } from '../../../server/github/call-scope';
 
 const runner: Runner = async () => '';
 
@@ -49,4 +49,20 @@ test('a pinned owner keeps its label through nested scopes', async () => {
 
 test('a delivery step is labelled by a known stage only', () => {
     expect([deliverySource('review'), deliverySource('lead-pr'), deliverySource('toString'), deliverySource('')]).toEqual(['delivery:review', 'delivery:lead-pr', 'delivery', 'delivery']);
+});
+
+test('time and cost are sources of their own, and an operation marker keeps a pinned owner and its project', async () => {
+    await withGitHubSource('time', async () => { await wait(1); expect([currentGitHubSource(), currentGitHubProject()]).toEqual(['time', 'brain']); }, { project: 'brain' });
+    await withGitHubSource('cost', async () => expect(currentGitHubSource()).toBe('cost'));
+    expect(currentGitHubOperation()).toBeUndefined();
+    await withGitHubSource('it', async () => {
+        await withGitHubOperation('pr-child', async () => {
+            await withGitHubSource('monitor', async () => {
+                await wait(1);
+                expect([currentGitHubSource(), currentGitHubProject(), currentGitHubOperation()]).toEqual(['it', 'brain', 'pr-child']);
+            }, { project: 'cms-field-vocabulary' });
+        });
+        expect(currentGitHubOperation()).toBeUndefined();
+    }, { project: 'brain', pin: true });
+    await bindGitHubRunner(runner, () => withGitHubOperation('pr-root', async () => expect([boundGitHubRunner('gh'), currentGitHubSource()]).toEqual([runner, 'other'])));
 });

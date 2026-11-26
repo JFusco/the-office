@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { withGitHubSource, type Runner } from '../../../server/github/call-scope';
 import { GitHubCalls } from '../../../server/github/github-calls';
+import { backgroundHold, GRAPHQL_WORK } from '../../../server/github/quota-governor';
 
 const T0 = Date.parse('2026-11-26T13:00:00.000Z'), RESET = T0 / 1000 + 1800;
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -147,4 +148,36 @@ test.each([
     expect(await f.read()).toMatchObject({ message });
     expect(f.governor.hold()).toBeUndefined();
     expect(f.probes).toEqual([]);
+});
+
+const both = (core: number, graphql: number, graphqlReset = RESET + 600) => JSON.stringify({ resources: { core: { limit: 5000, used: 5000 - core, remaining: core, reset: RESET }, graphql: { limit: 5000, used: 5000 - graphql, remaining: graphql, reset: graphqlReset } } });
+
+test('a GraphQL reading at or below the reserve holds only work that asks for GraphQL, until its own reset', async () => {
+    const f = office();
+    f.answerProbe(async () => both(4900, 501)); await f.calls.quota.sample();
+    expect([f.governor.hold(), f.governor.hold(GRAPHQL_WORK)]).toEqual([undefined, undefined]);
+    f.at(60); f.answerProbe(async () => both(4900, 500)); await f.calls.quota.sample();
+    // Core-only work continues on its own budget; GraphQL-dependent work waits for the GraphQL reset.
+    expect(f.governor.hold()).toBeUndefined();
+    expect(f.governor.hold(['core'])).toBeUndefined();
+    expect(f.governor.hold(GRAPHQL_WORK)).toEqual({ until: iso((RESET + 600) * 1000) });
+    expect(backgroundHold({ provider: 'github' }, f.governor, GRAPHQL_WORK)).toEqual({ until: iso((RESET + 600) * 1000) });
+    expect(backgroundHold({ provider: 'azure' }, f.governor, GRAPHQL_WORK)).toBeUndefined();
+    // Both low: the later deadline for GraphQL-dependent work; a core-only caller waits for core's own reset.
+    f.at(120); f.answerProbe(async () => both(400, 500)); await f.calls.quota.sample();
+    expect(f.governor.hold(GRAPHQL_WORK)).toEqual({ until: iso((RESET + 600) * 1000) });
+    expect(f.governor.hold()).toEqual({ until: iso(RESET * 1000) });
+    f.at(1800); expect([f.governor.hold(), f.governor.hold(GRAPHQL_WORK)]).toEqual([undefined, { until: iso((RESET + 600) * 1000) }]);
+});
+
+test('a GraphQL body reading counts for GraphQL; a stated refusal holds every caller, core-only work included', async () => {
+    const reading = (remaining: number) => JSON.stringify({ data: { rateLimit: { cost: 1, limit: 5000, used: 5000 - remaining, remaining, resetAt: iso((RESET + 900) * 1000) } } });
+    let answer: string | Error = reading(499);
+    const f = office(() => answer);
+    await f.read('brain', ['api', 'graphql', '--input', '-']);
+    expect(f.calls.quota.report().graphql).toMatchObject({ remaining: 499, from: 'body' });
+    expect([f.governor.hold(), f.governor.hold(GRAPHQL_WORK)]).toEqual([undefined, { until: iso((RESET + 900) * 1000) }]);
+    answer = new Error(PRIMARY); f.answerProbe(async () => both(4000, 4000));
+    f.at(10); await f.read(); await f.settle();
+    expect(f.governor.hold()).toEqual({ until: iso(T0 + 70_000) });
 });

@@ -1,15 +1,21 @@
 import { withGitHubSource, type Runner } from './call-scope';
 
 const HOUR = 60 * 60_000;
-type Resource = 'core' | 'graphql';
+export type Resource = 'core' | 'graphql';
 type Reading = { limit: number; used: number; remaining: number; reset: number };
 export type ResourceReading = Reading & { resource: Resource };
-export type Sample = ResourceReading & { at: number; from: 'rate_limit' | 'headers' };
+/** Where a reading came from: a `rate_limit` sample, an `--include` header block, or a GraphQL body's `rateLimit`. */
+export type Sample = ResourceReading & { at: number; from: 'rate_limit' | 'headers' | 'body' };
 
 function reading(value: any): Reading | undefined {
     const { limit, used, remaining, reset } = value ?? {};
     if (![limit, used, remaining, reset].every(n => Number.isInteger(n) && n >= 0) || Number.isNaN(new Date(reset * 1000).getTime())) return;
     return { limit, used, remaining, reset };
+}
+/** A reading of one resource from untrusted values: non-negative integers with a reset in epoch seconds, or nothing. */
+export function resourceReading(resource: Resource, value: unknown): ResourceReading | undefined {
+    const valid = reading(value);
+    return valid && { ...valid, resource };
 }
 const iso = (ms: number) => new Date(ms).toISOString();
 const view = ({ limit, used, remaining, reset, at, from }: Sample) => ({ limit, used, remaining, reset: iso(reset * 1000), observedAt: iso(at), from });
@@ -54,10 +60,10 @@ export class RateLimitSamples {
         });
         return this.pending;
     }
-    /** Keep only the quota values from an included response. */
-    headers(input: string | ResourceReading | undefined) {
+    /** Keep only the quota values from an included response, or from a GraphQL body's `rateLimit` (`from: 'body'`). */
+    headers(input: string | ResourceReading | undefined, from: 'headers' | 'body' = 'headers') {
         const value = typeof input === 'string' ? readRateLimitHeaders(input) : input;
-        if (value) this.keep({ ...value, at: this.now(), from: 'headers' });
+        if (value) this.keep({ ...value, at: this.now(), from });
     }
     private keep(sample: Sample) {
         this.samples = this.samples.filter(kept => kept.at > sample.at - HOUR);

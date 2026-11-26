@@ -30,15 +30,18 @@ import { GitHubDelivery } from '../delivery/pipeline/github-delivery';
 import type { AssignedIssue } from '../../src/shared';
 import type { Coordinator } from './coordination';
 import { withGitHubSource } from '../github/call-scope';
-import { backgroundHold, type QuotaHold } from '../github/quota-governor';
+import { backgroundHold, GRAPHQL_WORK, type QuotaHold } from '../github/quota-governor';
+import { heldBy, quotaCheck, type QuotaCheck } from '../github/quota-hold';
 import { pollWhileHeld } from './held-poll';
 
-export async function readAssignments(this: Coordinator): Promise<AssignedIssue[]>  {
+/** `check`, from the background poll, is asked before the assignment read and each board page; a hold it raises is rethrown. */
+export async function readAssignments(this: Coordinator, check?: QuotaCheck): Promise<AssignedIssue[]>  {
     if (this.store.project.provider === 'github') {
+        check?.();
         const pages = JSON.parse(await this.execute('gh', ['api', `repos/${this.store.project.repository}/issues?state=open&assignee=JFusco&per_page=100`, '--paginate', '--slurp'], { cwd: this.store.project.repo, timeout: 60000, readOnly: true }));
         if (!Array.isArray(pages) || pages.some(p => !Array.isArray(p)))
             throw new Error('Incomplete GitHub assignment response');
-        const board = await this.engine.github.board();
+        const board = await this.engine.github.board(check);
         if (!board || board.error)
             throw new Error(board?.error || 'Project board is unavailable');
         if (this.store.state.github)
@@ -85,14 +88,24 @@ export async function poll(this: Coordinator, now = new Date()): Promise<QuotaHo
         return;
     this.polling = true;
     try {
-        // Under a GitHub quota hold only protected work runs, and no reader error is written (./held-poll.ts).
-        const quotaHold = backgroundHold(this.store.project, this.engine.quota);
+        // Under a GitHub quota hold only protected work runs, and no reader error is written (./held-poll.ts). The
+        // assignment read and everything that consumes it depend on the GraphQL board, so both resources count.
+        const quotaHold = backgroundHold(this.store.project, this.engine.quota, GRAPHQL_WORK);
         if (quotaHold) {
             await pollWhileHeld(this, quotaHold, now);
             return quotaHold;
         }
         delete this.state.listener.deferredUntil;
-        const assigned = await this.readAssignments(), listener = this.state.listener;
+        let assigned: AssignedIssue[];
+        try { assigned = await this.readAssignments(quotaCheck(this.store.project, this.engine.quota)); }
+        catch (error) {
+            // A hold met between the assignment read and a board page, or between two board pages: a deferral, as at entry.
+            const hold = heldBy(error);
+            if (!hold) throw error;
+            await pollWhileHeld(this, hold, now);
+            return hold;
+        }
+        const listener = this.state.listener;
         // Date the completed provider read, before downstream delivery work can make it older.
         const observedAt = this.store.clock.now().toISOString();
         const previous = new Map(listener.assigned.map(i => [i.key, i]));

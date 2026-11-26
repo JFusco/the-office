@@ -10,7 +10,7 @@ import { dispatchResumes } from '../incidents/repair/resume-arrivals';
 import { releaseWatch } from '../incidents/repair/running-release';
 import { settleIncidents } from '../incidents/repair/settle-incidents';
 import { command } from '../workers/process';
-import { backgroundHold } from '../github/quota-governor';
+import { backgroundHold, GRAPHQL_WORK } from '../github/quota-governor';
 import { DATA, ROOT } from './config';
 import type { ServiceContext } from './http/context';
 import { releaseIdentity } from './release-identity';
@@ -60,8 +60,8 @@ export function startServiceTicks({ offices, itSpecialist, loadedRevision }: Pic
             const active = store.state.tickets.some(t => t.pilot && t.stage !== 'complete');
             const interval = store.project.provider === 'github' ? (store.state.github?.prs.some(p => p.state === 'open') || store.state.coordination?.jobs?.some(j => !['completed', 'cancelled'].includes(j.status)) ? 60000 : 120000) : active ? 30000 : 120000;
             if (Date.now() - (lastPoll.get(id) || 0) >= interval) {
-                // Like the fence, a GitHub quota hold defers the refresh to the first tick after it ends.
-                if (backgroundHold(store.project, offices.githubCalls?.governor))
+                // Like the fence, a GitHub quota hold defers the refresh to the first tick after it ends. It reads GraphQL.
+                if (backgroundHold(store.project, offices.githubCalls?.governor, GRAPHQL_WORK))
                     continue;
                 lastPoll.set(id, Date.now());
                 enqueueRequest(store, 'refresh');
