@@ -11,9 +11,12 @@ running and you have enabled automatic resumes, the Office uses the route that f
 switch starts paused. The Office reports `no-route` for `retry-checkpoint` and
 `reconcile-maintenance`.
 See [Resuming after a fix](#resuming-after-a-fix).
-The autonomous runner is a later phase and is not described here until it
-ships. The process rules are in the Office process, under
-[Deployment](office-process.md#deployment) and [Incident ledger](office-process.md#incident-ledger).
+The repair runner exists as an observe-only pass that you start by hand. It reads the Office,
+keeps one incident in flight and journals outages in its own folder. It calls no model and
+changes nothing in the Office. See [Runner](#runner).
+The process rules are in the Office process, under
+[Deployment](office-process.md#deployment), [Incident ledger](office-process.md#incident-ledger)
+and [Overseer runner](office-process.md#overseer-runner).
 
 ## Deployment
 
@@ -911,4 +914,130 @@ deployed), and after it becomes `verified` or `recurred`.
   threshold before it. A writer stage refused the same way keeps `uncertain-effect`. The repair
   wait for a dead hands-off writer reads past that label to the Effects ledger (see Work awaiting a
   repair); the ledger's own reading of the stop is unchanged.
-- The repair runner's own failures are not recorded yet; the runner does not exist.
+- The repair runner's own failures, such as an Office that stopped answering, are journaled in the
+  runner's own folder only (see [Runner](#runner)). The ledger does not record them yet.
+
+## Runner
+
+The runner is the Overseer's own process, separate from the Office service, so it still works
+when that service is down. In this release one pass only observes. It reads the Office's health
+and its research list, keeps at most one incident in flight and records what it saw. It calls no
+model, makes no GitHub call, sends the Office nothing but two `GET`s and takes no scheduler
+claim. Nothing starts it on a schedule yet, and the incident it keeps in flight is only recorded:
+nothing is triaged, fixed or resumed because of it.
+
+### Running a pass
+
+```bash
+OVERSEER_ROOT="$HOME/Projects/the-office-overseer" node --import tsx server/overseer.ts pass
+```
+
+`OVERSEER_ROOT` is required and must be an absolute path. `OVERSEER_OFFICE_URL` is optional and
+defaults to `http://127.0.0.1:4318`; it must be a bare `http:` origin on `127.0.0.1`,
+`localhost` or `[::1]`. Before it loads any Office module, the pass sets `OFFICE_DATA_ROOT` to
+`state/office-data` under its root, whatever the shell set it to. Office code it loads can then
+never see the Office's own data.
+
+A root is refused, with nothing written, when:
+
+- it is empty or relative;
+- it is, contains or lies inside the Office data root: `OFFICE_DATA_ROOT` as the shell sets it,
+  or the checkout's `.local`;
+- it lies beneath a directory that holds `office-control.sqlite`, `controller-pin.json` or
+  `deployments/`, on the path as written or after links are resolved;
+- it goes through a link that leads nowhere, or one of its folders exists as a file or a link.
+
+| Exit | Meaning |
+|---|---|
+| 0 | A pass was recorded; its record is the last line of output |
+| 1 | The pass could not save its record; read the error |
+| 2 | Malformed invocation, unsafe root or non-loopback Office; nothing was written |
+| 3 | Another pass holds the runner; nothing was written |
+
+### What a pass records
+
+| Outcome | Meaning |
+|---|---|
+| `observing` | One incident is in flight: `selected` names it and says whether it was `kept` from an earlier pass |
+| `idle` | No incident is eligible |
+| `fenced` | A deployment holds the fence, or the fence reads `invalid`; nothing is selected or released |
+| `read-failed` | Health answered, the research list did not |
+| `service-down` | The Office did not answer `/api/health`; see below |
+| `paused` | A pause holds the runner |
+| `stopped` | STOP holds the runner, or the pass just wrote one |
+
+An incident is eligible when the ledger offers it for research, it is in state `observed`,
+`triaged` or `recurred`, and it is not one of the runner's own failures. The incident in flight is
+kept while it stays eligible. When it no longer is, `released` names it with the reason
+(`not-research-eligible`, `runner-source` or `state:<state>`). The pass then picks at most one
+other, the one offered for research longest, then by ID. A repair you start moves the incident to
+`fixing`, so the runner lets it go.
+
+Health and the research list are cached separately, each with the time it was read. A pass that
+reads health but not the list (`fenced`, `read-failed`) refreshes only health. The list, its time
+and the incident in flight stay as they were. A `service-down` record gives `cachedHealthAt` and
+`cachedIncidentsAt`, the times of the last readings, which are not current. STOP or a pause that
+arrives while a pass reads the Office holds before anything is selected or released.
+
+### Files
+
+All under the root, kept apart: control files, journals and state.
+
+| Path | Holds |
+|---|---|
+| `control/STOP.json` | Present when the runner needs a person. Only a person removes it |
+| `control/pause.json` | Present while the runner is paused |
+| `control/pass.lock` | The pass that holds the runner; `pass.lock.reclaim` exists for an instant while a pass takes it |
+| `journal/failures.jsonl` | The runner's failure events, one per line, never rewritten |
+| `state/runner.json` | The incident in flight, the current outage, both cached readings, any journal write still owed, and the last pass |
+| `state/office-data/` | The pass's `OFFICE_DATA_ROOT` |
+
+### Controls
+
+```bash
+pnpm office overseer status
+pnpm office overseer pause --reason "looking at CEC-154"
+pnpm office overseer unpause
+```
+
+These read and write the runner's files only. They open no database and never contact the
+Office, so they work while the Office or its configuration is broken. With `OVERSEER_ROOT` unset
+they use `~/Projects/the-office-overseer`. `status` reads every file above and creates nothing.
+It shows STOP and pause, the lock owner or a guard left behind, the runner state and the number of
+journaled events, and names any file it cannot read. A pause keeps its first reason; pausing again
+changes nothing. `unpause` removes the pause and nothing else. If STOP is present the runner stays
+stopped, and the answer says so.
+
+Pausing the runner pauses nothing in the Office. The switch for automatic repair resumes is the
+Office's own (`pnpm office incident pause-resumes`, under Resuming after a fix) and works
+whatever the runner is doing.
+
+### When the Office does not answer
+
+A pass that cannot read a valid `/api/health` records `service-down` and counts the outage. An
+outage begins with the first such pass and takes that pass's ID. Once it has lasted five minutes
+and covered two passes, it is journaled once as `overseer:service-down:<outage>`. The next pass
+that reads health journals `overseer:service-restored:<outage>`. A gap shorter than that, such as
+a deployment's restart, is noted on the pass that ends it and journaled nowhere. These IDs are the
+event IDs the Office will record them under when forwarding arrives; until then they stay in
+`journal/failures.jsonl`.
+
+A journal event is saved in `state/runner.json` before it is appended. A pass that dies between
+the two leaves the exact line there, and the next pass writes it before it reads the Office. An
+event is never written twice, and never with different content under the same ID.
+
+### When the runner stops
+
+A pass writes STOP, keeping any STOP already there, when:
+
+- **`state/runner.json` cannot be read or does not validate.** The pass saves nothing, so the
+  file STOP names is still as it was. Keep a copy, then repair or move it aside. A root without
+  it starts empty: no incident in flight, no outage.
+- **`journal/failures.jsonl` is damaged**: a cut-short last line, a malformed line, an ID
+  recorded twice, a link or a file with a second name. Keep a copy; the journal is evidence for
+  the ledger. A journal write still owed is the `intent` in runner state, and stays there.
+- **The journal is full** (1,000 events). A new outage needs room for its restoration as well.
+
+To clear it, confirm no pass is running (`pnpm office overseer status` shows no lock), settle the
+file named in the reason, then remove `control/STOP.json` by hand. A STOP file that cannot be read
+counts as STOP, and so does a pause file that cannot be read.
