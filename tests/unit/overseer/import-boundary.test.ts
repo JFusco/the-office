@@ -139,3 +139,21 @@ test('the launcher walk refuses a node: name that is not a built-in, a package, 
     }
     expect(isBuiltin('node:no-such-builtin-for-overseer')).toBe(false);
 });
+
+const TRIAGE = ['server/overseer/stages/triage.ts', 'server/overseer/stages/second-opinion.ts', 'server/overseer/agreement.ts', 'server/overseer/corroborate.ts', 'src/contracts/overseer.ts'];
+const HASHING_FILES = new Set(['server/incidents/cited-sources.ts', 'server/incidents/subject-digest.ts', 'server/overseer/stages/triage.ts']);
+
+test('triage and corroboration reach exactly their own sources, and no pass reaches them', () => {
+    const triageFiles = ['server/incidents/canonical-json.ts', 'server/incidents/cited-sources.ts', 'server/overseer/budget-policy.ts', 'server/overseer/stages/triage.ts', 'src/contracts/overseer.ts'];
+    const [triage, blind, agreement, corroborate, contract] = TRIAGE.map(entry => runtimeClosure([entry]));
+    expect(triage).toEqual({ files: triageFiles, packages: ['zod'] });
+    expect(blind).toEqual({ files: [...triageFiles, 'server/overseer/stages/second-opinion.ts'].sort(), packages: ['zod'] });
+    expect(agreement).toEqual({ files: ['server/overseer/agreement.ts'], packages: [] });
+    expect(corroborate).toEqual({ files: [...triageFiles, 'server/incidents/subject-digest.ts', 'server/overseer/agreement.ts', 'server/overseer/corroborate.ts', 'src/contracts/incidents.ts'].sort(), packages: ['zod'] });
+    expect(contract).toEqual({ files: ['src/contracts/overseer.ts'], packages: ['zod'] });
+    for (const file of new Set([triage, blind, agreement, corroborate, contract].flatMap(closure => closure.files))) {
+        const builtins = runtimeSpecifiers(join(process.cwd(), file)).filter(specifier => specifier.startsWith('node:') || isBuiltin(specifier));
+        expect(builtins, file).toEqual(HASHING_FILES.has(file) ? ['node:crypto'] : []);
+    }
+    expect(runtimeClosure(['server/overseer.ts']).files.filter(file => TRIAGE.includes(file))).toEqual([]);
+});
