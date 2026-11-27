@@ -1,16 +1,18 @@
 import { afterEach, expect, test } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { writeControllerPin } from '../../../server/release/controller-pin';
 import { recordDeployStep, startDeployJournal } from '../../../server/release/deploy-journal';
 import { concludeOperation, readOutcome } from '../../../server/release/deploy-outcome';
 import { createDeployToken } from '../../../server/release/deploy-token';
-import { operationPaths } from '../../../server/release/deploy-paths';
-import { readDeployStop } from '../../../server/release/deploy-stop';
+import { deployPaths, operationPaths } from '../../../server/release/deploy-paths';
+import { readDeployStop, writeDeployStop } from '../../../server/release/deploy-stop';
 import { launchController } from '../../../server/release/launch-controller';
 import { releaseDirectory } from '../../../server/release/release-paths';
-import { buildFakeRelease, fakeRunner as runner, printedOutcome as outcome, sampleFacts as facts } from './deploy-world';
+import { pathToFileURL } from 'node:url';
+import { CONTROLLER_RUNTIME, START_CHECK_TIMEOUT_MS } from '../../../server/release/controller-start-check';
+import { AUTO_ADOPT_REJECTED, buildFakeRelease, launchRunner as runner, printedOutcome as outcome, sampleFacts as facts } from './deploy-world';
 
 const PIN = 'c'.repeat(40), NEWER = 'd'.repeat(40), TARGET = 'b'.repeat(40), OP = 'deploy-20261120t030000z-0a0b0c0d';
 const roots: string[] = [];
@@ -23,10 +25,15 @@ function dataRoot() {
 
 test('the controller runs from the pinned tree with the data root in its environment, and the launch is recorded first', async () => {
     const root = dataRoot();
-    const { calls, execute } = runner(call => { expect(existsSync(operationPaths(root, OP).launch)).toBe(true); return outcome('deployed'); });
+    const { calls, checks, log, execute } = runner(
+        () => { expect(existsSync(operationPaths(root, OP).launch)).toBe(true); return outcome('deployed'); },
+        () => { expect(existsSync(operationPaths(root, OP).launch)).toBe(false); return ''; });
     const result = await launchController({ dataRoot: root, operation: OP, controller: PIN, args: ['deploy', TARGET], timeoutMs: 1000, execute, node: '/usr/local/bin/node' });
     expect(result).toMatchObject({ status: 'deployed', operation: OP });
     const pinned = releaseDirectory(root, PIN);
+    // The start check runs first, with the node, tree and data root the controller then runs with.
+    expect(log).toEqual([...checks, ...calls]);
+    expect(checks).toEqual([{ program: '/usr/local/bin/node', args: ['--import', 'tsx', '--input-type=module', '--eval', expect.any(String), pathToFileURL(resolve(pinned, CONTROLLER_RUNTIME)).href], cwd: pinned, env: { OFFICE_DATA_ROOT: root }, timeout: START_CHECK_TIMEOUT_MS, readOnly: true }]);
     expect(calls).toEqual([{ program: '/usr/local/bin/node', args: ['--import', 'tsx', resolve(pinned, 'server/release/controller-entry.ts'), 'deploy', TARGET], cwd: pinned, env: { OFFICE_DATA_ROOT: root }, timeout: 1000 }]);
     expect(JSON.parse(readFileSync(operationPaths(root, OP).launch, 'utf8'))).toMatchObject({ operation: OP, controller: PIN });
     expect(readDeployStop(root)).toBeNull();
@@ -59,6 +66,24 @@ test('a controller that dies before journaling stops with no step, and an earlie
     const again = await launchController({ dataRoot: root, operation: 'deploy-20261120t040000z-0e0f0a0b', controller: PIN, args: [], timeoutMs: 1000, execute });
     expect(again.reason).toContain(`an earlier STOP for ${OP} stands`);
     expect(readDeployStop(root)).toEqual(first);
+});
+
+test('a controller that fails its start check is refused with nothing written, and never told to change the pin', async () => {
+    const root = dataRoot(), end = 'end-20261120t040000z-0e0f0a0b';
+    startDeployJournal(root, OP, ['fence', 'stop'], facts(PIN));
+    recordDeployStep(root, OP, 'fence', 'intended');
+    writeDeployStop(root, { operation: OP, step: 'fence', reason: 'fence unconfirmed', instruction: 'look first' });
+    const before = Object.fromEntries(readdirSync(deployPaths(root).directory).map(name => [name, readFileSync(resolve(deployPaths(root).directory, name))]));
+    const { calls, checks, execute } = runner(() => outcome('ended', end), () => { throw new Error(`node exited 1: Error: ${AUTO_ADOPT_REJECTED}`); });
+    const result = await launchController({ dataRoot: root, operation: end, controller: PIN, args: ['end', OP, '--operation', end], timeoutMs: 1000, execute });
+    expect(result).toMatchObject({ status: 'refused', operation: end, step: null });
+    expect(result.reason).toContain(`Controller release ${PIN} `);
+    expect(result.reason).toContain(AUTO_ADOPT_REJECTED);
+    expect(result.reason).not.toMatch(/\bpin\b/);
+    expect(checks).toHaveLength(1);
+    expect(calls).toEqual([]);
+    // The STOP, the journal and every other operation file are as they were; the end left no record.
+    expect(Object.fromEntries(readdirSync(deployPaths(root).directory).map(name => [name, readFileSync(resolve(deployPaths(root).directory, name))]))).toEqual(before);
 });
 
 test('a pinned release that is missing, altered or without a controller runs nothing', async () => {

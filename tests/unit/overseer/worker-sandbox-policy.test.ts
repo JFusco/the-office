@@ -19,7 +19,7 @@ test('a reader run reads only its snapshot, its folders and the reviewed inputs,
         filesystem: {
             denyRead: ['/', '/Users', '/Volumes', '/tmp', '/private/tmp', '/var/folders', '/private/var/folders',
                 protectedRoots.officeData, protectedRoots.checkoutData, ...protectedRoots.checkouts, ...protectedRoots.sessionStores,
-                paths.control, paths.journal, paths.state, paths.code, paths.logs, paths.runs, paths.wrapperTmp, input.installation,
+                paths.control, paths.journal, paths.state, paths.code, paths.logs, paths.providers, paths.runs, paths.wrapperTmp, input.installation,
                 '/bin/launchctl', '/usr/bin/osascript', '/usr/bin/open'].map(literal),
             allowRead: [snapshotPath(run), ...working, '/bin/bash', '/bin/sh', '/usr/bin/true', '/usr/lib', '/System/Library'].map(literal),
             allowWrite: working.map(literal),
@@ -182,4 +182,15 @@ test('expanding rules moves only allocation-relative entries; anything else in t
     const rules = JSON.parse(relativeRules(sandboxPolicy(input), run));
     rules.filesystem.allowWrite.push({ path: '/elsewhere/absolute', literal: true });
     expect(JSON.parse(expandRules(JSON.stringify(rules), run)).filesystem.allowWrite).toContainEqual({ path: '/elsewhere/absolute', literal: true });
+});
+
+test('the runner-owned sign-ins are never opened: denied by name, and no executable or runtime read may lie in or contain them', () => {
+    const { paths, input } = sandboxWorld();
+    expect(sandboxPolicy(input).filesystem.denyRead).toContainEqual(literal(paths.providers));
+    for (const path of [join(paths.providers, 'codex', 'auth.json'), join(paths.providers, 'claude')]) {
+        // A fixture root lies under a protected temporary folder, which is refused first; the literal entry above pins the sign-ins on their own.
+        expect(() => sandboxPolicy({ ...input, executables: [...input.executables, path] }), path).toThrow(/overlaps the protected/);
+        expect(() => sandboxPolicy({ ...input, runtimeReads: [path] }), path).toThrow(/overlaps the protected/);
+    }
+    expect(() => sandboxPolicy({ ...input, runtimeReads: [paths.root] })).toThrow('overlaps the protected');
 });

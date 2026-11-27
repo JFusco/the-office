@@ -62,6 +62,8 @@ export interface RunnerPaths {
     runs: string;
     /** The sandbox wrapper's own short temporary folder per run (`worker-sandbox-run.ts`); never opened to a payload. */
     wrapperTmp: string;
+    /** Runner-owned provider sign-ins Joe enrolls (`provider-auth/sign-in-paths.ts`); never opened to a payload. */
+    providers: string;
 }
 
 export function runnerPaths(root: string): RunnerPaths {
@@ -75,7 +77,7 @@ export function runnerPaths(root: string): RunnerPaths {
         budgetDb: resolve(state, 'budget.sqlite'), budgetConfig: resolve(control, 'budget.json'),
         code: resolve(root, 'code'), pin: resolve(root, 'code', 'pin.json'), launcherCopy: resolve(root, 'code', 'launcher', 'overseer-launch.mjs'),
         launcherState: resolve(state, 'launcher.json'), launcherLock: resolve(control, 'launcher.lock'), launcherGuard: resolve(control, 'launcher.lock.reclaim'),
-        logs: resolve(root, 'logs'), runs: resolve(root, 'runs'), wrapperTmp: resolve(root, 'w'),
+        logs: resolve(root, 'logs'), runs: resolve(root, 'runs'), wrapperTmp: resolve(root, 'w'), providers: resolve(root, 'providers'),
     };
 }
 

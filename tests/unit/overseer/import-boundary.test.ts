@@ -169,3 +169,18 @@ test('the playbook modules reach exactly their own files and the lesson selector
     }
     expect(runtimeClosure(['server/overseer.ts']).files.filter(file => file.startsWith('server/overseer/playbook/'))).toEqual([]);
 });
+
+const READER = ['server/overseer/run-model.ts', 'server/overseer/reader-result.ts', 'server/overseer/reader-input.ts', 'server/overseer/reader-profiles.ts',
+    'server/overseer/provider-auth/sign-in-paths.ts', 'server/overseer/provider-auth/claude-handoff.ts', 'server/overseer/provider-auth/codex-handoff.ts', 'server/overseer/provider-auth/profile-status.ts'];
+
+test('no pass reaches the reader and sign-in modules, and they reach no Office service, store, scheduler or shared command at run time', () => {
+    const pass = runtimeClosure(['server/overseer.ts']).files;
+    expect(pass.filter(file => READER.includes(file) || file.startsWith('server/overseer/provider-auth/'))).toEqual([]);
+    const reader = runtimeClosure(READER).files;
+    expect(reader.filter(file => FORBIDDEN.includes(file))).toEqual([]);
+    for (const shared of ['server/workers/process.ts', 'server/workers/spawn-command.ts', 'server/store/store.ts', 'server/store/effects.ts', 'server/office/config.ts'])
+        expect(reader, shared).not.toContain(shared);
+    // The stages stay free of I/O: hashing is their only built-in.
+    for (const stage of ['server/overseer/stages/triage.ts', 'server/overseer/stages/second-opinion.ts'])
+        expect(runtimeSpecifiers(join(process.cwd(), stage)).filter(specifier => specifier.startsWith('node:') || isBuiltin(specifier)), stage).toEqual(stage.endsWith('triage.ts') ? ['node:crypto'] : []);
+});

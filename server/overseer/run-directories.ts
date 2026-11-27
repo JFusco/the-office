@@ -24,7 +24,7 @@ export interface DirectoryFacts { uid?: number }
 
 const code = (error: unknown) => (error as NodeJS.ErrnoException)?.code;
 
-function runnerUid(facts: DirectoryFacts): number {
+export function runnerUid(facts: DirectoryFacts): number {
     const uid = facts.uid ?? process.getuid?.();
     if (!Number.isSafeInteger(uid)) throw new Error('Cannot tell which account the runner runs as; refusing to allocate a run folder');
     return uid!;
@@ -49,7 +49,7 @@ const DIRECTORY_MODES = {
 };
 
 /** A real directory at its expected physical path, with the required owner and permissions. */
-function assertOwnedDirectory(path: string, uid: number, access: keyof typeof DIRECTORY_MODES): void {
+export function assertOwnedDirectory(path: string, uid: number, access: keyof typeof DIRECTORY_MODES): void {
     const stat = statOf(path);
     if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`${path} must be a directory, not a link or a file`);
     if (stat.uid !== uid) throw new Error(`${path} is owned by uid ${stat.uid}, not the runner's ${uid}; refusing it`);
@@ -64,7 +64,7 @@ function assertOwnedDirectory(path: string, uid: number, access: keyof typeof DI
  * directory, checked on the spelling itself so a link before a `..` is caught, and the spelling still
  * resolves to the root that was validated.
  */
-function preflightRoot(paths: ValidatedRunnerPaths): void {
+export function preflightRoot(paths: ValidatedRunnerPaths): void {
     const supplied = paths.suppliedRoot;
     if (typeof supplied !== 'string' || !isAbsolute(supplied)) throw new Error('The runner root was not validated from an absolute path; refusing to allocate a run folder');
     let prefix: string = sep;

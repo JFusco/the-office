@@ -15,11 +15,16 @@ export const WORKER_LOCALE = 'en_US.UTF-8';
 /** The one variable that relocates each provider CLI's own state: its sessions, transcripts and settings. */
 export const PROVIDER_DIRECTORY = { claude: 'CLAUDE_CONFIG_DIR', codex: 'CODEX_HOME' } as const satisfies Record<WorkerProvider, string>;
 /**
+ * Names that carry a provider sign-in. Only the wrapper adds `CLAUDE_CODE_OAUTH_TOKEN`, to one
+ * Claude reader call (`worker-sandbox-run.ts#runSandboxed`); no setting or prepared environment does.
+ */
+export const SIGN_IN_NAMES = ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY', 'CODEX_API_KEY'] as const;
+/**
  * Names the environment or the sandbox wrapper sets itself; no provider setting may use one. The
  * wrapper (`worker-sandbox-run.ts`) sets `CLAUDE_CODE_TMPDIR` to the run's `tmp`, where the sandbox
  * runtime would otherwise use a shared folder.
  */
-export const RESERVED_NAMES = ['PATH', 'LANG', 'LC_ALL', 'HOME', 'TMPDIR', 'OFFICE_DATA_ROOT', 'OFFICE_NO_POLL', 'CLAUDE_CODE_TMPDIR', ...Object.values(PROVIDER_DIRECTORY)] as const;
+export const RESERVED_NAMES = ['PATH', 'LANG', 'LC_ALL', 'HOME', 'TMPDIR', 'OFFICE_DATA_ROOT', 'OFFICE_NO_POLL', 'CLAUDE_CODE_TMPDIR', ...Object.values(PROVIDER_DIRECTORY), ...SIGN_IN_NAMES] as const;
 /**
  * Non-secret provider configuration a worker may be given, per provider. Empty until a provider's
  * qualification establishes what it needs; every addition is reviewed there.
