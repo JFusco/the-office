@@ -1,5 +1,6 @@
 import { accessSync, chmodSync, mkdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 import { SANDBOX_RUNTIME, trustedSandbox } from '../../../server/overseer/worker-sandbox-runtime';
 import { fakeInstallation } from './sandbox-world';
@@ -109,13 +110,21 @@ test('malformed manifest shapes and non-string metadata produce resolver diagnos
     }
 });
 
-test('only macOS is supported, and this tree has no runtime installed today', () => {
+test('only macOS is supported', () => {
     expect(trustedSandbox({ platform: 'linux' })).toEqual({ status: 'unsupported', platform: 'linux' });
     expect(trustedSandbox({ platform: 'win32' })).toEqual({ status: 'unsupported', platform: 'win32' });
-    // The install awaits Joe's approval through the normal permission review.
-    expect(trustedSandbox()).toEqual(process.platform === 'darwin'
-        ? { status: 'unavailable', reason: `${SANDBOX_RUNTIME.name} is not installed with this runner` }
-        : { status: 'unsupported', platform: process.platform });
+});
+
+test('locates the frozen sandbox runtime in this checkout', () => {
+    // The pinned package as `pnpm install --frozen-lockfile` places it, found by this module's own lookup.
+    // Files are inspected only; nothing is run. A checkout without the install fails this case.
+    const checkout = realpathSync(fileURLToPath(new URL('../../../', import.meta.url)));
+    const found = trustedSandbox({ platform: 'darwin', node: process.execPath, writable: [tempDir()] });
+    expect(found).toMatchObject({ status: 'available', version: SANDBOX_RUNTIME.version, installation: checkout, node: realpathSync(process.execPath) });
+    if (found.status !== 'available') return;
+    expect(found.packageRoot.startsWith(`${realpathSync(join(checkout, 'node_modules'))}/`)).toBe(true);
+    expect(found.cli).toBe(join(found.packageRoot, SANDBOX_RUNTIME.cli));
+    expect(found.javaAgentJar).toBe(join(found.packageRoot, SANDBOX_RUNTIME.javaAgent));
 });
 
 test('a writable path that is not normalized and absolute is unavailable', () => {

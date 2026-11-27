@@ -1228,8 +1228,12 @@ What these folders do and do not settle:
 ### Worker sandbox
 
 The worker sandbox contract targets Anthropic's outer filesystem and network sandbox
-(`@anthropic-ai/sandbox-runtime`, `srt`, 0.0.83). This delivery adds no runtime dependency.
-Its implementation checks use fixtures, and the observer dispatches no workers.
+(`@anthropic-ai/sandbox-runtime`, `srt`). The repository pins it exactly at 0.0.83 in `package.json`
+and `pnpm-lock.yaml`, with lockfile integrity
+`sha512-yEusORnVJrNseF/9fvjVYyk6tr79/aFbIB3T/X8p2puLZdaaiGNeYN50v0CE+1DT70v7XuzKOAnTivh1f5cksA==`.
+`tests/unit/overseer/sandbox-runtime-pin.test.ts` keeps the manifest, the lockfile and
+`SANDBOX_RUNTIME` in step. Nothing in the Office or the runner pass runs it. Its implementation checks
+use fixtures, and the observer dispatches no workers.
 
 | Part | File | Does |
 |---|---|---|
@@ -1320,10 +1324,29 @@ expands only allocation-owned paths for the new run and compares the resulting d
 verified policy file.
 
 **Where things stand.** On 2026-11-26, Joe approved the installation prompts for an experiment
-with runtime 0.0.83 on a separate branch. The host battery used synthetic sentinels. Launchd was
-reachable under the policy, the credential-store probe was unrun, and the shared `/tmp/claude`
-probe was inconclusive. Both shipped reader profiles remain unqualified and the model gate is closed.
-See the [phase 7b journal](../wiki/journal/2026-11-26-overseer-phase-7b-worker-sandbox.md).
+with runtime 0.0.83 on a separate branch, and the host battery (run 3) ran on it with synthetic
+sentinels only. Its identities:
+
+- macOS 15.3.1 (24D70), arm64, Node v24.14.0 (`9e831e9b…`);
+- the runtime's contents `867288aa…`, `dist/cli.js` `36232b15…` and Java agent `6d3f7120…`;
+- run policy `f2b2515c…`.
+
+The full values are in the [7f journal's host battery appendix](../wiki/journal/2026-11-27-overseer-phase-7f-sandbox-runtime-pin.md#host-battery-run-3).
+Filesystem confinement, the network allowlist and the loopback and Unix-socket denials held. The
+outer sandbox did not qualify:
+
+- launchd was reachable under the tested policy: a real `/bin/launchctl` query reached it;
+- the runtime's base profile permits the `com.apple.securityd.xpc` and `com.apple.SecurityServer`
+  lookups, and access to a credential item was not tested;
+- both shared-temp spellings are in the runtime's default write set and in the policy's
+  `denyWrite`. The folder was absent (EPERM for `/tmp/claude`, ENOENT for `/private/tmp/claude`), so
+  the effective write was inconclusive;
+- nested Seatbelt was refused, exit 71.
+
+The policy digest identifies the measured run. `profileEligibility()` returns `outer-unqualified`
+on that result before it compares any identity. Both shipped reader profiles remain unqualified and
+the model gate is closed. See the [phase 7b journal](../wiki/journal/2026-11-26-overseer-phase-7b-worker-sandbox.md)
+and [Phase 7 exit](#phase-7-exit).
 
 - **Codex reader:** a Seatbelt profile cannot be applied inside another on this Mac (Darwin 24.3):
   `sandbox-exec` inside `sandbox-exec` gives `sandbox_apply: Operation not permitted`, exit 71. Codex's
@@ -1333,8 +1356,8 @@ See the [phase 7b journal](../wiki/journal/2026-11-26-overseer-phase-7b-worker-s
   waive a restriction.
 - **Claude reader:** no receipt yet shows its restrictions applied to the actual binary.
 
-The project dependency pin in `package.json` and `pnpm-lock.yaml` and runner-owned receipts for
-the exact host, installation, policy and provider profiles are outstanding.
+Qualifying runner-owned receipts for the exact host, installation, policy and provider profiles are
+outstanding.
 
 ### Triage and corroboration
 
@@ -1588,10 +1611,11 @@ The admitted call rechecks all of them immediately before dispatch.
   gone. It stops the generation if the copy had changed. A launch with no recorded group waits for an
   operator.
 
-**Status of each reader.** Both are unqualified. On this tree the runtime is not pinned or installed;
-0.0.83 was inspected in a separate checkout. Host qualification still needs:
+**Status of each reader.** `claude-reader` and `codex-reader` are both unqualified, and both are
+refused with `outer-unqualified`: the recorded host failed outer qualification ([Phase 7 exit](#phase-7-exit)).
+Beyond a qualifying outer receipt, each still needs host evidence that its provider restrictions and
+authentication are in effect:
 
-- the runtime pin;
 - outer and inner receipts;
 - denial of the canonical provider folders;
 - the Claude wrapper and any descendants' exposure;
@@ -1605,6 +1629,7 @@ The admitted call rechecks all of them immediately before dispatch.
 Each of those is a host step that needs Joe's go-ahead. The recorded gaps stand:
 
 - launchd control was reachable;
+- access to a credential item was not tested;
 - the shared temporary folder was inconclusive;
 - Seatbelt does not nest on Darwin 24.3.
 
@@ -1636,6 +1661,75 @@ provider passes its isolation checks. Each of these still needs his own words:
 - a billing-mode change;
 - a project exception;
 - moving the runner pin.
+
+### Phase 7 exit
+
+Phase 7 asked for three things to be resolved: authentication isolation, nested process isolation
+and the selected provider profiles. Each one is either resolved or a concrete gap that fails closed.
+The evidence is the 2026-11-26 host battery ([appendix](../wiki/journal/2026-11-27-overseer-phase-7f-sandbox-runtime-pin.md#host-battery-run-3))
+and the synthetic tests. No model has run.
+
+- **Authentication isolation.** The separate runner sign-ins have synthetic coverage only:
+  - contained reads of the enrolled files;
+  - Claude's token in one call's environment;
+  - Codex's per-run copy under a durable claim, published back only with trusted evidence;
+  - stops keyed to sign-in generations;
+  - recovery after a dead pass.
+
+  There is no live authentication evidence. Joe enrolls the sign-ins himself. A provider's one live
+  test runs only after it passes isolation.
+- **Nested process isolation.** This is a gap. Seatbelt does not nest on this Darwin 24.3 host
+  (exit 71), so the command-capable Codex reader cannot have its inner sandbox and is refused.
+- **Selected provider profiles.** Both are unqualified and refused with `outer-unqualified`.
+
+| Profile | Program | Tools | Authentication | Missing |
+|---|---|---|---|---|
+| `claude-reader` | Claude Code 2.1.328 | Read, Glob, Grep | token environment (`claude-token-environment`) | a qualifying outer receipt; an effective inner receipt |
+| `codex-reader` | Codex CLI 0.167.0-alpha.4.1 | shell, with its read-only sandbox | file store (`codex-file-store`) | a qualifying outer receipt; supported nesting |
+
+Each profile's argument template is declared in `server/overseer/reader-profiles.ts`
+(`claudePieces`, `codexPieces`). `<model>`, `<effort>` and `<schema>` are filled for each call:
+
+- Claude: `-p --model <model> --effort <effort> --output-format stream-json --verbose --json-schema
+  <schema> --safe-mode --restricted --tools Read,Glob,Grep --allowedTools Read,Glob,Grep --add-dir
+  ../snapshot --disallowedTools mcp__* --strict-mcp-config --permission-mode plan --permission-prompts
+  none --no-chrome --settings {"disableAllHooks":true}`;
+- Codex: `exec --ignore-user-config --model <model> -c model_reasoning_effort="<effort>" -c
+  approval_policy="never" -c sandbox_mode="read-only" -c agents.enabled=false -c
+  features.multi_agent=false -c features.multi_agent_v2=false -c cli_auth_credentials_store="file"
+  --output-schema ../snapshot/provider-schema.json --output-last-message ../tmp/last-message.json --json
+  --skip-git-repo-check -`.
+
+Provider program hashes and effective invocations await actual receipts. The shipped gate is closed,
+and the policy allows no provider or refresh endpoint.
+
+**What a later qualification needs.** A future outer receipt needs a complete battery under the
+effective policy. It must include:
+
+- protected IPC denied;
+- a credential item denied, beside a working synthetic control;
+- controlled writes denied under both spellings of an existing shared-temp folder, with the
+  sentinels intact.
+
+Each reader also needs fresh evidence for its exact binary, invocation, authentication and inner
+restrictions. A command-capable Codex reader needs supported nesting. A profile that waives a
+restriction is Joe's decision.
+
+Three host steps are deferred, and each needs its own approval:
+
+- O2, a fresh battery run under the current policy, which runs the runtime;
+- O3, access to the credential store, which needs Joe's own words;
+- O4, a controlled shared-temp check.
+
+Joe's one live test per provider, against the existing budget, applies only after that provider
+passes isolation. These keep their recorded authorization requirements:
+
+- a real provider start;
+- real credentials;
+- the pilot;
+- installing the live runner;
+- a billing change;
+- a project exception.
 
 ### When the Office does not answer
 

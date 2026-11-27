@@ -98,6 +98,27 @@ its entries, but it is not part of this loop. Its entries are not lessons: Harpe
 curate them, they never reach Joe's digest, and they grant no authority. A person edits them by hand
 in the repository. See [Runner guidance](overseer.md#runner-guidance).
 
+**Outside the loop: the Overseer readers** (`server/overseer/reader-profiles.ts`)
+
+No Overseer triage output reaches lessons or retrospectives. Its readers are also unqualified:
+both are refused with `outer-unqualified`.
+
+| Profile | Program | Tools |
+|---|---|---|
+| `claude-reader` | Claude Code 2.1.328 | Read, Glob, Grep |
+| `codex-reader` | Codex CLI 0.167.0-alpha.4.1 | shell, with its read-only sandbox |
+
+The outer sandbox is runtime `@anthropic-ai/sandbox-runtime` 0.0.83, integrity
+`sha512-yEusORnVJrNseF/9fvjVYyk6tr79/aFbIB3T/X8p2puLZdaaiGNeYN50v0CE+1DT70v7XuzKOAnTivh1f5cksA==`.
+It was measured on 2026-11-26 on macOS 15.3.1 (24D70), arm64, with Node v24.14.0:
+
+- launchd was reachable;
+- access to a credential item was not tested;
+- shared-temp writes were inconclusive;
+- nested Seatbelt was refused.
+
+See [Phase 7 exit](overseer.md#phase-7-exit) and the [host battery appendix](../wiki/journal/2026-11-27-overseer-phase-7f-sandbox-runtime-pin.md#host-battery-run-3).
+
 ## External Brain
 
 The Office reads Brain (`brain/reader.ts`, a read-only CLI transport) and never writes to it. The Brain repository is still an ordinary delivery project; that is repository work, not a knowledge write.
