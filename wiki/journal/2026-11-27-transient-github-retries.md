@@ -35,7 +35,8 @@ in fact landed.
 - **No age limit.** A saved draft is never refused only because of its age.
 - **Board moves.** Re-entry is read-back-first. A card move that landed is verified with no mutation. A move proven
   absent is recorded definitively and stays blocked for the operator. It is never resent or retried.
-- **Pushes and PRs.** An existing PR is adopted only after its identity and link are checked.
+- **Pushes and PRs.** An existing PR is adopted only after its identity, link and head are checked. Only an
+  authorized repair of the job's own numbered PR may update it from an ancestor.
 - **Lost push responses.** A lost push response is settled by read-back under its original intent, and never pushed
   again.
 - **First issue-link comment.** By Joe's decision, normal draft acceptance may post the first issue-link comment that is
@@ -53,5 +54,10 @@ in fact landed.
 The tests under `tests/unit/delivery/attempts/`, among them `retry-entry`, `draft-retry`, `transient-schedule`,
 `quota-wait` and `legacy-retry`. Also `tests/unit/scheduling/temporary-read.test.ts` and
 `tests/unit/incidents/sources/delivery-retry-wait.test.ts`.
+
+Implementation review `cdb52586` accepted twelve findings, and all of them passed the independent recheck. Among
+them: a quota episode now survives an uncaptured quota stop, so the six-hour cap holds. A migrated legacy quota timer
+no longer aborts reconciliation. The retry decision is repeated after the dependency refresh. And board recovery
+requires every bound card.
 
 [Archived plan](../plans/2026-11-27-issue-592-retry-transient-github-delivery-stops-bac276030b.md) · [Issue JFusco/the-office#592](https://github.com/JFusco/the-office/issues/592)
