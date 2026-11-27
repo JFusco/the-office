@@ -2,7 +2,11 @@
 topics: [releases-and-incidents]
 plans: [2026-11-27-overseer-phase-7f-pin-the-sandbox-runtime-and-record-the-qualification-r-4a096017d6.md]
 issue: 'https://github.com/jfusco/the-office/issues/737'
-issues: ['https://github.com/jfusco/the-office/issues/737', 'https://github.com/jfusco/the-office/issues/690']
+issues:
+  [
+    'https://github.com/jfusco/the-office/issues/737',
+    'https://github.com/jfusco/the-office/issues/690',
+  ]
 ---
 
 # Overseer phase 7f: the sandbox runtime pin and the phase 7 exit
