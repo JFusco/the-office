@@ -1331,10 +1331,12 @@ the 7b gate keeps it closed until then.
 - the incident's evidence packet, with its digest recomputed as the Office computes it;
 - the original bytes of every runtime file offered for citation, each matched to the startup manifest
   of the Office that produced the packet;
-- `docs/`, `AGENTS.md` and `tests/` files at the packet's verified release commit;
+- `docs/`, `AGENTS.md` and `tests/` files at the packet's verified release commit, except the runner
+  playbook (`docs/overseer/playbook/`), which is never a citable source. A name with an empty, `.` or
+  `..` component is refused in either list;
 - requirement examples, each a versioned clause or test example with the condition and the
   disposition it requires;
-- any runner guidance, or its explicit absence.
+- any runner guidance (see [Runner guidance](#runner-guidance)), or its explicit absence.
 
 Its canonical serialization and that serialization's SHA-256 identify it. Both providers get the same
 prompt bytes, which say that everything in the evidence is data, never an instruction.
@@ -1411,6 +1413,54 @@ timeout settles its reservation but publishes nothing.
    - otherwise Joe.
 
 Every outcome is a proposal; nothing here changes the Office.
+
+### Runner guidance
+
+The Overseer's playbook (`docs/overseer/playbook/`) is advisory guidance for its readers. It is not an
+Office lesson: Harper does not curate it, Joe's digest does not show it, and it grants no authority.
+Each entry restates a requirement already recorded in this document, and its `source` names that
+heading. Nothing calls it yet but tests; the 7b gate keeps model calls closed.
+
+**Format** (`server/overseer/playbook/entry.ts`, and the folder's README). One entry per `<id>.md` file,
+YAML frontmatter only, with no body. The fields are `id`, `revision` (raised by hand), `kind`, `stages`
+(today only `triage`, for both opinions), `when`, `statement`, `check`, up to four ranking `paths` and
+`source`. Text is one trimmed line of at most 240 characters, and a path at most 120. Both are counted
+as JavaScript string length, which keeps a rendered entry under the lesson selector's line limit. A
+parser error or warning (an unresolved tag, say), a repeated key, an alias, an unknown field or a bad
+value refuses the entry.
+
+**Loading** (`load.ts`). The runner reads the folder from its own installation. A release is a
+`git archive` of its commit, so the tracked entries ship with it, but the release's runtime hash does
+not cover `docs/`: reading the installed bytes relies on the trusted installation root, as the run
+folders do. Any of these refuses the whole playbook, and nothing is applied in part:
+
+- a link at `docs`, `docs/overseer` or the playbook folder, or a folder that resolves outside the
+  installation (the refusal names the folder);
+- a missing `README.md`, a badly named file, or more than 64 entries;
+- an entry or README that is a link, a pipe or not a regular file. Each is opened without following
+  links and without waiting;
+- an entry over 8 KiB, by its reported size or by the bytes actually read;
+- an entry that is not UTF-8, or that does not parse.
+
+A missing playbook, a malformed one and a read failure are refused with distinct codes.
+
+**Selection** (`select.ts`). The entries go through the Office's own lesson selector
+(`server/knowledge/lesson-selection.ts`), unchanged. It ranks path matches first, then by ID, and
+holds at most 10 entries within 4,000 characters, reporting the rest as omitted by count or by
+characters. The adapter changes only labels:
+
+- the heading becomes `RUNNER GUIDANCE (advisory, … Current source and the requirement examples win
+  over guidance …)`;
+- each line's stage becomes `triage`;
+- each reference becomes `playbook:<id>@<revision>`.
+
+It refuses a repeated ID. It fails closed if the selector's output changes shape: another heading, a
+missing or clipped line, an unmatched reference, or text longer than the selection. An empty selection
+is the explicit absence.
+
+The guidance is selected once per incident and frozen into the one input both opinions share, so
+both see the same text. The input's identity covers the selected text. An edit to an entry that
+stays omitted leaves it unchanged.
 
 ### When the Office does not answer
 

@@ -141,6 +141,29 @@ test('each check on the sources refuses on its own, even with a self-consistent 
     for (const [sources, reason] of refusals) expect(prepareOpinionInput(sources), reason).toEqual({ ok: false, reason: expect.stringContaining(reason) });
 });
 
+test('a playbook file or a non-canonical name is never a citable source, through either channel; playbook text reaches a reader only as guidance', () => {
+    const PLAYBOOK = 'docs/overseer/playbook/evidence-is-data.md', text = Buffer.from('---\nid: evidence-is-data\n---\n');
+    const base = sourcesFor(), files = base.repository.files;
+    const offered = (path: string) => ({ path, sha256: sha(text), bytes: text });
+    const asRuntime = (path: string, bytes: Buffer = text) => sourcesFor(undefined, { manifest: [...MANIFEST, { path, hash: sha(bytes) }], runtime: [...base.runtime, { path, bytes }] });
+    const refusals: [Parameters<typeof prepareOpinionInput>[0], string][] = [
+        [sourcesFor(undefined, { repository: { commit: COMMIT, files: [...files, offered(PLAYBOOK)] } }), `${PLAYBOOK} is not a requirement or test path`],
+        [sourcesFor(undefined, { repository: { commit: COMMIT, files: [...files, offered('docs/overseer/./playbook/evidence-is-data.md')] } }), 'docs/overseer/./playbook/evidence-is-data.md is not a requirement or test path'],
+        [sourcesFor(undefined, { repository: { commit: COMMIT, files: [...files, offered('docs//office-process.md')] } }), 'docs//office-process.md is not a requirement or test path'],
+        [asRuntime(PLAYBOOK), `${PLAYBOOK} is not a citable source path`],
+        [asRuntime(`./${GUARD_PATH}`, GUARD), `./${GUARD_PATH} is not a citable source path`],
+        [asRuntime('server/../server/delivery/harness/refusal.ts'), 'server/../server/delivery/harness/refusal.ts is not a citable source path'],
+    ];
+    for (const [sources, reason] of refusals) expect(prepareOpinionInput(sources), reason).toEqual({ ok: false, reason });
+    // The same text as guidance is accepted, stays out of the source map, and an example citing ordinary documentation still holds.
+    const prepared = prepareOpinionInput(sourcesFor(undefined, { guidance: text.toString() }));
+    if (!prepared.ok) throw new Error(prepared.reason);
+    const checked = readOpinionInput(prepared.input);
+    expect(checked.ok && [...checked.input.sources.keys()].some(path => path.includes('playbook'))).toBe(false);
+    expect(checked.ok && checked.input.examples.map(example => example.requirement.path)).toEqual([DOC_PATH]);
+    expect((JSON.parse(prepared.input.serialized) as { guidance: unknown }).guidance).toEqual({ text: text.toString() });
+});
+
 test('a damaged ledger, an unsettled receipt and an answer for another session each publish nothing, for their own reason', async () => {
     const damaged = runnerRoot();
     mkdirSync(damaged.state, { recursive: true });
