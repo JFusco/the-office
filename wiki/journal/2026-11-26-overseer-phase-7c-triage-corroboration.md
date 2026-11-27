@@ -2,7 +2,11 @@
 topics: [releases-and-incidents]
 plans: [2026-11-26-overseer-phase-7c-triage-verdicts-and-blind-corroboration-jfusco-the-off-f827d6b90f.md]
 issue: 'https://github.com/jfusco/the-office/issues/702'
-issues: ['https://github.com/jfusco/the-office/issues/702', 'https://github.com/jfusco/the-office/issues/690']
+issues:
+  [
+    'https://github.com/jfusco/the-office/issues/702',
+    'https://github.com/jfusco/the-office/issues/690',
+  ]
 ---
 
 # Overseer phase 7c: triage verdicts and blind corroboration
