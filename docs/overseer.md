@@ -116,6 +116,20 @@ confirmed by that first watched deployment, not before.
 Changing the pin later is also a person's decision. A release that changes `server/release/` is
 still activated by the pin that was in place when its deployment began.
 
+The controller validates the local `office-config.json` with its own release's rules when it
+starts, and the pin can lag behind the service release. Every launch first loads the controller's
+start-up modules with this data root, and a release that cannot load them is refused with nothing
+written: no launch record and no STOP. The refusal names the controller release and its error. If
+the release rejects a configuration that only a newer release accepts:
+
+- **Fresh deploy.** Either correct the configuration, or have a person pin a release that accepts
+  it.
+- **Resume, or an end with a journal.** The operation keeps the controller its journal recorded.
+  The configuration must be one that release accepts.
+- **End without a journal.** It uses the current pin.
+
+A refused end changes nothing, so any STOP and any held fence still stand.
+
 ### When a deployment stops
 
 A STOP record refuses every further deployment until a person removes it. Start with:
@@ -130,7 +144,9 @@ The record names the operation and the last journaled step. Then, by case:
 
 - **The controller failed before journaling.** Read the saved `<operation>.launch.json` and
   `deploy status`. Resolve the start-up failure and confirm the controller is gone before clearing
-  STOP and retrying the deployment.
+  STOP and retrying the deployment. This covers a launch that passed the start check and then
+  failed, for example after the configuration was edited in between. A start check that fails
+  refuses the launch with no record and no STOP.
 - **The controller died with a journal and no outcome.** Check the lock and confirm the controller
   is gone. Follow the STOP instruction for the deployment ID, including when a rollback was
   interrupted or the last step already completed. Clear STOP before running
