@@ -1,9 +1,12 @@
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { writeDurable } from '../../release/durable-file';
-import { readBoundedNoFollowSync } from '../../store/owned-artifact';
 import type { RunnerPaths } from '../config';
 import { readPassOwner, type PassOwner } from '../single-flight';
+import { assertOwnedDirectory, runnerUid, type DirectoryFacts } from '../run-directories';
+import { readOwnedFile, statusPath, type ReadFiles } from './sign-in-paths';
+
+export { statusPath } from './sign-in-paths';
 
 /**
  * `state/providers.json`: which enrolled sign-in generations are stopped, and the one active Codex
@@ -15,7 +18,7 @@ import { readPassOwner, type PassOwner } from '../single-flight';
 
 export const STOP_REASONS = ['sign-in-rejected', 'refresh-rejected', 'sign-in-account-changed', 'sign-in-unreadable', 'rotation-unverified', 'rotation-uncertain'] as const;
 export type StopReason = typeof STOP_REASONS[number];
-export const HANDOFF_PHASES = ['staged', 'launching', 'launched'] as const;
+export const HANDOFF_PHASES = ['staged', 'launching', 'launched', 'retiring'] as const;
 export type HandoffPhase = typeof HANDOFF_PHASES[number];
 
 const DIGEST = z.string().regex(/^[0-9a-f]{64}$/);
@@ -39,13 +42,16 @@ const EMPTY: ProviderStatus = { version: 1, stops: { claude: [], codex: [] }, ac
 /** The pass lock's own record, captured by the caller that acquired it, with the root it was taken under. */
 export interface PassProof { owner: PassOwner; root: string }
 
-export const statusPath = (paths: RunnerPaths) => resolve(paths.state, 'providers.json');
-
-export function readStatus(paths: RunnerPaths): { ok: true; status: ProviderStatus } | { ok: false; reason: string } {
-    const read = readBoundedNoFollowSync(statusPath(paths), STATUS_MAX_BYTES, { singleLink: true });
-    if ('reason' in read) return read.reason === 'missing' ? { ok: true, status: structuredClone(EMPTY) } : { ok: false, reason: `${statusPath(paths)} is unreadable (${read.reason})` };
-    try { return { ok: true, status: Status.parse(JSON.parse(read.text)) }; }
-    catch { return { ok: false, reason: `${statusPath(paths)} is not a provider status record` }; }
+export function readStatus(paths: RunnerPaths, facts: DirectoryFacts & { files?: ReadFiles } = {}): { ok: true; status: ProviderStatus } | { ok: false; reason: string } {
+    const file = statusPath(paths);
+    try {
+        const uid = runnerUid(facts);
+        if (paths.state !== resolve(paths.root, 'state')) return { ok: false, reason: 'The state directory is outside its expected location' };
+        assertOwnedDirectory(paths.state, uid, '0700');
+        const read = readOwnedFile(file, STATUS_MAX_BYTES, { uid, mode: 0o600, files: facts.files });
+        if (!read.ok) return read.fault === 'missing' ? { ok: true, status: structuredClone(EMPTY) } : { ok: false, reason: read.reason };
+        return { ok: true, status: Status.parse(JSON.parse(read.bytes.toString('utf8'))) };
+    } catch { return { ok: false, reason: 'The provider status record or its directory could not be verified' }; }
 }
 
 /** Whether `proof` is this process's current hold on the pass lock at these paths, read now from the lock itself. */

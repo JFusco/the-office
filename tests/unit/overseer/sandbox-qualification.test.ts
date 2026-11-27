@@ -190,7 +190,7 @@ function receipts(providerName: ProviderIdentity['provider'] = 'claude', nesting
     const current = { ...host, provider };
     const inner: InnerReceipt = {
         profile: profile.id, identity: current, restrictionsApplied: profile.requiredRestrictions, battery: qualify(battery(observed, nesting), observed),
-        effective: { restrictions: [...profile.requiredRestrictions], authentication: selection.authentication },
+        effective: { restrictions: [...profile.requiredRestrictions], authentication: selection.authentication, externalMcp: [] },
     };
     const allocate = (extra: Partial<typeof world.input> = {}) => {
         const run = createRunDirectories(world.paths, randomUUID());
@@ -302,4 +302,13 @@ test('a malformed or mis-bound record makes an observation inconclusive, and a m
     // Mis-bound and also wrong: only the binding is reported, because nothing else about that row is read.
     const misbound = battery().map(row => row.probe === 'snapshot-read' ? { ...row, run: 'run-2', outcome: 'denied' as const } : row);
     expect(qualify(misbound, EXPECTED).failures).toEqual(['snapshot-read: recorded for another run, policy or profile']);
+});
+
+test('Claude qualification requires an observed empty external MCP inventory', () => {
+    const { selection, facts, prepared, outer, inner } = receipts('claude');
+    for (const externalMcp of [undefined, ['fixture-mcp']]) {
+        const receipt = { ...inner, effective: { ...inner.effective!, externalMcp } };
+        expect(profileEligibility(selection, facts, prepared, outer, receipt)).toEqual({ eligible: false, reason: 'inner-evidence-missing' });
+    }
+    expect(profileEligibility(selection, facts, prepared, outer, inner)).toEqual({ eligible: true });
 });

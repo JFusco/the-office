@@ -6,7 +6,7 @@ import {
     codexGeneration, finishCodex, markCodexPhase, readCodexEnvelope, recoverCodexHandoff, retireStaged, runAuthPath, stageCodex,
     type RotationEvidence, type StagedCodex,
 } from '../../../../server/overseer/provider-auth/codex-handoff';
-import { readStatus, stopGeneration, type PassProof } from '../../../../server/overseer/provider-auth/profile-status';
+import { readStatus, stopGeneration, updateStatus, type PassProof } from '../../../../server/overseer/provider-auth/profile-status';
 import type { ReadFiles } from '../../../../server/overseer/provider-auth/sign-in-paths';
 import { acquirePassLock, readPassOwner } from '../../../../server/overseer/single-flight';
 import { codexAuth, enrolledRunner } from './provider-world';
@@ -184,7 +184,7 @@ test('staging refuses a missing, malformed or unreadable source and claims nothi
     const cases: [string, (world: ReturnType<typeof enrolledRunner>) => void, string, RegExp][] = [
         ['missing login', world => unlinkSync(world.where.codexAuth), 'sign-in-invalid', /does not exist/],
         ['another credential kind', world => writeFileSync(world.where.codexAuth, codexAuth({ extra: { auth_mode: 'apikey' } })), 'sign-in-invalid', /not a managed ChatGPT login/],
-        ['unreadable status', world => writeFileSync(join(world.paths.state, 'providers.json'), '{'), 'handoff-unrecoverable', /not a provider status record/],
+        ['unreadable status', world => writeFileSync(join(world.paths.state, 'providers.json'), '{', { mode: 0o600 }), 'handoff-unrecoverable', /could not be verified/],
     ];
     for (const [name, damage, refusal, reason] of cases) {
         const world = enrolledRunner();
@@ -197,7 +197,7 @@ test('staging refuses a missing, malformed or unreadable source and claims nothi
     }
 });
 
-test('only the run holding the hand-off records its phase, only the lock holder retires or recovers, and a failed removal surfaces', () => {
+test('only the run holding the hand-off records its phase, only the lock holder retires or recovers, and a failed removal stays fenced', () => {
     const world = enrolledRunner();
     try {
         const { run } = staged(world), other = world.allocate();
@@ -216,7 +216,7 @@ test('only the run holding the hand-off records its phase, only the lock holder 
         const { run } = staged(blocked);
         unlinkSync(runAuthPath(run.root));
         mkdirSync(runAuthPath(run.root));
-        expect(() => retireStaged(blocked.paths, blocked.proof, run)).toThrow();
+        expect(() => retireStaged(blocked.paths, blocked.proof, run)).not.toThrow();
         expect(readStatus(blocked.paths)).toMatchObject({ ok: true, status: { active: { run: run.id } } });
     } finally { blocked.lock.release(); }
 });
@@ -237,6 +237,103 @@ test('a published refresh that does not read back as written is reported, never 
                 return count;
             }) as typeof readSync,
         };
-        expect(() => finishCodex(world.paths, world.proof, run, staging, evidenceFor(staging, rotated), { files })).toThrow('did not read back as written');
+        expect(finishCodex(world.paths, world.proof, run, staging, evidenceFor(staging, rotated), { files })).toEqual({ outcome: 'stopped', reason: 'rotation-uncertain' });
+        expect(existsSync(runAuthPath(run.root))).toBe(false);
+        expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: null, stops: { codex: [{ reason: 'rotation-uncertain' }] } } });
+    } finally { world.lock.release(); }
+});
+
+test('recovery stops a missing post-launch copy and clears a completed retirement without stopping', () => {
+    for (const phase of ['launched', 'retiring'] as const) {
+        const world = enrolledRunner(), { run, staged: staging } = staged(world);
+        markCodexPhase(world.paths, world.proof, run.id, 'launched', 4242);
+        updateStatus(world.paths, world.proof, status => { status.active = { ...status.active!, phase }; });
+        unlinkSync(runAuthPath(run.root));
+        world.lock.release();
+        const lock = acquirePassLock(world.paths, 'successor');
+        try {
+            const owner = readPassOwner(world.paths);
+            if (!('owner' in owner)) throw new Error('missing lock');
+            expect(recoverCodexHandoff(world.paths, { owner: owner.owner, root: world.paths.root }, () => 'absent')).toEqual({ ok: true, recovered: true });
+            expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: null,
+                stops: { codex: phase === 'launched' ? [{ generation: staging.generation, reason: 'rotation-uncertain' }] : [] } } });
+        } finally { lock.release(); }
+    }
+});
+
+test('recovery fences even an unexpected recorded group in an earlier hand-off phase', () => {
+    for (const phase of ['staged', 'launching'] as const) {
+        const world = enrolledRunner(), { run } = staged(world);
+        updateStatus(world.paths, world.proof, status => { status.active = { ...status.active!, phase, group: 4242 }; });
+        world.lock.release();
+        const lock = acquirePassLock(world.paths, 'successor');
+        try {
+            const owner = readPassOwner(world.paths);
+            if (!('owner' in owner)) throw new Error('missing lock');
+            for (const groupState of ['alive', 'uncertain'] as const)
+                expect(recoverCodexHandoff(world.paths, { owner: owner.owner, root: world.paths.root }, () => groupState)).toMatchObject({ ok: false, refusal: 'handoff-unrecoverable' });
+            expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: { run: run.id, phase, group: 4242 } } });
+            expect(existsSync(runAuthPath(run.root))).toBe(true);
+        } finally { lock.release(); }
+    }
+});
+
+test('reformatting and last_refresh leave the same credentials unchanged, and rotation binds enrolled provenance', () => {
+    const provenance = { oauth_provenance: { issuer: 'https://issuer.example.invalid', client_id: 'fixture-client' } };
+    const canonical = codexAuth({ tokensExtra: provenance });
+    const world = enrolledRunner({ auth: canonical });
+    try {
+        const first = staged(world), rewritten = JSON.stringify({ ...JSON.parse(canonical), last_refresh: '2026-11-27T01:00:00Z' });
+        writeFileSync(runAuthPath(first.run.root), rewritten);
+        expect(finishCodex(world.paths, world.proof, first.run, first.staged, null)).toEqual({ outcome: 'unchanged' });
+        expect(readFileSync(world.where.codexAuth, 'utf8')).toBe(canonical);
+        const second = staged(world), refreshed = codexAuth({ refresh: 'verified-refresh', tokensExtra: provenance });
+        writeFileSync(runAuthPath(second.run.root), refreshed);
+        expect(finishCodex(world.paths, world.proof, second.run, second.staged, evidenceFor(second.staged, refreshed))).toEqual({ outcome: 'published' });
+        const third = staged(world), replacement = codexAuth({ refresh: 'verified-other-refresh', tokensExtra: { oauth_provenance: {
+            ...provenance.oauth_provenance, client_id: 'other-client',
+        } } });
+        writeFileSync(runAuthPath(third.run.root), replacement);
+        expect(finishCodex(world.paths, world.proof, third.run, third.staged, evidenceFor(third.staged, replacement))).toEqual({ outcome: 'stopped', reason: 'rotation-unverified' });
+        expect(readFileSync(world.where.codexAuth, 'utf8')).toBe(refreshed);
+    } finally { world.lock.release(); }
+});
+
+test('duplicate managed fields are refused at staging and promotion, including escaped key spellings', () => {
+    const ambiguous = [
+        codexAuth().replace('"auth_mode"', '"auth_mode":"chatgpt","auth_mode"'),
+        codexAuth().replace('"access_token"', String.raw`"access_toke\u006e":"duplicate","access_token"`),
+    ];
+    for (const bytes of ambiguous) {
+        const canonical = codexAuth(), world = enrolledRunner({ auth: bytes });
+        try {
+            expect(stageCodex(world.paths, world.proof, world.allocate())).toMatchObject({ ok: false, refusal: 'sign-in-invalid' });
+            expect(readFileSync(world.where.codexAuth, 'utf8')).toBe(bytes);
+            writeFileSync(world.where.codexAuth, canonical);
+            const { run, staged: staging } = staged(world);
+            writeFileSync(runAuthPath(run.root), bytes);
+            expect(finishCodex(world.paths, world.proof, run, staging, evidenceFor(staging, bytes))).toEqual({ outcome: 'stopped', reason: 'sign-in-unreadable' });
+            expect(readFileSync(world.where.codexAuth, 'utf8')).toBe(canonical);
+        } finally { world.lock.release(); }
+    }
+});
+
+test('a failed canonical read stops the staged generation without modifying the enrollment', () => {
+    const world = enrolledRunner();
+    try {
+        const canonical = readFileSync(world.where.codexAuth, 'utf8'), { run, staged: staging } = staged(world);
+        const rotated = codexAuth({ refresh: 'verified-refresh' });
+        writeFileSync(runAuthPath(run.root), rotated);
+        const files: ReadFiles = {
+            open: ((file: string, flags: number) => {
+                if (file === world.where.codexAuth) throw Object.assign(new Error('synthetic read failure'), { code: 'EIO' });
+                return openSync(file, flags);
+            }) as typeof openSync,
+            close: closeSync, fstat: fstatSync, read: readSync,
+        };
+        expect(finishCodex(world.paths, world.proof, run, staging, evidenceFor(staging, rotated), { files })).toEqual({ outcome: 'stopped', reason: 'sign-in-unreadable' });
+        expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: null, stops: { codex: [{ generation: staging.generation, reason: 'sign-in-unreadable' }] } } });
+        expect(readFileSync(world.where.codexAuth, 'utf8')).toBe(canonical);
+        expect(existsSync(runAuthPath(run.root))).toBe(false);
     } finally { world.lock.release(); }
 });

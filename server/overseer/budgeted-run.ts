@@ -64,15 +64,15 @@ export async function runBudgeted(paths: RunnerPaths, request: AdmissionRequest,
     const { reservation } = admission, controller = new AbortController();
     let bound: string | null = null, done = false;
     // Each settlement opens its own short transaction, so a late one works after the caller has moved on.
-    const settleWith = (evidence: InvocationResult | null, settleOptions = writeOptions): Settled => {
-        try { return { ok: true, settlement: settle(paths, reservation.id, { evidenceId: evidence?.evidenceId ?? null, cost: evidence?.cost ?? null }, settleOptions) }; }
+    const settleWith = (evidence: InvocationResult | null, settleOptions = writeOptions, timeout?: true): Settled => {
+        try { return { ok: true, settlement: settle(paths, reservation.id, { evidenceId: evidence?.evidenceId ?? null, cost: evidence?.cost ?? null, timeout }, settleOptions) }; }
         catch (error) { return { ok: false, error: asError(error), evidence }; }
     };
     // A proven non-dispatch removes the row; nothing settles it afterwards. A row that is no longer untouched keeps its hold.
     const releaseWith = (): Released => {
         if (bound !== null) return { ok: false, error: new Error('A session was bound, so the call may have been dispatched; its hold stays'), evidence: null };
         try {
-            const freed = release(paths, reservation.id, writeOptions);
+            const freed = release(paths, reservation.id, writeOptions, done);
             return freed.released ? { ok: true, released: true } : { ok: false, error: new Error(`The reservation could not be released (${freed.code}); its hold stays`), evidence: null };
         } catch (error) { return { ok: false, error: asError(error), evidence: null }; }
     };
@@ -83,7 +83,7 @@ export async function runBudgeted(paths: RunnerPaths, request: AdmissionRequest,
             clearTimeout(total);
             quiet.clear();
             controller.abort(new Error(`The invocation passed its ${reason} timeout`));
-            resolve({ status: 'timed-out', reservation, reason, retained: settleWith(null, { ...writeOptions, busyTimeoutMs: 0 }), late });
+            resolve({ status: 'timed-out', reservation, reason, retained: settleWith(null, { ...writeOptions, busyTimeoutMs: 0 }, true), late });
         };
         const total = setTimeout(() => stop('total'), reservation.totalTimeoutMs);
         const quiet = inactivityWatch(reservation.inactivityTimeoutMs, () => stop('inactivity'));

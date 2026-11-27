@@ -1,5 +1,5 @@
-import { writeFileSync } from 'node:fs';
-import { expect, test } from 'vitest';
+import { chmodSync, closeSync, constants, fstatSync, mkdirSync, openSync, readSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import { expect, test, vi } from 'vitest';
 import { isStopped, provesOwnership, readStatus, statusPath, stopGeneration, updateStatus, StatusRefused, type PassProof } from '../../../../server/overseer/provider-auth/profile-status';
 import { enrolledRunner } from './provider-world';
 
@@ -46,5 +46,26 @@ test('a stop is kept per generation: a late failure of an older generation never
         expect(isStopped(read.status, 'claude', A)).toBe(true);
         expect(isStopped(read.status, 'claude', B)).toBe(false);
         expect(isStopped(read.status, 'codex', 'c'.repeat(64))).toBe(false);
+    } finally { world.lock.release(); }
+});
+
+test('provider status verifies its directory and opens its private single-link regular file without blocking', () => {
+    const world = enrolledRunner(), file = statusPath(world.paths);
+    const open = vi.fn(openSync), files = { open, fstat: fstatSync, read: readSync, close: closeSync };
+    try {
+        expect(readStatus(world.paths, { files })).toMatchObject({ ok: true, status: { active: null } });
+        expect(open).toHaveBeenCalledWith(file, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
+        updateStatus(world.paths, world.proof, () => {});
+        expect(readStatus(world.paths, { files }).ok).toBe(true);
+        chmodSync(file, 0o644);
+        expect(readStatus(world.paths, { files }).ok).toBe(false);
+        renameSync(file, file + '.saved');
+        mkdirSync(file);
+        expect(readStatus(world.paths, { files }).ok).toBe(false);
+        renameSync(world.paths.state, world.paths.state + '-saved');
+        symlinkSync(world.paths.state + '-saved', world.paths.state);
+        open.mockClear();
+        expect(readStatus(world.paths, { files }).ok).toBe(false);
+        expect(open).not.toHaveBeenCalled();
     } finally { world.lock.release(); }
 });

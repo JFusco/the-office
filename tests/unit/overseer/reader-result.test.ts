@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import { claudeReader, codexReader } from '../../../server/overseer/reader-profiles';
@@ -8,6 +8,18 @@ import { createRunDirectories } from '../../../server/overseer/run-directories';
 import { validateRunnerRoot } from '../../../server/overseer/runner-root';
 import { rollout } from '../telemetry/support/rollout';
 import { tempDir } from './runner-world';
+
+const listed = vi.hoisted(() => vi.fn());
+vi.mock('node:fs', async importOriginal => {
+    const fs = await importOriginal<typeof import('node:fs')>();
+    return {
+        ...fs,
+        readdirSync: ((...args: Parameters<typeof fs.readdirSync>) => {
+            listed(args[0]);
+            return fs.readdirSync(...args);
+        }) as typeof fs.readdirSync,
+    };
+});
 
 const program = (version: string) => ({ path: '/fixture/provider', version, sha256: 'a'.repeat(64) });
 const claude = claudeReader(program('2.1.328'), 'claude-opus-5-5', 'high'), codex = codexReader(program('0.167.0-alpha.4.1'), 'gpt-6-astra', 'high');
@@ -41,7 +53,7 @@ test('a Claude verdict needs one start, a successful terminal for the bound sess
         ['a foreign terminal', lines(init(), assistant(), result({ session_id: 's9' })), 'no terminal result for the bound session', false],
         ['two starts', lines(init(), init('s2'), assistant(), result()), 'the provider reported more than one session', true],
         ['an error terminal', lines(init(), assistant(), result({ subtype: 'error_max_turns', is_error: true })), 'the reader ended in an error', true],
-        ['another model', lines(init(), assistant('claude-other'), result()), 'the reader ran claude-other, claude-opus-5-5, not claude-opus-5-5', true],
+        ['another model', lines(init(), assistant('claude-other'), result()), 'the reader model did not match the selection', true],
         ['no structured output', lines(init(), assistant(), result({ structured_output: undefined })), 'the reader returned no structured output', true],
     ];
     for (const [name, stdout, reason, charged] of failing) {
@@ -51,13 +63,15 @@ test('a Claude verdict needs one start, a successful terminal for the bound sess
     }
 });
 
-function codexRun(options: { rollouts?: string[]; last?: string | null; version?: string; model?: string; effort?: string } = {}) {
+function codexRun(options: { rollouts?: string[]; last?: string | null; version?: string; model?: string; effort?: string | null } = {}) {
     const run = createRunDirectories(validateRunnerRoot(join(tempDir(), 'runner'), {}), randomUUID());
     const day = join(run.provider, 'sessions', '2026', '11', '27');
     mkdirSync(day, { recursive: true });
-    for (const [index, thread] of (options.rollouts ?? ['t1']).entries())
-        writeFileSync(join(day, `rollout-${index}-${thread}.jsonl`), rollout(thread, [{ input: 100, output: 10 }], { model: options.model ?? 'gpt-6-astra', effort: options.effort ?? 'high' })
-            .replace('"cli_version":"0.163.0"', `"cli_version":"${options.version ?? '0.167.0-alpha.4.1'}"`));
+    for (const [index, thread] of (options.rollouts ?? ['t1']).entries()) {
+        let text = rollout(thread, [{ input: 100, output: 10 }], { model: options.model ?? 'gpt-6-astra', effort: options.effort ?? 'high' });
+        if (options.effort === null) text = text.replace(',"effort":"high"', '');
+        writeFileSync(join(day, `rollout-${index}-${thread}.jsonl`), text.replace('"cli_version":"0.163.0"', `"cli_version":"${options.version ?? '0.167.0-alpha.4.1'}"`));
+    }
     if (options.last !== null) writeFileSync(join(run.tmp, 'last-message.json'), options.last ?? '{"verdict":"x"}');
     return run;
 }
@@ -71,7 +85,7 @@ test('a Codex verdict needs one start, a completed turn, exactly one matching ro
         ['no completed turn', lines(started), codexRun(), 'the reader turn did not complete'],
         ['a failed turn', lines(started, completed, { type: 'turn.failed' }), codexRun(), 'the reader turn did not complete'],
         ['no rollout', lines(started, completed), codexRun({ rollouts: [] }), 'no single rollout accounts for the session'],
-        ['another version', lines(started, completed), codexRun({ version: '0.171.0' }), 'the rollout was written by 0.171.0, not 0.167.0-alpha.4.1'],
+        ['another version', lines(started, completed), codexRun({ version: '0.171.0' }), 'the rollout version did not match the reader'],
         ['another model', lines(started, completed), codexRun({ model: 'gpt-other' }), 'the reader ran another model or effort than selected'],
         ['another effort', lines(started, completed), codexRun({ effort: 'low' }), 'the reader ran another model or effort than selected'],
         ['no last message', lines(started, completed), codexRun({ last: null }), 'the reader left no last message'],
@@ -81,4 +95,21 @@ test('a Codex verdict needs one start, a completed turn, exactly one matching ro
     // An extra thread is also a coverage gap, so its charge cannot be finalized from the parent alone.
     const extra = codexOutcome(lines(started, completed), 't1', codexRun({ rollouts: ['t1', 't7'] }), codex);
     expect(extra.receipt?.cost?.completeness).not.toBe('complete');
+});
+
+test('missing observed effort suppresses the verdict while the bound request remains priced', () => {
+    expect(codexOutcome(lines(started, completed), 't1', codexRun({ effort: null }), codex)).toMatchObject({
+        ok: false, reason: 'the reader ran another model or effort than selected',
+        receipt: { evidenceId: 't1', cost: { completeness: 'complete' } },
+    });
+});
+
+test('a linked sessions directory is an accounting gap and is never listed', () => {
+    const run = codexRun(), sessions = join(run.provider, 'sessions');
+    renameSync(sessions, sessions + '-saved');
+    symlinkSync(sessions + '-saved', sessions);
+    const outcome = codexOutcome(lines(started, completed), 't1', run, codex);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.receipt?.cost?.completeness).not.toBe('complete');
+    expect(listed).not.toHaveBeenCalledWith(sessions);
 });

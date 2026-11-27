@@ -2463,9 +2463,10 @@ observes and reports:
 
 Before any later phase lets it call a model, every call must pass the runner's own budget
 admission: a daily ceiling on estimated cost at list price, 24 model calls a day, per-incident
-round limits and required timeouts, recorded in a ledger under the runner's root. The runner's
-model calls use the existing Claude and Codex subscription logins; the dollar figures are
-estimates, not bills. See [Overseer, Budgets](overseer.md#budgets).
+round limits and required timeouts, recorded in a ledger under the runner's root. Future runner
+model calls use separate runner sign-ins that Joe creates on his existing Claude and Codex
+subscriptions and share each subscription's usage limits. The dollar figures are estimates, not bills.
+See [Overseer, Budgets](overseer.md#budgets).
 
 The runner writes only under its own root, which is never an Office data root. Its pause
 (`pnpm office overseer pause`) and STOP stop the runner only. The Office's switch for automatic

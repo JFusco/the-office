@@ -1,18 +1,19 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { LedgerOptions } from './budget-ledger';
 import { AttributedFailure, NotDispatched, runBudgeted, type InvocationResult } from './budgeted-run';
 import { readClaudeSignIn } from './provider-auth/claude-handoff';
-import { finishCodex, groupState, markCodexPhase, recoverCodexHandoff, retireStaged, stageCodex, type GroupState, type RotationEvidence, type StagedCodex } from './provider-auth/codex-handoff';
+import { codexCanDispatch, finishCodex, groupState, markCodexPhase, recoverCodexHandoff, retireStaged, stageCodex, type GroupState, type RotationEvidence, type StagedCodex } from './provider-auth/codex-handoff';
 import { isStopped, provesOwnership, readStatus, stopGeneration, type PassProof } from './provider-auth/profile-status';
 import { prepareReaderInput } from './reader-input';
 import type { ReaderSelection } from './reader-profiles';
-import { claudeOutcome, codexOutcome, ReaderStream } from './reader-result';
-import { createRunDirectories, type RunDirectories } from './run-directories';
-import { within, type ValidatedRunnerPaths } from './runner-root';
+import { claudeOutcome, codexOutcome, containsCredential, ReaderStream } from './reader-result';
+import { checkRunDirectories, createRunDirectories, type RunDirectories } from './run-directories';
+import { physicalPath, within, type ValidatedRunnerPaths } from './runner-root';
 import { modelDispatchGate, profileEligibility, type HostFacts, type InnerReceipt, type OuterReceipt } from './sandbox-qualification';
 import type { Budgeted, GateRefusalReason, ProviderAnswer, ProviderCall, ProviderInvoke } from './stages/triage';
 import type { ProtectedRoots } from './worker-sandbox-policy';
-import { preparePolicy, runSandboxed, SandboxRefusal, type Executor, type PreparedPolicy } from './worker-sandbox-run';
+import { preparePolicy, runSandboxed, type Executor, type PreparedPolicy } from './worker-sandbox-run';
 import type { SandboxRuntime } from './worker-sandbox-runtime';
 
 /**
@@ -61,7 +62,6 @@ export interface ReaderSetup {
 }
 
 const refused = (reason: GateRefusalReason) => ({ status: 'gate-refused' as const, reason });
-const errorText = (error: unknown) => String(error instanceof Error ? error.message : error).slice(0, 300);
 
 type Prepared =
     | { ok: true; run: RunDirectories; prepared: PreparedPolicy; selection: ReaderSelection; runtime: SandboxRuntime; signIn: { provider: 'claude'; token: string; generation: string } | { provider: 'codex'; staged: StagedCodex } }
@@ -69,7 +69,7 @@ type Prepared =
 
 function storageOverlaps(setup: ReaderSetup): boolean {
     const { paths } = setup, storage = [paths.runs, paths.wrapperTmp, paths.providers, paths.state];
-    return storage.some(store => setup.interactiveRoots.some(root => within(store, root) || within(root, store)));
+    return storage.map(physicalPath).some(store => setup.interactiveRoots.some(root => within(store, root) || within(root, store)));
 }
 
 /** Gates one through five, in order; the first that fails is the refusal. */
@@ -81,7 +81,9 @@ function prepare(setup: ReaderSetup, provider: 'claude' | 'codex', input: Parame
     const selection = setup.selections[provider], outer = setup.receipts.outer[selection.profile.id] ?? null, inner = setup.receipts.inner[selection.profile.id] ?? null;
     if (selection.profile.provider !== provider || !outer || outer.qualification.status !== 'qualified' || !inner || inner.battery.status !== 'qualified')
         return { ok: false, reason: 'receipts-unqualified' };
-    if (storageOverlaps(setup)) return { ok: false, reason: 'storage-overlap' };
+    try {
+        if (storageOverlaps(setup)) return { ok: false, reason: 'storage-overlap' };
+    } catch { return { ok: false, reason: 'storage-overlap' }; }
     let run: RunDirectories, prepared: PreparedPolicy;
     try {
         run = createRunDirectories(setup.paths, (setup.newId ?? randomUUID)());
@@ -96,19 +98,23 @@ function prepare(setup: ReaderSetup, provider: 'claude' | 'codex', input: Parame
     if (!profileEligibility(selection, setup.facts, prepared, outer, inner).eligible) return { ok: false, reason: 'profile-ineligible', run };
     // Recovery first proves the caller's hold on the pass lock, then resolves an earlier pass's hand-off.
     // This pass's own one in progress excludes only another Codex copy.
-    const recovery = recoverCodexHandoff(setup.paths, setup.proof, setup.groupState ?? groupState);
-    if (!recovery.ok && (provider === 'codex' || recovery.refusal !== 'handoff-active')) return { ok: false, reason: recovery.refusal, run };
-    if (provider === 'claude') {
-        const status = readStatus(setup.paths), signIn = readClaudeSignIn(setup.paths);
-        if (!status.ok) return { ok: false, reason: 'handoff-unrecoverable', run };
-        if (!signIn.ok) return { ok: false, reason: 'sign-in-invalid', run };
-        if (isStopped(status.status, 'claude', signIn.generation)) return { ok: false, reason: 'profile-stopped', run };
-        return { ok: true, run, prepared, selection, runtime, signIn: { provider: 'claude', token: signIn.token, generation: signIn.generation } };
-    }
-    // Staging reads the status and the canonical login itself, and refuses a stopped generation before copying anything.
-    const staged = stageCodex(setup.paths, setup.proof, run);
-    if (!staged.ok) return { ok: false, reason: staged.refusal, run };
-    return { ok: true, run, prepared, selection, runtime, signIn: { provider: 'codex', staged: staged.staged } };
+    try {
+        const recovery = recoverCodexHandoff(setup.paths, setup.proof, setup.groupState ?? groupState);
+        if (!recovery.ok && (provider === 'codex' || recovery.refusal !== 'handoff-active')) return { ok: false, reason: recovery.refusal, run };
+        if (provider === 'claude') {
+            const status = readStatus(setup.paths);
+            if (!status.ok) return { ok: false, reason: 'handoff-unrecoverable', run };
+            let signIn: ReturnType<typeof readClaudeSignIn>;
+            try { signIn = readClaudeSignIn(setup.paths); }
+            catch { return { ok: false, reason: 'sign-in-invalid', run }; }
+            if (!signIn.ok) return { ok: false, reason: 'sign-in-invalid', run };
+            if (isStopped(status.status, 'claude', signIn.generation)) return { ok: false, reason: 'profile-stopped', run };
+            return { ok: true, run, prepared, selection, runtime, signIn: { provider: 'claude', token: signIn.token, generation: signIn.generation } };
+        }
+        const staged = stageCodex(setup.paths, setup.proof, run);
+        if (!staged.ok) return { ok: false, reason: staged.refusal, run };
+        return { ok: true, run, prepared, selection, runtime, signIn: { provider: 'codex', staged: staged.staged } };
+    } catch { return { ok: false, reason: 'handoff-unrecoverable', run }; }
 }
 
 /**
@@ -128,86 +134,116 @@ export function gatedBudgeted(setup: ReaderSetup): Budgeted {
     };
 }
 
-/** Whether an executor rejection proves the command never spawned: the shared runner says so, and nothing was seen. */
-const neverSpawned = (error: unknown, spawned: boolean, session: string | null) =>
-    !spawned && session === null && !!error && typeof error === 'object' && (error as { dispatched?: unknown }).dispatched === false;
+/** Whether the executor positively reported a pre-spawn refusal. */
+const reportedNonDispatch = (error: unknown) =>
+    !!error && typeof error === 'object' && (error as { dispatched?: unknown }).dispatched === false;
+
+function failWith(reason: string, receipt: InvocationResult | null): never {
+    throw receipt ? new AttributedFailure(reason, receipt) : new Error(reason);
+}
+
+function recheck(setup: ReaderSetup, ready: Extract<Prepared, { ok: true }>, call: ProviderCall): string | null {
+    const { run, prepared, selection, signIn } = ready, provider = selection.profile.provider;
+    if (!(setup.gate ?? modelDispatchGate)().open) return 'the dispatch gate closed';
+    if (call.provider !== provider || call.reservation !== run.id) return "the call is not this allocation's";
+    if (!provesOwnership(setup.paths, setup.proof)) return 'the caller no longer holds the pass lock';
+    const outer = setup.receipts.outer[selection.profile.id] ?? null, inner = setup.receipts.inner[selection.profile.id] ?? null;
+    if (!profileEligibility(selection, setup.facts, prepared, outer, inner).eligible) return 'the profile is no longer eligible';
+    if (signIn.provider === 'claude') {
+        const status = readStatus(setup.paths), current = readClaudeSignIn(setup.paths);
+        if (!status.ok || !current.ok || current.generation !== signIn.generation || isStopped(status.status, 'claude', signIn.generation))
+            return 'the Claude sign-in is no longer eligible';
+    } else if (!codexCanDispatch(setup.paths, setup.proof, signIn.staged)) return 'the Codex sign-in is no longer eligible';
+    return null;
+}
+
+async function confirmGroupExit(setup: ReaderSetup, group: number): Promise<boolean> {
+    const inspect = setup.groupState ?? groupState;
+    for (;;) {
+        let state: GroupState;
+        try { state = inspect(group); } catch { state = 'uncertain'; }
+        if (state === 'absent') return true;
+        if (!provesOwnership(setup.paths, setup.proof)) return false;
+        await delay(50);
+    }
+}
 
 function modelInvoke(setup: ReaderSetup, ready: Extract<Prepared, { ok: true }>): ProviderInvoke {
     const { run, prepared, selection, runtime, signIn } = ready, provider = selection.profile.provider, evidence = setup.evidence ?? NO_PROVIDER_EVIDENCE;
     const codex = signIn.provider === 'codex' ? signIn.staged : null;
     const generation = signIn.provider === 'codex' ? signIn.staged.generation : signIn.generation;
-    // Called once per dispatched Codex call, on whichever path ends it.
-    const finish = (spawnedGroup: number | null) => {
-        if (!codex) return;
-        if (spawnedGroup !== null && (setup.groupState ?? groupState)(spawnedGroup) !== 'absent') return; // The next owner recovers it once the group is gone.
-        finishCodex(setup.paths, setup.proof, run, codex, evidence.rotation(run.id));
-    };
-    const stopOnRejection = () => {
-        for (const seen of evidence.authentication(run.id)) {
-            if (seen.provider !== provider || seen.run !== run.id || seen.generation !== generation) continue;
-            stopGeneration(setup.paths, setup.proof, provider, generation, seen.kind === 'claude-unauthorized' ? 'sign-in-rejected' : 'refresh-rejected');
-        }
+    const credentials = signIn.provider === 'codex' ? signIn.staged.secrets : [signIn.token];
+    const refuseDispatch = (reason: string): never => {
+        if (codex) retireStaged(setup.paths, setup.proof, run);
+        throw new NotDispatched(reason);
     };
     return async (call: ProviderCall): Promise<ProviderAnswer> => {
-        // Immediately before dispatch, everything that admitted this call is checked again for this allocation.
-        // Cancellation, the prepared policy and the program are rechecked by `runSandboxed` itself, as a refusal before the executor runs.
-        const recheck = (): string | null => {
-            if (!(setup.gate ?? modelDispatchGate)().open) return 'the dispatch gate closed';
-            if (call.provider !== provider || call.reservation !== run.id) return 'the call is not this allocation\'s';
-            if (!provesOwnership(setup.paths, setup.proof)) return 'the caller no longer holds the pass lock';
-            const outer = setup.receipts.outer[selection.profile.id] ?? null, inner = setup.receipts.inner[selection.profile.id] ?? null;
-            if (!profileEligibility(selection, setup.facts, prepared, outer, inner).eligible) return 'the profile is no longer eligible';
-            if (signIn.provider === 'claude') {
-                const current = readClaudeSignIn(setup.paths);
-                if (!current.ok || current.generation !== signIn.generation) return 'the Claude sign-in changed';
-            } else {
-                const status = readStatus(setup.paths);
-                if (!status.ok || status.status.active?.run !== run.id) return 'the Codex hand-off is no longer this run\'s';
-            }
-            return null;
-        };
-        const fault = recheck();
-        if (fault) {
-            if (codex) retireStaged(setup.paths, setup.proof, run);
-            throw new NotDispatched(fault);
+        let fault: string | null;
+        try { fault = recheck(setup, ready, call); }
+        catch { fault = 'the dispatch requirements could not be rechecked'; }
+        if (fault) refuseDispatch(fault);
+        if (codex) {
+            try { markCodexPhase(setup.paths, setup.proof, run.id, 'launching'); }
+            catch { refuseDispatch('the launch intent could not be recorded'); }
         }
-        let spawned = false, group: number | null = null;
-        const stream = new ReaderStream(provider, session => call.onSession(session), call.activity);
-        if (codex) markCodexPhase(setup.paths, setup.proof, run.id, 'launching');
-        let stdout: string;
+
+        let entered = false, spawned = false, group: number | null = null;
+        let rejected = false, preSpawnRefusal = false, stdout = '';
+        const stream = new ReaderStream(provider, session => call.onSession(session), call.activity, credentials);
         try {
             stdout = await runSandboxed({
-                executor: setup.executor, runtime, prepared, selection: selection.profile.id, args: selection.argv,
+                executor: (...args) => { entered = true; return setup.executor(...args); },
+                runtime, prepared, selection: selection.profile.id, args: selection.argv,
                 timeout: call.totalTimeoutMs, inactivityTimeout: call.inactivityTimeoutMs, signal: call.signal, input: call.prompt,
                 ...(signIn.provider === 'claude' ? { claudeOAuthToken: signIn.token } : {}),
                 onSpawn: pid => {
                     spawned = true;
-                    group = pid;
-                    if (codex) try { markCodexPhase(setup.paths, setup.proof, run.id, 'launched', pid); } catch { stream.fault ??= 'the launch could not be recorded'; }
+                    if (Number.isSafeInteger(pid) && pid > 0) group = pid;
+                    if (codex && group !== null) {
+                        try { markCodexPhase(setup.paths, setup.proof, run.id, 'launched', group); }
+                        catch { stream.fault ??= 'the launch could not be recorded'; }
+                    }
                 },
                 onOutput: (channel, chunk) => { if (channel === 'stdout') stream.push(chunk); },
             });
         } catch (error) {
-            if (error instanceof SandboxRefusal || neverSpawned(error, spawned, stream.session)) {
-                if (codex) retireStaged(setup.paths, setup.proof, run);
-                throw new NotDispatched(errorText(error));
-            }
-            finish(group);
-            stopOnRejection();
-            throw error instanceof Error ? error : new Error(errorText(error));
+            rejected = true;
+            preSpawnRefusal = !entered || reportedNonDispatch(error);
         }
-        finish(group);
-        stopOnRejection();
+        stream.flush();
+        if (preSpawnRefusal && !spawned && !stream.sawSession) refuseDispatch('the executor refused before spawning');
+        if (group === null || !await confirmGroupExit(setup, group))
+            failWith('the reader process group could not be confirmed exited', null);
+
+        let directoriesValid = true;
+        try { checkRunDirectories(setup.paths, run); }
+        catch { directoriesValid = false; stream.fault ??= 'the run folders changed during the run'; }
+
+        let authenticationRejected = false;
+        let rotation: RotationEvidence | null = null;
+        try {
+            const kind = provider === 'claude' ? 'claude-unauthorized' : 'codex-invalid-grant';
+            authenticationRejected = evidence.authentication(run.id).some(seen =>
+                seen.provider === provider && seen.run === run.id && seen.generation === generation && seen.kind === kind);
+            if (codex && directoriesValid && !authenticationRejected) rotation = evidence.rotation(run.id);
+            if (authenticationRejected && !codex)
+                stopGeneration(setup.paths, setup.proof, provider, generation, 'sign-in-rejected');
+        } catch { stream.fault ??= 'the reader authentication evidence could not be recorded'; }
+
+        const handoff = codex && finishCodex(setup.paths, setup.proof, run, codex, rotation, { authenticationRejected, directoriesValid });
         const bound = stream.session;
-        // A fault kept from the output callback explains a missing session better than its absence does.
-        if (bound === null) throw new Error(stream.fault ?? 'the reader reported no session');
-        const outcome = provider === 'claude' ? claudeOutcome(stdout, bound, selection) : codexOutcome(stdout, bound, run, selection);
-        const failWith = (reason: string, receipt: InvocationResult | null): never => {
-            throw receipt ? new AttributedFailure(reason, receipt) : new Error(reason);
-        };
-        if (stream.fault) failWith(stream.fault, outcome.receipt);
-        if (!outcome.ok) failWith(outcome.reason, outcome.receipt);
-        const answered = outcome as Extract<typeof outcome, { ok: true }>;
-        return { provider, model: answered.model, session: bound, output: answered.output, receipt: answered.receipt };
+        const outcome = bound === null ? null
+            : provider === 'codex' ? directoriesValid ? codexOutcome(stdout, bound, run, selection) : null
+            : rejected ? null : claudeOutcome(stdout, bound, selection);
+        const receipt = outcome?.receipt ?? (rejected ? stream.failureReceipt() : null);
+        if (authenticationRejected) failWith('the provider rejected the enrolled sign-in', receipt);
+        if (stream.fault) failWith(stream.fault, receipt);
+        if (handoff && (handoff.outcome === 'stopped' || handoff.outcome === 'ownership-lost' || handoff.outcome === 'cleanup-pending'))
+            failWith('the Codex hand-off could not be completed safely', receipt);
+        if (rejected) failWith('the reader executor failed', receipt);
+        if (!outcome || bound === null) return failWith('the reader reported no session', receipt);
+        if (!outcome.ok) return failWith(outcome.reason, receipt);
+        if (containsCredential(outcome.output, credentials)) failWith('the reader output contained sign-in material', receipt);
+        return { provider, model: outcome.model, session: bound, output: outcome.output, receipt: outcome.receipt };
     };
 }

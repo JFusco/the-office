@@ -246,7 +246,7 @@ export interface HostIdentity {
 export interface ProviderIdentity { provider: WorkerProvider; path: string; version: string; sha256: string; argv: readonly string[]; tools: readonly string[] }
 export interface OuterReceipt { identity: HostIdentity; qualification: Qualification }
 /** What the inner battery observed in effect for the actual binary, not what its arguments say. */
-export interface EffectiveEvidence { restrictions: readonly string[]; authentication: ReaderAuthentication }
+export interface EffectiveEvidence { restrictions: readonly string[]; authentication: ReaderAuthentication; externalMcp?: readonly string[] }
 export interface InnerReceipt {
     profile: string; identity: HostIdentity & { provider: ProviderIdentity }; restrictionsApplied: readonly string[]; battery: Qualification;
     /** Absent on a receipt older than the evidence; such a receipt qualifies nothing. */
@@ -307,7 +307,8 @@ export function profileEligibility(selection: ReaderSelection, facts: HostFacts,
     if (inner.battery.status !== 'qualified' || !profile.requiredRestrictions.every(restriction => inner.restrictionsApplied.includes(restriction)))
         return { eligible: false, reason: 'inner-restriction-unverified' };
     if (!inner.effective || inner.effective.authentication !== selection.authentication
-        || !profile.requiredRestrictions.every(restriction => inner.effective!.restrictions.includes(restriction)))
+        || !profile.requiredRestrictions.every(restriction => inner.effective!.restrictions.includes(restriction))
+        || (profile.provider === 'claude' && (!Array.isArray(inner.effective.externalMcp) || inner.effective.externalMcp.length !== 0)))
         return { eligible: false, reason: 'inner-evidence-missing' };
     return { eligible: true };
 }

@@ -2,7 +2,7 @@ import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } fro
 import { dirname, resolve } from 'node:path';
 import { assertOwnedDirectory, preflightRoot, runnerUid, type DirectoryFacts } from '../run-directories';
 import { within, type ValidatedRunnerPaths } from '../runner-root';
-import { statusPath } from './profile-status';
+import type { RunnerPaths } from '../config';
 
 /**
  * Where the runner keeps the provider sign-ins Joe enrolls, and the one way trusted runner code reads
@@ -22,6 +22,8 @@ export interface SignInPaths {
     /** Profile stops and the active Codex hand-off (`profile-status.ts`). */
     status: string;
 }
+
+export const statusPath = (paths: RunnerPaths) => resolve(paths.state, 'providers.json');
 
 export const TOKEN_MAX_BYTES = 4 * 1024, AUTH_MAX_BYTES = 64 * 1024;
 

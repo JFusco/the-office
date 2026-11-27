@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { claudeCost } from '../../../server/telemetry/run-cost';
-import { admit, bindEvidence, release, settle, type ReservationRow } from '../../../server/overseer/budget-ledger';
+import { admit, bindEvidence, readStanding, reconcile, release, settle, type ReservationRow } from '../../../server/overseer/budget-ledger';
 import { budgetRequest } from '../../../server/overseer/budget-policy';
 import { AttributedFailure, NotDispatched, runBudgeted, type BudgetedOutcome } from '../../../server/overseer/budgeted-run';
 import type { RunnerPaths } from '../../../server/overseer/config';
@@ -66,16 +66,20 @@ test('a non-dispatch claim after a session was bound keeps the hold and reports 
     expect(rows(paths)).toMatchObject([{ id: ID, status: 'outstanding', evidence_id: 's' }]);
 });
 
-test('a non-dispatch that arrives after a timeout cannot release the retained hold', async () => {
-    const paths = runnerRoot();
+test('late proof of non-dispatch releases the original timeout-only hold and restores the round', async () => {
+    const paths = runnerRoot(), available = readStanding(paths, now());
     let refuse!: (error: Error) => void;
     const pending = runBudgeted(paths, triage, () => new Promise((_, reject) => { refuse = reject; }), { now, reservationId: ID });
     await vi.advanceTimersByTimeAsync(triage.inactivityTimeoutMs + 1);
     const result = await pending as Extract<BudgetedOutcome, { status: 'timed-out' }>;
     expect(result.status).toBe('timed-out');
-    refuse(new NotDispatched('too late'));
-    expect(await result.late).toMatchObject({ ok: false, error: { message: expect.stringContaining('not-releasable') } });
     expect(rows(paths)).toMatchObject([{ id: ID, status: 'retained', charged: 3_000_000 }]);
+    expect(release(paths, ID, { now })).toEqual({ released: false, code: 'not-releasable' });
+    refuse(new NotDispatched('confirmed pre-spawn refusal'));
+    expect(await result.late).toEqual({ ok: true, released: true });
+    expect(rows(paths)).toEqual([]);
+    expect(readStanding(paths, now())).toEqual(available);
+    expect(admit(paths, triage, { now, reservationId: OTHER })).toMatchObject({ admitted: true });
 });
 
 test('a trusted failure after launch settles its attributable cost and stays failed; an ordinary one carries none', async () => {
@@ -106,4 +110,24 @@ test('a late attributed failure charges the original reservation once', async ()
     expect(await result.late).toMatchObject({ ok: true, settlement: { result: 'settled' } });
     // The receipt is final; the charge never falls below the hold already posted at the deadline.
     expect(rows(paths)).toMatchObject([{ id: ID, status: 'settled', final: 1, receipt_total: 2_000_000, charged: 3_000_000 }]);
+});
+
+test('late non-dispatch proof cannot remove session evidence or a manually finalized timeout', async () => {
+    for (const guard of ['session', 'finalized'] as const) {
+        const paths = runnerRoot();
+        let refuse!: (error: Error) => void;
+        const pending = runBudgeted(paths, triage, run => {
+            if (guard === 'session') run.bindSession('s');
+            return new Promise((_, reject) => { refuse = reject; });
+        }, { now, reservationId: ID });
+        await vi.advanceTimersByTimeAsync(triage.inactivityTimeoutMs + 1);
+        const timeout = await pending;
+        if (timeout.status !== 'timed-out') throw new Error('expected timeout');
+        if (guard === 'finalized')
+            expect(reconcile(paths, ID, { expectedMicroUsd: 3_000_000, reason: 'fixture reconciliation', finalize: true }, { now })).toMatchObject({ reconciled: true });
+        const before = rows(paths);
+        refuse(new NotDispatched('confirmed pre-spawn refusal'));
+        expect(await timeout.late).toMatchObject({ ok: false });
+        expect(rows(paths)).toEqual(before);
+    }
 });

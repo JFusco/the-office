@@ -1051,9 +1051,9 @@ every future model call must pass, and the ledger that keeps its account. Phase 
 through one boundary, `runBudgeted` in `server/overseer/budgeted-run.ts`, which admits a call,
 starts it, and settles what it cost.
 
-**The money is an estimate.** The runner's model calls use the existing Claude and Codex
-subscription logins the Office workers use, so they share their usage limits with Joe's own
-sessions and the Office. Every dollar figure is what the usage would cost at API list prices:
+**The money is an estimate.** The runner's model calls use [separate runner-owned sign-ins](#provider-sign-ins-and-reader-runs)
+on Joe's existing Claude and Codex subscriptions, sharing each subscription's usage limits with
+Joe's own sessions and the Office. Every dollar figure is what the usage would cost at API list prices:
 Claude's own estimate (`costBasis: list`) and, for Codex, the Office's price table. It is never a
 bill. Run counts and timeouts are the real brake; the daily ceiling stops a runaway. Neither the
 margins nor the timeouts guarantee a worst-case dollar amount.
@@ -1205,8 +1205,9 @@ What these folders do and do not settle:
 - **Not a session identity.** The reservation ID names the storage only. A run still has to start a
   new provider session and bind the session the provider reports to its reservation
   (`bindSession` in `server/overseer/budgeted-run.ts`).
-- **Not confinement.** Keeping a worker to these folders is the sandbox's job, and proving which
-  login it uses is the provider authentication's; both are later parts of phase 7.
+- **Not confinement.** Keeping a worker to these folders is the sandbox's job, a later part of
+  phase 7. [Provider sign-ins and reader runs](#provider-sign-ins-and-reader-runs) describes the
+  separate authentication boundary and its qualification requirements.
 
 ### Worker sandbox
 

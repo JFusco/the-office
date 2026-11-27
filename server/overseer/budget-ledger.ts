@@ -189,19 +189,23 @@ export function admit(paths: RunnerPaths, request: AdmissionRequest, options: Le
 
 export type Release = { released: true } | { released: false; code: 'unknown-reservation' | 'not-releasable' };
 
+const TIMEOUT_RECEIPT = '{"timeout":true}';
+
 /**
- * Removes a reservation whose invocation the runner proved never dispatched, so the refusal spends
- * nothing and the same incident, stage and round can be admitted again. Only an untouched row
- * qualifies: still outstanding, with no bound session, no charge, no settlement, no acknowledgement
- * and no finalization. Anything else keeps its hold.
+ * Removes a proven non-dispatch. Only the timeout branch may release its own provisional
+ * timeout marker. Provider evidence and reconciled charges always keep the row.
  */
-export function release(paths: RunnerPaths, id: string, options: LedgerOptions = {}): Release {
+export function release(paths: RunnerPaths, id: string, options: LedgerOptions = {}, afterTimeout = false): Release {
     return write(paths, options, db => {
         const row = get(db, id);
         if (!row) return { released: false, code: 'unknown-reservation' } as const;
-        if (row.status !== 'outstanding' || row.evidence_id !== null || row.charged !== null || row.final !== 0 || row.settled_at !== null
-            || row.ack_micro_usd !== null || row.finalized_at !== null) return { released: false, code: 'not-releasable' } as const;
-        db.prepare("DELETE FROM reservations WHERE id=? AND status='outstanding' AND evidence_id IS NULL AND charged IS NULL").run(id);
+        const untouched = row.status === 'outstanding' && row.charged === null && row.settled_at === null && row.receipt === null;
+        // Expiration can also post the hold if the deadline's own write could not reach the ledger.
+        const timeoutOnly = afterTimeout && row.charged === row.reserved
+            && (row.receipt === TIMEOUT_RECEIPT || (row.status === 'abandoned' && row.receipt === null));
+        if ((!untouched && !timeoutOnly) || row.evidence_id !== null || row.receipt_total !== null || row.final !== 0
+            || row.ack_micro_usd !== null || row.ack_at !== null || row.finalized_at !== null) return { released: false, code: 'not-releasable' } as const;
+        db.prepare('DELETE FROM reservations WHERE id=?').run(id);
         return { released: true } as const;
     });
 }
@@ -245,7 +249,7 @@ export type Settlement = { result: 'settled' | 'retained' | 'overrun' | 'duplica
  * hold only when it supports a higher charge. A charge above the reservation is an overrun, and
  * a higher overrun charge requires a new acknowledgement.
  */
-export function settle(paths: RunnerPaths, id: string, evidence: { evidenceId: string | null; cost: RunCost | null }, options: LedgerOptions = {}): Settlement {
+export function settle(paths: RunnerPaths, id: string, evidence: { evidenceId: string | null; cost: RunCost | null; timeout?: true }, options: LedgerOptions = {}): Settlement {
     return write(paths, options, (db, now) => {
         abandonExpired(db, now.toISOString());
         const row = get(db, id);
@@ -267,7 +271,9 @@ export function settle(paths: RunnerPaths, id: string, evidence: { evidenceId: s
             final = 0;
         }
         const status: ReservationStatus = charged > row.reserved ? 'overrun' : final ? 'settled' : row.status === 'abandoned' && !cost ? 'abandoned' : 'retained';
-        const receipt = JSON.stringify({ matched, completeness: cost?.completeness ?? 'missing', microUsd: cost?.microUsd ?? null, partialMicroUsd: cost?.partialMicroUsd ?? null, reportedTotalUsd: cost?.reportedTotalUsd ?? null });
+        const receipt = evidence.timeout && row.receipt === null && row.evidence_id === null && !cost
+            ? TIMEOUT_RECEIPT
+            : JSON.stringify({ matched, completeness: cost?.completeness ?? 'missing', microUsd: cost?.microUsd ?? null, partialMicroUsd: cost?.partialMicroUsd ?? null, reportedTotalUsd: cost?.reportedTotalUsd ?? null });
         db.prepare('UPDATE reservations SET charged=?, final=?, receipt_total=?, status=?, receipt=?, settled_at=? WHERE id=?').run(charged, final, receiptTotal, status, receipt, now.toISOString(), id);
         const saved = get(db, id)!;
         return { result: status === 'overrun' ? 'overrun' : final ? 'settled' : 'retained', row: saved };
