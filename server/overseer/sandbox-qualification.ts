@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { RunDirectories } from './run-directories';
 import { within } from './runner-root';
 import type { WorkerProvider } from './worker-environment';
-import { expandRules, policyDigest } from './worker-sandbox-policy';
+import type { ReaderAuthentication, ReaderSelection } from './reader-profiles';
+import { expandRules, policyDigest, relativeRules, type SandboxSettings } from './worker-sandbox-policy';
 import { SandboxRefusal, verifyPrepared, type PreparedPolicy } from './worker-sandbox-run';
 import { SANDBOX_RUNTIME } from './worker-sandbox-runtime';
 
@@ -242,7 +245,15 @@ export interface HostIdentity {
 }
 export interface ProviderIdentity { provider: WorkerProvider; path: string; version: string; sha256: string; argv: readonly string[]; tools: readonly string[] }
 export interface OuterReceipt { identity: HostIdentity; qualification: Qualification }
-export interface InnerReceipt { profile: string; identity: HostIdentity & { provider: ProviderIdentity }; restrictionsApplied: readonly string[]; battery: Qualification }
+/** What the inner battery observed in effect for the actual binary, not what its arguments say. */
+export interface EffectiveEvidence { restrictions: readonly string[]; authentication: ReaderAuthentication }
+export interface InnerReceipt {
+    profile: string; identity: HostIdentity & { provider: ProviderIdentity }; restrictionsApplied: readonly string[]; battery: Qualification;
+    /** Absent on a receipt older than the evidence; such a receipt qualifies nothing. */
+    effective?: EffectiveEvidence;
+}
+/** The host facts eligibility is given, established independently of any receipt. */
+export type HostFacts = Omit<HostIdentity, 'rules'>;
 export interface ReaderProfile { id: string; provider: 'claude' | 'codex'; commandCapable: boolean; requiredRestrictions: readonly string[] }
 
 /** The two reader profiles section 7 names. Neither has inner evidence yet. */
@@ -251,35 +262,60 @@ export const READER_PROFILES = {
     codex: { id: 'codex-reader', provider: 'codex', commandCapable: true, requiredRestrictions: ['explicit-model-effort', 'read-only-sandbox', 'approval-never', 'ignore-user-config', 'no-agents-or-customizations'] },
 } as const satisfies Record<string, ReaderProfile>;
 
-export type Eligibility = { eligible: true } | { eligible: false; reason: 'outer-unqualified' | 'outer-identity-mismatch' | 'inner-seatbelt-unsupported' | 'inner-restriction-unverified' | 'inner-identity-mismatch' };
+export type Eligibility = { eligible: true } | { eligible: false; reason: 'outer-unqualified' | 'outer-identity-mismatch' | 'inner-seatbelt-unsupported' | 'inner-restriction-unverified' | 'inner-identity-mismatch' | 'inner-evidence-missing' };
 
 /**
  * A profile may run nested in the sandbox only with both receipts: the outer battery for this host,
  * runtime and rules, and its own inner receipt for this exact provider binary and invocation, showing
- * every restriction it requires applied and the reader battery passed through it.
+ * every restriction it requires applied, the same restrictions and sign-in method observed in effect,
+ * and the reader battery passed through it. The current identity is never taken from the caller: its
+ * rules come from the prepared policy's verified bytes and its provider from the selection, whose
+ * program is hashed here. A command-capable reader needs affirmative inner Seatbelt evidence.
  */
-export function profileEligibility(profile: ReaderProfile, current: HostIdentity & { provider: ProviderIdentity }, prepared: PreparedPolicy, outer?: OuterReceipt | null, inner?: InnerReceipt | null): Eligibility {
+export function profileEligibility(selection: ReaderSelection, facts: HostFacts, prepared: PreparedPolicy, outer?: OuterReceipt | null, inner?: InnerReceipt | null): Eligibility {
+    const { profile } = selection;
     if (!outer || outer.qualification.status !== 'qualified') return { eligible: false, reason: 'outer-unqualified' };
-    const { provider, ...host } = current;
-    if (!isDeepStrictEqual(outer.identity, host) || host.node.path !== prepared.runtime.node || host.runtime.version !== prepared.runtime.version)
-        return { eligible: false, reason: 'outer-identity-mismatch' };
     try { verifyPrepared(prepared); }
     catch { return { eligible: false, reason: 'outer-identity-mismatch' }; }
+    // The rules in force are the policy file's own, as it is on disk now, never a description of it.
+    let rules: string;
+    try {
+        const onDisk = readFileSync(prepared.file, 'utf8');
+        if (policyDigest(onDisk) !== prepared.digest) return { eligible: false, reason: 'outer-identity-mismatch' };
+        rules = relativeRules(JSON.parse(onDisk) as SandboxSettings, prepared.run, prepared.scratch);
+    } catch { return { eligible: false, reason: 'outer-identity-mismatch' }; }
+    const host: HostIdentity = { os: facts.os, node: facts.node, runtime: facts.runtime, rules };
+    if (!isDeepStrictEqual(outer.identity, host) || host.node.path !== prepared.runtime.node || host.runtime.version !== prepared.runtime.version)
+        return { eligible: false, reason: 'outer-identity-mismatch' };
     if (!matchesPolicy(outer.identity.rules, outer.qualification.run, outer.qualification.policyDigest) ||
         !matchesPolicy(outer.identity.rules, prepared.run, prepared.digest))
         return { eligible: false, reason: 'outer-identity-mismatch' };
-    if (provider.provider !== profile.provider || prepared.provider !== profile.provider || prepared.programs[profile.id] !== provider.path)
+    const provider: ProviderIdentity = {
+        provider: profile.provider, path: selection.program.path, version: selection.program.version, sha256: selection.program.sha256,
+        argv: [...selection.argv], tools: [...selection.tools],
+    };
+    if (prepared.provider !== profile.provider || prepared.programs[profile.id] !== provider.path || programDigest(provider.path) !== provider.sha256)
         return { eligible: false, reason: 'inner-identity-mismatch' };
     if (profile.commandCapable && outer.qualification.innerSeatbelt === 'unsupported') return { eligible: false, reason: 'inner-seatbelt-unsupported' };
     if (!inner || inner.profile !== profile.id || inner.battery.profile !== profile.id)
         return { eligible: false, reason: 'inner-restriction-unverified' };
+    const current = { ...host, provider };
     if (!isDeepStrictEqual(inner.identity, current) || !matchesPolicy(inner.identity.rules, inner.battery.run, inner.battery.policyDigest))
         return { eligible: false, reason: 'inner-identity-mismatch' };
-    if (profile.commandCapable && inner.battery.innerSeatbelt === 'unsupported')
+    if (profile.commandCapable && inner.battery.innerSeatbelt !== 'supported')
         return { eligible: false, reason: 'inner-seatbelt-unsupported' };
     if (inner.battery.status !== 'qualified' || !profile.requiredRestrictions.every(restriction => inner.restrictionsApplied.includes(restriction)))
         return { eligible: false, reason: 'inner-restriction-unverified' };
+    if (!inner.effective || inner.effective.authentication !== selection.authentication
+        || !profile.requiredRestrictions.every(restriction => inner.effective!.restrictions.includes(restriction)))
+        return { eligible: false, reason: 'inner-evidence-missing' };
     return { eligible: true };
+}
+
+/** The selected program's content digest, read now; an unreadable program matches nothing. */
+function programDigest(path: string): string | null {
+    try { return createHash('sha256').update(readFileSync(path)).digest('hex'); }
+    catch { return null; }
 }
 
 function matchesPolicy(rules: string, run: RunDirectories, digest: string): boolean {

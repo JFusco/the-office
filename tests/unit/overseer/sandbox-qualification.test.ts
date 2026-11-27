@@ -1,12 +1,13 @@
-import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
+import { claudeReader, codexReader, type ReaderSelection } from '../../../server/overseer/reader-profiles';
 import { createRunDirectories } from '../../../server/overseer/run-directories';
 import {
     ALLOW_PROBES, collectProbe, DENIAL_CODES, DENY_PROBES, modelDispatchGate, NESTED_PROBE, observe, PROBE_LINE_PREFIX,
     profileEligibility, qualify, READER_PROFILES, RECORD_PROBES, SANDBOX_STATUS,
-    type HostIdentity, type InnerReceipt, type Observation, type OuterReceipt, type ProbeId, type ProviderIdentity,
+    type HostFacts, type HostIdentity, type InnerReceipt, type Observation, type OuterReceipt, type ProbeId, type ProviderIdentity,
 } from '../../../server/overseer/sandbox-qualification';
 import { relativeRules, snapshotPath } from '../../../server/overseer/worker-sandbox-policy';
 import { preparePolicy, SandboxRefusal, verifyPrepared, type Executor } from '../../../server/overseer/worker-sandbox-run';
@@ -172,14 +173,14 @@ function receipts(providerName: ProviderIdentity['provider'] = 'claude', nesting
     const world = sandboxWorld({ executables: [path] });
     const programs = { [profile.id]: path };
     const prepared = preparePolicy(sandboxPreparation(world.input, { provider: providerName, programs }));
-    const host: HostIdentity = {
+    const facts: HostFacts = {
         os: { build: '24D60', arch: 'arm64' }, node: { path: prepared.runtime.node, sha256: 'b'.repeat(64) },
         runtime: { version: prepared.runtime.version, contentSha256: 'c'.repeat(64) },
-        rules: relativeRules(prepared.settings, prepared.run, prepared.scratch),
     };
-    const provider: ProviderIdentity = providerName === 'codex'
-        ? { provider: 'codex', path, version: '0.100.0', sha256: 'd'.repeat(64), argv: ['exec', '--sandbox', 'read-only'], tools: ['shell'] }
-        : { provider: 'claude', path, version: '2.1.328', sha256: 'e'.repeat(64), argv: ['-p', '--safe-mode'], tools: ['Read', 'Glob', 'Grep'] };
+    const host: HostIdentity = { ...facts, rules: relativeRules(prepared.settings, prepared.run, prepared.scratch) };
+    const program = { path, version: providerName === 'codex' ? '0.167.0-alpha.4.1' : '2.1.328', sha256: createHash('sha256').update(readFileSync(path)).digest('hex') };
+    const selection = providerName === 'codex' ? codexReader(program, 'gpt-fixture', 'high') : claudeReader(program, 'claude-fixture', 'high');
+    const provider: ProviderIdentity = { provider: providerName, path, version: program.version, sha256: program.sha256, argv: [...selection.argv], tools: [...selection.tools] };
     const observed = {
         ...EXPECTED, run: prepared.run, policyDigest: prepared.digest, profile: profile.id, argv: [...provider.argv],
         javaAgentJar: prepared.runtime.javaAgentJar, wrapperTmp: prepared.wrapperTmp,
@@ -187,76 +188,91 @@ function receipts(providerName: ProviderIdentity['provider'] = 'claude', nesting
     const outerExpected = { ...observed, profile: 'outer' };
     const outer: OuterReceipt = { identity: host, qualification: qualify(battery(outerExpected, 'unknown'), outerExpected) };
     const current = { ...host, provider };
-    const inner: InnerReceipt = { profile: profile.id, identity: current, restrictionsApplied: profile.requiredRestrictions, battery: qualify(battery(observed, nesting), observed) };
+    const inner: InnerReceipt = {
+        profile: profile.id, identity: current, restrictionsApplied: profile.requiredRestrictions, battery: qualify(battery(observed, nesting), observed),
+        effective: { restrictions: [...profile.requiredRestrictions], authentication: selection.authentication },
+    };
     const allocate = (extra: Partial<typeof world.input> = {}) => {
         const run = createRunDirectories(world.paths, randomUUID());
         mkdirSync(snapshotPath(run), { mode: 0o700 });
         return preparePolicy(sandboxPreparation({ ...world.input, ...extra, run }, { provider: providerName, programs }));
     };
-    return { profile, prepared, outer, inner, current, allocate };
+    return { profile, selection, facts, prepared, outer, inner, current, allocate };
 }
 
 test('a reader profile needs matching outer and inner receipts and all its restrictions', () => {
-    const { profile, prepared, current, outer, inner } = receipts();
-    expect(profileEligibility(profile, current, prepared, outer, inner)).toEqual({ eligible: true });
-    expect(profileEligibility(profile, current, prepared, null, inner)).toEqual({ eligible: false, reason: 'outer-unqualified' });
-    expect(profileEligibility(profile, current, prepared, { ...outer, qualification: { ...outer.qualification, status: 'unqualified' } }, inner))
+    const { selection, facts, prepared, outer, inner } = receipts();
+    expect(profileEligibility(selection, facts, prepared, outer, inner)).toEqual({ eligible: true });
+    expect(profileEligibility(selection, facts, prepared, null, inner)).toEqual({ eligible: false, reason: 'outer-unqualified' });
+    expect(profileEligibility(selection, facts, prepared, { ...outer, qualification: { ...outer.qualification, status: 'unqualified' } }, inner))
         .toEqual({ eligible: false, reason: 'outer-unqualified' });
     for (const badInner of [null, { ...inner, restrictionsApplied: inner.restrictionsApplied.slice(1) },
         { ...inner, battery: { ...inner.battery, status: 'unqualified' as const } },
         { ...inner, profile: 'codex-reader' }, { ...inner, battery: { ...inner.battery, profile: 'codex-reader' } },
     ]) {
-        expect(profileEligibility(profile, current, prepared, outer, badInner)).toEqual({ eligible: false, reason: 'inner-restriction-unverified' });
+        expect(profileEligibility(selection, facts, prepared, outer, badInner)).toEqual({ eligible: false, reason: 'inner-restriction-unverified' });
     }
 });
 
-test('only a matching command-capable Codex identity can report its inner Seatbelt refusal', () => {
-    const { profile, prepared, current, outer, inner } = receipts('codex');
+test('an inner receipt without evidence of its restrictions and sign-in method in effect qualifies nothing', () => {
+    const { selection, facts, prepared, outer, inner } = receipts();
+    const { effective: _effective, ...older } = inner;
+    for (const badInner of [older, { ...inner, effective: { ...inner.effective!, authentication: 'codex-file-store' as const } },
+        { ...inner, effective: { ...inner.effective!, restrictions: inner.effective!.restrictions.slice(1) } }]) {
+        expect(profileEligibility(selection, facts, prepared, outer, badInner)).toEqual({ eligible: false, reason: 'inner-evidence-missing' });
+    }
+});
+
+test('a command-capable Codex reader needs affirmative inner Seatbelt evidence, and an outer refusal stands', () => {
+    const { selection, facts, prepared, outer, inner } = receipts('codex');
     const supported: InnerReceipt = { ...inner, battery: { ...inner.battery, innerSeatbelt: 'supported' } };
-    expect(profileEligibility(profile, current, prepared, outer, supported)).toEqual({ eligible: true });
-    expect(profileEligibility(profile, current, prepared, outer, inner)).toEqual({ eligible: false, reason: 'inner-seatbelt-unsupported' });
+    expect(profileEligibility(selection, facts, prepared, outer, supported)).toEqual({ eligible: true });
+    expect(profileEligibility(selection, facts, prepared, outer, inner)).toEqual({ eligible: false, reason: 'inner-seatbelt-unsupported' });
+    expect(profileEligibility(selection, facts, prepared, outer, { ...inner, battery: { ...inner.battery, innerSeatbelt: 'unknown' } }))
+        .toEqual({ eligible: false, reason: 'inner-seatbelt-unsupported' });
     const outerRefusal: OuterReceipt = { ...outer, qualification: { ...outer.qualification, innerSeatbelt: 'unsupported' } };
-    expect(profileEligibility(profile, current, prepared, outerRefusal, supported)).toEqual({ eligible: false, reason: 'inner-seatbelt-unsupported' });
-    const claude = { ...current, provider: { ...current.provider, provider: 'claude' as const } };
-    expect(profileEligibility(profile, claude, prepared, outer, { ...inner, identity: claude })).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
-    expect(profileEligibility(profile, current, prepared, outer, { ...inner, identity: claude })).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
-    const wrongProgram = { ...current, provider: { ...current.provider, path: '/usr/bin/true' } };
-    expect(profileEligibility(profile, wrongProgram, prepared, outer, { ...inner, identity: wrongProgram })).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
+    expect(profileEligibility(selection, facts, prepared, outerRefusal, supported)).toEqual({ eligible: false, reason: 'inner-seatbelt-unsupported' });
+    const claudeIdentity = { ...supported.identity, provider: { ...supported.identity.provider, provider: 'claude' as const } };
+    expect(profileEligibility(selection, facts, prepared, outer, { ...supported, identity: claudeIdentity })).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
+    const wrongProgram = { ...selection, program: { ...selection.program, path: '/usr/bin/true' } };
+    expect(profileEligibility(wrongProgram, facts, prepared, outer, supported)).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
 });
 
 test('the receipt must match both its originating policy and the verified policy for a fresh run', () => {
-    const { profile, prepared, current, outer, inner, allocate } = receipts();
+    const { selection, facts, prepared, current, outer, inner, allocate } = receipts();
     const second = allocate();
     expect(second.digest).not.toBe(prepared.digest);
     expect(relativeRules(second.settings, second.run)).toBe(current.rules);
-    expect(profileEligibility(profile, current, second, outer, inner)).toEqual({ eligible: true });
+    expect(profileEligibility(selection, facts, second, outer, inner)).toEqual({ eligible: true });
     const changed = allocate({ runtimeReads: ['/usr/share'] });
     expect(() => verifyPrepared(changed)).not.toThrow();
-    expect(profileEligibility(profile, current, changed, outer, inner)).toEqual({ eligible: false, reason: 'outer-identity-mismatch' });
-    expect(profileEligibility(profile, current, second, { ...outer, qualification: { ...outer.qualification, run: second.run } }, inner))
+    expect(profileEligibility(selection, facts, changed, outer, inner)).toEqual({ eligible: false, reason: 'outer-identity-mismatch' });
+    expect(profileEligibility(selection, facts, second, { ...outer, qualification: { ...outer.qualification, run: second.run } }, inner))
         .toEqual({ eligible: false, reason: 'outer-identity-mismatch' });
-    expect(profileEligibility(profile, current, second, outer, { ...inner, battery: { ...inner.battery, policyDigest: second.digest } }))
+    expect(profileEligibility(selection, facts, second, outer, { ...inner, battery: { ...inner.battery, policyDigest: second.digest } }))
         .toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
+    // The rules are the policy file's own: a description of it the file does not hold changes nothing.
+    expect(profileEligibility(selection, facts, { ...second, bytes: '{}', settings: {} as never }, outer, inner)).toEqual({ eligible: true });
     writeFileSync(second.file, '{}\n');
-    expect(profileEligibility(profile, current, second, outer, inner)).toEqual({ eligible: false, reason: 'outer-identity-mismatch' });
+    expect(profileEligibility(selection, facts, second, outer, inner)).toEqual({ eligible: false, reason: 'outer-identity-mismatch' });
 });
 
-test('changes to host, runtime, rules or exact provider invocation invalidate the receipts', () => {
-    const { profile, prepared, current, outer, inner } = receipts(), { provider } = current;
-    const variants: [HostIdentity & { provider: ProviderIdentity }, 'outer-identity-mismatch' | 'inner-identity-mismatch'][] = [
-        [{ ...current, os: { ...current.os, build: '24D70' } }, 'outer-identity-mismatch'],
-        [{ ...current, os: { ...current.os, arch: 'x86_64' } }, 'outer-identity-mismatch'],
-        [{ ...current, node: { ...current.node, sha256: 'f'.repeat(64) } }, 'outer-identity-mismatch'],
-        [{ ...current, runtime: { ...current.runtime, version: '0.0.84' } }, 'outer-identity-mismatch'],
-        [{ ...current, runtime: { ...current.runtime, contentSha256: 'f'.repeat(64) } }, 'outer-identity-mismatch'],
-        [{ ...current, rules: 'changed rules' }, 'outer-identity-mismatch'],
-        [{ ...current, provider: { ...provider, version: '2.1.329' } }, 'inner-identity-mismatch'],
-        [{ ...current, provider: { ...provider, sha256: 'f'.repeat(64) } }, 'inner-identity-mismatch'],
-        [{ ...current, provider: { ...provider, argv: [...provider.argv, '--verbose'] } }, 'inner-identity-mismatch'],
-        [{ ...current, provider: { ...provider, tools: [...provider.tools, 'shell'] } }, 'inner-identity-mismatch'],
+test('changes to host facts, rules, the program bytes or the exact invocation invalidate the receipts', () => {
+    const { selection, facts, prepared, outer, inner } = receipts();
+    const hostVariants: HostFacts[] = [
+        { ...facts, os: { ...facts.os, build: '24D70' } }, { ...facts, os: { ...facts.os, arch: 'x86_64' } },
+        { ...facts, node: { ...facts.node, sha256: 'f'.repeat(64) } }, { ...facts, runtime: { ...facts.runtime, version: '0.0.84' } },
+        { ...facts, runtime: { ...facts.runtime, contentSha256: 'f'.repeat(64) } },
     ];
-    for (const [identity, reason] of variants)
-        expect(profileEligibility(profile, identity, prepared, outer, inner)).toEqual({ eligible: false, reason });
+    for (const changed of hostVariants) expect(profileEligibility(selection, changed, prepared, outer, inner)).toEqual({ eligible: false, reason: 'outer-identity-mismatch' });
+    const selectionVariants: ReaderSelection[] = [
+        { ...selection, program: { ...selection.program, version: '2.1.329' } },
+        { ...selection, program: { ...selection.program, sha256: 'f'.repeat(64) } },
+        // Labels intact, argv altered: the receipt binds the exact arguments.
+        { ...selection, argv: [...selection.argv, '--verbose'] },
+        { ...selection, tools: [...selection.tools, 'Bash'] },
+    ];
+    for (const changed of selectionVariants) expect(profileEligibility(changed, facts, prepared, outer, inner)).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
 });
 
 test('simulated qualification leaves the shipped model gate closed', () => {
