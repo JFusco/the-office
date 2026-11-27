@@ -15,7 +15,7 @@ const panel = (snapshot: any) => renderToStaticMarkup(createElement(SettingsPane
 
 test('orders the Office, configuration and project blocks and shows PR closeout only for GitHub', () => {
     const github = panel(snap('github')), azure = panel(snap('azure'));
-    const order = ['data-settings-block="office"', 'data-settings-block="configuration"', 'data-settings-block="project"'].map(marker => github.indexOf(marker));
+    const order = ['data-settings-block="office"', 'data-settings-block="sound"', 'data-settings-block="configuration"', 'data-settings-block="project"'].map(marker => github.indexOf(marker));
     expect(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1]))).toBe(true);
     expect(github).toContain('Project · Brain'); expect(github).toContain('Office PR closeout');
     expect(azure).toContain('Project · CEC'); expect(azure).not.toContain('Office PR closeout');
