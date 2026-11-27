@@ -22,7 +22,7 @@ const types:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'tex
 const json=(res:ServerResponse,body:unknown,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(body));};
 let sequence=0;
 const snapshot=(project:string)=>{const s=state.snapshots[project];if(s){s.serverTime=new Date().toISOString();s.serviceInstanceId='fixture-service';s.snapshotSequence=++sequence;s.preferences={...state.preferences};s.featureQuestions=fixtureQuestions(Object.values(state.snapshots));}return s;};
-const WRITABLE=['quality','reducedMotion','keyboardShortcuts','deliveryToasts','coffeeBreaks'];
+const WRITABLE=['quality','reducedMotion','keyboardShortcuts','deliveryToasts','coffeeBreaks','soundVolume','hoverSound','settingSounds','floorSound'];
 // Merge writable preference fields; returns false for an unknown or empty patch, like the real route's 400.
 const mergePreferences=(patch:Record<string,unknown>)=>{const keys=Object.keys(patch||{});if(!keys.length||keys.some(k=>!WRITABLE.includes(k)))return false;state.preferences={...state.preferences,...patch,revision:state.preferences.revision+1};for(const project of streams.keys())push(project);return true;};
 const push=(project:string)=>{for(const res of streams.get(project)||[])res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot(project))}\n\n`);};

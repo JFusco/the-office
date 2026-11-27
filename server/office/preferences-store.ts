@@ -9,9 +9,21 @@ const fields = {
     deliveryToasts: z.boolean(),
     coffeeBreaks: z.boolean(),
 };
-const StoredBody = z.object(fields).strict();
+const soundFields = {
+    soundVolume: z.number().int().min(0).max(100),
+    hoverSound: z.boolean(),
+    settingSounds: z.boolean(),
+    floorSound: z.boolean(),
+};
+const StoredBody = z.object({
+    ...fields,
+    soundVolume: soundFields.soundVolume.default(OFFICE_PREFERENCE_DEFAULTS.soundVolume),
+    hoverSound: soundFields.hoverSound.default(false),
+    settingSounds: soundFields.settingSounds.default(false),
+    floorSound: soundFields.floorSound.default(false),
+}).strict();
 /** A client patch: only writable fields, at least one of them. */
-export const PreferencesPatch = z.object(fields).partial().strict().refine(patch => Object.keys(patch).length > 0, 'At least one preference is required');
+export const PreferencesPatch = z.object({ ...fields, ...soundFields }).partial().strict().refine(patch => Object.keys(patch).length > 0, 'At least one preference is required');
 
 /** Office-wide preferences in a one-row table on the borrowed office control database. */
 export class PreferencesStore {
