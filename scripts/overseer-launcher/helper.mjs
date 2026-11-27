@@ -8,10 +8,16 @@ import { defaultSystem, groupInventory } from './process-group.mjs';
 
 const tail = (chunks, max) => Buffer.concat(chunks).subarray(-max).toString('utf8');
 
-/** Sends to the launcher only while it is there: a launcher that died must never crash the helper before it has cleaned up. */
+/**
+ * Sends to the launcher only while it is there: a launcher that died must never crash the helper
+ * before it has cleaned up. Node reports a write that fails on a closing channel to the callback,
+ * or, without one, as an `error` event on the process, which nothing here listens for and which
+ * would end the helper before `disconnect` could stop its group. So the callback takes it; the
+ * launcher's loss is handled where it always is, by the `disconnect` handler.
+ */
 const send = payload => {
     if (!process.connected) return;
-    try { process.send(payload); } catch { /* the launcher went away meanwhile */ }
+    try { process.send(payload, () => { /* the launcher went away meanwhile */ }); } catch { /* the launcher went away meanwhile */ }
 };
 
 /** Whether this process is the only member of its group left. */
