@@ -164,7 +164,20 @@ export interface SandboxedRun {
     onLine?: (line: string) => void;
     onOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void;
     onSpawn?: (pid: number) => void;
+    /** The prompt, on the payload's stdin. */
+    input?: string;
+    /**
+     * The Claude reader's sign-in (`provider-auth/claude-handoff.ts`), added as `CLAUDE_CODE_OAUTH_TOKEN`
+     * to this one executor call's environment only: never to the prepared policy, its environment or a
+     * receipt. Refused for any other selection.
+     */
+    claudeOAuthToken?: string;
 }
+
+/** The variable the Claude reader's token travels in; a prepared environment never carries it. */
+export const CLAUDE_TOKEN_VARIABLE = 'CLAUDE_CODE_OAUTH_TOKEN';
+/** One nonempty line of printable ASCII without spaces. */
+const TOKEN = /^[\x21-\x7e]+$/;
 
 /** Refuses before anything starts, or hands exactly one wrapped command to the executor and returns what it returns. */
 export async function runSandboxed(request: SandboxedRun): Promise<string> {
@@ -182,9 +195,17 @@ export async function runSandboxed(request: SandboxedRun): Promise<string> {
     try { stat = lstatSync(program); } catch (error) { throw new SandboxRefusal(`${program} cannot be read (${code(error) ?? 'unknown error'})`); }
     if (stat.isSymbolicLink() || !stat.isFile() || realpathSync(program) !== program) throw new SandboxRefusal(`${program} must be a regular file at its own physical path`);
     verifyPrepared(prepared);
+    if (Object.hasOwn(prepared.replaceEnv, CLAUDE_TOKEN_VARIABLE)) throw new SandboxRefusal(`The prepared environment must not carry ${CLAUDE_TOKEN_VARIABLE}`);
+    const replaceEnv: Record<string, string> = { ...prepared.replaceEnv };
+    if (request.claudeOAuthToken !== undefined) {
+        if (selection !== 'claude-reader') throw new SandboxRefusal(`Only the Claude reader is given a sign-in token, not ${selection}`);
+        if (typeof request.claudeOAuthToken !== 'string' || !TOKEN.test(request.claudeOAuthToken)) throw new SandboxRefusal('The Claude sign-in token is not one line of printable ASCII');
+        replaceEnv[CLAUDE_TOKEN_VARIABLE] = request.claudeOAuthToken;
+    }
     const { executable, argv } = sandboxedCommand(prepared.runtime, prepared.file, program, request.args);
     return request.executor(executable, argv, {
-        cwd: run.home, replaceEnv: { ...prepared.replaceEnv }, timeout: request.timeout, inactivityTimeout: request.inactivityTimeout,
+        cwd: run.home, replaceEnv, timeout: request.timeout, inactivityTimeout: request.inactivityTimeout,
         signal: request.signal, readOnly: request.readOnly, onLine: request.onLine, onOutput: request.onOutput, onSpawn: request.onSpawn,
+        ...(request.input === undefined ? {} : { input: request.input }),
     });
 }

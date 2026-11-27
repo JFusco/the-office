@@ -1,4 +1,4 @@
-import { collectOpinion, otherProvider, type Budgeted, type FrozenInput, type Opinion, type Provider, type ProviderInvoke } from './triage';
+import { collectOpinion, otherProvider, type Budgeted, type FrozenInput, type Opinion, type Provider } from './triage';
 
 /**
  * The blind second opinion: the other provider, on the same frozen input, in its own fresh session.
@@ -8,11 +8,10 @@ import { collectOpinion, otherProvider, type Budgeted, type FrozenInput, type Op
 export interface SecondOpinionRequest {
     budgeted: Budgeted;
     input: FrozenInput;
-    invoke: ProviderInvoke;
     first: { provider: Provider; inputIdentity: string };
 }
 
-export async function collectSecondOpinion({ budgeted, input, invoke, first }: SecondOpinionRequest): Promise<Opinion> {
+export async function collectSecondOpinion({ budgeted, input, first }: SecondOpinionRequest): Promise<Opinion> {
     const provider = otherProvider(first.provider);
-    return collectOpinion({ budgeted, stage: 'second-opinion', round: 1, provider, input, invoke }, first.inputIdentity);
+    return collectOpinion({ budgeted, stage: 'second-opinion', round: 1, provider, input }, first.inputIdentity);
 }

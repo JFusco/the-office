@@ -1067,9 +1067,9 @@ every future model call must pass, and the ledger that keeps its account. Phase 
 through one boundary, `runBudgeted` in `server/overseer/budgeted-run.ts`, which admits a call,
 starts it, and settles what it cost.
 
-**The money is an estimate.** The runner's model calls use the existing Claude and Codex
-subscription logins the Office workers use, so they share their usage limits with Joe's own
-sessions and the Office. Every dollar figure is what the usage would cost at API list prices:
+**The money is an estimate.** The runner's model calls use [separate runner-owned sign-ins](#provider-sign-ins-and-reader-runs)
+on Joe's existing Claude and Codex subscriptions, sharing each subscription's usage limits with
+Joe's own sessions and the Office. Every dollar figure is what the usage would cost at API list prices:
 Claude's own estimate (`costBasis: list`) and, for Codex, the Office's price table. It is never a
 bill. Run counts and timeouts are the real brake; the daily ceiling stops a runaway. Neither the
 margins nor the timeouts guarantee a worst-case dollar amount.
@@ -1221,8 +1221,9 @@ What these folders do and do not settle:
 - **Not a session identity.** The reservation ID names the storage only. A run still has to start a
   new provider session and bind the session the provider reports to its reservation
   (`bindSession` in `server/overseer/budgeted-run.ts`).
-- **Not confinement.** Keeping a worker to these folders is the sandbox's job, and proving which
-  login it uses is the provider authentication's; both are later parts of phase 7.
+- **Not confinement.** Keeping a worker to these folders is the sandbox's job, a later part of
+  phase 7. [Provider sign-ins and reader runs](#provider-sign-ins-and-reader-runs) describes the
+  separate authentication boundary and its qualification requirements.
 
 ### Worker sandbox
 
@@ -1338,8 +1339,8 @@ the exact host, installation, policy and provider profiles are outstanding.
 ### Triage and corroboration
 
 No model runs yet, and nothing acts on what follows. This is the contract, tested against fixtures
-only. How a model call is made, with its provider sign-in and sandbox, is a later part of phase 7, and
-the 7b gate keeps it closed until then.
+only. How a model call is made, with its provider sign-in and sandbox, is in
+[Provider sign-ins and reader runs](#provider-sign-ins-and-reader-runs). The 7b gate keeps it closed.
 
 **What a reader is given.** The runner builds one frozen input per incident
 (`server/overseer/stages/triage.ts`) from:
@@ -1477,6 +1478,164 @@ is the explicit absence.
 The guidance is selected once per incident and frozen into the one input both opinions share, so
 both see the same text. The input's identity covers the selected text. An edit to an entry that
 stays omitted leaves it unchanged.
+
+### Provider sign-ins and reader runs
+
+Nothing here has run against a real provider. It is built and tested with synthetic sign-ins, fake
+provider programs and a synthetic provider endpoint. The shipped dispatch gate is closed, so every live
+call is refused before anything starts (`server/overseer/run-model.ts`).
+
+**Separate runner sign-ins.** The runner uses its own sign-ins, which Joe creates on his existing
+Claude and Codex subscriptions. It never uses his interactive ones. They live under the runner root,
+which no worker policy opens:
+
+| File | What it is |
+| --- | --- |
+| `providers/` | 0700. `providers/claude` and `providers/codex` are 0700 too |
+| `providers/claude/oauth-token` | 0600. The one-line token from `claude setup-token` |
+| `providers/codex/auth.json` | 0600. The `CODEX_HOME` login from `codex login --device-auth` |
+| `state/providers.json` | Stopped sign-in generations and the active Codex hand-off |
+
+Each is read without following a link or waiting on a pipe. It must be runner-owned, single-link, of
+the exact mode, and within its byte limit by the bytes actually read. A refusal names the file, never
+its contents (`provider-auth/sign-in-paths.ts`).
+
+**Claude.** Each run gets an empty `CLAUDE_CONFIG_DIR` of its own. The token is added as
+`CLAUDE_CODE_OAUTH_TOKEN` to that one executor call's environment only, never to a prepared policy, a
+setting or a receipt (`provider-auth/claude-handoff.ts`, `worker-sandbox-run.ts`). The pinned sandbox
+runtime passes the payload only its standard streams, so a token descriptor from outside would never
+reach the CLI. The token is never refreshed.
+
+Residual: while a Claude run lives, another process of the same user can read its environment.
+
+**Codex.** The canonical login is copied byte for byte into the run's own `CODEX_HOME`, and the CLI
+is told `cli_auth_credentials_store="file"`. The copy is made only after the hand-off is claimed in
+`state/providers.json` (`provider-auth/codex-handoff.ts`). The envelope is Codex
+0.167.0-alpha.4.1's managed ChatGPT login, with a consistent login owner, user and workspace. Agent
+identities, personal access tokens, Bedrock keys and API keys are refused.
+
+After the run's process group has exited, the runner reads the copy back:
+
+- **Unchanged:** nothing is written.
+- **Refreshed:** published back only when all of these hold:
+  - it is the same login owner, user and workspace;
+  - trusted provider-side evidence shows exactly those credentials were issued to this run;
+  - the canonical file is still the one copied. If Joe signed in again meanwhile, his newer sign-in
+    stands.
+- **Anything else:** the generation is stopped.
+
+The copy is retired before the claim is cleared. While the claim is held, no other Codex copy is made.
+
+**Stops by generation.** An authentication rejection, a refresh rejection, another account, an
+unreadable copy or an unverified rotation stops that generation (`provider-auth/profile-status.ts`). A
+generation is the Claude token's fingerprint, or the Codex login owner with its user and workspace. A
+rotation within a login keeps its stop, and a new enrollment starts clear. A stop is recorded only
+from trusted evidence bound to the run and generation. Quoted errors, a rate limit or a transport error
+leave the profile usable. Nothing falls back to another login, a shared home or an API key.
+
+**Reader profiles** (`server/overseer/reader-profiles.ts`), adapted from the review workflow's
+constrained invocations. Each restriction is built from its own arguments:
+
+- **`claude-reader`:** `-p` with streamed JSON and the verdict schema, `--safe-mode`, `--restricted`,
+  Read, Glob and Grep only over the snapshot, MCP denied and strict, plan mode with no permission
+  prompts, no Chrome, and hooks disabled.
+- **`codex-reader`:** a fresh `exec` with its model and effort, approvals never, a read-only sandbox, no
+  agents, user configuration ignored, the file sign-in store, and the prompt on stdin. Its schema and
+  answer are at fixed paths from the run's `home`.
+
+The run's snapshot holds the frozen evidence, checked against the input's identity, and the schema
+(`reader-input.ts`).
+
+**Eligibility** (`sandbox-qualification.ts#profileEligibility`).
+
+- Its inputs:
+  - the rules come from the policy file on disk;
+  - the provider identity comes from the selection, with its program hashed;
+  - the host facts are supplied independently.
+- The inner receipt must also show the profile's restrictions and its sign-in method in effect, so an
+  older receipt qualifies nothing.
+- A command-capable reader needs affirmative inner Seatbelt evidence.
+
+**The gates, in order.** Each refuses before admission, so a refusal spends nothing:
+
+1. the dispatch gate;
+2. the pinned runtime;
+3. trusted receipts, then:
+   - no runner storage overlapping an interactive configuration or session root;
+   - the run's own folders, snapshot and policy;
+   - full eligibility;
+4. the caller's pass lock, read from the lock itself, with any earlier hand-off resolved, then the
+   profile's stop;
+5. the sign-in.
+
+The admitted call rechecks all of them immediately before dispatch.
+
+**What a call is charged.**
+
+- **Never dispatched:** a refusal there, or a refusal by the executor before spawning, releases the
+  reservation, so the same round can be admitted again (`budget-ledger.ts#release`).
+- **Dispatched:** the call's completion includes the group's exit, the Codex write-back or stop, and
+  the copy's retirement.
+- **Session:** it is bound from the first start event, once, and a second different session is a
+  fault.
+- **Suppressed verdict:** a verdict is suppressed by a foreign terminal, another model, an unexplained
+  extra Codex thread or an incomplete rollout inventory. A call that left a valid charge still settles
+  it (`reader-result.ts`, `budgeted-run.ts#AttributedFailure`).
+- **Timed out:** the call's completion goes to the caller that holds the pass lock, which drains it
+  before releasing the lock.
+- **Pass ends first:** if the pass ends before that completion, the durable claim fences the next
+  Codex copy. The next lock holder retires an orphaned copy only once the recorded group is confirmed
+  gone. It stops the generation if the copy had changed. A launch with no recorded group waits for an
+  operator.
+
+**Status of each reader.** Both are unqualified. On this tree the runtime is not pinned or installed;
+0.0.83 was inspected in a separate checkout. Host qualification still needs:
+
+- the runtime pin;
+- outer and inner receipts;
+- denial of the canonical provider folders;
+- the Claude wrapper and any descendants' exposure;
+- managed settings, hooks and MCP;
+- restricted snapshot access;
+- Keychain isolation;
+- Codex's file store in effect;
+- trusted rotation and authentication evidence;
+- agents and customizations suppressed in effect.
+
+Each of those is a host step that needs Joe's go-ahead. The recorded gaps stand:
+
+- launchd control was reachable;
+- the shared temporary folder was inconclusive;
+- Seatbelt does not nest on Darwin 24.3.
+
+The current policy allows no provider or refresh endpoint.
+
+**Joe's enrollment, once the setup is declared ready.** Joe makes both sign-ins himself, through the
+providers' own flows, on his existing subscriptions.
+
+1. Check that `providers/` and `state/` overlap no interactive configuration or session root.
+2. Stop scheduled starts.
+3. Take `control/pass.lock.reclaim` create-exclusively, which keeps any pass from starting.
+4. Check that no pass holds the lock and that `state/providers.json` names no active hand-off. An
+   unresolved owner, hand-off or group defers enrollment.
+5. For Claude, run `/Users/joe.fusco/.local/share/claude/versions/2.1.328 setup-token` and save the
+   token to `providers/claude/oauth-token` at 0600.
+6. For Codex, run
+   `CODEX_HOME=<runner root>/providers/codex /Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex -c cli_auth_credentials_store='"file"' login --device-auth`.
+   That is the same 0.167.0-alpha.4.1 program the profile runs; the shell's `codex` is another
+   version.
+7. Check both files' owner, mode and envelope.
+8. Release only the guard.
+
+Joe approved one live qualification test per provider, against the existing budget, once that
+provider passes its isolation checks. Each of these still needs his own words:
+
+- real credentials used by the runner;
+- any inference beyond that test;
+- the observe-only pilot;
+- a billing-mode change;
+- a project exception;
+- moving the runner pin.
 
 ### When the Office does not answer
 

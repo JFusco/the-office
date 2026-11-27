@@ -31,7 +31,7 @@ export interface ReservationRow {
 }
 
 export type RefusalCode = 'overrun-unreconciled' | 'invalid-incident' | 'unknown-stage' | 'invalid-timeouts' | 'round-out-of-range' | 'stage-repeated'
-    | 'daily-runs' | 'daily-fix-attempts' | 'ceiling-unreadable' | 'ceiling';
+    | 'daily-runs' | 'daily-fix-attempts' | 'ceiling-unreadable' | 'ceiling' | 'invalid-reservation-id' | 'reservation-id-taken';
 export interface Reservation { id: string; reserved: number; deadline: string; totalTimeoutMs: number; inactivityTimeoutMs: number }
 export type Admission = { admitted: true; reservation: Reservation } | { admitted: false; code: RefusalCode };
 
@@ -47,7 +47,14 @@ export interface LedgerOptions {
     hooks?: { afterBegin?: () => void; beforeCommit?: () => void };
     /** For reconciliation: refuse to create a ledger that does not exist. */
     mustExist?: boolean;
+    /**
+     * For admission only: the reservation's ID, chosen by the caller so it can prepare the run's folders
+     * under it first. A lowercase UUID not yet in the ledger; otherwise the ledger generates one.
+     */
+    reservationId?: string;
 }
+
+const RESERVATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS reservations (
@@ -157,6 +164,8 @@ export function admit(paths: RunnerPaths, request: AdmissionRequest, options: Le
         const at = now.toISOString(), day = easternDay(now);
         abandonExpired(db, at);
         const refuse = (code: RefusalCode): Admission => ({ admitted: false, code });
+        if (options.reservationId !== undefined && (typeof options.reservationId !== 'string' || !RESERVATION_ID.test(options.reservationId))) return refuse('invalid-reservation-id');
+        if (options.reservationId !== undefined && get(db, options.reservationId)) return refuse('reservation-id-taken');
         if (count(db, `SELECT COUNT(*) AS n FROM reservations WHERE ${UNRECONCILED}`)) return refuse('overrun-unreconciled');
         if (typeof request.incident !== 'string' || !/^inc-[0-9a-f]{16}$/.test(request.incident)) return refuse('invalid-incident');
         const policy = typeof request.stage === 'string' ? stagePolicy(request.stage) : null;
@@ -171,10 +180,33 @@ export function admit(paths: RunnerPaths, request: AdmissionRequest, options: Le
         if (ceiling === null) return refuse('ceiling-unreadable');
         const reserved = reservationFor(policy.allocation);
         if (reserved > balance(db, day, ceiling).available) return refuse('ceiling');
-        const id = crypto.randomUUID(), deadline = new Date(now.getTime() + request.totalTimeoutMs + ABANDON_GRACE_MS).toISOString();
+        const id = options.reservationId ?? crypto.randomUUID(), deadline = new Date(now.getTime() + request.totalTimeoutMs + ABANDON_GRACE_MS).toISOString();
         db.prepare("INSERT INTO reservations (id, day, incident, stage, counter, round, reserved, admitted_at, deadline, total_ms, inactivity_ms, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,'outstanding')")
             .run(id, day, request.incident, request.stage, policy.counter, request.round, reserved, at, deadline, request.totalTimeoutMs, request.inactivityTimeoutMs);
         return { admitted: true, reservation: { id, reserved, deadline, totalTimeoutMs: request.totalTimeoutMs, inactivityTimeoutMs: request.inactivityTimeoutMs } };
+    });
+}
+
+export type Release = { released: true } | { released: false; code: 'unknown-reservation' | 'not-releasable' };
+
+const TIMEOUT_RECEIPT = '{"timeout":true}';
+
+/**
+ * Removes a proven non-dispatch. Only the timeout branch may release its own provisional
+ * timeout marker. Provider evidence and reconciled charges always keep the row.
+ */
+export function release(paths: RunnerPaths, id: string, options: LedgerOptions = {}, afterTimeout = false): Release {
+    return write(paths, options, db => {
+        const row = get(db, id);
+        if (!row) return { released: false, code: 'unknown-reservation' } as const;
+        const untouched = row.status === 'outstanding' && row.charged === null && row.settled_at === null && row.receipt === null;
+        // Expiration can also post the hold if the deadline's own write could not reach the ledger.
+        const timeoutOnly = afterTimeout && row.charged === row.reserved
+            && (row.receipt === TIMEOUT_RECEIPT || (row.status === 'abandoned' && row.receipt === null));
+        if ((!untouched && !timeoutOnly) || row.evidence_id !== null || row.receipt_total !== null || row.final !== 0
+            || row.ack_micro_usd !== null || row.ack_at !== null || row.finalized_at !== null) return { released: false, code: 'not-releasable' } as const;
+        db.prepare('DELETE FROM reservations WHERE id=?').run(id);
+        return { released: true } as const;
     });
 }
 
@@ -217,7 +249,7 @@ export type Settlement = { result: 'settled' | 'retained' | 'overrun' | 'duplica
  * hold only when it supports a higher charge. A charge above the reservation is an overrun, and
  * a higher overrun charge requires a new acknowledgement.
  */
-export function settle(paths: RunnerPaths, id: string, evidence: { evidenceId: string | null; cost: RunCost | null }, options: LedgerOptions = {}): Settlement {
+export function settle(paths: RunnerPaths, id: string, evidence: { evidenceId: string | null; cost: RunCost | null; timeout?: true }, options: LedgerOptions = {}): Settlement {
     return write(paths, options, (db, now) => {
         abandonExpired(db, now.toISOString());
         const row = get(db, id);
@@ -239,7 +271,9 @@ export function settle(paths: RunnerPaths, id: string, evidence: { evidenceId: s
             final = 0;
         }
         const status: ReservationStatus = charged > row.reserved ? 'overrun' : final ? 'settled' : row.status === 'abandoned' && !cost ? 'abandoned' : 'retained';
-        const receipt = JSON.stringify({ matched, completeness: cost?.completeness ?? 'missing', microUsd: cost?.microUsd ?? null, partialMicroUsd: cost?.partialMicroUsd ?? null, reportedTotalUsd: cost?.reportedTotalUsd ?? null });
+        const receipt = evidence.timeout && row.receipt === null && row.evidence_id === null && !cost
+            ? TIMEOUT_RECEIPT
+            : JSON.stringify({ matched, completeness: cost?.completeness ?? 'missing', microUsd: cost?.microUsd ?? null, partialMicroUsd: cost?.partialMicroUsd ?? null, reportedTotalUsd: cost?.reportedTotalUsd ?? null });
         db.prepare('UPDATE reservations SET charged=?, final=?, receipt_total=?, status=?, receipt=?, settled_at=? WHERE id=?').run(charged, final, receiptTotal, status, receipt, now.toISOString(), id);
         const saved = get(db, id)!;
         return { result: status === 'overrun' ? 'overrun' : final ? 'settled' : 'retained', row: saved };

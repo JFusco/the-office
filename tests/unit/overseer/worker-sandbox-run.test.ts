@@ -259,3 +259,33 @@ test('a wrapper folder replaced by a link is refused at handoff as a link', () =
     symlinkSync(`${prepared.wrapperTmp}-moved`, prepared.wrapperTmp);
     expect(() => verifyPrepared(prepared)).toThrow('must be a directory, not a link or a file');
 });
+
+test('the Claude reader alone gets its token, in that one call: stdin carries the prompt, and nothing prepared holds the token', async () => {
+    const TOKEN = 'sk-synthetic-claude-0123', programs = { 'claude-reader': '/usr/bin/true', startup: '/usr/bin/true' };
+    const { input } = sandboxWorld(), prepared = prepare(input, { programs });
+    const { calls, executor } = recorder();
+    const controller = new AbortController();
+    await runSandboxed(request(prepared, executor, { selection: 'claude-reader', args: ['-p'], input: 'the prompt', claudeOAuthToken: TOKEN, signal: controller.signal, timeout: 1_200_000, inactivityTimeout: 300_000 }));
+    const [, argv, options] = calls[0];
+    expect(argv.slice(-2)).toEqual(['/usr/bin/true', '-p']);
+    expect(options).toMatchObject({ input: 'the prompt', signal: controller.signal, timeout: 1_200_000, inactivityTimeout: 300_000, cwd: prepared.run.home });
+    expect(options!.replaceEnv).toEqual({ ...prepared.replaceEnv, CLAUDE_CODE_OAUTH_TOKEN: TOKEN });
+    for (const held of [JSON.stringify(prepared.replaceEnv), prepared.bytes, readFileSync(prepared.file, 'utf8'), JSON.stringify(argv)]) expect(held).not.toContain(TOKEN);
+    // Without the new fields the call is exactly the probe call it was.
+    await runSandboxed(request(prepared, executor));
+    expect(calls[1][2]).not.toHaveProperty('input');
+    expect(calls[1][2]!.replaceEnv).toEqual({ ...prepared.replaceEnv });
+});
+
+test('a token is refused for any other selection, in any other shape, and over a prepared environment that already carries one', async () => {
+    const programs = { 'claude-reader': '/usr/bin/true', startup: '/usr/bin/true' };
+    const { input } = sandboxWorld(), prepared = prepare(input, { programs });
+    const { calls, executor } = recorder();
+    await expect(runSandboxed(request(prepared, executor, { selection: 'startup', claudeOAuthToken: 'sk-x' }))).rejects.toThrow('Only the Claude reader');
+    for (const bad of ['', 'has space', 'two\nlines', 'tab\there', 'é']) {
+        await expect(runSandboxed(request(prepared, executor, { selection: 'claude-reader', claudeOAuthToken: bad })), JSON.stringify(bad)).rejects.toThrow('not one line of printable ASCII');
+    }
+    const carried = { ...prepared, replaceEnv: Object.freeze({ ...prepared.replaceEnv, CLAUDE_CODE_OAUTH_TOKEN: 'sk-x' }) };
+    await expect(runSandboxed(request(carried, executor, { selection: 'claude-reader' }))).rejects.toThrow('must not carry CLAUDE_CODE_OAUTH_TOKEN');
+    expect(calls).toHaveLength(0);
+});

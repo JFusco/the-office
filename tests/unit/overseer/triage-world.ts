@@ -6,7 +6,10 @@ import { canonical } from '../../../server/incidents/canonical-json';
 import { sourceVersions } from '../../../server/incidents/cited-sources';
 import { repairSubject } from '../../../server/incidents/subject-digest';
 import type { CurrentFacts } from '../../../server/overseer/corroborate';
-import { prepareOpinionInput, type FrozenInput, type OpinionSources, type Provider, type ProviderAnswer, type ProviderCall, type RequirementExample } from '../../../server/overseer/stages/triage';
+import { prepareOpinionInput, type Budgeted, type FrozenInput, type OpinionSources, type Provider, type ProviderAnswer, type ProviderCall, type ProviderInvoke, type RequirementExample } from '../../../server/overseer/stages/triage';
+import type { LedgerOptions } from '../../../server/overseer/budget-ledger';
+import { runBudgeted } from '../../../server/overseer/budgeted-run';
+import type { RunnerPaths } from '../../../server/overseer/config';
 import { claudeCost } from '../../../server/telemetry/run-cost';
 
 /** Test support for triage and corroboration: a synthetic incident, its sources, and honest verdicts about it. */
@@ -184,3 +187,7 @@ export function syntheticProvider(edit: (answer: ProviderAnswer, call: ProviderC
     };
     return { invoke, calls, launches, state, remote, provider };
 }
+
+/** The real ledger at these paths, with this fake provider as the invocation every admitted call is handed. */
+export const fixtureBudgeted = (paths: RunnerPaths, invoke: ProviderInvoke, options: LedgerOptions = {}): Budgeted =>
+    (call, use) => runBudgeted(paths, call.request, run => use(run, invoke), options);

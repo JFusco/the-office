@@ -13,7 +13,7 @@ import { collectSecondOpinion } from '../../../server/overseer/stages/second-opi
 import { collectTriage, type Budgeted, type FrozenInput, type Opinion, type OpinionStage, type Provider, type RequirementExample } from '../../../server/overseer/stages/triage';
 import { clock, runnerRoot } from './runner-world';
 import {
-    DOC, DOC_PATH, EXAMPLE, GUARD, GUARD_PATH, INCIDENT, MANIFEST, OTHER_TARGET, currentFor, defect, episodeOf, falsePositive, fixtureCost, frozen, needsJoe, packetFor, rangeOf, realBlock, redigest, sha, sourcesFor, staleState, subjectRecord, syntheticProvider,
+    DOC, DOC_PATH, EXAMPLE, GUARD, GUARD_PATH, INCIDENT, MANIFEST, OTHER_TARGET, currentFor, defect, episodeOf, falsePositive, fixtureBudgeted, fixtureCost, frozen, needsJoe, packetFor, rangeOf, realBlock, redigest, sha, sourcesFor, staleState, subjectRecord, syntheticProvider,
 } from './triage-world';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -271,16 +271,16 @@ test.each(['valid', 'invalid'] as const)('cross-day triage uses the only blind s
     const paths = runnerRoot();
     const { now, advance } = clock('2026-11-27T04:55:00.000Z');
     const packet = packetFor(), input = frozen(sourcesFor(packet)), current = currentFor(packet);
-    const budgeted: Budgeted = (request, invoke) => runBudgeted(paths, request, invoke, { now });
     const fake = syntheticProvider(answer => answer.session === 'session-1' || (answer.provider === 'codex' && blindStatus === 'invalid')
         ? { ...answer, output: { verdict: 'unknown' } } : answer);
+    const budgeted: Budgeted = fixtureBudgeted(paths, fake.invoke, { now });
 
     const research = await runBudgeted(paths, budgetRequest(INCIDENT, 'research', 1), async run => {
         run.bindSession('research-1');
         return { evidenceId: 'research-1', cost: fixtureCost('research-1') };
     }, { now });
     expect(research.status).toBe('completed');
-    const first = await collectTriage({ budgeted, input, invoke: fake.invoke, provider: 'claude', round: 1 });
+    const first = await collectTriage({ budgeted, input, provider: 'claude', round: 1 });
     expect(first.status).toBe('invalid');
 
     const rows = () => {
@@ -320,11 +320,11 @@ test.each(['valid', 'invalid'] as const)('cross-day triage uses the only blind s
     expect(readStanding(paths, now())).toMatchObject({ standing: { day: '2026-11-27', runs: { used: 0 } } });
     const retry = decide(first, 1);
     expect(retry).toMatchObject({ outcome: 'research', next: { stage: 'triage', round: 2 } });
-    const round2 = await collectTriage({ budgeted, input, invoke: fake.invoke, provider: 'claude', round: retry.next!.round });
+    const round2 = await collectTriage({ budgeted, input, provider: 'claude', round: retry.next!.round });
     expect(round2.status).toBe('valid');
     const asked = decide(round2, 2);
     expect(asked).toMatchObject({ outcome: 'research', next: { stage: 'second-opinion', round: 1 } });
-    const blindRequest = { budgeted, input, invoke: fake.invoke, first: { provider: round2.envelope.provider, inputIdentity: round2.envelope.inputIdentity } };
+    const blindRequest = { budgeted, input, first: { provider: round2.envelope.provider, inputIdentity: round2.envelope.inputIdentity } };
     const blind = await collectSecondOpinion(blindRequest);
     expect(blind.status).toBe(blindStatus);
     const [researchRow, firstRow, secondRow, blindRow] = rows();

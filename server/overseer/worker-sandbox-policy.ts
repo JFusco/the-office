@@ -103,7 +103,7 @@ export function sandboxPolicy(input: PolicyInput): SandboxSettings {
             throw new Error(`The run's ${key} is not this runner's allocation (${path})`);
     if ((input.allowedDomains ?? []).length) throw new Error('A reader run has no network: its domain allowlist must be empty');
     const snapshot = snapshotPath(run), policy = policyPath(run);
-    const protectedData = [...protectedLocations(input.protectedRoots), paths.control, paths.journal, paths.state, paths.code, paths.logs];
+    const protectedData = [...protectedLocations(input.protectedRoots), paths.control, paths.journal, paths.state, paths.code, paths.logs, paths.providers];
     const deniedAroundRun = [...protectedData, paths.wrapperTmp, input.installation];
     // The structural runs entry hides other allocations. An independently protected location still applies.
     const denied = [...protectedData, paths.runs, paths.wrapperTmp, input.installation];
