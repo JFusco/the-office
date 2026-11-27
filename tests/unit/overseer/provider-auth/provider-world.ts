@@ -29,8 +29,8 @@ export function codexAuth(fixture: CodexFixture = {}): string {
 }
 
 /** A runner root with both sign-ins enrolled as the runner requires them, and the caller's pass lock. */
-export function enrolledRunner(options: { token?: string; auth?: string; pass?: string } = {}) {
-    const paths: ValidatedRunnerPaths = validateRunnerRoot(join(tempDir(), 'runner'), {}), where = signInPaths(paths);
+export function enrolledRunner(options: { token?: string; auth?: string; pass?: string; base?: string } = {}) {
+    const paths: ValidatedRunnerPaths = validateRunnerRoot(join(options.base ?? tempDir(), 'runner'), {}), where = signInPaths(paths);
     mkdirSync(paths.root, { mode: 0o700, recursive: true });
     mkdirSync(paths.state, { mode: 0o700 });
     for (const folder of [where.providers, where.claude, where.codex]) { mkdirSync(folder, { mode: 0o700 }); chmodSync(folder, 0o700); }
