@@ -337,3 +337,42 @@ test('a failed canonical read stops the staged generation without modifying the 
         expect(existsSync(runAuthPath(run.root))).toBe(false);
     } finally { world.lock.release(); }
 });
+
+test('a same-login sign-in rewritten during the run stands, and the run\'s refresh is never promoted over it', () => {
+    const world = enrolledRunner();
+    try {
+        const { run, staged: staging } = staged(world), rotated = codexAuth({ refresh: 'refresh-synthetic-2' });
+        const rewritten = codexAuth({ refresh: 'refresh-synthetic-joe', access: 'access-synthetic-joe' });
+        writeFileSync(runAuthPath(run.root), rotated);
+        writeFileSync(world.where.codexAuth, rewritten);
+        expect(finishCodex(world.paths, world.proof, run, staging, evidenceFor(staging, rotated))).toEqual({ outcome: 'stopped', reason: 'rotation-uncertain' });
+        expect(readFileSync(world.where.codexAuth, 'utf8')).toBe(rewritten);
+        expect(existsSync(runAuthPath(run.root))).toBe(false);
+        expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: null, stops: { codex: [{ generation: staging.generation, reason: 'rotation-uncertain' }] } } });
+    } finally { world.lock.release(); }
+});
+
+test('a claim that changes while its run is finished is neither published over nor retired', () => {
+    for (const rotate of [true, false]) {
+        const world = enrolledRunner();
+        try {
+            const canonical = readFileSync(world.where.codexAuth, 'utf8'), { run, staged: staging } = staged(world), copy = runAuthPath(run.root);
+            const rotated = codexAuth({ refresh: 'refresh-synthetic-2' });
+            if (rotate) writeFileSync(copy, rotated);
+            // Another holder takes the claim while this finisher reads the run's copy.
+            const files: ReadFiles = {
+                open: ((path: string, flags: number) => {
+                    if (path === copy) updateStatus(world.paths, world.proof, status => { status.active = { ...status.active!, owner: { ...status.active!.owner, pass: 'pass-2' } }; });
+                    return openSync(path, flags);
+                }) as typeof openSync,
+                fstat: fstatSync, read: readSync, close: closeSync,
+            };
+            const name = rotate ? 'a verified refresh' : 'an unchanged copy';
+            expect(finishCodex(world.paths, world.proof, run, staging, rotate ? evidenceFor(staging, rotated) : null, { files }), name)
+                .toEqual({ outcome: rotate ? 'ownership-lost' : 'cleanup-pending' });
+            expect(readFileSync(world.where.codexAuth, 'utf8'), name).toBe(canonical);
+            expect(existsSync(copy), name).toBe(true);
+            expect(readStatus(world.paths), name).toMatchObject({ ok: true, status: { active: { run: run.id, phase: 'staged', owner: { pass: 'pass-2' } }, stops: { codex: [] } } });
+        } finally { world.lock.release(); }
+    }
+});

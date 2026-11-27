@@ -330,6 +330,18 @@ test('a live or uncertain group holds the claim until its original invocation co
     } finally { state = 'absent'; world.lock.release(); }
 });
 
+test('a pass that loses its lock while the group is alive stops waiting and leaves the claim to the next owner', async () => {
+    const world = readerWorld();
+    try {
+        const before = readFileSync(world.where.codexAuth, 'utf8');
+        const opinion = await triage(world, 'codex', { groupState: group => { if (group === 999_999) world.lock.release(); return 'alive'; } });
+        expect(opinion).toMatchObject({ status: 'unavailable', reason: 'the call failed: the reader process group could not be confirmed exited' });
+        expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: { phase: 'launched', group: 999_999 } } });
+        expect(rows(world.paths)).toMatchObject([{ final: 0, receipt_total: null }]);
+        expect(readFileSync(world.where.codexAuth, 'utf8')).toBe(before);
+    } finally { world.lock.release(); }
+});
+
 test('authentication evidence from another provider, run or generation stops nothing', async () => {
     const foreign = readerWorld();
     try {
@@ -444,6 +456,7 @@ test('executor rejection retains only the matching receipt, including after the 
             const opinion = await pending;
             expect(opinion.status).toBe('unavailable');
             expect(JSON.stringify(opinion)).not.toContain(marker);
+            if (sample === 'on-time' || sample === 'codex-rollout') expect(opinion).toMatchObject({ reason: 'the call failed: the reader executor failed' });
             if (sample === 'late') {
                 expect(rows(world.paths)[0].final).toBe(0);
                 rejectLate();

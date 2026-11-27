@@ -113,3 +113,22 @@ test('a linked sessions directory is an accounting gap and is never listed', () 
     expect(outcome.receipt?.cost?.completeness).not.toBe('complete');
     expect(listed).not.toHaveBeenCalledWith(sessions);
 });
+
+test('a failed call keeps a charge only for its bound session\'s terminal, and a fault freezes the binding', () => {
+    const stream = new ReaderStream('claude', () => {}, () => {});
+    expect(stream.failureReceipt()).toBeNull();
+    stream.push(lines(init()));
+    expect(stream.failureReceipt()).toBeNull();
+    stream.push(lines(result()));
+    expect(stream.failureReceipt()).toEqual({ evidenceId: 's1', cost: expect.objectContaining({ completeness: 'complete' }) });
+    const bind = vi.fn(), faulted = new ReaderStream('claude', bind, () => {});
+    faulted.push(lines(init('not a session id'), init()));
+    expect(bind).not.toHaveBeenCalled();
+    expect(faulted).toMatchObject({ session: null, sawSession: true, fault: 'the reader reported an unusable session identifier' });
+});
+
+test('any gap in the rollout inventory suppresses the verdict while the bound session stays priced', () => {
+    const run = codexRun(), day = join(run.provider, 'sessions', '2026', '11', '27');
+    symlinkSync(join(day, 'rollout-0-t1.jsonl'), join(day, 'linked'));
+    expect(codexOutcome(lines(started, completed), 't1', run, codex)).toMatchObject({ ok: false, reason: 'the rollout inventory could not be verified', receipt: { evidenceId: 't1' } });
+});

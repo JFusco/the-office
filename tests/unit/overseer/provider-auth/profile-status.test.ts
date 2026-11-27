@@ -1,4 +1,5 @@
 import { chmodSync, closeSync, constants, fstatSync, mkdirSync, openSync, readSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import { isStopped, provesOwnership, readStatus, statusPath, stopGeneration, updateStatus, StatusRefused, type PassProof } from '../../../../server/overseer/provider-auth/profile-status';
 import { enrolledRunner } from './provider-world';
@@ -67,5 +68,15 @@ test('provider status verifies its directory and opens its private single-link r
         open.mockClear();
         expect(readStatus(world.paths, { files }).ok).toBe(false);
         expect(open).not.toHaveBeenCalled();
+    } finally { world.lock.release(); }
+});
+
+test('a status record outside the root\'s own state folder is refused', () => {
+    const world = enrolledRunner(), elsewhere = { ...world.paths, state: join(world.paths.root, 'elsewhere') };
+    try {
+        mkdirSync(elsewhere.state, { mode: 0o700 });
+        writeFileSync(statusPath(elsewhere), '{"version":1,"stops":{"claude":[],"codex":[]},"active":null}\n', { mode: 0o600 });
+        expect(readStatus(elsewhere)).toEqual({ ok: false, reason: 'The state directory is outside its expected location' });
+        expect(readStatus(world.paths).ok).toBe(true);
     } finally { world.lock.release(); }
 });
