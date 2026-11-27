@@ -426,3 +426,20 @@ test('an authority prerequisite is reported, and two requests for Joe go to Joe 
     expect(corroborate(request({ triage: needsJoe(), second: needsJoe() }, { slots: { triageUsed: 1, secondOpinionUsed: 1, admissible: true } })))
         .toMatchObject({ outcome: 'needs-joe', reasons: ['both opinions ask for Joe'] });
 });
+
+test('the selection, the detail incident and the frozen packet must all name the same incident', () => {
+    const OTHER = 'inc-0000000000000002';
+    // No selection at all.
+    const none = request();
+    none.current.selected = null;
+    expect(corroborate(none)).toMatchObject({ outcome: 'needs-joe', reasons: ['the incident is not the one selected, at that revision'] });
+    // The detail is another incident's, though the selection and the packet agree.
+    const otherDetail = request();
+    otherDetail.current.incident.id = OTHER;
+    expect(corroborate(otherDetail)).toMatchObject({ outcome: 'needs-joe', reasons: ['the incident is not the one selected, at that revision'] });
+    // The selection and its detail agree on another incident than the one the input was frozen for.
+    const otherPacket = request();
+    otherPacket.current.incident.id = OTHER;
+    otherPacket.current.selected = { incident: OTHER, revision: otherPacket.current.selected!.revision };
+    expect(corroborate(otherPacket)).toMatchObject({ outcome: 'needs-joe', reasons: ['the incident is not the one selected, at that revision'] });
+});

@@ -133,6 +133,7 @@ test('each check on the sources refuses on its own, even with a self-consistent 
         [sourcesFor(undefined, { repository: { commit: COMMIT, files: [doc, doc] } }), `${DOC_PATH} is offered twice`],
         [sourcesFor(undefined, { examples: [EXAMPLE, EXAMPLE] }), `example ${EXAMPLE.id} is offered twice`],
         [sourcesFor(undefined, { examples: [{ ...EXAMPLE, clause: rangeOf(GUARD_PATH, GUARD, 3) }] }), 'cites no frozen requirement or test'],
+        [sourcesFor(undefined, { examples: [{ ...EXAMPLE, requirement: { ...EXAMPLE.requirement, excerptSha256: 'a'.repeat(64) } }] }), `example ${EXAMPLE.id} requirement: the excerpt does not match the range`],
         [sourcesFor(undefined, { examples: [{ ...EXAMPLE, clause: { ...EXAMPLE.clause, sha256: 'a'.repeat(64) } }] }), 'cites no frozen requirement or test'],
         [sourcesFor(undefined, { examples: [{ ...EXAMPLE, clause: { ...EXAMPLE.clause, excerptSha256: 'a'.repeat(64) } }] }), `example ${EXAMPLE.id}: the excerpt does not match the range`],
         [sourcesFor(undefined, { guidance: 'x'.repeat(64 * 1024 + 1) }), 'the guidance is not bounded text'],
