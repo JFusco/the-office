@@ -62,7 +62,7 @@ test('a proven non-dispatch releases its reservation, spends nothing, and leaves
 test('a non-dispatch claim after a session was bound keeps the hold and reports a ledger error', async () => {
     const paths = runnerRoot();
     const outcome = await runBudgeted(paths, triage, async run => { run.bindSession('s'); throw new NotDispatched('claimed late'); }, { now, reservationId: ID });
-    expect(outcome).toMatchObject({ status: 'ledger-error', code: 'ledger-failed', message: expect.stringContaining('its hold stays') });
+    expect(outcome).toMatchObject({ status: 'ledger-error', code: 'ledger-failed', message: expect.stringContaining('A session was bound, so the call may have been dispatched') });
     expect(rows(paths)).toMatchObject([{ id: ID, status: 'outstanding', evidence_id: 's' }]);
 });
 

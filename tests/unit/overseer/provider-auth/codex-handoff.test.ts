@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import {
     codexGeneration, finishCodex, markCodexPhase, readCodexEnvelope, recoverCodexHandoff, retireStaged, runAuthPath, stageCodex,
     type RotationEvidence, type StagedCodex,
 } from '../../../../server/overseer/provider-auth/codex-handoff';
 import { readStatus, stopGeneration, type PassProof } from '../../../../server/overseer/provider-auth/profile-status';
+import type { ReadFiles } from '../../../../server/overseer/provider-auth/sign-in-paths';
 import { acquirePassLock, readPassOwner } from '../../../../server/overseer/single-flight';
 import { codexAuth, enrolledRunner } from './provider-world';
 
@@ -169,4 +171,72 @@ test('a launch with no recorded group waits for an operator, and a staged copy t
         expect(existsSync(runAuthPath(left.run.root))).toBe(false);
         expect(readStatus(fresh.paths)).toMatchObject({ ok: true, status: { active: null, stops: { codex: [] } } });
     } finally { again.release(); }
+});
+
+test('an ID token whose payload is not an object is refused', () => {
+    for (const payload of ['null', '[1]', '"text"']) {
+        const text = codexAuth({ tokensExtra: { id_token: `eyJhbGciOiJub25lIn0.${Buffer.from(payload).toString('base64url')}.c2ln` } });
+        expect(readCodexEnvelope(Buffer.from(text)), payload).toMatchObject({ ok: false, reason: 'The Codex ID token cannot be read' });
+    }
+});
+
+test('staging refuses a missing, malformed or unreadable source and claims nothing for it', () => {
+    const cases: [string, (world: ReturnType<typeof enrolledRunner>) => void, string, RegExp][] = [
+        ['missing login', world => unlinkSync(world.where.codexAuth), 'sign-in-invalid', /does not exist/],
+        ['another credential kind', world => writeFileSync(world.where.codexAuth, codexAuth({ extra: { auth_mode: 'apikey' } })), 'sign-in-invalid', /not a managed ChatGPT login/],
+        ['unreadable status', world => writeFileSync(join(world.paths.state, 'providers.json'), '{'), 'handoff-unrecoverable', /not a provider status record/],
+    ];
+    for (const [name, damage, refusal, reason] of cases) {
+        const world = enrolledRunner();
+        try {
+            damage(world);
+            const run = world.allocate();
+            expect(stageCodex(world.paths, world.proof, run), name).toMatchObject({ ok: false, refusal, reason: expect.stringMatching(reason) });
+            expect(existsSync(runAuthPath(run.root)), name).toBe(false);
+        } finally { world.lock.release(); }
+    }
+});
+
+test('only the run holding the hand-off records its phase, only the lock holder retires or recovers, and a failed removal surfaces', () => {
+    const world = enrolledRunner();
+    try {
+        const { run } = staged(world), other = world.allocate();
+        expect(() => markCodexPhase(world.paths, world.proof, other.id, 'launching')).toThrow('does not hold the Codex sign-in');
+        const forged: PassProof = { ...world.proof, owner: { ...world.proof.owner, pass: 'forged' } };
+        expect(() => markCodexPhase(world.paths, forged, run.id, 'launching')).toThrow();
+        retireStaged(world.paths, forged, run);
+        expect(existsSync(runAuthPath(run.root))).toBe(true);
+        expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: { run: run.id } } });
+        expect(recoverCodexHandoff(world.paths, forged, () => 'absent')).toMatchObject({ ok: false, refusal: 'ownership-unproven' });
+        writeFileSync(join(world.paths.state, 'providers.json'), '{');
+        expect(recoverCodexHandoff(world.paths, world.proof, () => 'absent')).toMatchObject({ ok: false, refusal: 'handoff-unrecoverable' });
+    } finally { world.lock.release(); }
+    const blocked = enrolledRunner();
+    try {
+        const { run } = staged(blocked);
+        unlinkSync(runAuthPath(run.root));
+        mkdirSync(runAuthPath(run.root));
+        expect(() => retireStaged(blocked.paths, blocked.proof, run)).toThrow();
+        expect(readStatus(blocked.paths)).toMatchObject({ ok: true, status: { active: { run: run.id } } });
+    } finally { blocked.lock.release(); }
+});
+
+test('a published refresh that does not read back as written is reported, never taken as published', () => {
+    const world = enrolledRunner();
+    try {
+        const { run, staged: staging } = staged(world), rotated = codexAuth({ refresh: 'refresh-synthetic-2' });
+        writeFileSync(runAuthPath(run.root), rotated);
+        const paths = new Map<number, string>();
+        let canonicalReads = 0;
+        const files: ReadFiles = {
+            open: ((path: string, flags: number) => { const fd = openSync(path, flags); paths.set(fd, path); return fd; }) as typeof openSync,
+            fstat: fstatSync, close: closeSync,
+            read: ((fd: number, buffer: Buffer, offset: number, length: number, position: null) => {
+                const count = readSync(fd, buffer, offset, length, position);
+                if (paths.get(fd) === world.where.codexAuth && count > 0 && ++canonicalReads > 1) buffer[offset] ^= 0x20;
+                return count;
+            }) as typeof readSync,
+        };
+        expect(() => finishCodex(world.paths, world.proof, run, staging, evidenceFor(staging, rotated), { files })).toThrow('did not read back as written');
+    } finally { world.lock.release(); }
 });

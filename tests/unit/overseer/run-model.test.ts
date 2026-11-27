@@ -6,6 +6,8 @@ import type { ReservationRow } from '../../../server/overseer/budget-ledger';
 import { claudeGeneration } from '../../../server/overseer/provider-auth/claude-handoff';
 import { runAuthPath } from '../../../server/overseer/provider-auth/codex-handoff';
 import { readStatus, stopGeneration, updateStatus } from '../../../server/overseer/provider-auth/profile-status';
+import { budgetRequest } from '../../../server/overseer/budget-policy';
+import type { ProviderCall } from '../../../server/overseer/stages/triage';
 import { gatedBudgeted } from '../../../server/overseer/run-model';
 import { collectSecondOpinion } from '../../../server/overseer/stages/second-opinion';
 import { collectTriage } from '../../../server/overseer/stages/triage';
@@ -153,6 +155,7 @@ test('a second session, another model or an error with a charge suppresses the v
         try {
             const opinion = await collectTriage({ budgeted: gatedBudgeted(world.setup({ ledger: { now } })), round: 1, provider: 'claude', input: frozen() });
             expect(opinion.status, claude).toBe('unavailable');
+            if (claude === 'second-session') expect(opinion, claude).toMatchObject({ reason: 'the call failed: the provider reported a second, different session' });
             expect(rows(world.paths)[0], claude).toMatchObject({ final: 1, receipt_total: 500_000 });
         } finally { world.lock.release(); }
     }
@@ -173,7 +176,8 @@ test('a session the ledger cannot bind, raised from an output callback, fails th
         let writes = 0;
         const hooks = { afterBegin: () => { if (++writes === 2) throw new Error('bind write failed'); } };
         const opinion = await collectTriage({ budgeted: gatedBudgeted(world.setup({ ledger: { now, hooks } })), round: 1, provider: 'claude', input: frozen() });
-        expect(opinion).toMatchObject({ status: 'unavailable' });
+        // The fault is kept from the output callback and reported, not lost to a later check.
+        expect(opinion).toMatchObject({ status: 'unavailable', reason: 'the call failed: the launch session could not be bound' });
         expect(world.calls).toHaveLength(1);
     } finally { world.lock.release(); }
 });
@@ -204,5 +208,86 @@ test('a timed-out call hands its completion to the lock holder before it returns
         expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: null } });
         expect(readdirSync(world.paths.runs).filter(id => existsSync(runAuthPath(join(world.paths.runs, id))))).toEqual([]);
         expect(rows(world.paths)[0]).toMatchObject({ status: 'retained', evidence_id: expect.stringMatching(/^codex-thread-/) });
+    } finally { world.lock.release(); }
+});
+
+/** Calls the prepared invocation through a test's own use, after `meddle` changes something between admission and dispatch. */
+async function meddled(world: ReturnType<typeof readerWorld>, provider: 'claude' | 'codex', meddle: () => void, override: Partial<ProviderCall> = {}) {
+    const setup = world.setup({ ledger: { now } }), input = frozen();
+    return { setup, outcome: await gatedBudgeted(setup)({ request: budgetRequest('inc-0000000000000001', 'triage', 1), provider, input }, async (run, invoke) => {
+        meddle();
+        const answer = await invoke({ provider, prompt: 'p', reservation: run.reservation, totalTimeoutMs: run.totalTimeoutMs, inactivityTimeoutMs: run.inactivityTimeoutMs, signal: run.signal, activity: run.activity, onSession: session => run.bindSession(session), ...override });
+        return answer.receipt;
+    }) };
+}
+
+test('each recheck before dispatch refuses on its own, releases the reservation and launches nothing', async () => {
+    const cases: [string, 'claude' | 'codex', (world: ReturnType<typeof readerWorld>, setup: () => ReturnType<ReturnType<typeof readerWorld>['setup']>) => void, Partial<ProviderCall>, string][] = [
+        ['another reservation', 'claude', () => {}, { reservation: '00000000-0000-4000-8000-000000000000' }, "the call is not this allocation's"],
+        ['another provider', 'claude', () => {}, { provider: 'codex' }, "the call is not this allocation's"],
+        ['the lock taken', 'claude', world => writeFileSync(world.paths.lock, JSON.stringify({ ...world.proof.owner, pass: 'someone-else' })), {}, 'the caller no longer holds the pass lock'],
+        ['the receipt withdrawn', 'claude', world => { delete (world.receipts.inner as Record<string, unknown>)['claude-reader']; }, {}, 'the profile is no longer eligible'],
+        ['the token replaced', 'claude', world => writeFileSync(world.where.claudeToken, `${CLAUDE_TOKEN}-replaced\n`), {}, 'the Claude sign-in changed'],
+        ['the hand-off cleared', 'codex', world => updateStatus(world.paths, world.proof, status => { status.active = null; }), {}, "the Codex hand-off is no longer this run's"],
+    ];
+    for (const [name, provider, change, override, reason] of cases) {
+        const world = readerWorld();
+        try {
+            const { outcome } = await meddled(world, provider, () => change(world, () => world.setup()), override);
+            expect(outcome, name).toMatchObject({ status: 'not-dispatched', error: { message: reason } });
+            expect(rows(world.paths), name).toEqual([]);
+            expect(world.calls, name).toEqual([]);
+            expect(readdirSync(world.paths.runs).filter(id => existsSync(runAuthPath(join(world.paths.runs, id)))), name).toEqual([]);
+        } finally { world.lock.release(); }
+    }
+});
+
+test('an unrecoverable hand-off left by a dead pass refuses a Claude call too, and a stopped or invalid Codex login refuses before any copy', async () => {
+    const stale = readerWorld();
+    try {
+        updateStatus(stale.paths, stale.proof, status => {
+            status.active = { provider: 'codex', owner: { ...stale.proof.owner, pass: 'pass-dead' }, run: '3f2a9c4e-1b7d-4e8a-9c0f-5d6e7a8b9c01', generation: 'a'.repeat(64), sourceDigest: 'b'.repeat(64), copiedDigest: 'b'.repeat(64), phase: 'launching', group: null };
+        });
+        expect(await collectTriage({ budgeted: gatedBudgeted(stale.setup({ ledger: { now } })), round: 1, provider: 'claude', input: frozen() })).toMatchObject({ reason: 'the call was refused before admission: handoff-unrecoverable' });
+    } finally { stale.lock.release(); }
+    const stopped = readerWorld();
+    try {
+        const { readCodexEnvelope } = await import('../../../server/overseer/provider-auth/codex-handoff');
+        const seen = readCodexEnvelope(readFileSync(stopped.where.codexAuth));
+        if (!seen.ok) throw new Error(seen.reason);
+        stopGeneration(stopped.paths, stopped.proof, 'codex', seen.generation, 'refresh-rejected');
+        expect(await collectTriage({ budgeted: gatedBudgeted(stopped.setup({ ledger: { now } })), round: 1, provider: 'codex', input: frozen() })).toMatchObject({ reason: 'the call was refused before admission: profile-stopped' });
+        writeFileSync(stopped.where.codexAuth, '{"auth_mode":"apikey"}');
+        expect(await collectTriage({ budgeted: gatedBudgeted(stopped.setup({ ledger: { now } })), round: 1, provider: 'codex', input: frozen() })).toMatchObject({ reason: 'the call was refused before admission: sign-in-invalid' });
+        expect(readdirSync(stopped.paths.runs).filter(id => existsSync(runAuthPath(join(stopped.paths.runs, id))))).toEqual([]);
+    } finally { stopped.lock.release(); }
+});
+
+test('a group still alive when the command returns leaves the hand-off for the next owner, and foreign evidence stops nothing', async () => {
+    const world = readerWorld();
+    try {
+        const opinion = await collectTriage({ budgeted: gatedBudgeted(world.setup({ ledger: { now }, groupState: () => 'alive' })), round: 1, provider: 'codex', input: frozen() });
+        expect(opinion.status).toBe('valid');
+        expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: { phase: 'launched', group: 999_999 } } });
+        expect(readdirSync(world.paths.runs).filter(id => existsSync(runAuthPath(join(world.paths.runs, id))))).toHaveLength(1);
+    } finally { world.lock.release(); }
+    const foreign = readerWorld();
+    try {
+        const generation = claudeGeneration(CLAUDE_TOKEN);
+        const endpoint = foreign.endpoint, original = endpoint.authentication.bind(endpoint);
+        endpoint.authentication = run => [...original(run),
+            { provider: 'codex', run, generation, kind: 'codex-invalid-grant' },
+            { provider: 'claude', run: 'another-run', generation, kind: 'claude-unauthorized' },
+            { provider: 'claude', run, generation: 'f'.repeat(64), kind: 'claude-unauthorized' }];
+        expect((await collectTriage({ budgeted: gatedBudgeted(foreign.setup({ ledger: { now } })), round: 1, provider: 'claude', input: frozen() })).status).toBe('valid');
+        expect(readStatus(foreign.paths)).toMatchObject({ ok: true, status: { stops: { claude: [], codex: [] } } });
+    } finally { foreign.lock.release(); }
+});
+
+test('a reader that never reports its start fails for that reason', async () => {
+    const world = readerWorld({ claude: 'no-start' });
+    try {
+        expect(await collectTriage({ budgeted: gatedBudgeted(world.setup({ ledger: { now } })), round: 1, provider: 'claude', input: frozen() }))
+            .toMatchObject({ status: 'unavailable', reason: 'the call failed: the reader reported no session' });
     } finally { world.lock.release(); }
 });

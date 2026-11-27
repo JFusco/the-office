@@ -19,7 +19,10 @@ import { AUTH_MAX_BYTES, readOwnedFile, readRunFile, readSignIn, signInPaths, ty
  *
  * The envelope is the managed-ChatGPT form of Codex 0.167.0-alpha.4.1's `AuthDotJson` and `TokenData`
  * (`codex-rs/login/src/auth/storage.rs`, `token_data.rs`). Agent identities, personal access tokens,
- * Bedrock keys and an API key are refused. `auth_mode`'s serialized value is taken to be `chatgpt`.
+ * Bedrock keys and an API key are refused. `auth_mode` is serialized as `chatgpt`: the storage types it
+ * `Option<AuthMode>`, and the protocol names that variant in lowercase (verified at commit d2c03563 of
+ * rust-v0.167.0-alpha.4.1: https://github.com/openai/codex/blob/d2c035639366e0bf2c316aa2065c24aabc12bcdc/codex-rs/login/src/auth/storage.rs#L43-L55
+ * and https://github.com/openai/codex/blob/d2c035639366e0bf2c316aa2065c24aabc12bcdc/codex-rs/protocol/src/auth.rs#L6-L17).
  */
 
 const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');

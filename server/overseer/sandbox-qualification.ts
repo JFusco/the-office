@@ -280,8 +280,8 @@ export function profileEligibility(selection: ReaderSelection, facts: HostFacts,
     // The rules in force are the policy file's own, as it is on disk now, never a description of it.
     let rules: string;
     try {
+        // `verifyPrepared` above has just checked this file against the prepared digest.
         const onDisk = readFileSync(prepared.file, 'utf8');
-        if (policyDigest(onDisk) !== prepared.digest) return { eligible: false, reason: 'outer-identity-mismatch' };
         rules = relativeRules(JSON.parse(onDisk) as SandboxSettings, prepared.run, prepared.scratch);
     } catch { return { eligible: false, reason: 'outer-identity-mismatch' }; }
     const host: HostIdentity = { os: facts.os, node: facts.node, runtime: facts.runtime, rules };

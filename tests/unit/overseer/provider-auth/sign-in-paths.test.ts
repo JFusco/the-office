@@ -2,7 +2,7 @@ import { chmodSync, closeSync, fstatSync, linkSync, mkdirSync, openSync, readSyn
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
-import { readRunFile, readSignIn, signInPaths, TOKEN_MAX_BYTES, type ReadFiles } from '../../../../server/overseer/provider-auth/sign-in-paths';
+import { readOwnedFile, readRunFile, readSignIn, signInPaths, TOKEN_MAX_BYTES, type ReadFiles } from '../../../../server/overseer/provider-auth/sign-in-paths';
 import { validateRunnerRoot } from '../../../../server/overseer/runner-root';
 import { tempDir } from '../runner-world';
 
@@ -75,4 +75,16 @@ test('a run file is read only when physically inside its root and runner-owned',
     expect(fault(readRunFile(join(root, 'escape', 'auth.json'), root, 1024))).toBe('not-contained');
     expect(fault(readRunFile(join(inside, 'absent.json'), root, 1024))).toBe('missing');
     expect(fault(readRunFile(join(inside, 'auth.json'), root, 1))).toBe('oversized');
+});
+
+test('the paths must be the validated root\'s own, a foreign owner is named as such, and the size check refuses before reading', () => {
+    const { paths, where } = enrolled();
+    expect(() => signInPaths({ ...paths, providers: '/elsewhere/providers' })).toThrow('is not under the runner root');
+    const uid = process.getuid?.() ?? 0;
+    expect(readOwnedFile(where.claudeToken, TOKEN_MAX_BYTES, { uid: uid + 1, mode: 0o600 })).toMatchObject({ ok: false, fault: 'wrong-owner' });
+    writeFileSync(where.claudeToken, 'x'.repeat(TOKEN_MAX_BYTES + 1));
+    let reads = 0;
+    const counted: ReadFiles = { open: openSync, fstat: fstatSync, close: closeSync, read: ((...args: Parameters<typeof readSync>) => { reads++; return (readSync as (...a: unknown[]) => number)(...args); }) as typeof readSync };
+    expect(readOwnedFile(where.claudeToken, TOKEN_MAX_BYTES, { uid, mode: 0o600, files: counted })).toMatchObject({ ok: false, fault: 'oversized' });
+    expect(reads).toBe(0);
 });

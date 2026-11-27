@@ -273,6 +273,13 @@ test('changes to host facts, rules, the program bytes or the exact invocation in
         { ...selection, tools: [...selection.tools, 'Bash'] },
     ];
     for (const changed of selectionVariants) expect(profileEligibility(changed, facts, prepared, outer, inner)).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
+    // A receipt made for a claimed digest the program's bytes do not have, or for a program the policy was not prepared for, is refused on its own.
+    const claimed = { ...selection, program: { ...selection.program, sha256: 'f'.repeat(64) } };
+    const forClaimed = { ...inner, identity: { ...inner.identity, provider: { ...inner.identity.provider, sha256: 'f'.repeat(64) } } };
+    expect(profileEligibility(claimed, facts, prepared, outer, forClaimed)).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
+    const unprepared = { ...selection, program: { ...selection.program, path: '/usr/bin/false', sha256: createHash('sha256').update(readFileSync('/usr/bin/false')).digest('hex') } };
+    const forUnprepared = { ...inner, identity: { ...inner.identity, provider: { ...inner.identity.provider, path: unprepared.program.path, sha256: unprepared.program.sha256 } } };
+    expect(profileEligibility(unprepared, facts, prepared, outer, forUnprepared)).toEqual({ eligible: false, reason: 'inner-identity-mismatch' });
 });
 
 test('simulated qualification leaves the shipped model gate closed', () => {

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { LedgerOptions } from './budget-ledger';
 import { AttributedFailure, NotDispatched, runBudgeted, type InvocationResult } from './budgeted-run';
 import { readClaudeSignIn } from './provider-auth/claude-handoff';
-import { finishCodex, groupState, markCodexPhase, readCanonicalCodex, recoverCodexHandoff, retireStaged, stageCodex, type GroupState, type RotationEvidence, type StagedCodex } from './provider-auth/codex-handoff';
+import { finishCodex, groupState, markCodexPhase, recoverCodexHandoff, retireStaged, stageCodex, type GroupState, type RotationEvidence, type StagedCodex } from './provider-auth/codex-handoff';
 import { isStopped, provesOwnership, readStatus, stopGeneration, type PassProof } from './provider-auth/profile-status';
 import { prepareReaderInput } from './reader-input';
 import type { ReaderSelection } from './reader-profiles';
@@ -94,21 +94,18 @@ function prepare(setup: ReaderSetup, provider: 'claude' | 'codex', input: Parame
         });
     } catch { return { ok: false, reason: 'preparation-failed', run }; }
     if (!profileEligibility(selection, setup.facts, prepared, outer, inner).eligible) return { ok: false, reason: 'profile-ineligible', run };
-    if (!provesOwnership(setup.paths, setup.proof)) return { ok: false, reason: 'ownership-unproven', run };
-    // An earlier pass's hand-off is resolved first. This pass's own one in progress excludes only another Codex copy.
+    // Recovery first proves the caller's hold on the pass lock, then resolves an earlier pass's hand-off.
+    // This pass's own one in progress excludes only another Codex copy.
     const recovery = recoverCodexHandoff(setup.paths, setup.proof, setup.groupState ?? groupState);
     if (!recovery.ok && (provider === 'codex' || recovery.refusal !== 'handoff-active')) return { ok: false, reason: recovery.refusal, run };
-    const status = readStatus(setup.paths);
-    if (!status.ok) return { ok: false, reason: 'handoff-unrecoverable', run };
     if (provider === 'claude') {
-        const signIn = readClaudeSignIn(setup.paths);
+        const status = readStatus(setup.paths), signIn = readClaudeSignIn(setup.paths);
+        if (!status.ok) return { ok: false, reason: 'handoff-unrecoverable', run };
         if (!signIn.ok) return { ok: false, reason: 'sign-in-invalid', run };
         if (isStopped(status.status, 'claude', signIn.generation)) return { ok: false, reason: 'profile-stopped', run };
         return { ok: true, run, prepared, selection, runtime, signIn: { provider: 'claude', token: signIn.token, generation: signIn.generation } };
     }
-    const canonical = readCanonicalCodex(setup.paths);
-    if (!canonical.ok) return { ok: false, reason: 'sign-in-invalid', run };
-    if (isStopped(status.status, 'codex', canonical.generation)) return { ok: false, reason: 'profile-stopped', run };
+    // Staging reads the status and the canonical login itself, and refuses a stopped generation before copying anything.
     const staged = stageCodex(setup.paths, setup.proof, run);
     if (!staged.ok) return { ok: false, reason: staged.refusal, run };
     return { ok: true, run, prepared, selection, runtime, signIn: { provider: 'codex', staged: staged.staged } };
@@ -139,11 +136,9 @@ function modelInvoke(setup: ReaderSetup, ready: Extract<Prepared, { ok: true }>)
     const { run, prepared, selection, runtime, signIn } = ready, provider = selection.profile.provider, evidence = setup.evidence ?? NO_PROVIDER_EVIDENCE;
     const codex = signIn.provider === 'codex' ? signIn.staged : null;
     const generation = signIn.provider === 'codex' ? signIn.staged.generation : signIn.generation;
-    // Run once per invocation; a later failure never resurrects a finished hand-off.
-    let finished = false;
+    // Called once per dispatched Codex call, on whichever path ends it.
     const finish = (spawnedGroup: number | null) => {
-        if (finished || !codex) return;
-        finished = true;
+        if (!codex) return;
         if (spawnedGroup !== null && (setup.groupState ?? groupState)(spawnedGroup) !== 'absent') return; // The next owner recovers it once the group is gone.
         finishCodex(setup.paths, setup.proof, run, codex, evidence.rotation(run.id));
     };
@@ -155,9 +150,9 @@ function modelInvoke(setup: ReaderSetup, ready: Extract<Prepared, { ok: true }>)
     };
     return async (call: ProviderCall): Promise<ProviderAnswer> => {
         // Immediately before dispatch, everything that admitted this call is checked again for this allocation.
+        // Cancellation, the prepared policy and the program are rechecked by `runSandboxed` itself, as a refusal before the executor runs.
         const recheck = (): string | null => {
             if (!(setup.gate ?? modelDispatchGate)().open) return 'the dispatch gate closed';
-            if (call.signal.aborted) return 'the call was cancelled before dispatch';
             if (call.provider !== provider || call.reservation !== run.id) return 'the call is not this allocation\'s';
             if (!provesOwnership(setup.paths, setup.proof)) return 'the caller no longer holds the pass lock';
             const outer = setup.receipts.outer[selection.profile.id] ?? null, inner = setup.receipts.inner[selection.profile.id] ?? null;
@@ -204,7 +199,8 @@ function modelInvoke(setup: ReaderSetup, ready: Extract<Prepared, { ok: true }>)
         finish(group);
         stopOnRejection();
         const bound = stream.session;
-        if (bound === null) throw new Error('the reader reported no session');
+        // A fault kept from the output callback explains a missing session better than its absence does.
+        if (bound === null) throw new Error(stream.fault ?? 'the reader reported no session');
         const outcome = provider === 'claude' ? claudeOutcome(stdout, bound, selection) : codexOutcome(stdout, bound, run, selection);
         const failWith = (reason: string, receipt: InvocationResult | null): never => {
             throw receipt ? new AttributedFailure(reason, receipt) : new Error(reason);

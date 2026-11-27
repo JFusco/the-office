@@ -27,7 +27,7 @@ const sha = (data: string | Uint8Array) => createHash('sha256').update(data).dig
 export const CLAUDE_MODEL = 'claude-opus-5-5', CODEX_MODEL = 'gpt-6-astra';
 const programOf = (path: string, version: string) => ({ path, version, sha256: sha(readFileSync(path)) });
 
-export type ClaudeBehaviour = 'answer' | 'unauthorized' | 'quotes-401' | 'second-session' | 'other-model' | 'error-with-cost';
+export type ClaudeBehaviour = 'answer' | 'unauthorized' | 'quotes-401' | 'second-session' | 'other-model' | 'error-with-cost' | 'no-start';
 export type CodexBehaviour = 'answer' | 'refresh' | 'invalid-grant' | 'extra-thread' | 'other-model' | 'never-spawns' | 'hang';
 
 /** The provider's side: which credentials it accepted, rejected or rotated, bound to the run that presented them. */
@@ -82,7 +82,7 @@ export function readerWorld(options: { claude?: ClaudeBehaviour; codex?: CodexBe
         };
         if (claude) {
             const session = `claude-session-${++sessions}`, token = env.CLAUDE_CODE_OAUTH_TOKEN, mode = behaviour.claude;
-            lines.push({ type: 'system', subtype: 'init', session_id: session, model: CLAUDE_MODEL });
+            if (mode !== 'no-start') lines.push({ type: 'system', subtype: 'init', session_id: session, model: CLAUDE_MODEL });
             if (mode === 'second-session') lines.push({ type: 'system', subtype: 'init', session_id: `${session}-b` });
             const cost = { total_cost_usd: 0.5, modelUsage: { [mode === 'other-model' ? 'claude-other' : CLAUDE_MODEL]: { costUSD: 0.5, costBasis: 'list' } } };
             if (mode === 'unauthorized' || endpoint.revokedClaude.has(token!)) {

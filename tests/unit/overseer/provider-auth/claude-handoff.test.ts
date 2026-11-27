@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { unlinkSync, writeFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { claudeGeneration, normalizeClaudeToken, readClaudeSignIn } from '../../../../server/overseer/provider-auth/claude-handoff';
 import { CLAUDE_TOKEN, enrolledRunner } from './provider-world';
@@ -19,5 +19,13 @@ test('an enrolled token is handed over with its generation; a malformed one is r
         const refused = readClaudeSignIn(paths);
         expect(refused.ok).toBe(false);
         expect(JSON.stringify(refused)).not.toContain(CLAUDE_TOKEN);
+    } finally { lock.release(); }
+});
+
+test('a missing token is refused, never read as empty', () => {
+    const { paths, where, lock } = enrolledRunner();
+    try {
+        unlinkSync(where.claudeToken);
+        expect(readClaudeSignIn(paths)).toMatchObject({ ok: false, reason: expect.stringContaining('does not exist') });
     } finally { lock.release(); }
 });
