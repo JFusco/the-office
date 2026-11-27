@@ -537,7 +537,8 @@ const tail = (chunks, max) => Buffer.concat(chunks).subarray(-max).toString("utf
 const send = (payload) => {
   if (!process.connected) return;
   try {
-    process.send(payload);
+    process.send(payload, () => {
+    });
   } catch {
   }
 };
