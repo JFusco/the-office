@@ -91,6 +91,13 @@ A retrospective for a job, ticket, feature or maintenance run carries a bounded 
 
 Only Joe can ask Harper a question, in Harper's chat. Letting Morgan forward a teammate's question to Harper is not built: no conversation so far has needed more than the supplied lessons, the unblock brief and the lookup. Revisit it if Morgan's replies show questions about past blockers or lessons that a lookup could not answer.
 
+**Outside the loop: the Overseer playbook** (`server/overseer/playbook/`)
+
+The Overseer's runner guidance (`docs/overseer/playbook/`) reuses `lesson-selection.ts` to rank and bound
+its entries, but it is not part of this loop. Its entries are not lessons: Harper does not propose or
+curate them, they never reach Joe's digest, and they grant no authority. A person edits them by hand
+in the repository. See [Runner guidance](overseer.md#runner-guidance).
+
 ## External Brain
 
 The Office reads Brain (`brain/reader.ts`, a read-only CLI transport) and never writes to it. The Brain repository is still an ordinary delivery project; that is repository work, not a knowledge write.

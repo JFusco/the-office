@@ -157,3 +157,15 @@ test('triage and corroboration reach exactly their own sources, and no pass reac
     }
     expect(runtimeClosure(['server/overseer.ts']).files.filter(file => TRIAGE.includes(file))).toEqual([]);
 });
+
+test('the playbook modules reach exactly their own files and the lesson selector, only the loader touches the file system, and no pass reaches them', () => {
+    const [entry, load, select] = ['entry', 'load', 'select'].map(name => runtimeClosure([`server/overseer/playbook/${name}.ts`]));
+    expect(entry).toEqual({ files: ['server/overseer/playbook/entry.ts'], packages: ['yaml', 'zod'] });
+    expect(load).toEqual({ files: ['server/overseer/playbook/entry.ts', 'server/overseer/playbook/load.ts'], packages: ['yaml', 'zod'] });
+    expect(select).toEqual({ files: ['server/knowledge/lesson-for-project.ts', 'server/knowledge/lesson-procedures.ts', 'server/knowledge/lesson-selection.ts', 'server/knowledge/outcomes/citation.ts', 'server/overseer/playbook/select.ts'], packages: [] });
+    for (const file of new Set([entry, load, select].flatMap(closure => closure.files))) {
+        const builtins = runtimeSpecifiers(join(process.cwd(), file)).filter(specifier => specifier.startsWith('node:') || isBuiltin(specifier));
+        expect(builtins, file).toEqual(file === 'server/overseer/playbook/load.ts' ? ['node:fs', 'node:path'] : []);
+    }
+    expect(runtimeClosure(['server/overseer.ts']).files.filter(file => file.startsWith('server/overseer/playbook/'))).toEqual([]);
+});

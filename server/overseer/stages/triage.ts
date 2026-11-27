@@ -74,8 +74,17 @@ export function packetDigest(packet: EvidencePacket): string {
     return sha256(canonical(body));
 }
 
+/**
+ * Never a citable source: the runner playbook, which is advisory guidance and reaches a reader only as
+ * `guidance`, and any name with an empty, `.` or `..` component, which is not a canonical tree path.
+ */
+function excludedSource(path: string): boolean {
+    return path.startsWith('docs/overseer/playbook/') || path.split('/').some(part => part === '' || part === '.' || part === '..');
+}
+
 /** The class a repository path has in the trusted inventory, or null for one that is not offered as requirement or test. */
 export function repositoryClass(path: string): SourceClass | null {
+    if (excludedSource(path)) return null;
     if (path === 'AGENTS.md' || path.startsWith('docs/')) return 'requirement';
     return path.startsWith('tests/') ? 'test' : null;
 }
@@ -99,6 +108,7 @@ export function prepareOpinionInput(sources: OpinionSources): { ok: true; input:
         return null;
     };
     for (const { path, bytes } of sources.runtime) {
+        if (excludedSource(path)) return refuse(`${path} is not a citable source path`);
         const hash = manifest.get(path);
         if (hash === undefined) return refuse(`${path} is not a file of the running release`);
         if (repositoryClass(path)) return refuse(`${path} is offered as runtime but is a requirement or test path`);

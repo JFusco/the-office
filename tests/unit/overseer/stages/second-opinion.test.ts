@@ -2,8 +2,10 @@ import { expect, test, vi } from 'vitest';
 import { TriageResultSchema } from '../../../../src/contracts/overseer';
 import { runBudgeted } from '../../../../server/overseer/budgeted-run';
 import type { RunnerPaths } from '../../../../server/overseer/config';
+import { playbookGuidance } from '../../../../server/overseer/playbook/select';
 import { collectSecondOpinion } from '../../../../server/overseer/stages/second-opinion';
 import { collectTriage, type Budgeted } from '../../../../server/overseer/stages/triage';
+import { entry } from '../playbook/playbook-world';
 import { runnerRoot } from '../runner-world';
 import { MANIFEST, frozen, sourcesFor, syntheticProvider } from '../triage-world';
 
@@ -25,6 +27,22 @@ test('the blind opinion goes to the other provider, on byte-identical evidence, 
     expect(fake.remote.closePull).not.toHaveBeenCalled();
     expect(fake.provider.clearHistory).not.toHaveBeenCalled();
     expect(fake.state).toEqual(before);
+});
+
+test('both opinions receive the same selected playbook guidance, newlines and all, in byte-identical prompts', async () => {
+    const guidance = playbookGuidance([entry('one'), entry('two', { kind: 'pitfall' })], []).guidance!;
+    expect(guidance.split('\n')).toHaveLength(3);
+    const paths = runnerRoot(), input = frozen(sourcesFor(undefined, { guidance })), fake = syntheticProvider();
+    const first = await collectTriage({ budgeted: budgetedFor(paths), round: 1, provider: 'codex', input, invoke: fake.invoke });
+    const second = await collectSecondOpinion({ budgeted: budgetedFor(paths), input, invoke: fake.invoke, first: { provider: first.envelope.provider, inputIdentity: first.envelope.inputIdentity } });
+    expect([first.status, second.status]).toEqual(['valid', 'valid']);
+    expect(fake.calls.map(call => call.provider)).toEqual(['codex', 'claude']);
+    expect(second.envelope.inputIdentity).toBe(first.envelope.inputIdentity);
+    expect(fake.calls[1].prompt).toBe(fake.calls[0].prompt);
+    for (const call of fake.calls) {
+        const evidence = call.prompt.split('<evidence>\n')[1].split('\n</evidence>')[0];
+        expect((JSON.parse(evidence) as { guidance: unknown }).guidance).toEqual({ text: guidance });
+    }
 });
 
 test('the blind stage refuses different evidence before admission and a rejected verdict still spends its slot', async () => {
