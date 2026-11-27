@@ -1,7 +1,7 @@
 # Graph Report - the-office  (2026-11-27)
 
 ## Corpus Check
-- 1367 files · ~621,991 words
+- 1367 files · ~622,069 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `44eec90c`
+- Built from commit: `d38fa3be`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 

@@ -14,8 +14,11 @@ afterEach(() => killOwned());
 
 const groupGone = (pid: number) => loaded.group.probeGroup(loaded.group.defaultSystem(), pid, pid) === 'absent';
 
-/** The production helper with only its drain clock or TERM inventory made controllable. */
-async function observedHelper(world: ReturnType<typeof layout>, behavior: Behavior, observation: 'drain' | 'term') {
+/**
+ * The production helper with only its drain clock or TERM inventory made controllable, or, in
+ * `send-error`, its final exit report failing the way Node reports a write on a closing channel.
+ */
+async function observedHelper(world: ReturnType<typeof layout>, behavior: Behavior, observation: 'drain' | 'term' | 'send-error') {
     const built = release(world.officeData, behavior, { captureParent: false });
     const file = join(tempDir(), 'observed-helper.mjs');
     const source = (name: string) => JSON.stringify(pathToFileURL(join(LAUNCHER_SOURCES, name + '.mjs')).href);
@@ -37,7 +40,23 @@ const inventory = () => {
     } catch { /* the fixture descendant has left */ }
     return { ok: true, code: 0, stdout };
 };
-const hooks = process.argv[4] === 'drain' ? {
+if (process.argv[4] === 'send-error') {
+    // The final report fails with EPIPE while the channel stays connected: to the callback if one is
+    // given, otherwise as an error event on the process, as Node does. Once that delivery returns,
+    // the real channel says so.
+    const real = process.send.bind(process);
+    process.send = (message, ...rest) => {
+        if (message?.type !== 'exit') return real(message, ...rest);
+        const callback = rest.find(argument => typeof argument === 'function');
+        process.nextTick(() => {
+            const error = Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+            if (callback) callback(error); else process.emit('error', error);
+            setImmediate(() => real({ type: 'send-failed', callback: Boolean(callback) }));
+        });
+        return true;
+    };
+}
+const hooks = process.argv[4] === 'send-error' ? {} : process.argv[4] === 'drain' ? {
     ps: inventory,
     sleep: ms => {
         if (ms !== LIMITS.drainMs) return system.sleep(ms);
@@ -56,7 +75,7 @@ const hooks = process.argv[4] === 'drain' ? {
 };
 await helperMain(process.argv[3], { ...system, ...hooks });`);
     const child = spawn(process.execPath, [file, '--group', randomUUID(), observation, world.root], { detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
-    const messages: { type: string; code?: number; signal?: string | null; stdout?: string }[] = [];
+    const messages: { type: string; code?: number; signal?: string | null; stdout?: string; callback?: boolean }[] = [];
     child.on('message', received => messages.push(received as typeof messages[number]));
     const waitFor = async (type: string) => {
         const received = () => messages.find(message => message.type === type);
@@ -306,12 +325,38 @@ describe.skipIf(process.platform !== 'darwin')('the launcher with real processes
         await new Promise(done => setTimeout(done, 1_000));
         launcher.kill('SIGKILL');
         await new Promise(done => launcher.once('exit', done));
-        expect(await until(() => !alive(grandchild) && !alive(helperPid), 25_000)).toBe(true);
+        // Each poll keeps what it saw, so a recurrence says which process outlived the window.
+        let last = { grandchild: true, helper: true };
+        const gone = await until(() => { last = { grandchild: alive(grandchild), helper: alive(helperPid) }; return !last.grandchild && !last.helper; }, 25_000);
+        expect(gone, `after 25 s: grandchild ${grandchild} alive ${last.grandchild}, helper ${helperPid} alive ${last.helper}`).toBe(true);
         // Recovery comes before configuration: with a bad deadline, the next launch only settles the attempt.
         expect(await launch({ env: launchEnv(world, { OVERSEER_PASS_DEADLINE_MS: 'never' }), limits: FAST, ...quiet })).toBe(0);
         const state = readState(world.root);
         expect(state).toMatchObject({ current: null, counts: { lost: 1, interrupted: 0, config: 1 } });
         expect(state.recent.filter((record: { id: string }) => record.id === id)).toHaveLength(1);
+    }, 60_000);
+
+    test('a failed exit report leaves the helper able to stop its group on disconnect', async () => {
+        const world = layout(), { child, messages } = await observedHelper(world, 'record-with-stubborn-child', 'send-error');
+        const helperPid = child.pid!;
+        try {
+            expect(await until(() => existsSync(join(world.root, 'grandchild.pid')))).toBe(true);
+            const grandchild = await trackGrandchild(world.root);
+            // The pass exits by itself; its TERM-resistant descendant keeps the pipes, so the report follows the drain.
+            const delivered = () => messages.find(message => message.type === 'send-failed');
+            await until(() => Boolean(delivered()) || child.exitCode !== null || child.signalCode !== null, 10_000);
+            expect(delivered(), `the helper ended (code ${child.exitCode}, signal ${child.signalCode}) before its failed report was delivered; grandchild ${grandchild} alive ${alive(grandchild)}`).toBeDefined();
+            expect(delivered()!.callback).toBe(true);
+            expect(child.connected).toBe(true);
+            expect([alive(helperPid), alive(grandchild)]).toEqual([true, true]);
+            // The launcher goes away: the helper stops its own group, TERM-resistant child included.
+            child.disconnect();
+            expect(await until(() => groupGone(helperPid) && !alive(helperPid) && !alive(grandchild), 25_000)).toBe(true);
+        } finally {
+            writeFileSync(join(world.root, 'release-pipes'), '');
+            if (child.connected) child.disconnect();
+            await until(() => child.exitCode !== null || child.signalCode !== null, 5_000);
+        }
     }, 60_000);
 
     test('a helper whose launcher dies stops its own group; before authorization it just leaves', async () => {
