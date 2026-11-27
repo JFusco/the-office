@@ -2,6 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileS
 import { isBuiltin } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import { expect, test } from 'vitest';
+import { SANDBOX_RUNTIME } from '../../../server/overseer/worker-sandbox-runtime';
 import { runtimeClosure, runtimeSpecifiers } from './import-closure';
 import { INSTALLER, LAUNCHER, LAUNCHER_SOURCES } from './launch-world';
 import { tempDir } from './runner-world';
@@ -56,8 +57,11 @@ test('the worker sandbox reaches nothing of the Office, and no pass reaches the 
         expect(files, entry).not.toContain('server/workers/spawn-command.ts');
     }
     expect(runtimeClosure(['server/overseer/worker-sandbox-policy.ts']).files).toEqual(['server/overseer/config.ts', 'server/overseer/runner-root.ts', 'server/overseer/worker-sandbox-policy.ts']);
-    const pass = runtimeClosure(['server/overseer.ts']).files;
-    expect(pass.filter(file => SANDBOX.includes(file))).toEqual([]);
+    const pass = runtimeClosure(['server/overseer.ts']);
+    expect(pass.files.filter(file => SANDBOX.includes(file))).toEqual([]);
+    expect(pass.packages, 'runner pass').not.toContain(SANDBOX_RUNTIME.name);
+    expect(runtimeClosure(READER).packages, 'reader profiles').not.toContain(SANDBOX_RUNTIME.name);
+    expect(runtimeClosure(['server/index.ts']).packages, 'Office service').not.toContain(SANDBOX_RUNTIME.name);
 });
 
 test('the operator commands reach no Office module that reads configuration or opens a store', () => {

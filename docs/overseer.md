@@ -1332,15 +1332,15 @@ sentinels only. Its identities:
 - run policy `f2b2515c…`.
 
 The full values are in the [7f journal's host battery appendix](../wiki/journal/2026-11-27-overseer-phase-7f-sandbox-runtime-pin.md#host-battery-run-3).
-Filesystem confinement, the network allowlist and the loopback and Unix-socket denials held. The
-outer sandbox did not qualify:
+The protected reads, writes and replacements with successful outside controls were denied.
+The network allowlist and the loopback and Unix-socket denials held. The outer sandbox did not qualify:
 
 - launchd was reachable under the tested policy: a real `/bin/launchctl` query reached it;
 - the runtime's base profile permits the `com.apple.securityd.xpc` and `com.apple.SecurityServer`
   lookups, and access to a credential item was not tested;
 - both shared-temp spellings are in the runtime's default write set and in the policy's
   `denyWrite`. The folder was absent (EPERM for `/tmp/claude`, ENOENT for `/private/tmp/claude`), so
-  the effective write was inconclusive;
+  write enforcement was inconclusive for both spellings;
 - nested Seatbelt was refused, exit 71.
 
 The policy digest identifies the measured run. `profileEligibility()` returns `outer-unqualified`
@@ -1616,7 +1616,7 @@ refused with `outer-unqualified`: the recorded host failed outer qualification (
 Beyond a qualifying outer receipt, each still needs host evidence that its provider restrictions and
 authentication are in effect:
 
-- outer and inner receipts;
+- an inner receipt for its exact binary and invocation;
 - denial of the canonical provider folders;
 - the Claude wrapper and any descendants' exposure;
 - managed settings, hooks and MCP;
@@ -1685,7 +1685,7 @@ and the synthetic tests. No model has run.
 | Profile | Program | Tools | Authentication | Missing |
 |---|---|---|---|---|
 | `claude-reader` | Claude Code 2.1.328 | Read, Glob, Grep | token environment (`claude-token-environment`) | a qualifying outer receipt; an effective inner receipt |
-| `codex-reader` | Codex CLI 0.167.0-alpha.4.1 | shell, with its read-only sandbox | file store (`codex-file-store`) | a qualifying outer receipt; supported nesting |
+| `codex-reader` | Codex CLI 0.167.0-alpha.4.1 | shell, with its read-only sandbox | file store (`codex-file-store`) | a qualifying outer receipt; an effective inner receipt for the exact invocation and file-store authentication; supported nesting |
 
 Each profile's argument template is declared in `server/overseer/reader-profiles.ts`
 (`claudePieces`, `codexPieces`). `<model>`, `<effort>` and `<schema>` are filled for each call:
