@@ -1,6 +1,8 @@
 ---
 topics: [delivery-and-recovery]
 plans: [2026-11-26-issue-618-adopt-dependabot-pin-courier-and-wiki-sync-prs-by-default-2aa225cb28.md]
+issue: 'https://github.com/jfusco/the-office/issues/618'
+issues: ['https://github.com/jfusco/the-office/issues/618']
 ---
 
 # Adopt all three dependency bots by default on hands-off projects
