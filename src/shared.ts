@@ -63,6 +63,7 @@ export interface AssignedIssue {
     pickupStatus?: string;
 }
 export interface ReadRetry {
+    /** For a delivery job, a GitHub quota refusal saved at its stop: `provider-limit`, its absolute `retryAt` and the dispatched call's diagnostic. */
     failure?: WorkFailure;
     attempts: number;
     nextAt: string;
@@ -71,6 +72,40 @@ export interface ReadRetry {
         detail: string;
     }[];
     exhausted: boolean;
+    /** Delivery jobs only: the stage and full head this budget belongs to. A record without them predates scoping. */
+    stage?: string;
+    head?: string;
+    /** Delivery jobs only: the counted allowance that applied when the last retry was planned. */
+    limit?: number;
+    /** Delivery jobs only: the GitHub quota episode at this stage and head, from its first attributable refusal. */
+    quota?: { since: string; principal?: string; resource?: string };
+    /** Delivery jobs only: the stop and work a planned retry is for, kept through queueing (`server/delivery/attempts/retry-binding.ts`). */
+    binding?: DeliveryRetryBinding;
+    /** Delivery jobs only: the latest failed read since the first stop of this budget; `history` keeps every stop's own detail. */
+    latest?: { at: string; detail: string };
+    /** Delivery jobs only: a planned retry the harness took back, why, and the stop it was for; that stop is a person's. */
+    withdrawn?: { at: string; reason: string; stop: string };
+}
+/** What one planned delivery retry is bound to: the job, its stop, its work and why it was admitted. */
+export interface DeliveryRetryBinding {
+    job: string;
+    /** `stop.at` of the stop the retry was planned for. */
+    stop: string;
+    stage: string;
+    head: string;
+    pr: number;
+    branch: string;
+    worktree: string;
+    /** `read`: a review stage; `draft`: an ordinary draft publication; `board`: a draft whose saved card moves are only read back. */
+    mode: 'read' | 'draft' | 'board';
+    reason: string;
+    /** Board recovery only: the saved card moves it reads back, by identity. */
+    updates?: { item: string; field: string; option: string; at: string }[];
+    /** The job's detail when the retry was queued, restored when it is withdrawn. */
+    detail?: string;
+    queuedAt?: string;
+    /** The scheduler claim that entered the retry. */
+    claim?: string;
 }
 export interface AssignmentReview {
     featureBinding?: import('./contracts/features').FeatureBinding;
@@ -134,6 +169,11 @@ export interface BoardUpdate {
     at: string;
     status: 'pending' | 'verified' | 'uncertain';
     detail: string;
+    /**
+     * A complete, claim-bound read of the saved item and field that found another option: the move did not
+     * land and is not resent. Kept until a person resolves it; the update itself stays as it was saved.
+     */
+    readBack?: { outcome: 'not-at-target'; observed: string; at: string };
 }
 /** A code-owned review/repair/activation continuation; no pending source finding is accepted by this record. */
 export interface ImplementationContinuation {

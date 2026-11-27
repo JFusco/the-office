@@ -551,3 +551,29 @@ test('settling siblings in an open store whose keys, bindings and observations a
         expect(saved.filter(message => message.status === 'queued').map(message => message.id)).toEqual([ids[102], ids[186]]);
     } finally { f.close(); }
 });
+
+test.each(['assignment-listener', 'project-progress'])('after the deploy that widened temporary reads, a %s recovery still needing a person gets one more read-only diagnosis, and only one', id => {
+    const f = diskStore(), item = `recovery:${id}`, detail = 'gh exited 1: gh: HTTP 499';
+    try {
+        recovery(f.store, id, 'needs-human', detail); reconcileBlockerFollowups(f.store);
+        expect(sent(f.store, item)).toHaveLength(1);
+        // As saved before the deploy: the old predicate did not count a 499 as a temporary read, and the diagnosis was answered.
+        const before = f.store.state.knowledge!.followups!.find(entry => entry.id === item)!;
+        before.handoffMaterialKey = materialKey(before, detail, () => false);
+        expect(before.handoffMaterialKey).not.toBe(materialKey(before, detail, temporaryReadFailure));
+        answerAll(f.store, item); f.store.save();
+        const attempts = f.store.state.it!.recoveries[id].attempts;
+        const store = f.reopen(); f.advance(60000);
+        reconcileBlockerFollowups(store);
+        expect(sent(store, item)).toHaveLength(2);
+        expect(open(store, item)).toHaveLength(1);
+        expect(open(store, item)[0].body).toContain('READ ONLY');
+        const after = store.state.knowledge!.followups!.find(entry => entry.id === item)!;
+        expect(after.handoffMaterialKey).toBe(materialKey(after, detail, temporaryReadFailure));
+        expect(store.state.it!.recoveries[id].attempts).toBe(attempts);
+        // Answered, the episode and category queue nothing further.
+        answerAll(store, item); f.advance(60000);
+        reconcileBlockerFollowups(store); reconcileBlockerFollowups(store);
+        expect(sent(store, item)).toHaveLength(2);
+    } finally { f.close(); }
+});

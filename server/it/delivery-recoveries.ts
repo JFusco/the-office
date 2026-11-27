@@ -22,6 +22,7 @@ import { enqueueRequest } from '../scheduling/requests';
 import { holdReason } from '../office/project-holds';
 import { recoverBoardPreflights } from './board-preflight-recovery';
 import { temporaryReadFailure, reconcileReadRetries } from '../scheduling/read-retries';
+import { retryQueued } from '../../src/work/retry-label';
 import { recoverPRMetadata } from './pr-metadata-recovery';
 import { quotaDeferred } from './quota-deferral';
 import type { ITContext } from './context';
@@ -70,7 +71,7 @@ export async function runDeliveryRecoveries(context: ITContext): Promise<void> {
         reconcileReadRetries(store, now);
         for (const job of state.coordination?.jobs || [])
             if (job.status === 'queued' && !before.has(job.id))
-                actions.push(`${job.key}: safe read-only review retry queued; completion awaits the team.`);
+                actions.push(`${job.key}: ${retryQueued(job.retry)}`);
         // A GitHub quota hold defers both reads below: nothing is queued or counted until it ends (./quota-deferral.ts).
         if (coordinator && state.coordination?.listener.error && !quotaDeferred(context, 'assignment-listener')) {
             const detail = state.coordination.listener.error;

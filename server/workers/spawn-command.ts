@@ -45,9 +45,11 @@ export type CommandOptions = {
     lifecycleInventory?: InventoryRunner;
     /**
      * Told the text of GitHub's stated rate-limit refusal of this `gh` call, once, after the Office's metered runner
-     * has started the shared hold (`server/github/metered-runner.ts`). Never called by the spawn path itself.
+     * has started the shared hold (`server/github/metered-runner.ts`), with the refusal's structured evidence: its
+     * principal, resource, time and deadline. A caller that reads only the text ignores the second argument.
+     * Never called by the spawn path itself.
      */
-    onGitHubRefusal?: (message: string) => void;
+    onGitHubRefusal?: (message: string, evidence?: import('../github/refusal-capture').GitHubRefusalEvidence) => void;
 };
 /**
  * The environment a `replaceEnv` call gives its child, or a pre-dispatch refusal. Node's spawn enumerates

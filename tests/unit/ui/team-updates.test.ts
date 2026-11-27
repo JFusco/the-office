@@ -98,3 +98,22 @@ test('a completed run sits beside, never replaces, a row for the same issue',()=
  const live=snapshot([job]);live.project.repository='JFusco/brain';live.maintenance={runs:[run]};
  expect(ticketUpdates(live).filter(r=>r.key==='GH-263').map(r=>r.phase)).toEqual(['Closing out merged work','Maintenance complete']);
 });
+
+test('a planned delivery retry shows its counted attempt and limit, or a GitHub quota wait with its deadline and cap and no count; intake keeps three',()=>{
+ const nextAt='2026-11-27T12:30:00.000Z';
+ const counted=ticketUpdates(snapshot([{...job,status:'blocked',stage:'draft',detail:'Error: gh exited 1: gh: HTTP 503',retry:{attempts:4,limit:6,nextAt,history:[],exhausted:false,stage:'draft',head:'a'.repeat(40),binding:{mode:'draft'}}}]))[0];
+ expect(counted.status).toBe('retrying');
+ expect(counted.next).toContain('(attempt 5/6)');
+ expect(counted.next).toContain('publication retry');
+ expect(counted.next).not.toContain('read retry');
+ const board=ticketUpdates(snapshot([{...job,status:'blocked',stage:'draft',retry:{attempts:0,limit:3,nextAt,history:[],exhausted:false,binding:{mode:'board'}}}]))[0];
+ expect(board.next).toContain('card read-back');
+ expect(board.next).toContain('(attempt 1/3)');
+ const quota=ticketUpdates(snapshot([{...job,status:'blocked',stage:'lead-pr',retry:{attempts:0,nextAt,history:[],exhausted:false,quota:{since:'2026-11-27T12:00:00.000Z'},failure:{category:'provider-limit',retryAt:nextAt,detail:'rate limit',dispatched:true},binding:{mode:'read'}}}]))[0];
+ expect(quota.next).toContain('GitHub quota wait');
+ expect(quota.next).toContain('no attempt counted');
+ expect(quota.next).not.toMatch(/attempt \d+\/\d+/);
+ expect(quota.next).toContain(new Date('2026-11-27T18:00:00.000Z').toLocaleTimeString());
+ const intake=snapshot([]);intake.coordination.listener.reviews=[{key:'GH-9',summary:'x',status:'blocked',detail:'gh: HTTP 503',retry:{attempts:1,nextAt,history:[],exhausted:false},queuedAt:'',startedAt:'',endedAt:''}];
+ expect(ticketUpdates(intake)[0].next).toContain('(attempt 2/3)');
+});

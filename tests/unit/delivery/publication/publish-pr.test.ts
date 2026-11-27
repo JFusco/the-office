@@ -192,3 +192,24 @@ test('a legacy number-and-URL create receipt still reads as the publication', as
     expect(await f.publish()).toMatchObject({ pr: 200, url: 'https://github.com/JFusco/cms-field-vocabulary/pull/200', created: true });
     expect(f.state.calls.some(c => c.startsWith('gh pr create'))).toBe(false);
 });
+
+test('a lost push response is settled by reading the branch under its original intent and writer; the push is never sent again', async () => {
+    const f = fakeGitHub(), job = f.candidate({ stage: 'draft' }), root = f.artifactRoot(job);
+    writeFileSync(resolve(root, 'pr.json'), JSON.stringify({ title: 'fix(sources): restore scans', body: '## Summary\nRestores.\n## Linked issue\nCloses #5\n' }));
+    let lost = 0;
+    // The push lands, then its response is lost.
+    const execute = async (program: string, args: string[], options?: any) => {
+        const out = await f.execute(program, args, options);
+        if (program === 'git' && args[0] === 'push' && !lost++) throw new Error('git push response lost: connection reset');
+        return out;
+    };
+    await expect(claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root))).rejects.toThrow();
+    const id = `harness:${job.id}:push:${HEAD}`, sent = f.store.getEffect(id)!;
+    expect(sent.status).toBe('uncertain');
+    expect(f.state.remote[job.branch]).toBe(HEAD);
+    const published = await claimedDelivery(f.store, job, () => publishCandidate(f.store, execute as any, f.delivery.jobs, job, root));
+    expect(published).toMatchObject({ pr: 200, created: true, pushed: false });
+    expect(f.store.getEffect(id)).toMatchObject({ status: 'verified', writer: sent.writer, dispatchedAt: sent.dispatchedAt });
+    expect(f.state.calls.filter(c => c.startsWith('git push'))).toHaveLength(1);
+    expect(f.state.calls.filter(c => c.startsWith('gh pr create'))).toHaveLength(1);
+});

@@ -30,6 +30,11 @@ export async function moveCardOnce(store: Store, execute: Execute, job: TicketJo
         if (!saved || saved.project !== field.projectId || saved.item !== item || saved.field !== field.fieldId || saved.option !== option.id)
             throw new Error(`Board transition needs read-back: the earlier ${option.name} write was sent to another field or option; it is left unread`);
     }
+    // A move of this card saved before its Effect existed and never settled is read back by `ProjectProgress.reconcile`;
+    // without that read, this operation does not authorize a first write.
+    if (earlier === undefined && !store.getEffect(activeEffectId(store, `harness:${job.id}:${effectKey(operation, item)}`)) &&
+        job.boardUpdates?.some(saved => saved.item === item && saved.field === field.fieldId && saved.option === option.id && saved.stage === job.stage && saved.head === job.head && saved.status !== 'verified'))
+        throw new Error(`Board transition needs read-back: an earlier ${option.name} move of this card has no settled record; it is left unread`);
     let sent = false;
     try {
         await harnessEffect(store, job, { key: effectKey(operation, item), operation: 'github-project-status', target: `${field.projectId}:${item}`,

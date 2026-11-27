@@ -4,6 +4,7 @@ import { PROJECTS } from '../office/projects';
 import { visibleTicketTriggerIds, visibleTriggerIds } from '../knowledge/retrospective-triggers';
 import { visibleMaintenanceTriggerIds } from '../knowledge/maintenance-triggers';
 import { seedProjectLessons } from '../knowledge/seeded-lessons';
+import { bindLegacyRetries } from '../delivery/attempts/legacy-retry';
 export const STATE_VERSION = 1;
 export function resolveProjectLabel(label: string): OfficeProject | undefined {
     const value = label.trim().toLowerCase();
@@ -88,6 +89,8 @@ export function migrateSnapshot(state: OfficeSnapshot, project: OfficeProject, n
     }
     for (const job of coordination.jobs)
         job.timing ??= [];
+    // Retry budgets saved before they were scoped belong to the stage and head as loaded (`legacy-retry.ts`).
+    bindLegacyRetries(coordination.jobs);
     for (const run of state.maintenance?.runs || [])
         run.timing ??= [];
     if (coordination.time) {

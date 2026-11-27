@@ -14,6 +14,8 @@ const LONGEST_BACKOFF_MS = 16 * MINUTE;
 export interface QuotaHold { until: string }
 /** What a caller asks before a background GitHub read: the resources it needs (core by default) and the principal it reads as (the operator by default). */
 export interface QuotaGate { hold(resources?: readonly Resource[], principal?: string): QuotaHold | undefined }
+/** The deadline one observed refusal gave its principal, and the shared probe it started or joined. */
+export interface RefusalDeadline { until: number; probe?: Promise<void> }
 /** GitHub's stated rate-limit refusal of one call (`quota-refusal.ts`), with what its own headers said. */
 export interface QuotaRefusal { secondary: boolean; retryAfterMs?: number; reading?: ResourceReading }
 
@@ -54,8 +56,12 @@ export class QuotaGovernor implements QuotaGate {
     private lowUntil(resource: Resource, now: number, principal: string): number {
         return Math.max(0, ...this.samples.liveWindows(resource, principal).filter(window => window.reset * 1000 > now && window.remaining <= window.limit * CORE_RESERVE).map(window => window.reset * 1000));
     }
-    /** `probe` is false for the probe's own call. The probe reads the refused principal's own windows. */
-    refused(refusal: QuotaRefusal, probe = true, principal = 'operator'): void {
+    /**
+     * `probe` is false for the probe's own call. The probe reads the refused principal's own windows. Returns the
+     * deadline this observation gave the principal (the longer of this refusal's and any standing one) and, when
+     * the shared probe started or was already running, its settlement, so a caller can read a late window once.
+     */
+    refused(refusal: QuotaRefusal, probe = true, principal = 'operator'): RefusalDeadline {
         const now = this.now(), state = this.state(principal);
         if (!this.hold(['core'], principal)) state.repeats++;
         const reset = refusal.reading?.remaining === 0 ? refusal.reading.reset * 1000 : 0;
@@ -64,7 +70,8 @@ export class QuotaGovernor implements QuotaGate {
             : reset > now ? reset
             : now + state.backoffMs;
         state.refusedUntil = Math.max(state.refusedUntil, until);
-        if (probe && !refusal.secondary && !this.lowUntil('core', now, principal)) void this.samples.sample(undefined, PROBE_INTERVAL_MS, principal);
+        const sampled = probe && !refusal.secondary && !this.lowUntil('core', now, principal) ? this.samples.sample(undefined, PROBE_INTERVAL_MS, principal) : undefined;
+        return { until: state.refusedUntil, ...(sampled ? { probe: sampled } : {}) };
     }
     /** A call answered after a quiet spell as long as the last backoff, with no hold: the next refusal starts again from a minute. */
     answered(principal = 'operator'): void {

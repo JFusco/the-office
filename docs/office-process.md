@@ -512,6 +512,67 @@ as `ORIG_HEAD` shows), and otherwise declines before any reset, naming the ref. 
 whose job, run, stage, accepted head, branch, worktree or grant changed while it awaited a read
 writes nothing. Jira/Azure work is unchanged.
 
+### Transient GitHub stops
+
+A delivery stop on a transient GitHub failure is retried by the harness itself, without a person and
+without resending any write (`server/delivery/attempts/`, planned by `reconcileReadRetries` on the tick,
+IT's pass and the `reconcile-read-retries` command alike).
+
+- **What counts.** gh's own diagnostic for HTTP 408, 429, 499, 500, 502, 503 or 504, a read timeout, a
+  dropped connection or model capacity (`server/scheduling/temporary-read.ts`). A write's uncertainty is
+  classified first, typed or worded (`needs read-back`, `cannot be resent`, `unverified after read-back`):
+  such a stop is `uncertain-effect` whatever HTTP status its text carries. The native-link lookup of a
+  Lead review is marked read-only, so its failure is a read. The publication command keeps its own
+  immediate retry of six statuses.
+- **Which stops.** `review` and `lead-pr` with nothing written or unsettled, as before. A hands-off
+  `draft` only on the harness route (no legacy recovery record) with current registered eligibility, an
+  identified candidate, no park, merge attempt, competing claim or worker, recovery request, unconfirmed
+  receipt, or dispatching or uncertain Effect of its own; a prepared intent still meets its own preflight.
+  An ordinary draft retry needs a transient stop with every card move verified, and re-runs publication
+  through its existing push and PR-create Effects: an existing PR is adopted only after its number,
+  repository, branch, base, draft state and native link to this issue are read, before any push, edit or
+  card move. A board recovery needs the outer stop of the draft's own card move with only uncertain
+  moves of this draft and head whose saved diagnostic is transient (GH-407). It stays read-only for its
+  whole life: its first provider request is its recorded read of the saved card (its provenance read once every
+  saved move is verified), and after the cards are
+  verified it only reads the branch, PR, link and both cards back and adopts them; anything else goes to
+  Joe with zero pushes, creates, edits or card moves. No limit is based on a saved draft's age.
+- **Schedule.** The three short counted waits (30 s, 2 min, 5 min), then for a GitHub server error
+  (500, 502, 503, 504) that keeps failing, counted waits of 15, 30 and 60 minutes; an attempt is spent
+  when the job is queued, and a further failure after the last one exhausts the allowance. Intake,
+  offline activation, model capacity, maintenance and writer restarts keep their own policies. A GitHub
+  quota refusal of a read is a separate, uncounted wait until the deadline the quota governor computed
+  for the failed call (its Retry-After, its exhausted resource's reset, a live spent window, the shared
+  probe's late reading, or the governor's one-minute fallback doubling to 16 minutes for repeated
+  secondary refusals), saved in `ReadRetry.failure` as `provider-limit` with its absolute `retryAt`. The
+  episode starts at the first such stop for the stage and head and ends at six hours: at the cap the job
+  is a person's, with no earlier call when the reset falls later.
+- **Budget scope.** Each budget belongs to its stage and full head. A record saved before scoping is
+  bound to the stage and head it is loaded with; a spent one (explicit, or three attempts with no timer)
+  stays spent and a queued final try runs once. A new stop at another stage or head gets its own.
+- **Revalidation.** The same synchronous decision is made when the retry is planned, when its timer
+  fires, before its claim is taken and at claim entry, before the stage discards the stop. A change of
+  stage, head, candidate, route, ownership, park, merge attempt, receipt, card move or Effect withdraws
+  the retry: its timer is cleared, its diagnostic kept and the reason shown to Joe. A bound retry enters
+  under its normal delivery claim before the dependency refresh, which then runs inside its own failure
+  handling; a prerequisite found by it holds the job before it advances.
+- **Board miss.** A complete, claim-bound read that finds the saved card at another option keeps the
+  update as saved, adds `readBack: not-at-target` and stops with `read back: not at target; not resent`.
+  It is never resent or admitted again; Joe resolves it. A failed or incomplete read, or a lost claim,
+  leaves the move unresolved.
+- **First comment.** After the cards and publication are verified, normal draft acceptance adopts an
+  exact existing issue-link comment, or posts the first one through `draft-link-comment:<pr>` with
+  read-back when complete comment pages, the native link and every earlier draft claim's own recorded
+  read prove it was never sent. A board recovery's recorded card read counts as its claim's read. Without
+  that proof the existing refusal stands and the job is Joe's. A comment is never resent.
+- **Operator view.** The outbox, the incident ledger and Team Updates read the same current decision
+  for the job's exact stop, stage and head. A pending retry is hidden from Joe; a stale timer, a spent
+  allowance, a board miss or a withdrawn claim shows him the reason. A reply to a `ticket-job:` action
+  is validated against the outbox as served, so the action he sees is the one accepted, and one a repair
+  wait holds is refused like any hidden action. Team Updates shows the counted attempt and its limit, or
+  the quota deadline and cap with no attempt number; intake keeps its denominator of three.
+- Read retries are still not held by repair waits, and a transient stop gets no repair wait.
+
 Parking moves the issue card and the pull request's card to Block, and a person releases the park by
 moving the issue card alone. The pull request's card is then the harness's to move, when its own
 verified write to Block is the last thing it did to that card (`server/delivery/board/harness-parked-card.ts`).
@@ -893,7 +954,10 @@ Morgan or Joe:
   follow-up, whatever its detail says. Once it closes, another is sent only if what is due changed. For
   an IT recovery that is a new needs-human episode: an observed exit (IT retrying, or resolved) and a
   return. For the project refresh and assignment reads it is also a change between a temporary read
-  failure and any other failure, the two kinds of advice Ellis gives Morgan. For a stopped maintenance run
+  failure and any other failure, the two kinds of advice Ellis gives Morgan. Issue 592 widened the temporary
+  reads to gh's 408, 429, 499 and 500: a recovery still needing a person whose saved diagnostic is one of
+  them, with its key recorded under the former category, gets one more read-only diagnosis once its
+  earlier hand-off closes, and none after that for the episode and category. For a stopped maintenance run
   it is the run's own stop: the status and stage it stopped in and when it ended
   (`server/knowledge/maintenance-handoff-key.ts`). A run stops in its pump, or at start-up recovery if it
   was left working, and is never pumped again: both pumps take only queued runs. A read-back adds a step
@@ -1703,7 +1767,11 @@ that aggregate.
 blocks, provider waits, planned retries, uncertain effects and questions are recognised from typed
 fields and the office config, never from wording, and recorded as expected. A hold may be
 configured under the ticket or its pull request; a park on a provider's own wait is that wait; a
-retry whose budget is spent explains nothing. A stop kind the
+retry whose budget is spent explains nothing. A delivery job's current retry decision (the one the outbox reads)
+comes before an uncertain write and a provider wait: a pending card read-back or GitHub quota wait reads as
+`retry`, while a hold, a decision, authority loss or a prerequisite still outranks it, and a negative decision
+(withdrawn, vetoed or exhausted) suppresses the generic transient fallback. Repair handling reads the original
+stop. A stop kind the
 harness derived from a model's blocker is left out, so a model's words never choose the
 explanation. Each subject keeps its own explanation; the incident names one only when every open
 subject shares it. An incident with an open subject that has no explanation is eligible for
@@ -2429,6 +2497,14 @@ by `reconcile-base-update` (see Resume after a fix): only `release-writer` resum
 it the job is a person's. The run stays the harness's to restart for stopped-base recovery while
 its grant stands unspent. The Office's own bounded retry of a transient failed read is not held. The
 scheduler's dispatch is unchanged; a held record was already not running.
+
+**Rollout note for the Overseer (issue 592).** No new stop, failure, expected-wait or blocked-cause values.
+The relabels are exact: a gh 408, 429, 499 or 500 diagnostic that was `unclassified` is now `transient`, its
+expected wait going from none to `retry` while the stop is eligible; existing 502, 503 and 504 matches gain the
+counted delivery tail. A pending qualified board read-back changes expected `uncertain-effect` to `retry`; a
+pending attributable GitHub quota retry changes expected `provider-wait` to `retry`. An exhausted or ineligible
+GH-407-shaped stop with its write unresolved reads `uncertain-effect`. These transient incidents get no repair
+wait. Deploy PR 578's incident grouping before or with this change.
 
 ### Overseer runner
 

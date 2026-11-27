@@ -59,13 +59,13 @@ test.each(['initial-publication', 'head-observation', 'acceptance-pr', 'acceptan
     expect(linkReads).toBe(['acceptance-links', 'both-acceptance-reads'].includes(failure) ? 3 : 2);
 });
 
-test('default verifyPR retains its original argv and options', async () => {
+test('default verifyPR retains its original argv, and its fixed native-link lookup is marked read-only', async () => {
     const f = fixture(), original = f.delivery.execute, calls: unknown[] = [];
     f.delivery.execute = async (program, args, options) => { calls.push({ program, args, options }); return original(program, args, options); };
     await f.delivery.verifyPR(f.job, true);
     expect(calls).toEqual([
         { program: 'gh', args: ['api', `repos/${REPOSITORY}/pulls/200`], options: { cwd: f.repo, timeout: 60000, readOnly: true } },
-        { program: 'gh', args: ['pr', 'view', '200', '--repo', REPOSITORY, '--json', 'closingIssuesReferences'], options: { cwd: f.repo, timeout: 60000 } },
+        { program: 'gh', args: ['pr', 'view', '200', '--repo', REPOSITORY, '--json', 'closingIssuesReferences'], options: { cwd: f.repo, timeout: 60000, readOnly: true } },
     ]);
 });
 

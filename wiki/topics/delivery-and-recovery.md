@@ -10,6 +10,8 @@ Office writes are moving to the Office's own GitHub App identity one route at a 
 
 Dependency-bot PRs (Dependabot, pin-courier, wiki-sync) are [adopted automatically by default](../journal/2026-11-26-auto-adopt-defaults.md) on hands-off GitHub projects with a configured board; an explicit `autoAdopt` list narrows or disables it.
 
+A delivery job stopped by a transient GitHub failure is [retried by the harness](../journal/2026-11-27-transient-github-retries.md), including a read-back-first retry of a hands-off draft; an uncertain write is only ever read back, never resent.
+
 ## Evidence
 
 - [Office process](../../docs/office-process.md)

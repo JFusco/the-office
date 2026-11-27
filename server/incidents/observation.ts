@@ -1,6 +1,7 @@
 import type { IncidentCandidate } from '../../src/contracts/incidents';
 import type { Prerequisite, WorkEligibility, WorkRef } from '../../src/contracts/work';
-import type { OfficeSnapshot } from '../../src/shared';
+import type { OfficeSnapshot, TicketJob } from '../../src/shared';
+import type { DeliveryRetryDecision } from '../delivery/attempts/delivery-retry';
 import type { UnsettledEffects } from '../operations/stale-records';
 import type { FailedMailCheck, MailCheckOutcome } from './mailbox-check-window';
 
@@ -18,6 +19,8 @@ export interface ProjectObservation {
     unsettled: UnsettledEffects;
     /** Tickets the local office config holds for this project, by key. */
     holds: Readonly<Record<string, string>>;
+    /** The owning store's current delivery retry decision for one of its jobs (`server/delivery/attempts/delivery-retry.ts`). */
+    retry?: (job: TicketJob) => DeliveryRetryDecision | undefined;
     /** How the scheduler reads these structured prerequisites now, across every project; null when none gates. */
     dependency: (prerequisites: Prerequisite[]) => WorkEligibility | null;
     /** The project's last mailbox check, when it ended blocked, read from its persisted events. */

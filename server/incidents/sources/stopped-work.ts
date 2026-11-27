@@ -18,10 +18,15 @@ import { stoppedRecord } from './stopped-record';
  * prerequisite are recorded even when the scheduler only calls the work waiting. A paused or draining project is one subject, the
  * project, because the pause hides every other reason.
  */
-export const stoppedWork: IncidentCollector = ({ projectId, provider, state, progression, unsettled, holds, dependency, now }) => {
+export const stoppedWork: IncidentCollector = ({ projectId, provider, state, progression, unsettled, holds, dependency, retry, now }) => {
+    // A delivery job's current retry decision, from its own store, for the job as it stands in this observation.
+    const decision = (work: ProjectObservation['progression'][number]['work']) => {
+        const job = work.kind === 'delivery' ? state.coordination?.jobs?.find(candidate => candidate.id === work.id) : undefined;
+        return job && retry?.(job);
+    };
     // A feature's question round and the roll-up's saved retry are read here only, never by the record reader repair waits share.
     const read = ({ work, stage, eligibility }: ProjectObservation['progression'][number]) =>
-        work.kind === 'feature' ? featureRecord({ state, projectId, provider }, work, stage, eligibility) : work.kind === 'knowledge-rollup' ? rollupRecord(state, work, now) : stoppedRecord(state, work, stage);
+        work.kind === 'feature' ? featureRecord({ state, projectId, provider }, work, stage, eligibility) : work.kind === 'knowledge-rollup' ? rollupRecord(state, work, now) : stoppedRecord(state, work, stage, decision(work));
     if (state.paused || state.draining) {
         // One cause for both: draining is a pause that lets running work finish. Records the pause hides keep what they cover.
         const absorbs = progression.filter(({ work }) => work.projectId === projectId).flatMap(({ work, stage }) => { const record = stoppedRecord(state, work, stage); return record?.standing === 'stopped' ? record.covers.map(([kind, id]) => `${projectId}/${kind}/${id}`) : []; });

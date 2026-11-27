@@ -8,9 +8,11 @@ import { checkpointHasMaintenanceAlert, maintenanceNeedsHumanFollowup } from '..
 import { parkedProviderWait, readinessNeedsFollowup, readinessWait } from '../../src/work/work-summary';
 import { holdReason, topLevelHold } from '../office/project-holds';
 import { readRetryPending } from '../scheduling/read-retries';
+import { deliveryRetryPending, type RetryReads } from '../delivery/attempts/retry-pending';
+import { decidedFor } from '../delivery/attempts/delivery-retry';
 import { hoursReadbackPending } from '../time/readback-pending';
 import { knowledgeOutbox } from '../knowledge/knowledge-outbox';
-import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage } from '../../src/shared';
+import { ROLE_NAMES, STAGE_ROLE, type OfficeSnapshot, type HumanAction, type Role, type TeamMessage, type TicketJob } from '../../src/shared';
 import { ctoInputRecovered } from './cto-input-resolution';
 import { isSavedPlanFollowup } from '../../src/conversations/saved-plan-followup';
 import { ownerStepItems, sameOwnerSteps } from './owner-step-items';
@@ -24,12 +26,16 @@ export function conversationResolved(state: OfficeSnapshot, message: TeamMessage
 /** Backstop for a hang without a restart: adoption is a few provider calls, so one unfinished this long needs a look. */
 export const ADOPTION_STALLED_MS = 5 * 60 * 1000;
 // Reconcile a durable tray against observable work, never against an acknowledgement.
-export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: import('../incidents/repair/freeze-reads').FreezeReads | null): HumanAction[] {
+export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: import('../incidents/repair/freeze-reads').FreezeReads | null, retries?: RetryReads): HumanAction[] {
     const outbox = (state.outbox || []).map(a => ({ ...a }));
     const now = at.toISOString(), current = new Set<string>();
     // Work a harness repair in progress covers is not a person's to read back while that wait holds; its item returns when the wait ends.
     // Without the project's current writes and prerequisites to read, nothing is hidden.
     const awaitingRepair = (kind: Parameters<typeof repairFreeze>[1]['kind'], id: string) => !!repairFreeze(state, { kind, id }, at, reads);
+    // A delivery stop the Office retries by itself is not a person's. With the owning store's current decision it is
+    // hidden exactly while that decision is positive for this stop; without one, the saved timer stands as before.
+    const retrying = (j: TicketJob) => retries ? deliveryRetryPending(j, at, retries) && !state.paused : !!j.retry?.nextAt || readRetryPending(j, at) && !state.paused;
+    const retryReason = (j: TicketJob) => { const decision = retries?.(j); return decision && decidedFor(decision, j) && ['ineligible', 'exhausted'].includes(decision.state) ? `\nAutomatic retry: ${decision.reason}.` : ''; };
     function item(id: string, title: string, detail: string, role: Role, ticket = '', url = '', ownerSteps?: HumanAction['ownerSteps']) {
         current.add(id);
         const old = outbox.find(a => a.id === id);
@@ -119,14 +125,14 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: im
         else if (j.status === 'blocked' && j.parked?.published && j.detail.startsWith('Decision needed'))
             item(`ticket-job:${j.id}`, `${j.key} needs a decision on the board`, `${j.parked.reason}\nMove the card back to Ready to resume ${j.parked.stage}.`, 'pm', j.key, j.prUrl);
         // A stop the Office retries by itself is not Joe's, from the moment it happens; retries are not planned while paused.
-        else if (['blocked', 'interrupted'].includes(j.status) && !j.retry?.nextAt && !(readRetryPending(j, at) && !state.paused) && !awaitingRepair('delivery', j.id))
-            item(`ticket-job:${j.id}`, `Read back ${j.key} delivery`, j.detail, 'pm', j.key, j.prUrl);
+        else if (['blocked', 'interrupted'].includes(j.status) && !retrying(j) && !awaitingRepair('delivery', j.id))
+            item(`ticket-job:${j.id}`, `Read back ${j.key} delivery`, `${j.detail}${retryReason(j)}`, 'pm', j.key, j.prUrl);
     }
     for (const j of state.coordination?.jobs || [])
         if (j.candidateCleanup?.status === 'pending')
             item(`candidate-cleanup:${j.id}`, `Clean up ${j.key} worktree and branches`, `${j.candidateCleanup.detail}\nThe Office retries on each poll and never removes uncommitted work or a branch with an open PR. A refusal recorded as uncertain is only read back, never resent.`, 'pm', j.key, j.prUrl);
     for (const j of state.coordination?.jobs || [])
-        if (readinessNeedsFollowup(j) && !j.retry?.nextAt) {
+        if (readinessNeedsFollowup(j) && !(retries ? retrying(j) : !!j.retry?.nextAt)) {
             const wait = readinessWait(j);
             item(`ticket-job:${j.id}`, `${j.key} needs team follow-up`, `${wait.summary}\n${wait.next}`, 'pm', j.key, j.prUrl);
         }

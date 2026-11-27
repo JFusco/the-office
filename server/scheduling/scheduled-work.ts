@@ -1,3 +1,5 @@
+import { queuedRetry } from '../delivery/attempts/retry-binding';
+import { deliveryRetryDecision } from '../delivery/attempts/delivery-retry';
 import { settledSlackReadback } from '../conversations/slack/settled-readback';
 import { dueSlackReread, rereadUncertainSlack } from '../conversations/slack/reread-uncertain';
 import { defaultPickupStatus } from '../delivery/intake/default-pickup';
@@ -169,6 +171,8 @@ export function scheduledWork(entry: OfficeEntry, stores: DependencyStores, now 
             return ownership as any;
         }, () => coordinator!.pump({ kind: 'delivery', id: job.id })), ['completed', 'cancelled'].includes(job.status) ? null : dependency||timeWait, job.timing);
         items.at(-1)!.slot = deliverySlot(job);
+        // A queued automatic retry is claimed only while its decision still holds; the planner withdraws it otherwise.
+        items.at(-1)!.claimEligible = () => !queuedRetry(job) || deliveryRetryDecision(store, job, store.clock.now()).state === 'pending';
     }
     for (const review of [...new Map(c.listener.reviews.map(review => [review.key, review])).values()].filter(review => !(c.jobs || []).some(job => job.key === review.key && job.status !== 'cancelled')))
         add('intake', review, 'assignment-review', review.queuedAt, 3, () => coordinator!.pump({ kind: 'intake', id: review.id }), review.prerequisiteError ? eligible('blocked', review.prerequisiteError, 'Morgan', 'dependency') : ['owned', 'held'].includes(review.status) && deferredPickup(store.state, review.key, defaultPickupStatus(store.project)) ? eligible('waiting', 'Backlog assignment is deferred until its pickup lane or an explicit Start') : null, review.timing);
