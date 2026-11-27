@@ -86,4 +86,37 @@ The recorded evaluation was `unqualified`, with `innerSeatbelt: unsupported`. It
 
 The `cleanup` row above is the run's single aggregate cleanup. Today's evaluator judges a row's outcome before its control. So it words the private shared-temp failure as "expected denied, saw inconclusive", and the regression asserts that wording.
 
-**A later correction to the launchd row.** The `launchd-ipc` row was measured with a copied `launchctl`, which macOS kills wherever it runs. A later probe ran the real `/bin/launchctl` under the 7b policy, on the same host and release, and it reached launchd ("Could not find service", exit 113). So launchd was reachable, as recorded in the [phase 7b journal](2026-11-26-overseer-phase-7b-worker-sandbox.md). The regression in `tests/unit/overseer/sandbox-qualification.test.ts` models that corrected outcome.
+**The launchd row, corrected.** The `launchd-ipc` row was measured with a copied `launchctl`. macOS kills such a copy wherever it runs, and the details below record SIGKILL both inside and outside the sandbox. The same run also ran the real `/bin/launchctl`, inside and outside the sandbox, under its recorded policy `f2b2515c41a884f6a3fc628c986b85fb8a0bed781fe0d1d245d5802c3b5e57f9`. Both reached launchd and exited 113 ("Could not find service"), as row 24 below records. So launchd was reachable, as the [phase 7b journal](2026-11-26-overseer-phase-7b-worker-sandbox.md) also records. The regression in `tests/unit/overseer/sandbox-qualification.test.ts` models that corrected outcome.
+
+### Recorded details, normalized
+
+The report also keeps a separate `details` object for each probe, with what the payload and its control actually returned. These are its material outcomes, normalized, all from the same 2026-11-26 run under its recorded policy. The report keeps the raw command lines, local paths, the environment listing and the endpoints, and it stays private and read-only outside the repository, with SHA-256 `ccbf36d58e167855164cfb26b14874523c65deebf594161cb48a4731ec9d5a6b`. A local comparison checks the report's digest, all 26 rows above and each entry below against the original.
+
+| # | Probe | Recorded outcome |
+|---|---|---|
+| 1 | `startup` | argv round-trip true; cwd is the run home true; TMPDIR is the run tmp true; failure none; 38 environment names (kept in the report) |
+| 2 | `snapshot-read` | outcome allowed; failure none |
+| 3 | `tmp-write` | outcome allowed; failure none |
+| 4 | `provider-write` | outcome allowed; failure none |
+| 5 | `tmpdir-api` | outcome allowed; failure none |
+| 6 | `read-sibling` | inside: denied, EPERM; failure none; control: allowed |
+| 7 | `read-runner-state` | inside: denied, EPERM; failure none; control: allowed |
+| 8 | `read-office-data` | inside: denied, EPERM; failure none; control: allowed |
+| 9 | `read-claude-config` | inside: denied, EPERM; failure none; control: allowed |
+| 10 | `read-codex-config` | inside: denied, EPERM; failure none; control: allowed |
+| 11 | `write-snapshot` | inside: denied, EPERM; failure none; control: allowed |
+| 12 | `write-run-root` | inside: denied, EPERM; failure none; control: allowed |
+| 13 | `write-sibling` | inside: denied, EPERM; failure none; control: allowed |
+| 14 | `write-policy` | inside: denied, EPERM; failure none; control: allowed |
+| 15 | `write-shared-tmp` | inside: denied, EPERM; failure none; control: none |
+| 16 | `write-private-shared-tmp` | inside: error, ENOENT; failure none; control: none |
+| 17 | `replace-policy` | inside: denied, EPERM; failure none; control: allowed |
+| 18 | `replace-snapshot` | inside: denied, EPERM; failure none; control: allowed |
+| 19 | `credential-store` | not run: creating a keychain would change the interactive Keychain search list |
+| 20 | `network-direct` | inside: denied, EPERM; failure none; control: allowed |
+| 21 | `network-proxied` | test listener: denied, 403, blocked-by-allowlist; .invalid name: denied, 403, blocked-by-allowlist |
+| 22 | `loopback` | inside: denied, EPERM; failure none; control: allowed |
+| 23 | `unix-socket` | inside: denied, EPERM; failure none; control: allowed |
+| 24 | `launchd-ipc` | copied launchctl inside: ran, signal SIGKILL; copied launchctl control: ran, signal SIGKILL; real launchctl inside: ran, exit 113 (Could not find service); real launchctl control: ran, exit 113 (Could not find service) |
+| 25 | `nested-seatbelt` | inside: ran, exit 71 (sandbox_apply: Operation not permitted); control: ran, exit 0 |
+| 26 | `cleanup` | leftover pids null |
