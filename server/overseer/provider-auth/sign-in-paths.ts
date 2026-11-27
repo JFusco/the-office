@@ -2,6 +2,7 @@ import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } fro
 import { dirname, resolve } from 'node:path';
 import { assertOwnedDirectory, preflightRoot, runnerUid, type DirectoryFacts } from '../run-directories';
 import { within, type ValidatedRunnerPaths } from '../runner-root';
+import { statusPath } from './profile-status';
 
 /**
  * Where the runner keeps the provider sign-ins Joe enrolls, and the one way trusted runner code reads
@@ -27,7 +28,7 @@ export const TOKEN_MAX_BYTES = 4 * 1024, AUTH_MAX_BYTES = 64 * 1024;
 export function signInPaths(paths: ValidatedRunnerPaths): SignInPaths {
     const providers = resolve(paths.root, 'providers'), claude = resolve(providers, 'claude'), codex = resolve(providers, 'codex');
     if (paths.providers !== providers) throw new Error(`The providers folder ${paths.providers} is not under the runner root ${paths.root}`);
-    return { providers, claude, claudeToken: resolve(claude, 'oauth-token'), codex, codexAuth: resolve(codex, 'auth.json'), status: resolve(paths.state, 'providers.json') };
+    return { providers, claude, claudeToken: resolve(claude, 'oauth-token'), codex, codexAuth: resolve(codex, 'auth.json'), status: statusPath(paths) };
 }
 
 export type ReadFault = 'missing' | 'not-contained' | 'linked' | 'not-regular' | 'wrong-owner' | 'wrong-mode' | 'oversized' | 'unreadable';
