@@ -351,13 +351,13 @@ test('a pass that loses its lock while the group is alive stops waiting and leav
     try {
         const before = readFileSync(world.where.codexAuth, 'utf8');
         // The first inspection loses the lock with the group alive; a second would find it gone.
-        let inspections = 0;
-        const opinion = await triage(world, 'codex', { groupState: () => {
-            if (++inspections > 1) return 'absent';
+        const inspections: number[] = [];
+        const opinion = await triage(world, 'codex', { groupState: group => {
+            if (inspections.push(group) > 1) return 'absent';
             world.lock.release();
             return 'alive';
         } });
-        expect(inspections).toBe(1);
+        expect(inspections).toEqual([999_999]);
         expect(opinion).toMatchObject({ status: 'unavailable', reason: 'the call failed: the reader process group could not be confirmed exited' });
         expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: { phase: 'launched', group: 999_999 } } });
         expect(rows(world.paths)).toMatchObject([{ final: 0, receipt_total: null }]);
