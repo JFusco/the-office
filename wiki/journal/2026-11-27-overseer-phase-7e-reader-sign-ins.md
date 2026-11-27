@@ -2,7 +2,11 @@
 topics: [releases-and-incidents]
 plans: [2026-11-27-overseer-phase-7e-runner-owned-sign-ins-and-reader-calls-726-4fad5187ec.md]
 issue: 'https://github.com/jfusco/the-office/issues/726'
-issues: ['https://github.com/jfusco/the-office/issues/726', 'https://github.com/jfusco/the-office/issues/690']
+issues:
+  [
+    'https://github.com/jfusco/the-office/issues/726',
+    'https://github.com/jfusco/the-office/issues/690',
+  ]
 ---
 
 # Overseer phase 7e: runner-owned sign-ins and reader calls
