@@ -1507,6 +1507,15 @@ prove the target holds the floor: a shallow clone never can. `--below-floor` is 
 override; it skips the check and is not passed to the controller. Resuming, ending and pinning are
 not checked.
 
+Every launch, whether a deploy, a resume or an end, first loads the controller's start-up modules
+from the release it will run, with this data root, in a child process that runs nothing else
+(`server/release/controller-start-check.ts`). The release's own checks run as those modules load.
+Among them is `localBindings`, which reads `office-config.json`. If that release rejects the
+configuration, or its modules fail to load for any other reason, the launch is refused before the
+launch record is written. The refusal names the release and its error, and no STOP is written. A
+configuration that only a newer release accepts is caught here rather than at the controller's
+start-up.
+
 It then runs these steps in order under the deploy lock. Each is journaled `intended` before it runs
 and settled after:
 
@@ -1568,8 +1577,9 @@ attempts a separate halt and records whether it was confirmed. Backups are for m
 **STOP.** These each leave `deployments/STOP.json` naming the operation and its last journaled
 step: a fence acquire, a stop, an active-release record or a fence release that read-back cannot
 confirm; a journal that ends in a cut-short line; a rollback that is not eligible or does not
-complete. The launcher also writes STOP if the controller cannot start, times out, exits non-zero,
-or returns without an outcome for its operation. A saved outcome stays available for diagnosis
+complete. The launcher also writes STOP if a recorded launch cannot start, times out, exits non-zero,
+or returns without an outcome for its operation. A launch refused by the start check is not recorded
+and writes no STOP. A saved outcome stays available for diagnosis
 after an abnormal exit. While the record stands every deployment is refused.
 Only a person removes it. `pnpm office deploy end OPERATION` releases the fence that operation's
 token holds and nothing else, and records an unfinished operation `ended`.

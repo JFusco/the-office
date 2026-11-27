@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import type { command } from '../workers/process';
 import { pinnedController } from './controller-pin';
+import { controllerStartFailure } from './controller-start-check';
 import { DeployOutcome } from './deploy-facts';
 import { deployJournalPath, readDeployJournal, type DeployJournalView } from './deploy-journal';
 import { readOutcome } from './deploy-outcome';
@@ -33,7 +34,9 @@ function printedOutcome(output: string): DeployOutcome | null {
 
 /**
  * Runs the deployment controller from the pinned release tree, never from the invoking checkout or
- * the target release. The launch is recorded before the controller is spawned. A controller that
+ * the target release. A tree whose start-up modules fail to load with this data root, such as a
+ * configuration that release rejects (`controller-start-check.ts`), is refused with nothing written.
+ * The launch is recorded before the controller is spawned. A controller that
  * cannot start, hangs, exits non-zero or ends without an outcome leaves a STOP record naming the
  * last journaled step; nothing is retried, and the fence and token it held are left as they are.
  */
@@ -43,6 +46,8 @@ export async function launchController(launch: ControllerLaunch): Promise<Deploy
     let tree;
     try { tree = pinnedController(dataRoot, controller); }
     catch (error) { return refused(String(error instanceof Error ? error.message : error)); }
+    const unstartable = await controllerStartFailure({ dataRoot, controller, directory: tree.directory, execute, node: launch.node });
+    if (unstartable) return refused(unstartable);
     const { launch: launchPath, outcome: outcomePath } = operationPaths(dataRoot, operation);
     writeDurable(launchPath, `${JSON.stringify({ operation, controller, args, at: now().toISOString(), launcher: process.pid }, null, 2)}\n`);
     let failure: string | undefined;
