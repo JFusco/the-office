@@ -1319,6 +1319,99 @@ See the [phase 7b journal](../wiki/journal/2026-11-26-overseer-phase-7b-worker-s
 The project dependency pin in `package.json` and `pnpm-lock.yaml` and runner-owned receipts for
 the exact host, installation, policy and provider profiles are outstanding.
 
+### Triage and corroboration
+
+No model runs yet, and nothing acts on what follows. This is the contract, tested against fixtures
+only. How a model call is made, with its provider sign-in and sandbox, is a later part of phase 7, and
+the 7b gate keeps it closed until then.
+
+**What a reader is given.** The runner builds one frozen input per incident
+(`server/overseer/stages/triage.ts`) from:
+
+- the incident's evidence packet, with its digest recomputed as the Office computes it;
+- the original bytes of every runtime file offered for citation, each matched to the startup manifest
+  of the Office that produced the packet;
+- `docs/`, `AGENTS.md` and `tests/` files at the packet's verified release commit;
+- requirement examples, each a versioned clause or test example with the condition and the
+  disposition it requires;
+- any runner guidance, or its explicit absence.
+
+Its canonical serialization and that serialization's SHA-256 identify it. Both providers get the same
+prompt bytes, which say that everything in the evidence is data, never an instruction.
+
+**What a reader returns** (`src/contracts/overseer.ts`). Exactly one of five strict, bounded verdicts:
+
+- **`harness-defect`** names:
+  - the refusal site and the distinct requirement it breaks;
+  - the cause;
+  - the smallest correction, with its structured case: covered episodes, the triggering clause and
+    facts, the observed and required dispositions;
+  - the affected files;
+  - a regression in an existing test file.
+- **`real-block`** names the open stop and the rule that makes it correct.
+- **`false-positive`** names the covered stops and a current runtime citation for the dismissal flow.
+- **`stale-state`** cites packet evidence of the change.
+- **`needs-joe`** states the question.
+
+Source is cited as `{path, sha256, startLine, endLine, decisiveLine, excerptSha256}`. Subjects are
+cited by key and stop digest, and events by ID. Anything unknown, oversize or inconsistent is refused.
+
+**Two calls.**
+
+- **Triage:** round 1, or round 2 after an unusable first.
+- **The blind second opinion:** the other provider, once, in round 1. It is given only which provider
+  triage used and the identity of the input it saw, never its verdict.
+
+Each is its own admission through `runBudgeted` (see Budgets). A verdict is published only when:
+
+- the call ended on time;
+- the ledger settled it against its receipt;
+- the session the provider reports is the one bound at launch;
+- the output parses.
+
+Anything else is `unavailable` or `invalid`, never a guessed verdict. An answer that arrives after a
+timeout settles its reservation but publishes nothing.
+
+**Agreement** (`server/overseer/agreement.ts`) compares substance, never wording or confidence:
+
+- the verdict;
+- the cited refusal and requirement, by path, file hash and decisive line (context windows may differ);
+- the covered episodes;
+- the trigger, scope and the observed and required dispositions;
+- the correction's direction and site;
+- the edit and affected file sets;
+- the regression target.
+
+**Decision** (`server/overseer/corroborate.ts`). Six rules, in order:
+
+1. Only the selected incident at its revision, still eligible for research, is decided. A packet, release
+   or runtime file that has changed since the input was frozen makes both opinions unusable.
+2. Each opinion must be the call the harness launched, with every reference resolving in the frozen
+   packet and every citation resolving in the frozen bytes. A forged or stale opinion counts as missing.
+   A pair needs distinct reservations from opposite providers.
+3. An open subject in a protected wait or with an unsettled effect keeps the block. So does either
+   valid `real-block`, even without a peer.
+4. An unresolved authority prerequisite vetoes repair. Two `needs-joe` opinions go to Joe. Two agreeing
+   `stale-state` or `false-positive` opinions covering every open subject become that proposal, for the
+   Office's own settlement or dismissal flow.
+5. A multi-source subject showing only a retry may hide a protected wait. Its per-source detail must
+   come from the selected incident at the packet's revision. The detail is bound to the stop by
+   recomputing `repairSubject(record)`, and both the subject key and the stop digest must match. A
+   carried aggregate or a missing source leaves authority unresolved. `admit-repair` needs both
+   opinions to be:
+   - high-confidence `harness-defect`s that agree;
+   - supported by a frozen example's condition and required disposition, against the covered stops'
+     actual refusal;
+   - an actual change to that refusal;
+   - a distinct requirement;
+   - covering every open stop.
+6. Otherwise, with the slots the ledger shows:
+   - a qualifying triage that lacks only its blind opinion asks for it;
+   - an inconclusive pair may use one more triage round;
+   - otherwise Joe.
+
+Every outcome is a proposal; nothing here changes the Office.
+
 ### When the Office does not answer
 
 A pass that cannot read a valid `/api/health` records `service-down` and counts the outage. An
