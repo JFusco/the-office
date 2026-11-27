@@ -172,14 +172,32 @@ const INSTRUCTIONS = [
     'A harness defect needs a distinct existing requirement the refusal breaks, the smallest correction with its structured case, and a regression in an existing test file. Name any authority the correction would need that is not established.',
 ].join('\n');
 
-const VERDICT_SCHEMA = JSON.stringify(TriageResultSchema.toJSONSchema());
+/** The verdict schema, serialized once: the prompt embeds it and a reader's run gets it as `provider-schema.json`. */
+export const VERDICT_SCHEMA = JSON.stringify(TriageResultSchema.toJSONSchema());
 
 /** Both providers receive the same instructions, schema and frozen evidence. */
 export const opinionPrompt = (input: FrozenInput) => `${INSTRUCTIONS}\n<verdict-schema>\n${VERDICT_SCHEMA}\n</verdict-schema>\n<evidence>\n${input.serialized}\n</evidence>\n`;
 
-/** `runBudgeted(paths, request, invoke)` with the runner's paths bound; the caller supplies it. */
-export type Budgeted = (request: AdmissionRequest, invoke: (run: BudgetedInvocation) => Promise<InvocationResult | null>) => Promise<BudgetedOutcome>;
-export interface ProviderCall { provider: Provider; prompt: string; signal: AbortSignal; activity: () => void; onSession: (session: string) => void }
+/** Why a call was refused before admission (`server/overseer/run-model.ts`): nothing was reserved or spent. */
+export const GATE_REFUSALS = [
+    'dispatch-gate-closed', 'runtime-unavailable', 'receipts-unqualified', 'storage-overlap', 'preparation-failed', 'profile-ineligible',
+    'ownership-unproven', 'handoff-active', 'handoff-unrecoverable', 'profile-stopped', 'sign-in-invalid',
+] as const;
+export type GateRefusalReason = typeof GATE_REFUSALS[number];
+export interface GateRefused { status: 'gate-refused'; reason: GateRefusalReason }
+/** The one call a `Budgeted` admits: its request, the provider it is for and the frozen input it reads. */
+export interface BudgetedCall { request: AdmissionRequest; provider: Provider; input: FrozenInput }
+/** What the stage does inside the admitted call, given the provider invocation prepared for it. */
+export type BudgetedUse = (run: BudgetedInvocation, invoke: ProviderInvoke) => Promise<InvocationResult | null>;
+/**
+ * Prepares one call, admits it through `runBudgeted` and hands the stage the invocation prepared for
+ * that allocation (`run-model.ts#gatedBudgeted`), or refuses before admission. Tests supply fixtures.
+ */
+export type Budgeted = (call: BudgetedCall, use: BudgetedUse) => Promise<BudgetedOutcome | GateRefused>;
+export interface ProviderCall {
+    provider: Provider; prompt: string; reservation: string; totalTimeoutMs: number; inactivityTimeoutMs: number;
+    signal: AbortSignal; activity: () => void; onSession: (session: string) => void;
+}
 /** What the provider reports: the session it ran, its model, its output and the accounting receipt for that session. */
 export interface ProviderAnswer { provider: Provider; model: string; session: string; output: unknown; receipt: InvocationResult }
 export type ProviderInvoke = (call: ProviderCall) => Promise<ProviderAnswer>;
@@ -190,10 +208,10 @@ export type Opinion =
     | { status: 'valid'; result: TriageResult; envelope: OpinionEnvelope }
     | { status: 'invalid' | 'unavailable'; reason: string; envelope: OpinionEnvelope };
 
-export interface OpinionRequest { budgeted: Budgeted; stage: OpinionStage; round: number; provider: Provider; input: FrozenInput; invoke: ProviderInvoke }
+export interface OpinionRequest { budgeted: Budgeted; stage: OpinionStage; round: number; provider: Provider; input: FrozenInput }
 
 /** One admitted call: the verdict is published only for an on-time completion the ledger settled, bound to the session observed at launch. */
-export async function collectOpinion({ budgeted, stage, round, provider, input, invoke }: OpinionRequest, expectedIdentity = input.identity): Promise<Opinion> {
+export async function collectOpinion({ budgeted, stage, round, provider, input }: OpinionRequest, expectedIdentity = input.identity): Promise<Opinion> {
     const evidence = readOpinionInput(input);
     const incident = evidence.ok ? evidence.input.packet.incident.id : null;
     const envelope: OpinionEnvelope = { incident, stage, round, reservation: null, provider, model: null, session: null, inputIdentity: input.identity };
@@ -202,17 +220,21 @@ export async function collectOpinion({ budgeted, stage, round, provider, input, 
     if (evidence.input.identity !== expectedIdentity) return unavailable('the evidence is not the input the triage saw');
     const prompt = opinionPrompt(evidence.input);
     let answer: ProviderAnswer | null = null, launched: string | null = null;
-    const outcome = await budgeted(budgetRequest(evidence.input.packet.incident.id, stage, round), async run => {
+    const outcome = await budgeted({ request: budgetRequest(evidence.input.packet.incident.id, stage, round), provider, input }, async (run, invoke) => {
         const reply = await invoke({
-            provider, prompt, signal: run.signal, activity: run.activity,
-            onSession: session => { if (launched === null) { launched = session; run.bindSession(session); } },
+            provider, prompt, reservation: run.reservation, totalTimeoutMs: run.totalTimeoutMs, inactivityTimeoutMs: run.inactivityTimeoutMs,
+            signal: run.signal, activity: run.activity,
+            // The launch session counts only once the ledger has bound it.
+            onSession: session => { if (launched === null) { run.bindSession(session); launched = session; } },
         });
         answer = reply;
         return reply.receipt;
     });
+    if (outcome.status === 'gate-refused') return unavailable(`the call was refused before admission: ${outcome.reason}`);
     if (outcome.status === 'refused') return unavailable(`admission refused: ${outcome.code}`);
     if (outcome.status === 'ledger-error') return unavailable(`the ledger could not admit the call: ${outcome.code}`);
     envelope.reservation = outcome.reservation.id;
+    if (outcome.status === 'not-dispatched') return unavailable(`the call was refused before launch and its reservation released: ${outcome.error.message.slice(0, 300)}`);
     if (outcome.status === 'timed-out') return unavailable(`the call passed its ${outcome.reason} timeout; a late answer settles its reservation but publishes nothing`);
     if (outcome.status === 'failed') return unavailable(`the call failed: ${outcome.error.message.slice(0, 300)}`);
     const reply = answer as ProviderAnswer | null;

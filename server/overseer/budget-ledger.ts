@@ -31,7 +31,7 @@ export interface ReservationRow {
 }
 
 export type RefusalCode = 'overrun-unreconciled' | 'invalid-incident' | 'unknown-stage' | 'invalid-timeouts' | 'round-out-of-range' | 'stage-repeated'
-    | 'daily-runs' | 'daily-fix-attempts' | 'ceiling-unreadable' | 'ceiling';
+    | 'daily-runs' | 'daily-fix-attempts' | 'ceiling-unreadable' | 'ceiling' | 'invalid-reservation-id' | 'reservation-id-taken';
 export interface Reservation { id: string; reserved: number; deadline: string; totalTimeoutMs: number; inactivityTimeoutMs: number }
 export type Admission = { admitted: true; reservation: Reservation } | { admitted: false; code: RefusalCode };
 
@@ -47,7 +47,14 @@ export interface LedgerOptions {
     hooks?: { afterBegin?: () => void; beforeCommit?: () => void };
     /** For reconciliation: refuse to create a ledger that does not exist. */
     mustExist?: boolean;
+    /**
+     * For admission only: the reservation's ID, chosen by the caller so it can prepare the run's folders
+     * under it first. A lowercase UUID not yet in the ledger; otherwise the ledger generates one.
+     */
+    reservationId?: string;
 }
+
+const RESERVATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS reservations (
@@ -157,6 +164,8 @@ export function admit(paths: RunnerPaths, request: AdmissionRequest, options: Le
         const at = now.toISOString(), day = easternDay(now);
         abandonExpired(db, at);
         const refuse = (code: RefusalCode): Admission => ({ admitted: false, code });
+        if (options.reservationId !== undefined && (typeof options.reservationId !== 'string' || !RESERVATION_ID.test(options.reservationId))) return refuse('invalid-reservation-id');
+        if (options.reservationId !== undefined && get(db, options.reservationId)) return refuse('reservation-id-taken');
         if (count(db, `SELECT COUNT(*) AS n FROM reservations WHERE ${UNRECONCILED}`)) return refuse('overrun-unreconciled');
         if (typeof request.incident !== 'string' || !/^inc-[0-9a-f]{16}$/.test(request.incident)) return refuse('invalid-incident');
         const policy = typeof request.stage === 'string' ? stagePolicy(request.stage) : null;
@@ -171,10 +180,29 @@ export function admit(paths: RunnerPaths, request: AdmissionRequest, options: Le
         if (ceiling === null) return refuse('ceiling-unreadable');
         const reserved = reservationFor(policy.allocation);
         if (reserved > balance(db, day, ceiling).available) return refuse('ceiling');
-        const id = crypto.randomUUID(), deadline = new Date(now.getTime() + request.totalTimeoutMs + ABANDON_GRACE_MS).toISOString();
+        const id = options.reservationId ?? crypto.randomUUID(), deadline = new Date(now.getTime() + request.totalTimeoutMs + ABANDON_GRACE_MS).toISOString();
         db.prepare("INSERT INTO reservations (id, day, incident, stage, counter, round, reserved, admitted_at, deadline, total_ms, inactivity_ms, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,'outstanding')")
             .run(id, day, request.incident, request.stage, policy.counter, request.round, reserved, at, deadline, request.totalTimeoutMs, request.inactivityTimeoutMs);
         return { admitted: true, reservation: { id, reserved, deadline, totalTimeoutMs: request.totalTimeoutMs, inactivityTimeoutMs: request.inactivityTimeoutMs } };
+    });
+}
+
+export type Release = { released: true } | { released: false; code: 'unknown-reservation' | 'not-releasable' };
+
+/**
+ * Removes a reservation whose invocation the runner proved never dispatched, so the refusal spends
+ * nothing and the same incident, stage and round can be admitted again. Only an untouched row
+ * qualifies: still outstanding, with no bound session, no charge, no settlement, no acknowledgement
+ * and no finalization. Anything else keeps its hold.
+ */
+export function release(paths: RunnerPaths, id: string, options: LedgerOptions = {}): Release {
+    return write(paths, options, db => {
+        const row = get(db, id);
+        if (!row) return { released: false, code: 'unknown-reservation' } as const;
+        if (row.status !== 'outstanding' || row.evidence_id !== null || row.charged !== null || row.final !== 0 || row.settled_at !== null
+            || row.ack_micro_usd !== null || row.finalized_at !== null) return { released: false, code: 'not-releasable' } as const;
+        db.prepare("DELETE FROM reservations WHERE id=? AND status='outstanding' AND evidence_id IS NULL AND charged IS NULL").run(id);
+        return { released: true } as const;
     });
 }
 
