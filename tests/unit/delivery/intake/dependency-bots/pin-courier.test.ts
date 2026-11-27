@@ -78,7 +78,8 @@ test.each(['wrong-id', 'unsigned', 'human-commit', 'fork', 'target', 'draft', 'b
         if (scenario === 'target') pr.base.ref = 'release';
         if (scenario === 'draft') pr.draft = true;
         if (scenario === 'branch') pr.head.ref = 'codex/anything';
-        if (scenario === 'backlog') f.state.cards[0].status = 'backlog';
+        // Under manual pickup (`[]`) a Backlog card is not the pickup lane; by default Backlog is adopted automatically.
+        if (scenario === 'backlog') { f.store.project.autoAdopt = []; f.state.cards[0].status = 'backlog'; }
         if (scenario === 'paused') f.store.state.paused = true;
         await adopt();
         expect(f.state.issue.body).toBe('');

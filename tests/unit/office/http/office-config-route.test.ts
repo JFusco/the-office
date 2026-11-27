@@ -5,6 +5,7 @@ import { legacyCecBindings } from '../../../../server/office/project-bindings-co
 import { ownProjectBindings } from '../../../../server/office/own-project-bindings';
 import type { OwnBindingBlocks } from '../../../../server/office/own-binding-blocks';
 import { ACME_AUTHORITY, acmeEntry } from '../second-project-fixture';
+import type { OfficeConfigSummary, OfficeProject } from '../../../../src/shared';
 
 const inputs: OfficeConfigInputs = {
     projects: [
@@ -21,8 +22,8 @@ test('projects only allowlisted fields, deriving GitHub boards and nulling missi
     expect(summary).toEqual({
         projects: [
             { id: 'cec', name: 'CEC', provider: 'azure', repository: 'cec-repo', target: 'staging', boardName: 'CEC Jira board', boardUrl: 'https://example.atlassian.net/board', policy: { merge: 'human', handsOff: false, checkpoint: { hour: 9, weekends: false } } },
-            { id: 'gh', name: 'Fixture', provider: 'github', repository: 'owner/fixture', target: 'main', boardName: 'Fixture GitHub board', boardUrl: 'https://github.com/users/owner/projects/1', policy: { merge: 'harness', handsOff: false, checkpoint: { hour: 17, weekends: true } } },
-            { id: 'bare', name: 'Bare', provider: 'github', repository: 'owner/bare', target: 'main', boardName: null, boardUrl: null, policy: { merge: 'harness', handsOff: false, checkpoint: { hour: 17, weekends: true } } },
+            { id: 'gh', name: 'Fixture', provider: 'github', repository: 'owner/fixture', target: 'main', boardName: 'Fixture GitHub board', boardUrl: 'https://github.com/users/owner/projects/1', policy: { merge: 'harness', handsOff: false, checkpoint: { hour: 17, weekends: true } }, autoAdopt: { bots: [], source: 'none' } },
+            { id: 'bare', name: 'Bare', provider: 'github', repository: 'owner/bare', target: 'main', boardName: null, boardUrl: null, policy: { merge: 'harness', handsOff: false, checkpoint: { hour: 17, weekends: true } }, autoAdopt: { bots: [], source: 'none' } },
         ],
         cec: { site: 'https://example.atlassian.net', organization: 'https://dev.azure.com/example', project: 'example', repository: 'cec-repo', target: 'staging' },
         holds: [{ key: 'CEC-1', reason: 'Fixture hold reason.' }],
@@ -46,6 +47,27 @@ test('each bound Jira/Azure project shows its own allowlisted connection and res
     const text = JSON.stringify(summary);
     for (const secret of ['secret-cloud', 'secret-account', 'secret-repo-id', '/Users/private', 'acme-cloud', 'acme-account', 'office@acme.example', 'acme-sub', 'acme-rg', 'acme-repo-id', '/tmp/acme-web', ACME_AUTHORITY, 'Living Dev/QA/PM', '"twgProfile"', 'ca-cos-conductor'])
         expect(text).not.toContain(secret);
+});
+test('GET shows each GitHub project\'s effective bot adoption under its injected policy, and none for Azure', async () => {
+    const board = (n: number) => ({ owner: 'owner', number: n, url: `https://github.com/users/owner/projects/${n}` });
+    const github = (id: string, extra: Partial<OfficeProject> = {}): OfficeProject => ({ id, name: id, provider: 'github', repo: `/tmp/${id}`, repository: `owner/${id}`, target: 'main', githubProject: board(1), ...extra });
+    const projects = [inputs.projects[0],
+        github('gh'), github('subset', { autoAdopt: ['wiki-sync', 'dependabot'] }), github('empty', { autoAdopt: [] }),
+        // `brain` is hands-off by default; its injected policy turns that off, so even its explicit list is inactive.
+        github('brain', { autoAdopt: ['pin-courier'] }), github('bare', { githubProject: undefined })];
+    const policies = new Map([['gh', { handsOff: true }], ['subset', { handsOff: true }], ['empty', { handsOff: true }], ['brain', { handsOff: false }], ['bare', { handsOff: true }]]);
+    const response = (await officeConfigRoute(new Request('http://local/api/office-config'), new URL('http://local/api/office-config'), { config: { ...inputs, projects, policies } }))!;
+    const body = await response.json() as OfficeConfigSummary;
+    expect(body.projects.map(project => [project.id, project.policy?.handsOff, project.autoAdopt])).toEqual([
+        ['cec', false, undefined],
+        ['gh', true, { bots: ['dependabot', 'pin-courier', 'wiki-sync'], source: 'default' }],
+        ['subset', true, { bots: ['wiki-sync', 'dependabot'], source: 'explicit' }],
+        ['empty', true, { bots: [], source: 'explicit' }],
+        ['brain', false, { bots: [], source: 'none' }],
+        ['bare', true, { bots: [], source: 'none' }],
+    ]);
+    expect(body.projects[0]).not.toHaveProperty('autoAdopt');
+    expect(body.projects.at(-1)).toMatchObject({ boardName: null, boardUrl: null });
 });
 test('serves the projection on GET, rejects other methods and ignores other paths', async () => {
     const call = (method: string, path = '/api/office-config') => officeConfigRoute(new Request('http://local' + path, { method }), new URL('http://local' + path), { config: { ...inputs, holds: {} } });

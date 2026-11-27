@@ -25,14 +25,16 @@ export interface DependencyBot {
 type Guard = () => void;
 
 /**
- * A Dependabot PR whose card a person moved to the pickup lane is bridged into the existing-PR flow:
- * the harness creates one tracking issue, links the PR with `Closes #<issue>` and puts both cards In review.
+ * A bot PR the project adopts automatically (./effective-auto-adopt.ts), or whose card a person moved to the pickup
+ * lane, is bridged into the existing-PR flow: the harness creates one tracking issue, links the PR with
+ * `Closes #<issue>` and puts the issue card, and the PR card when there is one, In review.
  * PR discovery then routes it to Sam's review, the guarded merge and closeout. Nothing is merged here.
  * Adoption never stops the rest of the poll: its own failures are recorded on the adoption.
  * With `underWay` (a GitHub quota hold) only those records are adopted; no new PR is taken up.
  */
 export async function adoptDependencyBot(store: Store, execute: Execute, jobs: TicketJob[], pickup: PickupPolicy, bot: DependencyBot, inventory?: PullInventory, underWay?: (record: DependabotAdoption) => boolean): Promise<void> {
-    if (!handsOff(store) || store.state.paused || store.state.draining)
+    const handsOffProject = handsOff(store);
+    if (!handsOffProject || store.state.paused || store.state.draining)
         return;
     const all = store.state.coordination!.adoptions ??= [];
     const records = all.filter(record => (record.bot || 'dependabot') === bot.id);
@@ -44,7 +46,7 @@ export async function adoptDependencyBot(store: Store, execute: Execute, jobs: T
     const taken = (p: any) => !underWay || records.some(record => record.pr === p.number && underWay(record));
     if (pickup.enabled && (!underWay || records.some(underWay))) {
         let ready: any[] = [];
-        const auto = autoAdopts(store.project, bot.id);
+        const auto = autoAdopts(store.project, bot.id, handsOffProject);
         try { ready = auto ? await autoAdoptable(store, execute, pulls, pickup.status, bot.autoAdoptLanes) : await inPickupLane(store, execute, pulls, pickup.status); }
         catch (error) { store.emit(`${bot.id}-unavailable`, `${bot.label} PR cards could not be read; adoption skipped this poll: ${String(error)}`, 'pm', ''); }
         for (const p of ready.filter(taken))
@@ -68,8 +70,14 @@ async function adoptOne(store: Store, execute: Execute, records: DependabotAdopt
     const memoKey = bot.refusalMemo?.key(store, p);
     if (memoKey && refusalStands(record, memoKey, store.clock.now()))
         return;
-    if (auto && !record && waitsQuietly(await bot.refusal(store, execute, p)))
-        return;
+    if (auto && !record) {
+        // A failed read leaves no record: this PR is qualified again next poll, and the other PRs and bots still run.
+        let refused: string;
+        try { refused = await bot.refusal(store, execute, p); }
+        catch (error) { store.emit(`${bot.id}-unavailable`, `${bot.label} PR #${pr.number} could not be qualified; adoption skipped it this poll: ${String(error)}`, 'pm', ''); return; }
+        if (waitsQuietly(refused))
+            return;
+    }
     if (!record)
         records.push(record = { id: crypto.randomUUID(), pr: pr.number, url: pr.url, title: pr.title, issue: 0, status: 'adopting', detail: `${bot.label} PR #${pr.number} adoption started.`, at: new Date().toISOString(), ...(bot.id !== 'dependabot' ? { bot: bot.id } : {}) });
     if (!store.state.coordination!.adoptions!.includes(record)) store.state.coordination!.adoptions!.push(record);

@@ -26,6 +26,23 @@ test('each Azure project shows its own Jira / Azure binding and its resolved pol
   // The legacy single card is only a fallback for a summary without per-project bindings.
   expect(html.match(/Jira \/ Azure binding/g)).toHaveLength(2);
 });
+test('each GitHub project card shows its effective bot adoption; a legacy summary and Azure show none', () => {
+  const policy = { merge: 'harness' as const, handsOff: true, checkpoint: { hour: 17, weekends: true } };
+  const github = (id: string, autoAdopt?: { bots: ('dependabot' | 'pin-courier' | 'wiki-sync')[]; source: 'explicit' | 'default' | 'none' }) =>
+    ({ ...config.projects[1], id, name: `Project ${id}`, policy: { ...policy, handsOff: autoAdopt?.source !== 'none' }, ...(autoAdopt ? { autoAdopt } : {}) });
+  const projects = [github('default', { bots: ['dependabot', 'pin-courier', 'wiki-sync'], source: 'default' }), github('subset', { bots: ['wiki-sync', 'pin-courier'], source: 'explicit' }),
+    github('empty', { bots: [], source: 'explicit' }), github('inactive', { bots: [], source: 'none' }), github('legacy'), config.projects[0]];
+  const html = render({ status: 'ready', config: { ...config, projects } });
+  const card = (name: string) => html.split('<article').find(article => article.includes(`>${name}</strong>`))!;
+  const row = (name: string) => /<dt[^>]*>Bot adoption<\/dt><dd[^>]*>([^<]*)<\/dd>/.exec(card(name))?.[1];
+  expect(row('Project default')).toBe('Dependabot, pin-courier, wiki-sync (default for hands-off)');
+  expect(row('Project subset')).toBe('wiki-sync, pin-courier (explicit)');
+  expect(row('Project empty')).toBe('None (explicit)');
+  expect(row('Project inactive')).toBe('Inactive');
+  expect(card('Project legacy')).not.toContain('Bot adoption');
+  expect(card('CEC')).not.toContain('Bot adoption');
+  expect(html.match(/Bot adoption/g)).toHaveLength(4);
+});
 test('shows an empty holds list and omits the binding without an Azure project', () => {
     const html = render({ status: 'ready', config: { ...config, projects: [config.projects[1]], holds: [] } });
     expect(html).toContain('No holds are configured'); expect(html).not.toContain('Jira / Azure binding');
