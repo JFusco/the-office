@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -75,9 +75,24 @@ test('each later gate refuses on its own, in order, with nothing admitted and no
         ['ownership', world => ({ proof: { ...world.proof, owner: { ...world.proof.owner, pass: 'another-pass' } } }), 'codex', 'ownership-unproven'],
         ['stopped', world => { stopGeneration(world.paths, world.proof, 'claude', claudeGeneration(CLAUDE_TOKEN), 'sign-in-rejected'); return {}; }, 'claude', 'profile-stopped'],
         ['sign-in', world => { writeFileSync(world.where.claudeToken, 'two words\n'); return {}; }, 'claude', 'sign-in-invalid'],
+        ['status reread', world => {
+            // Recovery reads the status; Claude's own reread fails, before the malformed token is ever opened.
+            updateStatus(world.paths, world.proof, () => {});
+            writeFileSync(world.where.claudeToken, 'two words\n');
+            let statusOpens = 0;
+            observers.current = { opened: (path, fd) => {
+                if (path === world.where.claudeToken) tokenOpens++;
+                if (path !== statusPath(world.paths) || ++statusOpens !== 2) return;
+                closeSync(fd);
+                throw Object.assign(new Error('synthetic status reread failure'), { code: 'EIO' });
+            } };
+            return {};
+        }, 'claude', 'handoff-unrecoverable'],
     ];
+    let tokenOpens = 0;
     for (const [name, change, provider, reason] of cases) {
         const world = readerWorld();
+        tokenOpens = 0;
         try {
             const setup = world.setup(change(world));
             const opinion = await collectTriage({ budgeted: gatedBudgeted(setup), round: 1, provider, input: frozen() });
@@ -85,7 +100,8 @@ test('each later gate refuses on its own, in order, with nothing admitted and no
             expect(rows(world.paths), name).toEqual([]);
             expect(world.calls, name).toEqual([]);
             expect(existsSync(join(world.paths.runs)) ? readdirSync(world.paths.runs).filter(id => existsSync(runAuthPath(join(world.paths.runs, id)))) : [], name).toEqual([]);
-        } finally { world.lock.release(); }
+            if (name === 'status reread') expect(tokenOpens, name).toBe(0);
+        } finally { observers.current = {}; world.lock.release(); }
     }
 });
 
@@ -334,7 +350,14 @@ test('a pass that loses its lock while the group is alive stops waiting and leav
     const world = readerWorld();
     try {
         const before = readFileSync(world.where.codexAuth, 'utf8');
-        const opinion = await triage(world, 'codex', { groupState: group => { if (group === 999_999) world.lock.release(); return 'alive'; } });
+        // The first inspection loses the lock with the group alive; a second would find it gone.
+        let inspections = 0;
+        const opinion = await triage(world, 'codex', { groupState: () => {
+            if (++inspections > 1) return 'absent';
+            world.lock.release();
+            return 'alive';
+        } });
+        expect(inspections).toBe(1);
         expect(opinion).toMatchObject({ status: 'unavailable', reason: 'the call failed: the reader process group could not be confirmed exited' });
         expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: { phase: 'launched', group: 999_999 } } });
         expect(rows(world.paths)).toMatchObject([{ final: 0, receipt_total: null }]);
@@ -493,7 +516,7 @@ test('generation stops and a replacement enrollment prevent dispatch after admis
 });
 
 test('retirement validates its parent and syncs removal before clearing the durable claim', async () => {
-    for (const mode of ['ordered', 'sync-fault', 'unsafe-parent'] as const) {
+    for (const mode of ['ordered', 'sync-fault', 'unsafe-parent', 'claim-replaced'] as const) {
         const world = readerWorld(), execute = world.setup().executor;
         const events: string[] = [];
         let credential: string, directory: number | undefined;
@@ -512,6 +535,13 @@ test('retirement validates its parent and syncs removal before clearing the dura
                         directory = undefined;
                         expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: { phase: 'retiring' } } });
                         if (mode === 'sync-fault') throw new Error('synthetic provider directory sync fault');
+                        if (mode === 'claim-replaced') {
+                            // Another holder rewrites the claim between removal and clearing, unobserved.
+                            const watching = observers.current;
+                            observers.current = {};
+                            updateStatus(world.paths, world.proof, status => { status.active = { ...status.active!, owner: { ...status.active!.owner, pass: 'pass-2' } }; });
+                            observers.current = watching;
+                        }
                     },
                     rename: path => {
                         if (path === statusPath(world.paths) && events.at(-1) === 'sync') events.push('clear');
@@ -520,9 +550,11 @@ test('retirement validates its parent and syncs removal before clearing the dura
                 return stdout;
             } });
             expect(opinion.status).toBe(mode === 'ordered' ? 'valid' : 'unavailable');
-            expect(events).toEqual(mode === 'ordered' ? ['unlink', 'sync', 'clear'] : mode === 'sync-fault' ? ['unlink', 'sync'] : []);
+            expect(events).toEqual(mode === 'ordered' ? ['unlink', 'sync', 'clear'] : mode === 'unsafe-parent' ? [] : ['unlink', 'sync']);
             expect(existsSync(join(world.calls[0].env.CODEX_HOME, 'sessions'))).toBe(true);
-            expect(readStatus(world.paths)).toMatchObject({ ok: true, status: { active: mode === 'ordered' ? null : expect.any(Object) } });
+            expect(readStatus(world.paths)).toMatchObject({ ok: true, status: {
+                active: mode === 'ordered' ? null : mode === 'claim-replaced' ? { phase: 'retiring', owner: { pass: 'pass-2' } } : expect.any(Object),
+            } });
             expect(existsSync(credential!)).toBe(mode === 'unsafe-parent');
         } finally { observers.current = {}; world.lock.release(); }
     }

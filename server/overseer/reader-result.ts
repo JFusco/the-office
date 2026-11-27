@@ -86,7 +86,7 @@ export class ReaderStream {
 
     private line(text: string): void {
         const event = parseLine(text);
-        if (this.provider === 'claude' && event?.type === 'result' && event.session_id === this.session) this.terminal = event;
+        if (this.provider === 'claude' && this.session !== null && event?.type === 'result' && event.session_id === this.session) this.terminal = event;
         const start = this.provider === 'claude' ? event?.type === 'system' && event.subtype === 'init' : event?.type === 'thread.started';
         if (!start) return;
         this.sawSession = true;

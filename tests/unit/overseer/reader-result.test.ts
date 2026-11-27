@@ -117,18 +117,22 @@ test('a linked sessions directory is an accounting gap and is never listed', () 
 test('a failed call keeps a charge only for its bound session\'s terminal, and a fault freezes the binding', () => {
     const stream = new ReaderStream('claude', () => {}, () => {});
     expect(stream.failureReceipt()).toBeNull();
+    // A charged terminal that names no session, before any start, is never paired with the session bound later.
+    stream.push(lines(result({ session_id: null, total_cost_usd: 9, modelUsage: { 'claude-opus-5-5': { costUSD: 9, costBasis: 'list' } } })));
     stream.push(lines(init()));
     expect(stream.failureReceipt()).toBeNull();
     stream.push(lines(result()));
-    expect(stream.failureReceipt()).toEqual({ evidenceId: 's1', cost: expect.objectContaining({ completeness: 'complete' }) });
+    expect(stream.failureReceipt()).toEqual({ evidenceId: 's1', cost: expect.objectContaining({ completeness: 'complete', microUsd: 500_000 }) });
     const bind = vi.fn(), faulted = new ReaderStream('claude', bind, () => {});
     faulted.push(lines(init('not a session id'), init()));
     expect(bind).not.toHaveBeenCalled();
     expect(faulted).toMatchObject({ session: null, sawSession: true, fault: 'the reader reported an unusable session identifier' });
 });
 
-test('any gap in the rollout inventory suppresses the verdict while the bound session stays priced', () => {
+test('any gap in the rollout inventory suppresses the verdict and leaves the bound session only partly priced', () => {
     const run = codexRun(), day = join(run.provider, 'sessions', '2026', '11', '27');
     symlinkSync(join(day, 'rollout-0-t1.jsonl'), join(day, 'linked'));
-    expect(codexOutcome(lines(started, completed), 't1', run, codex)).toMatchObject({ ok: false, reason: 'the rollout inventory could not be verified', receipt: { evidenceId: 't1' } });
+    expect(codexOutcome(lines(started, completed), 't1', run, codex)).toMatchObject({
+        ok: false, reason: 'the rollout inventory could not be verified', receipt: { evidenceId: 't1', cost: { completeness: 'partial', microUsd: null } },
+    });
 });
