@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -6,6 +6,7 @@ import { DeploymentFence } from '../../../server/office/deployment-fence';
 import { projectById } from '../../../server/office/projects';
 import { runtimeRevision } from '../../../server/office/revision';
 import { controllerEffects } from '../../../server/release/controller-effects';
+import { CONTROLLER_RUNTIME } from '../../../server/release/controller-start-check';
 import type { DeployContext } from '../../../server/release/deploy-context';
 import { DeployFacts } from '../../../server/release/deploy-facts';
 import { fileDigest, writeManifest } from '../../../server/release/release-manifest';
@@ -14,6 +15,7 @@ import { SERVICE_LABEL } from '../../../server/release/service-plist';
 import { recordAdmission } from '../../../server/store/admission-journal';
 import { ControlStore } from '../../../server/store/control-store';
 import { Store } from '../../../server/store/store';
+import { command } from '../../../server/workers/process';
 
 export const FROM = 'a'.repeat(40), TO = 'b'.repeat(40), PIN = 'c'.repeat(40);
 
@@ -42,13 +44,22 @@ export interface World {
     close: () => void;
 }
 
-/** A release directory with a manifest that verifies; `marker` makes its runtime hash distinct. */
-export function buildFakeRelease(dataRoot: string, commit: string, marker = commit): string {
+/**
+ * A release directory with a manifest that verifies; `marker` makes its runtime hash distinct. `runtime`, when
+ * given, is the release's controller runtime source; the release then loads with the checkout's installed tsx.
+ */
+export function buildFakeRelease(dataRoot: string, commit: string, marker = commit, runtime?: string): string {
     const directory = releaseDirectory(dataRoot, commit);
     mkdirSync(resolve(directory, 'server/release'), { recursive: true });
     writeFileSync(resolve(directory, 'server/index.ts'), `export const release = '${marker}';\n`);
     writeFileSync(resolve(directory, 'server/release/controller-entry.ts'), 'export {};\n');
     writeFileSync(resolve(directory, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
+    if (runtime !== undefined) {
+        writeFileSync(resolve(directory, 'package.json'), '{ "type": "module" }\n');
+        writeFileSync(resolve(directory, CONTROLLER_RUNTIME), runtime);
+        mkdirSync(resolve(directory, 'node_modules'), { recursive: true });
+        if (!existsSync(resolve(directory, 'node_modules/tsx'))) symlinkSync(realpathSync(resolve(__dirname, '../../../node_modules/tsx')), resolve(directory, 'node_modules/tsx'), 'dir');
+    }
     writeManifest(directory, { version: 1, commit, hash: runtimeRevision(directory).hash, node: '24.14.0', pnpm: '10.34.9', lockfile: fileDigest(resolve(directory, 'pnpm-lock.yaml')), builtAt: '2026-11-19T12:00:00.000Z' });
     return directory;
 }
@@ -138,13 +149,60 @@ export function world(behaviour: Behaviour = {}): World {
     return world;
 }
 
-export type RunnerCall = { program: string; args: string[]; cwd?: string; env?: Record<string, string>; timeout?: number };
+export type RunnerCall = { program: string; args: string[]; cwd?: string; env?: Record<string, string>; timeout?: number; readOnly?: boolean };
 /** A command runner that records each call and answers with `answer`. */
 export function fakeRunner(answer: (call: RunnerCall) => string | Promise<string>) {
     const calls: RunnerCall[] = [];
-    const execute = (async (program: string, args: string[], options: any = {}) => { const call = { program, args, cwd: options.cwd, env: options.env, timeout: options.timeout }; calls.push(call); return answer(call); }) as DeployContext['execute'];
+    const execute = (async (program: string, args: string[], options: any = {}) => { const call = { program, args, cwd: options.cwd, env: options.env, timeout: options.timeout, readOnly: options.readOnly }; calls.push(call); return answer(call); }) as DeployContext['execute'];
     return { calls, execute };
 }
+
+/** Whether a call is a controller start check (`controller-start-check.ts`) rather than a launch. */
+export const isStartCheck = (call: RunnerCall) => !!call.args.at(-1)?.endsWith(CONTROLLER_RUNTIME);
+
+/**
+ * `fakeRunner` for controller launches. Each start check is answered by `check`, which passes by default, and
+ * kept in `checks`; every other call is answered by `answer` and kept in `calls`. `log` holds both, in order.
+ */
+export function launchRunner(answer: (call: RunnerCall) => string | Promise<string>, check: (call: RunnerCall) => string | Promise<string> = () => '') {
+    const calls: RunnerCall[] = [], checks: RunnerCall[] = [];
+    const { calls: log, execute } = fakeRunner(call => isStartCheck(call) ? (checks.push(call), check(call)) : (calls.push(call), answer(call)));
+    return { calls, checks, log, execute };
+}
+
+/**
+ * Runs a start check for real, from `directory` with `dataRoot` only, and refuses anything else. Vitest's variables
+ * are removed and NODE_ENV is production, so the release's configuration rules run as they would in a deployment.
+ */
+export const realStartCheck = (directory: string, dataRoot: string) => (call: RunnerCall) => {
+    if (!isStartCheck(call) || call.cwd !== directory || call.env?.OFFICE_DATA_ROOT !== dataRoot) throw new Error(`unexpected command ${call.program} ${call.args.join(' ')}`);
+    return command(call.program, call.args, { cwd: call.cwd, env: { ...call.env, NODE_ENV: 'production' }, envRemove: ['VITEST', 'VITEST_POOL_ID', 'VITEST_WORKER_ID'], timeout: Math.min(call.timeout ?? 60_000, 60_000), readOnly: call.readOnly });
+};
+
+/** The message the incident's controller release threw for an `autoAdopt` it did not support. */
+export const AUTO_ADOPT_REJECTED = 'Project autoAdopt must list unique supported dependency bots on a GitHub project';
+
+/**
+ * A controller runtime that checks `autoAdopt` against `bots` as it loads, the way a release's `localBindings`
+ * does, then prints the bots it read. `depth` throws from that many nested calls, giving the error a long stack.
+ */
+export const autoAdoptRuntime = (bots: string[], depth = 0) => `import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+Error.stackTraceLimit = Infinity;
+const supported = ${JSON.stringify(bots)};
+const config = JSON.parse(readFileSync(resolve(process.env.OFFICE_DATA_ROOT, 'office-config.json'), 'utf8'));
+const check = depth => {
+    if (depth > 0) return check(depth - 1);
+    for (const project of config.projects ?? [])
+        if (project.autoAdopt !== undefined && (project.provider !== 'github' || project.autoAdopt.some(bot => !supported.includes(bot)) || new Set(project.autoAdopt).size !== project.autoAdopt.length))
+            throw new Error(${JSON.stringify(AUTO_ADOPT_REJECTED)});
+};
+check(${depth});
+console.log(JSON.stringify((config.projects ?? []).flatMap(project => project.autoAdopt ?? [])));
+`;
+
+/** A complete GitHub project entry for office-config.json that adopts `bots`. */
+export const autoAdoptConfig = (bots: string[]) => `${JSON.stringify({ projects: [{ id: 'demo', name: 'Demo', provider: 'github', repo: '/nonexistent/demo', repository: 'example/demo', target: 'main', autoAdopt: bots }] }, null, 2)}\n`;
 /** What a controller prints: progress lines, then its outcome as the last line. */
 export const printedOutcome = (status: string, operation = 'deploy-20261120t030000z-0a0b0c0d') => `{"step":"fence"}\n${JSON.stringify({ status, operation, step: null, reason: 'done' })}\n`;
 export const sampleFacts = (controller: string) => DeployFacts.parse({

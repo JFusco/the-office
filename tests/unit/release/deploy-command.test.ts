@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { writeControllerPin } from '../../../server/release/controller-pin';
@@ -11,7 +11,7 @@ import { newOperationId } from '../../../server/release/operation-id';
 import { RELEASE_FLOOR } from '../../../server/release/release-floor';
 import { writeDeployStop } from '../../../server/release/deploy-stop';
 import { releaseDirectory } from '../../../server/release/release-paths';
-import { buildFakeRelease, fakeRunner as runner, printedOutcome as outcome, sampleFacts as facts, type RunnerCall as Call } from './deploy-world';
+import { AUTO_ADOPT_REJECTED, autoAdoptConfig, autoAdoptRuntime, buildFakeRelease, isStartCheck, launchRunner, printedOutcome as outcome, realStartCheck, sampleFacts as facts, type RunnerCall as Call } from './deploy-world';
 
 const PIN = 'c'.repeat(40), NEWER = 'd'.repeat(40), TARGET = 'b'.repeat(40), OP = 'deploy-20261120t030000z-0a0b0c0d';
 const roots: string[] = [];
@@ -25,17 +25,20 @@ function dataRoot() {
 const REPO = '/checkout';
 /** What the checkout's history says of a target: it holds the floor, it is below it, the history is shallow, or git cannot say. */
 type History = 'holds' | 'below' | 'shallow' | 'unreadable';
-/** Runs the command with a fake machine: `calls` are the controller launches, `git` the history reads. */
-const command = async (root: string, args: string[], answer: (call: Call) => string = () => outcome('deployed'), history: History = 'holds') => {
-    const lines: string[] = [], git: Call[] = [], { calls, execute } = runner(call => {
+/**
+ * Runs the command with a fake machine: `calls` are the controller launches, `checks` the controller start checks
+ * (answered by `check`, passing by default), `git` the history reads and `log` all of them in order.
+ */
+const command = async (root: string, args: string[], answer: (call: Call) => string = () => outcome('deployed'), history: History = 'holds', check?: (call: Call) => string | Promise<string>) => {
+    const lines: string[] = [], git: Call[] = [], { calls, checks, log, execute } = launchRunner(call => {
         if (call.program !== 'git') return answer(call);
         git.push(call);
         if (history === 'unreadable') throw new Error('git exited 128: fatal: not a git repository');
         if (call.args.includes('--is-shallow-repository')) return `${history === 'shallow'}\n`;
         return call.args[0] === 'rev-parse' ? `${call.args.at(-1)!.slice(0, 40)}\n` : history === 'below' ? `${RELEASE_FLOOR}\n` : '';
-    });
+    }, check);
     const code = await deployCommand(args, { execute, dataRoot: root, repo: REPO, log: line => lines.push(line), now: () => new Date('2026-11-20T03:00:00.000Z') });
-    return { code, calls: calls.filter(call => call.program !== 'git'), git, text: lines.join('\n') };
+    return { code, calls: calls.filter(call => call.program !== 'git'), checks, log, git, text: lines.join('\n') };
 };
 
 test('deploy COMMIT launches the pinned controller, even when the target carries newer controller code', async () => {
@@ -169,3 +172,57 @@ test('only deploy COMMIT reads history: resume, end, pin and status launch or an
     expect(await command(root, ['status'], undefined, 'below')).toMatchObject({ code: 0, git: [], calls: [] });
     expect(await command(root, [], undefined, 'below')).toMatchObject({ code: 0, git: [], calls: [], text: expect.stringContaining('[--below-floor]') });
 });
+
+/** What each call in a command's log was. */
+const kind = (call: Call) => call.program === 'git' ? 'git' : isStartCheck(call) ? 'check' : 'controller';
+
+test('each launch first checks the controller it will run: a deploy after the floor check, a resume or end the one its journal recorded', async () => {
+    const root = dataRoot();
+    writeControllerPin(root, PIN);
+    const deployed = await command(root, [TARGET], echoed);
+    expect(deployed.code).toBe(0);
+    expect(deployed.log.map(kind)).toEqual(['git', 'git', 'git', 'git', 'check', 'controller']);
+    expect(deployed.checks.map(call => call.cwd)).toEqual([releaseDirectory(root, PIN)]);
+    expect((await command(root, [TARGET, '--below-floor'], echoed, 'below')).log.map(kind)).toEqual(['check', 'controller']);
+    startDeployJournal(root, OP, ['fence', 'stop'], facts(PIN));
+    writeControllerPin(root, NEWER);
+    const resumed = await command(root, ['resume', OP], () => outcome('deployed'));
+    const ended = await command(root, ['end', OP], call => outcome('ended', call.args.at(-1)));
+    for (const run of [resumed, ended]) {
+        expect(run.code).toBe(0);
+        expect(run.log.map(call => [kind(call), call.cwd])).toEqual([['check', releaseDirectory(root, PIN)], ['controller', releaseDirectory(root, PIN)]]);
+    }
+});
+
+test('a command refused before it launches, pin and status check no controller', async () => {
+    const root = dataRoot();
+    expect(await command(root, [TARGET])).toMatchObject({ code: 1, checks: [] });
+    expect(await command(root, ['pin', PIN])).toMatchObject({ code: 0, checks: [] });
+    expect(await command(root, ['status'])).toMatchObject({ code: 0, checks: [] });
+    expect(await command(root, [TARGET], undefined, 'below')).toMatchObject({ code: 1, checks: [] });
+    expect(await command(root, ['resume', OP])).toMatchObject({ code: 1, checks: [] });
+    writeDeployStop(root, { operation: OP, step: 'stop', reason: 'bootout unconfirmed', instruction: 'look first' });
+    expect(await command(root, [TARGET])).toMatchObject({ code: 1, checks: [] });
+});
+
+test('deploy refuses, writing nothing, a config its pinned controller rejects, and deploys once the config is one that release accepts', async () => {
+    const root = dataRoot(), pinned = releaseDirectory(root, PIN), config = resolve(root, 'office-config.json');
+    // The pinned release predates Dependabot adoption; the target is a different release.
+    buildFakeRelease(root, PIN, PIN, autoAdoptRuntime(['pin-courier', 'wiki-sync']));
+    writeControllerPin(root, PIN);
+    writeFileSync(config, autoAdoptConfig(['dependabot']));
+    const refused = await command(root, [TARGET], echoed, 'holds', realStartCheck(pinned, root));
+    expect(refused).toMatchObject({ code: 1, calls: [] });
+    expect(refused.checks).toHaveLength(1);
+    const { reason } = JSON.parse(refused.text);
+    expect(JSON.parse(refused.text)).toMatchObject({ status: 'refused', step: null });
+    expect(reason).toContain(`Controller release ${PIN} `);
+    expect(reason).toContain(`Error: ${AUTO_ADOPT_REJECTED}`);
+    expect(existsSync(deployPaths(root).directory)).toBe(false);
+    const accepted = autoAdoptConfig(['pin-courier']);
+    writeFileSync(config, accepted);
+    const deployed = await command(root, [TARGET], echoed, 'holds', realStartCheck(pinned, root));
+    expect(deployed.code).toBe(0);
+    expect(deployed.log.filter(call => call.program !== 'git').map(kind)).toEqual(['check', 'controller']);
+    expect(readFileSync(config, 'utf8')).toBe(accepted);
+}, 60_000);
