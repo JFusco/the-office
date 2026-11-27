@@ -2,7 +2,11 @@
 topics: [releases-and-incidents]
 plans: [2026-11-27-overseer-phase-7d-runner-playbook-jfusco-the-office-714-c8a5b2443d.md]
 issue: 'https://github.com/jfusco/the-office/issues/714'
-issues: ['https://github.com/jfusco/the-office/issues/714', 'https://github.com/jfusco/the-office/issues/690']
+issues:
+  [
+    'https://github.com/jfusco/the-office/issues/714',
+    'https://github.com/jfusco/the-office/issues/690',
+  ]
 ---
 
 # Overseer phase 7d: the runner playbook
