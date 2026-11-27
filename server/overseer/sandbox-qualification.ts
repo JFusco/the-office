@@ -324,13 +324,19 @@ function matchesPolicy(rules: string, run: RunDirectories, digest: string): bool
     catch { return false; }
 }
 
-/** The shipped gate remains closed until the dependency is pinned and runner-owned host receipts exist. */
+/**
+ * The shipped gate is closed. The recorded host (2026-11-26) failed outer qualification, and no
+ * qualifying runner-owned receipts exist (docs/overseer.md, Phase 7 exit).
+ */
 export const SANDBOX_STATUS = {
     status: 'unqualified',
-    reason: 'The sandbox runtime pin and runner-owned host receipts are outstanding',
+    reason: 'The recorded host failed outer sandbox qualification and qualifying runner-owned receipts are missing',
     runtime: SANDBOX_RUNTIME,
     profiles: { [READER_PROFILES.claude.id]: 'outer-unqualified', [READER_PROFILES.codex.id]: 'outer-unqualified' },
     knownBlockers: [
+        'outer: launchd was reachable under the tested policy (a real /bin/launchctl query reached launchd)',
+        'outer: credential-item access was untested, and the runtime base profile permits the com.apple.securityd.xpc and com.apple.SecurityServer lookups',
+        'outer: shared-temp writes were inconclusive (/tmp/claude was absent; both spellings are in the runtime default write set and the policy denyWrite)',
         'codex-reader: a Seatbelt profile cannot be applied inside another on Darwin 24.3 (sandbox_apply: Operation not permitted, exit 71), so a command-capable Codex reader stays unqualified',
         'claude-reader: no inner receipt shows its restrictions applied to the actual binary',
     ],

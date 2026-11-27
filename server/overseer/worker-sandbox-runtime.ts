@@ -9,10 +9,15 @@ import { physicalPath, within } from './runner-root';
  * files, never executed. It establishes location only. Which bytes are installed is recorded by the
  * qualification that later runs them (docs/overseer.md, Worker sandbox).
  *
- * The reviewed version is an expectation for resolution. The fixture-only delivery adds no dependency.
+ * The repository pins this version exactly in `package.json` and `pnpm-lock.yaml`, with the lockfile
+ * integrity below. That is the release the 2026-11-26 host battery ran, and a unit test keeps the
+ * three in step. Lookup reads files only.
  */
 
-export const SANDBOX_RUNTIME = { name: '@anthropic-ai/sandbox-runtime', version: '0.0.83', bin: 'srt', cli: 'dist/cli.js', javaAgent: 'vendor/java-proxy-agent/srt-proxy-agent.jar' } as const;
+export const SANDBOX_RUNTIME = {
+    name: '@anthropic-ai/sandbox-runtime', version: '0.0.83', bin: 'srt', cli: 'dist/cli.js', javaAgent: 'vendor/java-proxy-agent/srt-proxy-agent.jar',
+    integrity: 'sha512-yEusORnVJrNseF/9fvjVYyk6tr79/aFbIB3T/X8p2puLZdaaiGNeYN50v0CE+1DT70v7XuzKOAnTivh1f5cksA==',
+} as const;
 
 export type SandboxRuntime =
     | { status: 'available'; node: string; installation: string; packageRoot: string; cli: string; javaAgentJar: string; version: string }
