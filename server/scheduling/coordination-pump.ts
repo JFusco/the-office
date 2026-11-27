@@ -18,6 +18,9 @@ import { BrainFollowup } from '../maintenance/brain/brain-followup';
 import type { Coordinator } from './coordination';
 import { deliverySource, withGitHubSource } from '../github/call-scope';
 import { ReviewResult } from './coordination';
+import { captureGitHubFailures } from '../github/refusal-capture';
+import { queuedRetry } from '../delivery/attempts/retry-binding';
+import { enterBoundRetry } from '../delivery/attempts/retry-entry';
 
 export async function pump(this: Coordinator, selection?: string | { kind: 'delivery' | 'intake' | 'notice' | 'checkpoint' | 'followup' | 'recovery'; id: string }) {
     const selected = typeof selection === 'string' ? { kind: 'delivery', id: selection } : selection;
@@ -31,13 +34,20 @@ export async function pump(this: Coordinator, selection?: string | { kind: 'deli
     this.engine.busy = true;
     try {
         const delivery = new GitHubDelivery(this.store, this.engine, this.execute);
+        const next = () => (!selected || selected.kind === 'delivery') && this.state.jobs!.find(j => j.status === 'queued' && !dependencyEligibility(j.prerequisites || [], this.dependencyStores(), new Date()) && (!focusedJobId || j.id === focusedJobId));
+        // A bound automatic retry enters under its claim before any provider dependency refresh (`retry-entry.ts`).
+        const retry = next();
+        if (retry && queuedRetry(retry)) {
+            await withGitHubSource(deliverySource(retry.stage), () => captureGitHubFailures(() => enterBoundRetry(delivery, retry, this.dependencyStores)));
+            return;
+        }
         if (this.state.jobs!.some(j => j.status === 'queued'))
             await withGitHubSource('dependency-refresh', () => delivery.refreshDependencies());
         if (this.store.state.paused)
             return;
-        const job = (!selected || selected.kind === 'delivery') && this.state.jobs!.find(j => j.status === 'queued' && !dependencyEligibility(j.prerequisites || [], this.dependencyStores(), new Date()) && (!focusedJobId || j.id === focusedJobId));
+        const job = next();
         if (job) {
-            await withGitHubSource(deliverySource(job.stage), () => delivery.step(job));
+            await withGitHubSource(deliverySource(job.stage), () => captureGitHubFailures(() => delivery.step(job)));
             return;
         }
         if ((!selected || selected.kind === 'notice') && this.state.notices?.entries.some(n => n.status === 'queued' && (!selected || n.id === selected.id))) {

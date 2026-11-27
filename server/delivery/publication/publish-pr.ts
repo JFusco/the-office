@@ -1,7 +1,7 @@
 import { verifyRepairCandidate } from '../repairs/delivery-repairs';
 import { verifyCIHooks } from '../repairs/ci-checkout';
 import { assertDeliveryMayMutate } from '../harness/guards';
-import { harnessEffect } from '../harness/effect';
+import { activeEffectId, harnessEffect } from '../harness/effect';
 import { retryRead } from '../harness/read-retry';
 import { lintPRContent, prContent } from './pr-body';
 import { createdContentSha256 } from './created-content';
@@ -10,6 +10,8 @@ import { publishMetadata } from './publish-metadata';
 import { recordedPush } from './record-push';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { readPublication } from './read-command';
+import { assertExistingPublication } from './existing-publication';
+import { activeRetry } from '../attempts/retry-binding';
 import type { command } from '../../workers/process';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
@@ -30,6 +32,12 @@ function assertCandidate(store: Store, jobs: TicketJob[], job: TicketJob, candid
 async function remoteHead(execute: Execute, candidate: Candidate): Promise<string> {
     const line = (await execute('git', ['ls-remote', '--heads', 'origin', `refs/heads/${candidate.branch}`], { cwd: candidate.worktree, timeout: 60000, readOnly: true })).trim();
     return line ? line.split(/\s+/)[0] : '';
+}
+
+/** This candidate's push was sent and not yet read back: its intent is still dispatching or uncertain. */
+function pushUnread(store: Store, job: TicketJob, head: string): boolean {
+    const intent = store.getEffect(activeEffectId(store, `harness:${job.id}:push:${head}`));
+    return !!intent && ['dispatching', 'uncertain'].includes(intent.status);
 }
 
 /** Repository pre-push hooks run full verification (Brain runs lint, format, architecture and its test suite). */
@@ -74,12 +82,16 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
         const p = await readPublication(store, execute, job, root, 'pull-request');
         if (p.state !== 'open' || p.head?.ref !== branch || p.base?.ref !== target)
             throw new Error(`PR #${job.pr} is not open on ${branch} targeting ${target}; reconcile before publication`);
+        // An automatic retry establishes the PR's identity and native link before it pushes, edits or moves anything.
+        if (activeRetry(job)?.mode === 'draft') await assertExistingPublication(store, execute, job, root, job.pr, branch, p);
         let pushed = false;
         if (p.head.sha !== head) {
             await execute('git', ['merge-base', '--is-ancestor', p.head.sha, head], { cwd: worktree, timeout: 30000, readOnly: true });
             await pushOnce(store, execute, jobs, job, candidate);
             pushed = true;
         }
+        // A push whose response was lost is settled by reading the branch under its own intent; nothing is pushed again.
+        else if (pushUnread(store, job, head)) await pushOnce(store, execute, jobs, job, candidate);
         const updated = await retryRead(async () => { const current = await readPublication(store, execute, job, root, 'pull-request'); return current.head?.sha === head ? current : null; });
         if (!updated)
             throw new Error(`PR #${job.pr} head did not update to ${head}`);
@@ -91,10 +103,11 @@ export async function publishCandidate(store: Store, execute: Execute, jobs: Tic
     const adoptable = prior.filter((pr: any) => pr.state === 'OPEN' && pr.headRefOid === head && pr.baseRefName === target);
     if (prior.length && adoptable.length !== 1)
         throw new Error(`Branch ${branch} already has a different PR; reconcile before publication`);
+    if (adoptable.length === 1 && activeRetry(job)?.mode === 'draft') await assertExistingPublication(store, execute, job, root, adoptable[0].number, branch);
     const remote = await remoteHead(execute, candidate);
     if (remote && remote !== head)
         throw new Error(`Remote ${branch} is at ${remote.slice(0, 7)}, not the reviewed candidate; reconcile before publication`);
-    if (!remote)
+    if (!remote || pushUnread(store, job, head))
         await pushOnce(store, execute, jobs, job, candidate);
     if (adoptable.length === 1)
         return { pr: adoptable[0].number, url: adoptable[0].url, pushed: !remote, created: false };

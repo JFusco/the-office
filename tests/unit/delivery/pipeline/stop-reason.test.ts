@@ -60,6 +60,31 @@ describe('classifyStop', () => {
     });
 });
 
+describe('classifyStop for transient GitHub reads', () => {
+    it('saves every gh status a later read can outlast as transient, GH-376\'s exact text included', () => {
+        expect(classifyStop(new Error('gh exited 1: gh: HTTP 499'))).toBe('transient');
+        for (const status of ['408', '429', '499', '500', '502', '503', '504']) {
+            expect(classifyStop(new Error(`gh exited 1: gh: HTTP ${status}`)), status).toBe('transient');
+            expect(classifyStop(new CommandFailure(`gh exited 1: gh: HTTP ${status}`, 'other', true)), status).toBe('transient');
+        }
+        expect(classifyStop(new CommandFailure('gh exited 1: gh: Resource not accessible by integration (HTTP 403)', 'permission', true))).toBe('authority');
+        expect(classifyStop(new Error('gh exited 1: gh: Resource not accessible by integration (HTTP 403)'))).toBe('unclassified');
+    });
+
+    it('classifies a write\'s uncertainty before any temporary read, typed or worded', () => {
+        // The wording harnessEffect uses after a failed read-back.
+        expect(classifyStop(new Error('github-pr-create for JFusco/x:codex/5 is unverified after read-back; it will not be resent'))).toBe('uncertain-effect');
+        // A typed transient read whose words say a write is unconfirmed is not a read.
+        expect(classifyStop(new CommandFailure('gh read timed out; previous action outcome needs read-back', 'transient-read', true))).toBe('uncertain-effect');
+        expect(classifyStop(new CommandFailure('Board transition needs read-back: gh: HTTP 499', 'transient-read', true))).toBe('uncertain-effect');
+        // A failed write carrying the same HTTP text keeps its uncertainty.
+        expect(classifyStop(new CommandFailure('gh exited 1: gh: HTTP 499', 'uncertain-effect', true))).toBe('uncertain-effect');
+        expect(classifyStop(new Error('Board transition needs read-back: gh: HTTP 499'))).toBe('uncertain-effect');
+        // The approach guard's exact rejection is still excepted.
+        expect(classifyStop(APPROACH_GUARD_REJECTION)).toBe('unclassified');
+    });
+});
+
 describe('stopReason', () => {
     it('saves the kind with the harness clock time', () => {
         expect(stopReason(new SourceClosed('closed'), false, new Date('2026-11-15T12:00:00Z'))).toEqual({ kind: 'source-closed', at: '2026-11-15T12:00:00.000Z' });

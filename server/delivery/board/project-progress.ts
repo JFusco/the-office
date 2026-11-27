@@ -1,4 +1,6 @@
 import { assertDeliveryMayMutate } from '../harness/guards';
+import { laneWrite, moveCardOnce } from './lane-effect';
+import { NOT_AT_TARGET } from '../attempts/draft-retry';
 import {command} from '../../workers/process';
 import type {Store} from '../../store/store';
 import type {TicketJob,BoardUpdate} from '../../../src/shared';
@@ -15,7 +17,8 @@ export class ProjectProgress {
  }
  async reconcile(job:TicketJob){
   for(const update of job.boardUpdates||[])if(update.status!=='verified'){
-   if(await this.value(update.item,update.field)!==update.option)throw new Error('Previous board transition remains uncertain; read back the saved attempt before another write');
+   // A move a recovery read back as not at its target stays a person's: the read never becomes a write.
+   if(await this.value(update.item,update.field)!==update.option)throw new Error(update.readBack?.outcome==='not-at-target'?`Board transition was ${NOT_AT_TARGET}; a person resolves it`:'Previous board transition remains uncertain; read back the saved attempt before another write');
    update.status='verified';update.detail='Original board transition verified by read-back; no mutation repeated.';this.store.save();
   }
  }
@@ -41,15 +44,17 @@ export class ProjectProgress {
   if(!item)throw new Error('Issue has no existing card on its configured board; no card was created');
   const update:BoardUpdate={stage:job.stage,head:job.head,project:project.id,item:item.id,field:field.id,option:options[0].id,target:options[0].name,at:new Date().toISOString(),status:'verified',detail:'In review lane already verified.'};
   const current=await this.value(item.id,field.id),currentLane=field.options.find((o:any)=>o.id===current)?.name?.toLowerCase();
+  const operation={id:`${job.stage}:${job.head}:in-review`};
+  const written=laneWrite(this.store,job,operation,item.id);
+  if(current!==update.option&&written==='verified')
+   throw new Error(`Issue card left ${update.target} after this operation's verified move; the harness will not move it again`);
   if(!['ready','in progress','in review'].includes(currentLane||''))throw new Error('Current board lane is deferred, done or unclassified; preserve the human lane before review');
   guard();
-  if(current!==update.option){
-   update.status='pending';update.detail='Board review transition started; outcome requires read-back.';(job.boardUpdates??=[]).push(update);this.store.save();
-   try{
-    await this.graphql(`mutation($project:ID!,$item:ID!,$field:ID!,$option:String!){updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$option}}){projectV2Item{id}}}`,{project:project.id,item:item.id,field:field.id,option:update.option},false);
-    if(await this.value(item.id,field.id)!==update.option)throw new Error('Review lane could not be verified');
-    update.status='verified';update.detail='In review lane verified after the Office claimed this review.';
-   }catch(error){update.status='uncertain';update.detail=String(error);this.store.save();throw new Error(`Board transition needs read-back: ${String(error)}`);}
+  // The issue card's move is one harness Effect bound to this stage, head and lane: one dispatch, read back, never resent.
+  // A write sent earlier under the same operation is reconciled by reading, even when the card already shows the lane.
+  if(current!==update.option||written==='unread'){
+   await moveCardOnce(this.store,this.execute,job,item.id,{projectId:project.id,fieldId:field.id,options:field.options},options[0],operation,guard,update);
+   update.detail='In review lane verified after the Office claimed this review.';
   }else(job.boardUpdates??=[]).push(update);
   const board=this.store.state.github?.board,card=board?.items.find(i=>i.number===Number(job.key.slice(3))&&i.repository===this.store.project.repository);if(card)card.status=update.target;
   this.store.emit('review-board-status',`${job.key}: ${update.target} verified; Sam has claimed ${job.pr?`PR #${job.pr}`:'the candidate'} for review.`,'lead',job.key);

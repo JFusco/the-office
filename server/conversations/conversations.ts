@@ -1,5 +1,6 @@
 import { supersedingDelivery } from './slack/supersession-proof';
 import { projectOutbox } from './outbox';
+import { currentOutbox } from './current-outbox';
 import { PickupSchema } from '../delivery/intake/pickup';
 import { z } from 'zod';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -48,7 +49,8 @@ export class Conversations {
             this.store.ticket(data.ticket);
         }
         if (data.actionId) {
-            const action = projectOutbox(this.store.state).find(a => a.id === data.actionId);
+            // A delivery action is validated against the outbox as served: the one Joe sees is the one accepted.
+            const action = (data.actionId.startsWith('ticket-job:') ? currentOutbox(this.store) : projectOutbox(this.store.state)).find(a => a.id === data.actionId);
             if (!action || action.ticket !== data.ticket)
                 throw new Error('Outbox item does not match this conversation');
             if (action.status !== 'open')

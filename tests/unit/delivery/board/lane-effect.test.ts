@@ -110,3 +110,14 @@ test('an earlier unread write is not confirmed against an option the board has s
     expect(sent).toEqual(['issue-card']);
     expect(effects().find(effect => effect.id === unread.id)?.status).toBe('uncertain');
 });
+
+test('a move of this card saved before its Effect existed and never settled authorizes no first write', async () => {
+    const { f, job, sent, execute } = board();
+    const { moveCardOnce } = await import('../../../../server/delivery/board/lane-effect');
+    f.state.cards[0].status = 'progress';
+    job.boardUpdates = [{ stage: job.stage, head: job.head, project: 'project', item: 'issue-card', field: 'status', option: 'done', target: 'Done', at: '2026-11-24T18:00:00Z', status: 'uncertain', detail: 'gh exited 1: gh: HTTP 499' }];
+    const update = { ...job.boardUpdates[0], status: 'verified' as const, detail: '' };
+    await expect(moveCardOnce(f.store, execute as any, job, 'issue-card', { projectId: 'project', fieldId: 'status', options: f.state.lanes }, { id: 'done', name: 'Done' }, operation, () => {}, update))
+        .rejects.toThrow('has no settled record; it is left unread');
+    expect(sent).toEqual([]);
+});

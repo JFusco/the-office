@@ -6,6 +6,7 @@ import { readinessNeedsFollowup } from '../../../src/work/work-summary';
 import { REFUSED_RECEIPT } from '../../cec/qa/refused-result';
 import type { StopFacts } from '../expected-block';
 import { normalizeCause } from '../normalize-cause';
+import { decidedFor, type DeliveryRetryDecision } from '../../delivery/attempts/delivery-retry';
 
 /** What the record behind a piece of scheduled work says about why it is not running. */
 export interface StoppedRecord {
@@ -85,9 +86,11 @@ const issue = (project: string, key: string): WorkRef[] => /^GH-\d+$/.test(key) 
 /**
  * Finds the record a scheduled item stands for and reads its stop from typed fields. A saved stop
  * is read only while the record's status makes it current. Returns null for work with no retained
- * record of its own; the caller then has only the scheduler's reason, of unknown origin.
+ * record of its own; the caller then has only the scheduler's reason, of unknown origin. `retry` is the
+ * owning store's current delivery retry decision, which stopped work passes and repair handling does not:
+ * a repair reads the original stop.
  */
-export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: string): StoppedRecord | null {
+export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: string, retry?: DeliveryRetryDecision): StoppedRecord | null {
     const c = state.coordination, project = work.projectId;
     const base = { standing: 'stopped', key: '', author: 'harness', kind: '', stop: null, head: '', lastWorker: '', facts: {}, covers: [], effects: [work] } satisfies Partial<StoppedRecord>;
     const worker = (id: string | undefined): [string, string][] => id ? [['worker', id]] : [];
@@ -121,11 +124,14 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
             const stop = active || job.status === 'watching' && ['provider-checks', 'pr-not-ready'].includes(job.stop?.kind ?? '') ? job.stop ?? null : null;
             // The stop repeats a saved result of the stage, a metadata assessment or a CI diagnosis saved outside its steps.
             const model = followup || active && !failed(run) && (repeats(job.detail, result) || assessment?.outcome === 'blocked' && includes(job.detail, assessment.summary) || includes(job.detail, job.ciRepairs?.at(-1)?.plan?.summary));
-            const repair = deliveryRepairProjection(job);
+            const repair = deliveryRepairProjection(job), decided = decidedFor(retry, job) ? retry : undefined;
             return { ...base, standing: active || job.status === 'watching' && (!!stop || approval || followup) ? 'stopped' : 'gated', stage: job.stage, key: job.key, keys: job.pr ? [`GH-${job.pr}`] : [], text: job.detail, identity: approval ? MERGE_APPROVAL : undefined, author: approval ? 'harness' : model ? 'model' : 'harness',
                 kind: approval ? 'merge-approval' : followup ? 'readiness' : model ? result?.resolution?.kind ?? result?.outcome ?? 'blocked' : stop?.kind ?? '', stop, head: job.head, lastWorker: run?.id ?? '', episode: stop?.at ?? job.updatedAt ?? job.requestedAt,
-                facts: { ...(model ? { resolution: followup ? undefined : result?.resolution?.kind } : { stopKind: stop?.kind }), parked: job.parked, mergeApproval: approval, retrying: pending(job.retry), exhausted: !!job.retry?.exhausted }, covers: worker(run?.id), effects: [work, ...issue(project, job.key)],
-                retryAt: repair && 'retryAt' in repair ? repair.retryAt : undefined, prerequisites: job.prerequisites, uncertainWrite: job.steps.some(step => jobWriteUnconfirmed(step.stage, step.result)), failure: failed(run) ? run!.failure!.category : undefined };
+                facts: { ...(model ? { resolution: followup ? undefined : result?.resolution?.kind } : { stopKind: stop?.kind }), parked: job.parked, mergeApproval: approval,
+                    // The owning store's current decision for this stop, when the reader passed one; otherwise the saved timer.
+                    ...(decided ? { retrying: decided.state === 'pending' && !!job.retry?.nextAt, exhausted: decided.state === 'exhausted', deliveryRetry: decided.state } : { retrying: pending(job.retry), exhausted: !!job.retry?.exhausted }) },
+                covers: worker(run?.id), effects: [work, ...issue(project, job.key)],
+                retryAt: decided?.state === 'pending' && job.retry?.nextAt ? job.retry.nextAt : repair && 'retryAt' in repair ? repair.retryAt : undefined, prerequisites: job.prerequisites, uncertainWrite: job.steps.some(step => jobWriteUnconfirmed(step.stage, step.result)), failure: failed(run) ? run!.failure!.category : undefined };
         }
         const request = state.deliveryQueue?.find(request => request.id === work.id);
         if (!request) return null;

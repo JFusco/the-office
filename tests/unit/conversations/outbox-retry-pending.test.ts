@@ -147,3 +147,60 @@ test('an unpublished harness-worded park with an unconfirmed comment or card mov
     expect(detail(job({ stop: undefined, detail: 'Error: x', parked: harnessPark({ stopped: 'The park sends nothing more: automatic pickup is turned off. Restore it, then ask for review-pr to finish the park.' }) }))?.detail).toContain('automatic pickup is turned off. Restore it');
     expect(detail(job({ stop: undefined, detail: 'Error: x', parked: harnessPark() }))?.title).toBe('Read back GH-173 delivery');
 });
+
+test('with the owning store, the outbox and reply validation follow the current delivery retry decision, not the raw timer', async () => {
+    const { transientDraft } = await import('../delivery/attempts/retry-fixture');
+    const { cleanupFakes } = await import('../delivery/support/fake-github');
+    const { currentOutbox } = await import('../../../server/conversations/current-outbox');
+    const { Conversations } = await import('../../../server/conversations/conversations');
+    const { reconcileReadRetries } = await import('../../../server/scheduling/read-retries');
+    try {
+        const { f, job } = transientDraft();
+        f.store.state.paused = false;
+        const id = `ticket-job:${job.id}`, open = () => currentOutbox(f.store).find(action => action.id === id && action.status === 'open');
+        // Long past the planner's grace with nothing planned: the stop is shown, and saved as displayed.
+        expect(open()?.title).toBe(`Read back ${job.key} delivery`);
+        f.store.state.outbox = currentOutbox(f.store);
+        reconcileReadRetries(f.store, new Date());
+        expect(job.retry!.nextAt).toBeTruthy();
+        // A positive pending decision hides it, and a reply to the action Joe saw before is refused.
+        expect(open()).toBeUndefined();
+        f.store.state.paused = true;
+        expect(open()).toBeUndefined();
+        const conversations = new Conversations(f.store, f.engine);
+        const reply = () => conversations.enqueue({ id: crypto.randomUUID(), role: 'pm', ticket: job.key, actionId: id, body: 'Please retry it' });
+        expect(reply).toThrow(/already resolved|does not match/);
+        // A matching write becomes unsettled while the timer is still saved: the action is Joe's again, with the reason.
+        f.store.db.prepare('INSERT INTO effects(id, work_key, status, body) VALUES(?, ?, ?, ?)').run(`harness:${job.id}:push:x`, `${f.store.project.id}:delivery:${job.id}`, 'uncertain', JSON.stringify({ attemptId: job.id }));
+        expect(job.retry!.nextAt).toBeTruthy();
+        expect(open()?.detail).toContain('Automatic retry: A write of this job is unsettled in the Effects ledger.');
+        f.store.state.paused = false;
+        f.store.state.outbox = currentOutbox(f.store);
+        expect(reply()).toMatchObject({ actionId: id, status: 'queued' });
+        // The same unsettled write withdraws the timer on the next pass.
+        reconcileReadRetries(f.store, new Date());
+        expect(job.retry!.nextAt).toBe('');
+        expect(job.retry!.withdrawn?.reason).toContain('unsettled');
+    } finally { cleanupFakes(); }
+});
+
+test('an exhausted or ineligible delivery retry names its reason to Joe; one with retries left stays hidden', async () => {
+    const { transientDraft } = await import('../delivery/attempts/retry-fixture');
+    const { cleanupFakes } = await import('../delivery/support/fake-github');
+    const { currentOutbox } = await import('../../../server/conversations/current-outbox');
+    try {
+        const exhausted = transientDraft();
+        exhausted.f.store.state.paused = false;
+        exhausted.job.retry = { attempts: 3, nextAt: '', history: [], exhausted: true, stage: 'draft', head: exhausted.job.head, limit: 3 };
+        expect(currentOutbox(exhausted.f.store).find(action => action.id === `ticket-job:${exhausted.job.id}`)?.detail).toContain('Automatic retry: The retry allowance for this stage and head is spent.');
+        const parked = transientDraft();
+        parked.f.store.state.paused = false;
+        parked.job.mergeAttempt = { head: parked.job.head, at: STOPPED };
+        expect(currentOutbox(parked.f.store).find(action => action.id === `ticket-job:${parked.job.id}`)?.detail).toContain('Automatic retry: A merge was attempted.');
+        const pending = transientDraft();
+        pending.f.store.state.paused = false;
+        pending.job.retry = { attempts: 4, nextAt: new Date(Date.now() + 900_000).toISOString(), history: [], exhausted: false, stage: 'draft', head: pending.job.head, limit: 6 };
+        Object.assign(pending.job, { detail: 'Error: gh exited 1: gh: HTTP 503' });
+        expect(currentOutbox(pending.f.store).find(action => action.id === `ticket-job:${pending.job.id}` && action.status === 'open')).toBeUndefined();
+    } finally { cleanupFakes(); }
+});

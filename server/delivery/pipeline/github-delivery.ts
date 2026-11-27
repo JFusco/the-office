@@ -21,6 +21,8 @@ import { writerRestartInstruction } from '../attempts/restart-instruction';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { stopReason } from './stop-reason';
+import { endDeliveryQuota, noteDeliveryStop } from '../attempts/stop-evidence';
+import { assertNoModelFallback } from '../attempts/retry-entry';
 import { redispatchSavedAssessment } from '../recovery/redispatch-assessment';
 import { finishMetadataPark } from '../parking/finish-metadata-park';
 import { inspectMetadataPark, recordMetadataParkIssueStop } from '../parking/inspect-metadata-park';
@@ -208,6 +210,7 @@ export class GitHubDelivery {
                 }
                 const wait = await readReviewWait(this, job, reviewed);
                 if (wait) {
+                    endDeliveryQuota(job);
                     applyReviewWait(job, wait, this.store.clock.now());
                     // The observer must queue the review afresh once the PR is reviewable, whatever it last saw.
                     delete job.lastPRFingerprint;
@@ -281,7 +284,7 @@ export class GitHubDelivery {
             const candidateAtStart = JSON.stringify({ id: job.id, stage: job.stage, head: job.head, branch: job.branch, worktree: job.worktree });
             const expectedHead = job.head;
             const harnessResult = await savedQAResult(this, job) ?? await runHarnessStage(this, job, root, readyChecks);
-            if (!harnessResult) assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead);
+            if (!harnessResult) { assertNoModelFallback(job); assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead); }
             const result: StageResult = harnessResult ?? await this.engine.agents.run(role, deliveryTask({ store: this.store, project, job, root, issue, instructions, policyInstruction, discoveryNote, technicalPhase, recoveredFindingIds }), ResultSchema, { officeQA: job.stage === 'validate', artifactsRoot: root, cwd: job.worktree || project.repo, readOnly: ['review', 'lead-pr'].includes(job.stage), ticket: job.key, stage: `github-${job.stage}`, requestId: job.id, enqueuedAt: job.requestedAt, timeout: qaTimeLimit(job.stage === 'validate', job.approach) ?? 60 * 60 * 1000, inactivityTimeout: STAGE_STALL_LIMIT_MS });
             if (job.stage === 'validate' && !harnessResult) saveQAReport(result, officeQADirectory(root, 'validate', job.steps.filter(s => s.stage === 'validate').length), root);
             try { assertDeliveryMayMutate(this.store, this.jobs, job, expectedHead); }
@@ -300,6 +303,7 @@ export class GitHubDelivery {
             job.detail = String(error);
             // Only a job kept watching is labelled a provider wait; the same read anywhere else is a stop like any other.
             job.stop = stopReason(waiting && error instanceof CheckStillFinishing ? new CurrentChecksWait(error.message) : error, this.store.state.paused, this.store.clock.now());
+            noteDeliveryStop(this.store, job, error, this.store.clock.now());
             this.store.emit(waiting ? 'github-checks-waiting' : 'github-delivery-blocked', shortSummary(job.detail), 'pm', job.key);
         }
         finally {

@@ -4,23 +4,17 @@ import { resolve } from 'node:path';
 import { z } from 'zod';
 import { PrerequisitesSchema } from '../delivery/pipeline/dependencies';
 import { ATTEMPT_DELAYS_MS } from '../delivery/attempts/attempt-backoff';
+import { deliveryRetryDecision, readOnlyStageJob } from '../delivery/attempts/delivery-retry';
+import { planDeliveryRetry } from '../delivery/attempts/plan-delivery-retry';
+import { unsettledEffects } from '../operations/unsettled-effects';
+import { incompleteReadOutput, temporaryReadFailure } from './temporary-read';
 import type { Store } from '../store/store';
 import type { ReadRetry, TicketJob } from '../../src/shared';
+export { incompleteReadOutput, temporaryReadFailure, readOnlyStageJob };
 const MAX_READ_RETRIES = 3;
 /** How long a retryable stop may wait for the planner's timer before it is shown to a person: the slower tick is about a minute. */
 export const RETRY_PLAN_GRACE_MS = 120000;
 export const IntakeResult = z.object({ outcome: z.enum(['ready', 'owned', 'blocked', 'held']), ownershipChecked: z.boolean(), owner: z.string(), summary: z.string(), evidence: z.array(z.string()).min(1), prerequisites: PrerequisitesSchema, existingWork: z.object({ projectId: z.string(), kind: z.enum(['pr', 'native-session', 'native-run', 'maintenance']), id: z.string(), evidence: z.string() }).strict().nullable() }).strict();
-/** A read-only worker cut off by the model's output limit produced no effects; re-running the read is safe. */
-export function incompleteReadOutput(text: string) {
-    return /codex exited 1: Incomplete response returned, reason: max_output_tokens/i.test(text);
-}
-export function temporaryReadFailure(text: string) {
-    return !/(?:hold|backlog|prerequisite|permission|denied|forbidden|unauthorized|oauth|token|ownership|active owner|uncertain|mutation|must be reconciled|external effects)/i.test(text) && /(?:timed? out|timeout|read stopped producing output|ECONNRESET|ECONNREFUSED|EAI_AGAIN|connection (?:reset|closed|failed)|error connecting|HTTP 50[234]|rate.limit|(?:Error: )?codex exited 1: Selected model is at capacity\. Please try a different model\.)/i.test(text);
-}
-/** A job at a read-only review stage with nothing written or unsettled: the only kind whose stop is retried here. */
-export function readOnlyStageJob(job: Pick<TicketJob, 'stage' | 'mergeAttempt' | 'steps'>): boolean {
-    return ['review', 'lead-pr'].includes(job.stage) && !job.mergeAttempt && !job.steps.some(s => s.result.receipts.some(r => r.uncertain || !r.verified && !/^(?:get|read|query|inspect)\b/i.test(r.action)));
-}
 /**
  * True while the Office will retry this job's stop by itself: a temporary read failure at a read-only
  * review stage, with retries left, whether or not the next one has been scheduled yet. The retries are
@@ -96,12 +90,17 @@ export function reconcileReadRetries(store: Store, now = new Date()) {
             store.emit('read-retry', `${r.key}: ${r.retry?.exhausted ? 'read retries exhausted; team follow-up required' : r.status === 'queued' ? 'safe read retry queued' : `read retry scheduled for ${r.retry?.nextAt}`}.`, 'pm', r.key);
         }
     }
+    // Delivery jobs alone get the delivery policy: the counted 5xx tail, the uncounted quota wait and draft retries
+    // (`server/delivery/attempts/`). Intake above and offline activation keep the three short attempts.
+    let ledger: ReturnType<typeof unsettledEffects> | undefined;
+    const unsettled = () => ledger ??= unsettledEffects(store);
     for (const j of c.jobs || []) {
-        if (!readOnlyStageJob(j) || store.state.workLog?.some(w => w.requestId === j.id && w.status === 'running'))
+        if (store.state.workLog?.some(w => w.requestId === j.id && w.status === 'running'))
             continue;
-        if (planReadRetry(j, now)) {
+        const event = planDeliveryRetry(j, deliveryRetryDecision(store, j, now, unsettled), now);
+        if (event) {
             changed = true;
-            store.emit('read-retry', `${j.key}: read-only review ${j.retry?.exhausted ? 'retries exhausted' : j.status === 'queued' ? 'retry queued' : `retry scheduled for ${j.retry?.nextAt}`}.`, 'lead', j.key);
+            store.emit('read-retry', `${j.key}: ${j.stage} ${event}.`, 'lead', j.key);
         }
     }
     if (changed)

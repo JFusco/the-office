@@ -29,6 +29,16 @@ test('an uncertain board write is read back on its original identity and never r
  await expect(a.progress.reviewStarted(a.job)).rejects.toThrow('remains uncertain');expect(a.writes()).toBe(1);
  a.lane('review');await a.progress.reviewStarted(a.job);expect(a.writes()).toBe(1);expect(a.job.boardUpdates!.every((u:any)=>u.status==='verified')).toBe(true);
 });
+test('a live card that left the verified review lane surfaces a conflict and does not report a second success', async () => {
+ const a = setup();
+ await a.progress.reviewStarted(a.job);
+ const updates = a.job.boardUpdates!.length;
+ a.lane('progress');
+ await expect(a.progress.reviewStarted(a.job)).rejects.toThrow('Issue card left In review');
+ expect(a.writes()).toBe(1);
+ expect(a.job.boardUpdates).toHaveLength(updates);
+ expect(a.store.state.events.filter(event => event.kind === 'review-board-status')).toHaveLength(1);
+});
 test('a same-number foreign card or a Backlog hold cannot be moved by review dispatch',async()=>{
  const a=setup();a.foreign();await expect(a.progress.reviewStarted(a.job)).rejects.toThrow('no existing card');expect(a.writes()).toBe(0);
  const b=setup();b.lane('backlog');await expect(b.progress.reviewStarted(b.job)).rejects.toThrow('deferred');expect(b.writes()).toBe(0);
@@ -37,4 +47,25 @@ test('a same-number foreign card or a Backlog hold cannot be moved by review dis
 test('claim loss during the final board read prevents both the transition intent and write',async()=>{
  const a=setup();a.onRead(query=>{if(query.includes('fieldValues'))for(const claim of a.store.activeClaims())a.store.finishClaim(claim.id,'stopping');});
  await expect(a.progress.reviewStarted(a.job)).rejects.toThrow('scheduler claim');expect(a.writes()).toBe(0);expect(a.job.boardUpdates).toBeUndefined();
+});
+
+test('the review card move is one harness Effect bound to the stage, head and lane, dispatching while it is sent and never resent',async()=>{
+ const a=setup(),seen:string[]=[];
+ a.onRead(()=>{});
+ const before=a.writes();
+ a.onRead(query=>{if(query.includes('fieldValues'))seen.push(...(a.store.db.prepare("SELECT id,status FROM effects").all() as {id:string;status:string}[]).map(row=>`${row.id}=${row.status}`));});
+ await a.progress.reviewStarted(a.job);
+ expect(a.writes()).toBe(before+1);
+ const id=`harness:${a.job.id}:review:${a.job.head}:in-review:lane:item`;
+ // The read-back after the write sees the intent the write was sent under.
+ expect(seen).toContain(`${id}=dispatching`);
+ expect(a.store.getEffect(id)).toMatchObject({status:'verified',operation:'github-project-status',payload:{project:'project',item:'item',field:'status',option:'review',head:a.job.head}});
+ // A lost response leaves the Effect for read-back; it is reconciled by reading, never sent again.
+ const b=setup();b.timeout();
+ await expect(b.progress.reviewStarted(b.job)).rejects.toThrow('read-back');
+ const lost=`harness:${b.job.id}:review:${b.job.head}:in-review:lane:item`;
+ expect(b.store.getEffect(lost)?.status).toBe('uncertain');
+ b.lane('review');await b.progress.reviewStarted(b.job);
+ expect(b.writes()).toBe(1);
+ expect(b.store.getEffect(lost)?.status).toBe('verified');
 });

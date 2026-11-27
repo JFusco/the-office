@@ -18,6 +18,11 @@ export interface StopFacts {
     retrying?: boolean;
     /** The Office's retry budget for this stop is spent: nothing further is planned. */
     exhausted?: boolean;
+    /**
+     * The current delivery retry decision for this exact stop (`server/delivery/attempts/delivery-retry.ts`), when the
+     * reader has one. `pending`: the Office retries it by itself; `ineligible` and `exhausted`: it will not.
+     */
+    deliveryRetry?: 'none' | 'pending' | 'ineligible' | 'exhausted';
     question?: boolean;
 }
 
@@ -31,6 +36,10 @@ export function expectedWait(facts: StopFacts): ExpectedWait | null {
     if (facts.hold || facts.stopKind === 'hold' || facts.resolution === 'human-hold') return 'hold';
     if (facts.stopKind === 'paused' || facts.cause === 'paused') return 'pause';
     if (facts.stopKind === 'authority' || facts.resolution === 'permission' || ['authentication', 'permission', 'ownership'].includes(facts.failure ?? '')) return 'authentication';
+    // A positive delivery retry decision is the Office's own retry: a scheduled card read-back of a saved move, or a
+    // wait for GitHub's quota, is not the uncertain write or provider wait it recovers from. A person's decision and
+    // an unfinished prerequisite still come first; an unrelated unsettled write makes the decision negative.
+    if (facts.deliveryRetry === 'pending' && !facts.parked?.published && facts.cause !== 'dependency' && !facts.question) return 'retry';
     if (facts.stopKind === 'uncertain-effect' || facts.cause === 'unconfirmed' || facts.resolution === 'uncertain-effect' || facts.failure === 'uncertain-effect') return 'uncertain-effect';
     // A park on a provider's own wait is still that wait, not a question for a person.
     if (facts.parked?.published) return facts.parked.release ? 'prerequisite' : facts.resolution === 'provider-wait' ? 'provider-wait' : 'decision';
@@ -39,6 +48,8 @@ export function expectedWait(facts: StopFacts): ExpectedWait | null {
     if (facts.cause === 'needs-decision' || facts.resolution === 'scope') return 'decision';
     // A provider that refused a run at its usage limit takes work again by itself, at a time it stated or not.
     if (['provider-checks', 'pr-not-ready'].includes(facts.stopKind ?? '') || facts.resolution === 'provider-wait' || facts.failure === 'provider-limit') return 'provider-wait';
-    if (facts.retrying || !facts.exhausted && (facts.stopKind === 'transient' || facts.failure === 'transient-read')) return 'retry';
+    // A negative delivery decision means nothing is retried, whatever kind of stop it is.
+    const declined = facts.deliveryRetry === 'ineligible' || facts.deliveryRetry === 'exhausted';
+    if (facts.retrying || !declined && !facts.exhausted && (facts.stopKind === 'transient' || facts.failure === 'transient-read')) return 'retry';
     return null;
 }

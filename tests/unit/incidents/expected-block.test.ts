@@ -59,3 +59,19 @@ test('a spent retry budget is no retry, whatever the stop or the failure was; a 
     expect(expectedWait({ failure: 'transient-read', exhausted: true })).toBeNull();
     expect(expectedWait({ stopKind: 'transient', exhausted: true, retrying: true })).toBe('retry');
 });
+
+test('a positive delivery retry decision is the Office\'s own retry, above the uncertain write and provider wait it recovers from', () => {
+    expect(expectedWait({ stopKind: 'uncertain-effect', deliveryRetry: 'pending' })).toBe('retry');
+    expect(expectedWait({ failure: 'provider-limit', deliveryRetry: 'pending' })).toBe('retry');
+    // A person's restriction, authority loss and an unfinished prerequisite still come first.
+    for (const [facts, expected] of [[{ hold: true }, 'hold'], [{ mergeApproval: true }, 'merge-approval'], [{ stopKind: 'paused' }, 'pause'], [{ stopKind: 'authority' }, 'authentication'], [{ cause: 'dependency' }, 'prerequisite'], [{ parked: { published: true } }, 'decision']] as const)
+        expect(expectedWait({ stopKind: 'transient', deliveryRetry: 'pending', ...facts }), JSON.stringify(facts)).toBe(expected);
+    // Behind a prerequisite the stop keeps its own reading.
+    expect(expectedWait({ stopKind: 'uncertain-effect', deliveryRetry: 'pending', cause: 'dependency' })).toBe('uncertain-effect');
+    // A negative decision keeps the stop's own reading and suppresses the generic transient fallback.
+    expect(expectedWait({ stopKind: 'uncertain-effect', deliveryRetry: 'exhausted' })).toBe('uncertain-effect');
+    expect(expectedWait({ stopKind: 'uncertain-effect', deliveryRetry: 'ineligible' })).toBe('uncertain-effect');
+    expect(expectedWait({ stopKind: 'transient', deliveryRetry: 'ineligible' })).toBeNull();
+    expect(expectedWait({ stopKind: 'transient', deliveryRetry: 'exhausted' })).toBeNull();
+    expect(expectedWait({ stopKind: 'transient', deliveryRetry: 'none' })).toBe('retry');
+});

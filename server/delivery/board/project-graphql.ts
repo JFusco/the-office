@@ -46,12 +46,19 @@ export async function projectCards(store: Store, execute: Execute, projectId: st
     return found;
 }
 
-export async function cardStatus(store: Store, execute: Execute, item: string, field: string): Promise<string | undefined> {
-    const data = await projectGraphql(store, execute, `query($item:ID!){node(id:$item){... on ProjectV2Item{id fieldValues(first:100){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2SingleSelectField{id}}}} pageInfo{hasNextPage}}}}}`, { item });
+/** The fixed read of one card's single-select values; a draft's recorded card read uses it unchanged (`card-read.ts`). */
+export const CARD_STATUS_QUERY = `query($item:ID!){node(id:$item){... on ProjectV2Item{id fieldValues(first:100){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2SingleSelectField{id}}}} pageInfo{hasNextPage}}}}}`;
+
+/** The option a complete read of exactly this item shows for the field; undefined when the field has no value. */
+export function cardStatusFrom(data: any, item: string, field: string): string | undefined {
     const page = data?.node?.fieldValues;
     if (data?.node?.id !== item || page?.pageInfo?.hasNextPage !== false || !Array.isArray(page.nodes))
         throw new Error('Board status read-back coverage is incomplete');
     return page.nodes.find((n: any) => n?.field?.id === field)?.optionId;
+}
+
+export async function cardStatus(store: Store, execute: Execute, item: string, field: string): Promise<string | undefined> {
+    return cardStatusFrom(await projectGraphql(store, execute, CARD_STATUS_QUERY, { item }), item, field);
 }
 
 export async function setCardStatus(store: Store, execute: Execute, projectId: string, item: string, field: string, option: string): Promise<void> {

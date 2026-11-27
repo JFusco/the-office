@@ -10,9 +10,11 @@ import type { Store } from '../../store/store';
 import type { GitHubDelivery } from '../pipeline/github-delivery';
 import { accountRead, publicationReadArgs, readPublication } from './read-command';
 import { commentAuthor } from '../parking/park-comment';
+import { validCardRead } from './card-read';
 
 /** Trust only the ledger written during the original live assignment, matched byte for byte
- * to its owned artifact. Neither current source/revision nor a newly supplied file proves history. */
+ * to its owned artifact. Neither current source/revision nor a newly supplied file proves history.
+ * The v1 publication reads and a board recovery's recorded card read both qualify. */
 function protectedOriginalClaim(store: Store, job: TicketJob, root: string, claim: WorkClaim): boolean {
     if (!['completed', 'interrupted'].includes(claim.status) || claim.stage !== 'draft' || claim.lane !== 'delivery' ||
         !isDeepStrictEqual(claim.work, { projectId: store.project.id, kind: 'delivery', id: job.id }) ||
@@ -26,6 +28,8 @@ function protectedOriginalClaim(store: Store, job: TicketJob, root: string, clai
             const file = readBoundedNoFollowSync(path, 64 * 1024);
             if (!('text' in file) || file.text !== record.body) return false;
             const proof = JSON.parse(record.body);
+            // A board recovery's recorded card read is that claim's own first read (`card-read.ts`).
+            if (proof.protocol === 'draft-card-read-v1') return validCardRead(store, job, claim, proof);
             return proof.protocol === 'draft-publication-read-v1' && /^[a-f0-9]{64}$/.test(proof.revision) &&
                 proof.repository === store.project.repository && proof.jobId === job.id && proof.key === job.key &&
                 proof.issue === Number(job.key.slice(3)) && (proof.pr === job.pr || accountRead(proof.read) && proof.pr === 0) && proof.head === job.head &&

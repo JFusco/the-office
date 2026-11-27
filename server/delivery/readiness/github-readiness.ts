@@ -51,7 +51,7 @@ export async function verifyPR(this: GitHubDelivery, job: TicketJob, requireTarg
         throw new Error('Canonical PR identity is unavailable');
     if (p.base?.repo?.full_name !== this.store.project.repository || requireTarget && p.base.ref !== this.store.project.target)
         throw new Error('PR repository or target does not match this project');
-    const links = read ? await read('issue-links') : JSON.parse(await this.execute('gh', ['pr', 'view', String(job.pr), '--repo', this.store.project.repository, '--json', 'closingIssuesReferences'], { cwd: this.store.project.repo, timeout: 60000 }));
+    const links = read ? await read('issue-links') : JSON.parse(await this.execute('gh', ['pr', 'view', String(job.pr), '--repo', this.store.project.repository, '--json', 'closingIssuesReferences'], { cwd: this.store.project.repo, timeout: 60000, readOnly: true }));
     const issueUrl = `https://github.com/${this.store.project.repository}/issues/${Number(job.key.slice(3))}`;
     // GitHub does not populate closingIssuesReferences until a stacked PR targets
     // the default branch. A same-repository closing directive routes review only.
