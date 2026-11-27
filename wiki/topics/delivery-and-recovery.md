@@ -8,6 +8,8 @@ The Office can adopt eligible Context Wiki reconciliation PRs when a project opt
 
 Office writes are moving to the Office's own GitHub App identity one route at a time. Every route stays on the operator's login until a recorded qualification and explicit activation say otherwise, a route that was activated holds rather than silently writing as the operator, and a rollback must name its activation. See [the identity foundation](../journal/2026-11-26-app-identity-foundation.md).
 
+Dependency-bot PRs (Dependabot, pin-courier, wiki-sync) are [adopted automatically by default](../journal/2026-11-26-auto-adopt-defaults.md) on hands-off GitHub projects with a configured board; an explicit `autoAdopt` list narrows or disables it.
+
 ## Evidence
 
 - [Office process](../../docs/office-process.md)

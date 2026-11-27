@@ -1,4 +1,4 @@
-import { AUTO_ADOPT_BOTS } from '../delivery/intake/dependency-bots/auto-adopt';
+import { AUTO_ADOPT_BOTS } from '../delivery/intake/dependency-bots/effective-auto-adopt';
 import { projectListScope } from '../cec/intake-scope';
 import { assertFeaturePlanningConfig, type FeaturePlanningBindings } from '../features/progression/policy';
 import { existsSync, readFileSync } from 'node:fs';

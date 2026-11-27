@@ -47,8 +47,8 @@ export interface OfficeProject {
         number: number;
         url: string;
     };
-    /** Automation sources whose open PRs the Office adopts without a person moving each card. */
-    autoAdopt?: ('pin-courier' | 'wiki-sync')[];
+    /** Automation sources whose open PRs the Office adopts without a person moving each card. Omitted on a hands-off GitHub project: all of them; `[]`: none. */
+    autoAdopt?: ('dependabot' | 'pin-courier' | 'wiki-sync')[];
 }
 export interface AssignedIssue {
     key: string;
@@ -1003,9 +1003,11 @@ export const OFFICE_PREFERENCE_DEFAULTS: OfficePreferences = { quality: 'high', 
 /** Preference responses carry the service identity so a client can scope revision ordering. */
 export type OfficePreferencesResponse = OfficePreferences & { serviceInstanceId: string };
 /** Read-only public projection of the effective office configuration. */
-/** One project's resolved policy and, for a bound Jira/Azure project, its non-secret connection facts. */
+/** One project's resolved policy, a GitHub project's effective bot adoption and, for a bound Jira/Azure project, its non-secret connection facts. */
 export interface OfficeConfigProjectSettings {
     policy: { merge: 'human' | 'harness'; handsOff: boolean; checkpoint: { hour: number; weekends: boolean } };
+    /** The bots adopted without a person moving a card: as configured (`explicit`), every bot (`default`), or none because adoption is inactive (`none`). */
+    autoAdopt: { bots: ('dependabot' | 'pin-courier' | 'wiki-sync')[]; source: 'explicit' | 'default' | 'none' };
     jira: { site: string; projectKey: string; intakeStatuses: string[]; defaultPickup: string };
     azure: { organization: string; project: string };
 }

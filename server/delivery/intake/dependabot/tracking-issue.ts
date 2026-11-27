@@ -48,7 +48,7 @@ export async function findTrackingIssue(store: Store, execute: Execute, pr: numb
         throw new Error(`Dependency PR #${pr} has ${found.length} tracking issues; reconcile before adoption`);
     if (!found[0] || known && found[0].number !== known) return null;
     if (found[0].state !== 'open')
-        throw new Error(`Tracking issue #${found[0].number} for dependency PR #${pr} is closed; reopen it or move the PR card out of the pickup lane`);
+        throw new Error(`Tracking issue #${found[0].number} for dependency PR #${pr} is closed; reopen #${found[0].number} to resume its adoption`);
     return receipt(found[0]);
 }
 
@@ -57,7 +57,7 @@ export const trackingIssueTitle = (pr: DependabotPR) => pr.bot === 'wiki-sync' ?
 export function trackingIssueBody(pr: DependabotPR): string {
     const wiki = pr.bot === 'wiki-sync';
     return [
-        '## Summary', '', wiki ? `wiki-sync opened #${pr.number} (\`${pr.title}\`), a wiki reconciliation adopted under the project's automation policy.` : `${pr.bot === 'pin-courier' ? 'pin-courier' : 'Dependabot'} opened #${pr.number} (\`${pr.title}\`), a dependency update, and its card was moved to the pickup lane.`, '',
+        '## Summary', '', wiki ? `wiki-sync opened #${pr.number} (\`${pr.title}\`), a wiki reconciliation adopted under the project's automation policy.` : `${pr.bot === 'pin-courier' ? 'pin-courier' : 'Dependabot'} opened #${pr.number} (\`${pr.title}\`), a dependency update the Office adopted for delivery.`, '',
         '## Context', '', wiki ? 'The wiki PR already contains the reconciliation; this issue tracks its checks and delivery.' : 'The dependency PR already contains the implementation; this issue tracks its checks and delivery.', '',
         '## Details', '', `The Office adopts the existing PR instead of developing a duplicate: the guarded merge runs once the exact head passes its required GitHub checks and repository rules, without an added review or QA cycle. Merging #${pr.number} closes this issue.`, '',
         '## Expected Outcome', '', wiki ? 'The existing wiki reconciliation is delivered through the Office.' : 'The existing dependency update is delivered through the Office.', '',
@@ -100,8 +100,8 @@ export async function ensureTrackingIssue(store: Store, execute: Execute, record
 }
 
 /**
- * Puts the tracking issue's card and the PR's card in In review: the published PR is awaiting required GitHub checks and guarded merge.
- * Project automation may already have added the issue card in its default lane.
+ * Puts the tracking issue's card, added when missing, and the PR's card, only when the PR has one, in In review: the
+ * published PR is awaiting required GitHub checks and guarded merge. Project automation may already have added the issue card in its default lane.
  */
 export async function ensureReviewCards(store: Store, execute: Execute, record: { id: string }, issue: TrackingIssue, pr: number, pickupLane: string, guard: () => void | Promise<void>): Promise<void> {
     if (!store.project.githubProject)
