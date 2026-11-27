@@ -197,7 +197,7 @@ function receipts(providerName: ProviderIdentity['provider'] = 'claude', nesting
         mkdirSync(snapshotPath(run), { mode: 0o700 });
         return preparePolicy(sandboxPreparation({ ...world.input, ...extra, run }, { provider: providerName, programs }));
     };
-    return { profile, selection, facts, prepared, outer, inner, current, allocate };
+    return { profile, selection, facts, prepared, outer, outerExpected, inner, current, allocate };
 }
 
 test('a reader profile needs matching outer and inner receipts and all its restrictions', () => {
@@ -284,11 +284,46 @@ test('changes to host facts, rules, the program bytes or the exact invocation in
 
 test('simulated qualification leaves the shipped model gate closed', () => {
     expect(qualify(battery(), EXPECTED).status).toBe('qualified');
-    expect(modelDispatchGate()).toEqual({ open: false, reason: SANDBOX_STATUS.reason });
+    expect(modelDispatchGate()).toEqual({ open: false, reason: 'The recorded host failed outer sandbox qualification and qualifying runner-owned receipts are missing' });
     expect(SANDBOX_STATUS).toMatchObject({
         status: 'unqualified', runtime: { name: '@anthropic-ai/sandbox-runtime', version: '0.0.83' },
         profiles: { 'claude-reader': 'outer-unqualified', 'codex-reader': 'outer-unqualified' },
     });
+});
+
+test('the recorded 2026-11-26 host gaps leave the outer sandbox unqualified and refuse both readers', () => {
+    // A synthetic regression of host battery run 3 (wiki/journal/2026-11-27-overseer-phase-7f-sandbox-runtime-pin.md,
+    // "Host battery run 3"). Only the four rows below carry recorded outcomes. Bindings, refusal codes, controls and other
+    // proof fields come from the fixture, and so do the java-agent-reference, proxy-forwarding, parent-footprint and three
+    // cleanup rows: the host recorded a single aggregate cleanup.
+    const recorded: Record<string, Partial<Observation>> = {
+        'write-shared-tmp': { started: true, outcome: 'denied', control: 'unavailable', intact: true },
+        'write-private-shared-tmp': { started: true, outcome: 'inconclusive', control: 'unavailable', intact: true },
+        'credential-store': { started: false, outcome: 'inconclusive', control: 'unavailable' },
+        // Corrected: the report's row (denied, control failed) came from a copied launchctl that macOS killed; the real
+        // /bin/launchctl reached launchd (wiki/journal/2026-11-26-overseer-phase-7b-worker-sandbox.md).
+        'launchd-ipc': { started: true, outcome: 'allowed', control: undefined, refusalCode: undefined },
+    };
+    const failures: Record<string, string> = {
+        'write-shared-tmp': 'write-shared-tmp: its positive control unavailable',
+        'write-private-shared-tmp': 'write-private-shared-tmp: expected denied, saw inconclusive',
+        'credential-store': 'credential-store: payload start not confirmed',
+        'launchd-ipc': 'launchd-ipc: expected denied, saw allowed',
+    };
+    for (const provider of ['claude', 'codex'] as const) {
+        const { selection, facts, prepared, outer, outerExpected, inner } = receipts(provider, 'restricted');
+        const passing = battery(outerExpected, 'refused');
+        const host = (restored?: string) => passing.map(row => row.probe in recorded && row.probe !== restored ? { ...row, ...recorded[row.probe] } : row);
+        const result = qualify(host(), outerExpected);
+        expect(result, provider).toMatchObject({ status: 'unqualified', innerSeatbelt: 'unsupported' });
+        expect(result.failures, provider).toEqual(Object.values(failures));
+        expect(profileEligibility(selection, facts, prepared, { ...outer, qualification: result }, inner), provider)
+            .toEqual({ eligible: false, reason: 'outer-unqualified' });
+        // The inner receipt qualifies on its own, so the outer result is the only reason for the refusal.
+        expect(profileEligibility(selection, facts, prepared, outer, inner), provider).toEqual({ eligible: true });
+        for (const [probe, failure] of Object.entries(failures))
+            expect(qualify(host(probe), outerExpected).failures, `${provider} ${probe}`).toEqual(Object.values(failures).filter(other => other !== failure));
+    }
 });
 
 test('a malformed or mis-bound record makes an observation inconclusive, and a mis-bound row is reported once and judged no further', () => {

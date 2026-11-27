@@ -11,6 +11,9 @@ importers:
       3d-force-graph:
         specifier: 1.80.2
         version: 1.80.2
+      '@anthropic-ai/sandbox-runtime':
+        specifier: 0.0.83
+        version: 0.0.83
       '@hono/node-server':
         specifier: ^2.1.5
         version: 2.1.8(hono@4.13.18)
@@ -120,6 +123,16 @@ packages:
   3d-force-graph@1.80.2:
     resolution: {integrity: sha512-hStm8c4s2yLt0kj9JBLWLgLsJlS+G08AXTNeEw6YBD1kzCu4s1szwAZL9Z1tcPhVOlDkWliUzTuraBF86TmNCQ==}
     engines: {node: '>=12'}
+
+  '@anthropic-ai/sandbox-runtime@0.0.83':
+    resolution: {integrity: sha512-yEusORnVJrNseF/9fvjVYyk6tr79/aFbIB3T/X8p2puLZdaaiGNeYN50v0CE+1DT70v7XuzKOAnTivh1f5cksA==}
+    engines: {node: '>=22.12.0'}
+    hasBin: true
+    peerDependencies:
+      '@microsoft/mxc-sdk': ^1.0.1
+    peerDependenciesMeta:
+      '@microsoft/mxc-sdk':
+        optional: true
 
   '@axe-core/playwright@4.14.0':
     resolution: {integrity: sha512-SGUhG5PIHd2eMdpgBF2PyQLOhX+qyDR2PT4cmoS4Qk2ak+jX/rrSvst9l0PGv5WTHolKpUMvVmoHpr4cZgf1RQ==}
@@ -563,6 +576,9 @@ packages:
     resolution: {integrity: sha512-y+NCIRm2LvY4slUVWvGh1nujJ8RF/hEisIsq2mtUPgdQC4L701bq5hZGMhrpeXjACvwvO9tj5dJqhvM6TP9lbw==}
     engines: {node: '>=20'}
     hasBin: true
+
+  '@pondwader/socks5-server@1.0.10':
+    resolution: {integrity: sha512-bQY06wzzR8D2+vVCUoBsr5QS2U6UgPUQRmErNwtsuI6vLcyRKkafjkr3KxbtGFf9aBBIV2mcvlsKD1UYaIV+sg==}
 
   '@react-three/drei@10.7.9':
     resolution: {integrity: sha512-wP4Y6o58KFi+hT1zCfjJarRtPCT6WW/lo53WMiA/aCORuUvBzW916XsCtadnIB1KB+3IQNcDU5JeVh/gYb8MYw==}
@@ -1063,6 +1079,10 @@ packages:
 
   comma-separated-tokens@2.0.3:
     resolution: {integrity: sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg==}
+
+  commander@12.1.0:
+    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+    engines: {node: '>=18'}
 
   compare-func@2.0.0:
     resolution: {integrity: sha512-zHig5N+tPWARooBnb0Zx1MFcdfpyJrfTJ3Y5L+IFvUm8rM74hHz66z0gw0x4tijh5CorKkKUCnW82R2vmpeCRA==}
@@ -1764,6 +1784,10 @@ packages:
   ngraph.random@1.2.0:
     resolution: {integrity: sha512-4EUeAGbB2HWX9njd6bP6tciN6ByJfoaAvmVL9QTaZSeXrW46eNGA9GajiXiPBbvFqxUWFkEbyo6x5qsACUuVfA==}
 
+  node-forge@1.4.4:
+    resolution: {integrity: sha512-T6VRRpF3+czIGcXW/LOeoD7Ej28d8CF1UMEAbJyJRUtYMvyXAgxUPW2kbUibumvV9LiUQAznJOFyeYclzSJMMg==}
+    engines: {node: '>= 6.13.0'}
+
   node-releases@2.0.63:
     resolution: {integrity: sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==}
     engines: {node: '>=18'}
@@ -2247,6 +2271,9 @@ packages:
     resolution: {integrity: sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g==}
     engines: {node: '>=12'}
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
@@ -2297,6 +2324,13 @@ snapshots:
       three-render-objects: 1.44.1(three@0.187.0)
     transitivePeerDependencies:
       - preact-render-to-string
+
+  '@anthropic-ai/sandbox-runtime@0.0.83':
+    dependencies:
+      '@pondwader/socks5-server': 1.0.10
+      commander: 12.1.0
+      node-forge: 1.4.4
+      zod: 3.25.76
 
   '@axe-core/playwright@4.14.0(playwright-core@1.65.1)':
     dependencies:
@@ -2696,6 +2730,8 @@ snapshots:
   '@playwright/test@1.65.1':
     dependencies:
       playwright: 1.65.1
+
+  '@pondwader/socks5-server@1.0.10': {}
 
   '@react-three/drei@10.7.9(@react-three/fiber@9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.187.0))(@types/react@19.3.0)(@types/three@0.187.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.187.0)':
     dependencies:
@@ -3114,6 +3150,8 @@ snapshots:
   color-name@1.1.4: {}
 
   comma-separated-tokens@2.0.3: {}
+
+  commander@12.1.0: {}
 
   compare-func@2.0.0:
     dependencies:
@@ -3974,6 +4012,8 @@ snapshots:
 
   ngraph.random@1.2.0: {}
 
+  node-forge@1.4.4: {}
+
   node-releases@2.0.63: {}
 
   obug@3.0.0: {}
@@ -4446,6 +4486,8 @@ snapshots:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 21.1.1
+
+  zod@3.25.76: {}
 
   zod@4.6.7: {}
 
