@@ -34,7 +34,9 @@ export function projectOutbox(state: OfficeSnapshot, at = new Date(), reads?: im
     const awaitingRepair = (kind: Parameters<typeof repairFreeze>[1]['kind'], id: string) => !!repairFreeze(state, { kind, id }, at, reads);
     // A delivery stop the Office retries by itself is not a person's. With the owning store's current decision it is
     // hidden exactly while that decision is positive for this stop; without one, the saved timer stands as before.
-    const retrying = (j: TicketJob) => retries ? deliveryRetryPending(j, at, retries) && !state.paused : !!j.retry?.nextAt || readRetryPending(j, at) && !state.paused;
+    const retrying = (j: TicketJob) => retries
+        ? deliveryRetryPending(j, at, retries) && (!state.paused || !!j.retry?.nextAt)
+        : !!j.retry?.nextAt || readRetryPending(j, at) && !state.paused;
     const retryReason = (j: TicketJob) => { const decision = retries?.(j); return decision && decidedFor(decision, j) && ['ineligible', 'exhausted'].includes(decision.state) ? `\nAutomatic retry: ${decision.reason}.` : ''; };
     function item(id: string, title: string, detail: string, role: Role, ticket = '', url = '', ownerSteps?: HumanAction['ownerSteps']) {
         current.add(id);

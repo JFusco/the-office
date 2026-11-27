@@ -165,6 +165,8 @@ test('with the owning store, the outbox and reply validation follow the current 
         expect(job.retry!.nextAt).toBeTruthy();
         // A positive pending decision hides it, and a reply to the action Joe saw before is refused.
         expect(open()).toBeUndefined();
+        f.store.state.paused = true;
+        expect(open()).toBeUndefined();
         const conversations = new Conversations(f.store, f.engine);
         const reply = () => conversations.enqueue({ id: crypto.randomUUID(), role: 'pm', ticket: job.key, actionId: id, body: 'Please retry it' });
         expect(reply).toThrow(/already resolved|does not match/);
@@ -172,6 +174,7 @@ test('with the owning store, the outbox and reply validation follow the current 
         f.store.db.prepare('INSERT INTO effects(id, work_key, status, body) VALUES(?, ?, ?, ?)').run(`harness:${job.id}:push:x`, `${f.store.project.id}:delivery:${job.id}`, 'uncertain', JSON.stringify({ attemptId: job.id }));
         expect(job.retry!.nextAt).toBeTruthy();
         expect(open()?.detail).toContain('Automatic retry: A write of this job is unsettled in the Effects ledger.');
+        f.store.state.paused = false;
         f.store.state.outbox = currentOutbox(f.store);
         expect(reply()).toMatchObject({ actionId: id, status: 'queued' });
         // The same unsettled write withdraws the timer on the next pass.

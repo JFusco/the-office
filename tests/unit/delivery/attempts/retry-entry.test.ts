@@ -241,6 +241,28 @@ test('GH-408: an existing same-head PR linked to another issue stops the retry b
     }
 });
 
+test.each([undefined, 'source'] as const)('a retry can update a numbered PR from an ancestor only with a repair reason (%s)', async repairReason => {
+    const { f, job, o } = gh408();
+    Object.assign(job, { pr: 200, prUrl: PR_URL, repairReason });
+    await o.original();
+    openPR(f, job);
+    const predecessor = 'c'.repeat(40);
+    f.state.prs[0].head.sha = predecessor;
+    f.state.remote[job.branch] = predecessor;
+    o.plan();
+    await o.pump();
+    if (repairReason) {
+        expect(job, job.detail).toMatchObject({ stage: 'prepare-pr', status: 'queued' });
+        expect(f.state.prs[0].head.sha).toBe(HEAD);
+        expect(o.writes()).toMatchObject({ pushes: 1, creates: 0, edits: 0 });
+    } else {
+        expect(job).toMatchObject({ stage: 'draft', status: 'blocked' });
+        expect(job.detail).toContain('its head differs from the accepted candidate');
+        expect(f.state.prs[0].head.sha).toBe(predecessor);
+        expect(o.writes()).toEqual({ pushes: 0, creates: 0, comments: 0, cards: 0, edits: 0 });
+    }
+});
+
 test('a fresh card move from an automatic draft is one Effect, bound to the draft, head and lane, dispatching while it is sent', async () => {
     const { f, job, o } = gh408();
     await o.original();
@@ -298,6 +320,47 @@ test('a dependency refresh that fails with 503 records its own stop and takes th
     const calls = f.state.calls.length;
     await o.pump();
     expect(f.state.calls.length).toBe(calls);
+});
+
+test.each(['changed branch', 'unsettled Effect'])('a %s observed during dependency refresh withdraws the retry before stage entry', async change => {
+    const { f, job, o } = gh407();
+    await o.original();
+    const { stop, detail } = job;
+    o.plan();
+    f.state.fail = (_program, args) => {
+        if (args[1] !== `repos/${REPOSITORY}/pulls/200`) return false;
+        if (change === 'changed branch') f.state.prs[0].head.ref = 'codex/changed-branch';
+        else f.store.db.prepare('INSERT INTO effects(id, work_key, status, body) VALUES(?, ?, ?, ?)')
+            .run('new-effect', `${f.store.project.id}:delivery:${job.id}`, 'uncertain', JSON.stringify({ attemptId: job.id }));
+        return false;
+    };
+    await o.pump();
+    const reason = change === 'changed branch' ? 'candidate or pull request changed' : 'unsettled in the Effects ledger';
+    expect(job).toMatchObject({ stage: 'draft', status: 'blocked', stop });
+    expect(job.detail).toContain(detail);
+    expect(job.retry!.withdrawn?.reason).toContain(reason);
+    expect(f.store.state.events.filter(event => event.kind === 'github-delivery-stage')).toHaveLength(0);
+    expect(o.writes()).toEqual({ pushes: 0, creates: 0, comments: 0, cards: 0, edits: 0 });
+});
+
+test('a previously verified recovery card must still be on the board before draft acceptance', async () => {
+    const { f, job, o } = gh407();
+    await o.original();
+    o.plan();
+    f.state.fail = (_program, args) => args[1] === `repos/${REPOSITORY}/pulls/200` ? 'gh exited 1: gh: HTTP 503' : false;
+    await o.pump();
+    expect(job.boardUpdates!.at(-1)).toMatchObject({ item: 'pr-card', status: 'verified' });
+    expect(job.detail).toContain('HTTP 503');
+
+    f.state.fail = () => false;
+    f.state.cards.splice(1, 1);
+    expect(f.state.cards[0]).toMatchObject({ id: 'issue-card', status: 'review' });
+    o.plan();
+    await o.pump();
+    expect(job).toMatchObject({ stage: 'draft', status: 'blocked' });
+    expect(job.detail).toContain('saved card pr-card is missing from the configured board');
+    expect(currentOutbox(f.store).find(action => action.id === `ticket-job:${job.id}`)?.status).toBe('open');
+    expect(o.writes()).toEqual({ pushes: 0, creates: 0, comments: 0, cards: 0, edits: 0 });
 });
 
 test('a board recovery that verifies one card and fails the next read keeps its read-only mode: a 503 is counted, a permission failure is Joe\'s, a quota refusal waits uncounted', async () => {

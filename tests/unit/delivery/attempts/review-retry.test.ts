@@ -4,6 +4,8 @@ import { withAssignment } from '../../../../server/workers/assignment-context';
 import { exitFailure } from '../../../../server/workers/exit-failure';
 import { Coordinator } from '../../../../server/scheduling/coordination';
 import { reconcileReadRetries } from '../../../../server/scheduling/read-retries';
+import { noteDeliveryStop } from '../../../../server/delivery/attempts/stop-evidence';
+import { captureGitHubFailures, noteGitHubFailure } from '../../../../server/github/refusal-capture';
 import type { TicketJob } from '../../../../src/shared';
 
 afterEach(cleanupFakes);
@@ -63,6 +65,42 @@ test('a changed remote head withdraws the stale review retry before any assessme
     expect(r.assessments()).toBe(0);
     expect(r.job).toMatchObject({ status: 'blocked' });
     expect(r.job.retry!.withdrawn?.reason).toContain('ordinary PR observation takes its new head');
+});
+
+test('a successful Lead readiness wait retires the quota episode and preserves the counted budget', async () => {
+    const r = adoptedReview(), start = new Date();
+    let now = start;
+    r.f.store.clock = { now: () => now, monotonic: () => now.getTime() };
+    const minutesAfter = (time: Date, minutes: number) => new Date(time.getTime() + minutes * 60_000);
+    const detail = 'gh exited 1: gh: API rate limit exceeded (HTTP 403)';
+    const fail = (retryAt: Date) => captureGitHubFailures(async () => {
+        const at = now.toISOString();
+        noteGitHubFailure({ args: 'read-pr', at, text: detail, readOnly: true,
+            refusal: { at, text: detail, readOnly: true, principal: 'operator', resource: 'core', secondary: false, deadline: retryAt.toISOString() } });
+        Object.assign(r.job, { status: 'blocked', detail, stop: { kind: 'transient', at } });
+        noteDeliveryStop(r.f.store, r.job, new Error(detail), now);
+    });
+    const prior = { at: start.toISOString(), detail: GH_376 };
+    r.job.retry = { attempts: 1, history: [prior], nextAt: '', exhausted: false, stage: 'lead-pr', head: HEAD, limit: 3 };
+    await fail(minutesAfter(now, 1));
+    reconcileReadRetries(r.f.store, now);
+    now = minutesAfter(start, 1);
+    reconcileReadRetries(r.f.store, now);
+    const history = [...r.job.retry!.history];
+    r.heal();
+    r.f.state.prs[0].draft = true;
+    await r.pump();
+    expect(r.job).toMatchObject({ stage: 'lead-pr', head: HEAD, status: 'watching', stop: { kind: 'pr-not-ready' }, retry: { attempts: 1, history } });
+    expect(r.job.retry!.failure).toBeUndefined();
+    expect(r.job.retry!.quota).toBeUndefined();
+    expect(r.assessments()).toBe(0);
+
+    now = minutesAfter(start, 7 * 60);
+    const deadline = minutesAfter(now, 20);
+    await fail(deadline);
+    reconcileReadRetries(r.f.store, now);
+    expect(r.job.retry).toMatchObject({ quota: { since: now.toISOString() }, exhausted: false, attempts: 1, nextAt: deadline.toISOString() });
+    expect(r.job.retry!.history.slice(0, history.length)).toEqual(history);
 });
 
 test('a failed write carrying the same HTTP text stays uncertain and is never scheduled', async () => {

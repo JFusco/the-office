@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -9,10 +9,11 @@ import { planReadRetry, reconcileReadRetries } from '../../../../server/scheduli
 import { ATTEMPT_DELAYS_MS } from '../../../../server/delivery/attempts/attempt-backoff';
 import { deliveryPolicy, SERVER_ERROR_TAIL_MS } from '../../../../server/delivery/attempts/transient-schedule';
 import { nextAttemptAt } from '../../../../server/delivery/attempts/attempt-backoff';
+import type { ITContext } from '../../../../server/it/context';
 import type { TicketJob } from '../../../../src/shared';
 
 const roots: string[] = [], stores: Store[] = [];
-afterEach(() => { stores.splice(0).forEach(store => store.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
+afterEach(() => { vi.useRealTimers(); stores.splice(0).forEach(store => store.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
 const MINUTE = 60_000;
 
 function brain() {
@@ -116,19 +117,50 @@ test('a repair wait on the stop does not hold its read retry: the timer and the 
     expect(job.status).toBe('queued');
 });
 
-test('one saved quota refusal reads the same from the tick and the command path, with no attempt spent', async () => {
+test.each(['tick', 'IT recovery', 'operator command'] as const)('%s reconciles a saved quota refusal once without spending an attempt', async first => {
     const { Coordinator } = await import('../../../../server/scheduling/coordination');
     const { Engine } = await import('../../../../server/scheduling/engine');
-    const store = brain(), now = new Date();
-    const job = review('Error: gh exited 1: gh: API rate limit exceeded for user ID 1. (HTTP 403)', now, {
-        retry: { attempts: 0, nextAt: '', history: [], exhausted: false, stage: 'review', head: 'a'.repeat(40), quota: { since: now.toISOString() },
-            failure: { category: 'provider-limit', retryAt: new Date(now.getTime() + 20 * MINUTE).toISOString(), detail: 'API rate limit exceeded', dispatched: true } } } as any);
+    const { runDeliveryRecoveries } = await import('../../../../server/it/delivery-recoveries');
+    const { commandRoute } = await import('../../../../server/office/http/commands');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = new Date('2026-11-27T12:00:00Z'), reset = new Date(start.getTime() + 20 * MINUTE);
+    vi.setSystemTime(start);
+    const failure = { category: 'provider-limit' as const, retryAt: reset.toISOString(), detail: 'API rate limit exceeded', dispatched: true };
+    const store = brain();
+    const job = review('Error: gh exited 1: gh: API rate limit exceeded for user ID 1. (HTTP 403)', start, {
+        retry: { attempts: 0, nextAt: '', history: [], exhausted: false, stage: 'review', head: 'a'.repeat(40), quota: { since: start.toISOString() }, failure },
+    });
     store.state.coordination!.jobs = [job];
     store.state.coordination!.enabled = true;
-    const coordinator = new Coordinator(store, new Engine(store), (async () => { throw new Error('no provider call expected'); }) as any);
-    await coordinator.tick(now);
-    const planned = job.retry!.nextAt;
-    expect(planned).toBe(new Date(now.getTime() + 20 * MINUTE).toISOString());
-    for (let pass = 0; pass < 3; pass++) { reconcileReadRetries(store, new Date(now.getTime() + pass * MINUTE)); await coordinator.tick(new Date(now.getTime() + pass * MINUTE)); }
-    expect(job.retry).toMatchObject({ nextAt: planned, attempts: 0 });
+    const execute = vi.fn(async () => { throw new Error('No provider request expected'); });
+    const engine = new Engine(store), coordinator = new Coordinator(store, engine, execute);
+    const recover = vi.fn(async () => { throw new Error('No other recovery expected'); });
+    const it = { checkedAt: '', nextCheckAt: '', status: 'monitoring', reports: [], recoveries: {}, services: [] } satisfies ITContext['it'];
+    const routes = {
+        tick: () => coordinator.tick(),
+        'IT recovery': () => runDeliveryRecoveries({
+            store, state: store.state, engine, coordinator, it, offices: {} as ITContext['offices'], now: new Date(),
+            health: { services: [] } as unknown as ITContext['health'], nextAt: 0, services: [],
+            actions: [], followUps: [], current: new Set(), retainedCloseouts: new Set(), retainedPartials: [], activationBudget: () => undefined, recover,
+        }),
+        'operator command': async () => {
+            const url = new URL('http://localhost/api/commands');
+            const request = new Request(url, { method: 'POST', body: JSON.stringify({ action: 'reconcile-read-retries' }) });
+            const response = await commandRoute(request, url, { store, engine, coordinator } as Parameters<typeof commandRoute>[2]);
+            expect(response?.status).toBe(202);
+        },
+    };
+    await routes[first]();
+    expect(job).toMatchObject({ status: 'blocked', retry: { nextAt: reset.toISOString(), attempts: 0, failure } });
+    vi.setSystemTime(new Date(reset.getTime() - 1));
+    for (const reconcile of Object.values(routes)) await reconcile();
+    expect(job).toMatchObject({ status: 'blocked', retry: { nextAt: reset.toISOString(), attempts: 0 } });
+    vi.setSystemTime(reset);
+    await routes[first]();
+    for (const reconcile of Object.values(routes)) await reconcile();
+    expect(job).toMatchObject({ status: 'queued', retry: { nextAt: '', attempts: 0, failure } });
+    expect(job.retry!.history).toHaveLength(1);
+    expect(store.state.events.filter(event => event.kind === 'read-retry' && event.message.includes('retry queued'))).toHaveLength(1);
+    expect(execute).not.toHaveBeenCalled();
+    expect(recover).not.toHaveBeenCalled();
 });

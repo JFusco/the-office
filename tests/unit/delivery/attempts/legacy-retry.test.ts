@@ -65,3 +65,20 @@ test('a genuinely new stop at another stage or head gets a fresh allowance, the 
     expect(moved.retry).toMatchObject({ stage: 'lead-pr', head: HEAD, attempts: 0, exhausted: false, limit: 6 });
     expect(moved.retry!.nextAt).toBeTruthy();
 });
+
+test('a legacy quota timer fires once without spending a counted attempt or interrupting reconciliation', () => {
+    const timer = new Date(T0.getTime() + 120_000).toISOString();
+    const detail = 'Error: gh: API rate limit exceeded';
+    const history = [{ at: T0.toISOString(), detail: SERVER_ERROR }];
+    const { store, find } = reload([
+        job('quota', { attempts: 1, nextAt: timer, history, exhausted: false }, { detail }),
+        job('other-job', { attempts: 0, nextAt: timer, history: [], exhausted: false }),
+    ]);
+    reconcileReadRetries(store, T0);
+    expect(find('quota')).toMatchObject({ status: 'blocked', retry: { attempts: 1, nextAt: timer, history, quota: { since: T0.toISOString() } } });
+    reconcileReadRetries(store, new Date(timer));
+    reconcileReadRetries(store, new Date(timer));
+    expect(find('quota')).toMatchObject({ status: 'queued', retry: { attempts: 1, nextAt: '', history, quota: { since: T0.toISOString() } } });
+    expect(find('other-job')).toMatchObject({ status: 'queued', retry: { attempts: 1 } });
+    expect(store.state.events.filter(event => event.ticket === find('quota').key && event.message.includes('retry queued'))).toHaveLength(1);
+});

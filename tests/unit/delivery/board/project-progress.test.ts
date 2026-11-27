@@ -29,6 +29,16 @@ test('an uncertain board write is read back on its original identity and never r
  await expect(a.progress.reviewStarted(a.job)).rejects.toThrow('remains uncertain');expect(a.writes()).toBe(1);
  a.lane('review');await a.progress.reviewStarted(a.job);expect(a.writes()).toBe(1);expect(a.job.boardUpdates!.every((u:any)=>u.status==='verified')).toBe(true);
 });
+test('a live card that left the verified review lane surfaces a conflict and does not report a second success', async () => {
+ const a = setup();
+ await a.progress.reviewStarted(a.job);
+ const updates = a.job.boardUpdates!.length;
+ a.lane('progress');
+ await expect(a.progress.reviewStarted(a.job)).rejects.toThrow('Issue card left In review');
+ expect(a.writes()).toBe(1);
+ expect(a.job.boardUpdates).toHaveLength(updates);
+ expect(a.store.state.events.filter(event => event.kind === 'review-board-status')).toHaveLength(1);
+});
 test('a same-number foreign card or a Backlog hold cannot be moved by review dispatch',async()=>{
  const a=setup();a.foreign();await expect(a.progress.reviewStarted(a.job)).rejects.toThrow('no existing card');expect(a.writes()).toBe(0);
  const b=setup();b.lane('backlog');await expect(b.progress.reviewStarted(b.job)).rejects.toThrow('deferred');expect(b.writes()).toBe(0);

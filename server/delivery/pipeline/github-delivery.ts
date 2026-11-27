@@ -21,7 +21,7 @@ import { writerRestartInstruction } from '../attempts/restart-instruction';
 import { applyReviewWait, readReviewWait } from '../readiness/review-wait';
 import { maintenanceVerifiedDraft, returnDraftToPromotion } from '../publication/maintenance-verified-draft';
 import { stopReason } from './stop-reason';
-import { noteDeliveryStop } from '../attempts/stop-evidence';
+import { endDeliveryQuota, noteDeliveryStop } from '../attempts/stop-evidence';
 import { assertNoModelFallback } from '../attempts/retry-entry';
 import { redispatchSavedAssessment } from '../recovery/redispatch-assessment';
 import { finishMetadataPark } from '../parking/finish-metadata-park';
@@ -210,6 +210,7 @@ export class GitHubDelivery {
                 }
                 const wait = await readReviewWait(this, job, reviewed);
                 if (wait) {
+                    endDeliveryQuota(job);
                     applyReviewWait(job, wait, this.store.clock.now());
                     // The observer must queue the review afresh once the PR is reviewable, whatever it last saw.
                     delete job.lastPRFingerprint;

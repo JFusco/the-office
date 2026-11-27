@@ -32,22 +32,34 @@ export function planDeliveryRetry(job: TicketJob, decision: DeliveryRetryDecisio
     if (r.nextAt && r.binding && r.binding.stop !== (job.stop?.at ?? '')) r.nextAt = '';
     // A timer saved before bindings existed is bound to the stop it was loaded with.
     if (r.nextAt && !r.binding) r.binding = bindRetry(job, decision.mode!, decision.reason, decision.updates);
-    if (!r.nextAt) {
+    const needsTimer = !r.nextAt;
+    if (needsTimer) {
         r.history.push({ at: now.toISOString(), detail: job.detail });
         r.latest = { at: now.toISOString(), detail: decision.diagnostic! };
         r.binding = bindRetry(job, decision.mode!, decision.reason, decision.updates);
         delete r.withdrawn;
-        if (policy.kind === 'quota') {
-            const stopped = Date.parse(job.stop?.at ?? '');
-            r.quota ??= { since: Number.isFinite(stopped) ? job.stop!.at : now.toISOString() };
-            // A refusal saved at the stop carries its own deadline; one known only from its text waits the fallback.
-            const due = Date.parse(r.failure?.retryAt ?? '') || (Number.isFinite(stopped) ? stopped : now.getTime()) + QUOTA_FALLBACK_MS;
-            r.failure ??= { category: 'provider-limit', retryAt: iso(due), detail: decision.diagnostic!, dispatched: true };
+    }
+    if (policy.kind === 'quota') {
+        const stopped = Date.parse(job.stop?.at ?? '');
+        const migrated = !needsTimer && !r.quota;
+        r.quota ??= { since: Number.isFinite(stopped) ? job.stop!.at : now.toISOString() };
+        // A refusal carries its deadline. A migrated timer keeps its deadline within the episode cap.
+        const due = Date.parse(r.failure?.retryAt ?? r.nextAt) || (Number.isFinite(stopped) ? stopped : now.getTime()) + QUOTA_FALLBACK_MS;
+        r.failure ??= { category: 'provider-limit', retryAt: iso(due), detail: decision.diagnostic!, dispatched: true };
+        if (needsTimer) {
             r.nextAt = iso(Math.min(due, quotaCap(r.quota.since)));
             return `GitHub quota wait until ${r.nextAt}; no attempt counted`;
         }
+        if (Date.parse(r.nextAt) > quotaCap(r.quota.since)) {
+            r.nextAt = iso(quotaCap(r.quota.since));
+            return `GitHub quota wait until ${r.nextAt}; no attempt counted`;
+        }
+        if (migrated && now.getTime() < Date.parse(r.nextAt))
+            return `existing GitHub quota wait retained until ${r.nextAt}; no attempt counted`;
+    } else if (needsTimer) {
         // A distinct stop that is not a quota refusal ends the quota episode.
-        if (r.failure?.category === 'provider-limit') { delete r.failure; delete r.quota; }
+        if (r.failure?.category === 'provider-limit') delete r.failure;
+        delete r.quota;
         r.limit = policy.limit;
         r.nextAt = iso(now.getTime() + policy.delays[r.attempts]);
         return `${decision.mode === 'read' ? 'read-only review' : decision.mode === 'board' ? 'card read-back' : 'publication'} retry ${r.attempts + 1}/${r.limit} scheduled for ${r.nextAt}`;

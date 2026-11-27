@@ -44,12 +44,15 @@ export class ProjectProgress {
   if(!item)throw new Error('Issue has no existing card on its configured board; no card was created');
   const update:BoardUpdate={stage:job.stage,head:job.head,project:project.id,item:item.id,field:field.id,option:options[0].id,target:options[0].name,at:new Date().toISOString(),status:'verified',detail:'In review lane already verified.'};
   const current=await this.value(item.id,field.id),currentLane=field.options.find((o:any)=>o.id===current)?.name?.toLowerCase();
+  const operation={id:`${job.stage}:${job.head}:in-review`};
+  const written=laneWrite(this.store,job,operation,item.id);
+  if(current!==update.option&&written==='verified')
+   throw new Error(`Issue card left ${update.target} after this operation's verified move; the harness will not move it again`);
   if(!['ready','in progress','in review'].includes(currentLane||''))throw new Error('Current board lane is deferred, done or unclassified; preserve the human lane before review');
   guard();
   // The issue card's move is one harness Effect bound to this stage, head and lane: one dispatch, read back, never resent.
   // A write sent earlier under the same operation is reconciled by reading, even when the card already shows the lane.
-  const operation={id:`${job.stage}:${job.head}:in-review`};
-  if(current!==update.option||laneWrite(this.store,job,operation,item.id)==='unread'){
+  if(current!==update.option||written==='unread'){
    await moveCardOnce(this.store,this.execute,job,item.id,{projectId:project.id,fieldId:field.id,options:field.options},options[0],operation,guard,update);
    update.detail='In review lane verified after the Office claimed this review.';
   }else(job.boardUpdates??=[]).push(update);

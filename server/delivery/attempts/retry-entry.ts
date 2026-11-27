@@ -74,6 +74,8 @@ export async function enterBoundRetry(delivery: GitHubDelivery, job: TicketJob, 
         const after = recheck();
         if (after) return withdraw(after);
         await withGitHubSource('dependency-refresh', () => delivery.refreshDependencies());
+        const refreshed = recheck();
+        if (refreshed) return withdraw(refreshed);
         parentPrerequisite(delivery, job);
         if (harnessDelivers(store, job)) requireDeliveryAuthority(store, job);
         const gate = dependencyEligibility(job.prerequisites || [], stores(), now());

@@ -1,4 +1,5 @@
 import { activeEffectId } from '../harness/effect';
+import { activeRetry } from '../attempts/retry-binding';
 import { harnessStageResult, receipt } from '../harness/stage-result';
 import { verifyRepairCandidate } from '../repairs/delivery-repairs';
 import { cardStatus, projectCards, statusField } from '../board/project-graphql';
@@ -48,11 +49,19 @@ export async function boardRecoveryDraft(delivery: GitHubDelivery, job: TicketJo
     if (!job.repairReason && pr.draft !== true) throw new BoardRecoveryConflict(`PR #${number} is no longer a draft`);
     const links = await readPublication(store, execute, job, root, 'issue-links', number);
     if (!links?.closingIssuesReferences?.some((item: any) => item.url === issueUrl)) throw new BoardRecoveryConflict(`PR #${number} is not natively linked to issue #${issueNumber}`);
+    const savedCards = activeRetry(job)?.updates ?? [];
+    if (savedCards.length && !store.project.githubProject) throw new BoardRecoveryConflict('the saved cards have no configured board');
     let lane = '';
     if (store.project.githubProject) {
         const field = await statusField(store, execute), option = resolveLane(field, 'In review');
         const cards = await projectCards(store, execute, field.projectId, [{ kind: 'Issue', number: issueNumber }, { kind: 'PullRequest', number }]);
         if (!cards.some(card => card.kind === 'Issue')) throw new BoardRecoveryConflict('the issue has no card on its board');
+        for (const saved of savedCards) {
+            if (!cards.some(card => card.id === saved.item))
+                throw new BoardRecoveryConflict(`saved card ${saved.item} is missing from the configured board`);
+            if (saved.field !== field.fieldId || saved.option !== option.id)
+                throw new BoardRecoveryConflict(`the saved target for card ${saved.item} no longer matches the configured board`);
+        }
         for (const card of cards)
             if (await cardStatus(store, execute, card.id, field.fieldId) !== option.id)
                 throw new BoardRecoveryConflict(`the ${card.kind === 'Issue' ? 'issue' : 'pull request'} card is no longer in ${option.name}`);

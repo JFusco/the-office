@@ -43,7 +43,7 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
             }
             headerPrefix = undefined;
             if (end !== -1 && match) headers = prefix.slice(0, end);
-            if (headers && quota) quotaReading = readRateLimitHeaders(headers);
+            if (headers) quotaReading = readRateLimitHeaders(headers);
         };
         const onOutput: typeof options.onOutput = call.include || body !== undefined ? (stream, chunk) => {
             if (stream === 'stdout') account(() => {
@@ -66,7 +66,9 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
             // Live windows are read on the samples' own clock; a spent one's reset is the deadline it states.
             const exhausted = () => Math.max(0, ...(quota?.liveWindows(resource, principal) ?? []).filter(window => window.remaining === 0).map(window => window.reset * 1000));
             const stated = matched.refusal.retryAfterMs !== undefined || matched.refusal.reading?.remaining === 0;
-            const until = Math.max(told?.until ?? 0, matched.refusal.secondary || stated ? 0 : exhausted());
+            const fromHeaders = matched.refusal.retryAfterMs !== undefined ? at + matched.refusal.retryAfterMs
+                : matched.refusal.reading?.remaining === 0 ? matched.refusal.reading.reset * 1000 : 0;
+            const until = Math.max(told?.until ?? fromHeaders, matched.refusal.secondary || stated ? 0 : exhausted());
             return { principal, resource, at: new Date(at).toISOString(), ...(until ? { deadline: new Date(until).toISOString() } : {}), secondary: matched.refusal.secondary,
                 ...(matched.refusal.retryAfterMs !== undefined ? { retryAfterMs: matched.refusal.retryAfterMs } : {}), text: matched.text, readOnly: !!options.readOnly,
                 ...(told?.probe && !matched.refusal.secondary && !stated ? { late: told.probe.then(() => { const reset = exhausted(); return reset ? new Date(reset).toISOString() : undefined; }) } : {}) };
@@ -93,12 +95,19 @@ export function meteredRunner(raw: Runner, ledger: CallLedger, quota?: RateLimit
             // Refused before dispatch (cancelled, or a live provider under unit tests): no process, nothing counted.
             if (spawned) account(() => {
                 const answer = body === undefined ? undefined : graphqlAnswer(body, call.include);
-                const matched = refusalIn(error instanceof Error ? error.message : String(error), answer) ?? refusalIn(answer?.errors, answer);
+                const diagnostic = error instanceof Error ? error.message : String(error);
+                let matched = refusalIn(diagnostic, answer) ?? refusalIn(answer?.errors, answer);
+                if (!matched && options.readOnly && status === 429 && headers) {
+                    // The included response supplies the refusal status even when gh omits the rate-limit wording.
+                    const refusal = quotaRefusal('API rate limit exceeded (HTTP 429)', headers, quotaReading);
+                    if (refusal && (Number.isFinite(refusal.retryAfterMs) || refusal.reading?.remaining === 0))
+                        matched = { refusal, text: diagnostic };
+                }
                 ledger.record(source, call.family, graphqlCounts(failed(call, error, status, answer), answer, operation, !!matched), project, principal);
                 keepReading(answer);
                 // The probe's own refusal still holds, and never starts another probe.
                 const evidence = matched ? refuse(matched) : undefined;
-                noteGitHubFailure({ args: key, text: error instanceof Error ? error.message : String(error), readOnly: !!options.readOnly, at: new Date().toISOString(), ...(evidence ? { refusal: evidence } : {}) });
+                noteGitHubFailure({ args: key, text: diagnostic, readOnly: !!options.readOnly, at: new Date().toISOString(), ...(evidence ? { refusal: evidence } : {}) });
                 if (matched) options.onGitHubRefusal?.(matched.text, evidence);
             });
             throw error;

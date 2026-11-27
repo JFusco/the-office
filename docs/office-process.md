@@ -565,11 +565,11 @@ IT's pass and the `reconcile-read-retries` command alike).
   read-back when complete comment pages, the native link and every earlier draft claim's own recorded
   read prove it was never sent. A board recovery's recorded card read counts as its claim's read. Without
   that proof the existing refusal stands and the job is Joe's. A comment is never resent.
-- **Operator view.** The outbox, the incident ledger and Team Updates read the same current decision
+- **Operator view.** The outbox and the incident ledger read the same current decision
   for the job's exact stop, stage and head. A pending retry is hidden from Joe; a stale timer, a spent
   allowance, a board miss or a withdrawn claim shows him the reason. A reply to a `ticket-job:` action
   is validated against the outbox as served, so the action he sees is the one accepted, and one a repair
-  wait holds is refused like any hidden action. Team Updates shows the counted attempt and its limit, or
+  wait holds is refused like any hidden action. Team Updates shows the saved plan with the counted attempt and its limit, or
   the quota deadline and cap with no attempt number; intake keeps its denominator of three.
 - Read retries are still not held by repair waits, and a transient stop gets no repair wait.
 

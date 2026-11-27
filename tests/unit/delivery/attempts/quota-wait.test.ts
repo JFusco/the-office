@@ -1,15 +1,18 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { Store } from '../../../../server/store/store';
 import { projectById } from '../../../../server/office/projects';
-import { coordination } from '../../../../server/scheduling/coordination';
+import { Coordinator, coordination } from '../../../../server/scheduling/coordination';
+import { Engine } from '../../../../server/scheduling/engine';
 import { reconcileReadRetries } from '../../../../server/scheduling/read-retries';
 import { stopReason } from '../../../../server/delivery/pipeline/stop-reason';
 import { noteDeliveryStop } from '../../../../server/delivery/attempts/stop-evidence';
+import { GitHubCalls } from '../../../../server/github/github-calls';
 import { captureGitHubFailures, noteGitHubFailure, type GitHubRefusalEvidence } from '../../../../server/github/refusal-capture';
 import { CommandFailure } from '../../../../server/workers/process';
+import { withAssignment } from '../../../../server/workers/assignment-context';
 import type { TicketJob } from '../../../../src/shared';
 
 const roots: string[] = [], stores: Store[] = [];
@@ -94,6 +97,43 @@ test('a quota wait survives a reload; a distinct non-quota stop ends the episode
     expect(saved.retry!.attempts).toBe(1);
 });
 
+test('repeated uncaptured quota stops share one six-hour episode', async () => {
+    const { store, job } = brain();
+    const error = new Error('gh exited 1: gh: HTTP 429');
+    await stop(store, job, error, T0);
+    reconcileReadRetries(store, T0);
+    reconcileReadRetries(store, at(60_000));
+    expect(job.status).toBe('queued');
+
+    await stop(store, job, error, at(120_000));
+    reconcileReadRetries(store, at(120_000));
+    expect(job.retry).toMatchObject({ quota: { since: T0.toISOString() }, attempts: 0, nextAt: at(180_000).toISOString() });
+    reconcileReadRetries(store, at(6 * HOUR));
+    expect(job).toMatchObject({ status: 'blocked', retry: { exhausted: true, attempts: 0, nextAt: '' } });
+});
+
+test.each([
+    ['Retry-After: 300', 300_000],
+    [`X-RateLimit-Resource: core\r\nX-RateLimit-Limit: 5000\r\nX-RateLimit-Used: 5000\r\nX-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: ${at(600_000).getTime() / 1000}`, 600_000],
+] as const)('an included bare 429 read uses its response window (%s)', async (header, delay) => {
+    const { store, job } = brain();
+    const calls = new GitHubCalls(async (_program, _args, options) => {
+        options?.onSpawn?.(7);
+        options?.onOutput?.('stdout', `HTTP/2.0 429 Too Many Requests\r\n${header}\r\n\r\n{}`);
+        throw new Error('gh exited 1: gh: HTTP 429');
+    }, '', () => T0.getTime());
+    await captureGitHubFailures(async () => {
+        const error = await calls.run('gh', ['api', '-i', 'repos/JFusco/brain/pulls/9'], { readOnly: true }).catch(error => error);
+        expect(error).toBeInstanceOf(Error);
+        Object.assign(job, { status: 'blocked', detail: String(error), stop: stopReason(error, false, T0) });
+        noteDeliveryStop(store, job, error, T0);
+    });
+    reconcileReadRetries(store, T0);
+    reconcileReadRetries(store, at(60_000));
+    const deadline = at(delay).toISOString();
+    expect(job).toMatchObject({ status: 'blocked', retry: { failure: { retryAt: deadline }, nextAt: deadline, attempts: 0 } });
+});
+
 test('a reset beyond six hours is reviewed at the cap with no earlier queue, and the episode spans its repeated refusals', async () => {
     const { store, job } = brain();
     await stop(store, job, new Error(PRIMARY), T0, { text: PRIMARY, readOnly: true, refusal: refusal(at(2 * HOUR)) });
@@ -127,4 +167,36 @@ test('a late window from the shared probe applies only while its own stop still 
         expect(job.retry!.failure!.retryAt, String(changed)).toBe(changed ? at(60_000).toISOString() : at(45 * 60_000).toISOString());
         expect(job.retry!.nextAt, String(changed)).toBe(changed ? at(60_000).toISOString() : at(45 * 60_000).toISOString());
     }
+});
+
+test.each([45 * 60_000, 9 * HOUR])('a late reset received after queueing moves an unclaimed job back to its capped wait (%d ms)', async reset => {
+    const { store, job } = brain();
+    let now = T0;
+    store.clock = { now: () => now, monotonic: () => now.getTime() };
+    let settle!: (reset: string) => void;
+    const late = new Promise<string>(resolve => { settle = resolve; });
+    await stop(store, job, new Error(PRIMARY), T0, { text: PRIMARY, readOnly: true, refusal: refusal(at(60_000), { late }) });
+    reconcileReadRetries(store, T0);
+    now = at(60_000);
+    reconcileReadRetries(store, now);
+    expect(job.status).toBe('queued');
+    settle(at(reset).toISOString());
+    await late;
+    const due = Math.min(reset, 6 * HOUR);
+    expect(job).toMatchObject({ status: 'blocked', detail: `Error: ${PRIMARY}`, retry: { nextAt: at(due).toISOString(), attempts: 0 } });
+
+    const execute = vi.fn(async () => { throw new Error('No provider request before the quota reset'); });
+    const coordinator = new Coordinator(store, new Engine(store), execute);
+    const claim = store.claimWork({ projectId: store.project.id, kind: 'delivery', id: job.id }, 'scheduler', job.stage)!;
+    try {
+        now = at(due - 1);
+        reconcileReadRetries(store, now);
+        await withAssignment(claim, 'delivery', () => coordinator.pump({ kind: 'delivery', id: job.id }));
+        expect(execute).not.toHaveBeenCalled();
+    } finally {
+        store.finishClaim(claim.id, 'completed');
+    }
+    now = at(due);
+    reconcileReadRetries(store, now);
+    expect(job).toMatchObject({ status: reset < 6 * HOUR ? 'queued' : 'blocked', retry: { attempts: 0, nextAt: '', exhausted: reset >= 6 * HOUR } });
 });

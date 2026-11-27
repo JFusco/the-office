@@ -1,7 +1,7 @@
 import { stopFailure } from '../../github/refusal-capture';
 import { ghTooManyRequests } from '../../scheduling/temporary-read';
-import { inScope, scopedRetry } from './retry-binding';
-import { QUOTA_FALLBACK_MS, quotaCap } from './transient-schedule';
+import { inScope, queuedRetry, scopedRetry } from './retry-binding';
+import { QUOTA_FALLBACK_MS, quotaCap, quotaStop } from './transient-schedule';
 import type { Store } from '../../store/store';
 import type { TicketJob } from '../../../src/shared';
 
@@ -20,7 +20,10 @@ export function noteDeliveryStop(store: Store, job: TicketJob, error: unknown, n
     const refusal = !write && failure?.refusal?.readOnly ? failure.refusal : undefined;
     const bare = !write && !refusal && !!failure?.readOnly && ghTooManyRequests.test(failure.text);
     if (!refusal && !bare) {
-        if (inScope(job.retry, job) && job.retry.failure?.category === 'provider-limit') { delete job.retry.failure; delete job.retry.quota; }
+        if (inScope(job.retry, job)) {
+            if (job.retry.failure?.category === 'provider-limit') delete job.retry.failure;
+            if (write || !quotaStop(String(error))) delete job.retry.quota;
+        }
         return;
     }
     const retry = scopedRetry(job), deadline = Date.parse(refusal?.deadline ?? '') || now.getTime() + QUOTA_FALLBACK_MS;
@@ -30,14 +33,32 @@ export function noteDeliveryStop(store: Store, job: TicketJob, error: unknown, n
     void refusal?.late?.then(reset => applyLateWindow(store, job.id, bound, reset), () => undefined);
 }
 
+/** A successful readiness read ends the quota episode and keeps the counted retry history. */
+export function endDeliveryQuota(job: TicketJob): void {
+    if (!inScope(job.retry, job)) return;
+    if (job.retry.failure?.category === 'provider-limit') delete job.retry.failure;
+    delete job.retry.quota;
+}
+
 function applyLateWindow(store: Store, id: string, bound: { stop?: string; stage: string; head: string }, reset: string | undefined): void {
     try {
         const job = store.state.coordination?.jobs?.find(candidate => candidate.id === id);
         if (!reset || !job || job.stop?.at !== bound.stop || job.stage !== bound.stage || job.head !== bound.head || !inScope(job.retry, job)) return;
         const retry = job.retry, saved = retry.failure;
-        if (saved?.category !== 'provider-limit' || Date.parse(reset) <= Date.parse(saved.retryAt ?? '')) return;
+        const until = Date.parse(reset);
+        if (saved?.category !== 'provider-limit' || !(until > Date.parse(saved.retryAt ?? ''))) return;
         saved.retryAt = reset;
-        if (retry.nextAt && retry.quota) retry.nextAt = iso(Math.min(Date.parse(reset), quotaCap(retry.quota.since)));
+        if (retry.quota) {
+            const due = Math.min(until, quotaCap(retry.quota.since)), queued = queuedRetry(job);
+            if (queued && due > store.clock.now().getTime()) {
+                job.status = 'blocked';
+                job.detail = queued.detail ?? job.detail;
+                delete queued.queuedAt;
+                retry.nextAt = iso(due);
+            } else if (retry.nextAt) {
+                retry.nextAt = iso(due);
+            }
+        }
         store.save();
     } catch { /* A closed store keeps the deadline it saved. */ }
 }
