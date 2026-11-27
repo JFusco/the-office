@@ -2,7 +2,11 @@
 topics: [releases-and-incidents]
 plans: [2026-11-26-overseer-phase-7b-fixture-only-worker-sandbox-contract-91873a31d0.md]
 issue: 'https://github.com/jfusco/the-office/issues/697'
-issues: ['https://github.com/jfusco/the-office/issues/697', 'https://github.com/jfusco/the-office/issues/690']
+issues:
+  [
+    'https://github.com/jfusco/the-office/issues/697',
+    'https://github.com/jfusco/the-office/issues/690',
+  ]
 ---
 
 # Overseer phase 7b: the worker sandbox, fail-closed

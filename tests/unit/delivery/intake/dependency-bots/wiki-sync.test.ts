@@ -50,9 +50,17 @@ test.each(['review', 'ready', 'backlog', null])('canonical wiki PR in %s gets on
 test.each(['block', 'done', 'progress'])('wiki adoption preserves a human %s lane', async lane => {
     const { adopt, writes } = fixture(lane); await adopt(); expect(writes()).toHaveLength(0);
 });
-test.each(['not-opted-in', 'paused', 'draining', 'held', 'pickup-disabled'])('wiki PR in review waits when %s', async scenario => {
+test('by default a hands-off project adopts a canonical wiki PR In review', async () => {
+    const { f, pr, adopt } = fixture('review');
+    delete f.store.project.autoAdopt;
+    await adopt();
+    expect(f.store.state.coordination!.adoptions![0]).toMatchObject({ bot: 'wiki-sync', issue: 5, status: 'adopted' });
+    expect(pr.body).toContain('Closes #5');
+});
+test.each(['not-opted-in', 'pin-courier-only', 'paused', 'draining', 'held', 'pickup-disabled'])('wiki PR in review waits when %s', async scenario => {
     const { f, adopt, writes } = fixture();
     if (scenario === 'not-opted-in') f.store.project.autoAdopt = [];
+    if (scenario === 'pin-courier-only') f.store.project.autoAdopt = ['pin-courier'];
     if (scenario === 'paused') f.store.state.paused = true;
     if (scenario === 'draining') f.store.state.draining = true;
     if (scenario === 'held') HOLDS['GH-314'] = 'Joe hold';

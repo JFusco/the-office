@@ -1,10 +1,13 @@
 # Wiki automation adoption
 
-GitHub projects opt in with `autoAdopt: ["wiki-sync"]` (alongside `pin-courier`
-when desired). The Office discovers canonical `bot/wiki-sync/<merged PR>` and
-`bot/wiki-maintenance` pull requests. Backlog, Ready, missing cards and In review
-are eligible; Block, Done and In progress remain untouched. Paused/draining
-projects, disabled pickup and explicit holds still prevent adoption.
+A hands-off GitHub project with a configured board adopts wiki-sync PRs by
+default, with Dependabot and pin-courier PRs ([Office process](office-process.md#discovery-decisions-and-intake)).
+An explicit `autoAdopt` list that leaves out `"wiki-sync"`, or `[]`, opts the
+project out; Settings shows the effective list. The Office discovers canonical
+`bot/wiki-sync/<merged PR>` and `bot/wiki-maintenance` pull requests. Backlog,
+Ready, missing cards, cards with no Status and In review are eligible; Block,
+Done and In progress remain untouched. Paused/draining projects, disabled pickup
+and explicit holds still prevent adoption.
 
 Qualification requires the installed BOT_TOKEN account (JFusco, numeric ID
 486049), same-repository head and configured target, canonical title/body,

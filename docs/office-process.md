@@ -73,6 +73,40 @@ and content qualification allow routine Dependabot, Renovate and canonical wiki
 PRs to use current-head provider checks and repository rules without an added
 model review or local QA cycle.
 
+Dependency bot PRs enter that existing-PR flow through adoption
+(`server/delivery/intake/dependency-bots/`). A hands-off GitHub project with a
+configured GitHub Project board adopts Dependabot, pin-courier and wiki-sync PRs
+without a person moving a card. An explicit `autoAdopt` list replaces that default
+exactly: `["pin-courier"]` adopts only pin-courier, and `[]` adopts none. A
+project that is not hands-off, or is Jira/Azure, adopts no bot PR. Settings shows
+each GitHub project's effective list and whether it is the default, explicit or
+inactive (`effective-auto-adopt.ts`). A bot left off the list is still adopted
+when a person moves its PR card to the pickup lane.
+
+Adoption runs only after the poll's board read succeeds; a failed read stops it
+for that poll. A PR may lack its own card. A PR with no card, a card with no
+Status, or a card in Backlog or the pickup lane is eligible; wiki-sync also takes
+In review. Any other lane, or a Status option the board no longer lists, is left
+alone. Pause, drain, disabled pickup and a hold on the PR stop adoption, and a
+GitHub quota hold lets only adoptions already under way finish. In automatic
+mode a new draft, or a new pin-courier or wiki-sync PR for another base, waits
+quietly for a later poll. Every other refusal is recorded once with its reason
+and reaches the outbox.
+That includes a Dependabot PR on another branch (`it targets release, not main`)
+and one with commits not authored and verified as Dependabot. A qualification read
+that fails skips that PR for the poll without a record; the other PRs and bots
+still run. Adoption reuses or creates one tracking issue through Effects and links
+the PR with `Closes #<issue>`. It puts the issue card In review, adding it when
+missing, and moves the PR's card only when there is one. A closed tracking issue
+blocks adoption until it is reopened.
+
+Dependabot qualifies at intake, while its delivery is live and on the guarded
+merge path; its adoption writes check only pause and drain. Pin-courier and
+wiki-sync reread the PR head and requalify before each adoption write. From
+there existing-PR discovery, the authorized harness merge on current-head checks
+with native issue linkage, the bot-owned conflict redo below, and the tracking
+issue's verified Done-card closeout deliver the PR.
+
 On a hands-off GitHub project the harness also reads the repository's open Dependabot alerts each
 poll (`server/delivery/intake/dependabot/track-alerts.ts`). An alert open for more than a day with
 no open Dependabot pull request naming its package gets one issue, created through Effects and
