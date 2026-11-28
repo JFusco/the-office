@@ -70,6 +70,8 @@ export function fakeGitHub(issueNumber = 5, options: { onDisk?: boolean } = {}) 
         trees: {} as Record<string, { truncated?: boolean; tree: { path: string; type: string; mode: string; sha: string }[] }>,
         events: {} as Record<number, any[]>,
         targetTip: BASE,
+        /** What the release-marker walk (`git log -z`) returns; empty is a range with no commit. */
+        markerLog: '',
         repo: { full_name: REPOSITORY, default_branch: 'main', allow_merge_commit: true } as any,
         user: 'JFusco',
         /** Attempted writes, recorded before the remote state changes. */
@@ -101,7 +103,10 @@ export function fakeGitHub(issueNumber = 5, options: { onDisk?: boolean } = {}) 
             const [cmd, ...rest] = args;
             if (cmd === 'remote') return `https://github.com/${REPOSITORY}.git\n`;
             if (cmd === 'fetch') return '';
+            // A complete synthetic history; the release-marker walk reads it as such.
+            if (cmd === 'rev-parse' && rest[0] === '--is-shallow-repository') return 'false\n';
             if (cmd === 'rev-parse') return rest[0] === 'HEAD' ? state.local.head : BASE;
+            if (cmd === 'cat-file' && rest[0] === '-e') return '';
             if (cmd === 'branch') { if (rest[0] === '-D') { state.localBranches.delete(rest[1]); return ''; } return state.local.branch; }
             if (cmd === 'status') return state.local.status ?? (state.local.dirty ? ' M file.ts' : '');
             if (cmd === 'for-each-ref') return state.localBranches.has(rest[1].replace('refs/heads/', '')) ? state.local.head : '';
@@ -112,8 +117,11 @@ export function fakeGitHub(issueNumber = 5, options: { onDisk?: boolean } = {}) 
                 mkdirSync(rest[3], { recursive: true }); state.localBranches.add(rest[2]); Object.assign(state.local, { head: rest[4], branch: rest[2], dirty: false }); return '';
             }
             if (cmd === 'merge-base') { if (state.notAncestor) throw new Error('not an ancestor'); return ''; }
-            if (cmd === 'ls-remote') { const ref = rest[2].replace('refs/heads/', ''); return state.remote[ref] ? `${state.remote[ref]}\trefs/heads/${ref}\n` : ''; }
+            if (cmd === 'ls-remote') return rest.slice(2).map(name => name.replace('refs/heads/', '')).map(ref => [ref, state.remote[ref] ?? (ref === 'main' ? state.targetTip : '')])
+                .filter(([, sha]) => sha).map(([ref, sha]) => `${sha}\trefs/heads/${ref}\n`).join('');
             if (cmd === 'push') { const [sha, ref] = rest[1].split(':'); const branch = ref.replace('refs/heads/', ''); state.remote[branch] = sha; for (const pr of state.prs) if (pr.head.ref === branch && pr.state === 'open') pr.head.sha = sha; return ''; }
+            // The release-marker walk (`log -z`): no synthetic commit carries a marker unless a test saves one.
+            if (cmd === 'log' && rest[0] === '-z') return state.markerLog;
             if (cmd === 'log') return 'fix(sources): restore release scans\n';
         }
         if (program === 'rm') return '';
@@ -123,7 +131,7 @@ export function fakeGitHub(issueNumber = 5, options: { onDisk?: boolean } = {}) 
             if (args[1] === 'list') return JSON.stringify(state.prs.filter(pr => (args.includes('--base') ? pr.base.ref === flag('--base') : pr.head.ref === flag('--head')) && (flag('--state') === 'all' || pr.state === flag('--state'))).map(prJson));
             if (args[1] === 'create') {
                 const number = 200 + state.prs.length, branch = flag('--head');
-                state.prs.push({ number, html_url: `https://github.com/${REPOSITORY}/pull/${number}`, state: 'open', draft: true, title: flag('--title'), body: options.input, head: { sha: state.remote[branch], ref: branch }, base: { ref: flag('--base'), sha: BASE, repo: { full_name: REPOSITORY } }, merged_at: null, merge_commit_sha: null, updated_at: '2026-10-31T12:00:00Z' });
+                state.prs.push({ number, html_url: `https://github.com/${REPOSITORY}/pull/${number}`, state: 'open', draft: true, title: flag('--title'), body: options.input, head: { sha: state.remote[branch], ref: branch, repo: { full_name: REPOSITORY } }, base: { ref: flag('--base'), sha: BASE, repo: { full_name: REPOSITORY } }, merged_at: null, merge_commit_sha: null, updated_at: '2026-10-31T12:00:00Z' });
                 return `https://github.com/${REPOSITORY}/pull/${number}\n`;
             }
             if (args[1] === 'ready') { state.prs.find(pr => pr.number === Number(args[2])).draft = false; return ''; }
@@ -194,7 +202,8 @@ export function fakeGitHub(issueNumber = 5, options: { onDisk?: boolean } = {}) 
                 if (f.state) Object.assign(pr, { state: f.state, ...(f.state === 'closed' ? { closed_at: store.clock.now().toISOString() } : {}) });
                 return JSON.stringify(pr);
             }
-            if (path.includes('/pulls/')) return JSON.stringify(state.prs.find(pr => path.endsWith(`/pulls/${pr.number}`)));
+            // GitHub names each side's repository; a synthetic same-repository PR saved without one gets this repository's.
+            if (path.includes('/pulls/')) { const pr = state.prs.find(pr => path.endsWith(`/pulls/${pr.number}`)); return JSON.stringify(pr && pr.head && !pr.head.repo ? { ...pr, head: { ...pr.head, repo: { full_name: REPOSITORY } } } : pr); }
             if (path.includes('actions/runs')) return JSON.stringify({ total_count: state.runs.length, workflow_runs: state.runs });
             if (path.endsWith('/branches/main')) return JSON.stringify({ name: 'main', protected: false });
             if (path.includes('/rulesets')) return JSON.stringify([[]]);

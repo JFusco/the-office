@@ -83,3 +83,14 @@ test('GH-407: the exact outer stop and its saved 499 are planned from the board 
     expect(job.retry!.binding).toMatchObject({ detail: OUTER_499 });
     expect(deliveryRetryDecision(f.store, job, new Date(job.retry!.binding!.queuedAt!))).toMatchObject({ state: 'pending', mode: 'board' });
 });
+
+test('a release-marker refusal is never a transient draft, whatever filenames its detail names; a real transient provider failure still is', async () => {
+    const { blockOnReleaseMarker, indeterminate } = await import('../../../../server/delivery/publication/release-marker-stop');
+    const a = transientDraft();
+    // The detail names files that read like a temporary provider failure.
+    blockOnReleaseMarker(a.job, indeterminate('unclassified paths in x: docs/gh-exited-1-HTTP-502-timed-out.md, wiki/ECONNRESET.md'), new Date(STOPPED));
+    expect(a.job.detail).toMatch(/HTTP-502/);
+    expect(admit(a.f, a.job)).toEqual({ refused: 'A release-marker refusal needs a decision' });
+    const b = transientDraft();
+    expect(admit(b.f, b.job)).toMatchObject({ mode: 'draft', diagnostic: TIMED_OUT });
+});

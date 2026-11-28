@@ -26,12 +26,16 @@ import { snapshotText } from './office/http/snapshot-text';
 import { loopDelay } from './office/loop-delay';
 import { incidentsRoute } from './incidents/routes';
 import { sweepStaleSessionSnapshots } from './workers/session-snapshot-cleanup';
+import { command } from './workers/process';
+import { observeInterruptedCorrections } from './delivery/publication/marker-interruption';
 mkdirSync(DATA, { recursive: true, mode: 0o700 });
 const releaseLock = acquireServiceLock(DATA);
 process.on('exit', releaseLock);
 // A capture directory a service that died left behind may hold a named clone of a session log.
 sweepStaleSessionSnapshots();
 const offices = new Offices();
+// Read-only checkout reads for release-marker corrections a service exit interrupted, before any dispatch starts.
+for (const { store } of offices.entries.values()) await observeInterruptedCorrections(store, command);
 const loadedRevision = runtimeRevision();
 // The GitHub login probe is metered with the Office's other GitHub calls; public status and other probes keep the base runner.
 const serviceHealth = new ServiceHealthChecks(undefined, offices.githubCalls.run);

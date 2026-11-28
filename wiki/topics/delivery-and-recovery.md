@@ -12,6 +12,8 @@ Dependency-bot PRs (Dependabot, pin-courier, wiki-sync) are [adopted automatical
 
 A delivery job stopped by a transient GitHub failure is [retried by the harness](../journal/2026-11-27-transient-github-retries.md), including a read-back-first retry of a hands-off draft; an uncertain write is only ever read back, never resent.
 
+An opted-in project (CMS by default) [refuses to push a `[skip release]` commit that changes the npm package](../journal/2026-11-27-release-marker-check.md). Unmarked pushes stay free of npm and extra provider reads, undecidable coverage stops for a person, and an ordinary unpublished writer gets at most two messages-only corrections that the harness applies. The CI commit-message repair push remains outside the check.
+
 ## Evidence
 
 - [Office process](../../docs/office-process.md)

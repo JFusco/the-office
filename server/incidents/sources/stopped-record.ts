@@ -122,8 +122,10 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
             const followup = readinessNeedsFollowup(job), approval = !!job.mergeApprovalRequired, active = STOPPED.includes(job.status);
             // A watching job keeps whatever stop it had before; only a wait's own stop is current for it.
             const stop = active || job.status === 'watching' && ['provider-checks', 'pr-not-ready'].includes(job.stop?.kind ?? '') ? job.stop ?? null : null;
+            // A current typed release-marker stop is the harness's own refusal, whatever an earlier model result said.
+            const marker = !!stop && stop.kind === 'release-marker';
             // The stop repeats a saved result of the stage, a metadata assessment or a CI diagnosis saved outside its steps.
-            const model = followup || active && !failed(run) && (repeats(job.detail, result) || assessment?.outcome === 'blocked' && includes(job.detail, assessment.summary) || includes(job.detail, job.ciRepairs?.at(-1)?.plan?.summary));
+            const model = !marker && (followup || active && !failed(run) && (repeats(job.detail, result) || assessment?.outcome === 'blocked' && includes(job.detail, assessment.summary) || includes(job.detail, job.ciRepairs?.at(-1)?.plan?.summary)));
             const repair = deliveryRepairProjection(job), decided = decidedFor(retry, job) ? retry : undefined;
             return { ...base, standing: active || job.status === 'watching' && (!!stop || approval || followup) ? 'stopped' : 'gated', stage: job.stage, key: job.key, keys: job.pr ? [`GH-${job.pr}`] : [], text: job.detail, identity: approval ? MERGE_APPROVAL : undefined, author: approval ? 'harness' : model ? 'model' : 'harness',
                 kind: approval ? 'merge-approval' : followup ? 'readiness' : model ? result?.resolution?.kind ?? result?.outcome ?? 'blocked' : stop?.kind ?? '', stop, head: job.head, lastWorker: run?.id ?? '', episode: stop?.at ?? job.updatedAt ?? job.requestedAt,
@@ -143,7 +145,9 @@ export function stoppedRecord(state: OfficeSnapshot, work: WorkRef, stage: strin
     if (work.kind === 'reconciliation') {
         const request = c?.requests?.find(request => request.id === work.id);
         if (!request) return null;
-        const run = lastRun(state, run => run.requestId === request.id), author = handedBack(run), stopped = STOPPED.includes(request.status), stop = stopped ? request.stop ?? null : null;
+        const run = lastRun(state, run => run.requestId === request.id), stopped = STOPPED.includes(request.status), stop = stopped ? request.stop ?? null : null;
+        // A release-marker refusal the request propagated from its job is the harness's own, like the job's.
+        const author = stop?.kind === 'release-marker' ? 'harness' : handedBack(run);
         return { ...base, standing: stopped ? 'stopped' : 'gated', stage: request.action, key: request.key, text: request.detail, author, kind: author === 'harness' ? stop?.kind ?? '' : '', stop, head: request.head, lastWorker: run?.id ?? '', episode: stop?.at ?? request.requestedAt,
             facts: { stopKind: author === 'harness' ? stop?.kind : undefined }, failure: failed(run) ? run!.failure!.category : undefined, covers: worker(run?.id),
             effects: [work, ...(c?.jobs ?? []).filter(job => !!request.key && job.key === request.key).map(job => ({ projectId: project, kind: 'delivery' as const, id: job.id })), ...issue(project, request.key), ...(request.head ? [{ projectId: project, kind: 'reconciliation' as const, id: request.head }] : [])] };

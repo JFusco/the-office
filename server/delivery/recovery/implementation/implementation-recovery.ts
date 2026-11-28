@@ -19,6 +19,9 @@ import { artifact, ownedPath, terminationObservation } from '../../../store/read
 import { continuationScope, continuationWorkerProof, assertContinuationWorker, continuationJsonArtifact, continuationWorktree } from './continuation-evidence';
 import { readValidationProviderContext, validationProviderVersion } from '../validation/validation-provider-context';
 import { parseBrainStatus } from '../../../maintenance/brain/brain-status';
+import { checkAdoption } from '../../publication/marker-adoption';
+import { remoteRefs } from '../../publication/marker-publication';
+import { releaseMarkerApplies } from '../../publication/release-marker-check';
 
 type Ownership = { complete: boolean; fresh: boolean; expiresAt?: string; ownership?: { status: string } };
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -124,9 +127,13 @@ Return originalWorkId=${candidate.work.id}, passed only for the proven dispositi
         await engine.maintenance.verifyCandidate(local);
         await new GitOperations(store, delivery.execute).candidate(local.worktree, local.head);
         const prs = JSON.parse(await delivery.execute('gh', ['pr', 'list', '--repo', store.project.repository, '--head', local.branch, '--state', 'all', '--json', 'number'], { cwd: store.project.repo, readOnly: true }));
-        const remote = (await delivery.execute('git', ['ls-remote', '--heads', 'origin', `refs/heads/${local.branch}`], { cwd: local.worktree, readOnly: true })).trim();
+        // Where the release-marker check applies, the same branch probe also reads the target, each ref by its full name.
+        const refs = releaseMarkerApplies(store) ? await remoteRefs(delivery.execute, local, store.project.target) : undefined;
+        const remote = refs ? refs.candidate : (await delivery.execute('git', ['ls-remote', '--heads', 'origin', `refs/heads/${local.branch}`], { cwd: local.worktree, readOnly: true })).trim();
         if (!Array.isArray(prs) || prs.length || remote)
             throw new Error('Candidate publication must be reconciled separately');
+        // Stop-only release-marker classification before the approach or head is recorded; ownership is rechecked below.
+        if (refs) await checkAdoption(delivery, job, local, { target: refs.target, published: '' });
     }
     const fresh = await delivery.api(`issues/${Number(key.slice(3))}`);
     if (fresh.updated_at !== issue.updated_at || fresh.state !== 'open' || !fresh.assignees?.some((person: any) => person.login === 'JFusco'))

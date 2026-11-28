@@ -16,6 +16,7 @@ import * as handoffs from '../../../../../server/delivery/recovery/implementatio
 import {digest} from '../../../../../server/store/readback-evidence';
 import {enqueueRequest} from '../../../../../server/scheduling/requests';
 import type {StageResult} from '../../../../../src/shared';
+import {unmarkedHistory} from '../../support/marker-repo';
 const fixtures:{root:string;store:Store}[]=[];
 /** Restores spies, closes every store a fixture opened and removes its folder. Register with afterEach in each suite that uses fixture(). */
 export function cleanupFixtures(){vi.restoreAllMocks();for(const f of fixtures.splice(0)){f.store.close();rmSync(f.root,{recursive:true,force:true});}}
@@ -33,7 +34,7 @@ export function fixture(stage:'implement'|'scope-repair'='scope-repair',projectI
  const issue={number:100,html_url:`https://github.com/${store.project.repository}/issues/100`,state:'open',updated_at:'2026-10-31T01:00:00Z',title:'Review proposed source changes',body:'Eight source baselines require human acceptance. Child PR closure remains required.',labels:[],assignees:[{id:1,login:'JFusco'}]};
  const child:any={number:117,html_url:`https://github.com/${store.project.repository}/pull/117`,state:'open',merged:false,merge_commit_sha:null,updated_at:'2026-10-31T01:00:00Z',head:{sha:'7'.repeat(40)},base:{ref:'main',repo:{full_name:store.project.repository}}};
  const reads:string[]=[];const execute=vi.fn(async(_bin:string,args:string[])=>{
-  reads.push(args.join(' '));if(args[0]==='api'){
+  reads.push(args.join(' '));const unmarked=unmarkedHistory(_bin,args);if(unmarked!==undefined)return unmarked;if(args[0]==='api'){
    const p=args[1].replace('repos/'+store.project.repository+'/','');if(p==='issues/100')return JSON.stringify(issue);if(p.startsWith('issues/100/comments'))return '[]';if(p==='pulls/117')return JSON.stringify(child);if(p.startsWith('pulls?'))return '[]';throw new Error('Unexpected API '+p);
   }
   if(args[0]==='rev-parse')return args[1]==='--show-toplevel'?candidate:head;

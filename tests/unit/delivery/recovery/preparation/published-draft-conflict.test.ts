@@ -23,6 +23,7 @@ import {HOLDS} from '../../../../../server/office/config';
 import * as scopeResume from '../../../../../server/delivery/recovery/scope-repair/scope-repair-resume';
 import * as closeout from '../../../../../server/delivery/recovery/closeout/closeout-recovery-evidence';
 import * as saved from '../../../../../server/delivery/recovery/implementation/saved-prerequisite-handoff';
+import { unmarkedHistory } from '../../support/marker-repo';
 import * as processTools from '../../../../../server/workers/process';
 import {ProjectProgress} from '../../../../../server/delivery/board/project-progress';
 import {SessionBridge} from '../../../../../server/workers/session-bridge';
@@ -78,6 +79,10 @@ function fixture(historical=false){
   if(program==='gh'&&cmd.includes('pulls?state=open'))return JSON.stringify([[pr]]);
   throw Error('Unexpected provider command '+cmd);
  });
+ // Every implementation this runner is given answers the release-marker walk's local reads with a complete, unmarked history.
+ const setExecute=execute.mockImplementation.bind(execute);
+ (execute as any).mockImplementation=(impl:any)=>setExecute(async(program:string,args:string[],options?:any)=>unmarkedHistory(program,args)??impl(program,args,options));
+ execute.mockImplementation(execute.getMockImplementation()!);
  const delivery=new GitHubDelivery(store,engine,execute as any);vi.spyOn(delivery,'verifyPR').mockImplementation(async()=>structuredClone(pr));vi.spyOn(delivery,'api').mockImplementation(async path=>{if(path==='issues/100')return structuredClone(issue);if(path.startsWith('issues/100/comments'))return [];if(path==='commits/main')return {sha:base};throw Error('Unexpected API '+path);});
  const ownership=vi.fn(async()=>({complete:true,fresh:true,ownership:{status:'clear'}}));
  const request=()=>enqueueRequest(store,'reconcile-preparation',job.key,writer.work.id);

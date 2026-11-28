@@ -47,3 +47,15 @@ test('shows an empty holds list and omits the binding without an Azure project',
     const html = render({ status: 'ready', config: { ...config, projects: [config.projects[1]], holds: [] } });
     expect(html).toContain('No holds are configured'); expect(html).not.toContain('Jira / Azure binding');
 });
+
+test('a GitHub project card shows its effective release-marker check; an older summary and Azure show none', () => {
+  const policy = { merge: 'harness' as const, handsOff: true, checkpoint: { hour: 15, weekends: true } };
+  const github = (id: string, releaseMarkerCheck?: boolean) => ({ ...config.projects[1], id, name: `Project ${id}`, policy: releaseMarkerCheck === undefined ? policy : { ...policy, releaseMarkerCheck } });
+  const html = render({ status: 'ready', config: { ...config, projects: [github('cms', true), github('off', false), github('older'), { ...config.projects[0], policy: { ...policy, merge: 'human' as const, handsOff: false, releaseMarkerCheck: false } }] } });
+  const card = (name: string) => html.split('<article').find(article => article.includes(`>${name}</strong>`))!;
+  const row = (name: string) => /<dt[^>]*>Release marker<\/dt><dd[^>]*>([^<]*)<\/dd>/.exec(card(name))?.[1];
+  expect(row('Project cms')).toBe('Refuses a [skip release] commit that changes the package');
+  expect(row('Project off')).toBe('Off');
+  expect(card('Project older')).not.toContain('Release marker');
+  expect(card('CEC')).not.toContain('Release marker');
+});

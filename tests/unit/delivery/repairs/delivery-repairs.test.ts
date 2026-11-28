@@ -17,6 +17,7 @@ import { assertStrictOutputSchema } from '../../../../server/workers/structured-
 import { enqueueRepairDiagnosis, githubRepairEligible, jiraRepairable, repairFindingIds, reserveRepair } from '../../../../server/delivery/repairs/delivery-repairs';
 import { deliveryHumanInputs, deliveryInputSha256 } from '../../../../server/github/github-context';
 import type { StageResult, TeamMessage, Ticket } from '../../../../src/shared';
+import { unmarkedHistory } from '../support/marker-repo';
 const roots: string[] = [], stores: Store[] = [];
 beforeEach(() => { vi.spyOn(ProjectProgress.prototype, 'reconcile').mockResolvedValue(undefined); vi.spyOn(ProjectProgress.prototype, 'reviewStarted').mockResolvedValue(undefined); });
 afterEach(() => { vi.restoreAllMocks(); for (const s of stores.splice(0)) s.close(); for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
@@ -28,6 +29,8 @@ function fixture(projectId = 'brain') {
  const engine = new Engine(store); let actualHead = a, dirty = '', branch = 'issue-999';
  const calls: string[] = [];
  const execute = async (bin: string, args: string[], options?: any) => { calls.push(`${bin} ${args.join(' ')}`);
+  // The release-marker walk's local reads see a complete history with no commit in range (#617).
+  const unmarked = unmarkedHistory(bin, args); if (unmarked !== undefined) return unmarked;
   if (bin === 'git') { if (args[0] === 'remote') return `https://github.com/${store.project.repository}.git`; if (args[0] === 'rev-parse') return actualHead; if (args[0] === 'branch') return branch; if (args[0] === 'status') return dirty; if (args[0] === 'merge-base') return ''; }
   if (bin === 'gh' && args[1].endsWith('/issues/999')) return JSON.stringify({ number: 999, html_url: `https://github.com/${store.project.repository}/issues/999`, body: 'Complete acceptance body', updated_at: 'v1', state: 'open', assignees: [{ login: 'JFusco' }] });
   if (bin === 'gh' && args[1].endsWith('/commits/main')) return JSON.stringify({ sha: a });

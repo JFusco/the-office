@@ -4,6 +4,8 @@ import { z } from 'zod';
 export interface ProjectPolicyInput {
     merge?: 'human' | 'harness';
     handsOff?: boolean;
+    /** Refuse a hands-off push whose `[skip release]` commit changes the npm package (`server/delivery/publication/`). */
+    releaseMarkerCheck?: boolean;
     checkpoint?: { hour?: number; weekends?: boolean };
     /** Human holds for this project only: ticket key to reason. */
     holds?: Record<string, string>;
@@ -13,6 +15,7 @@ const HOUR = 'must be an integer from 0 to 23';
 const policySchema = z.strictObject({
     merge: z.enum(['human', 'harness'], { error: 'must be "human" or "harness"' }).optional(),
     handsOff: z.boolean({ error: 'must be a boolean' }).optional(),
+    releaseMarkerCheck: z.boolean({ error: 'must be a boolean' }).optional(),
     checkpoint: z.strictObject({
         hour: z.number({ error: HOUR }).int(HOUR).min(0, HOUR).max(23, HOUR).optional(),
         weekends: z.boolean({ error: 'must be a boolean' }).optional(),

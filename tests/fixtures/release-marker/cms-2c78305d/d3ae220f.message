@@ -1,0 +1,11 @@
+docs(operating): require explicit source acceptance [skip release]
+
+Readiness review accepts a proposed source-lock observation only by
+naming its fingerprint, recording inspection at the registered locator
+and accepting it explicitly. Passing checks or PR readiness are not
+acceptance, and a maintainer hold stays effective.
+
+Closes #189
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+

@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+overrides:
+  # GHSA-g3hv-75wg-m249: eslint 10.14.0 still requires minimatch 10.
+  # Remove once eslint depends on minimatch >=11.0.1.
+  minimatch: '11.0.9'

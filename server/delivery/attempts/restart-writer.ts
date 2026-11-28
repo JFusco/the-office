@@ -38,6 +38,8 @@ export function stoppedWriter(store: Store, job: TicketJob, alive: (pid: number)
     if (state.paused || state.draining || holdReason(store.project, job.key) || job.pr && holdReason(store.project, `GH-${job.pr}`) || !job.worktree || !job.branch || !accepted) return null;
     // Work that already has its own recovery record keeps it.
     if (job.stoppedBaseUpdate || job.repairCycle || job.mergeAttempt || job.parked) return null;
+    // A release-marker correction keeps its refused checkout and pending record for a person: never salvaged or reset.
+    if (Object.values(job.releaseMarkerReturns ?? {}).some(item => item.status === 'pending')) return null;
     const work = state.workLog?.filter(entry => entry.requestId === job.id && entry.stage === `github-${job.stage}`).at(-1);
     // A run that completed and returned its own verdict (including `failed`) is a decision, not a death.
     if (!work || work.executionStatus || !['interrupted', 'failed'].includes(work.status) || work.failure && NOT_RETRYABLE.includes(work.failure.category)) return null;

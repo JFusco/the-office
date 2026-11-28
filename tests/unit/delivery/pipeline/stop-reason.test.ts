@@ -90,3 +90,19 @@ describe('stopReason', () => {
         expect(stopReason(new SourceClosed('closed'), false, new Date('2026-11-15T12:00:00Z'))).toEqual({ kind: 'source-closed', at: '2026-11-15T12:00:00.000Z' });
     });
 });
+
+describe('release-marker refusals', () => {
+    it('are recognised from their type before any wording, and the saved stop copies their evidence', async () => {
+        const { indeterminate, packageChange } = await import('../../../../server/delivery/publication/release-marker-stop');
+        const at = new Date('2026-11-27T12:00:00Z');
+        // Wording that would otherwise read as an uncertain write, a hold or a temporary read.
+        const worded = indeterminate('tool failure: npm pack timed out; previous action outcome needs read-back (HTTP 502), GH-5 is held: x');
+        expect(classifyStop(worded)).toBe('release-marker');
+        expect(classifyStop(worded, true)).toBe('release-marker');
+        const proven = packageChange([{ sha: 'a'.repeat(40), paths: ['OPERATING.md', 'README.md'], inventoryPaths: [] }]);
+        expect(stopReason(proven, false, at)).toEqual({ kind: 'release-marker', at: at.toISOString(), releaseMarker: { reason: 'marked-package-change', disposition: 'refusal', commit: 'a'.repeat(40),
+            paths: ['OPERATING.md', 'README.md'], inventoryPaths: [], commits: [{ sha: 'a'.repeat(40), paths: ['OPERATING.md', 'README.md'], inventoryPaths: [] }] } });
+        // An ordinary error's saved stop carries no payload.
+        expect(stopReason(new Error('Stage did not pass'), false, at)).toEqual({ kind: 'unclassified', at: at.toISOString() });
+    });
+});

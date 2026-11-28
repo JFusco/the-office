@@ -18,6 +18,7 @@ import {recordJobApproach} from '../../pipeline/approach';
 import {workKey,type TicketJob,type StageResult} from '../../../../src/shared';
 import type {Store} from '../../../store/store';
 import {hasUncertainEffects,type GitHubDelivery} from '../../pipeline/github-delivery';
+import {checkAdoption} from '../../publication/marker-adoption';
 type Ownership={complete:boolean;fresh:boolean;ownership?:{status:string}};
 function requireThat(value:unknown,message:string):asserts value{if(!value)throw new Error(message);}
 const stages=['implement','scope-repair'];
@@ -76,6 +77,8 @@ export function savedPrerequisiteOriginal(store:Store,job:TicketJob,originalWork
 /** Persist only a verified candidate and wait condition; open findings remain independent-review gates. */
 export async function handoffSavedPrerequisites(delivery:GitHubDelivery,job:TicketJob,originalWorkId:string,refresh:()=>Promise<Ownership>=refreshDeliveryOwnership,recoveryIntentId='',nativeRoot?:string){
  const {store}=delivery,context=currentAssignment(),claim=context?.claim;
+ // A pending release-marker correction settles first, whether reached from its stage or a scheduler request (#617).
+ requireThat(!Object.values(job.releaseMarkerReturns??{}).some(item=>item.status==='pending'),'A pending release-marker correction must settle before a saved-prerequisite handoff');
  requireThat(context?.lane==='delivery'&&claim?.status==='running'&&claim.work.projectId===store.project.id,'Scheduler-owned saved prerequisite handoff required');
  const request=recoveryIntentId?store.state.coordination?.requests?.find(r=>r.id===recoveryIntentId):undefined;
  requireThat(recoveryIntentId?request?.status==='working'&&request.action==='reconcile-implementation'&&request.key===job.key&&request.head===originalWorkId&&claim.work.kind==='reconciliation'&&claim.work.id===request.id&&claim.stage==='reconcile-implementation':
@@ -114,6 +117,8 @@ export async function handoffSavedPrerequisites(delivery:GitHubDelivery,job:Tick
  writeFileSync(path,JSON.stringify({originalWorkId,fromHead:job.head,head:original.result.commit,stage:job.stage,prerequisites:original.dependencies,findingIds,assignment:original.proof.assignment,
   handoffClaim:structuredClone(claim),intentId:recoveryIntentId||null,originalWorker:original.proof.worker,originalClaim:original.claim,worktree:original.worktree,files:original.files,native:original.native,candidate,providerSha256:validationProviderVersion(provider),inputSha256:inputs,dependencies:afterDependencies,at},null,2),{mode:0o600});
  const proof=artifact(store,path);
+ // Stop-only release-marker classification of the saved candidate; the transaction below revalidates every proof after it.
+ await checkAdoption(delivery,job,{head:original.result.commit,branch:original.result.branch,worktree:original.result.worktree});
  store.transaction(()=>{
   stable(afterOwner);requireThat(isDeepStrictEqual(artifact(store,path),proof),'Saved handoff proof changed');
   job.savedPrerequisiteHandoff={originalWorkId,fromHead:job.head,head:original.result.commit,stage:job.stage as 'implement'|'scope-repair',proofPath:path,proofSha256:proof.sha256,findingIds,at};

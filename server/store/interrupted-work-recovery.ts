@@ -9,6 +9,7 @@ import { interruptAdoptions } from '../delivery/intake/dependency-bots/interrupt
 import { retireLegacyRecovery } from '../delivery/recovery/retire-legacy-recovery';
 import { maintenanceNoticeNeverDispatched } from '../maintenance/brain/maintenance-notice-authorization';
 import { checkpointOutcome } from '../maintenance/checkpoint-outcome';
+import { interruptCorrectionAtStartup } from '../delivery/publication/marker-interruption';
 
 export function recover(this: Store, fenced = false): void  {
     this.transaction(() => {
@@ -34,6 +35,8 @@ export function recover(this: Store, fenced = false): void  {
             }
         for (const j of coordination?.jobs || [])
             if (j.status === 'working') {
+                // A dispatched release-marker correction blocks with its own typed stop; its checkout is read after startup.
+                if (interruptCorrectionAtStartup(j, this.clock.now())) continue;
                 j.status = 'interrupted';
                 j.detail = 'Delivery interrupted; read back original sessions and remote effects before continuing. No automatic replay.';
             }

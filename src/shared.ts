@@ -234,6 +234,8 @@ export interface TicketJob {
     candidateBase?: string;
     /** Writer stage runs the harness abandoned and restarted from the accepted head; their work is kept under `ref`. */
     writerRestarts?: import('./contracts/writer-restart').WriterRestart[];
+    /** Writer results returned for a `[skip release]` package change, keyed by refused work ID; absent counts as zero. */
+    releaseMarkerReturns?: Record<string, import('./contracts/release-marker').ReleaseMarkerReturn>;
     /** One restart past the ordinary allowance, granted after a verified fix; absent on jobs saved before it existed. */
     repairRelease?: import('./contracts/writer-restart').WriterRepairRelease;
     /** The stopped writer run the harness would not restart, and why; other recovery owns it. */
@@ -1045,7 +1047,8 @@ export type OfficePreferencesResponse = OfficePreferences & { serviceInstanceId:
 /** Read-only public projection of the effective office configuration. */
 /** One project's resolved policy, a GitHub project's effective bot adoption and, for a bound Jira/Azure project, its non-secret connection facts. */
 export interface OfficeConfigProjectSettings {
-    policy: { merge: 'human' | 'harness'; handsOff: boolean; checkpoint: { hour: number; weekends: boolean } };
+    /** `releaseMarkerCheck` is the effective value: the project's own setting, else its built-in default. A summary from an older service omits it. */
+    policy: { merge: 'human' | 'harness'; handsOff: boolean; releaseMarkerCheck?: boolean; checkpoint: { hour: number; weekends: boolean } };
     /** The bots adopted without a person moving a card: as configured (`explicit`), every bot (`default`), or none because adoption is inactive (`none`). */
     autoAdopt: { bots: ('dependabot' | 'pin-courier' | 'wiki-sync')[]; source: 'explicit' | 'default' | 'none' };
     jira: { site: string; projectKey: string; intakeStatuses: string[]; defaultPickup: string };

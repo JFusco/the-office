@@ -1,9 +1,14 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+import { Store } from '../../../../server/store/store';
+import { projectById } from '../../../../server/office/projects';
+import { coordination } from '../../../../server/scheduling/coordination';
 import { normalizeCause } from '../../../../server/incidents/normalize-cause';
 import { standingStop } from '../../../../server/incidents/repair/repair-wait';
 import { FEATURE_QUESTIONS } from '../../../../server/incidents/sources/feature-record';
 import { stoppedWork } from '../../../../server/incidents/sources/stopped-work';
-import type { Store } from '../../../../server/store/store';
 import { AT, item, observe, projectStore } from '../incident-fixture';
 import { reconcileBlockerFollowups } from '../../../../server/knowledge/blocker-followups';
 import { scheduledWork, type OfficeEntry } from '../../../../server/scheduling/scheduled-work';
@@ -467,4 +472,83 @@ test('a settled Harper duplicate beside an unsettled write of its ticket\'s deli
     const found = stoppedWork(observe(s, progression)).filter(candidate => candidate.subject.kind === 'conversation').map(candidate => candidate.subject.id);
     expect(s.state.messages.find(message => message.id === 'older')).toMatchObject({ status: 'failed', supersededByHandoffId: 'newer' });
     expect(found).toEqual(['ran']);
+});
+
+describe('release-marker stops (#617)', () => {
+    const dirs: string[] = [];
+    afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));
+    /** A file-backed store saved and opened again, as a restarted service reads it. */
+    function persisted(prepare: (s: Store) => void | Promise<void>) {
+        return (async () => {
+            const dir = mkdtempSync(resolve(tmpdir(), 'office-marker-incident-'));
+            dirs.push(dir);
+            const path = resolve(dir, 'office.sqlite'), first = new Store(path, projectById(P), dir);
+            first.state.coordination ??= coordination();
+            await prepare(first);
+            first.save(); first.close();
+            const reopened = new Store(path, projectById(P), dir);
+            stores.push(reopened);
+            return reopened;
+        })();
+    }
+    const project = (s: Store) => scheduledWork({ store: s, engine: {}, conversations: {}, coordinator: {} } as OfficeEntry, new Map([[P, s]]), AT, 'delivery');
+    const marked = { sha: 'a'.repeat(40), paths: ['OPERATING.md', 'README.md'], inventoryPaths: [] };
+    const pending = (over: Record<string, unknown> = {}) => ({ workId: 'writer-1', claimId: 'claim-0', originalWorkId: 'writer-1', at: '2026-11-20T10:00:00.000Z', status: 'pending', boundary: 'b'.repeat(40),
+        branch: 'codex/12-x', worktree: '/tmp/none', refusedHead: 'c'.repeat(40), refusedTree: 'd'.repeat(40), offending: [{ ...marked, message: 'docs: x [skip release]\n' }],
+        publication: { candidate: '', target: 'b'.repeat(40), pullRequests: 0, observedAt: '' }, step: 0, ...over });
+
+    async function expectDecision(s: Store) {
+        s.state.paused = true;
+        expect(stoppedWork(observe(s, project(s))).map(found => found.subject.kind)).toEqual(['project']);
+        s.state.paused = false;
+        const progression = project(s), item = progression.find(entry => entry.work.kind === 'delivery' && entry.work.id === 'job-1')!;
+        expect(item.eligibility).toMatchObject({ state: 'blocked', cause: 'needs-decision' });
+        const [found] = stoppedWork(observe(s, progression)).filter(candidate => candidate.subject.id === 'job-1');
+        const saved = s.state.coordination!.jobs!.find(job => job.id === 'job-1')!;
+        expect(found).toMatchObject({ expected: 'decision', cause: { kind: 'release-marker', author: 'harness' } });
+        expect(found.subject.stop).toEqual(saved.stop);
+        expect(saved.stop?.releaseMarker).toBeDefined();
+        return found;
+    }
+
+    test('a publication refusal, saved and reloaded, is the harness\'s decision even when an earlier model blocker says the same', async () => {
+        const { blockOnReleaseMarker, packageChange } = await import('../../../../server/delivery/publication/release-marker-stop');
+        const s = await persisted(s => {
+            const refusal = packageChange([marked]);
+            const model = { ...passed, outcome: 'blocked', blocker: String(refusal).replace(/^Error: /, '').slice(0, 120) };
+            const j = job({ stage: 'draft', steps: [{ stage: 'draft', result: model }] });
+            s.state.coordination!.jobs = [j];
+            blockOnReleaseMarker(j, refusal, AT);
+        });
+        const found = await expectDecision(s);
+        expect(found.subject.stop?.releaseMarker).toMatchObject({ reason: 'marked-package-change', commit: marked.sha, paths: marked.paths });
+    });
+
+    test('a step-interrupted and a startup-interrupted correction are decisions with their checkout evidence', async () => {
+        const { persistMarkerStop, interruptCorrectionAtStartup } = await import('../../../../server/delivery/publication/marker-interruption');
+        const { withAssignment } = await import('../../../../server/workers/assignment-context');
+        const step = await persisted(async s => {
+            const claim = s.claimWork({ projectId: P, kind: 'delivery', id: 'job-1' }, 'test', 'implement', 'delivery')!;
+            const j = job({ stage: 'implement', status: 'working', releaseMarkerReturns: { 'writer-1': pending({ correction: { claimId: claim.id, at: 'x', dispatchedAt: 'y' } }) } });
+            s.state.coordination!.jobs = [j];
+            await withAssignment(claim, 'delivery', () => persistMarkerStop({ store: s, execute: (async () => { throw new Error('unreadable'); }) as any }, j, new Error('Worker paused')));
+            s.finishClaim(claim.id, 'interrupted');
+        });
+        expect((await expectDecision(step)).subject.stop?.releaseMarker).toMatchObject({ disposition: 'interrupted-correction', correction: { refusedWorkId: 'writer-1', checkout: { state: 'unreadable' } } });
+        const startup = await persisted(s => {
+            s.state.coordination!.jobs = [job({ stage: 'implement', status: 'working', releaseMarkerReturns: { 'writer-1': pending({ correction: { claimId: 'claim-1', at: 'x', dispatchedAt: 'y' } }) } })];
+        });
+        startup.recover();
+        expect(interruptCorrectionAtStartup).toBeTypeOf('function');
+        expect((await expectDecision(startup)).subject.stop?.releaseMarker).toMatchObject({ disposition: 'interrupted-correction', correction: { claimId: 'claim-1', checkout: { state: 'outstanding' } } });
+    });
+
+    test('a model-only blocker keeps its model attribution', async () => {
+        const s = await persisted(s => {
+            s.state.coordination!.jobs = [job({ stage: 'review', detail: 'Error: The change needs a product decision', stop: { kind: 'unclassified', at: AT.toISOString() },
+                steps: [{ stage: 'review', result: { ...passed, outcome: 'blocked', blocker: 'The change needs a product decision' } }] })];
+        });
+        const [found] = stoppedWork(observe(s, project(s))).filter(candidate => candidate.subject.id === 'job-1');
+        expect(found.cause.author).toBe('model');
+    });
 });

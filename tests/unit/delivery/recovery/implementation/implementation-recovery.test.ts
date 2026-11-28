@@ -26,12 +26,13 @@ import {GitHubDelivery} from '../../../../../server/delivery/pipeline/github-del
 import {GitOperations} from '../../../../../server/github/git-operations';
 import {GitHubMaintenance} from '../../../../../server/maintenance/maintenance';
 import {ProjectProgress} from '../../../../../server/delivery/board/project-progress';
-import {projectById,officeCapacity} from '../../../../../server/office/projects';
+import {projectById,officeCapacity,PROJECT_POLICY_INPUTS} from '../../../../../server/office/projects';
 import {coordination} from '../../../../../server/scheduling/coordination';
 import {implementationRecoveryCandidate,recoverImplementation,recoveredFindingsResolved} from '../../../../../server/delivery/recovery/implementation/implementation-recovery';
 import {ITSpecialist} from '../../../../../server/it/it-specialist';
 import type {StageResult,TicketJob} from '../../../../../src/shared';
 import { savedState } from '../../../store/saved-state-fixture';
+import { unmarkedHistory } from '../../support/marker-repo';
 const roots:string[]=[],stores:Store[]=[];
 afterEach(()=>{vi.restoreAllMocks();stores.splice(0).forEach(s=>s.close());roots.splice(0).forEach(p=>rmSync(p,{recursive:true,force:true}));});
 function fixture(kind:'candidate'|'preflight'='candidate'){
@@ -49,7 +50,10 @@ function fixture(kind:'candidate'|'preflight'='candidate'){
   if(program==='gh'&&args[0]==='pr'&&args[1]==='list')return '[]';
   if(program==='git'&&args[0]==='ls-remote')return '';
   return JSON.stringify(issue);
- }),delivery=new GitHubDelivery(store,engine,execute as any);
+ });
+ // The release-marker walk reads a complete history; `markerLog` is what its `log -z` returns (empty: no commit in range).
+ let markerLog='';
+ const delivery=new GitHubDelivery(store,engine,(async(program:string,args:string[],options:any)=>program==='git'&&args[0]==='log'&&args[1]==='-z'?markerLog:unmarkedHistory(program,args)??(execute as any)(program,args,options)) as any);
  const verify=vi.spyOn(engine.maintenance,'verifyCandidate').mockResolvedValue(undefined);
  vi.spyOn(GitOperations.prototype,'candidate').mockResolvedValue({base:'b'.repeat(40),files:['sources/profiles/fixture.json'],diff:'Fixture'});
  const assessment={outcome:'passed',originalWorkId:'original',verifiedNoEffects:true,summary:'Original evidence verified',evidence:[{path:'https://github.com/JFusco/cms-field-vocabulary/issues/113#issuecomment-1',summary:'Semantic issue reference'},{path:worktree,summary:'Semantic candidate directory'}]};
@@ -63,7 +67,7 @@ function fixture(kind:'candidate'|'preflight'='candidate'){
  };
  const run=vi.spyOn(engine.agents,'run').mockImplementation(async()=>readback() as any);
  const ownership=vi.fn(async()=>({complete:true,fresh:true,ownership:{status:'clear'}}));
- return {root,store,engine,job,result,delivery,execute,run,verify,issue,ownership,assessment,readback};
+ return {root,store,engine,job,result,delivery,execute,run,verify,issue,ownership,assessment,readback,setMarkerLog:(value:string)=>{markerLog=value;}};
 }
 test('adopts the exact saved candidate into independent review and QA, preserving the original open finding and history',async()=>{
  const a=fixture(),prior=JSON.stringify(a.job.steps[0]);
@@ -113,7 +117,8 @@ test.each(['existing-pr','remote-branch','unknown-pr-inventory'] as const)('reje
  await expect(recoverImplementation(a.delivery,a.job.key,'original',a.ownership)).rejects.toThrow('Candidate publication must be reconciled separately');
  expect(JSON.stringify(a.job)).toBe(prior);
  expect(a.execute).toHaveBeenCalledWith('gh',['pr','list','--repo',a.store.project.repository,'--head',a.result.branch,'--state','all','--json','number'],expect.objectContaining({readOnly:true}));
- expect(a.execute).toHaveBeenCalledWith('git',['ls-remote','--heads','origin',`refs/heads/${a.result.branch}`],expect.objectContaining({cwd:a.result.worktree,readOnly:true}));
+ // The opted-in project's branch probe also reads the target, in the same single ls-remote.
+ expect(a.execute).toHaveBeenCalledWith('git',['ls-remote','--heads','origin',`refs/heads/${a.result.branch}`,'refs/heads/main'],expect.objectContaining({cwd:a.result.worktree,readOnly:true}));
 });
 test.each((['candidate','preflight'] as const).flatMap(kind=>(['readback','final-ownership'] as const).flatMap(timing=>
  ['session','replacement-worker','provider','project','provider-artifact','result-artifact'].map(change=>({kind,timing,change})))))('rejects $kind recovery when $change changes during $timing',async({kind,timing,change})=>{
@@ -1087,4 +1092,37 @@ test.each(['normal','saved'] as const)('harness derives current review record fr
   const a=await savedNegativeFixture(true);a.negative.evidence[0].kind='checks';a.records.at(-1)!.payload.last_agent_message=JSON.stringify(a.negative);a.writeNative();a.put(a.work.id,'result.json',{session:a.work.sessionId,result:a.negative});a.run.mockClear();
   await a.reconcile();expect(a.run).not.toHaveBeenCalled();expect(a.job).toMatchObject({stage:'scope-repair',status:'queued',implementationContinuation:{round:2}});expect(a.job.steps.at(-1)!.result.evidence.at(-1)!.kind).toBe('review');
  }
+});
+
+// --- #617: stop-only release-marker classification of a saved implementation and of a continuation.
+test('a previously interrupted saved candidate with a release marker is refused before its approach or head is recorded; the request records it too',async()=>{
+ const a=fixture();a.job.status='interrupted';const prior={head:a.job.head,approach:a.job.approach};
+ a.execute.mockImplementation(async(program,args)=>{
+  if(program==='gh'&&args[0]==='pr'&&args[1]==='list')return '[]';
+  if(program==='git'&&args[0]==='ls-remote')return `${'b'.repeat(40)}\trefs/heads/main\n`;
+  return JSON.stringify(a.issue);
+ });
+ a.setMarkerLog(`${a.result.commit}\n${'b'.repeat(40)}\ndocs(readme): reword [skip release]\n\0`);
+ await expect(recoverImplementation(a.delivery,a.job.key,'original',a.ownership)).rejects.toThrow('could not be shown to leave the npm package unchanged');
+ expect(a.job).toMatchObject({status:'blocked',head:prior.head,stop:{kind:'release-marker',releaseMarker:{reason:'indeterminate',diagnostic:expect.stringContaining('unknown release wiring')}}});
+ expect(a.job.approach).toEqual(prior.approach);expect(a.job.implementationRecovery).toBeUndefined();expect(a.job.releaseMarkerReturns).toBeUndefined();
+ expect(a.job.steps.map(step=>step.stage)).toEqual(['implement']);
+});
+test('an unmarked saved candidate and the preflight-only recovery keep their routes with the check on',async()=>{
+ const a=fixture();await recoverImplementation(a.delivery,a.job.key,'original',a.ownership);expect(a.job).toMatchObject({stage:'review',status:'queued',head:a.result.commit});
+ const p=fixture('preflight');await recoverImplementation(p.delivery,p.job.key,'original',p.ownership);expect(p.job).toMatchObject({status:'queued'});
+ expect(p.execute.mock.calls.some(([program,args])=>program==='git'&&(args as string[])[0]==='ls-remote')).toBe(false);
+});
+test('a continuation whose new head cannot be cleared for release markers keeps the prior head and spends no return',async()=>{
+ const inputs=PROJECT_POLICY_INPUTS as Map<string,object>,saved=inputs.get('brain');inputs.set('brain',{...saved,releaseMarkerCheck:true});
+ try{
+  const a=brainFixture();await a.adopt();const ids=['deadline'];
+  const negative=a.response();negative.outcome='blocked';negative.findings.push(...ids.map(id=>({...negative.findings[0],id})));
+  await a.stage(negative);expect(a.job).toMatchObject({stage:'scope-repair',status:'queued'});const prior=a.job.head;
+  // The repaired head carries a marked commit the check cannot clear: the fixture's remote shows no target.
+  a.setMarkerLog(`${'c'.repeat(40)}\n${prior}\ndocs(readme): reword [skip release]\n\0`);
+  await a.stage(a.response('c'.repeat(40),ids));
+  expect(a.job).toMatchObject({status:'blocked',head:prior,stop:{kind:'release-marker',releaseMarker:{reason:'indeterminate'}}});
+  expect(a.job.implementationContinuation).toMatchObject({phase:'repair'});expect(a.job.releaseMarkerReturns).toBeUndefined();
+ }finally{if(saved)inputs.set('brain',saved);else inputs.delete('brain');}
 });
